@@ -1,0 +1,772 @@
+@*
+    MyCompany.razor — Company profile page for regular users (non-SysAdmin).
+    Allows authenticated users to view and edit their own company info, addresses,
+    contacts, and billing settings. Uses ClientApiService (tenant DB) to load
+    the issuer (the user's own company) via GET /api/client/issuer.
+
+    Key difference from CompanyDetail.razor (SysAdmin):
+    - Uses ClientApiService instead of CompanyApiService
+    - No tenant provisioning, no user invitation, no company creation
+    - Route: /my-company (not /companies/{id})
+*@
+@page "/my-company"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@rendermode InteractiveServer
+@using InvoiceApi.Application.Dto.Client
+@using InvoiceApi.Application.Dto.CompanySettings
+@using InvoiceApi.Domain.Enums
+@inject ClientApiService ClientService
+@inject CompanySettingsApiService SettingsService
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject IStringLocalizer<SharedResource> L
+
+<PageTitle>@L["MyCompany_Title"]</PageTitle>
+
+@* Warn user before navigating away from dirty forms *@
+<UnsavedChangesLock IsDirty="_isDirty" />
+
+@if (_loading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-4" />
+}
+else if (_company == null)
+{
+    <MudAlert Severity="Severity.Error">@L["Msg_NotFound"]</MudAlert>
+}
+else
+{
+    @* Header: company name + Active chip + Edit/Save/Cancel buttons *@
+    <div class="d-flex flex-wrap align-center gap-2 mb-4">
+        <MudText Typo="Typo.h4" Class="mr-2">@_company.CompanyName</MudText>
+        <MudChip T="string" Size="Size.Small" Color="@(_company.IsActive ? Color.Success : Color.Default)">
+            @(_company.IsActive ? L["Label_Active"].Value : L["Label_Inactive"].Value)
+        </MudChip>
+        <MudSpacer />
+
+        @if (!_isEditing)
+        {
+            @* View mode — Edit button *@
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Edit"
+                       OnClick="EnableEditing">@L["Btn_Edit"]</MudButton>
+        }
+        else
+        {
+            @* Edit mode — Save/Cancel buttons *@
+            <MudButton Variant="Variant.Text" OnClick="CancelEditing" Disabled="_saving">@L["Btn_Cancel"]</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save"
+                       OnClick="SaveCompany" Disabled="_saving">
+                @if (_saving)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                }
+                @L["Btn_Save"]
+            </MudButton>
+        }
+    </div>
+
+    @* Company information cards — 3-column layout *@
+    <MudGrid>
+        @* Card 1: Basic company info (RegistrationNumber, CompanyName, TaxNumber, IsVatPayer) *@
+        <MudItem xs="12" md="4">
+            <MudCard Elevation="2" Class="mb-4">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">@L["Client_CompanyInfo"]</MudText>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    @if (_isEditing)
+                    {
+                        @* Registration number + ARES fetch button *@
+                        <div class="d-flex gap-2 mb-3">
+                            <MudTextField @bind-Value="_editClient.RegistrationNumber"
+                                          Label="@L["Client_RegistrationNumber"].Value"
+                                          Class="flex-grow-1" />
+                            <MudButton Variant="Variant.Filled" Color="Color.Info"
+                                       StartIcon="@Icons.Material.Filled.Download"
+                                       OnClick="FetchFromAres" Disabled="@_fetchingAres" Class="align-self-end">
+                                @if (_fetchingAres)
+                                {
+                                    <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                                }
+                                else
+                                {
+                                    <span>ARES</span>
+                                }
+                            </MudButton>
+                        </div>
+                        <MudTextField @bind-Value="_editClient.CompanyName" Label="@L["Client_CompanyName"].Value"
+                                      Required="true" Class="mb-3" />
+                        <MudTextField @bind-Value="_editClient.TradingName" Label="@L["Client_TradingName"].Value"
+                                      Class="mb-3" />
+                        <MudTextField @bind-Value="_editClient.TaxNumber" Label="@L["Client_TaxNumber"].Value"
+                                      Class="mb-3" />
+                        <MudSwitch @bind-Value="_editClient.IsVatPayer" Label="@L["Client_IsVatPayer"].Value"
+                                   Color="Color.Primary" />
+                    }
+                    else
+                    {
+                        @* Read-only display of company info *@
+                        <MudList T="string" Dense="true">
+                            <MudListItem T="string" Icon="@Icons.Material.Filled.Business">
+                                <strong>@L["Client_Company"]</strong> @_company.CompanyName
+                            </MudListItem>
+                            @if (!string.IsNullOrEmpty(_company.TradingName))
+                            {
+                                <MudListItem T="string" Icon="@Icons.Material.Filled.Badge">
+                                    <strong>@L["Client_TradingNameLabel"]</strong> @_company.TradingName
+                                </MudListItem>
+                            }
+                            <MudListItem T="string" Icon="@Icons.Material.Filled.Numbers">
+                                <strong>@L["Client_RegNoLabel"]</strong> @_company.RegistrationNumber
+                            </MudListItem>
+                            @if (!string.IsNullOrEmpty(_company.TaxNumber))
+                            {
+                                <MudListItem T="string" Icon="@Icons.Material.Filled.Receipt">
+                                    <strong>@L["Client_TaxNoLabel"]</strong> @_company.TaxNumber
+                                </MudListItem>
+                            }
+                            <MudListItem T="string" Icon="@Icons.Material.Filled.Percent">
+                                <strong>@L["Client_VatPayerLabel"]</strong>
+                                @(_company.IsVatPayer ? L["Label_Yes"].Value : L["Label_No"].Value)
+                            </MudListItem>
+                        </MudList>
+                    }
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+
+        @* Card 2: Contacts (email, phone) *@
+        <MudItem xs="12" md="4">
+            <MudCard Elevation="2" Class="mb-4">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">@L["Client_Contact"]</MudText>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    @if (_isEditing)
+                    {
+                        <MudTextField @bind-Value="_emailContact" Label="@L["Label_Email"].Value"
+                                      InputType="InputType.Email" Class="mb-3" />
+                        <MudTextField @bind-Value="_phoneContact" Label="@L["Client_Phone"].Value" Class="mb-3" />
+                    }
+                    else
+                    {
+                        @if (_company.Contact != null && _company.Contact.Any())
+                        {
+                            @foreach (var contact in _company.Contact)
+                            {
+                                <MudText>
+                                    <MudIcon Icon="@(contact.ContactType == EContactType.Email
+                                                     ? Icons.Material.Filled.Email
+                                                     : Icons.Material.Filled.Phone)"
+                                             Size="Size.Small" Class="mr-1" />
+                                    @contact.ContactValue
+                                </MudText>
+                            }
+                        }
+                        else
+                        {
+                            <MudText Color="Color.Secondary">@L["Client_NoContacts"]</MudText>
+                        }
+                    }
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+
+        @* Card 3: Billing Settings (BankAccount, PaymentMethod, DueDays, etc.) *@
+        <MudItem xs="12" md="4">
+            <MudCard Elevation="2" Class="mb-4">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">@L["Billing_Title"]</MudText>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    @if (_isEditing)
+                    {
+                        <BankAccountInput Value="@_billingSettings.BankAccountNumber"
+                                          ValueChanged="@(v => _billingSettings.BankAccountNumber = v)"
+                                          Label="@L["Billing_BankAccount"].Value" />
+                        <EnumSelect TEnum="EPaymentMethod"
+                                    NullableValue="_billingSettings.DefaultPaymentMethod"
+                                    NullableValueChanged="@(v => _billingSettings.DefaultPaymentMethod = v)"
+                                    Label="@L["Billing_PaymentMethod"].Value"
+                                    Nullable="true" />
+                        <MudNumericField @bind-Value="_billingSettings.DueDays"
+                                         Label="@L["Billing_DueDays"].Value"
+                                         Min="0" Max="365" Class="mt-3" />
+                        <EnumSelect TEnum="EDueDateCalculationType"
+                                    Value="_billingSettings.DueDateCalculationType"
+                                    ValueChanged="@(v => _billingSettings.DueDateCalculationType = v)"
+                                    Label="@L["Billing_DueDateCalcType"].Value" />
+                    }
+                    else if (_company.BillingSettings != null)
+                    {
+                        <MudList T="string" Dense="true">
+                            @if (!string.IsNullOrEmpty(_company.BillingSettings.BankAccountNumber))
+                            {
+                                <MudListItem T="string">
+                                    <strong>@L["Billing_BankAccount"]:</strong> @_company.BillingSettings.BankAccountNumber
+                                </MudListItem>
+                            }
+                            @if (_company.BillingSettings.DefaultPaymentMethod.HasValue)
+                            {
+                                <MudListItem T="string">
+                                    <strong>@L["Billing_PaymentMethod"]:</strong> @_company.BillingSettings.DefaultPaymentMethod
+                                </MudListItem>
+                            }
+                            <MudListItem T="string">
+                                <strong>@L["Billing_DueDays"]:</strong> @_company.BillingSettings.DueDays
+                            </MudListItem>
+                        </MudList>
+                    }
+                    else
+                    {
+                        <MudText Color="Color.Secondary">@L["Billing_NotConfigured"]</MudText>
+                    }
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+
+    @* Full-width section: 1:N Addresses managed by the shared AddressListEditor component *@
+    <MudPaper Elevation="2" Class="pa-4 mb-4">
+        @if (_isEditing)
+        {
+            <AddressListEditor Addresses="_addresses"
+                               AddressesChanged="@(v => { _addresses = v; _isDirty = true; })" />
+        }
+        else
+        {
+            @* Read-only view of all addresses *@
+            <AddressListEditor Addresses="@MapAddressesToCreateDto()" ReadOnly="true" />
+        }
+    </MudPaper>
+
+    @* ── Email Settings section (Admin only) ─────────────────────────────────── *@
+    @* Only users with Admin role can configure company SMTP settings.
+       Regular Users see the rest of the page but NOT this section. *@
+    <AuthorizeView Roles="Admin">
+        <Authorized>
+            <MudPaper Elevation="2" Class="pa-4 mb-4">
+                <MudText Typo="Typo.h6" Class="mb-2">@L["Smtp_Title"]</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">@L["Smtp_InfoText"]</MudText>
+
+                @if (_smtpLoading)
+                {
+                    <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-2" />
+                }
+                else
+                {
+                    <MudGrid>
+                        <MudItem xs="12" md="6">
+                            <MudTextField @bind-Value="_smtpHost" Label="@L["Smtp_Host"].Value"
+                                          Placeholder="smtp.example.com" Class="mb-3" />
+                        </MudItem>
+                        <MudItem xs="12" md="6">
+                            <MudNumericField @bind-Value="_smtpPort" Label="@L["Smtp_Port"].Value"
+                                             Min="1" Max="65535" Class="mb-3" />
+                        </MudItem>
+                        <MudItem xs="12" md="6">
+                            <MudTextField @bind-Value="_smtpUsername" Label="@L["Smtp_Username"].Value" Class="mb-3" />
+                        </MudItem>
+                        <MudItem xs="12" md="6">
+                            <MudTextField @bind-Value="_smtpPassword" Label="@L["Smtp_Password"].Value"
+                                          InputType="InputType.Password"
+                                          Placeholder="@(_hasSmtpPassword ? L["Smtp_PasswordPlaceholder"].Value : "")"
+                                          Class="mb-3" />
+                        </MudItem>
+                        <MudItem xs="12" md="6">
+                            <MudTextField @bind-Value="_smtpSenderEmail" Label="@L["Smtp_SenderEmail"].Value"
+                                          InputType="InputType.Email" Class="mb-3" />
+                        </MudItem>
+                        <MudItem xs="12" md="6">
+                            <MudTextField @bind-Value="_smtpSenderName" Label="@L["Smtp_SenderName"].Value" Class="mb-3" />
+                        </MudItem>
+                        <MudItem xs="12" md="6">
+                            <MudSwitch @bind-Value="_smtpUseSsl" Label="@L["Smtp_UseSsl"].Value"
+                                       Color="Color.Primary" />
+                        </MudItem>
+                    </MudGrid>
+
+                    <div class="d-flex gap-2 mt-3">
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                   StartIcon="@Icons.Material.Filled.Save"
+                                   OnClick="SaveSmtpSettings" Disabled="_smtpSaving">
+                            @if (_smtpSaving)
+                            {
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                            }
+                            @L["Btn_Save"]
+                        </MudButton>
+                        <MudButton Variant="Variant.Outlined" Color="Color.Info"
+                                   StartIcon="@Icons.Material.Filled.Email"
+                                   OnClick="TestSmtp" Disabled="@(_smtpTesting || string.IsNullOrWhiteSpace(_smtpHost))">
+                            @if (_smtpTesting)
+                            {
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                            }
+                            @L["Smtp_TestButton"]
+                        </MudButton>
+                    </div>
+                }
+            </MudPaper>
+        </Authorized>
+    </AuthorizeView>
+
+    @* Full-page overlay during save operations *@
+    <MudOverlay Visible="_saving" DarkBackground="true" Absolute="false" ZIndex="9999">
+        <MudProgressCircular Color="Color.Primary" Indeterminate="true" Size="Size.Large" />
+    </MudOverlay>
+}
+
+@code {
+    private ClientDto? _company;
+    private bool _loading = true;
+    private bool _saving = false;
+    private bool _isEditing = false;
+    private bool _isDirty = false;
+    private bool _fetchingAres = false;
+
+    // Form data for edit mode
+    private CreateClientDto _editClient = new();
+    private CreateBillingSettingsDto _billingSettings = new();
+    private List<CreateAddressDto> _addresses = new();
+    private string _emailContact = "";
+    private string _phoneContact = "";
+
+    // SMTP settings form fields (Admin-only section)
+    private bool _smtpLoading = true;
+    private bool _smtpSaving = false;
+    private bool _smtpTesting = false;
+    private bool _hasSmtpPassword = false;
+    private string? _smtpHost;
+    private int? _smtpPort = 587;
+    private string? _smtpUsername;
+    private string? _smtpPassword;
+    private string? _smtpSenderEmail;
+    private string? _smtpSenderName;
+    private bool _smtpUseSsl = true;
+    private CompanySystemSettingsDto? _companySettings;
+
+    /// <summary>
+    /// Loads the user's company (issuer) and SMTP settings on first render.
+    /// Uses ClientApiService.GetIssuerAsync() which auto-resolves from JWT CompanyId.
+    /// SMTP settings are loaded separately — they may not exist for new companies.
+    /// </summary>
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCompany();
+        await LoadSmtpSettings();
+    }
+
+    /// <summary>
+    /// Loads the issuer (current user's company) from the API.
+    /// </summary>
+    private async Task LoadCompany()
+    {
+        try
+        {
+            _loading = true;
+            _company = await ClientService.GetIssuerAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    /// <summary>
+    /// Switches to edit mode — populates form fields from current company data.
+    /// Maps all addresses (not just primary) into the editable list.
+    /// </summary>
+    private void EnableEditing()
+    {
+        if (_company == null) return;
+
+        // Populate basic company info
+        _editClient = new CreateClientDto
+        {
+            RegistrationNumber = _company.RegistrationNumber,
+            TaxNumber = _company.TaxNumber,
+            CompanyName = _company.CompanyName,
+            TradingName = _company.TradingName,
+            IsVatPayer = _company.IsVatPayer,
+            IsIssuer = true, // Company is always an issuer
+            FetchFromAres = false
+        };
+
+        // Populate ALL addresses (1:N) into the editable list
+        _addresses = _company.Address.Select(a => new CreateAddressDto
+        {
+            AddressType = a.AddressType,
+            Street = a.Street,
+            City = a.City,
+            PostalCode = a.PostalCode,
+            Country = a.Country,
+            AddressLine2 = a.AddressLine2,
+            IsPrimary = a.IsPrimary
+        }).ToList();
+
+        // Populate billing settings
+        if (_company.BillingSettings != null)
+        {
+            _billingSettings = new CreateBillingSettingsDto
+            {
+                DueDateCalculationType = _company.BillingSettings.DueDateCalculationType,
+                DueDays = _company.BillingSettings.DueDays,
+                InvoiceNumberPrefix = _company.BillingSettings.InvoiceNumberPrefix,
+                InvoiceNumberSuffix = _company.BillingSettings.InvoiceNumberSuffix,
+                CreditNoteNumberPrefix = _company.BillingSettings.CreditNoteNumberPrefix,
+                CreditNoteNumberSuffix = _company.BillingSettings.CreditNoteNumberSuffix,
+                DefaultPaymentMethod = _company.BillingSettings.DefaultPaymentMethod,
+                BankAccountNumber = _company.BillingSettings.BankAccountNumber,
+                Notes = _company.BillingSettings.Notes
+            };
+        }
+        else
+        {
+            _billingSettings = new CreateBillingSettingsDto
+            {
+                DueDays = 14,
+                DueDateCalculationType = EDueDateCalculationType.DaysFromIssue
+            };
+        }
+
+        // Populate contacts
+        var emailContactDto = _company.Contact.FirstOrDefault(c => c.ContactType == EContactType.Email);
+        _emailContact = emailContactDto?.ContactValue ?? "";
+        var phoneContactDto = _company.Contact.FirstOrDefault(c => c.ContactType == EContactType.Phone);
+        _phoneContact = phoneContactDto?.ContactValue ?? "";
+
+        _isEditing = true;
+        _isDirty = true;
+    }
+
+    /// <summary>
+    /// Cancels editing — resets dirty flag and reloads original data from server.
+    /// </summary>
+    private async Task CancelEditing()
+    {
+        _isEditing = false;
+        _isDirty = false;
+        await LoadCompany();
+    }
+
+    /// <summary>
+    /// Saves the company profile via PUT /api/client/{id}.
+    /// Sends all addresses, contacts, and billing settings as a complete replacement.
+    /// </summary>
+    private async Task SaveCompany()
+    {
+        if (_company == null) return;
+
+        _saving = true;
+        StateHasChanged();
+        try
+        {
+            var updateDto = new UpdateClientDto
+            {
+                CompanyName = _editClient.CompanyName,
+                TradingName = _editClient.TradingName,
+                TaxNumber = _editClient.TaxNumber,
+                IsVatPayer = _editClient.IsVatPayer,
+                IsIssuer = true,
+                IsActive = true,
+                RefreshFromAres = _editClient.FetchFromAres,
+                // Send ALL addresses (1:N) — backend uses replace-all strategy
+                Address = _addresses.Select(a => new UpdateAddressDto
+                {
+                    AddressType = a.AddressType,
+                    Street = a.Street,
+                    City = a.City,
+                    PostalCode = a.PostalCode,
+                    Country = a.Country,
+                    AddressLine2 = a.AddressLine2,
+                    IsPrimary = a.IsPrimary
+                }).ToList(),
+                // Build contacts from form fields
+                Contact = BuildUpdateContacts(),
+                // Billing settings
+                BillingSettings = new UpdateBillingSettingsDto
+                {
+                    DueDateCalculationType = _billingSettings.DueDateCalculationType,
+                    DueDays = _billingSettings.DueDays,
+                    InvoiceNumberPrefix = _billingSettings.InvoiceNumberPrefix,
+                    InvoiceNumberSuffix = _billingSettings.InvoiceNumberSuffix,
+                    CreditNoteNumberPrefix = _billingSettings.CreditNoteNumberPrefix,
+                    CreditNoteNumberSuffix = _billingSettings.CreditNoteNumberSuffix,
+                    DefaultPaymentMethod = _billingSettings.DefaultPaymentMethod,
+                    BankAccountNumber = _billingSettings.BankAccountNumber,
+                    Notes = _billingSettings.Notes
+                }
+            };
+
+            var result = await ClientService.UpdateAsync(_company.Id, updateDto);
+            if (result != null)
+            {
+                _isDirty = false;
+                Snackbar.Add(L["Msg_SaveSuccess"].Value, Severity.Success);
+                _isEditing = false;
+                await LoadCompany(); // Refresh displayed data
+            }
+            else
+            {
+                Snackbar.Add(L["Msg_Error"].Value, Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    /// <summary>
+    /// Fetches company data from Czech ARES business registry by registration number.
+    /// Fills in company name, tax number, VAT status, and primary address from ARES data.
+    /// </summary>
+    private async Task FetchFromAres()
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_editClient.RegistrationNumber))
+            {
+                Snackbar.Add(L["Client_RegistrationNumber"].Value, Severity.Warning);
+                return;
+            }
+
+            _fetchingAres = true;
+            var aresData = await ClientService.FetchFromAresAsync(_editClient.RegistrationNumber);
+
+            if (aresData != null)
+            {
+                _editClient.CompanyName = aresData.CompanyName;
+                _editClient.TaxNumber = aresData.TaxNumber;
+                _editClient.IsVatPayer = aresData.IsVatPayer;
+
+                // Merge ARES address data into the address list
+                var primaryAddress = aresData.Address.FirstOrDefault(a => a.IsPrimary)
+                    ?? aresData.Address.FirstOrDefault();
+                if (primaryAddress != null)
+                {
+                    // Find existing primary address in the list and update it,
+                    // or add a new one if none exists
+                    var existingPrimary = _addresses.FirstOrDefault(a => a.IsPrimary);
+                    if (existingPrimary != null)
+                    {
+                        existingPrimary.Street = primaryAddress.Street;
+                        existingPrimary.City = primaryAddress.City;
+                        existingPrimary.PostalCode = primaryAddress.PostalCode;
+                        existingPrimary.Country = primaryAddress.Country;
+                    }
+                    else
+                    {
+                        _addresses.Add(new CreateAddressDto
+                        {
+                            AddressType = EAddressType.Primary,
+                            Street = primaryAddress.Street,
+                            City = primaryAddress.City,
+                            PostalCode = primaryAddress.PostalCode,
+                            Country = primaryAddress.Country,
+                            IsPrimary = true
+                        });
+                    }
+                }
+
+                Snackbar.Add(L["Ares_DataLoaded"].Value, Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add(L["Ares_NotFound"].Value, Severity.Warning);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _fetchingAres = false;
+        }
+    }
+
+    /// <summary>
+    /// Builds a list of UpdateContactDto from the form fields.
+    /// Used in the update path to send contacts to the API.
+    /// </summary>
+    private List<UpdateContactDto> BuildUpdateContacts()
+    {
+        var contacts = new List<UpdateContactDto>();
+
+        if (!string.IsNullOrWhiteSpace(_emailContact))
+        {
+            contacts.Add(new UpdateContactDto
+            {
+                ContactType = EContactType.Email,
+                ContactValue = _emailContact,
+                IsPrimary = true
+            });
+        }
+
+        if (!string.IsNullOrWhiteSpace(_phoneContact))
+        {
+            contacts.Add(new UpdateContactDto
+            {
+                ContactType = EContactType.Phone,
+                ContactValue = _phoneContact,
+                IsPrimary = contacts.Count == 0
+            });
+        }
+
+        return contacts;
+    }
+
+    /// <summary>
+    /// Maps the company's AddressDto list to CreateAddressDto list for the read-only view.
+    /// The AddressListEditor uses CreateAddressDto as its data model.
+    /// </summary>
+    private List<CreateAddressDto> MapAddressesToCreateDto()
+    {
+        if (_company?.Address == null) return new();
+
+        return _company.Address.Select(a => new CreateAddressDto
+        {
+            AddressType = a.AddressType,
+            Street = a.Street,
+            City = a.City,
+            PostalCode = a.PostalCode,
+            Country = a.Country,
+            AddressLine2 = a.AddressLine2,
+            IsPrimary = a.IsPrimary
+        }).ToList();
+    }
+
+    // ─── SMTP Settings Methods (Admin only) ──────────────────────────────────
+
+    /// <summary>
+    /// Loads the company's SMTP settings from CompanySystemSettings.
+    /// Silently handles missing settings — not all companies have CompanySystemSettings yet.
+    /// </summary>
+    private async Task LoadSmtpSettings()
+    {
+        try
+        {
+            _smtpLoading = true;
+            if (_company == null) return;
+
+            _companySettings = await SettingsService.GetByCompanyIdAsync(_company.Id);
+            if (_companySettings != null)
+            {
+                // Populate SMTP form fields from the loaded settings
+                _smtpHost = _companySettings.SmtpHost;
+                _smtpPort = _companySettings.SmtpPort ?? 587;
+                _smtpUsername = _companySettings.SmtpUsername;
+                _smtpSenderEmail = _companySettings.SmtpSenderEmail;
+                _smtpSenderName = _companySettings.SmtpSenderName;
+                _smtpUseSsl = _companySettings.SmtpUseSsl ?? true;
+                _hasSmtpPassword = _companySettings.HasSmtpPassword;
+                // Password is NEVER returned from the API — keep field empty
+                _smtpPassword = null;
+            }
+        }
+        catch
+        {
+            // CompanySystemSettings may not exist yet — that's okay.
+            // The SMTP section will show empty fields.
+            _companySettings = null;
+        }
+        finally
+        {
+            _smtpLoading = false;
+        }
+    }
+
+    /// <summary>
+    /// Saves the SMTP settings via PUT /api/company/{companyId}/settings.
+    /// Password handling: null = keep existing, empty = clear, non-empty = update.
+    /// </summary>
+    private async Task SaveSmtpSettings()
+    {
+        if (_company == null) return;
+
+        _smtpSaving = true;
+        try
+        {
+            var dto = new UpdateCompanySystemSettingsDto
+            {
+                SmtpHost = _smtpHost,
+                SmtpPort = _smtpPort,
+                SmtpUsername = _smtpUsername,
+                // Only send password if the user typed something new.
+                // null = keep existing password unchanged on the server.
+                SmtpPassword = string.IsNullOrEmpty(_smtpPassword) ? null : _smtpPassword,
+                SmtpSenderEmail = _smtpSenderEmail,
+                SmtpSenderName = _smtpSenderName,
+                SmtpUseSsl = _smtpUseSsl
+            };
+
+            var result = await SettingsService.UpdateSettingsAsync(_company.Id, dto);
+            if (result != null)
+            {
+                Snackbar.Add(L["Msg_SaveSuccess"].Value, Severity.Success);
+                _hasSmtpPassword = result.HasSmtpPassword;
+                _smtpPassword = null; // Clear password field after save
+            }
+            else
+            {
+                Snackbar.Add(L["Msg_Error"].Value, Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _smtpSaving = false;
+        }
+    }
+
+    /// <summary>
+    /// Tests the company's SMTP settings by sending a test email to the current user.
+    /// The API endpoint POST /api/company/{id}/test-smtp sends a test email
+    /// using the company's SMTP configuration.
+    /// </summary>
+    private async Task TestSmtp()
+    {
+        if (_company == null) return;
+
+        _smtpTesting = true;
+        try
+        {
+            var success = await SettingsService.TestSmtpAsync(_company.Id);
+            if (success)
+            {
+                Snackbar.Add(L["Smtp_TestSuccess"].Value, Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add(L["Smtp_TestFailed"].Value, Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Smtp_TestFailed"].Value}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _smtpTesting = false;
+        }
+    }
+}

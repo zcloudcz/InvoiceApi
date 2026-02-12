@@ -1,0 +1,28 @@
+{
+  "registrationNumber": "87654321",
+  "companyName": "Test Company s.r.o.",
+  "tradingName": "Test Company",
+  "taxNumber": "CZ12345678",
+  "isVatPayer": true,
+  "isIssuer": true,
+  "address": [
+    {
+      "addressType": 0,
+      "street": "Testovaci 123",
+      "city": "Praha",
+      "postalCode": "11000",
+      "country": "Ceska republika",
+      "isPrimary": true
+    }
+  ],
+  "contact": [
+    {
+      "contactType": 0,
+      "contactValue": "info@testcompany.cz",
+      "isPrimary": true
+    }
+  ],
+  "billingSettings": {
+    "bankAccountNumber": "123456789/0100"
+  }
+}

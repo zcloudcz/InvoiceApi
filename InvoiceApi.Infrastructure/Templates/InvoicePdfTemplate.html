@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+    body {
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 11px;
+        color: #333;
+        margin: 25px 30px;
+        line-height: 1.4;
+    }
+
+    /* ── Supplier (DODAVATEL) section ── */
+    table.issuer-block {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 15px;
+    }
+    table.issuer-block td {
+        vertical-align: top;
+        padding: 2px 0;
+    }
+    .issuer-label {
+        font-size: 10px;
+        color: #777;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        padding-bottom: 4px;
+    }
+    .issuer-name {
+        font-size: 13px;
+        font-weight: bold;
+        color: #333;
+    }
+    .issuer-detail {
+        color: #555;
+        font-size: 11px;
+    }
+
+    /* ── Blue header bar (document type + number) ── */
+    table.doc-header {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 12px 0 15px 0;
+    }
+    .doc-header-bar {
+        background-color: #5B7D9D;
+        color: #fff;
+        padding: 8px 12px;
+        font-size: 12px;
+    }
+    .doc-header-bar .doc-type {
+        font-size: 14px;
+        font-weight: bold;
+        text-transform: uppercase;
+    }
+    .doc-header-bar .doc-subtitle {
+        font-size: 10px;
+        font-weight: bold;
+        text-transform: uppercase;
+    }
+    .doc-number-cell {
+        background-color: #5B7D9D;
+        color: #fff;
+        text-align: right;
+        padding: 8px 12px;
+        font-size: 22px;
+        font-weight: bold;
+        letter-spacing: 1px;
+    }
+
+    /* ── Client (ODBĚRATEL) + dates section ── */
+    table.client-dates {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 20px;
+    }
+    table.client-dates td {
+        vertical-align: top;
+        padding: 2px 0;
+    }
+    .client-label {
+        font-size: 10px;
+        color: #777;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        padding-bottom: 4px;
+    }
+    .client-name {
+        font-weight: bold;
+        font-size: 12px;
+    }
+    .date-label {
+        color: #777;
+        font-size: 10px;
+        text-transform: uppercase;
+        padding: 3px 10px 3px 0;
+    }
+    .date-value {
+        text-align: right;
+        font-weight: bold;
+        padding: 3px 0;
+    }
+
+    /* ── Items table ── */
+    table.items {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 5px 0 15px 0;
+    }
+    table.items th {
+        background-color: #5B7D9D;
+        color: #fff;
+        padding: 6px 8px;
+        font-size: 10px;
+        text-transform: uppercase;
+        font-weight: bold;
+        text-align: left;
+    }
+    table.items td {
+        padding: 6px 8px;
+        border-bottom: 1px solid #e0e0e0;
+        font-size: 11px;
+    }
+
+    /* ── VAT breakdown + grand total ── */
+    table.vat-summary {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 10px;
+    }
+    table.vat-summary th {
+        background-color: #e8e8e8;
+        padding: 5px 10px;
+        font-size: 10px;
+        text-transform: uppercase;
+        font-weight: bold;
+        text-align: center;
+    }
+    table.vat-summary td {
+        padding: 4px 10px;
+        font-size: 11px;
+    }
+    .grand-total-row {
+        background-color: #f0f0f0;
+    }
+    .grand-total-row td {
+        font-weight: bold;
+        font-size: 13px;
+        padding: 8px 10px;
+        text-transform: uppercase;
+    }
+
+    /* ── Payment info + QR code ── */
+    table.payment-info {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 20px;
+    }
+    table.payment-info td {
+        vertical-align: top;
+        padding: 2px 5px;
+    }
+    .payment-label {
+        color: #777;
+        font-size: 10px;
+    }
+
+    /* ── Separator line ── */
+    .separator {
+        border: none;
+        border-top: 1px solid #ccc;
+        margin: 10px 0;
+    }
+</style>
+</head>
+<body>
+
+<!-- ═══════ ISSUER (DODAVATEL) SECTION ═══════ -->
+<table class="issuer-block">
+    <tr>
+        <td style="width:50%">
+            <div class="issuer-label">DODAVATEL</div>
+            <div class="issuer-name">{{IssuerName}}</div>
+            <div class="issuer-detail">{{IssuerStreet}}</div>
+            <div class="issuer-detail">{{IssuerPostalCode}} {{IssuerCity}}</div>
+            <div class="issuer-detail">{{IssuerCountry}}</div>
+        </td>
+        <td style="width:50%; text-align:right">
+            <table style="margin-left:auto; border-collapse:collapse;">
+                <tr><td class="issuer-detail" style="text-align:left; padding:1px 5px;">Tel:</td><td class="issuer-detail" style="padding:1px 5px;">{{IssuerPhone}}</td></tr>
+                <tr><td class="issuer-detail" style="text-align:left; padding:1px 5px;">Email:</td><td class="issuer-detail" style="padding:1px 5px;">{{IssuerEmail}}</td></tr>
+                <tr><td class="issuer-detail" style="text-align:left; padding:1px 5px;">IČ:</td><td class="issuer-detail" style="padding:1px 5px;">{{IssuerRegistrationNumber}}</td></tr>
+                <tr><td class="issuer-detail" style="text-align:left; padding:1px 5px;">DIČ:</td><td class="issuer-detail" style="padding:1px 5px;">{{IssuerTaxNumber}}</td></tr>
+                <tr><td class="issuer-detail" style="text-align:left; padding:1px 5px;">B.Ú.:</td><td class="issuer-detail" style="padding:1px 5px;">{{BankAccountNumber}}</td></tr>
+            </table>
+        </td>
+    </tr>
+</table>
+
+<!-- ═══════ DOCUMENT HEADER BAR ═══════ -->
+<table class="doc-header">
+    <tr>
+        <td class="doc-header-bar" style="width:60%">
+            <span class="doc-type">{{DocumentTypeLabel}}</span>
+            <span style="font-size:11px; font-weight:normal;">(variabilní symbol)</span>
+            <br/>
+            <span class="doc-subtitle">DAŇOVÝ DOKLAD</span>
+        </td>
+        <td class="doc-number-cell">{{VariableSymbol}}</td>
+    </tr>
+</table>
+
+<!-- ═══════ CLIENT (ODBĚRATEL) + DATES ═══════ -->
+<table class="client-dates">
+    <tr>
+        <td style="width:50%">
+            <div class="client-label">ODBĚRATEL</div>
+            <div class="client-name">{{ClientName}}</div>
+            <div class="issuer-detail">{{ClientStreet}}</div>
+            <div class="issuer-detail">{{ClientPostalCode}} {{ClientCity}}</div>
+            <div class="issuer-detail">IČ: {{ClientRegistrationNumber}}</div>
+            <div class="issuer-detail">DIČ: {{ClientTaxNumber}}</div>
+        </td>
+        <td style="width:50%; vertical-align:top; padding-left:30px;">
+            <table style="width:100%; border-collapse:collapse;">
+                <tr><td class="date-label">DATUM VYSTAVENÍ</td><td class="date-value">{{IssueDate}}</td></tr>
+                <tr><td class="date-label">DATUM SPLATNOSTI</td><td class="date-value">{{DueDate}}</td></tr>
+                <tr><td class="date-label">DATUM ZDAN. PLNĚNÍ</td><td class="date-value">{{TaxableSupplyDate}}</td></tr>
+                <tr><td class="date-label">FORMA ÚHRADY</td><td class="date-value">{{PaymentMethod}}</td></tr>
+            </table>
+        </td>
+    </tr>
+</table>
+
+<hr class="separator" />
+
+<!-- ═══════ INVOICE ITEMS TABLE ═══════ -->
+<table class="items">
+    <thead>
+        <tr>
+            <th style="width:40%">POPIS POLOŽKY</th>
+            <th style="text-align:center; width:8%">MJ</th>
+            <th style="text-align:center; width:8%">DPH</th>
+            <th style="text-align:center; width:8%">POČET</th>
+            <th style="text-align:right; width:18%">CENA/MJ</th>
+            <th style="text-align:right; width:18%">CELKEM BEZ DPH</th>
+        </tr>
+    </thead>
+    <tbody>
+        {{InvoiceItems}}
+    </tbody>
+</table>
+
+<!-- ═══════ VAT BREAKDOWN + GRAND TOTAL ═══════ -->
+<table class="vat-summary">
+    <thead>
+        <tr>
+            <th style="width:34%">SAZBA</th>
+            <th style="width:33%; text-align:right">ZÁKLAD</th>
+            <th style="width:33%; text-align:right">DPH</th>
+        </tr>
+    </thead>
+    <tbody>
+        {{VatBreakdown}}
+    </tbody>
+</table>
+
+<table class="vat-summary" style="margin-top:0">
+    <tr class="grand-total-row">
+        <td style="width:67%">CELKEM K ÚHRADĚ</td>
+        <td style="width:33%; text-align:right">{{TotalWithVat}} {{CurrencySymbol}}</td>
+    </tr>
+</table>
+
+<!-- ═══════ QR CODE (if available) ═══════ -->
+<table class="payment-info">
+    <tr>
+        <td style="text-align:right">
+            {{QrCodeImage}}
+        </td>
+    </tr>
+</table>
+
+</body>
+</html>

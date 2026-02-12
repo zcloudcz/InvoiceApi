@@ -1,0 +1,39 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Design;
+using Microsoft.Extensions.Configuration;
+
+namespace InvoiceApi.Infrastructure.Data;
+
+/// <summary>
+/// Design-time factory for MasterDbContext — used by EF Core CLI tools (dotnet ef migrations).
+///
+/// Usage:
+///   dotnet ef migrations add Init --context MasterDbContext --output-dir Migrations/Master --project InvoiceApi.Infrastructure --startup-project InvoiceApi.API
+///   dotnet ef database update --context MasterDbContext --project InvoiceApi.Infrastructure --startup-project InvoiceApi.API
+///
+/// This factory provides a connection string at design time when no DI container is available.
+/// At runtime, the connection string comes from appsettings.json via Program.cs DI configuration.
+/// </summary>
+public class MasterDesignTimeFactory : IDesignTimeDbContextFactory<MasterDbContext>
+{
+    public MasterDbContext CreateDbContext(string[] args)
+    {
+        // Try to read from appsettings.json first (preferred — matches runtime config)
+        var configuration = new ConfigurationBuilder()
+            .SetBasePath(Path.Combine(Directory.GetCurrentDirectory(), "..", "InvoiceApi.API"))
+            .AddJsonFile("appsettings.json", optional: true)
+            .AddJsonFile("appsettings.Development.json", optional: true)
+            .Build();
+
+        // Fallback connection string for SQL Server (used when appsettings not found)
+        var connectionString = configuration.GetConnectionString("MasterConnection")
+            ?? "Server=localhost;Database=invoiceapi_master;User Id=sa;Password=YourStrong!Passw0rd;TrustServerCertificate=true";
+
+        var optionsBuilder = new DbContextOptionsBuilder<MasterDbContext>();
+        optionsBuilder.UseSqlServer(
+            connectionString,
+            b => b.MigrationsAssembly("InvoiceApi.Infrastructure"));
+
+        return new MasterDbContext(optionsBuilder.Options);
+    }
+}

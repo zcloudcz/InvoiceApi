@@ -1,0 +1,60 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\InvoiceApi.Application\InvoiceApi.Application.csproj" />
+    <ProjectReference Include="..\InvoiceApi.Domain\InvoiceApi.Domain.csproj" />
+    <ProjectReference Include="..\AresService\AresService.csproj" />
+  </ItemGroup>
+
+  <!-- Framework reference for IHttpContextAccessor used by CurrentUserService -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
+    <PackageReference Include="itext7" Version="9.1.0" />
+    <PackageReference Include="itext7.bouncy-castle-adapter" Version="9.1.0" />
+    <PackageReference Include="itext7.pdfhtml" Version="6.1.0" />
+    <PackageReference Include="MailKit" Version="4.10.0" />
+    <PackageReference Include="Otp.NET" Version="1.4.1" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.0">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="10.0.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <!-- Azure SQL / SQL Server EF Core provider (migrated from Npgsql.EntityFrameworkCore.PostgreSQL) -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.0" />
+    <PackageReference Include="QRCoder" Version="1.7.0" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.15.0" />
+    <PackageReference Include="ZMapper" Version="1.2.0" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+	   <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+	  <CompilerGeneratedFilesOutputPath>Generated</CompilerGeneratedFilesOutputPath>
+	  
+  </PropertyGroup>
+
+	<ItemGroup>
+		<Compile Remove="$(CompilerGeneratedFilesOutputPath)/**" />
+	</ItemGroup>
+	
+  <!-- Embed HTML templates as assembly resources so they can be read at runtime -->
+  <ItemGroup>
+    <EmbeddedResource Include="Templates\*.html" />
+  </ItemGroup>
+
+  <!-- Global using for ZMapper so the source generator's output can resolve MapperConfiguration -->
+  <ItemGroup>
+    <Using Include="ZMapper" />
+    <Using Include="InvoiceApi.Infrastructure.Mapping" />
+  </ItemGroup>
+
+</Project>

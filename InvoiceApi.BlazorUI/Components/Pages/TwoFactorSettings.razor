@@ -1,0 +1,404 @@
+@page "/profile/two-factor"
+@rendermode InteractiveServer
+@attribute [Authorize]
+@using InvoiceApi.BlazorUI.Models
+@using InvoiceApi.BlazorUI.Services
+@using Microsoft.AspNetCore.Authorization
+@inject TwoFactorApiService TwoFactorApi
+@inject ISnackbar Snackbar
+@inject IStringLocalizer<SharedResource> L
+
+<PageTitle>@L["TwoFactor_Title"] - Invoice API</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Medium" Class="mt-4">
+    <MudText Typo="Typo.h4" Class="mb-4">@L["TwoFactor_Title"]</MudText>
+
+    @if (_loading)
+    {
+        <MudProgressCircular Indeterminate="true" Class="d-block mx-auto my-8" />
+    }
+    else if (_status != null)
+    {
+        @* ── Status Banner ──────────────────────────────────────────────── *@
+        <MudPaper Elevation="2" Class="pa-6 mb-6">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                @if (_status.Enabled)
+                {
+                    <MudChip T="string" Color="Color.Success" Size="Size.Medium">
+                        @L["TwoFactor_Enabled"]
+                    </MudChip>
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.body1">
+                            @L["TwoFactor_CurrentlyEnabled"] @GetMethodName(_status.Method)
+                        </MudText>
+                        @if (_status.EnabledAt.HasValue)
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                @L["TwoFactor_EnabledSince"] @_status.EnabledAt.Value.ToLocalTime().ToString("g")
+                            </MudText>
+                        }
+                    </MudStack>
+                }
+                else
+                {
+                    <MudChip T="string" Color="Color.Default" Size="Size.Medium">
+                        @L["TwoFactor_Disabled"]
+                    </MudChip>
+                    <MudText Typo="Typo.body1" Color="Color.Secondary">
+                        @L["TwoFactor_ChooseMethod"]
+                    </MudText>
+                }
+            </MudStack>
+        </MudPaper>
+
+        @if (_status.Enabled)
+        {
+            @* ── Disable Button ─────────────────────────────────────────── *@
+            <MudButton Variant="Variant.Outlined"
+                       Color="Color.Error"
+                       StartIcon="@Icons.Material.Filled.LockOpen"
+                       OnClick="@(() => _showDisableDialog = true)">
+                @L["TwoFactor_Disable"]
+            </MudButton>
+        }
+        else
+        {
+            @* ── Setup Options (two cards: TOTP and Email) ──────────────── *@
+            <MudGrid>
+                @* TOTP Card *@
+                <MudItem xs="12" sm="6">
+                    <MudCard Elevation="2">
+                        <MudCardContent>
+                            <MudStack AlignItems="AlignItems.Center" Spacing="3">
+                                <MudIcon Icon="@Icons.Material.Filled.Smartphone"
+                                         Size="Size.Large" Color="Color.Primary" />
+                                <MudText Typo="Typo.h6">@L["TwoFactor_Method_Totp"]</MudText>
+                                <MudText Typo="Typo.body2" Align="Align.Center" Color="Color.Secondary">
+                                    @L["TwoFactor_TotpDescription"]
+                                </MudText>
+                            </MudStack>
+                        </MudCardContent>
+                        <MudCardActions Class="justify-center pb-4">
+                            <MudButton Variant="Variant.Filled"
+                                       Color="Color.Primary"
+                                       OnClick="InitiateTotpSetup"
+                                       Disabled="_setupLoading">
+                                @L["TwoFactor_SetupTotp"]
+                            </MudButton>
+                        </MudCardActions>
+                    </MudCard>
+                </MudItem>
+
+                @* Email Card *@
+                <MudItem xs="12" sm="6">
+                    <MudCard Elevation="2">
+                        <MudCardContent>
+                            <MudStack AlignItems="AlignItems.Center" Spacing="3">
+                                <MudIcon Icon="@Icons.Material.Filled.Email"
+                                         Size="Size.Large" Color="Color.Secondary" />
+                                <MudText Typo="Typo.h6">@L["TwoFactor_Method_Email"]</MudText>
+                                <MudText Typo="Typo.body2" Align="Align.Center" Color="Color.Secondary">
+                                    @L["TwoFactor_EmailDescription"]
+                                </MudText>
+                            </MudStack>
+                        </MudCardContent>
+                        <MudCardActions Class="justify-center pb-4">
+                            <MudButton Variant="Variant.Filled"
+                                       Color="Color.Secondary"
+                                       OnClick="EnableEmailTwoFactor"
+                                       Disabled="_setupLoading">
+                                @L["TwoFactor_EnableEmail"]
+                            </MudButton>
+                        </MudCardActions>
+                    </MudCard>
+                </MudItem>
+            </MudGrid>
+        }
+    }
+</MudContainer>
+
+@* ── TOTP Setup Dialog ──────────────────────────────────────────────────── *@
+<MudDialog @bind-Visible="_showTotpDialog">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@L["TwoFactor_SetupTotp"]</MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_totpSetup != null)
+        {
+            <MudStack Spacing="4">
+                @* Step 1: QR Code *@
+                <MudText Typo="Typo.body1">@L["TwoFactor_TotpStep1"]</MudText>
+                <MudStack AlignItems="AlignItems.Center">
+                    <MudImage Src="@GetQrCodeDataUri()" Alt="QR Code"
+                              Width="250" Height="250" Elevation="2" Class="rounded-lg" />
+                </MudStack>
+
+                @* Manual entry key *@
+                <MudText Typo="Typo.body2" Color="Color.Secondary">@L["TwoFactor_ManualEntry"]</MudText>
+                <MudTextField Value="@_totpSetup.ManualEntryKey"
+                              ReadOnly="true"
+                              Variant="Variant.Outlined"
+                              Adornment="Adornment.End"
+                              AdornmentIcon="@Icons.Material.Filled.ContentCopy" />
+
+                @* Step 2: Verify code *@
+                <MudText Typo="Typo.body1">@L["TwoFactor_TotpStep2"]</MudText>
+                <MudTextField @bind-Value="_verificationCode"
+                              Label="@L["TwoFactor_VerificationCode"].Value"
+                              Placeholder="@L["TwoFactor_EnterSixDigits"].Value"
+                              Variant="Variant.Outlined"
+                              InputType="InputType.Text"
+                              MaxLength="6"
+                              Immediate="true" />
+
+                @if (!string.IsNullOrEmpty(_errorMessage))
+                {
+                    <MudAlert Severity="Severity.Error">@_errorMessage</MudAlert>
+                }
+            </MudStack>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showTotpDialog = false)">@L["Btn_Cancel"]</MudButton>
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   OnClick="VerifyTotpSetup"
+                   Disabled="@(string.IsNullOrEmpty(_verificationCode) || _verifyLoading)">
+            @if (_verifyLoading)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            @L["TwoFactor_Verify"]
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@* ── Disable 2FA Dialog ─────────────────────────────────────────────────── *@
+<MudDialog @bind-Visible="_showDisableDialog">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@L["TwoFactor_DisableConfirm"]</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="3">
+            <MudAlert Severity="Severity.Warning">@L["TwoFactor_DisableWarning"]</MudAlert>
+            <MudTextField @bind-Value="_disablePassword"
+                          Label="@L["TwoFactor_EnterPasswordToDisable"].Value"
+                          Variant="Variant.Outlined"
+                          InputType="InputType.Password" />
+            @if (!string.IsNullOrEmpty(_errorMessage))
+            {
+                <MudAlert Severity="Severity.Error">@_errorMessage</MudAlert>
+            }
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showDisableDialog = false)">@L["Btn_Cancel"]</MudButton>
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Error"
+                   OnClick="DisableTwoFactor"
+                   Disabled="@(string.IsNullOrEmpty(_disablePassword) || _disableLoading)">
+            @if (_disableLoading)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            @L["TwoFactor_Disable"]
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    // ── State fields ────────────────────────────────────────────────────────
+    private TwoFactorStatusDto? _status;
+    private TotpSetupResponse? _totpSetup;
+    private bool _loading = true;
+    private bool _setupLoading;
+    private bool _verifyLoading;
+    private bool _disableLoading;
+
+    // Dialog visibility
+    private bool _showTotpDialog;
+    private bool _showDisableDialog;
+
+    // Form fields
+    private string _verificationCode = string.Empty;
+    private string _disablePassword = string.Empty;
+    private string? _errorMessage;
+
+    // ── Lifecycle ────────────────────────────────────────────────────────────
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadStatusAsync();
+    }
+
+    /// <summary>
+    /// Loads the current 2FA status from the API.
+    /// </summary>
+    private async Task LoadStatusAsync()
+    {
+        _loading = true;
+        try
+        {
+            _status = await TwoFactorApi.GetStatusAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    // ── TOTP Setup ──────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Initiates TOTP setup — requests QR code and opens the setup dialog.
+    /// </summary>
+    private async Task InitiateTotpSetup()
+    {
+        _setupLoading = true;
+        _errorMessage = null;
+        try
+        {
+            _totpSetup = await TwoFactorApi.InitiateTotpSetupAsync();
+            if (_totpSetup != null)
+            {
+                _verificationCode = string.Empty;
+                _showTotpDialog = true;
+            }
+            else
+            {
+                Snackbar.Add("Failed to initiate TOTP setup.", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _setupLoading = false;
+        }
+    }
+
+    /// <summary>
+    /// Verifies the TOTP code entered during setup — enables 2FA if valid.
+    /// </summary>
+    private async Task VerifyTotpSetup()
+    {
+        _verifyLoading = true;
+        _errorMessage = null;
+        try
+        {
+            var success = await TwoFactorApi.VerifyTotpSetupAsync(_verificationCode);
+            if (success)
+            {
+                _showTotpDialog = false;
+                Snackbar.Add(L["TwoFactor_TotpEnabled"].Value, Severity.Success);
+                await LoadStatusAsync();
+            }
+            else
+            {
+                _errorMessage = L["TwoFactor_InvalidCode"].Value;
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _verifyLoading = false;
+        }
+    }
+
+    // ── Email 2FA ────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Enables email-based 2FA — simple one-click activation.
+    /// </summary>
+    private async Task EnableEmailTwoFactor()
+    {
+        _setupLoading = true;
+        try
+        {
+            var success = await TwoFactorApi.EnableEmailTwoFactorAsync();
+            if (success)
+            {
+                Snackbar.Add(L["TwoFactor_EmailEnabled"].Value, Severity.Success);
+                await LoadStatusAsync();
+            }
+            else
+            {
+                Snackbar.Add("Failed to enable email 2FA.", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _setupLoading = false;
+        }
+    }
+
+    // ── Disable 2FA ─────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Disables 2FA after password confirmation.
+    /// </summary>
+    private async Task DisableTwoFactor()
+    {
+        _disableLoading = true;
+        _errorMessage = null;
+        try
+        {
+            var success = await TwoFactorApi.DisableTwoFactorAsync(_disablePassword);
+            if (success)
+            {
+                _showDisableDialog = false;
+                _disablePassword = string.Empty;
+                Snackbar.Add(L["TwoFactor_Disabled"].Value, Severity.Info);
+                await LoadStatusAsync();
+            }
+            else
+            {
+                _errorMessage = L["TwoFactor_InvalidCode"].Value;
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _disableLoading = false;
+        }
+    }
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Converts the QR code PNG bytes to a base64 data URI for embedding in an img tag.
+    /// </summary>
+    private string GetQrCodeDataUri()
+    {
+        if (_totpSetup?.QrCodeImage == null || _totpSetup.QrCodeImage.Length == 0)
+            return string.Empty;
+
+        return $"data:image/png;base64,{Convert.ToBase64String(_totpSetup.QrCodeImage)}";
+    }
+
+    /// <summary>
+    /// Returns a localized name for the 2FA method.
+    /// </summary>
+    private string GetMethodName(int method) => method switch
+    {
+        1 => L["TwoFactor_Method_Totp"].Value,
+        2 => L["TwoFactor_Method_Email"].Value,
+        _ => L["TwoFactor_Disabled"].Value
+    };
+}

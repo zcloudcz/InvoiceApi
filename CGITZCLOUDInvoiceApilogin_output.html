@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <base href="/">
+    
+    <link href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700&display=swap" rel="stylesheet">
+    <link href="_content/MudBlazor/MudBlazor.min.css" rel="stylesheet">
+    <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
+    <link rel="stylesheet" href="app.khy4lop6wu.css" />
+    <link rel="stylesheet" href="InvoiceApi.BlazorUI.g0jcxsjykn.styles.css" />
+    <script type="importmap">{
+  "imports": {
+    "./Components/Layout/ReconnectModal.razor.js": "./Components/Layout/ReconnectModal.13ja33weya.razor.js",
+    "./_content/MudBlazor/MudBlazor.min.js": "./_content/MudBlazor/MudBlazor.min.f96y5mhlyw.js",
+    "./_framework/blazor.server.js": "./_framework/blazor.server.iz83ucvm53.js",
+    "./_framework/blazor.web.js": "./_framework/blazor.web.2i0r6wwb69.js",
+    "./js/download.js": "./js/download.fiyvi370ak.js",
+    "./lib/bootstrap/dist/js/bootstrap.bundle.js": "./lib/bootstrap/dist/js/bootstrap.bundle.6cfz1n2cew.js",
+    "./lib/bootstrap/dist/js/bootstrap.bundle.min.js": "./lib/bootstrap/dist/js/bootstrap.bundle.min.493y06b0oq.js",
+    "./lib/bootstrap/dist/js/bootstrap.esm.min.js": "./lib/bootstrap/dist/js/bootstrap.esm.min.jj8uyg4cgr.js",
+    "./lib/bootstrap/dist/js/bootstrap.esm.js": "./lib/bootstrap/dist/js/bootstrap.esm.vr1egmr9el.js",
+    "./lib/bootstrap/dist/js/bootstrap.min.js": "./lib/bootstrap/dist/js/bootstrap.min.63fj8s7r0e.js",
+    "./lib/bootstrap/dist/js/bootstrap.js": "./lib/bootstrap/dist/js/bootstrap.notf2xhcfb.js"
+  }
+}</script>
+    <link rel="icon" type="image/png" href="favicon.png">
+    </head>
+
+<body><!--Blazor:{"type":"server","key":{"locationHash":"B3CE4590BCA40206C66C11CFFCAE30265F2C7A26C8494FF0B20D40826B538690:20","formattedComponentKey":""},"sequence":0,"descriptor":"CfDJ8PMJTxtbGAFJkuWnnXmIE6WMqkDZzyF20hBpISU7r/M0ysgI3fUMk1Tth71p08T3hUYlK/94qILfg2zqbuUlkVSf6t/iCzQduaZiJFb3h55omFAqX/lcgV/ofYj/ndR3TLmZCLdH\u002BQulYiAAK4ISwXFzP4al94CRiTRes6mAsroBPzlBg0WrBBZ7F06kX/eiIYYOXuohKkOUjxLAX8B5N9ZwbTRYDFX7SGNjRh4OZ42RGWL17OvzMvZNLliYzVc1fDF2IrWb5pcH\u002BhsfWJbRa5GUSf1a6O4RIqIjIKRKJQcJC6Rx4rpjYQqsCAuTwNcXHpDJNDUofYAyZh97NOt64aYgZNaptGzsjuNM/z3el3zx25b2t9tXfdDP\u002B24wdWEGjDoOKIbvQzzq01R7RA50QtdxQyXqhzctbwSYDhH7kf38VTlTOearFIfqgt4bAeT37sRkeQc6c\u002BJwd2FsqraIRh/oITmK61oI\u002BG/vZ3uw6vZVXl1xawYNtJCj0f9fBLR7krn/O\u002BV\u002BP6n3Yj9hpW/C9l6m8hbXIgOTQa3oX2b9pF6m"}-->
+    <script type="module" src="Components/Layout/ReconnectModal.13ja33weya.razor.js" b-wkaa9xd4t9></script>
+
+<dialog id="components-reconnect-modal" data-nosnippet b-wkaa9xd4t9><div class="components-reconnect-container" b-wkaa9xd4t9><div class="components-rejoining-animation" aria-hidden="true" b-wkaa9xd4t9><div b-wkaa9xd4t9></div>
+            <div b-wkaa9xd4t9></div></div>
+        <p class="components-reconnect-first-attempt-visible" b-wkaa9xd4t9>
+            Rejoining the server...
+        </p>
+        <p class="components-reconnect-repeated-attempt-visible" b-wkaa9xd4t9>
+            Rejoin failed... trying again in <span id="components-seconds-to-next-attempt" b-wkaa9xd4t9></span> seconds.
+        </p>
+        <p class="components-reconnect-failed-visible" b-wkaa9xd4t9>
+            Failed to rejoin.<br b-wkaa9xd4t9>Please retry or reload the page.
+        </p>
+        <button id="components-reconnect-button" class="components-reconnect-failed-visible" b-wkaa9xd4t9>
+            Retry
+        </button>
+        <p class="components-pause-visible" b-wkaa9xd4t9>
+            The session has been paused by the server.
+        </p>
+        <button id="components-resume-button" class="components-pause-visible" b-wkaa9xd4t9>
+            Resume
+        </button>
+        <p class="components-resume-failed-visible" b-wkaa9xd4t9>
+            Failed to resume the session.<br b-wkaa9xd4t9>Please reload the page.
+        </p></div></dialog>
+    <script src="_framework/blazor.web.2i0r6wwb69.js"></script>
+    <script src="_content/MudBlazor/MudBlazor.min.js"></script>
+    <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
+    <script src="_content/Blazored.TextEditor/quill-blot-formatter.min.js"></script>
+    <script src="_content/Blazored.TextEditor/Blazored-BlazorQuill.js"></script>
+    <script src="js/download.js"></script></body></html><!--Blazor-Server-Component-State:CfDJ8PMJTxtbGAFJkuWnnXmIE6VIqiWwwdHWYEBuEd12M4E9oNT8Xl3kvx2V0RfRnP5KAnR2mWzmYHtGOEtbXbdrsjZYlnc64QmFtQRkfoy9nIUDF0pOKWBnvVkhc4j4tUy7JlDFgbYbPwe2xCAxWmFrjeRBTykrvwkY0chF0HQ+dQ9IFO69fXQuvjI9HC122QCyX58HAhz8tuZT1BZ4xdTQbYCJnnXn6G1C9UUyKK6OHAcwKt7TB2s15Hfbp8WPt+DpvCdVTmm1QRyWwnnMIVqOeRwpivZOxrXXvyaZQaLupKiECtsUqN7qHZT403pJk0JWQzMUg9Te3g5Otdt1nbONDI9xIeXOL91bkmGRSO2SbP80pn9lyzNgTeRTi7Pfxulu6uZkw4javSxNHQQOuunlFg3RwIYHCdR2oZPGS50TMDBt6uCsTZ59UUHFyLsofLkyIgHitHj1cx7JdO3y7RHDA4RMTk1Ch0rIoiMOtkkweGAqZLZQ8U9qfBQ3NnigLavhu1EjpV3/HYcqJVrwIMTbeFCg727xxoC45FCTY6ulF4XD9OqBK2TLm+zkTuNtJGZzj16UPUg1ynCcgFWhkpmCyURXoHxCE3K3TZsDPHy9dv5Ox63+SrH102GjydzQRZQ/kJLTQ/RJKnyFzpMFn2QzL87V4s/s7S7gdDX3vaYcaY78NyQVyGfJU0EGyPVTLSXjGW4Oiw3RKTF6CoobhShEsu9YzbzxDsqceIq2T7Lydw/1Z8P2B89UViLnlZntwfbIULlF1OtcMWNqO2DWyEhlNj/SyXVRWKgph+tQP+4OzE4m2jWe3gyKkrYSv3Zo5VWrjRuhV//mQe3OrjpA8M0Zw54ijHaiK554S8WuZeW3RzsrtqC/a1TyZBITxaVNcCsGd3k9rmdQELS5rwfp7etgfanFkj3AMmEAWegnTmaacarlaSCiVGMj2XVrW6QP/jzB0X4YdWAPae4sNbiREs9EkkUNZh2VPbm6cNgv2bSdfEeGX9H/HnrL4GqGwTiXYPejd8sNkBZokRUbFIngV2nvDy/E3ecDdqKBjmaLyoyjDERPmKOnvJrhYk/gqOmLLCsSE0oRlDtit2SzkoKKI8B6du9CpabWAUOvTY22NhONKghhm/LVH/5+IgdjrwCrTxRUCg==-->

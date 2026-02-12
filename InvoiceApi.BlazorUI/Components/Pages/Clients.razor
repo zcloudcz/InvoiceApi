@@ -1,0 +1,133 @@
+@page "/clients"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@rendermode InteractiveServer
+@using InvoiceApi.Application.Dto.Client
+@using InvoiceApi.Domain.Enums
+@inject ClientApiService ClientService
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject IStringLocalizer<SharedResource> L
+
+<PageTitle>@L["Client_Title"]</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">@L["Client_Title"]</MudText>
+<MudText Class="mb-4">@L["Client_Subtitle"]</MudText>
+
+<MudPaper Class="pa-4">
+    @* Navigate to create page instead of opening a dialog *@
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+               OnClick="@(() => Navigation.NavigateTo("/clients/create"))" Class="mb-4">
+        @L["Client_New"]
+    </MudButton>
+
+    @* AppDataGrid — client-side data with search filter *@
+    <AppDataGrid TItem="ClientDto"
+                 Items="@_clients"
+                 Loading="@_loading"
+                 OnRowClick="@(client => Navigation.NavigateTo($"/clients/{client.Id}"))"
+                 ShowEditAction="false"
+                 OnDelete="@(async (client) => await DeleteClientAsync(client.Id))"
+                 Filter="@FilterFunc"
+                 NoRecordsText="@L["Client_NoRecords"].Value">
+        <ToolBarContent>
+            <MudTextField @bind-Value="_searchString" Placeholder="@L["Btn_Search"].Value" Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0"></MudTextField>
+        </ToolBarContent>
+        <Columns>
+            <MudTh>@L["Client_CompanyName"]</MudTh>
+            <MudTh>@L["Client_RegistrationNumber"]</MudTh>
+            <MudTh>@L["Client_TaxNumber"]</MudTh>
+            <MudTh>@L["Client_City"]</MudTh>
+            <MudTh>@L["Client_IsVatPayer"]</MudTh>
+            <MudTh>@L["Label_Status"]</MudTh>
+        </Columns>
+        <RowContent>
+            <MudTd DataLabel="@L["Client_CompanyName"].Value">@context.CompanyName</MudTd>
+            <MudTd DataLabel="@L["Client_RegistrationNumber"].Value">@context.RegistrationNumber</MudTd>
+            <MudTd DataLabel="@L["Client_TaxNumber"].Value">@(context.TaxNumber ?? "—")</MudTd>
+            <MudTd DataLabel="@L["Client_City"].Value">@(context.Address.FirstOrDefault()?.City ?? "—")</MudTd>
+            <MudTd DataLabel="@L["Client_IsVatPayer"].Value">
+                @if (context.IsVatPayer)
+                {
+                    <MudIcon Icon="@Icons.Material.Filled.Check" Color="Color.Success" Size="Size.Small" />
+                }
+            </MudTd>
+            <MudTd DataLabel="@L["Label_Status"].Value">
+                <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">
+                    @(context.IsActive ? L["Label_Active"].Value : L["Label_Inactive"].Value)
+                </MudChip>
+            </MudTd>
+        </RowContent>
+        <RowActions>
+            @* View navigates to client detail page *@
+            <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" Color="Color.Info"
+                           OnClick="@(() => Navigation.NavigateTo($"/clients/{context.Id}"))" title="@L["Btn_View"].Value" />
+        </RowActions>
+    </AppDataGrid>
+</MudPaper>
+
+@code {
+    private List<ClientDto> _clients = new();
+    private bool _loading = true;
+    private string _searchString = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadClients();
+    }
+
+    /// <summary>
+    /// Loads all clients from the API, including inactive ones.
+    /// </summary>
+    private async Task LoadClients()
+    {
+        try
+        {
+            _loading = true;
+            _clients = await ClientService.GetAllAsync(includeInactive: true);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    /// <summary>
+    /// Client-side filter function for the search bar.
+    /// </summary>
+    private bool FilterFunc(ClientDto client)
+    {
+        if (string.IsNullOrWhiteSpace(_searchString))
+            return true;
+
+        var search = _searchString.ToLower();
+        return client.CompanyName?.ToLower().Contains(search) == true
+            || client.RegistrationNumber?.Contains(search) == true
+            || client.TradingName?.ToLower().Contains(search) == true
+            || client.Address.Any(a => a.City?.ToLower().Contains(search) == true);
+    }
+
+    /// <summary>
+    /// Deletes a client by ID via the API and reloads the grid.
+    /// </summary>
+    private async Task DeleteClientAsync(long id)
+    {
+        try
+        {
+            var success = await ClientService.DeleteAsync(id);
+            if (success)
+            {
+                Snackbar.Add(L["Msg_DeleteSuccess"].Value, Severity.Success);
+                await LoadClients();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+    }
+}

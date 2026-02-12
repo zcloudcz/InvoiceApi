@@ -1,0 +1,111 @@
+@page "/verify-email"
+@rendermode InteractiveServer
+@using InvoiceApi.BlazorUI.Services
+@inject AuthApiService AuthApiService
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@* Localization service for multi-language support *@
+@inject IStringLocalizer<SharedResource> L
+
+<PageTitle>@L["VerifyEmail_Title"] - Invoice API</PageTitle>
+
+@*
+    Anonymous page — no [Authorize] attribute.
+    Accessed via the verification link in the registration email (/verify-email?token=xxx).
+    Follows the same pattern as SetPassword.razor (token validation → success/error states).
+*@
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-8">
+    <MudPaper Elevation="4" Class="pa-8">
+        <MudStack Spacing="4">
+            @* Header *@
+            <MudStack Spacing="2" AlignItems="AlignItems.Center">
+                <MudIcon Icon="@Icons.Material.Filled.MarkEmailRead" Size="Size.Large" Color="Color.Primary" />
+                <MudText Typo="Typo.h4" Align="Align.Center">Invoice API</MudText>
+                <MudText Typo="Typo.h6" Align="Align.Center" Color="Color.Secondary">
+                    @L["VerifyEmail_Title"]
+                </MudText>
+            </MudStack>
+
+            @* Loading state — while verifying the token *@
+            @if (_isVerifying)
+            {
+                <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+                <MudText Align="Align.Center">@L["VerifyEmail_Verifying"]</MudText>
+            }
+            @* Success state — email verified *@
+            else if (_isSuccess)
+            {
+                <MudAlert Severity="Severity.Success" Variant="Variant.Filled">
+                    @L["VerifyEmail_Success"]
+                </MudAlert>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true"
+                           OnClick="@(() => Navigation.NavigateTo("/login"))">
+                    @L["VerifyEmail_GoToLogin"]
+                </MudButton>
+            }
+            @* Error state — invalid or expired token *@
+            else
+            {
+                <MudAlert Severity="Severity.Error" Variant="Variant.Filled">
+                    @_errorMessage
+                </MudAlert>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true"
+                           OnClick="@(() => Navigation.NavigateTo("/login"))">
+                    @L["VerifyEmail_GoToLogin"]
+                </MudButton>
+            }
+        </MudStack>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    /// <summary>
+    /// Email verification token from the URL query parameter (?token=xxx)
+    /// </summary>
+    [SupplyParameterFromQuery(Name = "token")]
+    public string? Token { get; set; }
+
+    private bool _isVerifying = true;
+    private bool _isSuccess = false;
+    private string? _errorMessage;
+
+    /// <summary>
+    /// On page load, immediately verify the token via the API.
+    /// If successful, shows success message. If not, shows error.
+    /// </summary>
+    protected override async Task OnInitializedAsync()
+    {
+        // Check if token is provided in the URL
+        if (string.IsNullOrWhiteSpace(Token))
+        {
+            _errorMessage = L["VerifyEmail_Failed"].Value;
+            _isVerifying = false;
+            return;
+        }
+
+        try
+        {
+            // Call the API to verify the email token
+            var result = await AuthApiService.VerifyEmailAsync(Token);
+
+            if (result)
+            {
+                _isSuccess = true;
+                Snackbar.Add(L["VerifyEmail_Success"].Value, Severity.Success);
+            }
+            else
+            {
+                _errorMessage = L["VerifyEmail_Failed"].Value;
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"{L["Msg_Error"].Value}: {ex.Message}";
+        }
+        finally
+        {
+            _isVerifying = false;
+        }
+    }
+}

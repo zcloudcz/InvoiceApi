@@ -1,0 +1,122 @@
+using System.Text;
+using InvoiceApi.Application.Dto.Client;
+using InvoiceApi.BlazorUI.Models;
+using Microsoft.AspNetCore.Components.Authorization;
+
+namespace InvoiceApi.BlazorUI.Services;
+
+/// <summary>
+/// Blazor service for communicating with the Client API endpoints.
+/// Inherits ApiClientBase for shared auth, logging, impersonation, and error handling.
+/// </summary>
+public class ClientApiService : ApiClientBase
+{
+    public ClientApiService(
+        IHttpClientFactory httpClientFactory,
+        ILogger<ClientApiService> logger,
+        AuthenticationStateProvider authStateProvider)
+        : base(httpClientFactory, logger, authStateProvider)
+    {
+    }
+
+    /// <summary>
+    /// Gets all clients (non-paginated). Optionally includes inactive clients.
+    /// </summary>
+    public async Task<List<ClientDto>> GetAllAsync(bool includeInactive = false)
+    {
+        var result = await GetAsync<List<ClientDto>>($"/api/client?includeInactive={includeInactive}");
+        return result ?? new List<ClientDto>();
+    }
+
+    /// <summary>
+    /// Gets clients with server-side pagination, filtering, and sorting.
+    /// </summary>
+    public async Task<PagedResult<ClientDto>> GetPagedAsync(
+        int page = 1,
+        int pageSize = 50,
+        string? search = null,
+        string? sortBy = null,
+        string? sortDirection = "asc",
+        bool? isVatPayer = null,
+        bool includeInactive = false,
+        string? city = null,
+        string? country = null)
+    {
+        var queryParams = new StringBuilder($"?Page={page}&PageSize={pageSize}");
+
+        if (!string.IsNullOrWhiteSpace(search))
+            queryParams.Append($"&Search={Uri.EscapeDataString(search)}");
+
+        if (!string.IsNullOrWhiteSpace(sortBy))
+            queryParams.Append($"&SortBy={sortBy}");
+
+        if (!string.IsNullOrWhiteSpace(sortDirection))
+            queryParams.Append($"&SortDirection={sortDirection}");
+
+        if (isVatPayer.HasValue)
+            queryParams.Append($"&IsVatPayer={isVatPayer.Value}");
+
+        if (includeInactive)
+            queryParams.Append("&IncludeInactive=true");
+
+        if (!string.IsNullOrWhiteSpace(city))
+            queryParams.Append($"&City={Uri.EscapeDataString(city)}");
+
+        if (!string.IsNullOrWhiteSpace(country))
+            queryParams.Append($"&Country={Uri.EscapeDataString(country)}");
+
+        var result = await GetAsync<PagedResult<ClientDto>>($"/api/client/paged{queryParams}");
+        return result ?? new PagedResult<ClientDto>();
+    }
+
+    /// <summary>
+    /// Gets a single client by ID.
+    /// </summary>
+    public async Task<ClientDto?> GetByIdAsync(long id)
+    {
+        return await GetAsync<ClientDto>($"/api/client/{id}");
+    }
+
+    /// <summary>
+    /// Creates a new client.
+    /// </summary>
+    public async Task<ClientDto?> CreateAsync(CreateClientDto createDto)
+    {
+        return await PostAsync<CreateClientDto, ClientDto>("/api/client", createDto);
+    }
+
+    /// <summary>
+    /// Updates an existing client.
+    /// </summary>
+    public async Task<ClientDto?> UpdateAsync(long id, UpdateClientDto updateDto)
+    {
+        return await PutAsync<UpdateClientDto, ClientDto>($"/api/client/{id}", updateDto);
+    }
+
+    /// <summary>
+    /// Deletes a client (soft delete).
+    /// </summary>
+    public async Task<bool> DeleteAsync(long id)
+    {
+        return await DeleteAsync($"/api/client/{id}");
+    }
+
+    /// <summary>
+    /// Gets the issuer (the current user's company) via GET /api/client/issuer.
+    /// The API automatically resolves the issuer based on the authenticated user's CompanyId.
+    /// Returns null if no issuer is configured.
+    /// </summary>
+    public async Task<ClientDto?> GetIssuerAsync()
+    {
+        return await GetAsync<ClientDto>("/api/client/issuer");
+    }
+
+    /// <summary>
+    /// Fetches company data from the Czech ARES registry by registration number (IČO).
+    /// Returns a pre-filled ClientDto or null if not found.
+    /// </summary>
+    public async Task<ClientDto?> FetchFromAresAsync(string registrationNumber)
+    {
+        return await GetAsync<ClientDto>($"/api/client/ares/{registrationNumber}");
+    }
+}

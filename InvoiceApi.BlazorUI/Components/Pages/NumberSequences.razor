@@ -1,0 +1,516 @@
+@page "/number-sequences"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@rendermode InteractiveServer
+@using InvoiceApi.Application.Dto.NumberSequence
+@using InvoiceApi.Domain.Enums
+@inject NumberSequenceApiService SequenceService
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject IStringLocalizer<SharedResource> L
+
+<PageTitle>@L["Nav_NumberSequences"]</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">@L["Nav_NumberSequences"]</MudText>
+<MudText Class="mb-4">@L["NumSeq_Subtitle"]</MudText>
+
+@* ========== Number Sequence Formats — AppDataGrid for consistent styling ========== *@
+<MudText Typo="Typo.h5" Class="mt-6 mb-2">@L["NumSeq_Formats"]</MudText>
+
+<AppDataGrid TItem="NumberSequenceFormatDto"
+             Items="@_formats"
+             Loading="@_loadingFormats"
+             OnRowClick="@(OpenEditFormatDialog)"
+             OnEdit="@(OpenEditFormatDialog)"
+             ShowDeleteAction="false"
+             NoRecordsText="@L["NumSeq_NoFormats"].Value">
+    <ToolBarContent>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                   StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateFormatDialog">
+            @L["NumSeq_NewFormat"]
+        </MudButton>
+    </ToolBarContent>
+    <Columns>
+        <MudTh>@L["Label_Name"]</MudTh>
+        <MudTh>@L["NumSeq_FormatPattern"]</MudTh>
+        <MudTh>@L["NumSeq_CounterDigits"]</MudTh>
+        <MudTh>@L["NumSeq_ResetsYearly"]</MudTh>
+        <MudTh>@L["NumSeq_ResetsMonthly"]</MudTh>
+        <MudTh>@L["Label_Status"]</MudTh>
+    </Columns>
+    <RowContent>
+        <MudTd DataLabel="@L["Label_Name"].Value">@context.Name</MudTd>
+        <MudTd DataLabel="@L["NumSeq_FormatPattern"].Value">
+            <MudChip T="string" Size="Size.Small" Color="Color.Info">@context.FormatPattern</MudChip>
+        </MudTd>
+        <MudTd DataLabel="@L["NumSeq_CounterDigits"].Value">@context.CounterDigits</MudTd>
+        <MudTd DataLabel="@L["NumSeq_ResetsYearly"].Value">
+            <MudCheckBox T="bool" Value="@context.ResetsYearly" ReadOnly="true" Dense="true" />
+        </MudTd>
+        <MudTd DataLabel="@L["NumSeq_ResetsMonthly"].Value">
+            <MudCheckBox T="bool" Value="@context.ResetsMonthly" ReadOnly="true" Dense="true" />
+        </MudTd>
+        <MudTd DataLabel="@L["Label_Status"].Value">
+            <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">
+                @(context.IsActive ? L["Label_Active"] : L["Label_Inactive"])
+            </MudChip>
+        </MudTd>
+    </RowContent>
+</AppDataGrid>
+
+@* ========== Number Sequences — AppDataGrid for consistent styling ========== *@
+<MudText Typo="Typo.h5" Class="mt-6 mb-2">@L["NumSeq_Sequences"]</MudText>
+
+<AppDataGrid TItem="NumberSequenceDto"
+             Items="@_sequences"
+             Loading="@_loadingSequences"
+             OnRowClick="@(OpenEditSequenceDialog)"
+             OnEdit="@(OpenEditSequenceDialog)"
+             ShowDeleteAction="false"
+             NoRecordsText="@L["NumSeq_NoSequences"].Value">
+    <ToolBarContent>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                   StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateSequenceDialog">
+            @L["NumSeq_NewSequence"]
+        </MudButton>
+    </ToolBarContent>
+    <Columns>
+        <MudTh>@L["Label_Name"]</MudTh>
+        <MudTh>@L["NumSeq_DocumentType"]</MudTh>
+        <MudTh>@L["NumSeq_Format"]</MudTh>
+        <MudTh>@L["NumSeq_Prefix"]</MudTh>
+        <MudTh>@L["NumSeq_Suffix"]</MudTh>
+        <MudTh>@L["NumSeq_CurrentNumber"]</MudTh>
+        <MudTh>@L["NumSeq_Preview"]</MudTh>
+        <MudTh>@L["NumSeq_Default"]</MudTh>
+    </Columns>
+    <RowContent>
+        <MudTd DataLabel="@L["Label_Name"].Value">@context.Name</MudTd>
+        <MudTd DataLabel="@L["NumSeq_DocumentType"].Value">
+            <MudChip T="string" Size="Size.Small"
+                     Color="@(context.DocumentType == EDocumentType.Invoice ? Color.Primary : Color.Warning)">
+                @(context.DocumentType == EDocumentType.Invoice ? L["Template_DocumentTypeInvoice"] : L["Template_DocumentTypeCreditNote"])
+            </MudChip>
+        </MudTd>
+        <MudTd DataLabel="@L["NumSeq_Format"].Value">@context.NumberSequenceFormat?.FormatPattern</MudTd>
+        <MudTd DataLabel="@L["NumSeq_Prefix"].Value">@context.Prefix</MudTd>
+        <MudTd DataLabel="@L["NumSeq_Suffix"].Value">@context.Suffix</MudTd>
+        <MudTd DataLabel="@L["NumSeq_CurrentNumber"].Value">@context.CurrentNumber</MudTd>
+        <MudTd DataLabel="@L["NumSeq_Preview"].Value">
+            @if (_previews.TryGetValue(context.Id, out var preview))
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Info">@preview</MudChip>
+            }
+        </MudTd>
+        <MudTd DataLabel="@L["NumSeq_Default"].Value">
+            @if (context.IsDefault)
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Success">@L["NumSeq_IsDefault"]</MudChip>
+            }
+        </MudTd>
+    </RowContent>
+    @* Custom row actions: SetDefault star icon + Deactivate delete icon (conditional per row) *@
+    <RowActions>
+        @if (!context.IsDefault)
+        {
+            <MudIconButton Icon="@Icons.Material.Filled.Star" Size="Size.Small" Color="Color.Warning"
+                           OnClick="@(() => SetAsDefault(context.Id))" title="@L["NumSeq_SetDefault"].Value" />
+        }
+        @if (!context.IsDefault && context.IsActive)
+        {
+            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                           OnClick="@(() => DeactivateSequence(context))" title="@L["Btn_Delete"].Value" />
+        }
+    </RowActions>
+</AppDataGrid>
+
+@* ========== Create Format Dialog ========== *@
+<MudDialog @bind-Visible="_showFormatDialog" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@L["NumSeq_NewFormat"]</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudForm @ref="_formatForm" @bind-IsValid="_formatFormValid">
+            <MudTextField @bind-Value="_newFormat.Name" Label="@L["Label_Name"].Value"
+                          Required="true" MaxLength="200" Class="mb-3" />
+            <MudTextField @bind-Value="_newFormat.FormatPattern" Label="@L["NumSeq_FormatPattern"].Value"
+                          Required="true" MaxLength="100" Class="mb-3"
+                          HelperText="@L["NumSeq_PatternHelper"].Value" />
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showFormatDialog = false)">@L["Btn_Cancel"]</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateFormat"
+                   Disabled="@(!_formatFormValid)">
+            @L["Btn_Create"]
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@* ========== Create Sequence Dialog ========== *@
+<MudDialog @bind-Visible="_showSequenceDialog" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@L["NumSeq_NewSequence"]</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudForm @ref="_sequenceForm" @bind-IsValid="_sequenceFormValid">
+            <MudTextField @bind-Value="_newSequence.Name" Label="@L["Label_Name"].Value"
+                          Required="true" MaxLength="200" Class="mb-3" />
+            <MudSelect @bind-Value="_newSequence.DocumentType" Label="@L["NumSeq_DocumentType"].Value"
+                       Required="true" Class="mb-3">
+                <MudSelectItem Value="@EDocumentType.Invoice">@L["Template_DocumentTypeInvoice"]</MudSelectItem>
+                <MudSelectItem Value="@EDocumentType.CreditNote">@L["Template_DocumentTypeCreditNote"]</MudSelectItem>
+            </MudSelect>
+            <MudSelect @bind-Value="_newSequence.NumberSequenceFormatId" Label="@L["NumSeq_Format"].Value"
+                       Required="true" Class="mb-3">
+                @foreach (var format in _formats.Where(f => f.IsActive))
+                {
+                    <MudSelectItem Value="@format.Id">@format.Name (@format.FormatPattern)</MudSelectItem>
+                }
+            </MudSelect>
+            <MudTextField @bind-Value="_newSequence.Prefix" Label="@L["NumSeq_Prefix"].Value"
+                          MaxLength="50" Class="mb-3" />
+            <MudTextField @bind-Value="_newSequence.Suffix" Label="@L["NumSeq_Suffix"].Value"
+                          MaxLength="50" Class="mb-3" />
+            <MudNumericField @bind-Value="_newSequence.StartingNumber" Label="@L["NumSeq_StartingNumber"].Value"
+                             Min="1" Class="mb-3" />
+            <MudSwitch T="bool" @bind-Value="_newSequence.IsDefault" Label="@L["NumSeq_SetAsDefault"].Value"
+                       Color="Color.Primary" Class="mb-3" />
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showSequenceDialog = false)">@L["Btn_Cancel"]</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateSequence"
+                   Disabled="@(!_sequenceFormValid)">
+            @L["Btn_Create"]
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@* ========== Edit Format Dialog ========== *@
+<MudDialog @bind-Visible="_showEditFormatDialog" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@L["NumSeq_EditFormat"]</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudForm @ref="_editFormatForm" @bind-IsValid="_editFormatFormValid">
+            <MudTextField @bind-Value="_editFormat.Name" Label="@L["Label_Name"].Value"
+                          Required="true" MaxLength="200" Class="mb-3" />
+            <MudTextField @bind-Value="_editFormat.FormatPattern" Label="@L["NumSeq_FormatPattern"].Value"
+                          Required="true" MaxLength="100" Class="mb-3"
+                          HelperText="@L["NumSeq_PatternHelper"].Value" />
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showEditFormatDialog = false)">@L["Btn_Cancel"]</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="UpdateFormat"
+                   Disabled="@(!_editFormatFormValid)">
+            @L["Btn_Save"]
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@* ========== Edit Sequence Dialog ========== *@
+<MudDialog @bind-Visible="_showEditSequenceDialog" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@L["NumSeq_EditSequence"]</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudForm @ref="_editSequenceForm" @bind-IsValid="_editSequenceFormValid">
+            <MudTextField @bind-Value="_editSequence.Name" Label="@L["Label_Name"].Value"
+                          Required="true" MaxLength="200" Class="mb-3" />
+            <MudTextField @bind-Value="_editSequence.Prefix" Label="@L["NumSeq_Prefix"].Value"
+                          MaxLength="50" Class="mb-3" />
+            <MudTextField @bind-Value="_editSequence.Suffix" Label="@L["NumSeq_Suffix"].Value"
+                          MaxLength="50" Class="mb-3" />
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showEditSequenceDialog = false)">@L["Btn_Cancel"]</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="UpdateSequence"
+                   Disabled="@(!_editSequenceFormValid)">
+            @L["Btn_Save"]
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    // Loading state
+    private bool _loadingFormats = false;
+    private bool _loadingSequences = false;
+
+    // Data
+    private List<NumberSequenceFormatDto> _formats = new();
+    private List<NumberSequenceDto> _sequences = new();
+    private Dictionary<long, string> _previews = new();
+
+    // Dialog state
+    private bool _showFormatDialog = false;
+    private bool _showSequenceDialog = false;
+    private bool _formatFormValid = false;
+    private bool _sequenceFormValid = false;
+    private MudForm? _formatForm;
+    private MudForm? _sequenceForm;
+
+    // New item models
+    private CreateNumberSequenceFormatDto _newFormat = new();
+    private CreateNumberSequenceDto _newSequence = new() { StartingNumber = 1 };
+
+    // Edit format dialog state
+    private bool _showEditFormatDialog = false;
+    private bool _editFormatFormValid = false;
+    private MudForm? _editFormatForm;
+    private long _editFormatId;
+    private UpdateNumberSequenceFormatDto _editFormat = new();
+
+    // Edit sequence dialog state
+    private bool _showEditSequenceDialog = false;
+    private bool _editSequenceFormValid = false;
+    private MudForm? _editSequenceForm;
+    private long _editSequenceId;
+    private UpdateNumberSequenceDto _editSequence = new();
+
+    private DialogOptions _dialogOptions = new()
+    {
+        MaxWidth = MaxWidth.Medium,
+        FullWidth = true,
+        CloseOnEscapeKey = true
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Load both formats and sequences in parallel
+        await Task.WhenAll(LoadFormats(), LoadSequences());
+    }
+
+    /// <summary>
+    /// Loads all number sequence formats from the API.
+    /// </summary>
+    private async Task LoadFormats()
+    {
+        _loadingFormats = true;
+        try
+        {
+            _formats = await SequenceService.GetAllFormatsAsync(includeInactive: true);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loadingFormats = false;
+        }
+    }
+
+    /// <summary>
+    /// Loads all number sequences and their preview numbers.
+    /// </summary>
+    private async Task LoadSequences()
+    {
+        _loadingSequences = true;
+        try
+        {
+            _sequences = await SequenceService.GetAllSequencesAsync(includeInactive: true);
+
+            // Load preview for each active sequence
+            _previews.Clear();
+            foreach (var seq in _sequences.Where(s => s.IsActive))
+            {
+                try
+                {
+                    var preview = await SequenceService.PreviewNextNumberAsync(seq.Id);
+                    if (preview != null)
+                        _previews[seq.Id] = preview;
+                }
+                catch
+                {
+                    // Preview is optional — don't fail if one sequence can't generate a preview
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loadingSequences = false;
+        }
+    }
+
+    // --- Format CRUD ---
+
+    private void OpenCreateFormatDialog()
+    {
+        _newFormat = new CreateNumberSequenceFormatDto();
+        _showFormatDialog = true;
+    }
+
+    private async Task CreateFormat()
+    {
+        if (_formatForm == null) return;
+        await _formatForm.Validate();
+        if (!_formatFormValid) return;
+
+        try
+        {
+            await SequenceService.CreateFormatAsync(_newFormat);
+            Snackbar.Add(L["Msg_SaveSuccess"].Value, Severity.Success);
+            _showFormatDialog = false;
+            await LoadFormats();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+    }
+
+    // --- Sequence CRUD ---
+
+    private void OpenCreateSequenceDialog()
+    {
+        _newSequence = new CreateNumberSequenceDto { StartingNumber = 1 };
+        _showSequenceDialog = true;
+    }
+
+    private async Task CreateSequence()
+    {
+        if (_sequenceForm == null) return;
+        await _sequenceForm.Validate();
+        if (!_sequenceFormValid) return;
+
+        try
+        {
+            await SequenceService.CreateSequenceAsync(_newSequence);
+            Snackbar.Add(L["Msg_SaveSuccess"].Value, Severity.Success);
+            _showSequenceDialog = false;
+            await LoadSequences();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+    }
+
+    /// <summary>
+    /// Sets a sequence as default for its document type.
+    /// Only one sequence can be default per document type.
+    /// </summary>
+    private async Task SetAsDefault(long id)
+    {
+        try
+        {
+            await SequenceService.SetAsDefaultAsync(id);
+            Snackbar.Add(L["Msg_SaveSuccess"].Value, Severity.Success);
+            await LoadSequences();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+    }
+
+    /// <summary>
+    /// Deactivates a sequence with confirmation dialog.
+    /// </summary>
+    private async Task DeactivateSequence(NumberSequenceDto sequence)
+    {
+        bool? result = await DialogService.ShowMessageBox(
+            L["Msg_ConfirmDeleteTitle"].Value,
+            $"{L["NumSeq_ConfirmDeactivate"].Value} ({sequence.Name})",
+            yesText: L["Btn_Delete"].Value, cancelText: L["Btn_Cancel"].Value);
+
+        if (result == true)
+        {
+            try
+            {
+                await SequenceService.DeactivateSequenceAsync(sequence.Id);
+                Snackbar.Add(L["Msg_DeleteSuccess"].Value, Severity.Success);
+                await LoadSequences();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    // --- Format Edit ---
+
+    /// <summary>
+    /// Opens the edit format dialog pre-populated with the selected format's data.
+    /// </summary>
+    private void OpenEditFormatDialog(NumberSequenceFormatDto format)
+    {
+        _editFormatId = format.Id;
+        _editFormat = new UpdateNumberSequenceFormatDto
+        {
+            Name = format.Name,
+            FormatPattern = format.FormatPattern
+        };
+        _showEditFormatDialog = true;
+    }
+
+    /// <summary>
+    /// Saves the edited format by calling the update API endpoint.
+    /// </summary>
+    private async Task UpdateFormat()
+    {
+        if (_editFormatForm == null) return;
+        await _editFormatForm.Validate();
+        if (!_editFormatFormValid) return;
+
+        try
+        {
+            await SequenceService.UpdateFormatAsync(_editFormatId, _editFormat);
+            Snackbar.Add(L["Msg_SaveSuccess"].Value, Severity.Success);
+            _showEditFormatDialog = false;
+            await LoadFormats();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+    }
+
+    // --- Sequence Edit ---
+
+    /// <summary>
+    /// Opens the edit sequence dialog pre-populated with the selected sequence's data.
+    /// Only Name, Prefix, and Suffix are editable — other fields are locked to prevent
+    /// breaking existing numbering.
+    /// </summary>
+    private void OpenEditSequenceDialog(NumberSequenceDto sequence)
+    {
+        _editSequenceId = sequence.Id;
+        _editSequence = new UpdateNumberSequenceDto
+        {
+            Name = sequence.Name,
+            Prefix = sequence.Prefix ?? "",
+            Suffix = sequence.Suffix ?? ""
+        };
+        _showEditSequenceDialog = true;
+    }
+
+    /// <summary>
+    /// Saves the edited sequence by calling the update API endpoint.
+    /// </summary>
+    private async Task UpdateSequence()
+    {
+        if (_editSequenceForm == null) return;
+        await _editSequenceForm.Validate();
+        if (!_editSequenceFormValid) return;
+
+        try
+        {
+            await SequenceService.UpdateSequenceAsync(_editSequenceId, _editSequence);
+            Snackbar.Add(L["Msg_SaveSuccess"].Value, Severity.Success);
+            _showEditSequenceDialog = false;
+            await LoadSequences();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+    }
+}

@@ -1,0 +1,142 @@
+@*
+    Generic localized enum dropdown component.
+    Renders a MudSelect with localized labels for each enum value.
+
+    Usage (non-nullable):
+      <EnumSelect TEnum="EPaymentMethod" @bind-Value="_paymentMethod" Label="@L["Invoice_PaymentMethod"].Value" />
+
+    Usage (nullable — set Nullable="true"):
+      <EnumSelect TEnum="EPaymentMethod" @bind-Value="_paymentMethod" Label="@L["Invoice_PaymentMethod"].Value" Nullable="true" />
+
+    Localization convention: resource key = "{EnumTypeName}_{EnumValue}"
+    Example: EPaymentMethod.BankTransfer -> L["EPaymentMethod_BankTransfer"]
+*@
+@typeparam TEnum where TEnum : struct, Enum
+@inject IStringLocalizer<SharedResource> L
+
+@if (Nullable)
+{
+    @* Nullable version — shows a "None" option at the top to clear selection *@
+    <MudSelect T="TEnum?" Value="@NullableValue" ValueChanged="OnNullableValueChanged"
+               Label="@Label" Required="@Required" Margin="@Margin" Variant="@Variant"
+               Clearable="true" Dense="@Dense" Disabled="@Disabled">
+        @foreach (var val in Enum.GetValues<TEnum>())
+        {
+            <MudSelectItem T="TEnum?" Value="@((TEnum?)val)">@GetLocalizedLabel(val)</MudSelectItem>
+        }
+    </MudSelect>
+}
+else
+{
+    @* Non-nullable version — user must select a value *@
+    <MudSelect T="TEnum" Value="@Value" ValueChanged="OnValueChanged"
+               Label="@Label" Required="@Required" Margin="@Margin" Variant="@Variant"
+               Dense="@Dense" Disabled="@Disabled">
+        @foreach (var val in Enum.GetValues<TEnum>())
+        {
+            <MudSelectItem T="TEnum" Value="@val">@GetLocalizedLabel(val)</MudSelectItem>
+        }
+    </MudSelect>
+}
+
+@code {
+    /// <summary>
+    /// Current selected value (non-nullable binding).
+    /// Use with @bind-Value for two-way binding.
+    /// </summary>
+    [Parameter]
+    public TEnum Value { get; set; }
+
+    /// <summary>
+    /// Callback for non-nullable value changes (two-way binding support)
+    /// </summary>
+    [Parameter]
+    public EventCallback<TEnum> ValueChanged { get; set; }
+
+    /// <summary>
+    /// Current selected value (nullable binding).
+    /// Used when Nullable="true".
+    /// </summary>
+    [Parameter]
+    public TEnum? NullableValue { get; set; }
+
+    /// <summary>
+    /// Callback for nullable value changes (two-way binding support)
+    /// </summary>
+    [Parameter]
+    public EventCallback<TEnum?> NullableValueChanged { get; set; }
+
+    /// <summary>
+    /// Label displayed above the dropdown
+    /// </summary>
+    [Parameter]
+    public string? Label { get; set; }
+
+    /// <summary>
+    /// Whether the field is required (shows asterisk and validation)
+    /// </summary>
+    [Parameter]
+    public bool Required { get; set; }
+
+    /// <summary>
+    /// MudBlazor margin setting for the select
+    /// </summary>
+    [Parameter]
+    public Margin Margin { get; set; } = Margin.None;
+
+    /// <summary>
+    /// MudBlazor variant setting for the select appearance
+    /// </summary>
+    [Parameter]
+    public Variant Variant { get; set; } = Variant.Text;
+
+    /// <summary>
+    /// When true, the select allows null values (clearable)
+    /// </summary>
+    [Parameter]
+    public bool Nullable { get; set; }
+
+    /// <summary>
+    /// Dense mode for compact layout
+    /// </summary>
+    [Parameter]
+    public bool Dense { get; set; }
+
+    /// <summary>
+    /// When true, the select is disabled (grayed out, no interaction)
+    /// </summary>
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    /// <summary>
+    /// Handles non-nullable value change — notifies parent component
+    /// </summary>
+    private async Task OnValueChanged(TEnum newValue)
+    {
+        Value = newValue;
+        await ValueChanged.InvokeAsync(newValue);
+    }
+
+    /// <summary>
+    /// Handles nullable value change — notifies parent component
+    /// </summary>
+    private async Task OnNullableValueChanged(TEnum? newValue)
+    {
+        NullableValue = newValue;
+        await NullableValueChanged.InvokeAsync(newValue);
+    }
+
+    /// <summary>
+    /// Gets the localized display name for an enum value.
+    /// Looks up resource key "{EnumTypeName}_{Value}" (e.g. "EPaymentMethod_BankTransfer").
+    /// Falls back to the enum value's ToString() if no resource key is found.
+    /// </summary>
+    private string GetLocalizedLabel(TEnum value)
+    {
+        var key = $"{typeof(TEnum).Name}_{value}";
+        var localized = L[key];
+        // If the resource key doesn't exist, IStringLocalizer returns the key itself.
+        // In that case, fall back to a human-readable version of the enum name.
+        return localized.ResourceNotFound ? value.ToString() : localized.Value;
+    }
+}

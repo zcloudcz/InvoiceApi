@@ -1,0 +1,51 @@
+@*
+    Reusable component that warns the user before navigating away from a page with unsaved changes.
+
+    Uses Blazor's built-in <NavigationLock> to intercept:
+    - Internal navigation (SPA route changes) — shows browser's confirm dialog
+    - External navigation (tab close, refresh, URL change) — shows browser's native "Leave site?" dialog
+
+    Usage:
+        <UnsavedChangesLock IsDirty="_isDirty" />
+
+    The parent page is responsible for setting IsDirty = true when any field changes,
+    and IsDirty = false after a successful save or explicit cancel.
+*@
+
+@inject IStringLocalizer<SharedResource> L
+
+@if (IsDirty)
+{
+    <NavigationLock OnBeforeInternalNavigation="OnBeforeNavigation"
+                    ConfirmExternalNavigation="true" />
+}
+
+@code {
+    /// <summary>
+    /// Whether the form has unsaved changes.
+    /// When true, navigating away will show a confirmation dialog.
+    /// </summary>
+    [Parameter]
+    public bool IsDirty { get; set; }
+
+    /// <summary>
+    /// Intercepts internal (SPA) navigation and prevents it if the user declines.
+    /// The browser's native confirm dialog is used — MudBlazor dialogs can't be shown
+    /// during navigation interception (it's synchronous from the browser's perspective).
+    /// </summary>
+    private async Task OnBeforeNavigation(LocationChangingContext context)
+    {
+        if (IsDirty)
+        {
+            // Show browser's native confirmation dialog
+            var isConfirmed = await JS.InvokeAsync<bool>("confirm", L["Msg_UnsavedChanges"].Value);
+            if (!isConfirmed)
+            {
+                context.PreventNavigation();
+            }
+        }
+    }
+
+    [Inject]
+    private IJSRuntime JS { get; set; } = default!;
+}

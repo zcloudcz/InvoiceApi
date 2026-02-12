@@ -1,0 +1,99 @@
+@using Microsoft.AspNetCore.Components.Authorization
+@using InvoiceApi.BlazorUI.Services
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IStringLocalizer<SharedResource> L
+
+<AuthorizeView>
+    <Authorized>
+        <MudNavMenu>
+            <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">@L["Nav_Dashboard"]</MudNavLink>
+
+            @* Invoicing section — visible for User/Admin, and SysAdmin when impersonating a company *@
+            @if (_showInvoicing)
+            {
+                <MudNavGroup Title="@L["Nav_Invoicing"].Value" Icon="@Icons.Material.Filled.Receipt" Expanded="true">
+                    <MudNavLink Href="/invoices" Icon="@Icons.Material.Filled.Description">@L["Nav_Invoices"]</MudNavLink>
+                    <MudNavLink Href="/invoices?type=CreditNote" Icon="@Icons.Material.Filled.Undo">@L["Nav_CreditNotes"]</MudNavLink>
+                    <MudNavLink Href="/invoice-templates" Icon="@Icons.Material.Filled.ContentCopy">@L["Nav_InvoiceTemplates"]</MudNavLink>
+                    <MudNavLink Href="/content-templates" Icon="@Icons.Material.Filled.Article">@L["Nav_ContentTemplates"]</MudNavLink>
+                    <MudNavLink Href="/clients" Icon="@Icons.Material.Filled.People">@L["Nav_Clients"]</MudNavLink>
+                </MudNavGroup>
+            }
+
+            <MudNavGroup Title="@L["Nav_Settings"].Value" Icon="@Icons.Material.Filled.Settings">
+                @* Two-Factor Auth — visible for all authenticated users with invoicing context *@
+                @if (_showInvoicing)
+                {
+                    <MudNavLink Href="/profile/two-factor" Icon="@Icons.Material.Filled.Security">@L["Nav_TwoFactor"]</MudNavLink>
+                    <MudNavLink Href="/my-company" Icon="@Icons.Material.Filled.Business">@L["Nav_MyCompany"]</MudNavLink>
+                    <MudNavLink Href="/vat-rates" Icon="@Icons.Material.Filled.Percent">@L["Nav_VatRates"]</MudNavLink>
+                    <MudNavLink Href="/number-sequences" Icon="@Icons.Material.Filled.Numbers">@L["Nav_NumberSequences"]</MudNavLink>
+                }
+
+                @* User management — Admin and SysAdmin *@
+                <AuthorizeView Roles="Admin,SysAdmin" Context="adminContext">
+                    <MudNavLink Href="/users" Icon="@Icons.Material.Filled.People">@L["Nav_Users"]</MudNavLink>
+                </AuthorizeView>
+
+                @* System-wide settings — SysAdmin only *@
+                <AuthorizeView Roles="SysAdmin" Context="sysAdminContext">
+                    @* Currencies — visible in both modes (dual-context: master or tenant) *@
+                    <MudNavLink Href="/currencies" Icon="@Icons.Material.Filled.AttachMoney">@L["Nav_Currencies"]</MudNavLink>
+
+                    @* SysAdmin management pages — only visible when NOT impersonating a company.
+                       These operate on master DB and are not relevant in tenant context. *@
+                    @if (!_showInvoicing)
+                    {
+                        <MudNavLink Href="/companies" Icon="@Icons.Material.Filled.Business">@L["Nav_Companies"]</MudNavLink>
+                        <MudNavLink Href="/company-settings" Icon="@Icons.Material.Filled.Dns">@L["Nav_TenantSettings"]</MudNavLink>
+                        <MudNavLink Href="/system-settings" Icon="@Icons.Material.Filled.Tune">@L["Nav_SystemSettings"]</MudNavLink>
+                        <MudNavLink Href="/logs" Icon="@Icons.Material.Filled.ListAlt">@L["Nav_Logs"]</MudNavLink>
+                        @* Master-level code tables — when NOT impersonating *@
+                        <MudNavLink Href="/vat-rates" Icon="@Icons.Material.Filled.Percent">@L["Nav_VatRates"]</MudNavLink>
+                        <MudNavLink Href="/content-templates" Icon="@Icons.Material.Filled.Article">@L["Nav_ContentTemplates"]</MudNavLink>
+                        <MudNavLink Href="/number-sequences" Icon="@Icons.Material.Filled.Numbers">@L["Nav_NumberSequences"]</MudNavLink>
+                    }
+                </AuthorizeView>
+            </MudNavGroup>
+        </MudNavMenu>
+    </Authorized>
+</AuthorizeView>
+
+@code {
+    // Whether to show invoicing menu items.
+    // True for User/Admin (they always have a company), and for SysAdmin when impersonating.
+    private bool _showInvoicing = false;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                var customAuth = (CustomAuthenticationStateProvider)AuthStateProvider;
+                var session = await customAuth.GetUserSessionAsync();
+
+                if (session != null)
+                {
+                    if (session.Role == 2) // SysAdmin
+                    {
+                        // Show invoicing only when impersonating a company
+                        var impersonatedId = await customAuth.GetImpersonatedCompanyIdAsync();
+                        _showInvoicing = impersonatedId.HasValue;
+                    }
+                    else
+                    {
+                        // User/Admin always have a company
+                        _showInvoicing = true;
+                    }
+
+                    StateHasChanged();
+                }
+            }
+            catch
+            {
+                // Ignore — session might not be available
+            }
+        }
+    }
+}

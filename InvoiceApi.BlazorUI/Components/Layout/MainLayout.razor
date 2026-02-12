@@ -1,0 +1,144 @@
+@inherits LayoutComponentBase
+@using Microsoft.AspNetCore.Components.Authorization
+@using InvoiceApi.BlazorUI.Services
+@using InvoiceApi.Application.Dto.Client
+@using InvoiceApi.BlazorUI.Components.Shared
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@inject CompanyApiService CompanyService
+@inject IStringLocalizer<SharedResource> L
+
+<MudThemeProvider @bind-IsDarkMode="_isDarkMode" />
+<CascadingAuthenticationState>
+    <MudLayout>
+        <MudAppBar Elevation="1">
+            <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@((e) => DrawerToggle())" />
+            <MudText Typo="Typo.h5" Class="ml-3">@L["Layout_AppTitle"]</MudText>
+            <MudSpacer />
+
+            <AuthorizeView>
+                <Authorized>
+                    @* Impersonation selector — only visible for SysAdmin *@
+                    <AuthorizeView Roles="SysAdmin" Context="sysAdminImpContext">
+                        <MudSelect T="long?" Value="_impersonatedCompanyId"
+                                   ValueChanged="OnImpersonatedCompanyChanged"
+                                   Label="" Placeholder="Zvolit společnost..."
+                                   Variant="Variant.Outlined" Dense="true" Margin="Margin.Dense"
+                                   Class="mr-4" Style="min-width: 220px; color: white;"
+                                   Clearable="true"
+                                   ToStringFunc="@(id => _availableCompanies.FirstOrDefault(c => c.Id == id)?.CompanyName ?? L["Layout_NoCompany"].Value)">
+                            @foreach (var company in _availableCompanies)
+                            {
+                                <MudSelectItem Value="@((long?)company.Id)">@company.CompanyName</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </AuthorizeView>
+
+                    <MudText Typo="Typo.body2" Class="mr-4">
+                        <MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Small" Class="mr-1" />
+                        @context.User.Identity?.Name
+                        <MudChip T="string" Size="Size.Small" Color="Color.Primary" Class="ml-2">
+                            @context.User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value
+                        </MudChip>
+                    </MudText>
+                    <MudIconButton Icon="@Icons.Material.Filled.Logout"
+                                   Color="Color.Inherit"
+                                   OnClick="@HandleLogoutAsync"
+                                   title="@L["Btn_Logout"]" />
+                </Authorized>
+                <NotAuthorized>
+                    <MudButton Href="/login"
+                               Variant="Variant.Text"
+                               StartIcon="@Icons.Material.Filled.Login"
+                               Color="Color.Inherit">
+                        @L["Btn_Login"]
+                    </MudButton>
+                </NotAuthorized>
+            </AuthorizeView>
+
+            <LanguageSwitcher />
+            <MudIconButton Icon="@Icons.Material.Filled.Brightness4" Color="Color.Inherit" OnClick="@ToggleDarkMode" />
+        </MudAppBar>
+    <AuthorizeView>
+        <Authorized>
+            <MudDrawer @bind-Open="_drawerOpen" ClipMode="DrawerClipMode.Always" Elevation="2">
+                <MudDrawerHeader>
+                    <MudText Typo="Typo.h6">@L["Nav_Menu"]</MudText>
+                </MudDrawerHeader>
+                <NavMenu />
+            </MudDrawer>
+        </Authorized>
+    </AuthorizeView>
+        <MudMainContent>
+            <MudContainer MaxWidth="MaxWidth.ExtraExtraLarge" Class="my-4">
+                @Body
+            </MudContainer>
+        </MudMainContent>
+    </MudLayout>
+</CascadingAuthenticationState>
+
+@code {
+    private bool _drawerOpen = true;
+    private bool _isDarkMode = true;
+
+    // Impersonation state — SysAdmin can select a company to "act as"
+    private long? _impersonatedCompanyId;
+    private List<ClientDto> _availableCompanies = new();
+
+    void DrawerToggle()
+    {
+        _drawerOpen = !_drawerOpen;
+    }
+
+    void ToggleDarkMode()
+    {
+        _isDarkMode = !_isDarkMode;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                var customAuth = (CustomAuthenticationStateProvider)AuthStateProvider;
+                var session = await customAuth.GetUserSessionAsync();
+
+                // Only load companies for SysAdmin
+                if (session != null && session.Role == 2)
+                {
+                    _availableCompanies = await CompanyService.GetAllAsync();
+                    _impersonatedCompanyId = await customAuth.GetImpersonatedCompanyIdAsync();
+                    StateHasChanged();
+                }
+            }
+            catch
+            {
+                // Ignore — auth may not be ready yet
+            }
+        }
+    }
+
+    /// <summary>
+    /// Called when SysAdmin selects a company to impersonate.
+    /// Stores the selection in session and refreshes the page to update navigation.
+    /// </summary>
+    private async Task OnImpersonatedCompanyChanged(long? companyId)
+    {
+        _impersonatedCompanyId = companyId;
+        var companyName = _availableCompanies.FirstOrDefault(c => c.Id == companyId)?.CompanyName;
+
+        var customAuth = (CustomAuthenticationStateProvider)AuthStateProvider;
+        await customAuth.SetImpersonatedCompanyAsync(companyId, companyName);
+
+        // Force reload to update nav menu and all data
+        Navigation.NavigateTo(Navigation.Uri, forceLoad: true);
+    }
+
+    private async Task HandleLogoutAsync()
+    {
+        var customAuthStateProvider = (CustomAuthenticationStateProvider)AuthStateProvider;
+        await customAuthStateProvider.MarkUserAsLoggedOutAsync();
+        Navigation.NavigateTo("/login", forceLoad: true);
+    }
+}

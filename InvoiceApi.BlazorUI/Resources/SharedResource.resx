@@ -1,0 +1,868 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" msdata:Ordinal="0" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0</value></resheader>
+
+  <!-- Navigation -->
+  <data name="Nav_Dashboard" xml:space="preserve"><value>Dashboard</value></data>
+  <data name="Nav_Invoicing" xml:space="preserve"><value>Fakturace</value></data>
+  <data name="Nav_Invoices" xml:space="preserve"><value>Faktury</value></data>
+  <data name="Nav_InvoiceTemplates" xml:space="preserve"><value>Šablony faktur</value></data>
+  <data name="Nav_Clients" xml:space="preserve"><value>Klienti</value></data>
+  <data name="Nav_Settings" xml:space="preserve"><value>Nastavení</value></data>
+  <data name="Nav_VatRates" xml:space="preserve"><value>Sazby DPH</value></data>
+  <data name="Nav_NumberSequences" xml:space="preserve"><value>Číselné řady</value></data>
+  <data name="Nav_Users" xml:space="preserve"><value>Uživatelé</value></data>
+  <data name="Nav_Companies" xml:space="preserve"><value>Společnosti</value></data>
+  <data name="Nav_Currencies" xml:space="preserve"><value>Měny</value></data>
+  <data name="Nav_Menu" xml:space="preserve"><value>Menu</value></data>
+
+  <!-- Common buttons -->
+  <data name="Btn_Create" xml:space="preserve"><value>Vytvořit</value></data>
+  <data name="Btn_Edit" xml:space="preserve"><value>Upravit</value></data>
+  <data name="Btn_Delete" xml:space="preserve"><value>Smazat</value></data>
+  <data name="Btn_Save" xml:space="preserve"><value>Uložit</value></data>
+  <data name="Btn_Cancel" xml:space="preserve"><value>Zrušit</value></data>
+  <data name="Btn_Close" xml:space="preserve"><value>Zavřít</value></data>
+  <data name="Btn_Search" xml:space="preserve"><value>Hledat</value></data>
+  <data name="Btn_Confirm" xml:space="preserve"><value>Potvrdit</value></data>
+  <data name="Btn_Login" xml:space="preserve"><value>Přihlásit se</value></data>
+  <data name="Btn_Logout" xml:space="preserve"><value>Odhlásit se</value></data>
+  <data name="Btn_ViewAll" xml:space="preserve"><value>Zobrazit vše</value></data>
+  <data name="Btn_Add" xml:space="preserve"><value>Přidat</value></data>
+  <data name="Btn_AddItem" xml:space="preserve"><value>Přidat položku</value></data>
+  <data name="Btn_View" xml:space="preserve"><value>Zobrazit</value></data>
+  <data name="Btn_Back" xml:space="preserve"><value>Zpět</value></data>
+  <data name="Btn_ExportPdf" xml:space="preserve"><value>Export PDF</value></data>
+  <data name="Btn_SendEmail" xml:space="preserve"><value>Odeslat e-mailem</value></data>
+  <data name="Btn_Preview" xml:space="preserve"><value>Náhled</value></data>
+  <data name="Btn_CreateFromTemplate" xml:space="preserve"><value>Vytvořit ze šablony</value></data>
+  <data name="Btn_SetDefault" xml:space="preserve"><value>Nastavit jako výchozí</value></data>
+  <data name="Btn_FetchFromAres" xml:space="preserve"><value>Načíst z ARES</value></data>
+  <data name="Btn_SetPassword" xml:space="preserve"><value>Nastavit heslo</value></data>
+  <data name="Btn_InviteUser" xml:space="preserve"><value>Pozvat uživatele</value></data>
+
+  <!-- Common labels -->
+  <data name="Label_Name" xml:space="preserve"><value>Název</value></data>
+  <data name="Label_Description" xml:space="preserve"><value>Popis</value></data>
+  <data name="Label_Status" xml:space="preserve"><value>Stav</value></data>
+  <data name="Label_Active" xml:space="preserve"><value>Aktivní</value></data>
+  <data name="Label_Inactive" xml:space="preserve"><value>Neaktivní</value></data>
+  <data name="Label_Actions" xml:space="preserve"><value>Akce</value></data>
+  <data name="Label_Yes" xml:space="preserve"><value>Ano</value></data>
+  <data name="Label_No" xml:space="preserve"><value>Ne</value></data>
+  <data name="Label_Loading" xml:space="preserve"><value>Načítání...</value></data>
+  <data name="Label_NoRecords" xml:space="preserve"><value>Žádné záznamy</value></data>
+  <data name="Label_Total" xml:space="preserve"><value>Celkem</value></data>
+  <data name="Label_Date" xml:space="preserve"><value>Datum</value></data>
+  <data name="Label_Email" xml:space="preserve"><value>E-mail</value></data>
+  <data name="Label_Password" xml:space="preserve"><value>Heslo</value></data>
+  <data name="Label_ConfirmPassword" xml:space="preserve"><value>Potvrzení hesla</value></data>
+
+  <!-- Login page -->
+  <data name="Login_Title" xml:space="preserve"><value>Přihlášení</value></data>
+  <data name="Login_Subtitle" xml:space="preserve"><value>Přihlaste se do systému</value></data>
+  <data name="Login_Error" xml:space="preserve"><value>Neplatný e-mail nebo heslo</value></data>
+  <data name="Login_EmailRequired" xml:space="preserve"><value>E-mail je povinný</value></data>
+  <data name="Login_PasswordRequired" xml:space="preserve"><value>Heslo je povinné</value></data>
+
+  <!-- Set password page -->
+  <data name="SetPassword_Title" xml:space="preserve"><value>Nastavení hesla</value></data>
+  <data name="SetPassword_NewPassword" xml:space="preserve"><value>Nové heslo</value></data>
+  <data name="SetPassword_ConfirmPassword" xml:space="preserve"><value>Potvrzení hesla</value></data>
+  <data name="SetPassword_PasswordMismatch" xml:space="preserve"><value>Hesla se neshodují</value></data>
+  <data name="SetPassword_Success" xml:space="preserve"><value>Heslo bylo úspěšně nastaveno</value></data>
+  <data name="SetPassword_InvalidToken" xml:space="preserve"><value>Neplatný nebo expirovaný odkaz</value></data>
+
+  <!-- Dashboard -->
+  <data name="Dashboard_Title" xml:space="preserve"><value>Dashboard</value></data>
+  <data name="Dashboard_TotalInvoices" xml:space="preserve"><value>Celkem faktur</value></data>
+  <data name="Dashboard_TotalRevenue" xml:space="preserve"><value>Celkový příjem</value></data>
+  <data name="Dashboard_PendingInvoices" xml:space="preserve"><value>Nezaplacené faktury</value></data>
+  <data name="Dashboard_OverdueInvoices" xml:space="preserve"><value>Po splatnosti</value></data>
+  <data name="Dashboard_RecentInvoices" xml:space="preserve"><value>Nedávné faktury</value></data>
+  <data name="Dashboard_SelectCompany" xml:space="preserve"><value>Vyberte společnost</value></data>
+  <data name="Dashboard_SelectCompanyHint" xml:space="preserve"><value>Pro zobrazení dat vyberte společnost v horním menu.</value></data>
+  <data name="Dashboard_DaysOverdue" xml:space="preserve"><value>dní po splatnosti</value></data>
+
+  <!-- Invoices -->
+  <data name="Invoice_Title" xml:space="preserve"><value>Faktury</value></data>
+  <data name="Invoice_New" xml:space="preserve"><value>Nová faktura</value></data>
+  <data name="Invoice_Edit" xml:space="preserve"><value>Upravit fakturu</value></data>
+  <data name="Invoice_Detail" xml:space="preserve"><value>Detail faktury</value></data>
+  <data name="Invoice_Number" xml:space="preserve"><value>Číslo</value></data>
+  <data name="Invoice_Client" xml:space="preserve"><value>Klient</value></data>
+  <data name="Invoice_IssueDate" xml:space="preserve"><value>Datum vystavení</value></data>
+  <data name="Invoice_DueDate" xml:space="preserve"><value>Datum splatnosti</value></data>
+  <data name="Invoice_TotalWithVat" xml:space="preserve"><value>Celkem s DPH</value></data>
+  <data name="Invoice_DocumentType" xml:space="preserve"><value>Typ dokumentu</value></data>
+  <data name="Invoice_Issuer" xml:space="preserve"><value>Vystavitel</value></data>
+  <data name="Invoice_Currency" xml:space="preserve"><value>Měna</value></data>
+  <data name="Invoice_VariableSymbol" xml:space="preserve"><value>Variabilní symbol</value></data>
+  <data name="Invoice_PaymentMethod" xml:space="preserve"><value>Způsob platby</value></data>
+  <data name="Invoice_BankAccount" xml:space="preserve"><value>Bankovní účet</value></data>
+  <data name="Invoice_Notes" xml:space="preserve"><value>Poznámky</value></data>
+  <data name="Invoice_Items" xml:space="preserve"><value>Položky faktury</value></data>
+  <data name="Invoice_TotalBeforeVat" xml:space="preserve"><value>Celkem bez DPH</value></data>
+  <data name="Invoice_TotalVat" xml:space="preserve"><value>DPH celkem</value></data>
+  <data name="Invoice_StatusDraft" xml:space="preserve"><value>Koncept</value></data>
+  <data name="Invoice_StatusIssued" xml:space="preserve"><value>Vystavena</value></data>
+  <data name="Invoice_StatusSent" xml:space="preserve"><value>Odesláno</value></data>
+  <data name="Invoice_StatusPaid" xml:space="preserve"><value>Zaplaceno</value></data>
+  <data name="Invoice_StatusOverdue" xml:space="preserve"><value>Po splatnosti</value></data>
+  <data name="Invoice_StatusCancelled" xml:space="preserve"><value>Stornováno</value></data>
+  <data name="Invoice_ConfirmDelete" xml:space="preserve"><value>Opravdu chcete smazat tuto fakturu?</value></data>
+  <data name="Invoice_EmailRecipient" xml:space="preserve"><value>E-mail příjemce</value></data>
+  <data name="Invoice_EmailSent" xml:space="preserve"><value>Faktura byla odeslána e-mailem</value></data>
+  <data name="Invoice_PdfExported" xml:space="preserve"><value>PDF bylo exportováno</value></data>
+  <data name="Invoice_PaymentInfo" xml:space="preserve"><value>Platební údaje</value></data>
+  <data name="Invoice_Summary" xml:space="preserve"><value>Souhrn</value></data>
+  <data name="Invoice_PaidOn" xml:space="preserve"><value>Zaplaceno dne</value></data>
+  <data name="Invoice_Draft" xml:space="preserve"><value>Koncept</value></data>
+
+  <!-- Invoice items -->
+  <data name="InvoiceItem_Description" xml:space="preserve"><value>Popis</value></data>
+  <data name="InvoiceItem_Quantity" xml:space="preserve"><value>Množství</value></data>
+  <data name="InvoiceItem_Unit" xml:space="preserve"><value>Jednotka</value></data>
+  <data name="InvoiceItem_UnitPrice" xml:space="preserve"><value>Cena za jednotku</value></data>
+  <data name="InvoiceItem_VatRate" xml:space="preserve"><value>Sazba DPH</value></data>
+  <data name="InvoiceItem_TotalBeforeVat" xml:space="preserve"><value>Celkem bez DPH</value></data>
+  <data name="InvoiceItem_VatAmount" xml:space="preserve"><value>DPH</value></data>
+  <data name="InvoiceItem_TotalWithVat" xml:space="preserve"><value>Celkem s DPH</value></data>
+  <data name="InvoiceItem_ProductCode" xml:space="preserve"><value>Kód produktu</value></data>
+  <data name="InvoiceItem_EditTitle" xml:space="preserve"><value>Upravit položku</value></data>
+  <data name="InvoiceItem_AddTitle" xml:space="preserve"><value>Přidat položku</value></data>
+
+  <!-- Clients -->
+  <data name="Client_Title" xml:space="preserve"><value>Klienti</value></data>
+  <data name="Client_New" xml:space="preserve"><value>Nový klient</value></data>
+  <data name="Client_Edit" xml:space="preserve"><value>Upravit klienta</value></data>
+  <data name="Client_Detail" xml:space="preserve"><value>Detail klienta</value></data>
+  <data name="Client_CompanyName" xml:space="preserve"><value>Název společnosti</value></data>
+  <data name="Client_RegistrationNumber" xml:space="preserve"><value>IČO</value></data>
+  <data name="Client_TaxNumber" xml:space="preserve"><value>DIČ</value></data>
+  <data name="Client_IsVatPayer" xml:space="preserve"><value>Plátce DPH</value></data>
+  <data name="Client_Addresses" xml:space="preserve"><value>Adresy</value></data>
+  <data name="Client_Contacts" xml:space="preserve"><value>Kontakty</value></data>
+  <data name="Client_BillingSettings" xml:space="preserve"><value>Fakturační nastavení</value></data>
+  <data name="Client_InvoiceHistory" xml:space="preserve"><value>Historie faktur</value></data>
+  <data name="Client_ConfirmDelete" xml:space="preserve"><value>Opravdu chcete smazat tohoto klienta?</value></data>
+  <data name="Client_Street" xml:space="preserve"><value>Ulice</value></data>
+  <data name="Client_City" xml:space="preserve"><value>Město</value></data>
+  <data name="Client_PostalCode" xml:space="preserve"><value>PSČ</value></data>
+  <data name="Client_Country" xml:space="preserve"><value>Země</value></data>
+  <data name="Client_TradingName" xml:space="preserve"><value>Obchodní jméno</value></data>
+
+  <!-- Billing Settings -->
+  <data name="Billing_DueDays" xml:space="preserve"><value>Splatnost (dní)</value></data>
+  <data name="Billing_DueDateCalcType" xml:space="preserve"><value>Typ výpočtu splatnosti</value></data>
+  <data name="Billing_InvoicePrefix" xml:space="preserve"><value>Prefix čísla faktury</value></data>
+  <data name="Billing_InvoiceSuffix" xml:space="preserve"><value>Suffix čísla faktury</value></data>
+  <data name="Billing_CreditNotePrefix" xml:space="preserve"><value>Prefix čísla dobropisu</value></data>
+  <data name="Billing_CreditNoteSuffix" xml:space="preserve"><value>Suffix čísla dobropisu</value></data>
+  <data name="Billing_DefaultPaymentMethod" xml:space="preserve"><value>Výchozí způsob platby</value></data>
+  <data name="Billing_BankAccount" xml:space="preserve"><value>Číslo bankovního účtu</value></data>
+  <data name="Billing_Notes" xml:space="preserve"><value>Poznámky k fakturaci</value></data>
+  <data name="Billing_DaysFromIssue" xml:space="preserve"><value>Dní od vystavení</value></data>
+  <data name="Billing_DaysFromEndOfMonth" xml:space="preserve"><value>Dní od konce měsíce</value></data>
+  <data name="Billing_EndOfNextMonth" xml:space="preserve"><value>Konec příštího měsíce</value></data>
+  <data name="Billing_EndOfCurrentMonth" xml:space="preserve"><value>Konec aktuálního měsíce</value></data>
+
+  <!-- VAT rates -->
+  <data name="VatRate_Title" xml:space="preserve"><value>Sazby DPH</value></data>
+  <data name="VatRate_New" xml:space="preserve"><value>Nová sazba DPH</value></data>
+  <data name="VatRate_Edit" xml:space="preserve"><value>Upravit sazbu DPH</value></data>
+  <data name="VatRate_Name" xml:space="preserve"><value>Název</value></data>
+  <data name="VatRate_Rate" xml:space="preserve"><value>Sazba (%)</value></data>
+  <data name="VatRate_ValidFrom" xml:space="preserve"><value>Platnost od</value></data>
+  <data name="VatRate_ValidTo" xml:space="preserve"><value>Platnost do</value></data>
+  <data name="VatRate_IsReduced" xml:space="preserve"><value>Snížená sazba</value></data>
+  <data name="VatRate_IsDefault" xml:space="preserve"><value>Výchozí</value></data>
+  <data name="VatRate_ConfirmDelete" xml:space="preserve"><value>Opravdu chcete smazat tuto sazbu DPH?</value></data>
+
+  <!-- Currencies -->
+  <data name="Currency_Title" xml:space="preserve"><value>Měny</value></data>
+  <data name="Currency_New" xml:space="preserve"><value>Nová měna</value></data>
+  <data name="Currency_Edit" xml:space="preserve"><value>Upravit měnu</value></data>
+  <data name="Currency_Code" xml:space="preserve"><value>Kód</value></data>
+  <data name="Currency_Symbol" xml:space="preserve"><value>Symbol</value></data>
+  <data name="Currency_DecimalPlaces" xml:space="preserve"><value>Desetinná místa</value></data>
+  <data name="Currency_SortOrder" xml:space="preserve"><value>Pořadí</value></data>
+  <data name="Currency_DisplayFormat" xml:space="preserve"><value>Formát zobrazení</value></data>
+  <data name="Currency_ConfirmDelete" xml:space="preserve"><value>Opravdu chcete smazat tuto měnu?</value></data>
+
+  <!-- Users -->
+  <data name="User_Title" xml:space="preserve"><value>Uživatelé</value></data>
+  <data name="User_New" xml:space="preserve"><value>Nový uživatel</value></data>
+  <data name="User_Edit" xml:space="preserve"><value>Upravit uživatele</value></data>
+  <data name="User_FirstName" xml:space="preserve"><value>Jméno</value></data>
+  <data name="User_LastName" xml:space="preserve"><value>Příjmení</value></data>
+  <data name="User_Role" xml:space="preserve"><value>Role</value></data>
+  <data name="User_Company" xml:space="preserve"><value>Společnost</value></data>
+  <data name="User_LastLogin" xml:space="preserve"><value>Poslední přihlášení</value></data>
+  <data name="User_InvitationPending" xml:space="preserve"><value>Čeká na pozvánku</value></data>
+  <data name="User_ConfirmDelete" xml:space="preserve"><value>Opravdu chcete smazat tohoto uživatele?</value></data>
+
+  <!-- Companies -->
+  <data name="Company_Title" xml:space="preserve"><value>Společnosti</value></data>
+  <data name="Company_New" xml:space="preserve"><value>Nová společnost</value></data>
+  <data name="Company_Edit" xml:space="preserve"><value>Upravit společnost</value></data>
+
+  <!-- Invoice templates -->
+  <data name="Template_Title" xml:space="preserve"><value>Šablony faktur</value></data>
+  <data name="Template_New" xml:space="preserve"><value>Nová šablona</value></data>
+  <data name="Template_Edit" xml:space="preserve"><value>Upravit šablonu</value></data>
+  <data name="Template_Category" xml:space="preserve"><value>Kategorie</value></data>
+  <data name="Template_DueDateOffset" xml:space="preserve"><value>Splatnost (dní)</value></data>
+  <data name="Template_UsageCount" xml:space="preserve"><value>Počet použití</value></data>
+  <data name="Template_LastUsed" xml:space="preserve"><value>Naposledy použito</value></data>
+  <data name="Template_HtmlTemplate" xml:space="preserve"><value>HTML šablona</value></data>
+  <data name="Template_ConfirmDelete" xml:space="preserve"><value>Opravdu chcete smazat tuto šablonu?</value></data>
+
+  <!-- Layout -->
+  <data name="Layout_AppTitle" xml:space="preserve"><value>Invoice API</value></data>
+  <data name="Layout_SelectCompany" xml:space="preserve"><value>Zvolit společnost...</value></data>
+  <data name="Layout_NoCompany" xml:space="preserve"><value>Bez společnosti</value></data>
+
+  <!-- Messages -->
+  <data name="Msg_SaveSuccess" xml:space="preserve"><value>Uloženo úspěšně</value></data>
+  <data name="Msg_DeleteSuccess" xml:space="preserve"><value>Smazáno úspěšně</value></data>
+  <data name="Msg_Error" xml:space="preserve"><value>Došlo k chybě</value></data>
+  <data name="Msg_ConfirmDeleteTitle" xml:space="preserve"><value>Potvrdit smazání</value></data>
+  <data name="Msg_ConfirmDeleteText" xml:space="preserve"><value>Opravdu chcete tuto položku smazat? Tuto akci nelze vrátit.</value></data>
+  <data name="Msg_NoRecords" xml:space="preserve"><value>Nebyly nalezeny žádné záznamy</value></data>
+  <data name="Msg_NotFound" xml:space="preserve"><value>Nenalezeno</value></data>
+  <data name="Msg_Unauthorized" xml:space="preserve"><value>Nemáte oprávnění</value></data>
+  <data name="Ares_DataLoaded" xml:space="preserve"><value>Data z ARES byla úspěšně načtena</value></data>
+  <data name="Ares_NotFound" xml:space="preserve"><value>Data nebyla v ARES nalezena</value></data>
+
+  <!-- Table headers -->
+  <data name="Table_Number" xml:space="preserve"><value>Číslo</value></data>
+  <data name="Table_IssueDate" xml:space="preserve"><value>Datum vystavení</value></data>
+  <data name="Table_DueDate" xml:space="preserve"><value>Datum splatnosti</value></data>
+  <data name="Table_DaysOverdue" xml:space="preserve"><value>Dní po splatnosti</value></data>
+  <data name="Table_RowsPerPage" xml:space="preserve"><value>Řádků na stránku:</value></data>
+
+  <!-- Additional UI strings -->
+  <data name="Login_LoggingIn" xml:space="preserve"><value>Přihlašuji...</value></data>
+  <data name="Login_DefaultCredentials" xml:space="preserve"><value>Výchozí přihlášení: admin@zcloud.cz / Invoice123</value></data>
+  <data name="Login_ErrorGeneric" xml:space="preserve"><value>Chyba při přihlašování: {0}</value></data>
+  <data name="SetPassword_Subtitle" xml:space="preserve"><value>Zadejte nové heslo pro váš účet.</value></data>
+  <data name="SetPassword_SettingPassword" xml:space="preserve"><value>Nastavuji heslo...</value></data>
+  <data name="SetPassword_GoToLogin" xml:space="preserve"><value>Přejít na přihlášení</value></data>
+  <data name="SetPassword_SuccessMessage" xml:space="preserve"><value>Heslo bylo úspěšně nastaveno! Nyní se můžete přihlásit.</value></data>
+  <data name="SetPassword_MinLength" xml:space="preserve"><value>Heslo musí mít alespoň 6 znaků.</value></data>
+  <data name="SetPassword_TokenMissing" xml:space="preserve"><value>Chybí token pozvánky. Zkontrolujte odkaz v emailu.</value></data>
+  <data name="SetPassword_TokenExpired" xml:space="preserve"><value>Pozvánka je neplatná nebo vypršela. Požádejte administrátora o novou pozvánku.</value></data>
+  <data name="SetPassword_ValidatingToken" xml:space="preserve"><value>Ověřuji pozvánku...</value></data>
+  <data name="SetPassword_SetFailed" xml:space="preserve"><value>Nepodařilo se nastavit heslo. Token mohl vypršet.</value></data>
+  <data name="Dashboard_Welcome" xml:space="preserve"><value>Vítejte v systému správy faktur</value></data>
+  <data name="Dashboard_InvoicesThisMonth" xml:space="preserve"><value>Faktur tento měsíc</value></data>
+  <data name="Dashboard_ThisMonth" xml:space="preserve"><value>Tento měsíc</value></data>
+  <data name="Dashboard_Clients" xml:space="preserve"><value>Klienti</value></data>
+  <data name="Dashboard_UnpaidAmount" xml:space="preserve"><value>Nezaplacená částka</value></data>
+  <data name="Dashboard_Pending" xml:space="preserve"><value>Čekající</value></data>
+  <data name="Dashboard_VatRates" xml:space="preserve"><value>Sazby DPH</value></data>
+  <data name="Dashboard_OverdueAlert" xml:space="preserve"><value>faktur po splatnosti vyžaduje pozornost!</value></data>
+  <data name="Dashboard_NoInvoicesYet" xml:space="preserve"><value>Zatím žádné faktury.</value></data>
+  <data name="Dashboard_CreateFirst" xml:space="preserve"><value>Vytvořte svou první fakturu</value></data>
+  <data name="Dashboard_QuickStart" xml:space="preserve"><value>Rychlý start</value></data>
+  <data name="Dashboard_SetupVat" xml:space="preserve"><value>Nastavte sazby DPH</value></data>
+  <data name="Dashboard_SetupVatDesc" xml:space="preserve"><value>Přejděte do</value></data>
+  <data name="Dashboard_ManageClients" xml:space="preserve"><value>Spravujte klienty</value></data>
+  <data name="Dashboard_ManageClientsDesc" xml:space="preserve"><value>Přidejte své klienty v</value></data>
+  <data name="Dashboard_CreateInvoices" xml:space="preserve"><value>Vytvořte faktury</value></data>
+  <data name="Dashboard_CreateInvoicesDesc" xml:space="preserve"><value>Začněte vystavovat faktury v</value></data>
+  <data name="Dashboard_Days" xml:space="preserve"><value>dní</value></data>
+  <data name="VatRate_Subtitle" xml:space="preserve"><value>Správa sazeb daně z přidané hodnoty</value></data>
+  <data name="VatRate_NoRecords" xml:space="preserve"><value>Nebyly nalezeny žádné sazby DPH.</value></data>
+  <data name="VatRate_Standard" xml:space="preserve"><value>Standardní</value></data>
+  <data name="VatRate_Reduced" xml:space="preserve"><value>Snížená</value></data>
+  <data name="VatRate_Type" xml:space="preserve"><value>Typ</value></data>
+  <data name="VatRate_SetAsDefault" xml:space="preserve"><value>Nastavit jako výchozí</value></data>
+  <data name="VatRate_ValidToOptional" xml:space="preserve"><value>Platnost do (volitelné)</value></data>
+  <data name="Client_Subtitle" xml:space="preserve"><value>Správa klientů a zákazníků</value></data>
+  <data name="Client_NoRecords" xml:space="preserve"><value>Nebyli nalezeni žádní klienti.</value></data>
+  <data name="Client_Phone" xml:space="preserve"><value>Telefon</value></data>
+  <data name="Client_Address" xml:space="preserve"><value>Adresa</value></data>
+  <data name="Client_Contact" xml:space="preserve"><value>Kontakt</value></data>
+  <data name="Client_CompanyInfo" xml:space="preserve"><value>Informace o společnosti</value></data>
+  <data name="Client_Company" xml:space="preserve"><value>Společnost:</value></data>
+  <data name="Client_TradingNameLabel" xml:space="preserve"><value>Obchodní jméno:</value></data>
+  <data name="Client_RegNoLabel" xml:space="preserve"><value>IČO:</value></data>
+  <data name="Client_TaxNoLabel" xml:space="preserve"><value>DIČ:</value></data>
+  <data name="Client_VatPayerLabel" xml:space="preserve"><value>Plátce DPH:</value></data>
+  <data name="Client_NoAddress" xml:space="preserve"><value>Žádná adresa</value></data>
+  <data name="Client_NoContacts" xml:space="preserve"><value>Žádné kontakty</value></data>
+  <data name="Client_SearchInvoices" xml:space="preserve"><value>Hledat faktury</value></data>
+  <data name="Client_NoInvoices" xml:space="preserve"><value>Pro tohoto klienta nebyly nalezeny žádné faktury</value></data>
+  <data name="Client_FetchFromAres" xml:space="preserve"><value>Načítat z ARES</value></data>
+  <data name="Company_Subtitle" xml:space="preserve"><value>Správa společností vystavujících faktury</value></data>
+  <data name="Company_NoRecords" xml:space="preserve"><value>Nebyly nalezeny žádné společnosti.</value></data>
+  <data name="Company_Detail" xml:space="preserve"><value>Detail společnosti</value></data>
+  <data name="Company_BankDetails" xml:space="preserve"><value>Bankovní údaje</value></data>
+  <data name="Company_BankAccount" xml:space="preserve"><value>Číslo účtu</value></data>
+  <data name="Company_CreateUser" xml:space="preserve"><value>Vytvořit uživatele</value></data>
+  <data name="Company_CreateUserAndInvite" xml:space="preserve"><value>Vytvořit uživatele a odeslat pozvánku</value></data>
+  <data name="Company_AutoProvisionSuccess" xml:space="preserve"><value>Tenant byl automaticky vytvořen a nastavení připravena.</value></data>
+  <data name="Company_AutoProvisionFailed" xml:space="preserve"><value>Automatické vytvoření tenantu se nezdařilo. Proveďte provisioning ručně.</value></data>
+  <data name="Company_UserEmail" xml:space="preserve"><value>Email uživatele</value></data>
+  <data name="User_Subtitle" xml:space="preserve"><value>Správa uživatelských účtů</value></data>
+  <data name="User_NoRecords" xml:space="preserve"><value>Nebyli nalezeni žádní uživatelé.</value></data>
+  <data name="User_FullName" xml:space="preserve"><value>Jméno</value></data>
+  <data name="User_SendInvitation" xml:space="preserve"><value>Odeslat pozvánku emailem (uživatel si nastaví heslo sám)</value></data>
+  <data name="User_ResetPassword" xml:space="preserve"><value>Resetovat heslo</value></data>
+  <data name="User_ResetPasswordInfo" xml:space="preserve"><value>Jako administrátor můžete nastavit nové heslo bez znalosti stávajícího.</value></data>
+  <data name="User_NewPassword" xml:space="preserve"><value>Nové heslo</value></data>
+  <data name="User_RoleUser" xml:space="preserve"><value>Uživatel</value></data>
+  <data name="User_RoleAdmin" xml:space="preserve"><value>Administrátor</value></data>
+  <data name="User_RoleSysAdmin" xml:space="preserve"><value>Systémový admin</value></data>
+  <data name="User_ChangePassword" xml:space="preserve"><value>Změnit heslo</value></data>
+  <data name="User_Deactivate" xml:space="preserve"><value>Deaktivovat</value></data>
+  <data name="User_Never" xml:space="preserve"><value>Nikdy</value></data>
+  <data name="Currency_Subtitle" xml:space="preserve"><value>Správa měn</value></data>
+  <data name="Currency_NoRecords" xml:space="preserve"><value>Žádné měny nenalezeny</value></data>
+  <data name="Currency_FilterAll" xml:space="preserve"><value>Vše</value></data>
+  <data name="Currency_CodeValidationRequired" xml:space="preserve"><value>Kód měny je povinný</value></data>
+  <data name="Currency_CodeValidationLength" xml:space="preserve"><value>Kód měny musí mít přesně 3 znaky</value></data>
+  <data name="Currency_CodeValidationLetters" xml:space="preserve"><value>Kód měny musí obsahovat pouze písmena</value></data>
+  <data name="Currency_CodeValidationUppercase" xml:space="preserve"><value>Kód měny musí být velkými písmeny</value></data>
+  <data name="Currency_CodeHelper" xml:space="preserve"><value>3 velká písmena (např. CZK, EUR, USD)</value></data>
+  <data name="Currency_DisplayFormatHelper" xml:space="preserve"><value>Např. '{0:N2} Kč' nebo '€{0:N2}'</value></data>
+  <data name="Currency_NameLabel" xml:space="preserve"><value>Název měny</value></data>
+  <data name="Currency_CodeLabel" xml:space="preserve"><value>Kód měny (ISO 4217)</value></data>
+  <data name="Template_Subtitle" xml:space="preserve"><value>Šablony faktur</value></data>
+  <data name="Template_NoRecords" xml:space="preserve"><value>Žádné šablony nenalezeny</value></data>
+  <data name="Template_DocumentType" xml:space="preserve"><value>Typ dokumentu</value></data>
+  <data name="Template_DocumentTypeInvoice" xml:space="preserve"><value>Faktura</value></data>
+  <data name="Template_DocumentTypeCreditNote" xml:space="preserve"><value>Dobropis</value></data>
+  <data name="Template_Currency" xml:space="preserve"><value>Měna</value></data>
+  <data name="Template_Never" xml:space="preserve"><value>Nikdy</value></data>
+  <data name="Template_CreateInvoice" xml:space="preserve"><value>Vytvořit fakturu ze šablony</value></data>
+  <data name="Template_TemplateName" xml:space="preserve"><value>Název šablony</value></data>
+  <data name="Template_Issuer" xml:space="preserve"><value>Vystavitel</value></data>
+  <data name="Template_DueDateDays" xml:space="preserve"><value>Splatnost (dny)</value></data>
+  <data name="Template_InfoSection" xml:space="preserve"><value>Informace o šabloně</value></data>
+  <data name="Template_DocumentSection" xml:space="preserve"><value>Nastavení dokumentu</value></data>
+  <data name="Template_ConstantSymbol" xml:space="preserve"><value>Konstantní symbol</value></data>
+  <data name="Template_SpecificSymbol" xml:space="preserve"><value>Specifický symbol</value></data>
+  <data name="Template_Notes" xml:space="preserve"><value>Poznámka</value></data>
+  <data name="Template_AutoComplete" xml:space="preserve"><value>Automaticky dokončit fakturu</value></data>
+  <data name="Template_MustHaveItems" xml:space="preserve"><value>Šablona musí mít alespoň jednu položku</value></data>
+  <data name="Invoice_Subtitle" xml:space="preserve"><value>Správa faktur a dobropisů</value></data>
+  <data name="Invoice_SearchPlaceholder" xml:space="preserve"><value>Číslo dokumentu nebo klient...</value></data>
+  <data name="Invoice_FilterAll" xml:space="preserve"><value>Vše</value></data>
+  <data name="Invoice_FilterDraft" xml:space="preserve"><value>Koncept</value></data>
+  <data name="Invoice_FilterIssued" xml:space="preserve"><value>Vystavena</value></data>
+  <data name="Invoice_FilterPaid" xml:space="preserve"><value>Zaplaceno</value></data>
+  <data name="Invoice_FilterCredited" xml:space="preserve"><value>Dobropis</value></data>
+  <data name="Invoice_FromDate" xml:space="preserve"><value>Od data</value></data>
+  <data name="Invoice_ToDate" xml:space="preserve"><value>Do data</value></data>
+  <data name="Invoice_NoRecords" xml:space="preserve"><value>Žádné faktury nenalezeny</value></data>
+  <data name="Invoice_Sending" xml:space="preserve"><value>Odesílám...</value></data>
+  <data name="Invoice_Send" xml:space="preserve"><value>Odeslat</value></data>
+  <data name="Invoice_SendingInvoice" xml:space="preserve"><value>Odesílání faktury:</value></data>
+  <data name="Invoice_ToClient" xml:space="preserve"><value>klientovi</value></data>
+  <data name="Invoice_RecipientHelper" xml:space="preserve"><value>Zadejte emailovou adresu příjemce</value></data>
+  <data name="Invoice_CreateFromTemplate" xml:space="preserve"><value>Vytvořit šablonu z faktury</value></data>
+  <data name="Invoice_CreateTemplateFrom" xml:space="preserve"><value>Vytvořit šablonu z faktury:</value></data>
+  <data name="Invoice_TemplateName" xml:space="preserve"><value>Název šablony</value></data>
+  <data name="Invoice_TemplateNameHelper" xml:space="preserve"><value>Název šablony (např. 'Měsíční hosting', 'Standardní konzultace')</value></data>
+  <data name="Invoice_TemplateDescHelper" xml:space="preserve"><value>Volitelný popis, kdy šablonu použít</value></data>
+  <data name="Invoice_TemplateCatHelper" xml:space="preserve"><value>Kategorie pro organizaci šablon (např. 'Hosting', 'Služby')</value></data>
+  <data name="Invoice_CreateTemplate" xml:space="preserve"><value>Vytvořit šablonu</value></data>
+  <data name="Invoice_AddItem" xml:space="preserve"><value>Přidat položku</value></data>
+  <data name="Invoice_ItemNumber" xml:space="preserve"><value>Položka {0}</value></data>
+  <data name="Invoice_AddAtLeastOneItem" xml:space="preserve"><value>Přidejte alespoň jednu položku</value></data>
+  <data name="Invoice_NoIssuerFound" xml:space="preserve"><value>Nebyl nalezen žádný vystavitel. Vytvořte nejprve firmu v sekci Společnosti.</value></data>
+  <data name="Invoice_NoClientSelected" xml:space="preserve"><value>Vyberte prosím klienta (odběratele).</value></data>
+  <data name="Invoice_TaxableSupplyDate" xml:space="preserve"><value>Datum zdanitelného plnění</value></data>
+  <data name="Invoice_Issue" xml:space="preserve"><value>Vystavit</value></data>
+  <data name="Invoice_MarkAsPaid" xml:space="preserve"><value>Označit jako zaplaceno</value></data>
+  <data name="Invoice_DownloadPdf" xml:space="preserve"><value>Stáhnout PDF</value></data>
+  <data name="Invoice_SendByEmail" xml:space="preserve"><value>Odeslat emailem</value></data>
+  <data name="InvoiceItem_Order" xml:space="preserve"><value>Pořadí</value></data>
+  <data name="InvoiceItem_PricePerUnit" xml:space="preserve"><value>Cena/jedn.</value></data>
+  <data name="InvoiceItem_VatPercent" xml:space="preserve"><value>DPH %</value></data>
+  <data name="InvoiceItem_Total" xml:space="preserve"><value>Celkem</value></data>
+  <data name="InvoiceItem_Items" xml:space="preserve"><value>Položky</value></data>
+  <data name="InvoiceItem_NoItems" xml:space="preserve"><value>Žádné položky. Přidejte alespoň jednu položku.</value></data>
+  <data name="InvoiceItem_UnitPriceNoVat" xml:space="preserve"><value>Cena za jednotku (bez DPH)</value></data>
+  <data name="InvoiceItem_Notes" xml:space="preserve"><value>Poznámka</value></data>
+  <data name="InvoiceItem_Code" xml:space="preserve"><value>Kód:</value></data>
+  <data name="Invoice_StatusCredited" xml:space="preserve"><value>Dobropis</value></data>
+  <data name="Invoice_StatusDeleted" xml:space="preserve"><value>Smazáno</value></data>
+  <data name="Invoice_Created" xml:space="preserve"><value>Faktura vytvořena</value></data>
+  <data name="Invoice_CreateFailed" xml:space="preserve"><value>Nepodařilo se vytvořit fakturu</value></data>
+  <data name="Invoice_Deleted" xml:space="preserve"><value>Faktura smazána</value></data>
+  <data name="Invoice_Issued" xml:space="preserve"><value>Faktura vystavena</value></data>
+  <data name="Invoice_MarkedAsPaid" xml:space="preserve"><value>Faktura označena jako zaplacená</value></data>
+  <data name="Invoice_PdfDownloaded" xml:space="preserve"><value>PDF staženo</value></data>
+  <data name="Invoice_PdfFailed" xml:space="preserve"><value>Nepodařilo se vygenerovat PDF</value></data>
+  <data name="Invoice_EmailSentTo" xml:space="preserve"><value>Faktura odeslána na {0}</value></data>
+  <data name="Invoice_EmailFailed" xml:space="preserve"><value>Nepodařilo se odeslat email</value></data>
+  <data name="Invoice_CreatingTemplate" xml:space="preserve"><value>Vytvářím šablonu...</value></data>
+  <data name="Invoice_BankTransfer" xml:space="preserve"><value>Bankovní převod</value></data>
+  <data name="Template_AvailablePlaceholders" xml:space="preserve"><value>Dostupné zástupné symboly:</value></data>
+  <data name="Template_InvoiceItemsTab" xml:space="preserve"><value>Položky faktury</value></data>
+  <data name="Template_HtmlTemplateTab" xml:space="preserve"><value>HTML šablona</value></data>
+  <data name="Template_EditorPlaceholder" xml:space="preserve"><value>Zadejte vlastní HTML šablonu faktury...</value></data>
+  <data name="Template_TemplateLabel" xml:space="preserve"><value>Šablona:</value></data>
+  <data name="Template_CreateInvoiceTooltip" xml:space="preserve"><value>Vytvořit fakturu ze šablony</value></data>
+  <data name="Nav_EmailTemplates" xml:space="preserve"><value>E-mailové šablony</value></data>
+  <data name="EmailTemplate_Title" xml:space="preserve"><value>E-mailové šablony</value></data>
+  <data name="EmailTemplate_Subtitle" xml:space="preserve"><value>Spravujte šablony pro odesílané emaily</value></data>
+  <data name="EmailTemplate_New" xml:space="preserve"><value>Nová šablona</value></data>
+  <data name="EmailTemplate_Name" xml:space="preserve"><value>Název</value></data>
+  <data name="EmailTemplate_Subject" xml:space="preserve"><value>Předmět</value></data>
+  <data name="EmailTemplate_HtmlBody" xml:space="preserve"><value>Tělo emailu (HTML)</value></data>
+  <data name="EmailTemplate_EmailType" xml:space="preserve"><value>Typ emailu</value></data>
+  <data name="EmailTemplate_IsDefault" xml:space="preserve"><value>Výchozí šablona</value></data>
+  <data name="EmailTemplate_NoRecords" xml:space="preserve"><value>Žádné e-mailové šablony</value></data>
+  <data name="EmailTemplate_Detail" xml:space="preserve"><value>Detail šablony</value></data>
+  <data name="EmailType_Invoice" xml:space="preserve"><value>Faktura</value></data>
+  <data name="EmailType_Invitation" xml:space="preserve"><value>Pozvánka</value></data>
+  <data name="EmailType_Reminder" xml:space="preserve"><value>Upomínka</value></data>
+  <data name="EmailType_CreditNote" xml:space="preserve"><value>Dobropis</value></data>
+  <data name="EmailTemplate_Placeholders" xml:space="preserve"><value>Dostupné zástupné symboly</value></data>
+
+  <!-- Payment method enum labels (localized display for EPaymentMethod) -->
+  <data name="EPaymentMethod_BankTransfer" xml:space="preserve"><value>Bankovní převod</value></data>
+  <data name="EPaymentMethod_Cash" xml:space="preserve"><value>Hotově</value></data>
+  <data name="EPaymentMethod_CreditCard" xml:space="preserve"><value>Platební karta</value></data>
+  <data name="EPaymentMethod_PayPal" xml:space="preserve"><value>PayPal</value></data>
+  <data name="EPaymentMethod_Other" xml:space="preserve"><value>Jiný</value></data>
+
+  <!-- Missing billing title key used in Clients.razor -->
+  <data name="Billing_Title" xml:space="preserve"><value>Fakturační nastavení</value></data>
+
+  <!-- Due date calculation type enum labels (localized display for EDueDateCalculationType) -->
+  <data name="EDueDateCalculationType_DaysFromIssue" xml:space="preserve"><value>Dní od vystavení</value></data>
+  <data name="EDueDateCalculationType_DaysFromEndOfMonth" xml:space="preserve"><value>Dní od konce měsíce</value></data>
+  <data name="EDueDateCalculationType_EndOfNextMonth" xml:space="preserve"><value>Konec příštího měsíce</value></data>
+  <data name="EDueDateCalculationType_EndOfCurrentMonth" xml:space="preserve"><value>Konec aktuálního měsíce</value></data>
+
+  <!-- Billing settings - additional labels for enum select -->
+  <data name="Billing_PaymentMethod" xml:space="preserve"><value>Výchozí způsob platby</value></data>
+
+  <!-- Number Sequences -->
+  <data name="NumSeq_Subtitle" xml:space="preserve"><value>Správa číselných řad a formátů pro faktury a dobropisy</value></data>
+  <data name="NumSeq_Formats" xml:space="preserve"><value>Formáty číselných řad</value></data>
+  <data name="NumSeq_FormatList" xml:space="preserve"><value>Seznam formátů</value></data>
+  <data name="NumSeq_NewFormat" xml:space="preserve"><value>Nový formát</value></data>
+  <data name="NumSeq_FormatPattern" xml:space="preserve"><value>Vzor formátu</value></data>
+  <data name="NumSeq_CounterDigits" xml:space="preserve"><value>Počet číslic</value></data>
+  <data name="NumSeq_ResetsYearly" xml:space="preserve"><value>Reset ročně</value></data>
+  <data name="NumSeq_ResetsMonthly" xml:space="preserve"><value>Reset měsíčně</value></data>
+  <data name="NumSeq_NoFormats" xml:space="preserve"><value>Žádné formáty</value></data>
+  <data name="NumSeq_PatternHelper" xml:space="preserve"><value>Použijte yyyy=rok, MM=měsíc, NNN=čítač (např. yyyyNNN → 2026001)</value></data>
+  <data name="NumSeq_Sequences" xml:space="preserve"><value>Číselné řady</value></data>
+  <data name="NumSeq_SequenceList" xml:space="preserve"><value>Seznam řad</value></data>
+  <data name="NumSeq_NewSequence" xml:space="preserve"><value>Nová řada</value></data>
+  <data name="NumSeq_DocumentType" xml:space="preserve"><value>Typ dokumentu</value></data>
+  <data name="NumSeq_Format" xml:space="preserve"><value>Formát</value></data>
+  <data name="NumSeq_Prefix" xml:space="preserve"><value>Prefix</value></data>
+  <data name="NumSeq_Suffix" xml:space="preserve"><value>Suffix</value></data>
+  <data name="NumSeq_CurrentNumber" xml:space="preserve"><value>Aktuální číslo</value></data>
+  <data name="NumSeq_Preview" xml:space="preserve"><value>Náhled</value></data>
+  <data name="NumSeq_Default" xml:space="preserve"><value>Výchozí</value></data>
+  <data name="NumSeq_IsDefault" xml:space="preserve"><value>Výchozí</value></data>
+  <data name="NumSeq_SetDefault" xml:space="preserve"><value>Nastavit jako výchozí</value></data>
+  <data name="NumSeq_SetAsDefault" xml:space="preserve"><value>Nastavit jako výchozí</value></data>
+  <data name="NumSeq_NoSequences" xml:space="preserve"><value>Žádné číselné řady</value></data>
+  <data name="NumSeq_StartingNumber" xml:space="preserve"><value>Počáteční číslo</value></data>
+  <data name="NumSeq_ConfirmDeactivate" xml:space="preserve"><value>Opravdu chcete deaktivovat tuto číselnou řadu?</value></data>
+  <data name="NumSeq_EditFormat" xml:space="preserve"><value>Upravit formát</value></data>
+  <data name="NumSeq_EditSequence" xml:space="preserve"><value>Upravit číselnou řadu</value></data>
+
+  <!-- Content Templates (unified PDF + email templates) -->
+  <data name="Nav_ContentTemplates" xml:space="preserve"><value>Šablony obsahu</value></data>
+  <data name="ContentTemplate_Title" xml:space="preserve"><value>Šablony obsahu</value></data>
+  <data name="ContentTemplate_Subtitle" xml:space="preserve"><value>Správa šablon pro PDF výstupy a emaily</value></data>
+  <data name="ContentTemplate_New" xml:space="preserve"><value>Nová šablona</value></data>
+  <data name="ContentTemplate_NoRecords" xml:space="preserve"><value>Žádné šablony obsahu</value></data>
+  <data name="ContentTemplate_Name" xml:space="preserve"><value>Název</value></data>
+  <data name="ContentTemplate_Type" xml:space="preserve"><value>Typ šablony</value></data>
+  <data name="ContentTemplate_Subject" xml:space="preserve"><value>Předmět</value></data>
+  <data name="ContentTemplate_IsDefault" xml:space="preserve"><value>Výchozí</value></data>
+  <data name="ContentTemplate_Detail" xml:space="preserve"><value>Detail šablony</value></data>
+  <data name="ContentTemplate_HtmlBody" xml:space="preserve"><value>HTML obsah</value></data>
+  <data name="ContentTemplate_Placeholders" xml:space="preserve"><value>Dostupné zástupné symboly</value></data>
+  <data name="ContentTemplate_Description" xml:space="preserve"><value>Popis</value></data>
+  <data name="ContentTemplate_System" xml:space="preserve"><value>Systémové</value></data>
+  <data name="ContentType_InvoicePdf" xml:space="preserve"><value>PDF faktury</value></data>
+  <data name="ContentType_CreditNotePdf" xml:space="preserve"><value>PDF dobropisu</value></data>
+  <data name="ContentType_InvoiceEmail" xml:space="preserve"><value>Email faktury</value></data>
+  <data name="ContentType_CreditNoteEmail" xml:space="preserve"><value>Email dobropisu</value></data>
+  <data name="ContentType_InvitationEmail" xml:space="preserve"><value>Pozvánka</value></data>
+  <data name="ContentType_ReminderEmail" xml:space="preserve"><value>Upomínka</value></data>
+  <data name="ContentType_PasswordResetEmail" xml:space="preserve"><value>Obnova hesla</value></data>
+  <data name="Label_All" xml:space="preserve"><value>Vše</value></data>
+  <!-- Fix 1: Document Number on invoice pages -->
+  <data name="Invoice_DocumentNumber" xml:space="preserve"><value>Číslo dokladu</value></data>
+  <data name="Invoice_AutoGeneratedHint" xml:space="preserve"><value>Nechte prázdné pro automatické generování</value></data>
+  <!-- Fix 2: New Invoice from Template -->
+  <data name="Invoice_NewBlank" xml:space="preserve"><value>Nová prázdná faktura</value></data>
+  <data name="Invoice_NewFromTemplate" xml:space="preserve"><value>Nová ze šablony</value></data>
+  <data name="Invoice_SelectTemplate" xml:space="preserve"><value>Vyberte šablonu</value></data>
+  <data name="Invoice_AutoComplete" xml:space="preserve"><value>Automaticky vystavit</value></data>
+  <!-- Fix 3: Email Sent indicator — column header and detail chip -->
+  <data name="Invoice_EmailColumn" xml:space="preserve"><value>Email</value></data>
+  <data name="Invoice_EmailSentAt" xml:space="preserve"><value>Odesláno</value></data>
+  <data name="Invoice_EmailNotSent" xml:space="preserve"><value>Neodesláno</value></data>
+  <!-- Fix 4: Soft Delete — Deleted status filter -->
+  <data name="Invoice_FilterDeleted" xml:space="preserve"><value>Smazané</value></data>
+  <!-- Fix 5: VariableSymbol validation messages -->
+  <data name="Invoice_VSMaxLength" xml:space="preserve"><value>Variabilní symbol může mít max. 10 znaků</value></data>
+  <data name="Invoice_VSDigitsOnly" xml:space="preserve"><value>Variabilní symbol může obsahovat pouze číslice (max 10)</value></data>
+  <!-- Fix 6: Number sequence on template -->
+  <data name="Template_NumberSequence" xml:space="preserve"><value>Číselná řada</value></data>
+  <!-- UX Enhancement: Document number preview hint -->
+  <data name="Invoice_NextNumberHint" xml:space="preserve"><value>Další: {0} (ponechte prázdné pro automatické)</value></data>
+  <!-- UX Enhancement: Unsaved changes warning -->
+  <data name="Msg_UnsavedChanges" xml:space="preserve"><value>Máte neuložené změny. Opravdu chcete odejít?</value></data>
+  <!-- UX Enhancement: Credit Notes -->
+  <data name="Nav_CreditNotes" xml:space="preserve"><value>Dobropisy</value></data>
+  <data name="CreditNote_New" xml:space="preserve"><value>Nový dobropis</value></data>
+  <data name="CreditNote_Detail" xml:space="preserve"><value>Detail dobropisu</value></data>
+  <data name="CreditNote_OriginalInvoice" xml:space="preserve"><value>Původní faktura</value></data>
+  <data name="CreditNote_Subtitle" xml:space="preserve"><value>Přehled dobropisů</value></data>
+
+  <!-- Tenant Settings (CompanySettings page — SysAdmin multi-tenant management) -->
+  <data name="Nav_TenantSettings" xml:space="preserve"><value>Správa tenantů</value></data>
+  <data name="TenantSettings_Title" xml:space="preserve"><value>Správa tenantů</value></data>
+  <data name="TenantSettings_Subtitle" xml:space="preserve"><value>Správa databází a infrastruktury pro jednotlivé společnosti</value></data>
+  <data name="TenantSettings_New" xml:space="preserve"><value>Nové nastavení</value></data>
+  <data name="TenantSettings_Edit" xml:space="preserve"><value>Upravit nastavení</value></data>
+  <data name="TenantSettings_NoRecords" xml:space="preserve"><value>Žádná nastavení tenantů nenalezena</value></data>
+  <data name="TenantSettings_DatabaseName" xml:space="preserve"><value>Název databáze</value></data>
+  <data name="TenantSettings_Provisioned" xml:space="preserve"><value>Zřízeno</value></data>
+  <data name="TenantSettings_MaxUsers" xml:space="preserve"><value>Max. uživatelů</value></data>
+  <data name="TenantSettings_CustomConn" xml:space="preserve"><value>Vlastní připojení</value></data>
+  <data name="TenantSettings_Unlimited" xml:space="preserve"><value>Neomezeno</value></data>
+  <data name="TenantSettings_Yes" xml:space="preserve"><value>Ano</value></data>
+  <data name="TenantSettings_No" xml:space="preserve"><value>Ne</value></data>
+  <data name="TenantSettings_AdminNotes" xml:space="preserve"><value>Poznámky administrátora</value></data>
+  <data name="TenantSettings_ConnectionString" xml:space="preserve"><value>Připojovací řetězec</value></data>
+  <data name="TenantSettings_DbNameHelper" xml:space="preserve"><value>Ponechte prázdné pro automatické generování (invoiceapi_tenant_{id})</value></data>
+  <data name="TenantSettings_MaxUsersHelper" xml:space="preserve"><value>Ponechte prázdné pro neomezený počet</value></data>
+  <data name="TenantSettings_ConnStringHelper" xml:space="preserve"><value>Ponechte prázdné pro výchozí (odvozeno z master DB)</value></data>
+  <data name="TenantSettings_Provision" xml:space="preserve"><value>Zřídit</value></data>
+  <data name="TenantSettings_Activate" xml:space="preserve"><value>Aktivovat</value></data>
+  <data name="TenantSettings_Deactivate" xml:space="preserve"><value>Deaktivovat</value></data>
+  <data name="TenantSettings_Migrate" xml:space="preserve"><value>Migrovat DB</value></data>
+  <data name="TenantSettings_ProvisionTitle" xml:space="preserve"><value>Zřídit databázi tenanta</value></data>
+  <data name="TenantSettings_ProvisionConfirm" xml:space="preserve"><value>Chcete zřídit novou databázi pro společnost '{0}' (DB: {1})? Tato operace vytvoří novou PostgreSQL databázi, aplikuje migrace a zkopíruje systémové tabulky.</value></data>
+  <data name="TenantSettings_Provisioning" xml:space="preserve"><value>Probíhá zřizování databáze...</value></data>
+  <data name="TenantSettings_ProvisionSuccess" xml:space="preserve"><value>Databáze tenanta byla úspěšně zřízena</value></data>
+  <data name="TenantSettings_ProvisionFailed" xml:space="preserve"><value>Zřízení databáze tenanta selhalo</value></data>
+  <data name="TenantSettings_ActivateSuccess" xml:space="preserve"><value>Tenant byl aktivován</value></data>
+  <data name="TenantSettings_ActivateFailed" xml:space="preserve"><value>Aktivace tenanta selhala</value></data>
+  <data name="TenantSettings_DeactivateTitle" xml:space="preserve"><value>Deaktivovat tenanta</value></data>
+  <data name="TenantSettings_DeactivateConfirm" xml:space="preserve"><value>Chcete deaktivovat společnost '{0}'? Uživatelé této společnosti nebudou mít přístup k aplikaci.</value></data>
+  <data name="TenantSettings_DeactivateSuccess" xml:space="preserve"><value>Tenant byl deaktivován</value></data>
+  <data name="TenantSettings_DeactivateFailed" xml:space="preserve"><value>Deaktivace tenanta selhala</value></data>
+  <data name="TenantSettings_MigrateSuccess" xml:space="preserve"><value>Migrace databáze proběhla úspěšně</value></data>
+  <data name="TenantSettings_MigrateFailed" xml:space="preserve"><value>Migrace databáze selhala</value></data>
+  <data name="TenantSettings_NotProvisioned" xml:space="preserve"><value>Nezřízeno</value></data>
+  <data name="TenantSettings_NoSettings" xml:space="preserve"><value>Bez nastavení</value></data>
+
+  <!-- System Settings & Logs -->
+  <data name="Nav_SystemSettings" xml:space="preserve">
+    <value>Systémová nastavení</value>
+  </data>
+  <data name="Nav_Logs" xml:space="preserve">
+    <value>Logy aplikace</value>
+  </data>
+  <data name="SystemSettings_Title" xml:space="preserve">
+    <value>Systémová nastavení</value>
+  </data>
+  <data name="SystemSettings_Subtitle" xml:space="preserve">
+    <value>Konfigurace SMTP emailu a JWT tokenů. Změny se projeví okamžitě.</value>
+  </data>
+  <data name="SystemSettings_SmtpTitle" xml:space="preserve">
+    <value>Nastavení SMTP</value>
+  </data>
+  <data name="SystemSettings_SmtpHost" xml:space="preserve">
+    <value>SMTP server</value>
+  </data>
+  <data name="SystemSettings_SmtpPort" xml:space="preserve">
+    <value>Port</value>
+  </data>
+  <data name="SystemSettings_SmtpUsername" xml:space="preserve">
+    <value>Uživatelské jméno</value>
+  </data>
+  <data name="SystemSettings_SmtpPassword" xml:space="preserve">
+    <value>Heslo</value>
+  </data>
+  <data name="SystemSettings_SmtpSenderEmail" xml:space="preserve">
+    <value>Email odesílatele</value>
+  </data>
+  <data name="SystemSettings_SmtpSenderName" xml:space="preserve">
+    <value>Jméno odesílatele</value>
+  </data>
+  <data name="SystemSettings_SmtpUseSsl" xml:space="preserve">
+    <value>Používat SSL/TLS</value>
+  </data>
+  <data name="SystemSettings_JwtTitle" xml:space="preserve">
+    <value>Nastavení JWT</value>
+  </data>
+  <data name="SystemSettings_JwtExpiration" xml:space="preserve">
+    <value>Expirace tokenu (hodiny)</value>
+  </data>
+  <data name="SystemSettings_JwtExpirationHint" xml:space="preserve">
+    <value>1-720 hodin (1 hodina až 30 dní)</value>
+  </data>
+  <data name="SystemSettings_Hours" xml:space="preserve">
+    <value>hodin</value>
+  </data>
+  <data name="Log_Title" xml:space="preserve">
+    <value>Logy aplikace</value>
+  </data>
+  <data name="Log_Subtitle" xml:space="preserve">
+    <value>Zobrazení systémových logů s filtrováním podle úrovně, data a textu.</value>
+  </data>
+  <data name="Log_Level" xml:space="preserve">
+    <value>Úroveň</value>
+  </data>
+  <data name="Log_Source" xml:space="preserve">
+    <value>Zdroj</value>
+  </data>
+  <data name="Log_Message" xml:space="preserve">
+    <value>Zpráva</value>
+  </data>
+  <data name="Log_Timestamp" xml:space="preserve">
+    <value>Čas</value>
+  </data>
+  <data name="Log_Search" xml:space="preserve">
+    <value>Hledat</value>
+  </data>
+  <data name="Log_DateFrom" xml:space="preserve">
+    <value>Od data</value>
+  </data>
+  <data name="Log_DateTo" xml:space="preserve">
+    <value>Do data</value>
+  </data>
+  <data name="Log_NoEntries" xml:space="preserve">
+    <value>Žádné záznamy nenalezeny.</value>
+  </data>
+  <data name="Log_Details" xml:space="preserve">
+    <value>Detail logu</value>
+  </data>
+  <data name="Log_Exception" xml:space="preserve">
+    <value>Výjimka</value>
+  </data>
+  <data name="Dashboard_SysAdminTotal" xml:space="preserve">
+    <value>Celkem</value>
+  </data>
+  <data name="Dashboard_SysAdminCompanies" xml:space="preserve">
+    <value>Registrované firmy</value>
+  </data>
+  <data name="Dashboard_SysAdminProvisioned" xml:space="preserve">
+    <value>Provisionované firmy</value>
+  </data>
+  <data name="Dashboard_SysAdminActive" xml:space="preserve">
+    <value>Aktivní firmy</value>
+  </data>
+  <data name="Dashboard_SysAdminPending" xml:space="preserve">
+    <value>Čekající na provisioning</value>
+  </data>
+  <data name="Dashboard_SysAdminRecentLogs" xml:space="preserve">
+    <value>Poslední varování a chyby</value>
+  </data>
+  <data name="Dashboard_SysAdminLogSummary" xml:space="preserve">
+    <value>Souhrn logů podle úrovně</value>
+  </data>
+  <data name="QR_InvoiceOnly" xml:space="preserve">
+    <value>QR Faktura (pouze data faktury, bez platebních údajů)</value>
+  </data>
+  <data name="QR_PaymentAndInvoice" xml:space="preserve">
+    <value>QR Platba+F (platba i data faktury)</value>
+  </data>
+  <data name="QR_NotAvailable" xml:space="preserve">
+    <value>QR kód není k dispozici</value>
+  </data>
+  <data name="Nav_MyCompany" xml:space="preserve">
+    <value>Moje společnost</value>
+  </data>
+  <data name="MyCompany_Title" xml:space="preserve">
+    <value>Profil společnosti</value>
+  </data>
+  <data name="Address_List" xml:space="preserve">
+    <value>Adresy</value>
+  </data>
+  <data name="Address_Add" xml:space="preserve">
+    <value>Přidat adresu</value>
+  </data>
+  <data name="Address_Edit" xml:space="preserve">
+    <value>Upravit adresu</value>
+  </data>
+  <data name="Address_ConfirmDelete" xml:space="preserve">
+    <value>Opravdu chcete smazat tuto adresu?</value>
+  </data>
+  <data name="Address_DefaultBilling" xml:space="preserve">
+    <value>Výchozí fakturační</value>
+  </data>
+  <data name="Address_NoAddresses" xml:space="preserve">
+    <value>Žádné adresy</value>
+  </data>
+  <data name="Address_Type" xml:space="preserve">
+    <value>Typ adresy</value>
+  </data>
+  <data name="Client_AddressLine2" xml:space="preserve">
+    <value>Doplněk adresy</value>
+  </data>
+  <data name="EAddressType_Primary" xml:space="preserve">
+    <value>Sídlo</value>
+  </data>
+  <data name="EAddressType_Billing" xml:space="preserve">
+    <value>Fakturační</value>
+  </data>
+  <data name="EAddressType_Shipping" xml:space="preserve">
+    <value>Doručovací</value>
+  </data>
+  <data name="EAddressType_Correspondence" xml:space="preserve">
+    <value>Korespondenční</value>
+  </data>
+  <data name="Smtp_Title" xml:space="preserve">
+    <value>Nastavení e-mailu</value>
+  </data>
+  <data name="Smtp_Host" xml:space="preserve">
+    <value>SMTP server</value>
+  </data>
+  <data name="Smtp_Port" xml:space="preserve">
+    <value>Port</value>
+  </data>
+  <data name="Smtp_Username" xml:space="preserve">
+    <value>Uživatel</value>
+  </data>
+  <data name="Smtp_Password" xml:space="preserve">
+    <value>Heslo</value>
+  </data>
+  <data name="Smtp_SenderEmail" xml:space="preserve">
+    <value>E-mail odesílatele</value>
+  </data>
+  <data name="Smtp_SenderName" xml:space="preserve">
+    <value>Jméno odesílatele</value>
+  </data>
+  <data name="Smtp_UseSsl" xml:space="preserve">
+    <value>Použít SSL/TLS</value>
+  </data>
+  <data name="Smtp_TestButton" xml:space="preserve">
+    <value>Otestovat SMTP</value>
+  </data>
+  <data name="Smtp_TestSuccess" xml:space="preserve">
+    <value>Testovací e-mail odeslán</value>
+  </data>
+  <data name="Smtp_TestFailed" xml:space="preserve">
+    <value>Test SMTP selhal</value>
+  </data>
+  <data name="Smtp_InfoText" xml:space="preserve">
+    <value>Pokud je nastaveno, e-maily z vaší společnosti budou odesílány přes tento SMTP server.</value>
+  </data>
+  <data name="Smtp_PasswordPlaceholder" xml:space="preserve">
+    <value>(nastaveno)</value>
+  </data>
+  <!-- ── Registration / Self-signup ──────────────────────────────────────── -->
+  <data name="Register_Title" xml:space="preserve"><value>Registrace</value></data>
+  <data name="Register_Subtitle" xml:space="preserve"><value>Vytvořte svůj účet a firmu</value></data>
+  <data name="Register_Email" xml:space="preserve"><value>E-mail</value></data>
+  <data name="Register_Password" xml:space="preserve"><value>Heslo</value></data>
+  <data name="Register_ConfirmPassword" xml:space="preserve"><value>Potvrzení hesla</value></data>
+  <data name="Register_FirstName" xml:space="preserve"><value>Jméno</value></data>
+  <data name="Register_LastName" xml:space="preserve"><value>Příjmení</value></data>
+  <data name="Register_CompanyName" xml:space="preserve"><value>Název firmy</value></data>
+  <data name="Register_RegistrationNumber" xml:space="preserve"><value>IČO (nepovinné)</value></data>
+  <data name="Register_LoadAres" xml:space="preserve"><value>Načíst z ARES</value></data>
+  <data name="Register_AresLoading" xml:space="preserve"><value>Načítání z ARES...</value></data>
+  <data name="Register_AresSuccess" xml:space="preserve"><value>Data načtena z ARES</value></data>
+  <data name="Register_AresFailed" xml:space="preserve"><value>Nepodařilo se načíst z ARES</value></data>
+  <data name="Register_Submit" xml:space="preserve"><value>Zaregistrovat se</value></data>
+  <data name="Register_Registering" xml:space="preserve"><value>Registrace...</value></data>
+  <data name="Register_Success" xml:space="preserve"><value>Registrace úspěšná! Zkontrolujte e-mail.</value></data>
+  <data name="Register_Error" xml:space="preserve"><value>Registrace se nezdařila</value></data>
+  <data name="Register_AlreadyHaveAccount" xml:space="preserve"><value>Už máte účet? Přihlásit se</value></data>
+  <data name="Register_OAuthWith" xml:space="preserve"><value>Registrace pomocí {0}</value></data>
+  <data name="Register_PasswordMismatch" xml:space="preserve"><value>Hesla se neshodují</value></data>
+  <data name="Register_MinPasswordLength" xml:space="preserve"><value>Heslo musí mít alespoň 6 znaků</value></data>
+  <!-- ── Login additions ──────────────────────────────────────────────────── -->
+  <data name="Login_NoAccount" xml:space="preserve"><value>Nemáte účet? Zaregistrujte se</value></data>
+  <data name="Login_OrContinueWith" xml:space="preserve"><value>Nebo pokračujte pomocí</value></data>
+  <!-- ── Email Verification ───────────────────────────────────────────────── -->
+  <data name="VerifyEmail_Title" xml:space="preserve"><value>Ověření e-mailu</value></data>
+  <data name="VerifyEmail_Verifying" xml:space="preserve"><value>Ověřování e-mailu...</value></data>
+  <data name="VerifyEmail_Success" xml:space="preserve"><value>E-mail ověřen! Váš účet je připraven.</value></data>
+  <data name="VerifyEmail_Failed" xml:space="preserve"><value>Neplatný nebo expirovaný ověřovací odkaz.</value></data>
+  <data name="VerifyEmail_GoToLogin" xml:space="preserve"><value>Přejít na přihlášení</value></data>
+  <!-- ── OAuth Provider Names ─────────────────────────────────────────────── -->
+  <data name="EExternalProvider_Google" xml:space="preserve"><value>Google</value></data>
+  <data name="EExternalProvider_Microsoft" xml:space="preserve"><value>Microsoft</value></data>
+  <data name="EExternalProvider_Facebook" xml:space="preserve"><value>Facebook</value></data>
+  <data name="EExternalProvider_Apple" xml:space="preserve"><value>Apple</value></data>
+  <data name="EExternalProvider_Seznam" xml:space="preserve"><value>Seznam.cz</value></data>
+  <!-- ── Common / Shared ──────────────────────────────────────────────────── -->
+  <data name="Msg_FillRequired" xml:space="preserve"><value>Vyplňte prosím všechna povinná pole</value></data>
+  <!-- ── Two-Factor Authentication (2FA) ──────────────────────────────────── -->
+  <data name="TwoFactor_Title" xml:space="preserve"><value>Dvoufázové ověření (2FA)</value></data>
+  <data name="TwoFactor_Enabled" xml:space="preserve"><value>Aktivní</value></data>
+  <data name="TwoFactor_Disabled" xml:space="preserve"><value>Neaktivní</value></data>
+  <data name="TwoFactor_CurrentlyEnabled" xml:space="preserve"><value>Dvoufázové ověření je aktivní metodou:</value></data>
+  <data name="TwoFactor_EnabledSince" xml:space="preserve"><value>Aktivováno od:</value></data>
+  <data name="TwoFactor_ChooseMethod" xml:space="preserve"><value>Vyberte metodu dvoufázového ověření:</value></data>
+  <data name="TwoFactor_Method_Totp" xml:space="preserve"><value>Autentizační aplikace (TOTP)</value></data>
+  <data name="TwoFactor_Method_Email" xml:space="preserve"><value>E-mail (jednorázový kód)</value></data>
+  <data name="TwoFactor_TotpDescription" xml:space="preserve"><value>Google Authenticator, Authy nebo jiná aplikace.</value></data>
+  <data name="TwoFactor_EmailDescription" xml:space="preserve"><value>6místný kód na e-mail při každém přihlášení.</value></data>
+  <data name="TwoFactor_SetupTotp" xml:space="preserve"><value>Nastavit autentizační aplikaci</value></data>
+  <data name="TwoFactor_EnableEmail" xml:space="preserve"><value>Aktivovat e-mailové ověření</value></data>
+  <data name="TwoFactor_TotpStep1" xml:space="preserve"><value>Naskenujte QR kód ve vaší aplikaci:</value></data>
+  <data name="TwoFactor_ManualEntry" xml:space="preserve"><value>Nebo zadejte ručně tento klíč:</value></data>
+  <data name="TwoFactor_TotpStep2" xml:space="preserve"><value>Zadejte 6místný kód z aplikace:</value></data>
+  <data name="TwoFactor_VerificationCode" xml:space="preserve"><value>Ověřovací kód</value></data>
+  <data name="TwoFactor_EnterSixDigits" xml:space="preserve"><value>Zadejte 6místný kód</value></data>
+  <data name="TwoFactor_Verify" xml:space="preserve"><value>Ověřit</value></data>
+  <data name="TwoFactor_InvalidCode" xml:space="preserve"><value>Neplatný ověřovací kód</value></data>
+  <data name="TwoFactor_TotpEnabled" xml:space="preserve"><value>Autentizační aplikace nastavena!</value></data>
+  <data name="TwoFactor_EmailEnabled" xml:space="preserve"><value>E-mailové ověření aktivováno!</value></data>
+  <data name="TwoFactor_Disable" xml:space="preserve"><value>Deaktivovat 2FA</value></data>
+  <data name="TwoFactor_DisableConfirm" xml:space="preserve"><value>Deaktivovat dvoufázové ověření?</value></data>
+  <data name="TwoFactor_DisableWarning" xml:space="preserve"><value>Snížíte zabezpečení účtu. Zadejte heslo.</value></data>
+  <data name="TwoFactor_EnterPasswordToDisable" xml:space="preserve"><value>Zadejte heslo pro potvrzení</value></data>
+  <data name="TwoFactor_VerificationTitle" xml:space="preserve"><value>Ověření přihlášení</value></data>
+  <data name="TwoFactor_EnterCodeFromApp" xml:space="preserve"><value>Zadejte kód z autentizační aplikace:</value></data>
+  <data name="TwoFactor_CodeSentToEmail" xml:space="preserve"><value>Kód odeslán na vaši e-mailovou adresu.</value></data>
+  <data name="TwoFactor_Verifying" xml:space="preserve"><value>Ověřuji...</value></data>
+  <data name="TwoFactor_BackToLogin" xml:space="preserve"><value>Zpět na přihlášení</value></data>
+  <data name="Nav_TwoFactor" xml:space="preserve"><value>Dvoufázové ověření</value></data>
+  <data name="ETwoFactorMethod_Totp" xml:space="preserve"><value>Autentizační aplikace</value></data>
+  <data name="ETwoFactorMethod_Email" xml:space="preserve"><value>E-mail</value></data>
+</root>

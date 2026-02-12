@@ -1,0 +1,616 @@
+@page "/invoices"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@rendermode InteractiveServer
+@using InvoiceApi.Application.Dto.Invoice
+@using InvoiceApi.Application.Dto.Client
+@using InvoiceApi.Application.Dto.InvoiceTemplate
+@using InvoiceApi.Application.Common.Pagination
+@using InvoiceApi.Domain.Enums
+@inject InvoiceApiService InvoiceService
+@inject ClientApiService ClientService
+@inject InvoiceTemplateApiService TemplateService
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject IStringLocalizer<SharedResource> L
+
+@* Page title adapts based on document type filter — "Invoices" or "Credit Notes" *@
+<PageTitle>@(_isCreditNoteView ? L["Nav_CreditNotes"] : L["Invoice_Title"])</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">@(_isCreditNoteView ? L["Nav_CreditNotes"] : L["Invoice_Title"])</MudText>
+<MudText Class="mb-4">@(_isCreditNoteView ? L["CreditNote_Subtitle"] : L["Invoice_Subtitle"])</MudText>
+
+@* Filter bar - search, date range, status, client selection *@
+<MudPaper Class="pa-4 mb-4">
+    <MudGrid>
+        <MudItem xs="12" sm="6" md="3">
+            <MudTextField @bind-Value="_searchString" Label="@L["Btn_Search"].Value" Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Filled.Search" Immediate="true"
+                          DebounceInterval="300" OnDebounceIntervalElapsed="SearchInvoices"
+                          Placeholder="@L["Invoice_SearchPlaceholder"].Value" />
+        </MudItem>
+        <MudItem xs="12" sm="6" md="2">
+            <MudSelect @bind-Value="_filterStatus" Label="@L["Label_Status"].Value" OnChange="SearchInvoices">
+                <MudSelectItem Value="@((EInvoiceStatus?)null)">@L["Invoice_FilterAll"]</MudSelectItem>
+                <MudSelectItem Value="@((EInvoiceStatus?)EInvoiceStatus.Draft)">@L["Invoice_FilterDraft"]</MudSelectItem>
+                <MudSelectItem Value="@((EInvoiceStatus?)EInvoiceStatus.Completed)">@L["Invoice_FilterIssued"]</MudSelectItem>
+                <MudSelectItem Value="@((EInvoiceStatus?)EInvoiceStatus.Paid)">@L["Invoice_FilterPaid"]</MudSelectItem>
+                <MudSelectItem Value="@((EInvoiceStatus?)EInvoiceStatus.Creditnoted)">@L["Invoice_FilterCredited"]</MudSelectItem>
+                <MudSelectItem Value="@((EInvoiceStatus?)EInvoiceStatus.Deleted)">@L["Invoice_FilterDeleted"]</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        @* Document type filter — only shown when not pre-filtered from nav *@
+        @if (!_isCreditNoteView)
+        {
+            <MudItem xs="12" sm="6" md="1">
+                <MudSelect @bind-Value="_filterDocumentType" Label="@L["Template_DocumentType"].Value" Clearable="true"
+                           OnChange="SearchInvoices">
+                    <MudSelectItem Value="@((EDocumentType?)EDocumentType.Invoice)">@L["Template_DocumentTypeInvoice"]</MudSelectItem>
+                    <MudSelectItem Value="@((EDocumentType?)EDocumentType.CreditNote)">@L["Template_DocumentTypeCreditNote"]</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+        }
+        <MudItem xs="12" sm="6" md="2">
+            <MudSelect @bind-Value="_filterClientId" Label="@L["Invoice_Client"].Value" OnChange="SearchInvoices" Clearable="true">
+                @foreach (var client in _allClients)
+                {
+                    <MudSelectItem Value="@((long?)client.Id)">@client.CompanyName</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="2">
+            <MudDatePicker Date="_issueDateFrom" Label="@L["Invoice_FromDate"].Value" Clearable="true"
+                           DateChanged="@(async (DateTime? d) => { _issueDateFrom = d; await SearchInvoices(); })" />
+        </MudItem>
+        <MudItem xs="12" sm="6" md="2">
+            <MudDatePicker Date="_issueDateTo" Label="@L["Invoice_ToDate"].Value" Clearable="true"
+                           DateChanged="@(async (DateTime? d) => { _issueDateTo = d; await SearchInvoices(); })" />
+        </MudItem>
+        <MudItem xs="12" sm="6" md="1" Class="d-flex align-end">
+            @* Split button: Primary click = new invoice/credit note, dropdown arrow = from template *@
+            <MudButtonGroup OverrideStyles="false">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.Add"
+                           OnClick="@(() => Navigation.NavigateTo(_isCreditNoteView
+                               ? "/invoices/create?type=CreditNote"
+                               : "/invoices/create"))">
+                    @(_isCreditNoteView ? L["CreditNote_New"] : L["Invoice_New"])
+                </MudButton>
+                <MudMenu Icon="@Icons.Material.Filled.ArrowDropDown"
+                         Variant="Variant.Filled" Color="Color.Primary">
+                    <MudMenuItem OnClick="OpenFromTemplateDialog"
+                                 Icon="@Icons.Material.Filled.ContentPaste">
+                        @L["Invoice_NewFromTemplate"]
+                    </MudMenuItem>
+                </MudMenu>
+            </MudButtonGroup>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@* AppDataGrid for consistent server-side pagination *@
+<AppDataGrid TItem="InvoiceDto"
+             ServerData="LoadServerData"
+             @ref="_table"
+             OnRowClick="OnInvoiceRowClick"
+             ShowEditAction="false"
+             ShowDeleteAction="false"
+             Loading="@_loading"
+             NoRecordsText="@L["Invoice_NoRecords"].Value">
+    <Columns>
+        <MudTh><MudTableSortLabel SortLabel="DocumentNumber" T="InvoiceDto">@L["Table_Number"]</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel SortLabel="ClientName" T="InvoiceDto">@L["Invoice_Client"]</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel SortLabel="IssueDate" T="InvoiceDto">@L["Table_IssueDate"]</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel SortLabel="DueDate" T="InvoiceDto">@L["Table_DueDate"]</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel SortLabel="TotalWithVat" T="InvoiceDto">@L["Invoice_TotalWithVat"]</MudTableSortLabel></MudTh>
+        <MudTh>@L["Label_Status"]</MudTh>
+        <MudTh>@L["Invoice_EmailColumn"]</MudTh>
+    </Columns>
+    <RowContent>
+        <MudTd DataLabel="@L["Table_Number"].Value">
+            <MudChip T="string" Size="Size.Small" Icon="@Icons.Material.Filled.Description">
+                @context.DocumentNumber
+            </MudChip>
+        </MudTd>
+        <MudTd DataLabel="@L["Invoice_Client"].Value">@context.ClientName</MudTd>
+        <MudTd DataLabel="@L["Table_IssueDate"].Value">@context.IssueDate?.ToShortDateString()</MudTd>
+        <MudTd DataLabel="@L["Table_DueDate"].Value">@context.DueDate?.ToShortDateString()</MudTd>
+        <MudTd DataLabel="@L["Invoice_TotalWithVat"].Value">
+            <strong>@context.TotalWithVat.ToString("N2") @context.CurrencyCode</strong>
+        </MudTd>
+        <MudTd DataLabel="@L["Label_Status"].Value">
+            <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">
+                @GetStatusText(context.Status)
+            </MudChip>
+        </MudTd>
+        @* Email sent indicator — green icon with tooltip showing date, or dash if not sent *@
+        <MudTd DataLabel="@L["Invoice_EmailColumn"].Value">
+            @if (context.IsSentByEmail)
+            {
+                <MudTooltip Text="@context.LastSentByEmailAt?.ToString("g")">
+                    <MudIcon Icon="@Icons.Material.Filled.MarkEmailRead" Color="Color.Success" Size="Size.Small" />
+                </MudTooltip>
+            }
+            else
+            {
+                <MudText Color="Color.Secondary">—</MudText>
+            }
+        </MudTd>
+    </RowContent>
+    @* Custom row actions — conditional based on invoice status *@
+    <RowActions>
+        <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" Color="Color.Info"
+                       OnClick="@(() => Navigation.NavigateTo($"/invoices/{context.Id}"))" title="@L["Btn_View"].Value" />
+        @if (context.Status == EInvoiceStatus.Draft)
+        {
+            <MudIconButton Icon="@Icons.Material.Filled.Send" Size="Size.Small" Color="Color.Success"
+                           OnClick="@(() => IssueInvoice(context.Id))" title="@L["Invoice_Issue"].Value" />
+            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                           OnClick="@(() => DeleteInvoice(context.Id))" title="@L["Btn_Delete"].Value" />
+        }
+        @if (context.Status == EInvoiceStatus.Completed)
+        {
+            <MudIconButton Icon="@Icons.Material.Filled.Check" Size="Size.Small" Color="Color.Success"
+                           OnClick="@(() => MarkAsPaid(context.Id))" title="@L["Invoice_MarkAsPaid"].Value" />
+        }
+        <MudIconButton Icon="@Icons.Material.Filled.PictureAsPdf" Size="Size.Small" Color="Color.Secondary"
+                       OnClick="@(() => DownloadPdf(context))" title="@L["Invoice_DownloadPdf"].Value" />
+        <MudIconButton Icon="@Icons.Material.Filled.Email" Size="Size.Small" Color="Color.Tertiary"
+                       OnClick="@(() => OpenEmailDialog(context))" title="@L["Invoice_SendByEmail"].Value" />
+        <MudTooltip Text="@L["Invoice_CreateFromTemplate"].Value">
+            <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small" Color="Color.Primary"
+                           OnClick="@(() => OpenCreateTemplateDialog(context))" />
+        </MudTooltip>
+    </RowActions>
+</AppDataGrid>
+
+@* Email dialog - allows user to enter recipient email and send invoice *@
+<MudDialog @bind-Visible="_showEmailDialog" Options="_emailDialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@L["Invoice_SendByEmail"]</MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_emailInvoice != null)
+        {
+            <MudAlert Severity="Severity.Info" Dense="true" Class="mb-4">
+                @L["Invoice_SendingInvoice"] <strong>@_emailInvoice.DocumentNumber</strong> @L["Invoice_ToClient"] <strong>@_emailInvoice.ClientName</strong>
+            </MudAlert>
+            <MudTextField @bind-Value="_emailRecipient" Label="@L["Invoice_EmailRecipient"].Value" Required="true"
+                          InputType="InputType.Email" HelperText="@L["Invoice_RecipientHelper"].Value" />
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseEmailDialog">@L["Btn_Cancel"]</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SendEmail"
+                   Disabled="@(string.IsNullOrWhiteSpace(_emailRecipient) || _sendingEmail)">
+            @if (_sendingEmail)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                <span>@L["Invoice_Sending"]</span>
+            }
+            else
+            {
+                <span>@L["Invoice_Send"]</span>
+            }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@* Template creation dialog - create a reusable template from an existing invoice (small popup) *@
+<MudDialog @bind-Visible="_showCreateTemplateDialog" Options="_templateDialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@L["Invoice_CreateFromTemplate"]</MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_selectedInvoice != null)
+        {
+            <MudAlert Severity="Severity.Info" Dense="true" Class="mb-4">
+                @L["Invoice_CreatingTemplate"] <strong>@_selectedInvoice.DocumentNumber</strong>
+            </MudAlert>
+            <MudTextField @bind-Value="_templateName" Label="@L["Invoice_TemplateName"].Value"
+                          Required="true" MaxLength="200" Class="mb-3"
+                          HelperText="@L["Invoice_TemplateNameHelper"].Value" />
+            <MudTextField @bind-Value="_templateDescription" Label="@L["Label_Description"].Value"
+                          Lines="3" MaxLength="2000" Class="mb-3"
+                          HelperText="@L["Invoice_TemplateDescHelper"].Value" />
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseCreateTemplateDialog">@L["Btn_Cancel"]</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateTemplate"
+                   Disabled="@string.IsNullOrWhiteSpace(_templateName)">
+            @L["Invoice_CreateTemplate"]
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@* "Create Invoice from Template" dialog — simplified: pick template + client, then open detail in edit mode *@
+<MudDialog @bind-Visible="_showFromTemplateDialog" Options="_fromTemplateDialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@L["Invoice_NewFromTemplate"]</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudForm @ref="_fromTemplateForm" @bind-IsValid="_fromTemplateFormValid">
+            @* Template selector — reactive: auto-fills client from template's default ClientId *@
+            <MudSelect Value="_selectedTemplateId"
+                       ValueChanged="@((long v) => OnTemplateSelected(v))"
+                       Label="@L["Invoice_SelectTemplate"].Value"
+                       Required="true" Class="mb-3">
+                @foreach (var tmpl in _templates)
+                {
+                    <MudSelectItem Value="@tmpl.Id">@tmpl.Name</MudSelectItem>
+                }
+            </MudSelect>
+            @* Client selector — required, pre-filled if template has a default client *@
+            <MudSelect @bind-Value="_fromTemplateDto.ClientId" Label="@L["Invoice_Client"].Value"
+                       Required="true" Class="mb-3">
+                @foreach (var client in _allClients)
+                {
+                    <MudSelectItem Value="@client.Id">@client.CompanyName</MudSelectItem>
+                }
+            </MudSelect>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseFromTemplateDialog">@L["Btn_Cancel"]</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateInvoiceFromTemplate"
+                   Disabled="@(!_fromTemplateFormValid || _selectedTemplateId <= 0)">
+            @L["Btn_Create"]
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    /// <summary>
+    /// Query parameter — when ?type=CreditNote, pre-filters the list to credit notes only.
+    /// Used by the "Credit Notes" nav link for a dedicated view without a separate page.
+    /// </summary>
+    [SupplyParameterFromQuery(Name = "type")]
+    public string? TypeFilter { get; set; }
+
+    private AppDataGrid<InvoiceDto>? _table;
+    private bool _loading = false;
+
+    // Computed: true when navigated from "Credit Notes" nav link
+    private bool _isCreditNoteView => TypeFilter == "CreditNote";
+
+    // Filter state
+    private string _searchString = "";
+    private EInvoiceStatus? _filterStatus = null;
+    private EDocumentType? _filterDocumentType = null;
+    private long? _filterClientId = null;
+    private DateTime? _issueDateFrom = null;
+    private DateTime? _issueDateTo = null;
+
+    // Reference data loaded once — clients used for filter dropdown
+    private List<ClientDto> _allClients = new();
+
+    // Email dialog state
+    private bool _showEmailDialog = false;
+    private bool _sendingEmail = false;
+    private InvoiceDto? _emailInvoice;
+    private string _emailRecipient = "";
+
+    // Template dialog state (small popup — stays as dialog)
+    private bool _showCreateTemplateDialog = false;
+    private InvoiceDto? _selectedInvoice;
+    private string _templateName = "";
+    private string? _templateDescription;
+
+    // "Create from Template" dialog state — simplified to template + client selection only
+    private bool _showFromTemplateDialog = false;
+    private bool _fromTemplateFormValid = false;
+    private MudForm? _fromTemplateForm;
+    private List<InvoiceTemplateDto> _templates = new();
+    private long _selectedTemplateId = 0;
+    private CreateInvoiceFromTemplateDto _fromTemplateDto = new();
+
+    // Dialog options for small popups (email, template creation)
+    private DialogOptions _emailDialogOptions = new() { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true };
+    private DialogOptions _templateDialogOptions = new() { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true };
+    private DialogOptions _fromTemplateDialogOptions = new() { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true };
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Pre-set document type filter from query parameter (e.g., ?type=CreditNote from nav link)
+        if (_isCreditNoteView)
+        {
+            _filterDocumentType = EDocumentType.CreditNote;
+        }
+
+        // Load clients and templates in parallel — both are needed for dropdowns
+        await Task.WhenAll(LoadClients(), LoadTemplates());
+    }
+
+    private async Task LoadClients()
+    {
+        try { _allClients = await ClientService.GetAllAsync(includeInactive: false); }
+        catch (Exception ex) { Snackbar.Add($"Error loading clients: {ex.Message}", Severity.Error); }
+    }
+
+    /// <summary>
+    /// Loads active invoice templates for the "New from Template" dialog dropdown.
+    /// </summary>
+    private async Task LoadTemplates()
+    {
+        try { _templates = await TemplateService.GetAllActiveAsync(); }
+        catch (Exception ex) { Snackbar.Add($"Error loading templates: {ex.Message}", Severity.Error); }
+    }
+
+    /// <summary>
+    /// Server-side data loading callback for AppDataGrid.
+    /// Passes all current filter values to the API.
+    /// </summary>
+    private async Task<TableData<InvoiceDto>> LoadServerData(TableState state, CancellationToken ct)
+    {
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            var sortDirection = state.SortDirection == SortDirection.Descending ? "desc" : "asc";
+
+            var result = await InvoiceService.GetPagedAsync(
+                page: state.Page + 1,
+                pageSize: state.PageSize,
+                search: _searchString,
+                sortBy: state.SortLabel,
+                sortDirection: sortDirection,
+                documentType: _filterDocumentType,
+                status: _filterStatus,
+                clientId: _filterClientId,
+                issueDateFrom: _issueDateFrom,
+                issueDateTo: _issueDateTo);
+
+            return new TableData<InvoiceDto>
+            {
+                Items = result.Items,
+                TotalItems = result.TotalCount
+            };
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading invoices: {ex.Message}", Severity.Error);
+            return new TableData<InvoiceDto> { Items = new List<InvoiceDto>(), TotalItems = 0 };
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>
+    /// Triggers a table reload when search/filter criteria change.
+    /// </summary>
+    private async Task SearchInvoices()
+    {
+        if (_table != null) await _table.ReloadServerDataAsync();
+    }
+
+    /// <summary>
+    /// Handles row click — navigates to the invoice detail page.
+    /// </summary>
+    private void OnInvoiceRowClick(InvoiceDto invoice)
+    {
+        if (invoice != null)
+        {
+            Navigation.NavigateTo($"/invoices/{invoice.Id}");
+        }
+    }
+
+    // --- Invoice actions (inline from grid) ---
+
+    private async Task DeleteInvoice(long id)
+    {
+        try
+        {
+            if (await InvoiceService.DeleteAsync(id))
+            {
+                Snackbar.Add(L["Invoice_Deleted"].Value, Severity.Success);
+                await SearchInvoices();
+            }
+        }
+        catch (Exception ex) { Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error); }
+    }
+
+    private async Task IssueInvoice(long id)
+    {
+        try
+        {
+            if (await InvoiceService.IssueAsync(id) != null)
+            {
+                Snackbar.Add(L["Invoice_Issued"].Value, Severity.Success);
+                await SearchInvoices();
+            }
+        }
+        catch (Exception ex) { Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error); }
+    }
+
+    private async Task MarkAsPaid(long id)
+    {
+        try
+        {
+            if (await InvoiceService.MarkAsPaidAsync(id) != null)
+            {
+                Snackbar.Add(L["Invoice_MarkedAsPaid"].Value, Severity.Success);
+                await SearchInvoices();
+            }
+        }
+        catch (Exception ex) { Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error); }
+    }
+
+    /// <summary>
+    /// Downloads the PDF for the specified invoice using JS interop.
+    /// </summary>
+    private async Task DownloadPdf(InvoiceDto invoice)
+    {
+        try
+        {
+            var pdfBytes = await InvoiceService.ExportToPdfAsync(invoice.Id);
+            if (pdfBytes != null && pdfBytes.Length > 0)
+            {
+                var base64 = Convert.ToBase64String(pdfBytes);
+                var fileName = $"Invoice_{invoice.DocumentNumber ?? invoice.Id.ToString()}.pdf";
+                await JS.InvokeVoidAsync("downloadFile", fileName, base64, "application/pdf");
+                Snackbar.Add(L["Invoice_PdfDownloaded"].Value, Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add(L["Invoice_PdfFailed"].Value, Severity.Error);
+            }
+        }
+        catch (Exception ex) { Snackbar.Add($"Error downloading PDF: {ex.Message}", Severity.Error); }
+    }
+
+    // --- Email dialog ---
+
+    private void OpenEmailDialog(InvoiceDto invoice)
+    {
+        _emailInvoice = invoice;
+        _emailRecipient = "";
+        _showEmailDialog = true;
+    }
+
+    private void CloseEmailDialog()
+    {
+        _showEmailDialog = false;
+        _emailInvoice = null;
+    }
+
+    private async Task SendEmail()
+    {
+        if (_emailInvoice == null || string.IsNullOrWhiteSpace(_emailRecipient)) return;
+
+        try
+        {
+            _sendingEmail = true;
+            var success = await InvoiceService.SendEmailAsync(_emailInvoice.Id, _emailRecipient);
+            if (success)
+            {
+                Snackbar.Add(string.Format(L["Invoice_EmailColumnTo"].Value, _emailRecipient), Severity.Success);
+                CloseEmailDialog();
+            }
+            else
+            {
+                Snackbar.Add(L["Invoice_EmailFailed"].Value, Severity.Error);
+            }
+        }
+        catch (Exception ex) { Snackbar.Add($"Error sending email: {ex.Message}", Severity.Error); }
+        finally { _sendingEmail = false; }
+    }
+
+    // --- Template creation from invoice (small popup dialog — stays as-is) ---
+
+    private void OpenCreateTemplateDialog(InvoiceDto invoice)
+    {
+        _selectedInvoice = invoice;
+        _templateName = $"Template - {invoice.ClientName}";
+        _templateDescription = null;
+        _showCreateTemplateDialog = true;
+    }
+
+    private void CloseCreateTemplateDialog()
+    {
+        _showCreateTemplateDialog = false;
+        _selectedInvoice = null;
+        _templateName = "";
+    }
+
+    private async Task CreateTemplate()
+    {
+        if (_selectedInvoice == null || string.IsNullOrWhiteSpace(_templateName)) return;
+
+        try
+        {
+            Snackbar.Add(L["Invoice_CreatingTemplate"].Value, Severity.Info);
+
+            var result = await TemplateService.CreateFromInvoiceAsync(
+                _selectedInvoice.Id, _templateName, _templateDescription);
+
+            if (result != null)
+            {
+                Snackbar.Add($"{L["Msg_SaveSuccess"].Value}: {result.Name}", Severity.Success);
+                CloseCreateTemplateDialog();
+            }
+            else
+            {
+                Snackbar.Add(L["Msg_Error"].Value, Severity.Error);
+            }
+        }
+        catch (Exception ex) { Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error); }
+    }
+
+    // --- "Create Invoice from Template" dialog ---
+
+    /// <summary>
+    /// Handles template selection in the "New from Template" dialog.
+    /// When a template is selected, auto-fills the client dropdown if the template
+    /// has a default ClientId configured — saves the user one click.
+    /// </summary>
+    private void OnTemplateSelected(long templateId)
+    {
+        _selectedTemplateId = templateId;
+
+        // Pre-fill client from template's default ClientId if available
+        var template = _templates.FirstOrDefault(t => t.Id == templateId);
+        if (template?.ClientId is > 0)
+        {
+            _fromTemplateDto.ClientId = template.ClientId.Value;
+        }
+    }
+
+    /// <summary>
+    /// Opens the "Create from Template" dialog — resets form state and shows the dialog.
+    /// Simplified: only template + client selection, dates default on the backend.
+    /// </summary>
+    private void OpenFromTemplateDialog()
+    {
+        _selectedTemplateId = 0;
+        _fromTemplateDto = new CreateInvoiceFromTemplateDto();
+        _showFromTemplateDialog = true;
+    }
+
+    private void CloseFromTemplateDialog()
+    {
+        _showFromTemplateDialog = false;
+    }
+
+    /// <summary>
+    /// Navigates to the create page with template + client as query params.
+    /// No DB record is created — the create form loads the template data and pre-fills the fields.
+    /// The invoice is only saved when the user clicks Save on the detail page.
+    /// </summary>
+    private void CreateInvoiceFromTemplate()
+    {
+        if (_selectedTemplateId <= 0 || _fromTemplateDto.ClientId <= 0) return;
+
+        CloseFromTemplateDialog();
+
+        // Navigate to create page with template and client pre-filled via query params
+        Navigation.NavigateTo(
+            $"/invoices/create?templateId={_selectedTemplateId}&clientId={_fromTemplateDto.ClientId}");
+    }
+
+    // --- Helpers ---
+
+    private Color GetStatusColor(EInvoiceStatus status) => status switch
+    {
+        EInvoiceStatus.Draft => Color.Default,
+        EInvoiceStatus.Completed => Color.Info,
+        EInvoiceStatus.Paid => Color.Success,
+        EInvoiceStatus.Creditnoted => Color.Warning,
+        EInvoiceStatus.Deleted => Color.Dark,
+        _ => Color.Default
+    };
+
+    private string GetStatusText(EInvoiceStatus status) => status switch
+    {
+        EInvoiceStatus.Draft => L["Invoice_StatusDraft"].Value,
+        EInvoiceStatus.Completed => L["Invoice_StatusIssued"].Value,
+        EInvoiceStatus.Paid => L["Invoice_StatusPaid"].Value,
+        EInvoiceStatus.Creditnoted => L["Invoice_StatusCredited"].Value,
+        EInvoiceStatus.Deleted => L["Invoice_StatusDeleted"].Value,
+        _ => status.ToString()
+    };
+}
