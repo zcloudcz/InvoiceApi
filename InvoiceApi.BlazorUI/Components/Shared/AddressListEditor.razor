@@ -54,13 +54,15 @@ else
         <tbody>
             @foreach (var (address, index) in Addresses.Select((a, i) => (a, i)))
             {
-                <tr>
+                @* Row click opens edit dialog in edit mode; cursor indicates clickability *@
+                <tr style="@(!ReadOnly ? "cursor: pointer;" : "")"
+                    @onclick="@(() => OnRowClick(index))">
                     <td>@GetAddressTypeLabel(address.AddressType)</td>
                     <td>@address.Street</td>
                     <td>@address.City</td>
                     <td>@address.PostalCode</td>
                     <td>@address.Country</td>
-                    <td style="text-align: center;">
+                    <td style="text-align: center;" @onclick:stopPropagation="true">
                         @if (ReadOnly)
                         {
                             @* Read-only mode — just show a star icon for the default address *@
@@ -81,7 +83,8 @@ else
                     </td>
                     @if (!ReadOnly)
                     {
-                        <td style="text-align: center;">
+                        @* stopPropagation prevents row click (edit) from firing when clicking action buttons *@
+                        <td style="text-align: center;" @onclick:stopPropagation="true">
                             <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
                                            OnClick="@(() => EditAddress(index))"
                                            Title="@L["Address_Edit"].Value" />
@@ -118,6 +121,16 @@ else
     public bool ReadOnly { get; set; }
 
     /// <summary>
+    /// Handles row click — opens edit dialog in edit mode, no-op in read-only mode.
+    /// Using a dedicated method instead of inline ternary to avoid null delegate issues.
+    /// </summary>
+    private Task OnRowClick(int index)
+    {
+        if (ReadOnly) return Task.CompletedTask;
+        return EditAddress(index);
+    }
+
+    /// <summary>
     /// Opens the address dialog in "add" mode with default values.
     /// Adds the new address to the list and notifies the parent.
     /// </summary>
@@ -137,7 +150,7 @@ else
             { x => x.DialogTitle, L["Address_Add"].Value }
         };
 
-        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseOnEscapeKey = true };
         var dialog = await DialogService.ShowAsync<AddressDialog>(L["Address_Add"].Value, parameters, options);
         var result = await dialog.Result;
 
@@ -179,7 +192,7 @@ else
             { x => x.DialogTitle, L["Address_Edit"].Value }
         };
 
-        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseOnEscapeKey = true };
         var dialog = await DialogService.ShowAsync<AddressDialog>(L["Address_Edit"].Value, parameters, options);
         var result = await dialog.Result;
 

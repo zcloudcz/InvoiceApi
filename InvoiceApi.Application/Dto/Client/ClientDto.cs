@@ -63,6 +63,12 @@ public class ClientDto
     public List<ContactDto> Contact { get; set; } = new();
 
     /// <summary>
+    /// Collection of client bank accounts (1:N).
+    /// Issuers use these as payment destinations on invoices.
+    /// </summary>
+    public List<BankAccountDto> BankAccount { get; set; } = new();
+
+    /// <summary>
     /// Billing settings for this client
     /// </summary>
     public BillingSettingsDto? BillingSettings { get; set; }

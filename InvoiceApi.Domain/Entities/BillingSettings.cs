@@ -96,10 +96,10 @@ public class BillingSettings : BaseEntity
     public EPaymentMethod? DefaultPaymentMethod { get; set; }
 
     /// <summary>
-    /// Bank account number for receiving payments from this client
-    /// If you have multiple accounts, you can specify which one to use for this client
-    /// Null = use default issuer's bank account
+    /// [DEPRECATED] Single bank account number — replaced by Client.BankAccount (1:N).
+    /// Kept temporarily for data migration. Use Client.BankAccount collection instead.
     /// </summary>
+    [Obsolete("Use Client.BankAccount collection instead. This field is kept for migration only.")]
     public string? BankAccountNumber { get; set; }
 
     /// <summary>

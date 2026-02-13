@@ -4,6 +4,8 @@ using InvoiceApi.BlazorUI.Models;
 using InvoiceApi.Domain.Enums;
 using Microsoft.AspNetCore.Components.Authorization;
 
+// BulkOperationRequest, BulkOperationResult, BulkOperationError are in the Invoice DTO namespace
+
 namespace InvoiceApi.BlazorUI.Services;
 
 /// <summary>
@@ -138,12 +140,25 @@ public class InvoiceApiService : ApiClientBase
     }
 
     /// <summary>
-    /// Downloads the invoice as a PDF byte array.
+    /// Downloads the invoice as a PDF byte array using the default template.
     /// Uses GetBytesAsync from the base class for binary content.
     /// </summary>
     public async Task<byte[]?> ExportToPdfAsync(long id)
     {
         return await GetBytesAsync($"/api/invoice/{id}/pdf");
+    }
+
+    /// <summary>
+    /// Downloads the invoice as a PDF byte array using a specific content template.
+    /// When templateId is null, uses the default template for the document type.
+    /// When provided, uses the specified template — allows users to choose PDF layouts.
+    /// </summary>
+    public async Task<byte[]?> ExportToPdfAsync(long id, long? templateId)
+    {
+        var url = templateId.HasValue
+            ? $"/api/invoice/{id}/pdf?templateId={templateId.Value}"
+            : $"/api/invoice/{id}/pdf";
+        return await GetBytesAsync(url);
     }
 
     /// <summary>
@@ -185,5 +200,57 @@ public class InvoiceApiService : ApiClientBase
     {
         var dto = new { RecipientEmail = recipientEmail, Subject = subject, Message = message };
         return await PostBoolAsync($"/api/invoice/{invoiceId}/send-email", dto);
+    }
+
+    // ─── Bulk Operations ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Completes (issues) multiple draft invoices in a single batch via POST /api/invoice/bulk/complete.
+    /// Returns a result with success/failure counts and error details for partial failures.
+    /// </summary>
+    public async Task<BulkOperationResult?> BulkCompleteAsync(List<long> invoiceIds)
+    {
+        var request = new BulkOperationRequest { InvoiceIds = invoiceIds };
+        return await PostAsync<BulkOperationRequest, BulkOperationResult>("/api/invoice/bulk/complete", request);
+    }
+
+    /// <summary>
+    /// Marks multiple completed invoices as paid in a single batch via POST /api/invoice/bulk/mark-paid.
+    /// Returns a result with success/failure counts and error details for partial failures.
+    /// </summary>
+    public async Task<BulkOperationResult?> BulkMarkAsPaidAsync(List<long> invoiceIds)
+    {
+        var request = new BulkOperationRequest { InvoiceIds = invoiceIds };
+        return await PostAsync<BulkOperationRequest, BulkOperationResult>("/api/invoice/bulk/mark-paid", request);
+    }
+
+    /// <summary>
+    /// Soft-deletes multiple draft invoices in a single batch via POST /api/invoice/bulk/delete.
+    /// Returns a result with success/failure counts and error details for partial failures.
+    /// </summary>
+    public async Task<BulkOperationResult?> BulkDeleteAsync(List<long> invoiceIds)
+    {
+        var request = new BulkOperationRequest { InvoiceIds = invoiceIds };
+        return await PostAsync<BulkOperationRequest, BulkOperationResult>("/api/invoice/bulk/delete", request);
+    }
+
+    /// <summary>
+    /// Sends invoice emails for multiple invoices in a single batch via POST /api/invoice/bulk/send-email.
+    /// Each email is sent to the invoice's client default email address.
+    /// </summary>
+    public async Task<BulkOperationResult?> BulkSendEmailAsync(List<long> invoiceIds)
+    {
+        var request = new BulkOperationRequest { InvoiceIds = invoiceIds };
+        return await PostAsync<BulkOperationRequest, BulkOperationResult>("/api/invoice/bulk/send-email", request);
+    }
+
+    /// <summary>
+    /// Downloads a ZIP archive containing PDFs for multiple invoices.
+    /// Returns the ZIP as a byte array for client-side download via JS interop.
+    /// </summary>
+    public async Task<byte[]?> BulkExportPdfAsync(List<long> invoiceIds)
+    {
+        var idsParam = string.Join(",", invoiceIds);
+        return await GetBytesAsync($"/api/invoice/bulk/pdf?ids={idsParam}");
     }
 }

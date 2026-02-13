@@ -125,6 +125,64 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
+        public InvoiceApi.Application.Dto.Client.BankAccountDto Map_BankAccount_To_BankAccountDto(InvoiceApi.Domain.Entities.BankAccount source)
+        {
+            var destination = new InvoiceApi.Application.Dto.Client.BankAccountDto();
+            destination.Id = source.Id;
+            destination.Label = source.Label;
+            destination.BankName = source.BankName;
+            destination.AccountNumber = source.AccountNumber;
+            destination.IBAN = source.IBAN;
+            destination.SWIFT = source.SWIFT;
+            destination.CurrencyCode = source.CurrencyCode;
+            destination.IsDefault = source.IsDefault;
+            return destination;
+        }
+
+        public InvoiceApi.Application.Dto.Client.BankAccountDto Map_BankAccount_To_BankAccountDto(InvoiceApi.Domain.Entities.BankAccount source, InvoiceApi.Application.Dto.Client.BankAccountDto destination)
+        {
+            destination.Id = source.Id;
+            destination.Label = source.Label;
+            destination.BankName = source.BankName;
+            destination.AccountNumber = source.AccountNumber;
+            destination.IBAN = source.IBAN;
+            destination.SWIFT = source.SWIFT;
+            destination.CurrencyCode = source.CurrencyCode;
+            destination.IsDefault = source.IsDefault;
+            return destination;
+        }
+
+        public InvoiceApi.Application.Dto.Client.BankAccountDto[] MapArray_BankAccount_To_BankAccountDto(System.ReadOnlySpan<InvoiceApi.Domain.Entities.BankAccount> source)
+        {
+            var destination = new InvoiceApi.Application.Dto.Client.BankAccountDto[source.Length];
+            for (int i = 0; i < source.Length; i++)
+            {
+                destination[i] = source[i].ToBankAccountDto();
+            }
+
+            return destination;
+        }
+
+        public List<InvoiceApi.Application.Dto.Client.BankAccountDto> MapList_BankAccount_To_BankAccountDto(System.Collections.Generic.IReadOnlyList<InvoiceApi.Domain.Entities.BankAccount> source)
+        {
+            var destination = new List<InvoiceApi.Application.Dto.Client.BankAccountDto>(source.Count);
+            for (int i = 0; i < source.Count; i++)
+            {
+                destination.Add(source[i].ToBankAccountDto());
+            }
+            return destination;
+        }
+
+        public List<InvoiceApi.Application.Dto.Client.BankAccountDto> MapList_BankAccount_To_BankAccountDto_Enumerable(System.Collections.Generic.IEnumerable<InvoiceApi.Domain.Entities.BankAccount> source)
+        {
+            var destination = new List<InvoiceApi.Application.Dto.Client.BankAccountDto>();
+            foreach (var item in source)
+            {
+                destination.Add(item.ToBankAccountDto());
+            }
+            return destination;
+        }
+
         public InvoiceApi.Application.Dto.Client.BillingSettingsDto Map_BillingSettings_To_BillingSettingsDto(InvoiceApi.Domain.Entities.BillingSettings source)
         {
             var destination = new InvoiceApi.Application.Dto.Client.BillingSettingsDto();
@@ -209,6 +267,9 @@ public sealed class Mapper : IMapper
             destination.Contact = source.Contact
                 ?.Select(item => item.ToContactDto())
                 .ToList();
+            destination.BankAccount = source.BankAccount
+                ?.Select(item => item.ToBankAccountDto())
+                .ToList();
             destination.BillingSettings = source.BillingSettings != null
                 ? source.BillingSettings.ToBillingSettingsDto()
                 : null;
@@ -233,6 +294,9 @@ public sealed class Mapper : IMapper
                 .ToList();
             destination.Contact = source.Contact
                 ?.Select(item => item.ToContactDto())
+                .ToList();
+            destination.BankAccount = source.BankAccount
+                ?.Select(item => item.ToBankAccountDto())
                 .ToList();
             destination.BillingSettings = source.BillingSettings != null
                 ? source.BillingSettings.ToBillingSettingsDto()
@@ -931,6 +995,8 @@ public sealed class Mapper : IMapper
                 return (TDestination)(object)((InvoiceApi.Domain.Entities.Address)(object)source!).ToAddressDto();
             if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Contact) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Client.ContactDto))
                 return (TDestination)(object)((InvoiceApi.Domain.Entities.Contact)(object)source!).ToContactDto();
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.BankAccount) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Client.BankAccountDto))
+                return (TDestination)(object)((InvoiceApi.Domain.Entities.BankAccount)(object)source!).ToBankAccountDto();
             if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.BillingSettings) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Client.BillingSettingsDto))
                 return (TDestination)(object)((InvoiceApi.Domain.Entities.BillingSettings)(object)source!).ToBillingSettingsDto();
             if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Client) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Client.ClientDto))
@@ -962,6 +1028,8 @@ public sealed class Mapper : IMapper
                 return (TDestination)(object)Map_Address_To_AddressDto((InvoiceApi.Domain.Entities.Address)(object)source!, (InvoiceApi.Application.Dto.Client.AddressDto)(object)destination!);
             if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Contact) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Client.ContactDto))
                 return (TDestination)(object)Map_Contact_To_ContactDto((InvoiceApi.Domain.Entities.Contact)(object)source!, (InvoiceApi.Application.Dto.Client.ContactDto)(object)destination!);
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.BankAccount) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Client.BankAccountDto))
+                return (TDestination)(object)Map_BankAccount_To_BankAccountDto((InvoiceApi.Domain.Entities.BankAccount)(object)source!, (InvoiceApi.Application.Dto.Client.BankAccountDto)(object)destination!);
             if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.BillingSettings) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Client.BillingSettingsDto))
                 return (TDestination)(object)Map_BillingSettings_To_BillingSettingsDto((InvoiceApi.Domain.Entities.BillingSettings)(object)source!, (InvoiceApi.Application.Dto.Client.BillingSettingsDto)(object)destination!);
             if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Client) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Client.ClientDto))
@@ -998,6 +1066,11 @@ public sealed class Mapper : IMapper
             {
                 var typedSource = System.Runtime.CompilerServices.Unsafe.As<System.ReadOnlySpan<TSource>, System.ReadOnlySpan<InvoiceApi.Domain.Entities.Contact>>(ref source);
                 return (TDestination[])(object)MapArray_Contact_To_ContactDto(typedSource);
+            }
+            else if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.BankAccount) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Client.BankAccountDto))
+            {
+                var typedSource = System.Runtime.CompilerServices.Unsafe.As<System.ReadOnlySpan<TSource>, System.ReadOnlySpan<InvoiceApi.Domain.Entities.BankAccount>>(ref source);
+                return (TDestination[])(object)MapArray_BankAccount_To_BankAccountDto(typedSource);
             }
             else if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.BillingSettings) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Client.BillingSettingsDto))
             {
@@ -1063,6 +1136,8 @@ public sealed class Mapper : IMapper
                 return (List<TDestination>)(object)MapList_Address_To_AddressDto((System.Collections.Generic.IReadOnlyList<InvoiceApi.Domain.Entities.Address>)(object)source);
             if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Contact) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Client.ContactDto))
                 return (List<TDestination>)(object)MapList_Contact_To_ContactDto((System.Collections.Generic.IReadOnlyList<InvoiceApi.Domain.Entities.Contact>)(object)source);
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.BankAccount) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Client.BankAccountDto))
+                return (List<TDestination>)(object)MapList_BankAccount_To_BankAccountDto((System.Collections.Generic.IReadOnlyList<InvoiceApi.Domain.Entities.BankAccount>)(object)source);
             if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.BillingSettings) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Client.BillingSettingsDto))
                 return (List<TDestination>)(object)MapList_BillingSettings_To_BillingSettingsDto((System.Collections.Generic.IReadOnlyList<InvoiceApi.Domain.Entities.BillingSettings>)(object)source);
             if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Client) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Client.ClientDto))
@@ -1094,6 +1169,8 @@ public sealed class Mapper : IMapper
                 return (List<TDestination>)(object)MapList_Address_To_AddressDto_Enumerable((System.Collections.Generic.IEnumerable<InvoiceApi.Domain.Entities.Address>)(object)source);
             if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Contact) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Client.ContactDto))
                 return (List<TDestination>)(object)MapList_Contact_To_ContactDto_Enumerable((System.Collections.Generic.IEnumerable<InvoiceApi.Domain.Entities.Contact>)(object)source);
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.BankAccount) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Client.BankAccountDto))
+                return (List<TDestination>)(object)MapList_BankAccount_To_BankAccountDto_Enumerable((System.Collections.Generic.IEnumerable<InvoiceApi.Domain.Entities.BankAccount>)(object)source);
             if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.BillingSettings) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Client.BillingSettingsDto))
                 return (List<TDestination>)(object)MapList_BillingSettings_To_BillingSettingsDto_Enumerable((System.Collections.Generic.IEnumerable<InvoiceApi.Domain.Entities.BillingSettings>)(object)source);
             if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Client) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Client.ClientDto))

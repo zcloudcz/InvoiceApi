@@ -37,6 +37,21 @@ public static class Mapper_Extensions
     }
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    public static InvoiceApi.Application.Dto.Client.BankAccountDto ToBankAccountDto(this InvoiceApi.Domain.Entities.BankAccount source)
+    {
+        var destination = new InvoiceApi.Application.Dto.Client.BankAccountDto();
+        destination.Id = source.Id;
+        destination.Label = source.Label;
+        destination.BankName = source.BankName;
+        destination.AccountNumber = source.AccountNumber;
+        destination.IBAN = source.IBAN;
+        destination.SWIFT = source.SWIFT;
+        destination.CurrencyCode = source.CurrencyCode;
+        destination.IsDefault = source.IsDefault;
+        return destination;
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     public static InvoiceApi.Application.Dto.Client.BillingSettingsDto ToBillingSettingsDto(this InvoiceApi.Domain.Entities.BillingSettings source)
     {
         var destination = new InvoiceApi.Application.Dto.Client.BillingSettingsDto();
@@ -73,6 +88,9 @@ public static class Mapper_Extensions
             .ToList();
         destination.Contact = source.Contact
             ?.Select(item => item.ToContactDto())
+            .ToList();
+        destination.BankAccount = source.BankAccount
+            ?.Select(item => item.ToBankAccountDto())
             .ToList();
         destination.BillingSettings = source.BillingSettings != null
             ? source.BillingSettings.ToBillingSettingsDto()

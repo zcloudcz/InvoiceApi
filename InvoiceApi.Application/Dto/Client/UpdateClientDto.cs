@@ -57,6 +57,12 @@ public class UpdateClientDto
     public List<UpdateContactDto>? Contact { get; set; }
 
     /// <summary>
+    /// Updated bank accounts. If provided, replaces all existing bank accounts for the client.
+    /// Uses the same replace-all strategy as Address and Contact.
+    /// </summary>
+    public List<UpdateBankAccountDto>? BankAccount { get; set; }
+
+    /// <summary>
     /// Updated billing settings. If provided, updates the client's billing settings.
     /// </summary>
     public UpdateBillingSettingsDto? BillingSettings { get; set; }

@@ -116,6 +116,13 @@ public class MasterDbContext : DbContext
     public DbSet<BillingSettings> BillingSettings { get; set; }
 
     /// <summary>
+    /// Client bank accounts (1:N per client).
+    /// Companies (issuers) store their bank accounts in the master DB so SysAdmin
+    /// can manage them without a provisioned tenant database.
+    /// </summary>
+    public DbSet<BankAccount> BankAccount { get; set; }
+
+    /// <summary>
     /// Cached ARES lookups (Czech business registry data).
     /// Stored in master DB so that ARES cache is available regardless of tenant context
     /// (e.g., when SysAdmin creates companies without impersonation).
@@ -144,6 +151,7 @@ public class MasterDbContext : DbContext
         ConfigureClient(modelBuilder);
         ConfigureAddress(modelBuilder);
         ConfigureContact(modelBuilder);
+        ConfigureBankAccount(modelBuilder);
         ConfigureBillingSettings(modelBuilder);
         ConfigureCompanySystemSettings(modelBuilder);
         ConfigureVatRate(modelBuilder);
@@ -307,6 +315,12 @@ public class MasterDbContext : DbContext
                 .HasForeignKey(c => c.ClientId)
                 .OnDelete(DeleteBehavior.Cascade);
 
+            // Bank accounts: 1:N with cascade delete — same as Address/Contact pattern.
+            entity.HasMany(e => e.BankAccount)
+                .WithOne(b => b.Client)
+                .HasForeignKey(b => b.ClientId)
+                .OnDelete(DeleteBehavior.Cascade);
+
             // One-to-one: Client → BillingSettings (bank account, payment method, etc.)
             entity.HasOne(e => e.BillingSettings)
                 .WithOne(b => b.Client)
@@ -358,6 +372,28 @@ public class MasterDbContext : DbContext
 
             entity.Property(e => e.ContactValue).IsRequired().HasMaxLength(500);
             entity.Property(e => e.Label).HasMaxLength(200);
+        });
+    }
+
+    /// <summary>
+    /// BankAccount table configuration — same schema as TenantDbContext.
+    /// Companies (issuers) store their bank accounts in the master DB so SysAdmin
+    /// can manage them without a provisioned tenant database.
+    /// </summary>
+    private void ConfigureBankAccount(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<BankAccount>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.ClientId);
+            entity.HasIndex(e => new { e.ClientId, e.IsDefault });
+
+            entity.Property(e => e.Label).HasMaxLength(200);
+            entity.Property(e => e.BankName).HasMaxLength(200);
+            entity.Property(e => e.AccountNumber).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.IBAN).HasMaxLength(50);
+            entity.Property(e => e.SWIFT).HasMaxLength(20);
+            entity.Property(e => e.CurrencyCode).HasMaxLength(3);
         });
     }
 
@@ -431,6 +467,20 @@ public class MasterDbContext : DbContext
             entity.Property(e => e.SmtpPassword).HasMaxLength(500);
             entity.Property(e => e.SmtpSenderEmail).HasMaxLength(256);
             entity.Property(e => e.SmtpSenderName).HasMaxLength(200);
+
+            // ── Google Drive cloud storage settings (all optional) ────────────
+            // OAuth tokens are stored encrypted in production.
+            // MaxLength for tokens is generous — Google/MS tokens can be long.
+            entity.Property(e => e.GoogleDriveAccessToken).HasMaxLength(2000);
+            entity.Property(e => e.GoogleDriveRefreshToken).HasMaxLength(2000);
+            entity.Property(e => e.GoogleDriveFolderId).HasMaxLength(500);
+            entity.Property(e => e.GoogleDriveFolderName).HasMaxLength(500);
+
+            // ── OneDrive cloud storage settings (all optional) ────────────────
+            entity.Property(e => e.OneDriveAccessToken).HasMaxLength(2000);
+            entity.Property(e => e.OneDriveRefreshToken).HasMaxLength(2000);
+            entity.Property(e => e.OneDriveFolderId).HasMaxLength(500);
+            entity.Property(e => e.OneDriveFolderName).HasMaxLength(500);
         });
     }
 

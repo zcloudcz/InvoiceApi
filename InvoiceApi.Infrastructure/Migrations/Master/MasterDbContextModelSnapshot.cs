@@ -196,6 +196,66 @@ namespace InvoiceApi.Infrastructure.Migrations.Master
                     b.ToTable("AresCache");
                 });
 
+            modelBuilder.Entity("InvoiceApi.Domain.Entities.BankAccount", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("AccountNumber")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("BankName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<long>("ClientId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<long?>("CreatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("CurrencyCode")
+                        .HasMaxLength(3)
+                        .HasColumnType("nvarchar(3)");
+
+                    b.Property<string>("IBAN")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Label")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("SWIFT")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<long?>("UpdatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClientId");
+
+                    b.HasIndex("ClientId", "IsDefault");
+
+                    b.ToTable("BankAccount");
+                });
+
             modelBuilder.Entity("InvoiceApi.Domain.Entities.BillingSettings", b =>
                 {
                     b.Property<long>("Id")
@@ -363,6 +423,28 @@ namespace InvoiceApi.Infrastructure.Migrations.Master
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<string>("GoogleDriveAccessToken")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<bool?>("GoogleDriveEnabled")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("GoogleDriveFolderId")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("GoogleDriveFolderName")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("GoogleDriveRefreshToken")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<DateTime?>("GoogleDriveTokenExpiresAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
@@ -371,6 +453,28 @@ namespace InvoiceApi.Infrastructure.Migrations.Master
 
                     b.Property<int?>("MaxUsers")
                         .HasColumnType("int");
+
+                    b.Property<string>("OneDriveAccessToken")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<bool?>("OneDriveEnabled")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("OneDriveFolderId")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("OneDriveFolderName")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("OneDriveRefreshToken")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<DateTime?>("OneDriveTokenExpiresAt")
+                        .HasColumnType("datetime2");
 
                     b.Property<DateTime?>("ProvisionedAt")
                         .HasColumnType("datetime2");
@@ -1193,6 +1297,17 @@ namespace InvoiceApi.Infrastructure.Migrations.Master
                     b.Navigation("Client");
                 });
 
+            modelBuilder.Entity("InvoiceApi.Domain.Entities.BankAccount", b =>
+                {
+                    b.HasOne("InvoiceApi.Domain.Entities.Client", "Client")
+                        .WithMany("BankAccount")
+                        .HasForeignKey("ClientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Client");
+                });
+
             modelBuilder.Entity("InvoiceApi.Domain.Entities.BillingSettings", b =>
                 {
                     b.HasOne("InvoiceApi.Domain.Entities.Client", "Client")
@@ -1249,6 +1364,8 @@ namespace InvoiceApi.Infrastructure.Migrations.Master
             modelBuilder.Entity("InvoiceApi.Domain.Entities.Client", b =>
                 {
                     b.Navigation("Address");
+
+                    b.Navigation("BankAccount");
 
                     b.Navigation("BillingSettings");
 

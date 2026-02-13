@@ -120,4 +120,93 @@ public class CompanySystemSettings : BaseEntity
     /// Defaults to true if not specified when SmtpHost is set.
     /// </summary>
     public bool? SmtpUseSsl { get; set; }
+
+    // ─── Google Drive Cloud Storage Settings ─────────────────────────────────
+    // When GoogleDriveEnabled is true, the CloudStorageOrchestrator uploads
+    // generated invoice PDFs to the user's Google Drive folder automatically.
+    // OAuth tokens are obtained via the authorization code flow and stored here.
+    // The access token is short-lived (~1 hour); the refresh token is used to renew it.
+
+    /// <summary>
+    /// Whether Google Drive integration is enabled for this company.
+    /// When true, the system uploads invoice PDFs to Google Drive after generation.
+    /// </summary>
+    public bool? GoogleDriveEnabled { get; set; }
+
+    /// <summary>
+    /// Google OAuth 2.0 access token for Google Drive API calls.
+    /// Short-lived (~1 hour) — automatically refreshed using GoogleDriveRefreshToken.
+    /// Stored encrypted in production.
+    /// </summary>
+    public string? GoogleDriveAccessToken { get; set; }
+
+    /// <summary>
+    /// Google OAuth 2.0 refresh token for obtaining new access tokens.
+    /// Long-lived — only invalidated when user revokes access.
+    /// Stored encrypted in production.
+    /// </summary>
+    public string? GoogleDriveRefreshToken { get; set; }
+
+    /// <summary>
+    /// Expiration timestamp of the current Google Drive access token.
+    /// When DateTime.UtcNow >= this value, the token must be refreshed.
+    /// </summary>
+    public DateTime? GoogleDriveTokenExpiresAt { get; set; }
+
+    /// <summary>
+    /// Google Drive folder ID where invoice PDFs are uploaded.
+    /// If null, files are uploaded to the root of the user's Drive.
+    /// Set via the "Set Folder" UI in cloud storage settings.
+    /// </summary>
+    public string? GoogleDriveFolderId { get; set; }
+
+    /// <summary>
+    /// Display name of the selected Google Drive folder.
+    /// Stored for UI display purposes — the actual upload uses GoogleDriveFolderId.
+    /// </summary>
+    public string? GoogleDriveFolderName { get; set; }
+
+    // ─── OneDrive Cloud Storage Settings ─────────────────────────────────────
+    // When OneDriveEnabled is true, the CloudStorageOrchestrator uploads
+    // generated invoice PDFs to the user's OneDrive folder automatically.
+    // Uses Microsoft Graph API with Files.ReadWrite scope.
+
+    /// <summary>
+    /// Whether OneDrive integration is enabled for this company.
+    /// When true, the system uploads invoice PDFs to OneDrive after generation.
+    /// </summary>
+    public bool? OneDriveEnabled { get; set; }
+
+    /// <summary>
+    /// Microsoft OAuth 2.0 access token for OneDrive/Graph API calls.
+    /// Short-lived (~1 hour) — automatically refreshed using OneDriveRefreshToken.
+    /// Stored encrypted in production.
+    /// </summary>
+    public string? OneDriveAccessToken { get; set; }
+
+    /// <summary>
+    /// Microsoft OAuth 2.0 refresh token for obtaining new access tokens.
+    /// Long-lived — only invalidated when user revokes access or token expires.
+    /// Stored encrypted in production.
+    /// </summary>
+    public string? OneDriveRefreshToken { get; set; }
+
+    /// <summary>
+    /// Expiration timestamp of the current OneDrive access token.
+    /// When DateTime.UtcNow >= this value, the token must be refreshed.
+    /// </summary>
+    public DateTime? OneDriveTokenExpiresAt { get; set; }
+
+    /// <summary>
+    /// OneDrive folder ID (driveItem ID) where invoice PDFs are uploaded.
+    /// If null, files are uploaded to the root of the user's OneDrive.
+    /// Set via the "Set Folder" UI in cloud storage settings.
+    /// </summary>
+    public string? OneDriveFolderId { get; set; }
+
+    /// <summary>
+    /// Display name of the selected OneDrive folder.
+    /// Stored for UI display purposes — the actual upload uses OneDriveFolderId.
+    /// </summary>
+    public string? OneDriveFolderName { get; set; }
 }

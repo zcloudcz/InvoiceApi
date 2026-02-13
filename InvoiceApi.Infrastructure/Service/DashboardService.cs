@@ -112,7 +112,34 @@ public class DashboardService : IDashboardService
             .Take(10)
             .ToListAsync(ct);
 
-        // Build the dashboard DTO with all collected data
+        // ─── Chart Data Queries ───────────────────────────────────────────────
+
+        // Invoice count grouped by status (for donut chart) — excludes Deleted
+        var invoiceCountByStatus = await invoiceQuery
+            .Where(i => i.Status != EInvoiceStatus.Deleted)
+            .GroupBy(i => i.Status)
+            .Select(g => new { Status = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+
+        // Top 10 clients by total invoice revenue (for donut chart)
+        var topClientsByRevenue = await invoiceQuery
+            .Where(i => i.Status != EInvoiceStatus.Deleted && i.Client != null)
+            .GroupBy(i => i.Client!.CompanyName)
+            .Select(g => new { ClientName = g.Key ?? "Unknown", Total = g.Sum(i => i.TotalWithVat) })
+            .OrderByDescending(x => x.Total)
+            .Take(10)
+            .ToListAsync(ct);
+
+        // Top 10 clients by invoice count
+        var topClientsByCount = await invoiceQuery
+            .Where(i => i.Status != EInvoiceStatus.Deleted && i.Client != null)
+            .GroupBy(i => i.Client!.CompanyName)
+            .Select(g => new { ClientName = g.Key ?? "Unknown", Count = g.Count() })
+            .OrderByDescending(x => x.Count)
+            .Take(10)
+            .ToListAsync(ct);
+
+        // Build the dashboard DTO with all collected data including chart data
         var dashboard = new DashboardDto
         {
             InvoicesThisMonth = invoicesThisMonth,
@@ -121,7 +148,11 @@ public class DashboardService : IDashboardService
             ActiveVatRates = activeVatRates,
             OverdueInvoicesCount = overdueCount,
             RecentInvoices = recentInvoices.Select(i => MapInvoiceToDto(i)).ToList(),
-            OverdueInvoices = overdueInvoices.Select(i => MapInvoiceToDto(i)).ToList()
+            OverdueInvoices = overdueInvoices.Select(i => MapInvoiceToDto(i)).ToList(),
+            // Chart data
+            InvoiceCountByStatus = invoiceCountByStatus.ToDictionary(x => x.Status.ToString(), x => x.Count),
+            InvoiceTotalByClient = topClientsByRevenue.ToDictionary(x => x.ClientName, x => x.Total),
+            InvoiceCountByClient = topClientsByCount.ToDictionary(x => x.ClientName, x => x.Count)
         };
 
         _logger.LogInformation("Dashboard loaded: {InvoicesThisMonth} invoices this month, {TotalClients} clients, {UnpaidAmount:N2} unpaid",

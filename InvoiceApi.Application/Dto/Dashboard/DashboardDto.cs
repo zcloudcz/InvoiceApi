@@ -44,4 +44,27 @@ public class DashboardDto
     /// Shows up to 10 overdue invoices sorted by due date ascending (oldest first).
     /// </summary>
     public List<InvoiceDto> OverdueInvoices { get; set; } = new();
+
+    // ─── Chart Data ──────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Invoice count grouped by status (e.g., {"Draft": 5, "Completed": 12, "Paid": 30}).
+    /// Used for the "Invoices by Status" donut chart on the dashboard.
+    /// Excludes Deleted status.
+    /// </summary>
+    public Dictionary<string, int> InvoiceCountByStatus { get; set; } = new();
+
+    /// <summary>
+    /// Top 10 clients by total invoice amount (revenue).
+    /// Key = client company name, Value = total TotalWithVat amount.
+    /// Used for the "Top Clients by Revenue" donut chart.
+    /// </summary>
+    public Dictionary<string, decimal> InvoiceTotalByClient { get; set; } = new();
+
+    /// <summary>
+    /// Top 10 clients by invoice count.
+    /// Key = client company name, Value = number of invoices.
+    /// Used as a supplementary data point (displayed in tooltip or side table).
+    /// </summary>
+    public Dictionary<string, int> InvoiceCountByClient { get; set; } = new();
 }

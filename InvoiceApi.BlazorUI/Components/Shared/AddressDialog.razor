@@ -7,9 +7,10 @@
 @using InvoiceApi.Application.Dto.Client
 @using InvoiceApi.Domain.Enums
 
-<MudDialog>
+<MudDialog DefaultFocus="DefaultFocus.FirstChild">
     <DialogContent>
-        <MudGrid>
+        @* Capture Enter key to save, allowing natural tab navigation between fields *@
+        <MudGrid @onkeydown="OnKeyDown">
             @* Address type dropdown — uses EnumSelect for localized enum labels *@
             <MudItem xs="12" sm="6">
                 <EnumSelect TEnum="EAddressType"
@@ -102,4 +103,17 @@
     /// Closes the dialog without saving — returns a canceled result.
     /// </summary>
     private void Cancel() => MudDialog.Cancel();
+
+    /// <summary>
+    /// Handles keyboard shortcuts:
+    /// - Enter → Save (submit the form)
+    /// - ESC is handled by MudDialog's CloseOnEscapeKey option
+    /// </summary>
+    private void OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            Save();
+        }
+    }
 }

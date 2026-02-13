@@ -21,6 +21,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "InvoiceApi.BlazorUI", "Invo
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "InvoiceApi.MigrationTool", "InvoiceApi.MigrationTool\InvoiceApi.MigrationTool.csproj", "{CFDB40B6-1EF3-40B3-B1B6-E7088CD18A7B}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "InvoiceApi.Functions", "InvoiceApi.Functions\InvoiceApi.Functions.csproj", "{0DF5C102-11CA-4301-866C-70D41B2B761A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -139,6 +141,18 @@ Global
 		{CFDB40B6-1EF3-40B3-B1B6-E7088CD18A7B}.Release|x64.Build.0 = Release|Any CPU
 		{CFDB40B6-1EF3-40B3-B1B6-E7088CD18A7B}.Release|x86.ActiveCfg = Release|Any CPU
 		{CFDB40B6-1EF3-40B3-B1B6-E7088CD18A7B}.Release|x86.Build.0 = Release|Any CPU
+		{0DF5C102-11CA-4301-866C-70D41B2B761A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0DF5C102-11CA-4301-866C-70D41B2B761A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0DF5C102-11CA-4301-866C-70D41B2B761A}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{0DF5C102-11CA-4301-866C-70D41B2B761A}.Debug|x64.Build.0 = Debug|Any CPU
+		{0DF5C102-11CA-4301-866C-70D41B2B761A}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{0DF5C102-11CA-4301-866C-70D41B2B761A}.Debug|x86.Build.0 = Debug|Any CPU
+		{0DF5C102-11CA-4301-866C-70D41B2B761A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0DF5C102-11CA-4301-866C-70D41B2B761A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0DF5C102-11CA-4301-866C-70D41B2B761A}.Release|x64.ActiveCfg = Release|Any CPU
+		{0DF5C102-11CA-4301-866C-70D41B2B761A}.Release|x64.Build.0 = Release|Any CPU
+		{0DF5C102-11CA-4301-866C-70D41B2B761A}.Release|x86.ActiveCfg = Release|Any CPU
+		{0DF5C102-11CA-4301-866C-70D41B2B761A}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

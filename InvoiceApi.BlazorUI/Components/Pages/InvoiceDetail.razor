@@ -7,11 +7,13 @@
 @using InvoiceApi.Application.Dto.Currency
 @using InvoiceApi.Application.Dto.InvoiceTemplate
 @using InvoiceApi.Application.Common
+@using InvoiceApi.Application.Dto.ContentTemplate
 @using InvoiceApi.Domain.Enums
 @inject InvoiceApiService InvoiceService
 @inject ClientApiService ClientService
 @inject CurrencyApiService CurrencyService
 @inject InvoiceTemplateApiService TemplateService
+@inject ContentTemplateApiService ContentTemplateService
 @inject NumberSequenceApiService NumberSequenceService
 @inject IJSRuntime JS
 @inject NavigationManager Navigation
@@ -139,9 +141,12 @@ else if (_isCreateMode)
                     <MudTextField @bind-Value="_createDto.VariableSymbol" Label="@L["Invoice_VariableSymbol"].Value"
                                   MaxLength="10" Validation="@(new Func<string?, string?>(ValidateVariableSymbol))"
                                   HelperText="@L["Invoice_VSDigitsOnly"].Value" Class="mb-3" />
-                    <BankAccountInput Value="@_createDto.BankAccountNumber"
-                                      ValueChanged="@(v => _createDto.BankAccountNumber = v)"
-                                      Label="@L["Invoice_BankAccount"].Value" />
+                    @* Bank account selector — shows issuer's accounts from the 1:N BankAccount collection.
+                       On selection, populates BankAccountNumber/IBAN/SWIFT on the create DTO. *@
+                    <BankAccountSelect BankAccounts="_issuerBankAccounts"
+                                       SelectedAccountId="_selectedBankAccountId"
+                                       OnBankAccountSelected="OnBankAccountSelected"
+                                       Label="@L["BankAccount_SelectAccount"].Value" />
                 </MudCardContent>
             </MudCard>
         </MudItem>
@@ -201,8 +206,20 @@ else
             <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Check"
                        OnClick="MarkAsPaid">@L["Invoice_MarkAsPaid"]</MudButton>
         }
-        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.PictureAsPdf"
-                   OnClick="DownloadPdf">@L["Btn_ExportPdf"]</MudButton>
+        @* PDF download with template selection — split button: primary = default, dropdown = template list *@
+        <MudButtonGroup OverrideStyles="false">
+            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.PictureAsPdf"
+                       OnClick="DownloadPdf">@L["Btn_ExportPdf"]</MudButton>
+            @if (_pdfTemplates.Count > 0)
+            {
+                <MudMenu Icon="@Icons.Material.Filled.ArrowDropDown" Variant="Variant.Outlined" Color="Color.Secondary">
+                    @foreach (var tmpl in _pdfTemplates)
+                    {
+                        <MudMenuItem OnClick="@(() => DownloadPdfWithTemplate(tmpl.Id))">@tmpl.Name</MudMenuItem>
+                    }
+                </MudMenu>
+            }
+        </MudButtonGroup>
         <MudButton Variant="Variant.Outlined" Color="Color.Tertiary" StartIcon="@Icons.Material.Filled.Email"
                    OnClick="@(() => _showEmailDialog = true)">@L["Btn_SendEmail"]</MudButton>
     </div>
@@ -271,9 +288,11 @@ else
                         <MudTextField @bind-Value="_editDto.VariableSymbol" Label="@L["Invoice_VariableSymbol"].Value"
                                       MaxLength="10" Validation="@(new Func<string?, string?>(ValidateVariableSymbol))"
                                       HelperText="@L["Invoice_VSDigitsOnly"].Value" Class="mb-3" />
-                        <BankAccountInput Value="@_editDto.BankAccountNumber"
-                                          ValueChanged="@(v => _editDto.BankAccountNumber = v)"
-                                          Label="@L["Invoice_BankAccount"].Value" />
+                        @* Bank account selector — shows issuer's accounts for editing *@
+                        <BankAccountSelect BankAccounts="_issuerBankAccounts"
+                                           SelectedAccountId="_selectedBankAccountId"
+                                           OnBankAccountSelected="OnEditBankAccountSelected"
+                                           Label="@L["BankAccount_SelectAccount"].Value" />
                     </MudCardContent>
                 </MudCard>
             </MudItem>
@@ -568,6 +587,10 @@ else
     private List<CurrencyDto> _currencies = new();
     private ClientDto? _issuer;
 
+    // Bank account selection state — loaded from issuer's BankAccount collection
+    private List<BankAccountDto> _issuerBankAccounts = new();
+    private long? _selectedBankAccountId;
+
     // Document number preview — shows what the next auto-generated number will be
     private string? _documentNumberPreview;
 
@@ -580,6 +603,9 @@ else
     // QR code state — loaded for completed/paid invoices in view mode
     private string? _qrCodeBase64;
     private bool _qrLoading = false;
+
+    // PDF template list — loaded once, used for the PDF template picker split button
+    private List<ContentTemplateDto> _pdfTemplates = new();
 
     // Tracks previous Id to detect parameter changes (e.g., /invoices/create → /invoices/1).
     // Blazor reuses components for the same @page route, so OnInitializedAsync only fires once.
@@ -654,10 +680,16 @@ else
 
     /// <summary>
     /// Loads the issuer (user's company) via GET /api/client/issuer.
+    /// Also populates the bank account list for the BankAccountSelect dropdown.
     /// </summary>
     private async Task LoadIssuer()
     {
-        try { _issuer = await ClientService.GetIssuerAsync(); }
+        try
+        {
+            _issuer = await ClientService.GetIssuerAsync();
+            // Populate bank accounts from the issuer for the dropdown selector
+            _issuerBankAccounts = _issuer?.BankAccount ?? new List<BankAccountDto>();
+        }
         catch (Exception ex) { Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error); }
     }
 
@@ -756,15 +788,21 @@ else
         // Determine document type from query parameter (e.g., ?type=CreditNote from nav link)
         var docType = TypeParam == "CreditNote" ? EDocumentType.CreditNote : EDocumentType.Invoice;
 
+        // Auto-select the default bank account from the issuer's 1:N BankAccount collection
+        var defaultAccount = _issuerBankAccounts.FirstOrDefault(a => a.IsDefault)
+                             ?? _issuerBankAccounts.FirstOrDefault();
+        _selectedBankAccountId = defaultAccount?.Id;
+
         _createDto = new CreateInvoiceDto
         {
             DocumentType = docType,
             CurrencyId = _currencies.FirstOrDefault()?.Id ?? 1,
             PaymentMethod = EPaymentMethod.BankTransfer,
             IssuerId = _issuer?.Id ?? 0,
-            // Auto-fill bank account from the issuer's billing settings.
-            // This is the bank account where customers pay TO — it belongs to OUR company.
-            BankAccountNumber = _issuer?.BillingSettings?.BankAccountNumber,
+            // Auto-fill bank account from the issuer's default bank account (1:N)
+            BankAccountNumber = defaultAccount?.AccountNumber,
+            IBAN = defaultAccount?.IBAN,
+            SWIFT = defaultAccount?.SWIFT,
             InvoiceItem = new List<CreateInvoiceItemDto>()
         };
         _loading = false;
@@ -799,6 +837,11 @@ else
             // Resolve client: use provided clientId, or fall back to template's default, or 0
             var resolvedClientId = clientId ?? template.ClientId ?? 0;
 
+            // Auto-select the default bank account from the issuer's 1:N BankAccount collection
+            var defaultAccount = _issuerBankAccounts.FirstOrDefault(a => a.IsDefault)
+                                 ?? _issuerBankAccounts.FirstOrDefault();
+            _selectedBankAccountId = defaultAccount?.Id;
+
             _createDto = new CreateInvoiceDto
             {
                 DocumentType = template.DocumentType,
@@ -810,8 +853,10 @@ else
                 CurrencyId = template.CurrencyId,
                 PaymentMethod = template.PaymentMethod ?? EPaymentMethod.BankTransfer,
                 VariableSymbol = template.VariableSymbol,
-                // Template bank account takes priority; if template has none, fall back to issuer's
-                BankAccountNumber = template.BankAccountNumber ?? _issuer?.BillingSettings?.BankAccountNumber,
+                // Template bank account takes priority; if template has none, fall back to issuer's default
+                BankAccountNumber = template.BankAccountNumber ?? defaultAccount?.AccountNumber,
+                IBAN = defaultAccount?.IBAN,
+                SWIFT = defaultAccount?.SWIFT,
                 Notes = template.Notes,
                 NumberSequenceId = template.NumberSequenceId,
                 // Copy invoice items from template
@@ -870,6 +915,12 @@ else
                 EnableEditing();
             }
 
+            // Load PDF templates for the template picker split button
+            if (_invoice != null)
+            {
+                _ = LoadPdfTemplatesAsync();
+            }
+
             // Load QR code for completed/paid invoices (non-blocking, runs in background)
             if (_invoice != null && _invoice.Status != EInvoiceStatus.Draft)
             {
@@ -913,6 +964,54 @@ else
         {
             _qrLoading = false;
             StateHasChanged();
+        }
+    }
+
+    // --- Bank account selection handlers ---
+
+    /// <summary>
+    /// Handles bank account selection in CREATE mode.
+    /// Populates BankAccountNumber, IBAN, and SWIFT on the create DTO from the selected account.
+    /// </summary>
+    private void OnBankAccountSelected(BankAccountDto? account)
+    {
+        _isDirty = true;
+        if (account != null)
+        {
+            _selectedBankAccountId = account.Id;
+            _createDto.BankAccountNumber = account.AccountNumber;
+            _createDto.IBAN = account.IBAN;
+            _createDto.SWIFT = account.SWIFT;
+        }
+        else
+        {
+            _selectedBankAccountId = null;
+            _createDto.BankAccountNumber = null;
+            _createDto.IBAN = null;
+            _createDto.SWIFT = null;
+        }
+    }
+
+    /// <summary>
+    /// Handles bank account selection in EDIT mode.
+    /// Populates BankAccountNumber, IBAN, and SWIFT on the edit DTO from the selected account.
+    /// </summary>
+    private void OnEditBankAccountSelected(BankAccountDto? account)
+    {
+        _isDirty = true;
+        if (account != null)
+        {
+            _selectedBankAccountId = account.Id;
+            _editDto.BankAccountNumber = account.AccountNumber;
+            _editDto.IBAN = account.IBAN;
+            _editDto.SWIFT = account.SWIFT;
+        }
+        else
+        {
+            _selectedBankAccountId = null;
+            _editDto.BankAccountNumber = null;
+            _editDto.IBAN = null;
+            _editDto.SWIFT = null;
         }
     }
 
@@ -1049,10 +1148,26 @@ else
     /// <summary>
     /// Switches to edit mode — populates the edit DTO from current invoice data.
     /// Only available for Draft invoices. Client/Issuer cannot be changed after creation.
+    /// Also loads issuer bank accounts for the BankAccountSelect dropdown.
     /// </summary>
-    private void EnableEditing()
+    private async void EnableEditing()
     {
         if (_invoice == null || _invoice.Status != EInvoiceStatus.Draft) return;
+
+        // Load issuer bank accounts if not already loaded (needed for the BankAccountSelect)
+        if (_issuerBankAccounts.Count == 0)
+        {
+            try
+            {
+                var issuer = await ClientService.GetIssuerAsync();
+                _issuerBankAccounts = issuer?.BankAccount ?? new List<BankAccountDto>();
+            }
+            catch { /* Non-critical — dropdown will be empty */ }
+        }
+
+        // Pre-select the bank account that matches the invoice's current BankAccountNumber
+        _selectedBankAccountId = _issuerBankAccounts
+            .FirstOrDefault(a => a.AccountNumber == _invoice.BankAccountNumber)?.Id;
 
         // Populate edit DTO from current invoice (only editable fields)
         _editDto = new UpdateInvoiceDto
@@ -1229,6 +1344,52 @@ else
         }
         catch (Exception ex) { Snackbar.Add($"Error sending email: {ex.Message}", Severity.Error); }
         finally { _sendingEmail = false; }
+    }
+
+    /// <summary>
+    /// Loads active PDF content templates for the template picker split button.
+    /// Determines the template type based on the invoice's document type.
+    /// </summary>
+    private async Task LoadPdfTemplatesAsync()
+    {
+        try
+        {
+            var templateType = _invoice?.DocumentType == EDocumentType.CreditNote
+                ? EContentTemplateType.CreditNotePdf
+                : EContentTemplateType.InvoicePdf;
+            _pdfTemplates = await ContentTemplateService.GetAllAsync(templateType, includeInactive: false);
+            StateHasChanged();
+        }
+        catch
+        {
+            // Non-critical — template picker just won't show alternative templates
+            _pdfTemplates = new List<ContentTemplateDto>();
+        }
+    }
+
+    /// <summary>
+    /// Downloads the invoice PDF using a specific content template.
+    /// Called from the PDF template picker dropdown menu.
+    /// </summary>
+    private async Task DownloadPdfWithTemplate(long templateId)
+    {
+        if (_invoice == null) return;
+        try
+        {
+            var pdfBytes = await InvoiceService.ExportToPdfAsync(Id, templateId);
+            if (pdfBytes != null && pdfBytes.Length > 0)
+            {
+                var base64 = Convert.ToBase64String(pdfBytes);
+                var fileName = $"Invoice_{_invoice.DocumentNumber ?? Id.ToString()}.pdf";
+                await JS.InvokeVoidAsync("downloadFile", fileName, base64, "application/pdf");
+                Snackbar.Add(L["Invoice_PdfDownloaded"].Value, Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add(L["Invoice_PdfFailed"].Value, Severity.Error);
+            }
+        }
+        catch (Exception ex) { Snackbar.Add($"Error downloading PDF: {ex.Message}", Severity.Error); }
     }
 
     private void GoBack() => Navigation.NavigateTo("/invoices");

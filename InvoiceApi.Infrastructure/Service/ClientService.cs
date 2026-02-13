@@ -59,6 +59,7 @@ public class ClientService : IClientService
             .AsSplitQuery()
             .Include(c => c.Address)
             .Include(c => c.Contact)
+            .Include(c => c.BankAccount)
             .Include(c => c.BillingSettings)
             .AsQueryable();
 
@@ -89,6 +90,7 @@ public class ClientService : IClientService
             .AsSplitQuery()
             .Include(c => c.Address)
             .Include(c => c.Contact)
+            .Include(c => c.BankAccount)
             .Include(c => c.BillingSettings)
             .AsQueryable();
 
@@ -164,6 +166,7 @@ public class ClientService : IClientService
             .AsSplitQuery()
             .Include(c => c.Address)
             .Include(c => c.Contact)
+            .Include(c => c.BankAccount)
             .Include(c => c.BillingSettings)
             .FirstOrDefaultAsync(c => c.Id == clientId, cancellationToken);
 
@@ -186,6 +189,7 @@ public class ClientService : IClientService
             .AsSplitQuery()
             .Include(c => c.Address)
             .Include(c => c.Contact)
+            .Include(c => c.BankAccount)
             .Include(c => c.BillingSettings)
             .FirstOrDefaultAsync(c => c.RegistrationNumber == registrationNumber, cancellationToken);
 
@@ -207,6 +211,7 @@ public class ClientService : IClientService
             .AsSplitQuery()
             .Include(c => c.Address)
             .Include(c => c.Contact)
+            .Include(c => c.BankAccount)
             .Include(c => c.BillingSettings)
             .OrderBy(c => c.Id)
             .FirstOrDefaultAsync(c => c.IsIssuer, cancellationToken);
@@ -308,6 +313,26 @@ public class ClientService : IClientService
                 Label = contactDto.Label,
                 IsPrimary = contactDto.IsPrimary
             });
+        }
+
+        // Add bank accounts — first account automatically becomes default if none is explicitly set
+        if (createDto.BankAccount.Count > 0)
+        {
+            var hasExplicitDefault = createDto.BankAccount.Any(b => b.IsDefault);
+            foreach (var (bankDto, index) in createDto.BankAccount.Select((b, i) => (b, i)))
+            {
+                client.BankAccount.Add(new BankAccount
+                {
+                    Label = bankDto.Label,
+                    BankName = bankDto.BankName,
+                    AccountNumber = bankDto.AccountNumber,
+                    IBAN = bankDto.IBAN,
+                    SWIFT = bankDto.SWIFT,
+                    CurrencyCode = bankDto.CurrencyCode,
+                    // Auto-default: first account is default if no explicit default is set
+                    IsDefault = hasExplicitDefault ? bankDto.IsDefault : (index == 0)
+                });
+            }
         }
 
         // Add billing settings if provided
@@ -425,6 +450,30 @@ public class ClientService : IClientService
                     ContactValue = contactDto.ContactValue ?? string.Empty,
                     Label = contactDto.Label,
                     IsPrimary = contactDto.IsPrimary ?? false
+                });
+            }
+        }
+
+        // Update bank accounts if provided — replaces all existing bank accounts (same pattern as Address)
+        if (updateDto.BankAccount != null)
+        {
+            await _context.Entry(client).Collection(c => c.BankAccount).LoadAsync(cancellationToken);
+            client.BankAccount.Clear();
+
+            var hasExplicitDefault = updateDto.BankAccount.Any(b => b.IsDefault == true);
+            foreach (var (bankDto, index) in updateDto.BankAccount.Select((b, i) => (b, i)))
+            {
+                client.BankAccount.Add(new BankAccount
+                {
+                    ClientId = clientId,
+                    Label = bankDto.Label,
+                    BankName = bankDto.BankName,
+                    AccountNumber = bankDto.AccountNumber ?? string.Empty,
+                    IBAN = bankDto.IBAN,
+                    SWIFT = bankDto.SWIFT,
+                    CurrencyCode = bankDto.CurrencyCode,
+                    // Auto-default: first account is default if no explicit default is set
+                    IsDefault = hasExplicitDefault ? (bankDto.IsDefault ?? false) : (index == 0)
                 });
             }
         }
@@ -606,6 +655,53 @@ public class ClientService : IClientService
             ContactValue = contactDto.ContactValue,
             Label = contactDto.Label,
             IsPrimary = contactDto.IsPrimary
+        });
+
+        await _context.SaveChangesAsync(cancellationToken);
+
+        return await GetClientByIdAsync(clientId, cancellationToken);
+    }
+
+    /// <summary>
+    /// Adds a bank account to an existing client.
+    /// If this is the first bank account, it is automatically set as default.
+    /// If IsDefault is true, clears default from all other accounts (only one default allowed).
+    /// </summary>
+    public async Task<ClientDto?> AddBankAccountAsync(
+        long clientId,
+        CreateBankAccountDto bankAccountDto,
+        CancellationToken cancellationToken = default)
+    {
+        var client = await _context.Client
+            .Include(c => c.BankAccount)
+            .FirstOrDefaultAsync(c => c.Id == clientId, cancellationToken);
+
+        if (client == null)
+            return null;
+
+        // If this is the first account or explicitly marked as default, manage the default flag
+        var isFirstAccount = client.BankAccount.Count == 0;
+        var shouldBeDefault = isFirstAccount || bankAccountDto.IsDefault;
+
+        // Clear existing default if the new account becomes the default
+        if (shouldBeDefault)
+        {
+            foreach (var existing in client.BankAccount)
+            {
+                existing.IsDefault = false;
+            }
+        }
+
+        client.BankAccount.Add(new BankAccount
+        {
+            ClientId = clientId,
+            Label = bankAccountDto.Label,
+            BankName = bankAccountDto.BankName,
+            AccountNumber = bankAccountDto.AccountNumber,
+            IBAN = bankAccountDto.IBAN,
+            SWIFT = bankAccountDto.SWIFT,
+            CurrencyCode = bankAccountDto.CurrencyCode,
+            IsDefault = shouldBeDefault
         });
 
         await _context.SaveChangesAsync(cancellationToken);

@@ -370,6 +370,38 @@ public class ClientController : ControllerBase
     }
 
     /// <summary>
+    /// Adds a bank account to an existing client.
+    /// If this is the first bank account, it is automatically set as default.
+    /// If IsDefault is true, clears default from all other accounts.
+    /// </summary>
+    /// <param name="id">Client ID</param>
+    /// <param name="bankAccountDto">Bank account data</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Updated client with all bank accounts</returns>
+    /// <response code="200">Bank account added successfully</response>
+    /// <response code="404">Client not found</response>
+    [HttpPost("{id}/bank-account")]
+    [ProducesResponseType(typeof(ClientDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ClientDto>> AddBankAccount(
+        long id,
+        [FromBody] CreateBankAccountDto bankAccountDto,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("POST /api/client/{Id}/bank-account", id);
+
+        var client = await _clientService.AddBankAccountAsync(id, bankAccountDto, cancellationToken);
+
+        if (client == null)
+        {
+            _logger.LogWarning("Client {Id} not found", id);
+            return NotFound(new { message = $"Client with ID {id} not found" });
+        }
+
+        return Ok(client);
+    }
+
+    /// <summary>
     /// Updates or creates billing settings for client
     /// </summary>
     /// <param name="id">Client ID</param>

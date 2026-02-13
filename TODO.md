@@ -2,6 +2,19 @@
 
 ## Completed
 
+### Azure Functions Migration — InvoiceApi.Functions Project (2026-02-12)
+- [x] Created `InvoiceApi.Functions` project (Azure Functions v4 Isolated Worker Model with ASP.NET Core Integration)
+- [x] `InvoiceApi.Functions.csproj` — NuGet refs (Worker, Sdk, Http.AspNetCore, Timer) + project refs (API, Infrastructure, Application)
+- [x] `Program.cs` — Duplicated DI registrations from API/Program.cs adapted for Functions hosting (no Swagger, no CORS, no auto-migration, no hosted services)
+- [x] `HttpTriggerFunction.cs` — Catch-all HTTP trigger (`Route = "{*route}"`) routing all requests to ASP.NET Core pipeline (controllers discovered via `AddApplicationPart`)
+- [x] `TimerFunctions.cs` — Timer triggers replacing `LogFlushService` (every 5s) and `LogCleanupService` (every 1h); uses reflection to access `internal` `DatabaseLoggerProvider.LogQueue`
+- [x] `host.json` — `routePrefix: ""` to preserve `/api/*` routes; log level filtering for EF Core and ASP.NET Core
+- [x] `local.settings.json` — Development settings (connection strings, JWT config, Azurite storage)
+- [x] Added project to solution (`dotnet sln add`)
+- [x] Full solution builds with 0 errors (only benign MSB3277 version alignment warnings)
+- [x] All 312 existing tests pass (311 unit + 1 integration) — zero regressions
+- [x] **Zero changes** to existing projects (API, Infrastructure, Application, Domain, BlazorUI, Tests)
+
 ### Due Date Calculation Fix — EDueDateCalculationType (2026-02-10)
 - [x] **Bug**: `InvoiceService.CalculateDueDate()` and Blazor UI `RecalculateDueDate()` ignored `EDueDateCalculationType` — only ever used `DaysFromIssue` (simple AddDays)
 - [x] Created `DueDateCalculator` shared helper in `Application/Common/DueDateCalculator.cs` — implements all 4 algorithms (DaysFromIssue, DaysFromEndOfMonth, EndOfNextMonth, EndOfCurrentMonth)
@@ -410,6 +423,33 @@
 - [x] **C6: Localization** — ~33 resource keys (CZ + EN): TwoFactor_*, Nav_TwoFactor, ETwoFactorMethod_*
 - [x] **C7: Unit Tests** — 12 TwoFactorServiceTests (real Data Protection + InMemoryDatabase + NSubstitute): TOTP setup/verify, email 2FA enable/reject, session token, code verification (valid/invalid/expired/rate-limited), disable, status; 2 AuthServiceTests additions (2FA login flow + direct login)
 - [x] Build: 0 errors, Tests: 291 pass (290 unit + 1 integration)
+
+### Phase D: Grid Enhancements, Dashboard Charts, PDF Template Selection, Cloud Storage (2026-02-12)
+- [x] **D1: PDF Template Selection** — added `long? contentTemplateId` parameter to `IPdfExportService.GenerateInvoicePdfAsync()`; PdfExportService resolves specific template by ID, falls back to default, then built-in HTML; updated InvoiceController `ExportToPdf` endpoint with `?templateId=` query param; Blazor InvoiceDetail split button (default PDF + template dropdown); Invoices grid PDF icon replaced with MudMenu for template selection; `ExportToPdfAsync(id, templateId)` overload in InvoiceApiService; 3 new unit tests (specific template, null fallback, invalid throws)
+- [x] **D2: Grid Multi-Select + Bulk Operations** — AppDataGrid.razor: added `MultiSelection`, `SelectedItems`, `SelectedItemsChanged` parameters for MudTable checkbox column; changed action icons from `Size.Small` to `Size.Medium` with flex layout; Invoices.razor: bulk toolbar with Selected count + Issue/MarkPaid/PDF/Email/Delete/Clear buttons; each filters eligible invoices, shows JS confirm, processes sequentially; `BulkOperationDto.cs` (Request/Result/Error DTOs); `InvoiceService`: BulkCompleteAsync/BulkMarkAsPaidAsync/BulkDeleteAsync (sequential processing, error collection); InvoiceController: 5 bulk endpoints (complete, mark-paid, delete, send-email, PDF ZIP); InvoiceApiService: 5 bulk methods; 8 new unit tests in InvoiceServiceBulkTests.cs
+- [x] **D3: Dashboard Charts** — DashboardDto: added InvoiceCountByStatus, InvoiceTotalByClient, InvoiceCountByClient dictionaries; DashboardService: 3 new LINQ aggregation queries (status grouping, top 10 clients by revenue, top 10 by count); Home.razor: 2 MudChart Donut side-by-side (Invoices by Status, Top Clients by Revenue); 3 new unit tests (status grouping, client revenue, empty DB chart data)
+- [x] **D4: Google Drive + OneDrive Cloud Storage** — new `ECloudStorageProvider` enum (None=0, GoogleDrive=1, OneDrive=2); `CompanySystemSettings`: 12 new cloud storage properties (Enabled, AccessToken, RefreshToken, TokenExpiresAt, FolderId, FolderName × 2 providers); MasterDbContext: column configs (tokens maxLength 2000, folders maxLength 500); `IExternalCloudStorage` interface (7 methods: auth URL, exchange code, refresh, upload, list folders, test, disconnect); `ICloudStorageOrchestrator` interface (7 methods: upload to all, status, folders, auth, exchange, disconnect, set folder); `GoogleDriveStorageService`: OAuth 2.0 + Drive REST API v3 (direct HttpClient, no SDK); `OneDriveStorageService`: OAuth 2.0 + Microsoft Graph REST API (direct HttpClient); `CloudStorageOrchestrator`: routes to correct provider, fan-out upload to all enabled; `CloudStorageController` (7 endpoints: status, auth-url, callback, disconnect, folders, set-folder, test); TenantContextMiddleware: added `/api/cloud-storage` to MasterOnlyPaths; InvoiceController: auto-upload PDF to cloud after completion (non-blocking try/catch); DI: GoogleDriveStorageService + OneDriveStorageService + CloudStorageOrchestrator; `CloudStorageApiService` (Blazor, inherits ApiClientBase); `FolderPicker.razor` dialog (breadcrumb navigation, folder tree); `CloudStorageCallback.razor` (OAuth popup callback); MyCompany.razor: cloud storage section (2 provider cards with connect/disconnect/folder/test); ~25 localization keys (CZ + EN); 6 new CloudStorageOrchestratorTests
+- [x] **EF Migration** — `AddCloudStorageSettings` (12 nullable columns on CompanySystemSettings: GoogleDrive/OneDrive × Enabled bit, AccessToken/RefreshToken nvarchar(2000), TokenExpiresAt datetime2, FolderId/FolderName nvarchar(500))
+- [x] Build: 0 errors, Tests: 312 pass (311 unit + 1 integration) — 21 new tests
+
+### 1:N Bank Accounts per Company (2026-02-13)
+- [x] **Phase 1: Domain Layer** — new `BankAccount.cs` entity (ClientId FK, Label?, BankName?, AccountNumber required, IBAN?, SWIFT?, CurrencyCode?, IsDefault); added `ICollection<BankAccount> BankAccount` nav prop to Client; marked `BillingSettings.BankAccountNumber` as `[Obsolete]`
+- [x] **Phase 2: DTOs** — new `BankAccountDto.cs` with 3 DTOs (BankAccountDto read, CreateBankAccountDto create with `[Required]` AccountNumber, UpdateBankAccountDto update all nullable); added BankAccount collections to ClientDto/CreateClientDto/UpdateClientDto
+- [x] **Phase 3: Infrastructure** — TenantDbContext + MasterDbContext: `DbSet<BankAccount>`, `ConfigureBankAccount()` (indexes on ClientId and {ClientId, IsDefault}), `HasMany` with Cascade delete in ConfigureClient; ClientService: `.Include(c => c.BankAccount)` on ALL queries (GetAll, GetPaged, GetById, GetByRegistration, GetIssuer), bank account handling in Create/Update (replace-all strategy), `AddBankAccountAsync` with first-account-auto-default + clear-previous-default; ClientProfile: `CreateMap<BankAccount, BankAccountDto>()`; IClientService: added `AddBankAccountAsync` signature
+- [x] **Phase 4: API** — ClientController: `POST /api/client/{id}/bank-account` endpoint
+- [x] **Phase 5: Blazor UI** — new `BankAccountDialog.razor` (modal form following AddressDialog pattern); new `BankAccountListEditor.razor` (table with add/edit/delete/set-default following AddressListEditor pattern); new `BankAccountSelect.razor` (MudSelect dropdown for InvoiceDetail showing `Label — AccountNumber (CurrencyCode)`); InvoiceDetail.razor: replaced `<BankAccountInput>` with `<BankAccountSelect>` in create/edit modes, auto-selects default, populates BankAccountNumber/IBAN/SWIFT on selection; MyCompany.razor: added BankAccountListEditor section, removed BankAccountInput from billing card; BankAccountInput.razor: marked deprecated
+- [x] **Phase 6: Localization** — 14 keys (CZ + EN): BankAccount_List, BankAccount_Add, BankAccount_Edit, BankAccount_ConfirmDelete, BankAccount_NoAccounts, BankAccount_Default, BankAccount_Label, BankAccount_BankName, BankAccount_AccountNumber, BankAccount_AccountNumberHelper, BankAccount_IBAN, BankAccount_SWIFT, BankAccount_Currency, BankAccount_SelectAccount
+- [x] **Phase 7: Unit Tests** — 7 tests in `BankAccountServiceTests.cs`: CreateClient with bank accounts, auto-default first account, replace-all on update, GetIssuer includes accounts, AddBankAccount first-auto-default, AddBankAccount set-new-default-clears-old, AddBankAccount non-existent client
+- [x] **Bug fix**: GetIssuerAsync was missing `.Include(c => c.BankAccount)` — bank accounts not returned for issuer
+- [x] Build: 0 errors, Tests: 318 pass (317 unit + 1 integration) — 7 new tests
+- [x] **Phase 8: EF Migrations** — Generated `AddBankAccount` migration for both TenantDbContext (`Migrations/Tenant/`) and MasterDbContext (`Migrations/Master/`); creates BankAccount table with PK, FK to Client (Cascade), indexes on ClientId and {ClientId, IsDefault}; includes data migration SQL to copy non-empty `BillingSettings.BankAccountNumber` → `BankAccount` rows with `IsDefault=true` and idempotency guard (`NOT EXISTS`)
+
+### Address & BankAccount Editor UX Fix (2026-02-13)
+- [x] **Row click to edit** — AddressListEditor + BankAccountListEditor: `<tr>` rows now clickable in edit mode (`@onclick` → opens edit dialog, `cursor: pointer`); `@onclick:stopPropagation` on action columns (star/edit/delete buttons) prevents double-fire
+- [x] **ESC = Cancel** — `CloseOnEscapeKey = true` added to DialogOptions for all Address/BankAccount dialog calls
+- [x] **Enter = Save** — `@onkeydown` handler on `<MudGrid>` in AddressDialog + BankAccountDialog; Enter key triggers Save()
+- [x] **DefaultFocus** — `DefaultFocus="DefaultFocus.FirstChild"` on MudDialog so first field is auto-focused on open
+- [x] Build: 0 errors, Tests: 318 pass
 
 ## Pending
 

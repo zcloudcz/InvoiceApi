@@ -617,6 +617,115 @@ public class InvoiceService : IInvoiceService
         return creditNotes.Select(i => MapToDto(i)).ToList();
     }
 
+    // ─── Bulk Operations ─────────────────────────────────────────────────────
+
+    /// <inheritdoc />
+    public async Task<BulkOperationResult> BulkCompleteAsync(List<long> invoiceIds, CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Bulk completing {Count} invoices", invoiceIds.Count);
+        var result = new BulkOperationResult();
+
+        // Process each invoice sequentially — DbContext is NOT thread-safe
+        foreach (var id in invoiceIds)
+        {
+            try
+            {
+                var completed = await CompleteInvoiceAsync(id, cancellationToken);
+                if (completed != null)
+                {
+                    result.SuccessCount++;
+                }
+                else
+                {
+                    result.FailedCount++;
+                    result.Errors.Add(new BulkOperationError { InvoiceId = id, Error = "Invoice not found" });
+                }
+            }
+            catch (Exception ex)
+            {
+                result.FailedCount++;
+                result.Errors.Add(new BulkOperationError { InvoiceId = id, Error = ex.Message });
+                _logger.LogWarning("Bulk complete failed for invoice {Id}: {Error}", id, ex.Message);
+            }
+        }
+
+        _logger.LogInformation("Bulk complete finished: {Success} succeeded, {Failed} failed",
+            result.SuccessCount, result.FailedCount);
+        return result;
+    }
+
+    /// <inheritdoc />
+    public async Task<BulkOperationResult> BulkMarkAsPaidAsync(List<long> invoiceIds, CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Bulk marking {Count} invoices as paid", invoiceIds.Count);
+        var result = new BulkOperationResult();
+
+        // Process each invoice sequentially — DbContext is NOT thread-safe
+        foreach (var id in invoiceIds)
+        {
+            try
+            {
+                var paid = await MarkAsPaidAsync(id, null, cancellationToken);
+                if (paid != null)
+                {
+                    result.SuccessCount++;
+                }
+                else
+                {
+                    result.FailedCount++;
+                    result.Errors.Add(new BulkOperationError { InvoiceId = id, Error = "Invoice not found" });
+                }
+            }
+            catch (Exception ex)
+            {
+                result.FailedCount++;
+                result.Errors.Add(new BulkOperationError { InvoiceId = id, Error = ex.Message });
+                _logger.LogWarning("Bulk mark-paid failed for invoice {Id}: {Error}", id, ex.Message);
+            }
+        }
+
+        _logger.LogInformation("Bulk mark-paid finished: {Success} succeeded, {Failed} failed",
+            result.SuccessCount, result.FailedCount);
+        return result;
+    }
+
+    /// <inheritdoc />
+    public async Task<BulkOperationResult> BulkDeleteAsync(List<long> invoiceIds, CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Bulk deleting {Count} invoices", invoiceIds.Count);
+        var result = new BulkOperationResult();
+
+        // Process each invoice sequentially — DbContext is NOT thread-safe
+        foreach (var id in invoiceIds)
+        {
+            try
+            {
+                var deleted = await DeleteInvoiceAsync(id, cancellationToken);
+                if (deleted)
+                {
+                    result.SuccessCount++;
+                }
+                else
+                {
+                    result.FailedCount++;
+                    result.Errors.Add(new BulkOperationError { InvoiceId = id, Error = "Invoice not found" });
+                }
+            }
+            catch (Exception ex)
+            {
+                result.FailedCount++;
+                result.Errors.Add(new BulkOperationError { InvoiceId = id, Error = ex.Message });
+                _logger.LogWarning("Bulk delete failed for invoice {Id}: {Error}", id, ex.Message);
+            }
+        }
+
+        _logger.LogInformation("Bulk delete finished: {Success} succeeded, {Failed} failed",
+            result.SuccessCount, result.FailedCount);
+        return result;
+    }
+
+    // ─── Private Helpers ─────────────────────────────────────────────────────
+
     /// <summary>
     /// Calculates due date based on client's billing settings, respecting EDueDateCalculationType.
     /// Uses DueDateCalculator shared helper to ensure consistent calculation across backend and UI.

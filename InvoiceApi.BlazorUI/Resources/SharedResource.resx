@@ -865,4 +865,76 @@
   <data name="Nav_TwoFactor" xml:space="preserve"><value>Dvoufázové ověření</value></data>
   <data name="ETwoFactorMethod_Totp" xml:space="preserve"><value>Autentizační aplikace</value></data>
   <data name="ETwoFactorMethod_Email" xml:space="preserve"><value>E-mail</value></data>
+  <!-- Phase D: PDF Template Selection -->
+  <data name="Pdf_ChooseTemplate" xml:space="preserve"><value>Vybrat šablonu PDF</value></data>
+  <data name="Pdf_DefaultTemplate" xml:space="preserve"><value>Výchozí šablona</value></data>
+  <data name="Pdf_DownloadWithTemplate" xml:space="preserve"><value>Stáhnout s šablonou</value></data>
+  <data name="Pdf_PreviewTemplate" xml:space="preserve"><value>Náhled šablony</value></data>
+  <data name="Pdf_TemplateList" xml:space="preserve"><value>Šablony PDF</value></data>
+  <!-- Phase D: Bulk Operations -->
+  <data name="Bulk_Selected" xml:space="preserve"><value>vybráno</value></data>
+  <data name="Bulk_Issue" xml:space="preserve"><value>Vystavit</value></data>
+  <data name="Bulk_MarkPaid" xml:space="preserve"><value>Zaplatit</value></data>
+  <data name="Bulk_Delete" xml:space="preserve"><value>Smazat</value></data>
+  <data name="Bulk_Email" xml:space="preserve"><value>Odeslat e-mailem</value></data>
+  <data name="Bulk_Pdf" xml:space="preserve"><value>Stáhnout PDF</value></data>
+  <data name="Bulk_ClearSelection" xml:space="preserve"><value>Zrušit výběr</value></data>
+  <data name="Bulk_ConfirmTitle" xml:space="preserve"><value>Potvrzení hromadné akce</value></data>
+  <data name="Bulk_ConfirmIssue" xml:space="preserve"><value>Opravdu chcete vystavit {0} fakturu/faktur?</value></data>
+  <data name="Bulk_ConfirmPaid" xml:space="preserve"><value>Opravdu chcete označit {0} fakturu/faktur jako zaplacené?</value></data>
+  <data name="Bulk_ConfirmDelete" xml:space="preserve"><value>Opravdu chcete smazat {0} fakturu/faktur?</value></data>
+  <data name="Bulk_ConfirmEmail" xml:space="preserve"><value>Opravdu chcete odeslat {0} fakturu/faktur e-mailem?</value></data>
+  <data name="Bulk_Success" xml:space="preserve"><value>Hromadná akce dokončena: {0} úspěšně zpracováno.</value></data>
+  <data name="Bulk_PartialSuccess" xml:space="preserve"><value>Částečný úspěch: {0} úspěšně, {1} selhalo.</value></data>
+  <data name="Bulk_NoneEligible" xml:space="preserve"><value>Žádné vybrané faktury nesplňují podmínky pro tuto akci.</value></data>
+  <!-- Phase D: Dashboard Charts -->
+  <data name="Dashboard_InvoicesByStatus" xml:space="preserve"><value>Faktury podle stavu</value></data>
+  <data name="Dashboard_TopClientsByRevenue" xml:space="preserve"><value>Top klienti podle obratu</value></data>
+  <data name="Dashboard_TopClientsByCount" xml:space="preserve"><value>Top klienti podle počtu faktur</value></data>
+  <data name="Dashboard_ChartNoData" xml:space="preserve"><value>Žádná data k zobrazení</value></data>
+  <data name="Dashboard_Other" xml:space="preserve"><value>Ostatní</value></data>
+  <!-- Phase D: Cloud Storage -->
+  <data name="CloudStorage_Title" xml:space="preserve"><value>Cloudové úložiště</value></data>
+  <data name="CloudStorage_GoogleDrive" xml:space="preserve"><value>Google Drive</value></data>
+  <data name="CloudStorage_OneDrive" xml:space="preserve"><value>OneDrive</value></data>
+  <data name="CloudStorage_Connected" xml:space="preserve"><value>Připojeno</value></data>
+  <data name="CloudStorage_Disconnected" xml:space="preserve"><value>Odpojeno</value></data>
+  <data name="CloudStorage_Connect" xml:space="preserve"><value>Připojit</value></data>
+  <data name="CloudStorage_Disconnect" xml:space="preserve"><value>Odpojit</value></data>
+  <data name="CloudStorage_SelectFolder" xml:space="preserve"><value>Vybrat složku</value></data>
+  <data name="CloudStorage_ChangeFolder" xml:space="preserve"><value>Změnit složku</value></data>
+  <data name="CloudStorage_TestConnection" xml:space="preserve"><value>Otestovat připojení</value></data>
+  <data name="CloudStorage_TestSuccess" xml:space="preserve"><value>Připojení funguje správně</value></data>
+  <data name="CloudStorage_TestFailed" xml:space="preserve"><value>Test připojení selhal</value></data>
+  <data name="CloudStorage_ConnectSuccess" xml:space="preserve"><value>Cloudové úložiště bylo úspěšně připojeno</value></data>
+  <data name="CloudStorage_DisconnectSuccess" xml:space="preserve"><value>Cloudové úložiště bylo odpojeno</value></data>
+  <data name="CloudStorage_DisconnectConfirm" xml:space="preserve"><value>Opravdu chcete odpojit toto cloudové úložiště?</value></data>
+  <data name="CloudStorage_FolderSet" xml:space="preserve"><value>Složka byla nastavena</value></data>
+  <data name="CloudStorage_NoFolder" xml:space="preserve"><value>Kořenová složka (výchozí)</value></data>
+  <data name="CloudStorage_Root" xml:space="preserve"><value>Kořenová složka</value></data>
+  <data name="CloudStorage_UseRoot" xml:space="preserve"><value>Použít kořenovou složku</value></data>
+  <data name="CloudStorage_NoFolders" xml:space="preserve"><value>V této složce nejsou žádné podsložky</value></data>
+  <data name="CloudStorage_BrowseSubfolders" xml:space="preserve"><value>Procházet podsložky</value></data>
+  <data name="CloudStorage_Description" xml:space="preserve"><value>Automaticky nahrávat PDF faktur do cloudového úložiště při vystavení faktury.</value></data>
+  <data name="CloudStorage_FolderLabel" xml:space="preserve"><value>Cílová složka</value></data>
+  <data name="CloudStorage_TokenExpires" xml:space="preserve"><value>Token vyprší</value></data>
+  <data name="ECloudStorageProvider_None" xml:space="preserve"><value>Žádný</value></data>
+  <data name="ECloudStorageProvider_GoogleDrive" xml:space="preserve"><value>Google Drive</value></data>
+  <data name="ECloudStorageProvider_OneDrive" xml:space="preserve"><value>OneDrive</value></data>
+
+  <!-- Bank Account (1:N) -->
+  <data name="BankAccount_List" xml:space="preserve"><value>Bankovní účty</value></data>
+  <data name="BankAccount_Add" xml:space="preserve"><value>Přidat účet</value></data>
+  <data name="BankAccount_Edit" xml:space="preserve"><value>Upravit účet</value></data>
+  <data name="BankAccount_ConfirmDelete" xml:space="preserve"><value>Opravdu chcete smazat tento bankovní účet?</value></data>
+  <data name="BankAccount_NoAccounts" xml:space="preserve"><value>Žádné bankovní účty. Přidejte první účet.</value></data>
+  <data name="BankAccount_Default" xml:space="preserve"><value>Výchozí</value></data>
+  <data name="BankAccount_Label" xml:space="preserve"><value>Označení</value></data>
+  <data name="BankAccount_BankName" xml:space="preserve"><value>Název banky</value></data>
+  <data name="BankAccount_AccountNumber" xml:space="preserve"><value>Číslo účtu</value></data>
+  <data name="BankAccount_AccountNumberHelper" xml:space="preserve"><value>Formát: 1234567890/0100</value></data>
+  <data name="BankAccount_IBAN" xml:space="preserve"><value>IBAN</value></data>
+  <data name="BankAccount_SWIFT" xml:space="preserve"><value>SWIFT/BIC</value></data>
+  <data name="BankAccount_Currency" xml:space="preserve"><value>Měna</value></data>
+  <data name="BankAccount_SelectAccount" xml:space="preserve"><value>Bankovní účet</value></data>
 </root>

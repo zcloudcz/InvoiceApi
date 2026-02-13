@@ -162,6 +162,18 @@ builder.Services.AddScoped<ISystemConfigurationService, SystemConfigurationServi
 // SysAdmin uses this through CompanyController to manage tenant lifecycle.
 builder.Services.AddScoped<ITenantProvisioningService, TenantProvisioningService>();
 
+// Register cloud storage services — Google Drive and OneDrive implementations.
+// Both are registered as IExternalCloudStorage so CloudStorageOrchestrator can iterate
+// over IEnumerable<IExternalCloudStorage> and route to the correct provider.
+// HttpClient is registered per concrete type, then each type is also added to IExternalCloudStorage.
+builder.Services.AddHttpClient<InvoiceApi.Infrastructure.Service.CloudStorage.GoogleDriveStorageService>();
+builder.Services.AddScoped<IExternalCloudStorage>(sp =>
+    sp.GetRequiredService<InvoiceApi.Infrastructure.Service.CloudStorage.GoogleDriveStorageService>());
+builder.Services.AddHttpClient<InvoiceApi.Infrastructure.Service.CloudStorage.OneDriveStorageService>();
+builder.Services.AddScoped<IExternalCloudStorage>(sp =>
+    sp.GetRequiredService<InvoiceApi.Infrastructure.Service.CloudStorage.OneDriveStorageService>());
+builder.Services.AddScoped<ICloudStorageOrchestrator, InvoiceApi.Infrastructure.Service.CloudStorage.CloudStorageOrchestrator>();
+
 // Register database logging — writes log entries to the AppLog table in master DB.
 // Uses a ConcurrentQueue for non-blocking enqueue + BackgroundService for periodic flush.
 builder.Logging.AddProvider(new DatabaseLoggerProvider(LogLevel.Information));
@@ -183,7 +195,8 @@ var jwtSecret = builder.Configuration["JwtSettings:Secret"]
 var jwtIssuer = builder.Configuration["JwtSettings:Issuer"] ?? "InvoiceApi";
 var jwtAudience = builder.Configuration["JwtSettings:Audience"] ?? "InvoiceApiClient";
 
-builder.Services.AddAuthentication(options =>
+// ── JWT Authentication ───────────────────────────────────────────────────
+var authBuilder = builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
     options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -201,36 +214,56 @@ builder.Services.AddAuthentication(options =>
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
         ClockSkew = TimeSpan.Zero // Remove default 5 minute clock skew
     };
-})
-// ── External OAuth Providers ─────────────────────────────────────────────
-// Each provider below is optional — if ClientId is empty, the provider is effectively disabled.
-// Users authenticate via the provider's login page and are redirected back to /api/auth/external-callback.
-// Google, Microsoft, Facebook are in Microsoft.AspNetCore.App shared framework (no extra NuGet).
-.AddGoogle("Google", o =>
-{
-    o.ClientId = builder.Configuration["OAuth:Google:ClientId"] ?? "";
-    o.ClientSecret = builder.Configuration["OAuth:Google:ClientSecret"] ?? "";
-    o.CallbackPath = "/api/auth/google-callback";
-})
-.AddMicrosoftAccount("Microsoft", o =>
-{
-    o.ClientId = builder.Configuration["OAuth:Microsoft:ClientId"] ?? "";
-    o.ClientSecret = builder.Configuration["OAuth:Microsoft:ClientSecret"] ?? "";
-    o.CallbackPath = "/api/auth/microsoft-callback";
-})
-.AddFacebook("Facebook", o =>
-{
-    o.AppId = builder.Configuration["OAuth:Facebook:AppId"] ?? "";
-    o.AppSecret = builder.Configuration["OAuth:Facebook:AppSecret"] ?? "";
-    o.CallbackPath = "/api/auth/facebook-callback";
-})
-// Seznam.cz — custom OAuth handler (Czech-specific provider)
-.AddSeznam("Seznam", o =>
-{
-    o.ClientId = builder.Configuration["OAuth:Seznam:ClientId"] ?? "";
-    o.ClientSecret = builder.Configuration["OAuth:Seznam:ClientSecret"] ?? "";
-    o.CallbackPath = "/api/auth/seznam-callback";
 });
+
+// ── External OAuth Providers (conditional) ───────────────────────────────
+// Each provider is only registered when its ClientId/AppId is configured.
+// Empty credentials cause OAuthOptions.Validate() to throw ArgumentException,
+// crashing the authentication middleware on every request — including JWT login.
+var googleClientId = builder.Configuration["OAuth:Google:ClientId"];
+if (!string.IsNullOrEmpty(googleClientId))
+{
+    authBuilder.AddGoogle("Google", o =>
+    {
+        o.ClientId = googleClientId;
+        o.ClientSecret = builder.Configuration["OAuth:Google:ClientSecret"] ?? "";
+        o.CallbackPath = "/api/auth/google-callback";
+    });
+}
+
+var microsoftClientId = builder.Configuration["OAuth:Microsoft:ClientId"];
+if (!string.IsNullOrEmpty(microsoftClientId))
+{
+    authBuilder.AddMicrosoftAccount("Microsoft", o =>
+    {
+        o.ClientId = microsoftClientId;
+        o.ClientSecret = builder.Configuration["OAuth:Microsoft:ClientSecret"] ?? "";
+        o.CallbackPath = "/api/auth/microsoft-callback";
+    });
+}
+
+var facebookAppId = builder.Configuration["OAuth:Facebook:AppId"];
+if (!string.IsNullOrEmpty(facebookAppId))
+{
+    authBuilder.AddFacebook("Facebook", o =>
+    {
+        o.AppId = facebookAppId;
+        o.AppSecret = builder.Configuration["OAuth:Facebook:AppSecret"] ?? "";
+        o.CallbackPath = "/api/auth/facebook-callback";
+    });
+}
+
+// Seznam.cz — custom OAuth handler (Czech-specific provider)
+var seznamClientId = builder.Configuration["OAuth:Seznam:ClientId"];
+if (!string.IsNullOrEmpty(seznamClientId))
+{
+    authBuilder.AddSeznam("Seznam", o =>
+    {
+        o.ClientId = seznamClientId;
+        o.ClientSecret = builder.Configuration["OAuth:Seznam:ClientSecret"] ?? "";
+        o.CallbackPath = "/api/auth/seznam-callback";
+    });
+}
 
 builder.Services.AddAuthorization();
 

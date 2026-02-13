@@ -37,7 +37,14 @@ public class PdfExportService : IPdfExportService
     }
 
     /// <inheritdoc />
-    public async Task<byte[]> GenerateInvoicePdfAsync(long invoiceId, CancellationToken ct = default)
+    public Task<byte[]> GenerateInvoicePdfAsync(long invoiceId, CancellationToken ct = default)
+    {
+        // Delegate to the overload with null templateId — uses default template
+        return GenerateInvoicePdfAsync(invoiceId, null, ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<byte[]> GenerateInvoicePdfAsync(long invoiceId, long? contentTemplateId, CancellationToken ct = default)
     {
         _logger.LogInformation("Generating PDF for invoice {InvoiceId}", invoiceId);
 
@@ -61,23 +68,43 @@ public class PdfExportService : IPdfExportService
             ? EContentTemplateType.CreditNotePdf
             : EContentTemplateType.InvoicePdf;
 
-        // Resolve the PDF template from ContentTemplate system
+        // Resolve the PDF template from ContentTemplate system.
+        // Priority: 1) explicit contentTemplateId (user selected), 2) default for document type, 3) built-in fallback
         string htmlTemplate;
-        var contentTemplate = await _contentTemplateService.GetDefaultByTypeAsync(templateType, ct);
 
-        if (contentTemplate != null)
+        if (contentTemplateId.HasValue)
         {
-            // Use the content template from the database
-            htmlTemplate = contentTemplate.HtmlBody;
-            _logger.LogInformation("Using content template '{TemplateName}' (type {Type}) for invoice {InvoiceId}",
-                contentTemplate.Name, templateType, invoiceId);
+            // User explicitly selected a specific template — load it by ID
+            var specificTemplate = await _contentTemplateService.GetByIdAsync(contentTemplateId.Value, ct);
+            if (specificTemplate != null)
+            {
+                htmlTemplate = specificTemplate.HtmlBody;
+                _logger.LogInformation("Using user-selected template '{TemplateName}' (ID {TemplateId}) for invoice {InvoiceId}",
+                    specificTemplate.Name, contentTemplateId.Value, invoiceId);
+            }
+            else
+            {
+                // Invalid template ID — throw so the caller knows the requested template doesn't exist
+                throw new KeyNotFoundException($"Content template with ID {contentTemplateId.Value} not found.");
+            }
         }
         else
         {
-            // Fallback — use the built-in default HTML template
-            htmlTemplate = GetDefaultHtmlTemplate();
-            _logger.LogInformation("No content template found for type {Type}, using built-in default for invoice {InvoiceId}",
-                templateType, invoiceId);
+            // No explicit template — use the default for the document type
+            var contentTemplate = await _contentTemplateService.GetDefaultByTypeAsync(templateType, ct);
+            if (contentTemplate != null)
+            {
+                htmlTemplate = contentTemplate.HtmlBody;
+                _logger.LogInformation("Using default template '{TemplateName}' (type {Type}) for invoice {InvoiceId}",
+                    contentTemplate.Name, templateType, invoiceId);
+            }
+            else
+            {
+                // No template configured at all — use the built-in fallback HTML
+                htmlTemplate = GetDefaultHtmlTemplate();
+                _logger.LogInformation("No content template found for type {Type}, using built-in default for invoice {InvoiceId}",
+                    templateType, invoiceId);
+            }
         }
 
         // Generate QR code for the invoice (QR Platba+F or QR Faktura).

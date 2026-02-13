@@ -1,0 +1,122 @@
+@*
+    Dialog for adding or editing a bank account.
+    Used by BankAccountListEditor for both "Add" and "Edit" operations.
+    Returns the edited CreateBankAccountDto via MudDialog.Close() on save.
+    Follows the same pattern as AddressDialog.razor.
+*@
+@inject IStringLocalizer<SharedResource> L
+@using InvoiceApi.Application.Dto.Client
+
+<MudDialog DefaultFocus="DefaultFocus.FirstChild">
+    <DialogContent>
+        @* Capture Enter key to save, allowing natural tab navigation between fields *@
+        <MudGrid @onkeydown="OnKeyDown">
+            @* Account number is required — the main identifier for this account *@
+            <MudItem xs="12">
+                <MudTextField @bind-Value="BankAccount.AccountNumber"
+                              Label="@L["BankAccount_AccountNumber"].Value"
+                              Required="true"
+                              Placeholder="1234567890/0100"
+                              HelperText="@L["BankAccount_AccountNumberHelper"].Value" />
+            </MudItem>
+
+            @* Label — optional, helps distinguish between multiple accounts *@
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="BankAccount.Label"
+                              Label="@L["BankAccount_Label"].Value"
+                              Placeholder="CZK Account" />
+            </MudItem>
+
+            @* Bank name — optional *@
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="BankAccount.BankName"
+                              Label="@L["BankAccount_BankName"].Value"
+                              Placeholder="Fio banka" />
+            </MudItem>
+
+            @* IBAN — optional, used for international payments and QR codes *@
+            <MudItem xs="12">
+                <MudTextField @bind-Value="BankAccount.IBAN"
+                              Label="@L["BankAccount_IBAN"].Value"
+                              Placeholder="CZ65 0800 0000 0019 2000 0145" />
+            </MudItem>
+
+            @* SWIFT and Currency side by side *@
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="BankAccount.SWIFT"
+                              Label="@L["BankAccount_SWIFT"].Value"
+                              Placeholder="GIBACZPX" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="BankAccount.CurrencyCode"
+                              Label="@L["BankAccount_Currency"].Value"
+                              Placeholder="CZK"
+                              MaxLength="3" />
+            </MudItem>
+
+            @* Default toggle — only one account per client can be default *@
+            <MudItem xs="12">
+                <MudSwitch @bind-Value="BankAccount.IsDefault"
+                           Label="@L["BankAccount_Default"].Value"
+                           Color="Color.Warning" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">@L["Btn_Cancel"]</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save">@L["Btn_Save"]</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    /// <summary>
+    /// MudDialog instance — required for closing the dialog with a result.
+    /// </summary>
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    /// <summary>
+    /// The bank account being created or edited.
+    /// Pre-populated with defaults (add) or existing values (edit) by the caller.
+    /// </summary>
+    [Parameter]
+    public CreateBankAccountDto BankAccount { get; set; } = new();
+
+    /// <summary>
+    /// Dialog title text — set by the caller to distinguish "Add" vs "Edit" mode.
+    /// </summary>
+    [Parameter]
+    public string DialogTitle { get; set; } = "";
+
+    /// <summary>
+    /// Validates required fields and closes the dialog returning the edited bank account.
+    /// </summary>
+    private void Save()
+    {
+        // AccountNumber is required — don't close if empty
+        if (string.IsNullOrWhiteSpace(BankAccount.AccountNumber))
+        {
+            return; // MudTextField Required="true" will show validation error
+        }
+
+        MudDialog.Close(DialogResult.Ok(BankAccount));
+    }
+
+    /// <summary>
+    /// Closes the dialog without saving — returns a canceled result.
+    /// </summary>
+    private void Cancel() => MudDialog.Cancel();
+
+    /// <summary>
+    /// Handles keyboard shortcuts:
+    /// - Enter → Save (submit the form)
+    /// - ESC is handled by MudDialog's CloseOnEscapeKey option
+    /// </summary>
+    private void OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            Save();
+        }
+    }
+}

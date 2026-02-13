@@ -14,11 +14,15 @@
 @rendermode InteractiveServer
 @using InvoiceApi.Application.Dto.Client
 @using InvoiceApi.Application.Dto.CompanySettings
+@using InvoiceApi.Application.Dto.CloudStorage
 @using InvoiceApi.Domain.Enums
 @inject ClientApiService ClientService
 @inject CompanySettingsApiService SettingsService
+@inject CloudStorageApiService CloudStorageApi
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject IJSRuntime JS
 @inject IStringLocalizer<SharedResource> L
 
 <PageTitle>@L["MyCompany_Title"]</PageTitle>
@@ -176,7 +180,7 @@ else
             </MudCard>
         </MudItem>
 
-        @* Card 3: Billing Settings (BankAccount, PaymentMethod, DueDays, etc.) *@
+        @* Card 3: Billing Settings (PaymentMethod, DueDays — bank accounts moved to separate section below) *@
         <MudItem xs="12" md="4">
             <MudCard Elevation="2" Class="mb-4">
                 <MudCardHeader>
@@ -187,9 +191,6 @@ else
                 <MudCardContent>
                     @if (_isEditing)
                     {
-                        <BankAccountInput Value="@_billingSettings.BankAccountNumber"
-                                          ValueChanged="@(v => _billingSettings.BankAccountNumber = v)"
-                                          Label="@L["Billing_BankAccount"].Value" />
                         <EnumSelect TEnum="EPaymentMethod"
                                     NullableValue="_billingSettings.DefaultPaymentMethod"
                                     NullableValueChanged="@(v => _billingSettings.DefaultPaymentMethod = v)"
@@ -206,12 +207,6 @@ else
                     else if (_company.BillingSettings != null)
                     {
                         <MudList T="string" Dense="true">
-                            @if (!string.IsNullOrEmpty(_company.BillingSettings.BankAccountNumber))
-                            {
-                                <MudListItem T="string">
-                                    <strong>@L["Billing_BankAccount"]:</strong> @_company.BillingSettings.BankAccountNumber
-                                </MudListItem>
-                            }
                             @if (_company.BillingSettings.DefaultPaymentMethod.HasValue)
                             {
                                 <MudListItem T="string">
@@ -243,6 +238,20 @@ else
         {
             @* Read-only view of all addresses *@
             <AddressListEditor Addresses="@MapAddressesToCreateDto()" ReadOnly="true" />
+        }
+    </MudPaper>
+
+    @* Full-width section: 1:N Bank Accounts managed by the shared BankAccountListEditor component *@
+    <MudPaper Elevation="2" Class="pa-4 mb-4">
+        @if (_isEditing)
+        {
+            <BankAccountListEditor BankAccounts="_bankAccounts"
+                                   BankAccountsChanged="@(v => { _bankAccounts = v; _isDirty = true; })" />
+        }
+        else
+        {
+            @* Read-only view of all bank accounts *@
+            <BankAccountListEditor BankAccounts="@MapBankAccountsToCreateDto()" ReadOnly="true" />
         }
     </MudPaper>
 
@@ -317,6 +326,101 @@ else
         </Authorized>
     </AuthorizeView>
 
+    @* ─── Cloud Storage Section (Admin-only) ─────────────────────────── *@
+    <AuthorizeView Roles="Admin,SysAdmin">
+        <Authorized>
+            <MudPaper Class="pa-4 mt-4" Elevation="1">
+                <MudText Typo="Typo.h6" Class="mb-2">@L["CloudStorage_Title"]</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+                    @L["CloudStorage_Description"]
+                </MudText>
+
+                @if (_cloudStorageLoading)
+                {
+                    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+                }
+                else
+                {
+                    <MudGrid>
+                        @foreach (var status in _cloudStorageStatuses)
+                        {
+                            <MudItem xs="12" md="6">
+                                <MudCard Outlined="true">
+                                    <MudCardHeader>
+                                        <CardHeaderContent>
+                                            <MudText Typo="Typo.h6">
+                                                @(status.Provider == ECloudStorageProvider.GoogleDrive
+                                                    ? L["CloudStorage_GoogleDrive"]
+                                                    : L["CloudStorage_OneDrive"])
+                                            </MudText>
+                                        </CardHeaderContent>
+                                        <CardHeaderActions>
+                                            <MudChip T="string" Size="Size.Small"
+                                                     Color="@(status.IsConnected ? Color.Success : Color.Default)">
+                                                @(status.IsConnected
+                                                    ? L["CloudStorage_Connected"]
+                                                    : L["CloudStorage_Disconnected"])
+                                            </MudChip>
+                                        </CardHeaderActions>
+                                    </MudCardHeader>
+                                    <MudCardContent>
+                                        @if (status.IsConnected)
+                                        {
+                                            <MudText Typo="Typo.body2" Class="mb-1">
+                                                <strong>@L["CloudStorage_FolderLabel"]:</strong>
+                                                @(string.IsNullOrEmpty(status.FolderName)
+                                                    ? L["CloudStorage_NoFolder"]
+                                                    : status.FolderName)
+                                            </MudText>
+                                            @if (status.TokenExpiresAt.HasValue)
+                                            {
+                                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                                    @L["CloudStorage_TokenExpires"]: @status.TokenExpiresAt.Value.ToString("g")
+                                                </MudText>
+                                            }
+                                        }
+                                    </MudCardContent>
+                                    <MudCardActions>
+                                        @if (status.IsConnected)
+                                        {
+                                            <MudButton Variant="Variant.Text" Color="Color.Primary"
+                                                       Size="Size.Small"
+                                                       StartIcon="@Icons.Material.Filled.Folder"
+                                                       OnClick="@(() => OpenFolderPicker(status.Provider))">
+                                                @L["CloudStorage_ChangeFolder"]
+                                            </MudButton>
+                                            <MudButton Variant="Variant.Text" Color="Color.Info"
+                                                       Size="Size.Small"
+                                                       StartIcon="@Icons.Material.Filled.Wifi"
+                                                       OnClick="@(() => TestCloudConnection(status.Provider))">
+                                                @L["CloudStorage_TestConnection"]
+                                            </MudButton>
+                                            <MudButton Variant="Variant.Text" Color="Color.Error"
+                                                       Size="Size.Small"
+                                                       StartIcon="@Icons.Material.Filled.LinkOff"
+                                                       OnClick="@(() => DisconnectCloud(status.Provider))">
+                                                @L["CloudStorage_Disconnect"]
+                                            </MudButton>
+                                        }
+                                        else
+                                        {
+                                            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                                       Size="Size.Small"
+                                                       StartIcon="@Icons.Material.Filled.Link"
+                                                       OnClick="@(() => ConnectCloud(status.Provider))">
+                                                @L["CloudStorage_Connect"]
+                                            </MudButton>
+                                        }
+                                    </MudCardActions>
+                                </MudCard>
+                            </MudItem>
+                        }
+                    </MudGrid>
+                }
+            </MudPaper>
+        </Authorized>
+    </AuthorizeView>
+
     @* Full-page overlay during save operations *@
     <MudOverlay Visible="_saving" DarkBackground="true" Absolute="false" ZIndex="9999">
         <MudProgressCircular Color="Color.Primary" Indeterminate="true" Size="Size.Large" />
@@ -335,6 +439,7 @@ else
     private CreateClientDto _editClient = new();
     private CreateBillingSettingsDto _billingSettings = new();
     private List<CreateAddressDto> _addresses = new();
+    private List<CreateBankAccountDto> _bankAccounts = new();
     private string _emailContact = "";
     private string _phoneContact = "";
 
@@ -352,15 +457,20 @@ else
     private bool _smtpUseSsl = true;
     private CompanySystemSettingsDto? _companySettings;
 
+    // Cloud storage settings
+    private bool _cloudStorageLoading = true;
+    private List<CloudStorageStatusDto> _cloudStorageStatuses = new();
+
     /// <summary>
-    /// Loads the user's company (issuer) and SMTP settings on first render.
+    /// Loads the user's company (issuer), SMTP settings, and cloud storage status on first render.
     /// Uses ClientApiService.GetIssuerAsync() which auto-resolves from JWT CompanyId.
-    /// SMTP settings are loaded separately — they may not exist for new companies.
+    /// SMTP and cloud storage settings are loaded separately — they may not exist for new companies.
     /// </summary>
     protected override async Task OnInitializedAsync()
     {
         await LoadCompany();
         await LoadSmtpSettings();
+        await LoadCloudStorageStatus();
     }
 
     /// <summary>
@@ -413,6 +523,18 @@ else
             Country = a.Country,
             AddressLine2 = a.AddressLine2,
             IsPrimary = a.IsPrimary
+        }).ToList();
+
+        // Populate ALL bank accounts (1:N) into the editable list
+        _bankAccounts = _company.BankAccount.Select(b => new CreateBankAccountDto
+        {
+            Label = b.Label,
+            BankName = b.BankName,
+            AccountNumber = b.AccountNumber,
+            IBAN = b.IBAN,
+            SWIFT = b.SWIFT,
+            CurrencyCode = b.CurrencyCode,
+            IsDefault = b.IsDefault
         }).ToList();
 
         // Populate billing settings
@@ -494,6 +616,17 @@ else
                 }).ToList(),
                 // Build contacts from form fields
                 Contact = BuildUpdateContacts(),
+                // Send ALL bank accounts (1:N) — backend uses replace-all strategy
+                BankAccount = _bankAccounts.Select(b => new UpdateBankAccountDto
+                {
+                    Label = b.Label,
+                    BankName = b.BankName,
+                    AccountNumber = b.AccountNumber,
+                    IBAN = b.IBAN,
+                    SWIFT = b.SWIFT,
+                    CurrencyCode = b.CurrencyCode,
+                    IsDefault = b.IsDefault
+                }).ToList(),
                 // Billing settings
                 BillingSettings = new UpdateBillingSettingsDto
                 {
@@ -652,6 +785,26 @@ else
         }).ToList();
     }
 
+    /// <summary>
+    /// Maps the company's BankAccountDto list to CreateBankAccountDto list for the read-only view.
+    /// The BankAccountListEditor uses CreateBankAccountDto as its data model.
+    /// </summary>
+    private List<CreateBankAccountDto> MapBankAccountsToCreateDto()
+    {
+        if (_company?.BankAccount == null) return new();
+
+        return _company.BankAccount.Select(b => new CreateBankAccountDto
+        {
+            Label = b.Label,
+            BankName = b.BankName,
+            AccountNumber = b.AccountNumber,
+            IBAN = b.IBAN,
+            SWIFT = b.SWIFT,
+            CurrencyCode = b.CurrencyCode,
+            IsDefault = b.IsDefault
+        }).ToList();
+    }
+
     // ─── SMTP Settings Methods (Admin only) ──────────────────────────────────
 
     /// <summary>
@@ -767,6 +920,148 @@ else
         finally
         {
             _smtpTesting = false;
+        }
+    }
+
+    // ─── Cloud Storage Methods ───────────────────────────────────────────────
+
+    /// <summary>
+    /// Loads the cloud storage connection status for all providers.
+    /// </summary>
+    private async Task LoadCloudStorageStatus()
+    {
+        try
+        {
+            _cloudStorageLoading = true;
+            _cloudStorageStatuses = await CloudStorageApi.GetStatusAsync();
+        }
+        catch (Exception ex)
+        {
+            _cloudStorageStatuses = new List<CloudStorageStatusDto>();
+            Snackbar.Add($"Failed to load cloud storage status: {ex.Message}", Severity.Warning);
+        }
+        finally
+        {
+            _cloudStorageLoading = false;
+        }
+    }
+
+    /// <summary>
+    /// Opens an OAuth popup window to connect a cloud storage provider.
+    /// The popup navigates to the provider's OAuth page; on success, the callback page
+    /// posts a message back to this window, which triggers a status reload.
+    /// </summary>
+    private async Task ConnectCloud(ECloudStorageProvider provider)
+    {
+        try
+        {
+            // Build the redirect URI for the OAuth callback page
+            var callbackUri = Navigation.ToAbsoluteUri("/cloud-storage/callback").ToString();
+            var authUrl = await CloudStorageApi.GetAuthorizationUrlAsync(provider, callbackUri);
+
+            if (string.IsNullOrEmpty(authUrl))
+            {
+                Snackbar.Add("Failed to get authorization URL", Severity.Error);
+                return;
+            }
+
+            // Open OAuth authorization URL in a popup window
+            // The state parameter carries the provider name so the callback knows which provider
+            var fullUrl = authUrl + $"&state={provider}";
+            await JS.InvokeVoidAsync("eval",
+                $"window.open('{fullUrl}', 'cloud_auth', 'width=600,height=700,left=200,top=100');");
+
+            // Listen for the success message from the popup callback page
+            // The callback page does: window.opener.postMessage('cloud-storage-connected','*')
+            // We can't directly listen from Blazor Server, so we'll prompt user to refresh
+            Snackbar.Add("Please complete authorization in the popup window, then refresh this page.",
+                Severity.Info);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+    }
+
+    /// <summary>
+    /// Disconnects a cloud storage provider after confirmation.
+    /// </summary>
+    private async Task DisconnectCloud(ECloudStorageProvider provider)
+    {
+        var confirmed = await JS.InvokeAsync<bool>("confirm", L["CloudStorage_DisconnectConfirm"].Value);
+        if (!confirmed) return;
+
+        try
+        {
+            var success = await CloudStorageApi.DisconnectAsync(provider);
+            if (success)
+            {
+                Snackbar.Add(L["CloudStorage_DisconnectSuccess"].Value, Severity.Success);
+                await LoadCloudStorageStatus();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+    }
+
+    /// <summary>
+    /// Tests the connection to a cloud storage provider.
+    /// </summary>
+    private async Task TestCloudConnection(ECloudStorageProvider provider)
+    {
+        try
+        {
+            var success = await CloudStorageApi.TestConnectionAsync(provider);
+            Snackbar.Add(
+                success ? L["CloudStorage_TestSuccess"].Value : L["CloudStorage_TestFailed"].Value,
+                success ? Severity.Success : Severity.Error);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["CloudStorage_TestFailed"].Value}: {ex.Message}", Severity.Error);
+        }
+    }
+
+    /// <summary>
+    /// Opens the folder picker dialog for a cloud storage provider.
+    /// </summary>
+    private async Task OpenFolderPicker(ECloudStorageProvider provider)
+    {
+        var status = _cloudStorageStatuses.FirstOrDefault(s => s.Provider == provider);
+
+        var parameters = new DialogParameters<FolderPicker>
+        {
+            { x => x.Provider, provider },
+            { x => x.CurrentFolderId, status?.FolderId }
+        };
+
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Small,
+            FullWidth = true,
+            CloseOnEscapeKey = true
+        };
+
+        var dialog = await DialogService.ShowAsync<FolderPicker>(L["CloudStorage_SelectFolder"].Value, parameters, options);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled && result.Data is CloudStorageSetFolderRequest folderRequest)
+        {
+            try
+            {
+                var success = await CloudStorageApi.SetFolderAsync(provider, folderRequest);
+                if (success)
+                {
+                    Snackbar.Add(L["CloudStorage_FolderSet"].Value, Severity.Success);
+                    await LoadCloudStorageStatus();
+                }
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+            }
         }
     }
 }

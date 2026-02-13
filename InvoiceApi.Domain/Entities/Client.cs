@@ -93,6 +93,13 @@ public class Client : BaseEntity
     public ICollection<Contact> Contact { get; set; } = new List<Contact>();
 
     /// <summary>
+    /// Collection of bank accounts for this client.
+    /// Can have multiple accounts (CZK, EUR, etc.) with one marked as default.
+    /// Follows the same 1:N pattern as Address and Contact.
+    /// </summary>
+    public ICollection<BankAccount> BankAccount { get; set; } = new List<BankAccount>();
+
+    /// <summary>
     /// Billing settings specific to this client
     /// Contains payment terms, number sequences, etc.
     /// Can be null if using default settings

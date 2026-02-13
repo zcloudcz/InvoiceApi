@@ -218,4 +218,84 @@ public class DashboardServiceTests : IDisposable
         // Assert - only active VAT rates
         result.ActiveVatRates.ShouldBe(2);
     }
+
+    // ─── Phase D: Chart Data Tests ───────────────────────────────────────────
+
+    /// <summary>
+    /// Tests that InvoiceCountByStatus groups invoices correctly by status.
+    /// Deleted invoices are excluded from the grouping; Draft, Completed, and Paid
+    /// each appear as separate dictionary entries with their respective counts.
+    /// </summary>
+    [Fact]
+    public async Task GetDashboardAsync_InvoiceCountByStatus_GroupsCorrectly()
+    {
+        // Arrange — create invoices in different statuses
+        var issuer = AddClient("Issuer", isIssuer: true);
+        var client = AddClient("Client");
+
+        AddInvoice(client.Id, issuer.Id, EInvoiceStatus.Draft, 1000);
+        AddInvoice(client.Id, issuer.Id, EInvoiceStatus.Draft, 2000);
+        AddInvoice(client.Id, issuer.Id, EInvoiceStatus.Completed, 3000);
+        AddInvoice(client.Id, issuer.Id, EInvoiceStatus.Paid, 4000);
+        AddInvoice(client.Id, issuer.Id, EInvoiceStatus.Deleted, 5000); // excluded
+
+        // Act
+        var result = await _service.GetDashboardAsync();
+
+        // Assert — Deleted should NOT appear, others grouped correctly
+        result.InvoiceCountByStatus.ShouldNotContainKey("Deleted");
+        result.InvoiceCountByStatus["Draft"].ShouldBe(2);
+        result.InvoiceCountByStatus["Completed"].ShouldBe(1);
+        result.InvoiceCountByStatus["Paid"].ShouldBe(1);
+    }
+
+    /// <summary>
+    /// Tests that InvoiceTotalByClient returns top clients by revenue.
+    /// The dictionary keys are client company names; values are the sum of TotalWithVat
+    /// across all non-deleted invoices for each client.
+    /// </summary>
+    [Fact]
+    public async Task GetDashboardAsync_TopClientsByRevenue_AggregatesCorrectly()
+    {
+        // Arrange — two clients with different invoice totals
+        var issuer = AddClient("Issuer", isIssuer: true);
+        var clientA = AddClient("Alpha Corp");
+        var clientB = AddClient("Beta Ltd");
+
+        // Alpha: 2 invoices totaling 8000
+        AddInvoice(clientA.Id, issuer.Id, EInvoiceStatus.Completed, 5000);
+        AddInvoice(clientA.Id, issuer.Id, EInvoiceStatus.Paid, 3000);
+        // Beta: 1 invoice totaling 12000
+        AddInvoice(clientB.Id, issuer.Id, EInvoiceStatus.Completed, 12000);
+        // Deleted invoice should NOT be included
+        AddInvoice(clientA.Id, issuer.Id, EInvoiceStatus.Deleted, 99000);
+
+        // Act
+        var result = await _service.GetDashboardAsync();
+
+        // Assert — both clients present with correct totals
+        result.InvoiceTotalByClient.ShouldContainKey("Alpha Corp");
+        result.InvoiceTotalByClient.ShouldContainKey("Beta Ltd");
+        result.InvoiceTotalByClient["Alpha Corp"].ShouldBe(8000);
+        result.InvoiceTotalByClient["Beta Ltd"].ShouldBe(12000);
+    }
+
+    /// <summary>
+    /// Tests that chart data returns empty dictionaries for an empty database.
+    /// This ensures the dashboard doesn't throw when there are no invoices to chart.
+    /// </summary>
+    [Fact]
+    public async Task GetDashboardAsync_EmptyDatabase_ReturnsEmptyChartData()
+    {
+        // Act — no invoices in the database
+        var result = await _service.GetDashboardAsync();
+
+        // Assert — chart dictionaries exist but are empty
+        result.InvoiceCountByStatus.ShouldNotBeNull();
+        result.InvoiceCountByStatus.ShouldBeEmpty();
+        result.InvoiceTotalByClient.ShouldNotBeNull();
+        result.InvoiceTotalByClient.ShouldBeEmpty();
+        result.InvoiceCountByClient.ShouldNotBeNull();
+        result.InvoiceCountByClient.ShouldBeEmpty();
+    }
 }

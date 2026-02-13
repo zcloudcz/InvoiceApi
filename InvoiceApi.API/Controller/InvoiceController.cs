@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using InvoiceApi.Application.Common.Pagination;
 using InvoiceApi.Application.Dto.Email;
 using InvoiceApi.Application.Dto.Invoice;
@@ -25,6 +26,7 @@ public class InvoiceController : ControllerBase
     private readonly IPdfExportService _pdfExportService;
     private readonly IEmailService _emailService;
     private readonly IQrPaymentService _qrPaymentService;
+    private readonly ICloudStorageOrchestrator _cloudStorageOrchestrator;
     private readonly ILogger<InvoiceController> _logger;
 
     public InvoiceController(
@@ -32,12 +34,14 @@ public class InvoiceController : ControllerBase
         IPdfExportService pdfExportService,
         IEmailService emailService,
         IQrPaymentService qrPaymentService,
+        ICloudStorageOrchestrator cloudStorageOrchestrator,
         ILogger<InvoiceController> logger)
     {
         _invoiceService = invoiceService;
         _pdfExportService = pdfExportService;
         _emailService = emailService;
         _qrPaymentService = qrPaymentService;
+        _cloudStorageOrchestrator = cloudStorageOrchestrator;
         _logger = logger;
     }
 
@@ -281,6 +285,20 @@ public class InvoiceController : ControllerBase
             }
 
             _logger.LogInformation("Invoice {Id} completed with number {DocumentNumber}", id, invoice.DocumentNumber);
+
+            // Auto-upload PDF to enabled cloud storage providers (non-blocking).
+            // Failures are logged as warnings but don't affect the completion response.
+            try
+            {
+                var pdfBytes = await _pdfExportService.GenerateInvoicePdfAsync(id, null, cancellationToken);
+                var fileName = $"{invoice.DocumentNumber}.pdf";
+                await _cloudStorageOrchestrator.UploadInvoicePdfAsync(id, pdfBytes, fileName, cancellationToken);
+            }
+            catch (Exception cloudEx)
+            {
+                _logger.LogWarning(cloudEx, "Cloud storage upload failed for invoice {Id} (non-blocking)", id);
+            }
+
             return Ok(invoice);
         }
         catch (InvalidOperationException ex)
@@ -434,9 +452,12 @@ public class InvoiceController : ControllerBase
     /// <summary>
     /// Generates a PDF document for the specified invoice.
     /// Uses the invoice's HTML template (from DB) or falls back to a default template.
+    /// Optionally accepts a templateId query parameter to use a specific content template
+    /// instead of the default one for the document type.
     /// Returns the PDF as a downloadable file (application/pdf).
     /// </summary>
     /// <param name="id">Invoice ID to export</param>
+    /// <param name="templateId">Optional content template ID — overrides the default PDF template</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>PDF file content</returns>
     /// <response code="200">Returns PDF file</response>
@@ -446,14 +467,15 @@ public class InvoiceController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> ExportToPdf(
         long id,
+        [FromQuery] long? templateId = null,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("GET /api/invoice/{Id}/pdf - Generating PDF", id);
+        _logger.LogInformation("GET /api/invoice/{Id}/pdf - Generating PDF (templateId: {TemplateId})", id, templateId);
 
         try
         {
-            // Generate the PDF bytes via the export service
-            var pdfBytes = await _pdfExportService.GenerateInvoicePdfAsync(id, cancellationToken);
+            // Generate the PDF bytes via the export service — pass optional templateId for template selection
+            var pdfBytes = await _pdfExportService.GenerateInvoicePdfAsync(id, templateId, cancellationToken);
 
             // Fetch the invoice to get the document number for the file name
             var invoice = await _invoiceService.GetInvoiceByIdAsync(id, cancellationToken);
@@ -601,5 +623,158 @@ public class InvoiceController : ControllerBase
         {
             return NotFound(new { message = $"Invoice with ID {id} not found" });
         }
+    }
+
+    // ─── Bulk Operation Endpoints ────────────────────────────────────────────
+
+    /// <summary>
+    /// Completes (issues) multiple draft invoices in a single batch.
+    /// Each invoice is processed individually — partial success is possible.
+    /// </summary>
+    /// <param name="request">List of invoice IDs to complete</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Bulk operation result with success/failure counts</returns>
+    [HttpPost("bulk/complete")]
+    [ProducesResponseType(typeof(BulkOperationResult), StatusCodes.Status200OK)]
+    public async Task<ActionResult<BulkOperationResult>> BulkComplete(
+        [FromBody] BulkOperationRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("POST /api/invoice/bulk/complete - {Count} invoices", request.InvoiceIds.Count);
+        var result = await _invoiceService.BulkCompleteAsync(request.InvoiceIds, cancellationToken);
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Marks multiple completed invoices as paid in a single batch.
+    /// Each invoice is processed individually — partial success is possible.
+    /// </summary>
+    /// <param name="request">List of invoice IDs to mark as paid</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Bulk operation result with success/failure counts</returns>
+    [HttpPost("bulk/mark-paid")]
+    [ProducesResponseType(typeof(BulkOperationResult), StatusCodes.Status200OK)]
+    public async Task<ActionResult<BulkOperationResult>> BulkMarkAsPaid(
+        [FromBody] BulkOperationRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("POST /api/invoice/bulk/mark-paid - {Count} invoices", request.InvoiceIds.Count);
+        var result = await _invoiceService.BulkMarkAsPaidAsync(request.InvoiceIds, cancellationToken);
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Soft-deletes multiple draft invoices in a single batch.
+    /// Each invoice is processed individually — partial success is possible.
+    /// </summary>
+    /// <param name="request">List of invoice IDs to delete</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Bulk operation result with success/failure counts</returns>
+    [HttpPost("bulk/delete")]
+    [ProducesResponseType(typeof(BulkOperationResult), StatusCodes.Status200OK)]
+    public async Task<ActionResult<BulkOperationResult>> BulkDelete(
+        [FromBody] BulkOperationRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("POST /api/invoice/bulk/delete - {Count} invoices", request.InvoiceIds.Count);
+        var result = await _invoiceService.BulkDeleteAsync(request.InvoiceIds, cancellationToken);
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Sends invoice email for multiple invoices in a single batch.
+    /// Each email is sent individually — partial success is possible.
+    /// Uses the default recipient email from each invoice's client contact.
+    /// </summary>
+    /// <param name="request">List of invoice IDs to send emails for</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Bulk operation result with success/failure counts</returns>
+    [HttpPost("bulk/send-email")]
+    [ProducesResponseType(typeof(BulkOperationResult), StatusCodes.Status200OK)]
+    public async Task<ActionResult<BulkOperationResult>> BulkSendEmail(
+        [FromBody] BulkOperationRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("POST /api/invoice/bulk/send-email - {Count} invoices", request.InvoiceIds.Count);
+        var result = new BulkOperationResult();
+
+        // Process each invoice sequentially — send email with client's default email address
+        foreach (var id in request.InvoiceIds)
+        {
+            try
+            {
+                // Resolve the default email from the invoice's client contact
+                var invoice = await _invoiceService.GetInvoiceByIdAsync(id, cancellationToken);
+                if (invoice == null)
+                {
+                    result.FailedCount++;
+                    result.Errors.Add(new BulkOperationError { InvoiceId = id, Error = "Invoice not found" });
+                    continue;
+                }
+
+                // Use the client name as a fallback — actual email resolution happens in EmailService
+                await _emailService.SendInvoiceEmailAsync(id, invoice.ClientName, cancellationToken);
+                result.SuccessCount++;
+            }
+            catch (Exception ex)
+            {
+                result.FailedCount++;
+                result.Errors.Add(new BulkOperationError { InvoiceId = id, Error = ex.Message });
+                _logger.LogWarning("Bulk send-email failed for invoice {Id}: {Error}", id, ex.Message);
+            }
+        }
+
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Generates PDFs for multiple invoices and returns them as a ZIP archive.
+    /// Useful for bulk downloading invoices for printing or archiving.
+    /// </summary>
+    /// <param name="ids">Comma-separated list of invoice IDs</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>ZIP file containing individual PDF files</returns>
+    [HttpGet("bulk/pdf")]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    public async Task<IActionResult> BulkExportPdf(
+        [FromQuery] string ids,
+        CancellationToken cancellationToken = default)
+    {
+        // Parse comma-separated IDs
+        var invoiceIds = ids.Split(',', StringSplitOptions.RemoveEmptyEntries)
+            .Select(s => long.TryParse(s.Trim(), out var id) ? id : 0)
+            .Where(id => id > 0)
+            .ToList();
+
+        _logger.LogInformation("GET /api/invoice/bulk/pdf - {Count} invoices", invoiceIds.Count);
+
+        // Generate ZIP with all PDFs using System.IO.Compression (built-in .NET)
+        using var zipStream = new MemoryStream();
+        using (var archive = new System.IO.Compression.ZipArchive(zipStream, System.IO.Compression.ZipArchiveMode.Create, true))
+        {
+            foreach (var id in invoiceIds)
+            {
+                try
+                {
+                    var pdfBytes = await _pdfExportService.GenerateInvoicePdfAsync(id, null, cancellationToken);
+                    var invoice = await _invoiceService.GetInvoiceByIdAsync(id, cancellationToken);
+                    var fileName = $"Invoice_{invoice?.DocumentNumber ?? id.ToString()}.pdf";
+
+                    // Add each PDF as an entry in the ZIP archive
+                    var entry = archive.CreateEntry(fileName, System.IO.Compression.CompressionLevel.Optimal);
+                    using var entryStream = entry.Open();
+                    await entryStream.WriteAsync(pdfBytes, cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning("Bulk PDF failed for invoice {Id}: {Error}", id, ex.Message);
+                    // Skip failed invoices — include only successful ones in the ZIP
+                }
+            }
+        }
+
+        // Return the ZIP as a downloadable file
+        zipStream.Position = 0;
+        return File(zipStream.ToArray(), "application/zip", $"Invoices_{DateTime.UtcNow:yyyyMMdd}.zip");
     }
 }

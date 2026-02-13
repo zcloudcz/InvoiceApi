@@ -5,13 +5,16 @@
 @using InvoiceApi.Application.Dto.Client
 @using InvoiceApi.Application.Dto.InvoiceTemplate
 @using InvoiceApi.Application.Common.Pagination
+@using InvoiceApi.Application.Dto.ContentTemplate
 @using InvoiceApi.Domain.Enums
 @inject InvoiceApiService InvoiceService
 @inject ClientApiService ClientService
 @inject InvoiceTemplateApiService TemplateService
+@inject ContentTemplateApiService ContentTemplateService
 @inject IJSRuntime JS
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
+@inject IDialogService DialogService
 @inject IStringLocalizer<SharedResource> L
 
 @* Page title adapts based on document type filter — "Invoices" or "Credit Notes" *@
@@ -66,7 +69,7 @@
             <MudDatePicker Date="_issueDateTo" Label="@L["Invoice_ToDate"].Value" Clearable="true"
                            DateChanged="@(async (DateTime? d) => { _issueDateTo = d; await SearchInvoices(); })" />
         </MudItem>
-        <MudItem xs="12" sm="6" md="1" Class="d-flex align-end">
+        <MudItem xs="12" sm="6" md="2" Class="d-flex align-end">
             @* Split button: Primary click = new invoice/credit note, dropdown arrow = from template *@
             <MudButtonGroup OverrideStyles="false">
                 <MudButton Variant="Variant.Filled" Color="Color.Primary"
@@ -88,7 +91,35 @@
     </MudGrid>
 </MudPaper>
 
-@* AppDataGrid for consistent server-side pagination *@
+@* Bulk operations toolbar — visible only when multi-select has items checked *@
+@if (_selectedInvoices.Count > 0)
+{
+    <MudPaper Class="pa-3 mb-2 d-flex flex-wrap align-center gap-2" Elevation="2" Style="background-color: var(--mud-palette-info-lighten);">
+        <MudChip T="string" Color="Color.Info" Size="Size.Small">@_selectedInvoices.Count @L["Bulk_Selected"]</MudChip>
+        <MudButton Variant="Variant.Filled" Color="Color.Success" Size="Size.Small"
+                   StartIcon="@Icons.Material.Filled.Send" OnClick="BulkIssue"
+                   Disabled="_bulkProcessing">@L["Bulk_Issue"]</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Success" Size="Size.Small"
+                   StartIcon="@Icons.Material.Filled.Check" OnClick="BulkMarkPaid"
+                   Disabled="_bulkProcessing">@L["Bulk_MarkPaid"]</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Secondary" Size="Size.Small"
+                   StartIcon="@Icons.Material.Filled.PictureAsPdf" OnClick="BulkPdf"
+                   Disabled="_bulkProcessing">@L["Bulk_Pdf"]</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Tertiary" Size="Size.Small"
+                   StartIcon="@Icons.Material.Filled.Email" OnClick="BulkEmail"
+                   Disabled="_bulkProcessing">@L["Bulk_Email"]</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Error" Size="Size.Small"
+                   StartIcon="@Icons.Material.Filled.Delete" OnClick="BulkDelete"
+                   Disabled="_bulkProcessing">@L["Bulk_Delete"]</MudButton>
+        <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="ClearSelection">@L["Bulk_ClearSelection"]</MudButton>
+        @if (_bulkProcessing)
+        {
+            <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+        }
+    </MudPaper>
+}
+
+@* AppDataGrid for consistent server-side pagination with multi-select for bulk operations *@
 <AppDataGrid TItem="InvoiceDto"
              ServerData="LoadServerData"
              @ref="_table"
@@ -96,6 +127,9 @@
              ShowEditAction="false"
              ShowDeleteAction="false"
              Loading="@_loading"
+             MultiSelection="true"
+             SelectedItems="_selectedInvoices"
+             SelectedItemsChanged="@(items => { _selectedInvoices = items; StateHasChanged(); })"
              NoRecordsText="@L["Invoice_NoRecords"].Value">
     <Columns>
         <MudTh><MudTableSortLabel SortLabel="DocumentNumber" T="InvoiceDto">@L["Table_Number"]</MudTableSortLabel></MudTh>
@@ -153,8 +187,15 @@
             <MudIconButton Icon="@Icons.Material.Filled.Check" Size="Size.Small" Color="Color.Success"
                            OnClick="@(() => MarkAsPaid(context.Id))" title="@L["Invoice_MarkAsPaid"].Value" />
         }
-        <MudIconButton Icon="@Icons.Material.Filled.PictureAsPdf" Size="Size.Small" Color="Color.Secondary"
-                       OnClick="@(() => DownloadPdf(context))" title="@L["Invoice_DownloadPdf"].Value" />
+        @* PDF download with template selection — primary: default template, menu: pick specific template *@
+        <MudMenu Icon="@Icons.Material.Filled.PictureAsPdf" Size="Size.Small" Color="Color.Secondary"
+                 title="@L["Invoice_DownloadPdf"].Value" Dense="true">
+            <MudMenuItem OnClick="@(() => DownloadPdf(context))">@L["Pdf_DefaultTemplate"]</MudMenuItem>
+            @foreach (var tmpl in _pdfTemplates)
+            {
+                <MudMenuItem OnClick="@(() => DownloadPdfWithTemplate(context, tmpl.Id))">@tmpl.Name</MudMenuItem>
+            }
+        </MudMenu>
         <MudIconButton Icon="@Icons.Material.Filled.Email" Size="Size.Small" Color="Color.Tertiary"
                        OnClick="@(() => OpenEmailDialog(context))" title="@L["Invoice_SendByEmail"].Value" />
         <MudTooltip Text="@L["Invoice_CreateFromTemplate"].Value">
@@ -285,6 +326,13 @@
     // Reference data loaded once — clients used for filter dropdown
     private List<ClientDto> _allClients = new();
 
+    // PDF template list — loaded once, used for the PDF template picker menu
+    private List<ContentTemplateDto> _pdfTemplates = new();
+
+    // Multi-select state for bulk operations
+    private HashSet<InvoiceDto> _selectedInvoices = new();
+    private bool _bulkProcessing = false;
+
     // Email dialog state
     private bool _showEmailDialog = false;
     private bool _sendingEmail = false;
@@ -318,8 +366,8 @@
             _filterDocumentType = EDocumentType.CreditNote;
         }
 
-        // Load clients and templates in parallel — both are needed for dropdowns
-        await Task.WhenAll(LoadClients(), LoadTemplates());
+        // Load clients, templates, and PDF templates in parallel — all needed for dropdowns
+        await Task.WhenAll(LoadClients(), LoadTemplates(), LoadPdfTemplates());
     }
 
     private async Task LoadClients()
@@ -335,6 +383,22 @@
     {
         try { _templates = await TemplateService.GetAllActiveAsync(); }
         catch (Exception ex) { Snackbar.Add($"Error loading templates: {ex.Message}", Severity.Error); }
+    }
+
+    /// <summary>
+    /// Loads active PDF content templates for the PDF template picker menu.
+    /// Filters by InvoicePdf or CreditNotePdf depending on the current view.
+    /// </summary>
+    private async Task LoadPdfTemplates()
+    {
+        try
+        {
+            var templateType = _isCreditNoteView
+                ? EContentTemplateType.CreditNotePdf
+                : EContentTemplateType.InvoicePdf;
+            _pdfTemplates = await ContentTemplateService.GetAllAsync(templateType, includeInactive: false);
+        }
+        catch (Exception ex) { Snackbar.Add($"Error loading PDF templates: {ex.Message}", Severity.Error); }
     }
 
     /// <summary>
@@ -590,6 +654,208 @@
         // Navigate to create page with template and client pre-filled via query params
         Navigation.NavigateTo(
             $"/invoices/create?templateId={_selectedTemplateId}&clientId={_fromTemplateDto.ClientId}");
+    }
+
+    // --- PDF with template selection ---
+
+    /// <summary>
+    /// Downloads the invoice PDF using a specific content template ID.
+    /// Called from the PDF template picker menu in the row actions.
+    /// </summary>
+    private async Task DownloadPdfWithTemplate(InvoiceDto invoice, long templateId)
+    {
+        try
+        {
+            var pdfBytes = await InvoiceService.ExportToPdfAsync(invoice.Id, templateId);
+            if (pdfBytes != null && pdfBytes.Length > 0)
+            {
+                var base64 = Convert.ToBase64String(pdfBytes);
+                var fileName = $"Invoice_{invoice.DocumentNumber ?? invoice.Id.ToString()}.pdf";
+                await JS.InvokeVoidAsync("downloadFile", fileName, base64, "application/pdf");
+                Snackbar.Add(L["Invoice_PdfDownloaded"].Value, Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add(L["Invoice_PdfFailed"].Value, Severity.Error);
+            }
+        }
+        catch (Exception ex) { Snackbar.Add($"Error downloading PDF: {ex.Message}", Severity.Error); }
+    }
+
+    // --- Bulk operations ---
+
+    /// <summary>
+    /// Clears the multi-select checkbox selection and hides the bulk toolbar.
+    /// </summary>
+    private void ClearSelection()
+    {
+        _selectedInvoices = new HashSet<InvoiceDto>();
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Bulk completes (issues) all selected Draft invoices.
+    /// Filters eligible invoices first, shows confirmation, then processes.
+    /// </summary>
+    private async Task BulkIssue()
+    {
+        var eligible = _selectedInvoices.Where(i => i.Status == EInvoiceStatus.Draft).ToList();
+        if (eligible.Count == 0)
+        {
+            Snackbar.Add(L["Bulk_NoneEligible"].Value, Severity.Warning);
+            return;
+        }
+
+        // Confirm action with user
+        var confirmed = await JS.InvokeAsync<bool>("confirm",
+            string.Format(L["Bulk_ConfirmIssue"].Value, eligible.Count));
+        if (!confirmed) return;
+
+        _bulkProcessing = true;
+        StateHasChanged();
+        try
+        {
+            var result = await InvoiceService.BulkCompleteAsync(eligible.Select(i => i.Id).ToList());
+            ShowBulkResult(result);
+            ClearSelection();
+            await SearchInvoices();
+        }
+        catch (Exception ex) { Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error); }
+        finally { _bulkProcessing = false; }
+    }
+
+    /// <summary>
+    /// Bulk marks all selected Completed invoices as paid.
+    /// </summary>
+    private async Task BulkMarkPaid()
+    {
+        var eligible = _selectedInvoices.Where(i => i.Status == EInvoiceStatus.Completed).ToList();
+        if (eligible.Count == 0)
+        {
+            Snackbar.Add(L["Bulk_NoneEligible"].Value, Severity.Warning);
+            return;
+        }
+
+        var confirmed = await JS.InvokeAsync<bool>("confirm",
+            string.Format(L["Bulk_ConfirmPaid"].Value, eligible.Count));
+        if (!confirmed) return;
+
+        _bulkProcessing = true;
+        StateHasChanged();
+        try
+        {
+            var result = await InvoiceService.BulkMarkAsPaidAsync(eligible.Select(i => i.Id).ToList());
+            ShowBulkResult(result);
+            ClearSelection();
+            await SearchInvoices();
+        }
+        catch (Exception ex) { Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error); }
+        finally { _bulkProcessing = false; }
+    }
+
+    /// <summary>
+    /// Bulk deletes all selected Draft invoices (soft delete).
+    /// </summary>
+    private async Task BulkDelete()
+    {
+        var eligible = _selectedInvoices.Where(i => i.Status == EInvoiceStatus.Draft).ToList();
+        if (eligible.Count == 0)
+        {
+            Snackbar.Add(L["Bulk_NoneEligible"].Value, Severity.Warning);
+            return;
+        }
+
+        var confirmed = await JS.InvokeAsync<bool>("confirm",
+            string.Format(L["Bulk_ConfirmDelete"].Value, eligible.Count));
+        if (!confirmed) return;
+
+        _bulkProcessing = true;
+        StateHasChanged();
+        try
+        {
+            var result = await InvoiceService.BulkDeleteAsync(eligible.Select(i => i.Id).ToList());
+            ShowBulkResult(result);
+            ClearSelection();
+            await SearchInvoices();
+        }
+        catch (Exception ex) { Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error); }
+        finally { _bulkProcessing = false; }
+    }
+
+    /// <summary>
+    /// Bulk sends email for all selected invoices.
+    /// Uses the default client email address for each invoice.
+    /// </summary>
+    private async Task BulkEmail()
+    {
+        if (_selectedInvoices.Count == 0) return;
+
+        var confirmed = await JS.InvokeAsync<bool>("confirm",
+            string.Format(L["Bulk_ConfirmEmail"].Value, _selectedInvoices.Count));
+        if (!confirmed) return;
+
+        _bulkProcessing = true;
+        StateHasChanged();
+        try
+        {
+            var result = await InvoiceService.BulkSendEmailAsync(_selectedInvoices.Select(i => i.Id).ToList());
+            ShowBulkResult(result);
+            ClearSelection();
+            await SearchInvoices();
+        }
+        catch (Exception ex) { Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error); }
+        finally { _bulkProcessing = false; }
+    }
+
+    /// <summary>
+    /// Bulk downloads PDFs for all selected invoices as a ZIP archive.
+    /// Uses JS interop to trigger the file download in the browser.
+    /// </summary>
+    private async Task BulkPdf()
+    {
+        if (_selectedInvoices.Count == 0) return;
+
+        _bulkProcessing = true;
+        StateHasChanged();
+        try
+        {
+            var zipBytes = await InvoiceService.BulkExportPdfAsync(_selectedInvoices.Select(i => i.Id).ToList());
+            if (zipBytes != null && zipBytes.Length > 0)
+            {
+                var base64 = Convert.ToBase64String(zipBytes);
+                var fileName = $"Invoices_{DateTime.Now:yyyyMMdd}.zip";
+                await JS.InvokeVoidAsync("downloadFile", fileName, base64, "application/zip");
+                Snackbar.Add(L["Bulk_Success"].Value, Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add(L["Invoice_PdfFailed"].Value, Severity.Error);
+            }
+        }
+        catch (Exception ex) { Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error); }
+        finally { _bulkProcessing = false; }
+    }
+
+    /// <summary>
+    /// Shows a snackbar message for bulk operation results.
+    /// Distinguishes between full success, partial success, and complete failure.
+    /// </summary>
+    private void ShowBulkResult(BulkOperationResult? result)
+    {
+        if (result == null) return;
+
+        if (result.FailedCount == 0)
+        {
+            Snackbar.Add(string.Format(L["Bulk_Success"].Value, result.SuccessCount), Severity.Success);
+        }
+        else if (result.SuccessCount > 0)
+        {
+            Snackbar.Add(string.Format(L["Bulk_PartialSuccess"].Value, result.SuccessCount, result.FailedCount), Severity.Warning);
+        }
+        else
+        {
+            Snackbar.Add(L["Bulk_NoneEligible"].Value, Severity.Error);
+        }
     }
 
     // --- Helpers ---

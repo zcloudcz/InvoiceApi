@@ -1,0 +1,16 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated"
+  },
+  "ConnectionStrings": {
+    "MasterConnection": "Server=localhost;Database=invoiceapi_master;Trusted_Connection=true;TrustServerCertificate=true",
+    "TenantTemplateConnection": "Server=localhost;Database=invoiceapi_tenant_template;Trusted_Connection=true;TrustServerCertificate=true"
+  },
+  "JwtSettings": {
+    "Secret": "your-dev-secret-here-min-32-chars-long!!!",
+    "Issuer": "InvoiceApi",
+    "Audience": "InvoiceApiClient"
+  }
+}

@@ -116,4 +116,33 @@ public interface IInvoiceService
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>List of credit notes</returns>
     Task<List<InvoiceDto>> GetCreditNotesForInvoiceAsync(long invoiceId, CancellationToken cancellationToken = default);
+
+    // ─── Bulk Operations ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Completes (issues) multiple draft invoices in a single batch.
+    /// Each invoice is processed individually — failures don't stop the batch.
+    /// </summary>
+    /// <param name="invoiceIds">List of invoice IDs to complete</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Result with success/failure counts and error details</returns>
+    Task<BulkOperationResult> BulkCompleteAsync(List<long> invoiceIds, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Marks multiple completed invoices as paid in a single batch.
+    /// Each invoice is processed individually — failures don't stop the batch.
+    /// </summary>
+    /// <param name="invoiceIds">List of invoice IDs to mark as paid</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Result with success/failure counts and error details</returns>
+    Task<BulkOperationResult> BulkMarkAsPaidAsync(List<long> invoiceIds, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Soft-deletes multiple draft invoices in a single batch.
+    /// Each invoice is processed individually — failures don't stop the batch.
+    /// </summary>
+    /// <param name="invoiceIds">List of invoice IDs to delete</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Result with success/failure counts and error details</returns>
+    Task<BulkOperationResult> BulkDeleteAsync(List<long> invoiceIds, CancellationToken cancellationToken = default);
 }

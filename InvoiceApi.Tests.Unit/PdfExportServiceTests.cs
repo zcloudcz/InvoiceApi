@@ -271,4 +271,86 @@ public class PdfExportServiceTests : IDisposable
         await _contentTemplateService.Received(1)
             .GetDefaultByTypeAsync(EContentTemplateType.InvoicePdf, Arg.Any<CancellationToken>());
     }
+
+    // ─── Phase D: Template Selection Tests ───────────────────────────────────
+
+    /// <summary>
+    /// Tests that when a specific contentTemplateId is provided, the service
+    /// uses that template instead of the default. The mock returns a custom template
+    /// with a simple HTML body containing a placeholder.
+    /// </summary>
+    [Fact]
+    public async Task GenerateInvoicePdfAsync_WithSpecificTemplateId_UsesSelectedTemplate()
+    {
+        // Arrange — mock GetByIdAsync to return a specific template when requested
+        var customTemplate = new ContentTemplateDto
+        {
+            Id = 42,
+            Name = "Custom Layout",
+            HtmlBody = "<html><body><h1>Custom: {{DocumentNumber}}</h1><p>Total: {{TotalWithVat}} {{CurrencySymbol}}</p>{{InvoiceItems}}{{VatBreakdown}}{{QrCodeImage}}</body></html>",
+            TemplateType = EContentTemplateType.InvoicePdf,
+            IsActive = true,
+            IsDefault = false
+        };
+        _contentTemplateService
+            .GetByIdAsync(42, Arg.Any<CancellationToken>())
+            .Returns(customTemplate);
+
+        // Act — generate PDF with specific template ID
+        var result = await _service.GenerateInvoicePdfAsync(1, 42);
+
+        // Assert — should return valid PDF bytes
+        result.ShouldNotBeNull();
+        result.ShouldNotBeEmpty();
+        result[0].ShouldBe((byte)0x25); // PDF header
+
+        // Verify it called GetByIdAsync with the specific template ID (NOT GetDefaultByTypeAsync)
+        await _contentTemplateService.Received(1).GetByIdAsync(42, Arg.Any<CancellationToken>());
+        await _contentTemplateService.DidNotReceive()
+            .GetDefaultByTypeAsync(Arg.Any<EContentTemplateType>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Tests that when contentTemplateId is null, the service falls back to the default
+    /// template resolution (GetDefaultByTypeAsync) — same as the no-parameter overload.
+    /// </summary>
+    [Fact]
+    public async Task GenerateInvoicePdfAsync_NullTemplateId_FallsBackToDefault()
+    {
+        // Arrange — mock GetDefaultByTypeAsync to return null (built-in fallback used)
+        _contentTemplateService
+            .GetDefaultByTypeAsync(EContentTemplateType.InvoicePdf, Arg.Any<CancellationToken>())
+            .Returns((ContentTemplateDto?)null);
+
+        // Act — null templateId = use default resolution
+        var result = await _service.GenerateInvoicePdfAsync(1, null);
+
+        // Assert — should produce valid PDF using built-in fallback
+        result.ShouldNotBeNull();
+        result.ShouldNotBeEmpty();
+
+        // Verify it used GetDefaultByTypeAsync (NOT GetByIdAsync)
+        await _contentTemplateService.Received(1)
+            .GetDefaultByTypeAsync(EContentTemplateType.InvoicePdf, Arg.Any<CancellationToken>());
+        await _contentTemplateService.DidNotReceive()
+            .GetByIdAsync(Arg.Any<long>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Tests that when an invalid (non-existent) contentTemplateId is provided,
+    /// the service throws KeyNotFoundException to signal the template doesn't exist.
+    /// This prevents silent fallback to default when the user explicitly selected a template.
+    /// </summary>
+    [Fact]
+    public async Task GenerateInvoicePdfAsync_InvalidTemplateId_ThrowsKeyNotFoundException()
+    {
+        // Arrange — mock GetByIdAsync returns null for the requested template ID
+        _contentTemplateService
+            .GetByIdAsync(999, Arg.Any<CancellationToken>())
+            .Returns((ContentTemplateDto?)null);
+
+        // Act & Assert — should throw because the user explicitly requested a non-existent template
+        await Assert.ThrowsAsync<KeyNotFoundException>(
+            () => _service.GenerateInvoicePdfAsync(1, 999));
+    }
 }

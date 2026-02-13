@@ -111,4 +111,15 @@ public interface IClientService
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Updated client or null if not found</returns>
     Task<ClientDto?> UpdateBillingSettingsAsync(long clientId, CreateBillingSettingsDto settingsDto, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Adds a bank account to an existing client.
+    /// If this is the first bank account, it is automatically set as default.
+    /// If IsDefault is true, clears default from all other accounts.
+    /// </summary>
+    /// <param name="clientId">Client ID</param>
+    /// <param name="bankAccountDto">Bank account data</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Updated client or null if not found</returns>
+    Task<ClientDto?> AddBankAccountAsync(long clientId, CreateBankAccountDto bankAccountDto, CancellationToken cancellationToken = default);
 }

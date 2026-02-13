@@ -115,6 +115,12 @@ public class TenantDbContext : DbContext
     public DbSet<ContentTemplate> ContentTemplate { get; set; }
 
     /// <summary>
+    /// Client bank accounts (1:N per client).
+    /// Issuers list their payment destination accounts here; one is marked as default.
+    /// </summary>
+    public DbSet<BankAccount> BankAccount { get; set; }
+
+    /// <summary>
     /// Cached ARES lookups (company registry data)
     /// </summary>
     public DbSet<AresCache> AresCache { get; set; }
@@ -137,6 +143,7 @@ public class TenantDbContext : DbContext
         ConfigureClient(modelBuilder);
         ConfigureAddress(modelBuilder);
         ConfigureContact(modelBuilder);
+        ConfigureBankAccount(modelBuilder);
         ConfigureBillingSettings(modelBuilder);
         ConfigureCurrency(modelBuilder);
         ConfigureInvoice(modelBuilder);
@@ -174,6 +181,13 @@ public class TenantDbContext : DbContext
             entity.HasMany(e => e.Contact)
                 .WithOne(c => c.Client)
                 .HasForeignKey(c => c.ClientId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Bank accounts: 1:N relationship with cascade delete.
+            // Safe to cascade — BankAccount has no outgoing FKs that could create multiple cascade paths.
+            entity.HasMany(e => e.BankAccount)
+                .WithOne(b => b.Client)
+                .HasForeignKey(b => b.ClientId)
                 .OnDelete(DeleteBehavior.Cascade);
 
             entity.HasOne(e => e.BillingSettings)
@@ -215,6 +229,28 @@ public class TenantDbContext : DbContext
 
             entity.Property(e => e.ContactValue).IsRequired().HasMaxLength(500);
             entity.Property(e => e.Label).HasMaxLength(200);
+        });
+    }
+
+    /// <summary>
+    /// BankAccount table configuration — 1:N per client.
+    /// Stores bank account details (account number, IBAN, SWIFT, currency).
+    /// One account per client can be marked as IsDefault.
+    /// </summary>
+    private void ConfigureBankAccount(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<BankAccount>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.ClientId);
+            entity.HasIndex(e => new { e.ClientId, e.IsDefault });
+
+            entity.Property(e => e.Label).HasMaxLength(200);
+            entity.Property(e => e.BankName).HasMaxLength(200);
+            entity.Property(e => e.AccountNumber).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.IBAN).HasMaxLength(50);
+            entity.Property(e => e.SWIFT).HasMaxLength(20);
+            entity.Property(e => e.CurrencyCode).HasMaxLength(3);
         });
     }
 

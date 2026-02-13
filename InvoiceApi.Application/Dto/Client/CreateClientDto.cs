@@ -66,6 +66,13 @@ public class CreateClientDto
     public List<CreateContactDto> Contact { get; set; } = new();
 
     /// <summary>
+    /// Collection of bank accounts.
+    /// At least one is recommended for issuers (shown on invoices).
+    /// The first account added automatically becomes the default.
+    /// </summary>
+    public List<CreateBankAccountDto> BankAccount { get; set; } = new();
+
+    /// <summary>
     /// Billing settings for this client
     /// Optional - if not provided, default settings will be used
     /// </summary>

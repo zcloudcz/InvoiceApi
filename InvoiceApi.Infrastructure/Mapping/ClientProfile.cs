@@ -21,10 +21,13 @@ public partial class ClientProfile : IMapperProfile
         // Contact → ContactDto: direct 1:1 mapping including inherited Id
         config.CreateMap<Contact, ContactDto>();
 
+        // BankAccount → BankAccountDto: direct 1:1 mapping including inherited Id
+        config.CreateMap<BankAccount, BankAccountDto>();
+
         // BillingSettings → BillingSettingsDto: direct 1:1 mapping including inherited Id
         config.CreateMap<BillingSettings, BillingSettingsDto>();
 
-        // Client → ClientDto: nested Address/Contact collections and BillingSettings
+        // Client → ClientDto: nested Address/Contact/BankAccount collections and BillingSettings
         // are mapped automatically because their type mappings are registered above
         config.CreateMap<Client, ClientDto>();
     }

@@ -1,0 +1,50 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AzureFunctionsVersion>v4</AzureFunctionsVersion>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>InvoiceApi.Functions</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <!-- Azure Functions Isolated Worker packages with ASP.NET Core integration -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Azure.Functions.Worker" Version="2.*" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Sdk" Version="2.*" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Http.AspNetCore" Version="2.*" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Timer" Version="4.*" />
+
+    <!-- JWT + OAuth — same packages as API project (needed for auth pipeline) -->
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.1" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.Google" Version="10.0.3" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.MicrosoftAccount" Version="10.0.3" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.Facebook" Version="10.0.3" />
+  </ItemGroup>
+
+  <!-- ASP.NET Core framework reference — needed for HttpRequest, IActionResult, middleware types
+       when the project SDK is not Microsoft.NET.Sdk.Web -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <!-- Project references: API (controllers + middleware), Infrastructure (services), Application (interfaces/DTOs) -->
+  <ItemGroup>
+    <ProjectReference Include="..\InvoiceApi.API\InvoiceApi.API.csproj" />
+    <ProjectReference Include="..\InvoiceApi.Infrastructure\InvoiceApi.Infrastructure.csproj" />
+    <ProjectReference Include="..\InvoiceApi.Application\InvoiceApi.Application.csproj" />
+  </ItemGroup>
+
+  <!-- Copy host.json and local.settings.json to output directory for Azure Functions runtime -->
+  <ItemGroup>
+    <None Update="host.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="local.settings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Never</CopyToPublishDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

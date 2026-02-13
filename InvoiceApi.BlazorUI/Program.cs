@@ -67,6 +67,7 @@ builder.Services.AddScoped<CompanySettingsApiService>();
 builder.Services.AddScoped<SystemConfigurationApiService>();
 builder.Services.AddScoped<AppLogApiService>();
 builder.Services.AddScoped<TwoFactorApiService>();
+builder.Services.AddScoped<CloudStorageApiService>();
 
 var app = builder.Build();
 

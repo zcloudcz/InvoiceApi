@@ -32,7 +32,8 @@
 *@
 @typeparam TItem
 
-@* Main data table with consistent look and feel *@
+@* Main data table with consistent look and feel.
+   MultiSelection enables checkbox column for bulk operations. *@
 <MudTable T="TItem"
           Items="@Items"
           ServerData="@ServerData"
@@ -45,6 +46,9 @@
           RowStyleFunc="@RowCursorStyle"
           Elevation="@Elevation"
           Filter="@Filter"
+          MultiSelection="@MultiSelection"
+          SelectedItems="@SelectedItems"
+          SelectedItemsChanged="@OnSelectedItemsChanged"
           @ref="_tableRef">
     <ToolBarContent>
         @ToolBarContent
@@ -54,7 +58,7 @@
         @* Auto-generate Actions column header if any action is enabled *@
         @if (ShowEditAction || ShowDeleteAction || RowActions != null)
         {
-            <MudTh Style="width: 120px;">@L["Label_Actions"]</MudTh>
+            <MudTh Style="width: auto; min-width: 120px;">@L["Label_Actions"]</MudTh>
         }
     </HeaderContent>
     <RowTemplate>
@@ -62,18 +66,18 @@
         @* Auto-generate action buttons cell — stopPropagation prevents row click when clicking icons *@
         @if (ShowEditAction || ShowDeleteAction || RowActions != null)
         {
-            <MudTd @onclick:stopPropagation="true">
+            <MudTd @onclick:stopPropagation="true" Class="d-flex gap-1 align-center">
                 @if (ShowEditAction && OnEdit.HasDelegate)
                 {
                     <MudIconButton Icon="@Icons.Material.Filled.Edit"
-                                   Size="Size.Small" Color="Color.Primary"
+                                   Size="Size.Medium" Color="Color.Primary"
                                    OnClick="@(() => OnEdit.InvokeAsync(context))"
                                    title="@L["Btn_Edit"].Value" />
                 }
                 @if (ShowDeleteAction && OnDelete.HasDelegate)
                 {
                     <MudIconButton Icon="@Icons.Material.Filled.Delete"
-                                   Size="Size.Small" Color="Color.Error"
+                                   Size="Size.Medium" Color="Color.Error"
                                    OnClick="@(() => OnDelete.InvokeAsync(context))"
                                    title="@L["Btn_Delete"].Value" />
                 }
@@ -166,6 +170,28 @@
     /// </summary>
     [Parameter] public EventCallback<TItem> OnDelete { get; set; }
 
+    // ========== MULTI-SELECT PARAMETERS ==========
+
+    /// <summary>
+    /// Enables multi-select mode with checkboxes on each row.
+    /// When true, MudTable shows a checkbox column for bulk selection.
+    /// Use SelectedItems / SelectedItemsChanged to track the selection.
+    /// Default: false (single-click row behavior).
+    /// </summary>
+    [Parameter] public bool MultiSelection { get; set; } = false;
+
+    /// <summary>
+    /// The set of currently selected items when MultiSelection is enabled.
+    /// Two-way bindable via @bind-SelectedItems or explicit SelectedItems + SelectedItemsChanged.
+    /// </summary>
+    [Parameter] public HashSet<TItem> SelectedItems { get; set; } = new();
+
+    /// <summary>
+    /// Callback fired when the selection changes (items checked/unchecked).
+    /// Parent page should update its SelectedItems reference and re-render bulk toolbar.
+    /// </summary>
+    [Parameter] public EventCallback<HashSet<TItem>> SelectedItemsChanged { get; set; }
+
     // ========== BEHAVIOR PARAMETERS ==========
 
     /// <summary>
@@ -206,6 +232,19 @@
     /// Internal MudTable reference — used by ReloadServerDataAsync() for server-side refresh.
     /// </summary>
     private MudTable<TItem>? _tableRef;
+
+    /// <summary>
+    /// Handles multi-select change — propagates the new selection to the parent via EventCallback.
+    /// MudTable fires this whenever checkboxes are toggled or "select all" is used.
+    /// </summary>
+    private async Task OnSelectedItemsChanged(HashSet<TItem> items)
+    {
+        SelectedItems = items;
+        if (SelectedItemsChanged.HasDelegate)
+        {
+            await SelectedItemsChanged.InvokeAsync(items);
+        }
+    }
 
     /// <summary>
     /// Handles row click — extracts the item from TableRowClickEventArgs and invokes OnRowClick.

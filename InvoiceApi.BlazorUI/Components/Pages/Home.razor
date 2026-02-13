@@ -221,6 +221,54 @@ else
         </MudItem>
     </MudGrid>
 
+    @* ─── Donut Charts Row — side-by-side: Invoices by Status + Top Clients by Revenue ─── *@
+    @if (_dashboard.InvoiceCountByStatus.Count > 0 || _dashboard.InvoiceTotalByClient.Count > 0)
+    {
+        <MudGrid Class="mt-6">
+            @* Left chart: Invoices by Status (donut) *@
+            @if (_dashboard.InvoiceCountByStatus.Count > 0)
+            {
+                <MudItem xs="12" md="6">
+                    <MudCard Elevation="2" Class="rounded-lg">
+                        <MudCardHeader>
+                            <CardHeaderContent>
+                                <MudText Typo="Typo.h6">@L["Dashboard_InvoicesByStatus"]</MudText>
+                            </CardHeaderContent>
+                        </MudCardHeader>
+                        <MudCardContent Style="min-height: 300px;">
+                            <MudChart ChartType="ChartType.Donut"
+                                      InputData="@GetStatusChartData()"
+                                      InputLabels="@GetStatusChartLabels()"
+                                      Width="300px" Height="300px"
+                                      ChartOptions="@_chartOptions" />
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+            }
+
+            @* Right chart: Top Clients by Revenue (donut) *@
+            @if (_dashboard.InvoiceTotalByClient.Count > 0)
+            {
+                <MudItem xs="12" md="6">
+                    <MudCard Elevation="2" Class="rounded-lg">
+                        <MudCardHeader>
+                            <CardHeaderContent>
+                                <MudText Typo="Typo.h6">@L["Dashboard_TopClientsByRevenue"]</MudText>
+                            </CardHeaderContent>
+                        </MudCardHeader>
+                        <MudCardContent Style="min-height: 300px;">
+                            <MudChart ChartType="ChartType.Donut"
+                                      InputData="@GetClientRevenueChartData()"
+                                      InputLabels="@GetClientRevenueChartLabels()"
+                                      Width="300px" Height="300px"
+                                      ChartOptions="@_chartOptions" />
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+            }
+        </MudGrid>
+    }
+
     @* Overdue invoices alert - only shown when there are overdue invoices *@
     @if (_dashboard.OverdueInvoicesCount > 0)
     {
@@ -358,6 +406,12 @@ else
     private bool _isSysAdmin = false;
     private bool _isImpersonating = false;
 
+    // Chart options — shared config for all donut charts on the dashboard
+    private ChartOptions _chartOptions = new()
+    {
+        ChartPalette = new[] { "#1976D2", "#388E3C", "#F57C00", "#D32F2F", "#7B1FA2", "#0097A7", "#FBC02D", "#5D4037", "#455A64", "#C2185B" }
+    };
+
     /// <summary>
     /// Loads dashboard data when the page initializes.
     /// Detects if the user is SysAdmin (without impersonation) to show the admin dashboard.
@@ -401,6 +455,44 @@ else
             _loading = false;
         }
     }
+
+    // ─── Chart Data Helpers ──────────────────────────────────────────────────
+
+    /// <summary>
+    /// Converts the InvoiceCountByStatus dictionary to double[] for MudChart InputData.
+    /// MudChart requires double[] for chart values.
+    /// </summary>
+    private double[] GetStatusChartData() =>
+        _dashboard.InvoiceCountByStatus.Values.Select(v => (double)v).ToArray();
+
+    /// <summary>
+    /// Converts the InvoiceCountByStatus dictionary to localized string[] for MudChart InputLabels.
+    /// Uses the same localized status names as the rest of the UI for consistency.
+    /// </summary>
+    private string[] GetStatusChartLabels() =>
+        _dashboard.InvoiceCountByStatus.Select(kvp =>
+        {
+            // Try to parse the status string back to enum for localization
+            if (Enum.TryParse<EInvoiceStatus>(kvp.Key, out var status))
+            {
+                return $"{GetStatusText(status)} ({kvp.Value})";
+            }
+            return $"{kvp.Key} ({kvp.Value})";
+        }).ToArray();
+
+    /// <summary>
+    /// Converts the InvoiceTotalByClient dictionary to double[] for MudChart InputData.
+    /// </summary>
+    private double[] GetClientRevenueChartData() =>
+        _dashboard.InvoiceTotalByClient.Values.Select(v => (double)v).ToArray();
+
+    /// <summary>
+    /// Converts the InvoiceTotalByClient dictionary to string[] for MudChart InputLabels.
+    /// Shows client name with amount for clarity in the legend.
+    /// </summary>
+    private string[] GetClientRevenueChartLabels() =>
+        _dashboard.InvoiceTotalByClient.Select(kvp =>
+            $"{kvp.Key} ({kvp.Value:N0})").ToArray();
 
     /// <summary>
     /// Returns the MudBlazor color for each invoice status.
