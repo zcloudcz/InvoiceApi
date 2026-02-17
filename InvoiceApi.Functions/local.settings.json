@@ -9,7 +9,7 @@
     "TenantTemplateConnection": "Server=localhost;Database=invoiceapi_tenant_template;Trusted_Connection=true;TrustServerCertificate=true"
   },
   "JwtSettings": {
-    "Secret": "your-dev-secret-here-min-32-chars-long!!!",
+    "Secret": "sF8sdfADSF85g8g65Aag8GASDG85dfaDfdsgGadfg",
     "Issuer": "InvoiceApi",
     "Audience": "InvoiceApiClient"
   }
