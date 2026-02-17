@@ -1,5 +1,5 @@
-using InvoiceApi.Application.Dto.Auth;
-using InvoiceApi.Application.Dto.TwoFactor;
+using InvoiceApi.Contracts.Dto.Auth;
+using InvoiceApi.Contracts.Dto.TwoFactor;
 using InvoiceApi.Application.Service;
 using InvoiceApi.Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;

@@ -1,5 +1,5 @@
-using InvoiceApi.Application.Common.Pagination;
-using InvoiceApi.Application.Dto.AppLog;
+using InvoiceApi.Contracts.Common.Pagination;
+using InvoiceApi.Contracts.Dto.AppLog;
 using InvoiceApi.Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;

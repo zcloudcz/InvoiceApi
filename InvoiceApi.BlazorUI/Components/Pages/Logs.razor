@@ -1,8 +1,7 @@
 @page "/logs"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "SysAdmin")]
-@rendermode InteractiveServer
-@using InvoiceApi.Application.Common.Pagination
-@using InvoiceApi.Application.Dto.AppLog
+@using InvoiceApi.Contracts.Common.Pagination
+@using InvoiceApi.Contracts.Dto.AppLog
 @inject AppLogApiService LogService
 @inject ISnackbar Snackbar
 @inject IStringLocalizer<SharedResource> L
@@ -16,7 +15,7 @@
 <MudGrid Class="mb-4">
     <MudItem xs="12" sm="3">
         <MudSelect T="string" Value="_levelFilter" ValueChanged="OnLevelChanged"
-                   Label="@L["Log_Level"].Value" Clearable="true" Variant="Variant.Outlined" Dense="true">
+                   Label="@L["Log_Level"].Value" Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense">
             <MudSelectItem T="string" Value="@("Information")">Information</MudSelectItem>
             <MudSelectItem T="string" Value="@("Warning")">Warning</MudSelectItem>
             <MudSelectItem T="string" Value="@("Error")">Error</MudSelectItem>
@@ -26,17 +25,17 @@
     <MudItem xs="12" sm="3">
         <MudTextField @bind-Value="_searchFilter" Label="@L["Log_Search"].Value"
                       Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Search"
-                      OnKeyUp="OnSearchKeyUp" Variant="Variant.Outlined" Dense="true"
+                      OnKeyUp="OnSearchKeyUp" Variant="Variant.Outlined" Margin="Margin.Dense"
                       Immediate="false" />
     </MudItem>
     <MudItem xs="12" sm="3">
         <MudDatePicker Date="_dateFrom" DateChanged="OnDateFromChanged"
-                       Label="@L["Log_DateFrom"].Value" Variant="Variant.Outlined" Dense="true"
+                       Label="@L["Log_DateFrom"].Value" Variant="Variant.Outlined" Margin="Margin.Dense"
                        Clearable="true" />
     </MudItem>
     <MudItem xs="12" sm="3">
         <MudDatePicker Date="_dateTo" DateChanged="OnDateToChanged"
-                       Label="@L["Log_DateTo"].Value" Variant="Variant.Outlined" Dense="true"
+                       Label="@L["Log_DateTo"].Value" Variant="Variant.Outlined" Margin="Margin.Dense"
                        Clearable="true" />
     </MudItem>
 </MudGrid>

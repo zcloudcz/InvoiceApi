@@ -1,13 +1,12 @@
 @page "/invoices/create"
 @page "/invoices/{Id:long}"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
-@rendermode InteractiveServer
-@using InvoiceApi.Application.Dto.Invoice
-@using InvoiceApi.Application.Dto.Client
-@using InvoiceApi.Application.Dto.Currency
-@using InvoiceApi.Application.Dto.InvoiceTemplate
-@using InvoiceApi.Application.Common
-@using InvoiceApi.Application.Dto.ContentTemplate
+@using InvoiceApi.Contracts.Dto.Invoice
+@using InvoiceApi.Contracts.Dto.Client
+@using InvoiceApi.Contracts.Dto.Currency
+@using InvoiceApi.Contracts.Dto.InvoiceTemplate
+@using InvoiceApi.Contracts.Common
+@using InvoiceApi.Contracts.Dto.ContentTemplate
 @using InvoiceApi.Domain.Enums
 @inject InvoiceApiService InvoiceService
 @inject ClientApiService ClientService
@@ -173,7 +172,7 @@ else
         <MudText Typo="Typo.h4" Class="mr-2">
             @(_invoice!.DocumentNumber ?? L["Invoice_Draft"].Value)
         </MudText>
-        <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(_invoice.Status)">
+        <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(_invoice?.Status ?? EInvoiceStatus.Draft)">
             @GetStatusText(_invoice.Status)
         </MudChip>
         @* Email sent indicator — shows a chip with sent date if invoice was emailed *@

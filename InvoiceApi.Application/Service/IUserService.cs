@@ -1,5 +1,5 @@
-using InvoiceApi.Application.Common.Pagination;
-using InvoiceApi.Application.Dto.User;
+using InvoiceApi.Contracts.Common.Pagination;
+using InvoiceApi.Contracts.Dto.User;
 using InvoiceApi.Domain.Enums;
 
 namespace InvoiceApi.Application.Service;

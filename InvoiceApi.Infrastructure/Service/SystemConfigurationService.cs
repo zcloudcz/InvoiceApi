@@ -1,4 +1,4 @@
-using InvoiceApi.Application.Dto.SystemConfiguration;
+using InvoiceApi.Contracts.Dto.SystemConfiguration;
 using InvoiceApi.Application.Service;
 using InvoiceApi.Domain.Entities;
 using InvoiceApi.Infrastructure.Data;

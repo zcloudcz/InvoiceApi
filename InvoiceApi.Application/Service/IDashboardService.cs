@@ -1,4 +1,4 @@
-using InvoiceApi.Application.Dto.Dashboard;
+using InvoiceApi.Contracts.Dto.Dashboard;
 
 namespace InvoiceApi.Application.Service;
 

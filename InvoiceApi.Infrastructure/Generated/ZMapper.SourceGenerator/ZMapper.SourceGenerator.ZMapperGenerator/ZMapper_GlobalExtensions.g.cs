@@ -10,9 +10,9 @@ public static class Mapper_Extensions
 {
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
-    public static InvoiceApi.Application.Dto.Client.AddressDto ToAddressDto(this InvoiceApi.Domain.Entities.Address source)
+    public static InvoiceApi.Contracts.Dto.Client.AddressDto ToAddressDto(this InvoiceApi.Domain.Entities.Address source)
     {
-        var destination = new InvoiceApi.Application.Dto.Client.AddressDto();
+        var destination = new InvoiceApi.Contracts.Dto.Client.AddressDto();
         destination.Id = source.Id;
         destination.AddressType = source.AddressType;
         destination.Street = source.Street;
@@ -25,9 +25,9 @@ public static class Mapper_Extensions
     }
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
-    public static InvoiceApi.Application.Dto.Client.ContactDto ToContactDto(this InvoiceApi.Domain.Entities.Contact source)
+    public static InvoiceApi.Contracts.Dto.Client.ContactDto ToContactDto(this InvoiceApi.Domain.Entities.Contact source)
     {
-        var destination = new InvoiceApi.Application.Dto.Client.ContactDto();
+        var destination = new InvoiceApi.Contracts.Dto.Client.ContactDto();
         destination.Id = source.Id;
         destination.ContactType = source.ContactType;
         destination.ContactValue = source.ContactValue;
@@ -37,9 +37,9 @@ public static class Mapper_Extensions
     }
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
-    public static InvoiceApi.Application.Dto.Client.BankAccountDto ToBankAccountDto(this InvoiceApi.Domain.Entities.BankAccount source)
+    public static InvoiceApi.Contracts.Dto.Client.BankAccountDto ToBankAccountDto(this InvoiceApi.Domain.Entities.BankAccount source)
     {
-        var destination = new InvoiceApi.Application.Dto.Client.BankAccountDto();
+        var destination = new InvoiceApi.Contracts.Dto.Client.BankAccountDto();
         destination.Id = source.Id;
         destination.Label = source.Label;
         destination.BankName = source.BankName;
@@ -52,9 +52,9 @@ public static class Mapper_Extensions
     }
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
-    public static InvoiceApi.Application.Dto.Client.BillingSettingsDto ToBillingSettingsDto(this InvoiceApi.Domain.Entities.BillingSettings source)
+    public static InvoiceApi.Contracts.Dto.Client.BillingSettingsDto ToBillingSettingsDto(this InvoiceApi.Domain.Entities.BillingSettings source)
     {
-        var destination = new InvoiceApi.Application.Dto.Client.BillingSettingsDto();
+        var destination = new InvoiceApi.Contracts.Dto.Client.BillingSettingsDto();
         destination.Id = source.Id;
         destination.DueDateCalculationType = source.DueDateCalculationType;
         destination.DueDays = source.DueDays;
@@ -71,9 +71,9 @@ public static class Mapper_Extensions
     }
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
-    public static InvoiceApi.Application.Dto.Client.ClientDto ToClientDto(this InvoiceApi.Domain.Entities.Client source)
+    public static InvoiceApi.Contracts.Dto.Client.ClientDto ToClientDto(this InvoiceApi.Domain.Entities.Client source)
     {
-        var destination = new InvoiceApi.Application.Dto.Client.ClientDto();
+        var destination = new InvoiceApi.Contracts.Dto.Client.ClientDto();
         destination.Id = source.Id;
         destination.RegistrationNumber = source.RegistrationNumber;
         destination.TaxNumber = source.TaxNumber;
@@ -101,9 +101,9 @@ public static class Mapper_Extensions
     }
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
-    public static InvoiceApi.Application.Dto.ContentTemplate.ContentTemplateDto ToContentTemplateDto(this InvoiceApi.Domain.Entities.ContentTemplate source)
+    public static InvoiceApi.Contracts.Dto.ContentTemplate.ContentTemplateDto ToContentTemplateDto(this InvoiceApi.Domain.Entities.ContentTemplate source)
     {
-        var destination = new InvoiceApi.Application.Dto.ContentTemplate.ContentTemplateDto();
+        var destination = new InvoiceApi.Contracts.Dto.ContentTemplate.ContentTemplateDto();
         destination.Id = source.Id;
         destination.Name = source.Name;
         destination.Subject = source.Subject;
@@ -118,9 +118,9 @@ public static class Mapper_Extensions
     }
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
-    public static InvoiceApi.Application.Dto.Currency.CurrencyDto ToCurrencyDto(this InvoiceApi.Domain.Entities.Currency source)
+    public static InvoiceApi.Contracts.Dto.Currency.CurrencyDto ToCurrencyDto(this InvoiceApi.Domain.Entities.Currency source)
     {
-        var destination = new InvoiceApi.Application.Dto.Currency.CurrencyDto();
+        var destination = new InvoiceApi.Contracts.Dto.Currency.CurrencyDto();
         destination.Id = source.Id;
         destination.Code = source.Code;
         destination.Name = source.Name;
@@ -135,9 +135,9 @@ public static class Mapper_Extensions
     }
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
-    public static InvoiceApi.Application.Dto.Invoice.InvoiceItemDto ToInvoiceItemDto(this InvoiceApi.Domain.Entities.InvoiceItem source)
+    public static InvoiceApi.Contracts.Dto.Invoice.InvoiceItemDto ToInvoiceItemDto(this InvoiceApi.Domain.Entities.InvoiceItem source)
     {
-        var destination = new InvoiceApi.Application.Dto.Invoice.InvoiceItemDto();
+        var destination = new InvoiceApi.Contracts.Dto.Invoice.InvoiceItemDto();
         destination.Id = source.Id;
         destination.OrderIndex = source.OrderIndex;
         destination.Description = source.Description;
@@ -155,9 +155,9 @@ public static class Mapper_Extensions
     }
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
-    public static InvoiceApi.Application.Dto.Invoice.InvoiceDto ToInvoiceDto(this InvoiceApi.Domain.Entities.Invoice source)
+    public static InvoiceApi.Contracts.Dto.Invoice.InvoiceDto ToInvoiceDto(this InvoiceApi.Domain.Entities.Invoice source)
     {
-        var destination = new InvoiceApi.Application.Dto.Invoice.InvoiceDto();
+        var destination = new InvoiceApi.Contracts.Dto.Invoice.InvoiceDto();
         destination.Id = source.Id;
         destination.DocumentType = source.DocumentType;
         destination.Status = source.Status;
@@ -194,9 +194,9 @@ public static class Mapper_Extensions
     }
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
-    public static InvoiceApi.Application.Dto.InvoiceTemplate.InvoiceTemplateDto ToInvoiceTemplateDto(this InvoiceApi.Domain.Entities.InvoiceTemplate source)
+    public static InvoiceApi.Contracts.Dto.InvoiceTemplate.InvoiceTemplateDto ToInvoiceTemplateDto(this InvoiceApi.Domain.Entities.InvoiceTemplate source)
     {
-        var destination = new InvoiceApi.Application.Dto.InvoiceTemplate.InvoiceTemplateDto();
+        var destination = new InvoiceApi.Contracts.Dto.InvoiceTemplate.InvoiceTemplateDto();
         destination.Id = source.Id;
         destination.Name = source.Name;
         destination.Description = source.Description;
@@ -226,9 +226,9 @@ public static class Mapper_Extensions
     }
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
-    public static InvoiceApi.Application.Dto.NumberSequence.NumberSequenceFormatDto ToNumberSequenceFormatDto(this InvoiceApi.Domain.Entities.NumberSequenceFormat source)
+    public static InvoiceApi.Contracts.Dto.NumberSequence.NumberSequenceFormatDto ToNumberSequenceFormatDto(this InvoiceApi.Domain.Entities.NumberSequenceFormat source)
     {
-        var destination = new InvoiceApi.Application.Dto.NumberSequence.NumberSequenceFormatDto();
+        var destination = new InvoiceApi.Contracts.Dto.NumberSequence.NumberSequenceFormatDto();
         destination.Id = source.Id;
         destination.Name = source.Name;
         destination.FormatPattern = source.FormatPattern;
@@ -240,9 +240,9 @@ public static class Mapper_Extensions
     }
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
-    public static InvoiceApi.Application.Dto.NumberSequence.NumberSequenceDto ToNumberSequenceDto(this InvoiceApi.Domain.Entities.NumberSequence source)
+    public static InvoiceApi.Contracts.Dto.NumberSequence.NumberSequenceDto ToNumberSequenceDto(this InvoiceApi.Domain.Entities.NumberSequence source)
     {
-        var destination = new InvoiceApi.Application.Dto.NumberSequence.NumberSequenceDto();
+        var destination = new InvoiceApi.Contracts.Dto.NumberSequence.NumberSequenceDto();
         destination.Id = source.Id;
         destination.Name = source.Name;
         destination.DocumentType = source.DocumentType;
@@ -261,9 +261,9 @@ public static class Mapper_Extensions
     }
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
-    public static InvoiceApi.Application.Dto.User.UserDto ToUserDto(this InvoiceApi.Domain.Entities.User source)
+    public static InvoiceApi.Contracts.Dto.User.UserDto ToUserDto(this InvoiceApi.Domain.Entities.User source)
     {
-        var destination = new InvoiceApi.Application.Dto.User.UserDto();
+        var destination = new InvoiceApi.Contracts.Dto.User.UserDto();
         destination.Id = source.Id;
         destination.Email = source.Email;
         destination.FirstName = source.FirstName;
@@ -284,9 +284,9 @@ public static class Mapper_Extensions
     }
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
-    public static InvoiceApi.Application.Dto.VatRate.VatRateDto ToVatRateDto(this InvoiceApi.Domain.Entities.VatRate source)
+    public static InvoiceApi.Contracts.Dto.VatRate.VatRateDto ToVatRateDto(this InvoiceApi.Domain.Entities.VatRate source)
     {
-        var destination = new InvoiceApi.Application.Dto.VatRate.VatRateDto();
+        var destination = new InvoiceApi.Contracts.Dto.VatRate.VatRateDto();
         destination.Id = source.Id;
         destination.Name = source.Name;
         destination.Rate = source.Rate;

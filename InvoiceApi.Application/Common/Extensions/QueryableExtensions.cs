@@ -1,5 +1,5 @@
 using System.Linq.Expressions;
-using InvoiceApi.Application.Common.Pagination;
+using InvoiceApi.Contracts.Common.Pagination;
 using Microsoft.EntityFrameworkCore;
 
 namespace InvoiceApi.Application.Common.Extensions;

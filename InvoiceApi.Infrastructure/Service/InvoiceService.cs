@@ -1,7 +1,7 @@
-using InvoiceApi.Application.Common;
+using InvoiceApi.Contracts.Common;
 using InvoiceApi.Application.Common.Extensions;
-using InvoiceApi.Application.Common.Pagination;
-using InvoiceApi.Application.Dto.Invoice;
+using InvoiceApi.Contracts.Common.Pagination;
+using InvoiceApi.Contracts.Dto.Invoice;
 using InvoiceApi.Application.Service;
 using InvoiceApi.Domain.Entities;
 using InvoiceApi.Domain.Enums;

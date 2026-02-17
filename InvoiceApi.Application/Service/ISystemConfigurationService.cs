@@ -1,4 +1,4 @@
-using InvoiceApi.Application.Dto.SystemConfiguration;
+using InvoiceApi.Contracts.Dto.SystemConfiguration;
 
 namespace InvoiceApi.Application.Service;
 

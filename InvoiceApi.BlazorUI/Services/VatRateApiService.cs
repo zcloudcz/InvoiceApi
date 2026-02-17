@@ -1,4 +1,4 @@
-using InvoiceApi.Application.Dto.VatRate;
+using InvoiceApi.Contracts.Dto.VatRate;
 using Microsoft.AspNetCore.Components.Authorization;
 
 namespace InvoiceApi.BlazorUI.Services;

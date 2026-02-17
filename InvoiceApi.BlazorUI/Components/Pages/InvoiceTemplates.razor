@@ -1,11 +1,9 @@
 @page "/invoice-templates"
-@* CRITICAL: @rendermode InteractiveServer is REQUIRED for any interactive behavior (button clicks, dialogs, etc.) *@
-@rendermode InteractiveServer
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
-@using InvoiceApi.Application.Dto.InvoiceTemplate
-@using InvoiceApi.Application.Dto.Invoice
-@using InvoiceApi.Application.Dto.Client
-@using InvoiceApi.Application.Dto.Currency
+@using InvoiceApi.Contracts.Dto.InvoiceTemplate
+@using InvoiceApi.Contracts.Dto.Invoice
+@using InvoiceApi.Contracts.Dto.Client
+@using InvoiceApi.Contracts.Dto.Currency
 @using InvoiceApi.Domain.Enums
 @using Microsoft.AspNetCore.Authorization
 @using InvoiceApi.BlazorUI.Components.Shared
@@ -31,14 +29,20 @@
                           DebounceInterval="300" OnDebounceIntervalElapsed="SearchTemplates" />
         </MudItem>
         <MudItem xs="12" sm="6" md="3">
-            <MudSelect @bind-Value="_filterDocumentType" Label="@L["Template_DocumentType"].Value" OnChange="SearchTemplates">
+            @* MudBlazor v8: OnChange removed — use Value + ValueChanged to update filter and reload data *@
+            <MudSelect Value="_filterDocumentType"
+                       ValueChanged="@(async (EDocumentType? v) => { _filterDocumentType = v; await SearchTemplates(); })"
+                       Label="@L["Template_DocumentType"].Value">
                 <MudSelectItem Value="@((EDocumentType?)null)">@L["Invoice_FilterAll"]</MudSelectItem>
                 <MudSelectItem Value="@((EDocumentType?)EDocumentType.Invoice)">@L["Template_DocumentTypeInvoice"]</MudSelectItem>
                 <MudSelectItem Value="@((EDocumentType?)EDocumentType.CreditNote)">@L["Template_DocumentTypeCreditNote"]</MudSelectItem>
             </MudSelect>
         </MudItem>
         <MudItem xs="12" sm="6" md="3">
-            <MudSelect @bind-Value="_filterActive" Label="@L["Label_Status"].Value" OnChange="SearchTemplates">
+            @* MudBlazor v8: OnChange removed — use Value + ValueChanged to update filter and reload data *@
+            <MudSelect Value="_filterActive"
+                       ValueChanged="@(async (bool? v) => { _filterActive = v; await SearchTemplates(); })"
+                       Label="@L["Label_Status"].Value">
                 <MudSelectItem Value="@((bool?)null)">@L["Invoice_FilterAll"]</MudSelectItem>
                 <MudSelectItem Value="@((bool?)true)">@L["Label_Active"]</MudSelectItem>
                 <MudSelectItem Value="@((bool?)false)">@L["Label_Inactive"]</MudSelectItem>

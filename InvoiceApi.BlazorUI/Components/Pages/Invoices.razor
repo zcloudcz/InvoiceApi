@@ -1,11 +1,10 @@
 @page "/invoices"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
-@rendermode InteractiveServer
-@using InvoiceApi.Application.Dto.Invoice
-@using InvoiceApi.Application.Dto.Client
-@using InvoiceApi.Application.Dto.InvoiceTemplate
-@using InvoiceApi.Application.Common.Pagination
-@using InvoiceApi.Application.Dto.ContentTemplate
+@using InvoiceApi.Contracts.Dto.Invoice
+@using InvoiceApi.Contracts.Dto.Client
+@using InvoiceApi.Contracts.Dto.InvoiceTemplate
+@using InvoiceApi.Contracts.Common.Pagination
+@using InvoiceApi.Contracts.Dto.ContentTemplate
 @using InvoiceApi.Domain.Enums
 @inject InvoiceApiService InvoiceService
 @inject ClientApiService ClientService
@@ -33,7 +32,10 @@
                           Placeholder="@L["Invoice_SearchPlaceholder"].Value" />
         </MudItem>
         <MudItem xs="12" sm="6" md="2">
-            <MudSelect @bind-Value="_filterStatus" Label="@L["Label_Status"].Value" OnChange="SearchInvoices">
+            @* MudBlazor v8: OnChange removed — use Value + ValueChanged to update filter and reload data *@
+            <MudSelect Value="_filterStatus"
+                       ValueChanged="@(async (EInvoiceStatus? v) => { _filterStatus = v; await SearchInvoices(); })"
+                       Label="@L["Label_Status"].Value">
                 <MudSelectItem Value="@((EInvoiceStatus?)null)">@L["Invoice_FilterAll"]</MudSelectItem>
                 <MudSelectItem Value="@((EInvoiceStatus?)EInvoiceStatus.Draft)">@L["Invoice_FilterDraft"]</MudSelectItem>
                 <MudSelectItem Value="@((EInvoiceStatus?)EInvoiceStatus.Completed)">@L["Invoice_FilterIssued"]</MudSelectItem>
@@ -46,15 +48,20 @@
         @if (!_isCreditNoteView)
         {
             <MudItem xs="12" sm="6" md="1">
-                <MudSelect @bind-Value="_filterDocumentType" Label="@L["Template_DocumentType"].Value" Clearable="true"
-                           OnChange="SearchInvoices">
+                @* MudBlazor v8: OnChange removed — use Value + ValueChanged to update filter and reload data *@
+                <MudSelect Value="_filterDocumentType"
+                           ValueChanged="@(async (EDocumentType? v) => { _filterDocumentType = v; await SearchInvoices(); })"
+                           Label="@L["Template_DocumentType"].Value" Clearable="true">
                     <MudSelectItem Value="@((EDocumentType?)EDocumentType.Invoice)">@L["Template_DocumentTypeInvoice"]</MudSelectItem>
                     <MudSelectItem Value="@((EDocumentType?)EDocumentType.CreditNote)">@L["Template_DocumentTypeCreditNote"]</MudSelectItem>
                 </MudSelect>
             </MudItem>
         }
         <MudItem xs="12" sm="6" md="2">
-            <MudSelect @bind-Value="_filterClientId" Label="@L["Invoice_Client"].Value" OnChange="SearchInvoices" Clearable="true">
+            @* MudBlazor v8: OnChange removed — use Value + ValueChanged to update filter and reload data *@
+            <MudSelect Value="_filterClientId"
+                       ValueChanged="@(async (long? v) => { _filterClientId = v; await SearchInvoices(); })"
+                       Label="@L["Invoice_Client"].Value" Clearable="true">
                 @foreach (var client in _allClients)
                 {
                     <MudSelectItem Value="@((long?)client.Id)">@client.CompanyName</MudSelectItem>

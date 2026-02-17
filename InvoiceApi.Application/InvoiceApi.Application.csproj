@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\InvoiceApi.Domain\InvoiceApi.Domain.csproj" />
+    <ProjectReference Include="..\InvoiceApi.Contracts\InvoiceApi.Contracts.csproj" />
     <ProjectReference Include="..\AresService\AresService.csproj" />
   </ItemGroup>
 

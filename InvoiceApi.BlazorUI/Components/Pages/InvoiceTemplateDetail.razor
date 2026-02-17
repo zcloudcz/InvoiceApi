@@ -1,15 +1,14 @@
 @page "/invoice-templates/create"
 @page "/invoice-templates/{Id:long}"
-@rendermode InteractiveServer
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
-@using InvoiceApi.Application.Dto.InvoiceTemplate
-@using InvoiceApi.Application.Dto.Invoice
-@using InvoiceApi.Application.Dto.Client
-@using InvoiceApi.Application.Dto.Currency
+@using InvoiceApi.Contracts.Dto.InvoiceTemplate
+@using InvoiceApi.Contracts.Dto.Invoice
+@using InvoiceApi.Contracts.Dto.Client
+@using InvoiceApi.Contracts.Dto.Currency
 @using InvoiceApi.Domain.Enums
 @using InvoiceApi.BlazorUI.Components.Shared
 @using InvoiceApi.BlazorUI.Services
-@using InvoiceApi.Application.Dto.NumberSequence
+@using InvoiceApi.Contracts.Dto.NumberSequence
 @inject InvoiceTemplateApiService TemplateService
 @inject ClientApiService ClientService
 @inject CurrencyApiService CurrencyService
@@ -89,9 +88,9 @@ else
                     {
                         <MudList T="string" Dense="true">
                             <MudListItem T="string"><strong>@L["Label_Name"]:</strong> @_template!.Name</MudListItem>
-                            @if (!string.IsNullOrEmpty(_template.Description))
+                            @if (!string.IsNullOrEmpty(_template?.Description))
                             {
-                                <MudListItem T="string"><strong>@L["Label_Description"]:</strong> @_template.Description</MudListItem>
+                                <MudListItem T="string"><strong>@L["Label_Description"]:</strong> @_template?.Description</MudListItem>
                             }
                         </MudList>
                     }
@@ -142,9 +141,9 @@ else
                                     @(_template.DocumentType == EDocumentType.Invoice ? L["Template_DocumentTypeInvoice"] : L["Template_DocumentTypeCreditNote"])
                                 </MudChip>
                             </MudListItem>
-                            <MudListItem T="string"><strong>@L["Invoice_Client"]:</strong> @(_template.ClientName ?? "—")</MudListItem>
-                            <MudListItem T="string"><strong>@L["Template_Currency"]:</strong> @_template.CurrencyCode</MudListItem>
-                            @if (!string.IsNullOrEmpty(_template.NumberSequenceName))
+                            <MudListItem T="string"><strong>@L["Invoice_Client"]:</strong> @(_template?.ClientName ?? "—")</MudListItem>
+                            <MudListItem T="string"><strong>@L["Template_Currency"]:</strong> @_template?.CurrencyCode</MudListItem>
+                            @if (!string.IsNullOrEmpty(_template?.NumberSequenceName))
                             {
                                 <MudListItem T="string"><strong>@L["Template_NumberSequence"]:</strong> @_template.NumberSequenceName</MudListItem>
                             }

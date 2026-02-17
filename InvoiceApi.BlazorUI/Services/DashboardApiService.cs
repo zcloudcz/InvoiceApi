@@ -1,4 +1,4 @@
-using InvoiceApi.Application.Dto.Dashboard;
+using InvoiceApi.Contracts.Dto.Dashboard;
 using Microsoft.AspNetCore.Components.Authorization;
 
 namespace InvoiceApi.BlazorUI.Services;

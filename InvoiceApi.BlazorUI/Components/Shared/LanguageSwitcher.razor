@@ -1,9 +1,12 @@
 @using System.Globalization
 @inject NavigationManager Navigation
+@inject IJSRuntime JS
 
 @* Language toggle button — switches between Czech and English.
-   Navigates to /Culture/SetCulture endpoint which sets the culture cookie
-   and redirects back to the current page. *@
+   In WASM, there is no server-side cookie endpoint. Instead:
+   1. Save the selected culture to localStorage (persists across sessions)
+   2. Set the thread culture immediately
+   3. Force-reload the page so the new culture applies to all components *@
 <MudToggleIconButton Icon="@Icons.Material.Filled.Translate"
                      ToggledIcon="@Icons.Material.Filled.Translate"
                      Color="Color.Inherit"
@@ -28,17 +31,24 @@
 
     /// <summary>
     /// Called when the user clicks the language toggle.
-    /// Sets the culture cookie via a server redirect and reloads the page.
+    /// Saves the culture to localStorage and reloads the page.
+    /// The reload triggers Program.cs to read the stored culture and apply it.
     /// </summary>
-    private void OnLanguageToggled(bool isEnglish)
+    private async Task OnLanguageToggled(bool isEnglish)
     {
         var newCulture = isEnglish ? "en-US" : "cs-CZ";
-        var currentUri = new Uri(Navigation.Uri).PathAndQuery;
-        var redirectUri = Uri.EscapeDataString(currentUri);
 
-        // Navigate to the culture-setting endpoint (minimal API in Program.cs)
-        Navigation.NavigateTo(
-            $"/Culture/SetCulture?culture={newCulture}&redirectUri={redirectUri}",
-            forceLoad: true);
+        // Store in localStorage so it survives page reloads and new sessions.
+        // Uses the blazorCulture JS helper (index.html) instead of direct localStorage call
+        // to avoid potential "this" binding issues in WASM JS interop.
+        await JS.InvokeVoidAsync("blazorCulture.set", newCulture);
+
+        // Apply immediately to current thread (affects components rendered before reload)
+        var culture = new CultureInfo(newCulture);
+        CultureInfo.DefaultThreadCurrentUICulture = culture;
+
+        // Force-reload the current page so all components pick up the new culture.
+        // In WASM, NavigateTo with forceLoad: true reloads the entire app.
+        Navigation.NavigateTo(Navigation.Uri, forceLoad: true);
     }
 }

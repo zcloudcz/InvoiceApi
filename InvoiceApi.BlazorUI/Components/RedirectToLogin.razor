@@ -1,8 +1,13 @@
 @inject NavigationManager Navigation
 
 @code {
+    /// <summary>
+    /// Redirects unauthenticated users to the login page.
+    /// Uses SPA navigation (forceLoad: false) to avoid reloading the entire WASM app.
+    /// A full reload would re-download all .NET assemblies unnecessarily.
+    /// </summary>
     protected override void OnInitialized()
     {
-        Navigation.NavigateTo("/login", forceLoad: true);
+        Navigation.NavigateTo("/login");
     }
 }

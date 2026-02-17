@@ -83,7 +83,7 @@ public class EmailServiceTests : IDisposable
 
         // Return empty config by default — forces EmailService to fall back to appsettings.json
         _systemConfig.GetAsync(Arg.Any<CancellationToken>())
-            .Returns(new Application.Dto.SystemConfiguration.SystemConfigurationDto());
+            .Returns(new Contracts.Dto.SystemConfiguration.SystemConfigurationDto());
 
         // Default: no company context (SysAdmin without impersonation)
         _tenantResolver.GetCurrentCompanyId().Returns((long?)null);
@@ -238,7 +238,7 @@ public class EmailServiceTests : IDisposable
         // Mock the content template service to return null (triggers fallback email template)
         _contentTemplate
             .GetDefaultByTypeAsync(EContentTemplateType.InvoiceEmail, Arg.Any<CancellationToken>())
-            .Returns((Application.Dto.ContentTemplate.ContentTemplateDto?)null);
+            .Returns((Contracts.Dto.ContentTemplate.ContentTemplateDto?)null);
 
         var service = CreateService();
 
@@ -272,7 +272,7 @@ public class EmailServiceTests : IDisposable
 
         // SystemConfiguration also has no SMTP (empty DTO, SmtpHost is "")
         _systemConfig.GetAsync(Arg.Any<CancellationToken>())
-            .Returns(new Application.Dto.SystemConfiguration.SystemConfigurationDto());
+            .Returns(new Contracts.Dto.SystemConfiguration.SystemConfigurationDto());
 
         // No company context → tier 1 skipped
         _tenantResolver.GetCurrentCompanyId().Returns((long?)null);
@@ -305,7 +305,7 @@ public class EmailServiceTests : IDisposable
 
         // System SMTP is also configured — but company SMTP should take priority
         _systemConfig.GetAsync(Arg.Any<CancellationToken>())
-            .Returns(new Application.Dto.SystemConfiguration.SystemConfigurationDto
+            .Returns(new Contracts.Dto.SystemConfiguration.SystemConfigurationDto
             {
                 SmtpHost = "smtp.system.com",
                 SmtpPort = 587,
@@ -350,7 +350,7 @@ public class EmailServiceTests : IDisposable
 
         // System SMTP is configured — should be used as fallback
         _systemConfig.GetAsync(Arg.Any<CancellationToken>())
-            .Returns(new Application.Dto.SystemConfiguration.SystemConfigurationDto
+            .Returns(new Contracts.Dto.SystemConfiguration.SystemConfigurationDto
             {
                 SmtpHost = "smtp.system-fallback.com",
                 SmtpPort = 587,
@@ -389,7 +389,7 @@ public class EmailServiceTests : IDisposable
 
         // System SMTP is configured
         _systemConfig.GetAsync(Arg.Any<CancellationToken>())
-            .Returns(new Application.Dto.SystemConfiguration.SystemConfigurationDto
+            .Returns(new Contracts.Dto.SystemConfiguration.SystemConfigurationDto
             {
                 SmtpHost = "smtp.system.com",
                 SmtpPort = 587,
@@ -430,7 +430,7 @@ public class EmailServiceTests : IDisposable
 
         // System SMTP also empty (SmtpHost is "" by default in the DTO)
         _systemConfig.GetAsync(Arg.Any<CancellationToken>())
-            .Returns(new Application.Dto.SystemConfiguration.SystemConfigurationDto());
+            .Returns(new Contracts.Dto.SystemConfiguration.SystemConfigurationDto());
 
         // appsettings.json has SMTP configured (from constructor)
         var service = CreateService();

@@ -1,4 +1,4 @@
-using InvoiceApi.Application.Dto.Currency;
+using InvoiceApi.Contracts.Dto.Currency;
 using InvoiceApi.BlazorUI.Models;
 using Microsoft.AspNetCore.Components.Authorization;
 

@@ -11,10 +11,9 @@
 *@
 @page "/my-company"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
-@rendermode InteractiveServer
-@using InvoiceApi.Application.Dto.Client
-@using InvoiceApi.Application.Dto.CompanySettings
-@using InvoiceApi.Application.Dto.CloudStorage
+@using InvoiceApi.Contracts.Dto.Client
+@using InvoiceApi.Contracts.Dto.CompanySettings
+@using InvoiceApi.Contracts.Dto.CloudStorage
 @using InvoiceApi.Domain.Enums
 @inject ClientApiService ClientService
 @inject CompanySettingsApiService SettingsService

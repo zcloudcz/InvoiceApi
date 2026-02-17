@@ -1,5 +1,5 @@
-using InvoiceApi.Application.Dto.Dashboard;
-using InvoiceApi.Application.Dto.Invoice;
+using InvoiceApi.Contracts.Dto.Dashboard;
+using InvoiceApi.Contracts.Dto.Invoice;
 using InvoiceApi.Application.Service;
 using InvoiceApi.Domain.Entities;
 using InvoiceApi.Domain.Enums;

@@ -1,7 +1,6 @@
 @page "/vat-rates"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
-@rendermode InteractiveServer
-@using InvoiceApi.Application.Dto.VatRate
+@using InvoiceApi.Contracts.Dto.VatRate
 @inject VatRateApiService VatRateService
 @inject ISnackbar Snackbar
 @* Localization service for multi-language support *@

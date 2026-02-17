@@ -1,9 +1,8 @@
 @page "/"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
-@rendermode InteractiveServer
-@using InvoiceApi.Application.Dto.AppLog
-@using InvoiceApi.Application.Dto.Dashboard
-@using InvoiceApi.Application.Dto.Invoice
+@using InvoiceApi.Contracts.Dto.AppLog
+@using InvoiceApi.Contracts.Dto.Dashboard
+@using InvoiceApi.Contracts.Dto.Invoice
 @using InvoiceApi.Domain.Enums
 @using InvoiceApi.BlazorUI.Services
 @inject DashboardApiService DashboardService

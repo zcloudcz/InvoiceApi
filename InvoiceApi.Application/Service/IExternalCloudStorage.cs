@@ -1,4 +1,4 @@
-using InvoiceApi.Application.Dto.CloudStorage;
+using InvoiceApi.Contracts.Dto.CloudStorage;
 using InvoiceApi.Domain.Enums;
 
 namespace InvoiceApi.Application.Service;

@@ -1,545 +1,258 @@
-# Mobile App Analysis — InvoiceApi BlazorUI → Mobile
+# Mobilní aplikace InvoiceApi — Analýza možností (únor 2026)
 
-> **Date:** 2026-02-13
-> **Current state:** Blazor Server (.NET 10) + MudBlazor v8.15.0 + 18 API services + 47 pages + 9 shared components
-> **Goal:** Convert existing BlazorUI project into a mobile application (iOS + Android)
+## Aktuální stav UI
 
----
+| Parametr | Hodnota |
+|----------|---------|
+| Framework | Blazor WebAssembly Standalone (.NET 10.0) |
+| UI knihovna | MudBlazor v8.15.0 |
+| Autentizace | JWT + Blazored.LocalStorage |
+| Lokalizace | CZ/EN (IStringLocalizer, ~450 klíčů) |
+| Stránky | 31 stránek (pages) |
+| Sdílené komponenty | 12 (EnumSelect, BankAccountInput, InvoiceItemEditor, ...) |
+| API služby | 15 HttpClient služeb (ApiClientBase) |
+| Editor šablon | Blazored.TextEditor (Quill WYSIWYG) |
+| QR kódy | QRCoder (SIND/SPD české standardy) |
+| Testy | 323 (318 unit + 5 integration) |
+| PWA infrastruktura | **Neexistuje** |
 
-## Table of Contents
-
-1. [Current Architecture Summary](#1-current-architecture-summary)
-2. [Mobile Strategy Options](#2-mobile-strategy-options)
-3. [Recommended Approach: .NET MAUI Blazor Hybrid](#3-recommended-approach-net-maui-blazor-hybrid)
-4. [Component-by-Component Migration Analysis](#4-component-by-component-migration-analysis)
-5. [Breaking Changes & Blockers](#5-breaking-changes--blockers)
-6. [New Mobile-Specific Requirements](#6-new-mobile-specific-requirements)
-7. [Effort Estimation](#7-effort-estimation)
-8. [Implementation Phases](#8-implementation-phases)
-9. [Risk Assessment](#9-risk-assessment)
-10. [Alternative: PWA Approach](#10-alternative-pwa-approach)
-
----
-
-## 1. Current Architecture Summary
-
-### BlazorUI Project Statistics
-
-| Category | Count | Detail |
-|----------|-------|--------|
-| Razor Pages | 47 | Login, Dashboard, Invoices, Clients, Templates, Settings, SysAdmin |
-| Shared Components | 9 | AppDataGrid, EnumSelect, BankAccountInput, InvoiceItemEditor, etc. |
-| API Services | 18 | All inherit ApiClientBase (375 LOC), JWT auth + impersonation headers |
-| Models/DTOs | 8 | LoginResponse, PagedResult<T>, etc. |
-| Localization Keys | 450+ | Czech (cs-CZ) + English (en-US) via IStringLocalizer |
-| Layout Components | 3 | MainLayout, NavMenu, ReconnectModal |
-| JS Interop | 2 files | download.js (file download), ReconnectModal.razor.js |
-| Total LOC (estimated) | ~8,000–10,000 | Razor + C# code-behind |
-
-### Architecture Dependencies
-
-- **Blazor Server** — all logic runs server-side, thin WebSocket connection to browser
-- **ProtectedSessionStorage** — JWT token + impersonation state stored in encrypted browser session
-- **Named HttpClient** — "InvoiceAPI" configured in DI with base URL from appsettings
-- **MudBlazor v8.15.0** — Material Design components (tables, dialogs, forms, icons, snackbars)
-- **Blazored.TextEditor** — Quill WYSIWYG editor for HTML template editing
-- **Cookie-based culture** — language switching via `/Culture/SetCulture` endpoint
-- **IJSRuntime** — file download (base64 → Blob → anchor click)
-
-### Backend API (Unchanged)
-
-The API project is **fully decoupled** — 13 REST controllers with JWT authentication. The mobile app will consume the same API endpoints. **No backend changes required** for basic mobile support.
+**Klíčová změna oproti předchozí analýze**: Migrace z Blazor Server na **Standalone WASM** je dokončena. Aplikace nyní běží kompletně v prohlížeči — to zásadně mění výhodnost jednotlivých přístupů.
 
 ---
 
-## 2. Mobile Strategy Options
+## Možnost 1: PWA (Progressive Web App) ⭐ DOPORUČENO
 
-### Option A: .NET MAUI Blazor Hybrid ⭐ RECOMMENDED
+### Popis
+Přidání PWA vrstvy na stávající Blazor WASM aplikaci. Blazor WASM je technicky už "klient-side" aplikace běžící v prohlížeči — přidání PWA vyžaduje pouze manifest, service worker a ikony.
 
-| Aspect | Detail |
+### Pracnost
+**1–2 dny** (minimální změny)
+
+### Co je potřeba implementovat
+
+1. **`wwwroot/manifest.json`** — metadata aplikace (název, ikony, barvy, display: standalone)
+2. **`wwwroot/service-worker.js`** — cachování statických assetů pro offline režim
+3. **`wwwroot/service-worker.published.js`** — produkční verze s verzovaným cachováním
+4. **Ikony** — sada PNG ikon (192×192, 512×512 minimum) pro instalaci
+5. **`index.html`** — přidat `<link rel="manifest">` + meta tagy pro iOS
+6. **`Program.cs`** — žádné změny (WASM je už client-side)
+
+### Výhody
+| Výhoda | Detail |
 |--------|--------|
-| **Concept** | Blazor components run inside a native MAUI WebView (BlazorWebView) |
-| **Code reuse** | 70–85% of existing Razor components reusable directly |
-| **Platforms** | iOS, Android, Windows, macOS (single codebase) |
-| **Native access** | Full access to device APIs (camera, file system, biometrics, push notifications) |
-| **Offline** | Possible with local SQLite cache |
-| **Distribution** | App Store / Google Play |
-| **Effort** | Medium (3–5 months for 1–2 developers) |
+| **Minimální pracnost** | Stávající kód se nemění, jen se přidá PWA vrstva |
+| **Žádný nový projekt** | Vše zůstává v `InvoiceApi.BlazorUI` |
+| **Instalovatelná** | Uživatel si "nainstaluje" appku z prohlížeče (Chrome, Edge, Safari) |
+| **Offline-first** | Service worker cachuje WASM bundle + statické soubory |
+| **Automatické aktualizace** | Při připojení se stáhne nová verze (service worker update) |
+| **Jeden codebase** | Desktop + mobil + tablet = stejný kód |
+| **App Store nepotřeba** | Distribuce přes URL (možný i TWA pro Google Play) |
+| **Push notifikace** | Web Push API (Chrome, Edge; omezené na iOS 16.4+) |
+| **MudBlazor responsive** | MudBlazor je responsive out-of-the-box (Breakpoints, MudHidden) |
 
-### Option B: Progressive Web App (PWA)
+### Nevýhody
+| Nevýhoda | Detail |
+|----------|--------|
+| **Žádný přístup k nativním API** | Nelze: NFC, Bluetooth, pokročilé kamery, kontakty |
+| **iOS omezení** | Safari PWA má limity — max 50 MB storage, omezený push (od iOS 16.4) |
+| **Není v App Store** | Uživatelé musí přidat přes prohlížeč (nižší důvěra pro B2C) |
+| **Offline limitace** | API volání nefungují offline — potřeba queue/sync strategie pro data |
+| **WASM bundle velikost** | ~15-30 MB initial download (cachováno po první návštěvě) |
 
-| Aspect | Detail |
-|--------|--------|
-| **Concept** | Add service worker + manifest to existing Blazor app for "installable" web experience |
-| **Code reuse** | 95–100% (same codebase, just add PWA features) |
-| **Platforms** | All browsers (iOS Safari has PWA limitations) |
-| **Native access** | Limited (no push notifications on iOS, no file system, no biometrics) |
-| **Offline** | Limited (Blazor Server requires WebSocket; Blazor WASM needed for true offline) |
-| **Distribution** | URL-based (no App Store) |
-| **Effort** | Low (2–4 weeks) |
+### Vhodnost pro InvoiceApi
+**VYSOKÁ** — InvoiceApi je B2B fakturační systém. Uživatelé pracují primárně online (faktury, klienti, šablony). PWA pokryje 95 % mobilních use-cases:
+- Prohlížení faktur v terénu
+- Kontrola dashboardu
+- Rychlý přehled klientů
+- QR kódy faktur na telefonu
 
-### Option C: Native Apps (React Native / Flutter / Kotlin+Swift)
-
-| Aspect | Detail |
-|--------|--------|
-| **Concept** | Complete rewrite of UI in a native mobile framework |
-| **Code reuse** | 0% from BlazorUI (only API contracts shared) |
-| **Platforms** | iOS + Android |
-| **Native access** | Full |
-| **Offline** | Full |
-| **Distribution** | App Store / Google Play |
-| **Effort** | Very High (6–12 months for 2+ developers) |
-
-### Option D: Blazor WASM (WebAssembly) Standalone
-
-| Aspect | Detail |
-|--------|--------|
-| **Concept** | Rewrite Blazor Server → Blazor WASM (client-side), then wrap in MAUI or deploy as PWA |
-| **Code reuse** | 60–75% (major hosting model change, no ProtectedSessionStorage, no server-side rendering) |
-| **Platforms** | All browsers, optionally MAUI wrapper |
-| **Native access** | None (browser only) unless combined with MAUI |
-| **Offline** | Possible (WASM runs client-side) |
-| **Effort** | High (4–6 months — significant refactor of auth + state management) |
-
----
-
-## 3. Recommended Approach: .NET MAUI Blazor Hybrid
-
-### Why MAUI Blazor Hybrid?
-
-1. **Maximum code reuse** — existing Razor components, services, and localization work inside BlazorWebView with minimal changes
-2. **Same tech stack** — team stays in .NET/C#/Blazor ecosystem, no new framework to learn
-3. **Native capabilities** — camera (scan invoices), biometric login, push notifications, file system access for PDF export
-4. **Single codebase** — one MAUI project targets iOS + Android + Windows (+ macOS optional)
-5. **Shared class library** — extract common Razor components + services into a shared RCL (Razor Class Library) usable by both BlazorUI (web) and MAUI (mobile)
-
-### High-Level Architecture
+### Implementační kroky
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                  Shared RCL (new)                    │
-│  ┌──────────┐ ┌──────────┐ ┌───────────────────┐   │
-│  │  Pages   │ │Components│ │  API Services      │   │
-│  │ (Razor)  │ │ (Shared) │ │ (ApiClientBase)    │   │
-│  └──────────┘ └──────────┘ └───────────────────┘   │
-│  ┌──────────┐ ┌──────────┐ ┌───────────────────┐   │
-│  │  Models  │ │Resources │ │  Interfaces        │   │
-│  │  (DTOs)  │ │ (.resx)  │ │ (IAuthStorage)     │   │
-│  └──────────┘ └──────────┘ └───────────────────┘   │
-└──────────────────┬──────────────────┬───────────────┘
-                   │                  │
-        ┌──────────▼──────┐  ┌───────▼────────────┐
-        │  BlazorUI (Web) │  │  MAUI App (Mobile)  │
-        │  Blazor Server  │  │  BlazorWebView      │
-        │  ProtectedSS    │  │  SecureStorage       │
-        │  Cookie culture │  │  Preferences culture │
-        │  JS download    │  │  Native file save    │
-        └─────────────────┘  └──────────────────────┘
-                   │                  │
-                   └──────┬───────────┘
-                          │
-                 ┌────────▼────────┐
-                 │   InvoiceApi    │
-                 │   REST API      │
-                 │  (unchanged)    │
-                 └─────────────────┘
+1. Vytvořit wwwroot/manifest.json
+2. Vytvořit wwwroot/icon-192.png a icon-512.png
+3. Vytvořit wwwroot/service-worker.js (dev) + service-worker.published.js (prod)
+4. Upravit wwwroot/index.html — přidat manifest link + meta tagy
+5. Otestovat: Chrome DevTools → Application → Manifest/Service Workers
+6. Otestovat: "Add to Home Screen" na Android/iOS
+7. Optimalizovat MudBlazor responsive breakpoints pro mobil
 ```
 
 ---
 
-## 4. Component-by-Component Migration Analysis
+## Možnost 2: MAUI Blazor Hybrid
 
-### 4.1 Pages — What Migrates Directly (minimal changes)
+### Popis
+Vytvoření nového .NET MAUI projektu (`InvoiceApi.MauiApp`), který hostuje Blazor komponenty ve WebView. Sdílené komponenty a služby se přesunou do sdílené knihovny (`InvoiceApi.Shared`).
 
-These pages are standard MudBlazor forms/tables and will work in BlazorWebView with little to no modification:
+### Pracnost
+**3–6 týdnů** (záleží na rozsahu nativních funkcí)
 
-| Page | Lines | Migration Effort | Notes |
-|------|-------|-----------------|-------|
-| Login.razor | ~150 | Low | Replace ProtectedSessionStorage → SecureStorage |
-| Register.razor | ~120 | Low | Standard form |
-| VerifyEmail.razor | ~50 | Low | Deep link handling needed |
-| SetPassword.razor | ~80 | Low | Standard form |
-| Home.razor (Dashboard) | ~200 | Low | Charts/stats render fine in WebView |
-| Invoices.razor | ~400 | Medium | Large page, table pagination — needs responsive layout |
-| InvoiceDetail.razor | ~500 | Medium | Complex form — needs scroll optimization for mobile |
-| Clients.razor | ~250 | Low | Standard table |
-| ClientDetail.razor | ~350 | Medium | Multi-section form, address editor |
-| InvoiceTemplates.razor | ~200 | Low | Standard table |
-| InvoiceTemplateDetail.razor | ~300 | Medium | InvoiceItemEditor needs touch optimization |
-| ContentTemplates.razor | ~150 | Low | Standard table |
-| ContentTemplateDetail.razor | ~250 | **High** | Quill editor — touch/mobile issues (see blockers) |
-| VatRates.razor | ~150 | Low | Simple CRUD |
-| Currencies.razor | ~120 | Low | Simple CRUD |
-| NumberSequences.razor | ~200 | Low | Standard CRUD |
-| MyCompany.razor | ~300 | Medium | Multi-section settings form |
-| TwoFactorSettings.razor | ~200 | Medium | QR code display, TOTP setup |
-| TwoFactorVerification.razor | ~100 | Low | Simple code input |
-
-### 4.2 Pages — SysAdmin Only (defer to Phase 2+)
-
-These pages are admin-only and not needed for the initial mobile release:
-
-| Page | Recommendation |
-|------|---------------|
-| Companies.razor | Defer — SysAdmin manages via web |
-| CompanyDetail.razor | Defer |
-| CompanySettings.razor | Defer |
-| SystemSettings.razor | Defer |
-| Users.razor | Defer |
-| Logs.razor | Defer |
-
-### 4.3 Shared Components
-
-| Component | Migration | Notes |
-|-----------|-----------|-------|
-| AppDataGrid.razor | **Medium** | MudTable works in WebView but needs responsive/horizontal scroll for small screens |
-| EnumSelect.razor | None | Works as-is |
-| BankAccountInput.razor | None | Works as-is |
-| InvoiceItemEditor.razor | **Medium** | Inline editing on small screens is challenging — consider swipe-to-edit or modal editing on mobile |
-| AddressListEditor.razor | Low | May need larger touch targets |
-| AddressDialog.razor | Low | MudDialog works in WebView |
-| LanguageSwitcher.razor | Low | Replace cookie-based → Preferences-based culture |
-| UnsavedChangesLock.razor | **Medium** | NavigationLock works differently in MAUI — need MAUI back-button handler |
-| FolderPicker.razor | **Medium** | Cloud storage folder browsing — needs platform-specific file picker |
-
-### 4.4 Services
-
-| Service | Migration | Notes |
-|---------|-----------|-------|
-| ApiClientBase.cs (375 LOC) | **Medium** | Replace ProtectedSessionStorage token retrieval → platform-agnostic IAuthTokenProvider |
-| CustomAuthenticationStateProvider.cs (264 LOC) | **High** | Replace ProtectedSessionStorage → MAUI SecureStorage; different lifecycle |
-| All 16 API services | None | Inherit from ApiClientBase — work as-is once base is fixed |
-| AuthApiService.cs | Low | Doesn't inherit ApiClientBase — minimal changes |
-
-### 4.5 Layout
-
-| Component | Migration | Notes |
-|-----------|-----------|-------|
-| MainLayout.razor (272 LOC) | **High** | Complete redesign for mobile — hamburger menu, bottom nav, no app bar impersonation selector |
-| NavMenu.razor (100 LOC) | **High** | Needs mobile-optimized navigation (bottom tab bar / drawer) |
-| ReconnectModal.razor | **Remove** | Not needed — MAUI Blazor Hybrid doesn't use WebSocket |
-
----
-
-## 5. Breaking Changes & Blockers
-
-### 5.1 Critical Blockers
-
-| # | Blocker | Impact | Solution | Effort |
-|---|---------|--------|----------|--------|
-| 1 | **ProtectedSessionStorage** | Auth state, impersonation, session data | Abstract to `ISecureStorageService` — web impl uses ProtectedSessionStorage, MAUI impl uses `SecureStorage` | 2–3 days |
-| 2 | **Blazored.TextEditor (Quill)** | WYSIWYG HTML editor for ContentTemplateDetail | Quill runs in WebView but touch support is poor on mobile. Options: (a) use read-only view on mobile, (b) find mobile-friendly rich text editor, (c) accept degraded mobile experience | 3–5 days |
-| 3 | **JS Interop — File Download** | `download.js` uses browser DOM (anchor element, Blob) | MAUI: use `FileSaver` from MAUI CommunityToolkit or native file save API | 1–2 days |
-| 4 | **Cookie-based culture switching** | `/Culture/SetCulture` endpoint sets cookie — not applicable in MAUI | Use `Preferences.Set("culture", "cs-CZ")` and apply in `MauiProgram.cs` | 1 day |
-| 5 | **OAuth Callback handling** | `AuthCallback.razor` expects browser redirect URL | MAUI needs custom URL scheme registration (`invoiceapi://auth/callback`) + platform-specific intent filters | 2–3 days |
-| 6 | **Deep links** (email verification, password reset) | URLs open in browser, not in app | Register URL scheme + handle `App.OnAppLinkRequestReceived` | 1–2 days |
-
-### 5.2 MudBlazor in MAUI WebView — Known Issues
-
-| Issue | Severity | Workaround |
-|-------|----------|------------|
-| MudDialog backdrop may not cover full mobile screen | Low | CSS override for `100vh` / `100dvh` |
-| MudDatePicker touch calendar usability | Low | Works but small touch targets — may need custom CSS |
-| MudTable horizontal scroll on narrow screens | Medium | Wrap in `<div style="overflow-x:auto">` or use responsive column hiding |
-| MudSelect dropdown positioning on virtual keyboard | Medium | Known MudBlazor issue — use `AnchorOrigin` adjustments |
-| Font loading (Google Fonts Roboto) | Low | Bundle font files locally (no CDN in offline scenario) |
-
-### 5.3 Platform-Specific Requirements
-
-| Requirement | iOS | Android |
-|-------------|-----|---------|
-| Min version | iOS 16+ | Android 8.0+ (API 26) |
-| WebView engine | WKWebView (Safari) | Chrome-based WebView |
-| Status bar handling | Safe area insets required | Edge-to-edge + status bar color |
-| Back button | No hardware back — swipe gesture | Hardware/software back button |
-| Keyboard behavior | Auto-scroll to focused field | `windowSoftInputMode=adjustResize` |
-| Push notifications | APNs | FCM |
-| App size (estimated) | ~30–50 MB | ~25–40 MB |
-
----
-
-## 6. New Mobile-Specific Requirements
-
-### 6.1 Must-Have (MVP)
-
-| Feature | Description | Effort |
-|---------|-------------|--------|
-| **Biometric login** | Fingerprint / Face ID to unlock app (optional per user) | 2–3 days |
-| **Pull-to-refresh** | Standard mobile UX for list pages | 1 day |
-| **Responsive layouts** | Forms must stack vertically, tables must scroll horizontally | 3–5 days |
-| **Offline indicator** | Show connection status, disable actions when offline | 1 day |
-| **Native PDF viewer** | Open PDF in system viewer instead of JS download | 1 day |
-| **Mobile-optimized navigation** | Bottom tab bar for main sections + hamburger drawer | 3–5 days |
-| **Splash screen + app icon** | Platform-specific assets | 1 day |
-| **Secure token storage** | MAUI SecureStorage (Keychain/KeyStore) | 1–2 days (part of auth refactor) |
-
-### 6.2 Nice-to-Have (Post-MVP)
-
-| Feature | Description | Effort |
-|---------|-------------|--------|
-| Camera scan (OCR) | Scan paper invoices or business cards | 5–10 days |
-| Push notifications | New invoice received, payment overdue | 3–5 days |
-| Offline mode | Local SQLite cache, sync when online | 10–15 days |
-| Share intent | Share PDF via WhatsApp, email, etc. | 1–2 days |
-| Dark mode sync | Follow system dark/light preference | 1 day |
-| Barcode/QR scan | Scan QR Faktura codes from other invoices | 2–3 days |
-
----
-
-## 7. Effort Estimation
-
-### 7.1 Project Setup & Infrastructure
-
-| Task | Effort (days) |
-|------|---------------|
-| Create MAUI Blazor Hybrid project (`InvoiceApi.MobileApp`) | 1 |
-| Create shared Razor Class Library (`InvoiceApi.Shared.UI`) | 1 |
-| Extract common components from BlazorUI → shared RCL | 3–5 |
-| Abstract storage interfaces (`ISecureStorageService`, `IAuthTokenProvider`) | 2–3 |
-| Implement MAUI-specific storage (SecureStorage, Preferences) | 2 |
-| Implement MAUI-specific file operations (PDF save/share) | 1–2 |
-| Configure MAUI project (icons, splash, permissions, URL schemes) | 2 |
-| Setup CI/CD for mobile builds (App Center / GitHub Actions) | 2–3 |
-| **Subtotal** | **14–19 days** |
-
-### 7.2 Layout & Navigation Redesign
-
-| Task | Effort (days) |
-|------|---------------|
-| Mobile MainLayout (bottom nav + drawer) | 3–5 |
-| Mobile NavMenu (tab bar with 4–5 tabs) | 2–3 |
-| Responsive CSS overrides for all MudBlazor components | 3–5 |
-| Safe area / notch handling (iOS) | 1 |
-| Back button handling (Android) | 1 |
-| **Subtotal** | **10–15 days** |
-
-### 7.3 Page Migration (Core Business Pages)
-
-| Page Group | Pages | Effort (days) |
-|------------|-------|---------------|
-| Auth (Login, Register, 2FA, OAuth) | 5 | 3–5 |
-| Dashboard (Home) | 1 | 1–2 |
-| Invoices (list + detail) | 2 | 5–8 |
-| Clients (list + detail) | 2 | 3–5 |
-| Templates (invoice + content) | 4 | 3–5 |
-| Settings (MyCompany, VatRates, Currencies, NumberSequences) | 4 | 3–5 |
-| **Subtotal** | **18 pages** | **18–30 days** |
-
-### 7.4 Mobile-Specific Features (MVP)
-
-| Feature | Effort (days) |
-|---------|---------------|
-| Biometric authentication | 2–3 |
-| Pull-to-refresh on lists | 1 |
-| Native PDF viewer integration | 1–2 |
-| Offline connectivity indicator | 1 |
-| Deep link handling | 1–2 |
-| Culture/language via Preferences | 1 |
-| **Subtotal** | **7–10 days** |
-
-### 7.5 Testing & QA
-
-| Task | Effort (days) |
-|------|---------------|
-| Unit tests for new platform abstractions | 3–5 |
-| Manual testing on iOS simulator | 3–5 |
-| Manual testing on Android emulator | 3–5 |
-| Testing on physical devices (2+ iOS, 2+ Android) | 3–5 |
-| Fix platform-specific bugs | 5–8 |
-| **Subtotal** | **17–28 days** |
-
-### 7.6 App Store Preparation
-
-| Task | Effort (days) |
-|------|---------------|
-| App Store Connect setup (iOS) | 1 |
-| Google Play Console setup (Android) | 1 |
-| Privacy policy, screenshots, descriptions | 2 |
-| App signing & certificate management | 1 |
-| First submission + review iterations | 3–5 |
-| **Subtotal** | **8–10 days** |
-
-### 7.7 Total Effort Summary
-
-| Phase | Optimistic | Realistic | Pessimistic |
-|-------|-----------|-----------|-------------|
-| Infrastructure & Setup | 14 days | 19 days | 25 days |
-| Layout & Navigation | 10 days | 15 days | 20 days |
-| Page Migration | 18 days | 25 days | 35 days |
-| Mobile Features (MVP) | 7 days | 10 days | 14 days |
-| Testing & QA | 17 days | 22 days | 30 days |
-| App Store | 8 days | 10 days | 14 days |
-| **TOTAL** | **74 days** | **101 days** | **138 days** |
-| **Calendar (1 dev)** | **~3.5 months** | **~5 months** | **~7 months** |
-| **Calendar (2 devs)** | **~2 months** | **~3 months** | **~4 months** |
-
----
-
-## 8. Implementation Phases
-
-### Phase 1: Foundation (Weeks 1–3)
-
-- [ ] Create `InvoiceApi.Shared.UI` Razor Class Library
-- [ ] Create `InvoiceApi.MobileApp` MAUI Blazor Hybrid project
-- [ ] Define abstraction interfaces:
-  - `ISecureStorageService` (token storage)
-  - `IAuthTokenProvider` (JWT retrieval)
-  - `ICultureService` (language management)
-  - `IFileService` (save/share files)
-- [ ] Implement MAUI-specific services (SecureStorage, Preferences, FileSaver)
-- [ ] Implement web-specific services (ProtectedSessionStorage wrapper)
-- [ ] Extract `ApiClientBase` + all 18 services → shared RCL
-- [ ] Extract Models/DTOs → shared RCL
-- [ ] Extract Resources (.resx) → shared RCL
-- [ ] Verify shared RCL builds and is consumable by both projects
-
-### Phase 2: Mobile Shell (Weeks 3–5)
-
-- [ ] Design mobile navigation (bottom tab bar: Dashboard, Invoices, Clients, Settings, Profile)
-- [ ] Create `MobileMainLayout.razor` with MudBlazor mobile patterns
-- [ ] Create `MobileNavMenu.razor` with bottom tabs
-- [ ] Implement responsive CSS overrides (breakpoints for small screens)
-- [ ] Add safe area handling (iOS notch), status bar theming
-- [ ] Implement Android back button handler
-- [ ] Login page + biometric unlock
-- [ ] OAuth callback with custom URL scheme
-
-### Phase 3: Core Pages (Weeks 5–9)
-
-- [ ] Dashboard (Home) — responsive card layout
-- [ ] Invoices list — responsive table with horizontal scroll, pull-to-refresh
-- [ ] Invoice detail — vertical form layout, native PDF open, email send
-- [ ] Clients list — responsive table
-- [ ] Client detail — vertical form layout
-- [ ] My Company settings page
-
-### Phase 4: Secondary Pages (Weeks 9–11)
-
-- [ ] Invoice Templates (list + detail)
-- [ ] Content Templates (list + Quill editor or read-only on mobile)
-- [ ] VAT Rates, Currencies, Number Sequences
-- [ ] Two-Factor Settings
-- [ ] Profile / logout
-
-### Phase 5: Polish & Testing (Weeks 11–14)
-
-- [ ] End-to-end testing on iOS simulator + physical device
-- [ ] End-to-end testing on Android emulator + physical device
-- [ ] Performance optimization (lazy loading, virtualization)
-- [ ] Offline connectivity indicator
-- [ ] Error handling for no-network scenarios
-- [ ] Accessibility review (font sizes, touch targets ≥ 44pt)
-
-### Phase 6: Release (Weeks 14–16)
-
-- [ ] App Store submission (iOS)
-- [ ] Google Play submission (Android)
-- [ ] Review feedback iterations
-- [ ] Production monitoring setup
-- [ ] User documentation / onboarding screens
-
----
-
-## 9. Risk Assessment
-
-| Risk | Probability | Impact | Mitigation |
-|------|-------------|--------|------------|
-| MudBlazor rendering issues in MAUI WebView | Medium | High | Test early (Phase 1), have CSS fallback plan |
-| Quill editor unusable on mobile | High | Medium | Accept read-only mode on mobile for templates, edit via web |
-| iOS WebView performance (complex pages) | Medium | High | Profile early, virtualize long lists, lazy-load tabs |
-| MAUI bugs / platform inconsistencies | Medium | Medium | Pin MAUI version, test on physical devices frequently |
-| App Store rejection (first submission) | Medium | Low | Follow guidelines from start, prepare privacy policy early |
-| SecureStorage migration from ProtectedSessionStorage | Low | High | Well-defined interface abstraction, thorough testing |
-| Team .NET MAUI experience gap | Medium | Medium | Allocate learning time, start with simple pages |
-| Blazor MAUI hot reload issues | Medium | Low | Workaround: manual rebuild for affected pages |
-
----
-
-## 10. Alternative: PWA Approach
-
-If a full native app is overkill for the current user base, a **PWA (Progressive Web App)** approach provides 80% of the mobile value at 20% of the cost:
-
-### PWA Effort (requires Blazor WASM migration first)
-
-| Task | Effort |
-|------|--------|
-| Migrate Blazor Server → Blazor WASM | 15–20 days |
-| Add service worker + manifest.json | 1–2 days |
-| Add offline page / caching strategy | 3–5 days |
-| Responsive CSS for mobile browsers | 5–8 days |
-| Test on iOS Safari + Chrome Android | 3–5 days |
-| **Total** | **27–40 days (~1.5–2 months)** |
-
-### PWA Limitations
-
-- **No App Store presence** (no discoverability)
-- **iOS Safari**: no push notifications, limited background sync, storage may be evicted after 7 days of inactivity
-- **No biometric auth** (WebAuthn partial support)
-- **No native file system** access
-- **Blazor WASM**: larger initial download (~5–10 MB), slower startup vs. native
-- **No camera/scanner** integration (limited `getUserMedia`)
-
-### PWA Recommendation
-
-Use PWA **only if**:
-- Target audience primarily uses Android (PWA support is excellent)
-- App Store distribution is not required
-- Offline support is not critical
-- Budget is strictly limited
-
----
-
-## Summary & Recommendation
-
-### Recommended: .NET MAUI Blazor Hybrid
-
-| Metric | Value |
-|--------|-------|
-| **Code reuse from existing BlazorUI** | ~70–80% |
-| **New code to write** | ~20–30% (layouts, platform abstractions, mobile UX) |
-| **Realistic timeline (1 developer)** | ~5 months |
-| **Realistic timeline (2 developers)** | ~3 months |
-| **Biggest risk** | MudBlazor + Quill rendering quality in MAUI WebView |
-| **Biggest win** | Same .NET/C#/Blazor stack, shared codebase, native device access |
-
-### Key Decision Points Before Starting
-
-1. **Which pages are mandatory for mobile MVP?** (Recommend: Dashboard, Invoices, Clients, MyCompany, Login/2FA)
-2. **Is offline support required for MVP?** (Recommend: No — add in v2)
-3. **Is SysAdmin functionality needed on mobile?** (Recommend: No — web only)
-4. **Content template editing on mobile?** (Recommend: Read-only on mobile, edit via web)
-5. **Target platforms?** (Recommend: iOS + Android; skip macOS/Windows desktop MAUI)
-
-### Files to Create (New Projects)
+### Architektura
 
 ```
-InvoiceApi.Shared.UI/              ← New Razor Class Library
-├── Components/
-│   ├── Pages/                     ← Migrated from BlazorUI
-│   └── Shared/                    ← Migrated from BlazorUI
-├── Services/                      ← Migrated from BlazorUI
-├── Models/                        ← Migrated from BlazorUI
-├── Resources/                     ← Migrated from BlazorUI
-├── Abstractions/
-│   ├── ISecureStorageService.cs   ← NEW: platform-agnostic storage
-│   ├── IAuthTokenProvider.cs      ← NEW: JWT token retrieval
-│   ├── ICultureService.cs         ← NEW: language management
-│   └── IFileService.cs            ← NEW: file save/share
-└── InvoiceApi.Shared.UI.csproj
-
-InvoiceApi.MobileApp/              ← New MAUI Blazor Hybrid
-├── Platforms/
-│   ├── Android/                   ← Android-specific config
-│   └── iOS/                       ← iOS-specific config
-├── Services/
-│   ├── MauiSecureStorageService.cs
-│   ├── MauiAuthTokenProvider.cs
-│   ├── MauiCultureService.cs
-│   └── MauiFileService.cs
-├── Components/Layout/
-│   ├── MobileMainLayout.razor     ← NEW: mobile-optimized layout
-│   └── MobileNavMenu.razor        ← NEW: bottom tab navigation
-├── MauiProgram.cs
-├── MainPage.xaml                  ← BlazorWebView host
-└── InvoiceApi.MobileApp.csproj
+InvoiceApi.sln
+├── InvoiceApi.Contracts          (DTO, sdíleno — beze změny)
+├── InvoiceApi.Shared.UI          (NOVÝ — sdílené Razor komponenty)
+│   ├── Components/Pages/         (přesunuté z BlazorUI)
+│   ├── Components/Shared/        (přesunuté z BlazorUI)
+│   └── Services/                 (API služby, AuthState)
+├── InvoiceApi.BlazorUI           (WASM host — odkazuje Shared.UI)
+├── InvoiceApi.MauiApp            (NOVÝ — MAUI Blazor Hybrid host)
+│   ├── MauiProgram.cs
+│   ├── MainPage.xaml             (BlazorWebView)
+│   └── Platforms/                (Android, iOS, Windows)
+└── ...
 ```
+
+### Co je potřeba implementovat
+
+1. **`InvoiceApi.Shared.UI`** — nový RCL (Razor Class Library) projekt
+   - Přesunout všech 31 stránek + 12 komponent z BlazorUI
+   - Přesunout 15 API služeb
+   - Abstrahovat storage (IStorageService: LocalStorage vs SecureStorage)
+   - Abstrahovat navigation (NavigationManager vs MAUI Shell)
+2. **`InvoiceApi.MauiApp`** — nový MAUI projekt
+   - `MauiProgram.cs` — DI registrace, HttpClient s base URL
+   - `MainPage.xaml` — BlazorWebView
+   - Platform-specific konfigurace (Android manifest, iOS Info.plist)
+   - SecureStorage pro JWT token
+   - Biometric auth (volitelně)
+3. **`InvoiceApi.BlazorUI`** — refaktor na tenký host
+   - Odkazuje `Shared.UI` místo vlastních komponent
+   - Zůstává `index.html`, `Program.cs`, WASM-specifický kód
+
+### Výhody
+| Výhoda | Detail |
+|--------|--------|
+| **Nativní přístup** | Kamera, NFC, Bluetooth, biometrika, soubory, kontakty |
+| **App Store distribuce** | Google Play, Apple App Store (důvěra uživatelů) |
+| **Offline s SQLite** | Lokální databáze pro plnohodnotný offline režim |
+| **SecureStorage** | Bezpečné ukládání JWT tokenů (Keychain/Keystore) |
+| **Push notifikace** | Firebase (Android) + APNS (iOS) — plná podpora |
+| **Sdílený kód** | ~80 % Blazor kódu sdíleno mezi WASM a MAUI |
+
+### Nevýhody
+| Nevýhoda | Detail |
+|----------|--------|
+| **Vysoká pracnost** | 3-6 týdnů refaktoru + nový projekt |
+| **Dva hosty** | Údržba WASM hostu + MAUI hostu |
+| **MAUI nestabilita** | MAUI stále má výkonnostní problémy, pomalý startup na Android |
+| **Build pipeline** | Potřeba macOS pro iOS build (Xcode, Apple Developer Account) |
+| **App Store review** | Apple review process (týdny), developer fee ($99/rok) |
+| **Blazored.TextEditor** | Quill editor nemusí fungovat v MAUI WebView (JS interop problémy) |
+| **MudBlazor v MAUI** | Funguje, ale občasné rendering issues ve WebView |
+
+### Vhodnost pro InvoiceApi
+**STŘEDNÍ** — MAUI Hybrid dává smysl jen pokud jsou potřeba nativní funkce (kamera pro sken dokumentů, NFC pro platby). Pro čistě datovou fakturační aplikaci je to overengineering.
+
+---
+
+## Možnost 3: Nativní mobilní aplikace (Flutter / React Native / Kotlin/Swift)
+
+### Popis
+Kompletní přepsání UI do nativního mobilního frameworku. Backend API zůstává beze změny.
+
+### Pracnost
+**3–6 měsíců** (kompletní rewrite)
+
+### Výhody
+| Výhoda | Detail |
+|--------|--------|
+| **Nejlepší UX** | Nativní animace, gesta, platformní konvence |
+| **Nejlepší výkon** | Žádný WebView overhead |
+| **Plný přístup k HW** | Vše, co platforma nabízí |
+
+### Nevýhody
+| Nevýhoda | Detail |
+|----------|--------|
+| **Kompletní rewrite** | 31 stránek, 12 komponent, 15 služeb = od nuly |
+| **Nový jazyk/framework** | Dart (Flutter), JS/TS (React Native), Kotlin/Swift |
+| **Dva codebasy** | Web (Blazor) + mobil (nativní) = dvojnásobná údržba |
+| **Ztráta investice** | Existující Blazor kód se nevyužije |
+| **Nový tým/skillset** | .NET vývojáři musí znát Flutter/React Native |
+
+### Vhodnost pro InvoiceApi
+**NÍZKÁ** — Pro B2B fakturační systém nemá smysl investovat do kompletního přepisu. Blazor WASM + PWA pokryje mobilní potřeby.
+
+---
+
+## Srovnávací tabulka
+
+| Kritérium | PWA | MAUI Hybrid | Nativní (Flutter/RN) |
+|-----------|-----|-------------|---------------------|
+| **Pracnost** | 1–2 dny | 3–6 týdnů | 3–6 měsíců |
+| **Sdílení kódu** | 100 % | ~80 % | 0 % (API sdíleno) |
+| **Offline** | Základní (cache) | Plný (SQLite) | Plný |
+| **Nativní API** | Omezené (Web API) | Plné | Plné |
+| **App Store** | Ne (TWA volitelně) | Ano | Ano |
+| **Údržba** | Minimální | Střední (2 hosty) | Vysoká (2 codebasy) |
+| **Startup čas** | ~2-3s (první load) | ~3-5s (MAUI + WebView) | <1s |
+| **iOS podpora** | Dobrá (Safari PWA) | Dobrá (MAUI iOS) | Výborná |
+| **Android podpora** | Výborná (Chrome PWA) | Dobrá (MAUI Android) | Výborná |
+| **Push notifikace** | Omezené (iOS 16.4+) | Plné | Plné |
+| **Biometrika** | Ne | Ano | Ano |
+| **Náklady** | $0 | $99/rok (Apple) | $99/rok (Apple) + $25 (Google) |
+
+---
+
+## Doporučená strategie: PWA → (volitelně) MAUI Hybrid
+
+### Fáze 1: PWA (okamžitě, 1–2 dny)
+Přidáním PWA vrstvy na stávající Blazor WASM získáme:
+- Instalovatelnou aplikaci na Android i iOS
+- Offline přístup k cachovaným stránkám
+- Full-screen režim bez prohlížečového UI
+- Zero-cost deployment (žádné App Store poplatky)
+
+**Toto je ideální první krok** — minimální práce, maximální hodnota.
+
+### Fáze 2: Mobilní optimalizace (1–2 týdny, volitelně)
+Po PWA nasazení optimalizovat UI pro mobilní zařízení:
+- MudBlazor responsive breakpoints (MudHidden, xs/sm/md)
+- Swipe gesta pro navigaci (pokud MudBlazor podporuje)
+- Touch-friendly velikosti tlačítek a inputů
+- Optimalizace WASM bundle size (lazy loading, trimming)
+- Bottom navigation pro mobilní rozložení
+
+### Fáze 3: MAUI Hybrid (pouze pokud je business požadavek)
+Pokud zákazníci vyžadují:
+- Přítomnost v App Store (firemní politika)
+- Offline editaci faktur s následnou synchronizací
+- Sken dokumentů kamerou (OCR)
+- Biometrickou autentizaci
+- Push notifikace na iOS < 16.4
+
+Teprve pak investovat do MAUI Hybrid. **Nedoporučuji předčasně** — PWA pokryje většinu potřeb B2B fakturačního systému.
+
+---
+
+## Technické poznámky
+
+### PWA a Blazor WASM — specifika
+- Blazor WASM Standalone **nativně podporuje PWA** — při vytvoření projektu s `--pwa` flagem se generuje automaticky. Protože jsme migrovali bez flagu, musíme přidat ručně.
+- .NET WASM bundle se cachuje service workerem — po první návštěvě je reload téměř okamžitý
+- `dotnet publish` generuje `service-worker-assets.js` s hashy všech statických souborů pro cache-busting
+
+### Blazored.TextEditor (Quill) v mobilním režimu
+- Quill WYSIWYG editor **funguje na mobilních prohlížečích** — PWA nebude mít problém
+- V MAUI WebView mohou být problémy s JS interopem a touch event handlingem
+
+### MudBlazor responsive
+- MudBlazor má vestavěný responsive grid (MudGrid, MudItem) s breakpointy
+- `MudHidden` komponent pro podmíněné zobrazení podle velikosti obrazovky
+- `MudAppBar` + `MudDrawer` = hamburger menu pattern pro mobilní navigaci (už implementováno v MainLayout)
+
+### WASM bundle optimalizace
+- Aktuální .NET 10 WASM: ~15-20 MB (komprimováno ~5-8 MB s Brotli)
+- `<PublishTrimmed>true</PublishTrimmed>` — trim nepoužívaného kódu
+- `<BlazorEnableCompression>true</BlazorEnableCompression>` — Brotli komprese
+- Lazy loading assemblies přes `LazyAssemblyLoader` pro stránky, které se nepoužívají často
+
+---
+
+## Závěr
+
+**PWA je jasná volba pro InvoiceApi.** Po dokončení migrace na Blazor WASM Standalone je přidání PWA trivální záležitost s obrovskou přidanou hodnotou. Uživatelé získají "mobilní appku" bez nutnosti App Store, s offline přístupem k cachovaným datům a full-screen režimem.
+
+MAUI Hybrid zůstává jako budoucí možnost pro případ, že se ukáže business potřeba nativních funkcí — ale s aktuálním rozsahem aplikace (fakturace, klienti, šablony, dashboard) není důvod do něj investovat předčasně.

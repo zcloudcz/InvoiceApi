@@ -12,7 +12,7 @@
                          OnBankAccountSelected="HandleBankAccountSelected" />
 *@
 @inject IStringLocalizer<SharedResource> L
-@using InvoiceApi.Application.Dto.Client
+@using InvoiceApi.Contracts.Dto.Client
 
 <MudSelect T="long?" Value="SelectedAccountId" ValueChanged="OnSelectionChanged"
            Label="@(Label ?? L["BankAccount_SelectAccount"].Value)"

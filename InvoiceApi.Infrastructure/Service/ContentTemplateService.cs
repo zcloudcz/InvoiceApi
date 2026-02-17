@@ -1,4 +1,4 @@
-using InvoiceApi.Application.Dto.ContentTemplate;
+using InvoiceApi.Contracts.Dto.ContentTemplate;
 using InvoiceApi.Application.Service;
 using InvoiceApi.Domain.Entities;
 using InvoiceApi.Domain.Enums;

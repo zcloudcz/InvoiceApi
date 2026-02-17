@@ -1,5 +1,5 @@
 using AresService;
-using InvoiceApi.Application.Dto.Auth;
+using InvoiceApi.Contracts.Dto.Auth;
 using InvoiceApi.Application.Service;
 using InvoiceApi.Domain.Entities;
 using InvoiceApi.Domain.Enums;

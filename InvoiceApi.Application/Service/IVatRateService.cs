@@ -1,4 +1,4 @@
-using InvoiceApi.Application.Dto.VatRate;
+using InvoiceApi.Contracts.Dto.VatRate;
 
 namespace InvoiceApi.Application.Service;
 

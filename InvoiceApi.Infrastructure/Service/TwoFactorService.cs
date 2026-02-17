@@ -1,4 +1,4 @@
-using InvoiceApi.Application.Dto.TwoFactor;
+using InvoiceApi.Contracts.Dto.TwoFactor;
 using InvoiceApi.Application.Service;
 using InvoiceApi.Domain.Enums;
 using InvoiceApi.Infrastructure.Data;

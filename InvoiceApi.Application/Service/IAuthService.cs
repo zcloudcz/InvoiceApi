@@ -1,4 +1,4 @@
-using InvoiceApi.Application.Dto.Auth;
+using InvoiceApi.Contracts.Dto.Auth;
 
 namespace InvoiceApi.Application.Service;
 

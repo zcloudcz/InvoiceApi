@@ -1,7 +1,6 @@
 @page "/number-sequences"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
-@rendermode InteractiveServer
-@using InvoiceApi.Application.Dto.NumberSequence
+@using InvoiceApi.Contracts.Dto.NumberSequence
 @using InvoiceApi.Domain.Enums
 @inject NumberSequenceApiService SequenceService
 @inject ISnackbar Snackbar

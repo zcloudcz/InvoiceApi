@@ -12,7 +12,7 @@
 *@
 @inject IStringLocalizer<SharedResource> L
 @inject IDialogService DialogService
-@using InvoiceApi.Application.Dto.Client
+@using InvoiceApi.Contracts.Dto.Client
 @using InvoiceApi.Domain.Enums
 
 @* Section header with Add button (only in edit mode) *@
@@ -78,7 +78,7 @@ else
                                            Color="@(address.IsPrimary ? Color.Warning : Color.Default)"
                                            Size="Size.Small"
                                            OnClick="@(() => SetPrimary(index))"
-                                           Title="@L["Address_DefaultBilling"].Value" />
+                                           title="@L["Address_DefaultBilling"].Value" />
                         }
                     </td>
                     @if (!ReadOnly)
@@ -87,11 +87,11 @@ else
                         <td style="text-align: center;" @onclick:stopPropagation="true">
                             <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
                                            OnClick="@(() => EditAddress(index))"
-                                           Title="@L["Address_Edit"].Value" />
+                                           title="@L["Address_Edit"].Value" />
                             <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
                                            Color="Color.Error"
                                            OnClick="@(() => DeleteAddress(index))"
-                                           Title="@L["Btn_Delete"].Value" />
+                                           title="@L["Btn_Delete"].Value" />
                         </td>
                     }
                 </tr>

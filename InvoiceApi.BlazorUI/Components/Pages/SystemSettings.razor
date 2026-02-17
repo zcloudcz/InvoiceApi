@@ -1,7 +1,6 @@
 @page "/system-settings"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "SysAdmin")]
-@rendermode InteractiveServer
-@using InvoiceApi.Application.Dto.SystemConfiguration
+@using InvoiceApi.Contracts.Dto.SystemConfiguration
 @inject SystemConfigurationApiService ConfigService
 @inject ISnackbar Snackbar
 @inject IStringLocalizer<SharedResource> L

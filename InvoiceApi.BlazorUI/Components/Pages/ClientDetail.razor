@@ -1,10 +1,9 @@
 @page "/clients/create"
 @page "/clients/{Id:long}"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
-@rendermode InteractiveServer
-@using InvoiceApi.Application.Dto.Client
-@using InvoiceApi.Application.Dto.Invoice
-@using InvoiceApi.Application.Common.Pagination
+@using InvoiceApi.Contracts.Dto.Client
+@using InvoiceApi.Contracts.Dto.Invoice
+@using InvoiceApi.Contracts.Common.Pagination
 @using InvoiceApi.Domain.Enums
 @inject ClientApiService ClientService
 @inject InvoiceApiService InvoiceService
@@ -109,7 +108,7 @@ else
                             <MudListItem T="string" Icon="@Icons.Material.Filled.Business">
                                 <strong>@L["Client_Company"]</strong> @_client!.CompanyName
                             </MudListItem>
-                            @if (!string.IsNullOrEmpty(_client.TradingName))
+                            @if (!string.IsNullOrEmpty(_client?.TradingName))
                             {
                                 <MudListItem T="string" Icon="@Icons.Material.Filled.Badge">
                                     <strong>@L["Client_TradingNameLabel"]</strong> @_client.TradingName
@@ -301,7 +300,10 @@ else
                                   DebounceInterval="300" OnDebounceIntervalElapsed="SearchClientInvoices" />
                 </MudItem>
                 <MudItem xs="12" sm="6" md="3">
-                    <MudSelect @bind-Value="_invoiceStatusFilter" Label="@L["Label_Status"].Value" OnChange="SearchClientInvoices">
+                    @* MudBlazor v8: OnChange removed — use Value + ValueChanged to update filter and reload data *@
+                    <MudSelect Value="_invoiceStatusFilter"
+                               ValueChanged="@(async (EInvoiceStatus? v) => { _invoiceStatusFilter = v; await SearchClientInvoices(); })"
+                               Label="@L["Label_Status"].Value">
                         <MudSelectItem Value="@((EInvoiceStatus?)null)">@L["Invoice_FilterAll"]</MudSelectItem>
                         <MudSelectItem Value="@((EInvoiceStatus?)EInvoiceStatus.Draft)">@L["Invoice_FilterDraft"]</MudSelectItem>
                         <MudSelectItem Value="@((EInvoiceStatus?)EInvoiceStatus.Completed)">@L["Invoice_FilterIssued"]</MudSelectItem>

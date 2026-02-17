@@ -1,7 +1,6 @@
 @page "/clients"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
-@rendermode InteractiveServer
-@using InvoiceApi.Application.Dto.Client
+@using InvoiceApi.Contracts.Dto.Client
 @using InvoiceApi.Domain.Enums
 @inject ClientApiService ClientService
 @inject NavigationManager Navigation

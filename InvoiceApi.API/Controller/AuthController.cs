@@ -1,4 +1,4 @@
-using InvoiceApi.Application.Dto.Auth;
+using InvoiceApi.Contracts.Dto.Auth;
 using InvoiceApi.Application.Service;
 using InvoiceApi.Domain.Enums;
 using Microsoft.AspNetCore.Authentication;

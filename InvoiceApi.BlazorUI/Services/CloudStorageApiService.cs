@@ -1,4 +1,4 @@
-using InvoiceApi.Application.Dto.CloudStorage;
+using InvoiceApi.Contracts.Dto.CloudStorage;
 using InvoiceApi.Domain.Enums;
 using Microsoft.AspNetCore.Components.Authorization;
 

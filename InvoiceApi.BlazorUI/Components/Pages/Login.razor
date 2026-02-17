@@ -1,5 +1,4 @@
 @page "/login"
-@rendermode InteractiveServer
 @using InvoiceApi.BlazorUI.Models
 @using InvoiceApi.BlazorUI.Services
 @using Microsoft.AspNetCore.Components.Authorization
@@ -78,22 +77,22 @@
                                Color="Color.Default"
                                Variant="Variant.Outlined"
                                OnClick="@(() => LoginWithProvider("Google"))"
-                               Title="Google" />
+                               title="Google" />
                 <MudIconButton Icon="@Icons.Custom.Brands.Microsoft"
                                Color="Color.Default"
                                Variant="Variant.Outlined"
                                OnClick="@(() => LoginWithProvider("Microsoft"))"
-                               Title="Microsoft" />
+                               title="Microsoft" />
                 <MudIconButton Icon="@Icons.Custom.Brands.Facebook"
                                Color="Color.Default"
                                Variant="Variant.Outlined"
                                OnClick="@(() => LoginWithProvider("Facebook"))"
-                               Title="Facebook" />
+                               title="Facebook" />
                 <MudIconButton Icon="@Icons.Custom.Brands.Apple"
                                Color="Color.Default"
                                Variant="Variant.Outlined"
                                OnClick="@(() => LoginWithProvider("Apple"))"
-                               Title="Apple" />
+                               title="Apple" />
             </MudStack>
 
             <MudDivider />
@@ -188,7 +187,7 @@
     /// </summary>
     private void LoginWithProvider(string provider)
     {
-        var apiBaseUrl = Configuration["ApiSettings:BaseUrl"] ?? "https://localhost:7001";
+        var apiBaseUrl = Configuration["ApiSettings:BaseUrl"]!;
         Navigation.NavigateTo(
             $"{apiBaseUrl}/api/auth/external-login?provider={provider}&returnUrl=/auth-callback",
             forceLoad: true);

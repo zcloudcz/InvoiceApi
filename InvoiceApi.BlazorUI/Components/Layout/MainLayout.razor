@@ -1,15 +1,16 @@
 @inherits LayoutComponentBase
 @using Microsoft.AspNetCore.Components.Authorization
 @using InvoiceApi.BlazorUI.Services
-@using InvoiceApi.Application.Dto.Client
+@using InvoiceApi.Contracts.Dto.Client
 @using InvoiceApi.BlazorUI.Components.Shared
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
 @inject CompanyApiService CompanyService
 @inject IStringLocalizer<SharedResource> L
 
+@* NOTE: CascadingAuthenticationState is provided by App.razor — no need to wrap here.
+   All child components can access Task<AuthenticationState> via [CascadingParameter]. *@
 <MudThemeProvider @bind-IsDarkMode="_isDarkMode" />
-<CascadingAuthenticationState>
     <MudLayout>
         <MudAppBar Elevation="1">
             <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@((e) => DrawerToggle())" />
@@ -75,7 +76,6 @@
             </MudContainer>
         </MudMainContent>
     </MudLayout>
-</CascadingAuthenticationState>
 
 @code {
     private bool _drawerOpen = true;

@@ -1,5 +1,5 @@
 using System.Text;
-using InvoiceApi.Application.Dto.Client;
+using InvoiceApi.Contracts.Dto.Client;
 using InvoiceApi.BlazorUI.Models;
 using Microsoft.AspNetCore.Components.Authorization;
 

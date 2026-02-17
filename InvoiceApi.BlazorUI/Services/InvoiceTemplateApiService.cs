@@ -1,5 +1,5 @@
-using InvoiceApi.Application.Dto.Invoice;
-using InvoiceApi.Application.Dto.InvoiceTemplate;
+using InvoiceApi.Contracts.Dto.Invoice;
+using InvoiceApi.Contracts.Dto.InvoiceTemplate;
 using InvoiceApi.BlazorUI.Models;
 using InvoiceApi.Domain.Enums;
 using Microsoft.AspNetCore.Components.Authorization;

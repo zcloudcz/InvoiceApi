@@ -1,5 +1,5 @@
 using Shouldly;
-using InvoiceApi.Application.Common;
+using InvoiceApi.Contracts.Common;
 using InvoiceApi.Domain.Enums;
 
 namespace InvoiceApi.Tests.Unit;

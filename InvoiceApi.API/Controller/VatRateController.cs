@@ -1,4 +1,4 @@
-using InvoiceApi.Application.Dto.VatRate;
+using InvoiceApi.Contracts.Dto.VatRate;
 using InvoiceApi.Application.Service;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;

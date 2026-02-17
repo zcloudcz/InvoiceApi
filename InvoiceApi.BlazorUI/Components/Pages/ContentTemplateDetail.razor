@@ -1,8 +1,7 @@
 @page "/content-templates/create"
 @page "/content-templates/{Id:long}"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
-@rendermode InteractiveServer
-@using InvoiceApi.Application.Dto.ContentTemplate
+@using InvoiceApi.Contracts.Dto.ContentTemplate
 @using InvoiceApi.Domain.Enums
 @using Blazored.TextEditor
 @inject ContentTemplateApiService TemplateService
@@ -94,7 +93,7 @@ else
                                     @GetTemplateTypeLabel(_template.TemplateType)
                                 </MudChip>
                             </MudListItem>
-                            @if (_template.IsDefault)
+                            @if (_template?.IsDefault == true)
                             {
                                 <MudListItem T="string"><MudIcon Icon="@Icons.Material.Filled.Star" Color="Color.Warning" Size="Size.Small" /> @L["ContentTemplate_IsDefault"]</MudListItem>
                             }

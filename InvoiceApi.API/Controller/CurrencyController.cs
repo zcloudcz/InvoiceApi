@@ -1,4 +1,4 @@
-using InvoiceApi.Application.Dto.Currency;
+using InvoiceApi.Contracts.Dto.Currency;
 using InvoiceApi.Application.Service;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -59,8 +59,8 @@ public class CurrencyController : ControllerBase
     /// <response code="200">Returns paged list of currencies</response>
     [HttpGet]
     [Authorize(Roles = "SysAdmin")]
-    [ProducesResponseType(typeof(Application.Common.Pagination.PagedResult<CurrencyDto>), StatusCodes.Status200OK)]
-    public async Task<ActionResult<Application.Common.Pagination.PagedResult<CurrencyDto>>> GetCurrenciesPaged(
+    [ProducesResponseType(typeof(Contracts.Common.Pagination.PagedResult<CurrencyDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<Contracts.Common.Pagination.PagedResult<CurrencyDto>>> GetCurrenciesPaged(
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 10,
         [FromQuery] string? search = null,

@@ -1,7 +1,6 @@
 @page "/content-templates"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
-@rendermode InteractiveServer
-@using InvoiceApi.Application.Dto.ContentTemplate
+@using InvoiceApi.Contracts.Dto.ContentTemplate
 @using InvoiceApi.Domain.Enums
 @inject ContentTemplateApiService TemplateService
 @inject NavigationManager Navigation

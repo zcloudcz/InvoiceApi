@@ -1,4 +1,4 @@
-using InvoiceApi.Application.Dto.NumberSequence;
+using InvoiceApi.Contracts.Dto.NumberSequence;
 using InvoiceApi.Application.Service;
 using InvoiceApi.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;

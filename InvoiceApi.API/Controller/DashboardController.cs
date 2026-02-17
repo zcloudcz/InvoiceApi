@@ -1,5 +1,5 @@
-using InvoiceApi.Application.Dto.AppLog;
-using InvoiceApi.Application.Dto.Dashboard;
+using InvoiceApi.Contracts.Dto.AppLog;
+using InvoiceApi.Contracts.Dto.Dashboard;
 using InvoiceApi.Application.Service;
 using InvoiceApi.Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;

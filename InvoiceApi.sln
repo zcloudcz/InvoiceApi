@@ -23,6 +23,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "InvoiceApi.MigrationTool", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "InvoiceApi.Functions", "InvoiceApi.Functions\InvoiceApi.Functions.csproj", "{0DF5C102-11CA-4301-866C-70D41B2B761A}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "InvoiceApi.Contracts", "InvoiceApi.Contracts\InvoiceApi.Contracts.csproj", "{FEC035BA-C174-499E-813C-0F2810B5FAEB}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -153,6 +155,18 @@ Global
 		{0DF5C102-11CA-4301-866C-70D41B2B761A}.Release|x64.Build.0 = Release|Any CPU
 		{0DF5C102-11CA-4301-866C-70D41B2B761A}.Release|x86.ActiveCfg = Release|Any CPU
 		{0DF5C102-11CA-4301-866C-70D41B2B761A}.Release|x86.Build.0 = Release|Any CPU
+		{FEC035BA-C174-499E-813C-0F2810B5FAEB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FEC035BA-C174-499E-813C-0F2810B5FAEB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FEC035BA-C174-499E-813C-0F2810B5FAEB}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{FEC035BA-C174-499E-813C-0F2810B5FAEB}.Debug|x64.Build.0 = Debug|Any CPU
+		{FEC035BA-C174-499E-813C-0F2810B5FAEB}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{FEC035BA-C174-499E-813C-0F2810B5FAEB}.Debug|x86.Build.0 = Debug|Any CPU
+		{FEC035BA-C174-499E-813C-0F2810B5FAEB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FEC035BA-C174-499E-813C-0F2810B5FAEB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FEC035BA-C174-499E-813C-0F2810B5FAEB}.Release|x64.ActiveCfg = Release|Any CPU
+		{FEC035BA-C174-499E-813C-0F2810B5FAEB}.Release|x64.Build.0 = Release|Any CPU
+		{FEC035BA-C174-499E-813C-0F2810B5FAEB}.Release|x86.ActiveCfg = Release|Any CPU
+		{FEC035BA-C174-499E-813C-0F2810B5FAEB}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

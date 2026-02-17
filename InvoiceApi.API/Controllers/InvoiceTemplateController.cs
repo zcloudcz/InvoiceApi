@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
-using InvoiceApi.Application.Dto.Invoice;
-using InvoiceApi.Application.Dto.InvoiceTemplate;
+using InvoiceApi.Contracts.Dto.Invoice;
+using InvoiceApi.Contracts.Dto.InvoiceTemplate;
 using InvoiceApi.Application.Service;
 using InvoiceApi.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;

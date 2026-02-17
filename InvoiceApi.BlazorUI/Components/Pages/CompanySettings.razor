@@ -13,9 +13,8 @@
 *@
 @page "/company-settings"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "SysAdmin")]
-@rendermode InteractiveServer
-@using InvoiceApi.Application.Dto.CompanySettings
-@using InvoiceApi.Application.Dto.Client
+@using InvoiceApi.Contracts.Dto.CompanySettings
+@using InvoiceApi.Contracts.Dto.Client
 @inject CompanySettingsApiService SettingsService
 @inject CompanyApiService CompanyService
 @inject ISnackbar Snackbar

@@ -1,7 +1,5 @@
 @page "/currencies"
-@* CRITICAL: @rendermode InteractiveServer is REQUIRED for any interactive behavior (button clicks, dialogs, etc.) *@
-@rendermode InteractiveServer
-@using InvoiceApi.Application.Dto.Currency
+@using InvoiceApi.Contracts.Dto.Currency
 @using InvoiceApi.BlazorUI.Services
 @using Microsoft.AspNetCore.Authorization
 @* Use CurrencyApiService instead of raw HttpClient — handles BaseAddress, auth, logging *@
@@ -24,7 +22,9 @@
                           DebounceInterval="300" OnDebounceIntervalElapsed="SearchCurrencies" />
         </MudItem>
         <MudItem xs="12" sm="6" md="3">
-            <MudSelect @bind-Value="_filterActive" Label="@L["Label_Status"].Value" OnChange="SearchCurrencies">
+            @* MudBlazor v8: OnChange removed — use Value + ValueChanged to update filter and reload data *@
+            <MudSelect Value="_filterActive" ValueChanged="@(async (bool? v) => { _filterActive = v; await SearchCurrencies(); })"
+                       Label="@L["Label_Status"].Value">
                 <MudSelectItem Value="@((bool?)null)">@L["Currency_FilterAll"]</MudSelectItem>
                 <MudSelectItem Value="@((bool?)true)">@L["Label_Active"]</MudSelectItem>
                 <MudSelectItem Value="@((bool?)false)">@L["Label_Inactive"]</MudSelectItem>

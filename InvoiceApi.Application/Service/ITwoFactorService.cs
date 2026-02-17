@@ -1,4 +1,4 @@
-using InvoiceApi.Application.Dto.TwoFactor;
+using InvoiceApi.Contracts.Dto.TwoFactor;
 
 namespace InvoiceApi.Application.Service;
 

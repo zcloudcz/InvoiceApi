@@ -1,4 +1,4 @@
-using InvoiceApi.Application.Dto.NumberSequence;
+using InvoiceApi.Contracts.Dto.NumberSequence;
 using InvoiceApi.Domain.Enums;
 
 namespace InvoiceApi.Application.Service;

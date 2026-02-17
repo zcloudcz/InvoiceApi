@@ -1,10 +1,9 @@
 @page "/companies/create"
 @page "/companies/{Id:long}"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "SysAdmin")]
-@rendermode InteractiveServer
-@using InvoiceApi.Application.Dto.Client
-@using InvoiceApi.Application.Dto.User
-@using InvoiceApi.Application.Dto.CompanySettings
+@using InvoiceApi.Contracts.Dto.Client
+@using InvoiceApi.Contracts.Dto.User
+@using InvoiceApi.Contracts.Dto.CompanySettings
 @using InvoiceApi.Domain.Enums
 @inject CompanyApiService CompanyService
 @inject CompanySettingsApiService SettingsService
@@ -140,7 +139,7 @@ else
                     {
                         <MudList T="string" Dense="true">
                             <MudListItem T="string"><strong>@L["Client_RegistrationNumber"]:</strong> @_company!.RegistrationNumber</MudListItem>
-                            @if (!string.IsNullOrEmpty(_company.TradingName))
+                            @if (!string.IsNullOrEmpty(_company?.TradingName))
                             {
                                 <MudListItem T="string"><strong>@L["Client_TradingName"]:</strong> @_company.TradingName</MudListItem>
                             }

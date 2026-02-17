@@ -1,4 +1,4 @@
-using InvoiceApi.Application.Dto.Currency;
+using InvoiceApi.Contracts.Dto.Currency;
 using InvoiceApi.Domain.Entities;
 using ZMapper;
 

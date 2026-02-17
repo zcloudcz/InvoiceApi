@@ -1,4 +1,4 @@
-using InvoiceApi.Application.Dto.VatRate;
+using InvoiceApi.Contracts.Dto.VatRate;
 using InvoiceApi.Domain.Entities;
 using ZMapper;
 

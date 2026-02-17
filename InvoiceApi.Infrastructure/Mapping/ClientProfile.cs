@@ -1,4 +1,4 @@
-using InvoiceApi.Application.Dto.Client;
+using InvoiceApi.Contracts.Dto.Client;
 using InvoiceApi.Domain.Entities;
 using ZMapper;
 

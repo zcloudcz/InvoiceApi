@@ -1,5 +1,5 @@
-using InvoiceApi.Application.Common.Pagination;
-using InvoiceApi.Application.Dto.Client;
+using InvoiceApi.Contracts.Common.Pagination;
+using InvoiceApi.Contracts.Dto.Client;
 using InvoiceApi.Application.Service;
 using InvoiceApi.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;

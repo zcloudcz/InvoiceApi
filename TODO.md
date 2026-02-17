@@ -2,6 +2,78 @@
 
 ## Completed
 
+### PWA Implementation (2026-02-14)
+- [x] Created `wwwroot/manifest.webmanifest` — app metadata (name, icons, theme color `#594ae2`, display: standalone)
+- [x] Created `wwwroot/service-worker.js` — dev pass-through (no caching during development)
+- [x] Created `wwwroot/service-worker.published.js` — production offline-first strategy with versioned cache, API calls excluded, SHA-256 integrity checks from asset manifest
+- [x] Generated `wwwroot/icon-192.png` + `wwwroot/icon-512.png` — purple "INV" placeholder icons (replace with real logo)
+- [x] Updated `wwwroot/index.html` — manifest link, iOS meta tags (`apple-mobile-web-app-capable`, `apple-touch-icon`), theme-color, service worker registration
+- [x] Updated `InvoiceApi.BlazorUI.csproj` — added `<ServiceWorkerAssetsManifest>service-worker-assets.js</ServiceWorkerAssetsManifest>` (generates asset manifest with hashes at publish time)
+- [x] Build: 0 errors, Tests: 323 pass (318 unit + 5 integration)
+
+### Azure Functions Deployment Guide (2026-02-13)
+- [x] Created `DEPLOYMENT-AZURE-FUNCTIONS.md` — comprehensive deployment guide covering:
+  - Architecture overview (HTTP catch-all + 2 timer triggers)
+  - Azure resource creation (Resource Group, Function App, SQL Server, Storage, App Insights)
+  - Application Settings reference (all required + optional configuration keys)
+  - Database setup (EF Core migrations — manual, not auto-migrate)
+  - Deploy via Azure CLI (`func azure functionapp publish`)
+  - Deploy via GitHub Actions CI/CD (build → test → deploy → migrate)
+  - Deploy via Visual Studio / Rider
+  - CORS configuration (Azure Portal, not in code)
+  - Blazor WASM connection (appsettings.json BaseUrl)
+  - Monitoring (Application Insights, KQL queries, live log streaming)
+  - Scaling (Consumption vs Premium plan, timer trigger considerations)
+  - Security checklist (Key Vault, Managed Identity, TLS, firewall)
+  - Troubleshooting (common issues table)
+  - Cost estimation (Consumption ~$11/month, Premium ~$215/month)
+  - Quick reference deployment cheatsheet
+
+### APPKA.md Re-Analysis v2 (2026-02-13)
+- [x] Complete rewrite of mobile app strategy after Blazor WASM migration completion
+- [x] Evaluated 3 options: **PWA** (1-2 days), **MAUI Blazor Hybrid** (3-6 weeks), **Native rewrite** (3-6 months)
+- [x] Updated stats: 31 pages, 12 shared components, 15 API services, 323 tests (318 unit + 5 integration)
+- [x] **Recommendation: PWA first** — trivial to add on existing WASM, covers 95% of mobile B2B needs
+- [x] Detailed comparison table (effort, code sharing, offline, native API, App Store, maintenance)
+- [x] Phased strategy: Phase 1 PWA (immediate) → Phase 2 mobile optimization (optional) → Phase 3 MAUI (only if business requires)
+- [x] Technical notes: service worker caching, WASM bundle optimization, MudBlazor responsive, Quill mobile compatibility
+
+### Blazor Server → Standalone WebAssembly Migration (2026-02-13)
+- [x] **Phase 1: InvoiceApi.Contracts Library** — extracted 53 DTOs + Pagination + DueDateCalculator from Application into zero-NuGet-dependency Contracts library
+  - Created `InvoiceApi.Contracts.csproj` (net10.0, references Domain for enums)
+  - Updated `Application.csproj` → references Contracts
+  - Updated `BlazorUI.csproj` → references Contracts + Domain (no Application)
+  - Updated ~107 files across solution (using statement migration)
+  - Added Contracts project to solution
+- [x] **Phase 2: WASM Project Conversion** — converted BlazorUI from Blazor Server to Standalone WebAssembly
+  - Changed SDK: `Microsoft.NET.Sdk.Web` → `Microsoft.NET.Sdk.BlazorWebAssembly`
+  - Added NuGet packages: `Microsoft.AspNetCore.Components.WebAssembly`, `Microsoft.AspNetCore.Components.Authorization`, `Microsoft.Extensions.Http`, `Blazored.LocalStorage`
+  - Rewrote `Program.cs` — `WebAssemblyHostBuilder` replacing `WebApplication.CreateBuilder`
+  - Created `wwwroot/index.html` — static HTML host page (replaces server-rendered App.razor shell)
+  - Created `wwwroot/appsettings.json` — configurable API base URL
+  - Rewrote `App.razor` — pure Blazor router (merged with Routes.razor)
+  - Removed `Routes.razor` (content merged into App.razor)
+  - Removed `@rendermode InteractiveServer` from all 28 page files
+  - Removed `@using static Microsoft.AspNetCore.Components.Web.RenderMode` from _Imports.razor
+  - Updated `Error.razor` — removed server-only HttpContext dependency
+- [x] **Phase 3: Authentication Rewrite** — replaced ProtectedSessionStorage with Blazored.LocalStorage
+  - `CustomAuthenticationStateProvider` now uses `ILocalStorageService` for JWT persistence
+  - All session operations (Get/Set/Delete) translated to localStorage equivalents
+  - Impersonation data stored as plain strings in localStorage
+- [x] **Phase 4: Culture Switching Rewrite** — replaced server-side cookie with localStorage
+  - `LanguageSwitcher.razor` now saves culture to localStorage via JS interop
+  - `Program.cs` reads stored culture on startup before rendering
+  - Page reload applies new culture via `NavigateTo(uri, forceLoad: true)`
+- [x] **Phase 5: CORS Configuration** — added WASM dev origins (localhost:7212, localhost:5145)
+- [x] **Phase 6: Verification** — full solution builds (0 errors), all 319 tests pass (318 unit + 1 integration)
+- [x] **Runtime Fixes** — resolved WASM startup crash and localization issues:
+  - Added `<BlazorWebAssemblyLoadAllGlobalizationData>true</BlazorWebAssemblyLoadAllGlobalizationData>` — WASM needs full ICU data for dynamic culture switching
+  - Fixed `AddLocalization()` — removed `ResourcesPath = "Resources"` (embedded resource name derives from C# type namespace, not file path)
+  - Removed `AddCascadingAuthenticationState()` from Program.cs — conflicts with component-based `<CascadingAuthenticationState>` in App.razor
+  - Added `window.blazorCulture` JS helper in index.html for safe localStorage culture access
+  - Removed redundant `<CascadingAuthenticationState>` from MainLayout.razor
+  - Changed `RedirectToLogin` to use SPA navigation (no `forceLoad: true` — avoids full WASM reload)
+
 ### Azure Functions Migration — InvoiceApi.Functions Project (2026-02-12)
 - [x] Created `InvoiceApi.Functions` project (Azure Functions v4 Isolated Worker Model with ASP.NET Core Integration)
 - [x] `InvoiceApi.Functions.csproj` — NuGet refs (Worker, Sdk, Http.AspNetCore, Timer) + project refs (API, Infrastructure, Application)
@@ -451,9 +523,23 @@
 - [x] **DefaultFocus** — `DefaultFocus="DefaultFocus.FirstChild"` on MudDialog so first field is auto-focused on open
 - [x] Build: 0 errors, Tests: 318 pass
 
+### Build Warnings Cleanup (2026-02-13)
+- [x] **FolderPicker RZ10012** — fixed `MudDialogContent`/`MudDialogActions` (not real components) → wrapped in `<MudDialog>` with `<DialogContent>`/`<DialogActions>`
+- [x] **MUD0002 Title (16 instances)** — changed PascalCase `Title=` to lowercase `title=` on MudIconButton across AddressListEditor, BankAccountListEditor, FolderPicker, Login, Register
+- [x] **MUD0002 OnChange (7 instances)** — replaced deprecated `@bind-Value` + `OnChange` pattern with `Value` + `ValueChanged` on MudSelect in Currencies, InvoiceTemplates, ClientDetail, Invoices
+- [x] **MUD0002 Dense (4 instances)** — replaced `Dense="true"` with `Margin="Margin.Dense"` on MudSelect, MudTextField, MudDatePicker in Logs
+- [x] **CS8602 nullable (8 instances)** — added `?.` null-conditional operators in ContentTemplateDetail, ClientDetail, CompanyDetail, InvoiceTemplateDetail, InvoiceDetail
+- [x] Build: **0 warnings** (down from 35), 0 errors, Tests: 319 pass (318 unit + 1 integration)
+
 ## Pending
 
 ### Multi-Tenant Roadmap — Remaining Tasks
-- [ ] **Phase 6.7: End-to-End Testing** — Manual E2E testing: SysAdmin creates company → provisions → creates user → user logs in → creates invoice → SysAdmin switches companies → verifies isolation
+- [x] **Phase 6.7: E2E Integration Tests** — Implemented real integration tests using `WebApplicationFactory<Program>` + InMemoryDatabase:
+  - `InvoiceApiFactory`: custom factory replacing SQL Server with InMemory, TestTenantProvisioningService, removing background services
+  - `TestTenantProvisioningService`: test double that flips IsProvisioned/IsActive flags (no real DB creation)
+  - `AuthHelper`: JWT login helpers for SysAdmin and arbitrary credentials
+  - 5 integration tests: SysAdmin login + company access, full multi-tenant lifecycle (create→provision→impersonate→access), unauthenticated 401, token role validation, deactivated tenant 403
+  - Program.cs: migration guard (`if (!app.Environment.IsEnvironment("Testing"))`) + `public partial class Program { }`
+  - Total: **323 tests** (318 unit + 5 integration), all passing
 - [x] **Cleanup: Remove ApplicationDbContext** — already completed during Phase 3 migration; all .cs files use MasterDbContext/TenantDbContext; AuditTrailTests already on MasterDbContext; no orphaned migration files
 

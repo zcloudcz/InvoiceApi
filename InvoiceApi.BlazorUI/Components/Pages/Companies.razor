@@ -1,8 +1,7 @@
 @page "/companies"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "SysAdmin")]
-@rendermode InteractiveServer
-@using InvoiceApi.Application.Dto.Client
-@using InvoiceApi.Application.Dto.CompanySettings
+@using InvoiceApi.Contracts.Dto.Client
+@using InvoiceApi.Contracts.Dto.CompanySettings
 @inject CompanyApiService CompanyService
 @inject CompanySettingsApiService SettingsService
 @inject NavigationManager Navigation

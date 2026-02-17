@@ -8,14 +8,15 @@
     - CurrentFolderId (string?) — currently selected folder (for highlighting)
 *@
 
-@using InvoiceApi.Application.Dto.CloudStorage
+@using InvoiceApi.Contracts.Dto.CloudStorage
 @using InvoiceApi.BlazorUI.Services
 @using InvoiceApi.Domain.Enums
 @using Microsoft.Extensions.Localization
 @inject CloudStorageApiService CloudStorageApi
 @inject IStringLocalizer<InvoiceApi.BlazorUI.SharedResource> L
 
-<MudDialogContent>
+<MudDialog>
+<DialogContent>
     @* Breadcrumb navigation — shows the path from root to current folder *@
     <MudBreadcrumbs Items="_breadcrumbs" Class="mb-2">
         <ItemTemplate Context="item">
@@ -49,15 +50,15 @@
                         <MudIconButton Icon="@Icons.Material.Filled.ChevronRight"
                                        Size="Size.Small"
                                        OnClick="@(() => NavigateIntoFolder(folder))"
-                                       Title="@L["CloudStorage_BrowseSubfolders"]" />
+                                       title="@L["CloudStorage_BrowseSubfolders"]" />
                     </div>
                 </MudListItem>
             }
         </MudList>
     }
-</MudDialogContent>
+</DialogContent>
 
-<MudDialogActions>
+<DialogActions>
     <MudButton OnClick="SelectRoot" Color="Color.Default" Variant="Variant.Text">
         @L["CloudStorage_UseRoot"]
     </MudButton>
@@ -68,7 +69,8 @@
                Disabled="@(_selectedFolder == null)">
         @L["CloudStorage_SelectFolder"]
     </MudButton>
-</MudDialogActions>
+</DialogActions>
+</MudDialog>
 
 @code {
     /// <summary>

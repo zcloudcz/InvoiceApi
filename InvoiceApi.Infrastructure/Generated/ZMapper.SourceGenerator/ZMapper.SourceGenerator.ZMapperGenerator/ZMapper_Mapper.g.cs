@@ -15,9 +15,9 @@ namespace ZMapper;
 public sealed class Mapper : IMapper
 {
 
-        public InvoiceApi.Application.Dto.Client.AddressDto Map_Address_To_AddressDto(InvoiceApi.Domain.Entities.Address source)
+        public InvoiceApi.Contracts.Dto.Client.AddressDto Map_Address_To_AddressDto(InvoiceApi.Domain.Entities.Address source)
         {
-            var destination = new InvoiceApi.Application.Dto.Client.AddressDto();
+            var destination = new InvoiceApi.Contracts.Dto.Client.AddressDto();
             destination.Id = source.Id;
             destination.AddressType = source.AddressType;
             destination.Street = source.Street;
@@ -29,7 +29,7 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public InvoiceApi.Application.Dto.Client.AddressDto Map_Address_To_AddressDto(InvoiceApi.Domain.Entities.Address source, InvoiceApi.Application.Dto.Client.AddressDto destination)
+        public InvoiceApi.Contracts.Dto.Client.AddressDto Map_Address_To_AddressDto(InvoiceApi.Domain.Entities.Address source, InvoiceApi.Contracts.Dto.Client.AddressDto destination)
         {
             destination.Id = source.Id;
             destination.AddressType = source.AddressType;
@@ -42,9 +42,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public InvoiceApi.Application.Dto.Client.AddressDto[] MapArray_Address_To_AddressDto(System.ReadOnlySpan<InvoiceApi.Domain.Entities.Address> source)
+        public InvoiceApi.Contracts.Dto.Client.AddressDto[] MapArray_Address_To_AddressDto(System.ReadOnlySpan<InvoiceApi.Domain.Entities.Address> source)
         {
-            var destination = new InvoiceApi.Application.Dto.Client.AddressDto[source.Length];
+            var destination = new InvoiceApi.Contracts.Dto.Client.AddressDto[source.Length];
             for (int i = 0; i < source.Length; i++)
             {
                 destination[i] = source[i].ToAddressDto();
@@ -53,9 +53,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public List<InvoiceApi.Application.Dto.Client.AddressDto> MapList_Address_To_AddressDto(System.Collections.Generic.IReadOnlyList<InvoiceApi.Domain.Entities.Address> source)
+        public List<InvoiceApi.Contracts.Dto.Client.AddressDto> MapList_Address_To_AddressDto(System.Collections.Generic.IReadOnlyList<InvoiceApi.Domain.Entities.Address> source)
         {
-            var destination = new List<InvoiceApi.Application.Dto.Client.AddressDto>(source.Count);
+            var destination = new List<InvoiceApi.Contracts.Dto.Client.AddressDto>(source.Count);
             for (int i = 0; i < source.Count; i++)
             {
                 destination.Add(source[i].ToAddressDto());
@@ -63,9 +63,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public List<InvoiceApi.Application.Dto.Client.AddressDto> MapList_Address_To_AddressDto_Enumerable(System.Collections.Generic.IEnumerable<InvoiceApi.Domain.Entities.Address> source)
+        public List<InvoiceApi.Contracts.Dto.Client.AddressDto> MapList_Address_To_AddressDto_Enumerable(System.Collections.Generic.IEnumerable<InvoiceApi.Domain.Entities.Address> source)
         {
-            var destination = new List<InvoiceApi.Application.Dto.Client.AddressDto>();
+            var destination = new List<InvoiceApi.Contracts.Dto.Client.AddressDto>();
             foreach (var item in source)
             {
                 destination.Add(item.ToAddressDto());
@@ -73,9 +73,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public InvoiceApi.Application.Dto.Client.ContactDto Map_Contact_To_ContactDto(InvoiceApi.Domain.Entities.Contact source)
+        public InvoiceApi.Contracts.Dto.Client.ContactDto Map_Contact_To_ContactDto(InvoiceApi.Domain.Entities.Contact source)
         {
-            var destination = new InvoiceApi.Application.Dto.Client.ContactDto();
+            var destination = new InvoiceApi.Contracts.Dto.Client.ContactDto();
             destination.Id = source.Id;
             destination.ContactType = source.ContactType;
             destination.ContactValue = source.ContactValue;
@@ -84,7 +84,7 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public InvoiceApi.Application.Dto.Client.ContactDto Map_Contact_To_ContactDto(InvoiceApi.Domain.Entities.Contact source, InvoiceApi.Application.Dto.Client.ContactDto destination)
+        public InvoiceApi.Contracts.Dto.Client.ContactDto Map_Contact_To_ContactDto(InvoiceApi.Domain.Entities.Contact source, InvoiceApi.Contracts.Dto.Client.ContactDto destination)
         {
             destination.Id = source.Id;
             destination.ContactType = source.ContactType;
@@ -94,9 +94,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public InvoiceApi.Application.Dto.Client.ContactDto[] MapArray_Contact_To_ContactDto(System.ReadOnlySpan<InvoiceApi.Domain.Entities.Contact> source)
+        public InvoiceApi.Contracts.Dto.Client.ContactDto[] MapArray_Contact_To_ContactDto(System.ReadOnlySpan<InvoiceApi.Domain.Entities.Contact> source)
         {
-            var destination = new InvoiceApi.Application.Dto.Client.ContactDto[source.Length];
+            var destination = new InvoiceApi.Contracts.Dto.Client.ContactDto[source.Length];
             for (int i = 0; i < source.Length; i++)
             {
                 destination[i] = source[i].ToContactDto();
@@ -105,9 +105,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public List<InvoiceApi.Application.Dto.Client.ContactDto> MapList_Contact_To_ContactDto(System.Collections.Generic.IReadOnlyList<InvoiceApi.Domain.Entities.Contact> source)
+        public List<InvoiceApi.Contracts.Dto.Client.ContactDto> MapList_Contact_To_ContactDto(System.Collections.Generic.IReadOnlyList<InvoiceApi.Domain.Entities.Contact> source)
         {
-            var destination = new List<InvoiceApi.Application.Dto.Client.ContactDto>(source.Count);
+            var destination = new List<InvoiceApi.Contracts.Dto.Client.ContactDto>(source.Count);
             for (int i = 0; i < source.Count; i++)
             {
                 destination.Add(source[i].ToContactDto());
@@ -115,9 +115,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public List<InvoiceApi.Application.Dto.Client.ContactDto> MapList_Contact_To_ContactDto_Enumerable(System.Collections.Generic.IEnumerable<InvoiceApi.Domain.Entities.Contact> source)
+        public List<InvoiceApi.Contracts.Dto.Client.ContactDto> MapList_Contact_To_ContactDto_Enumerable(System.Collections.Generic.IEnumerable<InvoiceApi.Domain.Entities.Contact> source)
         {
-            var destination = new List<InvoiceApi.Application.Dto.Client.ContactDto>();
+            var destination = new List<InvoiceApi.Contracts.Dto.Client.ContactDto>();
             foreach (var item in source)
             {
                 destination.Add(item.ToContactDto());
@@ -125,9 +125,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public InvoiceApi.Application.Dto.Client.BankAccountDto Map_BankAccount_To_BankAccountDto(InvoiceApi.Domain.Entities.BankAccount source)
+        public InvoiceApi.Contracts.Dto.Client.BankAccountDto Map_BankAccount_To_BankAccountDto(InvoiceApi.Domain.Entities.BankAccount source)
         {
-            var destination = new InvoiceApi.Application.Dto.Client.BankAccountDto();
+            var destination = new InvoiceApi.Contracts.Dto.Client.BankAccountDto();
             destination.Id = source.Id;
             destination.Label = source.Label;
             destination.BankName = source.BankName;
@@ -139,7 +139,7 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public InvoiceApi.Application.Dto.Client.BankAccountDto Map_BankAccount_To_BankAccountDto(InvoiceApi.Domain.Entities.BankAccount source, InvoiceApi.Application.Dto.Client.BankAccountDto destination)
+        public InvoiceApi.Contracts.Dto.Client.BankAccountDto Map_BankAccount_To_BankAccountDto(InvoiceApi.Domain.Entities.BankAccount source, InvoiceApi.Contracts.Dto.Client.BankAccountDto destination)
         {
             destination.Id = source.Id;
             destination.Label = source.Label;
@@ -152,9 +152,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public InvoiceApi.Application.Dto.Client.BankAccountDto[] MapArray_BankAccount_To_BankAccountDto(System.ReadOnlySpan<InvoiceApi.Domain.Entities.BankAccount> source)
+        public InvoiceApi.Contracts.Dto.Client.BankAccountDto[] MapArray_BankAccount_To_BankAccountDto(System.ReadOnlySpan<InvoiceApi.Domain.Entities.BankAccount> source)
         {
-            var destination = new InvoiceApi.Application.Dto.Client.BankAccountDto[source.Length];
+            var destination = new InvoiceApi.Contracts.Dto.Client.BankAccountDto[source.Length];
             for (int i = 0; i < source.Length; i++)
             {
                 destination[i] = source[i].ToBankAccountDto();
@@ -163,9 +163,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public List<InvoiceApi.Application.Dto.Client.BankAccountDto> MapList_BankAccount_To_BankAccountDto(System.Collections.Generic.IReadOnlyList<InvoiceApi.Domain.Entities.BankAccount> source)
+        public List<InvoiceApi.Contracts.Dto.Client.BankAccountDto> MapList_BankAccount_To_BankAccountDto(System.Collections.Generic.IReadOnlyList<InvoiceApi.Domain.Entities.BankAccount> source)
         {
-            var destination = new List<InvoiceApi.Application.Dto.Client.BankAccountDto>(source.Count);
+            var destination = new List<InvoiceApi.Contracts.Dto.Client.BankAccountDto>(source.Count);
             for (int i = 0; i < source.Count; i++)
             {
                 destination.Add(source[i].ToBankAccountDto());
@@ -173,9 +173,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public List<InvoiceApi.Application.Dto.Client.BankAccountDto> MapList_BankAccount_To_BankAccountDto_Enumerable(System.Collections.Generic.IEnumerable<InvoiceApi.Domain.Entities.BankAccount> source)
+        public List<InvoiceApi.Contracts.Dto.Client.BankAccountDto> MapList_BankAccount_To_BankAccountDto_Enumerable(System.Collections.Generic.IEnumerable<InvoiceApi.Domain.Entities.BankAccount> source)
         {
-            var destination = new List<InvoiceApi.Application.Dto.Client.BankAccountDto>();
+            var destination = new List<InvoiceApi.Contracts.Dto.Client.BankAccountDto>();
             foreach (var item in source)
             {
                 destination.Add(item.ToBankAccountDto());
@@ -183,9 +183,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public InvoiceApi.Application.Dto.Client.BillingSettingsDto Map_BillingSettings_To_BillingSettingsDto(InvoiceApi.Domain.Entities.BillingSettings source)
+        public InvoiceApi.Contracts.Dto.Client.BillingSettingsDto Map_BillingSettings_To_BillingSettingsDto(InvoiceApi.Domain.Entities.BillingSettings source)
         {
-            var destination = new InvoiceApi.Application.Dto.Client.BillingSettingsDto();
+            var destination = new InvoiceApi.Contracts.Dto.Client.BillingSettingsDto();
             destination.Id = source.Id;
             destination.DueDateCalculationType = source.DueDateCalculationType;
             destination.DueDays = source.DueDays;
@@ -201,7 +201,7 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public InvoiceApi.Application.Dto.Client.BillingSettingsDto Map_BillingSettings_To_BillingSettingsDto(InvoiceApi.Domain.Entities.BillingSettings source, InvoiceApi.Application.Dto.Client.BillingSettingsDto destination)
+        public InvoiceApi.Contracts.Dto.Client.BillingSettingsDto Map_BillingSettings_To_BillingSettingsDto(InvoiceApi.Domain.Entities.BillingSettings source, InvoiceApi.Contracts.Dto.Client.BillingSettingsDto destination)
         {
             destination.Id = source.Id;
             destination.DueDateCalculationType = source.DueDateCalculationType;
@@ -218,9 +218,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public InvoiceApi.Application.Dto.Client.BillingSettingsDto[] MapArray_BillingSettings_To_BillingSettingsDto(System.ReadOnlySpan<InvoiceApi.Domain.Entities.BillingSettings> source)
+        public InvoiceApi.Contracts.Dto.Client.BillingSettingsDto[] MapArray_BillingSettings_To_BillingSettingsDto(System.ReadOnlySpan<InvoiceApi.Domain.Entities.BillingSettings> source)
         {
-            var destination = new InvoiceApi.Application.Dto.Client.BillingSettingsDto[source.Length];
+            var destination = new InvoiceApi.Contracts.Dto.Client.BillingSettingsDto[source.Length];
             for (int i = 0; i < source.Length; i++)
             {
                 destination[i] = source[i].ToBillingSettingsDto();
@@ -229,9 +229,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public List<InvoiceApi.Application.Dto.Client.BillingSettingsDto> MapList_BillingSettings_To_BillingSettingsDto(System.Collections.Generic.IReadOnlyList<InvoiceApi.Domain.Entities.BillingSettings> source)
+        public List<InvoiceApi.Contracts.Dto.Client.BillingSettingsDto> MapList_BillingSettings_To_BillingSettingsDto(System.Collections.Generic.IReadOnlyList<InvoiceApi.Domain.Entities.BillingSettings> source)
         {
-            var destination = new List<InvoiceApi.Application.Dto.Client.BillingSettingsDto>(source.Count);
+            var destination = new List<InvoiceApi.Contracts.Dto.Client.BillingSettingsDto>(source.Count);
             for (int i = 0; i < source.Count; i++)
             {
                 destination.Add(source[i].ToBillingSettingsDto());
@@ -239,9 +239,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public List<InvoiceApi.Application.Dto.Client.BillingSettingsDto> MapList_BillingSettings_To_BillingSettingsDto_Enumerable(System.Collections.Generic.IEnumerable<InvoiceApi.Domain.Entities.BillingSettings> source)
+        public List<InvoiceApi.Contracts.Dto.Client.BillingSettingsDto> MapList_BillingSettings_To_BillingSettingsDto_Enumerable(System.Collections.Generic.IEnumerable<InvoiceApi.Domain.Entities.BillingSettings> source)
         {
-            var destination = new List<InvoiceApi.Application.Dto.Client.BillingSettingsDto>();
+            var destination = new List<InvoiceApi.Contracts.Dto.Client.BillingSettingsDto>();
             foreach (var item in source)
             {
                 destination.Add(item.ToBillingSettingsDto());
@@ -249,9 +249,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public InvoiceApi.Application.Dto.Client.ClientDto Map_Client_To_ClientDto(InvoiceApi.Domain.Entities.Client source)
+        public InvoiceApi.Contracts.Dto.Client.ClientDto Map_Client_To_ClientDto(InvoiceApi.Domain.Entities.Client source)
         {
-            var destination = new InvoiceApi.Application.Dto.Client.ClientDto();
+            var destination = new InvoiceApi.Contracts.Dto.Client.ClientDto();
             destination.Id = source.Id;
             destination.RegistrationNumber = source.RegistrationNumber;
             destination.TaxNumber = source.TaxNumber;
@@ -278,7 +278,7 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public InvoiceApi.Application.Dto.Client.ClientDto Map_Client_To_ClientDto(InvoiceApi.Domain.Entities.Client source, InvoiceApi.Application.Dto.Client.ClientDto destination)
+        public InvoiceApi.Contracts.Dto.Client.ClientDto Map_Client_To_ClientDto(InvoiceApi.Domain.Entities.Client source, InvoiceApi.Contracts.Dto.Client.ClientDto destination)
         {
             destination.Id = source.Id;
             destination.RegistrationNumber = source.RegistrationNumber;
@@ -306,9 +306,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public InvoiceApi.Application.Dto.Client.ClientDto[] MapArray_Client_To_ClientDto(System.ReadOnlySpan<InvoiceApi.Domain.Entities.Client> source)
+        public InvoiceApi.Contracts.Dto.Client.ClientDto[] MapArray_Client_To_ClientDto(System.ReadOnlySpan<InvoiceApi.Domain.Entities.Client> source)
         {
-            var destination = new InvoiceApi.Application.Dto.Client.ClientDto[source.Length];
+            var destination = new InvoiceApi.Contracts.Dto.Client.ClientDto[source.Length];
             for (int i = 0; i < source.Length; i++)
             {
                 destination[i] = source[i].ToClientDto();
@@ -317,9 +317,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public List<InvoiceApi.Application.Dto.Client.ClientDto> MapList_Client_To_ClientDto(System.Collections.Generic.IReadOnlyList<InvoiceApi.Domain.Entities.Client> source)
+        public List<InvoiceApi.Contracts.Dto.Client.ClientDto> MapList_Client_To_ClientDto(System.Collections.Generic.IReadOnlyList<InvoiceApi.Domain.Entities.Client> source)
         {
-            var destination = new List<InvoiceApi.Application.Dto.Client.ClientDto>(source.Count);
+            var destination = new List<InvoiceApi.Contracts.Dto.Client.ClientDto>(source.Count);
             for (int i = 0; i < source.Count; i++)
             {
                 destination.Add(source[i].ToClientDto());
@@ -327,9 +327,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public List<InvoiceApi.Application.Dto.Client.ClientDto> MapList_Client_To_ClientDto_Enumerable(System.Collections.Generic.IEnumerable<InvoiceApi.Domain.Entities.Client> source)
+        public List<InvoiceApi.Contracts.Dto.Client.ClientDto> MapList_Client_To_ClientDto_Enumerable(System.Collections.Generic.IEnumerable<InvoiceApi.Domain.Entities.Client> source)
         {
-            var destination = new List<InvoiceApi.Application.Dto.Client.ClientDto>();
+            var destination = new List<InvoiceApi.Contracts.Dto.Client.ClientDto>();
             foreach (var item in source)
             {
                 destination.Add(item.ToClientDto());
@@ -337,9 +337,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public InvoiceApi.Application.Dto.ContentTemplate.ContentTemplateDto Map_ContentTemplate_To_ContentTemplateDto(InvoiceApi.Domain.Entities.ContentTemplate source)
+        public InvoiceApi.Contracts.Dto.ContentTemplate.ContentTemplateDto Map_ContentTemplate_To_ContentTemplateDto(InvoiceApi.Domain.Entities.ContentTemplate source)
         {
-            var destination = new InvoiceApi.Application.Dto.ContentTemplate.ContentTemplateDto();
+            var destination = new InvoiceApi.Contracts.Dto.ContentTemplate.ContentTemplateDto();
             destination.Id = source.Id;
             destination.Name = source.Name;
             destination.Subject = source.Subject;
@@ -353,7 +353,7 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public InvoiceApi.Application.Dto.ContentTemplate.ContentTemplateDto Map_ContentTemplate_To_ContentTemplateDto(InvoiceApi.Domain.Entities.ContentTemplate source, InvoiceApi.Application.Dto.ContentTemplate.ContentTemplateDto destination)
+        public InvoiceApi.Contracts.Dto.ContentTemplate.ContentTemplateDto Map_ContentTemplate_To_ContentTemplateDto(InvoiceApi.Domain.Entities.ContentTemplate source, InvoiceApi.Contracts.Dto.ContentTemplate.ContentTemplateDto destination)
         {
             destination.Id = source.Id;
             destination.Name = source.Name;
@@ -368,9 +368,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public InvoiceApi.Application.Dto.ContentTemplate.ContentTemplateDto[] MapArray_ContentTemplate_To_ContentTemplateDto(System.ReadOnlySpan<InvoiceApi.Domain.Entities.ContentTemplate> source)
+        public InvoiceApi.Contracts.Dto.ContentTemplate.ContentTemplateDto[] MapArray_ContentTemplate_To_ContentTemplateDto(System.ReadOnlySpan<InvoiceApi.Domain.Entities.ContentTemplate> source)
         {
-            var destination = new InvoiceApi.Application.Dto.ContentTemplate.ContentTemplateDto[source.Length];
+            var destination = new InvoiceApi.Contracts.Dto.ContentTemplate.ContentTemplateDto[source.Length];
             for (int i = 0; i < source.Length; i++)
             {
                 destination[i] = source[i].ToContentTemplateDto();
@@ -379,9 +379,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public List<InvoiceApi.Application.Dto.ContentTemplate.ContentTemplateDto> MapList_ContentTemplate_To_ContentTemplateDto(System.Collections.Generic.IReadOnlyList<InvoiceApi.Domain.Entities.ContentTemplate> source)
+        public List<InvoiceApi.Contracts.Dto.ContentTemplate.ContentTemplateDto> MapList_ContentTemplate_To_ContentTemplateDto(System.Collections.Generic.IReadOnlyList<InvoiceApi.Domain.Entities.ContentTemplate> source)
         {
-            var destination = new List<InvoiceApi.Application.Dto.ContentTemplate.ContentTemplateDto>(source.Count);
+            var destination = new List<InvoiceApi.Contracts.Dto.ContentTemplate.ContentTemplateDto>(source.Count);
             for (int i = 0; i < source.Count; i++)
             {
                 destination.Add(source[i].ToContentTemplateDto());
@@ -389,9 +389,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public List<InvoiceApi.Application.Dto.ContentTemplate.ContentTemplateDto> MapList_ContentTemplate_To_ContentTemplateDto_Enumerable(System.Collections.Generic.IEnumerable<InvoiceApi.Domain.Entities.ContentTemplate> source)
+        public List<InvoiceApi.Contracts.Dto.ContentTemplate.ContentTemplateDto> MapList_ContentTemplate_To_ContentTemplateDto_Enumerable(System.Collections.Generic.IEnumerable<InvoiceApi.Domain.Entities.ContentTemplate> source)
         {
-            var destination = new List<InvoiceApi.Application.Dto.ContentTemplate.ContentTemplateDto>();
+            var destination = new List<InvoiceApi.Contracts.Dto.ContentTemplate.ContentTemplateDto>();
             foreach (var item in source)
             {
                 destination.Add(item.ToContentTemplateDto());
@@ -399,9 +399,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public InvoiceApi.Application.Dto.Currency.CurrencyDto Map_Currency_To_CurrencyDto(InvoiceApi.Domain.Entities.Currency source)
+        public InvoiceApi.Contracts.Dto.Currency.CurrencyDto Map_Currency_To_CurrencyDto(InvoiceApi.Domain.Entities.Currency source)
         {
-            var destination = new InvoiceApi.Application.Dto.Currency.CurrencyDto();
+            var destination = new InvoiceApi.Contracts.Dto.Currency.CurrencyDto();
             destination.Id = source.Id;
             destination.Code = source.Code;
             destination.Name = source.Name;
@@ -415,7 +415,7 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public InvoiceApi.Application.Dto.Currency.CurrencyDto Map_Currency_To_CurrencyDto(InvoiceApi.Domain.Entities.Currency source, InvoiceApi.Application.Dto.Currency.CurrencyDto destination)
+        public InvoiceApi.Contracts.Dto.Currency.CurrencyDto Map_Currency_To_CurrencyDto(InvoiceApi.Domain.Entities.Currency source, InvoiceApi.Contracts.Dto.Currency.CurrencyDto destination)
         {
             destination.Id = source.Id;
             destination.Code = source.Code;
@@ -430,9 +430,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public InvoiceApi.Application.Dto.Currency.CurrencyDto[] MapArray_Currency_To_CurrencyDto(System.ReadOnlySpan<InvoiceApi.Domain.Entities.Currency> source)
+        public InvoiceApi.Contracts.Dto.Currency.CurrencyDto[] MapArray_Currency_To_CurrencyDto(System.ReadOnlySpan<InvoiceApi.Domain.Entities.Currency> source)
         {
-            var destination = new InvoiceApi.Application.Dto.Currency.CurrencyDto[source.Length];
+            var destination = new InvoiceApi.Contracts.Dto.Currency.CurrencyDto[source.Length];
             for (int i = 0; i < source.Length; i++)
             {
                 destination[i] = source[i].ToCurrencyDto();
@@ -441,9 +441,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public List<InvoiceApi.Application.Dto.Currency.CurrencyDto> MapList_Currency_To_CurrencyDto(System.Collections.Generic.IReadOnlyList<InvoiceApi.Domain.Entities.Currency> source)
+        public List<InvoiceApi.Contracts.Dto.Currency.CurrencyDto> MapList_Currency_To_CurrencyDto(System.Collections.Generic.IReadOnlyList<InvoiceApi.Domain.Entities.Currency> source)
         {
-            var destination = new List<InvoiceApi.Application.Dto.Currency.CurrencyDto>(source.Count);
+            var destination = new List<InvoiceApi.Contracts.Dto.Currency.CurrencyDto>(source.Count);
             for (int i = 0; i < source.Count; i++)
             {
                 destination.Add(source[i].ToCurrencyDto());
@@ -451,9 +451,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public List<InvoiceApi.Application.Dto.Currency.CurrencyDto> MapList_Currency_To_CurrencyDto_Enumerable(System.Collections.Generic.IEnumerable<InvoiceApi.Domain.Entities.Currency> source)
+        public List<InvoiceApi.Contracts.Dto.Currency.CurrencyDto> MapList_Currency_To_CurrencyDto_Enumerable(System.Collections.Generic.IEnumerable<InvoiceApi.Domain.Entities.Currency> source)
         {
-            var destination = new List<InvoiceApi.Application.Dto.Currency.CurrencyDto>();
+            var destination = new List<InvoiceApi.Contracts.Dto.Currency.CurrencyDto>();
             foreach (var item in source)
             {
                 destination.Add(item.ToCurrencyDto());
@@ -461,9 +461,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public InvoiceApi.Application.Dto.Invoice.InvoiceItemDto Map_InvoiceItem_To_InvoiceItemDto(InvoiceApi.Domain.Entities.InvoiceItem source)
+        public InvoiceApi.Contracts.Dto.Invoice.InvoiceItemDto Map_InvoiceItem_To_InvoiceItemDto(InvoiceApi.Domain.Entities.InvoiceItem source)
         {
-            var destination = new InvoiceApi.Application.Dto.Invoice.InvoiceItemDto();
+            var destination = new InvoiceApi.Contracts.Dto.Invoice.InvoiceItemDto();
             destination.Id = source.Id;
             destination.OrderIndex = source.OrderIndex;
             destination.Description = source.Description;
@@ -480,7 +480,7 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public InvoiceApi.Application.Dto.Invoice.InvoiceItemDto Map_InvoiceItem_To_InvoiceItemDto(InvoiceApi.Domain.Entities.InvoiceItem source, InvoiceApi.Application.Dto.Invoice.InvoiceItemDto destination)
+        public InvoiceApi.Contracts.Dto.Invoice.InvoiceItemDto Map_InvoiceItem_To_InvoiceItemDto(InvoiceApi.Domain.Entities.InvoiceItem source, InvoiceApi.Contracts.Dto.Invoice.InvoiceItemDto destination)
         {
             destination.Id = source.Id;
             destination.OrderIndex = source.OrderIndex;
@@ -498,9 +498,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public InvoiceApi.Application.Dto.Invoice.InvoiceItemDto[] MapArray_InvoiceItem_To_InvoiceItemDto(System.ReadOnlySpan<InvoiceApi.Domain.Entities.InvoiceItem> source)
+        public InvoiceApi.Contracts.Dto.Invoice.InvoiceItemDto[] MapArray_InvoiceItem_To_InvoiceItemDto(System.ReadOnlySpan<InvoiceApi.Domain.Entities.InvoiceItem> source)
         {
-            var destination = new InvoiceApi.Application.Dto.Invoice.InvoiceItemDto[source.Length];
+            var destination = new InvoiceApi.Contracts.Dto.Invoice.InvoiceItemDto[source.Length];
             for (int i = 0; i < source.Length; i++)
             {
                 destination[i] = source[i].ToInvoiceItemDto();
@@ -509,9 +509,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public List<InvoiceApi.Application.Dto.Invoice.InvoiceItemDto> MapList_InvoiceItem_To_InvoiceItemDto(System.Collections.Generic.IReadOnlyList<InvoiceApi.Domain.Entities.InvoiceItem> source)
+        public List<InvoiceApi.Contracts.Dto.Invoice.InvoiceItemDto> MapList_InvoiceItem_To_InvoiceItemDto(System.Collections.Generic.IReadOnlyList<InvoiceApi.Domain.Entities.InvoiceItem> source)
         {
-            var destination = new List<InvoiceApi.Application.Dto.Invoice.InvoiceItemDto>(source.Count);
+            var destination = new List<InvoiceApi.Contracts.Dto.Invoice.InvoiceItemDto>(source.Count);
             for (int i = 0; i < source.Count; i++)
             {
                 destination.Add(source[i].ToInvoiceItemDto());
@@ -519,9 +519,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public List<InvoiceApi.Application.Dto.Invoice.InvoiceItemDto> MapList_InvoiceItem_To_InvoiceItemDto_Enumerable(System.Collections.Generic.IEnumerable<InvoiceApi.Domain.Entities.InvoiceItem> source)
+        public List<InvoiceApi.Contracts.Dto.Invoice.InvoiceItemDto> MapList_InvoiceItem_To_InvoiceItemDto_Enumerable(System.Collections.Generic.IEnumerable<InvoiceApi.Domain.Entities.InvoiceItem> source)
         {
-            var destination = new List<InvoiceApi.Application.Dto.Invoice.InvoiceItemDto>();
+            var destination = new List<InvoiceApi.Contracts.Dto.Invoice.InvoiceItemDto>();
             foreach (var item in source)
             {
                 destination.Add(item.ToInvoiceItemDto());
@@ -529,9 +529,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public InvoiceApi.Application.Dto.Invoice.InvoiceDto Map_Invoice_To_InvoiceDto(InvoiceApi.Domain.Entities.Invoice source)
+        public InvoiceApi.Contracts.Dto.Invoice.InvoiceDto Map_Invoice_To_InvoiceDto(InvoiceApi.Domain.Entities.Invoice source)
         {
-            var destination = new InvoiceApi.Application.Dto.Invoice.InvoiceDto();
+            var destination = new InvoiceApi.Contracts.Dto.Invoice.InvoiceDto();
             destination.Id = source.Id;
             destination.DocumentType = source.DocumentType;
             destination.Status = source.Status;
@@ -567,7 +567,7 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public InvoiceApi.Application.Dto.Invoice.InvoiceDto Map_Invoice_To_InvoiceDto(InvoiceApi.Domain.Entities.Invoice source, InvoiceApi.Application.Dto.Invoice.InvoiceDto destination)
+        public InvoiceApi.Contracts.Dto.Invoice.InvoiceDto Map_Invoice_To_InvoiceDto(InvoiceApi.Domain.Entities.Invoice source, InvoiceApi.Contracts.Dto.Invoice.InvoiceDto destination)
         {
             destination.Id = source.Id;
             destination.DocumentType = source.DocumentType;
@@ -604,9 +604,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public InvoiceApi.Application.Dto.Invoice.InvoiceDto[] MapArray_Invoice_To_InvoiceDto(System.ReadOnlySpan<InvoiceApi.Domain.Entities.Invoice> source)
+        public InvoiceApi.Contracts.Dto.Invoice.InvoiceDto[] MapArray_Invoice_To_InvoiceDto(System.ReadOnlySpan<InvoiceApi.Domain.Entities.Invoice> source)
         {
-            var destination = new InvoiceApi.Application.Dto.Invoice.InvoiceDto[source.Length];
+            var destination = new InvoiceApi.Contracts.Dto.Invoice.InvoiceDto[source.Length];
             for (int i = 0; i < source.Length; i++)
             {
                 destination[i] = source[i].ToInvoiceDto();
@@ -615,9 +615,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public List<InvoiceApi.Application.Dto.Invoice.InvoiceDto> MapList_Invoice_To_InvoiceDto(System.Collections.Generic.IReadOnlyList<InvoiceApi.Domain.Entities.Invoice> source)
+        public List<InvoiceApi.Contracts.Dto.Invoice.InvoiceDto> MapList_Invoice_To_InvoiceDto(System.Collections.Generic.IReadOnlyList<InvoiceApi.Domain.Entities.Invoice> source)
         {
-            var destination = new List<InvoiceApi.Application.Dto.Invoice.InvoiceDto>(source.Count);
+            var destination = new List<InvoiceApi.Contracts.Dto.Invoice.InvoiceDto>(source.Count);
             for (int i = 0; i < source.Count; i++)
             {
                 destination.Add(source[i].ToInvoiceDto());
@@ -625,9 +625,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public List<InvoiceApi.Application.Dto.Invoice.InvoiceDto> MapList_Invoice_To_InvoiceDto_Enumerable(System.Collections.Generic.IEnumerable<InvoiceApi.Domain.Entities.Invoice> source)
+        public List<InvoiceApi.Contracts.Dto.Invoice.InvoiceDto> MapList_Invoice_To_InvoiceDto_Enumerable(System.Collections.Generic.IEnumerable<InvoiceApi.Domain.Entities.Invoice> source)
         {
-            var destination = new List<InvoiceApi.Application.Dto.Invoice.InvoiceDto>();
+            var destination = new List<InvoiceApi.Contracts.Dto.Invoice.InvoiceDto>();
             foreach (var item in source)
             {
                 destination.Add(item.ToInvoiceDto());
@@ -635,9 +635,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public InvoiceApi.Application.Dto.InvoiceTemplate.InvoiceTemplateDto Map_InvoiceTemplate_To_InvoiceTemplateDto(InvoiceApi.Domain.Entities.InvoiceTemplate source)
+        public InvoiceApi.Contracts.Dto.InvoiceTemplate.InvoiceTemplateDto Map_InvoiceTemplate_To_InvoiceTemplateDto(InvoiceApi.Domain.Entities.InvoiceTemplate source)
         {
-            var destination = new InvoiceApi.Application.Dto.InvoiceTemplate.InvoiceTemplateDto();
+            var destination = new InvoiceApi.Contracts.Dto.InvoiceTemplate.InvoiceTemplateDto();
             destination.Id = source.Id;
             destination.Name = source.Name;
             destination.Description = source.Description;
@@ -666,7 +666,7 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public InvoiceApi.Application.Dto.InvoiceTemplate.InvoiceTemplateDto Map_InvoiceTemplate_To_InvoiceTemplateDto(InvoiceApi.Domain.Entities.InvoiceTemplate source, InvoiceApi.Application.Dto.InvoiceTemplate.InvoiceTemplateDto destination)
+        public InvoiceApi.Contracts.Dto.InvoiceTemplate.InvoiceTemplateDto Map_InvoiceTemplate_To_InvoiceTemplateDto(InvoiceApi.Domain.Entities.InvoiceTemplate source, InvoiceApi.Contracts.Dto.InvoiceTemplate.InvoiceTemplateDto destination)
         {
             destination.Id = source.Id;
             destination.Name = source.Name;
@@ -696,9 +696,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public InvoiceApi.Application.Dto.InvoiceTemplate.InvoiceTemplateDto[] MapArray_InvoiceTemplate_To_InvoiceTemplateDto(System.ReadOnlySpan<InvoiceApi.Domain.Entities.InvoiceTemplate> source)
+        public InvoiceApi.Contracts.Dto.InvoiceTemplate.InvoiceTemplateDto[] MapArray_InvoiceTemplate_To_InvoiceTemplateDto(System.ReadOnlySpan<InvoiceApi.Domain.Entities.InvoiceTemplate> source)
         {
-            var destination = new InvoiceApi.Application.Dto.InvoiceTemplate.InvoiceTemplateDto[source.Length];
+            var destination = new InvoiceApi.Contracts.Dto.InvoiceTemplate.InvoiceTemplateDto[source.Length];
             for (int i = 0; i < source.Length; i++)
             {
                 destination[i] = source[i].ToInvoiceTemplateDto();
@@ -707,9 +707,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public List<InvoiceApi.Application.Dto.InvoiceTemplate.InvoiceTemplateDto> MapList_InvoiceTemplate_To_InvoiceTemplateDto(System.Collections.Generic.IReadOnlyList<InvoiceApi.Domain.Entities.InvoiceTemplate> source)
+        public List<InvoiceApi.Contracts.Dto.InvoiceTemplate.InvoiceTemplateDto> MapList_InvoiceTemplate_To_InvoiceTemplateDto(System.Collections.Generic.IReadOnlyList<InvoiceApi.Domain.Entities.InvoiceTemplate> source)
         {
-            var destination = new List<InvoiceApi.Application.Dto.InvoiceTemplate.InvoiceTemplateDto>(source.Count);
+            var destination = new List<InvoiceApi.Contracts.Dto.InvoiceTemplate.InvoiceTemplateDto>(source.Count);
             for (int i = 0; i < source.Count; i++)
             {
                 destination.Add(source[i].ToInvoiceTemplateDto());
@@ -717,9 +717,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public List<InvoiceApi.Application.Dto.InvoiceTemplate.InvoiceTemplateDto> MapList_InvoiceTemplate_To_InvoiceTemplateDto_Enumerable(System.Collections.Generic.IEnumerable<InvoiceApi.Domain.Entities.InvoiceTemplate> source)
+        public List<InvoiceApi.Contracts.Dto.InvoiceTemplate.InvoiceTemplateDto> MapList_InvoiceTemplate_To_InvoiceTemplateDto_Enumerable(System.Collections.Generic.IEnumerable<InvoiceApi.Domain.Entities.InvoiceTemplate> source)
         {
-            var destination = new List<InvoiceApi.Application.Dto.InvoiceTemplate.InvoiceTemplateDto>();
+            var destination = new List<InvoiceApi.Contracts.Dto.InvoiceTemplate.InvoiceTemplateDto>();
             foreach (var item in source)
             {
                 destination.Add(item.ToInvoiceTemplateDto());
@@ -727,9 +727,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public InvoiceApi.Application.Dto.NumberSequence.NumberSequenceFormatDto Map_NumberSequenceFormat_To_NumberSequenceFormatDto(InvoiceApi.Domain.Entities.NumberSequenceFormat source)
+        public InvoiceApi.Contracts.Dto.NumberSequence.NumberSequenceFormatDto Map_NumberSequenceFormat_To_NumberSequenceFormatDto(InvoiceApi.Domain.Entities.NumberSequenceFormat source)
         {
-            var destination = new InvoiceApi.Application.Dto.NumberSequence.NumberSequenceFormatDto();
+            var destination = new InvoiceApi.Contracts.Dto.NumberSequence.NumberSequenceFormatDto();
             destination.Id = source.Id;
             destination.Name = source.Name;
             destination.FormatPattern = source.FormatPattern;
@@ -740,7 +740,7 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public InvoiceApi.Application.Dto.NumberSequence.NumberSequenceFormatDto Map_NumberSequenceFormat_To_NumberSequenceFormatDto(InvoiceApi.Domain.Entities.NumberSequenceFormat source, InvoiceApi.Application.Dto.NumberSequence.NumberSequenceFormatDto destination)
+        public InvoiceApi.Contracts.Dto.NumberSequence.NumberSequenceFormatDto Map_NumberSequenceFormat_To_NumberSequenceFormatDto(InvoiceApi.Domain.Entities.NumberSequenceFormat source, InvoiceApi.Contracts.Dto.NumberSequence.NumberSequenceFormatDto destination)
         {
             destination.Id = source.Id;
             destination.Name = source.Name;
@@ -752,9 +752,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public InvoiceApi.Application.Dto.NumberSequence.NumberSequenceFormatDto[] MapArray_NumberSequenceFormat_To_NumberSequenceFormatDto(System.ReadOnlySpan<InvoiceApi.Domain.Entities.NumberSequenceFormat> source)
+        public InvoiceApi.Contracts.Dto.NumberSequence.NumberSequenceFormatDto[] MapArray_NumberSequenceFormat_To_NumberSequenceFormatDto(System.ReadOnlySpan<InvoiceApi.Domain.Entities.NumberSequenceFormat> source)
         {
-            var destination = new InvoiceApi.Application.Dto.NumberSequence.NumberSequenceFormatDto[source.Length];
+            var destination = new InvoiceApi.Contracts.Dto.NumberSequence.NumberSequenceFormatDto[source.Length];
             for (int i = 0; i < source.Length; i++)
             {
                 destination[i] = source[i].ToNumberSequenceFormatDto();
@@ -763,9 +763,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public List<InvoiceApi.Application.Dto.NumberSequence.NumberSequenceFormatDto> MapList_NumberSequenceFormat_To_NumberSequenceFormatDto(System.Collections.Generic.IReadOnlyList<InvoiceApi.Domain.Entities.NumberSequenceFormat> source)
+        public List<InvoiceApi.Contracts.Dto.NumberSequence.NumberSequenceFormatDto> MapList_NumberSequenceFormat_To_NumberSequenceFormatDto(System.Collections.Generic.IReadOnlyList<InvoiceApi.Domain.Entities.NumberSequenceFormat> source)
         {
-            var destination = new List<InvoiceApi.Application.Dto.NumberSequence.NumberSequenceFormatDto>(source.Count);
+            var destination = new List<InvoiceApi.Contracts.Dto.NumberSequence.NumberSequenceFormatDto>(source.Count);
             for (int i = 0; i < source.Count; i++)
             {
                 destination.Add(source[i].ToNumberSequenceFormatDto());
@@ -773,9 +773,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public List<InvoiceApi.Application.Dto.NumberSequence.NumberSequenceFormatDto> MapList_NumberSequenceFormat_To_NumberSequenceFormatDto_Enumerable(System.Collections.Generic.IEnumerable<InvoiceApi.Domain.Entities.NumberSequenceFormat> source)
+        public List<InvoiceApi.Contracts.Dto.NumberSequence.NumberSequenceFormatDto> MapList_NumberSequenceFormat_To_NumberSequenceFormatDto_Enumerable(System.Collections.Generic.IEnumerable<InvoiceApi.Domain.Entities.NumberSequenceFormat> source)
         {
-            var destination = new List<InvoiceApi.Application.Dto.NumberSequence.NumberSequenceFormatDto>();
+            var destination = new List<InvoiceApi.Contracts.Dto.NumberSequence.NumberSequenceFormatDto>();
             foreach (var item in source)
             {
                 destination.Add(item.ToNumberSequenceFormatDto());
@@ -783,9 +783,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public InvoiceApi.Application.Dto.NumberSequence.NumberSequenceDto Map_NumberSequence_To_NumberSequenceDto(InvoiceApi.Domain.Entities.NumberSequence source)
+        public InvoiceApi.Contracts.Dto.NumberSequence.NumberSequenceDto Map_NumberSequence_To_NumberSequenceDto(InvoiceApi.Domain.Entities.NumberSequence source)
         {
-            var destination = new InvoiceApi.Application.Dto.NumberSequence.NumberSequenceDto();
+            var destination = new InvoiceApi.Contracts.Dto.NumberSequence.NumberSequenceDto();
             destination.Id = source.Id;
             destination.Name = source.Name;
             destination.DocumentType = source.DocumentType;
@@ -803,7 +803,7 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public InvoiceApi.Application.Dto.NumberSequence.NumberSequenceDto Map_NumberSequence_To_NumberSequenceDto(InvoiceApi.Domain.Entities.NumberSequence source, InvoiceApi.Application.Dto.NumberSequence.NumberSequenceDto destination)
+        public InvoiceApi.Contracts.Dto.NumberSequence.NumberSequenceDto Map_NumberSequence_To_NumberSequenceDto(InvoiceApi.Domain.Entities.NumberSequence source, InvoiceApi.Contracts.Dto.NumberSequence.NumberSequenceDto destination)
         {
             destination.Id = source.Id;
             destination.Name = source.Name;
@@ -822,9 +822,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public InvoiceApi.Application.Dto.NumberSequence.NumberSequenceDto[] MapArray_NumberSequence_To_NumberSequenceDto(System.ReadOnlySpan<InvoiceApi.Domain.Entities.NumberSequence> source)
+        public InvoiceApi.Contracts.Dto.NumberSequence.NumberSequenceDto[] MapArray_NumberSequence_To_NumberSequenceDto(System.ReadOnlySpan<InvoiceApi.Domain.Entities.NumberSequence> source)
         {
-            var destination = new InvoiceApi.Application.Dto.NumberSequence.NumberSequenceDto[source.Length];
+            var destination = new InvoiceApi.Contracts.Dto.NumberSequence.NumberSequenceDto[source.Length];
             for (int i = 0; i < source.Length; i++)
             {
                 destination[i] = source[i].ToNumberSequenceDto();
@@ -833,9 +833,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public List<InvoiceApi.Application.Dto.NumberSequence.NumberSequenceDto> MapList_NumberSequence_To_NumberSequenceDto(System.Collections.Generic.IReadOnlyList<InvoiceApi.Domain.Entities.NumberSequence> source)
+        public List<InvoiceApi.Contracts.Dto.NumberSequence.NumberSequenceDto> MapList_NumberSequence_To_NumberSequenceDto(System.Collections.Generic.IReadOnlyList<InvoiceApi.Domain.Entities.NumberSequence> source)
         {
-            var destination = new List<InvoiceApi.Application.Dto.NumberSequence.NumberSequenceDto>(source.Count);
+            var destination = new List<InvoiceApi.Contracts.Dto.NumberSequence.NumberSequenceDto>(source.Count);
             for (int i = 0; i < source.Count; i++)
             {
                 destination.Add(source[i].ToNumberSequenceDto());
@@ -843,9 +843,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public List<InvoiceApi.Application.Dto.NumberSequence.NumberSequenceDto> MapList_NumberSequence_To_NumberSequenceDto_Enumerable(System.Collections.Generic.IEnumerable<InvoiceApi.Domain.Entities.NumberSequence> source)
+        public List<InvoiceApi.Contracts.Dto.NumberSequence.NumberSequenceDto> MapList_NumberSequence_To_NumberSequenceDto_Enumerable(System.Collections.Generic.IEnumerable<InvoiceApi.Domain.Entities.NumberSequence> source)
         {
-            var destination = new List<InvoiceApi.Application.Dto.NumberSequence.NumberSequenceDto>();
+            var destination = new List<InvoiceApi.Contracts.Dto.NumberSequence.NumberSequenceDto>();
             foreach (var item in source)
             {
                 destination.Add(item.ToNumberSequenceDto());
@@ -853,9 +853,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public InvoiceApi.Application.Dto.User.UserDto Map_User_To_UserDto(InvoiceApi.Domain.Entities.User source)
+        public InvoiceApi.Contracts.Dto.User.UserDto Map_User_To_UserDto(InvoiceApi.Domain.Entities.User source)
         {
-            var destination = new InvoiceApi.Application.Dto.User.UserDto();
+            var destination = new InvoiceApi.Contracts.Dto.User.UserDto();
             destination.Id = source.Id;
             destination.Email = source.Email;
             destination.FirstName = source.FirstName;
@@ -875,7 +875,7 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public InvoiceApi.Application.Dto.User.UserDto Map_User_To_UserDto(InvoiceApi.Domain.Entities.User source, InvoiceApi.Application.Dto.User.UserDto destination)
+        public InvoiceApi.Contracts.Dto.User.UserDto Map_User_To_UserDto(InvoiceApi.Domain.Entities.User source, InvoiceApi.Contracts.Dto.User.UserDto destination)
         {
             destination.Id = source.Id;
             destination.Email = source.Email;
@@ -896,9 +896,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public InvoiceApi.Application.Dto.User.UserDto[] MapArray_User_To_UserDto(System.ReadOnlySpan<InvoiceApi.Domain.Entities.User> source)
+        public InvoiceApi.Contracts.Dto.User.UserDto[] MapArray_User_To_UserDto(System.ReadOnlySpan<InvoiceApi.Domain.Entities.User> source)
         {
-            var destination = new InvoiceApi.Application.Dto.User.UserDto[source.Length];
+            var destination = new InvoiceApi.Contracts.Dto.User.UserDto[source.Length];
             for (int i = 0; i < source.Length; i++)
             {
                 destination[i] = source[i].ToUserDto();
@@ -907,9 +907,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public List<InvoiceApi.Application.Dto.User.UserDto> MapList_User_To_UserDto(System.Collections.Generic.IReadOnlyList<InvoiceApi.Domain.Entities.User> source)
+        public List<InvoiceApi.Contracts.Dto.User.UserDto> MapList_User_To_UserDto(System.Collections.Generic.IReadOnlyList<InvoiceApi.Domain.Entities.User> source)
         {
-            var destination = new List<InvoiceApi.Application.Dto.User.UserDto>(source.Count);
+            var destination = new List<InvoiceApi.Contracts.Dto.User.UserDto>(source.Count);
             for (int i = 0; i < source.Count; i++)
             {
                 destination.Add(source[i].ToUserDto());
@@ -917,9 +917,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public List<InvoiceApi.Application.Dto.User.UserDto> MapList_User_To_UserDto_Enumerable(System.Collections.Generic.IEnumerable<InvoiceApi.Domain.Entities.User> source)
+        public List<InvoiceApi.Contracts.Dto.User.UserDto> MapList_User_To_UserDto_Enumerable(System.Collections.Generic.IEnumerable<InvoiceApi.Domain.Entities.User> source)
         {
-            var destination = new List<InvoiceApi.Application.Dto.User.UserDto>();
+            var destination = new List<InvoiceApi.Contracts.Dto.User.UserDto>();
             foreach (var item in source)
             {
                 destination.Add(item.ToUserDto());
@@ -927,9 +927,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public InvoiceApi.Application.Dto.VatRate.VatRateDto Map_VatRate_To_VatRateDto(InvoiceApi.Domain.Entities.VatRate source)
+        public InvoiceApi.Contracts.Dto.VatRate.VatRateDto Map_VatRate_To_VatRateDto(InvoiceApi.Domain.Entities.VatRate source)
         {
-            var destination = new InvoiceApi.Application.Dto.VatRate.VatRateDto();
+            var destination = new InvoiceApi.Contracts.Dto.VatRate.VatRateDto();
             destination.Id = source.Id;
             destination.Name = source.Name;
             destination.Rate = source.Rate;
@@ -943,7 +943,7 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public InvoiceApi.Application.Dto.VatRate.VatRateDto Map_VatRate_To_VatRateDto(InvoiceApi.Domain.Entities.VatRate source, InvoiceApi.Application.Dto.VatRate.VatRateDto destination)
+        public InvoiceApi.Contracts.Dto.VatRate.VatRateDto Map_VatRate_To_VatRateDto(InvoiceApi.Domain.Entities.VatRate source, InvoiceApi.Contracts.Dto.VatRate.VatRateDto destination)
         {
             destination.Id = source.Id;
             destination.Name = source.Name;
@@ -958,9 +958,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public InvoiceApi.Application.Dto.VatRate.VatRateDto[] MapArray_VatRate_To_VatRateDto(System.ReadOnlySpan<InvoiceApi.Domain.Entities.VatRate> source)
+        public InvoiceApi.Contracts.Dto.VatRate.VatRateDto[] MapArray_VatRate_To_VatRateDto(System.ReadOnlySpan<InvoiceApi.Domain.Entities.VatRate> source)
         {
-            var destination = new InvoiceApi.Application.Dto.VatRate.VatRateDto[source.Length];
+            var destination = new InvoiceApi.Contracts.Dto.VatRate.VatRateDto[source.Length];
             for (int i = 0; i < source.Length; i++)
             {
                 destination[i] = source[i].ToVatRateDto();
@@ -969,9 +969,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public List<InvoiceApi.Application.Dto.VatRate.VatRateDto> MapList_VatRate_To_VatRateDto(System.Collections.Generic.IReadOnlyList<InvoiceApi.Domain.Entities.VatRate> source)
+        public List<InvoiceApi.Contracts.Dto.VatRate.VatRateDto> MapList_VatRate_To_VatRateDto(System.Collections.Generic.IReadOnlyList<InvoiceApi.Domain.Entities.VatRate> source)
         {
-            var destination = new List<InvoiceApi.Application.Dto.VatRate.VatRateDto>(source.Count);
+            var destination = new List<InvoiceApi.Contracts.Dto.VatRate.VatRateDto>(source.Count);
             for (int i = 0; i < source.Count; i++)
             {
                 destination.Add(source[i].ToVatRateDto());
@@ -979,9 +979,9 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
-        public List<InvoiceApi.Application.Dto.VatRate.VatRateDto> MapList_VatRate_To_VatRateDto_Enumerable(System.Collections.Generic.IEnumerable<InvoiceApi.Domain.Entities.VatRate> source)
+        public List<InvoiceApi.Contracts.Dto.VatRate.VatRateDto> MapList_VatRate_To_VatRateDto_Enumerable(System.Collections.Generic.IEnumerable<InvoiceApi.Domain.Entities.VatRate> source)
         {
-            var destination = new List<InvoiceApi.Application.Dto.VatRate.VatRateDto>();
+            var destination = new List<InvoiceApi.Contracts.Dto.VatRate.VatRateDto>();
             foreach (var item in source)
             {
                 destination.Add(item.ToVatRateDto());
@@ -991,138 +991,138 @@ public sealed class Mapper : IMapper
 
         public TDestination Map<TSource, TDestination>(TSource source)
         {
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Address) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Client.AddressDto))
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Address) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.Client.AddressDto))
                 return (TDestination)(object)((InvoiceApi.Domain.Entities.Address)(object)source!).ToAddressDto();
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Contact) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Client.ContactDto))
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Contact) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.Client.ContactDto))
                 return (TDestination)(object)((InvoiceApi.Domain.Entities.Contact)(object)source!).ToContactDto();
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.BankAccount) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Client.BankAccountDto))
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.BankAccount) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.Client.BankAccountDto))
                 return (TDestination)(object)((InvoiceApi.Domain.Entities.BankAccount)(object)source!).ToBankAccountDto();
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.BillingSettings) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Client.BillingSettingsDto))
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.BillingSettings) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.Client.BillingSettingsDto))
                 return (TDestination)(object)((InvoiceApi.Domain.Entities.BillingSettings)(object)source!).ToBillingSettingsDto();
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Client) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Client.ClientDto))
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Client) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.Client.ClientDto))
                 return (TDestination)(object)((InvoiceApi.Domain.Entities.Client)(object)source!).ToClientDto();
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.ContentTemplate) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.ContentTemplate.ContentTemplateDto))
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.ContentTemplate) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.ContentTemplate.ContentTemplateDto))
                 return (TDestination)(object)((InvoiceApi.Domain.Entities.ContentTemplate)(object)source!).ToContentTemplateDto();
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Currency) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Currency.CurrencyDto))
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Currency) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.Currency.CurrencyDto))
                 return (TDestination)(object)((InvoiceApi.Domain.Entities.Currency)(object)source!).ToCurrencyDto();
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.InvoiceItem) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Invoice.InvoiceItemDto))
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.InvoiceItem) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.Invoice.InvoiceItemDto))
                 return (TDestination)(object)((InvoiceApi.Domain.Entities.InvoiceItem)(object)source!).ToInvoiceItemDto();
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Invoice) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Invoice.InvoiceDto))
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Invoice) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.Invoice.InvoiceDto))
                 return (TDestination)(object)((InvoiceApi.Domain.Entities.Invoice)(object)source!).ToInvoiceDto();
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.InvoiceTemplate) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.InvoiceTemplate.InvoiceTemplateDto))
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.InvoiceTemplate) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.InvoiceTemplate.InvoiceTemplateDto))
                 return (TDestination)(object)((InvoiceApi.Domain.Entities.InvoiceTemplate)(object)source!).ToInvoiceTemplateDto();
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.NumberSequenceFormat) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.NumberSequence.NumberSequenceFormatDto))
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.NumberSequenceFormat) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.NumberSequence.NumberSequenceFormatDto))
                 return (TDestination)(object)((InvoiceApi.Domain.Entities.NumberSequenceFormat)(object)source!).ToNumberSequenceFormatDto();
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.NumberSequence) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.NumberSequence.NumberSequenceDto))
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.NumberSequence) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.NumberSequence.NumberSequenceDto))
                 return (TDestination)(object)((InvoiceApi.Domain.Entities.NumberSequence)(object)source!).ToNumberSequenceDto();
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.User) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.User.UserDto))
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.User) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.User.UserDto))
                 return (TDestination)(object)((InvoiceApi.Domain.Entities.User)(object)source!).ToUserDto();
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.VatRate) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.VatRate.VatRateDto))
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.VatRate) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.VatRate.VatRateDto))
                 return (TDestination)(object)((InvoiceApi.Domain.Entities.VatRate)(object)source!).ToVatRateDto();
             throw new NotSupportedException($"Mapping from {typeof(TSource).Name} to {typeof(TDestination).Name} is not configured.");
         }
 
         public TDestination Map<TSource, TDestination>(TSource source, TDestination destination)
         {
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Address) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Client.AddressDto))
-                return (TDestination)(object)Map_Address_To_AddressDto((InvoiceApi.Domain.Entities.Address)(object)source!, (InvoiceApi.Application.Dto.Client.AddressDto)(object)destination!);
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Contact) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Client.ContactDto))
-                return (TDestination)(object)Map_Contact_To_ContactDto((InvoiceApi.Domain.Entities.Contact)(object)source!, (InvoiceApi.Application.Dto.Client.ContactDto)(object)destination!);
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.BankAccount) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Client.BankAccountDto))
-                return (TDestination)(object)Map_BankAccount_To_BankAccountDto((InvoiceApi.Domain.Entities.BankAccount)(object)source!, (InvoiceApi.Application.Dto.Client.BankAccountDto)(object)destination!);
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.BillingSettings) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Client.BillingSettingsDto))
-                return (TDestination)(object)Map_BillingSettings_To_BillingSettingsDto((InvoiceApi.Domain.Entities.BillingSettings)(object)source!, (InvoiceApi.Application.Dto.Client.BillingSettingsDto)(object)destination!);
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Client) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Client.ClientDto))
-                return (TDestination)(object)Map_Client_To_ClientDto((InvoiceApi.Domain.Entities.Client)(object)source!, (InvoiceApi.Application.Dto.Client.ClientDto)(object)destination!);
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.ContentTemplate) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.ContentTemplate.ContentTemplateDto))
-                return (TDestination)(object)Map_ContentTemplate_To_ContentTemplateDto((InvoiceApi.Domain.Entities.ContentTemplate)(object)source!, (InvoiceApi.Application.Dto.ContentTemplate.ContentTemplateDto)(object)destination!);
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Currency) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Currency.CurrencyDto))
-                return (TDestination)(object)Map_Currency_To_CurrencyDto((InvoiceApi.Domain.Entities.Currency)(object)source!, (InvoiceApi.Application.Dto.Currency.CurrencyDto)(object)destination!);
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.InvoiceItem) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Invoice.InvoiceItemDto))
-                return (TDestination)(object)Map_InvoiceItem_To_InvoiceItemDto((InvoiceApi.Domain.Entities.InvoiceItem)(object)source!, (InvoiceApi.Application.Dto.Invoice.InvoiceItemDto)(object)destination!);
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Invoice) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Invoice.InvoiceDto))
-                return (TDestination)(object)Map_Invoice_To_InvoiceDto((InvoiceApi.Domain.Entities.Invoice)(object)source!, (InvoiceApi.Application.Dto.Invoice.InvoiceDto)(object)destination!);
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.InvoiceTemplate) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.InvoiceTemplate.InvoiceTemplateDto))
-                return (TDestination)(object)Map_InvoiceTemplate_To_InvoiceTemplateDto((InvoiceApi.Domain.Entities.InvoiceTemplate)(object)source!, (InvoiceApi.Application.Dto.InvoiceTemplate.InvoiceTemplateDto)(object)destination!);
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.NumberSequenceFormat) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.NumberSequence.NumberSequenceFormatDto))
-                return (TDestination)(object)Map_NumberSequenceFormat_To_NumberSequenceFormatDto((InvoiceApi.Domain.Entities.NumberSequenceFormat)(object)source!, (InvoiceApi.Application.Dto.NumberSequence.NumberSequenceFormatDto)(object)destination!);
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.NumberSequence) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.NumberSequence.NumberSequenceDto))
-                return (TDestination)(object)Map_NumberSequence_To_NumberSequenceDto((InvoiceApi.Domain.Entities.NumberSequence)(object)source!, (InvoiceApi.Application.Dto.NumberSequence.NumberSequenceDto)(object)destination!);
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.User) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.User.UserDto))
-                return (TDestination)(object)Map_User_To_UserDto((InvoiceApi.Domain.Entities.User)(object)source!, (InvoiceApi.Application.Dto.User.UserDto)(object)destination!);
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.VatRate) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.VatRate.VatRateDto))
-                return (TDestination)(object)Map_VatRate_To_VatRateDto((InvoiceApi.Domain.Entities.VatRate)(object)source!, (InvoiceApi.Application.Dto.VatRate.VatRateDto)(object)destination!);
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Address) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.Client.AddressDto))
+                return (TDestination)(object)Map_Address_To_AddressDto((InvoiceApi.Domain.Entities.Address)(object)source!, (InvoiceApi.Contracts.Dto.Client.AddressDto)(object)destination!);
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Contact) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.Client.ContactDto))
+                return (TDestination)(object)Map_Contact_To_ContactDto((InvoiceApi.Domain.Entities.Contact)(object)source!, (InvoiceApi.Contracts.Dto.Client.ContactDto)(object)destination!);
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.BankAccount) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.Client.BankAccountDto))
+                return (TDestination)(object)Map_BankAccount_To_BankAccountDto((InvoiceApi.Domain.Entities.BankAccount)(object)source!, (InvoiceApi.Contracts.Dto.Client.BankAccountDto)(object)destination!);
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.BillingSettings) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.Client.BillingSettingsDto))
+                return (TDestination)(object)Map_BillingSettings_To_BillingSettingsDto((InvoiceApi.Domain.Entities.BillingSettings)(object)source!, (InvoiceApi.Contracts.Dto.Client.BillingSettingsDto)(object)destination!);
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Client) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.Client.ClientDto))
+                return (TDestination)(object)Map_Client_To_ClientDto((InvoiceApi.Domain.Entities.Client)(object)source!, (InvoiceApi.Contracts.Dto.Client.ClientDto)(object)destination!);
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.ContentTemplate) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.ContentTemplate.ContentTemplateDto))
+                return (TDestination)(object)Map_ContentTemplate_To_ContentTemplateDto((InvoiceApi.Domain.Entities.ContentTemplate)(object)source!, (InvoiceApi.Contracts.Dto.ContentTemplate.ContentTemplateDto)(object)destination!);
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Currency) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.Currency.CurrencyDto))
+                return (TDestination)(object)Map_Currency_To_CurrencyDto((InvoiceApi.Domain.Entities.Currency)(object)source!, (InvoiceApi.Contracts.Dto.Currency.CurrencyDto)(object)destination!);
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.InvoiceItem) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.Invoice.InvoiceItemDto))
+                return (TDestination)(object)Map_InvoiceItem_To_InvoiceItemDto((InvoiceApi.Domain.Entities.InvoiceItem)(object)source!, (InvoiceApi.Contracts.Dto.Invoice.InvoiceItemDto)(object)destination!);
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Invoice) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.Invoice.InvoiceDto))
+                return (TDestination)(object)Map_Invoice_To_InvoiceDto((InvoiceApi.Domain.Entities.Invoice)(object)source!, (InvoiceApi.Contracts.Dto.Invoice.InvoiceDto)(object)destination!);
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.InvoiceTemplate) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.InvoiceTemplate.InvoiceTemplateDto))
+                return (TDestination)(object)Map_InvoiceTemplate_To_InvoiceTemplateDto((InvoiceApi.Domain.Entities.InvoiceTemplate)(object)source!, (InvoiceApi.Contracts.Dto.InvoiceTemplate.InvoiceTemplateDto)(object)destination!);
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.NumberSequenceFormat) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.NumberSequence.NumberSequenceFormatDto))
+                return (TDestination)(object)Map_NumberSequenceFormat_To_NumberSequenceFormatDto((InvoiceApi.Domain.Entities.NumberSequenceFormat)(object)source!, (InvoiceApi.Contracts.Dto.NumberSequence.NumberSequenceFormatDto)(object)destination!);
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.NumberSequence) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.NumberSequence.NumberSequenceDto))
+                return (TDestination)(object)Map_NumberSequence_To_NumberSequenceDto((InvoiceApi.Domain.Entities.NumberSequence)(object)source!, (InvoiceApi.Contracts.Dto.NumberSequence.NumberSequenceDto)(object)destination!);
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.User) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.User.UserDto))
+                return (TDestination)(object)Map_User_To_UserDto((InvoiceApi.Domain.Entities.User)(object)source!, (InvoiceApi.Contracts.Dto.User.UserDto)(object)destination!);
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.VatRate) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.VatRate.VatRateDto))
+                return (TDestination)(object)Map_VatRate_To_VatRateDto((InvoiceApi.Domain.Entities.VatRate)(object)source!, (InvoiceApi.Contracts.Dto.VatRate.VatRateDto)(object)destination!);
             throw new NotSupportedException($"Mapping from {typeof(TSource).Name} to {typeof(TDestination).Name} is not configured.");
         }
 
         public TDestination[] MapArray<TSource, TDestination>(System.ReadOnlySpan<TSource> source)
         {
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Address) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Client.AddressDto))
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Address) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.Client.AddressDto))
             {
                 var typedSource = System.Runtime.CompilerServices.Unsafe.As<System.ReadOnlySpan<TSource>, System.ReadOnlySpan<InvoiceApi.Domain.Entities.Address>>(ref source);
                 return (TDestination[])(object)MapArray_Address_To_AddressDto(typedSource);
             }
-            else if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Contact) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Client.ContactDto))
+            else if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Contact) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.Client.ContactDto))
             {
                 var typedSource = System.Runtime.CompilerServices.Unsafe.As<System.ReadOnlySpan<TSource>, System.ReadOnlySpan<InvoiceApi.Domain.Entities.Contact>>(ref source);
                 return (TDestination[])(object)MapArray_Contact_To_ContactDto(typedSource);
             }
-            else if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.BankAccount) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Client.BankAccountDto))
+            else if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.BankAccount) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.Client.BankAccountDto))
             {
                 var typedSource = System.Runtime.CompilerServices.Unsafe.As<System.ReadOnlySpan<TSource>, System.ReadOnlySpan<InvoiceApi.Domain.Entities.BankAccount>>(ref source);
                 return (TDestination[])(object)MapArray_BankAccount_To_BankAccountDto(typedSource);
             }
-            else if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.BillingSettings) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Client.BillingSettingsDto))
+            else if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.BillingSettings) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.Client.BillingSettingsDto))
             {
                 var typedSource = System.Runtime.CompilerServices.Unsafe.As<System.ReadOnlySpan<TSource>, System.ReadOnlySpan<InvoiceApi.Domain.Entities.BillingSettings>>(ref source);
                 return (TDestination[])(object)MapArray_BillingSettings_To_BillingSettingsDto(typedSource);
             }
-            else if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Client) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Client.ClientDto))
+            else if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Client) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.Client.ClientDto))
             {
                 var typedSource = System.Runtime.CompilerServices.Unsafe.As<System.ReadOnlySpan<TSource>, System.ReadOnlySpan<InvoiceApi.Domain.Entities.Client>>(ref source);
                 return (TDestination[])(object)MapArray_Client_To_ClientDto(typedSource);
             }
-            else if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.ContentTemplate) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.ContentTemplate.ContentTemplateDto))
+            else if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.ContentTemplate) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.ContentTemplate.ContentTemplateDto))
             {
                 var typedSource = System.Runtime.CompilerServices.Unsafe.As<System.ReadOnlySpan<TSource>, System.ReadOnlySpan<InvoiceApi.Domain.Entities.ContentTemplate>>(ref source);
                 return (TDestination[])(object)MapArray_ContentTemplate_To_ContentTemplateDto(typedSource);
             }
-            else if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Currency) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Currency.CurrencyDto))
+            else if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Currency) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.Currency.CurrencyDto))
             {
                 var typedSource = System.Runtime.CompilerServices.Unsafe.As<System.ReadOnlySpan<TSource>, System.ReadOnlySpan<InvoiceApi.Domain.Entities.Currency>>(ref source);
                 return (TDestination[])(object)MapArray_Currency_To_CurrencyDto(typedSource);
             }
-            else if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.InvoiceItem) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Invoice.InvoiceItemDto))
+            else if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.InvoiceItem) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.Invoice.InvoiceItemDto))
             {
                 var typedSource = System.Runtime.CompilerServices.Unsafe.As<System.ReadOnlySpan<TSource>, System.ReadOnlySpan<InvoiceApi.Domain.Entities.InvoiceItem>>(ref source);
                 return (TDestination[])(object)MapArray_InvoiceItem_To_InvoiceItemDto(typedSource);
             }
-            else if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Invoice) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Invoice.InvoiceDto))
+            else if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Invoice) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.Invoice.InvoiceDto))
             {
                 var typedSource = System.Runtime.CompilerServices.Unsafe.As<System.ReadOnlySpan<TSource>, System.ReadOnlySpan<InvoiceApi.Domain.Entities.Invoice>>(ref source);
                 return (TDestination[])(object)MapArray_Invoice_To_InvoiceDto(typedSource);
             }
-            else if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.InvoiceTemplate) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.InvoiceTemplate.InvoiceTemplateDto))
+            else if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.InvoiceTemplate) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.InvoiceTemplate.InvoiceTemplateDto))
             {
                 var typedSource = System.Runtime.CompilerServices.Unsafe.As<System.ReadOnlySpan<TSource>, System.ReadOnlySpan<InvoiceApi.Domain.Entities.InvoiceTemplate>>(ref source);
                 return (TDestination[])(object)MapArray_InvoiceTemplate_To_InvoiceTemplateDto(typedSource);
             }
-            else if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.NumberSequenceFormat) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.NumberSequence.NumberSequenceFormatDto))
+            else if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.NumberSequenceFormat) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.NumberSequence.NumberSequenceFormatDto))
             {
                 var typedSource = System.Runtime.CompilerServices.Unsafe.As<System.ReadOnlySpan<TSource>, System.ReadOnlySpan<InvoiceApi.Domain.Entities.NumberSequenceFormat>>(ref source);
                 return (TDestination[])(object)MapArray_NumberSequenceFormat_To_NumberSequenceFormatDto(typedSource);
             }
-            else if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.NumberSequence) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.NumberSequence.NumberSequenceDto))
+            else if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.NumberSequence) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.NumberSequence.NumberSequenceDto))
             {
                 var typedSource = System.Runtime.CompilerServices.Unsafe.As<System.ReadOnlySpan<TSource>, System.ReadOnlySpan<InvoiceApi.Domain.Entities.NumberSequence>>(ref source);
                 return (TDestination[])(object)MapArray_NumberSequence_To_NumberSequenceDto(typedSource);
             }
-            else if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.User) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.User.UserDto))
+            else if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.User) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.User.UserDto))
             {
                 var typedSource = System.Runtime.CompilerServices.Unsafe.As<System.ReadOnlySpan<TSource>, System.ReadOnlySpan<InvoiceApi.Domain.Entities.User>>(ref source);
                 return (TDestination[])(object)MapArray_User_To_UserDto(typedSource);
             }
-            else if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.VatRate) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.VatRate.VatRateDto))
+            else if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.VatRate) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.VatRate.VatRateDto))
             {
                 var typedSource = System.Runtime.CompilerServices.Unsafe.As<System.ReadOnlySpan<TSource>, System.ReadOnlySpan<InvoiceApi.Domain.Entities.VatRate>>(ref source);
                 return (TDestination[])(object)MapArray_VatRate_To_VatRateDto(typedSource);
@@ -1132,66 +1132,66 @@ public sealed class Mapper : IMapper
 
         public List<TDestination> MapList<TSource, TDestination>(System.Collections.Generic.IReadOnlyList<TSource> source)
         {
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Address) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Client.AddressDto))
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Address) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.Client.AddressDto))
                 return (List<TDestination>)(object)MapList_Address_To_AddressDto((System.Collections.Generic.IReadOnlyList<InvoiceApi.Domain.Entities.Address>)(object)source);
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Contact) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Client.ContactDto))
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Contact) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.Client.ContactDto))
                 return (List<TDestination>)(object)MapList_Contact_To_ContactDto((System.Collections.Generic.IReadOnlyList<InvoiceApi.Domain.Entities.Contact>)(object)source);
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.BankAccount) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Client.BankAccountDto))
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.BankAccount) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.Client.BankAccountDto))
                 return (List<TDestination>)(object)MapList_BankAccount_To_BankAccountDto((System.Collections.Generic.IReadOnlyList<InvoiceApi.Domain.Entities.BankAccount>)(object)source);
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.BillingSettings) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Client.BillingSettingsDto))
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.BillingSettings) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.Client.BillingSettingsDto))
                 return (List<TDestination>)(object)MapList_BillingSettings_To_BillingSettingsDto((System.Collections.Generic.IReadOnlyList<InvoiceApi.Domain.Entities.BillingSettings>)(object)source);
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Client) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Client.ClientDto))
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Client) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.Client.ClientDto))
                 return (List<TDestination>)(object)MapList_Client_To_ClientDto((System.Collections.Generic.IReadOnlyList<InvoiceApi.Domain.Entities.Client>)(object)source);
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.ContentTemplate) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.ContentTemplate.ContentTemplateDto))
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.ContentTemplate) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.ContentTemplate.ContentTemplateDto))
                 return (List<TDestination>)(object)MapList_ContentTemplate_To_ContentTemplateDto((System.Collections.Generic.IReadOnlyList<InvoiceApi.Domain.Entities.ContentTemplate>)(object)source);
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Currency) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Currency.CurrencyDto))
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Currency) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.Currency.CurrencyDto))
                 return (List<TDestination>)(object)MapList_Currency_To_CurrencyDto((System.Collections.Generic.IReadOnlyList<InvoiceApi.Domain.Entities.Currency>)(object)source);
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.InvoiceItem) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Invoice.InvoiceItemDto))
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.InvoiceItem) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.Invoice.InvoiceItemDto))
                 return (List<TDestination>)(object)MapList_InvoiceItem_To_InvoiceItemDto((System.Collections.Generic.IReadOnlyList<InvoiceApi.Domain.Entities.InvoiceItem>)(object)source);
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Invoice) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Invoice.InvoiceDto))
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Invoice) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.Invoice.InvoiceDto))
                 return (List<TDestination>)(object)MapList_Invoice_To_InvoiceDto((System.Collections.Generic.IReadOnlyList<InvoiceApi.Domain.Entities.Invoice>)(object)source);
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.InvoiceTemplate) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.InvoiceTemplate.InvoiceTemplateDto))
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.InvoiceTemplate) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.InvoiceTemplate.InvoiceTemplateDto))
                 return (List<TDestination>)(object)MapList_InvoiceTemplate_To_InvoiceTemplateDto((System.Collections.Generic.IReadOnlyList<InvoiceApi.Domain.Entities.InvoiceTemplate>)(object)source);
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.NumberSequenceFormat) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.NumberSequence.NumberSequenceFormatDto))
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.NumberSequenceFormat) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.NumberSequence.NumberSequenceFormatDto))
                 return (List<TDestination>)(object)MapList_NumberSequenceFormat_To_NumberSequenceFormatDto((System.Collections.Generic.IReadOnlyList<InvoiceApi.Domain.Entities.NumberSequenceFormat>)(object)source);
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.NumberSequence) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.NumberSequence.NumberSequenceDto))
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.NumberSequence) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.NumberSequence.NumberSequenceDto))
                 return (List<TDestination>)(object)MapList_NumberSequence_To_NumberSequenceDto((System.Collections.Generic.IReadOnlyList<InvoiceApi.Domain.Entities.NumberSequence>)(object)source);
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.User) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.User.UserDto))
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.User) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.User.UserDto))
                 return (List<TDestination>)(object)MapList_User_To_UserDto((System.Collections.Generic.IReadOnlyList<InvoiceApi.Domain.Entities.User>)(object)source);
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.VatRate) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.VatRate.VatRateDto))
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.VatRate) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.VatRate.VatRateDto))
                 return (List<TDestination>)(object)MapList_VatRate_To_VatRateDto((System.Collections.Generic.IReadOnlyList<InvoiceApi.Domain.Entities.VatRate>)(object)source);
             throw new NotSupportedException($"List mapping from {typeof(TSource).Name} to {typeof(TDestination).Name} is not configured.");
         }
 
         public List<TDestination> MapList<TSource, TDestination>(System.Collections.Generic.IEnumerable<TSource> source)
         {
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Address) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Client.AddressDto))
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Address) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.Client.AddressDto))
                 return (List<TDestination>)(object)MapList_Address_To_AddressDto_Enumerable((System.Collections.Generic.IEnumerable<InvoiceApi.Domain.Entities.Address>)(object)source);
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Contact) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Client.ContactDto))
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Contact) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.Client.ContactDto))
                 return (List<TDestination>)(object)MapList_Contact_To_ContactDto_Enumerable((System.Collections.Generic.IEnumerable<InvoiceApi.Domain.Entities.Contact>)(object)source);
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.BankAccount) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Client.BankAccountDto))
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.BankAccount) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.Client.BankAccountDto))
                 return (List<TDestination>)(object)MapList_BankAccount_To_BankAccountDto_Enumerable((System.Collections.Generic.IEnumerable<InvoiceApi.Domain.Entities.BankAccount>)(object)source);
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.BillingSettings) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Client.BillingSettingsDto))
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.BillingSettings) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.Client.BillingSettingsDto))
                 return (List<TDestination>)(object)MapList_BillingSettings_To_BillingSettingsDto_Enumerable((System.Collections.Generic.IEnumerable<InvoiceApi.Domain.Entities.BillingSettings>)(object)source);
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Client) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Client.ClientDto))
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Client) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.Client.ClientDto))
                 return (List<TDestination>)(object)MapList_Client_To_ClientDto_Enumerable((System.Collections.Generic.IEnumerable<InvoiceApi.Domain.Entities.Client>)(object)source);
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.ContentTemplate) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.ContentTemplate.ContentTemplateDto))
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.ContentTemplate) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.ContentTemplate.ContentTemplateDto))
                 return (List<TDestination>)(object)MapList_ContentTemplate_To_ContentTemplateDto_Enumerable((System.Collections.Generic.IEnumerable<InvoiceApi.Domain.Entities.ContentTemplate>)(object)source);
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Currency) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Currency.CurrencyDto))
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Currency) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.Currency.CurrencyDto))
                 return (List<TDestination>)(object)MapList_Currency_To_CurrencyDto_Enumerable((System.Collections.Generic.IEnumerable<InvoiceApi.Domain.Entities.Currency>)(object)source);
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.InvoiceItem) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Invoice.InvoiceItemDto))
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.InvoiceItem) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.Invoice.InvoiceItemDto))
                 return (List<TDestination>)(object)MapList_InvoiceItem_To_InvoiceItemDto_Enumerable((System.Collections.Generic.IEnumerable<InvoiceApi.Domain.Entities.InvoiceItem>)(object)source);
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Invoice) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.Invoice.InvoiceDto))
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.Invoice) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.Invoice.InvoiceDto))
                 return (List<TDestination>)(object)MapList_Invoice_To_InvoiceDto_Enumerable((System.Collections.Generic.IEnumerable<InvoiceApi.Domain.Entities.Invoice>)(object)source);
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.InvoiceTemplate) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.InvoiceTemplate.InvoiceTemplateDto))
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.InvoiceTemplate) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.InvoiceTemplate.InvoiceTemplateDto))
                 return (List<TDestination>)(object)MapList_InvoiceTemplate_To_InvoiceTemplateDto_Enumerable((System.Collections.Generic.IEnumerable<InvoiceApi.Domain.Entities.InvoiceTemplate>)(object)source);
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.NumberSequenceFormat) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.NumberSequence.NumberSequenceFormatDto))
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.NumberSequenceFormat) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.NumberSequence.NumberSequenceFormatDto))
                 return (List<TDestination>)(object)MapList_NumberSequenceFormat_To_NumberSequenceFormatDto_Enumerable((System.Collections.Generic.IEnumerable<InvoiceApi.Domain.Entities.NumberSequenceFormat>)(object)source);
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.NumberSequence) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.NumberSequence.NumberSequenceDto))
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.NumberSequence) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.NumberSequence.NumberSequenceDto))
                 return (List<TDestination>)(object)MapList_NumberSequence_To_NumberSequenceDto_Enumerable((System.Collections.Generic.IEnumerable<InvoiceApi.Domain.Entities.NumberSequence>)(object)source);
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.User) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.User.UserDto))
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.User) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.User.UserDto))
                 return (List<TDestination>)(object)MapList_User_To_UserDto_Enumerable((System.Collections.Generic.IEnumerable<InvoiceApi.Domain.Entities.User>)(object)source);
-            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.VatRate) && typeof(TDestination) == typeof(InvoiceApi.Application.Dto.VatRate.VatRateDto))
+            if (typeof(TSource) == typeof(InvoiceApi.Domain.Entities.VatRate) && typeof(TDestination) == typeof(InvoiceApi.Contracts.Dto.VatRate.VatRateDto))
                 return (List<TDestination>)(object)MapList_VatRate_To_VatRateDto_Enumerable((System.Collections.Generic.IEnumerable<InvoiceApi.Domain.Entities.VatRate>)(object)source);
             throw new NotSupportedException($"Enumerable mapping from {typeof(TSource).Name} to {typeof(TDestination).Name} is not configured.");
         }

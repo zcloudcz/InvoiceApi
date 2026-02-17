@@ -2,7 +2,7 @@ namespace InvoiceApi.BlazorUI.Models;
 
 /// <summary>
 /// Blazor model for 2FA status response from the API.
-/// Mirrors the Application.Dto.TwoFactor.TwoFactorStatusDto but uses int for the method
+/// Mirrors the Contracts.Dto.TwoFactor.TwoFactorStatusDto but uses int for the method
 /// (JSON deserialization from API returns integers for enums).
 /// </summary>
 public class TwoFactorStatusDto

@@ -1,82 +1,99 @@
+using Blazored.LocalStorage;
 using Microsoft.AspNetCore.Components.Authorization;
-using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage;
 using System.Security.Claims;
 using System.Text.Json;
 
 namespace InvoiceApi.BlazorUI.Services;
 
 /// <summary>
-/// Custom authentication state provider for Blazor Server
-/// Stores authentication state in protected browser storage
+/// Custom authentication state provider for Blazor WebAssembly.
+/// Stores authentication state in browser localStorage via Blazored.LocalStorage.
+///
+/// Why localStorage instead of ProtectedSessionStorage?
+/// ProtectedSessionStorage uses server-side Data Protection encryption, which
+/// requires a running ASP.NET Core server. In standalone WASM, there is no server
+/// process — the app runs entirely in the browser. Blazored.LocalStorage provides
+/// a simple, browser-native key-value store that persists across page refreshes.
+///
+/// Security note: JWTs in localStorage are accessible to JavaScript.
+/// This is acceptable because:
+///   1. Our CSP prevents third-party script injection
+///   2. The JWT has a short expiry time
+///   3. This is the standard pattern for WASM SPAs (like Angular/React apps)
 /// </summary>
 public class CustomAuthenticationStateProvider : AuthenticationStateProvider
 {
-    private readonly ProtectedSessionStorage _sessionStorage;
+    // Blazored.LocalStorage service — wraps browser's localStorage API via JS interop
+    private readonly ILocalStorageService _localStorage;
     private readonly AuthApiService _authApiService;
+
+    // Anonymous principal used when no user is logged in
     private ClaimsPrincipal _anonymous = new ClaimsPrincipal(new ClaimsIdentity());
 
     public CustomAuthenticationStateProvider(
-        ProtectedSessionStorage sessionStorage,
+        ILocalStorageService localStorage,
         AuthApiService authApiService)
     {
-        _sessionStorage = sessionStorage;
+        _localStorage = localStorage;
         _authApiService = authApiService;
     }
 
     /// <summary>
-    /// Gets the current authentication state
+    /// Gets the current authentication state by reading the JWT session from localStorage.
+    /// Called automatically by Blazor's CascadingAuthenticationState on every navigation.
     /// </summary>
     public override async Task<AuthenticationState> GetAuthenticationStateAsync()
     {
         try
         {
-            // Try to get user session from protected storage
-            var userSessionResult = await _sessionStorage.GetAsync<string>("UserSession");
+            // Read the serialized login response from localStorage
+            var userSessionJson = await _localStorage.GetItemAsStringAsync("UserSession");
 
-            if (!userSessionResult.Success || string.IsNullOrEmpty(userSessionResult.Value))
+            if (string.IsNullOrEmpty(userSessionJson))
             {
                 return new AuthenticationState(_anonymous);
             }
 
-            var userSession = JsonSerializer.Deserialize<Models.LoginResponse>(userSessionResult.Value);
+            var userSession = JsonSerializer.Deserialize<Models.LoginResponse>(userSessionJson);
 
             if (userSession == null)
             {
                 return new AuthenticationState(_anonymous);
             }
 
-            // Check if token is expired
+            // Check if the JWT token has expired
             if (userSession.ExpiresAt <= DateTime.UtcNow)
             {
+                // Token expired — clear the stale session and return anonymous
                 await ClearSessionAsync();
                 return new AuthenticationState(_anonymous);
             }
 
-            // Create claims principal from session
+            // Build a ClaimsPrincipal from the stored session data
             var claimsPrincipal = CreateClaimsPrincipal(userSession);
 
             // If SysAdmin is impersonating a company, add the impersonated company as a claim.
             // This allows role-based checks in the UI (e.g., showing invoicing menu items).
-            if (userSession.Role == 2) // SysAdmin
+            if (userSession.Role == 2) // SysAdmin role
             {
                 try
                 {
-                    var impersonatedResult = await _sessionStorage.GetAsync<long>("ImpersonatedCompanyId");
-                    if (impersonatedResult.Success)
+                    var impersonatedIdStr = await _localStorage.GetItemAsStringAsync("ImpersonatedCompanyId");
+                    if (!string.IsNullOrEmpty(impersonatedIdStr))
                     {
                         var identity = claimsPrincipal.Identity as ClaimsIdentity;
-                        identity?.AddClaim(new Claim("ImpersonatedCompanyId", impersonatedResult.Value.ToString()));
+                        identity?.AddClaim(new Claim("ImpersonatedCompanyId", impersonatedIdStr));
 
-                        var nameResult = await _sessionStorage.GetAsync<string>("ImpersonatedCompanyName");
-                        if (nameResult.Success)
+                        var companyName = await _localStorage.GetItemAsStringAsync("ImpersonatedCompanyName");
+                        if (!string.IsNullOrEmpty(companyName))
                         {
-                            identity?.AddClaim(new Claim("ImpersonatedCompanyName", nameResult.Value ?? ""));
+                            identity?.AddClaim(new Claim("ImpersonatedCompanyName", companyName));
                         }
                     }
                 }
                 catch
                 {
-                    // Ignore — session might not be available yet
+                    // Ignore — localStorage might not be ready yet during initial render
                 }
             }
 
@@ -84,28 +101,28 @@ public class CustomAuthenticationStateProvider : AuthenticationStateProvider
         }
         catch (Exception)
         {
+            // Any error reading localStorage → return anonymous (not logged in)
             return new AuthenticationState(_anonymous);
         }
     }
 
     /// <summary>
-    /// Marks the user as authenticated after successful login
+    /// Marks the user as authenticated after successful login.
+    /// Stores the login response (including JWT) in localStorage.
     /// </summary>
     public async Task MarkUserAsAuthenticatedAsync(Models.LoginResponse loginResponse)
     {
-        // Store user session in protected storage
+        // Serialize and store the login response in localStorage
         var userSessionJson = JsonSerializer.Serialize(loginResponse);
-        await _sessionStorage.SetAsync("UserSession", userSessionJson);
+        await _localStorage.SetItemAsStringAsync("UserSession", userSessionJson);
 
-        // Create claims principal
+        // Build claims principal and notify the Blazor auth system
         var claimsPrincipal = CreateClaimsPrincipal(loginResponse);
-
-        // Notify authentication state changed
         NotifyAuthenticationStateChanged(Task.FromResult(new AuthenticationState(claimsPrincipal)));
     }
 
     /// <summary>
-    /// Marks the user as logged out
+    /// Marks the user as logged out — clears localStorage and notifies the auth system.
     /// </summary>
     public async Task MarkUserAsLoggedOutAsync()
     {
@@ -114,20 +131,21 @@ public class CustomAuthenticationStateProvider : AuthenticationStateProvider
     }
 
     /// <summary>
-    /// Gets the current user's JWT token
+    /// Gets the current user's JWT token from localStorage.
+    /// Used by ApiClientBase to attach the Authorization header to API requests.
     /// </summary>
     public async Task<string?> GetTokenAsync()
     {
         try
         {
-            var userSessionResult = await _sessionStorage.GetAsync<string>("UserSession");
+            var userSessionJson = await _localStorage.GetItemAsStringAsync("UserSession");
 
-            if (!userSessionResult.Success || string.IsNullOrEmpty(userSessionResult.Value))
+            if (string.IsNullOrEmpty(userSessionJson))
             {
                 return null;
             }
 
-            var userSession = JsonSerializer.Deserialize<Models.LoginResponse>(userSessionResult.Value);
+            var userSession = JsonSerializer.Deserialize<Models.LoginResponse>(userSessionJson);
             return userSession?.Token;
         }
         catch (Exception)
@@ -139,19 +157,18 @@ public class CustomAuthenticationStateProvider : AuthenticationStateProvider
     /// <summary>
     /// Stores the impersonated company ID for SysAdmin users.
     /// When set, the SysAdmin sees the system as if they belong to that company.
-    /// Stored in protected session storage so it persists across page navigations.
     /// </summary>
     public async Task SetImpersonatedCompanyAsync(long? companyId, string? companyName)
     {
         if (companyId.HasValue)
         {
-            await _sessionStorage.SetAsync("ImpersonatedCompanyId", companyId.Value);
-            await _sessionStorage.SetAsync("ImpersonatedCompanyName", companyName ?? "");
+            await _localStorage.SetItemAsStringAsync("ImpersonatedCompanyId", companyId.Value.ToString());
+            await _localStorage.SetItemAsStringAsync("ImpersonatedCompanyName", companyName ?? "");
         }
         else
         {
-            await _sessionStorage.DeleteAsync("ImpersonatedCompanyId");
-            await _sessionStorage.DeleteAsync("ImpersonatedCompanyName");
+            await _localStorage.RemoveItemAsync("ImpersonatedCompanyId");
+            await _localStorage.RemoveItemAsync("ImpersonatedCompanyName");
         }
 
         // Notify that auth state changed so UI updates (e.g., nav menu shows invoicing section)
@@ -159,14 +176,14 @@ public class CustomAuthenticationStateProvider : AuthenticationStateProvider
     }
 
     /// <summary>
-    /// Gets the currently impersonated company ID (null if not impersonating)
+    /// Gets the currently impersonated company ID (null if not impersonating).
     /// </summary>
     public async Task<long?> GetImpersonatedCompanyIdAsync()
     {
         try
         {
-            var result = await _sessionStorage.GetAsync<long>("ImpersonatedCompanyId");
-            return result.Success ? result.Value : null;
+            var idStr = await _localStorage.GetItemAsStringAsync("ImpersonatedCompanyId");
+            return !string.IsNullOrEmpty(idStr) && long.TryParse(idStr, out var id) ? id : null;
         }
         catch
         {
@@ -175,14 +192,14 @@ public class CustomAuthenticationStateProvider : AuthenticationStateProvider
     }
 
     /// <summary>
-    /// Gets the currently impersonated company name (null if not impersonating)
+    /// Gets the currently impersonated company name (null if not impersonating).
     /// </summary>
     public async Task<string?> GetImpersonatedCompanyNameAsync()
     {
         try
         {
-            var result = await _sessionStorage.GetAsync<string>("ImpersonatedCompanyName");
-            return result.Success ? result.Value : null;
+            var name = await _localStorage.GetItemAsStringAsync("ImpersonatedCompanyName");
+            return string.IsNullOrEmpty(name) ? null : name;
         }
         catch
         {
@@ -191,20 +208,20 @@ public class CustomAuthenticationStateProvider : AuthenticationStateProvider
     }
 
     /// <summary>
-    /// Gets the current user session
+    /// Gets the current user session (deserialized LoginResponse) from localStorage.
     /// </summary>
     public async Task<Models.LoginResponse?> GetUserSessionAsync()
     {
         try
         {
-            var userSessionResult = await _sessionStorage.GetAsync<string>("UserSession");
+            var userSessionJson = await _localStorage.GetItemAsStringAsync("UserSession");
 
-            if (!userSessionResult.Success || string.IsNullOrEmpty(userSessionResult.Value))
+            if (string.IsNullOrEmpty(userSessionJson))
             {
                 return null;
             }
 
-            return JsonSerializer.Deserialize<Models.LoginResponse>(userSessionResult.Value);
+            return JsonSerializer.Deserialize<Models.LoginResponse>(userSessionJson);
         }
         catch (Exception)
         {
@@ -213,7 +230,9 @@ public class CustomAuthenticationStateProvider : AuthenticationStateProvider
     }
 
     /// <summary>
-    /// Creates ClaimsPrincipal from login response
+    /// Creates a ClaimsPrincipal from the login response.
+    /// The claims are used by Blazor's authorization system for role checks,
+    /// [Authorize] attributes, and AuthorizeView components.
     /// </summary>
     private ClaimsPrincipal CreateClaimsPrincipal(Models.LoginResponse loginResponse)
     {
@@ -235,12 +254,13 @@ public class CustomAuthenticationStateProvider : AuthenticationStateProvider
             claims.Add(new Claim("CompanyName", loginResponse.CompanyName));
         }
 
+        // "apiauth" is the authentication type — any non-null value means "authenticated"
         var identity = new ClaimsIdentity(claims, "apiauth");
         return new ClaimsPrincipal(identity);
     }
 
     /// <summary>
-    /// Converts role number to role name
+    /// Converts role number to role name string for ClaimTypes.Role.
     /// </summary>
     private string GetRoleName(int role)
     {
@@ -254,10 +274,12 @@ public class CustomAuthenticationStateProvider : AuthenticationStateProvider
     }
 
     /// <summary>
-    /// Clears the user session from storage
+    /// Clears all authentication-related data from localStorage.
     /// </summary>
     private async Task ClearSessionAsync()
     {
-        await _sessionStorage.DeleteAsync("UserSession");
+        await _localStorage.RemoveItemAsync("UserSession");
+        await _localStorage.RemoveItemAsync("ImpersonatedCompanyId");
+        await _localStorage.RemoveItemAsync("ImpersonatedCompanyName");
     }
 }

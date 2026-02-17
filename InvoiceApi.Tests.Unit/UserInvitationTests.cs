@@ -1,4 +1,4 @@
-using InvoiceApi.Application.Dto.User;
+using InvoiceApi.Contracts.Dto.User;
 using InvoiceApi.Application.Service;
 using InvoiceApi.Domain.Entities;
 using InvoiceApi.Domain.Enums;

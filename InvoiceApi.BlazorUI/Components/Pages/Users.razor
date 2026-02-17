@@ -1,8 +1,7 @@
 @page "/users"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin,SysAdmin")]
-@rendermode InteractiveServer
-@using InvoiceApi.Application.Dto.User
-@using InvoiceApi.Application.Dto.Client
+@using InvoiceApi.Contracts.Dto.User
+@using InvoiceApi.Contracts.Dto.Client
 @using InvoiceApi.Domain.Enums
 @inject UserApiService UserService
 @inject ClientApiService ClientService
