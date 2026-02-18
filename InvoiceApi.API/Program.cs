@@ -373,15 +373,15 @@ if (!app.Environment.IsEnvironment("Testing"))
     }
 }
 
-if (app.Environment.IsDevelopment())
-{
+//if (app.Environment.IsDevelopment())
+//{
     app.UseSwagger();
     app.UseSwaggerUI(options =>
     {
         options.SwaggerEndpoint("/swagger/v1/swagger.json", "Invoice API v1");
         options.RoutePrefix = string.Empty; // Swagger at root URL
     });
-}
+//}
 
 app.UseHttpsRedirection();
 app.UseCors();

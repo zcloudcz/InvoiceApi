@@ -288,70 +288,37 @@ public class ClientService : IClientService
             LastAresFetchDate = createDto.FetchFromAres ? DateTime.UtcNow : null
         };
 
-        // Add addresses
+        // Add addresses — ZMapper handles property mapping (AddressType, Street, City, etc.)
         foreach (var addressDto in createDto.Address)
         {
-            client.Address.Add(new Address
-            {
-                AddressType = addressDto.AddressType,
-                Street = addressDto.Street,
-                City = addressDto.City,
-                PostalCode = addressDto.PostalCode,
-                Country = addressDto.Country,
-                AddressLine2 = addressDto.AddressLine2,
-                IsPrimary = addressDto.IsPrimary
-            });
+            client.Address.Add(addressDto.ToAddress());
         }
 
-        // Add contacts
+        // Add contacts — ZMapper handles property mapping (ContactType, ContactValue, Label, IsPrimary)
         foreach (var contactDto in createDto.Contact)
         {
-            client.Contact.Add(new Contact
-            {
-                ContactType = contactDto.ContactType,
-                ContactValue = contactDto.ContactValue,
-                Label = contactDto.Label,
-                IsPrimary = contactDto.IsPrimary
-            });
+            client.Contact.Add(contactDto.ToContact());
         }
 
-        // Add bank accounts — first account automatically becomes default if none is explicitly set
+        // Add bank accounts — first account automatically becomes default if none is explicitly set.
+        // ZMapper maps all properties; we only override IsDefault for auto-default logic.
         if (createDto.BankAccount.Count > 0)
         {
             var hasExplicitDefault = createDto.BankAccount.Any(b => b.IsDefault);
             foreach (var (bankDto, index) in createDto.BankAccount.Select((b, i) => (b, i)))
             {
-                client.BankAccount.Add(new BankAccount
-                {
-                    Label = bankDto.Label,
-                    BankName = bankDto.BankName,
-                    AccountNumber = bankDto.AccountNumber,
-                    IBAN = bankDto.IBAN,
-                    SWIFT = bankDto.SWIFT,
-                    CurrencyCode = bankDto.CurrencyCode,
-                    // Auto-default: first account is default if no explicit default is set
-                    IsDefault = hasExplicitDefault ? bankDto.IsDefault : (index == 0)
-                });
+                var bankAccount = bankDto.ToBankAccount();
+                // Auto-default: first account is default if no explicit default is set
+                if (!hasExplicitDefault)
+                    bankAccount.IsDefault = index == 0;
+                client.BankAccount.Add(bankAccount);
             }
         }
 
-        // Add billing settings if provided
+        // Add billing settings if provided — ZMapper maps all properties
         if (createDto.BillingSettings != null)
         {
-            client.BillingSettings = new BillingSettings
-            {
-                DueDateCalculationType = createDto.BillingSettings.DueDateCalculationType,
-                DueDays = createDto.BillingSettings.DueDays,
-                CustomInvoiceNumberSequenceId = createDto.BillingSettings.CustomInvoiceNumberSequenceId,
-                CustomCreditNoteNumberSequenceId = createDto.BillingSettings.CustomCreditNoteNumberSequenceId,
-                InvoiceNumberPrefix = createDto.BillingSettings.InvoiceNumberPrefix,
-                InvoiceNumberSuffix = createDto.BillingSettings.InvoiceNumberSuffix,
-                CreditNoteNumberPrefix = createDto.BillingSettings.CreditNoteNumberPrefix,
-                CreditNoteNumberSuffix = createDto.BillingSettings.CreditNoteNumberSuffix,
-                DefaultPaymentMethod = createDto.BillingSettings.DefaultPaymentMethod,
-                BankAccountNumber = createDto.BillingSettings.BankAccountNumber,
-                Notes = createDto.BillingSettings.Notes
-            };
+            client.BillingSettings = createDto.BillingSettings.ToBillingSettings();
         }
 
         _context.Client.Add(client);
@@ -616,17 +583,9 @@ public class ClientService : IClientService
         if (client == null)
             return null;
 
-        client.Address.Add(new Address
-        {
-            ClientId = clientId,
-            AddressType = addressDto.AddressType,
-            Street = addressDto.Street,
-            City = addressDto.City,
-            PostalCode = addressDto.PostalCode,
-            Country = addressDto.Country,
-            AddressLine2 = addressDto.AddressLine2,
-            IsPrimary = addressDto.IsPrimary
-        });
+        // ZMapper maps all value properties; ClientId is set by EF Core
+        // from the parent navigation (client.Address.Add sets it automatically)
+        client.Address.Add(addressDto.ToAddress());
 
         await _context.SaveChangesAsync(cancellationToken);
 
@@ -648,14 +607,9 @@ public class ClientService : IClientService
         if (client == null)
             return null;
 
-        client.Contact.Add(new Contact
-        {
-            ClientId = clientId,
-            ContactType = contactDto.ContactType,
-            ContactValue = contactDto.ContactValue,
-            Label = contactDto.Label,
-            IsPrimary = contactDto.IsPrimary
-        });
+        // ZMapper maps all value properties; ClientId is set by EF Core
+        // from the parent navigation (client.Contact.Add sets it automatically)
+        client.Contact.Add(contactDto.ToContact());
 
         await _context.SaveChangesAsync(cancellationToken);
 
@@ -692,17 +646,11 @@ public class ClientService : IClientService
             }
         }
 
-        client.BankAccount.Add(new BankAccount
-        {
-            ClientId = clientId,
-            Label = bankAccountDto.Label,
-            BankName = bankAccountDto.BankName,
-            AccountNumber = bankAccountDto.AccountNumber,
-            IBAN = bankAccountDto.IBAN,
-            SWIFT = bankAccountDto.SWIFT,
-            CurrencyCode = bankAccountDto.CurrencyCode,
-            IsDefault = shouldBeDefault
-        });
+        // ZMapper maps all value properties; override IsDefault with the computed value.
+        // ClientId is set by EF Core from the parent navigation.
+        var newAccount = bankAccountDto.ToBankAccount();
+        newAccount.IsDefault = shouldBeDefault;
+        client.BankAccount.Add(newAccount);
 
         await _context.SaveChangesAsync(cancellationToken);
 

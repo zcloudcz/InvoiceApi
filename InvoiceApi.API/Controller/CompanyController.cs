@@ -9,6 +9,7 @@ using InvoiceApi.Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using ZMapper; // ZMapper extension methods for DTO mapping (e.g., .ToClientDto(), .ToAddress())
 
 namespace InvoiceApi.API.Controller;
 
@@ -290,57 +291,28 @@ public class CompanyController : ControllerBase
                 Contact = new List<Contact>()
             };
 
-            // Add addresses from the DTO (e.g., billing address from ARES or manual entry)
+            // Add addresses from the DTO — ZMapper handles property mapping
             if (createDto.Address?.Count > 0)
             {
                 foreach (var addrDto in createDto.Address)
                 {
-                    company.Address.Add(new Address
-                    {
-                        AddressType = addrDto.AddressType,
-                        Street = addrDto.Street,
-                        City = addrDto.City,
-                        PostalCode = addrDto.PostalCode,
-                        Country = addrDto.Country,
-                        AddressLine2 = addrDto.AddressLine2,
-                        IsPrimary = addrDto.IsPrimary,
-                        CreatedAt = DateTime.UtcNow
-                    });
+                    company.Address.Add(addrDto.ToAddress());
                 }
             }
 
-            // Add contacts from the DTO (e.g., email, phone)
+            // Add contacts from the DTO — ZMapper handles property mapping
             if (createDto.Contact?.Count > 0)
             {
                 foreach (var contactDto in createDto.Contact)
                 {
-                    company.Contact.Add(new Contact
-                    {
-                        ContactType = contactDto.ContactType,
-                        ContactValue = contactDto.ContactValue,
-                        Label = contactDto.Label,
-                        IsPrimary = contactDto.IsPrimary,
-                        CreatedAt = DateTime.UtcNow
-                    });
+                    company.Contact.Add(contactDto.ToContact());
                 }
             }
 
-            // Add billing settings (bank account, payment method, etc.) if provided
+            // Add billing settings if provided — ZMapper handles property mapping
             if (createDto.BillingSettings != null)
             {
-                company.BillingSettings = new BillingSettings
-                {
-                    DueDateCalculationType = createDto.BillingSettings.DueDateCalculationType,
-                    DueDays = createDto.BillingSettings.DueDays,
-                    InvoiceNumberPrefix = createDto.BillingSettings.InvoiceNumberPrefix,
-                    InvoiceNumberSuffix = createDto.BillingSettings.InvoiceNumberSuffix,
-                    CreditNoteNumberPrefix = createDto.BillingSettings.CreditNoteNumberPrefix,
-                    CreditNoteNumberSuffix = createDto.BillingSettings.CreditNoteNumberSuffix,
-                    DefaultPaymentMethod = createDto.BillingSettings.DefaultPaymentMethod,
-                    BankAccountNumber = createDto.BillingSettings.BankAccountNumber,
-                    Notes = createDto.BillingSettings.Notes,
-                    CreatedAt = DateTime.UtcNow
-                };
+                company.BillingSettings = createDto.BillingSettings.ToBillingSettings();
             }
 
             _masterContext.Client.Add(company);
@@ -1054,64 +1026,11 @@ public class CompanyController : ControllerBase
     #region Private Helpers
 
     /// <summary>
-    /// Maps a Client entity to ClientDto for API responses.
-    /// Address, Contact, and BillingSettings are now stored in the master DB alongside
-    /// the company record, so we map real data instead of empty/null values.
+    /// Maps a Client entity to ClientDto using ZMapper (same mapping as ClientService).
+    /// ZMapper handles all properties including nested Address, Contact, BankAccount,
+    /// and BillingSettings collections automatically.
     /// </summary>
-    private static ClientDto MapToDto(Client client)
-    {
-        return new ClientDto
-        {
-            Id = client.Id,
-            CompanyName = client.CompanyName,
-            TradingName = client.TradingName,
-            RegistrationNumber = client.RegistrationNumber,
-            TaxNumber = client.TaxNumber,
-            IsVatPayer = client.IsVatPayer,
-            IsIssuer = client.IsIssuer,
-            IsActive = client.IsActive,
-            LastAresFetchDate = client.LastAresFetchDate,
-            CreatedAt = client.CreatedAt,
-            UpdatedAt = client.UpdatedAt,
-            // Map real Address collection (loaded via Include or from creation)
-            Address = client.Address?.Select(a => new AddressDto
-            {
-                Id = a.Id,
-                AddressType = a.AddressType,
-                Street = a.Street,
-                City = a.City,
-                PostalCode = a.PostalCode,
-                Country = a.Country,
-                AddressLine2 = a.AddressLine2,
-                IsPrimary = a.IsPrimary
-            }).ToList() ?? new List<AddressDto>(),
-            // Map real Contact collection (loaded via Include or from creation)
-            Contact = client.Contact?.Select(c => new ContactDto
-            {
-                Id = c.Id,
-                ContactType = c.ContactType,
-                ContactValue = c.ContactValue,
-                Label = c.Label,
-                IsPrimary = c.IsPrimary
-            }).ToList() ?? new List<ContactDto>(),
-            // Map BillingSettings (bank account, payment method, due date config)
-            BillingSettings = client.BillingSettings != null ? new BillingSettingsDto
-            {
-                Id = client.BillingSettings.Id,
-                DueDateCalculationType = client.BillingSettings.DueDateCalculationType,
-                DueDays = client.BillingSettings.DueDays,
-                CustomInvoiceNumberSequenceId = client.BillingSettings.CustomInvoiceNumberSequenceId,
-                CustomCreditNoteNumberSequenceId = client.BillingSettings.CustomCreditNoteNumberSequenceId,
-                InvoiceNumberPrefix = client.BillingSettings.InvoiceNumberPrefix,
-                InvoiceNumberSuffix = client.BillingSettings.InvoiceNumberSuffix,
-                CreditNoteNumberPrefix = client.BillingSettings.CreditNoteNumberPrefix,
-                CreditNoteNumberSuffix = client.BillingSettings.CreditNoteNumberSuffix,
-                DefaultPaymentMethod = client.BillingSettings.DefaultPaymentMethod,
-                BankAccountNumber = client.BillingSettings.BankAccountNumber,
-                Notes = client.BillingSettings.Notes
-            } : null
-        };
-    }
+    private static ClientDto MapToDto(Client client) => client.ToClientDto();
 
     /// <summary>
     /// Maps a CompanySystemSettings entity to a DTO for API responses.

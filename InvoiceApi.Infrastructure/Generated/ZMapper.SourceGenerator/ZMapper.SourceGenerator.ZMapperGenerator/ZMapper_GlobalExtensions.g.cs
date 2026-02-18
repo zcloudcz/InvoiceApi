@@ -101,6 +101,63 @@ public static class Mapper_Extensions
     }
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    public static InvoiceApi.Domain.Entities.Address ToAddress(this InvoiceApi.Contracts.Dto.Client.CreateAddressDto source)
+    {
+        var destination = new InvoiceApi.Domain.Entities.Address();
+        destination.AddressType = source.AddressType;
+        destination.Street = source.Street;
+        destination.City = source.City;
+        destination.PostalCode = source.PostalCode;
+        destination.Country = source.Country;
+        destination.AddressLine2 = source.AddressLine2;
+        destination.IsPrimary = source.IsPrimary;
+        return destination;
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    public static InvoiceApi.Domain.Entities.Contact ToContact(this InvoiceApi.Contracts.Dto.Client.CreateContactDto source)
+    {
+        var destination = new InvoiceApi.Domain.Entities.Contact();
+        destination.ContactType = source.ContactType;
+        destination.ContactValue = source.ContactValue;
+        destination.Label = source.Label;
+        destination.IsPrimary = source.IsPrimary;
+        return destination;
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    public static InvoiceApi.Domain.Entities.BankAccount ToBankAccount(this InvoiceApi.Contracts.Dto.Client.CreateBankAccountDto source)
+    {
+        var destination = new InvoiceApi.Domain.Entities.BankAccount();
+        destination.Label = source.Label;
+        destination.BankName = source.BankName;
+        destination.AccountNumber = source.AccountNumber;
+        destination.IBAN = source.IBAN;
+        destination.SWIFT = source.SWIFT;
+        destination.CurrencyCode = source.CurrencyCode;
+        destination.IsDefault = source.IsDefault;
+        return destination;
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    public static InvoiceApi.Domain.Entities.BillingSettings ToBillingSettings(this InvoiceApi.Contracts.Dto.Client.CreateBillingSettingsDto source)
+    {
+        var destination = new InvoiceApi.Domain.Entities.BillingSettings();
+        destination.DueDateCalculationType = source.DueDateCalculationType;
+        destination.DueDays = source.DueDays;
+        destination.CustomInvoiceNumberSequenceId = source.CustomInvoiceNumberSequenceId;
+        destination.CustomCreditNoteNumberSequenceId = source.CustomCreditNoteNumberSequenceId;
+        destination.InvoiceNumberPrefix = source.InvoiceNumberPrefix;
+        destination.InvoiceNumberSuffix = source.InvoiceNumberSuffix;
+        destination.CreditNoteNumberPrefix = source.CreditNoteNumberPrefix;
+        destination.CreditNoteNumberSuffix = source.CreditNoteNumberSuffix;
+        destination.DefaultPaymentMethod = source.DefaultPaymentMethod;
+        destination.BankAccountNumber = source.BankAccountNumber;
+        destination.Notes = source.Notes;
+        return destination;
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     public static InvoiceApi.Contracts.Dto.ContentTemplate.ContentTemplateDto ToContentTemplateDto(this InvoiceApi.Domain.Entities.ContentTemplate source)
     {
         var destination = new InvoiceApi.Contracts.Dto.ContentTemplate.ContentTemplateDto();

@@ -30,7 +30,7 @@ public class LogFlushService : BackgroundService
     {
         _connectionString = configuration.GetConnectionString("MasterConnection")
             ?? throw new InvalidOperationException("MasterConnection string not configured for LogFlushService.");
-        _flushInterval = TimeSpan.FromSeconds(5);
+        _flushInterval = TimeSpan.FromSeconds(20);
         _logger = logger;
     }
 
