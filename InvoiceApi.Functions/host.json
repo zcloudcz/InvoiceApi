@@ -1,16 +1,9 @@
 {
   "version": "2.0",
-  "extensions": {
-    "http": {
-      "routePrefix": ""
-    }
-  },
   "logging": {
     "logLevel": {
       "default": "Information",
-      "Function": "Information",
-      "Microsoft.EntityFrameworkCore": "Warning",
-      "Microsoft.AspNetCore": "Warning"
+      "Function": "Information"
     }
   }
 }

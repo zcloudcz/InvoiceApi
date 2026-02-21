@@ -71,7 +71,8 @@
       "Bash(\"C:\\\\Users\\\\zahal\\\\AppData\\\\Local\\\\Microsoft\\\\WindowsApps\\\\python.exe\" -c \"\nimport zipfile, xml.etree.ElementTree as ET\nwith zipfile.ZipFile\\(''spec-migrace-azure-functions.docx''\\) as z:\n    tree = ET.parse\\(z.open\\(''word/document.xml''\\)\\)\n    for p in tree.iter\\(''{http://schemas.openxmlformats.org/wordprocessingml/2006/main}p''\\):\n        texts = [t.text for t in p.iter\\(''{http://schemas.openxmlformats.org/wordprocessingml/2006/main}t''\\) if t.text]\n        line = ''''.join\\(texts\\)\n        if line.strip\\(\\):\n            print\\(line\\)\n\")",
       "Bash(start \"\" \"C:\\\\GIT\\\\ZCLOUD\\\\InvoiceApi\\\\WASM.md\")",
       "Bash(start \"\" \"C:\\\\GIT\\\\ZCLOUD\\\\InvoiceApi\\\\APPKA.md\")",
-      "Bash(xcopy:*)"
+      "Bash(xcopy:*)",
+      "Bash(tee:*)"
     ]
   }
 }

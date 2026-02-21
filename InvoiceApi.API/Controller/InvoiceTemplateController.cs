@@ -6,7 +6,7 @@ using InvoiceApi.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
-namespace InvoiceApi.API.Controllers;
+namespace InvoiceApi.API.Controller;
 
 /// <summary>
 /// Controller for invoice template management

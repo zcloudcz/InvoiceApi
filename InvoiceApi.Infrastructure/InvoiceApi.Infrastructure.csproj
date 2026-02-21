@@ -31,6 +31,11 @@
     <PackageReference Include="QRCoder" Version="1.7.0" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.15.0" />
     <PackageReference Include="ZMapper" Version="1.2.0" />
+    <!-- Auth packages needed by DependencyInjection/AuthenticationExtensions.cs (shared with API + Functions) -->
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.1" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.Google" Version="10.0.3" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.MicrosoftAccount" Version="10.0.3" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.Facebook" Version="10.0.3" />
   </ItemGroup>
 
   <PropertyGroup>
