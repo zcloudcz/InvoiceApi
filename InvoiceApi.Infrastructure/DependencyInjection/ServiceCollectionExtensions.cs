@@ -149,6 +149,7 @@ public static class ServiceCollectionExtensions
         // EnableRetryOnFailure handles transient SQL Server/Azure SQL errors (network blips,
         // connection pool exhaustion, Azure failovers) by automatically retrying failed operations.
         services.AddDbContext<MasterDbContext>(options =>
+        {
             options.UseSqlServer(
                 configuration.GetConnectionString("MasterConnection")
                     ?? throw new InvalidOperationException(
@@ -162,7 +163,9 @@ public static class ServiceCollectionExtensions
                         maxRetryCount: 3,
                         maxRetryDelay: TimeSpan.FromSeconds(5),
                         errorNumbersToAdd: null);
-                }));
+                });
+
+        });
 
         // TenantDbContext — per-tenant database for invoices, clients, templates, etc.
         // Registered as scoped; the actual connection string is resolved DYNAMICALLY per request.
@@ -237,6 +240,7 @@ public static class ServiceCollectionExtensions
                     maxRetryDelay: TimeSpan.FromSeconds(5),
                     errorNumbersToAdd: null);
             });
+
         });
     }
 }
