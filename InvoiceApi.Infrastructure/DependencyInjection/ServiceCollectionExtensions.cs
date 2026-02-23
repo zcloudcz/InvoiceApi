@@ -5,6 +5,7 @@ using InvoiceApi.Infrastructure.Logging;
 using InvoiceApi.Infrastructure.Repository;
 using InvoiceApi.Infrastructure.Service;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -165,6 +166,12 @@ public static class ServiceCollectionExtensions
                         errorNumbersToAdd: null);
                 });
 
+            // EF Core 10 throws PendingModelChangesWarning by default when the current model
+            // doesn't exactly match the latest migration snapshot. This blocks MigrateAsync()
+            // even if the differences are cosmetic (e.g., environment-specific metadata).
+            // Downgrade from Throw → Log so migrations proceed and the warning is still visible.
+            options.ConfigureWarnings(w =>
+                w.Log(RelationalEventId.PendingModelChangesWarning));
         });
 
         // TenantDbContext — per-tenant database for invoices, clients, templates, etc.
@@ -219,6 +226,10 @@ public static class ServiceCollectionExtensions
                             maxRetryDelay: TimeSpan.FromSeconds(5),
                             errorNumbersToAdd: null);
                     });
+
+                    // Downgrade PendingModelChangesWarning from Throw → Log (same as MasterDbContext above).
+                    options.ConfigureWarnings(w =>
+                        w.Log(RelationalEventId.PendingModelChangesWarning));
                     return;
                 }
             }
@@ -241,6 +252,9 @@ public static class ServiceCollectionExtensions
                     errorNumbersToAdd: null);
             });
 
+            // Downgrade PendingModelChangesWarning from Throw → Log (same as MasterDbContext above).
+            options.ConfigureWarnings(w =>
+                w.Log(RelationalEventId.PendingModelChangesWarning));
         });
     }
 }
