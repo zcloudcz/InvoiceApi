@@ -25,6 +25,7 @@ namespace InvoiceApi.Functions
             { "InvoiceApi.Functions.HttpFunctions.CorsFunctions", Type.GetType("InvoiceApi.Functions.HttpFunctions.CorsFunctions, InvoiceApi.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "InvoiceApi.Functions.Generated.CurrencyFunctions", Type.GetType("InvoiceApi.Functions.Generated.CurrencyFunctions, InvoiceApi.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "InvoiceApi.Functions.Generated.DashboardFunctions", Type.GetType("InvoiceApi.Functions.Generated.DashboardFunctions, InvoiceApi.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
+            { "InvoiceApi.Functions.HttpFunctions.DiagnosticFunctions", Type.GetType("InvoiceApi.Functions.HttpFunctions.DiagnosticFunctions, InvoiceApi.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "InvoiceApi.Functions.Generated.InvoiceFunctions", Type.GetType("InvoiceApi.Functions.Generated.InvoiceFunctions, InvoiceApi.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "InvoiceApi.Functions.Generated.InvoiceTemplateFunctions", Type.GetType("InvoiceApi.Functions.Generated.InvoiceTemplateFunctions, InvoiceApi.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "InvoiceApi.Functions.Generated.NumberSequenceFunctions", Type.GetType("InvoiceApi.Functions.Generated.NumberSequenceFunctions, InvoiceApi.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
@@ -465,6 +466,20 @@ namespace InvoiceApi.Functions
                 var instanceType = types["InvoiceApi.Functions.Generated.DashboardFunctions"];
                 var i = _functionActivator.CreateInstance(instanceType, context) as global::InvoiceApi.Functions.Generated.DashboardFunctions;
                 context.GetInvocationResult().Value = await i.Dashboard_GetSysAdminDashboard((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "InvoiceApi.Functions.HttpFunctions.DiagnosticFunctions.Health", StringComparison.Ordinal))
+            {
+                var instanceType = types["InvoiceApi.Functions.HttpFunctions.DiagnosticFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::InvoiceApi.Functions.HttpFunctions.DiagnosticFunctions;
+                context.GetInvocationResult().Value = await i.Health((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "InvoiceApi.Functions.HttpFunctions.DiagnosticFunctions.Migrate", StringComparison.Ordinal))
+            {
+                var instanceType = types["InvoiceApi.Functions.HttpFunctions.DiagnosticFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::InvoiceApi.Functions.HttpFunctions.DiagnosticFunctions;
+                context.GetInvocationResult().Value = await i.Migrate((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
                 return;
             }
             if (string.Equals(context.FunctionDefinition.EntryPoint, "InvoiceApi.Functions.Generated.InvoiceFunctions.Invoice_GetAllInvoices", StringComparison.Ordinal))
