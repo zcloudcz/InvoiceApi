@@ -17,9 +17,12 @@
 // ============================================================================
 
 using System.Globalization;
+using InvoiceApi.Application.Service;
 using InvoiceApi.Functions.Middleware;
+using InvoiceApi.Infrastructure.Data;
 using InvoiceApi.Infrastructure.DependencyInjection;
 using InvoiceApi.Infrastructure.Logging;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -66,4 +69,38 @@ var host = new HostBuilder()
     })
     .Build();
 
+// ── Startup database migrations ────────────────────────────────────────────
+// Apply EF Core migrations on startup — same as the API project does.
+// Step 1: Migrate master DB (Users, Companies, SystemSettings, code tables).
+// Step 2: Migrate all active tenant databases (Invoices, Clients, etc.).
+// This ensures the Azure SQL databases have all tables before any function runs.
+using (var scope = host.Services.CreateScope())
+{
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+
+    try
+    {
+        // Master DB — must be migrated first (it contains company records
+        // that tell us which tenant databases exist)
+        var masterDb = scope.ServiceProvider.GetRequiredService<MasterDbContext>();
+        logger.LogInformation("Startup: applying master database migrations...");
+        await masterDb.Database.MigrateAsync();
+        logger.LogInformation("Startup: master database migrated successfully");
+
+        // Tenant DBs — migrate all provisioned + active tenants
+        var provisioningService = scope.ServiceProvider.GetRequiredService<ITenantProvisioningService>();
+        var migrated = await provisioningService.MigrateAllTenantsAsync();
+        logger.LogInformation("Startup: migrated {Count} tenant database(s)", migrated);
+    }
+    catch (Exception ex)
+    {
+        // Log but don't crash — timer triggers (log flush) should still work
+        // even if the database isn't ready yet.
+        logger.LogError(ex, "Startup: database migration failed — API calls will return errors until resolved");
+    }
+}
+
 await host.RunAsync();
+
+// Required for WebApplicationFactory<Program> in integration tests
+public partial class Program { }
