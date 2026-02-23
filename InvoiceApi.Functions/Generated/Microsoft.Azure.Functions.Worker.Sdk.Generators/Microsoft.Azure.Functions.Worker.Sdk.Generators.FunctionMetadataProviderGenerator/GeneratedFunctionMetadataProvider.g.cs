@@ -686,1069 +686,1082 @@ namespace InvoiceApi.Functions
             };
             metadataList.Add(Function50);
             var Function51RawBindings = new List<string>();
-            Function51RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/currency/active""}");
+            Function51RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""options""],""route"":""{*path}""}");
             Function51RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function51 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "Currency_GetActiveCurrencies",
-                EntryPoint = "InvoiceApi.Functions.Generated.CurrencyFunctions.Currency_GetActiveCurrencies",
+                Name = "Cors_PreFlight",
+                EntryPoint = "InvoiceApi.Functions.HttpFunctions.CorsFunctions.HandlePreFlight",
                 RawBindings = Function51RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function51);
             var Function52RawBindings = new List<string>();
-            Function52RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/currency""}");
+            Function52RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/currency/active""}");
             Function52RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function52 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "Currency_GetCurrenciesPaged",
-                EntryPoint = "InvoiceApi.Functions.Generated.CurrencyFunctions.Currency_GetCurrenciesPaged",
+                Name = "Currency_GetActiveCurrencies",
+                EntryPoint = "InvoiceApi.Functions.Generated.CurrencyFunctions.Currency_GetActiveCurrencies",
                 RawBindings = Function52RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function52);
             var Function53RawBindings = new List<string>();
-            Function53RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/currency/{id}""}");
+            Function53RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/currency""}");
             Function53RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function53 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "Currency_GetCurrencyById",
-                EntryPoint = "InvoiceApi.Functions.Generated.CurrencyFunctions.Currency_GetCurrencyById",
+                Name = "Currency_GetCurrenciesPaged",
+                EntryPoint = "InvoiceApi.Functions.Generated.CurrencyFunctions.Currency_GetCurrenciesPaged",
                 RawBindings = Function53RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function53);
             var Function54RawBindings = new List<string>();
-            Function54RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/currency""}");
+            Function54RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/currency/{id}""}");
             Function54RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function54 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "Currency_CreateCurrency",
-                EntryPoint = "InvoiceApi.Functions.Generated.CurrencyFunctions.Currency_CreateCurrency",
+                Name = "Currency_GetCurrencyById",
+                EntryPoint = "InvoiceApi.Functions.Generated.CurrencyFunctions.Currency_GetCurrencyById",
                 RawBindings = Function54RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function54);
             var Function55RawBindings = new List<string>();
-            Function55RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/currency/{id}""}");
+            Function55RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/currency""}");
             Function55RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function55 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "Currency_UpdateCurrency",
-                EntryPoint = "InvoiceApi.Functions.Generated.CurrencyFunctions.Currency_UpdateCurrency",
+                Name = "Currency_CreateCurrency",
+                EntryPoint = "InvoiceApi.Functions.Generated.CurrencyFunctions.Currency_CreateCurrency",
                 RawBindings = Function55RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function55);
             var Function56RawBindings = new List<string>();
-            Function56RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""delete""],""route"":""api/currency/{id}""}");
+            Function56RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/currency/{id}""}");
             Function56RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function56 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "Currency_DeleteCurrency",
-                EntryPoint = "InvoiceApi.Functions.Generated.CurrencyFunctions.Currency_DeleteCurrency",
+                Name = "Currency_UpdateCurrency",
+                EntryPoint = "InvoiceApi.Functions.Generated.CurrencyFunctions.Currency_UpdateCurrency",
                 RawBindings = Function56RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function56);
             var Function57RawBindings = new List<string>();
-            Function57RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/dashboard""}");
+            Function57RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""delete""],""route"":""api/currency/{id}""}");
             Function57RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function57 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "Dashboard_GetDashboard",
-                EntryPoint = "InvoiceApi.Functions.Generated.DashboardFunctions.Dashboard_GetDashboard",
+                Name = "Currency_DeleteCurrency",
+                EntryPoint = "InvoiceApi.Functions.Generated.CurrencyFunctions.Currency_DeleteCurrency",
                 RawBindings = Function57RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function57);
             var Function58RawBindings = new List<string>();
-            Function58RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/dashboard/sysadmin""}");
+            Function58RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/dashboard""}");
             Function58RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function58 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "Dashboard_GetSysAdminDashboard",
-                EntryPoint = "InvoiceApi.Functions.Generated.DashboardFunctions.Dashboard_GetSysAdminDashboard",
+                Name = "Dashboard_GetDashboard",
+                EntryPoint = "InvoiceApi.Functions.Generated.DashboardFunctions.Dashboard_GetDashboard",
                 RawBindings = Function58RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function58);
             var Function59RawBindings = new List<string>();
-            Function59RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/invoice""}");
+            Function59RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/dashboard/sysadmin""}");
             Function59RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function59 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "Invoice_GetAllInvoices",
-                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceFunctions.Invoice_GetAllInvoices",
+                Name = "Dashboard_GetSysAdminDashboard",
+                EntryPoint = "InvoiceApi.Functions.Generated.DashboardFunctions.Dashboard_GetSysAdminDashboard",
                 RawBindings = Function59RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function59);
             var Function60RawBindings = new List<string>();
-            Function60RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/invoice/paged""}");
+            Function60RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/invoice""}");
             Function60RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function60 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "Invoice_GetInvoicesPaged",
-                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceFunctions.Invoice_GetInvoicesPaged",
+                Name = "Invoice_GetAllInvoices",
+                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceFunctions.Invoice_GetAllInvoices",
                 RawBindings = Function60RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function60);
             var Function61RawBindings = new List<string>();
-            Function61RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/invoice/{id}""}");
+            Function61RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/invoice/paged""}");
             Function61RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function61 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "Invoice_GetInvoiceById",
-                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceFunctions.Invoice_GetInvoiceById",
+                Name = "Invoice_GetInvoicesPaged",
+                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceFunctions.Invoice_GetInvoicesPaged",
                 RawBindings = Function61RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function61);
             var Function62RawBindings = new List<string>();
-            Function62RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/invoice/by-number/{documentNumber}""}");
+            Function62RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/invoice/{id}""}");
             Function62RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function62 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "Invoice_GetInvoiceByDocumentNumber",
-                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceFunctions.Invoice_GetInvoiceByDocumentNumber",
+                Name = "Invoice_GetInvoiceById",
+                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceFunctions.Invoice_GetInvoiceById",
                 RawBindings = Function62RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function62);
             var Function63RawBindings = new List<string>();
-            Function63RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/invoice""}");
+            Function63RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/invoice/by-number/{documentNumber}""}");
             Function63RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function63 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "Invoice_CreateInvoice",
-                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceFunctions.Invoice_CreateInvoice",
+                Name = "Invoice_GetInvoiceByDocumentNumber",
+                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceFunctions.Invoice_GetInvoiceByDocumentNumber",
                 RawBindings = Function63RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function63);
             var Function64RawBindings = new List<string>();
-            Function64RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/invoice/{id}""}");
+            Function64RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/invoice""}");
             Function64RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function64 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "Invoice_UpdateInvoice",
-                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceFunctions.Invoice_UpdateInvoice",
+                Name = "Invoice_CreateInvoice",
+                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceFunctions.Invoice_CreateInvoice",
                 RawBindings = Function64RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function64);
             var Function65RawBindings = new List<string>();
-            Function65RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/invoice/{id}/complete""}");
+            Function65RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/invoice/{id}""}");
             Function65RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function65 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "Invoice_CompleteInvoice",
-                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceFunctions.Invoice_CompleteInvoice",
+                Name = "Invoice_UpdateInvoice",
+                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceFunctions.Invoice_UpdateInvoice",
                 RawBindings = Function65RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function65);
             var Function66RawBindings = new List<string>();
-            Function66RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/invoice/{id}/mark-paid""}");
+            Function66RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/invoice/{id}/complete""}");
             Function66RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function66 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "Invoice_MarkAsPaid",
-                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceFunctions.Invoice_MarkAsPaid",
+                Name = "Invoice_CompleteInvoice",
+                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceFunctions.Invoice_CompleteInvoice",
                 RawBindings = Function66RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function66);
             var Function67RawBindings = new List<string>();
-            Function67RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""delete""],""route"":""api/invoice/{id}""}");
+            Function67RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/invoice/{id}/mark-paid""}");
             Function67RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function67 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "Invoice_DeleteInvoice",
-                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceFunctions.Invoice_DeleteInvoice",
+                Name = "Invoice_MarkAsPaid",
+                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceFunctions.Invoice_MarkAsPaid",
                 RawBindings = Function67RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function67);
             var Function68RawBindings = new List<string>();
-            Function68RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/invoice/{invoiceId}/credit-note""}");
+            Function68RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""delete""],""route"":""api/invoice/{id}""}");
             Function68RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function68 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "Invoice_CreateCreditNote",
-                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceFunctions.Invoice_CreateCreditNote",
+                Name = "Invoice_DeleteInvoice",
+                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceFunctions.Invoice_DeleteInvoice",
                 RawBindings = Function68RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function68);
             var Function69RawBindings = new List<string>();
-            Function69RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/invoice/{invoiceId}/credit-notes""}");
+            Function69RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/invoice/{invoiceId}/credit-note""}");
             Function69RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function69 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "Invoice_GetCreditNotesForInvoice",
-                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceFunctions.Invoice_GetCreditNotesForInvoice",
+                Name = "Invoice_CreateCreditNote",
+                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceFunctions.Invoice_CreateCreditNote",
                 RawBindings = Function69RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function69);
             var Function70RawBindings = new List<string>();
-            Function70RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/invoice/{id}/pdf""}");
+            Function70RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/invoice/{invoiceId}/credit-notes""}");
             Function70RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function70 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "Invoice_ExportToPdf",
-                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceFunctions.Invoice_ExportToPdf",
+                Name = "Invoice_GetCreditNotesForInvoice",
+                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceFunctions.Invoice_GetCreditNotesForInvoice",
                 RawBindings = Function70RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function70);
             var Function71RawBindings = new List<string>();
-            Function71RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/invoice/{id}/send-email""}");
+            Function71RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/invoice/{id}/pdf""}");
             Function71RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function71 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "Invoice_SendInvoiceEmail",
-                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceFunctions.Invoice_SendInvoiceEmail",
+                Name = "Invoice_ExportToPdf",
+                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceFunctions.Invoice_ExportToPdf",
                 RawBindings = Function71RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function71);
             var Function72RawBindings = new List<string>();
-            Function72RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/invoice/{id}/qr""}");
+            Function72RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/invoice/{id}/send-email""}");
             Function72RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function72 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "Invoice_GetQrCode",
-                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceFunctions.Invoice_GetQrCode",
+                Name = "Invoice_SendInvoiceEmail",
+                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceFunctions.Invoice_SendInvoiceEmail",
                 RawBindings = Function72RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function72);
             var Function73RawBindings = new List<string>();
-            Function73RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/invoice/{id}/qr/sind""}");
+            Function73RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/invoice/{id}/qr""}");
             Function73RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function73 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "Invoice_GetSindString",
-                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceFunctions.Invoice_GetSindString",
+                Name = "Invoice_GetQrCode",
+                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceFunctions.Invoice_GetQrCode",
                 RawBindings = Function73RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function73);
             var Function74RawBindings = new List<string>();
-            Function74RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/invoice/{id}/qr/spd""}");
+            Function74RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/invoice/{id}/qr/sind""}");
             Function74RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function74 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "Invoice_GetSpdString",
-                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceFunctions.Invoice_GetSpdString",
+                Name = "Invoice_GetSindString",
+                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceFunctions.Invoice_GetSindString",
                 RawBindings = Function74RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function74);
             var Function75RawBindings = new List<string>();
-            Function75RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/invoice/bulk/complete""}");
+            Function75RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/invoice/{id}/qr/spd""}");
             Function75RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function75 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "Invoice_BulkComplete",
-                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceFunctions.Invoice_BulkComplete",
+                Name = "Invoice_GetSpdString",
+                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceFunctions.Invoice_GetSpdString",
                 RawBindings = Function75RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function75);
             var Function76RawBindings = new List<string>();
-            Function76RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/invoice/bulk/mark-paid""}");
+            Function76RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/invoice/bulk/complete""}");
             Function76RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function76 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "Invoice_BulkMarkAsPaid",
-                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceFunctions.Invoice_BulkMarkAsPaid",
+                Name = "Invoice_BulkComplete",
+                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceFunctions.Invoice_BulkComplete",
                 RawBindings = Function76RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function76);
             var Function77RawBindings = new List<string>();
-            Function77RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/invoice/bulk/delete""}");
+            Function77RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/invoice/bulk/mark-paid""}");
             Function77RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function77 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "Invoice_BulkDelete",
-                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceFunctions.Invoice_BulkDelete",
+                Name = "Invoice_BulkMarkAsPaid",
+                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceFunctions.Invoice_BulkMarkAsPaid",
                 RawBindings = Function77RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function77);
             var Function78RawBindings = new List<string>();
-            Function78RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/invoice/bulk/send-email""}");
+            Function78RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/invoice/bulk/delete""}");
             Function78RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function78 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "Invoice_BulkSendEmail",
-                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceFunctions.Invoice_BulkSendEmail",
+                Name = "Invoice_BulkDelete",
+                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceFunctions.Invoice_BulkDelete",
                 RawBindings = Function78RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function78);
             var Function79RawBindings = new List<string>();
-            Function79RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/invoice/bulk/pdf""}");
+            Function79RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/invoice/bulk/send-email""}");
             Function79RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function79 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "Invoice_BulkExportPdf",
-                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceFunctions.Invoice_BulkExportPdf",
+                Name = "Invoice_BulkSendEmail",
+                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceFunctions.Invoice_BulkSendEmail",
                 RawBindings = Function79RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function79);
             var Function80RawBindings = new List<string>();
-            Function80RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/invoicetemplate/active""}");
+            Function80RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/invoice/bulk/pdf""}");
             Function80RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function80 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "InvoiceTemplate_GetActiveTemplates",
-                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceTemplateFunctions.InvoiceTemplate_GetActiveTemplates",
+                Name = "Invoice_BulkExportPdf",
+                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceFunctions.Invoice_BulkExportPdf",
                 RawBindings = Function80RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function80);
             var Function81RawBindings = new List<string>();
-            Function81RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/invoicetemplate""}");
+            Function81RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/invoicetemplate/active""}");
             Function81RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function81 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "InvoiceTemplate_GetTemplatesPaged",
-                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceTemplateFunctions.InvoiceTemplate_GetTemplatesPaged",
+                Name = "InvoiceTemplate_GetActiveTemplates",
+                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceTemplateFunctions.InvoiceTemplate_GetActiveTemplates",
                 RawBindings = Function81RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function81);
             var Function82RawBindings = new List<string>();
-            Function82RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/invoicetemplate/{id}""}");
+            Function82RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/invoicetemplate""}");
             Function82RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function82 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "InvoiceTemplate_GetTemplateById",
-                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceTemplateFunctions.InvoiceTemplate_GetTemplateById",
+                Name = "InvoiceTemplate_GetTemplatesPaged",
+                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceTemplateFunctions.InvoiceTemplate_GetTemplatesPaged",
                 RawBindings = Function82RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function82);
             var Function83RawBindings = new List<string>();
-            Function83RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/invoicetemplate""}");
+            Function83RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/invoicetemplate/{id}""}");
             Function83RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function83 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "InvoiceTemplate_CreateTemplate",
-                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceTemplateFunctions.InvoiceTemplate_CreateTemplate",
+                Name = "InvoiceTemplate_GetTemplateById",
+                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceTemplateFunctions.InvoiceTemplate_GetTemplateById",
                 RawBindings = Function83RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function83);
             var Function84RawBindings = new List<string>();
-            Function84RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/invoicetemplate/{id}""}");
+            Function84RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/invoicetemplate""}");
             Function84RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function84 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "InvoiceTemplate_UpdateTemplate",
-                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceTemplateFunctions.InvoiceTemplate_UpdateTemplate",
+                Name = "InvoiceTemplate_CreateTemplate",
+                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceTemplateFunctions.InvoiceTemplate_CreateTemplate",
                 RawBindings = Function84RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function84);
             var Function85RawBindings = new List<string>();
-            Function85RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""delete""],""route"":""api/invoicetemplate/{id}""}");
+            Function85RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/invoicetemplate/{id}""}");
             Function85RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function85 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "InvoiceTemplate_DeleteTemplate",
-                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceTemplateFunctions.InvoiceTemplate_DeleteTemplate",
+                Name = "InvoiceTemplate_UpdateTemplate",
+                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceTemplateFunctions.InvoiceTemplate_UpdateTemplate",
                 RawBindings = Function85RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function85);
             var Function86RawBindings = new List<string>();
-            Function86RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/invoicetemplate/{id}/create-invoice""}");
+            Function86RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""delete""],""route"":""api/invoicetemplate/{id}""}");
             Function86RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function86 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "InvoiceTemplate_CreateInvoiceFromTemplate",
-                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceTemplateFunctions.InvoiceTemplate_CreateInvoiceFromTemplate",
+                Name = "InvoiceTemplate_DeleteTemplate",
+                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceTemplateFunctions.InvoiceTemplate_DeleteTemplate",
                 RawBindings = Function86RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function86);
             var Function87RawBindings = new List<string>();
-            Function87RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/invoicetemplate/from-invoice/{invoiceId}""}");
+            Function87RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/invoicetemplate/{id}/create-invoice""}");
             Function87RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function87 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "InvoiceTemplate_CreateTemplateFromInvoice",
-                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceTemplateFunctions.InvoiceTemplate_CreateTemplateFromInvoice",
+                Name = "InvoiceTemplate_CreateInvoiceFromTemplate",
+                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceTemplateFunctions.InvoiceTemplate_CreateInvoiceFromTemplate",
                 RawBindings = Function87RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function87);
             var Function88RawBindings = new List<string>();
-            Function88RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/numbersequence/formats""}");
+            Function88RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/invoicetemplate/from-invoice/{invoiceId}""}");
             Function88RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function88 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "NumberSequence_GetAllFormats",
-                EntryPoint = "InvoiceApi.Functions.Generated.NumberSequenceFunctions.NumberSequence_GetAllFormats",
+                Name = "InvoiceTemplate_CreateTemplateFromInvoice",
+                EntryPoint = "InvoiceApi.Functions.Generated.InvoiceTemplateFunctions.InvoiceTemplate_CreateTemplateFromInvoice",
                 RawBindings = Function88RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function88);
             var Function89RawBindings = new List<string>();
-            Function89RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/numbersequence/formats/{id}""}");
+            Function89RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/numbersequence/formats""}");
             Function89RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function89 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "NumberSequence_GetFormatById",
-                EntryPoint = "InvoiceApi.Functions.Generated.NumberSequenceFunctions.NumberSequence_GetFormatById",
+                Name = "NumberSequence_GetAllFormats",
+                EntryPoint = "InvoiceApi.Functions.Generated.NumberSequenceFunctions.NumberSequence_GetAllFormats",
                 RawBindings = Function89RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function89);
             var Function90RawBindings = new List<string>();
-            Function90RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/numbersequence/formats""}");
+            Function90RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/numbersequence/formats/{id}""}");
             Function90RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function90 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "NumberSequence_CreateFormat",
-                EntryPoint = "InvoiceApi.Functions.Generated.NumberSequenceFunctions.NumberSequence_CreateFormat",
+                Name = "NumberSequence_GetFormatById",
+                EntryPoint = "InvoiceApi.Functions.Generated.NumberSequenceFunctions.NumberSequence_GetFormatById",
                 RawBindings = Function90RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function90);
             var Function91RawBindings = new List<string>();
-            Function91RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/numbersequence/formats/{id}""}");
+            Function91RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/numbersequence/formats""}");
             Function91RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function91 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "NumberSequence_UpdateFormat",
-                EntryPoint = "InvoiceApi.Functions.Generated.NumberSequenceFunctions.NumberSequence_UpdateFormat",
+                Name = "NumberSequence_CreateFormat",
+                EntryPoint = "InvoiceApi.Functions.Generated.NumberSequenceFunctions.NumberSequence_CreateFormat",
                 RawBindings = Function91RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function91);
             var Function92RawBindings = new List<string>();
-            Function92RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/numbersequence/formats/validate""}");
+            Function92RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/numbersequence/formats/{id}""}");
             Function92RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function92 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "NumberSequence_ValidateFormatPattern",
-                EntryPoint = "InvoiceApi.Functions.Generated.NumberSequenceFunctions.NumberSequence_ValidateFormatPattern",
+                Name = "NumberSequence_UpdateFormat",
+                EntryPoint = "InvoiceApi.Functions.Generated.NumberSequenceFunctions.NumberSequence_UpdateFormat",
                 RawBindings = Function92RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function92);
             var Function93RawBindings = new List<string>();
-            Function93RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/numbersequence""}");
+            Function93RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/numbersequence/formats/validate""}");
             Function93RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function93 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "NumberSequence_GetAllSequences",
-                EntryPoint = "InvoiceApi.Functions.Generated.NumberSequenceFunctions.NumberSequence_GetAllSequences",
+                Name = "NumberSequence_ValidateFormatPattern",
+                EntryPoint = "InvoiceApi.Functions.Generated.NumberSequenceFunctions.NumberSequence_ValidateFormatPattern",
                 RawBindings = Function93RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function93);
             var Function94RawBindings = new List<string>();
-            Function94RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/numbersequence/{id}""}");
+            Function94RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/numbersequence""}");
             Function94RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function94 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "NumberSequence_GetSequenceById",
-                EntryPoint = "InvoiceApi.Functions.Generated.NumberSequenceFunctions.NumberSequence_GetSequenceById",
+                Name = "NumberSequence_GetAllSequences",
+                EntryPoint = "InvoiceApi.Functions.Generated.NumberSequenceFunctions.NumberSequence_GetAllSequences",
                 RawBindings = Function94RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function94);
             var Function95RawBindings = new List<string>();
-            Function95RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/numbersequence/default/{documentType}""}");
+            Function95RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/numbersequence/{id}""}");
             Function95RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function95 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "NumberSequence_GetDefaultSequence",
-                EntryPoint = "InvoiceApi.Functions.Generated.NumberSequenceFunctions.NumberSequence_GetDefaultSequence",
+                Name = "NumberSequence_GetSequenceById",
+                EntryPoint = "InvoiceApi.Functions.Generated.NumberSequenceFunctions.NumberSequence_GetSequenceById",
                 RawBindings = Function95RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function95);
             var Function96RawBindings = new List<string>();
-            Function96RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/numbersequence""}");
+            Function96RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/numbersequence/default/{documentType}""}");
             Function96RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function96 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "NumberSequence_CreateSequence",
-                EntryPoint = "InvoiceApi.Functions.Generated.NumberSequenceFunctions.NumberSequence_CreateSequence",
+                Name = "NumberSequence_GetDefaultSequence",
+                EntryPoint = "InvoiceApi.Functions.Generated.NumberSequenceFunctions.NumberSequence_GetDefaultSequence",
                 RawBindings = Function96RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function96);
             var Function97RawBindings = new List<string>();
-            Function97RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/numbersequence/{id}""}");
+            Function97RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/numbersequence""}");
             Function97RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function97 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "NumberSequence_UpdateSequence",
-                EntryPoint = "InvoiceApi.Functions.Generated.NumberSequenceFunctions.NumberSequence_UpdateSequence",
+                Name = "NumberSequence_CreateSequence",
+                EntryPoint = "InvoiceApi.Functions.Generated.NumberSequenceFunctions.NumberSequence_CreateSequence",
                 RawBindings = Function97RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function97);
             var Function98RawBindings = new List<string>();
-            Function98RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/numbersequence/{id}/set-default""}");
+            Function98RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/numbersequence/{id}""}");
             Function98RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function98 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "NumberSequence_SetAsDefault",
-                EntryPoint = "InvoiceApi.Functions.Generated.NumberSequenceFunctions.NumberSequence_SetAsDefault",
+                Name = "NumberSequence_UpdateSequence",
+                EntryPoint = "InvoiceApi.Functions.Generated.NumberSequenceFunctions.NumberSequence_UpdateSequence",
                 RawBindings = Function98RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function98);
             var Function99RawBindings = new List<string>();
-            Function99RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""delete""],""route"":""api/numbersequence/{id}""}");
+            Function99RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/numbersequence/{id}/set-default""}");
             Function99RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function99 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "NumberSequence_DeactivateSequence",
-                EntryPoint = "InvoiceApi.Functions.Generated.NumberSequenceFunctions.NumberSequence_DeactivateSequence",
+                Name = "NumberSequence_SetAsDefault",
+                EntryPoint = "InvoiceApi.Functions.Generated.NumberSequenceFunctions.NumberSequence_SetAsDefault",
                 RawBindings = Function99RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function99);
             var Function100RawBindings = new List<string>();
-            Function100RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/numbersequence/{id}/preview""}");
+            Function100RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""delete""],""route"":""api/numbersequence/{id}""}");
             Function100RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function100 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "NumberSequence_PreviewNextNumber",
-                EntryPoint = "InvoiceApi.Functions.Generated.NumberSequenceFunctions.NumberSequence_PreviewNextNumber",
+                Name = "NumberSequence_DeactivateSequence",
+                EntryPoint = "InvoiceApi.Functions.Generated.NumberSequenceFunctions.NumberSequence_DeactivateSequence",
                 RawBindings = Function100RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function100);
             var Function101RawBindings = new List<string>();
-            Function101RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/numbersequence/preview-by-type""}");
+            Function101RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/numbersequence/{id}/preview""}");
             Function101RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function101 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "NumberSequence_PreviewByDocumentType",
-                EntryPoint = "InvoiceApi.Functions.Generated.NumberSequenceFunctions.NumberSequence_PreviewByDocumentType",
+                Name = "NumberSequence_PreviewNextNumber",
+                EntryPoint = "InvoiceApi.Functions.Generated.NumberSequenceFunctions.NumberSequence_PreviewNextNumber",
                 RawBindings = Function101RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function101);
             var Function102RawBindings = new List<string>();
-            Function102RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/system-configuration""}");
+            Function102RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/numbersequence/preview-by-type""}");
             Function102RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function102 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "SystemConfiguration_Get",
-                EntryPoint = "InvoiceApi.Functions.Generated.SystemConfigurationFunctions.SystemConfiguration_Get",
+                Name = "NumberSequence_PreviewByDocumentType",
+                EntryPoint = "InvoiceApi.Functions.Generated.NumberSequenceFunctions.NumberSequence_PreviewByDocumentType",
                 RawBindings = Function102RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function102);
             var Function103RawBindings = new List<string>();
-            Function103RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/system-configuration""}");
+            Function103RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/system-configuration""}");
             Function103RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function103 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "SystemConfiguration_Update",
-                EntryPoint = "InvoiceApi.Functions.Generated.SystemConfigurationFunctions.SystemConfiguration_Update",
+                Name = "SystemConfiguration_Get",
+                EntryPoint = "InvoiceApi.Functions.Generated.SystemConfigurationFunctions.SystemConfiguration_Get",
                 RawBindings = Function103RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function103);
             var Function104RawBindings = new List<string>();
-            Function104RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/twofactor/status""}");
+            Function104RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/system-configuration""}");
             Function104RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function104 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "TwoFactor_GetStatus",
-                EntryPoint = "InvoiceApi.Functions.Generated.TwoFactorFunctions.TwoFactor_GetStatus",
+                Name = "SystemConfiguration_Update",
+                EntryPoint = "InvoiceApi.Functions.Generated.SystemConfigurationFunctions.SystemConfiguration_Update",
                 RawBindings = Function104RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function104);
             var Function105RawBindings = new List<string>();
-            Function105RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/twofactor/totp/setup""}");
+            Function105RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/twofactor/status""}");
             Function105RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function105 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "TwoFactor_InitiateTotpSetup",
-                EntryPoint = "InvoiceApi.Functions.Generated.TwoFactorFunctions.TwoFactor_InitiateTotpSetup",
+                Name = "TwoFactor_GetStatus",
+                EntryPoint = "InvoiceApi.Functions.Generated.TwoFactorFunctions.TwoFactor_GetStatus",
                 RawBindings = Function105RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function105);
             var Function106RawBindings = new List<string>();
-            Function106RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/twofactor/totp/verify""}");
+            Function106RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/twofactor/totp/setup""}");
             Function106RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function106 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "TwoFactor_VerifyTotpSetup",
-                EntryPoint = "InvoiceApi.Functions.Generated.TwoFactorFunctions.TwoFactor_VerifyTotpSetup",
+                Name = "TwoFactor_InitiateTotpSetup",
+                EntryPoint = "InvoiceApi.Functions.Generated.TwoFactorFunctions.TwoFactor_InitiateTotpSetup",
                 RawBindings = Function106RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function106);
             var Function107RawBindings = new List<string>();
-            Function107RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/twofactor/email/enable""}");
+            Function107RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/twofactor/totp/verify""}");
             Function107RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function107 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "TwoFactor_EnableEmailTwoFactor",
-                EntryPoint = "InvoiceApi.Functions.Generated.TwoFactorFunctions.TwoFactor_EnableEmailTwoFactor",
+                Name = "TwoFactor_VerifyTotpSetup",
+                EntryPoint = "InvoiceApi.Functions.Generated.TwoFactorFunctions.TwoFactor_VerifyTotpSetup",
                 RawBindings = Function107RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function107);
             var Function108RawBindings = new List<string>();
-            Function108RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/twofactor/verify""}");
+            Function108RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/twofactor/email/enable""}");
             Function108RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function108 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "TwoFactor_VerifyTwoFactorCode",
-                EntryPoint = "InvoiceApi.Functions.Generated.TwoFactorFunctions.TwoFactor_VerifyTwoFactorCode",
+                Name = "TwoFactor_EnableEmailTwoFactor",
+                EntryPoint = "InvoiceApi.Functions.Generated.TwoFactorFunctions.TwoFactor_EnableEmailTwoFactor",
                 RawBindings = Function108RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function108);
             var Function109RawBindings = new List<string>();
-            Function109RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/twofactor/disable""}");
+            Function109RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/twofactor/verify""}");
             Function109RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function109 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "TwoFactor_DisableTwoFactor",
-                EntryPoint = "InvoiceApi.Functions.Generated.TwoFactorFunctions.TwoFactor_DisableTwoFactor",
+                Name = "TwoFactor_VerifyTwoFactorCode",
+                EntryPoint = "InvoiceApi.Functions.Generated.TwoFactorFunctions.TwoFactor_VerifyTwoFactorCode",
                 RawBindings = Function109RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function109);
             var Function110RawBindings = new List<string>();
-            Function110RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/twofactor/admin/force-disable/{userId:long}""}");
+            Function110RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/twofactor/disable""}");
             Function110RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function110 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "TwoFactor_ForceDisableTwoFactor",
-                EntryPoint = "InvoiceApi.Functions.Generated.TwoFactorFunctions.TwoFactor_ForceDisableTwoFactor",
+                Name = "TwoFactor_DisableTwoFactor",
+                EntryPoint = "InvoiceApi.Functions.Generated.TwoFactorFunctions.TwoFactor_DisableTwoFactor",
                 RawBindings = Function110RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function110);
             var Function111RawBindings = new List<string>();
-            Function111RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/user""}");
+            Function111RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/twofactor/admin/force-disable/{userId:long}""}");
             Function111RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function111 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "User_GetAllUsers",
-                EntryPoint = "InvoiceApi.Functions.Generated.UserFunctions.User_GetAllUsers",
+                Name = "TwoFactor_ForceDisableTwoFactor",
+                EntryPoint = "InvoiceApi.Functions.Generated.TwoFactorFunctions.TwoFactor_ForceDisableTwoFactor",
                 RawBindings = Function111RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function111);
             var Function112RawBindings = new List<string>();
-            Function112RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/user/paged""}");
+            Function112RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/user""}");
             Function112RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function112 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "User_GetUsersPaged",
-                EntryPoint = "InvoiceApi.Functions.Generated.UserFunctions.User_GetUsersPaged",
+                Name = "User_GetAllUsers",
+                EntryPoint = "InvoiceApi.Functions.Generated.UserFunctions.User_GetAllUsers",
                 RawBindings = Function112RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function112);
             var Function113RawBindings = new List<string>();
-            Function113RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/user/{id}""}");
+            Function113RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/user/paged""}");
             Function113RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function113 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "User_GetUserById",
-                EntryPoint = "InvoiceApi.Functions.Generated.UserFunctions.User_GetUserById",
+                Name = "User_GetUsersPaged",
+                EntryPoint = "InvoiceApi.Functions.Generated.UserFunctions.User_GetUsersPaged",
                 RawBindings = Function113RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function113);
             var Function114RawBindings = new List<string>();
-            Function114RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/user""}");
+            Function114RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/user/{id}""}");
             Function114RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function114 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "User_CreateUser",
-                EntryPoint = "InvoiceApi.Functions.Generated.UserFunctions.User_CreateUser",
+                Name = "User_GetUserById",
+                EntryPoint = "InvoiceApi.Functions.Generated.UserFunctions.User_GetUserById",
                 RawBindings = Function114RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function114);
             var Function115RawBindings = new List<string>();
-            Function115RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/user/{id}""}");
+            Function115RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/user""}");
             Function115RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function115 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "User_UpdateUser",
-                EntryPoint = "InvoiceApi.Functions.Generated.UserFunctions.User_UpdateUser",
+                Name = "User_CreateUser",
+                EntryPoint = "InvoiceApi.Functions.Generated.UserFunctions.User_CreateUser",
                 RawBindings = Function115RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function115);
             var Function116RawBindings = new List<string>();
-            Function116RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/user/{id}/change-password""}");
+            Function116RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/user/{id}""}");
             Function116RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function116 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "User_ChangePassword",
-                EntryPoint = "InvoiceApi.Functions.Generated.UserFunctions.User_ChangePassword",
+                Name = "User_UpdateUser",
+                EntryPoint = "InvoiceApi.Functions.Generated.UserFunctions.User_UpdateUser",
                 RawBindings = Function116RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function116);
             var Function117RawBindings = new List<string>();
-            Function117RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/user/{id}/admin-reset-password""}");
+            Function117RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/user/{id}/change-password""}");
             Function117RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function117 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "User_AdminResetPassword",
-                EntryPoint = "InvoiceApi.Functions.Generated.UserFunctions.User_AdminResetPassword",
+                Name = "User_ChangePassword",
+                EntryPoint = "InvoiceApi.Functions.Generated.UserFunctions.User_ChangePassword",
                 RawBindings = Function117RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function117);
             var Function118RawBindings = new List<string>();
-            Function118RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""delete""],""route"":""api/user/{id}""}");
+            Function118RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/user/{id}/admin-reset-password""}");
             Function118RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function118 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "User_DeleteUser",
-                EntryPoint = "InvoiceApi.Functions.Generated.UserFunctions.User_DeleteUser",
+                Name = "User_AdminResetPassword",
+                EntryPoint = "InvoiceApi.Functions.Generated.UserFunctions.User_AdminResetPassword",
                 RawBindings = Function118RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function118);
             var Function119RawBindings = new List<string>();
-            Function119RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/user/invite""}");
+            Function119RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""delete""],""route"":""api/user/{id}""}");
             Function119RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function119 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "User_InviteUser",
-                EntryPoint = "InvoiceApi.Functions.Generated.UserFunctions.User_InviteUser",
+                Name = "User_DeleteUser",
+                EntryPoint = "InvoiceApi.Functions.Generated.UserFunctions.User_DeleteUser",
                 RawBindings = Function119RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function119);
             var Function120RawBindings = new List<string>();
-            Function120RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/user/set-password""}");
+            Function120RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/user/invite""}");
             Function120RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function120 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "User_SetPassword",
-                EntryPoint = "InvoiceApi.Functions.Generated.UserFunctions.User_SetPassword",
+                Name = "User_InviteUser",
+                EntryPoint = "InvoiceApi.Functions.Generated.UserFunctions.User_InviteUser",
                 RawBindings = Function120RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function120);
             var Function121RawBindings = new List<string>();
-            Function121RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/user/validate-invitation""}");
+            Function121RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/user/set-password""}");
             Function121RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function121 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "User_ValidateInvitationToken",
-                EntryPoint = "InvoiceApi.Functions.Generated.UserFunctions.User_ValidateInvitationToken",
+                Name = "User_SetPassword",
+                EntryPoint = "InvoiceApi.Functions.Generated.UserFunctions.User_SetPassword",
                 RawBindings = Function121RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function121);
             var Function122RawBindings = new List<string>();
-            Function122RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/vatrate""}");
+            Function122RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/user/validate-invitation""}");
             Function122RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function122 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "VatRate_GetAllVatRates",
-                EntryPoint = "InvoiceApi.Functions.Generated.VatRateFunctions.VatRate_GetAllVatRates",
+                Name = "User_ValidateInvitationToken",
+                EntryPoint = "InvoiceApi.Functions.Generated.UserFunctions.User_ValidateInvitationToken",
                 RawBindings = Function122RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function122);
             var Function123RawBindings = new List<string>();
-            Function123RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/vatrate/{id}""}");
+            Function123RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/vatrate""}");
             Function123RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function123 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "VatRate_GetVatRateById",
-                EntryPoint = "InvoiceApi.Functions.Generated.VatRateFunctions.VatRate_GetVatRateById",
+                Name = "VatRate_GetAllVatRates",
+                EntryPoint = "InvoiceApi.Functions.Generated.VatRateFunctions.VatRate_GetAllVatRates",
                 RawBindings = Function123RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function123);
             var Function124RawBindings = new List<string>();
-            Function124RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/vatrate/active""}");
+            Function124RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/vatrate/{id}""}");
             Function124RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function124 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "VatRate_GetActiveVatRatesForDate",
-                EntryPoint = "InvoiceApi.Functions.Generated.VatRateFunctions.VatRate_GetActiveVatRatesForDate",
+                Name = "VatRate_GetVatRateById",
+                EntryPoint = "InvoiceApi.Functions.Generated.VatRateFunctions.VatRate_GetVatRateById",
                 RawBindings = Function124RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function124);
             var Function125RawBindings = new List<string>();
-            Function125RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/vatrate/default/standard""}");
+            Function125RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/vatrate/active""}");
             Function125RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function125 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "VatRate_GetDefaultStandardRate",
-                EntryPoint = "InvoiceApi.Functions.Generated.VatRateFunctions.VatRate_GetDefaultStandardRate",
+                Name = "VatRate_GetActiveVatRatesForDate",
+                EntryPoint = "InvoiceApi.Functions.Generated.VatRateFunctions.VatRate_GetActiveVatRatesForDate",
                 RawBindings = Function125RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function125);
             var Function126RawBindings = new List<string>();
-            Function126RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/vatrate/default/reduced""}");
+            Function126RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/vatrate/default/standard""}");
             Function126RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function126 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "VatRate_GetDefaultReducedRate",
-                EntryPoint = "InvoiceApi.Functions.Generated.VatRateFunctions.VatRate_GetDefaultReducedRate",
+                Name = "VatRate_GetDefaultStandardRate",
+                EntryPoint = "InvoiceApi.Functions.Generated.VatRateFunctions.VatRate_GetDefaultStandardRate",
                 RawBindings = Function126RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function126);
             var Function127RawBindings = new List<string>();
-            Function127RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/vatrate""}");
+            Function127RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/vatrate/default/reduced""}");
             Function127RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function127 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "VatRate_CreateVatRate",
-                EntryPoint = "InvoiceApi.Functions.Generated.VatRateFunctions.VatRate_CreateVatRate",
+                Name = "VatRate_GetDefaultReducedRate",
+                EntryPoint = "InvoiceApi.Functions.Generated.VatRateFunctions.VatRate_GetDefaultReducedRate",
                 RawBindings = Function127RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function127);
             var Function128RawBindings = new List<string>();
-            Function128RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/vatrate/{id}""}");
+            Function128RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/vatrate""}");
             Function128RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function128 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "VatRate_UpdateVatRate",
-                EntryPoint = "InvoiceApi.Functions.Generated.VatRateFunctions.VatRate_UpdateVatRate",
+                Name = "VatRate_CreateVatRate",
+                EntryPoint = "InvoiceApi.Functions.Generated.VatRateFunctions.VatRate_CreateVatRate",
                 RawBindings = Function128RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function128);
             var Function129RawBindings = new List<string>();
-            Function129RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""delete""],""route"":""api/vatrate/{id}""}");
+            Function129RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/vatrate/{id}""}");
             Function129RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function129 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "VatRate_DeleteVatRate",
-                EntryPoint = "InvoiceApi.Functions.Generated.VatRateFunctions.VatRate_DeleteVatRate",
+                Name = "VatRate_UpdateVatRate",
+                EntryPoint = "InvoiceApi.Functions.Generated.VatRateFunctions.VatRate_UpdateVatRate",
                 RawBindings = Function129RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function129);
             var Function130RawBindings = new List<string>();
-            Function130RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/vatrate/{id}/set-default""}");
+            Function130RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""delete""],""route"":""api/vatrate/{id}""}");
             Function130RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function130 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "VatRate_SetAsDefault",
-                EntryPoint = "InvoiceApi.Functions.Generated.VatRateFunctions.VatRate_SetAsDefault",
+                Name = "VatRate_DeleteVatRate",
+                EntryPoint = "InvoiceApi.Functions.Generated.VatRateFunctions.VatRate_DeleteVatRate",
                 RawBindings = Function130RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function130);
             var Function131RawBindings = new List<string>();
-            Function131RawBindings.Add(@"{""name"":""timer"",""type"":""timerTrigger"",""direction"":""In"",""schedule"":""*/5 * * * * *""}");
+            Function131RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/vatrate/{id}/set-default""}");
+            Function131RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function131 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "LogFlush",
-                EntryPoint = "InvoiceApi.Functions.TimerFunctions.FlushLogs",
+                Name = "VatRate_SetAsDefault",
+                EntryPoint = "InvoiceApi.Functions.Generated.VatRateFunctions.VatRate_SetAsDefault",
                 RawBindings = Function131RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function131);
             var Function132RawBindings = new List<string>();
-            Function132RawBindings.Add(@"{""name"":""timer"",""type"":""timerTrigger"",""direction"":""In"",""schedule"":""0 0 * * * *""}");
+            Function132RawBindings.Add(@"{""name"":""timer"",""type"":""timerTrigger"",""direction"":""In"",""schedule"":""*/5 * * * * *""}");
 
             var Function132 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "LogCleanup",
-                EntryPoint = "InvoiceApi.Functions.TimerFunctions.CleanupLogs",
+                Name = "LogFlush",
+                EntryPoint = "InvoiceApi.Functions.TimerFunctions.FlushLogs",
                 RawBindings = Function132RawBindings,
                 ScriptFile = "InvoiceApi.Functions.dll"
             };
             metadataList.Add(Function132);
+            var Function133RawBindings = new List<string>();
+            Function133RawBindings.Add(@"{""name"":""timer"",""type"":""timerTrigger"",""direction"":""In"",""schedule"":""0 0 * * * *""}");
+
+            var Function133 = new DefaultFunctionMetadata
+            {
+                Language = "dotnet-isolated",
+                Name = "LogCleanup",
+                EntryPoint = "InvoiceApi.Functions.TimerFunctions.CleanupLogs",
+                RawBindings = Function133RawBindings,
+                ScriptFile = "InvoiceApi.Functions.dll"
+            };
+            metadataList.Add(Function133);
 
             return global::System.Threading.Tasks.Task.FromResult(metadataList.ToImmutableArray());
         }

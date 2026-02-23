@@ -22,6 +22,7 @@ namespace InvoiceApi.Functions
             { "InvoiceApi.Functions.Generated.CloudStorageFunctions", Type.GetType("InvoiceApi.Functions.Generated.CloudStorageFunctions, InvoiceApi.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "InvoiceApi.Functions.Generated.CompanyFunctions", Type.GetType("InvoiceApi.Functions.Generated.CompanyFunctions, InvoiceApi.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "InvoiceApi.Functions.Generated.ContentTemplateFunctions", Type.GetType("InvoiceApi.Functions.Generated.ContentTemplateFunctions, InvoiceApi.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
+            { "InvoiceApi.Functions.HttpFunctions.CorsFunctions", Type.GetType("InvoiceApi.Functions.HttpFunctions.CorsFunctions, InvoiceApi.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "InvoiceApi.Functions.Generated.CurrencyFunctions", Type.GetType("InvoiceApi.Functions.Generated.CurrencyFunctions, InvoiceApi.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "InvoiceApi.Functions.Generated.DashboardFunctions", Type.GetType("InvoiceApi.Functions.Generated.DashboardFunctions, InvoiceApi.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "InvoiceApi.Functions.Generated.InvoiceFunctions", Type.GetType("InvoiceApi.Functions.Generated.InvoiceFunctions, InvoiceApi.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
@@ -401,6 +402,13 @@ namespace InvoiceApi.Functions
                 var instanceType = types["InvoiceApi.Functions.Generated.ContentTemplateFunctions"];
                 var i = _functionActivator.CreateInstance(instanceType, context) as global::InvoiceApi.Functions.Generated.ContentTemplateFunctions;
                 context.GetInvocationResult().Value = await i.ContentTemplate_Delete((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0], (long)inputArguments[1]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "InvoiceApi.Functions.HttpFunctions.CorsFunctions.HandlePreFlight", StringComparison.Ordinal))
+            {
+                var instanceType = types["InvoiceApi.Functions.HttpFunctions.CorsFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::InvoiceApi.Functions.HttpFunctions.CorsFunctions;
+                context.GetInvocationResult().Value = i.HandlePreFlight((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
                 return;
             }
             if (string.Equals(context.FunctionDefinition.EntryPoint, "InvoiceApi.Functions.Generated.CurrencyFunctions.Currency_GetActiveCurrencies", StringComparison.Ordinal))

@@ -17,6 +17,7 @@
 // ============================================================================
 
 using System.Globalization;
+using InvoiceApi.Functions.Middleware;
 using InvoiceApi.Infrastructure.DependencyInjection;
 using InvoiceApi.Infrastructure.Logging;
 using Microsoft.Extensions.DependencyInjection;
@@ -32,7 +33,16 @@ var host = new HostBuilder()
     // ConfigureFunctionsWebApplication — enables ASP.NET Core integration for HTTP triggers.
     // This gives generated functions access to HttpRequest, IActionResult, HttpContext, etc.
     // NOTE: This does NOT enable MVC routing (MapControllers) — each function handles its own route.
-    .ConfigureFunctionsWebApplication()
+    .ConfigureFunctionsWebApplication(app =>
+    {
+        // ── CORS Middleware ──────────────────────────────────────────────────────
+        // Must be registered early in the pipeline so CORS headers are added to
+        // every response, including error responses. This middleware reads allowed
+        // origins from CorsSettings:AllowedOrigins configuration and adds
+        // Access-Control-Allow-* headers for matching origins.
+        // Works together with CorsFunctions.cs (catch-all OPTIONS preflight handler).
+        app.UseMiddleware<CorsMiddleware>();
+    })
     .ConfigureServices((context, services) =>
     {
         // ── Shared DI registrations (same as API project) ────────────────────────
