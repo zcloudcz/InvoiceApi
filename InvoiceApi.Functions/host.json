@@ -5,5 +5,10 @@
       "default": "Information",
       "Function": "Information"
     }
+  },
+  "extensions": {
+    "http": {
+      "routePrefix": ""
+    }
   }
 }

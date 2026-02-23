@@ -7,19 +7,44 @@
     <RootNamespace>InvoiceApi.Functions</RootNamespace>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Emit SDK-generated files to disk for inspection (GeneratedFunctionMetadataProvider, etc.).
+         The Generated/ folder is excluded from compilation below — the SDK generator injects its output
+         directly into the compilation; these files are just copies on disk for debugging. -->
+    <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+    <CompilerGeneratedFilesOutputPath>Generated</CompilerGeneratedFilesOutputPath>
   </PropertyGroup>
 
-  <!-- Azure Functions Isolated Worker packages — timer triggers only (no HTTP) -->
+  <!-- Exclude the old Generated/ folder from compilation.
+       These are the source generator's emitted files — kept for reference only.
+       The actual source files live in HttpFunctions/ as regular .cs files
+       so the Azure Functions SDK generator can discover [Function] attributes. -->
+  <ItemGroup>
+    <Compile Remove="Generated/**" />
+  </ItemGroup>
+
+  <!-- Azure Functions Isolated Worker packages — timer triggers + HTTP triggers -->
   <ItemGroup>
     <PackageReference Include="Microsoft.Azure.Functions.Worker" Version="2.*" />
     <PackageReference Include="Microsoft.Azure.Functions.Worker.Sdk" Version="2.*" />
     <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Timer" Version="4.*" />
+    <!-- ASP.NET Core integration: provides HttpRequest/IActionResult support in HTTP triggers.
+         This does NOT enable MVC routing (MapControllers) — each function is a separate endpoint. -->
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Http.AspNetCore" Version="2.*" />
   </ItemGroup>
 
-  <!-- Infrastructure: DatabaseLoggerProvider (log queue), Domain: AppLog entity,
-       Microsoft.Data.SqlClient comes transitively through Infrastructure -->
+  <!-- ASP.NET Core shared framework — needed for ControllerBase, HttpRequest, IActionResult, etc. -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <!-- Project References:
+       - Infrastructure: DatabaseLoggerProvider (log queue), Domain (AppLog entity), shared DI extensions
+       - API: Controller classes that the HttpFunctions/ wrappers call (injected via DI)
+       NOTE: The Generator project is no longer referenced as an analyzer.
+       To regenerate HttpFunctions/, run the Generator as a console app instead. -->
   <ItemGroup>
     <ProjectReference Include="..\InvoiceApi.Infrastructure\InvoiceApi.Infrastructure.csproj" />
+    <ProjectReference Include="..\InvoiceApi.API\InvoiceApi.API.csproj" />
   </ItemGroup>
 
   <!-- Copy host.json and local.settings.json to output directory for Azure Functions runtime -->

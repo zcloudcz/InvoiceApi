@@ -72,7 +72,9 @@
       "Bash(start \"\" \"C:\\\\GIT\\\\ZCLOUD\\\\InvoiceApi\\\\WASM.md\")",
       "Bash(start \"\" \"C:\\\\GIT\\\\ZCLOUD\\\\InvoiceApi\\\\APPKA.md\")",
       "Bash(xcopy:*)",
-      "Bash(tee:*)"
+      "Bash(tee:*)",
+      "Bash(awk:*)",
+      "Bash(test:*)"
     ]
   }
 }
