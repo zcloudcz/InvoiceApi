@@ -77,7 +77,8 @@
       "Bash(test:*)",
       "WebFetch(domain:zcloudinvoicingapi-crcqggehb7a6ggdv.westeurope-01.azurewebsites.net)",
       "Bash(gh auth:*)",
-      "Bash(gh run list:*)"
+      "Bash(gh run list:*)",
+      "Bash(iconv -f utf-8 -t ascii//TRANSLIT)"
     ]
   }
 }

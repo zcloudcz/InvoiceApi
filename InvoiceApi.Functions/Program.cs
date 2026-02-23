@@ -59,8 +59,12 @@ var host = new HostBuilder()
         // ── Register controllers for DI injection ────────────────────────────────
         // AddControllersAsServices() registers all controller types in the DI container
         // so the generated function classes can receive them via constructor injection.
-        // This is critical — without this, the controllers can't be injected.
-        services.AddControllers().AddControllersAsServices();
+        // IMPORTANT: AddControllers() only scans the ENTRY assembly (InvoiceApi.Functions)
+        // by default. The actual controllers live in InvoiceApi.API, so we must explicitly
+        // add that assembly as an application part — otherwise DI can't resolve them.
+        services.AddControllers()
+            .AddApplicationPart(typeof(InvoiceApi.API.Controller.CurrencyController).Assembly)
+            .AddControllersAsServices();
 
         // ── DatabaseLoggerProvider — structured logging to AppLog table ───────────
         // The provider queues log entries in a static ConcurrentQueue.
