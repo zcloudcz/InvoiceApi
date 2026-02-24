@@ -130,12 +130,26 @@ public class CompanyFunctions
         if (!req.HttpContext.User.IsInRole("SysAdmin"))
             return new ForbidResult();
 
-        // Deserialize request body → CreateClientDto
-        var createDto = await System.Text.Json.JsonSerializer.DeserializeAsync<global::InvoiceApi.Contracts.Dto.Client.CreateClientDto>(req.Body, FunctionResultHelper.JsonOptions, req.HttpContext.RequestAborted);
+        // Deserialize request body → CreateClientDto.
+        // Guard against deserialization failures (empty body, malformed JSON, etc.)
+        // to return a clear 400 error instead of an unhandled 500.
+        global::InvoiceApi.Contracts.Dto.Client.CreateClientDto? createDto;
+        try
+        {
+            createDto = await System.Text.Json.JsonSerializer.DeserializeAsync<global::InvoiceApi.Contracts.Dto.Client.CreateClientDto>(req.Body, FunctionResultHelper.JsonOptions, req.HttpContext.RequestAborted);
+        }
+        catch (System.Text.Json.JsonException ex)
+        {
+            return new BadRequestObjectResult(new { message = $"Invalid request body: {ex.Message}" });
+        }
+
+        if (createDto == null)
+            return new BadRequestObjectResult(new { message = "Request body is required." });
+
         var cancellationToken = req.HttpContext.RequestAborted;
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.CreateCompany(createDto!, cancellationToken));
+        return FunctionResultHelper.Normalize(await _controller.CreateCompany(createDto, cancellationToken));
     }
 
     /// <summary>
@@ -157,8 +171,21 @@ public class CompanyFunctions
         if (!req.HttpContext.User.IsInRole("SysAdmin"))
             return new ForbidResult();
 
-        // Deserialize request body → UpdateClientDto
-        var updateDto = await System.Text.Json.JsonSerializer.DeserializeAsync<global::InvoiceApi.Contracts.Dto.Client.UpdateClientDto>(req.Body, FunctionResultHelper.JsonOptions, req.HttpContext.RequestAborted);
+        // Deserialize request body → UpdateClientDto.
+        // Guard against deserialization failures (empty body, malformed JSON, etc.)
+        global::InvoiceApi.Contracts.Dto.Client.UpdateClientDto? updateDto;
+        try
+        {
+            updateDto = await System.Text.Json.JsonSerializer.DeserializeAsync<global::InvoiceApi.Contracts.Dto.Client.UpdateClientDto>(req.Body, FunctionResultHelper.JsonOptions, req.HttpContext.RequestAborted);
+        }
+        catch (System.Text.Json.JsonException ex)
+        {
+            return new BadRequestObjectResult(new { message = $"Invalid request body: {ex.Message}" });
+        }
+
+        if (updateDto == null)
+            return new BadRequestObjectResult(new { message = "Request body is required." });
+
         var cancellationToken = req.HttpContext.RequestAborted;
 
         // Call the controller action and normalize the response
@@ -283,11 +310,23 @@ public class CompanyFunctions
             return new ForbidResult();
 
         // Deserialize request body → CreateCompanySystemSettingsDto
-        var dto = await System.Text.Json.JsonSerializer.DeserializeAsync<global::InvoiceApi.Contracts.Dto.CompanySettings.CreateCompanySystemSettingsDto>(req.Body, FunctionResultHelper.JsonOptions, req.HttpContext.RequestAborted);
+        global::InvoiceApi.Contracts.Dto.CompanySettings.CreateCompanySystemSettingsDto? dto;
+        try
+        {
+            dto = await System.Text.Json.JsonSerializer.DeserializeAsync<global::InvoiceApi.Contracts.Dto.CompanySettings.CreateCompanySystemSettingsDto>(req.Body, FunctionResultHelper.JsonOptions, req.HttpContext.RequestAborted);
+        }
+        catch (System.Text.Json.JsonException ex)
+        {
+            return new BadRequestObjectResult(new { message = $"Invalid request body: {ex.Message}" });
+        }
+
+        if (dto == null)
+            return new BadRequestObjectResult(new { message = "Request body is required." });
+
         var cancellationToken = req.HttpContext.RequestAborted;
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.CreateSettings(dto!, cancellationToken));
+        return FunctionResultHelper.Normalize(await _controller.CreateSettings(dto, cancellationToken));
     }
 
     /// <summary>
@@ -310,11 +349,23 @@ public class CompanyFunctions
             return new ForbidResult();
 
         // Deserialize request body → UpdateCompanySystemSettingsDto
-        var dto = await System.Text.Json.JsonSerializer.DeserializeAsync<global::InvoiceApi.Contracts.Dto.CompanySettings.UpdateCompanySystemSettingsDto>(req.Body, FunctionResultHelper.JsonOptions, req.HttpContext.RequestAborted);
+        global::InvoiceApi.Contracts.Dto.CompanySettings.UpdateCompanySystemSettingsDto? dto;
+        try
+        {
+            dto = await System.Text.Json.JsonSerializer.DeserializeAsync<global::InvoiceApi.Contracts.Dto.CompanySettings.UpdateCompanySystemSettingsDto>(req.Body, FunctionResultHelper.JsonOptions, req.HttpContext.RequestAborted);
+        }
+        catch (System.Text.Json.JsonException ex)
+        {
+            return new BadRequestObjectResult(new { message = $"Invalid request body: {ex.Message}" });
+        }
+
+        if (dto == null)
+            return new BadRequestObjectResult(new { message = "Request body is required." });
+
         var cancellationToken = req.HttpContext.RequestAborted;
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.UpdateSettings(id, dto!, cancellationToken));
+        return FunctionResultHelper.Normalize(await _controller.UpdateSettings(id, dto, cancellationToken));
     }
 
     /// <summary>

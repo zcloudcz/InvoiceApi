@@ -91,8 +91,9 @@ public class CorsMiddleware : IFunctionsWorkerMiddleware
                     headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, PATCH, OPTIONS";
 
                     // Allow common headers that the Blazor WASM app sends.
+                    // X-Company-Id is the SysAdmin impersonation header (selects which company to operate on).
                     headers["Access-Control-Allow-Headers"] =
-                        "Content-Type, Authorization, X-Requested-With, Accept";
+                        "Content-Type, Authorization, X-Requested-With, Accept, X-Company-Id";
 
                     // Cache preflight results for 24 hours — reduces preflight requests.
                     headers["Access-Control-Max-Age"] = "86400";
