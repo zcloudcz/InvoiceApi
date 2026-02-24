@@ -45,6 +45,15 @@ var host = new HostBuilder()
         // Access-Control-Allow-* headers for matching origins.
         // Works together with CorsFunctions.cs (catch-all OPTIONS preflight handler).
         app.UseMiddleware<CorsMiddleware>();
+
+        // ── JWT Authentication Middleware ─────────────────────────────────────────
+        // CRITICAL: AddAuthentication() + AddJwtBearer() only REGISTER the services.
+        // Azure Functions Isolated Worker does NOT call UseAuthentication()/UseAuthorization()
+        // automatically — those are ASP.NET Core pipeline methods not available here.
+        // This custom middleware reads the Authorization header, validates the JWT token,
+        // and populates HttpContext.User with the authenticated ClaimsPrincipal.
+        // Without this, HttpContext.User stays anonymous → all auth checks return 401.
+        app.UseMiddleware<JwtAuthenticationMiddleware>();
     })
     .ConfigureServices((context, services) =>
     {
