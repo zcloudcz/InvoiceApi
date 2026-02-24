@@ -3,7 +3,16 @@
   "logging": {
     "logLevel": {
       "default": "Information",
-      "Function": "Information"
+      "Function": "Information",
+      "Microsoft": "Warning",
+      "Microsoft.EntityFrameworkCore": "Warning"
+    },
+    "applicationInsights": {
+      "samplingSettings": {
+        "isEnabled": true,
+        "excludedTypes": "Request;Exception"
+      },
+      "enableLiveMetrics": true
     }
   },
   "extensions": {

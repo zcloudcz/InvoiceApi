@@ -1,5 +1,6 @@
 using System.Text.Json;
 using AresService.Model;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace AresService;
@@ -14,8 +15,12 @@ public class AresServiceImpl : IAresService
     private readonly IAresCacheRepository _cacheRepository;
     private readonly ILogger<AresServiceImpl> _logger;
 
-    // ARES API base URL - official government registry
-    private const string AresApiBaseUrl = "https://ares.gov.cz/ekonomicke-subjekty-v-be/rest/ekonomicke-subjekty";
+    // ARES API base URL — read from configuration (AresSettings:BaseUrl).
+    // Falls back to the official government registry URL if not configured.
+    private readonly string _aresApiBaseUrl;
+
+    // Default ARES API URL — used when AresSettings:BaseUrl is not set in configuration.
+    private const string DefaultAresApiBaseUrl = "https://ares.gov.cz/ekonomicke-subjekty-v-be/rest/ekonomicke-subjekty";
 
     // Cache validity period - 30 days
     private static readonly TimeSpan CacheExpiration = TimeSpan.FromDays(30);
@@ -23,11 +28,16 @@ public class AresServiceImpl : IAresService
     public AresServiceImpl(
         HttpClient httpClient,
         IAresCacheRepository cacheRepository,
-        ILogger<AresServiceImpl> logger)
+        ILogger<AresServiceImpl> logger,
+        IConfiguration configuration)
     {
         _httpClient = httpClient;
         _cacheRepository = cacheRepository;
         _logger = logger;
+
+        // Read ARES base URL from config — allows overriding in appsettings.json,
+        // local.settings.json, or Azure App Settings (AresSettings__BaseUrl).
+        _aresApiBaseUrl = configuration["AresSettings:BaseUrl"] ?? DefaultAresApiBaseUrl;
     }
 
     /// <summary>
@@ -91,7 +101,7 @@ public class AresServiceImpl : IAresService
         try
         {
             // Call ARES API
-            var url = $"{AresApiBaseUrl}/{registrationNumber}";
+            var url = $"{_aresApiBaseUrl}/{registrationNumber}";
             _logger.LogInformation("Fetching company data from ARES: {Url}", url);
 
             var response = await _httpClient.GetAsync(url, cancellationToken);

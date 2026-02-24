@@ -24,12 +24,16 @@
 
   <!-- Azure Functions Isolated Worker packages — timer triggers + HTTP triggers -->
   <ItemGroup>
+    <PackageReference Include="Microsoft.ApplicationInsights.WorkerService" Version="3.0.0" />
     <PackageReference Include="Microsoft.Azure.Functions.Worker" Version="2.*" />
     <PackageReference Include="Microsoft.Azure.Functions.Worker.Sdk" Version="2.*" />
     <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Timer" Version="4.*" />
     <!-- ASP.NET Core integration: provides HttpRequest/IActionResult support in HTTP triggers.
          This does NOT enable MVC routing (MapControllers) — each function is a separate endpoint. -->
     <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Http.AspNetCore" Version="2.*" />
+    <!-- Application Insights — structured telemetry (logs, requests, exceptions, dependencies)
+         sent to Azure Monitor for centralized monitoring, alerting, and diagnostics. -->
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.ApplicationInsights" Version="2.50.0" />
   </ItemGroup>
 
   <!-- ASP.NET Core shared framework — needed for ControllerBase, HttpRequest, IActionResult, etc. -->

@@ -17,6 +17,7 @@
 // ============================================================================
 
 using System.Globalization;
+using Microsoft.Azure.Functions.Worker;
 using InvoiceApi.Application.Service;
 using InvoiceApi.Functions.Middleware;
 using InvoiceApi.Infrastructure.Data;
@@ -37,8 +38,7 @@ var host = new HostBuilder()
     // This gives generated functions access to HttpRequest, IActionResult, HttpContext, etc.
     // NOTE: This does NOT enable MVC routing (MapControllers) — each function handles its own route.
     .ConfigureFunctionsWebApplication(app =>
-    {
-        // ── CORS Middleware ──────────────────────────────────────────────────────
+    {        // ── CORS Middleware ──────────────────────────────────────────────────────
         // Must be registered early in the pipeline so CORS headers are added to
         // every response, including error responses. This middleware reads allowed
         // origins from CorsSettings:AllowedOrigins configuration and adds
@@ -57,6 +57,13 @@ var host = new HostBuilder()
     })
     .ConfigureServices((context, services) =>
     {
+        // ── Application Insights ─────────────────────────────────────────────────
+        // Sends structured telemetry (logs, requests, exceptions, dependency tracking)
+        // to Azure Monitor. Reads APPLICATIONINSIGHTS_CONNECTION_STRING from Azure
+        // App Settings automatically — no connection string needed in code.
+        services.AddApplicationInsightsTelemetryWorkerService();
+        services.ConfigureFunctionsApplicationInsights();
+
         // ── Shared DI registrations (same as API project) ────────────────────────
         // Registers: DbContexts, application services, cloud storage, logging, etc.
         services.AddInvoiceApiCore(context.Configuration);
