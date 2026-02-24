@@ -50,15 +50,21 @@ public class JwtAuthenticationMiddleware : IFunctionsWorkerMiddleware
         var httpContext = context.GetHttpContext();
         if (httpContext == null)
         {
+            _logger.LogInformation("JWT middleware: GetHttpContext() returned null (non-HTTP trigger)");
             await next(context);
             return;
         }
+
+        var path = httpContext.Request.Path.Value ?? "(unknown)";
+        var method = httpContext.Request.Method;
 
         // Extract the Bearer token from the Authorization header
         var authHeader = httpContext.Request.Headers["Authorization"].FirstOrDefault();
         if (!string.IsNullOrEmpty(authHeader) && authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
         {
             var token = authHeader["Bearer ".Length..].Trim();
+            _logger.LogInformation("JWT middleware: Bearer token found for {Method} {Path} (token length={Length})",
+                method, path, token.Length);
 
             try
             {
@@ -101,37 +107,42 @@ public class JwtAuthenticationMiddleware : IFunctionsWorkerMiddleware
                     // (controller actions, auth checks in generated functions) sees it.
                     httpContext.User = principal;
 
-                    _logger.LogDebug("JWT validated for user {UserId}, role={Role}",
-                        principal.FindFirst(ClaimTypes.NameIdentifier)?.Value,
-                        principal.FindFirst(ClaimTypes.Role)?.Value);
+                    _logger.LogInformation(
+                        "JWT middleware: VALIDATED for {Method} {Path} — user={UserId}, role={Role}, isAuth={IsAuth}",
+                        method, path,
+                        principal.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "(no NameIdentifier)",
+                        principal.FindFirst(ClaimTypes.Role)?.Value ?? "(no Role)",
+                        principal.Identity?.IsAuthenticated);
                 }
             }
             catch (SecurityTokenExpiredException ex)
             {
                 // Token expired — user needs to log in again
-                _logger.LogInformation("JWT token expired: {Message}", ex.Message);
+                _logger.LogWarning("JWT middleware: Token EXPIRED for {Method} {Path}: {Message}",
+                    method, path, ex.Message);
             }
             catch (SecurityTokenException ex)
             {
                 // Token validation failed (invalid signature, wrong issuer, etc.)
-                _logger.LogWarning("JWT validation failed: {Message}", ex.Message);
+                _logger.LogWarning("JWT middleware: Validation FAILED for {Method} {Path}: {Message}",
+                    method, path, ex.Message);
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Unexpected error during JWT validation");
+                _logger.LogWarning(ex, "JWT middleware: Unexpected error for {Method} {Path}", method, path);
             }
         }
         else
         {
             // No Authorization header — anonymous request.
             // This is normal for unauthenticated endpoints (health, login, CORS preflight).
-            var path = httpContext.Request.Path.Value;
-            if (path != null && !path.Contains("diagnostic") && !path.Contains("auth/login"))
-            {
-                _logger.LogDebug("No Authorization header for {Method} {Path}",
-                    httpContext.Request.Method, path);
-            }
+            _logger.LogInformation("JWT middleware: No Bearer token for {Method} {Path}",
+                method, path);
         }
+
+        // Verify: log what the HttpContext.User looks like AFTER our processing
+        _logger.LogInformation("JWT middleware: AFTER processing {Method} {Path} — User.IsAuthenticated={IsAuth}",
+            method, path, httpContext.User.Identity?.IsAuthenticated);
 
         await next(context);
     }
