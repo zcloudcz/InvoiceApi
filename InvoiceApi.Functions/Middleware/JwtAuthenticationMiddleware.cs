@@ -67,7 +67,13 @@ public class JwtAuthenticationMiddleware : IFunctionsWorkerMiddleware
                 var jwtIssuer = _configuration["JwtSettings:Issuer"] ?? "InvoiceApi";
                 var jwtAudience = _configuration["JwtSettings:Audience"] ?? "InvoiceApiClient";
 
-                if (!string.IsNullOrEmpty(jwtSecret))
+                if (string.IsNullOrEmpty(jwtSecret))
+                {
+                    // CRITICAL: JwtSettings:Secret is not configured — ALL auth will fail.
+                    // Check Azure App Settings: JwtSettings__Secret must be set.
+                    _logger.LogError("JWT secret is NOT configured — set JwtSettings__Secret in Azure App Settings");
+                }
+                else
                 {
                     var validationParameters = new TokenValidationParameters
                     {
@@ -78,27 +84,52 @@ public class JwtAuthenticationMiddleware : IFunctionsWorkerMiddleware
                         ValidIssuer = jwtIssuer,
                         ValidAudience = jwtAudience,
                         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
-                        ClockSkew = TimeSpan.Zero
+                        // Allow 2 minutes of clock skew to handle minor Azure clock differences
+                        ClockSkew = TimeSpan.FromMinutes(2),
+                        // Ensure role claims are properly mapped so IsInRole() works.
+                        // JWT "role" claim must map to ClaimTypes.Role for authorization checks.
+                        RoleClaimType = ClaimTypes.Role
                     };
 
                     var tokenHandler = new JwtSecurityTokenHandler();
+                    // Ensure inbound claims are mapped to standard .NET claim types
+                    // (e.g., JWT "role" → ClaimTypes.Role). Required for IsInRole() to work.
+                    tokenHandler.MapInboundClaims = true;
                     var principal = tokenHandler.ValidateToken(token, validationParameters, out _);
 
                     // Set the authenticated user on HttpContext so all downstream code
                     // (controller actions, auth checks in generated functions) sees it.
                     httpContext.User = principal;
+
+                    _logger.LogDebug("JWT validated for user {UserId}, role={Role}",
+                        principal.FindFirst(ClaimTypes.NameIdentifier)?.Value,
+                        principal.FindFirst(ClaimTypes.Role)?.Value);
                 }
+            }
+            catch (SecurityTokenExpiredException ex)
+            {
+                // Token expired — user needs to log in again
+                _logger.LogInformation("JWT token expired: {Message}", ex.Message);
             }
             catch (SecurityTokenException ex)
             {
-                // Token validation failed (expired, invalid signature, etc.)
-                // Leave HttpContext.User as anonymous — the function's auth check
-                // will return 401 as expected.
-                _logger.LogDebug(ex, "JWT validation failed: {Message}", ex.Message);
+                // Token validation failed (invalid signature, wrong issuer, etc.)
+                _logger.LogWarning("JWT validation failed: {Message}", ex.Message);
             }
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Unexpected error during JWT validation");
+            }
+        }
+        else
+        {
+            // No Authorization header — anonymous request.
+            // This is normal for unauthenticated endpoints (health, login, CORS preflight).
+            var path = httpContext.Request.Path.Value;
+            if (path != null && !path.Contains("diagnostic") && !path.Contains("auth/login"))
+            {
+                _logger.LogDebug("No Authorization header for {Method} {Path}",
+                    httpContext.Request.Method, path);
             }
         }
 
