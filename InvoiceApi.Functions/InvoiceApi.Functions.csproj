@@ -24,7 +24,9 @@
 
   <!-- Azure Functions Isolated Worker packages — timer triggers + HTTP triggers -->
   <ItemGroup>
-    <PackageReference Include="Microsoft.ApplicationInsights.WorkerService" Version="3.0.0" />
+    <!-- IMPORTANT: v3.0.0 crashes Azure Functions with TypeLoadException (ITelemetryInitializer).
+         The Azure Functions worker runtime requires the 2.x line of ApplicationInsights. -->
+    <PackageReference Include="Microsoft.ApplicationInsights.WorkerService" Version="2.22.0" />
     <PackageReference Include="Microsoft.Azure.Functions.Worker" Version="2.*" />
     <PackageReference Include="Microsoft.Azure.Functions.Worker.Sdk" Version="2.*" />
     <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Timer" Version="4.*" />
