@@ -482,6 +482,13 @@ namespace InvoiceApi.Functions
                 context.GetInvocationResult().Value = await i.Migrate((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
                 return;
             }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "InvoiceApi.Functions.HttpFunctions.DiagnosticFunctions.AuthDiagnostic", StringComparison.Ordinal))
+            {
+                var instanceType = types["InvoiceApi.Functions.HttpFunctions.DiagnosticFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::InvoiceApi.Functions.HttpFunctions.DiagnosticFunctions;
+                context.GetInvocationResult().Value = i.AuthDiagnostic((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
+                return;
+            }
             if (string.Equals(context.FunctionDefinition.EntryPoint, "InvoiceApi.Functions.Generated.InvoiceFunctions.Invoice_GetAllInvoices", StringComparison.Ordinal))
             {
                 var instanceType = types["InvoiceApi.Functions.Generated.InvoiceFunctions"];
