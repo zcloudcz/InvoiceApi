@@ -22,9 +22,17 @@ public class VatRateApiService : ApiClientBase
     /// </summary>
     public async Task<List<VatRateDto>> GetAllAsync(bool includeInactive = false)
     {
-        var endpoint = $"/api/vatrate?includeInactive={includeInactive}";
-        var result = await GetAsync<List<VatRateDto>>(endpoint);
-        return result ?? new List<VatRateDto>();
+        try
+        {
+            var endpoint = $"/api/vatrate?includeInactive={includeInactive}";
+            return await GetAsync<List<VatRateDto>>(endpoint) ?? [];
+        }
+        catch (ApiException)
+        {
+            // Graceful degradation for list endpoints — show empty grid instead of crashing.
+            // 401 is already handled by UnauthorizedRedirectHandler (redirects to /login).
+            return [];
+        }
     }
 
     /// <summary>
@@ -40,10 +48,18 @@ public class VatRateApiService : ApiClientBase
     /// </summary>
     public async Task<List<VatRateDto>> GetActiveForDateAsync(DateTime? date = null)
     {
-        var dateParam = date.HasValue ? $"?date={date.Value:yyyy-MM-ddTHH:mm:ss}" : "";
-        var endpoint = $"/api/vatrate/active{dateParam}";
-        var result = await GetAsync<List<VatRateDto>>(endpoint);
-        return result ?? new List<VatRateDto>();
+        try
+        {
+            var dateParam = date.HasValue ? $"?date={date.Value:yyyy-MM-ddTHH:mm:ss}" : "";
+            var endpoint = $"/api/vatrate/active{dateParam}";
+            return await GetAsync<List<VatRateDto>>(endpoint) ?? [];
+        }
+        catch (ApiException)
+        {
+            // Graceful degradation for list endpoints — show empty grid instead of crashing.
+            // 401 is already handled by UnauthorizedRedirectHandler (redirects to /login).
+            return [];
+        }
     }
 
     /// <summary>

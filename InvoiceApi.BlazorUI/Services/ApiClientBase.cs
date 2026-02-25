@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -6,10 +7,18 @@ using Microsoft.AspNetCore.Components.Authorization;
 namespace InvoiceApi.BlazorUI.Services;
 
 /// <summary>
-/// Base class for API client services
+/// Base class for API client services.
 /// Provides common HTTP operations for consuming the Invoice API.
 /// Supports impersonation — when SysAdmin selects a company, the X-Company-Id header is sent
 /// so the API filters data for that company.
+///
+/// Error handling strategy:
+/// - 401 Unauthorized → handled globally by UnauthorizedRedirectHandler (DelegatingHandler)
+///   which redirects to /login. This method never sees 401 because the handler intercepts it.
+/// - 403/404/500/etc → throws ApiException with the HTTP status code and extracted error message.
+///   Callers (pages) can catch ApiException and show the actual error instead of "Not Found".
+/// - Previously, all non-success responses silently returned null/default, causing every error
+///   to display as "Nenalezeno". Now errors are properly propagated.
 /// </summary>
 public abstract class ApiClientBase
 {
@@ -21,33 +30,6 @@ public abstract class ApiClientBase
     {
         _httpClient = httpClientFactory.CreateClient("InvoiceAPI");
         _logger = logger;
-    }
-
-    /// <summary>
-    /// Extracts a user-friendly error message from an API error response.
-    /// API returns JSON like {"message":"Client with ID 0 not found"} — we extract the "message" field.
-    /// Falls back to the raw content if the response is not JSON or doesn't contain "message".
-    /// </summary>
-    private static string ExtractErrorMessage(string errorContent)
-    {
-        if (string.IsNullOrWhiteSpace(errorContent))
-            return "Unknown error";
-
-        try
-        {
-            using var doc = JsonDocument.Parse(errorContent);
-            // Try "message" first (our standard API error format), then "title" (ASP.NET ProblemDetails)
-            if (doc.RootElement.TryGetProperty("message", out var messageProp))
-                return messageProp.GetString() ?? errorContent;
-            if (doc.RootElement.TryGetProperty("title", out var titleProp))
-                return titleProp.GetString() ?? errorContent;
-        }
-        catch (JsonException)
-        {
-            // Not JSON — return raw content
-        }
-
-        return errorContent;
     }
 
     /// <summary>
@@ -90,7 +72,62 @@ public abstract class ApiClientBase
     }
 
     /// <summary>
-    /// Performs GET request and deserializes response
+    /// Extracts a user-friendly error message from an API error response.
+    /// API returns JSON like {"message":"Client with ID 0 not found"} — we extract the "message" field.
+    /// Falls back to the raw content if the response is not JSON or doesn't contain "message".
+    /// </summary>
+    private static string ExtractErrorMessage(string errorContent)
+    {
+        if (string.IsNullOrWhiteSpace(errorContent))
+            return "Unknown error";
+
+        try
+        {
+            using var doc = JsonDocument.Parse(errorContent);
+            // Try "message" first (our standard API error format), then "title" (ASP.NET ProblemDetails)
+            if (doc.RootElement.TryGetProperty("message", out var messageProp))
+                return messageProp.GetString() ?? errorContent;
+            if (doc.RootElement.TryGetProperty("title", out var titleProp))
+                return titleProp.GetString() ?? errorContent;
+        }
+        catch (JsonException)
+        {
+            // Not JSON — return raw content
+        }
+
+        return errorContent;
+    }
+
+    /// <summary>
+    /// Centralized error response handler. Called by all HTTP methods when the API returns
+    /// a non-success status code. Logs the error and throws ApiException with the status code
+    /// and extracted error message.
+    ///
+    /// Note: 401 Unauthorized is already intercepted by UnauthorizedRedirectHandler
+    /// at the HttpClient pipeline level, so this method typically handles 403, 404, 500 etc.
+    /// </summary>
+    private async Task HandleErrorResponseAsync(
+        HttpResponseMessage response, string httpMethod, string endpoint)
+    {
+        var errorContent = await response.Content.ReadAsStringAsync();
+        _logger.LogWarning("{HttpMethod} {Endpoint} failed with status {StatusCode}: {Error}",
+            httpMethod, endpoint, response.StatusCode, errorContent);
+
+        var message = response.StatusCode switch
+        {
+            HttpStatusCode.Forbidden => "Access denied. You don't have permission for this action.",
+            HttpStatusCode.NotFound => ExtractErrorMessage(errorContent),
+            HttpStatusCode.Conflict => ExtractErrorMessage(errorContent),
+            _ => ExtractErrorMessage(errorContent)
+        };
+
+        throw new ApiException(response.StatusCode, message, endpoint);
+    }
+
+    /// <summary>
+    /// Performs GET request and deserializes response.
+    /// Throws ApiException on non-success status codes (403, 404, 500, etc.).
+    /// 401 is handled globally by UnauthorizedRedirectHandler → redirects to /login.
     /// </summary>
     protected async Task<T?> GetAsync<T>(string endpoint)
     {
@@ -105,8 +142,12 @@ public abstract class ApiClientBase
                 return await response.Content.ReadFromJsonAsync<T>();
             }
 
-            _logger.LogWarning("GET {Endpoint} failed with status {StatusCode}", endpoint, response.StatusCode);
-            return default;
+            await HandleErrorResponseAsync(response, "GET", endpoint);
+            return default; // Unreachable — HandleErrorResponseAsync always throws
+        }
+        catch (ApiException)
+        {
+            throw; // Re-throw API exceptions as-is
         }
         catch (Exception ex)
         {
@@ -116,7 +157,8 @@ public abstract class ApiClientBase
     }
 
     /// <summary>
-    /// Performs POST request with body
+    /// Performs POST request with body.
+    /// Throws ApiException on non-success status codes.
     /// </summary>
     protected async Task<TResponse?> PostAsync<TRequest, TResponse>(string endpoint, TRequest data)
     {
@@ -131,11 +173,10 @@ public abstract class ApiClientBase
                 return await response.Content.ReadFromJsonAsync<TResponse>();
             }
 
-            var errorContent = await response.Content.ReadAsStringAsync();
-            _logger.LogWarning("POST {Endpoint} failed with status {StatusCode}: {Error}", endpoint, response.StatusCode, errorContent);
-            throw new HttpRequestException(ExtractErrorMessage(errorContent));
+            await HandleErrorResponseAsync(response, "POST", endpoint);
+            return default; // Unreachable
         }
-        catch (HttpRequestException)
+        catch (ApiException)
         {
             throw;
         }
@@ -147,7 +188,8 @@ public abstract class ApiClientBase
     }
 
     /// <summary>
-    /// Performs PUT request with body
+    /// Performs PUT request with body.
+    /// Throws ApiException on non-success status codes.
     /// </summary>
     protected async Task<TResponse?> PutAsync<TRequest, TResponse>(string endpoint, TRequest data)
     {
@@ -162,11 +204,10 @@ public abstract class ApiClientBase
                 return await response.Content.ReadFromJsonAsync<TResponse>();
             }
 
-            var errorContent = await response.Content.ReadAsStringAsync();
-            _logger.LogWarning("PUT {Endpoint} failed with status {StatusCode}: {Error}", endpoint, response.StatusCode, errorContent);
-            throw new HttpRequestException(ExtractErrorMessage(errorContent));
+            await HandleErrorResponseAsync(response, "PUT", endpoint);
+            return default; // Unreachable
         }
-        catch (HttpRequestException)
+        catch (ApiException)
         {
             throw;
         }
@@ -178,7 +219,8 @@ public abstract class ApiClientBase
     }
 
     /// <summary>
-    /// Performs DELETE request
+    /// Performs DELETE request.
+    /// Throws ApiException on non-success status codes.
     /// </summary>
     protected async Task<bool> DeleteAsync(string endpoint)
     {
@@ -193,9 +235,12 @@ public abstract class ApiClientBase
                 return true;
             }
 
-            var errorContent = await response.Content.ReadAsStringAsync();
-            _logger.LogWarning("DELETE {Endpoint} failed with status {StatusCode}: {Error}", endpoint, response.StatusCode, errorContent);
-            return false;
+            await HandleErrorResponseAsync(response, "DELETE", endpoint);
+            return false; // Unreachable
+        }
+        catch (ApiException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -206,7 +251,7 @@ public abstract class ApiClientBase
 
     /// <summary>
     /// Performs GET request and returns raw byte array (e.g., for PDF downloads).
-    /// Returns null if the server responds with a non-success status code.
+    /// Throws ApiException on non-success status codes.
     /// </summary>
     protected async Task<byte[]?> GetBytesAsync(string endpoint)
     {
@@ -221,8 +266,12 @@ public abstract class ApiClientBase
                 return await response.Content.ReadAsByteArrayAsync();
             }
 
-            _logger.LogWarning("GET (bytes) {Endpoint} failed with status {StatusCode}", endpoint, response.StatusCode);
-            return null;
+            await HandleErrorResponseAsync(response, "GET (bytes)", endpoint);
+            return null; // Unreachable
+        }
+        catch (ApiException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -234,7 +283,7 @@ public abstract class ApiClientBase
     /// <summary>
     /// Performs POST request without a request body and deserializes the response.
     /// Useful for action endpoints like /complete or /mark-paid that only need the URL.
-    /// Returns null if the server responds with a non-success status code.
+    /// Throws ApiException on non-success status codes.
     /// </summary>
     protected async Task<TResponse?> PostWithoutBodyAsync<TResponse>(string endpoint)
     {
@@ -249,9 +298,12 @@ public abstract class ApiClientBase
                 return await response.Content.ReadFromJsonAsync<TResponse>();
             }
 
-            var errorContent = await response.Content.ReadAsStringAsync();
-            _logger.LogWarning("POST (no body) {Endpoint} failed with status {StatusCode}: {Error}", endpoint, response.StatusCode, errorContent);
-            return default;
+            await HandleErrorResponseAsync(response, "POST (no body)", endpoint);
+            return default; // Unreachable
+        }
+        catch (ApiException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -263,6 +315,7 @@ public abstract class ApiClientBase
     /// <summary>
     /// Performs POST request with body and returns only a success boolean (no deserialization).
     /// Useful for fire-and-forget actions like sending emails where we only care about success/failure.
+    /// Throws ApiException on non-success status codes.
     /// </summary>
     protected async Task<bool> PostBoolAsync<TRequest>(string endpoint, TRequest data)
     {
@@ -277,9 +330,12 @@ public abstract class ApiClientBase
                 return true;
             }
 
-            var errorContent = await response.Content.ReadAsStringAsync();
-            _logger.LogWarning("POST (bool) {Endpoint} failed with status {StatusCode}: {Error}", endpoint, response.StatusCode, errorContent);
-            return false;
+            await HandleErrorResponseAsync(response, "POST (bool)", endpoint);
+            return false; // Unreachable
+        }
+        catch (ApiException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -291,6 +347,7 @@ public abstract class ApiClientBase
     /// <summary>
     /// Performs POST request without a body and returns only a success boolean.
     /// Useful for action endpoints like /provision or /migrate that only need the URL.
+    /// Throws ApiException on non-success status codes.
     /// </summary>
     protected async Task<bool> PostWithoutBodyBoolAsync(string endpoint)
     {
@@ -305,9 +362,12 @@ public abstract class ApiClientBase
                 return true;
             }
 
-            var errorContent = await response.Content.ReadAsStringAsync();
-            _logger.LogWarning("POST (no body, bool) {Endpoint} failed with status {StatusCode}: {Error}", endpoint, response.StatusCode, errorContent);
-            return false;
+            await HandleErrorResponseAsync(response, "POST (no body, bool)", endpoint);
+            return false; // Unreachable
+        }
+        catch (ApiException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -319,6 +379,7 @@ public abstract class ApiClientBase
     /// <summary>
     /// Performs PUT request without a body and returns only a success boolean.
     /// Useful for action endpoints like /activate or /deactivate that only need the URL.
+    /// Throws ApiException on non-success status codes.
     /// </summary>
     protected async Task<bool> PutWithoutBodyBoolAsync(string endpoint)
     {
@@ -333,9 +394,12 @@ public abstract class ApiClientBase
                 return true;
             }
 
-            var errorContent = await response.Content.ReadAsStringAsync();
-            _logger.LogWarning("PUT (no body, bool) {Endpoint} failed with status {StatusCode}: {Error}", endpoint, response.StatusCode, errorContent);
-            return false;
+            await HandleErrorResponseAsync(response, "PUT (no body, bool)", endpoint);
+            return false; // Unreachable
+        }
+        catch (ApiException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -347,6 +411,7 @@ public abstract class ApiClientBase
     /// <summary>
     /// Performs PUT request with body and returns only a success boolean (no deserialization).
     /// Useful for update endpoints like /change-password where the response body isn't needed.
+    /// Throws ApiException on non-success status codes.
     /// </summary>
     protected async Task<bool> PutBoolAsync<TRequest>(string endpoint, TRequest data)
     {
@@ -361,9 +426,12 @@ public abstract class ApiClientBase
                 return true;
             }
 
-            var errorContent = await response.Content.ReadAsStringAsync();
-            _logger.LogWarning("PUT (bool) {Endpoint} failed with status {StatusCode}: {Error}", endpoint, response.StatusCode, errorContent);
-            return false;
+            await HandleErrorResponseAsync(response, "PUT (bool)", endpoint);
+            return false; // Unreachable
+        }
+        catch (ApiException)
+        {
+            throw;
         }
         catch (Exception ex)
         {

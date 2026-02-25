@@ -59,6 +59,11 @@ h1:focus {
     text-align: start;
 }
 
+/* Clickable dashboard cards and table rows — shows pointer cursor on hover */
+.cursor-pointer {
+    cursor: pointer;
+}
+
 /* Large dialog — 85% viewport width/height for complex forms (Companies, Clients, InvoiceTemplates, etc.) */
 .dialog-large .mud-dialog {
     width: 85vw;

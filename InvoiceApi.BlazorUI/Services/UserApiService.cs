@@ -27,8 +27,16 @@ public class UserApiService : ApiClientBase
     /// </summary>
     public async Task<List<UserDto>> GetAllAsync()
     {
-        var result = await GetAsync<List<UserDto>>("/api/user");
-        return result ?? new List<UserDto>();
+        try
+        {
+            return await GetAsync<List<UserDto>>("/api/user") ?? [];
+        }
+        catch (ApiException)
+        {
+            // Graceful degradation for list endpoints — show empty grid instead of crashing.
+            // 401 is already handled by UnauthorizedRedirectHandler (redirects to /login).
+            return [];
+        }
     }
 
     /// <summary>
@@ -45,31 +53,40 @@ public class UserApiService : ApiClientBase
         bool includeInactive = false,
         bool? neverLoggedIn = null)
     {
-        var queryParams = new StringBuilder($"?Page={page}&PageSize={pageSize}");
+        try
+        {
+            var queryParams = new StringBuilder($"?Page={page}&PageSize={pageSize}");
 
-        if (!string.IsNullOrWhiteSpace(search))
-            queryParams.Append($"&Search={Uri.EscapeDataString(search)}");
+            if (!string.IsNullOrWhiteSpace(search))
+                queryParams.Append($"&Search={Uri.EscapeDataString(search)}");
 
-        if (!string.IsNullOrWhiteSpace(sortBy))
-            queryParams.Append($"&SortBy={sortBy}");
+            if (!string.IsNullOrWhiteSpace(sortBy))
+                queryParams.Append($"&SortBy={sortBy}");
 
-        if (!string.IsNullOrWhiteSpace(sortDirection))
-            queryParams.Append($"&SortDirection={sortDirection}");
+            if (!string.IsNullOrWhiteSpace(sortDirection))
+                queryParams.Append($"&SortDirection={sortDirection}");
 
-        if (role.HasValue)
-            queryParams.Append($"&Role={role.Value}");
+            if (role.HasValue)
+                queryParams.Append($"&Role={role.Value}");
 
-        if (companyId.HasValue)
-            queryParams.Append($"&CompanyId={companyId.Value}");
+            if (companyId.HasValue)
+                queryParams.Append($"&CompanyId={companyId.Value}");
 
-        if (includeInactive)
-            queryParams.Append("&IncludeInactive=true");
+            if (includeInactive)
+                queryParams.Append("&IncludeInactive=true");
 
-        if (neverLoggedIn.HasValue)
-            queryParams.Append($"&NeverLoggedIn={neverLoggedIn.Value}");
+            if (neverLoggedIn.HasValue)
+                queryParams.Append($"&NeverLoggedIn={neverLoggedIn.Value}");
 
-        var result = await GetAsync<PagedResult<UserDto>>($"/api/user/paged{queryParams}");
-        return result ?? new PagedResult<UserDto>();
+            return await GetAsync<PagedResult<UserDto>>($"/api/user/paged{queryParams}")
+                   ?? new PagedResult<UserDto>();
+        }
+        catch (ApiException)
+        {
+            // Graceful degradation for list endpoints — show empty grid instead of crashing.
+            // 401 is already handled by UnauthorizedRedirectHandler (redirects to /login).
+            return new PagedResult<UserDto>();
+        }
     }
 
     /// <summary>

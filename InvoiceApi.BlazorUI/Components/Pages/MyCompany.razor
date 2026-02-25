@@ -33,9 +33,9 @@
 {
     <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-4" />
 }
-else if (_company == null)
+else if (_errorMessage != null || _company == null)
 {
-    <MudAlert Severity="Severity.Error">@L["Msg_NotFound"]</MudAlert>
+    <MudAlert Severity="Severity.Error">@(_errorMessage ?? L["Msg_NotFound"])</MudAlert>
 }
 else
 {
@@ -429,6 +429,7 @@ else
 @code {
     private ClientDto? _company;
     private bool _loading = true;
+    private string? _errorMessage; // Stores API error message for display instead of generic "Not Found"
     private bool _saving = false;
     private bool _isEditing = false;
     private bool _isDirty = false;
@@ -484,6 +485,8 @@ else
         }
         catch (Exception ex)
         {
+            // Store error message for display in the template instead of generic "Nenalezeno".
+            _errorMessage = ex.Message;
             Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
         }
         finally

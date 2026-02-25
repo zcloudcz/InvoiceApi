@@ -34,14 +34,23 @@ public class InvoiceTemplateApiService : ApiClientBase
         string sortBy = "Name",
         bool isDescending = false)
     {
-        var endpoint = $"/api/invoicetemplate?page={page}&pageSize={pageSize}" +
-                       $"&search={Uri.EscapeDataString(search ?? "")}" +
-                       $"&documentType={documentType}" +
-                       $"&isActive={isActive}" +
-                       $"&sortBy={sortBy}&isDescending={isDescending}";
+        try
+        {
+            var endpoint = $"/api/invoicetemplate?page={page}&pageSize={pageSize}" +
+                           $"&search={Uri.EscapeDataString(search ?? "")}" +
+                           $"&documentType={documentType}" +
+                           $"&isActive={isActive}" +
+                           $"&sortBy={sortBy}&isDescending={isDescending}";
 
-        var result = await GetAsync<PagedResult<InvoiceTemplateDto>>(endpoint);
-        return result ?? new PagedResult<InvoiceTemplateDto>();
+            return await GetAsync<PagedResult<InvoiceTemplateDto>>(endpoint)
+                   ?? new PagedResult<InvoiceTemplateDto>();
+        }
+        catch (ApiException)
+        {
+            // Graceful degradation for list endpoints — show empty grid instead of crashing.
+            // 401 is already handled by UnauthorizedRedirectHandler (redirects to /login).
+            return new PagedResult<InvoiceTemplateDto>();
+        }
     }
 
     /// <summary>
@@ -52,7 +61,7 @@ public class InvoiceTemplateApiService : ApiClientBase
     public async Task<List<InvoiceTemplateDto>> GetAllActiveAsync()
     {
         var result = await GetPagedAsync(page: 1, pageSize: 200, isActive: true);
-        return result.Items?.ToList() ?? new List<InvoiceTemplateDto>();
+        return result.Items?.ToList() ?? [];
     }
 
     /// <summary>
@@ -66,7 +75,7 @@ public class InvoiceTemplateApiService : ApiClientBase
 
     /// <summary>
     /// Creates a new invoice template.
-    /// Throws HttpRequestException with error details if the API returns non-success.
+    /// Throws ApiException with error details if the API returns non-success.
     /// </summary>
     public async Task<InvoiceTemplateDto?> CreateAsync(CreateInvoiceTemplateDto dto)
     {
@@ -75,7 +84,7 @@ public class InvoiceTemplateApiService : ApiClientBase
 
     /// <summary>
     /// Updates an existing invoice template.
-    /// Throws HttpRequestException with error details if the API returns non-success.
+    /// Throws ApiException with error details if the API returns non-success.
     /// </summary>
     public async Task<InvoiceTemplateDto?> UpdateAsync(long id, UpdateInvoiceTemplateDto dto)
     {

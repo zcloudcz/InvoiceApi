@@ -78,7 +78,7 @@ public class TimerFunctions
     /// </summary>
     [Function("LogFlush")]
     public async Task FlushLogs(
-        [TimerTrigger("*/5 * * * * *")] TimerInfo timer)
+        [TimerTrigger("*/10 * * * * *")] TimerInfo timer)
     {
         // Drain the ConcurrentQueue into a local list (non-blocking, lock-free dequeue).
         // LogQueueRef accesses the same static queue used by DatabaseLoggerProvider across the process.
@@ -140,7 +140,7 @@ public class TimerFunctions
     /// </summary>
     [Function("LogCleanup")]
     public async Task CleanupLogs(
-        [TimerTrigger("0 0 * * * *")] TimerInfo timer)
+        [TimerTrigger("0 0 0 * * *")] TimerInfo timer)
     {
         try
         {

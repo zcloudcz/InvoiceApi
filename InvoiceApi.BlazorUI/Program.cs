@@ -41,14 +41,20 @@ builder.Services.AddAuthorizationCore();
 // (replaces ProtectedSessionStorage which is server-only)
 builder.Services.AddBlazoredLocalStorage();
 
+// Register the 401 redirect handler — intercepts Unauthorized responses globally
+// and redirects to /login. This prevents expired tokens from showing "Not Found" everywhere.
+builder.Services.AddTransient<UnauthorizedRedirectHandler>();
+
 // Configure named HttpClient for API communication.
 // BaseUrl is read from wwwroot/appsettings.json → ApiSettings:BaseUrl
+// The UnauthorizedRedirectHandler is added to the pipeline to catch 401 responses.
 builder.Services.AddHttpClient("InvoiceAPI", client =>
 {
     client.BaseAddress = new Uri(
         builder.Configuration["ApiSettings:BaseUrl"]!);
     client.DefaultRequestHeaders.Add("Accept", "application/json");
-});
+})
+.AddHttpMessageHandler<UnauthorizedRedirectHandler>();
 
 // Register authentication services
 builder.Services.AddScoped<AuthApiService>();
@@ -71,6 +77,9 @@ builder.Services.AddScoped<SystemConfigurationApiService>();
 builder.Services.AddScoped<AppLogApiService>();
 builder.Services.AddScoped<TwoFactorApiService>();
 builder.Services.AddScoped<CloudStorageApiService>();
+
+// Shared app state — cross-component notifications (e.g., company list changed → refresh dropdown)
+builder.Services.AddScoped<AppStateService>();
 
 var host = builder.Build();
 

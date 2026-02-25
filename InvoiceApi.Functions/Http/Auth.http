@@ -1,0 +1,50 @@
+### ============================================================================
+### Auth.http — Login and authentication diagnostic requests.
+###
+### Usage:
+### 1. Select environment "local" or "azure" (top-right in IDE).
+### 2. Run "Login" to get a JWT token.
+### 3. Copy the "token" value from the response JSON.
+### 4. Paste it into the "token" field in http-client.env.json.
+### 5. All subsequent requests use this token for authorization.
+### ============================================================================
+
+
+### ============================================================================
+### Login
+### POST /api/auth/login — Authenticates user, returns JWT token.
+### Copy the "token" field from the response into http-client.env.json.
+### ============================================================================
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@zcloud.cz",
+  "password": "Invoice123"
+}
+
+###
+
+### ============================================================================
+### Validate Token
+### GET /api/auth/validate — Checks if the current token is valid.
+### Returns 200 if valid, 401 if expired or invalid.
+### ============================================================================
+GET {{baseUrl}}/api/auth/validate
+Authorization: Bearer {{token}}
+
+### ============================================================================
+### Auth Diagnostic (with token)
+### GET /api/diagnostic/auth — Dumps full auth state as seen by the function.
+### Shows: Authorization header, User claims, manual JWT validation result.
+### Use this to debug 401 issues.
+### ============================================================================
+GET {{baseUrl}}/api/diagnostic/auth
+Authorization: Bearer {{token}}
+
+### ============================================================================
+### Auth Diagnostic (no token)
+### Verifies the diagnostic endpoint works without auth (should show
+### jwtSecretConfigured=true and userIdentityIsAuthenticated=false).
+### ============================================================================
+GET {{baseUrl}}/api/diagnostic/auth

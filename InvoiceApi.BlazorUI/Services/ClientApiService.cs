@@ -24,8 +24,16 @@ public class ClientApiService : ApiClientBase
     /// </summary>
     public async Task<List<ClientDto>> GetAllAsync(bool includeInactive = false)
     {
-        var result = await GetAsync<List<ClientDto>>($"/api/client?includeInactive={includeInactive}");
-        return result ?? new List<ClientDto>();
+        try
+        {
+            return await GetAsync<List<ClientDto>>($"/api/client?includeInactive={includeInactive}") ?? [];
+        }
+        catch (ApiException)
+        {
+            // Graceful degradation for list endpoints — show empty grid instead of crashing.
+            // 401 is already handled by UnauthorizedRedirectHandler (redirects to /login).
+            return [];
+        }
     }
 
     /// <summary>
@@ -42,31 +50,40 @@ public class ClientApiService : ApiClientBase
         string? city = null,
         string? country = null)
     {
-        var queryParams = new StringBuilder($"?Page={page}&PageSize={pageSize}");
+        try
+        {
+            var queryParams = new StringBuilder($"?Page={page}&PageSize={pageSize}");
 
-        if (!string.IsNullOrWhiteSpace(search))
-            queryParams.Append($"&Search={Uri.EscapeDataString(search)}");
+            if (!string.IsNullOrWhiteSpace(search))
+                queryParams.Append($"&Search={Uri.EscapeDataString(search)}");
 
-        if (!string.IsNullOrWhiteSpace(sortBy))
-            queryParams.Append($"&SortBy={sortBy}");
+            if (!string.IsNullOrWhiteSpace(sortBy))
+                queryParams.Append($"&SortBy={sortBy}");
 
-        if (!string.IsNullOrWhiteSpace(sortDirection))
-            queryParams.Append($"&SortDirection={sortDirection}");
+            if (!string.IsNullOrWhiteSpace(sortDirection))
+                queryParams.Append($"&SortDirection={sortDirection}");
 
-        if (isVatPayer.HasValue)
-            queryParams.Append($"&IsVatPayer={isVatPayer.Value}");
+            if (isVatPayer.HasValue)
+                queryParams.Append($"&IsVatPayer={isVatPayer.Value}");
 
-        if (includeInactive)
-            queryParams.Append("&IncludeInactive=true");
+            if (includeInactive)
+                queryParams.Append("&IncludeInactive=true");
 
-        if (!string.IsNullOrWhiteSpace(city))
-            queryParams.Append($"&City={Uri.EscapeDataString(city)}");
+            if (!string.IsNullOrWhiteSpace(city))
+                queryParams.Append($"&City={Uri.EscapeDataString(city)}");
 
-        if (!string.IsNullOrWhiteSpace(country))
-            queryParams.Append($"&Country={Uri.EscapeDataString(country)}");
+            if (!string.IsNullOrWhiteSpace(country))
+                queryParams.Append($"&Country={Uri.EscapeDataString(country)}");
 
-        var result = await GetAsync<PagedResult<ClientDto>>($"/api/client/paged{queryParams}");
-        return result ?? new PagedResult<ClientDto>();
+            return await GetAsync<PagedResult<ClientDto>>($"/api/client/paged{queryParams}")
+                   ?? new PagedResult<ClientDto>();
+        }
+        catch (ApiException)
+        {
+            // Graceful degradation for list endpoints — show empty grid instead of crashing.
+            // 401 is already handled by UnauthorizedRedirectHandler (redirects to /login).
+            return new PagedResult<ClientDto>();
+        }
     }
 
     /// <summary>

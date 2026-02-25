@@ -1,0 +1,4 @@
+POST https://zcloudinvoicingapi-crcqggehb7a6ggdv.westeurope-01.azurewebsites.net/api/diagnostic/migrate
+Content-Type: application/json
+
+{}

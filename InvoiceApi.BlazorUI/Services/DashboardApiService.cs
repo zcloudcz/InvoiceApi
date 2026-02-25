@@ -24,8 +24,16 @@ public class DashboardApiService : ApiClientBase
     /// </summary>
     public async Task<DashboardDto> GetDashboardAsync()
     {
-        var result = await GetAsync<DashboardDto>("/api/dashboard");
-        return result ?? new DashboardDto();
+        try
+        {
+            return await GetAsync<DashboardDto>("/api/dashboard") ?? new DashboardDto();
+        }
+        catch (ApiException)
+        {
+            // Graceful degradation for dashboard aggregation — show empty stats instead of crashing.
+            // 401 is already handled by UnauthorizedRedirectHandler (redirects to /login).
+            return new DashboardDto();
+        }
     }
 
     /// <summary>

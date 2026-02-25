@@ -26,12 +26,20 @@ public class ContentTemplateApiService : ApiClientBase
     public async Task<List<ContentTemplateDto>> GetAllAsync(
         EContentTemplateType? templateType = null, bool includeInactive = false)
     {
-        var url = $"/api/contenttemplate?includeInactive={includeInactive}";
-        if (templateType.HasValue)
-            url += $"&templateType={templateType.Value}";
+        try
+        {
+            var url = $"/api/contenttemplate?includeInactive={includeInactive}";
+            if (templateType.HasValue)
+                url += $"&templateType={templateType.Value}";
 
-        var result = await GetAsync<List<ContentTemplateDto>>(url);
-        return result ?? new List<ContentTemplateDto>();
+            return await GetAsync<List<ContentTemplateDto>>(url) ?? [];
+        }
+        catch (ApiException)
+        {
+            // Graceful degradation for list endpoints — show empty grid instead of crashing.
+            // 401 is already handled by UnauthorizedRedirectHandler (redirects to /login).
+            return [];
+        }
     }
 
     /// <summary>

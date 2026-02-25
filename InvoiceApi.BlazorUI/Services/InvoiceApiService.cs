@@ -28,8 +28,16 @@ public class InvoiceApiService : ApiClientBase
     /// </summary>
     public async Task<List<InvoiceDto>> GetAllAsync()
     {
-        var result = await GetAsync<List<InvoiceDto>>("/api/invoice");
-        return result ?? new List<InvoiceDto>();
+        try
+        {
+            return await GetAsync<List<InvoiceDto>>("/api/invoice") ?? [];
+        }
+        catch (ApiException)
+        {
+            // Graceful degradation for list endpoints — show empty grid instead of crashing.
+            // 401 is already handled by UnauthorizedRedirectHandler (redirects to /login).
+            return [];
+        }
     }
 
     /// <summary>
@@ -55,56 +63,65 @@ public class InvoiceApiService : ApiClientBase
         decimal? minAmount = null,
         decimal? maxAmount = null)
     {
-        // Build query string from all provided filter parameters
-        var queryParams = new StringBuilder($"?Page={page}&PageSize={pageSize}");
+        try
+        {
+            // Build query string from all provided filter parameters
+            var queryParams = new StringBuilder($"?Page={page}&PageSize={pageSize}");
 
-        if (!string.IsNullOrWhiteSpace(search))
-            queryParams.Append($"&Search={Uri.EscapeDataString(search)}");
+            if (!string.IsNullOrWhiteSpace(search))
+                queryParams.Append($"&Search={Uri.EscapeDataString(search)}");
 
-        if (!string.IsNullOrWhiteSpace(sortBy))
-            queryParams.Append($"&SortBy={sortBy}");
+            if (!string.IsNullOrWhiteSpace(sortBy))
+                queryParams.Append($"&SortBy={sortBy}");
 
-        if (!string.IsNullOrWhiteSpace(sortDirection))
-            queryParams.Append($"&SortDirection={sortDirection}");
+            if (!string.IsNullOrWhiteSpace(sortDirection))
+                queryParams.Append($"&SortDirection={sortDirection}");
 
-        if (documentType.HasValue)
-            queryParams.Append($"&DocumentType={documentType.Value}");
+            if (documentType.HasValue)
+                queryParams.Append($"&DocumentType={documentType.Value}");
 
-        if (status.HasValue)
-            queryParams.Append($"&Status={status.Value}");
+            if (status.HasValue)
+                queryParams.Append($"&Status={status.Value}");
 
-        if (clientId.HasValue)
-            queryParams.Append($"&ClientId={clientId.Value}");
+            if (clientId.HasValue)
+                queryParams.Append($"&ClientId={clientId.Value}");
 
-        if (issuerId.HasValue)
-            queryParams.Append($"&IssuerId={issuerId.Value}");
+            if (issuerId.HasValue)
+                queryParams.Append($"&IssuerId={issuerId.Value}");
 
-        if (issueDateFrom.HasValue)
-            queryParams.Append($"&IssueDateFrom={issueDateFrom.Value:yyyy-MM-dd}");
+            if (issueDateFrom.HasValue)
+                queryParams.Append($"&IssueDateFrom={issueDateFrom.Value:yyyy-MM-dd}");
 
-        if (issueDateTo.HasValue)
-            queryParams.Append($"&IssueDateTo={issueDateTo.Value:yyyy-MM-dd}");
+            if (issueDateTo.HasValue)
+                queryParams.Append($"&IssueDateTo={issueDateTo.Value:yyyy-MM-dd}");
 
-        if (dueDateFrom.HasValue)
-            queryParams.Append($"&DueDateFrom={dueDateFrom.Value:yyyy-MM-dd}");
+            if (dueDateFrom.HasValue)
+                queryParams.Append($"&DueDateFrom={dueDateFrom.Value:yyyy-MM-dd}");
 
-        if (dueDateTo.HasValue)
-            queryParams.Append($"&DueDateTo={dueDateTo.Value:yyyy-MM-dd}");
+            if (dueDateTo.HasValue)
+                queryParams.Append($"&DueDateTo={dueDateTo.Value:yyyy-MM-dd}");
 
-        if (isOverdue.HasValue)
-            queryParams.Append($"&IsOverdue={isOverdue.Value}");
+            if (isOverdue.HasValue)
+                queryParams.Append($"&IsOverdue={isOverdue.Value}");
 
-        if (!string.IsNullOrWhiteSpace(currency))
-            queryParams.Append($"&Currency={Uri.EscapeDataString(currency)}");
+            if (!string.IsNullOrWhiteSpace(currency))
+                queryParams.Append($"&Currency={Uri.EscapeDataString(currency)}");
 
-        if (minAmount.HasValue)
-            queryParams.Append($"&MinAmount={minAmount.Value}");
+            if (minAmount.HasValue)
+                queryParams.Append($"&MinAmount={minAmount.Value}");
 
-        if (maxAmount.HasValue)
-            queryParams.Append($"&MaxAmount={maxAmount.Value}");
+            if (maxAmount.HasValue)
+                queryParams.Append($"&MaxAmount={maxAmount.Value}");
 
-        var result = await GetAsync<PagedResult<InvoiceDto>>($"/api/invoice/paged{queryParams}");
-        return result ?? new PagedResult<InvoiceDto>();
+            return await GetAsync<PagedResult<InvoiceDto>>($"/api/invoice/paged{queryParams}")
+                   ?? new PagedResult<InvoiceDto>();
+        }
+        catch (ApiException)
+        {
+            // Graceful degradation for list endpoints — show empty grid instead of crashing.
+            // 401 is already handled by UnauthorizedRedirectHandler (redirects to /login).
+            return new PagedResult<InvoiceDto>();
+        }
     }
 
     /// <summary>

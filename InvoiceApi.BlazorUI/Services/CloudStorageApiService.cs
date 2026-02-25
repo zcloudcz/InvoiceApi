@@ -24,8 +24,16 @@ public class CloudStorageApiService : ApiClientBase
     /// </summary>
     public async Task<List<CloudStorageStatusDto>> GetStatusAsync()
     {
-        return await GetAsync<List<CloudStorageStatusDto>>("api/cloud-storage/status")
-               ?? new List<CloudStorageStatusDto>();
+        try
+        {
+            return await GetAsync<List<CloudStorageStatusDto>>("api/cloud-storage/status") ?? [];
+        }
+        catch (ApiException)
+        {
+            // Graceful degradation for list endpoints — show empty grid instead of crashing.
+            // 401 is already handled by UnauthorizedRedirectHandler (redirects to /login).
+            return [];
+        }
     }
 
     /// <summary>
@@ -63,11 +71,20 @@ public class CloudStorageApiService : ApiClientBase
     public async Task<List<CloudStorageFolderDto>> ListFoldersAsync(
         ECloudStorageProvider provider, string? parentId = null)
     {
-        var url = $"api/cloud-storage/folders?provider={provider}";
-        if (!string.IsNullOrEmpty(parentId))
-            url += $"&parentId={Uri.EscapeDataString(parentId)}";
+        try
+        {
+            var url = $"api/cloud-storage/folders?provider={provider}";
+            if (!string.IsNullOrEmpty(parentId))
+                url += $"&parentId={Uri.EscapeDataString(parentId)}";
 
-        return await GetAsync<List<CloudStorageFolderDto>>(url) ?? new List<CloudStorageFolderDto>();
+            return await GetAsync<List<CloudStorageFolderDto>>(url) ?? [];
+        }
+        catch (ApiException)
+        {
+            // Graceful degradation for list endpoints — show empty grid instead of crashing.
+            // 401 is already handled by UnauthorizedRedirectHandler (redirects to /login).
+            return [];
+        }
     }
 
     /// <summary>

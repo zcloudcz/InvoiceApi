@@ -12,6 +12,7 @@
 @inject ISnackbar Snackbar
 @inject IStringLocalizer<SharedResource> L
 @inject ILogger<CompanyDetail> _logger
+@inject AppStateService AppState
 
 <PageTitle>@(_isCreateMode ? L["Company_New"] : L["Company_Detail"])</PageTitle>
 
@@ -22,9 +23,9 @@
 {
     <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-4" />
 }
-else if (!_isCreateMode && _company == null)
+else if (!_isCreateMode && (_errorMessage != null || _company == null))
 {
-    <MudAlert Severity="Severity.Error">@L["Msg_NotFound"]</MudAlert>
+    <MudAlert Severity="Severity.Error">@(_errorMessage ?? L["Msg_NotFound"])</MudAlert>
 }
 else
 {
@@ -364,6 +365,7 @@ else
     private ClientDto? _company;
     private CompanySystemSettingsDto? _tenantSettings;
     private bool _loading = true;
+    private string? _errorMessage; // Stores API error message for display instead of generic "Not Found"
     private bool _isCreateMode => Id == 0;
     private bool _isEditing = false;
     private bool _isDirty = false; // Dirty tracking for unsaved changes warning
@@ -488,6 +490,10 @@ else
         }
         catch (Exception ex)
         {
+            // Store error message for display in the template instead of generic "Nenalezeno".
+            // ApiException carries the actual API error (403 Forbidden, 500 Server Error, etc.).
+            // 401 Unauthorized is handled globally by UnauthorizedRedirectHandler → /login redirect.
+            _errorMessage = ex.Message;
             Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
         }
         finally
@@ -671,9 +677,13 @@ else
                     StateHasChanged();
                     await Task.Yield();
 
-                    // Navigate with forceLoad so MainLayout reloads the impersonation dropdown
-                    // (new company needs to appear in the company selector immediately)
-                    Navigation.NavigateTo($"/companies/{result.Id}", forceLoad: true);
+                    // Notify MainLayout to refresh the impersonation dropdown
+                    // (new company needs to appear in the company selector immediately).
+                    // NOTE: Do NOT use forceLoad: true — it restarts the entire WASM app
+                    // and causes a race condition where the GET request fires before
+                    // localStorage auth token is loaded → 401 → "Nenalezeno".
+                    AppState.NotifyCompanyListChanged();
+                    Navigation.NavigateTo($"/companies/{result.Id}");
                 }
                 else
                 {

@@ -27,8 +27,16 @@ public class CompanySettingsApiService : ApiClientBase
     /// </summary>
     public async Task<List<CompanySystemSettingsDto>> GetAllSettingsAsync()
     {
-        var result = await GetAsync<List<CompanySystemSettingsDto>>("/api/company/settings");
-        return result ?? new List<CompanySystemSettingsDto>();
+        try
+        {
+            return await GetAsync<List<CompanySystemSettingsDto>>("/api/company/settings") ?? [];
+        }
+        catch (ApiException)
+        {
+            // Graceful degradation for list endpoints — show empty grid instead of crashing.
+            // 401 is already handled by UnauthorizedRedirectHandler (redirects to /login).
+            return [];
+        }
     }
 
     /// <summary>

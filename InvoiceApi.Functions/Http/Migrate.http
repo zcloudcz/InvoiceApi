@@ -1,0 +1,20 @@
+### ============================================================================
+### Migrate.http — Health check and database migration requests.
+###
+### These are anonymous endpoints — no JWT token required.
+### Use them to diagnose Azure deployment issues.
+### ============================================================================
+
+
+### ============================================================================
+### Health Check
+### GET /api/diagnostic/health — Tests DB connectivity and migration status.
+### ============================================================================
+GET {{baseUrl}}/api/diagnostic/health
+
+### ============================================================================
+### Migrate Databases
+### POST /api/diagnostic/migrate — Manually triggers EF Core migrations
+### for master DB + all tenant DBs.
+### ============================================================================
+POST {{baseUrl}}/api/diagnostic/migrate

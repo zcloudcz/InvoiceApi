@@ -7,6 +7,8 @@
 @inject NavigationManager Navigation
 @inject CompanyApiService CompanyService
 @inject IStringLocalizer<SharedResource> L
+@inject AppStateService AppState
+@implements IDisposable
 
 @* NOTE: CascadingAuthenticationState is provided by App.razor — no need to wrap here.
    All child components can access Task<AuthenticationState> via [CascadingParameter]. *@
@@ -99,24 +101,51 @@
     {
         if (firstRender)
         {
-            try
-            {
-                var customAuth = (CustomAuthenticationStateProvider)AuthStateProvider;
-                var session = await customAuth.GetUserSessionAsync();
+            // Subscribe to company list changes (e.g., CompanyDetail creates a new company).
+            // This replaces forceLoad: true navigation which restarts the WASM app.
+            AppState.OnCompanyListChanged += OnCompanyListChanged;
 
-                // Only load companies for SysAdmin
-                if (session != null && session.Role == 2)
-                {
-                    _availableCompanies = await CompanyService.GetAllAsync();
-                    _impersonatedCompanyId = await customAuth.GetImpersonatedCompanyIdAsync();
-                    StateHasChanged();
-                }
-            }
-            catch
+            await LoadCompaniesAsync();
+        }
+    }
+
+    /// <summary>
+    /// Loads the company list for the SysAdmin impersonation dropdown.
+    /// Called on first render and when a company is created/deleted.
+    /// </summary>
+    private async Task LoadCompaniesAsync()
+    {
+        try
+        {
+            var customAuth = (CustomAuthenticationStateProvider)AuthStateProvider;
+            var session = await customAuth.GetUserSessionAsync();
+
+            // Only load companies for SysAdmin
+            if (session != null && session.Role == 2)
             {
-                // Ignore — auth may not be ready yet
+                _availableCompanies = await CompanyService.GetAllAsync();
+                _impersonatedCompanyId = await customAuth.GetImpersonatedCompanyIdAsync();
+                StateHasChanged();
             }
         }
+        catch
+        {
+            // Ignore — auth may not be ready yet
+        }
+    }
+
+    /// <summary>
+    /// Event handler for AppStateService.OnCompanyListChanged.
+    /// Refreshes the impersonation dropdown without full page reload.
+    /// </summary>
+    private async void OnCompanyListChanged()
+    {
+        await LoadCompaniesAsync();
+    }
+
+    public void Dispose()
+    {
+        AppState.OnCompanyListChanged -= OnCompanyListChanged;
     }
 
     /// <summary>

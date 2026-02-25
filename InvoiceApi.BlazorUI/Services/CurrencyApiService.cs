@@ -25,8 +25,16 @@ public class CurrencyApiService : ApiClientBase
     /// </summary>
     public async Task<List<CurrencyDto>> GetActiveCurrenciesAsync()
     {
-        var result = await GetAsync<List<CurrencyDto>>("/api/currency/active");
-        return result ?? new List<CurrencyDto>();
+        try
+        {
+            return await GetAsync<List<CurrencyDto>>("/api/currency/active") ?? [];
+        }
+        catch (ApiException)
+        {
+            // Graceful degradation for list endpoints — show empty grid instead of crashing.
+            // 401 is already handled by UnauthorizedRedirectHandler (redirects to /login).
+            return [];
+        }
     }
 
     /// <summary>
@@ -41,13 +49,21 @@ public class CurrencyApiService : ApiClientBase
         string sortBy = "SortOrder",
         bool isDescending = false)
     {
-        var endpoint = $"/api/currency?page={page}&pageSize={pageSize}" +
-                       $"&search={Uri.EscapeDataString(search ?? "")}" +
-                       $"&isActive={isActive}" +
-                       $"&sortBy={sortBy}&isDescending={isDescending}";
+        try
+        {
+            var endpoint = $"/api/currency?page={page}&pageSize={pageSize}" +
+                           $"&search={Uri.EscapeDataString(search ?? "")}" +
+                           $"&isActive={isActive}" +
+                           $"&sortBy={sortBy}&isDescending={isDescending}";
 
-        var result = await GetAsync<PagedResult<CurrencyDto>>(endpoint);
-        return result ?? new PagedResult<CurrencyDto>();
+            return await GetAsync<PagedResult<CurrencyDto>>(endpoint) ?? new PagedResult<CurrencyDto>();
+        }
+        catch (ApiException)
+        {
+            // Graceful degradation for list endpoints — show empty grid instead of crashing.
+            // 401 is already handled by UnauthorizedRedirectHandler (redirects to /login).
+            return new PagedResult<CurrencyDto>();
+        }
     }
 
     /// <summary>

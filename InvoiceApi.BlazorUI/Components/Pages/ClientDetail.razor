@@ -20,9 +20,9 @@
 {
     <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-4" />
 }
-else if (!_isCreateMode && _client == null)
+else if (!_isCreateMode && (_errorMessage != null || _client == null))
 {
-    <MudAlert Severity="Severity.Error">@L["Msg_NotFound"]</MudAlert>
+    <MudAlert Severity="Severity.Error">@(_errorMessage ?? L["Msg_NotFound"])</MudAlert>
 }
 else
 {
@@ -358,6 +358,7 @@ else
 
     private ClientDto? _client;
     private bool _loading = true;
+    private string? _errorMessage; // Stores API error message for display instead of generic "Not Found"
     private bool _invoiceLoading = false;
     private bool _fetchingAres = false;
 
@@ -452,6 +453,9 @@ else
         }
         catch (Exception ex)
         {
+            // Store error message for display in the template instead of generic "Nenalezeno".
+            // ApiException carries the actual API error (403 Forbidden, 500 Server Error, etc.).
+            _errorMessage = ex.Message;
             Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
         }
         finally
