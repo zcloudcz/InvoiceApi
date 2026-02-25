@@ -1778,7 +1778,7 @@ namespace InvoiceApi.Functions
             };
             metadataList.Add(Function134);
             var Function135RawBindings = new List<string>();
-            Function135RawBindings.Add(@"{""name"":""timer"",""type"":""timerTrigger"",""direction"":""In"",""schedule"":""*/5 * * * * *""}");
+            Function135RawBindings.Add(@"{""name"":""timer"",""type"":""timerTrigger"",""direction"":""In"",""schedule"":""*/10 * * * * *""}");
 
             var Function135 = new DefaultFunctionMetadata
             {
@@ -1790,7 +1790,7 @@ namespace InvoiceApi.Functions
             };
             metadataList.Add(Function135);
             var Function136RawBindings = new List<string>();
-            Function136RawBindings.Add(@"{""name"":""timer"",""type"":""timerTrigger"",""direction"":""In"",""schedule"":""0 0 * * * *""}");
+            Function136RawBindings.Add(@"{""name"":""timer"",""type"":""timerTrigger"",""direction"":""In"",""schedule"":""0 0 0 * * *""}");
 
             var Function136 = new DefaultFunctionMetadata
             {
