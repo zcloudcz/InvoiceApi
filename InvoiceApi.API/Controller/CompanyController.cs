@@ -209,7 +209,7 @@ public class CompanyController : ControllerBase
         {
             _logger.LogError(ex, "Error retrieving company {CompanyId}", id);
             return StatusCode(StatusCodes.Status500InternalServerError,
-                new { message = "An error occurred while retrieving the company." });
+                new { message = ex.ToString() + "An error occurred while retrieving the company." });
         }
     }
 
