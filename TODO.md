@@ -531,6 +531,18 @@
 - [x] **CS8602 nullable (8 instances)** — added `?.` null-conditional operators in ContentTemplateDetail, ClientDetail, CompanyDetail, InvoiceTemplateDetail, InvoiceDetail
 - [x] Build: **0 warnings** (down from 35), 0 errors, Tests: 319 pass (318 unit + 1 integration)
 
+### Azure SQL Database Management — AzureOperationController (2026-02-26)
+- [x] Created `AzureCreateDatabaseRequest` DTO — database name, company ID, free tier config, max size (Contracts)
+- [x] Created `AzureDatabaseStatusDto` DTO — database status, SKU, free tier, location, restore date (Contracts)
+- [x] Created `IAzureSqlService` interface — CreateDatabase, ListDatabases, GetDatabaseStatus, DeleteDatabase, CreateContainedUser (Application)
+- [x] Created `AzureSqlService` implementation — Azure ARM API via Azure.ResourceManager.Sql, DefaultAzureCredential, identity name sanitization (Infrastructure)
+- [x] Created `AzureOperationController` — 5 endpoints: provision-tenant (full flow), create-database, list, status, delete (API)
+- [x] Added NuGet packages: Azure.Identity 1.17.1, Azure.ResourceManager 1.13.2, Azure.ResourceManager.Sql 1.3.0
+- [x] Registered `IAzureSqlService` → `AzureSqlService` in DI (ServiceCollectionExtensions)
+- [x] Added `AzureSettings` configuration section to appsettings.json
+- [x] Created 35 unit tests: DTO validation, identity name sanitization (SQL injection prevention), controller flow (mocked services), CRUD endpoints
+- [x] Build: 0 errors, Tests: 353 pass (353 total)
+
 ## Pending
 
 ### Multi-Tenant Roadmap — Remaining Tasks

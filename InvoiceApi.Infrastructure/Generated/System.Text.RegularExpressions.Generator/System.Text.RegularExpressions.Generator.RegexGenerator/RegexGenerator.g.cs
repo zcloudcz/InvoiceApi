@@ -4,6 +4,25 @@
 
 namespace InvoiceApi.Infrastructure.Service
 {
+    partial class AzureSqlService
+    {
+        /// <remarks>
+        /// Pattern:<br/>
+        /// <code>^[a-zA-Z0-9\\-_]+$</code><br/>
+        /// Explanation:<br/>
+        /// <code>
+        /// ○ Match if at the beginning of the string.<br/>
+        /// ○ Match a character in the set [\-0-9A-Z_a-z] atomically at least once.<br/>
+        /// ○ Match if at the end of the string or if before an ending newline.<br/>
+        /// </code>
+        /// </remarks>
+        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.7603")]
+        private static partial global::System.Text.RegularExpressions.Regex SafeIdentityNameRegex() => global::System.Text.RegularExpressions.Generated.SafeIdentityNameRegex_0.Instance;
+    }
+}
+
+namespace InvoiceApi.Infrastructure.Service
+{
     partial class ContentTemplateService
     {
         /// <remarks>
@@ -18,7 +37,7 @@ namespace InvoiceApi.Infrastructure.Service
         /// </code>
         /// </remarks>
         [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.7603")]
-        private static partial global::System.Text.RegularExpressions.Regex PlaceholderRegex() => global::System.Text.RegularExpressions.Generated.PlaceholderRegex_0.Instance;
+        private static partial global::System.Text.RegularExpressions.Regex PlaceholderRegex() => global::System.Text.RegularExpressions.Generated.PlaceholderRegex_1.Instance;
     }
 }
 
@@ -34,15 +53,123 @@ namespace System.Text.RegularExpressions.Generated
     using System.Text.RegularExpressions;
     using System.Threading;
 
-    /// <summary>Custom <see cref="Regex"/>-derived type for the PlaceholderRegex method.</summary>
+    /// <summary>Custom <see cref="Regex"/>-derived type for the SafeIdentityNameRegex method.</summary>
     [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.7603")]
-    file sealed class PlaceholderRegex_0 : Regex
+    file sealed class SafeIdentityNameRegex_0 : Regex
     {
         /// <summary>Cached, thread-safe singleton instance.</summary>
-        internal static readonly PlaceholderRegex_0 Instance = new();
+        internal static readonly SafeIdentityNameRegex_0 Instance = new();
     
         /// <summary>Initializes the instance.</summary>
-        private PlaceholderRegex_0()
+        private SafeIdentityNameRegex_0()
+        {
+            base.pattern = "^[a-zA-Z0-9\\-_]+$";
+            base.roptions = RegexOptions.None;
+            ValidateMatchTimeout(Utilities.s_defaultTimeout);
+            base.internalMatchTimeout = Utilities.s_defaultTimeout;
+            base.factory = new RunnerFactory();
+            base.capsize = 1;
+        }
+            
+        /// <summary>Provides a factory for creating <see cref="RegexRunner"/> instances to be used by methods on <see cref="Regex"/>.</summary>
+        private sealed class RunnerFactory : RegexRunnerFactory
+        {
+            /// <summary>Creates an instance of a <see cref="RegexRunner"/> used by methods on <see cref="Regex"/>.</summary>
+            protected override RegexRunner CreateInstance() => new Runner();
+        
+            /// <summary>Provides the runner that contains the custom logic implementing the specified regular expression.</summary>
+            private sealed class Runner : RegexRunner
+            {
+                /// <summary>Scan the <paramref name="inputSpan"/> starting from base.runtextstart for the next match.</summary>
+                /// <param name="inputSpan">The text being scanned by the regular expression.</param>
+                protected override void Scan(ReadOnlySpan<char> inputSpan)
+                {
+                    // The pattern is anchored.  Validate the current position and try to match at it only.
+                    if (TryFindNextPossibleStartingPosition(inputSpan) && !TryMatchAtCurrentPosition(inputSpan))
+                    {
+                        base.runtextpos = inputSpan.Length;
+                    }
+                }
+        
+                /// <summary>Search <paramref name="inputSpan"/> starting from base.runtextpos for the next location a match could possibly start.</summary>
+                /// <param name="inputSpan">The text being scanned by the regular expression.</param>
+                /// <returns>true if a possible match was found; false if no more matches are possible.</returns>
+                private bool TryFindNextPossibleStartingPosition(ReadOnlySpan<char> inputSpan)
+                {
+                    int pos = base.runtextpos;
+                    
+                    // Empty matches aren't possible.
+                    if ((uint)pos < (uint)inputSpan.Length)
+                    {
+                        // The pattern leads with a beginning (\A) anchor.
+                        if (pos == 0)
+                        {
+                            return true;
+                        }
+                    }
+                    
+                    // No match found.
+                    base.runtextpos = inputSpan.Length;
+                    return false;
+                }
+        
+                /// <summary>Determine whether <paramref name="inputSpan"/> at base.runtextpos is a match for the regular expression.</summary>
+                /// <param name="inputSpan">The text being scanned by the regular expression.</param>
+                /// <returns>true if the regular expression matches at the current position; otherwise, false.</returns>
+                private bool TryMatchAtCurrentPosition(ReadOnlySpan<char> inputSpan)
+                {
+                    int pos = base.runtextpos;
+                    int matchStart = pos;
+                    ReadOnlySpan<char> slice = inputSpan.Slice(pos);
+                    
+                    // Match if at the beginning of the string.
+                    if (pos != 0)
+                    {
+                        return false; // The input didn't match.
+                    }
+                    
+                    // Match a character in the set [\-0-9A-Z_a-z] atomically at least once.
+                    {
+                        int iteration = slice.IndexOfAnyExcept(Utilities.s_asciiLettersAndDigitsAndDashUnderscore);
+                        if (iteration < 0)
+                        {
+                            iteration = slice.Length;
+                        }
+                        
+                        if (iteration == 0)
+                        {
+                            return false; // The input didn't match.
+                        }
+                        
+                        slice = slice.Slice(iteration);
+                        pos += iteration;
+                    }
+                    
+                    // Match if at the end of the string or if before an ending newline.
+                    if (pos < inputSpan.Length - 1 || ((uint)pos < (uint)inputSpan.Length && inputSpan[pos] != '\n'))
+                    {
+                        return false; // The input didn't match.
+                    }
+                    
+                    // The input matched.
+                    base.runtextpos = pos;
+                    base.Capture(0, matchStart, pos);
+                    return true;
+                }
+            }
+        }
+
+    }
+    
+    /// <summary>Custom <see cref="Regex"/>-derived type for the PlaceholderRegex method.</summary>
+    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.7603")]
+    file sealed class PlaceholderRegex_1 : Regex
+    {
+        /// <summary>Cached, thread-safe singleton instance.</summary>
+        internal static readonly PlaceholderRegex_1 Instance = new();
+    
+        /// <summary>Initializes the instance.</summary>
+        private PlaceholderRegex_1()
         {
             base.pattern = "\\{\\{(.+?)\\}\\}";
             base.roptions = RegexOptions.None;
@@ -217,6 +344,9 @@ namespace System.Text.RegularExpressions.Generated
         
         /// <summary>Whether <see cref="s_defaultTimeout"/> is non-infinite.</summary>
         internal static readonly bool s_hasTimeout = s_defaultTimeout != Regex.InfiniteMatchTimeout;
+        
+        /// <summary>Supports searching for characters in or not in "-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz".</summary>
+        internal static readonly SearchValues<char> s_asciiLettersAndDigitsAndDashUnderscore = SearchValues.Create("-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz");
         
         /// <summary>Supports searching for the string "{{".</summary>
         internal static readonly SearchValues<string> s_indexOfString_BB1C8D594CD963F65D3EAF61D3D969FEE92730B1764726818716F84676CA8389 = SearchValues.Create(["{{"], StringComparison.Ordinal);

@@ -114,6 +114,10 @@ public static class ServiceCollectionExtensions
         // SysAdmin uses this through CompanyController to manage tenant lifecycle.
         services.AddScoped<ITenantProvisioningService, TenantProvisioningService>();
 
+        // Azure SQL Service — manages Azure SQL databases via ARM API (create, list, delete).
+        // Used by AzureOperationController for Azure-hosted tenant provisioning with free tier support.
+        services.AddScoped<IAzureSqlService, AzureSqlService>();
+
         // ── Cloud Storage ───────────────────────────────────────────────────
         // Google Drive and OneDrive registered as IExternalCloudStorage.
         // CloudStorageOrchestrator iterates IEnumerable<IExternalCloudStorage>
