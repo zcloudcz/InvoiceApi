@@ -623,6 +623,15 @@ public class MasterDbContext : DbContext
             // Exception also nvarchar(max) — can be very long for nested exceptions
             entity.Property(e => e.RequestPath)
                 .HasMaxLength(500);
+
+            // CorrelationId — GUID string (36 chars) that links all log entries from a single request.
+            // Indexed for efficient grouping/filtering: "show me all logs for this request."
+            entity.Property(e => e.CorrelationId)
+                .HasMaxLength(36);
+
+            // Index for fast lookup — the primary use case is filtering/grouping logs by CorrelationId
+            // to trace a complete request flow across services.
+            entity.HasIndex(e => e.CorrelationId);
         });
     }
 

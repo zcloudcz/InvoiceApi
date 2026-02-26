@@ -26,8 +26,26 @@ public class DatabaseLoggerProvider : ILoggerProvider
     /// <summary>
     /// Static queue shared by all DatabaseLogger instances.
     /// LogFlushService drains this queue periodically.
+    /// Public because it's accessed by API (LogFlushService) and Functions (TimerFunctions) projects.
     /// </summary>
-    internal static readonly ConcurrentQueue<AppLog> LogQueue = new();
+    public static readonly ConcurrentQueue<AppLog> LogQueue = new();
+
+    /// <summary>
+    /// Ambient CorrelationId for the current async execution context.
+    ///
+    /// AsyncLocal is the .NET mechanism for "thread-local but async-aware" storage.
+    /// When you set a value, it flows with async/await — every continuation in the
+    /// same async call chain sees the same value. Different requests on the same thread
+    /// get different values because each request has its own execution context.
+    ///
+    /// Set by CorrelationIdMiddleware at the start of each HTTP request.
+    /// Read by DatabaseLogger when creating AppLog entries.
+    /// Cleared by CorrelationIdMiddleware after the request completes.
+    ///
+    /// Why public? Accessed by CorrelationIdMiddleware in both the API and Functions projects.
+    /// Thread-safety is guaranteed by AsyncLocal — each async context has its own value.
+    /// </summary>
+    public static readonly AsyncLocal<string?> CurrentCorrelationId = new();
 
     private readonly LogLevel _minimumLevel;
 

@@ -93,6 +93,9 @@ builder.Services.AddCors(options =>
             policy.WithOrigins(allowedOrigins)
                   .AllowAnyMethod()
                   .AllowAnyHeader()
+                  // Expose X-Correlation-Id so browser JavaScript (Blazor WASM) can read the
+                  // CorrelationId from the response header for client-side debugging/logging.
+                  .WithExposedHeaders("X-Correlation-Id")
                   .AllowCredentials(); // Required for cookie-based auth and SignalR
         }
         else
@@ -136,6 +139,10 @@ if (!app.Environment.IsEnvironment("Testing"))
 }
 
 // ── HTTP pipeline ───────────────────────────────────────────────────────────
+
+// CorrelationId MUST be the first middleware — before Swagger, CORS, Auth, etc.
+// This ensures every log entry (including CORS errors and auth failures) has a CorrelationId.
+app.UseCorrelationId();
 
 //if (app.Environment.IsDevelopment())
 //{

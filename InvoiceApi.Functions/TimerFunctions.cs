@@ -103,9 +103,11 @@ public class TimerFunctions
             foreach (var entry in batch)
             {
                 await using var cmd = connection.CreateCommand();
+                // Insert log entry with all columns including CorrelationId for request tracing.
+                // CorrelationId is set by CorrelationIdMiddleware via AsyncLocal → DatabaseLogger.
                 cmd.CommandText = @"
-                    INSERT INTO [AppLog] ([Timestamp], [Level], [Source], [Message], [Exception], [UserId], [CompanyId], [RequestPath])
-                    VALUES (@timestamp, @level, @source, @message, @exception, @userId, @companyId, @requestPath)";
+                    INSERT INTO [AppLog] ([Timestamp], [Level], [Source], [Message], [Exception], [UserId], [CompanyId], [RequestPath], [CorrelationId])
+                    VALUES (@timestamp, @level, @source, @message, @exception, @userId, @companyId, @requestPath, @correlationId)";
 
                 cmd.Parameters.AddWithValue("@timestamp", entry.Timestamp);
                 cmd.Parameters.AddWithValue("@level", entry.Level);
@@ -115,6 +117,7 @@ public class TimerFunctions
                 cmd.Parameters.AddWithValue("@userId", (object?)entry.UserId ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("@companyId", (object?)entry.CompanyId ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("@requestPath", (object?)entry.RequestPath ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@correlationId", (object?)entry.CorrelationId ?? DBNull.Value);
 
                 await cmd.ExecuteNonQueryAsync();
             }

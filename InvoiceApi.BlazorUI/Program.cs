@@ -41,6 +41,10 @@ builder.Services.AddAuthorizationCore();
 // (replaces ProtectedSessionStorage which is server-only)
 builder.Services.AddBlazoredLocalStorage();
 
+// Register the CorrelationId handler — adds a unique X-Correlation-Id header to every
+// outgoing API request. This enables end-to-end request tracing from Blazor → API → logs.
+builder.Services.AddTransient<CorrelationIdHandler>();
+
 // Register the 401 redirect handler — intercepts Unauthorized responses globally
 // and redirects to /login. This prevents expired tokens from showing "Not Found" everywhere.
 builder.Services.AddTransient<UnauthorizedRedirectHandler>();
@@ -54,6 +58,10 @@ builder.Services.AddHttpClient("InvoiceAPI", client =>
         builder.Configuration["ApiSettings:BaseUrl"]!);
     client.DefaultRequestHeaders.Add("Accept", "application/json");
 })
+// CorrelationIdHandler runs first: adds X-Correlation-Id to every outgoing request.
+// UnauthorizedRedirectHandler runs second: intercepts 401 responses for auto-redirect.
+// Pipeline order: CorrelationIdHandler → UnauthorizedRedirectHandler → actual HTTP send.
+.AddHttpMessageHandler<CorrelationIdHandler>()
 .AddHttpMessageHandler<UnauthorizedRedirectHandler>();
 
 // Register authentication services

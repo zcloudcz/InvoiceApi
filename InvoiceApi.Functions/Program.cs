@@ -22,7 +22,9 @@ using InvoiceApi.Application.Service;
 using InvoiceApi.Functions.Middleware;
 using InvoiceApi.Infrastructure.Data;
 using InvoiceApi.Infrastructure.DependencyInjection;
+using InvoiceApi.Functions.Telemetry;
 using InvoiceApi.Infrastructure.Logging;
+using Microsoft.ApplicationInsights.Extensibility;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -38,7 +40,15 @@ var host = new HostBuilder()
     // This gives generated functions access to HttpRequest, IActionResult, HttpContext, etc.
     // NOTE: This does NOT enable MVC routing (MapControllers) — each function handles its own route.
     .ConfigureFunctionsWebApplication(app =>
-    {        // ── CORS Middleware ──────────────────────────────────────────────────────
+    {
+        // ── CorrelationId Middleware ──────────────────────────────────────────────
+        // MUST be first in the pipeline — before CORS, JWT, etc.
+        // Reads X-Correlation-Id from incoming request (or generates a new GUID),
+        // stores it in HttpContext.Items and DatabaseLoggerProvider.CurrentCorrelationId,
+        // and adds it to the response headers for client-side debugging.
+        app.UseMiddleware<CorrelationIdMiddleware>();
+
+        // ── CORS Middleware ──────────────────────────────────────────────────────
         // Must be registered early in the pipeline so CORS headers are added to
         // every response, including error responses. This middleware reads allowed
         // origins from CorsSettings:AllowedOrigins configuration and adds
@@ -63,6 +73,13 @@ var host = new HostBuilder()
         // App Settings automatically — no connection string needed in code.
         services.AddApplicationInsightsTelemetryWorkerService();
         services.ConfigureFunctionsApplicationInsights();
+
+        // ── CorrelationId enrichment for Application Insights ─────────────────
+        // Adds our custom CorrelationId as a property on every telemetry item
+        // (requests, traces, exceptions, dependencies). This lets us search for
+        // CorrelationId in App Insights KQL: customDimensions.CorrelationId == "guid"
+        services.AddHttpContextAccessor();
+        services.AddSingleton<ITelemetryInitializer, CorrelationIdTelemetryInitializer>();
 
         // ── Shared DI registrations (same as API project) ────────────────────────
         // Registers: DbContexts, application services, cloud storage, logging, etc.

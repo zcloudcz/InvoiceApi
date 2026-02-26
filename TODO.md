@@ -543,6 +543,26 @@
 - [x] Created 35 unit tests: DTO validation, identity name sanitization (SQL injection prevention), controller flow (mocked services), CRUD endpoints
 - [x] Build: 0 errors, Tests: 353 pass (353 total)
 
+### CorrelationId Implementation (2026-02-26)
+- [x] Added `CorrelationId` property to `AppLog` entity (Domain) — GUID string (36 chars) for end-to-end request tracing
+- [x] Configured `CorrelationId` in MasterDbContext — `HasMaxLength(36)` + index for efficient grouping
+- [x] Created EF Core migration `AddCorrelationIdToAppLog` (Master)
+- [x] Created `CorrelationIdMiddleware` for API — reads/generates X-Correlation-Id header, stores in HttpContext.Items + AsyncLocal
+- [x] Created `CorrelationIdMiddleware` for Functions (IFunctionsWorkerMiddleware) — same logic, supports both HTTP and timer triggers
+- [x] Added `AsyncLocal<string?>` to `DatabaseLoggerProvider.CurrentCorrelationId` — ambient context for CorrelationId propagation
+- [x] Updated `DatabaseLogger.Log()` to read `CurrentCorrelationId` from AsyncLocal into `AppLog.CorrelationId`
+- [x] Updated `LogFlushService` SQL INSERT — added `[CorrelationId]` column + `@correlationId` parameter
+- [x] Updated `TimerFunctions` SQL INSERT — same column + parameter addition
+- [x] Updated `CorsMiddleware` (Functions) — added X-Correlation-Id to `Access-Control-Allow-Headers` + `Access-Control-Expose-Headers`
+- [x] Updated API CORS config — added `.WithExposedHeaders("X-Correlation-Id")` for browser access
+- [x] Created `CorrelationIdHandler` (DelegatingHandler) for Blazor WASM — adds unique GUID per outgoing API request
+- [x] Registered `CorrelationIdHandler` in Blazor `Program.cs` (before `UnauthorizedRedirectHandler`)
+- [x] Registered `CorrelationIdMiddleware` as first middleware in API `Program.cs` (before Swagger, CORS, Auth)
+- [x] Registered `CorrelationIdMiddleware` as first middleware in Functions `Program.cs` (before CORS, JWT)
+- [x] Created `CorrelationIdTelemetryInitializer` (ITelemetryInitializer) for Application Insights enrichment in Functions
+- [x] Created 9 unit tests: header propagation, GUID generation, AsyncLocal flow, cleanup on exception, full middleware→logger flow
+- [x] Build: 0 errors, Tests: 362 pass (362 total)
+
 ## Pending
 
 ### Multi-Tenant Roadmap — Remaining Tasks

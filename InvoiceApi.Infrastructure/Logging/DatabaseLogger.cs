@@ -66,7 +66,10 @@ public class DatabaseLogger : ILogger
             Level = logLevel.ToString(),
             Source = _categoryName,
             Message = formatter(state, exception),
-            Exception = exception?.ToString()
+            Exception = exception?.ToString(),
+            // Read the ambient CorrelationId set by CorrelationIdMiddleware.
+            // If no middleware set it (e.g., during startup before any request), this is null.
+            CorrelationId = DatabaseLoggerProvider.CurrentCorrelationId.Value
         };
 
         // Enqueue for async batch insert — non-blocking, zero latency impact
