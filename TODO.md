@@ -565,13 +565,13 @@
 
 ## Pending
 
-### Multi-Tenant Roadmap — Remaining Tasks
-- [x] **Phase 6.7: E2E Integration Tests** — Implemented real integration tests using `WebApplicationFactory<Program>` + InMemoryDatabase:
-  - `InvoiceApiFactory`: custom factory replacing SQL Server with InMemory, TestTenantProvisioningService, removing background services
-  - `TestTenantProvisioningService`: test double that flips IsProvisioned/IsActive flags (no real DB creation)
-  - `AuthHelper`: JWT login helpers for SysAdmin and arbitrary credentials
-  - 5 integration tests: SysAdmin login + company access, full multi-tenant lifecycle (create→provision→impersonate→access), unauthenticated 401, token role validation, deactivated tenant 403
-  - Program.cs: migration guard (`if (!app.Environment.IsEnvironment("Testing"))`) + `public partial class Program { }`
-  - Total: **323 tests** (318 unit + 5 integration), all passing
-- [x] **Cleanup: Remove ApplicationDbContext** — already completed during Phase 3 migration; all .cs files use MasterDbContext/TenantDbContext; AuditTrailTests already on MasterDbContext; no orphaned migration files
+### Future Enhancements (backlog)
+- [ ] **Recurring Invoices** — auto-generate invoices from templates on schedule (monthly/quarterly/yearly), cron-based Azure Functions timer trigger
+- [ ] **Real-time Notifications (SignalR)** — push notifications for new invoices, approaching due dates, tenant provisioning status, payment confirmations
+- [ ] **Reporting & Export** — CSV/Excel export of invoice/client lists, advanced reports (revenue by period, VAT summary, client aging), printable views
+- [ ] **Audit Log UI** — entity change tracking (who changed what and when), Blazor viewer with diff display, filterable by entity/user/date
+- [ ] **Webhooks** — notify external systems on invoice status changes (created, issued, paid), configurable per-tenant webhook URLs with retry logic
+- [ ] **API Rate Limiting** — protect against abuse, per-tenant and per-endpoint limits, ASP.NET Core rate limiting middleware
+- [ ] **Performance Optimization** — Redis distributed cache, response compression, lazy loading for large datasets, query optimization
+- [ ] **Apple OAuth** — add Apple sign-in provider (requires separate NuGet package, Apple Developer account setup)
 
