@@ -49,10 +49,10 @@ public class AzureCreateDatabaseRequest
     public string? FreeLimitExhaustionBehavior { get; set; } = "AutoPause";
 
     /// <summary>
-    /// Maximum size of the database in bytes. Defaults to 32GB (34359738368 bytes),
-    /// which is the maximum for the Azure SQL free tier.
+    /// Maximum size of the database in bytes. Defaults to 1GB (1073741824 bytes).
+    /// 1GB is sufficient for small tenants and keeps costs low on the free tier.
     /// For paid tiers, this can be increased up to several TB depending on the SKU.
     /// </summary>
     [Range(1073741824, long.MaxValue, ErrorMessage = "Max size must be at least 1GB (1073741824 bytes).")]
-    public long? MaxSizeBytes { get; set; } = 34359738368; // 32 GB
+    public long? MaxSizeBytes { get; set; } = 1073741824; // 1 GB
 }

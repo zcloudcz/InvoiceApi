@@ -230,7 +230,7 @@ public class AzureSqlServiceTests : IDisposable
         // Assert — verify all defaults match the plan
         request.UseFreeOffer.ShouldBeTrue();
         request.FreeLimitExhaustionBehavior.ShouldBe("AutoPause");
-        request.MaxSizeBytes.ShouldBe(34359738368); // 32 GB
+        request.MaxSizeBytes.ShouldBe(1073741824); // 1 GB
     }
 
     [Fact]
