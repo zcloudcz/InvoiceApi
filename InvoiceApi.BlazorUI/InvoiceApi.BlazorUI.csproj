@@ -1,5 +1,6 @@
-<!-- Standalone Blazor WebAssembly project — runs entirely in the browser.
-     Communicates with InvoiceApi.API via HttpClient (no server-side circuits). -->
+<!-- Thin Blazor WebAssembly host — runs entirely in the browser.
+     All shared UI components, services, and models live in InvoiceApi.UI.Shared (RCL).
+     This project only contains WASM-specific bootstrapping and static assets. -->
 <Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
 
   <PropertyGroup>
@@ -8,42 +9,20 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
     <!-- WASM loads minimal globalization data by default (invariant culture only).
-         Since we switch culture dynamically (cs-CZ / en-US) in Program.cs and LanguageSwitcher,
-         the full ICU globalization dataset must be included in the WASM payload. -->
+         Since we switch culture dynamically (cs-CZ / en-US), the full ICU dataset is required. -->
     <BlazorWebAssemblyLoadAllGlobalizationData>true</BlazorWebAssemblyLoadAllGlobalizationData>
-    <!-- PWA: Generate service-worker-assets.js at publish time.
-         This file contains a manifest of all static assets (DLLs, WASM, CSS, JS, images)
-         with SHA-256 integrity hashes — used by service-worker.published.js for offline caching. -->
+    <!-- PWA: Generate service-worker-assets.js at publish time for offline caching. -->
     <ServiceWorkerAssetsManifest>service-worker-assets.js</ServiceWorkerAssetsManifest>
   </PropertyGroup>
 
   <ItemGroup>
     <!-- WASM runtime — provides WebAssemblyHostBuilder, JSRuntime, etc. -->
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.2" />
-    <!-- Authorization components (AuthorizeView, CascadingAuthenticationState, etc.)
-         In Blazor Server this comes from the shared framework; in WASM it must be explicit. -->
-    <PackageReference Include="Microsoft.AspNetCore.Components.Authorization" Version="10.0.2" />
-    <!-- HttpClient factory for named/typed HTTP clients -->
-    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.2" />
-    <!-- Browser localStorage for JWT token persistence (replaces ProtectedSessionStorage) -->
-    <PackageReference Include="Blazored.LocalStorage" Version="4.5.0" />
-    <!-- Quill WYSIWYG rich-text editor for invoice/email templates -->
-    <PackageReference Include="Blazored.TextEditor" Version="1.1.3" />
-    <!-- MudBlazor component library -->
-    <PackageReference Include="MudBlazor" Version="8.15.0" />
   </ItemGroup>
 
-  <!-- Global usings that were implicit in Microsoft.NET.Sdk.Web but not in BlazorWebAssembly SDK.
-       PostAsJsonAsync / ReadFromJsonAsync require System.Net.Http.Json. -->
+  <!-- Reference the shared UI library — contains all components, services, models, and resources -->
   <ItemGroup>
-    <Using Include="System.Net.Http.Json" />
-  </ItemGroup>
-
-  <!-- BlazorUI only references Contracts (DTOs, Pagination) and Domain (Enums).
-       No reference to Application or Infrastructure — keeps WASM payload small. -->
-  <ItemGroup>
-    <ProjectReference Include="..\InvoiceApi.Contracts\InvoiceApi.Contracts.csproj" />
-    <ProjectReference Include="..\InvoiceApi.Domain\InvoiceApi.Domain.csproj" />
+    <ProjectReference Include="..\InvoiceApi.UI.Shared\InvoiceApi.UI.Shared.csproj" />
   </ItemGroup>
 
 </Project>

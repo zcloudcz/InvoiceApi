@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- MainPage hosts the BlazorWebView — the bridge between native MAUI and Blazor Razor components.
+     The BlazorWebView renders the same App.razor component from InvoiceApi.UI.Shared that the
+     WASM project uses, providing identical UI on native platforms. -->
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:blazor="clr-namespace:Microsoft.AspNetCore.Components.WebView.Maui;assembly=Microsoft.AspNetCore.Components.WebView.Maui"
+             xmlns:shared="clr-namespace:InvoiceApi.UI.Shared.Components;assembly=InvoiceApi.UI.Shared"
+             x:Class="InvoiceApi.MauiApp.MainPage"
+             BackgroundColor="{DynamicResource PageBackgroundColor}">
+
+    <!-- BlazorWebView renders Blazor components inside a native WebView control.
+         HostPage points to the local wwwroot/index.html (MAUI version, not the WASM one).
+         RootComponent maps the #app selector to the shared App.razor from the RCL. -->
+    <blazor:BlazorWebView HostPage="wwwroot/index.html">
+        <blazor:BlazorWebView.RootComponents>
+            <blazor:RootComponent Selector="#app" ComponentType="{x:Type shared:App}" />
+        </blazor:BlazorWebView.RootComponents>
+    </blazor:BlazorWebView>
+
+</ContentPage>

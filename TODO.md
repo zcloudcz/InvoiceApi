@@ -563,6 +563,23 @@
 - [x] Created 9 unit tests: header propagation, GUID generation, AsyncLocal flow, cleanup on exception, full middleware→logger flow
 - [x] Build: 0 errors, Tests: 362 pass (362 total)
 
+### MAUI Blazor Hybrid + Shared RCL (2026-02-28)
+- [x] Created `InvoiceApi.UI.Shared` Razor Class Library (RCL) — shared Blazor components, services, models, resources
+- [x] Moved 22 API services, 8 models, 31 pages, 12 shared components, 3 layout files, 2 resource files from BlazorUI to RCL
+- [x] Created `ServiceCollectionExtensions.AddSharedUiServices()` — centralized DI registration (MudBlazor, auth, localization, localStorage, 22 API services, handlers, state)
+- [x] Updated all namespaces from `InvoiceApi.BlazorUI` to `InvoiceApi.UI.Shared` in moved files
+- [x] Added global usings for `Microsoft.Extensions.Logging`, `.Configuration`, `.DependencyInjection` (implicit in WASM SDK but not Razor SDK)
+- [x] Refactored `InvoiceApi.BlazorUI` as thin WASM host — only Program.cs, index.html, PWA assets remain
+- [x] Updated `index.html` CSS/JS paths to `_content/InvoiceApi.UI.Shared/...` (RCL static web assets)
+- [x] Created `InvoiceApi.MauiApp` MAUI Blazor Hybrid project — Android, iOS, macOS, Windows multi-target
+- [x] MauiProgram.cs with `AddMauiBlazorWebView()` + `AddSharedUiServices()` + platform-specific API URL
+- [x] MainPage.xaml with BlazorWebView hosting shared App.razor component
+- [x] MAUI-specific wwwroot/index.html (blazor.webview.js, no service worker)
+- [x] Platform files: Android (MainActivity, MainApplication, AndroidManifest), iOS, macOS, Windows
+- [x] Both projects added to InvoiceApi.sln
+- [x] Build: All 13 non-MAUI projects compile with 0 errors (MAUI requires workload install: `dotnet workload install maui`)
+- [x] Tests: All 362 unit tests pass
+
 ## Pending
 
 ### Future Enhancements (backlog)

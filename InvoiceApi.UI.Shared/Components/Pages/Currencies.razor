@@ -1,0 +1,360 @@
+@page "/currencies"
+@using InvoiceApi.Contracts.Dto.Currency
+@using InvoiceApi.UI.Shared.Services
+@using Microsoft.AspNetCore.Authorization
+@* Use CurrencyApiService instead of raw HttpClient — handles BaseAddress, auth, logging *@
+@inject CurrencyApiService CurrencyService
+@inject ISnackbar Snackbar
+@attribute [Authorize(Roles = "SysAdmin")]
+@* Localization service for multi-language support *@
+@inject IStringLocalizer<SharedResource> L
+
+<PageTitle>@L["Currency_Title"]</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">@L["Currency_Title"]</MudText>
+
+@* Search and filter bar outside the grid — provides consistent layout across all pages *@
+<MudPaper Class="pa-4 mb-4">
+    <MudGrid>
+        <MudItem xs="12" sm="6" md="4">
+            <MudTextField @bind-Value="_searchString" Label="@L["Btn_Search"].Value" Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Filled.Search" Immediate="true"
+                          DebounceInterval="300" OnDebounceIntervalElapsed="SearchCurrencies" />
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            @* MudBlazor v8: OnChange removed — use Value + ValueChanged to update filter and reload data *@
+            <MudSelect Value="_filterActive" ValueChanged="@(async (bool? v) => { _filterActive = v; await SearchCurrencies(); })"
+                       Label="@L["Label_Status"].Value">
+                <MudSelectItem Value="@((bool?)null)">@L["Currency_FilterAll"]</MudSelectItem>
+                <MudSelectItem Value="@((bool?)true)">@L["Label_Active"]</MudSelectItem>
+                <MudSelectItem Value="@((bool?)false)">@L["Label_Inactive"]</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="12" md="5" Class="d-flex align-end justify-end">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       OnClick="OpenCreateDialog" StartIcon="@Icons.Material.Filled.Add">
+                @L["Currency_New"]
+            </MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@* Refactored to use AppDataGrid for consistent behavior and reduced boilerplate code *@
+<AppDataGrid TItem="CurrencyDto"
+             ServerData="LoadData"
+             OnEdit="OpenEditDialog"
+             OnDelete="DeleteCurrency"
+             Loading="@_loading"
+             @ref="_table">
+    @* Define header columns — MudTableSortLabel components enable server-side sorting *@
+    <Columns>
+        <MudTh><MudTableSortLabel SortLabel="Code" T="CurrencyDto">@L["Currency_Code"]</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel SortLabel="Name" T="CurrencyDto">@L["Label_Name"]</MudTableSortLabel></MudTh>
+        <MudTh>@L["Currency_Symbol"]</MudTh>
+        <MudTh>@L["Currency_DecimalPlaces"]</MudTh>
+        <MudTh>@L["Currency_SortOrder"]</MudTh>
+        <MudTh><MudTableSortLabel SortLabel="IsActive" T="CurrencyDto">@L["Label_Status"]</MudTableSortLabel></MudTh>
+    </Columns>
+    @* Define row cells — context is the CurrencyDto for the current row *@
+    <RowContent>
+        <MudTd DataLabel="@L["Currency_Code"].Value">
+            <MudChip T="string" Size="Size.Small" Color="Color.Primary">@context.Code</MudChip>
+        </MudTd>
+        <MudTd DataLabel="@L["Label_Name"].Value">@context.Name</MudTd>
+        <MudTd DataLabel="@L["Currency_Symbol"].Value">@context.Symbol</MudTd>
+        <MudTd DataLabel="@L["Currency_DecimalPlaces"].Value">@context.DecimalPlaces</MudTd>
+        <MudTd DataLabel="@L["Currency_SortOrder"].Value">@context.SortOrder</MudTd>
+        <MudTd DataLabel="@L["Label_Status"].Value">
+            <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">
+                @(context.IsActive ? L["Label_Active"].Value : L["Label_Inactive"].Value)
+            </MudChip>
+        </MudTd>
+    </RowContent>
+</AppDataGrid>
+
+@* Dialog for creating/editing a currency — uses @bind-Visible (not @bind-IsVisible, renamed in MudBlazor v8) *@
+<MudDialog @bind-Visible="_showDialog" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(_editMode ? L["Currency_Edit"] : L["Currency_New"])</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudForm @ref="_form" @bind-IsValid="_formValid">
+            <MudTextField @bind-Value="_currentCurrency.Code" Label="@L["Currency_CodeLabel"].Value"
+                          Required="true" MaxLength="3" Counter="3" Immediate="true"
+                          Disabled="@_editMode" HelperText="@L["Currency_CodeHelper"].Value"
+                          Validation="@(new Func<string, string?>(ValidateCurrencyCode))" />
+
+            <MudTextField @bind-Value="_currentCurrency.Name" Label="@L["Currency_NameLabel"].Value"
+                          Required="true" MaxLength="100" Class="mt-3" />
+
+            <MudTextField @bind-Value="_currentCurrency.Symbol" Label="@L["Currency_Symbol"].Value"
+                          Required="true" MaxLength="10" Class="mt-3" />
+
+            <MudNumericField @bind-Value="_currentCurrency.DecimalPlaces" Label="@L["Currency_DecimalPlaces"].Value"
+                             Required="true" Min="0" Max="4" Class="mt-3" />
+
+            <MudNumericField @bind-Value="_currentCurrency.SortOrder" Label="@L["Currency_SortOrder"].Value"
+                             Required="true" Min="0" Class="mt-3" />
+
+            <MudTextField @bind-Value="_currentCurrency.DisplayFormat" Label="@L["Currency_DisplayFormat"].Value"
+                          MaxLength="50" Class="mt-3"
+                          HelperText="@L["Currency_DisplayFormatHelper"].Value" />
+
+            @if (_editMode)
+            {
+                <MudSwitch T="bool" @bind-Value="_currentCurrency.IsActive" Label="@L["Label_Active"].Value" Color="Color.Primary" Class="mt-3" />
+            }
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseDialog">@L["Btn_Cancel"]</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveCurrency" Disabled="@(!_formValid)">
+            @(_editMode ? L["Btn_Save"] : L["Btn_Create"])
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    // Changed from MudTable<CurrencyDto> to AppDataGrid<CurrencyDto> to match the refactored component
+    private AppDataGrid<CurrencyDto>? _table;
+    private MudForm? _form;
+    private bool _loading = false;
+    private bool _showDialog = false;
+    private bool _editMode = false;
+    private bool _formValid = false;
+    private string _searchString = "";
+    private bool? _filterActive = true; // Default show only active
+
+    private CurrencyEditModel _currentCurrency = new();
+
+    private DialogOptions _dialogOptions = new()
+    {
+        MaxWidth = MaxWidth.Small,
+        FullWidth = true,
+        CloseButton = true
+    };
+
+    /// <summary>
+    /// Loads paged currency data via CurrencyApiService.
+    /// Called by AppDataGrid (via MudTable's ServerData) when the page, sort, or search changes.
+    /// The signature is unchanged — TableState and CancellationToken parameters are passed through by AppDataGrid.
+    /// </summary>
+    private async Task<TableData<CurrencyDto>> LoadData(TableState state, CancellationToken cancellationToken)
+    {
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            var sortBy = state.SortLabel ?? "SortOrder";
+            var isDescending = state.SortDirection == SortDirection.Descending;
+
+            // Use CurrencyApiService instead of raw HttpClient
+            var response = await CurrencyService.GetPagedAsync(
+                page: state.Page + 1,
+                pageSize: state.PageSize,
+                search: _searchString,
+                isActive: _filterActive,
+                sortBy: sortBy,
+                isDescending: isDescending);
+
+            return new TableData<CurrencyDto>
+            {
+                Items = response.Items,
+                TotalItems = response.TotalCount
+            };
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+
+        return new TableData<CurrencyDto> { Items = new List<CurrencyDto>(), TotalItems = 0 };
+    }
+
+    /// <summary>
+    /// Triggers a server data reload when search/filter parameters change.
+    /// Uses AppDataGrid's ReloadServerDataAsync method instead of MudTable's ReloadServerData.
+    /// </summary>
+    private async Task SearchCurrencies()
+    {
+        if (_table != null)
+        {
+            await _table.ReloadServerDataAsync();
+        }
+    }
+
+    private void OpenCreateDialog()
+    {
+        _currentCurrency = new CurrencyEditModel { DecimalPlaces = 2, SortOrder = 100 };
+        _editMode = false;
+        _showDialog = true;
+    }
+
+    private void OpenEditDialog(CurrencyDto currency)
+    {
+        _currentCurrency = new CurrencyEditModel
+        {
+            Id = currency.Id,
+            Code = currency.Code,
+            Name = currency.Name,
+            Symbol = currency.Symbol,
+            DecimalPlaces = currency.DecimalPlaces,
+            SortOrder = currency.SortOrder,
+            DisplayFormat = currency.DisplayFormat,
+            IsActive = currency.IsActive
+        };
+        _editMode = true;
+        _showDialog = true;
+    }
+
+    private void CloseDialog()
+    {
+        _showDialog = false;
+        _currentCurrency = new();
+    }
+
+    /// <summary>
+    /// Saves a currency (create or update) using CurrencyApiService.
+    /// The service handles auth, BaseAddress, and throws on errors.
+    /// </summary>
+    private async Task SaveCurrency()
+    {
+        if (_form == null)
+            return;
+
+        await _form.Validate();
+        if (!_formValid)
+            return;
+
+        try
+        {
+            if (_editMode)
+            {
+                // Update existing currency via service
+                var updateDto = new UpdateCurrencyDto
+                {
+                    Name = _currentCurrency.Name,
+                    Symbol = _currentCurrency.Symbol,
+                    DecimalPlaces = _currentCurrency.DecimalPlaces,
+                    SortOrder = _currentCurrency.SortOrder,
+                    DisplayFormat = _currentCurrency.DisplayFormat,
+                    IsActive = _currentCurrency.IsActive
+                };
+
+                var result = await CurrencyService.UpdateAsync(_currentCurrency.Id, updateDto);
+                if (result != null)
+                {
+                    Snackbar.Add(L["Msg_SaveSuccess"].Value, Severity.Success);
+                    CloseDialog();
+                    await SearchCurrencies();
+                }
+            }
+            else
+            {
+                // Create new currency via service
+                var createDto = new CreateCurrencyDto
+                {
+                    Code = _currentCurrency.Code.ToUpper(),
+                    Name = _currentCurrency.Name,
+                    Symbol = _currentCurrency.Symbol,
+                    DecimalPlaces = _currentCurrency.DecimalPlaces,
+                    SortOrder = _currentCurrency.SortOrder,
+                    DisplayFormat = _currentCurrency.DisplayFormat
+                };
+
+                var result = await CurrencyService.CreateAsync(createDto);
+                if (result != null)
+                {
+                    Snackbar.Add(L["Msg_SaveSuccess"].Value, Severity.Success);
+                    CloseDialog();
+                    await SearchCurrencies();
+                }
+            }
+        }
+        catch (HttpRequestException ex)
+        {
+            // HttpRequestException from base class contains the API error details
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+    }
+
+    /// <summary>
+    /// Deletes a currency after user confirmation via CurrencyApiService.
+    /// </summary>
+    private async Task DeleteCurrency(CurrencyDto currency)
+    {
+        bool? result = await DialogService.ShowMessageBox(
+            L["Msg_ConfirmDeleteTitle"].Value,
+            $"{L["Currency_ConfirmDelete"].Value} '{currency.Name}' ({currency.Code})?",
+            yesText: L["Btn_Delete"].Value, cancelText: L["Btn_Cancel"].Value);
+
+        if (result == true)
+        {
+            try
+            {
+                var deleted = await CurrencyService.DeleteAsync(currency.Id);
+
+                if (deleted)
+                {
+                    Snackbar.Add(L["Msg_DeleteSuccess"].Value, Severity.Success);
+                    await SearchCurrencies();
+                }
+                else
+                {
+                    Snackbar.Add(L["Msg_Error"].Value, Severity.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Validates the currency code format (ISO 4217: 3 uppercase letters).
+    /// </summary>
+    private string? ValidateCurrencyCode(string code)
+    {
+        if (string.IsNullOrWhiteSpace(code))
+            return L["Currency_CodeValidationRequired"].Value;
+
+        if (code.Length != 3)
+            return L["Currency_CodeValidationLength"].Value;
+
+        if (!code.All(char.IsLetter))
+            return L["Currency_CodeValidationLetters"].Value;
+
+        if (code != code.ToUpper())
+            return L["Currency_CodeValidationUppercase"].Value;
+
+        return null;
+    }
+
+    [Inject] private IDialogService DialogService { get; set; } = default!;
+
+    /// <summary>
+    /// Local edit model — holds currency data while user edits in the dialog.
+    /// </summary>
+    private class CurrencyEditModel
+    {
+        public long Id { get; set; }
+        public string Code { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public string Symbol { get; set; } = string.Empty;
+        public int DecimalPlaces { get; set; } = 2;
+        public int SortOrder { get; set; }
+        public string? DisplayFormat { get; set; }
+        public bool IsActive { get; set; } = true;
+    }
+}

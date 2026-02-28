@@ -1,0 +1,216 @@
+@*
+    Folder picker dialog for cloud storage providers.
+    Displays a breadcrumb-navigable folder tree that allows the user to select
+    a destination folder for automatic invoice PDF uploads.
+
+    Usage: opened via IDialogService.ShowAsync<FolderPicker> with parameters:
+    - Provider (ECloudStorageProvider) — which cloud storage to browse
+    - CurrentFolderId (string?) — currently selected folder (for highlighting)
+*@
+
+@using InvoiceApi.Contracts.Dto.CloudStorage
+@using InvoiceApi.UI.Shared.Services
+@using InvoiceApi.Domain.Enums
+@using Microsoft.Extensions.Localization
+@inject CloudStorageApiService CloudStorageApi
+@inject IStringLocalizer<InvoiceApi.UI.Shared.SharedResource> L
+
+<MudDialog>
+<DialogContent>
+    @* Breadcrumb navigation — shows the path from root to current folder *@
+    <MudBreadcrumbs Items="_breadcrumbs" Class="mb-2">
+        <ItemTemplate Context="item">
+            <MudLink OnClick="@(() => NavigateToFolder(item.Href, item.Text))">
+                @item.Text
+            </MudLink>
+        </ItemTemplate>
+    </MudBreadcrumbs>
+
+    @if (_loading)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="my-4" />
+    }
+    else if (!_folders.Any())
+    {
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="my-4">
+            @L["CloudStorage_NoFolders"]
+        </MudText>
+    }
+    else
+    {
+        <MudList T="CloudStorageFolderDto" Dense="true" Class="folder-list">
+            @foreach (var folder in _folders)
+            {
+                <MudListItem T="CloudStorageFolderDto"
+                             Icon="@Icons.Material.Filled.Folder"
+                             IconColor="Color.Warning"
+                             OnClick="@(() => OnFolderClick(folder))">
+                    <div class="d-flex align-center justify-space-between" style="width:100%">
+                        <MudText>@folder.Name</MudText>
+                        <MudIconButton Icon="@Icons.Material.Filled.ChevronRight"
+                                       Size="Size.Small"
+                                       OnClick="@(() => NavigateIntoFolder(folder))"
+                                       title="@L["CloudStorage_BrowseSubfolders"]" />
+                    </div>
+                </MudListItem>
+            }
+        </MudList>
+    }
+</DialogContent>
+
+<DialogActions>
+    <MudButton OnClick="SelectRoot" Color="Color.Default" Variant="Variant.Text">
+        @L["CloudStorage_UseRoot"]
+    </MudButton>
+    <MudButton OnClick="Cancel" Color="Color.Default">
+        @L["Cancel"]
+    </MudButton>
+    <MudButton OnClick="Confirm" Color="Color.Primary" Variant="Variant.Filled"
+               Disabled="@(_selectedFolder == null)">
+        @L["CloudStorage_SelectFolder"]
+    </MudButton>
+</DialogActions>
+</MudDialog>
+
+@code {
+    /// <summary>
+    /// Dialog instance — used to close the dialog and return the selected folder.
+    /// </summary>
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    /// <summary>
+    /// Which cloud storage provider to browse folders for.
+    /// </summary>
+    [Parameter]
+    public ECloudStorageProvider Provider { get; set; }
+
+    /// <summary>
+    /// Currently selected folder ID (if any) — for pre-selection/highlighting.
+    /// </summary>
+    [Parameter]
+    public string? CurrentFolderId { get; set; }
+
+    // ─── State ───────────────────────────────────────────────────────────────
+
+    private List<CloudStorageFolderDto> _folders = new();
+    private CloudStorageFolderDto? _selectedFolder;
+    private bool _loading;
+
+    // Breadcrumb trail: (folderId, folderName) pairs from root to current
+    private List<BreadcrumbItem> _breadcrumbs = new();
+    private readonly List<(string? Id, string Name)> _pathStack = new();
+
+    // ─── Lifecycle ───────────────────────────────────────────────────────────
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Start at root
+        _pathStack.Add((null, L["CloudStorage_Root"]));
+        UpdateBreadcrumbs();
+        await LoadFoldersAsync(null);
+    }
+
+    // ─── Navigation ──────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Loads folders for the specified parent and updates the UI.
+    /// </summary>
+    private async Task LoadFoldersAsync(string? parentId)
+    {
+        _loading = true;
+        _selectedFolder = null;
+        StateHasChanged();
+
+        try
+        {
+            _folders = await CloudStorageApi.ListFoldersAsync(Provider, parentId);
+        }
+        catch (Exception)
+        {
+            _folders = new List<CloudStorageFolderDto>();
+        }
+
+        _loading = false;
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Handles clicking on a folder in the list — selects it as the target.
+    /// </summary>
+    private void OnFolderClick(CloudStorageFolderDto folder)
+    {
+        _selectedFolder = folder;
+    }
+
+    /// <summary>
+    /// Navigates into a subfolder (loads its children, updates breadcrumbs).
+    /// </summary>
+    private async Task NavigateIntoFolder(CloudStorageFolderDto folder)
+    {
+        _pathStack.Add((folder.Id, folder.Name));
+        UpdateBreadcrumbs();
+        await LoadFoldersAsync(folder.Id);
+    }
+
+    /// <summary>
+    /// Navigates to a folder from the breadcrumb trail.
+    /// </summary>
+    private async Task NavigateToFolder(string? folderId, string folderName)
+    {
+        // Pop the path stack back to the clicked breadcrumb
+        var index = _pathStack.FindIndex(p => p.Id == folderId && p.Name == folderName);
+        if (index >= 0)
+        {
+            _pathStack.RemoveRange(index + 1, _pathStack.Count - index - 1);
+        }
+        UpdateBreadcrumbs();
+        await LoadFoldersAsync(folderId);
+    }
+
+    /// <summary>
+    /// Rebuilds the MudBreadcrumbs items from the current path stack.
+    /// </summary>
+    private void UpdateBreadcrumbs()
+    {
+        _breadcrumbs = _pathStack.Select(p => new BreadcrumbItem(p.Name, p.Id)).ToList();
+    }
+
+    // ─── Dialog Actions ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Confirms the selected folder and closes the dialog.
+    /// Returns a CloudStorageSetFolderRequest with the selected folder's ID and name.
+    /// </summary>
+    private void Confirm()
+    {
+        if (_selectedFolder != null)
+        {
+            MudDialog.Close(DialogResult.Ok(new CloudStorageSetFolderRequest
+            {
+                FolderId = _selectedFolder.Id,
+                FolderName = _selectedFolder.Name
+            }));
+        }
+    }
+
+    /// <summary>
+    /// Selects "root" (no specific folder) and closes the dialog.
+    /// </summary>
+    private void SelectRoot()
+    {
+        MudDialog.Close(DialogResult.Ok(new CloudStorageSetFolderRequest
+        {
+            FolderId = null,
+            FolderName = null
+        }));
+    }
+
+    /// <summary>
+    /// Cancels the folder selection and closes the dialog.
+    /// </summary>
+    private void Cancel()
+    {
+        MudDialog.Cancel();
+    }
+}
