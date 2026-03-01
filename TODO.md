@@ -2,6 +2,28 @@
 
 ## Completed
 
+### Azure SQL → Azure PostgreSQL Multi-Schema Migration (2026-02-28)
+- [x] Analysis of current multi-tenant architecture (MasterDbContext, TenantDbContext, TenantDbContextFactory, TenantProvisioningService, AzureSqlService)
+- [x] Identified all SQL Server-specific code: 12 UseSqlServer, 9 SqlConnectionStringBuilder, 7 SqlConnection, 4 HasFilter, 1 IsRowVersion
+- [x] Created comprehensive migration plan (`MIGRATION-PLAN-POSTGRESQL.md`)
+- [x] **Step 1**: NuGet packages — SqlServer → Npgsql.EntityFrameworkCore.PostgreSQL 10.0.0 (3 .csproj files)
+- [x] **Step 2**: Domain entities — NumberSequence.RowVersion (byte[] → uint xmin), CompanySystemSettings (DatabaseName → SchemaName, removed ConnectionString)
+- [x] **Step 3**: DbContext configs — HasFilter syntax (PostgreSQL double-quotes), IsConcurrencyToken+ValueGeneratedOnAddOrUpdate (xmin), TenantDbContext.Schema + HasDefaultSchema
+- [x] **Step 4**: Schema-based tenant resolution — TenantModelCacheKeyFactory, TenantDbContextFactory rewrite, ServiceCollectionExtensions (single DefaultConnection)
+- [x] **Step 5**: Tenant provisioning — CREATE SCHEMA, NpgsqlConnection, information_schema.schemata, ALTER SEQUENCE
+- [x] **Step 6**: Remove Azure SQL service — deleted IAzureSqlService + AzureSqlService, rewrote AzureOperationController → TenantOperationController
+- [x] **Step 7**: Raw ADO.NET — SqlConnection → NpgsqlConnection (LogFlush, LogCleanup, TimerFunctions, Diagnostics)
+- [x] **Step 8**: Connection strings — MasterConnection+TenantTemplateConnection → single DefaultConnection (PostgreSQL format)
+- [x] **Step 9**: Design-time factories — UseSqlServer → UseNpgsql, TenantDesignTimeFactory sets Schema="tenant_template"
+- [x] **Step 10**: Deleted old SQL Server migrations, generated InitPostgres for both Master + Tenant
+- [x] **Step 11**: MigrationTool — SqlConnection → NpgsqlConnection, CREATE DATABASE → CREATE SCHEMA
+- [x] **Step 12**: Tests — deleted AzureSqlServiceTests (30 tests), updated 8 test files (DatabaseName→SchemaName, connection strings, RowVersion)
+- [x] **Step 13**: DTOs — AzureOperation → TenantOperation, removed HasCustomConnectionString
+- [x] Blazor UI — CompanySettings.razor + CompanyDetail.razor updated (SchemaName, removed ConnectionString column/dialog)
+- [x] Build verification: 14/15 projects compile (MauiApp needs SDK install)
+- [x] Test verification: **327 unit tests pass** (0 failures)
+
+
 ### PWA Implementation (2026-02-14)
 - [x] Created `wwwroot/manifest.webmanifest` — app metadata (name, icons, theme color `#594ae2`, display: standalone)
 - [x] Created `wwwroot/service-worker.js` — dev pass-through (no caching during development)
@@ -591,4 +613,5 @@
 - [ ] **API Rate Limiting** — protect against abuse, per-tenant and per-endpoint limits, ASP.NET Core rate limiting middleware
 - [ ] **Performance Optimization** — Redis distributed cache, response compression, lazy loading for large datasets, query optimization
 - [ ] **Apple OAuth** — add Apple sign-in provider (requires separate NuGet package, Apple Developer account setup)
+- [ ] **AI Assistant** — in-app AI assistant for end users powered by Claude API; context-aware help with invoicing workflows (create invoice, find client, explain VAT rules), natural language search across invoices/clients, smart suggestions (auto-fill fields, detect duplicates, recommend payment terms), per-tenant conversation history, Blazor chat component with streaming responses
 

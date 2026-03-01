@@ -35,6 +35,9 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.2" />
     <!-- Configuration abstractions — IConfiguration used by Login/Register pages -->
     <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.2" />
+    <!-- Localization — IStringLocalizer<T> for multi-language UI (cs-CZ / en-US).
+         Required for AddLocalization() and resource file (.resx) resolution at runtime. -->
+    <PackageReference Include="Microsoft.Extensions.Localization" Version="10.0.2" />
   </ItemGroup>
 
   <!-- Global usings — these are implicit in BlazorWebAssembly SDK but NOT in Razor SDK.

@@ -4,10 +4,13 @@
     Displays all CompanySystemSettings records (one per company/tenant) with status chips,
     and provides actions for tenant lifecycle management:
     - Create settings (register a new tenant configuration)
-    - Edit settings (update maxUsers, adminNotes, connectionString)
-    - Provision (create tenant database, apply migrations, seed code tables)
+    - Edit settings (update maxUsers, adminNotes)
+    - Provision (create tenant schema, apply migrations, seed code tables)
     - Activate / Deactivate (toggle tenant access)
-    - Migrate (apply pending EF Core migrations to a tenant's DB)
+    - Migrate (apply pending EF Core migrations to a tenant's schema)
+
+    PostgreSQL multi-schema architecture: all tenants share one database,
+    each tenant gets its own schema (e.g., "tenant_42").
 
     This page is SysAdmin-only — the [Authorize(Roles = "SysAdmin")] attribute restricts access.
 *@
@@ -42,16 +45,15 @@
     </ToolBarContent>
     <Columns>
         <MudTh>@L["Label_Name"]</MudTh>
-        <MudTh>@L["TenantSettings_DatabaseName"]</MudTh>
+        <MudTh>@L["TenantSettings_SchemaName"]</MudTh>
         <MudTh>@L["TenantSettings_Provisioned"]</MudTh>
         <MudTh>@L["Label_Status"]</MudTh>
         <MudTh>@L["TenantSettings_MaxUsers"]</MudTh>
-        <MudTh>@L["TenantSettings_CustomConn"]</MudTh>
     </Columns>
     <RowContent>
         <MudTd DataLabel="@L["Label_Name"].Value">@context.CompanyName</MudTd>
-        <MudTd DataLabel="@L["TenantSettings_DatabaseName"].Value">
-            <MudChip T="string" Size="Size.Small" Color="Color.Info">@context.DatabaseName</MudChip>
+        <MudTd DataLabel="@L["TenantSettings_SchemaName"].Value">
+            <MudChip T="string" Size="Size.Small" Color="Color.Info">@context.SchemaName</MudChip>
         </MudTd>
         <MudTd DataLabel="@L["TenantSettings_Provisioned"].Value">
             @if (context.IsProvisioned)
@@ -75,12 +77,6 @@
         </MudTd>
         <MudTd DataLabel="@L["TenantSettings_MaxUsers"].Value">
             @(context.MaxUsers?.ToString() ?? L["TenantSettings_Unlimited"].Value)
-        </MudTd>
-        <MudTd DataLabel="@L["TenantSettings_CustomConn"].Value">
-            @if (context.HasCustomConnectionString)
-            {
-                <MudIcon Icon="@Icons.Material.Filled.Check" Size="Size.Small" Color="Color.Success" />
-            }
         </MudTd>
     </RowContent>
     @* Custom row actions: Provision / Activate / Deactivate / Migrate buttons (conditional per row state) *@
@@ -127,9 +123,9 @@
                     <MudSelectItem Value="@company.Id">@company.CompanyName</MudSelectItem>
                 }
             </MudSelect>
-            <MudTextField @bind-Value="_createDto.DatabaseName" Label="@L["TenantSettings_DatabaseName"].Value"
-                          MaxLength="200" Class="mb-3"
-                          HelperText="@L["TenantSettings_DbNameHelper"].Value" />
+            <MudTextField @bind-Value="_createDto.SchemaName" Label="@L["TenantSettings_SchemaName"].Value"
+                          MaxLength="63" Class="mb-3"
+                          HelperText="@L["TenantSettings_SchemaNameHelper"].Value" />
             <MudNumericField @bind-Value="_createDto.MaxUsers" Label="@L["TenantSettings_MaxUsers"].Value"
                              Min="1" Max="10000" Class="mb-3"
                              HelperText="@L["TenantSettings_MaxUsersHelper"].Value" />
@@ -153,16 +149,12 @@
     </TitleContent>
     <DialogContent>
         <MudForm @ref="_editForm" @bind-IsValid="_editFormValid">
-            @* Read-only info fields *@
-            <MudTextField Value="@_editDatabaseName" Label="@L["TenantSettings_DatabaseName"].Value"
+            @* Read-only info fields — schema name is immutable after creation *@
+            <MudTextField Value="@_editSchemaName" Label="@L["TenantSettings_SchemaName"].Value"
                           ReadOnly="true" Class="mb-3" />
             <MudNumericField @bind-Value="_editDto.MaxUsers" Label="@L["TenantSettings_MaxUsers"].Value"
                              Min="1" Max="10000" Class="mb-3"
                              HelperText="@L["TenantSettings_MaxUsersHelper"].Value" />
-            <MudTextField @bind-Value="_editDto.ConnectionString"
-                          Label="@L["TenantSettings_ConnectionString"].Value"
-                          MaxLength="1000" Class="mb-3"
-                          HelperText="@L["TenantSettings_ConnStringHelper"].Value" />
             <MudTextField @bind-Value="_editDto.AdminNotes" Label="@L["TenantSettings_AdminNotes"].Value"
                           MaxLength="2000" Lines="3" Class="mb-3" />
         </MudForm>
@@ -205,7 +197,7 @@
     private MudForm? _editForm;
     private long _editCompanyId;
     private string _editCompanyName = "";
-    private string _editDatabaseName = "";
+    private string _editSchemaName = "";
     private UpdateCompanySystemSettingsDto _editDto = new();
 
     /// <summary>
@@ -287,19 +279,17 @@
 
     /// <summary>
     /// Opens the Edit Settings dialog pre-populated with the selected settings data.
-    /// Database name is read-only (immutable after creation).
+    /// Schema name is read-only (immutable after creation).
     /// </summary>
     private void OpenEditDialog(CompanySystemSettingsDto settings)
     {
         _editCompanyId = settings.CompanyId;
         _editCompanyName = settings.CompanyName;
-        _editDatabaseName = settings.DatabaseName;
+        _editSchemaName = settings.SchemaName;
         _editDto = new UpdateCompanySystemSettingsDto
         {
             MaxUsers = settings.MaxUsers,
-            AdminNotes = settings.AdminNotes,
-            // ConnectionString is not exposed in the DTO for security — starts empty
-            ConnectionString = null
+            AdminNotes = settings.AdminNotes
         };
         _showEditDialog = true;
     }
@@ -329,14 +319,14 @@
     // ========== Tenant Lifecycle Actions ==========
 
     /// <summary>
-    /// Provisions a new tenant database with a confirmation dialog.
-    /// This is a long-running operation: CREATE DATABASE → migrations → seed code tables → create issuer.
+    /// Provisions a new tenant schema with a confirmation dialog.
+    /// This is a long-running operation: CREATE SCHEMA → migrations → seed code tables → create issuer.
     /// </summary>
     private async Task ProvisionTenant(CompanySystemSettingsDto settings)
     {
         bool? result = await DialogService.ShowMessageBox(
             L["TenantSettings_ProvisionTitle"].Value,
-            string.Format(L["TenantSettings_ProvisionConfirm"].Value, settings.CompanyName, settings.DatabaseName),
+            string.Format(L["TenantSettings_ProvisionConfirm"].Value, settings.CompanyName, settings.SchemaName),
             yesText: L["TenantSettings_Provision"].Value,
             cancelText: L["Btn_Cancel"].Value);
 

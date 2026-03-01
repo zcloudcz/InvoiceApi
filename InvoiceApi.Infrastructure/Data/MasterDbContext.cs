@@ -6,23 +6,26 @@ using Microsoft.EntityFrameworkCore;
 namespace InvoiceApi.Infrastructure.Data;
 
 /// <summary>
-/// Database context for the MASTER database in the multi-tenant architecture (Azure SQL / SQL Server).
+/// Database context for the MASTER schema ("public") in the multi-tenant PostgreSQL architecture.
 ///
-/// The master database stores:
+/// Architecture: Single PostgreSQL database with schema-per-tenant isolation.
+/// Master data lives in the "public" schema, each tenant gets "tenant_{companyId}" schema.
+///
+/// The master schema stores:
 /// - Users (authentication, roles, company assignment)
 /// - Companies (Client records where IsIssuer = true — the company registry)
-/// - CompanySystemSettings (tenant infrastructure config: DB name, connection, provisioning status)
+/// - CompanySystemSettings (tenant infrastructure config: schema name, provisioning status)
 /// - Code tables used as "source of truth" for provisioning new tenants:
 ///   VatRate, Currency, NumberSequenceFormat, ContentTemplate
 ///
-/// The master database does NOT store business data (invoices, invoice items, etc.)
-/// — that lives in per-tenant databases managed by TenantDbContext.
+/// The master schema does NOT store business data (invoices, invoice items, etc.)
+/// — that lives in per-tenant schemas managed by TenantDbContext.
 ///
 /// Lifecycle:
 /// 1. SysAdmin creates a company (Client with IsIssuer = true)
-/// 2. CompanySystemSettings record added with DatabaseName
-/// 3. TenantProvisioningService creates tenant DB, applies migrations, copies code tables
-/// 4. Users are added to master DB with CompanyId pointing to the company
+/// 2. CompanySystemSettings record added with SchemaName
+/// 3. TenantProvisioningService creates tenant schema, applies migrations, copies code tables
+/// 4. Users are added to master schema with CompanyId pointing to the company
 /// 5. On login, AuthService checks tenant status (provisioned + active) before issuing JWT
 /// </summary>
 public class MasterDbContext : DbContext
@@ -197,11 +200,10 @@ public class MasterDbContext : DbContext
                 .IsRequired()
                 .HasMaxLength(100);
 
-            // SQL Server filtered index syntax uses square brackets for column names
-            // (PostgreSQL used double-quoted identifiers: "InvitationToken")
+            // PostgreSQL filtered index syntax uses double-quoted identifiers for column names
             entity.HasIndex(e => e.InvitationToken)
                 .IsUnique()
-                .HasFilter("[InvitationToken] IS NOT NULL");
+                .HasFilter("\"InvitationToken\" IS NOT NULL");
 
             entity.Property(e => e.InvitationToken)
                 .HasMaxLength(100);
@@ -223,7 +225,7 @@ public class MasterDbContext : DbContext
                 .HasMaxLength(500);
 
             entity.HasIndex(e => new { e.ExternalProvider, e.ExternalProviderId })
-                .HasFilter("[ExternalProvider] <> 0")
+                .HasFilter("\"ExternalProvider\" <> 0")
                 .IsUnique();
 
             // ── Email verification configuration ─────────────────────────────
@@ -233,7 +235,7 @@ public class MasterDbContext : DbContext
                 .HasMaxLength(100);
 
             entity.HasIndex(e => e.EmailVerificationToken)
-                .HasFilter("[EmailVerificationToken] IS NOT NULL");
+                .HasFilter("\"EmailVerificationToken\" IS NOT NULL");
 
             entity.HasIndex(e => e.IsEmailVerified);
 
@@ -262,7 +264,7 @@ public class MasterDbContext : DbContext
                 .HasMaxLength(500);
 
             entity.HasIndex(e => e.TwoFactorSessionToken)
-                .HasFilter("[TwoFactorSessionToken] IS NOT NULL");
+                .HasFilter("\"TwoFactorSessionToken\" IS NOT NULL");
 
             entity.Property(e => e.FailedTwoFactorAttempts)
                 .HasDefaultValue(0);
@@ -448,12 +450,9 @@ public class MasterDbContext : DbContext
                 .HasForeignKey<CompanySystemSettings>(e => e.CompanyId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            entity.Property(e => e.DatabaseName)
+            entity.Property(e => e.SchemaName)
                 .IsRequired()
-                .HasMaxLength(200);
-
-            entity.Property(e => e.ConnectionString)
-                .HasMaxLength(1000);
+                .HasMaxLength(63); // PostgreSQL NAMEDATALEN - 1 limit
 
             entity.Property(e => e.AdminNotes)
                 .HasMaxLength(2000);
@@ -580,8 +579,7 @@ public class MasterDbContext : DbContext
             entity.Property(e => e.Subject)
                 .HasMaxLength(500);
 
-            // SQL Server uses nvarchar(max) by default for string properties;
-            // no explicit HasColumnType needed (was "TEXT" for PostgreSQL).
+            // PostgreSQL uses "text" type by default for string properties without MaxLength.
             entity.Property(e => e.HtmlBody)
                 .IsRequired();
 
@@ -616,11 +614,11 @@ public class MasterDbContext : DbContext
                 .IsRequired()
                 .HasMaxLength(500);
 
-            // Message uses nvarchar(max) — no length limit (default for string in SQL Server)
+            // Message uses text — no length limit (default for string in PostgreSQL)
             entity.Property(e => e.Message)
                 .IsRequired();
 
-            // Exception also nvarchar(max) — can be very long for nested exceptions
+            // Exception also text — can be very long for nested exceptions
             entity.Property(e => e.RequestPath)
                 .HasMaxLength(500);
 

@@ -1,65 +1,60 @@
 namespace InvoiceApi.Contracts.Dto.AzureOperation;
 
 /// <summary>
-/// Read-only DTO representing the status and configuration of an Azure SQL database.
-/// Returned by the AzureOperationController endpoints for listing, creating, and checking databases.
+/// Read-only DTO representing the status and configuration of a tenant schema
+/// in the shared PostgreSQL database.
 ///
-/// Maps from Azure.ResourceManager.Sql.SqlDatabaseResource properties to a simplified view
-/// that SysAdmin can use to monitor tenant databases in the Azure SQL Server.
+/// Returned by the tenant operation endpoints for listing, creating, and checking
+/// tenant schemas. Each tenant has an isolated schema within the shared database,
+/// replacing the previous Azure SQL per-tenant database approach.
+///
+/// This DTO provides a unified view of the tenant's schema provisioning state,
+/// including whether the schema exists, whether it is active, and which company owns it.
 /// </summary>
-public class AzureDatabaseStatusDto
+public class TenantSchemaStatusDto
 {
     /// <summary>
-    /// Name of the database on the Azure SQL Server (e.g., "invoiceapi_tenant_42").
-    /// This is the Initial Catalog in connection strings.
+    /// Name of the PostgreSQL schema for this tenant (e.g., "tenant_42").
+    /// This is used as the search_path when connecting to the tenant's data.
     /// </summary>
-    public string DatabaseName { get; set; } = string.Empty;
+    public string SchemaName { get; set; } = string.Empty;
 
     /// <summary>
-    /// Current status of the database (e.g., "Online", "Creating", "Paused", "Resuming").
-    /// Azure SQL Serverless databases may show "Paused" when auto-paused due to inactivity.
+    /// The master DB company ID that owns this tenant schema.
+    /// References Client (IsIssuer = true) in the master database.
     /// </summary>
-    public string Status { get; set; } = string.Empty;
+    public long CompanyId { get; set; }
 
     /// <summary>
-    /// When the database was created on Azure (UTC).
+    /// Display name of the company that owns this tenant schema.
+    /// Populated from the master DB Client record for convenience in admin UIs.
     /// </summary>
-    public DateTimeOffset? CreationDate { get; set; }
+    public string CompanyName { get; set; } = string.Empty;
 
     /// <summary>
-    /// Maximum allowed size of the database in bytes.
-    /// For the free tier, this is typically 32GB (34359738368 bytes).
+    /// Whether the PostgreSQL schema has been created and all required tables
+    /// have been migrated successfully. A schema is "provisioned" once the
+    /// CREATE SCHEMA + EF Core migration has completed without errors.
     /// </summary>
-    public long? MaxSizeBytes { get; set; }
+    public bool IsProvisioned { get; set; }
 
     /// <summary>
-    /// SKU tier and name combined (e.g., "GeneralPurpose / GP_S_Gen5").
-    /// GP_S_Gen5 = General Purpose Serverless Gen5, which is the free tier SKU.
+    /// Whether this tenant schema is currently active and accepting connections.
+    /// An inactive schema exists but is not served by the application
+    /// (e.g., suspended for non-payment, pending deletion, or under maintenance).
     /// </summary>
-    public string Sku { get; set; } = string.Empty;
+    public bool IsActive { get; set; }
 
     /// <summary>
-    /// Whether this database is using the Azure SQL free tier offer.
-    /// True means 100K vCore seconds/month are included at no cost.
+    /// When the tenant schema was first created (UTC).
+    /// Recorded during the initial provisioning process.
     /// </summary>
-    public bool UseFreeLimit { get; set; }
+    public DateTimeOffset? CreatedAt { get; set; }
 
     /// <summary>
-    /// Behavior when the free tier monthly limit is exhausted.
-    /// "AutoPause" = database pauses until next cycle (no charges).
-    /// "BillOverUsage" = database keeps running and you pay for overage.
-    /// Null if UseFreeLimit is false.
+    /// When the tenant schema was last migrated or updated (UTC).
+    /// Updated each time an EF Core migration is applied to this schema.
+    /// Null if no migration has been applied after initial creation.
     /// </summary>
-    public string? FreeLimitExhaustionBehavior { get; set; }
-
-    /// <summary>
-    /// Earliest point-in-time restore available for this database (UTC).
-    /// Azure SQL maintains automatic backups with point-in-time restore capability.
-    /// </summary>
-    public DateTimeOffset? EarliestRestoreDate { get; set; }
-
-    /// <summary>
-    /// Azure region where the database is hosted (e.g., "westeurope", "northeurope").
-    /// </summary>
-    public string Location { get; set; } = string.Empty;
+    public DateTimeOffset? LastMigratedAt { get; set; }
 }

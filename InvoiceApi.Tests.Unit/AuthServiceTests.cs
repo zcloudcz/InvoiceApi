@@ -290,7 +290,7 @@ public class AuthServiceTests : IDisposable
             .FirstOrDefaultAsync(s => s.CompanyId == client.Id);
         settings.ShouldNotBeNull();
         settings!.IsProvisioned.ShouldBeFalse();
-        settings.DatabaseName.ShouldStartWith("invoiceapi_tenant_");
+        settings.SchemaName.ShouldStartWith("tenant_");
     }
 
     /// <summary>

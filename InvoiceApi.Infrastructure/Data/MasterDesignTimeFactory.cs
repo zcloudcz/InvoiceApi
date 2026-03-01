@@ -11,6 +11,7 @@ namespace InvoiceApi.Infrastructure.Data;
 ///   dotnet ef migrations add Init --context MasterDbContext --output-dir Migrations/Master --project InvoiceApi.Infrastructure --startup-project InvoiceApi.API
 ///   dotnet ef database update --context MasterDbContext --project InvoiceApi.Infrastructure --startup-project InvoiceApi.API
 ///
+/// The master context uses the default "public" schema in PostgreSQL.
 /// This factory provides a connection string at design time when no DI container is available.
 /// At runtime, the connection string comes from appsettings.json via Program.cs DI configuration.
 /// </summary>
@@ -25,12 +26,12 @@ public class MasterDesignTimeFactory : IDesignTimeDbContextFactory<MasterDbConte
             .AddJsonFile("appsettings.Development.json", optional: true)
             .Build();
 
-        // Fallback connection string for SQL Server (used when appsettings not found)
-        var connectionString = configuration.GetConnectionString("MasterConnection")
-            ?? "Server=localhost;Database=invoiceapi_master;User Id=sa;Password=YourStrong!Passw0rd;TrustServerCertificate=true";
+        // Fallback connection string for PostgreSQL (used when appsettings not found)
+        var connectionString = configuration.GetConnectionString("DefaultConnection")
+            ?? "Host=localhost;Database=invoiceapi;Username=invoiceapi;Password=YourStrong!Passw0rd";
 
         var optionsBuilder = new DbContextOptionsBuilder<MasterDbContext>();
-        optionsBuilder.UseSqlServer(
+        optionsBuilder.UseNpgsql(
             connectionString,
             b => b.MigrationsAssembly("InvoiceApi.Infrastructure"));
 

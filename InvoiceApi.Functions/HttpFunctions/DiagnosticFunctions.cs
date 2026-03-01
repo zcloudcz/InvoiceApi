@@ -15,6 +15,8 @@ using System.Security.Claims;
 using System.Text;
 using InvoiceApi.Application.Service;
 using InvoiceApi.Infrastructure.Data;
+// PostgreSQL: Using Npgsql instead of Microsoft.Data.SqlClient for connection string parsing
+using Npgsql;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
@@ -57,7 +59,8 @@ public class DiagnosticFunctions
         var result = new Dictionary<string, object>();
 
         // Check connection strings (masked)
-        var masterConn = _configuration.GetConnectionString("MasterConnection");
+        // PostgreSQL: Changed from "MasterConnection" to "DefaultConnection" for PostgreSQL migration
+        var masterConn = _configuration.GetConnectionString("DefaultConnection");
         var tenantConn = _configuration.GetConnectionString("TenantTemplateConnection");
         result["masterConnectionConfigured"] = !string.IsNullOrEmpty(masterConn);
         result["tenantTemplateConnectionConfigured"] = !string.IsNullOrEmpty(tenantConn);
@@ -298,14 +301,21 @@ public class DiagnosticFunctions
 
     /// <summary>
     /// Masks sensitive parts of a connection string for safe display.
-    /// Shows server and database name, hides password.
+    /// Shows server/host and database name, hides password.
+    /// PostgreSQL: Uses NpgsqlConnectionStringBuilder instead of SqlConnectionStringBuilder.
+    /// Property mapping: DataSource → Host, InitialCatalog → Database, UserID → Username.
     /// </summary>
     private static string MaskConnectionString(string connectionString)
     {
         try
         {
-            var builder = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(connectionString);
-            return $"Server={builder.DataSource}; Database={builder.InitialCatalog}; User={builder.UserID}";
+            // PostgreSQL: NpgsqlConnectionStringBuilder parses PostgreSQL connection strings.
+            // Property names differ from SQL Server:
+            //   SQL Server DataSource    → PostgreSQL Host
+            //   SQL Server InitialCatalog → PostgreSQL Database
+            //   SQL Server UserID        → PostgreSQL Username
+            var builder = new NpgsqlConnectionStringBuilder(connectionString);
+            return $"Host={builder.Host}; Database={builder.Database}; Username={builder.Username}";
         }
         catch
         {

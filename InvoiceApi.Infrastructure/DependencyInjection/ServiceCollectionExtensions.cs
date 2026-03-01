@@ -6,6 +6,7 @@ using InvoiceApi.Infrastructure.Repository;
 using InvoiceApi.Infrastructure.Service;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -18,7 +19,7 @@ namespace InvoiceApi.Infrastructure.DependencyInjection;
 /// This eliminates code duplication between the two hosting models (Kestrel vs Azure Functions).
 ///
 /// Registers:
-/// - MasterDbContext + TenantDbContext (multi-tenant SQL Server)
+/// - MasterDbContext + TenantDbContext (multi-tenant PostgreSQL with schema-per-tenant)
 /// - All application services (Client, Invoice, Auth, Email, PDF, QR, etc.)
 /// - Cloud storage (Google Drive, OneDrive)
 /// - ARES (Czech business registry) HTTP client
@@ -53,9 +54,9 @@ public static class ServiceCollectionExtensions
         IConfiguration configuration)
     {
         // ── Database Configuration ──────────────────────────────────────────
-        // Multi-tenant architecture with two DbContexts:
-        // - MasterDbContext: shared DB for Users, Companies, CompanySystemSettings, code tables
-        // - TenantDbContext: per-tenant DB for invoices, clients, templates, sequences
+        // Multi-tenant architecture with two DbContexts in a single PostgreSQL database:
+        // - MasterDbContext: "public" schema for Users, Companies, CompanySystemSettings, code tables
+        // - TenantDbContext: per-tenant schema (e.g., "tenant_42") for invoices, clients, etc.
 
         AddDatabaseContexts(services, configuration);
 
@@ -110,13 +111,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IDashboardService, DashboardService>();
         services.AddScoped<ISystemConfigurationService, SystemConfigurationService>();
 
-        // Tenant provisioning — creates, migrates, activates/deactivates tenant databases.
+        // Tenant provisioning — creates, migrates, activates/deactivates tenant schemas.
         // SysAdmin uses this through CompanyController to manage tenant lifecycle.
         services.AddScoped<ITenantProvisioningService, TenantProvisioningService>();
-
-        // Azure SQL Service — manages Azure SQL databases via ARM API (create, list, delete).
-        // Used by AzureOperationController for Azure-hosted tenant provisioning with free tier support.
-        services.AddScoped<IAzureSqlService, AzureSqlService>();
 
         // ── Cloud Storage ───────────────────────────────────────────────────
         // Google Drive and OneDrive registered as IExternalCloudStorage.
@@ -142,33 +139,35 @@ public static class ServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Registers MasterDbContext and TenantDbContext with SQL Server providers.
-    /// MasterDbContext uses a fixed connection string; TenantDbContext resolves
-    /// its connection dynamically per-request based on the user's CompanyId claim.
+    /// Registers MasterDbContext and TenantDbContext with the PostgreSQL (Npgsql) provider.
+    /// Single database, schema-per-tenant isolation:
+    /// - MasterDbContext uses the "public" schema (default PostgreSQL schema)
+    /// - TenantDbContext dynamically sets its schema per-request from CompanySystemSettings.SchemaName
     /// </summary>
     private static void AddDatabaseContexts(
         IServiceCollection services,
         IConfiguration configuration)
     {
-        // MasterDbContext — shared database for Users, Companies, CompanySystemSettings, and code tables.
-        // EnableRetryOnFailure handles transient SQL Server/Azure SQL errors (network blips,
-        // connection pool exhaustion, Azure failovers) by automatically retrying failed operations.
+        // Shared connection string — single PostgreSQL database for all schemas.
+        var connectionString = configuration.GetConnectionString("DefaultConnection")
+            ?? throw new InvalidOperationException(
+                "Database connection string 'DefaultConnection' not configured. " +
+                "Set it in appsettings.json, local.settings.json, or environment variable " +
+                "ConnectionStrings__DefaultConnection.");
+
+        // MasterDbContext — "public" schema containing Users, Companies, CompanySystemSettings, code tables.
+        // EnableRetryOnFailure handles transient PostgreSQL/Azure errors (network blips,
+        // connection pool exhaustion, failovers) by automatically retrying failed operations.
         services.AddDbContext<MasterDbContext>(options =>
         {
-            options.UseSqlServer(
-                configuration.GetConnectionString("MasterConnection")
-                    ?? throw new InvalidOperationException(
-                        "Database connection string 'MasterConnection' not configured. " +
-                        "Set it in appsettings.json, local.settings.json, or environment variable " +
-                        "ConnectionStrings__MasterConnection."),
-                b =>
-                {
-                    b.MigrationsAssembly("InvoiceApi.Infrastructure");
-                    b.EnableRetryOnFailure(
-                        maxRetryCount: 3,
-                        maxRetryDelay: TimeSpan.FromSeconds(5),
-                        errorNumbersToAdd: null);
-                });
+            options.UseNpgsql(connectionString, b =>
+            {
+                b.MigrationsAssembly("InvoiceApi.Infrastructure");
+                b.EnableRetryOnFailure(
+                    maxRetryCount: 3,
+                    maxRetryDelay: TimeSpan.FromSeconds(5),
+                    errorCodesToAdd: null);
+            });
 
             // EF Core 10 throws PendingModelChangesWarning by default when the current model
             // doesn't exactly match the latest migration snapshot. This blocks MigrateAsync()
@@ -178,83 +177,30 @@ public static class ServiceCollectionExtensions
                 w.Log(RelationalEventId.PendingModelChangesWarning));
         });
 
-        // TenantDbContext — per-tenant database for invoices, clients, templates, etc.
-        // Registered as scoped; the actual connection string is resolved DYNAMICALLY per request.
+        // TenantDbContext — per-tenant schema for invoices, clients, templates, etc.
+        // Registered as scoped; the schema is resolved DYNAMICALLY per request.
         // 1. If the user has a CompanyId claim → look up CompanySystemSettings in master DB
-        //    → build the correct tenant connection string (either custom or template-based).
-        // 2. If no CompanyId (startup, migrations, EF CLI tools) → fall back to TenantTemplateConnection.
-        // This ensures each request connects to the CORRECT tenant database, not the template.
+        //    → set the schema name on the TenantDbContext (same database, different schema).
+        // 2. If no CompanyId (startup, migrations, EF CLI tools) → no schema set (uses default).
+        // This ensures each request targets the CORRECT tenant schema.
+        //
+        // IMPORTANT: ReplaceService<IModelCacheKeyFactory> ensures EF Core caches a separate
+        // compiled model per schema. Without this, all tenants would share the first tenant's
+        // model and query the wrong schema. See TenantModelCacheKeyFactory for details.
         services.AddDbContext<TenantDbContext>((serviceProvider, options) =>
         {
-            // Try to resolve tenant connection from the current HTTP request's CompanyId claim.
-            // IHttpContextAccessor is a singleton reading from AsyncLocal — safe to resolve here.
-            var httpContextAccessor = serviceProvider
-                .GetService<Microsoft.AspNetCore.Http.IHttpContextAccessor>();
-            var companyIdClaim = httpContextAccessor?.HttpContext?.User?.FindFirst("CompanyId")?.Value;
-
-            if (long.TryParse(companyIdClaim, out var companyId))
-            {
-                // We have a CompanyId — look up the tenant's database settings in master DB.
-                // MasterDbContext is scoped, so this creates a short-lived instance for the lookup.
-                var masterDb = serviceProvider.GetRequiredService<MasterDbContext>();
-                var settings = masterDb.CompanySystemSettings
-                    .AsNoTracking()
-                    .FirstOrDefault(s => s.CompanyId == companyId);
-
-                if (settings is { IsProvisioned: true, IsActive: true })
-                {
-                    // Build the connection string for this specific tenant.
-                    // Strategy 1: Use custom connection string if set (e.g., different SQL Server).
-                    // Strategy 2: Take the master connection string and swap the database name.
-                    string tenantConnString;
-
-                    if (!string.IsNullOrWhiteSpace(settings.ConnectionString))
-                    {
-                        tenantConnString = settings.ConnectionString;
-                    }
-                    else
-                    {
-                        var masterConn = configuration.GetConnectionString("MasterConnection")!;
-                        var connBuilder = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(masterConn)
-                        {
-                            InitialCatalog = settings.DatabaseName
-                        };
-                        tenantConnString = connBuilder.ConnectionString;
-                    }
-
-                    options.UseSqlServer(tenantConnString, b =>
-                    {
-                        b.MigrationsAssembly("InvoiceApi.Infrastructure");
-                        b.EnableRetryOnFailure(
-                            maxRetryCount: 3,
-                            maxRetryDelay: TimeSpan.FromSeconds(5),
-                            errorNumbersToAdd: null);
-                    });
-
-                    // Downgrade PendingModelChangesWarning from Throw → Log (same as MasterDbContext above).
-                    options.ConfigureWarnings(w =>
-                        w.Log(RelationalEventId.PendingModelChangesWarning));
-                    return;
-                }
-            }
-
-            // Fallback: no CompanyId available or tenant not provisioned/active.
-            // This happens during:
-            // - Application startup (migrations, seed data)
-            // - EF CLI tools (dotnet ef migrations add/update)
-            // - Background jobs / timer triggers without HTTP context
-            // The template connection is only used for migration generation, NOT for runtime queries.
-            var templateConn = configuration.GetConnectionString("TenantTemplateConnection")
-                ?? throw new InvalidOperationException(
-                    "Database connection string 'TenantTemplateConnection' not configured.");
-            options.UseSqlServer(templateConn, b =>
+            // All tenants share the same PostgreSQL connection — schema isolation, not DB isolation.
+            options.UseNpgsql(connectionString, b =>
             {
                 b.MigrationsAssembly("InvoiceApi.Infrastructure");
                 b.EnableRetryOnFailure(
                     maxRetryCount: 3,
                     maxRetryDelay: TimeSpan.FromSeconds(5),
-                    errorNumbersToAdd: null);
+                    errorCodesToAdd: null);
             });
+
+            // Custom model cache: one cached model per schema (tenant_42, tenant_99, etc.)
+            options.ReplaceService<IModelCacheKeyFactory, TenantModelCacheKeyFactory>();
 
             // Downgrade PendingModelChangesWarning from Throw → Log (same as MasterDbContext above).
             options.ConfigureWarnings(w =>

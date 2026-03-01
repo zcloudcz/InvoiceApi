@@ -3,50 +3,64 @@ using InvoiceApi.Contracts.Dto.AzureOperation;
 using InvoiceApi.Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace InvoiceApi.API.Controller;
 
 /// <summary>
-/// Controller for Azure SQL database operations and full tenant provisioning on Azure.
+/// Controller for PostgreSQL tenant schema operations and full tenant provisioning.
 ///
-/// Provides SysAdmin endpoints to:
-/// - Create Azure SQL databases (free tier or paid) via the ARM API
-/// - Provision complete tenants (create Azure DB → create contained user → run full provisioning)
-/// - List, monitor, and delete Azure SQL databases
+/// In the single-database multi-schema architecture, each tenant gets an isolated
+/// PostgreSQL schema (e.g., "tenant_42") within a shared database. This controller
+/// provides SysAdmin endpoints to manage those schemas:
 ///
-/// Full provisioning flow (POST /api/azure-operation/provision-tenant):
-/// 1. Validates the company and settings exist in master DB
-/// 2. Creates Azure SQL database via ARM API (CreateOrUpdate, idempotent)
-/// 3. Builds connection string for the new database
-/// 4. Creates contained user for Azure Function managed identity (azFunction)
-/// 5. Updates CompanySystemSettings with the Azure SQL connection string
-/// 6. Runs TenantProvisioningService (migrations, code table copy, issuer, number sequences)
-/// 7. Returns the Azure database status
+/// - Provision a new tenant schema (CREATE SCHEMA + migrations + seed data)
+/// - List all tenant schemas with their provisioning status
+/// - Check the status of a specific tenant schema
+/// - Drop a tenant schema (CASCADE) and mark it as unprovisioned
+///
+/// Full provisioning flow (POST /api/tenant-operation/provision):
+/// 1. Validates the company and CompanySystemSettings exist in master DB
+/// 2. Creates the PostgreSQL schema via TenantProvisioningService
+/// 3. Applies EF Core migrations to the new schema
+/// 4. Copies code tables from master (VatRate, Currency, etc.)
+/// 5. Creates issuer + default number sequences in the tenant schema
+/// 6. Returns the tenant schema status DTO
 ///
 /// IMPORTANT: All endpoints require SysAdmin role.
-/// Azure credentials are resolved via DefaultAzureCredential or service principal config.
+/// Schema names follow the convention "tenant_{companyId}" and use only lowercase
+/// alphanumeric characters and underscores (PostgreSQL naming rules).
 /// </summary>
 [ApiController]
-[Route("api/azure-operation")]
+[Route("api/tenant-operation")]
 [Authorize(Roles = "SysAdmin")]
-public class AzureOperationController : ControllerBase
+public class TenantOperationController : ControllerBase
 {
-    private readonly IAzureSqlService _azureSqlService;
+    // Service that handles the full provisioning pipeline
+    // (schema creation, migrations, code table copy, issuer, number sequences)
     private readonly ITenantProvisioningService _provisioningService;
-    private readonly MasterDbContext _masterContext;
-    private readonly IConfiguration _configuration;
-    private readonly ILogger<AzureOperationController> _logger;
 
-    public AzureOperationController(
-        IAzureSqlService azureSqlService,
+    // Master database context for reading CompanySystemSettings
+    // (tenant metadata like schema name, provisioning status, etc.)
+    private readonly MasterDbContext _masterContext;
+
+    // Configuration for reading the shared PostgreSQL connection string
+    private readonly IConfiguration _configuration;
+
+    // Structured logger for tracing provisioning operations
+    private readonly ILogger<TenantOperationController> _logger;
+
+    /// <summary>
+    /// Constructor with dependency injection.
+    /// All dependencies are registered in DI container at startup.
+    /// </summary>
+    public TenantOperationController(
         ITenantProvisioningService provisioningService,
         MasterDbContext masterContext,
         IConfiguration configuration,
-        ILogger<AzureOperationController> logger)
+        ILogger<TenantOperationController> logger)
     {
-        _azureSqlService = azureSqlService;
         _provisioningService = provisioningService;
         _masterContext = masterContext;
         _configuration = configuration;
@@ -54,45 +68,55 @@ public class AzureOperationController : ControllerBase
     }
 
     /// <summary>
-    /// Full tenant provisioning flow: creates an Azure SQL database, sets up contained user
-    /// for Azure Functions managed identity, and runs the complete provisioning pipeline
-    /// (migrations, code tables, issuer, number sequences).
+    /// Full tenant provisioning: creates a PostgreSQL schema for the tenant,
+    /// applies EF Core migrations, copies code tables, and seeds initial data.
     ///
-    /// This is the primary endpoint for onboarding a new tenant on Azure SQL.
-    /// The entire flow is idempotent — safe to re-run after partial failures.
+    /// This is the primary endpoint for onboarding a new tenant.
+    /// The entire flow is idempotent for schema creation (CREATE SCHEMA IF NOT EXISTS),
+    /// but will fail if the tenant is already marked as provisioned.
     /// </summary>
-    /// <param name="request">Database name, company ID, and Azure SQL tier settings</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Azure database status DTO on success</returns>
-    /// <response code="200">Tenant provisioned successfully</response>
+    /// <param name="request">
+    /// Contains CompanyId (the master DB company to provision) and SchemaName
+    /// (the PostgreSQL schema name, e.g., "tenant_42").
+    /// </param>
+    /// <param name="cancellationToken">Cancellation token for async operations</param>
+    /// <returns>TenantSchemaStatusDto with the new schema's provisioning status</returns>
+    /// <response code="200">Tenant schema provisioned successfully</response>
     /// <response code="400">Invalid request (missing company, already provisioned, etc.)</response>
-    /// <response code="500">Azure ARM API or provisioning error</response>
-    [HttpPost("provision-tenant")]
-    [ProducesResponseType(typeof(AzureDatabaseStatusDto), StatusCodes.Status200OK)]
+    /// <response code="500">Schema creation or provisioning pipeline error</response>
+    [HttpPost("provision")]
+    [ProducesResponseType(typeof(TenantSchemaStatusDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-    public async Task<ActionResult<AzureDatabaseStatusDto>> ProvisionTenant(
-        [FromBody] AzureCreateDatabaseRequest request,
+    public async Task<ActionResult<TenantSchemaStatusDto>> ProvisionTenant(
+        [FromBody] CreateTenantSchemaRequest request,
         CancellationToken cancellationToken = default)
     {
         try
         {
             _logger.LogInformation(
-                "Starting full Azure tenant provisioning for company {CompanyId} (database: {DatabaseName})",
-                request.CompanyId, request.DatabaseName);
+                "Starting tenant schema provisioning for company {CompanyId} (schema: {SchemaName})",
+                request.CompanyId, request.SchemaName);
 
-            // ── Step 1: Validate company and settings exist ──────────────────
+            // ── Step 1: Validate company and settings exist in master DB ──────
+            // CompanySystemSettings must be created before provisioning can begin.
+            // This ensures the tenant has been registered in the system.
             var settings = await _masterContext.CompanySystemSettings
+                .Include(s => s.Company) // Include company nav prop for the response DTO
                 .FirstOrDefaultAsync(s => s.CompanyId == request.CompanyId, cancellationToken);
 
             if (settings == null)
             {
                 _logger.LogWarning(
                     "CompanySystemSettings not found for company {CompanyId}", request.CompanyId);
-                return BadRequest(new { message = $"CompanySystemSettings not found for company {request.CompanyId}. Create settings first." });
+                return BadRequest(new
+                {
+                    message = $"CompanySystemSettings not found for company {request.CompanyId}. " +
+                              "Create settings first via POST /api/company/{{id}}/settings."
+                });
             }
 
-            // Verify the company (Client with IsIssuer) actually exists
+            // Verify the company (Client with IsIssuer) actually exists in master DB
             var companyExists = await _masterContext.Client
                 .AsNoTracking()
                 .AnyAsync(c => c.Id == request.CompanyId && c.IsIssuer, cancellationToken);
@@ -103,65 +127,37 @@ public class AzureOperationController : ControllerBase
                 return BadRequest(new { message = $"Company {request.CompanyId} not found or is not marked as issuer." });
             }
 
-            // ── Step 2: Create Azure SQL database via ARM API ────────────────
-            _logger.LogInformation("Step 2: Creating Azure SQL database '{DatabaseName}'", request.DatabaseName);
-            var dbStatus = await _azureSqlService.CreateDatabaseAsync(request, cancellationToken);
-
-            // ── Step 3: Build connection string for the new Azure SQL database ─
-            var sqlServerName = _configuration["AzureSettings:SqlServerName"]
-                ?? throw new InvalidOperationException("AzureSettings:SqlServerName is not configured.");
-
-            // Azure SQL connection string format:
-            // Server=tcp:{server}.database.windows.net,1433 — Azure SQL always uses TCP on port 1433
-            // Encrypt=True — mandatory for Azure SQL (TLS encryption)
-            // TrustServerCertificate=False — validate the Azure SSL certificate
-            // Authentication=Active Directory Default — uses DefaultAzureCredential chain
-            var connBuilder = new SqlConnectionStringBuilder
+            // ── Step 2: Update schema name on settings if provided ───────────
+            // The request may carry a specific schema name; update settings before provisioning.
+            if (!string.IsNullOrWhiteSpace(request.SchemaName))
             {
-                DataSource = $"tcp:{sqlServerName}.database.windows.net,1433",
-                InitialCatalog = request.DatabaseName,
-                Encrypt = true,
-                TrustServerCertificate = false,
-                Authentication = SqlAuthenticationMethod.ActiveDirectoryDefault
-            };
-            var azureConnectionString = connBuilder.ConnectionString;
-
-            _logger.LogInformation("Step 3: Built Azure SQL connection string for '{DatabaseName}'", request.DatabaseName);
-
-            // ── Step 4: Create contained user for Azure Function managed identity ─
-            _logger.LogInformation("Step 4: Creating contained user in '{DatabaseName}'", request.DatabaseName);
-            try
-            {
-                await _azureSqlService.CreateContainedUserAsync(azureConnectionString, cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                // Log but don't fail the entire flow — the user can be created later manually.
-                // This might fail if AAD admin is not configured on the SQL Server.
-                _logger.LogWarning(ex,
-                    "Failed to create contained user in '{DatabaseName}'. " +
-                    "Continuing with provisioning — the user can be created manually later.",
-                    request.DatabaseName);
+                settings.SchemaName = request.SchemaName;
+                await _masterContext.SaveChangesAsync(cancellationToken);
             }
 
-            // ── Step 5: Update CompanySystemSettings with Azure SQL connection string ─
-            settings.DatabaseName = request.DatabaseName;
-            settings.ConnectionString = azureConnectionString;
-            await _masterContext.SaveChangesAsync(cancellationToken);
-
+            // ── Step 3: Run full provisioning pipeline ───────────────────────
+            // TenantProvisioningService handles:
+            //   a) CREATE SCHEMA IF NOT EXISTS
+            //   b) EF Core migrations on the new schema
+            //   c) Code table copy from master (VatRate, Currency, etc.)
+            //   d) Issuer record creation in tenant schema
+            //   e) Default number sequences for Invoice and CreditNote
+            //   f) Marks IsProvisioned = true with ProvisionedAt timestamp
             _logger.LogInformation(
-                "Step 5: Updated CompanySystemSettings for company {CompanyId} with Azure SQL connection",
-                request.CompanyId);
+                "Running TenantProvisioningService for company {CompanyId} (schema: {SchemaName})",
+                request.CompanyId, settings.SchemaName);
 
-            // ── Step 6: Run full provisioning (migrations, code tables, issuer, sequences) ─
-            _logger.LogInformation("Step 6: Running TenantProvisioningService for company {CompanyId}", request.CompanyId);
             await _provisioningService.ProvisionTenantAsync(request.CompanyId, cancellationToken);
 
-            _logger.LogInformation(
-                "Full Azure tenant provisioning completed for company {CompanyId} (database: {DatabaseName})",
-                request.CompanyId, request.DatabaseName);
+            // Reload settings after provisioning (IsProvisioned/ProvisionedAt may have changed)
+            await _masterContext.Entry(settings).ReloadAsync(cancellationToken);
 
-            return Ok(dbStatus);
+            _logger.LogInformation(
+                "Tenant schema provisioning completed for company {CompanyId} (schema: {SchemaName})",
+                request.CompanyId, settings.SchemaName);
+
+            // Map the updated settings to the response DTO
+            return Ok(MapToSchemaStatusDto(settings));
         }
         catch (InvalidOperationException ex)
         {
@@ -173,7 +169,7 @@ public class AzureOperationController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex,
-                "Unexpected error during Azure tenant provisioning for company {CompanyId}",
+                "Unexpected error during tenant schema provisioning for company {CompanyId}",
                 request.CompanyId);
             return StatusCode(StatusCodes.Status500InternalServerError,
                 new { message = "An unexpected error occurred during tenant provisioning. Check server logs." });
@@ -181,149 +177,245 @@ public class AzureOperationController : ControllerBase
     }
 
     /// <summary>
-    /// Creates a standalone Azure SQL database without running the full provisioning pipeline.
-    /// Use this when you need to create the database first and provision later (e.g., for testing).
-    /// For full onboarding, use POST /api/azure-operation/provision-tenant instead.
+    /// Lists all tenant schemas registered in the master database.
+    /// Returns CompanySystemSettings data for every company, including
+    /// provisioned, unprovisioned, active, and inactive tenants.
+    ///
+    /// This is useful for SysAdmin dashboards to see the overall
+    /// multi-tenant landscape at a glance.
     /// </summary>
-    /// <param name="request">Database creation parameters</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Azure database status DTO</returns>
-    /// <response code="201">Database created successfully</response>
-    /// <response code="400">Invalid request parameters</response>
-    /// <response code="500">Azure ARM API error</response>
-    [HttpPost("create-database")]
-    [ProducesResponseType(typeof(AzureDatabaseStatusDto), StatusCodes.Status201Created)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    /// <param name="cancellationToken">Cancellation token for async operations</param>
+    /// <returns>List of TenantSchemaStatusDto for all registered companies</returns>
+    /// <response code="200">Returns list of tenant schema statuses</response>
+    /// <response code="500">Database query error</response>
+    [HttpGet("list")]
+    [ProducesResponseType(typeof(List<TenantSchemaStatusDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-    public async Task<ActionResult<AzureDatabaseStatusDto>> CreateDatabase(
-        [FromBody] AzureCreateDatabaseRequest request,
+    public async Task<ActionResult<List<TenantSchemaStatusDto>>> ListTenantSchemas(
         CancellationToken cancellationToken = default)
     {
         try
         {
+            // Load all CompanySystemSettings with their Company navigation property.
+            // AsNoTracking() is used because we only need read access here.
+            var allSettings = await _masterContext.CompanySystemSettings
+                .AsNoTracking()
+                .Include(s => s.Company)
+                .OrderBy(s => s.CompanyId)
+                .ToListAsync(cancellationToken);
+
+            // Map each settings record to the response DTO
+            var result = allSettings.Select(MapToSchemaStatusDto).ToList();
+
+            _logger.LogInformation("Listed {Count} tenant schemas", result.Count);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error listing tenant schemas");
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { message = "An error occurred while listing tenant schemas." });
+        }
+    }
+
+    /// <summary>
+    /// Gets the current status of a specific tenant schema by company ID.
+    /// Returns provisioning state, activity status, and schema metadata.
+    ///
+    /// Useful for checking if a specific tenant has been provisioned
+    /// and is ready to accept connections.
+    /// </summary>
+    /// <param name="companyId">The master DB company ID to check</param>
+    /// <param name="cancellationToken">Cancellation token for async operations</param>
+    /// <returns>TenantSchemaStatusDto for the specified company</returns>
+    /// <response code="200">Returns tenant schema status</response>
+    /// <response code="404">CompanySystemSettings not found for the given company ID</response>
+    /// <response code="500">Database query error</response>
+    [HttpGet("status/{companyId:long}")]
+    [ProducesResponseType(typeof(TenantSchemaStatusDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<TenantSchemaStatusDto>> GetTenantSchemaStatus(
+        long companyId,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            // Look up the tenant settings by company ID (not by schema name)
+            var settings = await _masterContext.CompanySystemSettings
+                .AsNoTracking()
+                .Include(s => s.Company)
+                .FirstOrDefaultAsync(s => s.CompanyId == companyId, cancellationToken);
+
+            if (settings == null)
+            {
+                return NotFound(new
+                {
+                    message = $"No CompanySystemSettings found for company {companyId}."
+                });
+            }
+
+            return Ok(MapToSchemaStatusDto(settings));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting tenant schema status for company {CompanyId}", companyId);
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { message = $"An error occurred while checking tenant schema status for company {companyId}." });
+        }
+    }
+
+    /// <summary>
+    /// Drops a tenant schema (CASCADE) and marks the tenant as unprovisioned.
+    ///
+    /// WARNING: This is a DESTRUCTIVE operation. The schema and ALL its data
+    /// (tables, views, sequences, functions) will be permanently removed.
+    /// PostgreSQL DROP SCHEMA ... CASCADE removes everything in the schema.
+    ///
+    /// After dropping, CompanySystemSettings is updated:
+    /// - IsProvisioned = false
+    /// - IsActive = false
+    /// - SchemaName is preserved (for audit trail)
+    ///
+    /// The CompanySystemSettings record itself is NOT deleted — the company
+    /// can be re-provisioned later if needed.
+    /// </summary>
+    /// <param name="companyId">The master DB company ID whose schema to drop</param>
+    /// <param name="cancellationToken">Cancellation token for async operations</param>
+    /// <returns>No content on success</returns>
+    /// <response code="204">Schema dropped and tenant marked as unprovisioned</response>
+    /// <response code="404">CompanySystemSettings not found for the given company ID</response>
+    /// <response code="400">Schema name is empty (nothing to drop)</response>
+    /// <response code="500">Schema drop or database error</response>
+    [HttpDelete("{companyId:long}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> DeleteTenantSchema(
+        long companyId,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            // ── Step 1: Find the tenant's settings in master DB ──────────────
+            var settings = await _masterContext.CompanySystemSettings
+                .FirstOrDefaultAsync(s => s.CompanyId == companyId, cancellationToken);
+
+            if (settings == null)
+            {
+                return NotFound(new
+                {
+                    message = $"No CompanySystemSettings found for company {companyId}."
+                });
+            }
+
+            if (string.IsNullOrWhiteSpace(settings.SchemaName))
+            {
+                return BadRequest(new
+                {
+                    message = $"Company {companyId} has no schema name configured — nothing to drop."
+                });
+            }
+
+            _logger.LogWarning(
+                "SysAdmin requested deletion of tenant schema '{SchemaName}' for company {CompanyId} " +
+                "— this is a DESTRUCTIVE operation",
+                settings.SchemaName, companyId);
+
+            // ── Step 2: Drop the PostgreSQL schema with CASCADE ──────────────
+            // CASCADE removes all objects in the schema (tables, views, sequences, etc.).
+            // We use a raw NpgsqlConnection to execute DDL that EF Core doesn't support.
+            var connectionString = _configuration.GetConnectionString("MasterConnection")
+                ?? throw new InvalidOperationException(
+                    "MasterConnection connection string is not configured.");
+
+            await using var connection = new NpgsqlConnection(connectionString);
+            await connection.OpenAsync(cancellationToken);
+
+            // Use a parameterized-safe approach: schema names can't use @parameters in DDL,
+            // but we validate the schema name format (alphanumeric + underscore only)
+            // and quote it with double quotes to prevent SQL injection.
+            var schemaName = settings.SchemaName;
+
+            // Validate schema name format — extra safety layer against SQL injection
+            // (CompanySystemSettings.SchemaName should already be validated at creation time)
+            if (!System.Text.RegularExpressions.Regex.IsMatch(schemaName, @"^[a-z][a-z0-9_]*$"))
+            {
+                return BadRequest(new
+                {
+                    message = $"Schema name '{schemaName}' has invalid format. " +
+                              "Must start with lowercase letter and contain only lowercase letters, numbers, and underscores."
+                });
+            }
+
+            // DROP SCHEMA IF EXISTS ... CASCADE:
+            // - IF EXISTS prevents errors if schema was already manually dropped
+            // - CASCADE removes all dependent objects (tables, views, sequences, etc.)
+            // - Schema name is quoted with double quotes for PostgreSQL identifier safety
+            await using var cmd = connection.CreateCommand();
+            cmd.CommandText = $"DROP SCHEMA IF EXISTS \"{schemaName}\" CASCADE";
+            await cmd.ExecuteNonQueryAsync(cancellationToken);
+
             _logger.LogInformation(
-                "Creating standalone Azure SQL database '{DatabaseName}' (FreeTier={UseFreeOffer})",
-                request.DatabaseName, request.UseFreeOffer);
+                "Dropped PostgreSQL schema '{SchemaName}' for company {CompanyId}",
+                schemaName, companyId);
 
-            var result = await _azureSqlService.CreateDatabaseAsync(request, cancellationToken);
+            // ── Step 3: Update CompanySystemSettings in master DB ─────────────
+            // Mark tenant as unprovisioned and inactive.
+            // SchemaName is preserved so SysAdmin can see which schema was dropped.
+            settings.IsProvisioned = false;
+            settings.IsActive = false;
+            settings.UpdatedAt = DateTime.UtcNow;
+            await _masterContext.SaveChangesAsync(cancellationToken);
 
-            return StatusCode(StatusCodes.Status201Created, result);
+            _logger.LogInformation(
+                "Marked company {CompanyId} as unprovisioned after schema drop", companyId);
+
+            return NoContent();
         }
         catch (InvalidOperationException ex)
         {
-            _logger.LogWarning(ex, "Failed to create database '{DatabaseName}': {Message}",
-                request.DatabaseName, ex.Message);
+            _logger.LogWarning(ex, "Schema deletion failed for company {CompanyId}: {Message}",
+                companyId, ex.Message);
             return BadRequest(new { message = ex.Message });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Unexpected error creating Azure SQL database '{DatabaseName}'",
-                request.DatabaseName);
+            _logger.LogError(ex,
+                "Unexpected error during tenant schema deletion for company {CompanyId}",
+                companyId);
             return StatusCode(StatusCodes.Status500InternalServerError,
-                new { message = "An error occurred while creating the Azure SQL database." });
+                new { message = "An unexpected error occurred while dropping the tenant schema. Check server logs." });
         }
     }
+
+    #region Private helpers
 
     /// <summary>
-    /// Lists all databases on the configured Azure SQL Server.
-    /// Returns both system databases (master, tempdb) and tenant databases.
+    /// Maps a CompanySystemSettings entity to a TenantSchemaStatusDto for API responses.
+    /// Extracts only the properties relevant for SysAdmin monitoring of tenant schemas.
     /// </summary>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>List of all Azure SQL database statuses</returns>
-    /// <response code="200">Returns list of databases</response>
-    /// <response code="500">Azure ARM API error</response>
-    [HttpGet("databases")]
-    [ProducesResponseType(typeof(List<AzureDatabaseStatusDto>), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-    public async Task<ActionResult<List<AzureDatabaseStatusDto>>> ListDatabases(
-        CancellationToken cancellationToken = default)
+    /// <param name="settings">The CompanySystemSettings entity (with Company navigation loaded)</param>
+    /// <returns>A TenantSchemaStatusDto populated from the entity</returns>
+    private static TenantSchemaStatusDto MapToSchemaStatusDto(
+        InvoiceApi.Domain.Entities.CompanySystemSettings settings)
     {
-        try
+        return new TenantSchemaStatusDto
         {
-            var databases = await _azureSqlService.ListDatabasesAsync(cancellationToken);
-            return Ok(databases);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error listing Azure SQL databases");
-            return StatusCode(StatusCodes.Status500InternalServerError,
-                new { message = "An error occurred while listing Azure SQL databases." });
-        }
+            SchemaName = settings.SchemaName,
+            CompanyId = settings.CompanyId,
+            CompanyName = settings.Company?.CompanyName ?? "Unknown",
+            IsProvisioned = settings.IsProvisioned,
+            IsActive = settings.IsActive,
+            CreatedAt = settings.ProvisionedAt.HasValue
+                ? new DateTimeOffset(settings.ProvisionedAt.Value, TimeSpan.Zero)
+                : null,
+            LastMigratedAt = settings.UpdatedAt.HasValue
+                ? new DateTimeOffset(settings.UpdatedAt.Value, TimeSpan.Zero)
+                : null
+        };
     }
 
-    /// <summary>
-    /// Gets the current status and configuration of a specific Azure SQL database.
-    /// Useful for checking if a database is online, paused, or in a transition state.
-    /// </summary>
-    /// <param name="name">Database name to check</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Database status DTO</returns>
-    /// <response code="200">Returns database status</response>
-    /// <response code="404">Database not found</response>
-    /// <response code="500">Azure ARM API error</response>
-    [HttpGet("databases/{name}/status")]
-    [ProducesResponseType(typeof(AzureDatabaseStatusDto), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-    public async Task<ActionResult<AzureDatabaseStatusDto>> GetDatabaseStatus(
-        string name,
-        CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            var status = await _azureSqlService.GetDatabaseStatusAsync(name, cancellationToken);
-
-            if (status == null)
-                return NotFound(new { message = $"Database '{name}' not found on the Azure SQL Server." });
-
-            return Ok(status);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error getting status of Azure SQL database '{DatabaseName}'", name);
-            return StatusCode(StatusCodes.Status500InternalServerError,
-                new { message = $"An error occurred while checking database '{name}'." });
-        }
-    }
-
-    /// <summary>
-    /// Deletes an Azure SQL database from the server.
-    /// WARNING: This is a DESTRUCTIVE operation. The database and all data will be permanently removed.
-    /// Azure maintains automatic backups for point-in-time restore up to the configured retention period.
-    ///
-    /// This does NOT update CompanySystemSettings — the SysAdmin should manually deactivate
-    /// the tenant via CompanyController before deleting the database.
-    /// </summary>
-    /// <param name="name">Database name to delete</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>No content on success</returns>
-    /// <response code="204">Database deleted successfully</response>
-    /// <response code="404">Database not found</response>
-    /// <response code="500">Azure ARM API error</response>
-    [HttpDelete("databases/{name}")]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-    public async Task<IActionResult> DeleteDatabase(
-        string name,
-        CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            _logger.LogWarning("SysAdmin requested deletion of Azure SQL database '{DatabaseName}'", name);
-
-            var deleted = await _azureSqlService.DeleteDatabaseAsync(name, cancellationToken);
-
-            if (!deleted)
-                return NotFound(new { message = $"Database '{name}' not found on the Azure SQL Server." });
-
-            return NoContent();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error deleting Azure SQL database '{DatabaseName}'", name);
-            return StatusCode(StatusCodes.Status500InternalServerError,
-                new { message = $"An error occurred while deleting database '{name}'." });
-        }
-    }
+    #endregion
 }

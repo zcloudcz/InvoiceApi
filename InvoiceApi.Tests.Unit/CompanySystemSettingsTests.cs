@@ -10,8 +10,11 @@ namespace InvoiceApi.Tests.Unit;
 /// constraints, and relationships in the MasterDbContext.
 ///
 /// CompanySystemSettings stores multi-tenant infrastructure config:
-/// database name, connection string, provisioning status, etc.
+/// schema name, provisioning status, etc.
 /// Each company (Client with IsIssuer = true) gets exactly one record.
+///
+/// Architecture: PostgreSQL multi-schema — all tenants share one database,
+/// each tenant gets its own schema (e.g., "tenant_42").
 /// </summary>
 public class CompanySystemSettingsTests : IDisposable
 {
@@ -57,8 +60,7 @@ public class CompanySystemSettingsTests : IDisposable
         var settings = new CompanySystemSettings
         {
             CompanyId = 1,
-            DatabaseName = "invoiceapi_tenant_1",
-            ConnectionString = null,
+            SchemaName = "tenant_1",
             IsProvisioned = true,
             IsActive = true,
             ProvisionedAt = DateTime.UtcNow,
@@ -74,7 +76,7 @@ public class CompanySystemSettingsTests : IDisposable
         var saved = await _context.CompanySystemSettings
             .FirstOrDefaultAsync(s => s.CompanyId == 1);
         saved.ShouldNotBeNull();
-        saved!.DatabaseName.ShouldBe("invoiceapi_tenant_1");
+        saved!.SchemaName.ShouldBe("tenant_1");
         saved.IsProvisioned.ShouldBeTrue();
         saved.IsActive.ShouldBeTrue();
         saved.MaxUsers.ShouldBe(10);
@@ -90,7 +92,7 @@ public class CompanySystemSettingsTests : IDisposable
         var settings = new CompanySystemSettings
         {
             CompanyId = 2,
-            DatabaseName = "invoiceapi_tenant_2"
+            SchemaName = "tenant_2"
         };
 
         // Act
@@ -103,7 +105,6 @@ public class CompanySystemSettingsTests : IDisposable
         saved.ShouldNotBeNull();
         saved!.IsActive.ShouldBeTrue(); // Default: active
         saved.IsProvisioned.ShouldBeFalse(); // Default: not provisioned
-        saved.ConnectionString.ShouldBeNull(); // Default: use template
         saved.ProvisionedAt.ShouldBeNull(); // Default: not provisioned
         saved.MaxUsers.ShouldBeNull(); // Default: unlimited
         saved.AdminNotes.ShouldBeNull(); // Default: no notes
@@ -142,14 +143,14 @@ public class CompanySystemSettingsTests : IDisposable
     }
 
     [Fact]
-    public void CompanySystemSettings_DatabaseName_IsRequired()
+    public void CompanySystemSettings_SchemaName_IsRequired()
     {
-        // Verify that DatabaseName is configured as required
+        // Verify that SchemaName is configured as required in the EF model
         var entityType = _context.Model.FindEntityType(typeof(CompanySystemSettings));
-        var databaseNameProp = entityType?.FindProperty("DatabaseName");
+        var schemaNameProp = entityType?.FindProperty("SchemaName");
 
-        databaseNameProp.ShouldNotBeNull();
-        databaseNameProp!.IsNullable.ShouldBeFalse();
+        schemaNameProp.ShouldNotBeNull();
+        schemaNameProp!.IsNullable.ShouldBeFalse();
     }
 
     [Fact]

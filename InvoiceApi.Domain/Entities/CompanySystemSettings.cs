@@ -4,14 +4,17 @@ namespace InvoiceApi.Domain.Entities;
 
 /// <summary>
 /// Stores multi-tenant infrastructure configuration for each company (tenant).
-/// Each company that uses the system gets its own row here with database name,
-/// connection details, and provisioning status.
+/// Each company that uses the system gets its own row here with schema name
+/// and provisioning status.
 ///
-/// This entity lives in the MASTER database — it's used to resolve which
-/// tenant database a request should be routed to based on the JWT CompanyId claim.
+/// This entity lives in the MASTER database (public schema) — it's used to resolve
+/// which tenant schema a request should be routed to based on the JWT CompanyId claim.
+///
+/// Architecture: Single PostgreSQL database with schema-per-tenant isolation.
+/// Master data lives in the "public" schema, each tenant gets "tenant_{companyId}" schema.
 ///
 /// Lifecycle: Company created → CompanySystemSettings added → Provision triggered →
-/// Database created → Migrations applied → Code tables copied → IsProvisioned = true.
+/// Schema created → Migrations applied → Code tables copied → IsProvisioned = true.
 /// </summary>
 public class CompanySystemSettings : BaseEntity
 {
@@ -28,29 +31,23 @@ public class CompanySystemSettings : BaseEntity
     public Client Company { get; set; } = null!;
 
     /// <summary>
-    /// PostgreSQL database name for this tenant.
-    /// Convention: "invoiceapi_tenant_{companyId}" (e.g., "invoiceapi_tenant_42").
+    /// PostgreSQL schema name for this tenant within the shared database.
+    /// Convention: "tenant_{companyId}" (e.g., "tenant_42").
     /// Set during provisioning — immutable after that.
+    /// The schema isolates all tenant data (invoices, clients, etc.) from other tenants.
     /// </summary>
-    public string DatabaseName { get; set; } = string.Empty;
+    public string SchemaName { get; set; } = string.Empty;
 
     /// <summary>
-    /// Optional full connection string override for this tenant.
-    /// If null, the system builds the connection string from the master template
-    /// by replacing the database name. Use this only for tenants on different servers.
-    /// </summary>
-    public string? ConnectionString { get; set; }
-
-    /// <summary>
-    /// When was the database provisioned (created + migrated + seeded)?
-    /// Null means the database hasn't been provisioned yet.
+    /// When was the tenant schema provisioned (created + migrated + seeded)?
+    /// Null means the schema hasn't been provisioned yet.
     /// </summary>
     public DateTime? ProvisionedAt { get; set; }
 
     /// <summary>
-    /// Has the tenant database been provisioned?
-    /// true = database exists and has been migrated + seeded.
-    /// false = company registered but database not yet created.
+    /// Has the tenant schema been provisioned?
+    /// true = schema exists and has been migrated + seeded.
+    /// false = company registered but schema not yet created.
     /// </summary>
     public bool IsProvisioned { get; set; }
 

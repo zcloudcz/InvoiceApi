@@ -4,19 +4,13 @@ namespace InvoiceApi.Contracts.Dto.CompanySettings;
 
 /// <summary>
 /// DTO for updating an existing CompanySystemSettings record.
-/// Only updatable fields are exposed — database name and provisioning status
+/// Only updatable fields are exposed — schema name and provisioning status
 /// cannot be changed after provisioning (they're managed by the provisioning service).
+/// In the PostgreSQL multi-schema architecture, the schema is created during provisioning
+/// and is immutable afterward.
 /// </summary>
 public class UpdateCompanySystemSettingsDto
 {
-    /// <summary>
-    /// Optional custom connection string override.
-    /// Set to null to use the auto-generated connection string from master template.
-    /// WARNING: Changing this on a provisioned tenant can break access.
-    /// </summary>
-    [StringLength(1000)]
-    public string? ConnectionString { get; set; }
-
     /// <summary>
     /// Maximum number of users allowed for this tenant. Null = unlimited.
     /// </summary>

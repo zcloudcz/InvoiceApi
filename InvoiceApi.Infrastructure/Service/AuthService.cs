@@ -217,12 +217,13 @@ public class AuthService : IAuthService
         _context.Client.Add(client);
         await _context.SaveChangesAsync(ct);
 
-        // 4. Create CompanySystemSettings — tenant database will be provisioned after email verification
-        var dbName = $"invoiceapi_tenant_{client.Id}";
+        // 4. Create CompanySystemSettings — tenant schema will be provisioned after email verification.
+        // Schema name follows PostgreSQL naming convention: "tenant_{companyId}".
+        var schemaName = $"tenant_{client.Id}";
         var companySettings = new CompanySystemSettings
         {
             CompanyId = client.Id,
-            DatabaseName = dbName,
+            SchemaName = schemaName,
             IsProvisioned = false,
             IsActive = true
         };

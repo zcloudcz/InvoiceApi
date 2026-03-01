@@ -9,13 +9,15 @@
 
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.1" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.0" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="NSubstitute" Version="5.3.0" />
     <PackageReference Include="Shouldly" Version="4.3.0" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
     <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.2" />
+    <!-- Localization — needed for SharedResource localization unit tests -->
+    <PackageReference Include="Microsoft.Extensions.Localization" Version="10.0.2" />
   </ItemGroup>
 
   <ItemGroup>
@@ -27,6 +29,7 @@
     <ProjectReference Include="..\InvoiceApi.Application\InvoiceApi.Application.csproj" />
     <ProjectReference Include="..\InvoiceApi.Infrastructure\InvoiceApi.Infrastructure.csproj" />
     <ProjectReference Include="..\InvoiceApi.API\InvoiceApi.API.csproj" />
+    <ProjectReference Include="..\InvoiceApi.UI.Shared\InvoiceApi.UI.Shared.csproj" />
   </ItemGroup>
 
 </Project>

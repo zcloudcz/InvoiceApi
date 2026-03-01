@@ -3,56 +3,35 @@ using System.ComponentModel.DataAnnotations;
 namespace InvoiceApi.Contracts.Dto.AzureOperation;
 
 /// <summary>
-/// Request DTO for creating an Azure SQL database via the Azure Resource Manager API.
-/// Used by the AzureOperationController to provision a new tenant database on Azure SQL Server.
+/// Request DTO for creating a new tenant schema in the shared PostgreSQL database.
+/// Used by the tenant provisioning controller to set up an isolated schema for a new tenant.
 ///
-/// The free tier (GP_S_Gen5) offers 32GB storage and 100K vCore seconds/month — ideal for
-/// small tenants. Up to 10 free databases per Azure subscription are allowed.
+/// In the PostgreSQL single-database multi-schema architecture, each tenant gets their own
+/// schema (e.g., "tenant_42") within a shared database. This replaces the previous approach
+/// of creating separate Azure SQL databases per tenant.
 ///
-/// When UseFreeOffer is true, the database is created with GeneralPurpose Serverless Gen5 SKU
-/// and auto-pause is enabled by default to stay within the free usage limits.
+/// The schema name is derived from the CompanyId and follows PostgreSQL naming conventions:
+/// lowercase letters, digits, and underscores only (max 63 characters per PostgreSQL limit).
 /// </summary>
-public class AzureCreateDatabaseRequest
+public class CreateTenantSchemaRequest
 {
     /// <summary>
-    /// Name of the tenant database to create on Azure SQL Server.
-    /// Must contain only alphanumeric characters and underscores (e.g., "invoiceapi_tenant_42").
-    /// This becomes the Initial Catalog in the connection string.
+    /// Name of the PostgreSQL schema to create for the tenant (e.g., "tenant_42").
+    /// Must contain only lowercase alphanumeric characters and underscores.
+    /// This becomes the search_path for tenant-scoped queries.
+    /// PostgreSQL schema names are limited to 63 characters (NAMEDATALEN - 1).
     /// </summary>
-    [Required(ErrorMessage = "Database name is required.")]
-    [StringLength(128, MinimumLength = 1, ErrorMessage = "Database name must be between 1 and 128 characters.")]
-    [RegularExpression(@"^[a-zA-Z0-9_]+$", ErrorMessage = "Database name must contain only letters, numbers, and underscores.")]
-    public string DatabaseName { get; set; } = string.Empty;
+    [Required(ErrorMessage = "Schema name is required.")]
+    [StringLength(63, MinimumLength = 1, ErrorMessage = "Schema name must be between 1 and 63 characters.")]
+    [RegularExpression(@"^[a-z][a-z0-9_]*$", ErrorMessage = "Schema name must start with a lowercase letter and contain only lowercase letters, numbers, and underscores.")]
+    public string SchemaName { get; set; } = string.Empty;
 
     /// <summary>
-    /// The master DB company ID to link this Azure SQL database to.
+    /// The master DB company ID to link this tenant schema to.
     /// Must reference an existing Client (IsIssuer = true) with CompanySystemSettings.
+    /// Each company gets exactly one tenant schema in the shared database.
     /// </summary>
     [Required(ErrorMessage = "Company ID is required.")]
     [Range(1, long.MaxValue, ErrorMessage = "Company ID must be a positive number.")]
     public long CompanyId { get; set; }
-
-    /// <summary>
-    /// Whether to use the Azure SQL free tier offer (GP_S_Gen5, 100K vCore seconds/month).
-    /// Defaults to true. Set to false for paid tiers with guaranteed performance.
-    /// Azure allows up to 10 free databases per subscription.
-    /// </summary>
-    public bool UseFreeOffer { get; set; } = true;
-
-    /// <summary>
-    /// Behavior when the free tier monthly limit (100K vCore seconds) is exhausted.
-    /// - "AutoPause": database auto-pauses until the next billing cycle (default, no charges)
-    /// - "BillOverUsage": database continues running and you pay for excess usage
-    /// Only applies when UseFreeOffer is true.
-    /// </summary>
-    [RegularExpression(@"^(AutoPause|BillOverUsage)$", ErrorMessage = "Must be 'AutoPause' or 'BillOverUsage'.")]
-    public string? FreeLimitExhaustionBehavior { get; set; } = "AutoPause";
-
-    /// <summary>
-    /// Maximum size of the database in bytes. Defaults to 1GB (1073741824 bytes).
-    /// 1GB is sufficient for small tenants and keeps costs low on the free tier.
-    /// For paid tiers, this can be increased up to several TB depending on the SKU.
-    /// </summary>
-    [Range(1073741824, long.MaxValue, ErrorMessage = "Max size must be at least 1GB (1073741824 bytes).")]
-    public long? MaxSizeBytes { get; set; } = 1073741824; // 1 GB
 }

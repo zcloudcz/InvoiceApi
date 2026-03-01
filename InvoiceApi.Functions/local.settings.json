@@ -13,7 +13,6 @@
     "CorsSettings__AllowedOrigins__4": "https://localhost:7047"
   },
   "ConnectionStrings": {
-    "MasterConnection": "Server=localhost;Database=invoiceapi_master;Trusted_Connection=true;TrustServerCertificate=true",
-    "TenantTemplateConnection": "Server=localhost;Database=invoiceapi_tenant_template;Trusted_Connection=true;TrustServerCertificate=true"
+    "DefaultConnection": "Host=localhost;Port=5432;Database=invoiceapi;Username=invoiceapi;Password=invoiceapi_dev"
   }
 }

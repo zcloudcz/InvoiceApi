@@ -12,7 +12,10 @@ namespace InvoiceApi.Tests.Unit;
 
 /// <summary>
 /// Tests for TenantDbContextFactory — creates TenantDbContext instances
-/// connected to the correct tenant database based on CompanySystemSettings.
+/// connected to the correct tenant schema based on CompanySystemSettings.
+///
+/// Architecture: PostgreSQL multi-schema — all tenants share one database,
+/// each tenant gets its own schema (e.g., "tenant_42").
 ///
 /// Test scenarios:
 /// - Valid provisioned + active tenant → creates context successfully
@@ -20,8 +23,7 @@ namespace InvoiceApi.Tests.Unit;
 /// - Inactive (suspended) tenant → throws InvalidOperationException
 /// - No CompanySystemSettings record → throws InvalidOperationException
 /// - No CompanyId in request → throws InvalidOperationException
-/// - Connection string override → uses custom connection string
-/// - GetConnectionString → returns correct connection string
+/// - GetConnectionString → returns shared connection string
 /// </summary>
 public class TenantDbContextFactoryTests : IDisposable
 {
@@ -42,10 +44,10 @@ public class TenantDbContextFactoryTests : IDisposable
         _tenantResolver = Substitute.For<ITenantResolver>();
         _logger = Substitute.For<ILogger<TenantDbContextFactory>>();
 
-        // Configuration with a SQL Server master connection string template
+        // Configuration with a PostgreSQL connection string (shared database for all schemas)
         var configData = new Dictionary<string, string?>
         {
-            ["ConnectionStrings:MasterConnection"] = "Server=localhost;Database=invoiceapi_master;User Id=sa;Password=YourStrong!Passw0rd;TrustServerCertificate=true"
+            ["ConnectionStrings:DefaultConnection"] = "Host=localhost;Database=invoiceapi;Username=invoiceapi;Password=YourStrong!Passw0rd"
         };
         _configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(configData)
@@ -55,13 +57,14 @@ public class TenantDbContextFactoryTests : IDisposable
     /// <summary>
     /// Seeds a company (Client with IsIssuer = true) and its CompanySystemSettings
     /// into the in-memory master database for testing.
+    /// In the multi-schema architecture, SchemaName identifies the tenant's schema
+    /// within the shared PostgreSQL database.
     /// </summary>
     private async Task SeedCompanyAsync(
         long companyId,
-        string databaseName,
+        string schemaName,
         bool isProvisioned = true,
-        bool isActive = true,
-        string? connectionString = null)
+        bool isActive = true)
     {
         var client = new Client
         {
@@ -81,10 +84,9 @@ public class TenantDbContextFactoryTests : IDisposable
         var settings = new CompanySystemSettings
         {
             CompanyId = companyId,
-            DatabaseName = databaseName,
+            SchemaName = schemaName,
             IsProvisioned = isProvisioned,
             IsActive = isActive,
-            ConnectionString = connectionString,
             ProvisionedAt = isProvisioned ? DateTime.UtcNow : null
         };
 
@@ -129,8 +131,8 @@ public class TenantDbContextFactoryTests : IDisposable
     [Fact]
     public async Task CreateContextForCompanyAsync_NotProvisioned_ThrowsInvalidOperationException()
     {
-        // Arrange — company exists but database not yet provisioned
-        await SeedCompanyAsync(companyId: 10, databaseName: "invoiceapi_tenant_10", isProvisioned: false);
+        // Arrange — company exists but schema not yet provisioned
+        await SeedCompanyAsync(companyId: 10, schemaName: "tenant_10", isProvisioned: false);
         var factory = CreateFactory();
 
         // Act & Assert
@@ -143,7 +145,7 @@ public class TenantDbContextFactoryTests : IDisposable
     public async Task CreateContextForCompanyAsync_Inactive_ThrowsInvalidOperationException()
     {
         // Arrange — company is provisioned but suspended (inactive)
-        await SeedCompanyAsync(companyId: 20, databaseName: "invoiceapi_tenant_20", isProvisioned: true, isActive: false);
+        await SeedCompanyAsync(companyId: 20, schemaName: "tenant_20", isProvisioned: true, isActive: false);
         var factory = CreateFactory();
 
         // Act & Assert
@@ -166,54 +168,54 @@ public class TenantDbContextFactoryTests : IDisposable
     }
 
     [Fact]
-    public async Task GetConnectionStringAsync_ValidCompany_BuildsFromTemplate()
+    public async Task GetConnectionStringAsync_ValidCompany_ReturnsSharedConnectionString()
     {
-        // Arrange — company with standard database name (no custom connection string)
-        await SeedCompanyAsync(companyId: 30, databaseName: "invoiceapi_tenant_30");
+        // Arrange — company with standard schema name.
+        // In multi-schema architecture, all tenants share the same connection string
+        // (only the schema differs, not the database/server).
+        await SeedCompanyAsync(companyId: 30, schemaName: "tenant_30");
         var factory = CreateFactory();
 
         // Act
         var connectionString = await factory.GetConnectionStringAsync(30);
 
-        // Assert — should use the master template but with tenant's database name (Initial Catalog)
+        // Assert — should return the shared DefaultConnection string
         connectionString.ShouldNotBeNull();
-        connectionString.ShouldContain("invoiceapi_tenant_30");
         connectionString.ShouldContain("localhost");
-    }
-
-    [Fact]
-    public async Task GetConnectionStringAsync_CustomConnectionString_ReturnsCustom()
-    {
-        // Arrange — company with explicit connection string override (different server)
-        var customConn = "Server=otherserver;Database=custom_db;User Id=user;Password=pass;TrustServerCertificate=true";
-        await SeedCompanyAsync(companyId: 40, databaseName: "invoiceapi_tenant_40", connectionString: customConn);
-        var factory = CreateFactory();
-
-        // Act
-        var connectionString = await factory.GetConnectionStringAsync(40);
-
-        // Assert — should use the custom connection string, not the template
-        connectionString.ShouldBe(customConn);
+        connectionString.ShouldContain("invoiceapi");
     }
 
     [Fact]
     public async Task CreateContextAsync_ValidRequest_UsesResolverCompanyId()
     {
         // Arrange — resolver returns CompanyId = 50
-        await SeedCompanyAsync(companyId: 50, databaseName: "invoiceapi_tenant_50");
+        await SeedCompanyAsync(companyId: 50, schemaName: "tenant_50");
         _tenantResolver.GetCurrentCompanyId().Returns(50L);
         var factory = CreateFactory();
 
-        // Act — CreateContextAsync should internally call CreateContextForCompanyAsync(50)
-        // This will try to create a SQL Server connection which won't work in-memory tests,
-        // but the factory validates provisioning/active status before creating the context.
-        // Since we're testing the validation logic, we expect it to get past validation
-        // and fail on the actual SQL Server connection (which proves our logic works).
-        // For a full integration test, we'd need a real SQL Server instance.
-
-        // We verify the validation passes by checking GetConnectionStringAsync instead
+        // Act — CreateContextAsync should internally call CreateContextForCompanyAsync(50).
+        // In multi-schema architecture, this creates a TenantDbContext with Schema = "tenant_50".
+        // The factory validates provisioning/active status before creating the context.
+        // We verify the validation passes by checking GetConnectionStringAsync instead,
+        // since actually creating a context would require a real PostgreSQL connection.
         var connString = await factory.GetConnectionStringAsync(50);
-        connString.ShouldContain("invoiceapi_tenant_50");
+        connString.ShouldContain("invoiceapi");
+    }
+
+    [Fact]
+    public void CreateTenantContext_SetsSchemaProperty()
+    {
+        // Arrange
+        var factory = CreateFactory();
+
+        // Act — directly test the CreateTenantContext method that creates
+        // a TenantDbContext with the correct schema set
+        var context = factory.CreateTenantContext("tenant_99");
+
+        // Assert — the Schema property should be set on the context
+        context.ShouldNotBeNull();
+        context.Schema.ShouldBe("tenant_99");
+        context.Dispose();
     }
 
     public void Dispose()

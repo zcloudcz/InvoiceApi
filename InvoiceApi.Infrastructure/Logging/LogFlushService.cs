@@ -1,5 +1,6 @@
 using InvoiceApi.Domain.Entities;
-using Microsoft.Data.SqlClient;
+// PostgreSQL: Using Npgsql instead of Microsoft.Data.SqlClient for PostgreSQL connectivity
+using Npgsql;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -12,7 +13,7 @@ namespace InvoiceApi.Infrastructure.Logging;
 /// Design:
 /// - Runs every 5 seconds (configurable via FlushIntervalSeconds)
 /// - Drains ALL entries from DatabaseLoggerProvider.LogQueue in one batch
-/// - Uses raw ADO.NET (SqlConnection) instead of EF Core to avoid circular logging dependency
+/// - Uses raw ADO.NET (NpgsqlConnection) instead of EF Core to avoid circular logging dependency
 ///   (EF Core DbContext operations trigger logging → would re-enqueue → infinite loop)
 /// - On shutdown, performs a final flush to persist any remaining log entries
 ///
@@ -28,8 +29,9 @@ public class LogFlushService : BackgroundService
 
     public LogFlushService(IConfiguration configuration, ILogger<LogFlushService> logger)
     {
-        _connectionString = configuration.GetConnectionString("MasterConnection")
-            ?? throw new InvalidOperationException("MasterConnection string not configured for LogFlushService.");
+        // PostgreSQL: Changed from "MasterConnection" to "DefaultConnection" for PostgreSQL migration
+        _connectionString = configuration.GetConnectionString("DefaultConnection")
+            ?? throw new InvalidOperationException("DefaultConnection string not configured for LogFlushService.");
         _flushInterval = TimeSpan.FromSeconds(20);
         _logger = logger;
     }
@@ -67,7 +69,8 @@ public class LogFlushService : BackgroundService
 
         try
         {
-            await using var connection = new SqlConnection(_connectionString);
+            // PostgreSQL: NpgsqlConnection replaces SqlConnection for PostgreSQL database access
+            await using var connection = new NpgsqlConnection(_connectionString);
             await connection.OpenAsync();
 
             // Build a batch INSERT statement for all log entries.
@@ -78,8 +81,9 @@ public class LogFlushService : BackgroundService
                 await using var cmd = connection.CreateCommand();
                 // Insert log entry with all columns including CorrelationId for request tracing.
                 // CorrelationId is set by CorrelationIdMiddleware via AsyncLocal → DatabaseLogger.
+                // PostgreSQL: Use double-quoted identifiers instead of SQL Server bracket identifiers [Table]
                 cmd.CommandText = @"
-                    INSERT INTO [AppLog] ([Timestamp], [Level], [Source], [Message], [Exception], [UserId], [CompanyId], [RequestPath], [CorrelationId])
+                    INSERT INTO ""AppLog"" (""Timestamp"", ""Level"", ""Source"", ""Message"", ""Exception"", ""UserId"", ""CompanyId"", ""RequestPath"", ""CorrelationId"")
                     VALUES (@timestamp, @level, @source, @message, @exception, @userId, @companyId, @requestPath, @correlationId)";
 
                 cmd.Parameters.AddWithValue("@timestamp", entry.Timestamp);

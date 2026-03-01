@@ -46,13 +46,13 @@ else
                 @if (_tenantSettings.IsProvisioned && _tenantSettings.IsActive)
                 {
                     <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Outlined">
-                        @L["TenantSettings_Provisioned"] (@_tenantSettings.DatabaseName)
+                        @L["TenantSettings_Provisioned"] (@_tenantSettings.SchemaName)
                     </MudChip>
                 }
                 else if (_tenantSettings.IsProvisioned && !_tenantSettings.IsActive)
                 {
                     <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined">
-                        @L["Label_Inactive"] (@_tenantSettings.DatabaseName)
+                        @L["Label_Inactive"] (@_tenantSettings.SchemaName)
                     </MudChip>
                 }
                 else

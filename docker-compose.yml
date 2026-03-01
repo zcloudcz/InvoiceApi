@@ -1,0 +1,65 @@
+# Docker Compose for InvoiceApi local development.
+# Provides a PostgreSQL 17 instance matching the production PostgreSQL setup.
+#
+# Usage:
+#   docker compose up -d          Start the database in the background
+#   docker compose down           Stop and remove containers (data persists in volume)
+#   docker compose down -v        Stop and DELETE all data (fresh start)
+#   docker compose logs -f db     Follow database logs
+#
+# The API connects via: Host=localhost;Port=5432;Database=invoiceapi;Username=invoiceapi;Password=invoiceapi_dev
+# pgAdmin is available at: http://localhost:5050 (admin@invoiceapi.local / admin)
+
+services:
+  # ── PostgreSQL 17 ────────────────────────────────────────────────────────
+  # Single database with schema-per-tenant isolation:
+  #   - "public" schema   → MasterDbContext (Users, Companies, SystemConfig)
+  #   - "tenant_{id}"     → TenantDbContext (Invoices, Clients, Templates)
+  db:
+    image: postgres:17-alpine
+    container_name: invoiceapi-postgres
+    restart: unless-stopped
+    environment:
+      # Superuser credentials (used for initial DB/role setup)
+      POSTGRES_USER: invoiceapi
+      POSTGRES_PASSWORD: invoiceapi_dev
+      POSTGRES_DB: invoiceapi
+    ports:
+      # Map container port 5432 → host port 5432
+      # If you have a local PostgreSQL running, change the host port: "5433:5432"
+      - "5432:5432"
+    volumes:
+      # Named volume persists data across container restarts.
+      # Use "docker compose down -v" to wipe and start fresh.
+      - invoiceapi-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # pg_isready checks if PostgreSQL accepts connections
+      test: ["CMD-SHELL", "pg_isready -U invoiceapi -d invoiceapi"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # ── pgAdmin 4 (optional, for database browsing) ─────────────────────────
+  # Web-based PostgreSQL admin UI. Accessible at http://localhost:5050
+  # Login: admin@invoiceapi.local / admin
+  # Then add server: host=db, port=5432, user=invoiceapi, password=invoiceapi_dev
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: invoiceapi-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@invoiceapi.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+      # Disable telemetry and master password prompt for dev convenience
+      PGADMIN_CONFIG_ENHANCED_COOKIE_PROTECTION: "False"
+    ports:
+      - "5050:80"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  # Persistent volume for PostgreSQL data files.
+  # Survives "docker compose down" but NOT "docker compose down -v".
+  invoiceapi-pgdata:

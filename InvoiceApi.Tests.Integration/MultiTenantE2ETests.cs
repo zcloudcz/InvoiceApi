@@ -135,7 +135,7 @@ public class MultiTenantE2ETests : IClassFixture<InvoiceApiFactory>
         var createSettingsDto = new CreateCompanySystemSettingsDto
         {
             CompanyId = companyId,
-            DatabaseName = $"test_tenant_{companyId}"
+            SchemaName = $"test_tenant_{companyId}"
         };
 
         var settingsResponse = await client.PostAsJsonAsync("/api/company/settings", createSettingsDto);
@@ -273,7 +273,7 @@ public class MultiTenantE2ETests : IClassFixture<InvoiceApiFactory>
         var settingsDto = new CreateCompanySystemSettingsDto
         {
             CompanyId = companyId,
-            DatabaseName = $"test_deactivation_{companyId}"
+            SchemaName = $"test_deactivation_{companyId}"
         };
 
         var settingsResponse = await client.PostAsJsonAsync("/api/company/settings", settingsDto);

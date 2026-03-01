@@ -17,7 +17,10 @@ namespace InvoiceApi.Tests.Unit;
 /// - Provisioning validation (throws for missing settings, already provisioned)
 /// - MigrateAllTenantsAsync (queries active tenants)
 ///
-/// Note: Full provisioning (CREATE DATABASE, apply migrations, copy code tables)
+/// Architecture: PostgreSQL multi-schema — all tenants share one database,
+/// each tenant gets its own schema (e.g., "tenant_42").
+///
+/// Note: Full provisioning (CREATE SCHEMA, apply migrations, copy code tables)
 /// cannot be tested with InMemoryDatabase — those are integration test scenarios.
 /// We focus on the service's state management and validation logic here.
 /// </summary>
@@ -37,11 +40,11 @@ public class TenantProvisioningServiceTests : IDisposable
 
         _masterContext = new MasterDbContext(options);
 
-        // Configuration with a mock SQL Server connection string (won't actually connect in unit tests)
+        // Configuration with a mock PostgreSQL connection string (won't actually connect in unit tests)
         _configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["ConnectionStrings:MasterConnection"] = "Server=localhost;Database=master;User Id=test;Password=test;TrustServerCertificate=true"
+                ["ConnectionStrings:DefaultConnection"] = "Host=localhost;Database=invoiceapi;Username=invoiceapi;Password=test"
             })
             .Build();
 
@@ -84,7 +87,7 @@ public class TenantProvisioningServiceTests : IDisposable
         var settings = new CompanySystemSettings
         {
             CompanyId = companyId,
-            DatabaseName = $"invoiceapi_tenant_{companyId}",
+            SchemaName = $"tenant_{companyId}",
             IsProvisioned = isProvisioned,
             IsActive = isActive,
             ProvisionedAt = isProvisioned ? DateTime.UtcNow : null
@@ -204,8 +207,8 @@ public class TenantProvisioningServiceTests : IDisposable
     /// Verifies that re-provisioning an already provisioned company does NOT throw.
     /// The provisioning flow is idempotent — safe to re-run after partial failure.
     /// It clears and re-seeds code tables, checks for existing issuer, etc.
-    /// NOTE: This test will still fail at the CreateDatabaseAsync step because
-    /// there's no real SQL Server available in unit tests. The important thing is
+    /// NOTE: This test will still fail at the CREATE SCHEMA step because
+    /// there's no real PostgreSQL available in unit tests. The important thing is
     /// that it does NOT throw InvalidOperationException for "already provisioned".
     /// </summary>
     [Fact]
@@ -216,7 +219,7 @@ public class TenantProvisioningServiceTests : IDisposable
         await SeedSettingsAsync(6, isProvisioned: true, isActive: true);
 
         // Act — re-provisioning should NOT throw "already provisioned" exception.
-        // It WILL throw because there's no real SQL Server for CreateDatabaseAsync,
+        // It WILL throw because there's no real PostgreSQL for CREATE SCHEMA,
         // but the error should be about the database connection, not about "already provisioned".
         var act = () => _service.ProvisionTenantAsync(6);
         var ex = await Should.ThrowAsync<Exception>(act);

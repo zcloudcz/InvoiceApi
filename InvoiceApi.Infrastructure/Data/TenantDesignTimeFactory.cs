@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.Configuration;
 
 namespace InvoiceApi.Infrastructure.Data;
@@ -11,8 +12,11 @@ namespace InvoiceApi.Infrastructure.Data;
 ///   dotnet ef migrations add Init --context TenantDbContext --output-dir Migrations/Tenant --project InvoiceApi.Infrastructure --startup-project InvoiceApi.API
 ///   dotnet ef database update --context TenantDbContext --project InvoiceApi.Infrastructure --startup-project InvoiceApi.API
 ///
-/// At design time, this uses a "template" tenant database for generating migration files.
-/// At runtime, each tenant gets its own database via ITenantDbContextFactory.
+/// At design time, this uses a "tenant_template" schema for generating migration files.
+/// The Schema property is set to "tenant_template" so that HasDefaultSchema() in OnModelCreating
+/// generates migration SQL targeting this template schema.
+///
+/// At runtime, each tenant gets its own schema (e.g., "tenant_42") via ITenantDbContextFactory.
 /// </summary>
 public class TenantDesignTimeFactory : IDesignTimeDbContextFactory<TenantDbContext>
 {
@@ -25,17 +29,24 @@ public class TenantDesignTimeFactory : IDesignTimeDbContextFactory<TenantDbConte
             .AddJsonFile("appsettings.Development.json", optional: true)
             .Build();
 
-        // Use a template tenant database for migration generation.
-        // This database is used only by EF tools — at runtime, each tenant has its own DB.
-        // Fallback connection string for SQL Server (used when appsettings not found)
-        var connectionString = configuration.GetConnectionString("TenantTemplateConnection")
-            ?? "Server=localhost;Database=invoiceapi_tenant_template;User Id=sa;Password=YourStrong!Passw0rd;TrustServerCertificate=true";
+        // Use the shared PostgreSQL database connection string.
+        // Fallback connection string for PostgreSQL (used when appsettings not found)
+        var connectionString = configuration.GetConnectionString("DefaultConnection")
+            ?? "Host=localhost;Database=invoiceapi;Username=invoiceapi;Password=YourStrong!Passw0rd";
 
         var optionsBuilder = new DbContextOptionsBuilder<TenantDbContext>();
-        optionsBuilder.UseSqlServer(
+        optionsBuilder.UseNpgsql(
             connectionString,
             b => b.MigrationsAssembly("InvoiceApi.Infrastructure"));
 
-        return new TenantDbContext(optionsBuilder.Options);
+        // Register custom model cache key factory for schema-aware model caching
+        optionsBuilder.ReplaceService<IModelCacheKeyFactory, TenantModelCacheKeyFactory>();
+
+        // Create context with the template schema — migration SQL will target "tenant_template" schema.
+        // When applying migrations to real tenants, TenantProvisioningService creates a context
+        // with the actual tenant schema (e.g., "tenant_42") and calls MigrateAsync().
+        var context = new TenantDbContext(optionsBuilder.Options);
+        context.Schema = "tenant_template";
+        return context;
     }
 }

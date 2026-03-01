@@ -1,25 +1,27 @@
 using InvoiceApi.Application.Service;
 using InvoiceApi.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace InvoiceApi.Infrastructure.Service;
 
 /// <summary>
-/// Creates TenantDbContext instances connected to the correct tenant database.
+/// Creates TenantDbContext instances connected to the correct tenant schema.
+///
+/// Architecture: Single PostgreSQL database with schema-per-tenant isolation.
+/// All tenants share the same database connection; isolation is via PostgreSQL schemas.
 ///
 /// Flow:
 /// 1. Get CompanyId (from ITenantResolver or explicit parameter)
 /// 2. Look up CompanySystemSettings in master DB by CompanyId
 /// 3. Validate: is provisioned? is active?
-/// 4. Build connection string (from settings.ConnectionString or template + DatabaseName)
-/// 5. Create TenantDbContext with that connection string
+/// 4. Create TenantDbContext with the Schema property set to settings.SchemaName
 ///
-/// Connection string resolution:
-/// - If CompanySystemSettings.ConnectionString is set → use it directly (tenant on different server)
-/// - Otherwise → take the master connection string template and replace the database name
-///   with CompanySystemSettings.DatabaseName
+/// The TenantDbContext.Schema property drives HasDefaultSchema() in OnModelCreating,
+/// which prefixes all table names with the schema (e.g., "tenant_42"."Invoice").
+/// TenantModelCacheKeyFactory ensures EF Core caches a separate compiled model per schema.
 /// </summary>
 public class TenantDbContextFactory : ITenantDbContextFactory
 {
@@ -74,11 +76,11 @@ public class TenantDbContextFactory : ITenantDbContextFactory
                 "The company may not exist or hasn't been registered for multi-tenancy.");
         }
 
-        // Validate the tenant is provisioned (database exists and has been migrated)
+        // Validate the tenant is provisioned (schema exists and has been migrated)
         if (!settings.IsProvisioned)
         {
             throw new InvalidOperationException(
-                $"Tenant database for CompanyId {companyId} has not been provisioned yet. " +
+                $"Tenant schema for CompanyId {companyId} has not been provisioned yet. " +
                 "A SysAdmin must provision the company before it can be accessed.");
         }
 
@@ -90,27 +92,20 @@ public class TenantDbContextFactory : ITenantDbContextFactory
                 "Contact your system administrator.");
         }
 
-        // Build the connection string for this tenant
-        var connectionString = BuildConnectionString(settings);
-
         _logger.LogDebug(
-            "Creating TenantDbContext for CompanyId {CompanyId}, Database: {DatabaseName}",
-            companyId, settings.DatabaseName);
+            "Creating TenantDbContext for CompanyId {CompanyId}, Schema: {SchemaName}",
+            companyId, settings.SchemaName);
 
-        // Create and return a new TenantDbContext connected to this tenant's database.
-        // EnableRetryOnFailure handles transient SQL Server/Azure SQL errors.
-        var optionsBuilder = new DbContextOptionsBuilder<TenantDbContext>();
-        optionsBuilder.UseSqlServer(connectionString, b =>
-            b.EnableRetryOnFailure(maxRetryCount: 3, maxRetryDelay: TimeSpan.FromSeconds(5), errorNumbersToAdd: null));
-
-        return _currentUserService != null
-            ? new TenantDbContext(optionsBuilder.Options, _currentUserService)
-            : new TenantDbContext(optionsBuilder.Options);
+        // Create TenantDbContext connected to the shared PostgreSQL database
+        // with the Schema property set to route queries to the correct tenant schema.
+        return CreateTenantContext(settings.SchemaName);
     }
 
     /// <inheritdoc />
     public async Task<string?> GetConnectionStringAsync(long companyId, CancellationToken cancellationToken = default)
     {
+        // In multi-schema architecture, all tenants share the same connection string.
+        // This method returns the shared connection string if the tenant exists.
         var settings = await _masterDb.CompanySystemSettings
             .AsNoTracking()
             .FirstOrDefaultAsync(s => s.CompanyId == companyId, cancellationToken);
@@ -120,40 +115,55 @@ public class TenantDbContextFactory : ITenantDbContextFactory
             return null;
         }
 
-        return BuildConnectionString(settings);
+        return GetConnectionString();
     }
 
     /// <summary>
-    /// Builds the connection string for a tenant database.
+    /// Creates a TenantDbContext instance configured for a specific schema.
+    /// Used by both runtime tenant resolution and provisioning operations.
     ///
-    /// Two strategies:
-    /// 1. If CompanySystemSettings.ConnectionString is set → use it directly
-    ///    (for tenants hosted on a different SQL Server instance)
-    /// 2. Otherwise → take the master connection string template from appsettings.json
-    ///    and replace the Database part with the tenant's DatabaseName
+    /// The context uses the shared PostgreSQL connection string and sets the Schema
+    /// property so that HasDefaultSchema() in OnModelCreating routes all tables
+    /// to the correct tenant schema.
     /// </summary>
-    private string BuildConnectionString(Domain.Entities.CompanySystemSettings settings)
+    /// <param name="schemaName">PostgreSQL schema name (e.g., "tenant_42")</param>
+    /// <returns>TenantDbContext configured for the specified schema</returns>
+    public TenantDbContext CreateTenantContext(string schemaName)
     {
-        // Strategy 1: explicit connection string override
-        if (!string.IsNullOrWhiteSpace(settings.ConnectionString))
-        {
-            return settings.ConnectionString;
-        }
+        var connectionString = GetConnectionString();
 
-        // Strategy 2: build from master template + tenant DatabaseName
-        // Read the master connection string template (same server/credentials, different DB)
-        var masterConnectionString = _configuration.GetConnectionString("MasterConnection")
+        var optionsBuilder = new DbContextOptionsBuilder<TenantDbContext>();
+        optionsBuilder.UseNpgsql(connectionString, b =>
+        {
+            b.MigrationsAssembly("InvoiceApi.Infrastructure");
+            b.EnableRetryOnFailure(
+                maxRetryCount: 3,
+                maxRetryDelay: TimeSpan.FromSeconds(5),
+                errorCodesToAdd: null);
+        });
+
+        // Register the custom model cache key factory so each schema gets its own cached model.
+        optionsBuilder.ReplaceService<IModelCacheKeyFactory, TenantModelCacheKeyFactory>();
+
+        var context = _currentUserService != null
+            ? new TenantDbContext(optionsBuilder.Options, _currentUserService)
+            : new TenantDbContext(optionsBuilder.Options);
+
+        // Set the schema — TenantDbContext.OnModelCreating uses this for HasDefaultSchema()
+        context.Schema = schemaName;
+
+        return context;
+    }
+
+    /// <summary>
+    /// Gets the shared PostgreSQL connection string from configuration.
+    /// In multi-schema architecture, all tenants share the same database connection.
+    /// </summary>
+    private string GetConnectionString()
+    {
+        return _configuration.GetConnectionString("DefaultConnection")
             ?? throw new InvalidOperationException(
-                "MasterConnection not found in configuration. " +
-                "Cannot build tenant connection string.");
-
-        // Replace the Database (Initial Catalog) in the connection string with the tenant's database name.
-        // SQL Server connection string format: "Server=x;Database=z;User Id=u;Password=p"
-        var builder = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(masterConnectionString)
-        {
-            InitialCatalog = settings.DatabaseName
-        };
-
-        return builder.ConnectionString;
+                "DefaultConnection not found in configuration. " +
+                "Cannot create tenant context.");
     }
 }

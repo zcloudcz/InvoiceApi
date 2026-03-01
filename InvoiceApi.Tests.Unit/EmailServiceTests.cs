@@ -174,7 +174,7 @@ public class EmailServiceTests : IDisposable
         _masterContext.CompanySystemSettings.Add(new CompanySystemSettings
         {
             CompanyId = companyId,
-            DatabaseName = $"invoiceapi_tenant_{companyId}",
+            SchemaName = $"tenant_{companyId}",
             IsProvisioned = true,
             IsActive = true,
             SmtpHost = smtpHost,

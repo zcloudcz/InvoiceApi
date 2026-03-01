@@ -84,7 +84,7 @@ public class CloudStorageOrchestratorTests : IDisposable
         _masterContext.CompanySystemSettings.Add(new CompanySystemSettings
         {
             CompanyId = TestCompanyId,
-            DatabaseName = "test_tenant_db",
+            SchemaName = "test_tenant_db",
             IsProvisioned = true,
             IsActive = true,
             GoogleDriveEnabled = googleEnabled,

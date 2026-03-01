@@ -113,7 +113,7 @@ public class TenantContextMiddlewareTests : IDisposable
         _masterContext.CompanySystemSettings.Add(new CompanySystemSettings
         {
             CompanyId = companyId,
-            DatabaseName = $"invoiceapi_tenant_{companyId}",
+            SchemaName = $"tenant_{companyId}",
             IsProvisioned = isProvisioned,
             IsActive = isActive,
             ProvisionedAt = isProvisioned ? DateTime.UtcNow : null

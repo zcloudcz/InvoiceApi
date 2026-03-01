@@ -3,27 +3,28 @@ using System;
 using InvoiceApi.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
-namespace InvoiceApi.Infrastructure.Migrations.Master
+namespace InvoiceApi.Infrastructure.Migrations.Tenant
 {
-    [DbContext(typeof(MasterDbContext))]
-    [Migration("20260211153152_UpdatePdfTemplateDesign")]
-    partial class UpdatePdfTemplateDesign
+    [DbContext(typeof(TenantDbContext))]
+    [Migration("20260228141149_InitPostgres")]
+    partial class InitPostgres
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
+                .HasDefaultSchema("tenant_template")
                 .HasAnnotation("ProductVersion", "10.0.1")
-                .HasAnnotation("Relational:MaxIdentifierLength", 128);
+                .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
-            SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
+            NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
             modelBuilder.Entity("InvoiceApi.Domain.Entities.Address", b =>
                 {
@@ -31,19 +32,19 @@ namespace InvoiceApi.Infrastructure.Migrations.Master
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bigint");
 
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
 
                     b.Property<string>("AddressLine2")
                         .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
+                        .HasColumnType("character varying(500)");
 
                     b.Property<int>("AddressType")
-                        .HasColumnType("int");
+                        .HasColumnType("integer");
 
                     b.Property<string>("City")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
+                        .HasColumnType("character varying(200)");
 
                     b.Property<long>("ClientId")
                         .HasColumnType("bigint");
@@ -51,29 +52,29 @@ namespace InvoiceApi.Infrastructure.Migrations.Master
                     b.Property<string>("Country")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
+                        .HasColumnType("character varying(100)");
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<long?>("CreatedByUserId")
                         .HasColumnType("bigint");
 
                     b.Property<bool>("IsPrimary")
-                        .HasColumnType("bit");
+                        .HasColumnType("boolean");
 
                     b.Property<string>("PostalCode")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
+                        .HasColumnType("character varying(20)");
 
                     b.Property<string>("Street")
                         .IsRequired()
                         .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
+                        .HasColumnType("character varying(500)");
 
                     b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<long?>("UpdatedByUserId")
                         .HasColumnType("bigint");
@@ -84,56 +85,7 @@ namespace InvoiceApi.Infrastructure.Migrations.Master
 
                     b.HasIndex("ClientId");
 
-                    b.ToTable("Address");
-                });
-
-            modelBuilder.Entity("InvoiceApi.Domain.Entities.AppLog", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<long?>("CompanyId")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("Exception")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("Level")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<string>("Message")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("RequestPath")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<string>("Source")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<DateTime>("Timestamp")
-                        .HasColumnType("datetime2");
-
-                    b.Property<long?>("UserId")
-                        .HasColumnType("bigint");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Level");
-
-                    b.HasIndex("Timestamp");
-
-                    b.HasIndex("Level", "Timestamp");
-
-                    b.ToTable("AppLog");
+                    b.ToTable("Address", "tenant_template");
                 });
 
             modelBuilder.Entity("InvoiceApi.Domain.Entities.AresCache", b =>
@@ -142,49 +94,49 @@ namespace InvoiceApi.Infrastructure.Migrations.Master
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bigint");
 
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
 
                     b.Property<string>("CompanyName")
                         .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
+                        .HasColumnType("character varying(500)");
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<long?>("CreatedByUserId")
                         .HasColumnType("bigint");
 
                     b.Property<string>("ErrorMessage")
                         .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
+                        .HasColumnType("character varying(1000)");
 
                     b.Property<DateTime>("ExpiresAt")
-                        .HasColumnType("datetime2");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime>("FetchedAt")
-                        .HasColumnType("datetime2");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<bool>("IsSuccessful")
-                        .HasColumnType("bit");
+                        .HasColumnType("boolean");
 
                     b.Property<bool?>("IsVatPayer")
-                        .HasColumnType("bit");
+                        .HasColumnType("boolean");
 
                     b.Property<string>("JsonData")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("text");
 
                     b.Property<string>("RegistrationNumber")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
+                        .HasColumnType("character varying(20)");
 
                     b.Property<string>("TaxNumber")
                         .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
+                        .HasColumnType("character varying(50)");
 
                     b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<long?>("UpdatedByUserId")
                         .HasColumnType("bigint");
@@ -196,7 +148,141 @@ namespace InvoiceApi.Infrastructure.Migrations.Master
                     b.HasIndex("RegistrationNumber")
                         .IsUnique();
 
-                    b.ToTable("AresCache");
+                    b.ToTable("AresCache", "tenant_template");
+                });
+
+            modelBuilder.Entity("InvoiceApi.Domain.Entities.BankAccount", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("AccountNumber")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("BankName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<long>("ClientId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("CreatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("CurrencyCode")
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)");
+
+                    b.Property<string>("IBAN")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Label")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("SWIFT")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("UpdatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClientId");
+
+                    b.HasIndex("ClientId", "IsDefault");
+
+                    b.ToTable("BankAccount", "tenant_template");
+                });
+
+            modelBuilder.Entity("InvoiceApi.Domain.Entities.BillingSettings", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("BankAccountNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<long>("ClientId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("CreatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("CreditNoteNumberPrefix")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("CreditNoteNumberSuffix")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<long?>("CustomCreditNoteNumberSequenceId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("CustomInvoiceNumberSequenceId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int?>("DefaultPaymentMethod")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("DueDateCalculationType")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("DueDays")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("InvoiceNumberPrefix")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("InvoiceNumberSuffix")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("UpdatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClientId")
+                        .IsUnique();
+
+                    b.HasIndex("CustomCreditNoteNumberSequenceId");
+
+                    b.HasIndex("CustomInvoiceNumberSequenceId");
+
+                    b.ToTable("BillingSettings", "tenant_template");
                 });
 
             modelBuilder.Entity("InvoiceApi.Domain.Entities.Client", b =>
@@ -205,30 +291,30 @@ namespace InvoiceApi.Infrastructure.Migrations.Master
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bigint");
 
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
 
                     b.Property<string>("CompanyName")
                         .IsRequired()
                         .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
+                        .HasColumnType("character varying(500)");
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<long?>("CreatedByUserId")
                         .HasColumnType("bigint");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
+                        .HasColumnType("boolean");
 
                     b.Property<bool>("IsIssuer")
-                        .HasColumnType("bit");
+                        .HasColumnType("boolean");
 
                     b.Property<bool>("IsVatPayer")
-                        .HasColumnType("bit");
+                        .HasColumnType("boolean");
 
                     b.Property<DateTime?>("LastAresFetchDate")
-                        .HasColumnType("datetime2");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<long?>("PreferredCurrencyId")
                         .HasColumnType("bigint");
@@ -236,18 +322,18 @@ namespace InvoiceApi.Infrastructure.Migrations.Master
                     b.Property<string>("RegistrationNumber")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
+                        .HasColumnType("character varying(20)");
 
                     b.Property<string>("TaxNumber")
                         .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
+                        .HasColumnType("character varying(50)");
 
                     b.Property<string>("TradingName")
                         .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
+                        .HasColumnType("character varying(500)");
 
                     b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<long?>("UpdatedByUserId")
                         .HasColumnType("bigint");
@@ -263,67 +349,7 @@ namespace InvoiceApi.Infrastructure.Migrations.Master
                     b.HasIndex("RegistrationNumber")
                         .IsUnique();
 
-                    b.ToTable("Client");
-                });
-
-            modelBuilder.Entity("InvoiceApi.Domain.Entities.CompanySystemSettings", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<string>("AdminNotes")
-                        .HasMaxLength(2000)
-                        .HasColumnType("nvarchar(2000)");
-
-                    b.Property<long>("CompanyId")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("ConnectionString")
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<long?>("CreatedByUserId")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("DatabaseName")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("IsProvisioned")
-                        .HasColumnType("bit");
-
-                    b.Property<int?>("MaxUsers")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime?>("ProvisionedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<long?>("UpdatedByUserId")
-                        .HasColumnType("bigint");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CompanyId")
-                        .IsUnique();
-
-                    b.HasIndex("IsActive");
-
-                    b.HasIndex("IsProvisioned");
-
-                    b.ToTable("CompanySystemSettings");
+                    b.ToTable("Client", "tenant_template");
                 });
 
             modelBuilder.Entity("InvoiceApi.Domain.Entities.Contact", b =>
@@ -332,34 +358,34 @@ namespace InvoiceApi.Infrastructure.Migrations.Master
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bigint");
 
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
 
                     b.Property<long>("ClientId")
                         .HasColumnType("bigint");
 
                     b.Property<int>("ContactType")
-                        .HasColumnType("int");
+                        .HasColumnType("integer");
 
                     b.Property<string>("ContactValue")
                         .IsRequired()
                         .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
+                        .HasColumnType("character varying(500)");
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<long?>("CreatedByUserId")
                         .HasColumnType("bigint");
 
                     b.Property<bool>("IsPrimary")
-                        .HasColumnType("bit");
+                        .HasColumnType("boolean");
 
                     b.Property<string>("Label")
                         .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
+                        .HasColumnType("character varying(200)");
 
                     b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<long?>("UpdatedByUserId")
                         .HasColumnType("bigint");
@@ -370,7 +396,7 @@ namespace InvoiceApi.Infrastructure.Migrations.Master
 
                     b.HasIndex("ContactType");
 
-                    b.ToTable("Contact");
+                    b.ToTable("Contact", "tenant_template");
                 });
 
             modelBuilder.Entity("InvoiceApi.Domain.Entities.ContentTemplate", b =>
@@ -379,42 +405,42 @@ namespace InvoiceApi.Infrastructure.Migrations.Master
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bigint");
 
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<long?>("CreatedByUserId")
                         .HasColumnType("bigint");
 
                     b.Property<string>("Description")
                         .HasMaxLength(2000)
-                        .HasColumnType("nvarchar(2000)");
+                        .HasColumnType("character varying(2000)");
 
                     b.Property<string>("HtmlBody")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("text");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
+                        .HasColumnType("boolean");
 
                     b.Property<bool>("IsDefault")
-                        .HasColumnType("bit");
+                        .HasColumnType("boolean");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
+                        .HasColumnType("character varying(200)");
 
                     b.Property<string>("Subject")
                         .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
+                        .HasColumnType("character varying(500)");
 
                     b.Property<int>("TemplateType")
-                        .HasColumnType("int");
+                        .HasColumnType("integer");
 
                     b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<long?>("UpdatedByUserId")
                         .HasColumnType("bigint");
@@ -429,7 +455,7 @@ namespace InvoiceApi.Infrastructure.Migrations.Master
 
                     b.HasIndex("TemplateType", "IsDefault");
 
-                    b.ToTable("ContentTemplate");
+                    b.ToTable("ContentTemplate", "tenant_template");
 
                     b.HasData(
                         new
@@ -510,44 +536,44 @@ namespace InvoiceApi.Infrastructure.Migrations.Master
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bigint");
 
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
 
                     b.Property<string>("Code")
                         .IsRequired()
                         .HasMaxLength(3)
-                        .HasColumnType("nvarchar(3)");
+                        .HasColumnType("character varying(3)");
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<long?>("CreatedByUserId")
                         .HasColumnType("bigint");
 
                     b.Property<int>("DecimalPlaces")
-                        .HasColumnType("int");
+                        .HasColumnType("integer");
 
                     b.Property<string>("DisplayFormat")
                         .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
+                        .HasColumnType("character varying(50)");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
+                        .HasColumnType("boolean");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
+                        .HasColumnType("character varying(100)");
 
                     b.Property<int>("SortOrder")
-                        .HasColumnType("int");
+                        .HasColumnType("integer");
 
                     b.Property<string>("Symbol")
                         .IsRequired()
                         .HasMaxLength(10)
-                        .HasColumnType("nvarchar(10)");
+                        .HasColumnType("character varying(10)");
 
                     b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<long?>("UpdatedByUserId")
                         .HasColumnType("bigint");
@@ -561,7 +587,7 @@ namespace InvoiceApi.Infrastructure.Migrations.Master
 
                     b.HasIndex("SortOrder");
 
-                    b.ToTable("Currency");
+                    b.ToTable("Currency", "tenant_template");
 
                     b.HasData(
                         new
@@ -662,44 +688,285 @@ namespace InvoiceApi.Infrastructure.Migrations.Master
                         });
                 });
 
-            modelBuilder.Entity("InvoiceApi.Domain.Entities.NumberSequenceFormat", b =>
+            modelBuilder.Entity("InvoiceApi.Domain.Entities.Invoice", b =>
                 {
                     b.Property<long>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bigint");
 
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
 
-                    b.Property<int>("CounterDigits")
-                        .HasColumnType("int");
+                    b.Property<string>("BankAccountNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<long?>("ClientId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("ConstantSymbol")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<long?>("CreatedByUserId")
                         .HasColumnType("bigint");
 
-                    b.Property<string>("FormatPattern")
-                        .IsRequired()
+                    b.Property<long>("CurrencyId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("DocumentNumber")
                         .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<int>("DocumentType")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("DueDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("IBAN")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("InvoiceType")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
+                    b.Property<bool>("IsExported")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsSentByEmail")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("IssueDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("IssuerId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("LastExportedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("LastSentByEmailAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(5000)
+                        .HasColumnType("character varying(5000)");
+
+                    b.Property<long?>("OriginalInvoiceId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("PaidAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("PaymentMethod")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("SWIFT")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("SpecificSymbol")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("TaxableSupplyDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("TotalBeforeVat")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("TotalVat")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("TotalWithVat")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("UpdatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("VariableSymbol")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClientId");
+
+                    b.HasIndex("CurrencyId");
+
+                    b.HasIndex("DocumentNumber")
+                        .IsUnique()
+                        .HasFilter("\"DocumentNumber\" IS NOT NULL AND \"DocumentNumber\" <> 'DRAFT'");
+
+                    b.HasIndex("DocumentType");
+
+                    b.HasIndex("DueDate");
+
+                    b.HasIndex("IssueDate");
+
+                    b.HasIndex("IssuerId");
+
+                    b.HasIndex("OriginalInvoiceId");
+
+                    b.HasIndex("Status");
+
+                    b.ToTable("Invoice", "tenant_template");
+
+                    b.HasDiscriminator<string>("InvoiceType").HasValue("Invoice");
+
+                    b.UseTphMappingStrategy();
+                });
+
+            modelBuilder.Entity("InvoiceApi.Domain.Entities.InvoiceItem", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("CreatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<long>("InvoiceId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<int>("OrderIndex")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ProductCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<decimal>("Quantity")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)");
+
+                    b.Property<decimal>("TotalBeforeVat")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("TotalWithVat")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<string>("Unit")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<decimal>("UnitPrice")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("UpdatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<decimal>("VatAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<long?>("VatRateId")
+                        .HasColumnType("bigint");
+
+                    b.Property<decimal>("VatRatePercentage")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InvoiceId");
+
+                    b.HasIndex("VatRateId");
+
+                    b.ToTable("InvoiceItem", "tenant_template");
+                });
+
+            modelBuilder.Entity("InvoiceApi.Domain.Entities.NumberSequence", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("CreatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int?>("CurrentMonth")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("CurrentNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("CurrentYear")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("DocumentType")
+                        .HasColumnType("integer");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("boolean");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
+                        .HasColumnType("character varying(200)");
 
-                    b.Property<bool>("ResetsMonthly")
-                        .HasColumnType("bit");
+                    b.Property<long>("NumberSequenceFormatId")
+                        .HasColumnType("bigint");
 
-                    b.Property<bool>("ResetsYearly")
-                        .HasColumnType("bit");
+                    b.Property<string>("Prefix")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<uint>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.Property<string>("Suffix")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
 
                     b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<long?>("UpdatedByUserId")
                         .HasColumnType("bigint");
@@ -708,7 +975,88 @@ namespace InvoiceApi.Infrastructure.Migrations.Master
 
                     b.HasIndex("IsActive");
 
-                    b.ToTable("NumberSequenceFormat");
+                    b.HasIndex("NumberSequenceFormatId");
+
+                    b.HasIndex("DocumentType", "IsDefault");
+
+                    b.ToTable("NumberSequence", "tenant_template");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1L,
+                            CreatedAt = new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            CurrentNumber = 0,
+                            DocumentType = 1,
+                            IsActive = true,
+                            IsDefault = true,
+                            Name = "Default Invoice Sequence",
+                            NumberSequenceFormatId = 1L,
+                            Prefix = "INV",
+                            RowVersion = 0u
+                        },
+                        new
+                        {
+                            Id = 2L,
+                            CreatedAt = new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            CurrentNumber = 0,
+                            DocumentType = 2,
+                            IsActive = true,
+                            IsDefault = true,
+                            Name = "Default Credit Note Sequence",
+                            NumberSequenceFormatId = 1L,
+                            Prefix = "CN",
+                            RowVersion = 0u
+                        });
+                });
+
+            modelBuilder.Entity("InvoiceApi.Domain.Entities.NumberSequenceFormat", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("CounterDigits")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("CreatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("FormatPattern")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<bool>("ResetsMonthly")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("ResetsYearly")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("UpdatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IsActive");
+
+                    b.ToTable("NumberSequenceFormat", "tenant_template");
 
                     b.HasData(
                         new
@@ -757,202 +1105,49 @@ namespace InvoiceApi.Infrastructure.Migrations.Master
                         });
                 });
 
-            modelBuilder.Entity("InvoiceApi.Domain.Entities.SystemConfiguration", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<long?>("CreatedByUserId")
-                        .HasColumnType("bigint");
-
-                    b.Property<int>("JwtExpirationHours")
-                        .HasColumnType("int");
-
-                    b.Property<string>("SmtpHost")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<string>("SmtpPassword")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<int>("SmtpPort")
-                        .HasColumnType("int");
-
-                    b.Property<string>("SmtpSenderEmail")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<string>("SmtpSenderName")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<bool>("SmtpUseSsl")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("SmtpUsername")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<long?>("UpdatedByUserId")
-                        .HasColumnType("bigint");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("SystemConfiguration");
-                });
-
-            modelBuilder.Entity("InvoiceApi.Domain.Entities.User", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<long?>("CompanyId")
-                        .HasColumnType("bigint");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<long?>("CreatedByUserId")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("Email")
-                        .IsRequired()
-                        .HasMaxLength(256)
-                        .HasColumnType("nvarchar(256)");
-
-                    b.Property<string>("FirstName")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<string>("InvitationToken")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<DateTime?>("InvitationTokenExpiresAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("IsInvitationPending")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(false);
-
-                    b.Property<DateTime?>("LastLoginAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("LastName")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<string>("PasswordHash")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<int>("Role")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<long?>("UpdatedByUserId")
-                        .HasColumnType("bigint");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CompanyId");
-
-                    b.HasIndex("Email")
-                        .IsUnique();
-
-                    b.HasIndex("InvitationToken")
-                        .IsUnique()
-                        .HasFilter("[InvitationToken] IS NOT NULL");
-
-                    b.HasIndex("IsActive");
-
-                    b.HasIndex("Role");
-
-                    b.ToTable("User");
-
-                    b.HasData(
-                        new
-                        {
-                            Id = 1L,
-                            CreatedAt = new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Email = "admin@zcloud.cz",
-                            FirstName = "System",
-                            IsActive = true,
-                            IsInvitationPending = false,
-                            LastName = "Administrator",
-                            PasswordHash = "$2a$12$aI/Mx3cUBwheuL1U1laUee1OLR92DaWxdu3SLMauc5zWy7VoVwEAu",
-                            Role = 2
-                        });
-                });
-
             modelBuilder.Entity("InvoiceApi.Domain.Entities.VatRate", b =>
                 {
                     b.Property<long>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bigint");
 
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<long?>("CreatedByUserId")
                         .HasColumnType("bigint");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
+                        .HasColumnType("boolean");
 
                     b.Property<bool>("IsDefault")
-                        .HasColumnType("bit");
+                        .HasColumnType("boolean");
 
                     b.Property<bool>("IsReduced")
-                        .HasColumnType("bit");
+                        .HasColumnType("boolean");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
+                        .HasColumnType("character varying(200)");
 
                     b.Property<decimal>("Rate")
                         .HasPrecision(5, 2)
-                        .HasColumnType("decimal(5,2)");
+                        .HasColumnType("numeric(5,2)");
 
                     b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<long?>("UpdatedByUserId")
                         .HasColumnType("bigint");
 
                     b.Property<DateTime>("ValidFrom")
-                        .HasColumnType("datetime2");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime?>("ValidTo")
-                        .HasColumnType("datetime2");
+                        .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
 
@@ -966,7 +1161,7 @@ namespace InvoiceApi.Infrastructure.Migrations.Master
 
                     b.HasIndex("IsDefault", "IsReduced");
 
-                    b.ToTable("VatRate");
+                    b.ToTable("VatRate", "tenant_template");
 
                     b.HasData(
                         new
@@ -1004,6 +1199,49 @@ namespace InvoiceApi.Infrastructure.Migrations.Master
                         });
                 });
 
+            modelBuilder.Entity("InvoiceApi.Domain.Entities.InvoiceTemplate", b =>
+                {
+                    b.HasBaseType("InvoiceApi.Domain.Entities.Invoice");
+
+                    b.Property<string>("Category")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<int>("DueDateOffsetDays")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("LastUsedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<long?>("NumberSequenceId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("UsageCount")
+                        .HasColumnType("integer");
+
+                    b.HasIndex("Category");
+
+                    b.HasIndex("IsActive");
+
+                    b.HasIndex("Name");
+
+                    b.HasIndex("NumberSequenceId");
+
+                    b.HasDiscriminator().HasValue("Template");
+                });
+
             modelBuilder.Entity("InvoiceApi.Domain.Entities.Address", b =>
                 {
                     b.HasOne("InvoiceApi.Domain.Entities.Client", "Client")
@@ -1015,6 +1253,42 @@ namespace InvoiceApi.Infrastructure.Migrations.Master
                     b.Navigation("Client");
                 });
 
+            modelBuilder.Entity("InvoiceApi.Domain.Entities.BankAccount", b =>
+                {
+                    b.HasOne("InvoiceApi.Domain.Entities.Client", "Client")
+                        .WithMany("BankAccount")
+                        .HasForeignKey("ClientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Client");
+                });
+
+            modelBuilder.Entity("InvoiceApi.Domain.Entities.BillingSettings", b =>
+                {
+                    b.HasOne("InvoiceApi.Domain.Entities.Client", "Client")
+                        .WithOne("BillingSettings")
+                        .HasForeignKey("InvoiceApi.Domain.Entities.BillingSettings", "ClientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("InvoiceApi.Domain.Entities.NumberSequence", "CustomCreditNoteNumberSequence")
+                        .WithMany()
+                        .HasForeignKey("CustomCreditNoteNumberSequenceId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("InvoiceApi.Domain.Entities.NumberSequence", "CustomInvoiceNumberSequence")
+                        .WithMany()
+                        .HasForeignKey("CustomInvoiceNumberSequenceId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.Navigation("Client");
+
+                    b.Navigation("CustomCreditNoteNumberSequence");
+
+                    b.Navigation("CustomInvoiceNumberSequence");
+                });
+
             modelBuilder.Entity("InvoiceApi.Domain.Entities.Client", b =>
                 {
                     b.HasOne("InvoiceApi.Domain.Entities.Currency", "PreferredCurrency")
@@ -1023,17 +1297,6 @@ namespace InvoiceApi.Infrastructure.Migrations.Master
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("PreferredCurrency");
-                });
-
-            modelBuilder.Entity("InvoiceApi.Domain.Entities.CompanySystemSettings", b =>
-                {
-                    b.HasOne("InvoiceApi.Domain.Entities.Client", "Company")
-                        .WithOne()
-                        .HasForeignKey("InvoiceApi.Domain.Entities.CompanySystemSettings", "CompanyId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Company");
                 });
 
             modelBuilder.Entity("InvoiceApi.Domain.Entities.Contact", b =>
@@ -1047,21 +1310,99 @@ namespace InvoiceApi.Infrastructure.Migrations.Master
                     b.Navigation("Client");
                 });
 
-            modelBuilder.Entity("InvoiceApi.Domain.Entities.User", b =>
+            modelBuilder.Entity("InvoiceApi.Domain.Entities.Invoice", b =>
                 {
-                    b.HasOne("InvoiceApi.Domain.Entities.Client", "Company")
+                    b.HasOne("InvoiceApi.Domain.Entities.Client", "Client")
                         .WithMany()
-                        .HasForeignKey("CompanyId")
+                        .HasForeignKey("ClientId")
                         .OnDelete(DeleteBehavior.Restrict);
 
-                    b.Navigation("Company");
+                    b.HasOne("InvoiceApi.Domain.Entities.Currency", "Currency")
+                        .WithMany()
+                        .HasForeignKey("CurrencyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("InvoiceApi.Domain.Entities.Client", "Issuer")
+                        .WithMany()
+                        .HasForeignKey("IssuerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("InvoiceApi.Domain.Entities.Invoice", "OriginalInvoice")
+                        .WithMany("CreditNote")
+                        .HasForeignKey("OriginalInvoiceId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Client");
+
+                    b.Navigation("Currency");
+
+                    b.Navigation("Issuer");
+
+                    b.Navigation("OriginalInvoice");
+                });
+
+            modelBuilder.Entity("InvoiceApi.Domain.Entities.InvoiceItem", b =>
+                {
+                    b.HasOne("InvoiceApi.Domain.Entities.Invoice", "Invoice")
+                        .WithMany("InvoiceItem")
+                        .HasForeignKey("InvoiceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("InvoiceApi.Domain.Entities.VatRate", "VatRate")
+                        .WithMany("InvoiceItems")
+                        .HasForeignKey("VatRateId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Invoice");
+
+                    b.Navigation("VatRate");
+                });
+
+            modelBuilder.Entity("InvoiceApi.Domain.Entities.NumberSequence", b =>
+                {
+                    b.HasOne("InvoiceApi.Domain.Entities.NumberSequenceFormat", "NumberSequenceFormat")
+                        .WithMany()
+                        .HasForeignKey("NumberSequenceFormatId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("NumberSequenceFormat");
+                });
+
+            modelBuilder.Entity("InvoiceApi.Domain.Entities.InvoiceTemplate", b =>
+                {
+                    b.HasOne("InvoiceApi.Domain.Entities.NumberSequence", "NumberSequence")
+                        .WithMany()
+                        .HasForeignKey("NumberSequenceId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("NumberSequence");
                 });
 
             modelBuilder.Entity("InvoiceApi.Domain.Entities.Client", b =>
                 {
                     b.Navigation("Address");
 
+                    b.Navigation("BankAccount");
+
+                    b.Navigation("BillingSettings");
+
                     b.Navigation("Contact");
+                });
+
+            modelBuilder.Entity("InvoiceApi.Domain.Entities.Invoice", b =>
+                {
+                    b.Navigation("CreditNote");
+
+                    b.Navigation("InvoiceItem");
+                });
+
+            modelBuilder.Entity("InvoiceApi.Domain.Entities.VatRate", b =>
+                {
+                    b.Navigation("InvoiceItems");
                 });
 #pragma warning restore 612, 618
         }

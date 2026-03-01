@@ -6,23 +6,24 @@ using Microsoft.EntityFrameworkCore;
 namespace InvoiceApi.Infrastructure.Data;
 
 /// <summary>
-/// Database context for individual TENANT databases in the multi-tenant architecture (Azure SQL / SQL Server).
+/// Database context for individual TENANT schemas in the multi-tenant PostgreSQL architecture.
 ///
-/// Each company (tenant) gets its own SQL Server database with this schema.
-/// The tenant database is self-contained — it has its own copy of all business data
+/// Architecture: Single PostgreSQL database with schema-per-tenant isolation.
+/// Each company (tenant) gets its own schema (e.g., "tenant_42") within the shared database.
+/// The tenant schema is self-contained — it has its own copy of all business data
 /// AND its own copies of code tables (VatRate, Currency, NumberSequenceFormat, ContentTemplate).
 ///
 /// Why self-contained? So that:
-/// 1. Tenant queries never need to cross databases (performance)
+/// 1. Tenant queries never need to cross schemas (performance)
 /// 2. Tenants can customize code table values (e.g., add custom VAT rates)
-/// 3. If a tenant's DB is backed up/restored, everything is in one place
+/// 3. Schema isolation prevents data leakage between tenants
 ///
-/// What is NOT in tenant DB:
-/// - Users (stored in master DB — authentication is centralized)
-/// - CompanySystemSettings (stored in master DB — infrastructure config)
+/// What is NOT in tenant schema:
+/// - Users (stored in master "public" schema — authentication is centralized)
+/// - CompanySystemSettings (stored in master schema — infrastructure config)
 ///
-/// Connection string is resolved per-request by ITenantDbContextFactory,
-/// which reads CompanySystemSettings from the master DB.
+/// Schema is resolved per-request by ITenantDbContextFactory,
+/// which reads CompanySystemSettings.SchemaName from the master schema.
 /// </summary>
 public class TenantDbContext : DbContext
 {
@@ -48,6 +49,14 @@ public class TenantDbContext : DbContext
     {
         _currentUserService = currentUserService;
     }
+
+    /// <summary>
+    /// PostgreSQL schema name for this tenant context (e.g., "tenant_42").
+    /// Set by ITenantDbContextFactory per-request based on CompanySystemSettings.SchemaName.
+    /// When set, all tables in this context are created/queried within this schema.
+    /// When null, the default schema ("public" or design-time template) is used.
+    /// </summary>
+    public string? Schema { get; set; }
 
     // ─── DbSets ───────────────────────────────────────────────────────────────
 
@@ -131,8 +140,17 @@ public class TenantDbContext : DbContext
     {
         base.OnModelCreating(modelBuilder);
 
+        // ── Schema isolation ──────────────────────────────────────────────────
+        // Each tenant gets its own PostgreSQL schema (e.g., "tenant_42").
+        // HasDefaultSchema ensures all tables, indexes, and sequences for this
+        // context are created within the tenant's schema, preventing data leakage.
+        if (!string.IsNullOrEmpty(Schema))
+        {
+            modelBuilder.HasDefaultSchema(Schema);
+        }
+
         // ── Exclude master-only entities ───────────────────────────────────────
-        // Tenant databases don't have Users or CompanySystemSettings.
+        // Tenant schemas don't have Users or CompanySystemSettings.
         // These entities don't have nav props pointing INTO tenant data,
         // but we exclude them explicitly for clarity and safety.
         modelBuilder.Ignore<User>();
@@ -269,10 +287,9 @@ public class TenantDbContext : DbContext
             entity.Property(e => e.BankAccountNumber).HasMaxLength(100);
             entity.Property(e => e.Notes).HasMaxLength(2000);
 
-            // SQL Server does not allow multiple cascade paths from the same table.
+            // Prevent cascading deletes from creating ambiguous paths.
             // Client → BillingSettings is Cascade, so these FKs to NumberSequence
-            // must use NoAction to avoid "cycles or multiple cascade paths" error.
-            // Application code handles nullification when a NumberSequence is deleted.
+            // use NoAction for safety. Application code handles cleanup.
             entity.HasOne(e => e.CustomInvoiceNumberSequence)
                 .WithMany()
                 .HasForeignKey(e => e.CustomInvoiceNumberSequenceId)
@@ -314,9 +331,10 @@ public class TenantDbContext : DbContext
             // Unique filtered index: prevents duplicate document numbers.
             // Excludes "DRAFT" placeholder (new invoices start as "DRAFT" and get a real number on creation).
             // Multiple DRAFTs are allowed, but once a real number is assigned it must be unique.
+            // PostgreSQL filtered index syntax uses double-quoted identifiers
             entity.HasIndex(e => e.DocumentNumber)
                 .IsUnique()
-                .HasFilter("[DocumentNumber] IS NOT NULL AND [DocumentNumber] <> 'DRAFT'");
+                .HasFilter("\"DocumentNumber\" IS NOT NULL AND \"DocumentNumber\" <> 'DRAFT'");
             entity.HasIndex(e => e.DocumentType);
             entity.HasIndex(e => e.Status);
             entity.HasIndex(e => e.ClientId);
@@ -401,11 +419,15 @@ public class TenantDbContext : DbContext
             entity.Property(e => e.Prefix).HasMaxLength(50);
             entity.Property(e => e.Suffix).HasMaxLength(50);
 
-            // Optimistic concurrency — SQL Server rowversion (timestamp) column.
-            // The database auto-updates this byte[] on every INSERT/UPDATE.
-            // EF Core uses .IsRowVersion() which sets it as a concurrency token.
+            // Optimistic concurrency — PostgreSQL xmin system column.
+            // xmin is a hidden column containing the transaction ID that last modified the row.
+            // In Npgsql 10.x, a uint property configured as IsConcurrencyToken() + ValueGeneratedOnAddOrUpdate()
+            // is automatically mapped to the xmin column by convention.
+            // On every UPDATE, EF Core checks this value — if another request modified the row
+            // since we read it, SaveChanges throws DbUpdateConcurrencyException.
             entity.Property(e => e.RowVersion)
-                .IsRowVersion();
+                .IsConcurrencyToken()
+                .ValueGeneratedOnAddOrUpdate();
 
             entity.HasOne(e => e.NumberSequenceFormat)
                 .WithMany()
@@ -458,8 +480,7 @@ public class TenantDbContext : DbContext
 
             entity.Property(e => e.Name).IsRequired().HasMaxLength(200);
             entity.Property(e => e.Subject).HasMaxLength(500);
-            // SQL Server uses nvarchar(max) by default for string properties;
-            // no explicit HasColumnType needed (was "TEXT" for PostgreSQL).
+            // PostgreSQL uses "text" type by default for string properties without MaxLength.
             entity.Property(e => e.HtmlBody).IsRequired();
             entity.Property(e => e.Description).HasMaxLength(2000);
         });

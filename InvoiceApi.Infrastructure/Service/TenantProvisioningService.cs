@@ -3,21 +3,22 @@ using InvoiceApi.Domain.Entities;
 using InvoiceApi.Domain.Enums;
 using InvoiceApi.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using Microsoft.Data.SqlClient;
+using Npgsql;
 
 namespace InvoiceApi.Infrastructure.Service;
 
 /// <summary>
-/// Service responsible for provisioning, activating, deactivating, and migrating tenant databases.
+/// Service responsible for provisioning, activating, deactivating, and migrating tenant schemas.
 ///
-/// Provisioning creates a new SQL Server database for a company, applies the TenantDbContext schema,
-/// copies code tables (VatRate, Currency, etc.) from the master database, and marks the company
-/// as provisioned in CompanySystemSettings.
+/// Architecture: Single PostgreSQL database with schema-per-tenant isolation.
+/// Provisioning creates a new schema (e.g., "tenant_42") in the shared PostgreSQL database,
+/// applies the TenantDbContext migrations to that schema, copies code tables (VatRate, Currency, etc.)
+/// from the master "public" schema, and marks the company as provisioned in CompanySystemSettings.
 ///
-/// Connection string is built by replacing the Database name in the master connection string
-/// with the tenant-specific DatabaseName from CompanySystemSettings.
+/// All tenants share the same database connection; isolation is achieved via PostgreSQL schemas.
 /// </summary>
 public class TenantProvisioningService : ITenantProvisioningService
 {
@@ -51,16 +52,16 @@ public class TenantProvisioningService : ITenantProvisioningService
 
         // Allow re-provisioning: if already provisioned, log a warning and continue.
         // This makes the entire flow idempotent — safe to re-run after a partial failure
-        // (e.g., DB created but tables not seeded, or code tables inserted partially).
+        // (e.g., schema created but tables not seeded, or code tables inserted partially).
         if (settings.IsProvisioned)
         {
             _logger.LogWarning(
-                "Company {CompanyId} is already marked as provisioned (database: {DatabaseName}). " +
+                "Company {CompanyId} is already marked as provisioned (schema: {SchemaName}). " +
                 "Re-running provisioning to ensure all data is consistent.",
-                companyId, settings.DatabaseName);
+                companyId, settings.SchemaName);
         }
 
-        // 2. Load the company (issuer) data from master DB — will be copied to tenant DB.
+        // 2. Load the company (issuer) data from master DB — will be copied to tenant schema.
         // AsSplitQuery: Address and Contact are both collection navigations — prevents cartesian explosion.
         var company = await _masterContext.Client
             .AsSplitQuery()
@@ -70,44 +71,40 @@ public class TenantProvisioningService : ITenantProvisioningService
             ?? throw new InvalidOperationException(
                 $"Company with ID {companyId} not found or is not marked as issuer.");
 
-        // 3. Build the tenant connection string
-        var connectionString = BuildTenantConnectionString(settings);
+        // 3. Create the PostgreSQL schema
+        await CreateSchemaAsync(settings.SchemaName, cancellationToken);
+        _logger.LogInformation("Created schema '{SchemaName}' for company {CompanyId}",
+            settings.SchemaName, companyId);
 
-        // 4. Create the PostgreSQL database
-        await CreateDatabaseAsync(settings.DatabaseName, cancellationToken);
-        _logger.LogInformation("Created database '{DatabaseName}' for company {CompanyId}",
-            settings.DatabaseName, companyId);
-
-        // 5. Apply TenantDbContext migrations to the new database
-        using var tenantContext = CreateTenantContext(connectionString);
+        // 4. Apply TenantDbContext migrations to the new schema
+        using var tenantContext = CreateTenantContext(settings.SchemaName);
         await tenantContext.Database.MigrateAsync(cancellationToken);
-        _logger.LogInformation("Applied migrations to tenant database '{DatabaseName}'",
-            settings.DatabaseName);
+        _logger.LogInformation("Applied migrations to tenant schema '{SchemaName}'",
+            settings.SchemaName);
 
-        // 6. Copy code tables from master DB to tenant DB
-        await CopyCodeTablesAsync(tenantContext, cancellationToken);
-        _logger.LogInformation("Copied code tables to tenant database '{DatabaseName}'",
-            settings.DatabaseName);
+        // 5. Copy code tables from master DB to tenant schema
+        await CopyCodeTablesAsync(tenantContext, settings.SchemaName, cancellationToken);
+        _logger.LogInformation("Copied code tables to tenant schema '{SchemaName}'",
+            settings.SchemaName);
 
-        // 7. Create the issuer (company) record in the tenant DB
+        // 6. Create the issuer (company) record in the tenant schema
         await CreateIssuerInTenantAsync(tenantContext, company, cancellationToken);
-        _logger.LogInformation("Created issuer in tenant database '{DatabaseName}'",
-            settings.DatabaseName);
+        _logger.LogInformation("Created issuer in tenant schema '{SchemaName}'",
+            settings.SchemaName);
 
-        // 8. Create default number sequences for Invoice and CreditNote
+        // 7. Create default number sequences for Invoice and CreditNote
         await CreateDefaultNumberSequencesAsync(tenantContext, cancellationToken);
-        _logger.LogInformation("Created default number sequences in tenant database '{DatabaseName}'",
-            settings.DatabaseName);
+        _logger.LogInformation("Created default number sequences in tenant schema '{SchemaName}'",
+            settings.SchemaName);
 
-        // 9. Mark as provisioned in master DB
+        // 8. Mark as provisioned in master DB
         settings.IsProvisioned = true;
         settings.IsActive = true;
         settings.ProvisionedAt = DateTime.UtcNow;
-        settings.ConnectionString = connectionString;
         await _masterContext.SaveChangesAsync(cancellationToken);
 
-        _logger.LogInformation("Provisioning complete for company {CompanyId} → database '{DatabaseName}'",
-            companyId, settings.DatabaseName);
+        _logger.LogInformation("Provisioning complete for company {CompanyId} → schema '{SchemaName}'",
+            companyId, settings.SchemaName);
 
         return true;
     }
@@ -155,7 +152,7 @@ public class TenantProvisioningService : ITenantProvisioningService
     /// <inheritdoc />
     public async Task<bool> MigrateTenantAsync(long companyId, CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Migrating tenant database for company {CompanyId}", companyId);
+        _logger.LogInformation("Migrating tenant schema for company {CompanyId}", companyId);
 
         var settings = await _masterContext.CompanySystemSettings
             .AsNoTracking()
@@ -164,19 +161,18 @@ public class TenantProvisioningService : ITenantProvisioningService
         if (settings == null)
             return false;
 
-        var connectionString = BuildTenantConnectionString(settings);
-        using var tenantContext = CreateTenantContext(connectionString);
+        using var tenantContext = CreateTenantContext(settings.SchemaName);
         await tenantContext.Database.MigrateAsync(cancellationToken);
 
-        _logger.LogInformation("Migrated tenant database '{DatabaseName}' for company {CompanyId}",
-            settings.DatabaseName, companyId);
+        _logger.LogInformation("Migrated tenant schema '{SchemaName}' for company {CompanyId}",
+            settings.SchemaName, companyId);
         return true;
     }
 
     /// <inheritdoc />
     public async Task<int> MigrateAllTenantsAsync(CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Starting migration of all active tenant databases");
+        _logger.LogInformation("Starting migration of all active tenant schemas");
 
         // Get all provisioned and active tenants from master DB
         var tenants = await _masterContext.CompanySystemSettings
@@ -192,19 +188,18 @@ public class TenantProvisioningService : ITenantProvisioningService
         {
             try
             {
-                var connectionString = BuildTenantConnectionString(settings);
-                using var tenantContext = CreateTenantContext(connectionString);
+                using var tenantContext = CreateTenantContext(settings.SchemaName);
                 await tenantContext.Database.MigrateAsync(cancellationToken);
                 successCount++;
 
-                _logger.LogInformation("Migrated tenant '{DatabaseName}' (company {CompanyId})",
-                    settings.DatabaseName, settings.CompanyId);
+                _logger.LogInformation("Migrated tenant schema '{SchemaName}' (company {CompanyId})",
+                    settings.SchemaName, settings.CompanyId);
             }
             catch (Exception ex)
             {
                 // Log error but continue with other tenants — one failure shouldn't block all
-                _logger.LogError(ex, "Failed to migrate tenant '{DatabaseName}' (company {CompanyId})",
-                    settings.DatabaseName, settings.CompanyId);
+                _logger.LogError(ex, "Failed to migrate tenant schema '{SchemaName}' (company {CompanyId})",
+                    settings.SchemaName, settings.CompanyId);
             }
         }
 
@@ -214,9 +209,9 @@ public class TenantProvisioningService : ITenantProvisioningService
         return successCount;
     }
 
-
     /// <summary>
-    /// Deletes all tenant databases that are marked as provisioned in the master DB.
+    /// Drops all tenant schemas that are marked as provisioned in the master DB.
+    /// WARNING: This is a DESTRUCTIVE operation — all tenant data will be permanently lost.
     /// </summary>
     public async Task DeleteAllTenantDbs(CancellationToken cancellationToken = default)
     {
@@ -225,129 +220,130 @@ public class TenantProvisioningService : ITenantProvisioningService
             "Aborting to prevent accidental data loss.");
         return;
 #endif
-        _logger.LogInformation("Starting deletion of all tenant databases");
-        // Get all provisioned tenants from master DB
+        _logger.LogInformation("Starting deletion of all tenant schemas");
+
         var tenants = await _masterContext.CompanySystemSettings
             .AsNoTracking()
             .ToListAsync(cancellationToken);
+
         _logger.LogInformation("Found {Count} provisioned tenants to delete", tenants.Count);
+
+        var connectionString = GetConnectionString();
+
         foreach (var settings in tenants)
         {
             try
             {
-                var connectionString = BuildTenantConnectionString(settings);
-                using var tenantContext = CreateTenantContext(connectionString);
-                await tenantContext.Database.EnsureDeletedAsync(cancellationToken);
+                // Drop the entire schema with CASCADE to remove all objects inside it
+                await using var connection = new NpgsqlConnection(connectionString);
+                await connection.OpenAsync(cancellationToken);
 
-                _logger.LogInformation("Deleted tenant database '{DatabaseName}' for company {CompanyId}",
-                    settings.DatabaseName, settings.CompanyId);
+                var safeName = SanitizeSchemaName(settings.SchemaName);
+                await using var dropCmd = connection.CreateCommand();
+                dropCmd.CommandText = $"DROP SCHEMA IF EXISTS \"{safeName}\" CASCADE";
+                await dropCmd.ExecuteNonQueryAsync(cancellationToken);
+
+                _logger.LogInformation("Dropped tenant schema '{SchemaName}' for company {CompanyId}",
+                    settings.SchemaName, settings.CompanyId);
             }
             catch (Exception ex)
             {
-                // Log error but continue with other tenants — one failure shouldn't block all
-                _logger.LogError(ex, "Failed to delete tenant database '{DatabaseName}' (company {CompanyId})",
-                    settings.DatabaseName, settings.CompanyId);
+                _logger.LogError(ex, "Failed to drop tenant schema '{SchemaName}' (company {CompanyId})",
+                    settings.SchemaName, settings.CompanyId);
             }
         }
-        _logger.LogInformation("Tenant database deletion complete");
+
+        _logger.LogInformation("Tenant schema deletion complete");
     }
 
     #region Private helpers
 
     /// <summary>
-    /// Builds the connection string for a tenant database.
-    /// If CompanySystemSettings has a custom ConnectionString, uses that directly.
-    /// Otherwise, takes the master connection string and replaces the Database (Initial Catalog).
+    /// Creates a PostgreSQL schema for a tenant.
+    /// Connects to the shared database and executes CREATE SCHEMA.
+    ///
+    /// IDEMPOTENT: Checks information_schema.schemata before creating.
+    /// If the schema already exists, it's skipped without error.
     /// </summary>
-    private string BuildTenantConnectionString(CompanySystemSettings settings)
+    private async Task CreateSchemaAsync(string schemaName, CancellationToken cancellationToken)
     {
-        // If a custom connection string is configured, use it as-is
-        if (!string.IsNullOrWhiteSpace(settings.ConnectionString))
-            return settings.ConnectionString;
+        var connectionString = GetConnectionString();
 
-        // Build from master connection string template, replacing the database name
-        var masterConnectionString = _configuration.GetConnectionString("MasterConnection")
-            ?? throw new InvalidOperationException("MasterConnection string not configured.");
-
-        // SQL Server uses SqlConnectionStringBuilder with InitialCatalog property
-        var builder = new SqlConnectionStringBuilder(masterConnectionString)
-        {
-            InitialCatalog = settings.DatabaseName
-        };
-
-        return builder.ConnectionString;
-    }
-
-    /// <summary>
-    /// Creates a new TenantDbContext connected to the specified connection string.
-    /// Used during provisioning and migration operations.
-    /// </summary>
-    private static TenantDbContext CreateTenantContext(string connectionString)
-    {
-        var options = new DbContextOptionsBuilder<TenantDbContext>()
-            .UseSqlServer(connectionString, b =>
-                b.EnableRetryOnFailure(maxRetryCount: 3, maxRetryDelay: TimeSpan.FromSeconds(5), errorNumbersToAdd: null))
-            .Options;
-
-        return new TenantDbContext(options);
-    }
-
-    /// <summary>
-    /// Creates the SQL Server database using a low-level connection.
-    /// Connects to the "master" system database to execute CREATE DATABASE.
-    /// </summary>
-    private async Task CreateDatabaseAsync(string databaseName, CancellationToken cancellationToken)
-    {
-        var masterConnectionString = _configuration.GetConnectionString("MasterConnection")
-            ?? throw new InvalidOperationException("MasterConnection string not configured.");
-
-        // Connect to the "master" system database to execute CREATE DATABASE
-        // (SQL Server equivalent of PostgreSQL's "postgres" system database)
-        var builder = new SqlConnectionStringBuilder(masterConnectionString)
-        {
-            InitialCatalog = "master"
-        };
-
-        await using var connection = new SqlConnection(builder.ConnectionString);
+        await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
 
-        // Use parameterized-safe approach — database names can't use SQL parameters,
-        // so we sanitize by only allowing alphanumeric + underscore characters
-        var safeName = SanitizeDatabaseName(databaseName);
+        // Sanitize schema name to prevent SQL injection (identifiers can't use parameters)
+        var safeName = SanitizeSchemaName(schemaName);
 
-        // Check if database already exists using SQL Server's DB_ID() function (idempotent)
+        // Check if schema already exists using information_schema (idempotent)
         await using var checkCmd = connection.CreateCommand();
-        checkCmd.CommandText = $"SELECT DB_ID('{safeName}')";
+        checkCmd.CommandText = "SELECT schema_name FROM information_schema.schemata WHERE schema_name = @name";
+        checkCmd.Parameters.AddWithValue("name", safeName);
         var exists = await checkCmd.ExecuteScalarAsync(cancellationToken);
 
-        // DB_ID returns null (DBNull) if the database does not exist
-        if (exists == null || exists == DBNull.Value)
+        if (exists == null)
         {
+            // Schema doesn't exist — create it
             await using var createCmd = connection.CreateCommand();
-            createCmd.CommandText = $"CREATE DATABASE [{safeName}]";
+            createCmd.CommandText = $"CREATE SCHEMA \"{safeName}\"";
             await createCmd.ExecuteNonQueryAsync(cancellationToken);
-            _logger.LogInformation("SQL Server database '{DatabaseName}' created", safeName);
+            _logger.LogInformation("PostgreSQL schema '{SchemaName}' created", safeName);
         }
         else
         {
-            _logger.LogInformation("SQL Server database '{DatabaseName}' already exists, skipping creation", safeName);
+            _logger.LogInformation("PostgreSQL schema '{SchemaName}' already exists, skipping creation", safeName);
         }
     }
 
     /// <summary>
-    /// Sanitizes a database name to prevent SQL injection.
-    /// Only allows alphanumeric characters and underscores.
+    /// Creates a new TenantDbContext configured for a specific schema.
+    /// Used during provisioning and migration operations.
     /// </summary>
-    private static string SanitizeDatabaseName(string name)
+    private TenantDbContext CreateTenantContext(string schemaName)
     {
-        var sanitized = new string(name.Where(c => char.IsLetterOrDigit(c) || c == '_').ToArray());
+        var connectionString = GetConnectionString();
+
+        var options = new DbContextOptionsBuilder<TenantDbContext>()
+            .UseNpgsql(connectionString, b =>
+            {
+                b.MigrationsAssembly("InvoiceApi.Infrastructure");
+                b.EnableRetryOnFailure(
+                    maxRetryCount: 3,
+                    maxRetryDelay: TimeSpan.FromSeconds(5),
+                    errorCodesToAdd: null);
+            })
+            .ReplaceService<IModelCacheKeyFactory, TenantModelCacheKeyFactory>()
+            .Options;
+
+        var context = new TenantDbContext(options);
+        context.Schema = schemaName;
+        return context;
+    }
+
+    /// <summary>
+    /// Sanitizes a schema name to prevent SQL injection.
+    /// Only allows lowercase alphanumeric characters and underscores.
+    /// PostgreSQL schema names must start with a letter or underscore.
+    /// </summary>
+    private static string SanitizeSchemaName(string name)
+    {
+        var sanitized = new string(name.Where(c => char.IsLetterOrDigit(c) || c == '_').ToArray()).ToLowerInvariant();
         if (string.IsNullOrEmpty(sanitized))
-            throw new InvalidOperationException($"Invalid database name: '{name}' — must contain alphanumeric characters.");
+            throw new InvalidOperationException($"Invalid schema name: '{name}' — must contain alphanumeric characters.");
         return sanitized;
     }
 
     /// <summary>
-    /// Copies code tables from master DB to the newly provisioned tenant DB.
+    /// Gets the shared PostgreSQL connection string from configuration.
+    /// </summary>
+    private string GetConnectionString()
+    {
+        return _configuration.GetConnectionString("DefaultConnection")
+            ?? throw new InvalidOperationException("DefaultConnection string not configured.");
+    }
+
+    /// <summary>
+    /// Copies code tables from master DB ("public" schema) to the newly provisioned tenant schema.
     /// These are "seed" copies — the tenant can later customize them independently.
     ///
     /// IDEMPOTENT: Deletes existing records before inserting to avoid duplicate key violations.
@@ -356,25 +352,29 @@ public class TenantProvisioningService : ITenantProvisioningService
     /// constraint violations (e.g., Currency.Code must be unique).
     /// Delete order respects FK constraints: child tables first, then parent tables.
     /// </summary>
-    private async Task CopyCodeTablesAsync(TenantDbContext tenantContext, CancellationToken cancellationToken)
+    private async Task CopyCodeTablesAsync(TenantDbContext tenantContext, string schemaName, CancellationToken cancellationToken)
     {
+        var safeName = SanitizeSchemaName(schemaName);
+
         // Delete existing records in FK-safe order (children before parents).
         // NumberSequence references NumberSequenceFormat, so it must be deleted first.
         // Using raw SQL because EF change tracker doesn't support efficient bulk deletes.
-        _logger.LogInformation("Clearing existing code tables in tenant DB for idempotent re-seeding");
-        await tenantContext.Database.ExecuteSqlRawAsync("DELETE FROM [NumberSequence]", cancellationToken);
-        await tenantContext.Database.ExecuteSqlRawAsync("DELETE FROM [NumberSequenceFormat]", cancellationToken);
-        await tenantContext.Database.ExecuteSqlRawAsync("DELETE FROM [ContentTemplate]", cancellationToken);
-        await tenantContext.Database.ExecuteSqlRawAsync("DELETE FROM [Currency]", cancellationToken);
-        await tenantContext.Database.ExecuteSqlRawAsync("DELETE FROM [VatRate]", cancellationToken);
+        // PostgreSQL uses double-quoted identifiers for schema-qualified table names.
+        _logger.LogInformation("Clearing existing code tables in tenant schema '{SchemaName}' for idempotent re-seeding", schemaName);
+        await tenantContext.Database.ExecuteSqlRawAsync($"DELETE FROM \"{safeName}\".\"NumberSequence\"", cancellationToken);
+        await tenantContext.Database.ExecuteSqlRawAsync($"DELETE FROM \"{safeName}\".\"NumberSequenceFormat\"", cancellationToken);
+        await tenantContext.Database.ExecuteSqlRawAsync($"DELETE FROM \"{safeName}\".\"ContentTemplate\"", cancellationToken);
+        await tenantContext.Database.ExecuteSqlRawAsync($"DELETE FROM \"{safeName}\".\"Currency\"", cancellationToken);
+        await tenantContext.Database.ExecuteSqlRawAsync($"DELETE FROM \"{safeName}\".\"VatRate\"", cancellationToken);
 
-        // Reseed identity counters so IDs start from 1 (cleaner for new tenants).
-        // CHECKIDENT with RESEED 0 makes the next identity value = 1.
-        await tenantContext.Database.ExecuteSqlRawAsync("DBCC CHECKIDENT ('[NumberSequence]', RESEED, 0)", cancellationToken);
-        await tenantContext.Database.ExecuteSqlRawAsync("DBCC CHECKIDENT ('[NumberSequenceFormat]', RESEED, 0)", cancellationToken);
-        await tenantContext.Database.ExecuteSqlRawAsync("DBCC CHECKIDENT ('[ContentTemplate]', RESEED, 0)", cancellationToken);
-        await tenantContext.Database.ExecuteSqlRawAsync("DBCC CHECKIDENT ('[Currency]', RESEED, 0)", cancellationToken);
-        await tenantContext.Database.ExecuteSqlRawAsync("DBCC CHECKIDENT ('[VatRate]', RESEED, 0)", cancellationToken);
+        // Reset PostgreSQL sequences so IDs start from 1 (cleaner for new tenants).
+        // PostgreSQL uses ALTER SEQUENCE ... RESTART WITH 1 instead of DBCC CHECKIDENT.
+        // Note: sequence names follow the convention "{Table}_{Column}_seq" by default.
+        await tenantContext.Database.ExecuteSqlRawAsync($"ALTER SEQUENCE IF EXISTS \"{safeName}\".\"NumberSequence_Id_seq\" RESTART WITH 1", cancellationToken);
+        await tenantContext.Database.ExecuteSqlRawAsync($"ALTER SEQUENCE IF EXISTS \"{safeName}\".\"NumberSequenceFormat_Id_seq\" RESTART WITH 1", cancellationToken);
+        await tenantContext.Database.ExecuteSqlRawAsync($"ALTER SEQUENCE IF EXISTS \"{safeName}\".\"ContentTemplate_Id_seq\" RESTART WITH 1", cancellationToken);
+        await tenantContext.Database.ExecuteSqlRawAsync($"ALTER SEQUENCE IF EXISTS \"{safeName}\".\"Currency_Id_seq\" RESTART WITH 1", cancellationToken);
+        await tenantContext.Database.ExecuteSqlRawAsync($"ALTER SEQUENCE IF EXISTS \"{safeName}\".\"VatRate_Id_seq\" RESTART WITH 1", cancellationToken);
 
         // Copy VatRates (all active rates from master)
         var vatRates = await _masterContext.VatRate
@@ -463,9 +463,9 @@ public class TenantProvisioningService : ITenantProvisioningService
     }
 
     /// <summary>
-    /// Creates the issuer (company) record in the tenant database.
+    /// Creates the issuer (company) record in the tenant schema.
     /// Copies the company data from master DB, including addresses and contacts.
-    /// The tenant DB will have its own copy of the issuer for invoice generation.
+    /// The tenant schema will have its own copy of the issuer for invoice generation.
     ///
     /// IDEMPOTENT: Checks if an issuer with the same RegistrationNumber already exists.
     /// If found, skips insertion — the existing issuer record is kept as-is.
@@ -536,7 +536,7 @@ public class TenantProvisioningService : ITenantProvisioningService
     }
 
     /// <summary>
-    /// Creates default number sequences for Invoice and CreditNote in the tenant DB.
+    /// Creates default number sequences for Invoice and CreditNote in the tenant schema.
     /// Uses the first active NumberSequenceFormat as the format template.
     ///
     /// IDEMPOTENT: Checks if default sequences already exist before inserting.
@@ -547,7 +547,6 @@ public class TenantProvisioningService : ITenantProvisioningService
         TenantDbContext tenantContext, CancellationToken cancellationToken)
     {
         // Find the first active format in the tenant DB (copied from master).
-        // OrderBy(Id): deterministic ordering — avoids EF warning when predicate could match multiple rows.
         var defaultFormat = await tenantContext.NumberSequenceFormat
             .OrderBy(f => f.Id)
             .FirstOrDefaultAsync(f => f.IsActive, cancellationToken);

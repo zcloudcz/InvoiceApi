@@ -5,7 +5,7 @@ namespace InvoiceApi.Contracts.Dto.CompanySettings;
 /// <summary>
 /// DTO for creating a new CompanySystemSettings record in the master database.
 /// This is the first step before provisioning — it registers the tenant configuration
-/// (database name, limits) but does NOT create the actual database yet.
+/// (schema name, limits) but does NOT create the actual schema yet.
 /// Provisioning is a separate step triggered via POST /api/company/{id}/provision.
 /// </summary>
 public class CreateCompanySystemSettingsDto
@@ -18,21 +18,14 @@ public class CreateCompanySystemSettingsDto
     public long CompanyId { get; set; }
 
     /// <summary>
-    /// PostgreSQL database name for this tenant.
-    /// Convention: "invoiceapi_tenant_{companyId}" — only alphanumeric + underscore allowed.
+    /// Schema name for this tenant within the shared database.
+    /// Convention: "tenant_{companyId}" — only alphanumeric + underscore allowed.
     /// If not provided, the system generates it automatically from the company ID.
     /// </summary>
     [StringLength(200, MinimumLength = 3)]
     [RegularExpression(@"^[a-zA-Z0-9_]+$",
-        ErrorMessage = "Database name can only contain letters, numbers, and underscores.")]
-    public string? DatabaseName { get; set; }
-
-    /// <summary>
-    /// Optional custom connection string for tenants hosted on a different server.
-    /// If null, the system builds it from the master connection string template.
-    /// </summary>
-    [StringLength(1000)]
-    public string? ConnectionString { get; set; }
+        ErrorMessage = "Schema name can only contain letters, numbers, and underscores.")]
+    public string? SchemaName { get; set; }
 
     /// <summary>
     /// Maximum number of users allowed for this tenant. Null = unlimited.

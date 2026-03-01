@@ -202,8 +202,8 @@ public class AuditTrailTests : IDisposable
             NumberSequenceFormatId = 0
         };
 
-        // Assert — RowVersion property should exist and default to null (byte[]?)
-        // The database populates this automatically on INSERT/UPDATE.
-        sequence.RowVersion.ShouldBeNull();
+        // Assert — RowVersion property should exist and default to 0 (uint).
+        // PostgreSQL xmin system column populates this automatically on INSERT/UPDATE.
+        sequence.RowVersion.ShouldBe(0u);
     }
 }

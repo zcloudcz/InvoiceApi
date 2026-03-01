@@ -23,10 +23,10 @@ public class CompanySystemSettingsDto
     public string CompanyName { get; set; } = string.Empty;
 
     /// <summary>
-    /// PostgreSQL database name for this tenant (e.g., "invoiceapi_tenant_42").
+    /// Schema name for this tenant within the shared database (e.g., "tenant_42").
     /// Set during provisioning and immutable afterward.
     /// </summary>
-    public string DatabaseName { get; set; } = string.Empty;
+    public string SchemaName { get; set; } = string.Empty;
 
     /// <summary>
     /// Whether the tenant database has been provisioned (created + migrated + seeded).
@@ -53,12 +53,6 @@ public class CompanySystemSettingsDto
     /// Internal admin notes about this tenant (not visible to tenant users).
     /// </summary>
     public string? AdminNotes { get; set; }
-
-    /// <summary>
-    /// Whether the settings record has a custom connection string override.
-    /// We don't expose the actual connection string for security — just whether one exists.
-    /// </summary>
-    public bool HasCustomConnectionString { get; set; }
 
     // ─── Company SMTP Settings (read-only view) ──────────────────────────────
     // These are returned so Admin/SysAdmin can see what's configured.

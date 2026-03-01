@@ -85,13 +85,13 @@ public class NumberSequence : BaseEntity
 
     /// <summary>
     /// Concurrency token for optimistic concurrency control.
-    /// SQL Server uses a rowversion (timestamp) column — a byte array that is
+    /// PostgreSQL uses the hidden system column "xmin" — a 32-bit transaction ID that is
     /// automatically updated by the database engine on every INSERT/UPDATE.
     /// EF Core checks this value on every update — if another request modified
     /// the row since we read it, SaveChanges throws DbUpdateConcurrencyException.
     /// This prevents race conditions when two requests try to generate a
     /// document number simultaneously (duplicate number prevention).
-    /// Configured as .IsRowVersion() in TenantDbContext.
+    /// Configured as .UseXminAsConcurrencyToken() in TenantDbContext.
     /// </summary>
-    public byte[]? RowVersion { get; set; }
+    public uint RowVersion { get; set; }
 }

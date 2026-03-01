@@ -23,8 +23,8 @@ namespace InvoiceApi.API.Controller;
 /// tenant, making it unsuitable for SysAdmin operations.
 ///
 /// Company CRUD: standard create/read/update/delete for issuers.
-/// Tenant lifecycle: provision, activate, deactivate tenant databases.
-/// Settings CRUD: manage CompanySystemSettings (database name, limits, notes).
+/// Tenant lifecycle: provision, activate, deactivate tenant schemas.
+/// Settings CRUD: manage CompanySystemSettings (schema name, limits, notes).
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
@@ -690,16 +690,16 @@ public class CompanyController : ControllerBase
             if (existing)
                 return BadRequest(new { message = $"CompanySystemSettings already exists for company {dto.CompanyId}." });
 
-            // Generate database name if not provided
-            var databaseName = !string.IsNullOrWhiteSpace(dto.DatabaseName)
-                ? dto.DatabaseName
-                : $"invoiceapi_tenant_{dto.CompanyId}";
+            // Generate schema name if not provided — convention: "tenant_{companyId}"
+            // Schema names use lowercase + underscores per PostgreSQL naming rules.
+            var schemaName = !string.IsNullOrWhiteSpace(dto.SchemaName)
+                ? dto.SchemaName
+                : $"tenant_{dto.CompanyId}";
 
             var settings = new CompanySystemSettings
             {
                 CompanyId = dto.CompanyId,
-                DatabaseName = databaseName,
-                ConnectionString = dto.ConnectionString,
+                SchemaName = schemaName,
                 MaxUsers = dto.MaxUsers,
                 AdminNotes = dto.AdminNotes,
                 IsProvisioned = false,
@@ -718,8 +718,8 @@ public class CompanyController : ControllerBase
             _masterContext.CompanySystemSettings.Add(settings);
             await _masterContext.SaveChangesAsync(cancellationToken);
 
-            _logger.LogInformation("Created CompanySystemSettings for company {CompanyId} → database '{DatabaseName}'",
-                dto.CompanyId, databaseName);
+            _logger.LogInformation("Created CompanySystemSettings for company {CompanyId} → schema '{SchemaName}'",
+                dto.CompanyId, schemaName);
 
             // Reload with company navigation for DTO mapping
             settings = await _masterContext.CompanySystemSettings
@@ -738,7 +738,7 @@ public class CompanyController : ControllerBase
 
     /// <summary>
     /// Updates an existing CompanySystemSettings record.
-    /// Only updatable fields can be changed — database name and provisioning status are immutable.
+    /// Only updatable fields can be changed — schema name and provisioning status are immutable.
     /// </summary>
     /// <param name="id">Company ID</param>
     /// <param name="dto">Updated settings data</param>
@@ -761,8 +761,8 @@ public class CompanyController : ControllerBase
             if (settings == null)
                 return NotFound(new { message = $"No CompanySystemSettings found for company {id}." });
 
-            // Update only mutable fields (infrastructure config)
-            settings.ConnectionString = dto.ConnectionString;
+            // Update only mutable fields (infrastructure config).
+            // Note: SchemaName is immutable after provisioning — managed by provisioning service.
             settings.MaxUsers = dto.MaxUsers;
             settings.AdminNotes = dto.AdminNotes;
 
@@ -1035,8 +1035,8 @@ public class CompanyController : ControllerBase
     /// <summary>
     /// Maps a CompanySystemSettings entity to a DTO for API responses.
     /// Includes company name from the navigation property for display convenience.
-    /// Connection string and SMTP password are NOT exposed — only flags indicating
-    /// whether they exist. This prevents credential leaks in API responses.
+    /// SMTP password is NOT exposed — only a flag indicating whether one is set.
+    /// This prevents credential leaks in API responses.
     /// </summary>
     private static CompanySystemSettingsDto MapSettingsToDto(CompanySystemSettings settings)
     {
@@ -1045,13 +1045,12 @@ public class CompanyController : ControllerBase
             Id = settings.Id,
             CompanyId = settings.CompanyId,
             CompanyName = settings.Company?.CompanyName ?? "Unknown",
-            DatabaseName = settings.DatabaseName,
+            SchemaName = settings.SchemaName,
             IsProvisioned = settings.IsProvisioned,
             IsActive = settings.IsActive,
             ProvisionedAt = settings.ProvisionedAt,
             MaxUsers = settings.MaxUsers,
             AdminNotes = settings.AdminNotes,
-            HasCustomConnectionString = !string.IsNullOrEmpty(settings.ConnectionString),
             // Company SMTP settings — password is never exposed, only a flag
             SmtpHost = settings.SmtpHost,
             SmtpPort = settings.SmtpPort,

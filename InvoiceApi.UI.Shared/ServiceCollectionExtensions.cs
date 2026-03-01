@@ -26,8 +26,11 @@ public static class ServiceCollectionExtensions
         services.AddMudServices();
 
         // Localization services for multi-language UI (cs-CZ / en-US).
-        // ResourcesPath is left empty because SharedResource marker class is in the root namespace.
-        services.AddLocalization();
+        // ResourcesPath = "Resources" tells the ResourceManagerStringLocalizerFactory that .resx
+        // files live in the Resources/ subfolder. Without this, the factory looks for embedded
+        // resource "InvoiceApi.UI.Shared.SharedResource" but the actual name is
+        // "InvoiceApi.UI.Shared.Resources.SharedResource" (because the file is in Resources/).
+        services.AddLocalization(options => options.ResourcesPath = "Resources");
 
         // Authorization services — required for <AuthorizeView>, [Authorize] etc.
         services.AddAuthorizationCore();

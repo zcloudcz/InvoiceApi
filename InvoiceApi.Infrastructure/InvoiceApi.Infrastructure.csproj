@@ -12,26 +12,24 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Azure Resource Manager SDK for managing Azure SQL databases (create, list, delete) -->
+    <!-- Azure Identity for DefaultAzureCredential (used by other Azure services if needed) -->
     <PackageReference Include="Azure.Identity" Version="1.17.1" />
-    <PackageReference Include="Azure.ResourceManager" Version="1.13.2" />
-    <PackageReference Include="Azure.ResourceManager.Sql" Version="1.3.0" />
     <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
     <PackageReference Include="itext7" Version="9.1.0" />
     <PackageReference Include="itext7.bouncy-castle-adapter" Version="9.1.0" />
     <PackageReference Include="itext7.pdfhtml" Version="6.1.0" />
     <PackageReference Include="MailKit" Version="4.10.0" />
     <PackageReference Include="Otp.NET" Version="1.4.1" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.1">
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.0">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="10.0.1">
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="10.0.0">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <!-- Azure SQL / SQL Server EF Core provider (migrated from Npgsql.EntityFrameworkCore.PostgreSQL) -->
-    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.1" />
+    <!-- PostgreSQL EF Core provider — single-database multi-schema tenant isolation -->
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
     <PackageReference Include="QRCoder" Version="1.7.0" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.15.0" />
     <PackageReference Include="ZMapper" Version="1.2.0" />

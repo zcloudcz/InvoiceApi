@@ -3,7 +3,8 @@ using System.Reflection;
 using InvoiceApi.Domain.Entities;
 using InvoiceApi.Infrastructure.Logging;
 using Microsoft.Azure.Functions.Worker;
-using Microsoft.Data.SqlClient;
+// PostgreSQL: Using Npgsql instead of Microsoft.Data.SqlClient for PostgreSQL connectivity
+using Npgsql;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -22,7 +23,7 @@ namespace InvoiceApi.Functions;
 /// - Timer triggers are monitored by Azure Functions runtime (execution history, failures).
 /// - The Functions host manages concurrency — no risk of overlapping executions.
 ///
-/// Both functions use raw ADO.NET (SqlConnection) instead of EF Core DbContext to avoid
+/// Both functions use raw ADO.NET (NpgsqlConnection) instead of EF Core DbContext to avoid
 /// circular logging dependency (EF Core operations trigger logging → would re-enqueue → infinite loop).
 /// </summary>
 public class TimerFunctions
@@ -57,10 +58,11 @@ public class TimerFunctions
 
     public TimerFunctions(IConfiguration configuration, ILogger<TimerFunctions> logger)
     {
-        // MasterConnection is where the AppLog table lives (master database).
-        _connectionString = configuration.GetConnectionString("MasterConnection")
+        // PostgreSQL: Changed from "MasterConnection" to "DefaultConnection" for PostgreSQL migration.
+        // DefaultConnection points to the database where the AppLog table lives.
+        _connectionString = configuration.GetConnectionString("DefaultConnection")
             ?? throw new InvalidOperationException(
-                "MasterConnection string not configured for TimerFunctions.");
+                "DefaultConnection string not configured for TimerFunctions.");
         _logger = logger;
     }
 
@@ -95,7 +97,8 @@ public class TimerFunctions
 
         try
         {
-            await using var connection = new SqlConnection(_connectionString);
+            // PostgreSQL: NpgsqlConnection replaces SqlConnection for PostgreSQL database access
+            await using var connection = new NpgsqlConnection(_connectionString);
             await connection.OpenAsync();
 
             // Insert each log entry with parameterized SQL to prevent injection.
@@ -105,8 +108,9 @@ public class TimerFunctions
                 await using var cmd = connection.CreateCommand();
                 // Insert log entry with all columns including CorrelationId for request tracing.
                 // CorrelationId is set by CorrelationIdMiddleware via AsyncLocal → DatabaseLogger.
+                // PostgreSQL: Use double-quoted identifiers instead of SQL Server bracket identifiers [Table]
                 cmd.CommandText = @"
-                    INSERT INTO [AppLog] ([Timestamp], [Level], [Source], [Message], [Exception], [UserId], [CompanyId], [RequestPath], [CorrelationId])
+                    INSERT INTO ""AppLog"" (""Timestamp"", ""Level"", ""Source"", ""Message"", ""Exception"", ""UserId"", ""CompanyId"", ""RequestPath"", ""CorrelationId"")
                     VALUES (@timestamp, @level, @source, @message, @exception, @userId, @companyId, @requestPath, @correlationId)";
 
                 cmd.Parameters.AddWithValue("@timestamp", entry.Timestamp);
@@ -149,14 +153,16 @@ public class TimerFunctions
         {
             var cutoff = DateTime.UtcNow - RetentionPeriod;
 
-            await using var connection = new SqlConnection(_connectionString);
+            // PostgreSQL: NpgsqlConnection replaces SqlConnection for PostgreSQL database access
+            await using var connection = new NpgsqlConnection(_connectionString);
             await connection.OpenAsync();
 
             await using var cmd = connection.CreateCommand();
+            // PostgreSQL: Use double-quoted identifiers instead of SQL Server bracket identifiers [Table]
             cmd.CommandText = @"
-                DELETE FROM [AppLog]
-                WHERE [Level] IN ('Debug', 'Information', 'Trace')
-                  AND [Timestamp] < @cutoff";
+                DELETE FROM ""AppLog""
+                WHERE ""Level"" IN ('Debug', 'Information', 'Trace')
+                  AND ""Timestamp"" < @cutoff";
             cmd.Parameters.AddWithValue("@cutoff", cutoff);
 
             var deleted = await cmd.ExecuteNonQueryAsync();

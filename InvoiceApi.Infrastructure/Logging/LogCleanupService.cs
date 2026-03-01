@@ -1,4 +1,5 @@
-using Microsoft.Data.SqlClient;
+// PostgreSQL: Using Npgsql instead of Microsoft.Data.SqlClient for PostgreSQL connectivity
+using Npgsql;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -12,7 +13,7 @@ namespace InvoiceApi.Infrastructure.Logging;
 /// - Debug and Information logs: deleted after 48 hours (high volume, low value)
 /// - Warning, Error, Critical logs: kept indefinitely (important for debugging production issues)
 ///
-/// Runs once per hour. Uses raw ADO.NET to avoid EF Core overhead for a simple DELETE.
+/// Runs once per hour. Uses raw ADO.NET (NpgsqlConnection) to avoid EF Core overhead for a simple DELETE.
 /// </summary>
 public class LogCleanupService : BackgroundService
 {
@@ -31,8 +32,9 @@ public class LogCleanupService : BackgroundService
 
     public LogCleanupService(IConfiguration configuration, ILogger<LogCleanupService> logger)
     {
-        _connectionString = configuration.GetConnectionString("MasterConnection")
-            ?? throw new InvalidOperationException("MasterConnection string not configured for LogCleanupService.");
+        // PostgreSQL: Changed from "MasterConnection" to "DefaultConnection" for PostgreSQL migration
+        _connectionString = configuration.GetConnectionString("DefaultConnection")
+            ?? throw new InvalidOperationException("DefaultConnection string not configured for LogCleanupService.");
         _logger = logger;
     }
 
@@ -50,14 +52,16 @@ public class LogCleanupService : BackgroundService
             {
                 var cutoff = DateTime.UtcNow - RetentionPeriod;
 
-                await using var connection = new SqlConnection(_connectionString);
+                // PostgreSQL: NpgsqlConnection replaces SqlConnection for PostgreSQL database access
+                await using var connection = new NpgsqlConnection(_connectionString);
                 await connection.OpenAsync(stoppingToken);
 
                 await using var cmd = connection.CreateCommand();
+                // PostgreSQL: Use double-quoted identifiers instead of SQL Server bracket identifiers [Table]
                 cmd.CommandText = @"
-                    DELETE FROM [AppLog]
-                    WHERE [Level] IN ('Debug', 'Information', 'Trace')
-                      AND [Timestamp] < @cutoff";
+                    DELETE FROM ""AppLog""
+                    WHERE ""Level"" IN ('Debug', 'Information', 'Trace')
+                      AND ""Timestamp"" < @cutoff";
                 cmd.Parameters.AddWithValue("@cutoff", cutoff);
 
                 var deleted = await cmd.ExecuteNonQueryAsync(stoppingToken);
