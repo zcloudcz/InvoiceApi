@@ -1,0 +1,151 @@
+@page "/login/verify-2fa"
+@using Fakvio.UI.Shared.Services
+@using Microsoft.AspNetCore.Components.Authorization
+@inject TwoFactorApiService TwoFactorApi
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@inject IStringLocalizer<SharedResource> L
+
+<PageTitle>@L["TwoFactor_VerificationTitle"] - Fakvio</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-8">
+    <MudPaper Elevation="4" Class="pa-8">
+        <MudStack Spacing="4">
+            <MudStack Spacing="2" AlignItems="AlignItems.Center">
+                <MudIcon Icon="@Icons.Material.Filled.Security" Size="Size.Large" Color="Color.Primary" />
+                <MudText Typo="Typo.h5" Align="Align.Center">@L["TwoFactor_VerificationTitle"]</MudText>
+            </MudStack>
+
+            @* Method-specific instructions *@
+            <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">
+                @if (_method == 1)
+                {
+                    @L["TwoFactor_EnterCodeFromApp"]
+                }
+                else
+                {
+                    @L["TwoFactor_CodeSentToEmail"]
+                }
+            </MudAlert>
+
+            @if (!string.IsNullOrEmpty(_errorMessage))
+            {
+                <MudAlert Severity="Severity.Error" Variant="Variant.Filled">@_errorMessage</MudAlert>
+            }
+
+            @* 6-digit code input *@
+            <MudTextField @bind-Value="_code"
+                          Label="@L["TwoFactor_VerificationCode"].Value"
+                          Placeholder="@L["TwoFactor_EnterSixDigits"].Value"
+                          Variant="Variant.Outlined"
+                          InputType="InputType.Text"
+                          MaxLength="6"
+                          Immediate="true"
+                          Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Filled.Pin" />
+
+            @* Verify button *@
+            <MudButton ButtonType="ButtonType.Button"
+                       Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       Size="Size.Large"
+                       FullWidth="true"
+                       OnClick="VerifyCode"
+                       Disabled="@(string.IsNullOrEmpty(_code) || _code.Length != 6 || _isLoading)">
+                @if (_isLoading)
+                {
+                    <MudProgressCircular Class="mr-2" Size="Size.Small" Indeterminate="true" />
+                    <span>@L["TwoFactor_Verifying"]</span>
+                }
+                else
+                {
+                    <span>@L["TwoFactor_Verify"]</span>
+                }
+            </MudButton>
+
+            <MudDivider />
+
+            @* Back to login link *@
+            <MudText Typo="Typo.body2" Align="Align.Center">
+                <MudLink Href="/login" Color="Color.Primary">
+                    @L["TwoFactor_BackToLogin"]
+                </MudLink>
+            </MudText>
+        </MudStack>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    // ── Query parameters from the login redirect ────────────────────────────
+
+    /// <summary>
+    /// Encrypted session token from the first login step (password verification).
+    /// </summary>
+    [SupplyParameterFromQuery]
+    public string? Token { get; set; }
+
+    /// <summary>
+    /// 2FA method: 1 = TOTP (authenticator app), 2 = Email (OTP code).
+    /// </summary>
+    [SupplyParameterFromQuery]
+    public int Method { get; set; }
+
+    // ── State fields ────────────────────────────────────────────────────────
+    private string _code = string.Empty;
+    private string? _errorMessage;
+    private bool _isLoading;
+    private int _method;
+
+    protected override void OnInitialized()
+    {
+        _method = Method;
+
+        // If no token provided, redirect back to login
+        if (string.IsNullOrEmpty(Token))
+        {
+            Navigation.NavigateTo("/login");
+        }
+    }
+
+    /// <summary>
+    /// Verifies the 2FA code and completes the login flow.
+    /// On success: stores the JWT, marks the user as authenticated, and navigates to home.
+    /// On failure: shows an error message.
+    /// </summary>
+    private async Task VerifyCode()
+    {
+        _errorMessage = null;
+        _isLoading = true;
+
+        try
+        {
+            // Call the API to verify the 2FA code
+            var response = await TwoFactorApi.VerifyTwoFactorCodeAsync(Token!, _code);
+
+            if (response == null || string.IsNullOrEmpty(response.Token))
+            {
+                _errorMessage = L["TwoFactor_InvalidCode"].Value;
+                return;
+            }
+
+            // Store session and mark user as authenticated (same as Login.razor)
+            var customAuthStateProvider = (CustomAuthenticationStateProvider)AuthStateProvider;
+            await customAuthStateProvider.MarkUserAsAuthenticatedAsync(response);
+
+            // Redirect to home page with full reload
+            Navigation.NavigateTo("/", forceLoad: true);
+        }
+        catch (InvalidOperationException)
+        {
+            // NavigateTo with forceLoad can throw after initiating navigation — expected
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+}

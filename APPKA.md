@@ -1,4 +1,4 @@
-# Mobilní aplikace InvoiceApi — Analýza možností (únor 2026)
+# Mobilní aplikace Fakvio — Analýza možností (únor 2026)
 
 ## Aktuální stav UI
 
@@ -41,7 +41,7 @@ Přidání PWA vrstvy na stávající Blazor WASM aplikaci. Blazor WASM je techn
 | Výhoda | Detail |
 |--------|--------|
 | **Minimální pracnost** | Stávající kód se nemění, jen se přidá PWA vrstva |
-| **Žádný nový projekt** | Vše zůstává v `InvoiceApi.BlazorUI` |
+| **Žádný nový projekt** | Vše zůstává v `Fakvio.BlazorUI` |
 | **Instalovatelná** | Uživatel si "nainstaluje" appku z prohlížeče (Chrome, Edge, Safari) |
 | **Offline-first** | Service worker cachuje WASM bundle + statické soubory |
 | **Automatické aktualizace** | Při připojení se stáhne nová verze (service worker update) |
@@ -59,8 +59,8 @@ Přidání PWA vrstvy na stávající Blazor WASM aplikaci. Blazor WASM je techn
 | **Offline limitace** | API volání nefungují offline — potřeba queue/sync strategie pro data |
 | **WASM bundle velikost** | ~15-30 MB initial download (cachováno po první návštěvě) |
 
-### Vhodnost pro InvoiceApi
-**VYSOKÁ** — InvoiceApi je B2B fakturační systém. Uživatelé pracují primárně online (faktury, klienti, šablony). PWA pokryje 95 % mobilních use-cases:
+### Vhodnost pro Fakvio
+**VYSOKÁ** — Fakvio je B2B fakturační systém. Uživatelé pracují primárně online (faktury, klienti, šablony). PWA pokryje 95 % mobilních use-cases:
 - Prohlížení faktur v terénu
 - Kontrola dashboardu
 - Rychlý přehled klientů
@@ -83,7 +83,7 @@ Přidání PWA vrstvy na stávající Blazor WASM aplikaci. Blazor WASM je techn
 ## Možnost 2: MAUI Blazor Hybrid
 
 ### Popis
-Vytvoření nového .NET MAUI projektu (`InvoiceApi.MauiApp`), který hostuje Blazor komponenty ve WebView. Sdílené komponenty a služby se přesunou do sdílené knihovny (`InvoiceApi.Shared`).
+Vytvoření nového .NET MAUI projektu (`Fakvio.MauiApp`), který hostuje Blazor komponenty ve WebView. Sdílené komponenty a služby se přesunou do sdílené knihovny (`Fakvio.Shared`).
 
 ### Pracnost
 **3–6 týdnů** (záleží na rozsahu nativních funkcí)
@@ -91,14 +91,14 @@ Vytvoření nového .NET MAUI projektu (`InvoiceApi.MauiApp`), který hostuje Bl
 ### Architektura
 
 ```
-InvoiceApi.sln
-├── InvoiceApi.Contracts          (DTO, sdíleno — beze změny)
-├── InvoiceApi.Shared.UI          (NOVÝ — sdílené Razor komponenty)
+Fakvio.sln
+├── Fakvio.Contracts          (DTO, sdíleno — beze změny)
+├── Fakvio.Shared.UI          (NOVÝ — sdílené Razor komponenty)
 │   ├── Components/Pages/         (přesunuté z BlazorUI)
 │   ├── Components/Shared/        (přesunuté z BlazorUI)
 │   └── Services/                 (API služby, AuthState)
-├── InvoiceApi.BlazorUI           (WASM host — odkazuje Shared.UI)
-├── InvoiceApi.MauiApp            (NOVÝ — MAUI Blazor Hybrid host)
+├── Fakvio.BlazorUI           (WASM host — odkazuje Shared.UI)
+├── Fakvio.MauiApp            (NOVÝ — MAUI Blazor Hybrid host)
 │   ├── MauiProgram.cs
 │   ├── MainPage.xaml             (BlazorWebView)
 │   └── Platforms/                (Android, iOS, Windows)
@@ -107,18 +107,18 @@ InvoiceApi.sln
 
 ### Co je potřeba implementovat
 
-1. **`InvoiceApi.Shared.UI`** — nový RCL (Razor Class Library) projekt
+1. **`Fakvio.Shared.UI`** — nový RCL (Razor Class Library) projekt
    - Přesunout všech 31 stránek + 12 komponent z BlazorUI
    - Přesunout 15 API služeb
    - Abstrahovat storage (IStorageService: LocalStorage vs SecureStorage)
    - Abstrahovat navigation (NavigationManager vs MAUI Shell)
-2. **`InvoiceApi.MauiApp`** — nový MAUI projekt
+2. **`Fakvio.MauiApp`** — nový MAUI projekt
    - `MauiProgram.cs` — DI registrace, HttpClient s base URL
    - `MainPage.xaml` — BlazorWebView
    - Platform-specific konfigurace (Android manifest, iOS Info.plist)
    - SecureStorage pro JWT token
    - Biometric auth (volitelně)
-3. **`InvoiceApi.BlazorUI`** — refaktor na tenký host
+3. **`Fakvio.BlazorUI`** — refaktor na tenký host
    - Odkazuje `Shared.UI` místo vlastních komponent
    - Zůstává `index.html`, `Program.cs`, WASM-specifický kód
 
@@ -143,7 +143,7 @@ InvoiceApi.sln
 | **Blazored.TextEditor** | Quill editor nemusí fungovat v MAUI WebView (JS interop problémy) |
 | **MudBlazor v MAUI** | Funguje, ale občasné rendering issues ve WebView |
 
-### Vhodnost pro InvoiceApi
+### Vhodnost pro Fakvio
 **STŘEDNÍ** — MAUI Hybrid dává smysl jen pokud jsou potřeba nativní funkce (kamera pro sken dokumentů, NFC pro platby). Pro čistě datovou fakturační aplikaci je to overengineering.
 
 ---
@@ -172,7 +172,7 @@ Kompletní přepsání UI do nativního mobilního frameworku. Backend API zůst
 | **Ztráta investice** | Existující Blazor kód se nevyužije |
 | **Nový tým/skillset** | .NET vývojáři musí znát Flutter/React Native |
 
-### Vhodnost pro InvoiceApi
+### Vhodnost pro Fakvio
 **NÍZKÁ** — Pro B2B fakturační systém nemá smysl investovat do kompletního přepisu. Blazor WASM + PWA pokryje mobilní potřeby.
 
 ---
@@ -253,6 +253,6 @@ Teprve pak investovat do MAUI Hybrid. **Nedoporučuji předčasně** — PWA pok
 
 ## Závěr
 
-**PWA je jasná volba pro InvoiceApi.** Po dokončení migrace na Blazor WASM Standalone je přidání PWA trivální záležitost s obrovskou přidanou hodnotou. Uživatelé získají "mobilní appku" bez nutnosti App Store, s offline přístupem k cachovaným datům a full-screen režimem.
+**PWA je jasná volba pro Fakvio.** Po dokončení migrace na Blazor WASM Standalone je přidání PWA trivální záležitost s obrovskou přidanou hodnotou. Uživatelé získají "mobilní appku" bez nutnosti App Store, s offline přístupem k cachovaným datům a full-screen režimem.
 
 MAUI Hybrid zůstává jako budoucí možnost pro případ, že se ukáže business potřeba nativních funkcí — ale s aktuálním rozsahem aplikace (fakturace, klienti, šablony, dashboard) není důvod do něj investovat předčasně.

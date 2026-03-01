@@ -1,0 +1,146 @@
+@*
+    OAuth callback page for cloud storage providers.
+
+    This page is opened as a popup window during the OAuth authorization flow.
+    When the OAuth provider (Google/Microsoft) redirects back with an authorization code,
+    this page:
+    1. Reads the 'code' and 'state' parameters from the URL query string
+    2. Exchanges the code for tokens by calling the API
+    3. Posts a success message to the opener window (parent)
+    4. Closes the popup window
+
+    Route: /cloud-storage/callback
+*@
+
+@page "/cloud-storage/callback"
+
+@using Fakvio.UI.Shared.Services
+@using Fakvio.Domain.Enums
+@inject CloudStorageApiService CloudStorageApi
+@inject IJSRuntime JS
+@inject NavigationManager NavigationManager
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-8">
+    @if (_processing)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mb-4" />
+        <MudText Typo="Typo.h6" Align="Align.Center">Connecting cloud storage...</MudText>
+        <MudText Typo="Typo.body2" Align="Align.Center" Color="Color.Secondary">
+            Please wait while we complete the authorization.
+        </MudText>
+    }
+    else if (_success)
+    {
+        <MudAlert Severity="Severity.Success" Class="mb-4">
+            Cloud storage connected successfully! This window will close automatically.
+        </MudAlert>
+    }
+    else
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-4">
+            @_errorMessage
+        </MudAlert>
+        <MudButton OnClick="CloseWindow" Color="Color.Primary" Variant="Variant.Filled" FullWidth="true">
+            Close Window
+        </MudButton>
+    }
+</MudContainer>
+
+@code {
+    /// <summary>
+    /// The OAuth authorization code received from the provider's redirect.
+    /// </summary>
+    [SupplyParameterFromQuery]
+    public string? Code { get; set; }
+
+    /// <summary>
+    /// State parameter — contains the provider name (GoogleDrive/OneDrive).
+    /// Passed through the OAuth flow to identify which provider we're connecting.
+    /// </summary>
+    [SupplyParameterFromQuery]
+    public string? State { get; set; }
+
+    /// <summary>
+    /// OAuth error parameter — populated if the user denied access.
+    /// </summary>
+    [SupplyParameterFromQuery]
+    public string? Error { get; set; }
+
+    private bool _processing = true;
+    private bool _success;
+    private string _errorMessage = "An error occurred during authorization.";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        // Check for OAuth errors (user denied access, etc.)
+        if (!string.IsNullOrEmpty(Error))
+        {
+            _processing = false;
+            _errorMessage = $"Authorization was denied: {Error}";
+            StateHasChanged();
+            return;
+        }
+
+        if (string.IsNullOrEmpty(Code))
+        {
+            _processing = false;
+            _errorMessage = "No authorization code received.";
+            StateHasChanged();
+            return;
+        }
+
+        // Parse the provider from the state parameter
+        if (!Enum.TryParse<ECloudStorageProvider>(State, out var provider) ||
+            provider == ECloudStorageProvider.None)
+        {
+            _processing = false;
+            _errorMessage = "Invalid provider in state parameter.";
+            StateHasChanged();
+            return;
+        }
+
+        try
+        {
+            // Build the redirect URI (this page's URL without query params)
+            var uri = new Uri(NavigationManager.Uri);
+            var redirectUri = $"{uri.Scheme}://{uri.Authority}{uri.AbsolutePath}";
+
+            // Exchange the authorization code for tokens
+            var success = await CloudStorageApi.ExchangeCodeAsync(provider, Code, redirectUri);
+
+            _processing = false;
+            _success = success;
+
+            if (!success)
+            {
+                _errorMessage = "Failed to exchange authorization code for tokens.";
+            }
+
+            StateHasChanged();
+
+            if (success)
+            {
+                // Notify the opener window and close this popup
+                await JS.InvokeVoidAsync("eval",
+                    "if(window.opener){window.opener.postMessage('cloud-storage-connected','*');}" +
+                    "setTimeout(function(){window.close();},1500);");
+            }
+        }
+        catch (Exception ex)
+        {
+            _processing = false;
+            _errorMessage = $"Error: {ex.Message}";
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>
+    /// Closes the popup window via JavaScript.
+    /// </summary>
+    private async Task CloseWindow()
+    {
+        await JS.InvokeVoidAsync("eval", "window.close();");
+    }
+}

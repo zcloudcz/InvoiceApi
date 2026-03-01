@@ -2,7 +2,7 @@
 
 ## Overview
 
-**Current architecture**: Azure SQL Server with separate databases per tenant (`invoiceapi_master`, `invoiceapi_tenant_42`, etc.)
+**Current architecture**: Azure SQL Server with separate databases per tenant (`fakvio_master`, `fakvio_tenant_42`, etc.)
 **Target architecture**: Single Azure PostgreSQL database with schema-per-tenant isolation (`public` schema for master data, `tenant_{id}` schemas for tenant data)
 
 ## Why This Change?
@@ -17,13 +17,13 @@
 ```
 CURRENT (Azure SQL Multi-DB):
   Azure SQL Server
-  ├── invoiceapi_master          ← MasterDbContext (Users, Companies, Settings)
-  ├── invoiceapi_tenant_42       ← TenantDbContext (Invoices, Clients, etc.)
-  ├── invoiceapi_tenant_99       ← TenantDbContext (Invoices, Clients, etc.)
-  └── invoiceapi_tenant_template ← EF CLI design-time migrations
+  ├── fakvio_master          ← MasterDbContext (Users, Companies, Settings)
+  ├── fakvio_tenant_42       ← TenantDbContext (Invoices, Clients, etc.)
+  ├── fakvio_tenant_99       ← TenantDbContext (Invoices, Clients, etc.)
+  └── fakvio_tenant_template ← EF CLI design-time migrations
 
 TARGET (Azure PostgreSQL Multi-Schema):
-  Azure PostgreSQL Database: invoiceapi
+  Azure PostgreSQL Database: fakvio
   ├── public (schema)            ← MasterDbContext (Users, Companies, Settings)
   ├── tenant_42 (schema)         ← TenantDbContext (Invoices, Clients, etc.)
   ├── tenant_99 (schema)         ← TenantDbContext (Invoices, Clients, etc.)
@@ -37,9 +37,9 @@ TARGET (Azure PostgreSQL Multi-Schema):
 #### 1. NuGet Packages (3 .csproj files)
 | File | Change |
 |------|--------|
-| `InvoiceApi.Infrastructure.csproj` | `SqlServer 10.0.1` → `Npgsql.EntityFrameworkCore.PostgreSQL` + remove `Azure.ResourceManager.Sql` |
-| `InvoiceApi.API.csproj` | `SqlServer 10.0.1` → `Npgsql.EntityFrameworkCore.PostgreSQL` |
-| `InvoiceApi.MigrationTool.csproj` | `SqlServer 10.0.1` → `Npgsql.EntityFrameworkCore.PostgreSQL` |
+| `Fakvio.Infrastructure.csproj` | `SqlServer 10.0.1` → `Npgsql.EntityFrameworkCore.PostgreSQL` + remove `Azure.ResourceManager.Sql` |
+| `Fakvio.API.csproj` | `SqlServer 10.0.1` → `Npgsql.EntityFrameworkCore.PostgreSQL` |
+| `Fakvio.MigrationTool.csproj` | `SqlServer 10.0.1` → `Npgsql.EntityFrameworkCore.PostgreSQL` |
 
 #### 2. DbContexts — EF Core Configuration (2 files)
 | File | Change |
@@ -294,10 +294,10 @@ SQL syntax differences to watch:
 
 ```json
 // BEFORE (SQL Server)
-"MasterConnection": "Server=localhost;Database=invoiceapi_master;User Id=sa;Password=pass;TrustServerCertificate=true"
+"MasterConnection": "Server=localhost;Database=fakvio_master;User Id=sa;Password=pass;TrustServerCertificate=true"
 
 // AFTER (PostgreSQL)
-"DefaultConnection": "Host=localhost;Database=invoiceapi;Username=invoiceapi;Password=pass"
+"DefaultConnection": "Host=localhost;Database=fakvio;Username=fakvio;Password=pass"
 ```
 
 Note: Only ONE connection string now — no separate master/template connections needed at runtime.
@@ -307,12 +307,12 @@ Keep `TenantTemplateConnection` for EF CLI design-time only (points to same DB, 
 
 **`MasterDesignTimeFactory.cs`**:
 ```csharp
-optionsBuilder.UseNpgsql(connectionString, b => b.MigrationsAssembly("InvoiceApi.Infrastructure"));
+optionsBuilder.UseNpgsql(connectionString, b => b.MigrationsAssembly("Fakvio.Infrastructure"));
 ```
 
 **`TenantDesignTimeFactory.cs`**:
 ```csharp
-optionsBuilder.UseNpgsql(connectionString, b => b.MigrationsAssembly("InvoiceApi.Infrastructure"));
+optionsBuilder.UseNpgsql(connectionString, b => b.MigrationsAssembly("Fakvio.Infrastructure"));
 // Schema set via HasDefaultSchema in TenantDbContext when Schema property is set
 ```
 
@@ -320,13 +320,13 @@ optionsBuilder.UseNpgsql(connectionString, b => b.MigrationsAssembly("InvoiceApi
 
 ```bash
 # Delete all existing SQL Server migrations
-rm -rf InvoiceApi.Infrastructure/Migrations/Master/
-rm -rf InvoiceApi.Infrastructure/Migrations/Tenant/
+rm -rf Fakvio.Infrastructure/Migrations/Master/
+rm -rf Fakvio.Infrastructure/Migrations/Tenant/
 
 # Generate fresh PostgreSQL migrations
-cd InvoiceApi.Infrastructure
-dotnet ef migrations add InitialPostgreSql --context MasterDbContext --output-dir Migrations/Master --startup-project ../InvoiceApi.API
-dotnet ef migrations add InitialPostgreSql --context TenantDbContext --output-dir Migrations/Tenant --startup-project ../InvoiceApi.API
+cd Fakvio.Infrastructure
+dotnet ef migrations add InitialPostgreSql --context MasterDbContext --output-dir Migrations/Master --startup-project ../Fakvio.API
+dotnet ef migrations add InitialPostgreSql --context TenantDbContext --output-dir Migrations/Tenant --startup-project ../Fakvio.API
 ```
 
 ### Step 11: Update MigrationTool
@@ -368,7 +368,7 @@ dotnet ef migrations add InitialPostgreSql --context TenantDbContext --output-di
 12. **MigrationTool** (Step 11) — schema-based migration
 13. **DTOs** (Step 13) — rename Azure → Tenant
 14. **Tests** (Step 12) — update/delete
-15. **Build verification** — `dotnet build InvoiceApi.sln`
+15. **Build verification** — `dotnet build Fakvio.sln`
 16. **Test verification** — `dotnet test`
 
 ## Risk Assessment

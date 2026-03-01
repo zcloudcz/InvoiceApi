@@ -1,0 +1,251 @@
+@page "/logs"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "SysAdmin")]
+@using Fakvio.Contracts.Common.Pagination
+@using Fakvio.Contracts.Dto.AppLog
+@inject AppLogApiService LogService
+@inject ISnackbar Snackbar
+@inject IStringLocalizer<SharedResource> L
+
+<PageTitle>@L["Log_Title"] - Fakvio</PageTitle>
+
+<MudText Typo="Typo.h3" GutterBottom="true">@L["Log_Title"]</MudText>
+<MudText Class="mb-6" Color="Color.Secondary">@L["Log_Subtitle"]</MudText>
+
+@* Filters row *@
+<MudGrid Class="mb-4">
+    <MudItem xs="12" sm="3">
+        <MudSelect T="string" Value="_levelFilter" ValueChanged="OnLevelChanged"
+                   Label="@L["Log_Level"].Value" Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense">
+            <MudSelectItem T="string" Value="@("Information")">Information</MudSelectItem>
+            <MudSelectItem T="string" Value="@("Warning")">Warning</MudSelectItem>
+            <MudSelectItem T="string" Value="@("Error")">Error</MudSelectItem>
+            <MudSelectItem T="string" Value="@("Critical")">Critical</MudSelectItem>
+        </MudSelect>
+    </MudItem>
+    <MudItem xs="12" sm="3">
+        <MudTextField @bind-Value="_searchFilter" Label="@L["Log_Search"].Value"
+                      Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Search"
+                      OnKeyUp="OnSearchKeyUp" Variant="Variant.Outlined" Margin="Margin.Dense"
+                      Immediate="false" />
+    </MudItem>
+    <MudItem xs="12" sm="3">
+        <MudDatePicker Date="_dateFrom" DateChanged="OnDateFromChanged"
+                       Label="@L["Log_DateFrom"].Value" Variant="Variant.Outlined" Margin="Margin.Dense"
+                       Clearable="true" />
+    </MudItem>
+    <MudItem xs="12" sm="3">
+        <MudDatePicker Date="_dateTo" DateChanged="OnDateToChanged"
+                       Label="@L["Log_DateTo"].Value" Variant="Variant.Outlined" Margin="Margin.Dense"
+                       Clearable="true" />
+    </MudItem>
+</MudGrid>
+
+@* Log entries table *@
+@if (_loading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-4" />
+}
+else if (_pagedResult == null || _pagedResult.Items.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">@L["Log_NoEntries"]</MudAlert>
+}
+else
+{
+    <MudTable T="AppLogDto" Items="_pagedResult.Items" Dense="true" Hover="true" Striped="true"
+              OnRowClick="OnRowClick" RowClass="cursor-pointer">
+        <HeaderContent>
+            <MudTh>@L["Log_Timestamp"]</MudTh>
+            <MudTh>@L["Log_Level"]</MudTh>
+            <MudTh>@L["Log_Source"]</MudTh>
+            <MudTh>@L["Log_Message"]</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="@L["Log_Timestamp"].Value">
+                <MudText Typo="Typo.body2">@context.Timestamp.ToString("yyyy-MM-dd HH:mm:ss")</MudText>
+            </MudTd>
+            <MudTd DataLabel="@L["Log_Level"].Value">
+                <MudChip T="string" Size="Size.Small" Color="@GetLevelColor(context.Level)">
+                    @context.Level
+                </MudChip>
+            </MudTd>
+            <MudTd DataLabel="@L["Log_Source"].Value">
+                <MudText Typo="Typo.body2" Style="max-width: 250px; overflow: hidden; text-overflow: ellipsis;">
+                    @GetShortSource(context.Source)
+                </MudText>
+            </MudTd>
+            <MudTd DataLabel="@L["Log_Message"].Value">
+                <MudText Typo="Typo.body2" Style="max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                    @context.Message
+                </MudText>
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+
+    @* Pagination controls *@
+    <div class="d-flex justify-center mt-4">
+        <MudPagination Count="_pagedResult.TotalPages" Selected="_currentPage"
+                       SelectedChanged="OnPageChanged" Color="Color.Primary" />
+    </div>
+
+    @* Detail expansion — shown when a row is clicked *@
+    @if (_selectedLog != null)
+    {
+        <MudCard Elevation="3" Class="mt-4">
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h6">@L["Log_Details"]</MudText>
+                </CardHeaderContent>
+                <CardHeaderActions>
+                    <MudIconButton Icon="@Icons.Material.Filled.Close" OnClick="@(() => _selectedLog = null)" />
+                </CardHeaderActions>
+            </MudCardHeader>
+            <MudCardContent>
+                <MudGrid>
+                    <MudItem xs="12" sm="6">
+                        <MudText><strong>@L["Log_Timestamp"]:</strong> @_selectedLog.Timestamp.ToString("yyyy-MM-dd HH:mm:ss.fff")</MudText>
+                        <MudText><strong>@L["Log_Level"]:</strong> <MudChip T="string" Size="Size.Small" Color="@GetLevelColor(_selectedLog.Level)">@_selectedLog.Level</MudChip></MudText>
+                        <MudText><strong>@L["Log_Source"]:</strong> @_selectedLog.Source</MudText>
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        @if (_selectedLog.UserId.HasValue)
+                        {
+                            <MudText><strong>User ID:</strong> @_selectedLog.UserId</MudText>
+                        }
+                        @if (_selectedLog.CompanyId.HasValue)
+                        {
+                            <MudText><strong>Company ID:</strong> @_selectedLog.CompanyId</MudText>
+                        }
+                        @if (!string.IsNullOrEmpty(_selectedLog.RequestPath))
+                        {
+                            <MudText><strong>Request:</strong> @_selectedLog.RequestPath</MudText>
+                        }
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudText Typo="Typo.subtitle2" Class="mt-2">@L["Log_Message"]:</MudText>
+                        <MudText Style="white-space: pre-wrap; word-break: break-all; background: #f5f5f5; padding: 12px; border-radius: 4px;">
+                            @_selectedLog.Message
+                        </MudText>
+                    </MudItem>
+                    @if (!string.IsNullOrEmpty(_selectedLog.Exception))
+                    {
+                        <MudItem xs="12">
+                            <MudText Typo="Typo.subtitle2" Color="Color.Error" Class="mt-2">@L["Log_Exception"]:</MudText>
+                            <MudText Style="white-space: pre-wrap; word-break: break-all; background: #fff3f3; padding: 12px; border-radius: 4px; font-family: monospace; font-size: 0.85rem;">
+                                @_selectedLog.Exception
+                            </MudText>
+                        </MudItem>
+                    }
+                </MudGrid>
+            </MudCardContent>
+        </MudCard>
+    }
+}
+
+@code {
+    private PagedResult<AppLogDto>? _pagedResult;
+    private bool _loading = true;
+    private int _currentPage = 1;
+    private int _pageSize = 50;
+    private string? _levelFilter;
+    private string? _searchFilter;
+    private DateTime? _dateFrom;
+    private DateTime? _dateTo;
+    private AppLogDto? _selectedLog;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadLogs();
+    }
+
+    /// <summary>
+    /// Loads log entries from the API with current filter values.
+    /// </summary>
+    private async Task LoadLogs()
+    {
+        try
+        {
+            _loading = true;
+            _pagedResult = await LogService.GetPagedAsync(
+                _currentPage, _pageSize, _levelFilter, _searchFilter, _dateFrom, _dateTo);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    // ─── Filter event handlers ───────────────────────────────────────────────
+
+    private async Task OnLevelChanged(string? level)
+    {
+        _levelFilter = level;
+        _currentPage = 1; // Reset to page 1 when filter changes
+        await LoadLogs();
+    }
+
+    private async Task OnSearchKeyUp(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            _currentPage = 1;
+            await LoadLogs();
+        }
+    }
+
+    private async Task OnDateFromChanged(DateTime? date)
+    {
+        _dateFrom = date;
+        _currentPage = 1;
+        await LoadLogs();
+    }
+
+    private async Task OnDateToChanged(DateTime? date)
+    {
+        _dateTo = date;
+        _currentPage = 1;
+        await LoadLogs();
+    }
+
+    private async Task OnPageChanged(int page)
+    {
+        _currentPage = page;
+        await LoadLogs();
+    }
+
+    /// <summary>
+    /// Shows the detail card for the clicked log entry.
+    /// </summary>
+    private void OnRowClick(TableRowClickEventArgs<AppLogDto> args)
+    {
+        _selectedLog = args.Item;
+    }
+
+    // ─── Helper methods ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns MudBlazor color for each log level.
+    /// </summary>
+    private static Color GetLevelColor(string level) => level switch
+    {
+        "Critical" => Color.Dark,
+        "Error" => Color.Error,
+        "Warning" => Color.Warning,
+        "Information" => Color.Info,
+        "Debug" => Color.Default,
+        _ => Color.Default
+    };
+
+    /// <summary>
+    /// Shortens the logger category name for display (shows last 2 segments).
+    /// Example: "Fakvio.Infrastructure.Service.EmailService" → "Service.EmailService"
+    /// </summary>
+    private static string GetShortSource(string source)
+    {
+        var parts = source.Split('.');
+        return parts.Length > 2 ? string.Join('.', parts[^2..]) : source;
+    }
+}

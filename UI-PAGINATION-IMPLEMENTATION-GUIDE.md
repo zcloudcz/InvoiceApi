@@ -24,7 +24,7 @@
 - ✅ `PagedResult<T>` model v Blazor projektu
 - ✅ `ClientApiService.GetPagedAsync()` - všechny parametry filtrace
 - ✅ `CompanyApiService.GetPagedAsync()` - všechny parametry filtrace
-- ✅ `InvoiceApiService.GetPagedAsync()` - kompletní filtrace (16 parametrů)
+- ✅ `FakvioService.GetPagedAsync()` - kompletní filtrace (16 parametrů)
 - ✅ `UserApiService.GetPagedAsync()` - filtrace podle role a společnosti
 
 ## 🔄 ZBÝVÁ - Blazor UI komponenty
@@ -32,10 +32,10 @@
 ### Komponenty k aktualizaci
 Následující komponenty je třeba aktualizovat, aby používaly MudTable se server-side paginací:
 
-1. `InvoiceApi.BlazorUI/Components/Pages/Clients.razor`
-2. `InvoiceApi.BlazorUI/Components/Pages/Companies.razor`
-3. `InvoiceApi.BlazorUI/Components/Pages/Invoices.razor`
-4. `InvoiceApi.BlazorUI/Components/Pages/Users.razor`
+1. `Fakvio.BlazorUI/Components/Pages/Clients.razor`
+2. `Fakvio.BlazorUI/Components/Pages/Companies.razor`
+3. `Fakvio.BlazorUI/Components/Pages/Invoices.razor`
+4. `Fakvio.BlazorUI/Components/Pages/Users.razor`
 
 ---
 
@@ -45,9 +45,9 @@ Následující komponenty je třeba aktualizovat, aby používaly MudTable se se
 
 ```razor
 @page "/clients"
-@using InvoiceApi.Application.Dto.Client
-@using InvoiceApi.BlazorUI.Models
-@using InvoiceApi.BlazorUI.Services
+@using Fakvio.Application.Dto.Client
+@using Fakvio.BlazorUI.Models
+@using Fakvio.BlazorUI.Services
 @inject ClientApiService ClientService
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
@@ -385,7 +385,7 @@ Pro každou ze 4 komponent (Clients, Companies, Invoices, Users):
 2. **Aktualizovat Companies.razor** - podobné jako Clients (stejné filtry)
 3. **Aktualizovat Invoices.razor** - přidat rozšířené filtry (datum, částky, status)
 4. **Aktualizovat Users.razor** - přidat filtry role a last login
-5. **Build Blazor projektu** - `dotnet build InvoiceApi.BlazorUI/InvoiceApi.BlazorUI.csproj`
+5. **Build Blazor projektu** - `dotnet build Fakvio.BlazorUI/Fakvio.BlazorUI.csproj`
 6. **Spustit aplikaci** - otestovat vše end-to-end
 7. **Otestovat:**
    - Změna stránky funguje

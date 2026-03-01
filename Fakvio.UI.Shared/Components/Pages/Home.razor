@@ -1,0 +1,558 @@
+@page "/"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@using Fakvio.Contracts.Dto.AppLog
+@using Fakvio.Contracts.Dto.Dashboard
+@using Fakvio.Contracts.Dto.Invoice
+@using Fakvio.Domain.Enums
+@using Fakvio.UI.Shared.Services
+@inject DashboardApiService DashboardService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@* Localization service for multi-language support *@
+@inject IStringLocalizer<SharedResource> L
+
+<PageTitle>@L["Dashboard_Title"] - Fakvio</PageTitle>
+
+<MudText Typo="Typo.h3" GutterBottom="true">@L["Dashboard_Title"]</MudText>
+<MudText Class="mb-8">@L["Dashboard_Welcome"]</MudText>
+
+@* Loading indicator while dashboard data is being fetched *@
+@if (_loading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-4" />
+}
+else if (_isSysAdmin && !_isImpersonating)
+{
+    @* ════════════════════════════════════════════════════════════════════
+       SysAdmin Dashboard — shown when SysAdmin is NOT impersonating a company.
+       Shows system-wide statistics: company counts, provisioning status, recent logs.
+       ════════════════════════════════════════════════════════════════════ *@
+
+    @if (_sysAdminDashboard != null)
+    {
+        @* Company statistics — 4 KPI cards (clickable → navigates to /companies) *@
+        <MudGrid>
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard Elevation="2" Class="rounded-lg cursor-pointer" @onclick="@(() => Navigation.NavigateTo("/companies"))">
+                    <MudCardContent>
+                        <div class="d-flex justify-space-between align-center mb-4">
+                            <MudIcon Icon="@Icons.Material.Filled.Business" Color="Color.Primary" Size="Size.Large" />
+                            <MudChip T="string" Color="Color.Primary" Size="Size.Small">@L["Dashboard_SysAdminTotal"]</MudChip>
+                        </div>
+                        <MudText Typo="Typo.h5" GutterBottom="true">@_sysAdminDashboard.TotalCompanies</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">@L["Dashboard_SysAdminCompanies"]</MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard Elevation="2" Class="rounded-lg cursor-pointer" @onclick="@(() => Navigation.NavigateTo("/companies"))">
+                    <MudCardContent>
+                        <div class="d-flex justify-space-between align-center mb-4">
+                            <MudIcon Icon="@Icons.Material.Filled.Storage" Color="Color.Success" Size="Size.Large" />
+                            <MudChip T="string" Color="Color.Success" Size="Size.Small">@L["TenantSettings_Provisioned"]</MudChip>
+                        </div>
+                        <MudText Typo="Typo.h5" GutterBottom="true">@_sysAdminDashboard.ProvisionedCompanies</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">@L["Dashboard_SysAdminProvisioned"]</MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard Elevation="2" Class="rounded-lg cursor-pointer" @onclick="@(() => Navigation.NavigateTo("/companies"))">
+                    <MudCardContent>
+                        <div class="d-flex justify-space-between align-center mb-4">
+                            <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Info" Size="Size.Large" />
+                            <MudChip T="string" Color="Color.Info" Size="Size.Small">@L["Label_Active"]</MudChip>
+                        </div>
+                        <MudText Typo="Typo.h5" GutterBottom="true">@_sysAdminDashboard.ActiveCompanies</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">@L["Dashboard_SysAdminActive"]</MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard Elevation="2" Class="rounded-lg cursor-pointer" @onclick="@(() => Navigation.NavigateTo("/companies"))">
+                    <MudCardContent>
+                        <div class="d-flex justify-space-between align-center mb-4">
+                            <MudIcon Icon="@Icons.Material.Filled.HourglassEmpty" Color="Color.Warning" Size="Size.Large" />
+                            <MudChip T="string" Color="Color.Warning" Size="Size.Small">@L["Dashboard_Pending"]</MudChip>
+                        </div>
+                        <MudText Typo="Typo.h5" GutterBottom="true">@_sysAdminDashboard.PendingCompanies</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">@L["Dashboard_SysAdminPending"]</MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        </MudGrid>
+
+        @* Recent Warning/Error logs table *@
+        @if (_sysAdminDashboard.RecentLogs.Count > 0)
+        {
+            <MudCard Elevation="2" Class="mt-6">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">@L["Dashboard_SysAdminRecentLogs"]</MudText>
+                    </CardHeaderContent>
+                    <CardHeaderActions>
+                        <MudButton Variant="Variant.Text" Color="Color.Primary" Href="/logs">@L["Btn_ViewAll"]</MudButton>
+                    </CardHeaderActions>
+                </MudCardHeader>
+                <MudCardContent>
+                    <MudTable Items="_sysAdminDashboard.RecentLogs" Dense="true" Hover="true" Striped="true">
+                        <HeaderContent>
+                            <MudTh>@L["Log_Timestamp"]</MudTh>
+                            <MudTh>@L["Log_Level"]</MudTh>
+                            <MudTh>@L["Log_Source"]</MudTh>
+                            <MudTh>@L["Log_Message"]</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="@L["Log_Timestamp"].Value">
+                                <MudText Typo="Typo.body2">@context.Timestamp.ToString("yyyy-MM-dd HH:mm:ss")</MudText>
+                            </MudTd>
+                            <MudTd DataLabel="@L["Log_Level"].Value">
+                                <MudChip T="string" Size="Size.Small" Color="@GetLogLevelColor(context.Level)">
+                                    @context.Level
+                                </MudChip>
+                            </MudTd>
+                            <MudTd DataLabel="@L["Log_Source"].Value">
+                                <MudText Typo="Typo.body2" Style="max-width: 200px; overflow: hidden; text-overflow: ellipsis;">
+                                    @GetShortSource(context.Source)
+                                </MudText>
+                            </MudTd>
+                            <MudTd DataLabel="@L["Log_Message"].Value">
+                                <MudText Typo="Typo.body2" Style="max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                                    @context.Message
+                                </MudText>
+                            </MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                </MudCardContent>
+            </MudCard>
+        }
+
+        @* Log summary by level *@
+        @if (_sysAdminDashboard.LogCountByLevel.Count > 0)
+        {
+            <MudGrid Class="mt-6">
+                <MudItem xs="12">
+                    <MudCard Elevation="2">
+                        <MudCardHeader>
+                            <CardHeaderContent>
+                                <MudText Typo="Typo.h6">@L["Dashboard_SysAdminLogSummary"]</MudText>
+                            </CardHeaderContent>
+                        </MudCardHeader>
+                        <MudCardContent>
+                            <div class="d-flex flex-wrap gap-4">
+                                @foreach (var entry in _sysAdminDashboard.LogCountByLevel.OrderByDescending(e => e.Key))
+                                {
+                                    <MudChip T="string" Size="Size.Medium" Color="@GetLogLevelColor(entry.Key)">
+                                        @entry.Key: @entry.Value
+                                    </MudChip>
+                                }
+                            </div>
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+            </MudGrid>
+        }
+    }
+}
+else
+{
+    @* ════════════════════════════════════════════════════════════════════
+       Regular User Dashboard — shown for User/Admin roles,
+       or for SysAdmin when impersonating a company.
+       Shows tenant-specific invoice/client statistics.
+       ════════════════════════════════════════════════════════════════════ *@
+
+    @* Top statistics cards - 4 KPIs (clickable → navigate to corresponding list page) *@
+    <MudGrid>
+        <MudItem xs="12" sm="6" md="3">
+            <MudCard Elevation="2" Class="rounded-lg cursor-pointer" @onclick="@(() => Navigation.NavigateTo("/invoices"))">
+                <MudCardContent>
+                    <div class="d-flex justify-space-between align-center mb-4">
+                        <MudIcon Icon="@Icons.Material.Filled.Description" Color="Color.Primary" Size="Size.Large" />
+                        <MudChip T="string" Color="Color.Primary" Size="Size.Small">@L["Dashboard_ThisMonth"]</MudChip>
+                    </div>
+                    <MudText Typo="Typo.h5" GutterBottom="true">@_dashboard.InvoicesThisMonth</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">@L["Dashboard_InvoicesThisMonth"]</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="3">
+            <MudCard Elevation="2" Class="rounded-lg cursor-pointer" @onclick="@(() => Navigation.NavigateTo("/clients"))">
+                <MudCardContent>
+                    <div class="d-flex justify-space-between align-center mb-4">
+                        <MudIcon Icon="@Icons.Material.Filled.People" Color="Color.Success" Size="Size.Large" />
+                        <MudChip T="string" Color="Color.Success" Size="Size.Small">@L["Label_Active"]</MudChip>
+                    </div>
+                    <MudText Typo="Typo.h5" GutterBottom="true">@_dashboard.TotalClients</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">@L["Dashboard_Clients"]</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="3">
+            <MudCard Elevation="2" Class="rounded-lg cursor-pointer" @onclick="@(() => Navigation.NavigateTo("/invoices"))">
+                <MudCardContent>
+                    <div class="d-flex justify-space-between align-center mb-4">
+                        <MudIcon Icon="@Icons.Material.Filled.AttachMoney" Color="Color.Warning" Size="Size.Large" />
+                        <MudChip T="string" Color="Color.Warning" Size="Size.Small">@L["Dashboard_Pending"]</MudChip>
+                    </div>
+                    <MudText Typo="Typo.h5" GutterBottom="true">@_dashboard.UnpaidAmount.ToString("N2") CZK</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">@L["Dashboard_UnpaidAmount"]</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="3">
+            <MudCard Elevation="2" Class="rounded-lg cursor-pointer" @onclick="@(() => Navigation.NavigateTo("/vat-rates"))">
+                <MudCardContent>
+                    <div class="d-flex justify-space-between align-center mb-4">
+                        <MudIcon Icon="@Icons.Material.Filled.Percent" Color="Color.Info" Size="Size.Large" />
+                        <MudChip T="string" Color="Color.Info" Size="Size.Small">@L["Label_Active"]</MudChip>
+                    </div>
+                    <MudText Typo="Typo.h5" GutterBottom="true">@_dashboard.ActiveVatRates</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">@L["Dashboard_VatRates"]</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+
+    @* ─── Donut Charts Row — side-by-side: Invoices by Status + Top Clients by Revenue ─── *@
+    @if (_dashboard.InvoiceCountByStatus.Count > 0 || _dashboard.InvoiceTotalByClient.Count > 0)
+    {
+        <MudGrid Class="mt-6">
+            @* Left chart: Invoices by Status (donut) *@
+            @if (_dashboard.InvoiceCountByStatus.Count > 0)
+            {
+                <MudItem xs="12" md="6">
+                    <MudCard Elevation="2" Class="rounded-lg">
+                        <MudCardHeader>
+                            <CardHeaderContent>
+                                <MudText Typo="Typo.h6">@L["Dashboard_InvoicesByStatus"]</MudText>
+                            </CardHeaderContent>
+                        </MudCardHeader>
+                        <MudCardContent Style="min-height: 300px;">
+                            <MudChart ChartType="ChartType.Donut"
+                                      InputData="@GetStatusChartData()"
+                                      InputLabels="@GetStatusChartLabels()"
+                                      Width="300px" Height="300px"
+                                      ChartOptions="@_chartOptions" />
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+            }
+
+            @* Right chart: Top Clients by Revenue (donut) *@
+            @if (_dashboard.InvoiceTotalByClient.Count > 0)
+            {
+                <MudItem xs="12" md="6">
+                    <MudCard Elevation="2" Class="rounded-lg">
+                        <MudCardHeader>
+                            <CardHeaderContent>
+                                <MudText Typo="Typo.h6">@L["Dashboard_TopClientsByRevenue"]</MudText>
+                            </CardHeaderContent>
+                        </MudCardHeader>
+                        <MudCardContent Style="min-height: 300px;">
+                            <MudChart ChartType="ChartType.Donut"
+                                      InputData="@GetClientRevenueChartData()"
+                                      InputLabels="@GetClientRevenueChartLabels()"
+                                      Width="300px" Height="300px"
+                                      ChartOptions="@_chartOptions" />
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+            }
+        </MudGrid>
+    }
+
+    @* Overdue invoices alert - only shown when there are overdue invoices *@
+    @if (_dashboard.OverdueInvoicesCount > 0)
+    {
+        <MudAlert Severity="Severity.Warning" Class="mt-6 mb-2" Icon="@Icons.Material.Filled.Warning">
+            <strong>@_dashboard.OverdueInvoicesCount</strong> @L["Dashboard_OverdueAlert"]
+        </MudAlert>
+
+        <MudCard Elevation="2" Class="mb-6">
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h6">@L["Dashboard_OverdueInvoices"]</MudText>
+                </CardHeaderContent>
+                <CardHeaderActions>
+                    <MudButton Variant="Variant.Text" Color="Color.Primary" Href="/invoices">@L["Btn_ViewAll"]</MudButton>
+                </CardHeaderActions>
+            </MudCardHeader>
+            <MudCardContent>
+                @* Row click navigates to the invoice detail page *@
+                <MudTable T="InvoiceDto" Items="@_dashboard.OverdueInvoices" Dense="true" Hover="true" Striped="true"
+                          OnRowClick="@(args => { if (args.Item != null) Navigation.NavigateTo($"/invoices/{args.Item.Id}"); })"
+                          RowClass="cursor-pointer">
+                    <HeaderContent>
+                        <MudTh>@L["Table_Number"]</MudTh>
+                        <MudTh>@L["Invoice_Client"]</MudTh>
+                        <MudTh>@L["Table_DueDate"]</MudTh>
+                        <MudTh>@L["Table_DaysOverdue"]</MudTh>
+                        <MudTh>@L["Label_Total"]</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="@L["Table_Number"].Value">
+                            <MudChip T="string" Size="Size.Small" Color="Color.Error">@context.DocumentNumber</MudChip>
+                        </MudTd>
+                        <MudTd DataLabel="@L["Invoice_Client"].Value">@context.ClientName</MudTd>
+                        <MudTd DataLabel="@L["Table_DueDate"].Value">@context.DueDate?.ToShortDateString()</MudTd>
+                        <MudTd DataLabel="@L["Table_DaysOverdue"].Value">
+                            <MudText Color="Color.Error">@(context.DueDate.HasValue ? (DateTime.Now - context.DueDate.Value).Days : 0) @L["Dashboard_Days"]</MudText>
+                        </MudTd>
+                        <MudTd DataLabel="@L["Label_Total"].Value">
+                            <strong>@context.TotalWithVat.ToString("N2") @context.CurrencyCode</strong>
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudCardContent>
+        </MudCard>
+    }
+
+    @* Recent invoices table - last 5 invoices for quick overview *@
+    <MudGrid Class="mt-6">
+        <MudItem xs="12">
+            <MudCard Elevation="2">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">@L["Dashboard_RecentInvoices"]</MudText>
+                    </CardHeaderContent>
+                    <CardHeaderActions>
+                        <MudButton Variant="Variant.Text" Color="Color.Primary" Href="/invoices">@L["Btn_ViewAll"]</MudButton>
+                    </CardHeaderActions>
+                </MudCardHeader>
+                <MudCardContent>
+                    @if (_dashboard.RecentInvoices.Any())
+                    {
+                        @* Row click navigates to the invoice detail page *@
+                        <MudTable T="InvoiceDto" Items="@_dashboard.RecentInvoices" Dense="true" Hover="true" Striped="true"
+                                  OnRowClick="@(args => { if (args.Item != null) Navigation.NavigateTo($"/invoices/{args.Item.Id}"); })"
+                                  RowClass="cursor-pointer">
+                            <HeaderContent>
+                                <MudTh>@L["Table_Number"]</MudTh>
+                                <MudTh>@L["Invoice_Client"]</MudTh>
+                                <MudTh>@L["Table_IssueDate"]</MudTh>
+                                <MudTh>@L["Table_DueDate"]</MudTh>
+                                <MudTh>@L["Label_Total"]</MudTh>
+                                <MudTh>@L["Label_Status"]</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd DataLabel="@L["Table_Number"].Value">
+                                    <MudChip T="string" Size="Size.Small" Icon="@Icons.Material.Filled.Description">
+                                        @context.DocumentNumber
+                                    </MudChip>
+                                </MudTd>
+                                <MudTd DataLabel="@L["Invoice_Client"].Value">@context.ClientName</MudTd>
+                                <MudTd DataLabel="@L["Table_IssueDate"].Value">@context.IssueDate?.ToShortDateString()</MudTd>
+                                <MudTd DataLabel="@L["Table_DueDate"].Value">@context.DueDate?.ToShortDateString()</MudTd>
+                                <MudTd DataLabel="@L["Label_Total"].Value">
+                                    <strong>@context.TotalWithVat.ToString("N2") @context.CurrencyCode</strong>
+                                </MudTd>
+                                <MudTd DataLabel="@L["Label_Status"].Value">
+                                    <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">
+                                        @GetStatusText(context.Status)
+                                    </MudChip>
+                                </MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                    }
+                    else
+                    {
+                        <MudText Color="Color.Secondary">@L["Dashboard_NoInvoicesYet"] <MudLink Href="/invoices" Color="Color.Primary">@L["Dashboard_CreateFirst"]</MudLink></MudText>
+                    }
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+
+    @* Quick start guide for new users *@
+    <MudGrid Class="mt-6">
+        <MudItem xs="12">
+            <MudCard Elevation="2">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">@L["Dashboard_QuickStart"]</MudText>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    <MudTimeline TimelineOrientation="TimelineOrientation.Vertical" TimelinePosition="TimelinePosition.Start">
+                        <MudTimelineItem Color="Color.Success" Size="Size.Small">
+                            <ItemContent>
+                                <MudText Typo="Typo.h6" GutterBottom="true">@L["Dashboard_SetupVat"]</MudText>
+                                <MudText>@L["Dashboard_SetupVatDesc"] <MudLink Href="/vat-rates" Color="Color.Primary">@L["Nav_VatRates"]</MudLink></MudText>
+                            </ItemContent>
+                        </MudTimelineItem>
+                        <MudTimelineItem Color="Color.Info" Size="Size.Small">
+                            <ItemContent>
+                                <MudText Typo="Typo.h6" GutterBottom="true">@L["Dashboard_ManageClients"]</MudText>
+                                <MudText>@L["Dashboard_ManageClientsDesc"] <MudLink Href="/clients" Color="Color.Primary">@L["Nav_Clients"]</MudLink></MudText>
+                            </ItemContent>
+                        </MudTimelineItem>
+                        <MudTimelineItem Color="Color.Primary" Size="Size.Small">
+                            <ItemContent>
+                                <MudText Typo="Typo.h6" GutterBottom="true">@L["Dashboard_CreateInvoices"]</MudText>
+                                <MudText>@L["Dashboard_CreateInvoicesDesc"] <MudLink Href="/invoices" Color="Color.Primary">@L["Nav_Invoices"]</MudLink></MudText>
+                            </ItemContent>
+                        </MudTimelineItem>
+                    </MudTimeline>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    // Dashboard data loaded from the API
+    private DashboardDto _dashboard = new();
+    private SysAdminDashboardDto? _sysAdminDashboard;
+    private bool _loading = true;
+    private bool _isSysAdmin = false;
+    private bool _isImpersonating = false;
+
+    // Chart options — shared config for all donut charts on the dashboard
+    private ChartOptions _chartOptions = new()
+    {
+        ChartPalette = new[] { "#1976D2", "#388E3C", "#F57C00", "#D32F2F", "#7B1FA2", "#0097A7", "#FBC02D", "#5D4037", "#455A64", "#C2185B" }
+    };
+
+    /// <summary>
+    /// Loads dashboard data when the page initializes.
+    /// Detects if the user is SysAdmin (without impersonation) to show the admin dashboard.
+    /// </summary>
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _loading = true;
+
+            // Check if the current user is SysAdmin and whether they're impersonating
+            var customAuth = AuthStateProvider as CustomAuthenticationStateProvider;
+            if (customAuth != null)
+            {
+                var session = await customAuth.GetUserSessionAsync();
+                if (session != null && session.Role == 2) // SysAdmin role = 2
+                {
+                    _isSysAdmin = true;
+                    var impersonatedId = await customAuth.GetImpersonatedCompanyIdAsync();
+                    _isImpersonating = impersonatedId.HasValue;
+                }
+            }
+
+            if (_isSysAdmin && !_isImpersonating)
+            {
+                // SysAdmin without impersonation → load system-wide dashboard
+                _sysAdminDashboard = await DashboardService.GetSysAdminDashboardAsync();
+            }
+            else
+            {
+                // Regular user or impersonating SysAdmin → load tenant dashboard
+                _dashboard = await DashboardService.GetDashboardAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    // ─── Chart Data Helpers ──────────────────────────────────────────────────
+
+    /// <summary>
+    /// Converts the InvoiceCountByStatus dictionary to double[] for MudChart InputData.
+    /// MudChart requires double[] for chart values.
+    /// </summary>
+    private double[] GetStatusChartData() =>
+        _dashboard.InvoiceCountByStatus.Values.Select(v => (double)v).ToArray();
+
+    /// <summary>
+    /// Converts the InvoiceCountByStatus dictionary to localized string[] for MudChart InputLabels.
+    /// Uses the same localized status names as the rest of the UI for consistency.
+    /// </summary>
+    private string[] GetStatusChartLabels() =>
+        _dashboard.InvoiceCountByStatus.Select(kvp =>
+        {
+            // Try to parse the status string back to enum for localization
+            if (Enum.TryParse<EInvoiceStatus>(kvp.Key, out var status))
+            {
+                return $"{GetStatusText(status)} ({kvp.Value})";
+            }
+            return $"{kvp.Key} ({kvp.Value})";
+        }).ToArray();
+
+    /// <summary>
+    /// Converts the InvoiceTotalByClient dictionary to double[] for MudChart InputData.
+    /// </summary>
+    private double[] GetClientRevenueChartData() =>
+        _dashboard.InvoiceTotalByClient.Values.Select(v => (double)v).ToArray();
+
+    /// <summary>
+    /// Converts the InvoiceTotalByClient dictionary to string[] for MudChart InputLabels.
+    /// Shows client name with amount for clarity in the legend.
+    /// </summary>
+    private string[] GetClientRevenueChartLabels() =>
+        _dashboard.InvoiceTotalByClient.Select(kvp =>
+            $"{kvp.Key} ({kvp.Value:N0})").ToArray();
+
+    /// <summary>
+    /// Returns the MudBlazor color for each invoice status.
+    /// </summary>
+    private Color GetStatusColor(EInvoiceStatus status)
+    {
+        return status switch
+        {
+            EInvoiceStatus.Draft => Color.Default,
+            EInvoiceStatus.Completed => Color.Info,
+            EInvoiceStatus.Paid => Color.Success,
+            EInvoiceStatus.Creditnoted => Color.Warning,
+            EInvoiceStatus.Deleted => Color.Dark,
+            _ => Color.Default
+        };
+    }
+
+    /// <summary>
+    /// Returns the localized display text for each invoice status.
+    /// </summary>
+    private string GetStatusText(EInvoiceStatus status)
+    {
+        return status switch
+        {
+            EInvoiceStatus.Draft => L["Invoice_StatusDraft"].Value,
+            EInvoiceStatus.Completed => L["Invoice_StatusIssued"].Value,
+            EInvoiceStatus.Paid => L["Invoice_StatusPaid"].Value,
+            EInvoiceStatus.Creditnoted => L["Invoice_StatusCancelled"].Value,
+            EInvoiceStatus.Deleted => L["Invoice_StatusCancelled"].Value,
+            _ => status.ToString()
+        };
+    }
+
+    /// <summary>
+    /// Returns MudBlazor color for log level chips.
+    /// </summary>
+    private static Color GetLogLevelColor(string level) => level switch
+    {
+        "Critical" => Color.Dark,
+        "Error" => Color.Error,
+        "Warning" => Color.Warning,
+        "Information" => Color.Info,
+        _ => Color.Default
+    };
+
+    /// <summary>
+    /// Shortens logger category name for display (last 2 segments).
+    /// </summary>
+    private static string GetShortSource(string source)
+    {
+        var parts = source.Split('.');
+        return parts.Length > 2 ? string.Join('.', parts[^2..]) : source;
+    }
+}

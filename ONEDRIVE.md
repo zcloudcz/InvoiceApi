@@ -2,7 +2,7 @@
 
 ## Overview
 
-InvoiceApi can automatically upload generated PDF invoices to OneDrive.
+Fakvio can automatically upload generated PDF invoices to OneDrive.
 When a user issues (completes) an invoice, the PDF is uploaded to the configured
 OneDrive folder in the background.
 
@@ -16,7 +16,7 @@ and the **Microsoft Graph REST API**. Scopes: `Files.ReadWrite offline_access`.
 1. Go to [Azure Portal — App registrations](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade)
 2. Click **+ New registration**
 3. Fill in:
-   - **Name**: `InvoiceApi OneDrive`
+   - **Name**: `Fakvio OneDrive`
    - **Supported account types**: **Accounts in any organizational directory and personal Microsoft accounts** (multi-tenant + personal)
      > This allows both work/school (Microsoft 365) and personal (outlook.com) accounts.
      > If you only need work/school accounts, choose "Accounts in any organizational directory".
@@ -30,7 +30,7 @@ and the **Microsoft Graph REST API**. Scopes: `Files.ReadWrite offline_access`.
 
 1. In the app registration, go to **Certificates & secrets**
 2. Click **+ New client secret**
-3. **Description**: `InvoiceApi` → **Expiry**: 24 months (or your preference)
+3. **Description**: `Fakvio` → **Expiry**: 24 months (or your preference)
 4. Click **Add**
 5. **Copy the Value immediately** (you won't be able to see it again!) — this is your `ClientSecret`
 
@@ -85,7 +85,7 @@ Add the credentials to your API configuration.
 ### Option B: User Secrets (recommended for dev)
 
 ```bash
-cd InvoiceApi.API
+cd Fakvio.API
 dotnet user-secrets set "OAuth:Microsoft:ClientId" "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 dotnet user-secrets set "OAuth:Microsoft:ClientSecret" "your-client-secret-value"
 dotnet user-secrets set "OAuth:Microsoft:TenantId" "common"
@@ -105,7 +105,7 @@ The cloud storage settings are stored in the `CompanySystemSettings` table (mast
 Run the migration if you haven't already:
 
 ```bash
-cd InvoiceApi.API
+cd Fakvio.API
 dotnet ef database update --context MasterDbContext
 ```
 

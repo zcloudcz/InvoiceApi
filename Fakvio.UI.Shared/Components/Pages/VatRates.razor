@@ -1,0 +1,285 @@
+@page "/vat-rates"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@using Fakvio.Contracts.Dto.VatRate
+@inject VatRateApiService VatRateService
+@inject ISnackbar Snackbar
+@* Localization service for multi-language support *@
+@inject IStringLocalizer<SharedResource> L
+
+<PageTitle>@L["VatRate_Title"]</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">@L["VatRate_Title"]</MudText>
+<MudText Class="mb-4">@L["VatRate_Subtitle"]</MudText>
+
+@* AppDataGrid provides consistent Dense+Hover+Striped+pointer styling across all grid pages *@
+<AppDataGrid TItem="VatRateDto"
+             Items="@_vatRates"
+             Loading="@_loading"
+             OnRowClick="@(OpenEditDialog)"
+             OnEdit="@(OpenEditDialog)"
+             OnDelete="@((vr) => DeleteVatRate(vr.Id))"
+             NoRecordsText="@L["VatRate_NoRecords"].Value">
+    <ToolBarContent>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialog">
+            @L["VatRate_New"]
+        </MudButton>
+    </ToolBarContent>
+    <Columns>
+        <MudTh>@L["VatRate_Name"]</MudTh>
+        <MudTh>@L["VatRate_Rate"]</MudTh>
+        <MudTh>@L["VatRate_ValidFrom"]</MudTh>
+        <MudTh>@L["VatRate_ValidTo"]</MudTh>
+        <MudTh>@L["VatRate_Type"]</MudTh>
+        <MudTh>@L["VatRate_IsDefault"]</MudTh>
+        <MudTh>@L["Label_Status"]</MudTh>
+    </Columns>
+    <RowContent>
+        <MudTd DataLabel="@L["VatRate_Name"].Value">@context.Name</MudTd>
+        <MudTd DataLabel="@L["VatRate_Rate"].Value">
+            <MudChip T="string" Size="Size.Small" Color="Color.Primary">@context.Rate.ToString("0.##") %</MudChip>
+        </MudTd>
+        <MudTd DataLabel="@L["VatRate_ValidFrom"].Value">@context.ValidFrom.ToShortDateString()</MudTd>
+        <MudTd DataLabel="@L["VatRate_ValidTo"].Value">@(context.ValidTo?.ToShortDateString() ?? "—")</MudTd>
+        <MudTd DataLabel="@L["VatRate_Type"].Value">
+            <MudChip T="string" Size="Size.Small" Color="@(context.IsReduced ? Color.Info : Color.Secondary)">
+                @(context.IsReduced ? L["VatRate_Reduced"].Value : L["VatRate_Standard"].Value)
+            </MudChip>
+        </MudTd>
+        <MudTd DataLabel="@L["VatRate_IsDefault"].Value">
+            @if (context.IsDefault)
+            {
+                <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Small" />
+            }
+            else
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.Star" Size="Size.Small" OnClick="@(() => SetAsDefault(context.Id))"
+                               title="@L["VatRate_SetAsDefault"].Value"/>
+            }
+        </MudTd>
+        <MudTd DataLabel="@L["Label_Status"].Value">
+            <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">
+                @(context.IsActive ? L["Label_Active"].Value : L["Label_Inactive"].Value)
+            </MudChip>
+        </MudTd>
+    </RowContent>
+</AppDataGrid>
+
+@* ========== Create Dialog — Options enables ESC key to close ========== *@
+<MudDialog @bind-Visible="_showCreateDialog" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@L["VatRate_New"]</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudTextField @bind-Value="_newVatRate.Name" Label="@L["VatRate_Name"].Value" Required="true" />
+        <MudNumericField @bind-Value="_newVatRate.Rate" Label="@L["VatRate_Rate"].Value" Min="0" Max="100" Required="true" />
+        <MudDatePicker @bind-Date="_validFromDate" Label="@L["VatRate_ValidFrom"].Value" Required="true" />
+        <MudDatePicker @bind-Date="_validToDate" Label="@L["VatRate_ValidToOptional"].Value" />
+        <MudSwitch @bind-Value="_newVatRate.IsReduced" Label="@L["VatRate_IsReduced"].Value" Color="Color.Primary" />
+        <MudSwitch @bind-Value="_newVatRate.IsDefault" Label="@L["VatRate_IsDefault"].Value" Color="Color.Primary" />
+        <MudSwitch @bind-Value="_newVatRate.IsActive" Label="@L["Label_Active"].Value" Color="Color.Primary" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseCreateDialog">@L["Btn_Cancel"]</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="CreateVatRate">@L["Btn_Create"]</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@* ========== Edit Dialog — pre-populated with the selected VAT rate, Options enables ESC key ========== *@
+<MudDialog @bind-Visible="_showEditDialog" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@L["VatRate_Edit"]</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudTextField @bind-Value="_editVatRate.Name" Label="@L["VatRate_Name"].Value" Required="true" />
+        <MudNumericField @bind-Value="_editVatRate.Rate" Label="@L["VatRate_Rate"].Value" Min="0" Max="100" Required="true" />
+        <MudDatePicker @bind-Date="_editValidFromDate" Label="@L["VatRate_ValidFrom"].Value" Required="true" />
+        <MudDatePicker @bind-Date="_editValidToDate" Label="@L["VatRate_ValidToOptional"].Value" />
+        <MudSwitch @bind-Value="_editVatRate.IsReduced" Label="@L["VatRate_IsReduced"].Value" Color="Color.Primary" />
+        <MudSwitch @bind-Value="_editVatRate.IsDefault" Label="@L["VatRate_IsDefault"].Value" Color="Color.Primary" />
+        <MudSwitch @bind-Value="_editVatRate.IsActive" Label="@L["Label_Active"].Value" Color="Color.Primary" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showEditDialog = false)">@L["Btn_Cancel"]</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="UpdateVatRate">@L["Btn_Save"]</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<VatRateDto> _vatRates = new();
+    private bool _loading = true;
+
+    // Dialog options — CloseButton enables ESC key dismissal and shows X button
+    private DialogOptions _dialogOptions = new() { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true };
+
+    // Create dialog state
+    private bool _showCreateDialog = false;
+    private CreateVatRateDto _newVatRate = new();
+    private DateTime? _validFromDate = DateTime.Now;
+    private DateTime? _validToDate = null;
+
+    // Edit dialog state — separate from create to avoid data collision
+    private bool _showEditDialog = false;
+    private long _editVatRateId;
+    private UpdateVatRateDto _editVatRate = new();
+    private DateTime? _editValidFromDate;
+    private DateTime? _editValidToDate;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadVatRates();
+    }
+
+    private async Task LoadVatRates()
+    {
+        try
+        {
+            _loading = true;
+            _vatRates = await VatRateService.GetAllAsync(includeInactive: true);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void OpenCreateDialog()
+    {
+        _newVatRate = new CreateVatRateDto
+        {
+            IsActive = true,
+            ValidFrom = DateTime.UtcNow
+        };
+        _validFromDate = DateTime.Now;
+        _validToDate = null;
+        _showCreateDialog = true;
+    }
+
+    private void CloseCreateDialog()
+    {
+        _showCreateDialog = false;
+    }
+
+    private async Task CreateVatRate()
+    {
+        try
+        {
+            if (_validFromDate.HasValue)
+            {
+                _newVatRate.ValidFrom = _validFromDate.Value.ToUniversalTime();
+            }
+
+            if (_validToDate.HasValue)
+            {
+                _newVatRate.ValidTo = _validToDate.Value.ToUniversalTime();
+            }
+
+            var result = await VatRateService.CreateAsync(_newVatRate);
+            if (result != null)
+            {
+                Snackbar.Add(L["Msg_SaveSuccess"].Value, Severity.Success);
+                _showCreateDialog = false;
+                await LoadVatRates();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task SetAsDefault(long id)
+    {
+        try
+        {
+            var result = await VatRateService.SetAsDefaultAsync(id);
+            if (result != null)
+            {
+                Snackbar.Add(L["Msg_SaveSuccess"].Value, Severity.Success);
+                await LoadVatRates();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task DeleteVatRate(long id)
+    {
+        try
+        {
+            var success = await VatRateService.DeleteAsync(id);
+            if (success)
+            {
+                Snackbar.Add(L["Msg_DeleteSuccess"].Value, Severity.Success);
+                await LoadVatRates();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+    }
+
+    /// <summary>
+    /// Opens the edit dialog pre-populated with the selected VAT rate's data.
+    /// Copies values into the UpdateVatRateDto so the original list is not modified.
+    /// </summary>
+    private void OpenEditDialog(VatRateDto vatRate)
+    {
+        _editVatRateId = vatRate.Id;
+        _editVatRate = new UpdateVatRateDto
+        {
+            Name = vatRate.Name,
+            Rate = vatRate.Rate,
+            ValidFrom = vatRate.ValidFrom,
+            ValidTo = vatRate.ValidTo,
+            IsReduced = vatRate.IsReduced,
+            IsDefault = vatRate.IsDefault,
+            IsActive = vatRate.IsActive
+        };
+        _editValidFromDate = vatRate.ValidFrom;
+        _editValidToDate = vatRate.ValidTo;
+        _showEditDialog = true;
+    }
+
+    /// <summary>
+    /// Saves the edited VAT rate by calling the update API endpoint.
+    /// </summary>
+    private async Task UpdateVatRate()
+    {
+        try
+        {
+            // Convert date picker values to UTC before sending to API
+            if (_editValidFromDate.HasValue)
+            {
+                _editVatRate.ValidFrom = _editValidFromDate.Value.ToUniversalTime();
+            }
+
+            if (_editValidToDate.HasValue)
+            {
+                _editVatRate.ValidTo = _editValidToDate.Value.ToUniversalTime();
+            }
+            else
+            {
+                _editVatRate.ValidTo = null;
+            }
+
+            var result = await VatRateService.UpdateAsync(_editVatRateId, _editVatRate);
+            if (result != null)
+            {
+                Snackbar.Add(L["Msg_SaveSuccess"].Value, Severity.Success);
+                _showEditDialog = false;
+                await LoadVatRates();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+    }
+}

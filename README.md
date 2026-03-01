@@ -1,4 +1,4 @@
-# InvoiceApi - Fakturační systém
+# Fakvio - Fakturační systém
 
 Moderní fakturační systém postavený na **.NET 10.0** s Clean Architecture, REST API backendem a Blazor Server frontendem.
 
@@ -7,21 +7,21 @@ Moderní fakturační systém postavený na **.NET 10.0** s Clean Architecture, 
 Projekt využívá **Clean Architecture (Onion Architecture)** s jasným oddělením vrstev:
 
 ```
-InvoiceApi.BlazorUI        ← Prezentační vrstva (Blazor + MudBlazor)
+Fakvio.BlazorUI        ← Prezentační vrstva (Blazor + MudBlazor)
        │ HTTP/REST
-InvoiceApi.API             ← API vrstva (ASP.NET Core Web API)
+Fakvio.API             ← API vrstva (ASP.NET Core Web API)
        │
-InvoiceApi.Application     ← Aplikační vrstva (služby, DTOs, rozhraní)
+Fakvio.Application     ← Aplikační vrstva (služby, DTOs, rozhraní)
        │
-InvoiceApi.Infrastructure  ← Infrastrukturní vrstva (EF Core, repozitáře)
+Fakvio.Infrastructure  ← Infrastrukturní vrstva (EF Core, repozitáře)
        │
-InvoiceApi.Domain          ← Doménová vrstva (entity, enumy)
+Fakvio.Domain          ← Doménová vrstva (entity, enumy)
 ```
 
 Doplňkové projekty:
 - **AresService** - Integrace s českým registrem ARES
-- **InvoiceApi.Tests.Unit** - Unit testy
-- **InvoiceApi.Tests.Integration** - Integrační testy
+- **Fakvio.Tests.Unit** - Unit testy
+- **Fakvio.Tests.Integration** - Integrační testy
 
 ## Technologie
 
@@ -100,14 +100,14 @@ Tříúrovňový systém rolí:
 
 ### API server
 ```bash
-cd InvoiceApi.API
+cd Fakvio.API
 dotnet run
 ```
 API bude dostupné na `https://localhost:7001` se Swagger UI na root URL.
 
 ### Blazor UI
 ```bash
-cd InvoiceApi.BlazorUI
+cd Fakvio.BlazorUI
 dotnet run
 ```
 
@@ -148,8 +148,8 @@ Aktuálně **34 unit testů** pokrývajících:
 
 ## Konfigurace
 
-- **API:** `InvoiceApi.API/appsettings.json` - connection string, JWT nastavení, SMTP nastavení
-- **Blazor UI:** `InvoiceApi.BlazorUI/appsettings.json` - URL API serveru
+- **API:** `Fakvio.API/appsettings.json` - connection string, JWT nastavení, SMTP nastavení
+- **Blazor UI:** `Fakvio.BlazorUI/appsettings.json` - URL API serveru
 
 ### SMTP nastavení (emailing)
 
@@ -163,7 +163,7 @@ V `appsettings.json` API projektu nakonfigurujte sekci `SmtpSettings`:
     "Username": "user@example.com",
     "Password": "your-password",
     "SenderEmail": "invoices@example.com",
-    "SenderName": "InvoiceApi",
+    "SenderName": "Fakvio",
     "UseSsl": true
   }
 }
@@ -172,13 +172,13 @@ V `appsettings.json` API projektu nakonfigurujte sekci `SmtpSettings`:
 ## Struktura solution
 
 ```
-InvoiceApi.sln
-├── InvoiceApi.Domain/              # Entity, enumy, base classes
-├── InvoiceApi.Application/         # Rozhraní služeb, DTOs, společné utility
-├── InvoiceApi.Infrastructure/      # EF Core, implementace služeb, migrace
-├── InvoiceApi.API/                 # REST API, controllery, Program.cs
-├── InvoiceApi.BlazorUI/            # Blazor Server UI, komponenty, stránky
+Fakvio.sln
+├── Fakvio.Domain/              # Entity, enumy, base classes
+├── Fakvio.Application/         # Rozhraní služeb, DTOs, společné utility
+├── Fakvio.Infrastructure/      # EF Core, implementace služeb, migrace
+├── Fakvio.API/                 # REST API, controllery, Program.cs
+├── Fakvio.BlazorUI/            # Blazor Server UI, komponenty, stránky
 ├── AresService/                    # ARES integrace (samostatná knihovna)
-├── InvoiceApi.Tests.Unit/          # Unit testy
-└── InvoiceApi.Tests.Integration/   # Integrační testy
+├── Fakvio.Tests.Unit/          # Unit testy
+└── Fakvio.Tests.Integration/   # Integrační testy
 ```

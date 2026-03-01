@@ -9,7 +9,7 @@
 
 ## Executive Summary
 
-The InvoiceApi project needs to transition from a single SQLite database with manual tenant filtering to a fully isolated database-per-tenant PostgreSQL architecture. This roadmap organizes the work into **7 phases** with clear dependencies, effort estimates, and acceptance criteria.
+The Fakvio project needs to transition from a single SQLite database with manual tenant filtering to a fully isolated database-per-tenant PostgreSQL architecture. This roadmap organizes the work into **7 phases** with clear dependencies, effort estimates, and acceptance criteria.
 
 **Total estimated effort:** ~25-35 development days across 7 phases
 
@@ -95,7 +95,7 @@ Pre-reqs     Migration    Infra        Migration   & Middleware Migration  Updat
 | Item | Details |
 |------|---------|
 | **Action** | Add `Npgsql.EntityFrameworkCore.PostgreSQL`, remove `Microsoft.EntityFrameworkCore.Sqlite` |
-| **Files** | `Infrastructure/InvoiceApi.Infrastructure.csproj` |
+| **Files** | `Infrastructure/Fakvio.Infrastructure.csproj` |
 | **Effort** | 0.25 day |
 
 ### 1.2 DbContext Provider Change
@@ -394,7 +394,7 @@ Pre-reqs     Migration    Infra        Migration   & Middleware Migration  Updat
 | Item | Details |
 |------|---------|
 | **Action** | Create console tool that reads current single PostgreSQL DB and splits into master + tenant DBs |
-| **Files** | New console project `InvoiceApi.MigrationTool/` |
+| **Files** | New console project `Fakvio.MigrationTool/` |
 | **Logic** | Extract Users → master; Extract Client (IsIssuer) → master + tenant; Extract code tables → master (defaults) + tenant (copies); Extract business data → tenant only |
 | **Effort** | 1.5 days |
 
@@ -567,7 +567,7 @@ Phase 5 (Data Migration)  Phase 6 (Blazor UI)
 | File | Phase | Change |
 |------|-------|--------|
 | `Domain/Entities/NumberSequence.cs` | 0 | Add RowVersion |
-| `Infrastructure/InvoiceApi.Infrastructure.csproj` | 1 | Npgsql ↔ SQLite swap |
+| `Infrastructure/Fakvio.Infrastructure.csproj` | 1 | Npgsql ↔ SQLite swap |
 | `Infrastructure/Data/ApplicationDbContext.cs` | 0-3 | Phase 0: audit trail → Phase 3: DELETE |
 | `Infrastructure/Service/AuthService.cs` | 3 | MasterDbContext + tenant check |
 | `Infrastructure/Service/UserService.cs` | 3 | MasterDbContext |

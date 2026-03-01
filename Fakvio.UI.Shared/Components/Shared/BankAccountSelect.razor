@@ -1,0 +1,112 @@
+@*
+    Dropdown selector for choosing one of the issuer's bank accounts.
+    Displays: "{Label} — {AccountNumber} ({CurrencyCode})" with a star for the default.
+    Used on the InvoiceDetail page to replace the old free-text BankAccountInput.
+
+    When the user selects an account, fires OnBankAccountSelected so the caller can
+    populate BankAccountNumber, IBAN, and SWIFT on the invoice DTO.
+
+    Usage:
+      <BankAccountSelect BankAccounts="_issuerBankAccounts"
+                         SelectedAccountId="_selectedBankAccountId"
+                         OnBankAccountSelected="HandleBankAccountSelected" />
+*@
+@inject IStringLocalizer<SharedResource> L
+@using Fakvio.Contracts.Dto.Client
+
+<MudSelect T="long?" Value="SelectedAccountId" ValueChanged="OnSelectionChanged"
+           Label="@(Label ?? L["BankAccount_SelectAccount"].Value)"
+           Clearable="true" Class="mb-3">
+    @foreach (var account in BankAccounts)
+    {
+        <MudSelectItem T="long?" Value="@((long?)account.Id)">
+            @FormatAccountDisplay(account)
+        </MudSelectItem>
+    }
+</MudSelect>
+
+@code {
+    /// <summary>
+    /// List of bank accounts to display in the dropdown.
+    /// Typically loaded from the issuer's BankAccount collection.
+    /// </summary>
+    [Parameter]
+    public List<BankAccountDto> BankAccounts { get; set; } = new();
+
+    /// <summary>
+    /// Currently selected bank account ID (two-way bindable).
+    /// </summary>
+    [Parameter]
+    public long? SelectedAccountId { get; set; }
+
+    /// <summary>
+    /// Callback when the selected bank account changes.
+    /// Returns the full BankAccountDto so the caller can extract AccountNumber/IBAN/SWIFT.
+    /// Returns null when the selection is cleared.
+    /// </summary>
+    [Parameter]
+    public EventCallback<BankAccountDto?> OnBankAccountSelected { get; set; }
+
+    /// <summary>
+    /// Optional label override. Defaults to localized "Select Bank Account" label.
+    /// </summary>
+    [Parameter]
+    public string? Label { get; set; }
+
+    /// <summary>
+    /// Handles selection change — finds the full DTO and fires the callback.
+    /// </summary>
+    private async Task OnSelectionChanged(long? accountId)
+    {
+        SelectedAccountId = accountId;
+
+        if (accountId.HasValue)
+        {
+            var selected = BankAccounts.FirstOrDefault(a => a.Id == accountId.Value);
+            await OnBankAccountSelected.InvokeAsync(selected);
+        }
+        else
+        {
+            // Selection cleared — notify caller with null
+            await OnBankAccountSelected.InvokeAsync(null);
+        }
+    }
+
+    /// <summary>
+    /// Formats the display text for a bank account in the dropdown.
+    /// Shows: "Label — AccountNumber (CurrencyCode)" with a star for the default.
+    /// Falls back gracefully when optional fields are empty.
+    /// </summary>
+    private string FormatAccountDisplay(BankAccountDto account)
+    {
+        var parts = new List<string>();
+
+        // Star prefix for default account
+        if (account.IsDefault)
+        {
+            parts.Add("\u2605"); // Unicode star character
+        }
+
+        // Label or bank name (whichever is available)
+        if (!string.IsNullOrEmpty(account.Label))
+        {
+            parts.Add(account.Label);
+        }
+        else if (!string.IsNullOrEmpty(account.BankName))
+        {
+            parts.Add(account.BankName);
+        }
+
+        // Account number is always shown
+        parts.Add(account.AccountNumber);
+
+        // Currency code in parentheses if available
+        if (!string.IsNullOrEmpty(account.CurrencyCode))
+        {
+            parts.Add($"({account.CurrencyCode})");
+        }
+
+        return string.Join(" — ", parts.Take(parts.Count > 2 ? 2 : parts.Count))
+            + (parts.Count > 2 ? " " + string.Join(" ", parts.Skip(2)) : "");
+    }
+}

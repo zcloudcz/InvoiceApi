@@ -35,7 +35,7 @@ jobs:
           # Publish specifically the Functions project (not the entire solution).
           # Azure Functions requires the function app's own output with host.json,
           # GeneratedFunctionMetadataProvider, and all dependency DLLs.
-          dotnet publish ./InvoiceApi.Functions/InvoiceApi.Functions.csproj \
+          dotnet publish ./Fakvio.Functions/Fakvio.Functions.csproj \
             --configuration Release \
             --output ./output
       

@@ -15,8 +15,8 @@ Přidat 2 connection stringy typu `SQLAzure`:
 
 | Název | Hodnota | Popis |
 |-------|---------|-------|
-| `MasterConnection` | `Server=tcp:<server>.database.windows.net,1433;Database=invoiceapi_master;User ID=<user>;Password=<pass>;Encrypt=True;TrustServerCertificate=False;` | Hlavní DB (uživatelé, firmy, systémová konfigurace) |
-| `TenantTemplateConnection` | `Server=tcp:<server>.database.windows.net,1433;Database=invoiceapi_tenant_template;User ID=<user>;Password=<pass>;Encrypt=True;TrustServerCertificate=False;` | Šablonová tenant DB (migrace, fallback) |
+| `MasterConnection` | `Server=tcp:<server>.database.windows.net,1433;Database=fakvio_master;User ID=<user>;Password=<pass>;Encrypt=True;TrustServerCertificate=False;` | Hlavní DB (uživatelé, firmy, systémová konfigurace) |
+| `TenantTemplateConnection` | `Server=tcp:<server>.database.windows.net,1433;Database=fakvio_tenant_template;User ID=<user>;Password=<pass>;Encrypt=True;TrustServerCertificate=False;` | Šablonová tenant DB (migrace, fallback) |
 
 > **POZOR:** Connection stringy se v Azure Functions nastavují v sekci **Connection strings**, NE v Application settings. Kód je čte přes `configuration.GetConnectionString("MasterConnection")`.
 
@@ -28,13 +28,13 @@ az functionapp config connection-string set \
     --resource-group <RESOURCE_GROUP> \
     --connection-string-type SQLAzure \
     --settings \
-        MasterConnection="Server=tcp:<server>.database.windows.net,1433;Database=invoiceapi_master;User ID=<user>;Password=<pass>;Encrypt=True;TrustServerCertificate=False;" \
-        TenantTemplateConnection="Server=tcp:<server>.database.windows.net,1433;Database=invoiceapi_tenant_template;User ID=<user>;Password=<pass>;Encrypt=True;TrustServerCertificate=False;"
+        MasterConnection="Server=tcp:<server>.database.windows.net,1433;Database=fakvio_master;User ID=<user>;Password=<pass>;Encrypt=True;TrustServerCertificate=False;" \
+        TenantTemplateConnection="Server=tcp:<server>.database.windows.net,1433;Database=fakvio_tenant_template;User ID=<user>;Password=<pass>;Encrypt=True;TrustServerCertificate=False;"
 ```
 
 ### Lokální vývoj (`local.settings.json`)
 
-Soubor `InvoiceApi.Functions/local.settings.json` (NENÍ deployován do Azure):
+Soubor `Fakvio.Functions/local.settings.json` (NENÍ deployován do Azure):
 
 ```json
 {
@@ -44,13 +44,13 @@ Soubor `InvoiceApi.Functions/local.settings.json` (NENÍ deployován do Azure):
     "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated"
   },
   "ConnectionStrings": {
-    "MasterConnection": "Server=localhost;Database=invoiceapi_master;Trusted_Connection=true;TrustServerCertificate=true",
-    "TenantTemplateConnection": "Server=localhost;Database=invoiceapi_tenant_template;Trusted_Connection=true;TrustServerCertificate=true"
+    "MasterConnection": "Server=localhost;Database=fakvio_master;Trusted_Connection=true;TrustServerCertificate=true",
+    "TenantTemplateConnection": "Server=localhost;Database=fakvio_tenant_template;Trusted_Connection=true;TrustServerCertificate=true"
   },
   "JwtSettings": {
     "Secret": "your-dev-secret-here-min-32-chars-long!!!",
-    "Issuer": "InvoiceApi",
-    "Audience": "InvoiceApiClient"
+    "Issuer": "Fakvio",
+    "Audience": "FakvioClient"
   }
 }
 ```
@@ -84,8 +84,8 @@ Nastavují se v **Function App → Settings → Environment variables → App se
 | Klíč | Příklad | Popis |
 |------|---------|-------|
 | `JwtSettings__Secret` | `MojeSuprTajneHesloMinimalne32ZnakuDlouhe!` | JWT podpisový klíč (min 32 znaků) |
-| `JwtSettings__Issuer` | `InvoiceApi` | JWT issuer (default: `InvoiceApi`) |
-| `JwtSettings__Audience` | `InvoiceApiClient` | JWT audience (default: `InvoiceApiClient`) |
+| `JwtSettings__Issuer` | `Fakvio` | JWT issuer (default: `Fakvio`) |
+| `JwtSettings__Audience` | `FakvioClient` | JWT audience (default: `FakvioClient`) |
 
 > **Formát:** V Azure App Settings se `:` nahrazuje `__` (dvojité podtržítko).
 > Tzn. `JwtSettings:Secret` → `JwtSettings__Secret`
@@ -161,17 +161,17 @@ Azure Functions **nemigruje** automaticky. Migrace spustit ručně před prvním
 ```bash
 # Master DB
 dotnet ef database update \
-    --project InvoiceApi.Infrastructure \
-    --startup-project InvoiceApi.API \
+    --project Fakvio.Infrastructure \
+    --startup-project Fakvio.API \
     --context MasterDbContext \
-    --connection "Server=tcp:<server>.database.windows.net,1433;Database=invoiceapi_master;User ID=<user>;Password=<pass>;Encrypt=True;TrustServerCertificate=False;"
+    --connection "Server=tcp:<server>.database.windows.net,1433;Database=fakvio_master;User ID=<user>;Password=<pass>;Encrypt=True;TrustServerCertificate=False;"
 
 # Tenant Template DB
 dotnet ef database update \
-    --project InvoiceApi.Infrastructure \
-    --startup-project InvoiceApi.API \
+    --project Fakvio.Infrastructure \
+    --startup-project Fakvio.API \
     --context TenantDbContext \
-    --connection "Server=tcp:<server>.database.windows.net,1433;Database=invoiceapi_tenant_template;User ID=<user>;Password=<pass>;Encrypt=True;TrustServerCertificate=False;"
+    --connection "Server=tcp:<server>.database.windows.net,1433;Database=fakvio_tenant_template;User ID=<user>;Password=<pass>;Encrypt=True;TrustServerCertificate=False;"
 ```
 
 Nové tenant databáze se vytvářejí přes API: `POST /api/company/{id}/provision`
@@ -220,14 +220,14 @@ URL struktura je **stejná** jako u standalone API (`/api/invoice`, `/api/client
 ### Varianta A: Azure Functions Core Tools
 
 ```bash
-cd InvoiceApi.Functions
+cd Fakvio.Functions
 func azure functionapp publish <FUNC_APP_NAME> --dotnet-isolated
 ```
 
 ### Varianta B: dotnet publish + zip deploy
 
 ```bash
-dotnet publish InvoiceApi.Functions -c Release -o ./publish
+dotnet publish Fakvio.Functions -c Release -o ./publish
 cd publish
 # PowerShell:
 Compress-Archive -Path * -DestinationPath ../functions.zip -Force
@@ -239,7 +239,7 @@ az functionapp deployment source config-zip \
 
 ### Varianta C: Visual Studio
 
-Pravý klik na `InvoiceApi.Functions` → **Publish** → **Azure Function App (Windows)**
+Pravý klik na `Fakvio.Functions` → **Publish** → **Azure Function App (Windows)**
 
 ---
 

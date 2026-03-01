@@ -1,6 +1,6 @@
 # Blazor Server → WebAssembly Migration Analysis
 
-> **Project**: InvoiceApi.BlazorUI
+> **Project**: Fakvio.BlazorUI
 > **Current mode**: Blazor Server (`InteractiveServerRenderMode`, prerender: false)
 > **Target**: Blazor WebAssembly (standalone) or Auto (hybrid)
 > **Date**: 2026-02-12
@@ -14,7 +14,7 @@ Browser ←── SignalR WebSocket ──→ BlazorUI (Server)
                                       │
                                       │ HttpClient (https://localhost:7047)
                                       ▼
-                                 InvoiceApi.API
+                                 Fakvio.API
                                       │
                                       ▼
                                SQL Server (multi-tenant)
@@ -33,13 +33,13 @@ Browser ←── SignalR WebSocket ──→ BlazorUI (Server)
 ## 2. Dependency Chain Analysis
 
 ```
-InvoiceApi.BlazorUI
+Fakvio.BlazorUI
 ├── MudBlazor 8.15.0              ✅ WASM-compatible
 ├── Blazored.TextEditor 1.1.3    ✅ WASM-compatible (JS interop / Quill)
-└── InvoiceApi.Application        ❌ BLOCKER — contains EF Core 10.0.1
+└── Fakvio.Application        ❌ BLOCKER — contains EF Core 10.0.1
     ├── Microsoft.EntityFrameworkCore 10.0.1  ❌ cannot run in browser
     ├── Microsoft.Extensions.Logging.Abstractions 10.0.1  ✅
-    ├── InvoiceApi.Domain          ✅ pure .NET (no packages)
+    ├── Fakvio.Domain          ✅ pure .NET (no packages)
     └── AresService                ✅ (logging abstractions only)
 ```
 
@@ -61,12 +61,12 @@ InvoiceApi.BlazorUI
 
 ### 🔴 BLOCKER 1: Application Project Reference (EF Core)
 
-**Problem**: `InvoiceApi.Application.csproj` has `Microsoft.EntityFrameworkCore 10.0.1`. WASM cannot load EF Core assemblies — they depend on native SQL drivers.
+**Problem**: `Fakvio.Application.csproj` has `Microsoft.EntityFrameworkCore 10.0.1`. WASM cannot load EF Core assemblies — they depend on native SQL drivers.
 
 **Solution**: Create a new **shared contracts library** and extract what BlazorUI needs:
 
 ```
-InvoiceApi.Contracts/  (NEW — WASM-safe, zero package dependencies)
+Fakvio.Contracts/  (NEW — WASM-safe, zero package dependencies)
 ├── Dto/               (move all 54 DTO files from Application/Dto/)
 │   ├── AppLog/
 │   ├── Auth/
@@ -92,11 +92,11 @@ InvoiceApi.Contracts/  (NEW — WASM-safe, zero package dependencies)
 
 **New reference graph:**
 ```
-BlazorUI.Wasm  → InvoiceApi.Contracts  (DTOs + Pagination)
-                → InvoiceApi.Domain     (Enums only — no packages)
+BlazorUI.Wasm  → Fakvio.Contracts  (DTOs + Pagination)
+                → Fakvio.Domain     (Enums only — no packages)
 
-Application    → InvoiceApi.Contracts  (replaces internal Dto/)
-               → InvoiceApi.Domain
+Application    → Fakvio.Contracts  (replaces internal Dto/)
+               → Fakvio.Domain
                → EF Core (stays server-only)
 
 API            → Application → Contracts + Domain  (unchanged)
@@ -296,7 +296,7 @@ await builder.Build().RunAsync();
             │ HTTPS / JSON
             ▼
      ┌──────────────┐
-     │  API Server   │  ← InvoiceApi.API (or Azure Functions)
+     │  API Server   │  ← Fakvio.API (or Azure Functions)
      │  (or Azure    │
      │   Functions)  │
      └──────┬───────┘
@@ -390,7 +390,7 @@ Azure SQL                         ← Database
 | Security (token storage) | ⭐⭐⭐ | ⭐⭐ | ⭐⭐ |
 | Debugging ease | ⭐⭐⭐ | ⭐ | ⭐ |
 
-**For InvoiceApi (enterprise SaaS, always-online users, admin panel):**
+**For Fakvio (enterprise SaaS, always-online users, admin panel):**
 - **Option A (Standalone WASM)** is recommended if the primary goal is **cost reduction** (Azure Static Web Apps + Functions consumption plan) or **scalability**.
 - **Option C (Stay Server)** is recommended if there's **no strong driver** to change.
 - **Option B (Auto)** adds complexity without significant benefit for this use case.
@@ -401,7 +401,7 @@ Azure SQL                         ← Database
 
 ### Phase 1: Create Shared Contracts Library (2–3 days)
 
-1. Create `InvoiceApi.Contracts` project (class library, `net10.0`, zero packages)
+1. Create `Fakvio.Contracts` project (class library, `net10.0`, zero packages)
 2. Move all 54 DTOs from `Application/Dto/` → `Contracts/Dto/`
 3. Move `PagedResult<T>` + `PaginationParams` → `Contracts/Common/Pagination/`
 4. Update `Application.csproj` → reference `Contracts` (DTOs are now external)
@@ -413,7 +413,7 @@ Azure SQL                         ← Database
 
 ### Phase 2: Create WASM Host Project (1 day)
 
-1. Create `InvoiceApi.BlazorUI.Wasm` project (or convert existing)
+1. Create `Fakvio.BlazorUI.Wasm` project (or convert existing)
    - `Microsoft.NET.Sdk.BlazorWebAssembly`
    - References: `Contracts`, `Domain`
    - NuGet: `MudBlazor`, `Blazored.TextEditor`, `Blazored.LocalStorage`
@@ -548,7 +548,7 @@ Login → API returns { accessToken (15 min), refreshToken (HttpOnly cookie) }
 
 | Phase | Task | Days |
 |-------|------|------|
-| 1 | Create `InvoiceApi.Contracts` (extract 56 files) | 2–3 |
+| 1 | Create `Fakvio.Contracts` (extract 56 files) | 2–3 |
 | 2 | Create WASM host project + Program.cs | 1 |
 | 3 | Rewrite authentication (ProtectedSessionStorage → localStorage) | 1–2 |
 | 4 | Rewrite culture switching | 0.5 |
@@ -584,7 +584,7 @@ Login → API returns { accessToken (15 min), refreshToken (HttpOnly cookie) }
 - All 31 pages → remove `@rendermode InteractiveServer`
 
 ### Created (new):
-- `InvoiceApi.Contracts/` → shared DTO library (56 files moved)
+- `Fakvio.Contracts/` → shared DTO library (56 files moved)
 - `wwwroot/index.html` → WASM host page
 - `wwwroot/appsettings.json` → client-side config (API URL)
 
@@ -593,17 +593,17 @@ Login → API returns { accessToken (15 min), refreshToken (HttpOnly cookie) }
 - All 9 shared components — no server dependencies
 - All `.resx` localization files
 - All JS interop (`download.js`) — browser API only
-- InvoiceApi.API — unchanged
-- InvoiceApi.Infrastructure — unchanged
-- InvoiceApi.Domain — unchanged
-- InvoiceApi.Functions — unchanged
+- Fakvio.API — unchanged
+- Fakvio.Infrastructure — unchanged
+- Fakvio.Domain — unchanged
+- Fakvio.Functions — unchanged
 - All 312 tests — unchanged
 
 ---
 
 ## 12. Conclusion
 
-The InvoiceApi.BlazorUI is **well-architected for WASM migration** (70% compatible today):
+The Fakvio.BlazorUI is **well-architected for WASM migration** (70% compatible today):
 
 ✅ **Already WASM-ready**: API services, MudBlazor, Quill editor, localization, JS interop, shared components, navigation
 ❌ **Must change**: DTO project extraction, authentication storage, culture switching, render mode declarations

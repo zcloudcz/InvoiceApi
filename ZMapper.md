@@ -1,6 +1,6 @@
 # ZMapper v1.0.0 — Pitfalls & Lessons Learned
 
-This document describes issues encountered when integrating the ZMapper source-generated mapper library into the InvoiceApi project.
+This document describes issues encountered when integrating the ZMapper source-generated mapper library into the Fakvio project.
 
 ## 1. Namespace Split
 
@@ -15,12 +15,12 @@ using ZMapper.Abstractions.Configuration;
 
 ## 2. Generated Code Namespace
 
-The source generator emits extension methods and the `Mapper` class into the **same namespace as the profile classes** (e.g., `InvoiceApi.Infrastructure.Mapping`), NOT into the `ZMapper` namespace. This means:
+The source generator emits extension methods and the `Mapper` class into the **same namespace as the profile classes** (e.g., `Fakvio.Infrastructure.Mapping`), NOT into the `ZMapper` namespace. This means:
 
-- Services calling `.ToXxxDto()` need `using InvoiceApi.Infrastructure.Mapping;`
+- Services calling `.ToXxxDto()` need `using Fakvio.Infrastructure.Mapping;`
 - The `AddZMapper()` DI extension is also in the Mapping namespace
 
-**Fix:** Add `<Using Include="InvoiceApi.Infrastructure.Mapping" />` as a global using in the `.csproj`.
+**Fix:** Add `<Using Include="Fakvio.Infrastructure.Mapping" />` as a global using in the `.csproj`.
 
 ## 3. Generated Code Missing `using ZMapper`
 
@@ -96,7 +96,7 @@ And exclude from compilation:
 | Issue | Workaround |
 |-------|-----------|
 | Namespace split | Both `using ZMapper;` and `using ZMapper.Abstractions.Configuration;` |
-| Extension methods not found | Global using for `InvoiceApi.Infrastructure.Mapping` |
+| Extension methods not found | Global using for `Fakvio.Infrastructure.Mapping` |
 | ForMember ignored | Set navigation properties manually in service |
 | BaseEntity props not mapped | Set `Id`, `CreatedAt`, `UpdatedAt` manually |
 | Nullable type mismatch | Make DTO props nullable or handle manually |

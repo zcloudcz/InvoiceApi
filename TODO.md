@@ -1,6 +1,21 @@
-# InvoiceApi TODO
+# Fakvio TODO
 
 ## Completed
+
+### Rebrand InvoiceApi → Fakvio + Registration Form Changes (2026-03-01)
+- [x] Global find-and-replace across 382 files: InvoiceApi → Fakvio, invoiceapi → fakvio, Invoice API → Fakvio, InvoiceApiClient → FakvioClient
+- [x] Renamed 13 project directories (InvoiceApi.* → Fakvio.*), 13 .csproj files, InvoiceApi.sln → Fakvio.sln
+- [x] Verified docker-compose.yml, appsettings*.json, index.html, manifest.webmanifest, .resx files, .sln references
+- [x] Build: 0 errors (excl. MAUI workload), 340 unit tests pass, 5 integration tests pass
+- [x] Registration form: removed Password field from RegisterRequest DTO (both Contracts and UI.Shared)
+- [x] Registration form: RegistrationNumber (IČO) now [Required] instead of optional
+- [x] AuthService.RegisterAsync: PasswordHash = null, IsInvitationPending = true, InvitationToken set
+- [x] AuthService.RegisterAsync: email link changed from /verify-email to /set-password?token=
+- [x] UserService.SetPasswordAsync: sets IsEmailVerified = true, triggers tenant provisioning
+- [x] Register.razor: removed password fields, removed OAuth buttons, IČO required
+- [x] Resources: updated Register_RegistrationNumber (removed "optional"), added Register_SuccessSetPassword key (CZ + EN)
+- [x] Unit tests: updated 5 existing register tests (no Password, added RegistrationNumber), added Register_EmailContainsSetPasswordLink test
+- [x] UserInvitationTests: updated UserService constructor to include ITenantProvisioningService + ILogger
 
 ### Azure SQL → Azure PostgreSQL Multi-Schema Migration (2026-02-28)
 - [x] Analysis of current multi-tenant architecture (MasterDbContext, TenantDbContext, TenantDbContextFactory, TenantProvisioningService, AzureSqlService)
@@ -30,7 +45,7 @@
 - [x] Created `wwwroot/service-worker.published.js` — production offline-first strategy with versioned cache, API calls excluded, SHA-256 integrity checks from asset manifest
 - [x] Generated `wwwroot/icon-192.png` + `wwwroot/icon-512.png` — purple "INV" placeholder icons (replace with real logo)
 - [x] Updated `wwwroot/index.html` — manifest link, iOS meta tags (`apple-mobile-web-app-capable`, `apple-touch-icon`), theme-color, service worker registration
-- [x] Updated `InvoiceApi.BlazorUI.csproj` — added `<ServiceWorkerAssetsManifest>service-worker-assets.js</ServiceWorkerAssetsManifest>` (generates asset manifest with hashes at publish time)
+- [x] Updated `Fakvio.BlazorUI.csproj` — added `<ServiceWorkerAssetsManifest>service-worker-assets.js</ServiceWorkerAssetsManifest>` (generates asset manifest with hashes at publish time)
 - [x] Build: 0 errors, Tests: 323 pass (318 unit + 5 integration)
 
 ### Azure Functions Deployment Guide (2026-02-13)
@@ -61,8 +76,8 @@
 - [x] Technical notes: service worker caching, WASM bundle optimization, MudBlazor responsive, Quill mobile compatibility
 
 ### Blazor Server → Standalone WebAssembly Migration (2026-02-13)
-- [x] **Phase 1: InvoiceApi.Contracts Library** — extracted 53 DTOs + Pagination + DueDateCalculator from Application into zero-NuGet-dependency Contracts library
-  - Created `InvoiceApi.Contracts.csproj` (net10.0, references Domain for enums)
+- [x] **Phase 1: Fakvio.Contracts Library** — extracted 53 DTOs + Pagination + DueDateCalculator from Application into zero-NuGet-dependency Contracts library
+  - Created `Fakvio.Contracts.csproj` (net10.0, references Domain for enums)
   - Updated `Application.csproj` → references Contracts
   - Updated `BlazorUI.csproj` → references Contracts + Domain (no Application)
   - Updated ~107 files across solution (using statement migration)
@@ -96,9 +111,9 @@
   - Removed redundant `<CascadingAuthenticationState>` from MainLayout.razor
   - Changed `RedirectToLogin` to use SPA navigation (no `forceLoad: true` — avoids full WASM reload)
 
-### Azure Functions Migration — InvoiceApi.Functions Project (2026-02-12)
-- [x] Created `InvoiceApi.Functions` project (Azure Functions v4 Isolated Worker Model with ASP.NET Core Integration)
-- [x] `InvoiceApi.Functions.csproj` — NuGet refs (Worker, Sdk, Http.AspNetCore, Timer) + project refs (API, Infrastructure, Application)
+### Azure Functions Migration — Fakvio.Functions Project (2026-02-12)
+- [x] Created `Fakvio.Functions` project (Azure Functions v4 Isolated Worker Model with ASP.NET Core Integration)
+- [x] `Fakvio.Functions.csproj` — NuGet refs (Worker, Sdk, Http.AspNetCore, Timer) + project refs (API, Infrastructure, Application)
 - [x] `Program.cs` — Duplicated DI registrations from API/Program.cs adapted for Functions hosting (no Swagger, no CORS, no auto-migration, no hosted services)
 - [x] `HttpTriggerFunction.cs` — Catch-all HTTP trigger (`Route = "{*route}"`) routing all requests to ASP.NET Core pipeline (controllers discovered via `AddApplicationPart`)
 - [x] `TimerFunctions.cs` — Timer triggers replacing `LogFlushService` (every 5s) and `LogCleanupService` (every 1h); uses reflection to access `internal` `DatabaseLoggerProvider.LogQueue`
@@ -175,9 +190,9 @@
 - [x] **1. ZMapper v1.2.0 upgrade** — bumped NuGet from v1.1.0 to v1.2.0; removed `using ZMapper.Abstractions.Configuration;` from all 8 mapper profiles (only `using ZMapper;` needed now); added `using ZMapper;` to API Program.cs for `AddZMapper()` resolution
 - [x] **2. Invoice Detail dialog size** — changed from `MaxWidth.Large` to `MaxWidth.ExtraLarge` for better usability; `FullWidth=true` ensures mobile responsiveness
 - [x] **3. AddItem button above grid** — moved from below the MudTable to a header row above; placed in flex container alongside the "Invoice Items" heading for easy access
-- [x] **4. Fix InvoiceApiService endpoint mismatches** — `IssueAsync` now calls `/complete` (was `/issue`); `MarkAsPaidAsync` now calls `/mark-paid` (was `/mark-as-paid`); removed dead `CancelAsync` method (no matching API endpoint)
+- [x] **4. Fix FakvioService endpoint mismatches** — `IssueAsync` now calls `/complete` (was `/issue`); `MarkAsPaidAsync` now calls `/mark-paid` (was `/mark-as-paid`); removed dead `CancelAsync` method (no matching API endpoint)
 - [x] **5. NumberSequences page** — created `NumberSequenceApiService.cs` (inherits ApiClientBase, all 8 endpoints); created `NumberSequences.razor` page (formats table + sequences table with preview, create dialogs, set-default, deactivate); registered service in BlazorUI Program.cs; added ~25 resource keys (`NumSeq_*`) to both .resx files
-- [x] **6. InvoiceTemplates detail fixes** — moved `[Inject] IDialogService` from after @code to proper @inject directive; removed duplicate local `ClientDto`/`CurrencyDto` classes (now uses imported Application DTOs); added `@using InvoiceApi.Application.Dto.Client`; localized ~15 hardcoded Czech strings to resource keys (`L["Msg_Error"]`, `L["Msg_SaveSuccess"]`, `L["Msg_DeleteSuccess"]`, `L["Invoice_Created"]`, `L["Invoice_AddAtLeastOneItem"]`, `L["Msg_ConfirmDeleteTitle"]`, `L["Template_ConfirmDelete"]`)
+- [x] **6. InvoiceTemplates detail fixes** — moved `[Inject] IDialogService` from after @code to proper @inject directive; removed duplicate local `ClientDto`/`CurrencyDto` classes (now uses imported Application DTOs); added `@using Fakvio.Application.Dto.Client`; localized ~15 hardcoded Czech strings to resource keys (`L["Msg_Error"]`, `L["Msg_SaveSuccess"]`, `L["Msg_DeleteSuccess"]`, `L["Invoice_Created"]`, `L["Invoice_AddAtLeastOneItem"]`, `L["Msg_ConfirmDeleteTitle"]`, `L["Template_ConfirmDelete"]`)
 - [x] Build: 0 errors (0 warnings), Tests: 76 pass (75 unit + 1 integration)
 
 ### 4-Fix UX Improvement Plan (2026-02-09)
@@ -212,7 +227,7 @@
 
 ### Reusable AppDataGrid + Service Consistency (2026-02-10)
 - [x] **Phase 1A: ApiClientBase extensions** — added 4 new protected methods: `GetBytesAsync` (PDF downloads), `PostWithoutBodyAsync<TResponse>` (POST without body), `PostBoolAsync<TRequest>` (POST returning bool), `PutBoolAsync<TRequest>` (PUT returning bool)
-- [x] **Phase 1B: Refactored 5 services to inherit ApiClientBase** — InvoiceApiService, ClientApiService, CompanyApiService, UserApiService, DashboardApiService; removed ~25 lines of duplicate auth/HttpClient logic from each
+- [x] **Phase 1B: Refactored 5 services to inherit ApiClientBase** — FakvioService, ClientApiService, CompanyApiService, UserApiService, DashboardApiService; removed ~25 lines of duplicate auth/HttpClient logic from each
 - [x] **Phase 1C: Created CurrencyApiService** — new service inheriting ApiClientBase with CRUD + paged methods; registered in DI
 - [x] **Phase 1D: Fixed InvoiceItemEditor.razor** — replaced raw `HttpClient` injection with `VatRateApiService`
 - [x] **Phase 1E: Fixed Currencies.razor** — added `@rendermode InteractiveServer`, replaced raw `HttpClient` with `CurrencyApiService`, fixed `@bind-IsVisible` → `@bind-Visible`
@@ -328,7 +343,7 @@
 - [x] Build: 0 errors, Tests: 219 pass (218 unit + 1 integration)
 
 ### Multi-Tenant Roadmap — Phase 5: Data Migration Tool (2026-02-10)
-- [x] **5.1 MigrationTool console project** — new `InvoiceApi.MigrationTool` .NET 10 console project added to solution; references Infrastructure, Domain, Application projects; NuGet: Npgsql.EntityFrameworkCore.PostgreSQL 10.0.0, Microsoft.Extensions.Configuration.Json 10.0.0, Microsoft.Extensions.Hosting 10.0.0
+- [x] **5.1 MigrationTool console project** — new `Fakvio.MigrationTool` .NET 10 console project added to solution; references Infrastructure, Domain, Application projects; NuGet: Npgsql.EntityFrameworkCore.PostgreSQL 10.0.0, Microsoft.Extensions.Configuration.Json 10.0.0, Microsoft.Extensions.Hosting 10.0.0
 - [x] **5.2 DataMigrationService** (~700 lines) — full migration from single-DB to multi-tenant architecture: Step 1 (Apply master DB migrations), Step 2 (Copy Users to master, skip by Email match), Step 3 (Copy code tables to master: Currency by Code, VatRate by Name+Rate, NumberSequenceFormat by FormatPattern, ContentTemplate by Name+TemplateType), Steps 4-11 per company: ensure issuer in master → create CompanySystemSettings → CREATE DATABASE → apply migrations → copy code tables → copy issuer → copy customers (via invoice.IssuerId FK) → copy number sequences → copy invoices+items (FK remapping: IssuerId, ClientId by CompanyName, CurrencyId by Code, VatRateId by Name+Rate, OriginalInvoiceId for credit note self-references) → copy templates → copy AresCache → mark provisioned; dry-run mode, skip-provisioned flag, idempotent
 - [x] **5.3 DataIntegrityVerifier** — automated verification: row count comparison (users, issuers, settings, currencies, VAT rates), per-tenant checks (exactly 1 issuer, has code tables, no orphaned invoice.ClientId/IssuerId FKs), cross-tenant total invoice count matches source; auto-runs after successful migration
 - [x] **5.4 Program.cs entry point** — `--dry-run` and `--verify` command-line flags; appsettings.json with SourceConnection + MasterConnection; confirmation prompt before modifying databases; password masking in console output
@@ -419,7 +434,7 @@
 - [x] **Fix 2: Hide SysAdmin nav items during impersonation** — NavMenu.razor: Companies, TenantSettings, SystemSettings, Logs, master code tables now wrapped in `@if (!_showInvoicing)` — hidden when SysAdmin impersonates a company; Currencies always visible (dual-context); company users no longer see admin-only pages
 - [x] **Fix 3: Client creation "Not Found" error** — ClientDetail.razor: added `OnParametersSetAsync()` with `_previousId` tracking (same pattern as CompanyDetail); Blazor reuses component on `/clients/create` → `/clients/1` navigation, `OnInitializedAsync` only fires once
 - [x] **Fix 4: VariableSymbol auto-fill regression** — ROOT CAUSE: `LoadDocumentNumberPreview()` pre-fills `CustomDocumentNumber` → backend receives `CustomDocumentNumber` → `DocumentNumber != "DRAFT"` → VS auto-fill code inside the if-block is SKIPPED; FIX: moved VS auto-fill OUTSIDE the `if (DocumentNumber == "DRAFT")` block, runs unconditionally after document number is set
-- [x] **Fix 5: ARES cache dual-context** — ROOT CAUSE: AresCacheRepository used TenantDbContext → falls back to non-existent `invoiceapi_tenant_template` → floods logs with connection errors; FIX: made AresCacheRepository dual-context (MasterDbContext + TenantDbContext + ITenantResolver); added AresCache DbSet + ConfigureAresCache to MasterDbContext; removed `Ignore<AresCache>()`; migration `AddAresCacheToMaster`
+- [x] **Fix 5: ARES cache dual-context** — ROOT CAUSE: AresCacheRepository used TenantDbContext → falls back to non-existent `fakvio_tenant_template` → floods logs with connection errors; FIX: made AresCacheRepository dual-context (MasterDbContext + TenantDbContext + ITenantResolver); added AresCache DbSet + ConfigureAresCache to MasterDbContext; removed `Ignore<AresCache>()`; migration `AddAresCacheToMaster`
 - [x] Build: 0 errors, Tests: 247 pass (246 unit + 1 integration)
 
 ### Invoice Save Navigation Fix + Unique Document Number Index (2026-02-11)
@@ -519,8 +534,8 @@
 - [x] Build: 0 errors, Tests: 291 pass (290 unit + 1 integration)
 
 ### Phase D: Grid Enhancements, Dashboard Charts, PDF Template Selection, Cloud Storage (2026-02-12)
-- [x] **D1: PDF Template Selection** — added `long? contentTemplateId` parameter to `IPdfExportService.GenerateInvoicePdfAsync()`; PdfExportService resolves specific template by ID, falls back to default, then built-in HTML; updated InvoiceController `ExportToPdf` endpoint with `?templateId=` query param; Blazor InvoiceDetail split button (default PDF + template dropdown); Invoices grid PDF icon replaced with MudMenu for template selection; `ExportToPdfAsync(id, templateId)` overload in InvoiceApiService; 3 new unit tests (specific template, null fallback, invalid throws)
-- [x] **D2: Grid Multi-Select + Bulk Operations** — AppDataGrid.razor: added `MultiSelection`, `SelectedItems`, `SelectedItemsChanged` parameters for MudTable checkbox column; changed action icons from `Size.Small` to `Size.Medium` with flex layout; Invoices.razor: bulk toolbar with Selected count + Issue/MarkPaid/PDF/Email/Delete/Clear buttons; each filters eligible invoices, shows JS confirm, processes sequentially; `BulkOperationDto.cs` (Request/Result/Error DTOs); `InvoiceService`: BulkCompleteAsync/BulkMarkAsPaidAsync/BulkDeleteAsync (sequential processing, error collection); InvoiceController: 5 bulk endpoints (complete, mark-paid, delete, send-email, PDF ZIP); InvoiceApiService: 5 bulk methods; 8 new unit tests in InvoiceServiceBulkTests.cs
+- [x] **D1: PDF Template Selection** — added `long? contentTemplateId` parameter to `IPdfExportService.GenerateInvoicePdfAsync()`; PdfExportService resolves specific template by ID, falls back to default, then built-in HTML; updated InvoiceController `ExportToPdf` endpoint with `?templateId=` query param; Blazor InvoiceDetail split button (default PDF + template dropdown); Invoices grid PDF icon replaced with MudMenu for template selection; `ExportToPdfAsync(id, templateId)` overload in FakvioService; 3 new unit tests (specific template, null fallback, invalid throws)
+- [x] **D2: Grid Multi-Select + Bulk Operations** — AppDataGrid.razor: added `MultiSelection`, `SelectedItems`, `SelectedItemsChanged` parameters for MudTable checkbox column; changed action icons from `Size.Small` to `Size.Medium` with flex layout; Invoices.razor: bulk toolbar with Selected count + Issue/MarkPaid/PDF/Email/Delete/Clear buttons; each filters eligible invoices, shows JS confirm, processes sequentially; `BulkOperationDto.cs` (Request/Result/Error DTOs); `InvoiceService`: BulkCompleteAsync/BulkMarkAsPaidAsync/BulkDeleteAsync (sequential processing, error collection); InvoiceController: 5 bulk endpoints (complete, mark-paid, delete, send-email, PDF ZIP); FakvioService: 5 bulk methods; 8 new unit tests in InvoiceServiceBulkTests.cs
 - [x] **D3: Dashboard Charts** — DashboardDto: added InvoiceCountByStatus, InvoiceTotalByClient, InvoiceCountByClient dictionaries; DashboardService: 3 new LINQ aggregation queries (status grouping, top 10 clients by revenue, top 10 by count); Home.razor: 2 MudChart Donut side-by-side (Invoices by Status, Top Clients by Revenue); 3 new unit tests (status grouping, client revenue, empty DB chart data)
 - [x] **D4: Google Drive + OneDrive Cloud Storage** — new `ECloudStorageProvider` enum (None=0, GoogleDrive=1, OneDrive=2); `CompanySystemSettings`: 12 new cloud storage properties (Enabled, AccessToken, RefreshToken, TokenExpiresAt, FolderId, FolderName × 2 providers); MasterDbContext: column configs (tokens maxLength 2000, folders maxLength 500); `IExternalCloudStorage` interface (7 methods: auth URL, exchange code, refresh, upload, list folders, test, disconnect); `ICloudStorageOrchestrator` interface (7 methods: upload to all, status, folders, auth, exchange, disconnect, set folder); `GoogleDriveStorageService`: OAuth 2.0 + Drive REST API v3 (direct HttpClient, no SDK); `OneDriveStorageService`: OAuth 2.0 + Microsoft Graph REST API (direct HttpClient); `CloudStorageOrchestrator`: routes to correct provider, fan-out upload to all enabled; `CloudStorageController` (7 endpoints: status, auth-url, callback, disconnect, folders, set-folder, test); TenantContextMiddleware: added `/api/cloud-storage` to MasterOnlyPaths; InvoiceController: auto-upload PDF to cloud after completion (non-blocking try/catch); DI: GoogleDriveStorageService + OneDriveStorageService + CloudStorageOrchestrator; `CloudStorageApiService` (Blazor, inherits ApiClientBase); `FolderPicker.razor` dialog (breadcrumb navigation, folder tree); `CloudStorageCallback.razor` (OAuth popup callback); MyCompany.razor: cloud storage section (2 provider cards with connect/disconnect/folder/test); ~25 localization keys (CZ + EN); 6 new CloudStorageOrchestratorTests
 - [x] **EF Migration** — `AddCloudStorageSettings` (12 nullable columns on CompanySystemSettings: GoogleDrive/OneDrive × Enabled bit, AccessToken/RefreshToken nvarchar(2000), TokenExpiresAt datetime2, FolderId/FolderName nvarchar(500))
@@ -586,19 +601,19 @@
 - [x] Build: 0 errors, Tests: 362 pass (362 total)
 
 ### MAUI Blazor Hybrid + Shared RCL (2026-02-28)
-- [x] Created `InvoiceApi.UI.Shared` Razor Class Library (RCL) — shared Blazor components, services, models, resources
+- [x] Created `Fakvio.UI.Shared` Razor Class Library (RCL) — shared Blazor components, services, models, resources
 - [x] Moved 22 API services, 8 models, 31 pages, 12 shared components, 3 layout files, 2 resource files from BlazorUI to RCL
 - [x] Created `ServiceCollectionExtensions.AddSharedUiServices()` — centralized DI registration (MudBlazor, auth, localization, localStorage, 22 API services, handlers, state)
-- [x] Updated all namespaces from `InvoiceApi.BlazorUI` to `InvoiceApi.UI.Shared` in moved files
+- [x] Updated all namespaces from `Fakvio.BlazorUI` to `Fakvio.UI.Shared` in moved files
 - [x] Added global usings for `Microsoft.Extensions.Logging`, `.Configuration`, `.DependencyInjection` (implicit in WASM SDK but not Razor SDK)
-- [x] Refactored `InvoiceApi.BlazorUI` as thin WASM host — only Program.cs, index.html, PWA assets remain
-- [x] Updated `index.html` CSS/JS paths to `_content/InvoiceApi.UI.Shared/...` (RCL static web assets)
-- [x] Created `InvoiceApi.MauiApp` MAUI Blazor Hybrid project — Android, iOS, macOS, Windows multi-target
+- [x] Refactored `Fakvio.BlazorUI` as thin WASM host — only Program.cs, index.html, PWA assets remain
+- [x] Updated `index.html` CSS/JS paths to `_content/Fakvio.UI.Shared/...` (RCL static web assets)
+- [x] Created `Fakvio.MauiApp` MAUI Blazor Hybrid project — Android, iOS, macOS, Windows multi-target
 - [x] MauiProgram.cs with `AddMauiBlazorWebView()` + `AddSharedUiServices()` + platform-specific API URL
 - [x] MainPage.xaml with BlazorWebView hosting shared App.razor component
 - [x] MAUI-specific wwwroot/index.html (blazor.webview.js, no service worker)
 - [x] Platform files: Android (MainActivity, MainApplication, AndroidManifest), iOS, macOS, Windows
-- [x] Both projects added to InvoiceApi.sln
+- [x] Both projects added to Fakvio.sln
 - [x] Build: All 13 non-MAUI projects compile with 0 errors (MAUI requires workload install: `dotnet workload install maui`)
 - [x] Tests: All 362 unit tests pass
 

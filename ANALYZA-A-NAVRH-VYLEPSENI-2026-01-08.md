@@ -1,14 +1,14 @@
-# 📊 InvoiceApi - Komplexní analýza a návrh vylepšení
+# 📊 Fakvio - Komplexní analýza a návrh vylepšení
 
 > **Datum vytvoření:** 8. ledna 2026
 > **Verze aplikace:** 1.0 (po dokončení fáze 6)
-> **Účel dokumentu:** Tento dokument poskytuje detailní analýzu architektury InvoiceApi aplikace, identifikuje kritické problémy, bezpečnostní rizika a navrhuje konkrétní vylepšení a rozšíření funkcí.
+> **Účel dokumentu:** Tento dokument poskytuje detailní analýzu architektury Fakvio aplikace, identifikuje kritické problémy, bezpečnostní rizika a navrhuje konkrétní vylepšení a rozšíření funkcí.
 
 ---
 
 ## 📖 O čem tento dokument je
 
-InvoiceApi je fakturační systém s podporou multi-tenancy, navržený pro český trh s integrací ARES (automatické načítání firemních údajů), správou DPH, a kompletním lifecycle managementem faktur. Aplikace je postavena na .NET 10 s Clean Architecture přístupem.
+Fakvio je fakturační systém s podporou multi-tenancy, navržený pro český trh s integrací ARES (automatické načítání firemních údajů), správou DPH, a kompletním lifecycle managementem faktur. Aplikace je postavena na .NET 10 s Clean Architecture přístupem.
 
 Tento dokument obsahuje:
 - **Architektonickou analýzu** - Detailní rozbor současného stavu
@@ -24,14 +24,14 @@ Tento dokument obsahuje:
 ### Architektura vrstev
 
 ```
-InvoiceApi/
-├── InvoiceApi.Domain/          - Entity, enums, doménová logika
-├── InvoiceApi.Application/     - DTOs, service interfaces, business logika
-├── InvoiceApi.Infrastructure/  - EF Core, service implementace, data access
-├── InvoiceApi.API/            - REST API controllers, authentication
-├── InvoiceApi.BlazorUI/       - Blazor Server UI pro administraci
+Fakvio/
+├── Fakvio.Domain/          - Entity, enums, doménová logika
+├── Fakvio.Application/     - DTOs, service interfaces, business logika
+├── Fakvio.Infrastructure/  - EF Core, service implementace, data access
+├── Fakvio.API/            - REST API controllers, authentication
+├── Fakvio.BlazorUI/       - Blazor Server UI pro administraci
 ├── AresService/               - Integrace s českým obchodním rejstříkem
-└── InvoiceApi.Tests.*/        - Unit a integration testy
+└── Fakvio.Tests.*/        - Unit a integration testy
 ```
 
 ### Klíčové entity a jejich vztahy
@@ -187,8 +187,8 @@ JWT signing key je uložen v `appsettings.json` (řádek 38), který je verzová
 {
   "JwtSettings": {
     "SecretKey": "your-super-secret-key-that-should-be-at-least-32-characters-long",
-    "Issuer": "InvoiceApi",
-    "Audience": "InvoiceApiClient",
+    "Issuer": "Fakvio",
+    "Audience": "FakvioClient",
     "ExpiresInHours": 24
   }
 }
@@ -199,8 +199,8 @@ JWT signing key je uložen v `appsettings.json` (řádek 38), který je verzová
 **Development:**
 ```bash
 # User Secrets (Git ignored)
-dotnet user-secrets init --project InvoiceApi.API
-dotnet user-secrets set "JwtSettings:SecretKey" "your-actual-secret-key-here" --project InvoiceApi.API
+dotnet user-secrets init --project Fakvio.API
+dotnet user-secrets set "JwtSettings:SecretKey" "your-actual-secret-key-here" --project Fakvio.API
 ```
 
 **Production:**
@@ -816,7 +816,7 @@ if (app.Environment.IsDevelopment())
 // 2. Pro production - deployment script:
 # deploy.sh
 echo "Applying database migrations..."
-dotnet ef database update --project InvoiceApi.Infrastructure --startup-project InvoiceApi.API --connection "$CONNECTION_STRING"
+dotnet ef database update --project Fakvio.Infrastructure --startup-project Fakvio.API --connection "$CONNECTION_STRING"
 
 if [ $? -ne 0 ]; then
     echo "Migration failed!"
@@ -824,7 +824,7 @@ if [ $? -ne 0 ]; then
 fi
 
 echo "Starting application..."
-dotnet InvoiceApi.API.dll
+dotnet Fakvio.API.dll
 ```
 
 **Priorita:** ⭐⭐⭐ (Sprint 3)
@@ -2158,7 +2158,7 @@ public class ReportService : IReportService
         {
             container.AlignCenter().Text(text =>
             {
-                text.Span("Vytvořeno pomocí InvoiceApi - ");
+                text.Span("Vytvořeno pomocí Fakvio - ");
                 text.Span($"Strana ").CurrentPageNumber();
                 text.Span(" z ").TotalPages();
             });
@@ -2742,4 +2742,4 @@ public async Task<ActionResult<List<DataAccessLogDto>>> GetAccessLog(long client
 
 **Konec dokumentu**
 
-> Tento dokument byl vytvořen 8. ledna 2026 jako výsledek komplexní analýzy InvoiceApi aplikace. Doporučení jsou prioritizována podle závažnosti a business value.
+> Tento dokument byl vytvořen 8. ledna 2026 jako výsledek komplexní analýzy Fakvio aplikace. Doporučení jsou prioritizována podle závažnosti a business value.

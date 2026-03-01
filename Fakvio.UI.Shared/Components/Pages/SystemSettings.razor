@@ -1,0 +1,256 @@
+@page "/system-settings"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "SysAdmin")]
+@using Fakvio.Contracts.Dto.SystemConfiguration
+@inject SystemConfigurationApiService ConfigService
+@inject ISnackbar Snackbar
+@inject IStringLocalizer<SharedResource> L
+@inject ILogger<SystemSettings> _logger
+
+<PageTitle>@L["SystemSettings_Title"] - Fakvio</PageTitle>
+
+<MudText Typo="Typo.h3" GutterBottom="true">@L["SystemSettings_Title"]</MudText>
+<MudText Class="mb-6" Color="Color.Secondary">@L["SystemSettings_Subtitle"]</MudText>
+
+@if (_loading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-4" />
+}
+else
+{
+    @* Header with Edit/Save/Cancel buttons *@
+    <div class="d-flex flex-wrap align-center gap-2 mb-4">
+        <MudSpacer />
+        @if (!_isEditing)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Edit" OnClick="EnableEditing">
+                @L["Btn_Edit"]
+            </MudButton>
+        }
+        else
+        {
+            <MudButton Variant="Variant.Text" OnClick="CancelEditing" Disabled="_saving">
+                @L["Btn_Cancel"]
+            </MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Save" OnClick="SaveSettings" Disabled="_saving">
+                @if (_saving)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                }
+                @L["Btn_Save"]
+            </MudButton>
+        }
+    </div>
+
+    <MudGrid>
+        @* Card 1: SMTP Settings *@
+        <MudItem xs="12" md="6">
+            <MudCard Elevation="2" Class="mb-4">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">
+                            <MudIcon Icon="@Icons.Material.Filled.Email" Class="mr-2" />
+                            @L["SystemSettings_SmtpTitle"]
+                        </MudText>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    @if (_isEditing)
+                    {
+                        <MudTextField @bind-Value="_editDto.SmtpHost"
+                                      Label="@L["SystemSettings_SmtpHost"].Value"
+                                      Placeholder="smtp.gmail.com" Class="mb-3" />
+                        <MudNumericField @bind-Value="_editDto.SmtpPort"
+                                         Label="@L["SystemSettings_SmtpPort"].Value"
+                                         Min="1" Max="65535" Class="mb-3" />
+                        <MudTextField @bind-Value="_editDto.SmtpUsername"
+                                      Label="@L["SystemSettings_SmtpUsername"].Value" Class="mb-3" />
+                        <MudTextField @bind-Value="_editDto.SmtpPassword"
+                                      Label="@L["SystemSettings_SmtpPassword"].Value"
+                                      InputType="InputType.Password" Class="mb-3" />
+                        <MudTextField @bind-Value="_editDto.SmtpSenderEmail"
+                                      Label="@L["SystemSettings_SmtpSenderEmail"].Value"
+                                      InputType="InputType.Email" Class="mb-3" />
+                        <MudTextField @bind-Value="_editDto.SmtpSenderName"
+                                      Label="@L["SystemSettings_SmtpSenderName"].Value" Class="mb-3" />
+                        <MudSwitch @bind-Value="_editDto.SmtpUseSsl"
+                                   Label="@L["SystemSettings_SmtpUseSsl"].Value"
+                                   Color="Color.Primary" />
+                    }
+                    else
+                    {
+                        <MudList T="string" Dense="true">
+                            <MudListItem T="string">
+                                <strong>@L["SystemSettings_SmtpHost"]:</strong>
+                                @(string.IsNullOrEmpty(_config?.SmtpHost) ? "—" : _config.SmtpHost)
+                            </MudListItem>
+                            <MudListItem T="string">
+                                <strong>@L["SystemSettings_SmtpPort"]:</strong> @_config?.SmtpPort
+                            </MudListItem>
+                            <MudListItem T="string">
+                                <strong>@L["SystemSettings_SmtpUsername"]:</strong>
+                                @(string.IsNullOrEmpty(_config?.SmtpUsername) ? "—" : _config.SmtpUsername)
+                            </MudListItem>
+                            <MudListItem T="string">
+                                <strong>@L["SystemSettings_SmtpPassword"]:</strong>
+                                @(string.IsNullOrEmpty(_config?.SmtpPassword) ? "—" : "••••••••")
+                            </MudListItem>
+                            <MudListItem T="string">
+                                <strong>@L["SystemSettings_SmtpSenderEmail"]:</strong>
+                                @(string.IsNullOrEmpty(_config?.SmtpSenderEmail) ? "—" : _config.SmtpSenderEmail)
+                            </MudListItem>
+                            <MudListItem T="string">
+                                <strong>@L["SystemSettings_SmtpSenderName"]:</strong>
+                                @(_config?.SmtpSenderName ?? "—")
+                            </MudListItem>
+                            <MudListItem T="string">
+                                <strong>@L["SystemSettings_SmtpUseSsl"]:</strong>
+                                @if (_config?.SmtpUseSsl == true)
+                                {
+                                    <MudIcon Icon="@Icons.Material.Filled.Check" Color="Color.Success" Size="Size.Small" />
+                                }
+                                else
+                                {
+                                    <MudIcon Icon="@Icons.Material.Filled.Close" Color="Color.Default" Size="Size.Small" />
+                                }
+                            </MudListItem>
+                        </MudList>
+                    }
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+
+        @* Card 2: JWT Settings *@
+        <MudItem xs="12" md="6">
+            <MudCard Elevation="2" Class="mb-4">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">
+                            <MudIcon Icon="@Icons.Material.Filled.Security" Class="mr-2" />
+                            @L["SystemSettings_JwtTitle"]
+                        </MudText>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    @if (_isEditing)
+                    {
+                        <MudNumericField @bind-Value="_editDto.JwtExpirationHours"
+                                         Label="@L["SystemSettings_JwtExpiration"].Value"
+                                         Min="1" Max="720"
+                                         HelperText="@L["SystemSettings_JwtExpirationHint"].Value" />
+                    }
+                    else
+                    {
+                        <MudList T="string" Dense="true">
+                            <MudListItem T="string">
+                                <strong>@L["SystemSettings_JwtExpiration"]:</strong>
+                                @(_config?.JwtExpirationHours ?? 24) @L["SystemSettings_Hours"]
+                            </MudListItem>
+                        </MudList>
+                    }
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+
+    @* Full-page overlay during save *@
+    <MudOverlay Visible="_saving" DarkBackground="true" Absolute="false" ZIndex="9999">
+        <MudProgressCircular Color="Color.Primary" Indeterminate="true" Size="Size.Large" />
+    </MudOverlay>
+}
+
+@code {
+    private SystemConfigurationDto? _config;
+    private UpdateSystemConfigurationDto _editDto = new();
+    private bool _loading = true;
+    private bool _isEditing = false;
+    private bool _saving = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadConfig();
+    }
+
+    /// <summary>
+    /// Loads the current system configuration from the API.
+    /// </summary>
+    private async Task LoadConfig()
+    {
+        try
+        {
+            _loading = true;
+            _config = await ConfigService.GetAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to load system configuration");
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    /// <summary>
+    /// Switches to edit mode — populates edit DTO from current config values.
+    /// </summary>
+    private void EnableEditing()
+    {
+        if (_config == null) return;
+
+        _editDto = new UpdateSystemConfigurationDto
+        {
+            SmtpHost = _config.SmtpHost,
+            SmtpPort = _config.SmtpPort,
+            SmtpUsername = _config.SmtpUsername,
+            SmtpPassword = _config.SmtpPassword,
+            SmtpSenderEmail = _config.SmtpSenderEmail,
+            SmtpSenderName = _config.SmtpSenderName,
+            SmtpUseSsl = _config.SmtpUseSsl,
+            JwtExpirationHours = _config.JwtExpirationHours
+        };
+        _isEditing = true;
+    }
+
+    /// <summary>
+    /// Cancels editing — resets to view mode without saving.
+    /// </summary>
+    private void CancelEditing()
+    {
+        _isEditing = false;
+    }
+
+    /// <summary>
+    /// Saves the edited configuration to the API.
+    /// </summary>
+    private async Task SaveSettings()
+    {
+        _saving = true;
+        StateHasChanged();
+        try
+        {
+            var result = await ConfigService.UpdateAsync(_editDto);
+            if (result != null)
+            {
+                _config = result;
+                _isEditing = false;
+                Snackbar.Add(L["Msg_SaveSuccess"].Value, Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add(L["Msg_Error"].Value, Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to save system configuration");
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

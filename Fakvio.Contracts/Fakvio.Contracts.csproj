@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!-- Contracts references Domain for shared enums (e.g., EPaymentMethod, EInvoiceStatus, etc.)
+       but has ZERO NuGet dependencies — safe for Blazor WebAssembly consumption. -->
+  <ItemGroup>
+    <ProjectReference Include="..\Fakvio.Domain\Fakvio.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

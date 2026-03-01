@@ -1,0 +1,22 @@
+{
+  "name": "Fakvio",
+  "short_name": "Fakvio",
+  "description": "Multi-tenant invoicing system — manage invoices, clients, templates and more.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#594ae2",
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ]
+}

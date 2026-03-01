@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!-- Reference Infrastructure for DbContexts and Domain for Entities -->
+  <ItemGroup>
+    <ProjectReference Include="..\Fakvio.Infrastructure\Fakvio.Infrastructure.csproj" />
+    <ProjectReference Include="..\Fakvio.Domain\Fakvio.Domain.csproj" />
+    <ProjectReference Include="..\Fakvio.Application\Fakvio.Application.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.0" />
+    <!-- PostgreSQL EF Core provider — single-database multi-schema tenant isolation -->
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
+  </ItemGroup>
+
+</Project>

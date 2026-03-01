@@ -1,0 +1,264 @@
+@*
+    Reusable component for managing 1:N addresses with default billing selection.
+    Supports both read-only display and full CRUD editing with add/edit/delete dialogs.
+
+    Usage (edit mode):
+      <AddressListEditor Addresses="_addresses"
+                         AddressesChanged="@(v => { _addresses = v; _isDirty = true; })" />
+
+    Usage (read-only mode):
+      <AddressListEditor Addresses="@(dto.Address.Select(a => new CreateAddressDto { ... }).ToList())"
+                         ReadOnly="true" />
+*@
+@inject IStringLocalizer<SharedResource> L
+@inject IDialogService DialogService
+@using Fakvio.Contracts.Dto.Client
+@using Fakvio.Domain.Enums
+
+@* Section header with Add button (only in edit mode) *@
+<div class="d-flex align-center gap-2 mb-2">
+    <MudText Typo="Typo.h6">@L["Address_List"]</MudText>
+    <MudSpacer />
+    @if (!ReadOnly)
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                   StartIcon="@Icons.Material.Filled.Add" OnClick="AddAddress">
+            @L["Address_Add"]
+        </MudButton>
+    }
+</div>
+
+@if (Addresses.Count == 0)
+{
+    @* Empty state — show placeholder text when no addresses exist *@
+    <MudText Color="Color.Secondary" Class="mb-4">@L["Address_NoAddresses"]</MudText>
+}
+else
+{
+    @* Address table — shows all addresses with type, details, default star, and action buttons *@
+    <MudSimpleTable Dense="true" Hover="true" Striped="true" Class="mb-4">
+        <thead>
+            <tr>
+                <th>@L["Address_Type"]</th>
+                <th>@L["Client_Street"]</th>
+                <th>@L["Client_City"]</th>
+                <th>@L["Client_PostalCode"]</th>
+                <th>@L["Client_Country"]</th>
+                <th style="text-align: center;">@L["Address_DefaultBilling"]</th>
+                @if (!ReadOnly)
+                {
+                    <th style="text-align: center; width: 100px;"></th>
+                }
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var (address, index) in Addresses.Select((a, i) => (a, i)))
+            {
+                @* Row click opens edit dialog in edit mode; cursor indicates clickability *@
+                <tr style="@(!ReadOnly ? "cursor: pointer;" : "")"
+                    @onclick="@(() => OnRowClick(index))">
+                    <td>@GetAddressTypeLabel(address.AddressType)</td>
+                    <td>@address.Street</td>
+                    <td>@address.City</td>
+                    <td>@address.PostalCode</td>
+                    <td>@address.Country</td>
+                    <td style="text-align: center;" @onclick:stopPropagation="true">
+                        @if (ReadOnly)
+                        {
+                            @* Read-only mode — just show a star icon for the default address *@
+                            @if (address.IsPrimary)
+                            {
+                                <MudIcon Icon="@Icons.Material.Filled.Star" Color="Color.Warning" Size="Size.Small" />
+                            }
+                        }
+                        else
+                        {
+                            @* Edit mode — clickable star to toggle default billing address *@
+                            <MudIconButton Icon="@(address.IsPrimary ? Icons.Material.Filled.Star : Icons.Material.Outlined.StarBorder)"
+                                           Color="@(address.IsPrimary ? Color.Warning : Color.Default)"
+                                           Size="Size.Small"
+                                           OnClick="@(() => SetPrimary(index))"
+                                           title="@L["Address_DefaultBilling"].Value" />
+                        }
+                    </td>
+                    @if (!ReadOnly)
+                    {
+                        @* stopPropagation prevents row click (edit) from firing when clicking action buttons *@
+                        <td style="text-align: center;" @onclick:stopPropagation="true">
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                                           OnClick="@(() => EditAddress(index))"
+                                           title="@L["Address_Edit"].Value" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
+                                           Color="Color.Error"
+                                           OnClick="@(() => DeleteAddress(index))"
+                                           title="@L["Btn_Delete"].Value" />
+                        </td>
+                    }
+                </tr>
+            }
+        </tbody>
+    </MudSimpleTable>
+}
+
+@code {
+    /// <summary>
+    /// The list of addresses to display and manage.
+    /// Two-way bindable via AddressesChanged callback.
+    /// </summary>
+    [Parameter]
+    public List<CreateAddressDto> Addresses { get; set; } = new();
+
+    /// <summary>
+    /// Callback fired when the address list changes (add, edit, delete, set primary).
+    /// </summary>
+    [Parameter]
+    public EventCallback<List<CreateAddressDto>> AddressesChanged { get; set; }
+
+    /// <summary>
+    /// When true, shows a read-only view without any edit controls.
+    /// </summary>
+    [Parameter]
+    public bool ReadOnly { get; set; }
+
+    /// <summary>
+    /// Handles row click — opens edit dialog in edit mode, no-op in read-only mode.
+    /// Using a dedicated method instead of inline ternary to avoid null delegate issues.
+    /// </summary>
+    private Task OnRowClick(int index)
+    {
+        if (ReadOnly) return Task.CompletedTask;
+        return EditAddress(index);
+    }
+
+    /// <summary>
+    /// Opens the address dialog in "add" mode with default values.
+    /// Adds the new address to the list and notifies the parent.
+    /// </summary>
+    private async Task AddAddress()
+    {
+        // Prepare a new address with sensible defaults
+        var newAddress = new CreateAddressDto
+        {
+            AddressType = EAddressType.Billing,
+            Country = "Česká republika",
+            IsPrimary = Addresses.Count == 0 // First address is automatically default
+        };
+
+        var parameters = new DialogParameters<AddressDialog>
+        {
+            { x => x.Address, newAddress },
+            { x => x.DialogTitle, L["Address_Add"].Value }
+        };
+
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseOnEscapeKey = true };
+        var dialog = await DialogService.ShowAsync<AddressDialog>(L["Address_Add"].Value, parameters, options);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled && result.Data is CreateAddressDto saved)
+        {
+            // If new address is marked as primary, clear primary from all others
+            if (saved.IsPrimary)
+            {
+                foreach (var a in Addresses) a.IsPrimary = false;
+            }
+
+            Addresses.Add(saved);
+            await AddressesChanged.InvokeAsync(Addresses);
+        }
+    }
+
+    /// <summary>
+    /// Opens the address dialog in "edit" mode pre-filled with the selected address.
+    /// Replaces the address at the given index with the edited version.
+    /// </summary>
+    private async Task EditAddress(int index)
+    {
+        // Clone the address so dialog edits don't affect the list until confirmed
+        var existing = Addresses[index];
+        var clone = new CreateAddressDto
+        {
+            AddressType = existing.AddressType,
+            Street = existing.Street,
+            City = existing.City,
+            PostalCode = existing.PostalCode,
+            Country = existing.Country,
+            AddressLine2 = existing.AddressLine2,
+            IsPrimary = existing.IsPrimary
+        };
+
+        var parameters = new DialogParameters<AddressDialog>
+        {
+            { x => x.Address, clone },
+            { x => x.DialogTitle, L["Address_Edit"].Value }
+        };
+
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseOnEscapeKey = true };
+        var dialog = await DialogService.ShowAsync<AddressDialog>(L["Address_Edit"].Value, parameters, options);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled && result.Data is CreateAddressDto saved)
+        {
+            // If edited address became primary, clear primary from all others
+            if (saved.IsPrimary)
+            {
+                foreach (var a in Addresses) a.IsPrimary = false;
+            }
+
+            Addresses[index] = saved;
+            await AddressesChanged.InvokeAsync(Addresses);
+        }
+    }
+
+    /// <summary>
+    /// Deletes the address at the given index after user confirmation.
+    /// If the deleted address was primary, promotes the first remaining address.
+    /// </summary>
+    private async Task DeleteAddress(int index)
+    {
+        // Show confirmation dialog before deleting
+        bool? confirmed = await DialogService.ShowMessageBox(
+            L["Btn_Delete"].Value,
+            L["Address_ConfirmDelete"].Value,
+            yesText: L["Btn_Delete"].Value,
+            cancelText: L["Btn_Cancel"].Value);
+
+        if (confirmed == true)
+        {
+            var wasPrimary = Addresses[index].IsPrimary;
+            Addresses.RemoveAt(index);
+
+            // If we deleted the primary address and there are still addresses left,
+            // promote the first one to primary so there's always a default
+            if (wasPrimary && Addresses.Count > 0)
+            {
+                Addresses[0].IsPrimary = true;
+            }
+
+            await AddressesChanged.InvokeAsync(Addresses);
+        }
+    }
+
+    /// <summary>
+    /// Sets the address at the given index as the default billing address (IsPrimary = true).
+    /// Clears IsPrimary from all other addresses — only one can be default at a time.
+    /// </summary>
+    private async Task SetPrimary(int index)
+    {
+        for (int i = 0; i < Addresses.Count; i++)
+        {
+            Addresses[i].IsPrimary = (i == index);
+        }
+        await AddressesChanged.InvokeAsync(Addresses);
+    }
+
+    /// <summary>
+    /// Returns the localized label for an address type enum value.
+    /// Uses the standard EnumSelect convention: "{EnumTypeName}_{EnumValue}".
+    /// </summary>
+    private string GetAddressTypeLabel(EAddressType type)
+    {
+        var key = $"EAddressType_{type}";
+        var localized = L[key];
+        return localized.ResourceNotFound ? type.ToString() : localized.Value;
+    }
+}

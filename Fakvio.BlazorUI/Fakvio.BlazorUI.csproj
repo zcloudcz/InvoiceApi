@@ -1,0 +1,28 @@
+<!-- Thin Blazor WebAssembly host — runs entirely in the browser.
+     All shared UI components, services, and models live in Fakvio.UI.Shared (RCL).
+     This project only contains WASM-specific bootstrapping and static assets. -->
+<Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
+    <!-- WASM loads minimal globalization data by default (invariant culture only).
+         Since we switch culture dynamically (cs-CZ / en-US), the full ICU dataset is required. -->
+    <BlazorWebAssemblyLoadAllGlobalizationData>true</BlazorWebAssemblyLoadAllGlobalizationData>
+    <!-- PWA: Generate service-worker-assets.js at publish time for offline caching. -->
+    <ServiceWorkerAssetsManifest>service-worker-assets.js</ServiceWorkerAssetsManifest>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- WASM runtime — provides WebAssemblyHostBuilder, JSRuntime, etc. -->
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.2" />
+  </ItemGroup>
+
+  <!-- Reference the shared UI library — contains all components, services, models, and resources -->
+  <ItemGroup>
+    <ProjectReference Include="..\Fakvio.UI.Shared\Fakvio.UI.Shared.csproj" />
+  </ItemGroup>
+
+</Project>

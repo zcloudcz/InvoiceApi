@@ -2,7 +2,7 @@
 
 ## Overview
 
-InvoiceApi can automatically upload generated PDF invoices to Google Drive.
+Fakvio can automatically upload generated PDF invoices to Google Drive.
 When a user issues (completes) an invoice, the PDF is uploaded to the configured
 Google Drive folder in the background.
 
@@ -15,7 +15,7 @@ files created by this app — minimal permissions).
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
 2. Click **Select a project** (top bar) → **New Project**
-3. Name it (e.g. `InvoiceApi`) → **Create**
+3. Name it (e.g. `Fakvio`) → **Create**
 4. Make sure the new project is selected
 
 ## 2. Enable Google Drive API
@@ -29,7 +29,7 @@ files created by this app — minimal permissions).
 1. Go to **APIs & Services** → **OAuth consent screen**
 2. Choose **External** (unless you have Google Workspace and want internal only)
 3. Fill in:
-   - **App name**: `InvoiceApi` (or your company name)
+   - **App name**: `Fakvio` (or your company name)
    - **User support email**: your email
    - **Developer contact email**: your email
 4. Click **Save and Continue**
@@ -45,7 +45,7 @@ files created by this app — minimal permissions).
 1. Go to **APIs & Services** → **Credentials**
 2. Click **+ Create Credentials** → **OAuth client ID**
 3. **Application type**: **Web application**
-4. **Name**: `InvoiceApi Web Client`
+4. **Name**: `Fakvio Web Client`
 5. **Authorized redirect URIs** → **+ Add URI**:
    - For local development: `https://localhost:7212/cloud-storage/callback`
    - For production: `https://your-blazor-domain.com/cloud-storage/callback`
@@ -76,7 +76,7 @@ Add the credentials to your API configuration.
 ### Option B: User Secrets (recommended for dev)
 
 ```bash
-cd InvoiceApi.API
+cd Fakvio.API
 dotnet user-secrets set "OAuth:Google:ClientId" "123456789-abc123def456.apps.googleusercontent.com"
 dotnet user-secrets set "OAuth:Google:ClientSecret" "GOCSPX-your-secret-here"
 ```
@@ -94,7 +94,7 @@ The cloud storage settings are stored in the `CompanySystemSettings` table (mast
 Run the migration if you haven't already:
 
 ```bash
-cd InvoiceApi.API
+cd Fakvio.API
 dotnet ef database update --context MasterDbContext
 ```
 

@@ -21,7 +21,7 @@
 ### Current Architecture (Single SQLite Database)
 ```
 ┌──────────────────────────────────────────────────────────┐
-│                    invoiceapi.db (SQLite)                 │
+│                    fakvio.db (SQLite)                 │
 │                                                          │
 │  ┌─────────┐ ┌─────────┐ ┌──────────┐ ┌──────────────┐  │
 │  │ VatRate  │ │Currency │ │  User    │ │ContentTempl. │  │
@@ -41,7 +41,7 @@
 2. **No tenant settings** — No place to store per-company connection strings, provisioning state, or system-level configuration.
 3. **Manual filtering** — Controllers must manually read `CompanyId` claim and pass it to services. No automatic query filtering.
 4. **Shared data (VatRate, Currency)** — Same tables used by everyone, but no concept of "master" vs "tenant" data.
-5. **Connection string** — Single hardcoded `Data Source=invoiceapi.db` (SQLite).
+5. **Connection string** — Single hardcoded `Data Source=fakvio.db` (SQLite).
 6. **SQLite limitations** — No real concurrency, no server-based access, not suitable for production multi-tenant.
 
 ---
@@ -61,7 +61,7 @@ Each tenant database contains **everything** it needs to operate independently. 
 ```
 ┌──────────────────────────────────────────────────────────┐
 │            MASTER DATABASE (PostgreSQL)                    │
-│            invoiceapi_master                               │
+│            fakvio_master                               │
 │                                                           │
 │  ┌───────────────────────┐  ┌───────────────────────────┐│
 │  │ Client (IsIssuer=true)│  │ CompanySystemSettings     ││
@@ -82,7 +82,7 @@ Each tenant database contains **everything** it needs to operate independently. 
          │ (login, JWT)                 │ + Company sync
          ▼                              ▼
 ┌────────────────────────┐  ┌────────────────────────┐
-│ invoiceapi_tenant_acme │  │ invoiceapi_tenant_beta │  ...
+│ fakvio_tenant_acme │  │ fakvio_tenant_beta │  ...
 │                        │  │                        │
 │ ★ SELF-CONTAINED ★     │  │ ★ SELF-CONTAINED ★     │
 │                        │  │                        │
@@ -335,7 +335,7 @@ If both sides update simultaneously (unlikely but possible):
 ### NEW: CompanySystemSettings (Master DB only)
 
 ```csharp
-namespace InvoiceApi.Domain.Entities;
+namespace Fakvio.Domain.Entities;
 
 /// <summary>
 /// System-level settings for a company (tenant).
@@ -360,8 +360,8 @@ public class CompanySystemSettings : BaseEntity
 
     /// <summary>
     /// Unique database name for this tenant on the PostgreSQL server.
-    /// Convention: "invoiceapi_tenant_{slug}"
-    /// Example: "invoiceapi_tenant_acme", "invoiceapi_tenant_novak_sro"
+    /// Convention: "fakvio_tenant_{slug}"
+    /// Example: "fakvio_tenant_acme", "fakvio_tenant_novak_sro"
     /// </summary>
     public string DatabaseName { get; set; } = string.Empty;
 
@@ -369,7 +369,7 @@ public class CompanySystemSettings : BaseEntity
     /// Full connection string override for this tenant.
     /// If null, the system constructs it from DatabaseName + default server config.
     /// Use this for tenants on a dedicated server or custom configuration.
-    /// Example: "Host=dedicated-host;Database=invoiceapi_tenant_acme;..."
+    /// Example: "Host=dedicated-host;Database=fakvio_tenant_acme;..."
     /// </summary>
     public string? ConnectionString { get; set; }
 
@@ -466,7 +466,7 @@ TenantProvisioningService.ProvisionAsync(companyId)
         │
         ├── 1. Read CompanySystemSettings.DatabaseName
         │
-        ├── 2. CREATE DATABASE invoiceapi_tenant_{name} on PostgreSQL server
+        ├── 2. CREATE DATABASE fakvio_tenant_{name} on PostgreSQL server
         │
         ├── 3. Apply TenantDbContext migrations (create all tables)
         │
@@ -761,7 +761,7 @@ public class TenantDbContextFactory : ITenantDbContextFactory
 builder.Services.AddDbContext<MasterDbContext>(options =>
     options.UseNpgsql(
         builder.Configuration.GetConnectionString("MasterConnection"),
-        b => b.MigrationsAssembly("InvoiceApi.Infrastructure")));
+        b => b.MigrationsAssembly("Fakvio.Infrastructure")));
 
 // ============================================
 // TENANT DB — resolved per-request
@@ -1052,7 +1052,7 @@ app.MapControllers();
 ### 9.1 Two Migration Contexts
 
 ```
-InvoiceApi.Infrastructure/
+Fakvio.Infrastructure/
 ├── Migrations/
 │   ├── Master/                    ← MasterDbContext migrations
 │   │   ├── 001_InitialMaster.cs
@@ -1074,15 +1074,15 @@ InvoiceApi.Infrastructure/
 dotnet ef migrations add InitialMaster \
   --context MasterDbContext \
   --output-dir Migrations/Master \
-  --project InvoiceApi.Infrastructure \
-  --startup-project InvoiceApi.API
+  --project Fakvio.Infrastructure \
+  --startup-project Fakvio.API
 
 # Tenant migrations
 dotnet ef migrations add InitialTenant \
   --context TenantDbContext \
   --output-dir Migrations/Tenant \
-  --project InvoiceApi.Infrastructure \
-  --startup-project InvoiceApi.API
+  --project Fakvio.Infrastructure \
+  --startup-project Fakvio.API
 ```
 
 ### 9.3 Startup Logic
@@ -1136,7 +1136,7 @@ A6: Verify all tests pass
 
 Phase B: Multi-Tenant Split
 ────────────────────────────
-B1: Create master DB (invoiceapi_master) with MasterDbContext migration
+B1: Create master DB (fakvio_master) with MasterDbContext migration
 B2: Copy to master:
     - User (all rows)
     - Client WHERE IsIssuer = true
@@ -1146,7 +1146,7 @@ B2: Copy to master:
     - ContentTemplate (default ones)
 B3: Create CompanySystemSettings for each Client (IsIssuer=true)
 B4: For each company:
-    B4a: CREATE DATABASE invoiceapi_tenant_{name}
+    B4a: CREATE DATABASE fakvio_tenant_{name}
     B4b: Apply TenantDbContext migration
     B4c: Copy ALL data for this company:
          - Client (IsIssuer copy + all customers for this company)
@@ -1391,13 +1391,13 @@ public async Task Login_SucceedsWhenTenantProvisionedAndActive()
 ```json
 {
   "ConnectionStrings": {
-    "MasterConnection": "Host=localhost;Port=5432;Database=invoiceapi_master;Username=app;Password=***",
+    "MasterConnection": "Host=localhost;Port=5432;Database=fakvio_master;Username=app;Password=***",
     "TenantTemplate": "Host=localhost;Port=5432;Username=app;Password=***"
   },
   "JwtSettings": {
     "Secret": "...",
-    "Issuer": "InvoiceApi",
-    "Audience": "InvoiceApiClient",
+    "Issuer": "Fakvio",
+    "Audience": "FakvioClient",
     "ExpirationHours": 24
   }
 }
@@ -1406,10 +1406,10 @@ public async Task Login_SucceedsWhenTenantProvisionedAndActive()
 ### PostgreSQL Database Naming Convention
 
 ```
-invoiceapi_master          ← Master DB (always exists)
-invoiceapi_tenant_acme     ← Tenant: Acme s.r.o.
-invoiceapi_tenant_novak    ← Tenant: Novák a syn s.r.o.
-invoiceapi_tenant_xyz      ← Tenant: XYZ Corp
+fakvio_master          ← Master DB (always exists)
+fakvio_tenant_acme     ← Tenant: Acme s.r.o.
+fakvio_tenant_novak    ← Tenant: Novák a syn s.r.o.
+fakvio_tenant_xyz      ← Tenant: XYZ Corp
 ```
 
 ---
@@ -1417,7 +1417,7 @@ invoiceapi_tenant_xyz      ← Tenant: XYZ Corp
 ## Appendix B: File Structure Changes
 
 ```
-InvoiceApi.Domain/
+Fakvio.Domain/
 ├── Entities/
 │   ├── CompanySystemSettings.cs     ← NEW (1:1 with Client IsIssuer)
 │   ├── Client.cs                    ← UNCHANGED
@@ -1432,7 +1432,7 @@ InvoiceApi.Domain/
 │   ├── ITenantProvisioningService.cs ← NEW
 │   └── ICompanySyncService.cs       ← NEW
 
-InvoiceApi.Infrastructure/
+Fakvio.Infrastructure/
 ├── Data/
 │   ├── MasterDbContext.cs            ← NEW
 │   ├── TenantDbContext.cs            ← NEW
@@ -1454,7 +1454,7 @@ InvoiceApi.Infrastructure/
 │   ├── ClientService.cs             ← MODIFIED (swap context + sync trigger)
 │   └── (all other services)         ← MODIFIED (just swap context type)
 
-InvoiceApi.API/
+Fakvio.API/
 ├── Middleware/
 │   ├── ImpersonationMiddleware.cs    ← UNCHANGED
 │   └── TenantContextMiddleware.cs    ← NEW
@@ -1471,7 +1471,7 @@ InvoiceApi.API/
 Browser → API → Auth (JWT) → ImpersonationMiddleware (skip)
   → TenantContextMiddleware (validate CompanyId + tenant active)
   → InvoiceController → InvoiceService(TenantDbContext)
-  → TenantDbContext: resolved to invoiceapi_tenant_acme
+  → TenantDbContext: resolved to fakvio_tenant_acme
   → Query: SELECT * FROM Invoice
             JOIN Currency ON ...      ← ALL LOCAL
             JOIN Client ON ...        ← ALL LOCAL
@@ -1484,7 +1484,7 @@ Browser → API (+ X-Company-Id: 5) → Auth (JWT, SysAdmin)
   → ImpersonationMiddleware (add CompanyId=5 claim)
   → TenantContextMiddleware (validate company 5 provisioned + active)
   → InvoiceController → InvoiceService(TenantDbContext)
-  → TenantDbContext: resolved to invoiceapi_tenant_5
+  → TenantDbContext: resolved to fakvio_tenant_5
   → Response (tenant 5's isolated data)
 ```
 
@@ -1494,7 +1494,7 @@ Browser → API (no X-Company-Id) → Auth (JWT, SysAdmin)
   → ImpersonationMiddleware (skip)
   → TenantContextMiddleware (skip — /api/user is master-only)
   → UserController → UserService(MasterDbContext)
-  → invoiceapi_master
+  → fakvio_master
   → Response
 ```
 
@@ -1503,7 +1503,7 @@ Browser → API (no X-Company-Id) → Auth (JWT, SysAdmin)
 Browser → POST /api/auth/login
   → TenantContextMiddleware (skip — /api/auth is master-only)
   → AuthController → AuthService(MasterDbContext)
-  → Query: User + CompanySystemSettings from invoiceapi_master
+  → Query: User + CompanySystemSettings from fakvio_master
   → Verify: password, tenant active, tenant provisioned
   → Return: JWT token with CompanyId claim
 ```

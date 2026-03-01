@@ -1,0 +1,18 @@
+@* Thin WASM host — global usings point to the shared RCL (Fakvio.UI.Shared).
+   All components, services, and models are now in the RCL.
+   This file only exists for any BlazorUI-specific .razor files (e.g., ReconnectModal). *@
+@using System.Net.Http
+@using System.Net.Http.Json
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.AspNetCore.Components.Routing
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.AspNetCore.Components.Web.Virtualization
+@using Microsoft.JSInterop
+@using Fakvio.UI.Shared
+@using Fakvio.UI.Shared.Components
+@using Fakvio.UI.Shared.Components.Layout
+@using Fakvio.UI.Shared.Components.Shared
+@using Fakvio.UI.Shared.Services
+@using MudBlazor
+@using Microsoft.Extensions.Localization

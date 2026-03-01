@@ -1,0 +1,934 @@
+@page "/companies/create"
+@page "/companies/{Id:long}"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "SysAdmin")]
+@using Fakvio.Contracts.Dto.Client
+@using Fakvio.Contracts.Dto.User
+@using Fakvio.Contracts.Dto.CompanySettings
+@using Fakvio.Domain.Enums
+@inject CompanyApiService CompanyService
+@inject CompanySettingsApiService SettingsService
+@inject UserApiService UserService
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject IStringLocalizer<SharedResource> L
+@inject ILogger<CompanyDetail> _logger
+@inject AppStateService AppState
+
+<PageTitle>@(_isCreateMode ? L["Company_New"] : L["Company_Detail"])</PageTitle>
+
+@* Warn user before navigating away from dirty forms *@
+<UnsavedChangesLock IsDirty="_isDirty" />
+
+@if (_loading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-4" />
+}
+else if (!_isCreateMode && (_errorMessage != null || _company == null))
+{
+    <MudAlert Severity="Severity.Error">@(_errorMessage ?? L["Msg_NotFound"])</MudAlert>
+}
+else
+{
+    @* Header: Back button + company name + Active chip + action buttons *@
+    <div class="d-flex flex-wrap align-center gap-2 mb-4">
+        <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" OnClick="GoBack" />
+        <MudText Typo="Typo.h4" Class="mr-2">
+            @if (_isCreateMode) { @L["Company_New"] } else { @_company!.CompanyName }
+        </MudText>
+        @if (!_isCreateMode && _company != null)
+        {
+            <MudChip T="string" Size="Size.Small" Color="@(_company.IsActive ? Color.Success : Color.Default)">
+                @(_company.IsActive ? L["Label_Active"].Value : L["Label_Inactive"].Value)
+            </MudChip>
+            @* Tenant provisioning status chip — shows infrastructure state *@
+            @if (_tenantSettings != null)
+            {
+                @if (_tenantSettings.IsProvisioned && _tenantSettings.IsActive)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Outlined">
+                        @L["TenantSettings_Provisioned"] (@_tenantSettings.SchemaName)
+                    </MudChip>
+                }
+                else if (_tenantSettings.IsProvisioned && !_tenantSettings.IsActive)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined">
+                        @L["Label_Inactive"] (@_tenantSettings.SchemaName)
+                    </MudChip>
+                }
+                else
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Outlined">
+                        @L["TenantSettings_NotProvisioned"]
+                    </MudChip>
+                }
+            }
+            else
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined">
+                    @L["TenantSettings_NoSettings"]
+                </MudChip>
+            }
+        }
+        <MudSpacer />
+
+        @if (_isCreateMode)
+        {
+            <MudButton Variant="Variant.Text" OnClick="GoBack" Disabled="_saving">@L["Btn_Cancel"]</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save"
+                       OnClick="SaveCompany" Disabled="_saving">
+                @if (_saving)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                }
+                @L["Btn_Create"]
+            </MudButton>
+        }
+        else if (!_isEditing)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Edit"
+                       OnClick="EnableEditing">@L["Btn_Edit"]</MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.Delete"
+                       OnClick="DeleteCompany" Disabled="_saving">@L["Btn_Delete"]</MudButton>
+        }
+        else
+        {
+            <MudButton Variant="Variant.Text" OnClick="CancelEditing" Disabled="_saving">@L["Btn_Cancel"]</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save"
+                       OnClick="SaveCompany" Disabled="_saving">
+                @if (_saving)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                }
+                @L["Btn_Save"]
+            </MudButton>
+        }
+    </div>
+
+    <MudGrid>
+        @* Card 1: Company Info *@
+        <MudItem xs="12" md="4">
+            <MudCard Elevation="2" Class="mb-4">
+                <MudCardHeader>
+                    <CardHeaderContent><MudText Typo="Typo.h6">@L["Client_CompanyName"]</MudText></CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    @if (_isFormMode)
+                    {
+                        @* Registration number + ARES fetch button *@
+                        <div class="d-flex gap-2 mb-3">
+                            <MudTextField @bind-Value="_createDto.RegistrationNumber" Label="@L["Client_RegistrationNumber"].Value"
+                                          Required="true" Class="flex-grow-1" />
+                            <MudButton Variant="Variant.Filled" Color="Color.Info" StartIcon="@Icons.Material.Filled.Download"
+                                       OnClick="FetchFromAres" Disabled="@_fetchingAres" Class="align-self-end">
+                                @if (_fetchingAres)
+                                {
+                                    <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                                }
+                                else
+                                {
+                                    <span>ARES</span>
+                                }
+                            </MudButton>
+                        </div>
+                        <MudTextField @bind-Value="_createDto.CompanyName" Label="@L["Client_CompanyName"].Value" Required="true" Class="mb-3" />
+                        <MudTextField @bind-Value="_createDto.TradingName" Label="@L["Client_TradingName"].Value" Class="mb-3" />
+                        <MudTextField @bind-Value="_createDto.TaxNumber" Label="@L["Client_TaxNumber"].Value" Class="mb-3" />
+                        <MudSwitch @bind-Value="_createDto.IsVatPayer" Label="@L["Client_IsVatPayer"].Value" Color="Color.Primary" Class="mb-3" />
+                        <MudSwitch @bind-Value="_createDto.FetchFromAres" Label="@L["Client_FetchFromAres"].Value" Color="Color.Primary" />
+                    }
+                    else
+                    {
+                        <MudList T="string" Dense="true">
+                            <MudListItem T="string"><strong>@L["Client_RegistrationNumber"]:</strong> @_company!.RegistrationNumber</MudListItem>
+                            @if (!string.IsNullOrEmpty(_company?.TradingName))
+                            {
+                                <MudListItem T="string"><strong>@L["Client_TradingName"]:</strong> @_company.TradingName</MudListItem>
+                            }
+                            @if (!string.IsNullOrEmpty(_company.TaxNumber))
+                            {
+                                <MudListItem T="string"><strong>@L["Client_TaxNumber"]:</strong> @_company.TaxNumber</MudListItem>
+                            }
+                            <MudListItem T="string">
+                                <strong>@L["Client_IsVatPayer"]:</strong>
+                                @if (_company.IsVatPayer)
+                                {
+                                    <MudIcon Icon="@Icons.Material.Filled.Check" Color="Color.Success" Size="Size.Small" />
+                                }
+                                else
+                                {
+                                    <MudIcon Icon="@Icons.Material.Filled.Close" Color="Color.Default" Size="Size.Small" />
+                                }
+                            </MudListItem>
+                        </MudList>
+                    }
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+
+        @* Card 2: Address *@
+        <MudItem xs="12" md="4">
+            <MudCard Elevation="2" Class="mb-4">
+                <MudCardHeader>
+                    <CardHeaderContent><MudText Typo="Typo.h6">@L["Client_Address"]</MudText></CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    @if (_isFormMode)
+                    {
+                        <MudTextField @bind-Value="_address.Street" Label="@L["Client_Street"].Value" Class="mb-3" />
+                        <MudTextField @bind-Value="_address.City" Label="@L["Client_City"].Value" Class="mb-3" />
+                        <MudTextField @bind-Value="_address.PostalCode" Label="@L["Client_PostalCode"].Value" Class="mb-3" />
+                        <MudTextField @bind-Value="_address.Country" Label="@L["Client_Country"].Value" />
+                    }
+                    else
+                    {
+                        @* Display existing address data in read-only mode *@
+                        @if (GetPrimaryAddress(_company!) is { } addr)
+                        {
+                            <MudList T="string" Dense="true">
+                                @if (!string.IsNullOrEmpty(addr.Street))
+                                {
+                                    <MudListItem T="string"><strong>@L["Client_Street"]:</strong> @addr.Street</MudListItem>
+                                }
+                                @if (!string.IsNullOrEmpty(addr.City))
+                                {
+                                    <MudListItem T="string"><strong>@L["Client_City"]:</strong> @addr.City</MudListItem>
+                                }
+                                @if (!string.IsNullOrEmpty(addr.PostalCode))
+                                {
+                                    <MudListItem T="string"><strong>@L["Client_PostalCode"]:</strong> @addr.PostalCode</MudListItem>
+                                }
+                                @if (!string.IsNullOrEmpty(addr.Country))
+                                {
+                                    <MudListItem T="string"><strong>@L["Client_Country"]:</strong> @addr.Country</MudListItem>
+                                }
+                            </MudList>
+                        }
+                        else
+                        {
+                            <MudText Color="Color.Secondary">—</MudText>
+                        }
+                    }
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+
+        @* Card 3: Contacts & Bank *@
+        <MudItem xs="12" md="4">
+            <MudCard Elevation="2" Class="mb-4">
+                <MudCardHeader>
+                    <CardHeaderContent><MudText Typo="Typo.h6">@L["Client_Contacts"]</MudText></CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    @if (_isFormMode)
+                    {
+                        <MudTextField @bind-Value="_emailContact" Label="@L["Label_Email"].Value" InputType="InputType.Email" Class="mb-3" />
+                        <MudTextField @bind-Value="_phoneContact" Label="@L["Client_Phone"].Value" Class="mb-3" />
+                        <MudDivider Class="my-3" />
+                        <MudText Typo="Typo.subtitle2" Class="mb-2">@L["Company_BankDetails"]</MudText>
+                        <MudTextField @bind-Value="_bankAccount" Label="@L["Company_BankAccount"].Value" />
+                    }
+                    else
+                    {
+                        <MudList T="string" Dense="true">
+                            @{
+                                var email = _company!.Contact.FirstOrDefault(c => c.ContactType == EContactType.Email);
+                                var phone = _company.Contact.FirstOrDefault(c => c.ContactType == EContactType.Phone);
+                            }
+                            @if (email != null)
+                            {
+                                <MudListItem T="string"><strong>@L["Label_Email"]:</strong> @email.ContactValue</MudListItem>
+                            }
+                            @if (phone != null)
+                            {
+                                <MudListItem T="string"><strong>@L["Client_Phone"]:</strong> @phone.ContactValue</MudListItem>
+                            }
+                            @if (!string.IsNullOrEmpty(_company.BillingSettings?.BankAccountNumber))
+                            {
+                                <MudListItem T="string"><strong>@L["Company_BankAccount"]:</strong> @_company.BillingSettings.BankAccountNumber</MudListItem>
+                            }
+                        </MudList>
+                    }
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+
+        @* Create-only section: User invitation *@
+        @if (_isCreateMode)
+        {
+            <MudItem xs="12">
+                <MudCard Elevation="2" Class="mb-4">
+                    <MudCardHeader>
+                        <CardHeaderContent><MudText Typo="Typo.h6">@L["Company_CreateUser"]</MudText></CardHeaderContent>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <MudSwitch @bind-Value="_createUserWithCompany"
+                                   Label="@L["Company_CreateUserAndInvite"].Value" Color="Color.Info" Class="mb-3" />
+                        @if (_createUserWithCompany)
+                        {
+                            <MudGrid>
+                                <MudItem xs="12" md="6">
+                                    <MudTextField @bind-Value="_inviteUser.Email" Label="@L["Company_UserEmail"].Value"
+                                                  InputType="InputType.Email" Required="true" />
+                                </MudItem>
+                                <MudItem xs="12" md="3">
+                                    <MudTextField @bind-Value="_inviteUser.FirstName" Label="@L["User_FirstName"].Value" Required="true" />
+                                </MudItem>
+                                <MudItem xs="12" md="3">
+                                    <MudTextField @bind-Value="_inviteUser.LastName" Label="@L["User_LastName"].Value" Required="true" />
+                                </MudItem>
+                                <MudItem xs="12" md="6">
+                                    <MudSelect @bind-Value="_inviteUser.Role" Label="@L["User_Role"].Value">
+                                        <MudSelectItem Value="@EUserRole.Admin">@L["User_RoleAdmin"]</MudSelectItem>
+                                        <MudSelectItem Value="@EUserRole.User">@L["User_RoleUser"]</MudSelectItem>
+                                    </MudSelect>
+                                </MudItem>
+                            </MudGrid>
+                        }
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        }
+    </MudGrid>
+
+    @* ── Email Settings section (SysAdmin) ─────────────────────────────────────── *@
+    @* SysAdmin can configure SMTP settings on behalf of any company.
+       Only shown in edit mode (not create mode — company settings don't exist yet). *@
+    @if (!_isCreateMode && _tenantSettings != null)
+    {
+        <MudPaper Elevation="2" Class="pa-4 mb-4">
+            <MudText Typo="Typo.h6" Class="mb-2">@L["Smtp_Title"]</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">@L["Smtp_InfoText"]</MudText>
+
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="_smtpHost" Label="@L["Smtp_Host"].Value"
+                                  Placeholder="smtp.example.com" Class="mb-3" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudNumericField @bind-Value="_smtpPort" Label="@L["Smtp_Port"].Value"
+                                     Min="1" Max="65535" Class="mb-3" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="_smtpUsername" Label="@L["Smtp_Username"].Value" Class="mb-3" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="_smtpPassword" Label="@L["Smtp_Password"].Value"
+                                  InputType="InputType.Password"
+                                  Placeholder="@(_hasSmtpPassword ? L["Smtp_PasswordPlaceholder"].Value : "")"
+                                  Class="mb-3" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="_smtpSenderEmail" Label="@L["Smtp_SenderEmail"].Value"
+                                  InputType="InputType.Email" Class="mb-3" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="_smtpSenderName" Label="@L["Smtp_SenderName"].Value" Class="mb-3" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudSwitch @bind-Value="_smtpUseSsl" Label="@L["Smtp_UseSsl"].Value"
+                               Color="Color.Primary" />
+                </MudItem>
+            </MudGrid>
+
+            <div class="d-flex gap-2 mt-3">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.Save"
+                           OnClick="SaveSmtpSettings" Disabled="_smtpSaving">
+                    @if (_smtpSaving)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    }
+                    @L["Btn_Save"]
+                </MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Info"
+                           StartIcon="@Icons.Material.Filled.Email"
+                           OnClick="TestSmtp" Disabled="@(_smtpTesting || string.IsNullOrWhiteSpace(_smtpHost))">
+                    @if (_smtpTesting)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    }
+                    @L["Smtp_TestButton"]
+                </MudButton>
+            </div>
+        </MudPaper>
+    }
+
+    @* Full-page overlay shown during save/provision operations for visual feedback *@
+    <MudOverlay Visible="_saving" DarkBackground="true" Absolute="false" ZIndex="9999">
+        <MudProgressCircular Color="Color.Primary" Indeterminate="true" Size="Size.Large" />
+    </MudOverlay>
+}
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private ClientDto? _company;
+    private CompanySystemSettingsDto? _tenantSettings;
+    private bool _loading = true;
+    private string? _errorMessage; // Stores API error message for display instead of generic "Not Found"
+    private bool _isCreateMode => Id == 0;
+    private bool _isEditing = false;
+    private bool _isDirty = false; // Dirty tracking for unsaved changes warning
+    private bool _isFormMode => _isCreateMode || _isEditing;
+    private bool _fetchingAres = false;
+    private bool _saving = false; // True during save/provision/delete operations
+
+    // Tracks previous Id to detect parameter changes (e.g., /companies/create → /companies/1).
+    // Blazor reuses components for the same @page route, so OnInitializedAsync only fires once.
+    // OnParametersSetAsync fires every time [Parameter] values change.
+    private long _previousId = -1;
+
+    // Form fields for create/edit
+    private CreateClientDto _createDto = new();
+    private CreateAddressDto _address = new();
+    private string _emailContact = "";
+    private string _phoneContact = "";
+    private string _bankAccount = "";
+
+    // User invitation fields — only used in create mode
+    private bool _createUserWithCompany = false;
+    private InviteUserDto _inviteUser = new() { Role = EUserRole.Admin };
+
+    // SMTP settings form fields (SysAdmin email configuration)
+    private bool _smtpSaving = false;
+    private bool _smtpTesting = false;
+    private bool _hasSmtpPassword = false;
+    private string? _smtpHost;
+    private int? _smtpPort = 587;
+    private string? _smtpUsername;
+    private string? _smtpPassword;
+    private string? _smtpSenderEmail;
+    private string? _smtpSenderName;
+    private bool _smtpUseSsl = true;
+
+    /// <summary>
+    /// Called every time a [Parameter] value changes.
+    /// Detects navigation between /companies/create ↔ /companies/{id} and reloads accordingly.
+    /// Without this, navigating from create to detail shows stale data because Blazor
+    /// reuses the same component instance and OnInitializedAsync only fires once.
+    /// </summary>
+    protected override async Task OnParametersSetAsync()
+    {
+        // Only reload when the Id parameter actually changes
+        if (Id == _previousId) return;
+        _previousId = Id;
+
+        if (_isCreateMode)
+        {
+            InitCreateForm();
+            _loading = false;
+        }
+        else
+        {
+            _isEditing = false;
+            _isDirty = false;
+            await LoadCompany();
+        }
+    }
+
+    /// <summary>
+    /// Initializes form fields with defaults for creating a new company.
+    /// </summary>
+    private void InitCreateForm()
+    {
+        _createDto = new CreateClientDto
+        {
+            FetchFromAres = true,
+            IsVatPayer = false,
+            IsIssuer = true // Company is always an issuer
+        };
+        _address = new CreateAddressDto
+        {
+            AddressType = EAddressType.Billing,
+            Country = "Česká republika",
+            IsPrimary = true
+        };
+        _emailContact = "";
+        _phoneContact = "";
+        _bankAccount = "";
+        _createUserWithCompany = false;
+        _inviteUser = new InviteUserDto { Role = EUserRole.Admin };
+    }
+
+    /// <summary>
+    /// Loads company data and tenant settings independently.
+    /// Settings are loaded separately because they may not exist yet for newly created companies.
+    /// A missing settings record is normal (null) — it should NOT cause the whole page to fail.
+    /// </summary>
+    private async Task LoadCompany()
+    {
+        try
+        {
+            _loading = true;
+
+            // Load company data — this is required and should throw on failure
+            _company = await CompanyService.GetByIdAsync(Id);
+
+            // Load tenant settings separately — may not exist for new companies
+            try
+            {
+                _tenantSettings = await SettingsService.GetSettingsAsync(Id);
+                // Populate SMTP form fields from loaded settings
+                if (_tenantSettings != null)
+                {
+                    _smtpHost = _tenantSettings.SmtpHost;
+                    _smtpPort = _tenantSettings.SmtpPort ?? 587;
+                    _smtpUsername = _tenantSettings.SmtpUsername;
+                    _smtpSenderEmail = _tenantSettings.SmtpSenderEmail;
+                    _smtpSenderName = _tenantSettings.SmtpSenderName;
+                    _smtpUseSsl = _tenantSettings.SmtpUseSsl ?? true;
+                    _hasSmtpPassword = _tenantSettings.HasSmtpPassword;
+                    _smtpPassword = null; // Password is never returned from the API
+                }
+            }
+            catch
+            {
+                // Settings not found is expected for newly created companies before provisioning.
+                // Silently set to null — the UI shows "No settings" chip in this case.
+                _tenantSettings = null;
+            }
+        }
+        catch (Exception ex)
+        {
+            // Store error message for display in the template instead of generic "Nenalezeno".
+            // ApiException carries the actual API error (403 Forbidden, 500 Server Error, etc.).
+            // 401 Unauthorized is handled globally by UnauthorizedRedirectHandler → /login redirect.
+            _errorMessage = ex.Message;
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    /// <summary>
+    /// Switches to edit mode — populates form fields from existing company data.
+    /// </summary>
+    private void EnableEditing()
+    {
+        if (_company == null) return;
+
+        _createDto = new CreateClientDto
+        {
+            RegistrationNumber = _company.RegistrationNumber,
+            TaxNumber = _company.TaxNumber,
+            CompanyName = _company.CompanyName,
+            TradingName = _company.TradingName,
+            IsVatPayer = _company.IsVatPayer,
+            IsIssuer = true,
+            FetchFromAres = false
+        };
+
+        // Populate address from existing data
+        var primaryAddress = _company.Address.FirstOrDefault(a => a.IsPrimary) ?? _company.Address.FirstOrDefault();
+        if (primaryAddress != null)
+        {
+            _address = new CreateAddressDto
+            {
+                AddressType = primaryAddress.AddressType,
+                Street = primaryAddress.Street,
+                City = primaryAddress.City,
+                PostalCode = primaryAddress.PostalCode,
+                Country = primaryAddress.Country,
+                IsPrimary = primaryAddress.IsPrimary
+            };
+        }
+        else
+        {
+            _address = new CreateAddressDto();
+        }
+
+        // Populate contacts
+        var emailContactDto = _company.Contact.FirstOrDefault(c => c.ContactType == EContactType.Email);
+        _emailContact = emailContactDto?.ContactValue ?? "";
+
+        var phoneContactDto = _company.Contact.FirstOrDefault(c => c.ContactType == EContactType.Phone);
+        _phoneContact = phoneContactDto?.ContactValue ?? "";
+
+        // Populate bank account
+        _bankAccount = _company.BillingSettings?.BankAccountNumber ?? "";
+
+        _isEditing = true;
+        _isDirty = true; // Mark dirty when entering edit mode
+    }
+
+    /// <summary>
+    /// Cancels editing — resets dirty flag and reloads original data.
+    /// </summary>
+    private async Task CancelEditing()
+    {
+        _isEditing = false;
+        _isDirty = false;
+        await LoadCompany();
+    }
+
+    /// <summary>
+    /// Saves the company — handles both create and update.
+    /// On create, optionally invites a user with the new company.
+    /// Shows a full-page overlay spinner during the operation.
+    /// </summary>
+    private async Task SaveCompany()
+    {
+        _saving = true;
+        StateHasChanged(); // Force UI update to show the overlay immediately
+        try
+        {
+            // Build address list from form fields
+            if (!string.IsNullOrWhiteSpace(_address.Street) || !string.IsNullOrWhiteSpace(_address.City))
+            {
+                _createDto.Address = new List<CreateAddressDto> { _address };
+            }
+
+            // Build contact list from form fields
+            _createDto.Contact = new List<CreateContactDto>();
+            if (!string.IsNullOrWhiteSpace(_emailContact))
+            {
+                _createDto.Contact.Add(new CreateContactDto
+                {
+                    ContactType = EContactType.Email,
+                    ContactValue = _emailContact,
+                    IsPrimary = true
+                });
+            }
+            if (!string.IsNullOrWhiteSpace(_phoneContact))
+            {
+                _createDto.Contact.Add(new CreateContactDto
+                {
+                    ContactType = EContactType.Phone,
+                    ContactValue = _phoneContact,
+                    IsPrimary = _createDto.Contact.Count == 0
+                });
+            }
+
+            // Build billing settings with bank account
+            if (!string.IsNullOrWhiteSpace(_bankAccount))
+            {
+                _createDto.BillingSettings = new CreateBillingSettingsDto
+                {
+                    BankAccountNumber = _bankAccount
+                };
+            }
+
+            if (_isCreateMode)
+            {
+                var result = await CompanyService.CreateAsync(_createDto);
+                if (result != null)
+                {
+                    Snackbar.Add(L["Msg_SaveSuccess"].Value, Severity.Success);
+
+                    // Auto-provision tenant: create settings + provision DB in one step.
+                    // This is non-blocking — provisioning failure shows a warning but
+                    // does NOT prevent company creation or user invitation.
+                    try
+                    {
+                        // Step 1: Create CompanySystemSettings (registers tenant config)
+                        var settingsDto = new CreateCompanySystemSettingsDto
+                        {
+                            CompanyId = result.Id
+                            // DatabaseName auto-generated as "fakvio_tenant_{id}"
+                        };
+                        await SettingsService.CreateSettingsAsync(settingsDto);
+
+                        // Step 2: Provision the tenant database (create DB, migrate, seed)
+                        var provisioned = await SettingsService.ProvisionTenantAsync(result.Id);
+                        if (provisioned)
+                        {
+                            Snackbar.Add(L["Company_AutoProvisionSuccess"].Value, Severity.Success);
+                        }
+                        else
+                        {
+                            Snackbar.Add(L["Company_AutoProvisionFailed"].Value, Severity.Warning);
+                        }
+                    }
+                    catch (Exception provEx)
+                    {
+                        // Provisioning failure is non-fatal — SysAdmin can retry manually
+                        _logger.LogWarning(provEx, "Auto-provisioning failed for company {CompanyId}", result.Id);
+                        Snackbar.Add(L["Company_AutoProvisionFailed"].Value, Severity.Warning);
+                    }
+
+                    // If user creation was requested, invite the user with the new company's ID
+                    if (_createUserWithCompany && !string.IsNullOrWhiteSpace(_inviteUser.Email))
+                    {
+                        try
+                        {
+                            _inviteUser.CompanyId = result.Id;
+                            var userResult = await UserService.InviteUserAsync(_inviteUser);
+                            if (userResult != null)
+                            {
+                                Snackbar.Add(L["Msg_SaveSuccess"].Value, Severity.Success);
+                            }
+                            else
+                            {
+                                Snackbar.Add(L["Msg_Error"].Value, Severity.Warning);
+                            }
+                        }
+                        catch (Exception userEx)
+                        {
+                            Snackbar.Add($"{L["Msg_Error"].Value}: {userEx.Message}", Severity.Warning);
+                        }
+                    }
+
+                    // Reset dirty flag and force re-render BEFORE navigation.
+                    // This ensures <UnsavedChangesLock> removes <NavigationLock> from the DOM
+                    // before NavigateTo fires — avoids the "leave page?" prompt after save.
+                    _isDirty = false;
+                    StateHasChanged();
+                    await Task.Yield();
+
+                    // Notify MainLayout to refresh the impersonation dropdown
+                    // (new company needs to appear in the company selector immediately).
+                    // NOTE: Do NOT use forceLoad: true — it restarts the entire WASM app
+                    // and causes a race condition where the GET request fires before
+                    // localStorage auth token is loaded → 401 → "Nenalezeno".
+                    AppState.NotifyCompanyListChanged();
+                    Navigation.NavigateTo($"/companies/{result.Id}");
+                }
+                else
+                {
+                    Snackbar.Add(L["Msg_Error"].Value, Severity.Error);
+                }
+            }
+            else
+            {
+                // Update existing company — include Address/Contact so they persist in master DB.
+                // Uses replace-all strategy: backend removes old addresses/contacts, adds new ones.
+                var updateDto = new UpdateClientDto
+                {
+                    TaxNumber = _createDto.TaxNumber,
+                    CompanyName = _createDto.CompanyName,
+                    TradingName = _createDto.TradingName,
+                    IsVatPayer = _createDto.IsVatPayer,
+                    IsIssuer = true,
+                    // Build address list from form fields (same data source as create path)
+                    Address = (!string.IsNullOrWhiteSpace(_address.Street) || !string.IsNullOrWhiteSpace(_address.City))
+                        ? new List<UpdateAddressDto>
+                        {
+                            new UpdateAddressDto
+                            {
+                                AddressType = _address.AddressType,
+                                Street = _address.Street,
+                                City = _address.City,
+                                PostalCode = _address.PostalCode,
+                                Country = _address.Country,
+                                IsPrimary = true
+                            }
+                        }
+                        : new List<UpdateAddressDto>(),
+                    // Build contact list from form fields
+                    Contact = BuildUpdateContacts(),
+                    // Include billing settings (bank account) so it persists in master DB
+                    BillingSettings = new UpdateBillingSettingsDto
+                    {
+                        BankAccountNumber = _bankAccount
+                    }
+                };
+
+                var result = await CompanyService.UpdateAsync(Id, updateDto);
+                if (result != null)
+                {
+                    _isDirty = false; // Reset dirty flag on successful save
+                    Snackbar.Add(L["Msg_SaveSuccess"].Value, Severity.Success);
+                    _isEditing = false;
+                    await LoadCompany();
+                }
+                else
+                {
+                    Snackbar.Add(L["Msg_Error"].Value, Severity.Error);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _saving = false; // Always reset the saving flag to re-enable UI controls
+        }
+    }
+
+    private async Task DeleteCompany()
+    {
+        _saving = true;
+        StateHasChanged();
+        try
+        {
+            if (await CompanyService.DeleteAsync(Id))
+            {
+                Snackbar.Add(L["Msg_DeleteSuccess"].Value, Severity.Success);
+                Navigation.NavigateTo("/companies");
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    /// <summary>
+    /// Fetches company data from the Czech ARES registry using the registration number.
+    /// </summary>
+    private async Task FetchFromAres()
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_createDto.RegistrationNumber))
+            {
+                Snackbar.Add(L["Client_RegistrationNumber"].Value, Severity.Warning);
+                return;
+            }
+
+            _fetchingAres = true;
+            var aresData = await CompanyService.FetchFromAresAsync(_createDto.RegistrationNumber);
+
+            if (aresData != null)
+            {
+                _createDto.CompanyName = aresData.CompanyName;
+                _createDto.TaxNumber = aresData.TaxNumber;
+                _createDto.IsVatPayer = aresData.IsVatPayer;
+
+                // Fill address from ARES data
+                var primaryAddress = aresData.Address.FirstOrDefault(a => a.IsPrimary) ?? aresData.Address.FirstOrDefault();
+                if (primaryAddress != null)
+                {
+                    _address.Street = primaryAddress.Street;
+                    _address.City = primaryAddress.City;
+                    _address.PostalCode = primaryAddress.PostalCode;
+                    _address.Country = primaryAddress.Country;
+                }
+
+                Snackbar.Add(L["Ares_DataLoaded"].Value, Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add(L["Ares_NotFound"].Value, Severity.Warning);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _fetchingAres = false;
+        }
+    }
+
+    private void GoBack() => Navigation.NavigateTo("/companies");
+
+    /// <summary>
+    /// Returns the primary address (or first address) for a company, used in the view template.
+    /// </summary>
+    private static AddressDto? GetPrimaryAddress(ClientDto company)
+        => company.Address.FirstOrDefault(a => a.IsPrimary) ?? company.Address.FirstOrDefault();
+
+    /// <summary>
+    /// Builds a list of UpdateContactDto from the form fields (_emailContact, _phoneContact).
+    /// Used in the edit path to send contacts to the API for replace-all update.
+    /// </summary>
+    private List<UpdateContactDto> BuildUpdateContacts()
+    {
+        var contacts = new List<UpdateContactDto>();
+
+        if (!string.IsNullOrWhiteSpace(_emailContact))
+        {
+            contacts.Add(new UpdateContactDto
+            {
+                ContactType = EContactType.Email,
+                ContactValue = _emailContact,
+                IsPrimary = true
+            });
+        }
+
+        if (!string.IsNullOrWhiteSpace(_phoneContact))
+        {
+            contacts.Add(new UpdateContactDto
+            {
+                ContactType = EContactType.Phone,
+                ContactValue = _phoneContact,
+                IsPrimary = contacts.Count == 0 // Primary if no email contact
+            });
+        }
+
+        return contacts;
+    }
+
+    // ─── SMTP Settings Methods (SysAdmin) ────────────────────────────────────
+
+    /// <summary>
+    /// Saves the SMTP settings for this company via PUT /api/company/{companyId}/settings.
+    /// SysAdmin can configure SMTP on behalf of any company.
+    /// </summary>
+    private async Task SaveSmtpSettings()
+    {
+        _smtpSaving = true;
+        try
+        {
+            var dto = new UpdateCompanySystemSettingsDto
+            {
+                SmtpHost = _smtpHost,
+                SmtpPort = _smtpPort,
+                SmtpUsername = _smtpUsername,
+                // Only send password if the user typed something new
+                SmtpPassword = string.IsNullOrEmpty(_smtpPassword) ? null : _smtpPassword,
+                SmtpSenderEmail = _smtpSenderEmail,
+                SmtpSenderName = _smtpSenderName,
+                SmtpUseSsl = _smtpUseSsl
+            };
+
+            var result = await SettingsService.UpdateSettingsAsync(Id, dto);
+            if (result != null)
+            {
+                Snackbar.Add(L["Msg_SaveSuccess"].Value, Severity.Success);
+                _hasSmtpPassword = result.HasSmtpPassword;
+                _smtpPassword = null;
+            }
+            else
+            {
+                Snackbar.Add(L["Msg_Error"].Value, Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _smtpSaving = false;
+        }
+    }
+
+    /// <summary>
+    /// Tests this company's SMTP settings by sending a test email.
+    /// </summary>
+    private async Task TestSmtp()
+    {
+        _smtpTesting = true;
+        try
+        {
+            var success = await SettingsService.TestSmtpAsync(Id);
+            if (success)
+            {
+                Snackbar.Add(L["Smtp_TestSuccess"].Value, Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add(L["Smtp_TestFailed"].Value, Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Smtp_TestFailed"].Value}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _smtpTesting = false;
+        }
+    }
+}

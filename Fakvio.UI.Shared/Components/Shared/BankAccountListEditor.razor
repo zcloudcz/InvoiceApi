@@ -1,0 +1,249 @@
+@*
+    Reusable component for managing 1:N bank accounts with default selection.
+    Supports both read-only display and full CRUD editing with add/edit/delete dialogs.
+    Follows the same pattern as AddressListEditor.razor.
+
+    Usage (edit mode):
+      <BankAccountListEditor BankAccounts="_bankAccounts"
+                             BankAccountsChanged="@(v => { _bankAccounts = v; _isDirty = true; })" />
+
+    Usage (read-only mode):
+      <BankAccountListEditor BankAccounts="@(mapped)" ReadOnly="true" />
+*@
+@inject IStringLocalizer<SharedResource> L
+@inject IDialogService DialogService
+@using Fakvio.Contracts.Dto.Client
+
+@* Section header with Add button (only in edit mode) *@
+<div class="d-flex align-center gap-2 mb-2">
+    <MudText Typo="Typo.h6">@L["BankAccount_List"]</MudText>
+    <MudSpacer />
+    @if (!ReadOnly)
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                   StartIcon="@Icons.Material.Filled.Add" OnClick="AddBankAccount">
+            @L["BankAccount_Add"]
+        </MudButton>
+    }
+</div>
+
+@if (BankAccounts.Count == 0)
+{
+    @* Empty state — show placeholder text when no bank accounts exist *@
+    <MudText Color="Color.Secondary" Class="mb-4">@L["BankAccount_NoAccounts"]</MudText>
+}
+else
+{
+    @* Bank account table — shows all accounts with details, default star, and action buttons *@
+    <MudSimpleTable Dense="true" Hover="true" Striped="true" Class="mb-4">
+        <thead>
+            <tr>
+                <th>@L["BankAccount_Label"]</th>
+                <th>@L["BankAccount_AccountNumber"]</th>
+                <th>@L["BankAccount_BankName"]</th>
+                <th>@L["BankAccount_IBAN"]</th>
+                <th>@L["BankAccount_Currency"]</th>
+                <th style="text-align: center;">@L["BankAccount_Default"]</th>
+                @if (!ReadOnly)
+                {
+                    <th style="text-align: center; width: 100px;"></th>
+                }
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var (account, index) in BankAccounts.Select((a, i) => (a, i)))
+            {
+                @* Row click opens edit dialog in edit mode; cursor indicates clickability *@
+                <tr style="@(!ReadOnly ? "cursor: pointer;" : "")"
+                    @onclick="@(() => OnRowClick(index))">
+                    <td>@account.Label</td>
+                    <td>@account.AccountNumber</td>
+                    <td>@account.BankName</td>
+                    <td>@account.IBAN</td>
+                    <td>@account.CurrencyCode</td>
+                    <td style="text-align: center;" @onclick:stopPropagation="true">
+                        @if (ReadOnly)
+                        {
+                            @* Read-only mode — just show a star icon for the default account *@
+                            @if (account.IsDefault)
+                            {
+                                <MudIcon Icon="@Icons.Material.Filled.Star" Color="Color.Warning" Size="Size.Small" />
+                            }
+                        }
+                        else
+                        {
+                            @* Edit mode — clickable star to toggle default bank account *@
+                            <MudIconButton Icon="@(account.IsDefault ? Icons.Material.Filled.Star : Icons.Material.Outlined.StarBorder)"
+                                           Color="@(account.IsDefault ? Color.Warning : Color.Default)"
+                                           Size="Size.Small"
+                                           OnClick="@(() => SetDefault(index))"
+                                           title="@L["BankAccount_Default"].Value" />
+                        }
+                    </td>
+                    @if (!ReadOnly)
+                    {
+                        @* stopPropagation prevents row click (edit) from firing when clicking action buttons *@
+                        <td style="text-align: center;" @onclick:stopPropagation="true">
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                                           OnClick="@(() => EditBankAccount(index))"
+                                           title="@L["BankAccount_Edit"].Value" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
+                                           Color="Color.Error"
+                                           OnClick="@(() => DeleteBankAccount(index))"
+                                           title="@L["Btn_Delete"].Value" />
+                        </td>
+                    }
+                </tr>
+            }
+        </tbody>
+    </MudSimpleTable>
+}
+
+@code {
+    /// <summary>
+    /// The list of bank accounts to display and manage.
+    /// Two-way bindable via BankAccountsChanged callback.
+    /// </summary>
+    [Parameter]
+    public List<CreateBankAccountDto> BankAccounts { get; set; } = new();
+
+    /// <summary>
+    /// Callback fired when the bank account list changes (add, edit, delete, set default).
+    /// </summary>
+    [Parameter]
+    public EventCallback<List<CreateBankAccountDto>> BankAccountsChanged { get; set; }
+
+    /// <summary>
+    /// When true, shows a read-only view without any edit controls.
+    /// </summary>
+    [Parameter]
+    public bool ReadOnly { get; set; }
+
+    /// <summary>
+    /// Handles row click — opens edit dialog in edit mode, no-op in read-only mode.
+    /// Using a dedicated method instead of inline ternary to avoid null delegate issues.
+    /// </summary>
+    private Task OnRowClick(int index)
+    {
+        if (ReadOnly) return Task.CompletedTask;
+        return EditBankAccount(index);
+    }
+
+    /// <summary>
+    /// Opens the bank account dialog in "add" mode with default values.
+    /// Adds the new account to the list and notifies the parent.
+    /// </summary>
+    private async Task AddBankAccount()
+    {
+        var newAccount = new CreateBankAccountDto
+        {
+            // First account is automatically default
+            IsDefault = BankAccounts.Count == 0
+        };
+
+        var parameters = new DialogParameters<BankAccountDialog>
+        {
+            { x => x.BankAccount, newAccount },
+            { x => x.DialogTitle, L["BankAccount_Add"].Value }
+        };
+
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseOnEscapeKey = true };
+        var dialog = await DialogService.ShowAsync<BankAccountDialog>(L["BankAccount_Add"].Value, parameters, options);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled && result.Data is CreateBankAccountDto saved)
+        {
+            // If new account is marked as default, clear default from all others
+            if (saved.IsDefault)
+            {
+                foreach (var a in BankAccounts) a.IsDefault = false;
+            }
+
+            BankAccounts.Add(saved);
+            await BankAccountsChanged.InvokeAsync(BankAccounts);
+        }
+    }
+
+    /// <summary>
+    /// Opens the bank account dialog in "edit" mode pre-filled with the selected account.
+    /// Replaces the account at the given index with the edited version.
+    /// </summary>
+    private async Task EditBankAccount(int index)
+    {
+        // Clone the account so dialog edits don't affect the list until confirmed
+        var existing = BankAccounts[index];
+        var clone = new CreateBankAccountDto
+        {
+            Label = existing.Label,
+            BankName = existing.BankName,
+            AccountNumber = existing.AccountNumber,
+            IBAN = existing.IBAN,
+            SWIFT = existing.SWIFT,
+            CurrencyCode = existing.CurrencyCode,
+            IsDefault = existing.IsDefault
+        };
+
+        var parameters = new DialogParameters<BankAccountDialog>
+        {
+            { x => x.BankAccount, clone },
+            { x => x.DialogTitle, L["BankAccount_Edit"].Value }
+        };
+
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseOnEscapeKey = true };
+        var dialog = await DialogService.ShowAsync<BankAccountDialog>(L["BankAccount_Edit"].Value, parameters, options);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled && result.Data is CreateBankAccountDto saved)
+        {
+            // If edited account became default, clear default from all others
+            if (saved.IsDefault)
+            {
+                foreach (var a in BankAccounts) a.IsDefault = false;
+            }
+
+            BankAccounts[index] = saved;
+            await BankAccountsChanged.InvokeAsync(BankAccounts);
+        }
+    }
+
+    /// <summary>
+    /// Deletes the bank account at the given index after user confirmation.
+    /// If the deleted account was default, promotes the first remaining account.
+    /// </summary>
+    private async Task DeleteBankAccount(int index)
+    {
+        bool? confirmed = await DialogService.ShowMessageBox(
+            L["Btn_Delete"].Value,
+            L["BankAccount_ConfirmDelete"].Value,
+            yesText: L["Btn_Delete"].Value,
+            cancelText: L["Btn_Cancel"].Value);
+
+        if (confirmed == true)
+        {
+            var wasDefault = BankAccounts[index].IsDefault;
+            BankAccounts.RemoveAt(index);
+
+            // If we deleted the default account and there are still accounts left,
+            // promote the first one to default so there's always a default
+            if (wasDefault && BankAccounts.Count > 0)
+            {
+                BankAccounts[0].IsDefault = true;
+            }
+
+            await BankAccountsChanged.InvokeAsync(BankAccounts);
+        }
+    }
+
+    /// <summary>
+    /// Sets the bank account at the given index as the default.
+    /// Clears IsDefault from all other accounts — only one can be default at a time.
+    /// </summary>
+    private async Task SetDefault(int index)
+    {
+        for (int i = 0; i < BankAccounts.Count; i++)
+        {
+            BankAccounts[i].IsDefault = (i == index);
+        }
+        await BankAccountsChanged.InvokeAsync(BankAccounts);
+    }
+}

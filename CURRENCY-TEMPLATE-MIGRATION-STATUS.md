@@ -104,8 +104,8 @@ public CurrencyDto? Currency { get; set; }
 ### 4. Vytvořit Migration (po opravě build errors)
 ```bash
 dotnet ef migrations add AddCurrencyAndTemplateSupport \
-  --project InvoiceApi.Infrastructure \
-  --startup-project InvoiceApi.API
+  --project Fakvio.Infrastructure \
+  --startup-project Fakvio.API
 ```
 
 ### 5. Upravit Migration pro Data Migration

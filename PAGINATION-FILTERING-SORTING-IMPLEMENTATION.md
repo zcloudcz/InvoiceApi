@@ -27,11 +27,11 @@
 #### InvoiceService.GetInvoicesPagedAsync()
 
 ```csharp
-// InvoiceApi.Infrastructure/Service/InvoiceService.cs
+// Fakvio.Infrastructure/Service/InvoiceService.cs
 
 // Přidat using:
-using InvoiceApi.Application.Common.Extensions;
-using InvoiceApi.Application.Common.Pagination;
+using Fakvio.Application.Common.Extensions;
+using Fakvio.Application.Common.Pagination;
 
 // Přidat metodu:
 public async Task<PagedResult<InvoiceDto>> GetInvoicesPagedAsync(
@@ -119,7 +119,7 @@ public async Task<PagedResult<InvoiceDto>> GetInvoicesPagedAsync(
 
 ```csharp
 // IUserService - přidat using a metodu:
-using InvoiceApi.Application.Common.Pagination;
+using Fakvio.Application.Common.Pagination;
 
 Task<PagedResult<UserDto>> GetUsersPagedAsync(
     UserFilterDto filter,
@@ -186,7 +186,7 @@ public async Task<PagedResult<UserDto>> GetUsersPagedAsync(
 
 ```csharp
 // Přidat using:
-using InvoiceApi.Application.Common.Pagination;
+using Fakvio.Application.Common.Pagination;
 
 // Přidat endpoint:
 [HttpGet("paged")]
@@ -207,7 +207,7 @@ public async Task<ActionResult<PagedResult<InvoiceDto>>> GetInvoicesPaged(
 
 ```csharp
 // Přidat using:
-using InvoiceApi.Application.Common.Pagination;
+using Fakvio.Application.Common.Pagination;
 
 // Přidat endpoint:
 [HttpGet("paged")]
@@ -269,8 +269,8 @@ public async Task<PagedResult<ClientDto>> GetPagedAsync(
 @page "/clients"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 @rendermode InteractiveServer
-@using InvoiceApi.Application.Dto.Client
-@using InvoiceApi.Application.Common.Pagination
+@using Fakvio.Application.Dto.Client
+@using Fakvio.Application.Common.Pagination
 @inject ClientApiService ClientService
 @inject ISnackbar Snackbar
 
@@ -475,7 +475,7 @@ public async Task<PagedResult<ClientDto>> GetPagedAsync(
 ### Blazor UI
 - [ ] PagedResult<T> model class
 - [ ] ClientApiService.GetPagedAsync()
-- [ ] InvoiceApiService.GetPagedAsync()
+- [ ] FakvioService.GetPagedAsync()
 - [ ] UserApiService.GetPagedAsync()
 - [ ] CompanyApiService.GetPagedAsync()
 - [ ] Clients.razor - MudTable s server-side pagination
@@ -488,19 +488,19 @@ public async Task<PagedResult<ClientDto>> GetPagedAsync(
 
 ```bash
 # Build API
-cd InvoiceApi.API
+cd Fakvio.API
 dotnet build
 
 # Build Blazor UI
-cd ../InvoiceApi.BlazorUI
+cd ../Fakvio.BlazorUI
 dotnet build
 
 # Run tests
 dotnet test
 
 # Start servers
-dotnet run --project InvoiceApi.API
-dotnet run --project InvoiceApi.BlazorUI
+dotnet run --project Fakvio.API
+dotnet run --project Fakvio.BlazorUI
 ```
 
 ## 📊 Test endpoints
@@ -520,4 +520,4 @@ curl "http://localhost:5237/api/company/paged?page=1&pageSize=10&isVatPayer=true
 ```
 
 ## ✅ Dokončeno
-Tato dokumentace pokrývá veškeré potřebné změny pro kompletní implementaci pagination, filtering a sorting v InvoiceApi projektu.
+Tato dokumentace pokrývá veškeré potřebné změny pro kompletní implementaci pagination, filtering a sorting v Fakvio projektu.
