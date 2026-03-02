@@ -67,6 +67,14 @@ public class Client : BaseEntity
     public bool IsActive { get; set; } = true;
 
     /// <summary>
+    /// Preferred language for documents (PDFs, emails) generated for this client.
+    /// ISO 639-1 code: "cs" = Czech, "en" = English.
+    /// Used to select the correct ContentTemplate when generating invoices/emails.
+    /// Default is "cs" (Czech) — the primary audience of this application.
+    /// </summary>
+    public string Language { get; set; } = "cs";
+
+    /// <summary>
     /// Preferred currency for this client
     /// Used as default when creating invoices for this client
     /// If null, system default currency (CZK) is used

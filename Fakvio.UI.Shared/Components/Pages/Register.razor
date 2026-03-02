@@ -22,7 +22,8 @@
         <MudStack Spacing="4">
             @* Header *@
             <MudStack Spacing="2" AlignItems="AlignItems.Center">
-                <MudIcon Icon="@Icons.Material.Filled.Receipt" Size="Size.Large" Color="Color.Primary" />
+                @* App logo — grey version looks good on both dark and light paper backgrounds *@
+                <MudImage Src="images/logo-grey.png" Alt="Fakvio" Width="64" Height="64" />
                 <MudText Typo="Typo.h4" Align="Align.Center">Fakvio</MudText>
                 <MudText Typo="Typo.h6" Align="Align.Center" Color="Color.Secondary">@L["Register_Title"]</MudText>
                 <MudText Typo="Typo.body2" Align="Align.Center" Color="Color.Secondary">

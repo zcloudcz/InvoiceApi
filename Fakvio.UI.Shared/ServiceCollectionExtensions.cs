@@ -66,6 +66,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<AppLogApiService>();
         services.AddScoped<TwoFactorApiService>();
         services.AddScoped<CloudStorageApiService>();
+        services.AddScoped<ChatApiService>();
 
         // Shared app state — cross-component notifications (e.g., company list changed → refresh dropdown)
         services.AddScoped<AppStateService>();

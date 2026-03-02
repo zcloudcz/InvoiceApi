@@ -112,7 +112,7 @@ public partial class ContentTemplateService : IContentTemplateService
     /// <inheritdoc />
     public async Task<ContentTemplateDto?> GetDefaultByTypeAsync(EContentTemplateType templateType, CancellationToken ct = default)
     {
-        _logger.LogInformation("Getting default content template for type: {TemplateType}", templateType);
+        _logger.LogInformation("Getting default content template for type: {TemplateType} (any language)", templateType);
 
         // OrderBy(Id): deterministic ordering — EF warns when FirstOrDefault has no OrderBy
         // and the predicate could match multiple rows (e.g., multiple default templates).
@@ -123,6 +123,41 @@ public partial class ContentTemplateService : IContentTemplateService
             .FirstOrDefaultAsync(ct);
 
         return template?.ToContentTemplateDto();
+    }
+
+    /// <inheritdoc />
+    public async Task<ContentTemplateDto?> GetDefaultByTypeAsync(
+        EContentTemplateType templateType, string language, CancellationToken ct = default)
+    {
+        _logger.LogInformation(
+            "Getting default content template for type: {TemplateType}, language: {Language}",
+            templateType, language);
+
+        // Step 1: Try to find an exact match — same type + same language + default + active.
+        var template = await TemplateSet
+            .AsNoTracking()
+            .Where(t => t.TemplateType == templateType
+                        && t.Language == language
+                        && t.IsDefault
+                        && t.IsActive)
+            .OrderBy(t => t.Id)
+            .FirstOrDefaultAsync(ct);
+
+        if (template != null)
+        {
+            _logger.LogInformation(
+                "Found language-matched template '{Name}' (ID {Id}) for type {Type}, language {Lang}",
+                template.Name, template.Id, templateType, language);
+            return template.ToContentTemplateDto();
+        }
+
+        // Step 2: Fallback — any-language default for this type.
+        // This ensures documents are still generated even if no template exists in the requested language.
+        _logger.LogInformation(
+            "No template found for language '{Language}', falling back to any-language default for type {Type}",
+            language, templateType);
+
+        return await GetDefaultByTypeAsync(templateType, ct);
     }
 
     /// <inheritdoc />
@@ -138,13 +173,15 @@ public partial class ContentTemplateService : IContentTemplateService
             TemplateType = createDto.TemplateType,
             IsDefault = createDto.IsDefault,
             IsActive = true,
-            Description = createDto.Description
+            Description = createDto.Description,
+            Language = createDto.Language
         };
 
-        // If this template is marked as default, unset any existing default for the same type
+        // If this template is marked as default, unset any existing default
+        // for the same type AND language — so each (type, language) has at most one default.
         if (entity.IsDefault)
         {
-            await UnsetDefaultForTypeAsync(entity.TemplateType, ct);
+            await UnsetDefaultForTypeAsync(entity.TemplateType, entity.Language, ct);
         }
 
         TemplateSet.Add(entity);
@@ -173,13 +210,15 @@ public partial class ContentTemplateService : IContentTemplateService
         if (updateDto.TemplateType.HasValue) entity.TemplateType = updateDto.TemplateType.Value;
         if (updateDto.IsActive.HasValue) entity.IsActive = updateDto.IsActive.Value;
         if (updateDto.Description != null) entity.Description = updateDto.Description;
+        if (updateDto.Language != null) entity.Language = updateDto.Language;
 
-        // Handle default flag — unset previous defaults when setting a new one
+        // Handle default flag — unset previous defaults when setting a new one.
+        // Scoped by (TemplateType, Language) so each language has its own default.
         if (updateDto.IsDefault.HasValue)
         {
             if (updateDto.IsDefault.Value && !entity.IsDefault)
             {
-                await UnsetDefaultForTypeAsync(entity.TemplateType, ct);
+                await UnsetDefaultForTypeAsync(entity.TemplateType, entity.Language, ct);
             }
             entity.IsDefault = updateDto.IsDefault.Value;
         }
@@ -248,13 +287,15 @@ public partial class ContentTemplateService : IContentTemplateService
     }
 
     /// <summary>
-    /// Unsets the IsDefault flag for all templates of the given type.
-    /// Called before setting a new default to ensure only one default per type.
+    /// Unsets the IsDefault flag for all templates of the given type AND language.
+    /// Called before setting a new default to ensure only one default per (type, language) pair.
+    /// This allows having separate defaults for Czech and English templates of the same type.
     /// </summary>
-    private async Task UnsetDefaultForTypeAsync(EContentTemplateType templateType, CancellationToken ct)
+    private async Task UnsetDefaultForTypeAsync(
+        EContentTemplateType templateType, string language, CancellationToken ct)
     {
         var currentDefaults = await TemplateSet
-            .Where(t => t.TemplateType == templateType && t.IsDefault)
+            .Where(t => t.TemplateType == templateType && t.Language == language && t.IsDefault)
             .ToListAsync(ct);
 
         foreach (var t in currentDefaults)

@@ -107,6 +107,11 @@ else
                                       Class="mb-3" />
                         <MudSwitch @bind-Value="_editClient.IsVatPayer" Label="@L["Client_IsVatPayer"].Value"
                                    Color="Color.Primary" />
+                        @* Language preference for documents (PDFs, emails) generated for this company *@
+                        <MudSelect T="string" @bind-Value="_editClient.Language" Label="@L["Client_Language"].Value" Class="mt-3">
+                            <MudSelectItem Value="@("cs")">Čeština (cs)</MudSelectItem>
+                            <MudSelectItem Value="@("en")">English (en)</MudSelectItem>
+                        </MudSelect>
                     }
                     else
                     {
@@ -133,6 +138,9 @@ else
                             <MudListItem T="string" Icon="@Icons.Material.Filled.Percent">
                                 <strong>@L["Client_VatPayerLabel"]</strong>
                                 @(_company.IsVatPayer ? L["Label_Yes"].Value : L["Label_No"].Value)
+                            </MudListItem>
+                            <MudListItem T="string" Icon="@Icons.Material.Filled.Language">
+                                <strong>@L["Client_Language"]:</strong> @GetLanguageDisplayName(_company.Language)
                             </MudListItem>
                         </MudList>
                     }
@@ -512,6 +520,7 @@ else
             TradingName = _company.TradingName,
             IsVatPayer = _company.IsVatPayer,
             IsIssuer = true, // Company is always an issuer
+            Language = _company.Language,
             FetchFromAres = false
         };
 
@@ -604,6 +613,7 @@ else
                 IsVatPayer = _editClient.IsVatPayer,
                 IsIssuer = true,
                 IsActive = true,
+                Language = _editClient.Language,
                 RefreshFromAres = _editClient.FetchFromAres,
                 // Send ALL addresses (1:N) — backend uses replace-all strategy
                 Address = _addresses.Select(a => new UpdateAddressDto
@@ -1066,4 +1076,14 @@ else
             }
         }
     }
+
+    /// <summary>
+    /// Returns a human-readable display name for an ISO 639-1 language code.
+    /// </summary>
+    private static string GetLanguageDisplayName(string language) => language switch
+    {
+        "cs" => "Čeština (cs)",
+        "en" => "English (en)",
+        _ => language
+    };
 }

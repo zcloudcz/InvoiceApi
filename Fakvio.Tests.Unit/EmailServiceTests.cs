@@ -237,7 +237,7 @@ public class EmailServiceTests : IDisposable
 
         // Mock the content template service to return null (triggers fallback email template)
         _contentTemplate
-            .GetDefaultByTypeAsync(EContentTemplateType.InvoiceEmail, Arg.Any<CancellationToken>())
+            .GetDefaultByTypeAsync(EContentTemplateType.InvoiceEmail, Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns((Contracts.Dto.ContentTemplate.ContentTemplateDto?)null);
 
         var service = CreateService();
@@ -449,5 +449,57 @@ public class EmailServiceTests : IDisposable
         // Assert — should have attempted connection (not InvalidOperationException)
         caughtEx.ShouldNotBeNull();
         caughtEx.ShouldNotBeOfType<InvalidOperationException>();
+    }
+
+    // ─── Language-Aware Template Resolution Tests ─────────────────────────
+
+    /// <summary>
+    /// Tests that SendInvoiceEmailAsync reads the client's Language and passes it
+    /// to the content template resolution (language-aware overload).
+    /// The test client (Id=2) has Language = "cs" (default).
+    /// </summary>
+    [Fact]
+    public async Task SendInvoiceEmailAsync_UsesClientLanguageForTemplate()
+    {
+        // Arrange
+        var fakePdfBytes = new byte[] { 0x25, 0x50, 0x44, 0x46 };
+        _pdfExport.GenerateInvoicePdfAsync(1, Arg.Any<CancellationToken>()).Returns(fakePdfBytes);
+
+        // Mock the language-aware overload (the one actually called by the service now)
+        _contentTemplate
+            .GetDefaultByTypeAsync(EContentTemplateType.InvoiceEmail, "cs", Arg.Any<CancellationToken>())
+            .Returns((Contracts.Dto.ContentTemplate.ContentTemplateDto?)null);
+
+        var service = CreateService();
+
+        // Act — expect SMTP failure in test environment, but template resolution should happen first
+        try { await service.SendInvoiceEmailAsync(1, "test@example.com"); } catch { }
+
+        // Assert — should have called the language-aware overload with "cs"
+        await _contentTemplate.Received(1)
+            .GetDefaultByTypeAsync(EContentTemplateType.InvoiceEmail, "cs", Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Tests that SendInvitationEmailAsync always uses "cs" as the language
+    /// for template resolution (no client context for system emails).
+    /// </summary>
+    [Fact]
+    public async Task SendInvitationEmailAsync_UsesDefaultCzechLanguage()
+    {
+        // Arrange — mock the language-aware overload with "cs"
+        _contentTemplate
+            .GetDefaultByTypeAsync(EContentTemplateType.InvitationEmail, "cs", Arg.Any<CancellationToken>())
+            .Returns((Contracts.Dto.ContentTemplate.ContentTemplateDto?)null);
+
+        var service = CreateService();
+
+        // Act — expect SMTP failure
+        try { await service.SendInvitationEmailAsync("newuser@test.com", "John Doe", "https://app/invite/abc"); }
+        catch { }
+
+        // Assert — should have called with "cs" language
+        await _contentTemplate.Received(1)
+            .GetDefaultByTypeAsync(EContentTemplateType.InvitationEmail, "cs", Arg.Any<CancellationToken>());
     }
 }

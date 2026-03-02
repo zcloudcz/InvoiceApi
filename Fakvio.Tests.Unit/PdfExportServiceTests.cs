@@ -201,7 +201,7 @@ public class PdfExportServiceTests : IDisposable
     {
         // Arrange — mock returns null so the built-in fallback template is used
         _contentTemplateService
-            .GetDefaultByTypeAsync(EContentTemplateType.InvoicePdf, Arg.Any<CancellationToken>())
+            .GetDefaultByTypeAsync(EContentTemplateType.InvoicePdf, Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns((ContentTemplateDto?)null);
 
         // Act — generate PDF for the test invoice
@@ -257,7 +257,7 @@ public class PdfExportServiceTests : IDisposable
     {
         // Arrange — mock GetDefaultByTypeAsync to return null (no template configured)
         _contentTemplateService
-            .GetDefaultByTypeAsync(EContentTemplateType.InvoicePdf, Arg.Any<CancellationToken>())
+            .GetDefaultByTypeAsync(EContentTemplateType.InvoicePdf, Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns((ContentTemplateDto?)null);
 
         // Act — should still generate PDF using the built-in fallback template
@@ -269,7 +269,7 @@ public class PdfExportServiceTests : IDisposable
 
         // Verify that the service actually tried to look up a content template
         await _contentTemplateService.Received(1)
-            .GetDefaultByTypeAsync(EContentTemplateType.InvoicePdf, Arg.Any<CancellationToken>());
+            .GetDefaultByTypeAsync(EContentTemplateType.InvoicePdf, Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     // ─── Phase D: Template Selection Tests ───────────────────────────────────
@@ -307,7 +307,7 @@ public class PdfExportServiceTests : IDisposable
         // Verify it called GetByIdAsync with the specific template ID (NOT GetDefaultByTypeAsync)
         await _contentTemplateService.Received(1).GetByIdAsync(42, Arg.Any<CancellationToken>());
         await _contentTemplateService.DidNotReceive()
-            .GetDefaultByTypeAsync(Arg.Any<EContentTemplateType>(), Arg.Any<CancellationToken>());
+            .GetDefaultByTypeAsync(Arg.Any<EContentTemplateType>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     /// <summary>
@@ -319,7 +319,7 @@ public class PdfExportServiceTests : IDisposable
     {
         // Arrange — mock GetDefaultByTypeAsync to return null (built-in fallback used)
         _contentTemplateService
-            .GetDefaultByTypeAsync(EContentTemplateType.InvoicePdf, Arg.Any<CancellationToken>())
+            .GetDefaultByTypeAsync(EContentTemplateType.InvoicePdf, Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns((ContentTemplateDto?)null);
 
         // Act — null templateId = use default resolution
@@ -331,7 +331,7 @@ public class PdfExportServiceTests : IDisposable
 
         // Verify it used GetDefaultByTypeAsync (NOT GetByIdAsync)
         await _contentTemplateService.Received(1)
-            .GetDefaultByTypeAsync(EContentTemplateType.InvoicePdf, Arg.Any<CancellationToken>());
+            .GetDefaultByTypeAsync(EContentTemplateType.InvoicePdf, Arg.Any<string>(), Arg.Any<CancellationToken>());
         await _contentTemplateService.DidNotReceive()
             .GetByIdAsync(Arg.Any<long>(), Arg.Any<CancellationToken>());
     }
@@ -352,5 +352,54 @@ public class PdfExportServiceTests : IDisposable
         // Act & Assert — should throw because the user explicitly requested a non-existent template
         await Assert.ThrowsAsync<KeyNotFoundException>(
             () => _service.GenerateInvoicePdfAsync(1, 999));
+    }
+
+    // ─── Language-Aware Template Resolution Tests ─────────────────────────
+
+    /// <summary>
+    /// Tests that GenerateInvoicePdfAsync reads the client's Language property
+    /// and passes it to GetDefaultByTypeAsync for language-aware template resolution.
+    /// The client in our seed data has Language = "cs" (default).
+    /// </summary>
+    [Fact]
+    public async Task GenerateInvoicePdfAsync_UsesClientLanguageForTemplateResolution()
+    {
+        // Arrange — mock the language-aware overload to return null (use fallback)
+        _contentTemplateService
+            .GetDefaultByTypeAsync(EContentTemplateType.InvoicePdf, "cs", Arg.Any<CancellationToken>())
+            .Returns((ContentTemplateDto?)null);
+
+        // Act
+        var result = await _service.GenerateInvoicePdfAsync(1);
+
+        // Assert — should call with "cs" language (the client's default)
+        result.ShouldNotBeNull();
+        result.ShouldNotBeEmpty();
+        await _contentTemplateService.Received(1)
+            .GetDefaultByTypeAsync(EContentTemplateType.InvoicePdf, "cs", Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Tests that when a client has Language = "en", the service passes "en" to template resolution.
+    /// </summary>
+    [Fact]
+    public async Task GenerateInvoicePdfAsync_EnglishClient_PassesEnglishToTemplateResolution()
+    {
+        // Arrange — update the test client's language to "en"
+        var client = await _context.Client.FindAsync(2L);
+        client!.Language = "en";
+        await _context.SaveChangesAsync();
+
+        _contentTemplateService
+            .GetDefaultByTypeAsync(EContentTemplateType.InvoicePdf, "en", Arg.Any<CancellationToken>())
+            .Returns((ContentTemplateDto?)null);
+
+        // Act
+        var result = await _service.GenerateInvoicePdfAsync(1);
+
+        // Assert — should call with "en" language
+        result.ShouldNotBeNull();
+        await _contentTemplateService.Received(1)
+            .GetDefaultByTypeAsync(EContentTemplateType.InvoicePdf, "en", Arg.Any<CancellationToken>());
     }
 }

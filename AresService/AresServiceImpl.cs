@@ -22,8 +22,10 @@ public class AresServiceImpl : IAresService
     // Default ARES API URL — used when AresSettings:BaseUrl is not set in configuration.
     private const string DefaultAresApiBaseUrl = "https://ares.gov.cz/ekonomicke-subjekty-v-be/rest/ekonomicke-subjekty";
 
-    // Cache validity period - 30 days
-    private static readonly TimeSpan CacheExpiration = TimeSpan.FromDays(30);
+    // Cache validity period — successful lookups last 30 days,
+    // failed lookups only 1 hour (so retries aren't blocked for long).
+    private static readonly TimeSpan SuccessCacheExpiration = TimeSpan.FromDays(30);
+    private static readonly TimeSpan FailureCacheExpiration = TimeSpan.FromHours(1);
 
     public AresServiceImpl(
         HttpClient httpClient,
@@ -305,7 +307,10 @@ public class AresServiceImpl : IAresService
                 RegistrationNumber = companyInfo.RegistrationNumber,
                 JsonData = JsonSerializer.Serialize(companyInfo),
                 FetchedAt = companyInfo.FetchedAt,
-                ExpiresAt = companyInfo.FetchedAt.Add(CacheExpiration),
+                // Successful lookups cached for 30 days; failures only 1 hour
+                // so that transient errors or newly registered companies aren't blocked.
+                ExpiresAt = companyInfo.FetchedAt.Add(
+                    companyInfo.IsSuccessful ? SuccessCacheExpiration : FailureCacheExpiration),
                 IsSuccessful = companyInfo.IsSuccessful,
                 ErrorMessage = companyInfo.ErrorMessage,
                 CompanyName = companyInfo.CompanyName,

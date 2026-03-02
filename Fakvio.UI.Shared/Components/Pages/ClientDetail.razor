@@ -100,6 +100,11 @@ else
                         <MudTextField @bind-Value="_editClient.TradingName" Label="@L["Client_TradingName"].Value" Class="mb-3" />
                         <MudTextField @bind-Value="_editClient.TaxNumber" Label="@L["Client_TaxNumber"].Value" Class="mb-3" />
                         <MudSwitch @bind-Value="_editClient.IsVatPayer" Label="@L["Client_IsVatPayer"].Value" Color="Color.Primary" />
+                        @* Language preference for documents (PDFs, emails) generated for this client *@
+                        <MudSelect T="string" @bind-Value="_editClient.Language" Label="@L["Client_Language"].Value" Class="mt-3">
+                            <MudSelectItem Value="@("cs")">Čeština (cs)</MudSelectItem>
+                            <MudSelectItem Value="@("en")">English (en)</MudSelectItem>
+                        </MudSelect>
                     }
                     else
                     {
@@ -125,6 +130,9 @@ else
                             }
                             <MudListItem T="string" Icon="@Icons.Material.Filled.Percent">
                                 <strong>@L["Client_VatPayerLabel"]</strong> @(_client.IsVatPayer ? L["Label_Yes"].Value : L["Label_No"].Value)
+                            </MudListItem>
+                            <MudListItem T="string" Icon="@Icons.Material.Filled.Language">
+                                <strong>@L["Client_Language"]:</strong> @GetLanguageDisplayName(_client.Language)
                             </MudListItem>
                         </MudList>
                     }
@@ -479,6 +487,7 @@ else
             TradingName = _client.TradingName,
             IsVatPayer = _client.IsVatPayer,
             IsIssuer = _client.IsIssuer,
+            Language = _client.Language,
             FetchFromAres = false
         };
 
@@ -584,6 +593,7 @@ else
                     IsVatPayer = _editClient.IsVatPayer,
                     IsIssuer = _editClient.IsIssuer,
                     IsActive = true,
+                    Language = _editClient.Language,
                     RefreshFromAres = _editClient.FetchFromAres
                 };
 
@@ -841,5 +851,15 @@ else
         EInvoiceStatus.Creditnoted => L["Invoice_StatusCancelled"].Value,
         EInvoiceStatus.Deleted => L["Invoice_StatusCancelled"].Value,
         _ => status.ToString()
+    };
+
+    /// <summary>
+    /// Returns a human-readable display name for an ISO 639-1 language code.
+    /// </summary>
+    private static string GetLanguageDisplayName(string language) => language switch
+    {
+        "cs" => "Čeština (cs)",
+        "en" => "English (en)",
+        _ => language
     };
 }

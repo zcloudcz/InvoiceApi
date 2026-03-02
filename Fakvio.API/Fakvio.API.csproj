@@ -8,6 +8,7 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <!-- Suppress CS1591 warnings for missing XML comments on public members -->
     <NoWarn>$(NoWarn);1591</NoWarn>
+    <UserSecretsId>8168d157-2c7d-48bd-b2c3-f8311fb2b356</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>

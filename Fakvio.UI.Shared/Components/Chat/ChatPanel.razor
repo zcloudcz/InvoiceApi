@@ -1,0 +1,324 @@
+@using Fakvio.Contracts.Dto.Chat
+@using Fakvio.UI.Shared.Services
+@inject ChatApiService ChatApi
+@inject NavigationManager Navigation
+@inject IStringLocalizer<SharedResource> L
+@inject ILogger<ChatPanel> Logger
+
+@*
+    Main chat panel component — displayed inside the right MudDrawer in MainLayout.
+    Contains:
+    - Top toolbar with provider selector, conversation history toggle, and close button
+    - Message area with auto-scroll
+    - Input area at the bottom
+
+    Supports both conversation list view and message view.
+    Streaming responses are displayed progressively as chunks arrive.
+*@
+
+<div class="d-flex flex-column" style="height: 100%;">
+    @* ─── Top toolbar ──────────────────────────────────────────────────── *@
+    <MudToolBar Dense="true" Class="px-2">
+        @* Toggle conversation list / messages *@
+        <MudIconButton Icon="@(_showConversationList ? Icons.Material.Filled.Chat : Icons.Material.Filled.History)"
+                       Size="Size.Small"
+                       OnClick="@ToggleConversationList"
+                       title="@(_showConversationList ? "Back to chat" : "History")" />
+
+        <MudText Typo="Typo.subtitle2" Class="flex-grow-1 text-truncate mx-2">
+            @(_currentConversation?.Title ?? L["Chat_Title"])
+        </MudText>
+
+        @* Provider selector (only if multiple providers available) *@
+        @if (_providers.Count > 1)
+        {
+            <MudSelect T="string" Value="_selectedProvider" ValueChanged="OnProviderChanged"
+                       Dense="true" Margin="Margin.Dense" Variant="Variant.Text"
+                       Style="max-width: 120px;" Label="">
+                @foreach (var p in _providers)
+                {
+                    <MudSelectItem Value="@p">@p</MudSelectItem>
+                }
+            </MudSelect>
+        }
+
+        @* New conversation *@
+        <MudIconButton Icon="@Icons.Material.Filled.AddComment"
+                       Size="Size.Small"
+                       OnClick="@StartNewConversation"
+                       title="@L["Chat_NewConversation"]" />
+
+        @* Close drawer *@
+        <MudIconButton Icon="@Icons.Material.Filled.Close"
+                       Size="Size.Small"
+                       OnClick="@OnClose" />
+    </MudToolBar>
+
+    <MudDivider />
+
+    @* ─── Content area ─────────────────────────────────────────────────── *@
+    @if (_showConversationList)
+    {
+        @* Conversation list sidebar view *@
+        <ChatConversationList Conversations="_conversations"
+                              SelectedConversationId="_currentConversation?.Id"
+                              OnSelectConversation="LoadConversation"
+                              OnDeleteConversation="DeleteConversation"
+                              OnNewConversation="StartNewConversation" />
+    }
+    else
+    {
+        @* Messages view *@
+        <div class="flex-grow-1 overflow-y-auto pa-2" @ref="_messagesContainer" id="chat-messages">
+            @if (_messages.Count == 0 && !_isStreaming)
+            {
+                <div class="d-flex flex-column align-center justify-center" style="height: 100%; opacity: 0.5;">
+                    <MudIcon Icon="@Icons.Material.Filled.SmartToy" Size="Size.Large" />
+                    <MudText Typo="Typo.body2" Class="mt-2">@L["Chat_Placeholder"]</MudText>
+                </div>
+            }
+            else
+            {
+                @foreach (var msg in _messages)
+                {
+                    <ChatMessageBubble Message="@msg" />
+                }
+
+                @* Streaming response in progress *@
+                @if (_isStreaming)
+                {
+                    <div class="d-flex justify-start mb-2">
+                        <div class="chat-bubble chat-bubble-assistant"
+                             style="max-width: 80%; padding: 12px 16px; border-radius: 12px;">
+                            <MudText Typo="Typo.caption" Class="mb-1" Style="opacity: 0.7;">
+                                @L["EChatRole_Assistant"]
+                            </MudText>
+                            <MudText Typo="Typo.body2" Style="white-space: pre-wrap; word-break: break-word;">
+                                @if (string.IsNullOrEmpty(_streamingContent))
+                                {
+                                    <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                                    <span class="ml-2">@L["Chat_Thinking"]</span>
+                                }
+                                else
+                                {
+                                    @_streamingContent
+                                }
+                            </MudText>
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+
+        @* ─── Input area ───────────────────────────────────────────────── *@
+        <ChatInput IsDisabled="_isStreaming" OnSend="HandleSendMessage" />
+    }
+</div>
+
+@code {
+    // ─── Parameters ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Callback to close the chat drawer from MainLayout.
+    /// </summary>
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    // ─── State ───────────────────────────────────────────────────────────
+
+    private List<ChatConversationListDto> _conversations = new();
+    private List<ChatMessageDto> _messages = new();
+    private ChatConversationDto? _currentConversation;
+    private List<string> _providers = new();
+    private string _selectedProvider = string.Empty;
+    private bool _showConversationList;
+    private bool _isStreaming;
+    private string _streamingContent = string.Empty;
+    private ElementReference _messagesContainer;
+
+    // ─── Lifecycle ───────────────────────────────────────────────────────
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadProviders();
+        await LoadConversations();
+    }
+
+    // ─── Data Loading ────────────────────────────────────────────────────
+
+    private async Task LoadProviders()
+    {
+        _providers = await ChatApi.GetProvidersAsync();
+        if (_providers.Count > 0 && string.IsNullOrEmpty(_selectedProvider))
+        {
+            _selectedProvider = _providers[0];
+        }
+    }
+
+    private async Task LoadConversations()
+    {
+        _conversations = await ChatApi.GetConversationsAsync();
+    }
+
+    private async Task LoadConversation(long conversationId)
+    {
+        var conversation = await ChatApi.GetConversationAsync(conversationId);
+        if (conversation != null)
+        {
+            _currentConversation = conversation;
+            _messages = conversation.Messages;
+            _showConversationList = false;
+            StateHasChanged();
+        }
+    }
+
+    // ─── Actions ─────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Sends a user message and streams the AI response.
+    /// Uses the streaming endpoint for progressive display.
+    /// </summary>
+    private async Task HandleSendMessage(string message)
+    {
+        // Add user message to the UI immediately.
+        _messages.Add(new ChatMessageDto
+        {
+            Role = "User",
+            Content = message,
+            CreatedAt = DateTime.UtcNow
+        });
+
+        _isStreaming = true;
+        _streamingContent = string.Empty;
+        StateHasChanged();
+
+        try
+        {
+            var request = new SendMessageRequest
+            {
+                ConversationId = _currentConversation?.Id,
+                Message = message,
+                Provider = _selectedProvider
+            };
+
+            // Stream the response — ChatStreamEvent can be text or UI action.
+            ChatUiAction? pendingAction = null;
+
+            await foreach (var evt in ChatApi.StreamMessageAsync(request))
+            {
+                if (evt.IsText)
+                {
+                    _streamingContent += evt.Text;
+                    StateHasChanged();
+                }
+                else if (evt.IsAction)
+                {
+                    // Capture the UI action for execution after stream completes.
+                    pendingAction = evt.Action;
+                }
+            }
+
+            // Streaming complete — add the final assistant message to the list.
+            _messages.Add(new ChatMessageDto
+            {
+                Role = "Assistant",
+                Content = _streamingContent,
+                ProviderUsed = _selectedProvider,
+                CreatedAt = DateTime.UtcNow
+            });
+
+            // Reload conversation metadata (to get the correct ConversationId for new conversations).
+            await LoadConversations();
+
+            // If this was a new conversation, find it in the list and set it as current.
+            if (_currentConversation == null && _conversations.Count > 0)
+            {
+                var latest = _conversations[0]; // Most recent
+                _currentConversation = new ChatConversationDto
+                {
+                    Id = latest.Id,
+                    Title = latest.Title,
+                    LastMessageAt = latest.LastMessageAt,
+                    MessageCount = latest.MessageCount
+                };
+            }
+
+            // Execute the pending UI action AFTER the stream is finalized and the UI is updated.
+            // Small delay so the user can see the AI response before navigating away.
+            if (pendingAction is { Type: "navigate", Url: not null })
+            {
+                StateHasChanged(); // Ensure the final message is rendered.
+                await Task.Delay(800); // Let the user read the AI response.
+                Navigation.NavigateTo(pendingAction.Url);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error streaming chat message");
+
+            // Show the actual error message so the user knows what went wrong.
+            var errorText = ex.Message;
+            if (string.IsNullOrWhiteSpace(errorText))
+            {
+                errorText = "An unexpected error occurred while processing your message.";
+            }
+
+            _messages.Add(new ChatMessageDto
+            {
+                Role = "Assistant",
+                Content = $"⚠️ {errorText}",
+                CreatedAt = DateTime.UtcNow
+            });
+        }
+        finally
+        {
+            _isStreaming = false;
+            _streamingContent = string.Empty;
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>
+    /// Starts a new conversation — clears messages and resets state.
+    /// </summary>
+    private void StartNewConversation()
+    {
+        _currentConversation = null;
+        _messages.Clear();
+        _showConversationList = false;
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Deletes a conversation and refreshes the list.
+    /// </summary>
+    private async Task DeleteConversation(long conversationId)
+    {
+        await ChatApi.DeleteConversationAsync(conversationId);
+        await LoadConversations();
+
+        // If we deleted the current conversation, reset to new.
+        if (_currentConversation?.Id == conversationId)
+        {
+            StartNewConversation();
+        }
+    }
+
+    /// <summary>
+    /// Toggles between conversation list and message view.
+    /// </summary>
+    private async Task ToggleConversationList()
+    {
+        _showConversationList = !_showConversationList;
+
+        if (_showConversationList)
+        {
+            await LoadConversations();
+        }
+    }
+
+    private void OnProviderChanged(string provider)
+    {
+        _selectedProvider = provider;
+    }
+}

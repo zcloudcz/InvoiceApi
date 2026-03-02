@@ -13,12 +13,14 @@
 
   <ItemGroup>
     <!-- Azure Identity for DefaultAzureCredential (used by other Azure services if needed) -->
+    <PackageReference Include="Anthropic" Version="3.3.0" />
     <PackageReference Include="Azure.Identity" Version="1.17.1" />
     <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
     <PackageReference Include="itext7" Version="9.1.0" />
     <PackageReference Include="itext7.bouncy-castle-adapter" Version="9.1.0" />
     <PackageReference Include="itext7.pdfhtml" Version="6.1.0" />
     <PackageReference Include="MailKit" Version="4.10.0" />
+    <PackageReference Include="OpenAI" Version="2.2.0-beta.4" />
     <PackageReference Include="Otp.NET" Version="1.4.1" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.0">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

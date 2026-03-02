@@ -462,4 +462,112 @@ public class ContentTemplateServiceTests : IDisposable
         await Assert.ThrowsAsync<KeyNotFoundException>(
             () => _service.RenderTemplateAsync(999, new Dictionary<string, string>()));
     }
+
+    // ========================================================================
+    // GetDefaultByTypeAsync (language-aware overload) tests
+    // ========================================================================
+
+    /// <summary>
+    /// When a template exists with the exact matching language, the language-aware overload
+    /// should return that template — not fall back to a different language.
+    /// </summary>
+    [Fact]
+    public async Task GetDefaultByTypeAsync_WithLanguage_ReturnsMatchingTemplate()
+    {
+        // Arrange — add an English version of the InvoiceEmail template
+        _context.ContentTemplate.Add(new ContentTemplate
+        {
+            Id = 100,
+            Name = "Invoice Email EN",
+            Subject = "Invoice {{InvoiceNumber}}",
+            HtmlBody = "<p>English invoice email</p>",
+            TemplateType = EContentTemplateType.InvoiceEmail,
+            IsDefault = true,
+            IsActive = true,
+            Language = "en"
+        });
+        await _context.SaveChangesAsync();
+
+        // Act — request the English template
+        var result = await _service.GetDefaultByTypeAsync(EContentTemplateType.InvoiceEmail, "en");
+
+        // Assert — should return the English template (Id=100), not the Czech one (Id=1)
+        result.ShouldNotBeNull();
+        result.Id.ShouldBe(100);
+        result.Language.ShouldBe("en");
+    }
+
+    /// <summary>
+    /// When no template exists for the requested language but a default exists in another
+    /// language, the service should fall back to any-language default.
+    /// </summary>
+    [Fact]
+    public async Task GetDefaultByTypeAsync_NoLanguageMatch_FallsBackToAnyDefault()
+    {
+        // Act — request German ("de") template for InvoiceEmail — no "de" template exists
+        // but we have a default InvoiceEmail template (Id=1) with the default "cs" language
+        var result = await _service.GetDefaultByTypeAsync(EContentTemplateType.InvoiceEmail, "de");
+
+        // Assert — should fall back to the existing default (Id=1, any language)
+        result.ShouldNotBeNull();
+        result.Id.ShouldBe(1);
+    }
+
+    /// <summary>
+    /// When no default template exists at all for the requested type
+    /// (neither in the requested language nor in any other language), return null.
+    /// </summary>
+    [Fact]
+    public async Task GetDefaultByTypeAsync_NoDefaultAtAll_ReturnsNull()
+    {
+        // Act — request a template type that has no seeded defaults (PasswordResetEmail)
+        var result = await _service.GetDefaultByTypeAsync(EContentTemplateType.PasswordResetEmail, "cs");
+
+        // Assert — no template exists, should return null
+        result.ShouldBeNull();
+    }
+
+    /// <summary>
+    /// Creating a new default template should only unset the existing default
+    /// for the same (type, language) pair, NOT for other languages of the same type.
+    /// </summary>
+    [Fact]
+    public async Task CreateAsync_NewDefault_UnsetsOldDefaultForSameLanguageOnly()
+    {
+        // Arrange — add an English default for InvoiceEmail
+        _context.ContentTemplate.Add(new ContentTemplate
+        {
+            Id = 200,
+            Name = "Invoice Email EN",
+            Subject = "Invoice",
+            HtmlBody = "<p>EN</p>",
+            TemplateType = EContentTemplateType.InvoiceEmail,
+            IsDefault = true,
+            IsActive = true,
+            Language = "en"
+        });
+        await _context.SaveChangesAsync();
+
+        // Act — create a NEW English default for InvoiceEmail
+        var newTemplate = await _service.CreateAsync(new CreateContentTemplateDto
+        {
+            Name = "New Invoice Email EN",
+            Subject = "New Invoice",
+            HtmlBody = "<p>New EN</p>",
+            TemplateType = EContentTemplateType.InvoiceEmail,
+            IsDefault = true,
+            Language = "en"
+        });
+
+        // Assert — the new one should be default
+        newTemplate.IsDefault.ShouldBeTrue();
+
+        // Assert — the OLD English default (Id=200) should have IsDefault = false
+        var oldEnTemplate = await _context.ContentTemplate.FindAsync(200L);
+        oldEnTemplate!.IsDefault.ShouldBeFalse();
+
+        // Assert — the Czech default (Id=1) should STILL be default (different language, untouched)
+        var czechDefault = await _context.ContentTemplate.FindAsync(1L);
+        czechDefault!.IsDefault.ShouldBeTrue();
+    }
 }

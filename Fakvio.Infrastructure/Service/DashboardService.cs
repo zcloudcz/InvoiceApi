@@ -51,8 +51,10 @@ public class DashboardService : IDashboardService
         _logger.LogInformation("Loading dashboard statistics for companyId: {CompanyId}", companyId);
 
         var now = DateTime.UtcNow;
-        // First day of current month (used for "invoices this month" query)
-        var firstDayOfMonth = new DateTime(now.Year, now.Month, 1);
+        // First day of current month (used for "invoices this month" query).
+        // DateTimeKind.Utc is required — Npgsql rejects Unspecified kind
+        // when comparing against PostgreSQL 'timestamp with time zone' columns.
+        var firstDayOfMonth = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
 
         // Base query for invoices — filtered by company (issuer) if provided.
         // When companyId is null (SysAdmin without impersonation), all invoices are shown.

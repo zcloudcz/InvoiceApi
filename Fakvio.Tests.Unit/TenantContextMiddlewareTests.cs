@@ -77,9 +77,16 @@ public class TenantContextMiddlewareTests : IDisposable
             context.User = new ClaimsPrincipal(identity);
         }
 
-        // Set up a service provider so the middleware can resolve MasterDbContext
+        // Set up a service provider so the middleware can resolve MasterDbContext and TenantDbContext.
+        // The middleware needs both: MasterDbContext for tenant validation (CompanySystemSettings),
+        // and TenantDbContext for setting the Schema property on valid tenant requests.
+        var tenantOptions = new DbContextOptionsBuilder<TenantDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+
         var services = new ServiceCollection();
         services.AddSingleton(_masterContext);
+        services.AddScoped(_ => new TenantDbContext(tenantOptions));
         context.RequestServices = services.BuildServiceProvider();
 
         // Set up response body stream for WriteAsJsonAsync

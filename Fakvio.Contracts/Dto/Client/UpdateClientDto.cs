@@ -42,6 +42,13 @@ public class UpdateClientDto
     public bool? IsActive { get; set; }
 
     /// <summary>
+    /// Preferred language for documents — ISO 639-1 code (e.g., "cs", "en").
+    /// Null means "don't change".
+    /// </summary>
+    [StringLength(5)]
+    public string? Language { get; set; }
+
+    /// <summary>
     /// Should data be refreshed from ARES?
     /// </summary>
     public bool RefreshFromAres { get; set; } = false;

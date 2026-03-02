@@ -87,7 +87,16 @@
       "Bash(docker:*)",
       "Bash(do:*)",
       "Bash(powershell.exe:*)",
-      "Bash(cmd.exe:*)"
+      "Bash(cmd.exe:*)",
+      "WebFetch(domain:o-seznam.cz)",
+      "WebFetch(domain:tryagi.github.io)",
+      "Bash(wmic process:*)",
+      "Bash(PGPASSWORD=fakvio_dev psql:*)",
+      "Bash(python:*)",
+      "Bash(printf {\"\"email\"\":\"\"admin@admin.cz\"\",\"\"password\"\":\"\"Admin123!\"\"}:*)",
+      "Bash(PGPASSWORD=CHANGE_ME_IN_PRODUCTION psql:*)",
+      "Bash(/tmp/login.json:*)",
+      "WebFetch(domain:www.fakturovac.cz)"
     ]
   }
 }

@@ -48,6 +48,13 @@ public class CreateClientDto
     public bool IsIssuer { get; set; } = false;
 
     /// <summary>
+    /// Preferred language for documents (PDFs, emails) — ISO 639-1 code.
+    /// Defaults to "cs" (Czech). Max 5 characters (e.g., "cs", "en", "de").
+    /// </summary>
+    [StringLength(5)]
+    public string Language { get; set; } = "cs";
+
+    /// <summary>
     /// Should this client be fetched from ARES automatically?
     /// If true, system will try to fetch data from ARES by registration number
     /// </summary>

@@ -1,0 +1,417 @@
+using System.Text.Json;
+using Fakvio.Application.Service;
+using Fakvio.Contracts.Dto.Chat;
+using Fakvio.Contracts.Dto.Client;
+using Fakvio.Contracts.Dto.Currency;
+using Fakvio.Contracts.Dto.Invoice;
+using Fakvio.Domain.Enums;
+using Microsoft.Extensions.Logging;
+
+namespace Fakvio.Infrastructure.Service.ChatTools;
+
+/// <summary>
+/// Chat tool that creates a real invoice in the database via IInvoiceService.
+///
+/// When a user says "Vytvoř fakturu pro Alza za mléko na 999,-", this tool:
+/// 1. Resolves the client by name (searches customers, not issuers)
+/// 2. Gets the issuer (your company) from IClientService.GetIssuerAsync()
+/// 3. Gets the default currency (CZK) and default VAT rate
+/// 4. Parses item descriptions/prices from the AI-provided parameters
+/// 5. Calls IInvoiceService.CreateInvoiceAsync() to create the actual invoice
+/// 6. Returns a success result with a navigate action to the invoice detail page
+///
+/// Parameters from AI:
+///   - client_name (string, required): Name or partial name of the client
+///   - items (string, required): JSON array of line items, e.g.:
+///     [{"description": "Mléko", "quantity": 1, "unit_price": 999}]
+///   - currency (string, optional): Currency code (e.g., "EUR"). Defaults to "CZK".
+///   - notes (string, optional): Invoice notes
+///
+/// Junior note: This is a write operation — it actually creates an invoice in the database.
+/// The tool validates all required data before calling CreateInvoiceAsync to prevent
+/// half-created invoices or cryptic EF Core errors.
+/// </summary>
+public class CreateInvoiceTool : IChatTool
+{
+    private readonly IInvoiceService _invoiceService;
+    private readonly IClientService _clientService;
+    private readonly ICurrencyService _currencyService;
+    private readonly IVatRateService _vatRateService;
+    private readonly ILogger<CreateInvoiceTool> _logger;
+
+    public CreateInvoiceTool(
+        IInvoiceService invoiceService,
+        IClientService clientService,
+        ICurrencyService currencyService,
+        IVatRateService vatRateService,
+        ILogger<CreateInvoiceTool> logger)
+    {
+        _invoiceService = invoiceService;
+        _clientService = clientService;
+        _currencyService = currencyService;
+        _vatRateService = vatRateService;
+        _logger = logger;
+    }
+
+    public string ToolName => "create_invoice";
+
+    public string Description =>
+        "Creates a new invoice for a client with specified items. " +
+        "Automatically resolves the client by name, sets default currency (CZK), " +
+        "applies default VAT rate, and generates a document number. " +
+        "After creation, navigates to the invoice detail page.";
+
+    public string ParameterDescription =>
+        "client_name (string, required): Client/company name to invoice. " +
+        "items (string, required): JSON array of items, each with " +
+        "\"description\" (string), \"quantity\" (number, default 1), \"unit_price\" (number). " +
+        "Example: [{\"description\": \"Mléko\", \"quantity\": 1, \"unit_price\": 999}]. " +
+        "currency (string, optional): Currency code like \"EUR\". Default: \"CZK\". " +
+        "notes (string, optional): Additional notes for the invoice.";
+
+    /// <summary>
+    /// Creates an invoice by resolving all required references and calling IInvoiceService.
+    /// The flow is:
+    /// 1. Validate parameters (client_name, items)
+    /// 2. Resolve client by name → get ClientId
+    /// 3. Get issuer → get IssuerId
+    /// 4. Get currency (default CZK) → get CurrencyId
+    /// 5. Get default VAT rate → get VatRateId
+    /// 6. Parse items JSON → build CreateInvoiceItemDto list
+    /// 7. Call CreateInvoiceAsync → get created invoice
+    /// 8. Return SuccessWithAction (navigate to invoice detail)
+    /// </summary>
+    public async Task<ChatToolResult> ExecuteAsync(
+        Dictionary<string, string> parameters,
+        CancellationToken ct = default)
+    {
+        // ── Step 1: Validate required parameters ─────────────────────────
+
+        if (!parameters.TryGetValue("client_name", out var clientName) ||
+            string.IsNullOrWhiteSpace(clientName))
+        {
+            return ChatToolResult.Failure(
+                "Missing required parameter: client_name. " +
+                "Please specify which client the invoice is for.");
+        }
+
+        if (!parameters.TryGetValue("items", out var itemsJson) ||
+            string.IsNullOrWhiteSpace(itemsJson))
+        {
+            return ChatToolResult.Failure(
+                "Missing required parameter: items. " +
+                "Please specify at least one item with description and price.");
+        }
+
+        // Optional parameters.
+        parameters.TryGetValue("currency", out var currencyCode);
+        parameters.TryGetValue("notes", out var notes);
+
+        _logger.LogInformation(
+            "CreateInvoiceTool executing: client_name={ClientName}, items={Items}, currency={Currency}",
+            clientName, itemsJson, currencyCode ?? "CZK");
+
+        // ── Step 2: Resolve client by name ───────────────────────────────
+
+        var clientResult = await ResolveClientAsync(clientName.Trim(), ct);
+        if (clientResult.Error != null)
+            return clientResult.Error;
+
+        var client = clientResult.Client!;
+
+        // ── Step 3: Get issuer (your company) ────────────────────────────
+
+        var issuer = await _clientService.GetIssuerAsync(ct);
+        if (issuer == null)
+        {
+            _logger.LogWarning("CreateInvoiceTool: no issuer configured");
+            return ChatToolResult.Failure(
+                "No issuer (your company) is configured. " +
+                "Please set up your company first in Settings.");
+        }
+
+        // ── Step 4: Get currency ─────────────────────────────────────────
+
+        var currency = await ResolveCurrencyAsync(currencyCode?.Trim(), ct);
+        if (currency == null)
+        {
+            return ChatToolResult.Failure(
+                $"Currency '{currencyCode ?? "CZK"}' not found or not active. " +
+                "Please check available currencies in Settings.");
+        }
+
+        // ── Step 5: Get default VAT rate ─────────────────────────────────
+        // We use the default standard rate (typically 21% in CZ).
+        // If no default is configured, items will have 0% VAT.
+
+        var defaultVatRate = await _vatRateService.GetDefaultStandardRateAsync(ct);
+
+        // ── Step 6: Parse items ──────────────────────────────────────────
+
+        var parsedItems = ParseItems(itemsJson, defaultVatRate?.Id, defaultVatRate?.Rate ?? 0);
+        if (parsedItems.Error != null)
+            return parsedItems.Error;
+
+        // ── Step 7: Create the invoice ───────────────────────────────────
+
+        try
+        {
+            var createDto = new CreateInvoiceDto
+            {
+                DocumentType = EDocumentType.Invoice,
+                ClientId = client.Id,
+                IssuerId = issuer.Id,
+                CurrencyId = currency.Id,
+                IssueDate = DateTime.UtcNow,
+                PaymentMethod = EPaymentMethod.BankTransfer,
+                Notes = notes?.Trim(),
+                InvoiceItem = parsedItems.Items!
+            };
+
+            var createdInvoice = await _invoiceService.CreateInvoiceAsync(createDto, ct);
+
+            _logger.LogInformation(
+                "CreateInvoiceTool: invoice created successfully — ID={InvoiceId}, DocumentNumber={DocNumber}",
+                createdInvoice.Id, createdInvoice.DocumentNumber);
+
+            // ── Step 8: Return success with navigate action ──────────────
+
+            // Build a summary of items for the AI response.
+            var itemSummary = string.Join("\n",
+                createdInvoice.InvoiceItem.Select(i =>
+                    $"  - {i.Description}: {i.Quantity} × {i.UnitPrice:N2} {currency.Code}" +
+                    $" = {i.TotalWithVat:N2} {currency.Code}"));
+
+            return ChatToolResult.SuccessWithAction(
+                $"Invoice created successfully:\n" +
+                $"- Document number: {createdInvoice.DocumentNumber}\n" +
+                $"- Client: {client.CompanyName}\n" +
+                $"- Issue date: {createdInvoice.IssueDate:dd.MM.yyyy}\n" +
+                $"- Due date: {createdInvoice.DueDate:dd.MM.yyyy}\n" +
+                $"- Currency: {currency.Code}\n" +
+                $"- Items:\n{itemSummary}\n" +
+                $"- Total (incl. VAT): {createdInvoice.TotalWithVat:N2} {currency.Code}\n" +
+                $"- Invoice ID: {createdInvoice.Id}",
+                ChatUiAction.Navigate($"/invoices/{createdInvoice.Id}"));
+        }
+        catch (InvalidOperationException ex)
+        {
+            // Business rule violations (e.g., missing number sequence).
+            _logger.LogWarning(ex, "CreateInvoiceTool: business error creating invoice");
+            return ChatToolResult.Failure($"Could not create invoice: {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "CreateInvoiceTool: unexpected error creating invoice");
+            return ChatToolResult.Failure("An unexpected error occurred while creating the invoice.");
+        }
+    }
+
+    // ─── Private Helpers ─────────────────────────────────────────────────
+
+    /// <summary>
+    /// Searches for a client by name. Returns single match or error.
+    /// Reuses the same pattern as NavigateTool.ResolveClientAsync.
+    /// </summary>
+    private async Task<ClientResolveResult> ResolveClientAsync(
+        string clientName, CancellationToken ct)
+    {
+        var filter = new ClientFilterDto
+        {
+            Search = clientName,
+            PageSize = 5,
+            IsIssuer = false // Only search customers, not the issuer.
+        };
+
+        var result = await _clientService.GetClientsPagedAsync(filter, ct);
+
+        if (result.TotalCount == 0)
+        {
+            _logger.LogInformation("CreateInvoiceTool: no client found for '{ClientName}'", clientName);
+            return new ClientResolveResult
+            {
+                Error = ChatToolResult.Failure(
+                    $"No client found matching '{clientName}'. " +
+                    "Please check the client name or create the client first.")
+            };
+        }
+
+        if (result.TotalCount == 1)
+        {
+            var client = result.Items[0];
+            _logger.LogInformation(
+                "CreateInvoiceTool: resolved '{ClientName}' to client ID {ClientId} ({CompanyName})",
+                clientName, client.Id, client.CompanyName);
+            return new ClientResolveResult { Client = client };
+        }
+
+        // Multiple matches — user needs to clarify.
+        _logger.LogInformation("CreateInvoiceTool: '{ClientName}' matched {Count} clients",
+            clientName, result.TotalCount);
+
+        var matchList = string.Join("\n",
+            result.Items.Select(c =>
+                $"  - {c.CompanyName} (ID: {c.Id}" +
+                (string.IsNullOrEmpty(c.RegistrationNumber) ? ")" : $", IČO: {c.RegistrationNumber})")));
+
+        return new ClientResolveResult
+        {
+            Error = ChatToolResult.Success(
+                $"Found {result.TotalCount} clients matching '{clientName}':\n{matchList}\n\n" +
+                "Please specify which client you mean (use a more specific name).")
+        };
+    }
+
+    /// <summary>
+    /// Resolves currency by code (e.g., "CZK", "EUR"). Defaults to CZK if not specified.
+    /// Returns null if the currency is not found or inactive.
+    /// </summary>
+    private async Task<CurrencyDto?> ResolveCurrencyAsync(
+        string? currencyCode, CancellationToken ct)
+    {
+        var code = string.IsNullOrWhiteSpace(currencyCode) ? "CZK" : currencyCode.ToUpperInvariant();
+        return await _currencyService.GetCurrencyByCodeAsync(code, ct);
+    }
+
+    /// <summary>
+    /// Parses the items JSON array from the AI response.
+    /// Expected format: [{"description": "Mléko", "quantity": 1, "unit_price": 999}]
+    ///
+    /// Handles common AI formatting variations:
+    /// - Missing quantity → defaults to 1
+    /// - Missing description → error
+    /// - Missing unit_price → error
+    /// - "total_price" instead of "unit_price" → treated as total price for 1 unit
+    /// </summary>
+    private static ItemParseResult ParseItems(
+        string itemsJson, long? defaultVatRateId, decimal defaultVatPercentage)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(itemsJson);
+            var root = doc.RootElement;
+
+            if (root.ValueKind != JsonValueKind.Array || root.GetArrayLength() == 0)
+            {
+                return new ItemParseResult
+                {
+                    Error = ChatToolResult.Failure(
+                        "Items must be a non-empty JSON array. " +
+                        "Example: [{\"description\": \"Product\", \"quantity\": 1, \"unit_price\": 100}]")
+                };
+            }
+
+            var items = new List<CreateInvoiceItemDto>();
+            var orderIndex = 1;
+
+            foreach (var element in root.EnumerateArray())
+            {
+                // Description is required.
+                var description = GetJsonString(element, "description");
+                if (string.IsNullOrWhiteSpace(description))
+                {
+                    return new ItemParseResult
+                    {
+                        Error = ChatToolResult.Failure(
+                            $"Item #{orderIndex} is missing 'description'. Each item needs a description.")
+                    };
+                }
+
+                // Get quantity — default to 1 if not specified.
+                var quantity = GetJsonDecimal(element, "quantity") ?? 1m;
+                if (quantity <= 0)
+                    quantity = 1m;
+
+                // Get price — try "unit_price" first, then "price", then "total_price".
+                var unitPrice = GetJsonDecimal(element, "unit_price")
+                    ?? GetJsonDecimal(element, "price")
+                    ?? GetJsonDecimal(element, "total_price");
+
+                if (unitPrice == null || unitPrice <= 0)
+                {
+                    return new ItemParseResult
+                    {
+                        Error = ChatToolResult.Failure(
+                            $"Item #{orderIndex} ('{description}') is missing 'unit_price'. " +
+                            "Each item needs a price.")
+                    };
+                }
+
+                // Get optional unit — default to "ks" (pieces in Czech).
+                var unit = GetJsonString(element, "unit") ?? "ks";
+
+                items.Add(new CreateInvoiceItemDto
+                {
+                    OrderIndex = orderIndex,
+                    Description = description,
+                    Quantity = quantity,
+                    Unit = unit,
+                    UnitPrice = unitPrice.Value,
+                    VatRateId = defaultVatRateId,
+                    VatRatePercentage = defaultVatPercentage
+                });
+
+                orderIndex++;
+            }
+
+            return new ItemParseResult { Items = items };
+        }
+        catch (JsonException)
+        {
+            return new ItemParseResult
+            {
+                Error = ChatToolResult.Failure(
+                    "Could not parse items JSON. " +
+                    "Expected format: [{\"description\": \"Product\", \"quantity\": 1, \"unit_price\": 100}]")
+            };
+        }
+    }
+
+    /// <summary>
+    /// Safely extracts a string property from a JSON element.
+    /// Returns null if the property doesn't exist or is not a string.
+    /// </summary>
+    private static string? GetJsonString(JsonElement element, string propertyName)
+    {
+        if (element.TryGetProperty(propertyName, out var prop))
+        {
+            return prop.ValueKind == JsonValueKind.String
+                ? prop.GetString()
+                : prop.ToString(); // Handles numbers formatted as strings.
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Safely extracts a decimal property from a JSON element.
+    /// Handles both number and string representations (AI sometimes quotes numbers).
+    /// </summary>
+    private static decimal? GetJsonDecimal(JsonElement element, string propertyName)
+    {
+        if (!element.TryGetProperty(propertyName, out var prop))
+            return null;
+
+        if (prop.ValueKind == JsonValueKind.Number)
+            return prop.GetDecimal();
+
+        if (prop.ValueKind == JsonValueKind.String &&
+            decimal.TryParse(prop.GetString(), out var parsed))
+            return parsed;
+
+        return null;
+    }
+
+    // ─── Internal result records ─────────────────────────────────────────
+
+    private record ClientResolveResult
+    {
+        public ClientDto? Client { get; init; }
+        public ChatToolResult? Error { get; init; }
+    }
+
+    private record ItemParseResult
+    {
+        public List<CreateInvoiceItemDto>? Items { get; init; }
+        public ChatToolResult? Error { get; init; }
+    }
+}

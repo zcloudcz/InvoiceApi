@@ -326,6 +326,7 @@
   <data name="Client_SearchInvoices" xml:space="preserve"><value>Hledat faktury</value></data>
   <data name="Client_NoInvoices" xml:space="preserve"><value>Pro tohoto klienta nebyly nalezeny žádné faktury</value></data>
   <data name="Client_FetchFromAres" xml:space="preserve"><value>Načítat z ARES</value></data>
+  <data name="Client_Language" xml:space="preserve"><value>Jazyk dokumentů</value></data>
   <data name="Company_Subtitle" xml:space="preserve"><value>Správa společností vystavujících faktury</value></data>
   <data name="Company_NoRecords" xml:space="preserve"><value>Nebyly nalezeny žádné společnosti.</value></data>
   <data name="Company_Detail" xml:space="preserve"><value>Detail společnosti</value></data>
@@ -518,6 +519,7 @@
   <data name="ContentTemplate_HtmlBody" xml:space="preserve"><value>HTML obsah</value></data>
   <data name="ContentTemplate_Placeholders" xml:space="preserve"><value>Dostupné zástupné symboly</value></data>
   <data name="ContentTemplate_Description" xml:space="preserve"><value>Popis</value></data>
+  <data name="ContentTemplate_Language" xml:space="preserve"><value>Jazyk</value></data>
   <data name="ContentTemplate_System" xml:space="preserve"><value>Systémové</value></data>
   <data name="ContentType_InvoicePdf" xml:space="preserve"><value>PDF faktury</value></data>
   <data name="ContentType_CreditNotePdf" xml:space="preserve"><value>PDF dobropisu</value></data>
@@ -935,4 +937,16 @@
   <data name="BankAccount_SWIFT" xml:space="preserve"><value>SWIFT/BIC</value></data>
   <data name="BankAccount_Currency" xml:space="preserve"><value>Měna</value></data>
   <data name="BankAccount_SelectAccount" xml:space="preserve"><value>Bankovní účet</value></data>
+
+  <!-- AI Chat -->
+  <data name="Chat_Title" xml:space="preserve"><value>AI Asistent</value></data>
+  <data name="Chat_NewConversation" xml:space="preserve"><value>Nová konverzace</value></data>
+  <data name="Chat_SendMessage" xml:space="preserve"><value>Odeslat</value></data>
+  <data name="Chat_Placeholder" xml:space="preserve"><value>Napište zprávu...</value></data>
+  <data name="Chat_NoConversations" xml:space="preserve"><value>Zatím žádné konverzace</value></data>
+  <data name="Chat_Provider" xml:space="preserve"><value>Poskytovatel</value></data>
+  <data name="Chat_DeleteConfirm" xml:space="preserve"><value>Opravdu smazat konverzaci?</value></data>
+  <data name="Chat_Thinking" xml:space="preserve"><value>Přemýšlím...</value></data>
+  <data name="EChatRole_User" xml:space="preserve"><value>Vy</value></data>
+  <data name="EChatRole_Assistant" xml:space="preserve"><value>Asistent</value></data>
 </root>

@@ -2,6 +2,697 @@
 #nullable enable
 #pragma warning disable
 
+namespace Fakvio.Infrastructure.Service.ChatTools
+{
+    partial class ChatToolExecutor
+    {
+        /// <remarks>
+        /// Pattern:<br/>
+        /// <code>(?:IČO|ICO|ičo|ico)[\\s:]*(\\d{8})\\b|\\b(\\d{8})\\b</code><br/>
+        /// Options:<br/>
+        /// <code>RegexOptions.Compiled</code><br/>
+        /// Explanation:<br/>
+        /// <code>
+        /// ○ Match with 2 alternative expressions, atomically.<br/>
+        ///     ○ Match a sequence of expressions.<br/>
+        ///         ○ Match with 2 alternative expressions.<br/>
+        ///             ○ Match a sequence of expressions.<br/>
+        ///                 ○ Match 'I'.<br/>
+        ///                 ○ Match with 2 alternative expressions.<br/>
+        ///                     ○ Match the string "ČO".<br/>
+        ///                     ○ Match the string "CO".<br/>
+        ///             ○ Match a sequence of expressions.<br/>
+        ///                 ○ Match 'i'.<br/>
+        ///                 ○ Match with 2 alternative expressions.<br/>
+        ///                     ○ Match the string "čo".<br/>
+        ///                     ○ Match the string "co".<br/>
+        ///         ○ Match a character in the set [:\s] greedily any number of times.<br/>
+        ///         ○ 1st capture group.<br/>
+        ///             ○ Match a Unicode digit exactly 8 times.<br/>
+        ///         ○ Match if at a word boundary.<br/>
+        ///     ○ Match a sequence of expressions.<br/>
+        ///         ○ Match if at a word boundary.<br/>
+        ///         ○ 2nd capture group.<br/>
+        ///             ○ Match a Unicode digit exactly 8 times.<br/>
+        ///         ○ Match if at a word boundary.<br/>
+        /// </code>
+        /// </remarks>
+        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.7603")]
+        private static partial global::System.Text.RegularExpressions.Regex IcoPattern() => global::System.Text.RegularExpressions.Generated.IcoPattern_0.Instance;
+    }
+}
+
+namespace Fakvio.Infrastructure.Service.ChatTools
+{
+    partial class ChatToolExecutor
+    {
+        /// <remarks>
+        /// Pattern:<br/>
+        /// <code>\\b(klient|firma|založ|zaloz|zaklad|najdi|najít|najit|vyhledej|hledej|ares|společnost|spolecnost|client|company|create|lookup|find|search|register)\\b</code><br/>
+        /// Options:<br/>
+        /// <code>RegexOptions.IgnoreCase | RegexOptions.Compiled</code><br/>
+        /// Explanation:<br/>
+        /// <code>
+        /// ○ Match if at a word boundary.<br/>
+        /// ○ 1st capture group.<br/>
+        ///     ○ Match with 13 alternative expressions.<br/>
+        ///         ○ Match a sequence of expressions.<br/>
+        ///             ○ Match a character in the set [Kk\u212A].<br/>
+        ///             ○ Match a character in the set [Ll].<br/>
+        ///             ○ Match a character in the set [Ii].<br/>
+        ///             ○ Match a character in the set [Ee].<br/>
+        ///             ○ Match a character in the set [Nn].<br/>
+        ///             ○ Match a character in the set [Tt].<br/>
+        ///         ○ Match a sequence of expressions.<br/>
+        ///             ○ Match a character in the set [Ff].<br/>
+        ///             ○ Match a character in the set [Ii].<br/>
+        ///             ○ Match a character in the set [Rr].<br/>
+        ///             ○ Match a character in the set [Mm].<br/>
+        ///             ○ Match a character in the set [Aa].<br/>
+        ///         ○ Match a sequence of expressions.<br/>
+        ///             ○ Match a character in the set [Zz].<br/>
+        ///             ○ Match a character in the set [Aa].<br/>
+        ///             ○ Match with 2 alternative expressions.<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Ll].<br/>
+        ///                     ○ Match a character in the set [Oo].<br/>
+        ///                     ○ Match a character in the set [Zz\u017D\u017E].<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Kk\u212A].<br/>
+        ///                     ○ Match a character in the set [Ll].<br/>
+        ///                     ○ Match a character in the set [Aa].<br/>
+        ///                     ○ Match a character in the set [Dd].<br/>
+        ///         ○ Match a sequence of expressions.<br/>
+        ///             ○ Match a character in the set [Nn].<br/>
+        ///             ○ Match a character in the set [Aa].<br/>
+        ///             ○ Match a character in the set [Jj].<br/>
+        ///             ○ Match with 3 alternative expressions.<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Dd].<br/>
+        ///                     ○ Match a character in the set [Ii].<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [\u00CD\u00ED].<br/>
+        ///                     ○ Match a character in the set [Tt].<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Ii].<br/>
+        ///                     ○ Match a character in the set [Tt].<br/>
+        ///         ○ Match a sequence of expressions.<br/>
+        ///             ○ Match a character in the set [Vv].<br/>
+        ///             ○ Match a character in the set [Yy].<br/>
+        ///             ○ Match a character in the set [Hh].<br/>
+        ///             ○ Match a character in the set [Ll].<br/>
+        ///             ○ Match a character in the set [Ee].<br/>
+        ///             ○ Match a character in the set [Dd].<br/>
+        ///             ○ Match a character in the set [Ee].<br/>
+        ///             ○ Match a character in the set [Jj].<br/>
+        ///         ○ Match a sequence of expressions.<br/>
+        ///             ○ Match a character in the set [Hh].<br/>
+        ///             ○ Match a character in the set [Ll].<br/>
+        ///             ○ Match a character in the set [Ee].<br/>
+        ///             ○ Match a character in the set [Dd].<br/>
+        ///             ○ Match a character in the set [Ee].<br/>
+        ///             ○ Match a character in the set [Jj].<br/>
+        ///         ○ Match a sequence of expressions.<br/>
+        ///             ○ Match a character in the set [Aa].<br/>
+        ///             ○ Match a character in the set [Rr].<br/>
+        ///             ○ Match a character in the set [Ee].<br/>
+        ///             ○ Match a character in the set [Ss].<br/>
+        ///         ○ Match a sequence of expressions.<br/>
+        ///             ○ Match a character in the set [Ss].<br/>
+        ///             ○ Match a character in the set [Pp].<br/>
+        ///             ○ Match a character in the set [Oo].<br/>
+        ///             ○ Match a character in the set [Ll].<br/>
+        ///             ○ Match a character in the set [Ee].<br/>
+        ///             ○ Match with 2 alternative expressions.<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [\u010C\u010D].<br/>
+        ///                     ○ Match a character in the set [Nn].<br/>
+        ///                     ○ Match a character in the set [Oo].<br/>
+        ///                     ○ Match a character in the set [Ss].<br/>
+        ///                     ○ Match a character in the set [Tt].<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Cc].<br/>
+        ///                     ○ Match a character in the set [Nn].<br/>
+        ///                     ○ Match a character in the set [Oo].<br/>
+        ///                     ○ Match a character in the set [Ss].<br/>
+        ///                     ○ Match a character in the set [Tt].<br/>
+        ///         ○ Match a sequence of expressions.<br/>
+        ///             ○ Match a character in the set [Cc].<br/>
+        ///             ○ Match with 3 alternative expressions.<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Ll].<br/>
+        ///                     ○ Match a character in the set [Ii].<br/>
+        ///                     ○ Match a character in the set [Ee].<br/>
+        ///                     ○ Match a character in the set [Nn].<br/>
+        ///                     ○ Match a character in the set [Tt].<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Oo].<br/>
+        ///                     ○ Match a character in the set [Mm].<br/>
+        ///                     ○ Match a character in the set [Pp].<br/>
+        ///                     ○ Match a character in the set [Aa].<br/>
+        ///                     ○ Match a character in the set [Nn].<br/>
+        ///                     ○ Match a character in the set [Yy].<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Rr].<br/>
+        ///                     ○ Match a character in the set [Ee].<br/>
+        ///                     ○ Match a character in the set [Aa].<br/>
+        ///                     ○ Match a character in the set [Tt].<br/>
+        ///                     ○ Match a character in the set [Ee].<br/>
+        ///         ○ Match a sequence of expressions.<br/>
+        ///             ○ Match a character in the set [Ll].<br/>
+        ///             ○ Match a character in the set [Oo] exactly 2 times.<br/>
+        ///             ○ Match a character in the set [Kk\u212A].<br/>
+        ///             ○ Match a character in the set [Uu].<br/>
+        ///             ○ Match a character in the set [Pp].<br/>
+        ///         ○ Match a sequence of expressions.<br/>
+        ///             ○ Match a character in the set [Ff].<br/>
+        ///             ○ Match a character in the set [Ii].<br/>
+        ///             ○ Match a character in the set [Nn].<br/>
+        ///             ○ Match a character in the set [Dd].<br/>
+        ///         ○ Match a sequence of expressions.<br/>
+        ///             ○ Match a character in the set [Ss].<br/>
+        ///             ○ Match a character in the set [Ee].<br/>
+        ///             ○ Match a character in the set [Aa].<br/>
+        ///             ○ Match a character in the set [Rr].<br/>
+        ///             ○ Match a character in the set [Cc].<br/>
+        ///             ○ Match a character in the set [Hh].<br/>
+        ///         ○ Match a sequence of expressions.<br/>
+        ///             ○ Match a character in the set [Rr].<br/>
+        ///             ○ Match a character in the set [Ee].<br/>
+        ///             ○ Match a character in the set [Gg].<br/>
+        ///             ○ Match a character in the set [Ii].<br/>
+        ///             ○ Match a character in the set [Ss].<br/>
+        ///             ○ Match a character in the set [Tt].<br/>
+        ///             ○ Match a character in the set [Ee].<br/>
+        ///             ○ Match a character in the set [Rr].<br/>
+        /// ○ Match if at a word boundary.<br/>
+        /// </code>
+        /// </remarks>
+        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.7603")]
+        private static partial global::System.Text.RegularExpressions.Regex ToolKeywordPattern() => global::System.Text.RegularExpressions.Generated.ToolKeywordPattern_1.Instance;
+    }
+}
+
+namespace Fakvio.Infrastructure.Service.ChatTools
+{
+    partial class ChatToolExecutor
+    {
+        /// <remarks>
+        /// Pattern:<br/>
+        /// <code>\\b(otevři|otevri|ukaž|ukaz|přejdi|prejdi|naviguj|zobraz|zobrazit|jdi na|jdi do|přejít|prejit|otevřít|otevrit|nová faktura|nova faktura|nový klient|novy klient|nový dobropis|novy dobropis|seznam faktur|seznam klientů|seznam klientu|open|show|go to|navigate|display|new invoice|new client|new credit note|invoice list|client list)\\b</code><br/>
+        /// Options:<br/>
+        /// <code>RegexOptions.IgnoreCase | RegexOptions.Compiled</code><br/>
+        /// Explanation:<br/>
+        /// <code>
+        /// ○ Match if at a word boundary.<br/>
+        /// ○ 1st capture group.<br/>
+        ///     ○ Match with 18 alternative expressions.<br/>
+        ///         ○ Match a sequence of expressions.<br/>
+        ///             ○ Match a character in the set [Oo].<br/>
+        ///             ○ Match a character in the set [Tt].<br/>
+        ///             ○ Match a character in the set [Ee].<br/>
+        ///             ○ Match a character in the set [Vv].<br/>
+        ///             ○ Match with 2 alternative expressions.<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [\u0158\u0159].<br/>
+        ///                     ○ Match a character in the set [Ii].<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Rr].<br/>
+        ///                     ○ Match a character in the set [Ii].<br/>
+        ///         ○ Match a sequence of expressions.<br/>
+        ///             ○ Match a character in the set [Uu].<br/>
+        ///             ○ Match a character in the set [Kk\u212A].<br/>
+        ///             ○ Match a character in the set [Aa].<br/>
+        ///             ○ Match a character in the set [Zz\u017D\u017E].<br/>
+        ///         ○ Match a sequence of expressions.<br/>
+        ///             ○ Match a character in the set [Pp].<br/>
+        ///             ○ Match with 2 alternative expressions.<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [\u0158\u0159].<br/>
+        ///                     ○ Match a character in the set [Ee].<br/>
+        ///                     ○ Match a character in the set [Jj].<br/>
+        ///                     ○ Match a character in the set [Dd].<br/>
+        ///                     ○ Match a character in the set [Ii].<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Rr].<br/>
+        ///                     ○ Match a character in the set [Ee].<br/>
+        ///                     ○ Match a character in the set [Jj].<br/>
+        ///                     ○ Match a character in the set [Dd].<br/>
+        ///                     ○ Match a character in the set [Ii].<br/>
+        ///         ○ Match a sequence of expressions.<br/>
+        ///             ○ Match a character in the set [Nn].<br/>
+        ///             ○ Match a character in the set [Aa].<br/>
+        ///             ○ Match a character in the set [Vv].<br/>
+        ///             ○ Match a character in the set [Ii].<br/>
+        ///             ○ Match a character in the set [Gg].<br/>
+        ///             ○ Match a character in the set [Uu].<br/>
+        ///             ○ Match a character in the set [Jj].<br/>
+        ///         ○ Match a sequence of expressions.<br/>
+        ///             ○ Match a character in the set [Zz].<br/>
+        ///             ○ Match a character in the set [Oo].<br/>
+        ///             ○ Match a character in the set [Bb].<br/>
+        ///             ○ Match a character in the set [Rr].<br/>
+        ///             ○ Match a character in the set [Aa].<br/>
+        ///             ○ Match with 2 alternative expressions.<br/>
+        ///                 ○ Match a character in the set [Zz].<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Zz].<br/>
+        ///                     ○ Match a character in the set [Ii].<br/>
+        ///                     ○ Match a character in the set [Tt].<br/>
+        ///         ○ Match a sequence of expressions.<br/>
+        ///             ○ Match a character in the set [Jj].<br/>
+        ///             ○ Match a character in the set [Dd].<br/>
+        ///             ○ Match a character in the set [Ii].<br/>
+        ///             ○ Match ' '.<br/>
+        ///             ○ Match with 2 alternative expressions.<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Nn].<br/>
+        ///                     ○ Match a character in the set [Aa].<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Dd].<br/>
+        ///                     ○ Match a character in the set [Oo].<br/>
+        ///         ○ Match a sequence of expressions.<br/>
+        ///             ○ Match a character in the set [Pp].<br/>
+        ///             ○ Match with 2 alternative expressions.<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [\u0158\u0159].<br/>
+        ///                     ○ Match a character in the set [Ee].<br/>
+        ///                     ○ Match a character in the set [Jj].<br/>
+        ///                     ○ Match a character in the set [\u00CD\u00ED].<br/>
+        ///                     ○ Match a character in the set [Tt].<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Rr].<br/>
+        ///                     ○ Match a character in the set [Ee].<br/>
+        ///                     ○ Match a character in the set [Jj].<br/>
+        ///                     ○ Match a character in the set [Ii].<br/>
+        ///                     ○ Match a character in the set [Tt].<br/>
+        ///         ○ Match a sequence of expressions.<br/>
+        ///             ○ Match a character in the set [Oo].<br/>
+        ///             ○ Match a character in the set [Tt].<br/>
+        ///             ○ Match a character in the set [Ee].<br/>
+        ///             ○ Match a character in the set [Vv].<br/>
+        ///             ○ Match with 2 alternative expressions.<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [\u0158\u0159].<br/>
+        ///                     ○ Match a character in the set [\u00CD\u00ED].<br/>
+        ///                     ○ Match a character in the set [Tt].<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Rr].<br/>
+        ///                     ○ Match a character in the set [Ii].<br/>
+        ///                     ○ Match a character in the set [Tt].<br/>
+        ///         ○ Match a sequence of expressions.<br/>
+        ///             ○ Match a character in the set [Nn].<br/>
+        ///             ○ Match a character in the set [Oo].<br/>
+        ///             ○ Match a character in the set [Vv].<br/>
+        ///             ○ Match with 6 alternative expressions.<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [\u00C1\u00E1].<br/>
+        ///                     ○ Match ' '.<br/>
+        ///                     ○ Match a character in the set [Ff].<br/>
+        ///                     ○ Match a character in the set [Aa].<br/>
+        ///                     ○ Match a character in the set [Kk\u212A].<br/>
+        ///                     ○ Match a character in the set [Tt].<br/>
+        ///                     ○ Match a character in the set [Uu].<br/>
+        ///                     ○ Match a character in the set [Rr].<br/>
+        ///                     ○ Match a character in the set [Aa].<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Aa].<br/>
+        ///                     ○ Match ' '.<br/>
+        ///                     ○ Match a character in the set [Ff].<br/>
+        ///                     ○ Match a character in the set [Aa].<br/>
+        ///                     ○ Match a character in the set [Kk\u212A].<br/>
+        ///                     ○ Match a character in the set [Tt].<br/>
+        ///                     ○ Match a character in the set [Uu].<br/>
+        ///                     ○ Match a character in the set [Rr].<br/>
+        ///                     ○ Match a character in the set [Aa].<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [\u00DD\u00FD].<br/>
+        ///                     ○ Match ' '.<br/>
+        ///                     ○ Match a character in the set [Kk\u212A].<br/>
+        ///                     ○ Match a character in the set [Ll].<br/>
+        ///                     ○ Match a character in the set [Ii].<br/>
+        ///                     ○ Match a character in the set [Ee].<br/>
+        ///                     ○ Match a character in the set [Nn].<br/>
+        ///                     ○ Match a character in the set [Tt].<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Yy].<br/>
+        ///                     ○ Match ' '.<br/>
+        ///                     ○ Match a character in the set [Kk\u212A].<br/>
+        ///                     ○ Match a character in the set [Ll].<br/>
+        ///                     ○ Match a character in the set [Ii].<br/>
+        ///                     ○ Match a character in the set [Ee].<br/>
+        ///                     ○ Match a character in the set [Nn].<br/>
+        ///                     ○ Match a character in the set [Tt].<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [\u00DD\u00FD].<br/>
+        ///                     ○ Match ' '.<br/>
+        ///                     ○ Match a character in the set [Dd].<br/>
+        ///                     ○ Match a character in the set [Oo].<br/>
+        ///                     ○ Match a character in the set [Bb].<br/>
+        ///                     ○ Match a character in the set [Rr].<br/>
+        ///                     ○ Match a character in the set [Oo].<br/>
+        ///                     ○ Match a character in the set [Pp].<br/>
+        ///                     ○ Match a character in the set [Ii].<br/>
+        ///                     ○ Match a character in the set [Ss].<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Yy].<br/>
+        ///                     ○ Match ' '.<br/>
+        ///                     ○ Match a character in the set [Dd].<br/>
+        ///                     ○ Match a character in the set [Oo].<br/>
+        ///                     ○ Match a character in the set [Bb].<br/>
+        ///                     ○ Match a character in the set [Rr].<br/>
+        ///                     ○ Match a character in the set [Oo].<br/>
+        ///                     ○ Match a character in the set [Pp].<br/>
+        ///                     ○ Match a character in the set [Ii].<br/>
+        ///                     ○ Match a character in the set [Ss].<br/>
+        ///         ○ Match a sequence of expressions.<br/>
+        ///             ○ Match a character in the set [Ss].<br/>
+        ///             ○ Match a character in the set [Ee].<br/>
+        ///             ○ Match a character in the set [Zz].<br/>
+        ///             ○ Match a character in the set [Nn].<br/>
+        ///             ○ Match a character in the set [Aa].<br/>
+        ///             ○ Match a character in the set [Mm].<br/>
+        ///             ○ Match ' '.<br/>
+        ///             ○ Match with 2 alternative expressions.<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Ff].<br/>
+        ///                     ○ Match a character in the set [Aa].<br/>
+        ///                     ○ Match a character in the set [Kk\u212A].<br/>
+        ///                     ○ Match a character in the set [Tt].<br/>
+        ///                     ○ Match a character in the set [Uu].<br/>
+        ///                     ○ Match a character in the set [Rr].<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Kk\u212A].<br/>
+        ///                     ○ Match a character in the set [Ll].<br/>
+        ///                     ○ Match a character in the set [Ii].<br/>
+        ///                     ○ Match a character in the set [Ee].<br/>
+        ///                     ○ Match a character in the set [Nn].<br/>
+        ///                     ○ Match a character in the set [Tt].<br/>
+        ///                     ○ Match a character in the set [Uu\u016E\u016F].<br/>
+        ///         ○ Match a sequence of expressions.<br/>
+        ///             ○ Match a character in the set [Oo].<br/>
+        ///             ○ Match a character in the set [Pp].<br/>
+        ///             ○ Match a character in the set [Ee].<br/>
+        ///             ○ Match a character in the set [Nn].<br/>
+        ///         ○ Match a sequence of expressions.<br/>
+        ///             ○ Match a character in the set [Ss].<br/>
+        ///             ○ Match a character in the set [Hh].<br/>
+        ///             ○ Match a character in the set [Oo].<br/>
+        ///             ○ Match a character in the set [Ww].<br/>
+        ///         ○ Match a sequence of expressions.<br/>
+        ///             ○ Match a character in the set [Gg].<br/>
+        ///             ○ Match a character in the set [Oo].<br/>
+        ///             ○ Match ' '.<br/>
+        ///             ○ Match a character in the set [Tt].<br/>
+        ///             ○ Match a character in the set [Oo].<br/>
+        ///         ○ Match a sequence of expressions.<br/>
+        ///             ○ Match a character in the set [Nn].<br/>
+        ///             ○ Match a character in the set [Aa].<br/>
+        ///             ○ Match a character in the set [Vv].<br/>
+        ///             ○ Match a character in the set [Ii].<br/>
+        ///             ○ Match a character in the set [Gg].<br/>
+        ///             ○ Match a character in the set [Aa].<br/>
+        ///             ○ Match a character in the set [Tt].<br/>
+        ///             ○ Match a character in the set [Ee].<br/>
+        ///         ○ Match a sequence of expressions.<br/>
+        ///             ○ Match a character in the set [Dd].<br/>
+        ///             ○ Match a character in the set [Ii].<br/>
+        ///             ○ Match a character in the set [Ss].<br/>
+        ///             ○ Match a character in the set [Pp].<br/>
+        ///             ○ Match a character in the set [Ll].<br/>
+        ///             ○ Match a character in the set [Aa].<br/>
+        ///             ○ Match a character in the set [Yy].<br/>
+        ///         ○ Match a sequence of expressions.<br/>
+        ///             ○ Match a character in the set [Nn].<br/>
+        ///             ○ Match a character in the set [Ee].<br/>
+        ///             ○ Match a character in the set [Ww].<br/>
+        ///             ○ Match ' '.<br/>
+        ///             ○ Match with 2 alternative expressions.<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Ii].<br/>
+        ///                     ○ Match a character in the set [Nn].<br/>
+        ///                     ○ Match a character in the set [Vv].<br/>
+        ///                     ○ Match a character in the set [Oo].<br/>
+        ///                     ○ Match a character in the set [Ii].<br/>
+        ///                     ○ Match a character in the set [Cc].<br/>
+        ///                     ○ Match a character in the set [Ee].<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Cc].<br/>
+        ///                     ○ Match with 2 alternative expressions.<br/>
+        ///                         ○ Match a sequence of expressions.<br/>
+        ///                             ○ Match a character in the set [Ll].<br/>
+        ///                             ○ Match a character in the set [Ii].<br/>
+        ///                             ○ Match a character in the set [Ee].<br/>
+        ///                             ○ Match a character in the set [Nn].<br/>
+        ///                             ○ Match a character in the set [Tt].<br/>
+        ///                         ○ Match a sequence of expressions.<br/>
+        ///                             ○ Match a character in the set [Rr].<br/>
+        ///                             ○ Match a character in the set [Ee].<br/>
+        ///                             ○ Match a character in the set [Dd].<br/>
+        ///                             ○ Match a character in the set [Ii].<br/>
+        ///                             ○ Match a character in the set [Tt].<br/>
+        ///                             ○ Match ' '.<br/>
+        ///                             ○ Match a character in the set [Nn].<br/>
+        ///                             ○ Match a character in the set [Oo].<br/>
+        ///                             ○ Match a character in the set [Tt].<br/>
+        ///                             ○ Match a character in the set [Ee].<br/>
+        ///         ○ Match a sequence of expressions.<br/>
+        ///             ○ Match a character in the set [Ii].<br/>
+        ///             ○ Match a character in the set [Nn].<br/>
+        ///             ○ Match a character in the set [Vv].<br/>
+        ///             ○ Match a character in the set [Oo].<br/>
+        ///             ○ Match a character in the set [Ii].<br/>
+        ///             ○ Match a character in the set [Cc].<br/>
+        ///             ○ Match a character in the set [Ee].<br/>
+        ///             ○ Match ' '.<br/>
+        ///             ○ Match a character in the set [Ll].<br/>
+        ///             ○ Match a character in the set [Ii].<br/>
+        ///             ○ Match a character in the set [Ss].<br/>
+        ///             ○ Match a character in the set [Tt].<br/>
+        ///         ○ Match a sequence of expressions.<br/>
+        ///             ○ Match a character in the set [Cc].<br/>
+        ///             ○ Match a character in the set [Ll].<br/>
+        ///             ○ Match a character in the set [Ii].<br/>
+        ///             ○ Match a character in the set [Ee].<br/>
+        ///             ○ Match a character in the set [Nn].<br/>
+        ///             ○ Match a character in the set [Tt].<br/>
+        ///             ○ Match ' '.<br/>
+        ///             ○ Match a character in the set [Ll].<br/>
+        ///             ○ Match a character in the set [Ii].<br/>
+        ///             ○ Match a character in the set [Ss].<br/>
+        ///             ○ Match a character in the set [Tt].<br/>
+        /// ○ Match if at a word boundary.<br/>
+        /// </code>
+        /// </remarks>
+        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.7603")]
+        private static partial global::System.Text.RegularExpressions.Regex NavigationKeywordPattern() => global::System.Text.RegularExpressions.Generated.NavigationKeywordPattern_2.Instance;
+    }
+}
+
+namespace Fakvio.Infrastructure.Service.ChatTools
+{
+    partial class ChatToolExecutor
+    {
+        /// <remarks>
+        /// Pattern:<br/>
+        /// <code>\\b(vytvoř|vytvor|udělej|udelej|vystavit|vystav|vytvořit|vytvorit|create|make|generate|issue)\\b.*\\b(fakturu|faktura|faktur|invoice|dobropis|credit note)\\b|\\b(fakturu|faktura|invoice|dobropis|credit note)\\b.*\\b(za|na|for)\\b.*\\d</code><br/>
+        /// Options:<br/>
+        /// <code>RegexOptions.IgnoreCase | RegexOptions.Compiled</code><br/>
+        /// Explanation:<br/>
+        /// <code>
+        /// ○ Match if at a word boundary.<br/>
+        /// ○ Match with 2 alternative expressions, atomically.<br/>
+        ///     ○ Match a sequence of expressions.<br/>
+        ///         ○ 1st capture group.<br/>
+        ///             ○ Match with 7 alternative expressions.<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Vv].<br/>
+        ///                     ○ Match a character in the set [Yy].<br/>
+        ///                     ○ Match a character in the set [Tt].<br/>
+        ///                     ○ Match a character in the set [Vv].<br/>
+        ///                     ○ Match a character in the set [Oo].<br/>
+        ///                     ○ Match a character in the set [Rr\u0158\u0159].<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Uu].<br/>
+        ///                     ○ Match a character in the set [Dd].<br/>
+        ///                     ○ Match with 2 alternative expressions.<br/>
+        ///                         ○ Match a sequence of expressions.<br/>
+        ///                             ○ Match a character in the set [\u011A\u011B].<br/>
+        ///                             ○ Match a character in the set [Ll].<br/>
+        ///                             ○ Match a character in the set [Ee].<br/>
+        ///                             ○ Match a character in the set [Jj].<br/>
+        ///                         ○ Match a sequence of expressions.<br/>
+        ///                             ○ Match a character in the set [Ee].<br/>
+        ///                             ○ Match a character in the set [Ll].<br/>
+        ///                             ○ Match a character in the set [Ee].<br/>
+        ///                             ○ Match a character in the set [Jj].<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Vv].<br/>
+        ///                     ○ Match a character in the set [Yy].<br/>
+        ///                     ○ Match with 2 alternative expressions.<br/>
+        ///                         ○ Match a sequence of expressions.<br/>
+        ///                             ○ Match a character in the set [Ss].<br/>
+        ///                             ○ Match a character in the set [Tt].<br/>
+        ///                             ○ Match a character in the set [Aa].<br/>
+        ///                             ○ Match with 2 alternative expressions.<br/>
+        ///                                 ○ Match a sequence of expressions.<br/>
+        ///                                     ○ Match a character in the set [Vv].<br/>
+        ///                                     ○ Match a character in the set [Ii].<br/>
+        ///                                     ○ Match a character in the set [Tt].<br/>
+        ///                                 ○ Match a character in the set [Vv].<br/>
+        ///                         ○ Match a sequence of expressions.<br/>
+        ///                             ○ Match a character in the set [Tt].<br/>
+        ///                             ○ Match a character in the set [Vv].<br/>
+        ///                             ○ Match a character in the set [Oo].<br/>
+        ///                             ○ Match with 2 alternative expressions.<br/>
+        ///                                 ○ Match a sequence of expressions.<br/>
+        ///                                     ○ Match a character in the set [\u0158\u0159].<br/>
+        ///                                     ○ Match a character in the set [Ii].<br/>
+        ///                                     ○ Match a character in the set [Tt].<br/>
+        ///                                 ○ Match a sequence of expressions.<br/>
+        ///                                     ○ Match a character in the set [Rr].<br/>
+        ///                                     ○ Match a character in the set [Ii].<br/>
+        ///                                     ○ Match a character in the set [Tt].<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Cc].<br/>
+        ///                     ○ Match a character in the set [Rr].<br/>
+        ///                     ○ Match a character in the set [Ee].<br/>
+        ///                     ○ Match a character in the set [Aa].<br/>
+        ///                     ○ Match a character in the set [Tt].<br/>
+        ///                     ○ Match a character in the set [Ee].<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Mm].<br/>
+        ///                     ○ Match a character in the set [Aa].<br/>
+        ///                     ○ Match a character in the set [Kk\u212A].<br/>
+        ///                     ○ Match a character in the set [Ee].<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Gg].<br/>
+        ///                     ○ Match a character in the set [Ee].<br/>
+        ///                     ○ Match a character in the set [Nn].<br/>
+        ///                     ○ Match a character in the set [Ee].<br/>
+        ///                     ○ Match a character in the set [Rr].<br/>
+        ///                     ○ Match a character in the set [Aa].<br/>
+        ///                     ○ Match a character in the set [Tt].<br/>
+        ///                     ○ Match a character in the set [Ee].<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Ii].<br/>
+        ///                     ○ Match a character in the set [Ss] exactly 2 times.<br/>
+        ///                     ○ Match a character in the set [Uu].<br/>
+        ///                     ○ Match a character in the set [Ee].<br/>
+        ///         ○ Match if at a word boundary.<br/>
+        ///         ○ Match a character other than '\n' greedily any number of times.<br/>
+        ///         ○ Match if at a word boundary.<br/>
+        ///         ○ 2nd capture group.<br/>
+        ///             ○ Match with 4 alternative expressions.<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Ff].<br/>
+        ///                     ○ Match a character in the set [Aa].<br/>
+        ///                     ○ Match a character in the set [Kk\u212A].<br/>
+        ///                     ○ Match a character in the set [Tt].<br/>
+        ///                     ○ Match a character in the set [Uu].<br/>
+        ///                     ○ Match with 3 alternative expressions.<br/>
+        ///                         ○ Match a sequence of expressions.<br/>
+        ///                             ○ Match a character in the set [Rr].<br/>
+        ///                             ○ Match a character in the set [Uu].<br/>
+        ///                         ○ Match a sequence of expressions.<br/>
+        ///                             ○ Match a character in the set [Rr].<br/>
+        ///                             ○ Match a character in the set [Aa].<br/>
+        ///                         ○ Match a character in the set [Rr].<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Ii].<br/>
+        ///                     ○ Match a character in the set [Nn].<br/>
+        ///                     ○ Match a character in the set [Vv].<br/>
+        ///                     ○ Match a character in the set [Oo].<br/>
+        ///                     ○ Match a character in the set [Ii].<br/>
+        ///                     ○ Match a character in the set [Cc].<br/>
+        ///                     ○ Match a character in the set [Ee].<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Dd].<br/>
+        ///                     ○ Match a character in the set [Oo].<br/>
+        ///                     ○ Match a character in the set [Bb].<br/>
+        ///                     ○ Match a character in the set [Rr].<br/>
+        ///                     ○ Match a character in the set [Oo].<br/>
+        ///                     ○ Match a character in the set [Pp].<br/>
+        ///                     ○ Match a character in the set [Ii].<br/>
+        ///                     ○ Match a character in the set [Ss].<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Cc].<br/>
+        ///                     ○ Match a character in the set [Rr].<br/>
+        ///                     ○ Match a character in the set [Ee].<br/>
+        ///                     ○ Match a character in the set [Dd].<br/>
+        ///                     ○ Match a character in the set [Ii].<br/>
+        ///                     ○ Match a character in the set [Tt].<br/>
+        ///                     ○ Match ' '.<br/>
+        ///                     ○ Match a character in the set [Nn].<br/>
+        ///                     ○ Match a character in the set [Oo].<br/>
+        ///                     ○ Match a character in the set [Tt].<br/>
+        ///                     ○ Match a character in the set [Ee].<br/>
+        ///         ○ Match if at a word boundary.<br/>
+        ///     ○ Match a sequence of expressions.<br/>
+        ///         ○ 3rd capture group.<br/>
+        ///             ○ Match with 4 alternative expressions.<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Ff].<br/>
+        ///                     ○ Match a character in the set [Aa].<br/>
+        ///                     ○ Match a character in the set [Kk\u212A].<br/>
+        ///                     ○ Match a character in the set [Tt].<br/>
+        ///                     ○ Match a character in the set [Uu].<br/>
+        ///                     ○ Match a character in the set [Rr].<br/>
+        ///                     ○ Match a character in the set [AUau].<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Ii].<br/>
+        ///                     ○ Match a character in the set [Nn].<br/>
+        ///                     ○ Match a character in the set [Vv].<br/>
+        ///                     ○ Match a character in the set [Oo].<br/>
+        ///                     ○ Match a character in the set [Ii].<br/>
+        ///                     ○ Match a character in the set [Cc].<br/>
+        ///                     ○ Match a character in the set [Ee].<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Dd].<br/>
+        ///                     ○ Match a character in the set [Oo].<br/>
+        ///                     ○ Match a character in the set [Bb].<br/>
+        ///                     ○ Match a character in the set [Rr].<br/>
+        ///                     ○ Match a character in the set [Oo].<br/>
+        ///                     ○ Match a character in the set [Pp].<br/>
+        ///                     ○ Match a character in the set [Ii].<br/>
+        ///                     ○ Match a character in the set [Ss].<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Cc].<br/>
+        ///                     ○ Match a character in the set [Rr].<br/>
+        ///                     ○ Match a character in the set [Ee].<br/>
+        ///                     ○ Match a character in the set [Dd].<br/>
+        ///                     ○ Match a character in the set [Ii].<br/>
+        ///                     ○ Match a character in the set [Tt].<br/>
+        ///                     ○ Match ' '.<br/>
+        ///                     ○ Match a character in the set [Nn].<br/>
+        ///                     ○ Match a character in the set [Oo].<br/>
+        ///                     ○ Match a character in the set [Tt].<br/>
+        ///                     ○ Match a character in the set [Ee].<br/>
+        ///         ○ Match if at a word boundary.<br/>
+        ///         ○ Match a character other than '\n' greedily any number of times.<br/>
+        ///         ○ Match if at a word boundary.<br/>
+        ///         ○ 4th capture group.<br/>
+        ///             ○ Match with 3 alternative expressions.<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Zz].<br/>
+        ///                     ○ Match a character in the set [Aa].<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Nn].<br/>
+        ///                     ○ Match a character in the set [Aa].<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Ff].<br/>
+        ///                     ○ Match a character in the set [Oo].<br/>
+        ///                     ○ Match a character in the set [Rr].<br/>
+        ///         ○ Match if at a word boundary.<br/>
+        ///         ○ Match a character other than '\n' greedily any number of times.<br/>
+        ///         ○ Match a Unicode digit.<br/>
+        /// </code>
+        /// </remarks>
+        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.7603")]
+        private static partial global::System.Text.RegularExpressions.Regex InvoiceCreationPattern() => global::System.Text.RegularExpressions.Generated.InvoiceCreationPattern_3.Instance;
+    }
+}
+
 namespace Fakvio.Infrastructure.Service
 {
     partial class ContentTemplateService
@@ -18,7 +709,7 @@ namespace Fakvio.Infrastructure.Service
         /// </code>
         /// </remarks>
         [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.7603")]
-        private static partial global::System.Text.RegularExpressions.Regex PlaceholderRegex() => global::System.Text.RegularExpressions.Generated.PlaceholderRegex_0.Instance;
+        private static partial global::System.Text.RegularExpressions.Regex PlaceholderRegex() => global::System.Text.RegularExpressions.Generated.PlaceholderRegex_4.Instance;
     }
 }
 
@@ -34,15 +725,3071 @@ namespace System.Text.RegularExpressions.Generated
     using System.Text.RegularExpressions;
     using System.Threading;
 
-    /// <summary>Custom <see cref="Regex"/>-derived type for the PlaceholderRegex method.</summary>
+    /// <summary>Custom <see cref="Regex"/>-derived type for the IcoPattern method.</summary>
     [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.7603")]
-    file sealed class PlaceholderRegex_0 : Regex
+    file sealed class IcoPattern_0 : Regex
     {
         /// <summary>Cached, thread-safe singleton instance.</summary>
-        internal static readonly PlaceholderRegex_0 Instance = new();
+        internal static readonly IcoPattern_0 Instance = new();
     
         /// <summary>Initializes the instance.</summary>
-        private PlaceholderRegex_0()
+        private IcoPattern_0()
+        {
+            base.pattern = "(?:IČO|ICO|ičo|ico)[\\s:]*(\\d{8})\\b|\\b(\\d{8})\\b";
+            base.roptions = RegexOptions.Compiled;
+            ValidateMatchTimeout(Utilities.s_defaultTimeout);
+            base.internalMatchTimeout = Utilities.s_defaultTimeout;
+            base.factory = new RunnerFactory();
+            base.capsize = 3;
+        }
+            
+        /// <summary>Provides a factory for creating <see cref="RegexRunner"/> instances to be used by methods on <see cref="Regex"/>.</summary>
+        private sealed class RunnerFactory : RegexRunnerFactory
+        {
+            /// <summary>Creates an instance of a <see cref="RegexRunner"/> used by methods on <see cref="Regex"/>.</summary>
+            protected override RegexRunner CreateInstance() => new Runner();
+        
+            /// <summary>Provides the runner that contains the custom logic implementing the specified regular expression.</summary>
+            private sealed class Runner : RegexRunner
+            {
+                /// <summary>Scan the <paramref name="inputSpan"/> starting from base.runtextstart for the next match.</summary>
+                /// <param name="inputSpan">The text being scanned by the regular expression.</param>
+                protected override void Scan(ReadOnlySpan<char> inputSpan)
+                {
+                    // Search until we can't find a valid starting position, we find a match, or we reach the end of the input.
+                    while (TryFindNextPossibleStartingPosition(inputSpan) &&
+                           !TryMatchAtCurrentPosition(inputSpan) &&
+                           base.runtextpos != inputSpan.Length)
+                    {
+                        base.runtextpos++;
+                        if (Utilities.s_hasTimeout)
+                        {
+                            base.CheckTimeout();
+                        }
+                    }
+                }
+        
+                /// <summary>Search <paramref name="inputSpan"/> starting from base.runtextpos for the next location a match could possibly start.</summary>
+                /// <param name="inputSpan">The text being scanned by the regular expression.</param>
+                /// <returns>true if a possible match was found; false if no more matches are possible.</returns>
+                private bool TryFindNextPossibleStartingPosition(ReadOnlySpan<char> inputSpan)
+                {
+                    int pos = base.runtextpos;
+                    char ch;
+                    
+                    // Any possible match is at least 8 characters.
+                    if (pos <= inputSpan.Length - 8)
+                    {
+                        // The pattern begins with a character in the set [Ii\d].
+                        // Find the next occurrence. If it can't be found, there's no match.
+                        ReadOnlySpan<char> span = inputSpan.Slice(pos);
+                        for (int i = 0; i < span.Length - 7; i++)
+                        {
+                            int indexOfPos = span.Slice(i).IndexOfNonAsciiOrAny_91646B6EA80FE804F00EDCCAE8E24823A0970255CE9EC02D28FEBE77E7EB590F();
+                            if (indexOfPos < 0)
+                            {
+                                goto NoMatchFound;
+                            }
+                            i += indexOfPos;
+                            
+                            // The primary set being searched for was found. 2 more sets will be checked so as
+                            // to minimize the number of places TryMatchAtCurrentPosition is run unnecessarily.
+                            // Make sure they fit in the remainder of the input.
+                            if ((uint)(i + 2) >= (uint)span.Length)
+                            {
+                                goto NoMatchFound;
+                            }
+                            
+                            if (((ch = span[i + 1]) < 128 ? ("\0\0\0Ͽ\b\0\b\0"[ch >> 4] & (1 << (ch & 0xF))) != 0 : RegexRunner.CharInClass((char)ch, "\0\u0006\u0001CDcdČĎ\t")) &&
+                                ((ch = span[i + 2]) < 128 ? ("\0\0\0Ͽ耀\0耀\0"[ch >> 4] & (1 << (ch & 0xF))) != 0 : RegexRunner.CharInClass((char)ch, "\0\u0004\u0001OPop\t")))
+                            {
+                                base.runtextpos = pos + i;
+                                return true;
+                            }
+                        }
+                    }
+                    
+                    // No match found.
+                    NoMatchFound:
+                    base.runtextpos = inputSpan.Length;
+                    return false;
+                }
+        
+                /// <summary>Determine whether <paramref name="inputSpan"/> at base.runtextpos is a match for the regular expression.</summary>
+                /// <param name="inputSpan">The text being scanned by the regular expression.</param>
+                /// <returns>true if the regular expression matches at the current position; otherwise, false.</returns>
+                private bool TryMatchAtCurrentPosition(ReadOnlySpan<char> inputSpan)
+                {
+                    int pos = base.runtextpos;
+                    int matchStart = pos;
+                    char ch;
+                    int alternation_branch = 0;
+                    int alternation_starting_capturepos1 = 0;
+                    int alternation_starting_pos1 = 0;
+                    int capture_starting_pos = 0;
+                    int capture_starting_pos1 = 0;
+                    int charloop_capture_pos = 0;
+                    int charloop_starting_pos = 0, charloop_ending_pos = 0;
+                    int stackpos = 0;
+                    ReadOnlySpan<char> slice = inputSpan.Slice(pos);
+                    
+                    // Atomic group.
+                    {
+                        int atomic_stackpos = stackpos;
+                        
+                        // Match with 2 alternative expressions, atomically.
+                        //{
+                            int alternation_starting_pos = pos;
+                            int alternation_starting_capturepos = base.Crawlpos();
+                            
+                            // Branch 0
+                            {
+                                // Match with 2 alternative expressions.
+                                //{
+                                    alternation_starting_pos1 = pos;
+                                    alternation_starting_capturepos1 = base.Crawlpos();
+                                    
+                                    // Branch 0
+                                    //{
+                                        // Match 'I'.
+                                        if (slice.IsEmpty || slice[0] != 'I')
+                                        {
+                                            goto AlternationBranch1;
+                                        }
+                                        
+                                        // Match with 2 alternative expressions.
+                                        //{
+                                            if ((uint)slice.Length < 2)
+                                            {
+                                                goto AlternationBranch1;
+                                            }
+                                            
+                                            switch (slice[1])
+                                            {
+                                                case 'Č':
+                                                    // Match 'O'.
+                                                    if ((uint)slice.Length < 3 || slice[2] != 'O')
+                                                    {
+                                                        goto AlternationBranch1;
+                                                    }
+                                                    
+                                                    pos += 3;
+                                                    slice = inputSpan.Slice(pos);
+                                                    break;
+                                                    
+                                                case 'C':
+                                                    // Match 'O'.
+                                                    if ((uint)slice.Length < 3 || slice[2] != 'O')
+                                                    {
+                                                        goto AlternationBranch1;
+                                                    }
+                                                    
+                                                    pos += 3;
+                                                    slice = inputSpan.Slice(pos);
+                                                    break;
+                                                    
+                                                default:
+                                                    goto AlternationBranch1;
+                                            }
+                                        //}
+                                        
+                                        alternation_branch = 0;
+                                        goto AlternationMatch1;
+                                        
+                                        AlternationBranch1:
+                                        pos = alternation_starting_pos1;
+                                        slice = inputSpan.Slice(pos);
+                                        UncaptureUntil(alternation_starting_capturepos1);
+                                    //}
+                                    
+                                    // Branch 1
+                                    //{
+                                        // Match 'i'.
+                                        if (slice.IsEmpty || slice[0] != 'i')
+                                        {
+                                            goto AlternationBranch;
+                                        }
+                                        
+                                        // Match with 2 alternative expressions.
+                                        //{
+                                            if ((uint)slice.Length < 2)
+                                            {
+                                                goto AlternationBranch;
+                                            }
+                                            
+                                            switch (slice[1])
+                                            {
+                                                case 'č':
+                                                    // Match 'o'.
+                                                    if ((uint)slice.Length < 3 || slice[2] != 'o')
+                                                    {
+                                                        goto AlternationBranch;
+                                                    }
+                                                    
+                                                    pos += 3;
+                                                    slice = inputSpan.Slice(pos);
+                                                    break;
+                                                    
+                                                case 'c':
+                                                    // Match 'o'.
+                                                    if ((uint)slice.Length < 3 || slice[2] != 'o')
+                                                    {
+                                                        goto AlternationBranch;
+                                                    }
+                                                    
+                                                    pos += 3;
+                                                    slice = inputSpan.Slice(pos);
+                                                    break;
+                                                    
+                                                default:
+                                                    goto AlternationBranch;
+                                            }
+                                        //}
+                                        
+                                        alternation_branch = 1;
+                                        goto AlternationMatch1;
+                                    //}
+                                    
+                                    AlternationBacktrack1:
+                                    if (Utilities.s_hasTimeout)
+                                    {
+                                        base.CheckTimeout();
+                                    }
+                                    
+                                    switch (alternation_branch)
+                                    {
+                                        case 0:
+                                            goto AlternationBranch1;
+                                        case 1:
+                                            goto AlternationBranch;
+                                    }
+                                    
+                                    AlternationMatch1:;
+                                //}
+                                
+                                // Match a character in the set [:\s] greedily any number of times.
+                                //{
+                                    charloop_starting_pos = pos;
+                                    
+                                    int iteration = 0;
+                                    while ((uint)iteration < (uint)slice.Length && ((ch = slice[iteration]) < 128 ? ("㸀\0\u0001Ѐ\0\0\0\0"[ch >> 4] & (1 << (ch & 0xF))) != 0 : RegexRunner.CharInClass((char)ch, "\0\u0002\u0001:;d")))
+                                    {
+                                        iteration++;
+                                    }
+                                    
+                                    slice = slice.Slice(iteration);
+                                    pos += iteration;
+                                    
+                                    charloop_ending_pos = pos;
+                                    goto CharLoopEnd;
+                                    
+                                    CharLoopBacktrack:
+                                    UncaptureUntil(charloop_capture_pos);
+                                    
+                                    if (Utilities.s_hasTimeout)
+                                    {
+                                        base.CheckTimeout();
+                                    }
+                                    
+                                    if (charloop_starting_pos >= charloop_ending_pos)
+                                    {
+                                        goto AlternationBacktrack1;
+                                    }
+                                    pos = --charloop_ending_pos;
+                                    slice = inputSpan.Slice(pos);
+                                    
+                                    CharLoopEnd:
+                                    charloop_capture_pos = base.Crawlpos();
+                                //}
+                                
+                                // 1st capture group.
+                                {
+                                    capture_starting_pos = pos;
+                                    
+                                    // Match a Unicode digit exactly 8 times.
+                                    {
+                                        if ((uint)slice.Length < 8 ||
+                                            !char.IsDigit(slice[0]) ||
+                                            !char.IsDigit(slice[1]) ||
+                                            !char.IsDigit(slice[2]) ||
+                                            !char.IsDigit(slice[3]) ||
+                                            !char.IsDigit(slice[4]) ||
+                                            !char.IsDigit(slice[5]) ||
+                                            !char.IsDigit(slice[6]) ||
+                                            !char.IsDigit(slice[7]))
+                                        {
+                                            goto CharLoopBacktrack;
+                                        }
+                                    }
+                                    
+                                    pos += 8;
+                                    slice = inputSpan.Slice(pos);
+                                    base.Capture(1, capture_starting_pos, pos);
+                                }
+                                
+                                // Match if at a word boundary.
+                                if (!Utilities.IsPostWordCharBoundary(inputSpan, pos))
+                                {
+                                    goto CharLoopBacktrack;
+                                }
+                                
+                                goto AlternationMatch;
+                                
+                                AlternationBranch:
+                                pos = alternation_starting_pos;
+                                slice = inputSpan.Slice(pos);
+                                UncaptureUntil(alternation_starting_capturepos);
+                            }
+                            
+                            // Branch 1
+                            {
+                                // Match if at a word boundary.
+                                if (!Utilities.IsPreWordCharBoundary(inputSpan, pos))
+                                {
+                                    UncaptureUntil(0);
+                                    return false; // The input didn't match.
+                                }
+                                
+                                // 2nd capture group.
+                                {
+                                    capture_starting_pos1 = pos;
+                                    
+                                    // Match a Unicode digit exactly 8 times.
+                                    {
+                                        if ((uint)slice.Length < 8 ||
+                                            !char.IsDigit(slice[0]) ||
+                                            !char.IsDigit(slice[1]) ||
+                                            !char.IsDigit(slice[2]) ||
+                                            !char.IsDigit(slice[3]) ||
+                                            !char.IsDigit(slice[4]) ||
+                                            !char.IsDigit(slice[5]) ||
+                                            !char.IsDigit(slice[6]) ||
+                                            !char.IsDigit(slice[7]))
+                                        {
+                                            UncaptureUntil(0);
+                                            return false; // The input didn't match.
+                                        }
+                                    }
+                                    
+                                    pos += 8;
+                                    slice = inputSpan.Slice(pos);
+                                    base.Capture(2, capture_starting_pos1, pos);
+                                }
+                                
+                                // Match if at a word boundary.
+                                if (!Utilities.IsPostWordCharBoundary(inputSpan, pos))
+                                {
+                                    UncaptureUntil(0);
+                                    return false; // The input didn't match.
+                                }
+                                
+                            }
+                            
+                            AlternationMatch:;
+                        //}
+                        
+                        stackpos = atomic_stackpos;
+                    }
+                    
+                    // The input matched.
+                    base.runtextpos = pos;
+                    base.Capture(0, matchStart, pos);
+                    return true;
+                    
+                    // <summary>Undo captures until it reaches the specified capture position.</summary>
+                    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                    void UncaptureUntil(int capturePosition)
+                    {
+                        while (base.Crawlpos() > capturePosition)
+                        {
+                            base.Uncapture();
+                        }
+                    }
+                }
+            }
+        }
+
+    }
+    
+    /// <summary>Custom <see cref="Regex"/>-derived type for the ToolKeywordPattern method.</summary>
+    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.7603")]
+    file sealed class ToolKeywordPattern_1 : Regex
+    {
+        /// <summary>Cached, thread-safe singleton instance.</summary>
+        internal static readonly ToolKeywordPattern_1 Instance = new();
+    
+        /// <summary>Initializes the instance.</summary>
+        private ToolKeywordPattern_1()
+        {
+            base.pattern = "\\b(klient|firma|založ|zaloz|zaklad|najdi|najít|najit|vyhledej|hledej|ares|společnost|spolecnost|client|company|create|lookup|find|search|register)\\b";
+            base.roptions = RegexOptions.IgnoreCase | RegexOptions.Compiled;
+            ValidateMatchTimeout(Utilities.s_defaultTimeout);
+            base.internalMatchTimeout = Utilities.s_defaultTimeout;
+            base.factory = new RunnerFactory();
+            base.capsize = 2;
+        }
+            
+        /// <summary>Provides a factory for creating <see cref="RegexRunner"/> instances to be used by methods on <see cref="Regex"/>.</summary>
+        private sealed class RunnerFactory : RegexRunnerFactory
+        {
+            /// <summary>Creates an instance of a <see cref="RegexRunner"/> used by methods on <see cref="Regex"/>.</summary>
+            protected override RegexRunner CreateInstance() => new Runner();
+        
+            /// <summary>Provides the runner that contains the custom logic implementing the specified regular expression.</summary>
+            private sealed class Runner : RegexRunner
+            {
+                /// <summary>Scan the <paramref name="inputSpan"/> starting from base.runtextstart for the next match.</summary>
+                /// <param name="inputSpan">The text being scanned by the regular expression.</param>
+                protected override void Scan(ReadOnlySpan<char> inputSpan)
+                {
+                    // Search until we can't find a valid starting position, we find a match, or we reach the end of the input.
+                    while (TryFindNextPossibleStartingPosition(inputSpan) &&
+                           !TryMatchAtCurrentPosition(inputSpan) &&
+                           base.runtextpos != inputSpan.Length)
+                    {
+                        base.runtextpos++;
+                        if (Utilities.s_hasTimeout)
+                        {
+                            base.CheckTimeout();
+                        }
+                    }
+                }
+        
+                /// <summary>Search <paramref name="inputSpan"/> starting from base.runtextpos for the next location a match could possibly start.</summary>
+                /// <param name="inputSpan">The text being scanned by the regular expression.</param>
+                /// <returns>true if a possible match was found; false if no more matches are possible.</returns>
+                private bool TryFindNextPossibleStartingPosition(ReadOnlySpan<char> inputSpan)
+                {
+                    int pos = base.runtextpos;
+                    char ch;
+                    ulong charMinusLowUInt64;
+                    
+                    // Any possible match is at least 4 characters.
+                    if (pos <= inputSpan.Length - 4)
+                    {
+                        // The pattern begins with a character in the set [ACFHKLNRSVZacfhklnrsvz\u212A].
+                        // Find the next occurrence. If it can't be found, there's no match.
+                        ReadOnlySpan<char> span = inputSpan.Slice(pos);
+                        for (int i = 0; i < span.Length - 3; i++)
+                        {
+                            int indexOfPos = span.Slice(i).IndexOfAny(Utilities.s_nonAscii_D45C93CFD1A5C7BA92AEFEE4D8CA2E85A44DC1B3F8EB9E963BC6BD9D80B5F31F);
+                            if (indexOfPos < 0)
+                            {
+                                goto NoMatchFound;
+                            }
+                            i += indexOfPos;
+                            
+                            // The primary set being searched for was found. 2 more sets will be checked so as
+                            // to minimize the number of places TryMatchAtCurrentPosition is run unnecessarily.
+                            // Make sure they fit in the remainder of the input.
+                            if ((uint)(i + 2) >= (uint)span.Length)
+                            {
+                                goto NoMatchFound;
+                            }
+                            
+                            if (((long)((0x8893408088934080UL << (int)(charMinusLowUInt64 = (uint)span[i + 1] - 'A')) & (charMinusLowUInt64 - 64)) < 0) &&
+                                ((ch = span[i + 2]) < 128 ? ("\0\0\0\0ﾢ\u0004ﾢ\u0004"[ch >> 4] & (1 << (ch & 0xF))) != 0 : RegexRunner.CharInClass((char)ch, "\0\u0012\0ABEFGPRSabefgprsKÅ")))
+                            {
+                                base.runtextpos = pos + i;
+                                return true;
+                            }
+                        }
+                    }
+                    
+                    // No match found.
+                    NoMatchFound:
+                    base.runtextpos = inputSpan.Length;
+                    return false;
+                }
+        
+                /// <summary>Determine whether <paramref name="inputSpan"/> at base.runtextpos is a match for the regular expression.</summary>
+                /// <param name="inputSpan">The text being scanned by the regular expression.</param>
+                /// <returns>true if the regular expression matches at the current position; otherwise, false.</returns>
+                private bool TryMatchAtCurrentPosition(ReadOnlySpan<char> inputSpan)
+                {
+                    int pos = base.runtextpos;
+                    int matchStart = pos;
+                    char ch;
+                    int alternation_branch = 0;
+                    int alternation_starting_capturepos = 0;
+                    int alternation_starting_pos = 0;
+                    int capture_starting_pos = 0;
+                    ReadOnlySpan<char> slice = inputSpan.Slice(pos);
+                    
+                    // Match if at a word boundary.
+                    if (!Utilities.IsPreWordCharBoundary(inputSpan, pos))
+                    {
+                        UncaptureUntil(0);
+                        return false; // The input didn't match.
+                    }
+                    
+                    // 1st capture group.
+                    //{
+                        capture_starting_pos = pos;
+                        
+                        // Match with 13 alternative expressions.
+                        //{
+                            alternation_starting_pos = pos;
+                            alternation_starting_capturepos = base.Crawlpos();
+                            
+                            // Branch 0
+                            //{
+                                if ((uint)slice.Length < 6 ||
+                                    ((((ch = slice[0]) | 0x20) != 'k') & (ch != 'K')) || // Match a character in the set [Kk\u212A].
+                                    !slice.Slice(1).StartsWith("lient", StringComparison.OrdinalIgnoreCase)) // Match the string "lient" (ordinal case-insensitive)
+                                {
+                                    goto AlternationBranch;
+                                }
+                                
+                                alternation_branch = 0;
+                                pos += 6;
+                                slice = inputSpan.Slice(pos);
+                                goto AlternationMatch;
+                                
+                                AlternationBranch:
+                                pos = alternation_starting_pos;
+                                slice = inputSpan.Slice(pos);
+                                UncaptureUntil(alternation_starting_capturepos);
+                            //}
+                            
+                            // Branch 1
+                            //{
+                                if ((uint)slice.Length < 5 ||
+                                    !slice.StartsWith("firma", StringComparison.OrdinalIgnoreCase)) // Match the string "firma" (ordinal case-insensitive)
+                                {
+                                    goto AlternationBranch1;
+                                }
+                                
+                                alternation_branch = 1;
+                                pos += 5;
+                                slice = inputSpan.Slice(pos);
+                                goto AlternationMatch;
+                                
+                                AlternationBranch1:
+                                pos = alternation_starting_pos;
+                                slice = inputSpan.Slice(pos);
+                                UncaptureUntil(alternation_starting_capturepos);
+                            //}
+                            
+                            // Branch 2
+                            //{
+                                if ((uint)slice.Length < 2 ||
+                                    !slice.StartsWith("za", StringComparison.OrdinalIgnoreCase)) // Match the string "za" (ordinal case-insensitive)
+                                {
+                                    goto AlternationBranch2;
+                                }
+                                
+                                // Match with 2 alternative expressions.
+                                //{
+                                    if ((uint)slice.Length < 3)
+                                    {
+                                        goto AlternationBranch2;
+                                    }
+                                    
+                                    switch (slice[2])
+                                    {
+                                        case 'L' or 'l':
+                                            
+                                            if ((uint)slice.Length < 5 ||
+                                                ((slice[3] | 0x20) != 'o') || // Match a character in the set [Oo].
+                                                ((ch = slice[4]) < 128 ? ("\0\0\0\0\0Ѐ\0Ѐ"[ch >> 4] & (1 << (ch & 0xF))) == 0 : !RegexRunner.CharInClass((char)ch, "\0\u0006\0Z[z{Žſ"))) // Match a character in the set [Zz\u017D\u017E].
+                                            {
+                                                goto AlternationBranch2;
+                                            }
+                                            
+                                            pos += 5;
+                                            slice = inputSpan.Slice(pos);
+                                            break;
+                                            
+                                        case 'K' or 'k' or 'K':
+                                            
+                                            if ((uint)slice.Length < 6 ||
+                                                !slice.Slice(3).StartsWith("lad", StringComparison.OrdinalIgnoreCase)) // Match the string "lad" (ordinal case-insensitive)
+                                            {
+                                                goto AlternationBranch2;
+                                            }
+                                            
+                                            pos += 6;
+                                            slice = inputSpan.Slice(pos);
+                                            break;
+                                            
+                                        default:
+                                            goto AlternationBranch2;
+                                    }
+                                //}
+                                
+                                alternation_branch = 2;
+                                goto AlternationMatch;
+                                
+                                AlternationBranch2:
+                                pos = alternation_starting_pos;
+                                slice = inputSpan.Slice(pos);
+                                UncaptureUntil(alternation_starting_capturepos);
+                            //}
+                            
+                            // Branch 3
+                            //{
+                                if ((uint)slice.Length < 3 ||
+                                    !slice.StartsWith("naj", StringComparison.OrdinalIgnoreCase)) // Match the string "naj" (ordinal case-insensitive)
+                                {
+                                    goto AlternationBranch3;
+                                }
+                                
+                                // Match with 3 alternative expressions.
+                                //{
+                                    if ((uint)slice.Length < 4)
+                                    {
+                                        goto AlternationBranch3;
+                                    }
+                                    
+                                    switch (slice[3])
+                                    {
+                                        case 'D' or 'd':
+                                            
+                                            // Match a character in the set [Ii].
+                                            if ((uint)slice.Length < 5 || ((slice[4] | 0x20) != 'i'))
+                                            {
+                                                goto AlternationBranch3;
+                                            }
+                                            
+                                            pos += 5;
+                                            slice = inputSpan.Slice(pos);
+                                            break;
+                                            
+                                        case 'Í' or 'í':
+                                            
+                                            // Match a character in the set [Tt].
+                                            if ((uint)slice.Length < 5 || ((slice[4] | 0x20) != 't'))
+                                            {
+                                                goto AlternationBranch3;
+                                            }
+                                            
+                                            pos += 5;
+                                            slice = inputSpan.Slice(pos);
+                                            break;
+                                            
+                                        case 'I' or 'i':
+                                            
+                                            // Match a character in the set [Tt].
+                                            if ((uint)slice.Length < 5 || ((slice[4] | 0x20) != 't'))
+                                            {
+                                                goto AlternationBranch3;
+                                            }
+                                            
+                                            pos += 5;
+                                            slice = inputSpan.Slice(pos);
+                                            break;
+                                            
+                                        default:
+                                            goto AlternationBranch3;
+                                    }
+                                //}
+                                
+                                alternation_branch = 3;
+                                goto AlternationMatch;
+                                
+                                AlternationBranch3:
+                                pos = alternation_starting_pos;
+                                slice = inputSpan.Slice(pos);
+                                UncaptureUntil(alternation_starting_capturepos);
+                            //}
+                            
+                            // Branch 4
+                            //{
+                                if ((uint)slice.Length < 8 ||
+                                    !slice.StartsWith("vyhledej", StringComparison.OrdinalIgnoreCase)) // Match the string "vyhledej" (ordinal case-insensitive)
+                                {
+                                    goto AlternationBranch4;
+                                }
+                                
+                                alternation_branch = 4;
+                                pos += 8;
+                                slice = inputSpan.Slice(pos);
+                                goto AlternationMatch;
+                                
+                                AlternationBranch4:
+                                pos = alternation_starting_pos;
+                                slice = inputSpan.Slice(pos);
+                                UncaptureUntil(alternation_starting_capturepos);
+                            //}
+                            
+                            // Branch 5
+                            //{
+                                if ((uint)slice.Length < 6 ||
+                                    !slice.StartsWith("hledej", StringComparison.OrdinalIgnoreCase)) // Match the string "hledej" (ordinal case-insensitive)
+                                {
+                                    goto AlternationBranch5;
+                                }
+                                
+                                alternation_branch = 5;
+                                pos += 6;
+                                slice = inputSpan.Slice(pos);
+                                goto AlternationMatch;
+                                
+                                AlternationBranch5:
+                                pos = alternation_starting_pos;
+                                slice = inputSpan.Slice(pos);
+                                UncaptureUntil(alternation_starting_capturepos);
+                            //}
+                            
+                            // Branch 6
+                            //{
+                                if ((uint)slice.Length < 4 ||
+                                    !slice.StartsWith("ares", StringComparison.OrdinalIgnoreCase)) // Match the string "ares" (ordinal case-insensitive)
+                                {
+                                    goto AlternationBranch6;
+                                }
+                                
+                                alternation_branch = 6;
+                                pos += 4;
+                                slice = inputSpan.Slice(pos);
+                                goto AlternationMatch;
+                                
+                                AlternationBranch6:
+                                pos = alternation_starting_pos;
+                                slice = inputSpan.Slice(pos);
+                                UncaptureUntil(alternation_starting_capturepos);
+                            //}
+                            
+                            // Branch 7
+                            //{
+                                if ((uint)slice.Length < 5 ||
+                                    !slice.StartsWith("spole", StringComparison.OrdinalIgnoreCase)) // Match the string "spole" (ordinal case-insensitive)
+                                {
+                                    goto AlternationBranch7;
+                                }
+                                
+                                // Match with 2 alternative expressions.
+                                //{
+                                    if ((uint)slice.Length < 6)
+                                    {
+                                        goto AlternationBranch7;
+                                    }
+                                    
+                                    switch (slice[5])
+                                    {
+                                        case 'Č' or 'č':
+                                            
+                                            if ((uint)slice.Length < 10 ||
+                                                !slice.Slice(6).StartsWith("nost", StringComparison.OrdinalIgnoreCase)) // Match the string "nost" (ordinal case-insensitive)
+                                            {
+                                                goto AlternationBranch7;
+                                            }
+                                            
+                                            pos += 10;
+                                            slice = inputSpan.Slice(pos);
+                                            break;
+                                            
+                                        case 'C' or 'c':
+                                            
+                                            if ((uint)slice.Length < 10 ||
+                                                !slice.Slice(6).StartsWith("nost", StringComparison.OrdinalIgnoreCase)) // Match the string "nost" (ordinal case-insensitive)
+                                            {
+                                                goto AlternationBranch7;
+                                            }
+                                            
+                                            pos += 10;
+                                            slice = inputSpan.Slice(pos);
+                                            break;
+                                            
+                                        default:
+                                            goto AlternationBranch7;
+                                    }
+                                //}
+                                
+                                alternation_branch = 7;
+                                goto AlternationMatch;
+                                
+                                AlternationBranch7:
+                                pos = alternation_starting_pos;
+                                slice = inputSpan.Slice(pos);
+                                UncaptureUntil(alternation_starting_capturepos);
+                            //}
+                            
+                            // Branch 8
+                            //{
+                                // Match a character in the set [Cc].
+                                if (slice.IsEmpty || ((slice[0] | 0x20) != 'c'))
+                                {
+                                    goto AlternationBranch8;
+                                }
+                                
+                                // Match with 3 alternative expressions.
+                                //{
+                                    if ((uint)slice.Length < 2)
+                                    {
+                                        goto AlternationBranch8;
+                                    }
+                                    
+                                    switch (slice[1])
+                                    {
+                                        case 'L' or 'l':
+                                            
+                                            if ((uint)slice.Length < 6 ||
+                                                !slice.Slice(2).StartsWith("ient", StringComparison.OrdinalIgnoreCase)) // Match the string "ient" (ordinal case-insensitive)
+                                            {
+                                                goto AlternationBranch8;
+                                            }
+                                            
+                                            pos += 6;
+                                            slice = inputSpan.Slice(pos);
+                                            break;
+                                            
+                                        case 'O' or 'o':
+                                            
+                                            if ((uint)slice.Length < 7 ||
+                                                !slice.Slice(2).StartsWith("mpany", StringComparison.OrdinalIgnoreCase)) // Match the string "mpany" (ordinal case-insensitive)
+                                            {
+                                                goto AlternationBranch8;
+                                            }
+                                            
+                                            pos += 7;
+                                            slice = inputSpan.Slice(pos);
+                                            break;
+                                            
+                                        case 'R' or 'r':
+                                            
+                                            if ((uint)slice.Length < 6 ||
+                                                !slice.Slice(2).StartsWith("eate", StringComparison.OrdinalIgnoreCase)) // Match the string "eate" (ordinal case-insensitive)
+                                            {
+                                                goto AlternationBranch8;
+                                            }
+                                            
+                                            pos += 6;
+                                            slice = inputSpan.Slice(pos);
+                                            break;
+                                            
+                                        default:
+                                            goto AlternationBranch8;
+                                    }
+                                //}
+                                
+                                alternation_branch = 8;
+                                goto AlternationMatch;
+                                
+                                AlternationBranch8:
+                                pos = alternation_starting_pos;
+                                slice = inputSpan.Slice(pos);
+                                UncaptureUntil(alternation_starting_capturepos);
+                            //}
+                            
+                            // Branch 9
+                            //{
+                                if ((uint)slice.Length < 6 ||
+                                    !slice.StartsWith("loo", StringComparison.OrdinalIgnoreCase) || // Match the string "loo" (ordinal case-insensitive)
+                                    ((((ch = slice[3]) | 0x20) != 'k') & (ch != 'K')) || // Match a character in the set [Kk\u212A].
+                                    !slice.Slice(4).StartsWith("up", StringComparison.OrdinalIgnoreCase)) // Match the string "up" (ordinal case-insensitive)
+                                {
+                                    goto AlternationBranch9;
+                                }
+                                
+                                alternation_branch = 9;
+                                pos += 6;
+                                slice = inputSpan.Slice(pos);
+                                goto AlternationMatch;
+                                
+                                AlternationBranch9:
+                                pos = alternation_starting_pos;
+                                slice = inputSpan.Slice(pos);
+                                UncaptureUntil(alternation_starting_capturepos);
+                            //}
+                            
+                            // Branch 10
+                            //{
+                                if ((uint)slice.Length < 4 ||
+                                    !slice.StartsWith("find", StringComparison.OrdinalIgnoreCase)) // Match the string "find" (ordinal case-insensitive)
+                                {
+                                    goto AlternationBranch10;
+                                }
+                                
+                                alternation_branch = 10;
+                                pos += 4;
+                                slice = inputSpan.Slice(pos);
+                                goto AlternationMatch;
+                                
+                                AlternationBranch10:
+                                pos = alternation_starting_pos;
+                                slice = inputSpan.Slice(pos);
+                                UncaptureUntil(alternation_starting_capturepos);
+                            //}
+                            
+                            // Branch 11
+                            //{
+                                if ((uint)slice.Length < 6 ||
+                                    !slice.StartsWith("search", StringComparison.OrdinalIgnoreCase)) // Match the string "search" (ordinal case-insensitive)
+                                {
+                                    goto AlternationBranch11;
+                                }
+                                
+                                alternation_branch = 11;
+                                pos += 6;
+                                slice = inputSpan.Slice(pos);
+                                goto AlternationMatch;
+                                
+                                AlternationBranch11:
+                                pos = alternation_starting_pos;
+                                slice = inputSpan.Slice(pos);
+                                UncaptureUntil(alternation_starting_capturepos);
+                            //}
+                            
+                            // Branch 12
+                            //{
+                                if ((uint)slice.Length < 8 ||
+                                    !slice.StartsWith("register", StringComparison.OrdinalIgnoreCase)) // Match the string "register" (ordinal case-insensitive)
+                                {
+                                    UncaptureUntil(0);
+                                    return false; // The input didn't match.
+                                }
+                                
+                                alternation_branch = 12;
+                                pos += 8;
+                                slice = inputSpan.Slice(pos);
+                                goto AlternationMatch;
+                            //}
+                            
+                            AlternationBacktrack:
+                            if (Utilities.s_hasTimeout)
+                            {
+                                base.CheckTimeout();
+                            }
+                            
+                            switch (alternation_branch)
+                            {
+                                case 0:
+                                    goto AlternationBranch;
+                                case 1:
+                                    goto AlternationBranch1;
+                                case 2:
+                                    goto AlternationBranch2;
+                                case 3:
+                                    goto AlternationBranch3;
+                                case 4:
+                                    goto AlternationBranch4;
+                                case 5:
+                                    goto AlternationBranch5;
+                                case 6:
+                                    goto AlternationBranch6;
+                                case 7:
+                                    goto AlternationBranch7;
+                                case 8:
+                                    goto AlternationBranch8;
+                                case 9:
+                                    goto AlternationBranch9;
+                                case 10:
+                                    goto AlternationBranch10;
+                                case 11:
+                                    goto AlternationBranch11;
+                                case 12:
+                                    UncaptureUntil(0);
+                                    return false; // The input didn't match.
+                            }
+                            
+                            AlternationMatch:;
+                        //}
+                        
+                        base.Capture(1, capture_starting_pos, pos);
+                        
+                        goto CaptureSkipBacktrack;
+                        
+                        CaptureBacktrack:
+                        goto AlternationBacktrack;
+                        
+                        CaptureSkipBacktrack:;
+                    //}
+                    
+                    // Match if at a word boundary.
+                    if (!Utilities.IsPostWordCharBoundary(inputSpan, pos))
+                    {
+                        goto CaptureBacktrack;
+                    }
+                    
+                    // The input matched.
+                    base.runtextpos = pos;
+                    base.Capture(0, matchStart, pos);
+                    return true;
+                    
+                    // <summary>Undo captures until it reaches the specified capture position.</summary>
+                    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                    void UncaptureUntil(int capturePosition)
+                    {
+                        while (base.Crawlpos() > capturePosition)
+                        {
+                            base.Uncapture();
+                        }
+                    }
+                }
+            }
+        }
+
+    }
+    
+    /// <summary>Custom <see cref="Regex"/>-derived type for the NavigationKeywordPattern method.</summary>
+    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.7603")]
+    file sealed class NavigationKeywordPattern_2 : Regex
+    {
+        /// <summary>Cached, thread-safe singleton instance.</summary>
+        internal static readonly NavigationKeywordPattern_2 Instance = new();
+    
+        /// <summary>Initializes the instance.</summary>
+        private NavigationKeywordPattern_2()
+        {
+            base.pattern = "\\b(otevři|otevri|ukaž|ukaz|přejdi|prejdi|naviguj|zobraz|zobrazit|jdi na|jdi do|přejít|prejit|otevřít|otevrit|nová faktura|nova faktura|nový klient|novy klient|nový dobropis|novy dobropis|seznam faktur|seznam klientů|seznam klientu|open|show|go to|navigate|display|new invoice|new client|new credit note|invoice list|client list)\\b";
+            base.roptions = RegexOptions.IgnoreCase | RegexOptions.Compiled;
+            ValidateMatchTimeout(Utilities.s_defaultTimeout);
+            base.internalMatchTimeout = Utilities.s_defaultTimeout;
+            base.factory = new RunnerFactory();
+            base.capsize = 2;
+        }
+            
+        /// <summary>Provides a factory for creating <see cref="RegexRunner"/> instances to be used by methods on <see cref="Regex"/>.</summary>
+        private sealed class RunnerFactory : RegexRunnerFactory
+        {
+            /// <summary>Creates an instance of a <see cref="RegexRunner"/> used by methods on <see cref="Regex"/>.</summary>
+            protected override RegexRunner CreateInstance() => new Runner();
+        
+            /// <summary>Provides the runner that contains the custom logic implementing the specified regular expression.</summary>
+            private sealed class Runner : RegexRunner
+            {
+                /// <summary>Scan the <paramref name="inputSpan"/> starting from base.runtextstart for the next match.</summary>
+                /// <param name="inputSpan">The text being scanned by the regular expression.</param>
+                protected override void Scan(ReadOnlySpan<char> inputSpan)
+                {
+                    // Search until we can't find a valid starting position, we find a match, or we reach the end of the input.
+                    while (TryFindNextPossibleStartingPosition(inputSpan) &&
+                           !TryMatchAtCurrentPosition(inputSpan) &&
+                           base.runtextpos != inputSpan.Length)
+                    {
+                        base.runtextpos++;
+                        if (Utilities.s_hasTimeout)
+                        {
+                            base.CheckTimeout();
+                        }
+                    }
+                }
+        
+                /// <summary>Search <paramref name="inputSpan"/> starting from base.runtextpos for the next location a match could possibly start.</summary>
+                /// <param name="inputSpan">The text being scanned by the regular expression.</param>
+                /// <returns>true if a possible match was found; false if no more matches are possible.</returns>
+                private bool TryFindNextPossibleStartingPosition(ReadOnlySpan<char> inputSpan)
+                {
+                    int pos = base.runtextpos;
+                    char ch;
+                    
+                    // Any possible match is at least 4 characters.
+                    if (pos <= inputSpan.Length - 4)
+                    {
+                        // The pattern begins with a character in the set [CDGIJN-PSUZcdgijn-psuz].
+                        // Find the next occurrence. If it can't be found, there's no match.
+                        ReadOnlySpan<char> span = inputSpan.Slice(pos);
+                        for (int i = 0; i < span.Length - 3; i++)
+                        {
+                            int indexOfPos = span.Slice(i).IndexOfAny(Utilities.s_ascii_98C6290498C62904);
+                            if (indexOfPos < 0)
+                            {
+                                goto NoMatchFound;
+                            }
+                            i += indexOfPos;
+                            
+                            // The primary set being searched for was found. 2 more sets will be checked so as
+                            // to minimize the number of places TryMatchAtCurrentPosition is run unnecessarily.
+                            // Make sure they fit in the remainder of the input.
+                            if ((uint)(i + 2) >= (uint)span.Length)
+                            {
+                                goto NoMatchFound;
+                            }
+                            
+                            if (((ch = span[i + 2]) < '{' && ("\0\0\u0001\0舦ӈ舦ӈ"[ch >> 4] & (1 << (ch & 0xF))) != 0) &&
+                                ((ch = span[i + 1]) < 128 ? ("\0\0\0\0\udb32\u0015\udb32\u0015"[ch >> 4] & (1 << (ch & 0xF))) != 0 : RegexRunner.CharInClass((char)ch, "\0 \0ABDFHJKMNQRSTUabdfhjkmnqrstuŘŚKÅ")))
+                            {
+                                base.runtextpos = pos + i;
+                                return true;
+                            }
+                        }
+                    }
+                    
+                    // No match found.
+                    NoMatchFound:
+                    base.runtextpos = inputSpan.Length;
+                    return false;
+                }
+        
+                /// <summary>Determine whether <paramref name="inputSpan"/> at base.runtextpos is a match for the regular expression.</summary>
+                /// <param name="inputSpan">The text being scanned by the regular expression.</param>
+                /// <returns>true if the regular expression matches at the current position; otherwise, false.</returns>
+                private bool TryMatchAtCurrentPosition(ReadOnlySpan<char> inputSpan)
+                {
+                    int pos = base.runtextpos;
+                    int matchStart = pos;
+                    char ch;
+                    int alternation_branch = 0;
+                    int alternation_branch1 = 0;
+                    int alternation_branch2 = 0;
+                    int alternation_branch3 = 0;
+                    int alternation_starting_capturepos = 0;
+                    int alternation_starting_capturepos1 = 0;
+                    int alternation_starting_capturepos2 = 0;
+                    int alternation_starting_capturepos3 = 0;
+                    int alternation_starting_pos = 0;
+                    int alternation_starting_pos1 = 0;
+                    int alternation_starting_pos2 = 0;
+                    int alternation_starting_pos3 = 0;
+                    int capture_starting_pos = 0;
+                    ReadOnlySpan<char> slice = inputSpan.Slice(pos);
+                    
+                    // Match if at a word boundary.
+                    if (!Utilities.IsPreWordCharBoundary(inputSpan, pos))
+                    {
+                        UncaptureUntil(0);
+                        return false; // The input didn't match.
+                    }
+                    
+                    // 1st capture group.
+                    //{
+                        capture_starting_pos = pos;
+                        
+                        // Match with 18 alternative expressions.
+                        //{
+                            alternation_starting_pos = pos;
+                            alternation_starting_capturepos = base.Crawlpos();
+                            
+                            // Branch 0
+                            //{
+                                if ((uint)slice.Length < 4 ||
+                                    !slice.StartsWith("otev", StringComparison.OrdinalIgnoreCase)) // Match the string "otev" (ordinal case-insensitive)
+                                {
+                                    goto AlternationBranch;
+                                }
+                                
+                                // Match with 2 alternative expressions.
+                                //{
+                                    if ((uint)slice.Length < 5)
+                                    {
+                                        goto AlternationBranch;
+                                    }
+                                    
+                                    switch (slice[4])
+                                    {
+                                        case 'Ř' or 'ř':
+                                            
+                                            // Match a character in the set [Ii].
+                                            if ((uint)slice.Length < 6 || ((slice[5] | 0x20) != 'i'))
+                                            {
+                                                goto AlternationBranch;
+                                            }
+                                            
+                                            pos += 6;
+                                            slice = inputSpan.Slice(pos);
+                                            break;
+                                            
+                                        case 'R' or 'r':
+                                            
+                                            // Match a character in the set [Ii].
+                                            if ((uint)slice.Length < 6 || ((slice[5] | 0x20) != 'i'))
+                                            {
+                                                goto AlternationBranch;
+                                            }
+                                            
+                                            pos += 6;
+                                            slice = inputSpan.Slice(pos);
+                                            break;
+                                            
+                                        default:
+                                            goto AlternationBranch;
+                                    }
+                                //}
+                                
+                                alternation_branch = 0;
+                                goto AlternationMatch;
+                                
+                                AlternationBranch:
+                                pos = alternation_starting_pos;
+                                slice = inputSpan.Slice(pos);
+                                UncaptureUntil(alternation_starting_capturepos);
+                            //}
+                            
+                            // Branch 1
+                            //{
+                                if ((uint)slice.Length < 4 ||
+                                    ((slice[0] | 0x20) != 'u') || // Match a character in the set [Uu].
+                                    ((((ch = slice[1]) | 0x20) != 'k') & (ch != 'K')) || // Match a character in the set [Kk\u212A].
+                                    ((slice[2] | 0x20) != 'a') || // Match a character in the set [Aa].
+                                    ((ch = slice[3]) < 128 ? ("\0\0\0\0\0Ѐ\0Ѐ"[ch >> 4] & (1 << (ch & 0xF))) == 0 : !RegexRunner.CharInClass((char)ch, "\0\u0006\0Z[z{Žſ"))) // Match a character in the set [Zz\u017D\u017E].
+                                {
+                                    goto AlternationBranch1;
+                                }
+                                
+                                alternation_branch = 1;
+                                pos += 4;
+                                slice = inputSpan.Slice(pos);
+                                goto AlternationMatch;
+                                
+                                AlternationBranch1:
+                                pos = alternation_starting_pos;
+                                slice = inputSpan.Slice(pos);
+                                UncaptureUntil(alternation_starting_capturepos);
+                            //}
+                            
+                            // Branch 2
+                            //{
+                                // Match a character in the set [Pp].
+                                if (slice.IsEmpty || ((slice[0] | 0x20) != 'p'))
+                                {
+                                    goto AlternationBranch2;
+                                }
+                                
+                                // Match with 2 alternative expressions.
+                                //{
+                                    if ((uint)slice.Length < 2)
+                                    {
+                                        goto AlternationBranch2;
+                                    }
+                                    
+                                    switch (slice[1])
+                                    {
+                                        case 'Ř' or 'ř':
+                                            
+                                            if ((uint)slice.Length < 6 ||
+                                                !slice.Slice(2).StartsWith("ejdi", StringComparison.OrdinalIgnoreCase)) // Match the string "ejdi" (ordinal case-insensitive)
+                                            {
+                                                goto AlternationBranch2;
+                                            }
+                                            
+                                            pos += 6;
+                                            slice = inputSpan.Slice(pos);
+                                            break;
+                                            
+                                        case 'R' or 'r':
+                                            
+                                            if ((uint)slice.Length < 6 ||
+                                                !slice.Slice(2).StartsWith("ejdi", StringComparison.OrdinalIgnoreCase)) // Match the string "ejdi" (ordinal case-insensitive)
+                                            {
+                                                goto AlternationBranch2;
+                                            }
+                                            
+                                            pos += 6;
+                                            slice = inputSpan.Slice(pos);
+                                            break;
+                                            
+                                        default:
+                                            goto AlternationBranch2;
+                                    }
+                                //}
+                                
+                                alternation_branch = 2;
+                                goto AlternationMatch;
+                                
+                                AlternationBranch2:
+                                pos = alternation_starting_pos;
+                                slice = inputSpan.Slice(pos);
+                                UncaptureUntil(alternation_starting_capturepos);
+                            //}
+                            
+                            // Branch 3
+                            //{
+                                if ((uint)slice.Length < 7 ||
+                                    !slice.StartsWith("naviguj", StringComparison.OrdinalIgnoreCase)) // Match the string "naviguj" (ordinal case-insensitive)
+                                {
+                                    goto AlternationBranch3;
+                                }
+                                
+                                alternation_branch = 3;
+                                pos += 7;
+                                slice = inputSpan.Slice(pos);
+                                goto AlternationMatch;
+                                
+                                AlternationBranch3:
+                                pos = alternation_starting_pos;
+                                slice = inputSpan.Slice(pos);
+                                UncaptureUntil(alternation_starting_capturepos);
+                            //}
+                            
+                            // Branch 4
+                            //{
+                                if ((uint)slice.Length < 5 ||
+                                    !slice.StartsWith("zobra", StringComparison.OrdinalIgnoreCase)) // Match the string "zobra" (ordinal case-insensitive)
+                                {
+                                    goto AlternationBranch4;
+                                }
+                                
+                                // Match with 2 alternative expressions.
+                                //{
+                                    alternation_starting_pos1 = pos;
+                                    alternation_starting_capturepos1 = base.Crawlpos();
+                                    
+                                    // Branch 0
+                                    //{
+                                        // Match a character in the set [Zz].
+                                        if ((uint)slice.Length < 6 || ((slice[5] | 0x20) != 'z'))
+                                        {
+                                            goto AlternationBranch5;
+                                        }
+                                        
+                                        alternation_branch1 = 0;
+                                        pos += 6;
+                                        slice = inputSpan.Slice(pos);
+                                        goto AlternationMatch1;
+                                        
+                                        AlternationBranch5:
+                                        pos = alternation_starting_pos1;
+                                        slice = inputSpan.Slice(pos);
+                                        UncaptureUntil(alternation_starting_capturepos1);
+                                    //}
+                                    
+                                    // Branch 1
+                                    //{
+                                        if ((uint)slice.Length < 8 ||
+                                            !slice.Slice(5).StartsWith("zit", StringComparison.OrdinalIgnoreCase)) // Match the string "zit" (ordinal case-insensitive)
+                                        {
+                                            goto AlternationBranch4;
+                                        }
+                                        
+                                        alternation_branch1 = 1;
+                                        pos += 8;
+                                        slice = inputSpan.Slice(pos);
+                                        goto AlternationMatch1;
+                                    //}
+                                    
+                                    AlternationBacktrack1:
+                                    if (Utilities.s_hasTimeout)
+                                    {
+                                        base.CheckTimeout();
+                                    }
+                                    
+                                    switch (alternation_branch1)
+                                    {
+                                        case 0:
+                                            goto AlternationBranch5;
+                                        case 1:
+                                            goto AlternationBranch4;
+                                    }
+                                    
+                                    AlternationMatch1:;
+                                //}
+                                
+                                alternation_branch = 4;
+                                goto AlternationMatch;
+                                
+                                AlternationBranch4:
+                                pos = alternation_starting_pos;
+                                slice = inputSpan.Slice(pos);
+                                UncaptureUntil(alternation_starting_capturepos);
+                            //}
+                            
+                            // Branch 5
+                            //{
+                                if ((uint)slice.Length < 4 ||
+                                    !slice.StartsWith("jdi ", StringComparison.OrdinalIgnoreCase)) // Match the string "jdi " (ordinal case-insensitive)
+                                {
+                                    goto AlternationBranch6;
+                                }
+                                
+                                // Match with 2 alternative expressions.
+                                //{
+                                    if ((uint)slice.Length < 5)
+                                    {
+                                        goto AlternationBranch6;
+                                    }
+                                    
+                                    switch (slice[4])
+                                    {
+                                        case 'N' or 'n':
+                                            
+                                            // Match a character in the set [Aa].
+                                            if ((uint)slice.Length < 6 || ((slice[5] | 0x20) != 'a'))
+                                            {
+                                                goto AlternationBranch6;
+                                            }
+                                            
+                                            pos += 6;
+                                            slice = inputSpan.Slice(pos);
+                                            break;
+                                            
+                                        case 'D' or 'd':
+                                            
+                                            // Match a character in the set [Oo].
+                                            if ((uint)slice.Length < 6 || ((slice[5] | 0x20) != 'o'))
+                                            {
+                                                goto AlternationBranch6;
+                                            }
+                                            
+                                            pos += 6;
+                                            slice = inputSpan.Slice(pos);
+                                            break;
+                                            
+                                        default:
+                                            goto AlternationBranch6;
+                                    }
+                                //}
+                                
+                                alternation_branch = 5;
+                                goto AlternationMatch;
+                                
+                                AlternationBranch6:
+                                pos = alternation_starting_pos;
+                                slice = inputSpan.Slice(pos);
+                                UncaptureUntil(alternation_starting_capturepos);
+                            //}
+                            
+                            // Branch 6
+                            //{
+                                // Match a character in the set [Pp].
+                                if (slice.IsEmpty || ((slice[0] | 0x20) != 'p'))
+                                {
+                                    goto AlternationBranch7;
+                                }
+                                
+                                // Match with 2 alternative expressions.
+                                //{
+                                    if ((uint)slice.Length < 2)
+                                    {
+                                        goto AlternationBranch7;
+                                    }
+                                    
+                                    switch (slice[1])
+                                    {
+                                        case 'Ř' or 'ř':
+                                            
+                                            if ((uint)slice.Length < 6 ||
+                                                !slice.Slice(2).StartsWith("ej", StringComparison.OrdinalIgnoreCase) || // Match the string "ej" (ordinal case-insensitive)
+                                                ((slice[4] | 0x20) != 'í') || // Match a character in the set [\u00CD\u00ED].
+                                                ((slice[5] | 0x20) != 't')) // Match a character in the set [Tt].
+                                            {
+                                                goto AlternationBranch7;
+                                            }
+                                            
+                                            pos += 6;
+                                            slice = inputSpan.Slice(pos);
+                                            break;
+                                            
+                                        case 'R' or 'r':
+                                            
+                                            if ((uint)slice.Length < 6 ||
+                                                !slice.Slice(2).StartsWith("ejit", StringComparison.OrdinalIgnoreCase)) // Match the string "ejit" (ordinal case-insensitive)
+                                            {
+                                                goto AlternationBranch7;
+                                            }
+                                            
+                                            pos += 6;
+                                            slice = inputSpan.Slice(pos);
+                                            break;
+                                            
+                                        default:
+                                            goto AlternationBranch7;
+                                    }
+                                //}
+                                
+                                alternation_branch = 6;
+                                goto AlternationMatch;
+                                
+                                AlternationBranch7:
+                                pos = alternation_starting_pos;
+                                slice = inputSpan.Slice(pos);
+                                UncaptureUntil(alternation_starting_capturepos);
+                            //}
+                            
+                            // Branch 7
+                            //{
+                                if ((uint)slice.Length < 4 ||
+                                    !slice.StartsWith("otev", StringComparison.OrdinalIgnoreCase)) // Match the string "otev" (ordinal case-insensitive)
+                                {
+                                    goto AlternationBranch8;
+                                }
+                                
+                                // Match with 2 alternative expressions.
+                                //{
+                                    if ((uint)slice.Length < 5)
+                                    {
+                                        goto AlternationBranch8;
+                                    }
+                                    
+                                    switch (slice[4])
+                                    {
+                                        case 'Ř' or 'ř':
+                                            
+                                            if ((uint)slice.Length < 7 ||
+                                                ((slice[5] | 0x20) != 'í') || // Match a character in the set [\u00CD\u00ED].
+                                                ((slice[6] | 0x20) != 't')) // Match a character in the set [Tt].
+                                            {
+                                                goto AlternationBranch8;
+                                            }
+                                            
+                                            pos += 7;
+                                            slice = inputSpan.Slice(pos);
+                                            break;
+                                            
+                                        case 'R' or 'r':
+                                            
+                                            if ((uint)slice.Length < 7 ||
+                                                !slice.Slice(5).StartsWith("it", StringComparison.OrdinalIgnoreCase)) // Match the string "it" (ordinal case-insensitive)
+                                            {
+                                                goto AlternationBranch8;
+                                            }
+                                            
+                                            pos += 7;
+                                            slice = inputSpan.Slice(pos);
+                                            break;
+                                            
+                                        default:
+                                            goto AlternationBranch8;
+                                    }
+                                //}
+                                
+                                alternation_branch = 7;
+                                goto AlternationMatch;
+                                
+                                AlternationBranch8:
+                                pos = alternation_starting_pos;
+                                slice = inputSpan.Slice(pos);
+                                UncaptureUntil(alternation_starting_capturepos);
+                            //}
+                            
+                            // Branch 8
+                            //{
+                                if ((uint)slice.Length < 3 ||
+                                    !slice.StartsWith("nov", StringComparison.OrdinalIgnoreCase)) // Match the string "nov" (ordinal case-insensitive)
+                                {
+                                    goto AlternationBranch9;
+                                }
+                                
+                                // Match with 6 alternative expressions.
+                                //{
+                                    alternation_starting_pos2 = pos;
+                                    alternation_starting_capturepos2 = base.Crawlpos();
+                                    
+                                    // Branch 0
+                                    //{
+                                        if ((uint)slice.Length < 12 ||
+                                            ((slice[3] | 0x20) != 'á') || // Match a character in the set [\u00C1\u00E1].
+                                            !slice.Slice(4).StartsWith(" fa", StringComparison.OrdinalIgnoreCase) || // Match the string " fa" (ordinal case-insensitive)
+                                            ((((ch = slice[7]) | 0x20) != 'k') & (ch != 'K')) || // Match a character in the set [Kk\u212A].
+                                            !slice.Slice(8).StartsWith("tura", StringComparison.OrdinalIgnoreCase)) // Match the string "tura" (ordinal case-insensitive)
+                                        {
+                                            goto AlternationBranch10;
+                                        }
+                                        
+                                        alternation_branch2 = 0;
+                                        pos += 12;
+                                        slice = inputSpan.Slice(pos);
+                                        goto AlternationMatch2;
+                                        
+                                        AlternationBranch10:
+                                        pos = alternation_starting_pos2;
+                                        slice = inputSpan.Slice(pos);
+                                        UncaptureUntil(alternation_starting_capturepos2);
+                                    //}
+                                    
+                                    // Branch 1
+                                    //{
+                                        if ((uint)slice.Length < 12 ||
+                                            !slice.Slice(3).StartsWith("a fa", StringComparison.OrdinalIgnoreCase) || // Match the string "a fa" (ordinal case-insensitive)
+                                            ((((ch = slice[7]) | 0x20) != 'k') & (ch != 'K')) || // Match a character in the set [Kk\u212A].
+                                            !slice.Slice(8).StartsWith("tura", StringComparison.OrdinalIgnoreCase)) // Match the string "tura" (ordinal case-insensitive)
+                                        {
+                                            goto AlternationBranch11;
+                                        }
+                                        
+                                        alternation_branch2 = 1;
+                                        pos += 12;
+                                        slice = inputSpan.Slice(pos);
+                                        goto AlternationMatch2;
+                                        
+                                        AlternationBranch11:
+                                        pos = alternation_starting_pos2;
+                                        slice = inputSpan.Slice(pos);
+                                        UncaptureUntil(alternation_starting_capturepos2);
+                                    //}
+                                    
+                                    // Branch 2
+                                    //{
+                                        if ((uint)slice.Length < 11 ||
+                                            ((slice[3] | 0x20) != 'ý') || // Match a character in the set [\u00DD\u00FD].
+                                            slice[4] != ' ' || // Match ' '.
+                                            ((((ch = slice[5]) | 0x20) != 'k') & (ch != 'K')) || // Match a character in the set [Kk\u212A].
+                                            !slice.Slice(6).StartsWith("lient", StringComparison.OrdinalIgnoreCase)) // Match the string "lient" (ordinal case-insensitive)
+                                        {
+                                            goto AlternationBranch12;
+                                        }
+                                        
+                                        alternation_branch2 = 2;
+                                        pos += 11;
+                                        slice = inputSpan.Slice(pos);
+                                        goto AlternationMatch2;
+                                        
+                                        AlternationBranch12:
+                                        pos = alternation_starting_pos2;
+                                        slice = inputSpan.Slice(pos);
+                                        UncaptureUntil(alternation_starting_capturepos2);
+                                    //}
+                                    
+                                    // Branch 3
+                                    //{
+                                        if ((uint)slice.Length < 11 ||
+                                            !slice.Slice(3).StartsWith("y ", StringComparison.OrdinalIgnoreCase) || // Match the string "y " (ordinal case-insensitive)
+                                            ((((ch = slice[5]) | 0x20) != 'k') & (ch != 'K')) || // Match a character in the set [Kk\u212A].
+                                            !slice.Slice(6).StartsWith("lient", StringComparison.OrdinalIgnoreCase)) // Match the string "lient" (ordinal case-insensitive)
+                                        {
+                                            goto AlternationBranch13;
+                                        }
+                                        
+                                        alternation_branch2 = 3;
+                                        pos += 11;
+                                        slice = inputSpan.Slice(pos);
+                                        goto AlternationMatch2;
+                                        
+                                        AlternationBranch13:
+                                        pos = alternation_starting_pos2;
+                                        slice = inputSpan.Slice(pos);
+                                        UncaptureUntil(alternation_starting_capturepos2);
+                                    //}
+                                    
+                                    // Branch 4
+                                    //{
+                                        if ((uint)slice.Length < 13 ||
+                                            ((slice[3] | 0x20) != 'ý') || // Match a character in the set [\u00DD\u00FD].
+                                            !slice.Slice(4).StartsWith(" dobropis", StringComparison.OrdinalIgnoreCase)) // Match the string " dobropis" (ordinal case-insensitive)
+                                        {
+                                            goto AlternationBranch14;
+                                        }
+                                        
+                                        alternation_branch2 = 4;
+                                        pos += 13;
+                                        slice = inputSpan.Slice(pos);
+                                        goto AlternationMatch2;
+                                        
+                                        AlternationBranch14:
+                                        pos = alternation_starting_pos2;
+                                        slice = inputSpan.Slice(pos);
+                                        UncaptureUntil(alternation_starting_capturepos2);
+                                    //}
+                                    
+                                    // Branch 5
+                                    //{
+                                        if ((uint)slice.Length < 13 ||
+                                            !slice.Slice(3).StartsWith("y dobropis", StringComparison.OrdinalIgnoreCase)) // Match the string "y dobropis" (ordinal case-insensitive)
+                                        {
+                                            goto AlternationBranch9;
+                                        }
+                                        
+                                        alternation_branch2 = 5;
+                                        pos += 13;
+                                        slice = inputSpan.Slice(pos);
+                                        goto AlternationMatch2;
+                                    //}
+                                    
+                                    AlternationBacktrack2:
+                                    if (Utilities.s_hasTimeout)
+                                    {
+                                        base.CheckTimeout();
+                                    }
+                                    
+                                    switch (alternation_branch2)
+                                    {
+                                        case 0:
+                                            goto AlternationBranch10;
+                                        case 1:
+                                            goto AlternationBranch11;
+                                        case 2:
+                                            goto AlternationBranch12;
+                                        case 3:
+                                            goto AlternationBranch13;
+                                        case 4:
+                                            goto AlternationBranch14;
+                                        case 5:
+                                            goto AlternationBranch9;
+                                    }
+                                    
+                                    AlternationMatch2:;
+                                //}
+                                
+                                alternation_branch = 8;
+                                goto AlternationMatch;
+                                
+                                AlternationBranch9:
+                                pos = alternation_starting_pos;
+                                slice = inputSpan.Slice(pos);
+                                UncaptureUntil(alternation_starting_capturepos);
+                            //}
+                            
+                            // Branch 9
+                            //{
+                                if ((uint)slice.Length < 7 ||
+                                    !slice.StartsWith("seznam ", StringComparison.OrdinalIgnoreCase)) // Match the string "seznam " (ordinal case-insensitive)
+                                {
+                                    goto AlternationBranch15;
+                                }
+                                
+                                // Match with 2 alternative expressions.
+                                //{
+                                    if ((uint)slice.Length < 8)
+                                    {
+                                        goto AlternationBranch15;
+                                    }
+                                    
+                                    switch (slice[7])
+                                    {
+                                        case 'F' or 'f':
+                                            
+                                            if ((uint)slice.Length < 13 ||
+                                                ((slice[8] | 0x20) != 'a') || // Match a character in the set [Aa].
+                                                ((((ch = slice[9]) | 0x20) != 'k') & (ch != 'K')) || // Match a character in the set [Kk\u212A].
+                                                !slice.Slice(10).StartsWith("tur", StringComparison.OrdinalIgnoreCase)) // Match the string "tur" (ordinal case-insensitive)
+                                            {
+                                                goto AlternationBranch15;
+                                            }
+                                            
+                                            pos += 13;
+                                            slice = inputSpan.Slice(pos);
+                                            break;
+                                            
+                                        case 'K' or 'k' or 'K':
+                                            
+                                            if ((uint)slice.Length < 14 ||
+                                                !slice.Slice(8).StartsWith("lient", StringComparison.OrdinalIgnoreCase) || // Match the string "lient" (ordinal case-insensitive)
+                                                ((ch = slice[13]) < 128 ? ("\0\0\0\0\0 \0 "[ch >> 4] & (1 << (ch & 0xF))) == 0 : !RegexRunner.CharInClass((char)ch, "\0\u0006\0UVuvŮŰ"))) // Match a character in the set [Uu\u016E\u016F].
+                                            {
+                                                goto AlternationBranch15;
+                                            }
+                                            
+                                            pos += 14;
+                                            slice = inputSpan.Slice(pos);
+                                            break;
+                                            
+                                        default:
+                                            goto AlternationBranch15;
+                                    }
+                                //}
+                                
+                                alternation_branch = 9;
+                                goto AlternationMatch;
+                                
+                                AlternationBranch15:
+                                pos = alternation_starting_pos;
+                                slice = inputSpan.Slice(pos);
+                                UncaptureUntil(alternation_starting_capturepos);
+                            //}
+                            
+                            // Branch 10
+                            //{
+                                if ((uint)slice.Length < 4 ||
+                                    !slice.StartsWith("open", StringComparison.OrdinalIgnoreCase)) // Match the string "open" (ordinal case-insensitive)
+                                {
+                                    goto AlternationBranch16;
+                                }
+                                
+                                alternation_branch = 10;
+                                pos += 4;
+                                slice = inputSpan.Slice(pos);
+                                goto AlternationMatch;
+                                
+                                AlternationBranch16:
+                                pos = alternation_starting_pos;
+                                slice = inputSpan.Slice(pos);
+                                UncaptureUntil(alternation_starting_capturepos);
+                            //}
+                            
+                            // Branch 11
+                            //{
+                                if ((uint)slice.Length < 4 ||
+                                    !slice.StartsWith("show", StringComparison.OrdinalIgnoreCase)) // Match the string "show" (ordinal case-insensitive)
+                                {
+                                    goto AlternationBranch17;
+                                }
+                                
+                                alternation_branch = 11;
+                                pos += 4;
+                                slice = inputSpan.Slice(pos);
+                                goto AlternationMatch;
+                                
+                                AlternationBranch17:
+                                pos = alternation_starting_pos;
+                                slice = inputSpan.Slice(pos);
+                                UncaptureUntil(alternation_starting_capturepos);
+                            //}
+                            
+                            // Branch 12
+                            //{
+                                if ((uint)slice.Length < 5 ||
+                                    !slice.StartsWith("go to", StringComparison.OrdinalIgnoreCase)) // Match the string "go to" (ordinal case-insensitive)
+                                {
+                                    goto AlternationBranch18;
+                                }
+                                
+                                alternation_branch = 12;
+                                pos += 5;
+                                slice = inputSpan.Slice(pos);
+                                goto AlternationMatch;
+                                
+                                AlternationBranch18:
+                                pos = alternation_starting_pos;
+                                slice = inputSpan.Slice(pos);
+                                UncaptureUntil(alternation_starting_capturepos);
+                            //}
+                            
+                            // Branch 13
+                            //{
+                                if ((uint)slice.Length < 8 ||
+                                    !slice.StartsWith("navigate", StringComparison.OrdinalIgnoreCase)) // Match the string "navigate" (ordinal case-insensitive)
+                                {
+                                    goto AlternationBranch19;
+                                }
+                                
+                                alternation_branch = 13;
+                                pos += 8;
+                                slice = inputSpan.Slice(pos);
+                                goto AlternationMatch;
+                                
+                                AlternationBranch19:
+                                pos = alternation_starting_pos;
+                                slice = inputSpan.Slice(pos);
+                                UncaptureUntil(alternation_starting_capturepos);
+                            //}
+                            
+                            // Branch 14
+                            //{
+                                if ((uint)slice.Length < 7 ||
+                                    !slice.StartsWith("display", StringComparison.OrdinalIgnoreCase)) // Match the string "display" (ordinal case-insensitive)
+                                {
+                                    goto AlternationBranch20;
+                                }
+                                
+                                alternation_branch = 14;
+                                pos += 7;
+                                slice = inputSpan.Slice(pos);
+                                goto AlternationMatch;
+                                
+                                AlternationBranch20:
+                                pos = alternation_starting_pos;
+                                slice = inputSpan.Slice(pos);
+                                UncaptureUntil(alternation_starting_capturepos);
+                            //}
+                            
+                            // Branch 15
+                            //{
+                                if ((uint)slice.Length < 4 ||
+                                    !slice.StartsWith("new ", StringComparison.OrdinalIgnoreCase)) // Match the string "new " (ordinal case-insensitive)
+                                {
+                                    goto AlternationBranch21;
+                                }
+                                
+                                // Match with 2 alternative expressions.
+                                //{
+                                    alternation_starting_pos3 = pos;
+                                    alternation_starting_capturepos3 = base.Crawlpos();
+                                    
+                                    // Branch 0
+                                    //{
+                                        if ((uint)slice.Length < 11 ||
+                                            !slice.Slice(4).StartsWith("invoice", StringComparison.OrdinalIgnoreCase)) // Match the string "invoice" (ordinal case-insensitive)
+                                        {
+                                            goto AlternationBranch22;
+                                        }
+                                        
+                                        alternation_branch3 = 0;
+                                        pos += 11;
+                                        slice = inputSpan.Slice(pos);
+                                        goto AlternationMatch3;
+                                        
+                                        AlternationBranch22:
+                                        pos = alternation_starting_pos3;
+                                        slice = inputSpan.Slice(pos);
+                                        UncaptureUntil(alternation_starting_capturepos3);
+                                    //}
+                                    
+                                    // Branch 1
+                                    //{
+                                        // Match a character in the set [Cc].
+                                        if ((uint)slice.Length < 5 || ((slice[4] | 0x20) != 'c'))
+                                        {
+                                            goto AlternationBranch21;
+                                        }
+                                        
+                                        // Match with 2 alternative expressions.
+                                        //{
+                                            if ((uint)slice.Length < 6)
+                                            {
+                                                goto AlternationBranch21;
+                                            }
+                                            
+                                            switch (slice[5])
+                                            {
+                                                case 'L' or 'l':
+                                                    
+                                                    if ((uint)slice.Length < 10 ||
+                                                        !slice.Slice(6).StartsWith("ient", StringComparison.OrdinalIgnoreCase)) // Match the string "ient" (ordinal case-insensitive)
+                                                    {
+                                                        goto AlternationBranch21;
+                                                    }
+                                                    
+                                                    pos += 10;
+                                                    slice = inputSpan.Slice(pos);
+                                                    break;
+                                                    
+                                                case 'R' or 'r':
+                                                    
+                                                    if ((uint)slice.Length < 15 ||
+                                                        !slice.Slice(6).StartsWith("edit note", StringComparison.OrdinalIgnoreCase)) // Match the string "edit note" (ordinal case-insensitive)
+                                                    {
+                                                        goto AlternationBranch21;
+                                                    }
+                                                    
+                                                    pos += 15;
+                                                    slice = inputSpan.Slice(pos);
+                                                    break;
+                                                    
+                                                default:
+                                                    goto AlternationBranch21;
+                                            }
+                                        //}
+                                        
+                                        alternation_branch3 = 1;
+                                        goto AlternationMatch3;
+                                    //}
+                                    
+                                    AlternationBacktrack3:
+                                    if (Utilities.s_hasTimeout)
+                                    {
+                                        base.CheckTimeout();
+                                    }
+                                    
+                                    switch (alternation_branch3)
+                                    {
+                                        case 0:
+                                            goto AlternationBranch22;
+                                        case 1:
+                                            goto AlternationBranch21;
+                                    }
+                                    
+                                    AlternationMatch3:;
+                                //}
+                                
+                                alternation_branch = 15;
+                                goto AlternationMatch;
+                                
+                                AlternationBranch21:
+                                pos = alternation_starting_pos;
+                                slice = inputSpan.Slice(pos);
+                                UncaptureUntil(alternation_starting_capturepos);
+                            //}
+                            
+                            // Branch 16
+                            //{
+                                if ((uint)slice.Length < 12 ||
+                                    !slice.StartsWith("invoice list", StringComparison.OrdinalIgnoreCase)) // Match the string "invoice list" (ordinal case-insensitive)
+                                {
+                                    goto AlternationBranch23;
+                                }
+                                
+                                alternation_branch = 16;
+                                pos += 12;
+                                slice = inputSpan.Slice(pos);
+                                goto AlternationMatch;
+                                
+                                AlternationBranch23:
+                                pos = alternation_starting_pos;
+                                slice = inputSpan.Slice(pos);
+                                UncaptureUntil(alternation_starting_capturepos);
+                            //}
+                            
+                            // Branch 17
+                            //{
+                                if ((uint)slice.Length < 11 ||
+                                    !slice.StartsWith("client list", StringComparison.OrdinalIgnoreCase)) // Match the string "client list" (ordinal case-insensitive)
+                                {
+                                    UncaptureUntil(0);
+                                    return false; // The input didn't match.
+                                }
+                                
+                                alternation_branch = 17;
+                                pos += 11;
+                                slice = inputSpan.Slice(pos);
+                                goto AlternationMatch;
+                            //}
+                            
+                            AlternationBacktrack:
+                            if (Utilities.s_hasTimeout)
+                            {
+                                base.CheckTimeout();
+                            }
+                            
+                            switch (alternation_branch)
+                            {
+                                case 0:
+                                    goto AlternationBranch;
+                                case 1:
+                                    goto AlternationBranch1;
+                                case 2:
+                                    goto AlternationBranch2;
+                                case 3:
+                                    goto AlternationBranch3;
+                                case 4:
+                                    goto AlternationBacktrack1;
+                                case 5:
+                                    goto AlternationBranch6;
+                                case 6:
+                                    goto AlternationBranch7;
+                                case 7:
+                                    goto AlternationBranch8;
+                                case 8:
+                                    goto AlternationBacktrack2;
+                                case 9:
+                                    goto AlternationBranch15;
+                                case 10:
+                                    goto AlternationBranch16;
+                                case 11:
+                                    goto AlternationBranch17;
+                                case 12:
+                                    goto AlternationBranch18;
+                                case 13:
+                                    goto AlternationBranch19;
+                                case 14:
+                                    goto AlternationBranch20;
+                                case 15:
+                                    goto AlternationBacktrack3;
+                                case 16:
+                                    goto AlternationBranch23;
+                                case 17:
+                                    UncaptureUntil(0);
+                                    return false; // The input didn't match.
+                            }
+                            
+                            AlternationMatch:;
+                        //}
+                        
+                        base.Capture(1, capture_starting_pos, pos);
+                        
+                        goto CaptureSkipBacktrack;
+                        
+                        CaptureBacktrack:
+                        goto AlternationBacktrack;
+                        
+                        CaptureSkipBacktrack:;
+                    //}
+                    
+                    // Match if at a word boundary.
+                    if (!Utilities.IsPostWordCharBoundary(inputSpan, pos))
+                    {
+                        goto CaptureBacktrack;
+                    }
+                    
+                    // The input matched.
+                    base.runtextpos = pos;
+                    base.Capture(0, matchStart, pos);
+                    return true;
+                    
+                    // <summary>Undo captures until it reaches the specified capture position.</summary>
+                    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                    void UncaptureUntil(int capturePosition)
+                    {
+                        while (base.Crawlpos() > capturePosition)
+                        {
+                            base.Uncapture();
+                        }
+                    }
+                }
+            }
+        }
+
+    }
+    
+    /// <summary>Custom <see cref="Regex"/>-derived type for the InvoiceCreationPattern method.</summary>
+    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.7603")]
+    file sealed class InvoiceCreationPattern_3 : Regex
+    {
+        /// <summary>Cached, thread-safe singleton instance.</summary>
+        internal static readonly InvoiceCreationPattern_3 Instance = new();
+    
+        /// <summary>Initializes the instance.</summary>
+        private InvoiceCreationPattern_3()
+        {
+            base.pattern = "\\b(vytvoř|vytvor|udělej|udelej|vystavit|vystav|vytvořit|vytvorit|create|make|generate|issue)\\b.*\\b(fakturu|faktura|faktur|invoice|dobropis|credit note)\\b|\\b(fakturu|faktura|invoice|dobropis|credit note)\\b.*\\b(za|na|for)\\b.*\\d";
+            base.roptions = RegexOptions.IgnoreCase | RegexOptions.Compiled;
+            ValidateMatchTimeout(Utilities.s_defaultTimeout);
+            base.internalMatchTimeout = Utilities.s_defaultTimeout;
+            base.factory = new RunnerFactory();
+            base.capsize = 5;
+        }
+            
+        /// <summary>Provides a factory for creating <see cref="RegexRunner"/> instances to be used by methods on <see cref="Regex"/>.</summary>
+        private sealed class RunnerFactory : RegexRunnerFactory
+        {
+            /// <summary>Creates an instance of a <see cref="RegexRunner"/> used by methods on <see cref="Regex"/>.</summary>
+            protected override RegexRunner CreateInstance() => new Runner();
+        
+            /// <summary>Provides the runner that contains the custom logic implementing the specified regular expression.</summary>
+            private sealed class Runner : RegexRunner
+            {
+                /// <summary>Scan the <paramref name="inputSpan"/> starting from base.runtextstart for the next match.</summary>
+                /// <param name="inputSpan">The text being scanned by the regular expression.</param>
+                protected override void Scan(ReadOnlySpan<char> inputSpan)
+                {
+                    // Search until we can't find a valid starting position, we find a match, or we reach the end of the input.
+                    while (TryFindNextPossibleStartingPosition(inputSpan) &&
+                           !TryMatchAtCurrentPosition(inputSpan) &&
+                           base.runtextpos != inputSpan.Length)
+                    {
+                        base.runtextpos++;
+                        if (Utilities.s_hasTimeout)
+                        {
+                            base.CheckTimeout();
+                        }
+                    }
+                }
+        
+                /// <summary>Search <paramref name="inputSpan"/> starting from base.runtextpos for the next location a match could possibly start.</summary>
+                /// <param name="inputSpan">The text being scanned by the regular expression.</param>
+                /// <returns>true if a possible match was found; false if no more matches are possible.</returns>
+                private bool TryFindNextPossibleStartingPosition(ReadOnlySpan<char> inputSpan)
+                {
+                    int pos = base.runtextpos;
+                    
+                    // Any possible match is at least 10 characters.
+                    if (pos <= inputSpan.Length - 10)
+                    {
+                        // The pattern has multiple strings that could begin the match. Search for any of them.
+                        // If none can be found, there's no match.
+                        int i = inputSpan.Slice(pos).IndexOfAny(Utilities.s_indexOfAnyStrings_OrdinalIgnoreCase_439C39CCBED6FCAE3858D85FA2C575DFCFD09FD1C4F1D08C85222777EB13A274);
+                        if (i >= 0)
+                        {
+                            base.runtextpos = pos + i;
+                            return true;
+                        }
+                    }
+                    
+                    // No match found.
+                    base.runtextpos = inputSpan.Length;
+                    return false;
+                }
+        
+                /// <summary>Determine whether <paramref name="inputSpan"/> at base.runtextpos is a match for the regular expression.</summary>
+                /// <param name="inputSpan">The text being scanned by the regular expression.</param>
+                /// <returns>true if the regular expression matches at the current position; otherwise, false.</returns>
+                private bool TryMatchAtCurrentPosition(ReadOnlySpan<char> inputSpan)
+                {
+                    int pos = base.runtextpos;
+                    int matchStart = pos;
+                    char ch;
+                    int alternation_branch = 0;
+                    int alternation_branch1 = 0;
+                    int alternation_branch2 = 0;
+                    int alternation_branch3 = 0;
+                    int alternation_branch4 = 0;
+                    int alternation_starting_capturepos1 = 0;
+                    int alternation_starting_capturepos2 = 0;
+                    int alternation_starting_capturepos3 = 0;
+                    int alternation_starting_capturepos4 = 0;
+                    int alternation_starting_capturepos5 = 0;
+                    int alternation_starting_pos1 = 0;
+                    int alternation_starting_pos2 = 0;
+                    int alternation_starting_pos3 = 0;
+                    int alternation_starting_pos4 = 0;
+                    int alternation_starting_pos5 = 0;
+                    int capture_starting_pos = 0;
+                    int capture_starting_pos1 = 0;
+                    int capture_starting_pos2 = 0;
+                    int capture_starting_pos3 = 0;
+                    int charloop_capture_pos = 0;
+                    int charloop_capture_pos1 = 0;
+                    int charloop_capture_pos2 = 0;
+                    int charloop_starting_pos = 0, charloop_ending_pos = 0;
+                    int charloop_starting_pos1 = 0, charloop_ending_pos1 = 0;
+                    int charloop_starting_pos2 = 0, charloop_ending_pos2 = 0;
+                    int stackpos = 0;
+                    ulong charMinusLowUInt64;
+                    ReadOnlySpan<char> slice = inputSpan.Slice(pos);
+                    
+                    // Match if at a word boundary.
+                    if (!Utilities.IsPreWordCharBoundary(inputSpan, pos))
+                    {
+                        UncaptureUntil(0);
+                        return false; // The input didn't match.
+                    }
+                    
+                    // Atomic group.
+                    {
+                        int atomic_stackpos = stackpos;
+                        
+                        // Match with 2 alternative expressions, atomically.
+                        //{
+                            int alternation_starting_pos = pos;
+                            int alternation_starting_capturepos = base.Crawlpos();
+                            
+                            // Branch 0
+                            {
+                                // 1st capture group.
+                                //{
+                                    capture_starting_pos = pos;
+                                    
+                                    // Match with 7 alternative expressions.
+                                    //{
+                                        alternation_starting_pos1 = pos;
+                                        alternation_starting_capturepos1 = base.Crawlpos();
+                                        
+                                        // Branch 0
+                                        //{
+                                            if ((uint)slice.Length < 6 ||
+                                                !slice.StartsWith("vytvo", StringComparison.OrdinalIgnoreCase) || // Match the string "vytvo" (ordinal case-insensitive)
+                                                ((ch = slice[5]) < 128 ? ("\0\0\0\0\0\u0004\0\u0004"[ch >> 4] & (1 << (ch & 0xF))) == 0 : !RegexRunner.CharInClass((char)ch, "\0\u0006\0RSrsŘŚ"))) // Match a character in the set [Rr\u0158\u0159].
+                                            {
+                                                goto AlternationBranch1;
+                                            }
+                                            
+                                            alternation_branch = 0;
+                                            pos += 6;
+                                            slice = inputSpan.Slice(pos);
+                                            goto AlternationMatch1;
+                                            
+                                            AlternationBranch1:
+                                            pos = alternation_starting_pos1;
+                                            slice = inputSpan.Slice(pos);
+                                            UncaptureUntil(alternation_starting_capturepos1);
+                                        //}
+                                        
+                                        // Branch 1
+                                        //{
+                                            if ((uint)slice.Length < 2 ||
+                                                !slice.StartsWith("ud", StringComparison.OrdinalIgnoreCase)) // Match the string "ud" (ordinal case-insensitive)
+                                            {
+                                                goto AlternationBranch2;
+                                            }
+                                            
+                                            // Match with 2 alternative expressions.
+                                            //{
+                                                if ((uint)slice.Length < 3)
+                                                {
+                                                    goto AlternationBranch2;
+                                                }
+                                                
+                                                switch (slice[2])
+                                                {
+                                                    case 'Ě' or 'ě':
+                                                        
+                                                        if ((uint)slice.Length < 6 ||
+                                                            !slice.Slice(3).StartsWith("lej", StringComparison.OrdinalIgnoreCase)) // Match the string "lej" (ordinal case-insensitive)
+                                                        {
+                                                            goto AlternationBranch2;
+                                                        }
+                                                        
+                                                        pos += 6;
+                                                        slice = inputSpan.Slice(pos);
+                                                        break;
+                                                        
+                                                    case 'E' or 'e':
+                                                        
+                                                        if ((uint)slice.Length < 6 ||
+                                                            !slice.Slice(3).StartsWith("lej", StringComparison.OrdinalIgnoreCase)) // Match the string "lej" (ordinal case-insensitive)
+                                                        {
+                                                            goto AlternationBranch2;
+                                                        }
+                                                        
+                                                        pos += 6;
+                                                        slice = inputSpan.Slice(pos);
+                                                        break;
+                                                        
+                                                    default:
+                                                        goto AlternationBranch2;
+                                                }
+                                            //}
+                                            
+                                            alternation_branch = 1;
+                                            goto AlternationMatch1;
+                                            
+                                            AlternationBranch2:
+                                            pos = alternation_starting_pos1;
+                                            slice = inputSpan.Slice(pos);
+                                            UncaptureUntil(alternation_starting_capturepos1);
+                                        //}
+                                        
+                                        // Branch 2
+                                        //{
+                                            if ((uint)slice.Length < 2 ||
+                                                !slice.StartsWith("vy", StringComparison.OrdinalIgnoreCase)) // Match the string "vy" (ordinal case-insensitive)
+                                            {
+                                                goto AlternationBranch3;
+                                            }
+                                            
+                                            // Match with 2 alternative expressions.
+                                            //{
+                                                alternation_starting_pos2 = pos;
+                                                alternation_starting_capturepos2 = base.Crawlpos();
+                                                
+                                                // Branch 0
+                                                //{
+                                                    if ((uint)slice.Length < 5 ||
+                                                        !slice.Slice(2).StartsWith("sta", StringComparison.OrdinalIgnoreCase)) // Match the string "sta" (ordinal case-insensitive)
+                                                    {
+                                                        goto AlternationBranch4;
+                                                    }
+                                                    
+                                                    // Match with 2 alternative expressions.
+                                                    //{
+                                                        alternation_starting_pos3 = pos;
+                                                        alternation_starting_capturepos3 = base.Crawlpos();
+                                                        
+                                                        // Branch 0
+                                                        //{
+                                                            if ((uint)slice.Length < 8 ||
+                                                                !slice.Slice(5).StartsWith("vit", StringComparison.OrdinalIgnoreCase)) // Match the string "vit" (ordinal case-insensitive)
+                                                            {
+                                                                goto AlternationBranch5;
+                                                            }
+                                                            
+                                                            alternation_branch2 = 0;
+                                                            pos += 8;
+                                                            slice = inputSpan.Slice(pos);
+                                                            goto AlternationMatch3;
+                                                            
+                                                            AlternationBranch5:
+                                                            pos = alternation_starting_pos3;
+                                                            slice = inputSpan.Slice(pos);
+                                                            UncaptureUntil(alternation_starting_capturepos3);
+                                                        //}
+                                                        
+                                                        // Branch 1
+                                                        //{
+                                                            // Match a character in the set [Vv].
+                                                            if ((uint)slice.Length < 6 || ((slice[5] | 0x20) != 'v'))
+                                                            {
+                                                                goto AlternationBranch4;
+                                                            }
+                                                            
+                                                            alternation_branch2 = 1;
+                                                            pos += 6;
+                                                            slice = inputSpan.Slice(pos);
+                                                            goto AlternationMatch3;
+                                                        //}
+                                                        
+                                                        AlternationBacktrack3:
+                                                        if (Utilities.s_hasTimeout)
+                                                        {
+                                                            base.CheckTimeout();
+                                                        }
+                                                        
+                                                        switch (alternation_branch2)
+                                                        {
+                                                            case 0:
+                                                                goto AlternationBranch5;
+                                                            case 1:
+                                                                goto AlternationBranch4;
+                                                        }
+                                                        
+                                                        AlternationMatch3:;
+                                                    //}
+                                                    
+                                                    alternation_branch1 = 0;
+                                                    goto AlternationMatch2;
+                                                    
+                                                    AlternationBranch4:
+                                                    pos = alternation_starting_pos2;
+                                                    slice = inputSpan.Slice(pos);
+                                                    UncaptureUntil(alternation_starting_capturepos2);
+                                                //}
+                                                
+                                                // Branch 1
+                                                //{
+                                                    if ((uint)slice.Length < 5 ||
+                                                        !slice.Slice(2).StartsWith("tvo", StringComparison.OrdinalIgnoreCase)) // Match the string "tvo" (ordinal case-insensitive)
+                                                    {
+                                                        goto AlternationBranch3;
+                                                    }
+                                                    
+                                                    // Match with 2 alternative expressions.
+                                                    //{
+                                                        if ((uint)slice.Length < 6)
+                                                        {
+                                                            goto AlternationBranch3;
+                                                        }
+                                                        
+                                                        switch (slice[5])
+                                                        {
+                                                            case 'Ř' or 'ř':
+                                                                
+                                                                if ((uint)slice.Length < 8 ||
+                                                                    !slice.Slice(6).StartsWith("it", StringComparison.OrdinalIgnoreCase)) // Match the string "it" (ordinal case-insensitive)
+                                                                {
+                                                                    goto AlternationBranch3;
+                                                                }
+                                                                
+                                                                pos += 8;
+                                                                slice = inputSpan.Slice(pos);
+                                                                break;
+                                                                
+                                                            case 'R' or 'r':
+                                                                
+                                                                if ((uint)slice.Length < 8 ||
+                                                                    !slice.Slice(6).StartsWith("it", StringComparison.OrdinalIgnoreCase)) // Match the string "it" (ordinal case-insensitive)
+                                                                {
+                                                                    goto AlternationBranch3;
+                                                                }
+                                                                
+                                                                pos += 8;
+                                                                slice = inputSpan.Slice(pos);
+                                                                break;
+                                                                
+                                                            default:
+                                                                goto AlternationBranch3;
+                                                        }
+                                                    //}
+                                                    
+                                                    alternation_branch1 = 1;
+                                                    goto AlternationMatch2;
+                                                //}
+                                                
+                                                AlternationBacktrack2:
+                                                if (Utilities.s_hasTimeout)
+                                                {
+                                                    base.CheckTimeout();
+                                                }
+                                                
+                                                switch (alternation_branch1)
+                                                {
+                                                    case 0:
+                                                        goto AlternationBacktrack3;
+                                                    case 1:
+                                                        goto AlternationBranch3;
+                                                }
+                                                
+                                                AlternationMatch2:;
+                                            //}
+                                            
+                                            alternation_branch = 2;
+                                            goto AlternationMatch1;
+                                            
+                                            AlternationBranch3:
+                                            pos = alternation_starting_pos1;
+                                            slice = inputSpan.Slice(pos);
+                                            UncaptureUntil(alternation_starting_capturepos1);
+                                        //}
+                                        
+                                        // Branch 3
+                                        //{
+                                            if ((uint)slice.Length < 6 ||
+                                                !slice.StartsWith("create", StringComparison.OrdinalIgnoreCase)) // Match the string "create" (ordinal case-insensitive)
+                                            {
+                                                goto AlternationBranch6;
+                                            }
+                                            
+                                            alternation_branch = 3;
+                                            pos += 6;
+                                            slice = inputSpan.Slice(pos);
+                                            goto AlternationMatch1;
+                                            
+                                            AlternationBranch6:
+                                            pos = alternation_starting_pos1;
+                                            slice = inputSpan.Slice(pos);
+                                            UncaptureUntil(alternation_starting_capturepos1);
+                                        //}
+                                        
+                                        // Branch 4
+                                        //{
+                                            if ((uint)slice.Length < 4 ||
+                                                !slice.StartsWith("ma", StringComparison.OrdinalIgnoreCase) || // Match the string "ma" (ordinal case-insensitive)
+                                                ((((ch = slice[2]) | 0x20) != 'k') & (ch != 'K')) || // Match a character in the set [Kk\u212A].
+                                                ((slice[3] | 0x20) != 'e')) // Match a character in the set [Ee].
+                                            {
+                                                goto AlternationBranch7;
+                                            }
+                                            
+                                            alternation_branch = 4;
+                                            pos += 4;
+                                            slice = inputSpan.Slice(pos);
+                                            goto AlternationMatch1;
+                                            
+                                            AlternationBranch7:
+                                            pos = alternation_starting_pos1;
+                                            slice = inputSpan.Slice(pos);
+                                            UncaptureUntil(alternation_starting_capturepos1);
+                                        //}
+                                        
+                                        // Branch 5
+                                        //{
+                                            if ((uint)slice.Length < 8 ||
+                                                !slice.StartsWith("generate", StringComparison.OrdinalIgnoreCase)) // Match the string "generate" (ordinal case-insensitive)
+                                            {
+                                                goto AlternationBranch8;
+                                            }
+                                            
+                                            alternation_branch = 5;
+                                            pos += 8;
+                                            slice = inputSpan.Slice(pos);
+                                            goto AlternationMatch1;
+                                            
+                                            AlternationBranch8:
+                                            pos = alternation_starting_pos1;
+                                            slice = inputSpan.Slice(pos);
+                                            UncaptureUntil(alternation_starting_capturepos1);
+                                        //}
+                                        
+                                        // Branch 6
+                                        //{
+                                            if ((uint)slice.Length < 5 ||
+                                                !slice.StartsWith("issue", StringComparison.OrdinalIgnoreCase)) // Match the string "issue" (ordinal case-insensitive)
+                                            {
+                                                goto AlternationBranch;
+                                            }
+                                            
+                                            alternation_branch = 6;
+                                            pos += 5;
+                                            slice = inputSpan.Slice(pos);
+                                            goto AlternationMatch1;
+                                        //}
+                                        
+                                        AlternationBacktrack1:
+                                        if (Utilities.s_hasTimeout)
+                                        {
+                                            base.CheckTimeout();
+                                        }
+                                        
+                                        switch (alternation_branch)
+                                        {
+                                            case 0:
+                                                goto AlternationBranch1;
+                                            case 1:
+                                                goto AlternationBranch2;
+                                            case 2:
+                                                goto AlternationBacktrack2;
+                                            case 3:
+                                                goto AlternationBranch6;
+                                            case 4:
+                                                goto AlternationBranch7;
+                                            case 5:
+                                                goto AlternationBranch8;
+                                            case 6:
+                                                goto AlternationBranch;
+                                        }
+                                        
+                                        AlternationMatch1:;
+                                    //}
+                                    
+                                    base.Capture(1, capture_starting_pos, pos);
+                                    
+                                    goto CaptureSkipBacktrack;
+                                    
+                                    CaptureBacktrack:
+                                    goto AlternationBacktrack1;
+                                    
+                                    CaptureSkipBacktrack:;
+                                //}
+                                
+                                // Match if at a word boundary.
+                                if (!Utilities.IsPostWordCharBoundary(inputSpan, pos))
+                                {
+                                    goto CaptureBacktrack;
+                                }
+                                
+                                // Match a character other than '\n' greedily any number of times.
+                                //{
+                                    charloop_starting_pos = pos;
+                                    
+                                    int iteration = slice.IndexOf('\n');
+                                    if (iteration < 0)
+                                    {
+                                        iteration = slice.Length;
+                                    }
+                                    
+                                    slice = slice.Slice(iteration);
+                                    pos += iteration;
+                                    
+                                    charloop_ending_pos = pos;
+                                    goto CharLoopEnd;
+                                    
+                                    CharLoopBacktrack:
+                                    UncaptureUntil(charloop_capture_pos);
+                                    
+                                    if (Utilities.s_hasTimeout)
+                                    {
+                                        base.CheckTimeout();
+                                    }
+                                    
+                                    if (charloop_starting_pos >= charloop_ending_pos)
+                                    {
+                                        goto CaptureBacktrack;
+                                    }
+                                    pos = --charloop_ending_pos;
+                                    slice = inputSpan.Slice(pos);
+                                    
+                                    CharLoopEnd:
+                                    charloop_capture_pos = base.Crawlpos();
+                                //}
+                                
+                                // Match if at a word boundary.
+                                if (!Utilities.IsPreWordCharBoundary(inputSpan, pos))
+                                {
+                                    goto CharLoopBacktrack;
+                                }
+                                
+                                // 2nd capture group.
+                                //{
+                                    capture_starting_pos1 = pos;
+                                    
+                                    // Match with 4 alternative expressions.
+                                    //{
+                                        alternation_starting_pos4 = pos;
+                                        alternation_starting_capturepos4 = base.Crawlpos();
+                                        
+                                        // Branch 0
+                                        //{
+                                            if ((uint)slice.Length < 5 ||
+                                                !slice.StartsWith("fa", StringComparison.OrdinalIgnoreCase) || // Match the string "fa" (ordinal case-insensitive)
+                                                ((((ch = slice[2]) | 0x20) != 'k') & (ch != 'K')) || // Match a character in the set [Kk\u212A].
+                                                !slice.Slice(3).StartsWith("tu", StringComparison.OrdinalIgnoreCase)) // Match the string "tu" (ordinal case-insensitive)
+                                            {
+                                                goto AlternationBranch9;
+                                            }
+                                            
+                                            // Match with 3 alternative expressions.
+                                            //{
+                                                alternation_starting_pos5 = pos;
+                                                alternation_starting_capturepos5 = base.Crawlpos();
+                                                
+                                                // Branch 0
+                                                //{
+                                                    if ((uint)slice.Length < 7 ||
+                                                        !slice.Slice(5).StartsWith("ru", StringComparison.OrdinalIgnoreCase)) // Match the string "ru" (ordinal case-insensitive)
+                                                    {
+                                                        goto AlternationBranch10;
+                                                    }
+                                                    
+                                                    alternation_branch4 = 0;
+                                                    pos += 7;
+                                                    slice = inputSpan.Slice(pos);
+                                                    goto AlternationMatch5;
+                                                    
+                                                    AlternationBranch10:
+                                                    pos = alternation_starting_pos5;
+                                                    slice = inputSpan.Slice(pos);
+                                                    UncaptureUntil(alternation_starting_capturepos5);
+                                                //}
+                                                
+                                                // Branch 1
+                                                //{
+                                                    if ((uint)slice.Length < 7 ||
+                                                        !slice.Slice(5).StartsWith("ra", StringComparison.OrdinalIgnoreCase)) // Match the string "ra" (ordinal case-insensitive)
+                                                    {
+                                                        goto AlternationBranch11;
+                                                    }
+                                                    
+                                                    alternation_branch4 = 1;
+                                                    pos += 7;
+                                                    slice = inputSpan.Slice(pos);
+                                                    goto AlternationMatch5;
+                                                    
+                                                    AlternationBranch11:
+                                                    pos = alternation_starting_pos5;
+                                                    slice = inputSpan.Slice(pos);
+                                                    UncaptureUntil(alternation_starting_capturepos5);
+                                                //}
+                                                
+                                                // Branch 2
+                                                //{
+                                                    // Match a character in the set [Rr].
+                                                    if ((uint)slice.Length < 6 || ((slice[5] | 0x20) != 'r'))
+                                                    {
+                                                        goto AlternationBranch9;
+                                                    }
+                                                    
+                                                    alternation_branch4 = 2;
+                                                    pos += 6;
+                                                    slice = inputSpan.Slice(pos);
+                                                    goto AlternationMatch5;
+                                                //}
+                                                
+                                                AlternationBacktrack5:
+                                                if (Utilities.s_hasTimeout)
+                                                {
+                                                    base.CheckTimeout();
+                                                }
+                                                
+                                                switch (alternation_branch4)
+                                                {
+                                                    case 0:
+                                                        goto AlternationBranch10;
+                                                    case 1:
+                                                        goto AlternationBranch11;
+                                                    case 2:
+                                                        goto AlternationBranch9;
+                                                }
+                                                
+                                                AlternationMatch5:;
+                                            //}
+                                            
+                                            alternation_branch3 = 0;
+                                            goto AlternationMatch4;
+                                            
+                                            AlternationBranch9:
+                                            pos = alternation_starting_pos4;
+                                            slice = inputSpan.Slice(pos);
+                                            UncaptureUntil(alternation_starting_capturepos4);
+                                        //}
+                                        
+                                        // Branch 1
+                                        //{
+                                            if ((uint)slice.Length < 7 ||
+                                                !slice.StartsWith("invoice", StringComparison.OrdinalIgnoreCase)) // Match the string "invoice" (ordinal case-insensitive)
+                                            {
+                                                goto AlternationBranch12;
+                                            }
+                                            
+                                            alternation_branch3 = 1;
+                                            pos += 7;
+                                            slice = inputSpan.Slice(pos);
+                                            goto AlternationMatch4;
+                                            
+                                            AlternationBranch12:
+                                            pos = alternation_starting_pos4;
+                                            slice = inputSpan.Slice(pos);
+                                            UncaptureUntil(alternation_starting_capturepos4);
+                                        //}
+                                        
+                                        // Branch 2
+                                        //{
+                                            if ((uint)slice.Length < 8 ||
+                                                !slice.StartsWith("dobropis", StringComparison.OrdinalIgnoreCase)) // Match the string "dobropis" (ordinal case-insensitive)
+                                            {
+                                                goto AlternationBranch13;
+                                            }
+                                            
+                                            alternation_branch3 = 2;
+                                            pos += 8;
+                                            slice = inputSpan.Slice(pos);
+                                            goto AlternationMatch4;
+                                            
+                                            AlternationBranch13:
+                                            pos = alternation_starting_pos4;
+                                            slice = inputSpan.Slice(pos);
+                                            UncaptureUntil(alternation_starting_capturepos4);
+                                        //}
+                                        
+                                        // Branch 3
+                                        //{
+                                            if ((uint)slice.Length < 11 ||
+                                                !slice.StartsWith("credit note", StringComparison.OrdinalIgnoreCase)) // Match the string "credit note" (ordinal case-insensitive)
+                                            {
+                                                goto CharLoopBacktrack;
+                                            }
+                                            
+                                            alternation_branch3 = 3;
+                                            pos += 11;
+                                            slice = inputSpan.Slice(pos);
+                                            goto AlternationMatch4;
+                                        //}
+                                        
+                                        AlternationBacktrack4:
+                                        if (Utilities.s_hasTimeout)
+                                        {
+                                            base.CheckTimeout();
+                                        }
+                                        
+                                        switch (alternation_branch3)
+                                        {
+                                            case 0:
+                                                goto AlternationBacktrack5;
+                                            case 1:
+                                                goto AlternationBranch12;
+                                            case 2:
+                                                goto AlternationBranch13;
+                                            case 3:
+                                                goto CharLoopBacktrack;
+                                        }
+                                        
+                                        AlternationMatch4:;
+                                    //}
+                                    
+                                    base.Capture(2, capture_starting_pos1, pos);
+                                    
+                                    goto CaptureSkipBacktrack1;
+                                    
+                                    CaptureBacktrack1:
+                                    goto AlternationBacktrack4;
+                                    
+                                    CaptureSkipBacktrack1:;
+                                //}
+                                
+                                // Match if at a word boundary.
+                                if (!Utilities.IsPostWordCharBoundary(inputSpan, pos))
+                                {
+                                    goto CaptureBacktrack1;
+                                }
+                                
+                                goto AlternationMatch;
+                                
+                                AlternationBranch:
+                                pos = alternation_starting_pos;
+                                slice = inputSpan.Slice(pos);
+                                UncaptureUntil(alternation_starting_capturepos);
+                            }
+                            
+                            // Branch 1
+                            {
+                                // 3rd capture group.
+                                //{
+                                    capture_starting_pos2 = pos;
+                                    
+                                    // Match with 4 alternative expressions.
+                                    //{
+                                        if (slice.IsEmpty)
+                                        {
+                                            UncaptureUntil(0);
+                                            return false; // The input didn't match.
+                                        }
+                                        
+                                        switch (slice[0])
+                                        {
+                                            case 'F' or 'f':
+                                                
+                                                if ((uint)slice.Length < 7 ||
+                                                    ((slice[1] | 0x20) != 'a') || // Match a character in the set [Aa].
+                                                    ((((ch = slice[2]) | 0x20) != 'k') & (ch != 'K')) || // Match a character in the set [Kk\u212A].
+                                                    !slice.Slice(3).StartsWith("tur", StringComparison.OrdinalIgnoreCase) || // Match the string "tur" (ordinal case-insensitive)
+                                                    ((long)((0x8000080080000800UL << (int)(charMinusLowUInt64 = (uint)slice[6] - 'A')) & (charMinusLowUInt64 - 64)) >= 0)) // Match a character in the set [AUau].
+                                                {
+                                                    UncaptureUntil(0);
+                                                    return false; // The input didn't match.
+                                                }
+                                                
+                                                pos += 7;
+                                                slice = inputSpan.Slice(pos);
+                                                break;
+                                                
+                                            case 'I' or 'i':
+                                                
+                                                if ((uint)slice.Length < 7 ||
+                                                    !slice.Slice(1).StartsWith("nvoice", StringComparison.OrdinalIgnoreCase)) // Match the string "nvoice" (ordinal case-insensitive)
+                                                {
+                                                    UncaptureUntil(0);
+                                                    return false; // The input didn't match.
+                                                }
+                                                
+                                                pos += 7;
+                                                slice = inputSpan.Slice(pos);
+                                                break;
+                                                
+                                            case 'D' or 'd':
+                                                
+                                                if ((uint)slice.Length < 8 ||
+                                                    !slice.Slice(1).StartsWith("obropis", StringComparison.OrdinalIgnoreCase)) // Match the string "obropis" (ordinal case-insensitive)
+                                                {
+                                                    UncaptureUntil(0);
+                                                    return false; // The input didn't match.
+                                                }
+                                                
+                                                pos += 8;
+                                                slice = inputSpan.Slice(pos);
+                                                break;
+                                                
+                                            case 'C' or 'c':
+                                                
+                                                if ((uint)slice.Length < 11 ||
+                                                    !slice.Slice(1).StartsWith("redit note", StringComparison.OrdinalIgnoreCase)) // Match the string "redit note" (ordinal case-insensitive)
+                                                {
+                                                    UncaptureUntil(0);
+                                                    return false; // The input didn't match.
+                                                }
+                                                
+                                                pos += 11;
+                                                slice = inputSpan.Slice(pos);
+                                                break;
+                                                
+                                            default:
+                                                UncaptureUntil(0);
+                                                return false; // The input didn't match.
+                                        }
+                                    //}
+                                    
+                                    base.Capture(3, capture_starting_pos2, pos);
+                                //}
+                                
+                                // Match if at a word boundary.
+                                if (!Utilities.IsPostWordCharBoundary(inputSpan, pos))
+                                {
+                                    UncaptureUntil(0);
+                                    return false; // The input didn't match.
+                                }
+                                
+                                // Match a character other than '\n' greedily any number of times.
+                                //{
+                                    charloop_starting_pos1 = pos;
+                                    
+                                    int iteration1 = slice.IndexOf('\n');
+                                    if (iteration1 < 0)
+                                    {
+                                        iteration1 = slice.Length;
+                                    }
+                                    
+                                    slice = slice.Slice(iteration1);
+                                    pos += iteration1;
+                                    
+                                    charloop_ending_pos1 = pos;
+                                    goto CharLoopEnd1;
+                                    
+                                    CharLoopBacktrack1:
+                                    UncaptureUntil(charloop_capture_pos1);
+                                    
+                                    if (Utilities.s_hasTimeout)
+                                    {
+                                        base.CheckTimeout();
+                                    }
+                                    
+                                    if (charloop_starting_pos1 >= charloop_ending_pos1)
+                                    {
+                                        UncaptureUntil(0);
+                                        return false; // The input didn't match.
+                                    }
+                                    pos = --charloop_ending_pos1;
+                                    slice = inputSpan.Slice(pos);
+                                    
+                                    CharLoopEnd1:
+                                    charloop_capture_pos1 = base.Crawlpos();
+                                //}
+                                
+                                // Match if at a word boundary.
+                                if (!Utilities.IsPreWordCharBoundary(inputSpan, pos))
+                                {
+                                    goto CharLoopBacktrack1;
+                                }
+                                
+                                // 4th capture group.
+                                //{
+                                    capture_starting_pos3 = pos;
+                                    
+                                    // Match with 3 alternative expressions.
+                                    //{
+                                        if (slice.IsEmpty)
+                                        {
+                                            goto CharLoopBacktrack1;
+                                        }
+                                        
+                                        switch (slice[0])
+                                        {
+                                            case 'Z' or 'z':
+                                                
+                                                // Match a character in the set [Aa].
+                                                if ((uint)slice.Length < 2 || ((slice[1] | 0x20) != 'a'))
+                                                {
+                                                    goto CharLoopBacktrack1;
+                                                }
+                                                
+                                                pos += 2;
+                                                slice = inputSpan.Slice(pos);
+                                                break;
+                                                
+                                            case 'N' or 'n':
+                                                
+                                                // Match a character in the set [Aa].
+                                                if ((uint)slice.Length < 2 || ((slice[1] | 0x20) != 'a'))
+                                                {
+                                                    goto CharLoopBacktrack1;
+                                                }
+                                                
+                                                pos += 2;
+                                                slice = inputSpan.Slice(pos);
+                                                break;
+                                                
+                                            case 'F' or 'f':
+                                                
+                                                if ((uint)slice.Length < 3 ||
+                                                    !slice.Slice(1).StartsWith("or", StringComparison.OrdinalIgnoreCase)) // Match the string "or" (ordinal case-insensitive)
+                                                {
+                                                    goto CharLoopBacktrack1;
+                                                }
+                                                
+                                                pos += 3;
+                                                slice = inputSpan.Slice(pos);
+                                                break;
+                                                
+                                            default:
+                                                goto CharLoopBacktrack1;
+                                        }
+                                    //}
+                                    
+                                    base.Capture(4, capture_starting_pos3, pos);
+                                //}
+                                
+                                // Match if at a word boundary.
+                                if (!Utilities.IsPostWordCharBoundary(inputSpan, pos))
+                                {
+                                    goto CharLoopBacktrack1;
+                                }
+                                
+                                // Match a character other than '\n' greedily any number of times.
+                                //{
+                                    charloop_starting_pos2 = pos;
+                                    
+                                    int iteration2 = slice.IndexOf('\n');
+                                    if (iteration2 < 0)
+                                    {
+                                        iteration2 = slice.Length;
+                                    }
+                                    
+                                    slice = slice.Slice(iteration2);
+                                    pos += iteration2;
+                                    
+                                    charloop_ending_pos2 = pos;
+                                    goto CharLoopEnd2;
+                                    
+                                    CharLoopBacktrack2:
+                                    UncaptureUntil(charloop_capture_pos2);
+                                    
+                                    if (Utilities.s_hasTimeout)
+                                    {
+                                        base.CheckTimeout();
+                                    }
+                                    
+                                    if (charloop_starting_pos2 >= charloop_ending_pos2)
+                                    {
+                                        goto CharLoopBacktrack1;
+                                    }
+                                    pos = --charloop_ending_pos2;
+                                    slice = inputSpan.Slice(pos);
+                                    
+                                    CharLoopEnd2:
+                                    charloop_capture_pos2 = base.Crawlpos();
+                                //}
+                                
+                                // Match a Unicode digit.
+                                if (slice.IsEmpty || !char.IsDigit(slice[0]))
+                                {
+                                    goto CharLoopBacktrack2;
+                                }
+                                
+                                pos++;
+                                slice = inputSpan.Slice(pos);
+                            }
+                            
+                            AlternationMatch:;
+                        //}
+                        
+                        stackpos = atomic_stackpos;
+                    }
+                    
+                    // The input matched.
+                    base.runtextpos = pos;
+                    base.Capture(0, matchStart, pos);
+                    return true;
+                    
+                    // <summary>Undo captures until it reaches the specified capture position.</summary>
+                    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                    void UncaptureUntil(int capturePosition)
+                    {
+                        while (base.Crawlpos() > capturePosition)
+                        {
+                            base.Uncapture();
+                        }
+                    }
+                }
+            }
+        }
+
+    }
+    
+    /// <summary>Custom <see cref="Regex"/>-derived type for the PlaceholderRegex method.</summary>
+    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.7603")]
+    file sealed class PlaceholderRegex_4 : Regex
+    {
+        /// <summary>Cached, thread-safe singleton instance.</summary>
+        internal static readonly PlaceholderRegex_4 Instance = new();
+    
+        /// <summary>Initializes the instance.</summary>
+        private PlaceholderRegex_4()
         {
             base.pattern = "\\{\\{(.+?)\\}\\}";
             base.roptions = RegexOptions.None;
@@ -218,7 +3965,91 @@ namespace System.Text.RegularExpressions.Generated
         /// <summary>Whether <see cref="s_defaultTimeout"/> is non-infinite.</summary>
         internal static readonly bool s_hasTimeout = s_defaultTimeout != Regex.InfiniteMatchTimeout;
         
+        /// <summary>Finds the next index of any character that matches a character in the set [Ii\d].</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static int IndexOfNonAsciiOrAny_91646B6EA80FE804F00EDCCAE8E24823A0970255CE9EC02D28FEBE77E7EB590F(this ReadOnlySpan<char> span)
+        {
+            int i = span.IndexOfAnyExcept(Utilities.s_ascii_FFFFFFFFFFFF00FCFFFDFFFFFFFDFFFF);
+            if ((uint)i < (uint)span.Length)
+            {
+                if (char.IsAscii(span[i]))
+                {
+                    return i;
+                }
+        
+                char ch;
+                do
+                {
+                    if (((ch = span[i]) < 128 ? ("\0\0\0ϿȀ\0Ȁ\0"[ch >> 4] & (1 << (ch & 0xF))) != 0 : RegexRunner.CharInClass((char)ch, "\0\u0004\u0001IJij\t")))
+                    {
+                        return i;
+                    }
+                    i++;
+                }
+                while ((uint)i < (uint)span.Length);
+            }
+        
+            return -1;
+        }
+        
+        /// <summary>Determines whether the specified index is a boundary word character.</summary>
+        /// <remarks>This is the same as \w plus U+200C ZERO WIDTH NON-JOINER and U+200D ZERO WIDTH JOINER.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static bool IsBoundaryWordChar(char ch)
+        {
+            ReadOnlySpan<byte> ascii = WordCharBitmap;
+            int chDiv8 = ch >> 3;
+            return (uint)chDiv8 < (uint)ascii.Length ?
+                (ascii[chDiv8] & (1 << (ch & 0x7))) != 0 :
+                ((WordCategoriesMask & (1 << (int)CharUnicodeInfo.GetUnicodeCategory(ch))) != 0) || (ch is '‌' or '‍');
+        }
+        
+        /// <summary>Determines whether the specified index is a boundary.</summary>
+        /// <remarks>This variant is only employed when the previous character has already been validated as a word character.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static bool IsPostWordCharBoundary(ReadOnlySpan<char> inputSpan, int index) =>
+            ((uint)index >= (uint)inputSpan.Length || !IsBoundaryWordChar(inputSpan[index]));
+        
+        /// <summary>Determines whether the specified index is a boundary.</summary>
+        /// <remarks>This variant is only employed when the subsequent character will separately be validated as a word character.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static bool IsPreWordCharBoundary(ReadOnlySpan<char> inputSpan, int index)
+        {
+            int indexMinus1 = index - 1;
+            return ((uint)indexMinus1 >= (uint)inputSpan.Length || !IsBoundaryWordChar(inputSpan[indexMinus1]));
+        }
+        
+        /// <summary>Provides a mask of Unicode categories that combine to form [\w].</summary>
+        private const int WordCategoriesMask =
+            1 << (int)UnicodeCategory.UppercaseLetter |
+            1 << (int)UnicodeCategory.LowercaseLetter |
+            1 << (int)UnicodeCategory.TitlecaseLetter |
+            1 << (int)UnicodeCategory.ModifierLetter |
+            1 << (int)UnicodeCategory.OtherLetter |
+            1 << (int)UnicodeCategory.NonSpacingMark |
+            1 << (int)UnicodeCategory.DecimalDigitNumber |
+            1 << (int)UnicodeCategory.ConnectorPunctuation;
+        
+        /// <summary>Gets a bitmap for whether each character 0 through 127 is in [\w]</summary>
+        private static ReadOnlySpan<byte> WordCharBitmap => new byte[]
+        {
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0x03,
+            0xFE, 0xFF, 0xFF, 0x87, 0xFE, 0xFF, 0xFF, 0x07
+        };
+        
+        /// <summary>Supports searching for characters in or not in "CDGIJNOPSUZcdgijnopsuz".</summary>
+        internal static readonly SearchValues<char> s_ascii_98C6290498C62904 = SearchValues.Create("CDGIJNOPSUZcdgijnopsuz");
+        
+        /// <summary>Supports searching for characters in or not in "\0\u0001\u0002\u0003\u0004\u0005\u0006\a\b\t\n\v\f\r\u000e\u000f\u0010\u0011\u0012\u0013\u0014\u0015\u0016\u0017\u0018\u0019\u001a\u001b\u001c\u001d\u001e\u001f !\"#$%&amp;'()*+,-./:;&lt;=&gt;?@ABCDEFGHJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghjklmnopqrstuvwxyz{|}~\u007f".</summary>
+        internal static readonly SearchValues<char> s_ascii_FFFFFFFFFFFF00FCFFFDFFFFFFFDFFFF = SearchValues.Create("\0\u0001\u0002\u0003\u0004\u0005\u0006\a\b\t\n\v\f\r\u000e\u000f\u0010\u0011\u0012\u0013\u0014\u0015\u0016\u0017\u0018\u0019\u001a\u001b\u001c\u001d\u001e\u001f !\"#$%&'()*+,-./:;<=>?@ABCDEFGHJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghjklmnopqrstuvwxyz{|}~\u007f");
+        
+        /// <summary>Supports searching for the specified strings.</summary>
+        internal static readonly SearchValues<string> s_indexOfAnyStrings_OrdinalIgnoreCase_439C39CCBED6FCAE3858D85FA2C575DFCFD09FD1C4F1D08C85222777EB13A274 = SearchValues.Create(["vytvo", "ud", "vystavit", "vystav", "vytvo", "create", "ma", "generate", "issue", "fa", "invoice", "dobropis", "credit n"], StringComparison.OrdinalIgnoreCase);
+        
         /// <summary>Supports searching for the string "{{".</summary>
         internal static readonly SearchValues<string> s_indexOfString_BB1C8D594CD963F65D3EAF61D3D969FEE92730B1764726818716F84676CA8389 = SearchValues.Create(["{{"], StringComparison.Ordinal);
+        
+        /// <summary>Supports searching for characters in or not in "ACFHKLNRSVZacfhklnrsvzK".</summary>
+        internal static readonly SearchValues<char> s_nonAscii_D45C93CFD1A5C7BA92AEFEE4D8CA2E85A44DC1B3F8EB9E963BC6BD9D80B5F31F = SearchValues.Create("ACFHKLNRSVZacfhklnrsvzK");
     }
 }

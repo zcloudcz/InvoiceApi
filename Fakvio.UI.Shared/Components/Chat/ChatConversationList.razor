@@ -1,0 +1,90 @@
+@using Fakvio.Contracts.Dto.Chat
+@inject IStringLocalizer<SharedResource> L
+
+@*
+    Sidebar list of chat conversations.
+    Clicking a conversation loads it. The delete button removes it.
+    Shows "New conversation" button at the top.
+*@
+
+<div class="d-flex flex-column" style="height: 100%;">
+    @* New conversation button *@
+    <div class="pa-2">
+        <MudButton Variant="Variant.Outlined"
+                   Color="Color.Primary"
+                   FullWidth="true"
+                   StartIcon="@Icons.Material.Filled.Add"
+                   OnClick="@OnNewConversation">
+            @L["Chat_NewConversation"]
+        </MudButton>
+    </div>
+
+    @* Conversation list *@
+    @if (Conversations.Count == 0)
+    {
+        <div class="pa-4 text-center">
+            <MudText Typo="Typo.body2" Color="Color.Tertiary">
+                @L["Chat_NoConversations"]
+            </MudText>
+        </div>
+    }
+    else
+    {
+        <MudList T="long?" Dense="true" Class="flex-grow-1 overflow-y-auto">
+            @foreach (var conv in Conversations)
+            {
+                <MudListItem T="long?"
+                             OnClick="@(() => OnSelectConversation.InvokeAsync(conv.Id))"
+                             Class="@(conv.Id == SelectedConversationId ? "mud-primary-text" : "")">
+                    <div class="d-flex justify-space-between align-center" style="width: 100%;">
+                        <div class="flex-grow-1 overflow-hidden">
+                            <MudText Typo="Typo.body2" Class="text-truncate">
+                                @conv.Title
+                            </MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Tertiary">
+                                @conv.LastMessageAt.ToLocalTime().ToString("dd.MM. HH:mm")
+                            </MudText>
+                        </div>
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                       Size="Size.Small"
+                                       Color="Color.Error"
+                                       OnClick="@(() => OnDeleteConversation.InvokeAsync(conv.Id))"
+                                       title="@L["Chat_DeleteConfirm"]" />
+                    </div>
+                </MudListItem>
+            }
+        </MudList>
+    }
+</div>
+
+@code {
+    /// <summary>
+    /// List of conversations to display.
+    /// </summary>
+    [Parameter]
+    public List<ChatConversationListDto> Conversations { get; set; } = new();
+
+    /// <summary>
+    /// Currently selected conversation ID (highlighted in the list).
+    /// </summary>
+    [Parameter]
+    public long? SelectedConversationId { get; set; }
+
+    /// <summary>
+    /// Called when user clicks a conversation to load it.
+    /// </summary>
+    [Parameter]
+    public EventCallback<long> OnSelectConversation { get; set; }
+
+    /// <summary>
+    /// Called when user clicks the delete button on a conversation.
+    /// </summary>
+    [Parameter]
+    public EventCallback<long> OnDeleteConversation { get; set; }
+
+    /// <summary>
+    /// Called when user clicks "New conversation".
+    /// </summary>
+    [Parameter]
+    public EventCallback OnNewConversation { get; set; }
+}

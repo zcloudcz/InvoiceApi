@@ -1,0 +1,63 @@
+@using Fakvio.Contracts.Dto.Chat
+@inject IStringLocalizer<SharedResource> L
+
+@*
+    Displays a single chat message as a bubble.
+    User messages are right-aligned (primary color).
+    Assistant messages are left-aligned (surface color).
+    Shows provider name and timestamp subtly below the message.
+*@
+
+<div class="d-flex @(IsUser ? "justify-end" : "justify-start") mb-2">
+    <div class="chat-bubble @(IsUser ? "chat-bubble-user" : "chat-bubble-assistant")"
+         style="max-width: 80%; padding: 12px 16px; border-radius: 12px;">
+
+        @* Role label *@
+        <MudText Typo="Typo.caption" Class="mb-1" Style="opacity: 0.7;">
+            @(IsUser ? L["EChatRole_User"] : L["EChatRole_Assistant"])
+        </MudText>
+
+        @* Message content — render as plain text (preserves whitespace/newlines) *@
+        <MudText Typo="Typo.body2" Style="white-space: pre-wrap; word-break: break-word;">
+            @Message.Content
+        </MudText>
+
+        @* Metadata: timestamp and provider *@
+        <div class="d-flex justify-end gap-2 mt-1">
+            @if (!string.IsNullOrEmpty(Message.ProviderUsed))
+            {
+                <MudText Typo="Typo.caption" Style="opacity: 0.5;">@Message.ProviderUsed</MudText>
+            }
+            <MudText Typo="Typo.caption" Style="opacity: 0.5;">
+                @Message.CreatedAt.ToLocalTime().ToString("HH:mm")
+            </MudText>
+        </div>
+    </div>
+</div>
+
+@code {
+    /// <summary>
+    /// The chat message to display.
+    /// </summary>
+    [Parameter, EditorRequired]
+    public ChatMessageDto Message { get; set; } = null!;
+
+    /// <summary>
+    /// Whether this is a user message (right-aligned) or assistant message (left-aligned).
+    /// </summary>
+    private bool IsUser => Message.Role == "User";
+}
+
+<style>
+    .chat-bubble-user {
+        background-color: var(--mud-palette-primary);
+        color: var(--mud-palette-primary-text);
+        border-bottom-right-radius: 4px;
+    }
+
+    .chat-bubble-assistant {
+        background-color: var(--mud-palette-surface);
+        border: 1px solid var(--mud-palette-lines-default);
+        border-bottom-left-radius: 4px;
+    }
+</style>

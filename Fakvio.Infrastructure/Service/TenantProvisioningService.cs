@@ -3,6 +3,7 @@ using Fakvio.Domain.Entities;
 using Fakvio.Domain.Enums;
 using Fakvio.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -313,6 +314,10 @@ public class TenantProvisioningService : ITenantProvisioningService
                     errorCodesToAdd: null);
             })
             .ReplaceService<IModelCacheKeyFactory, TenantModelCacheKeyFactory>()
+            // Downgrade PendingModelChangesWarning from Throw → Log so MigrateAsync()
+            // doesn't fail when the code model is slightly ahead of the last migration.
+            .ConfigureWarnings(w =>
+                w.Log(RelationalEventId.PendingModelChangesWarning))
             .Options;
 
         var context = new TenantDbContext(options);

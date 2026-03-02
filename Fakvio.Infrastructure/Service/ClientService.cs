@@ -531,7 +531,9 @@ public class ClientService : IClientService
     {
         _logger.LogInformation("Fetching from ARES: {RegistrationNumber}", registrationNumber);
 
-        var aresInfo = await _aresService.GetCompanyInfoAsync(registrationNumber, cancellationToken);
+        // Use RefreshCompanyInfoAsync (bypasses cache) because the user explicitly
+        // requested a fresh fetch — cached failures should not block manual retries.
+        var aresInfo = await _aresService.RefreshCompanyInfoAsync(registrationNumber, cancellationToken);
 
         if (!aresInfo.IsSuccessful)
         {

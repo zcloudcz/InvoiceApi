@@ -2,6 +2,26 @@
 
 ## Completed
 
+### Per-Client Language for Documents + Default cs-CZ UI (2026-03-02)
+- [x] **Domain**: Added `string Language` property to `Client.cs` and `ContentTemplate.cs` (ISO 639-1, default "cs")
+- [x] **DTOs**: Added Language to all 6 DTOs (ClientDto, CreateClientDto, UpdateClientDto, ContentTemplateDto, CreateContentTemplateDto, UpdateContentTemplateDto)
+- [x] **DB config**: TenantDbContext + MasterDbContext — Language column (varchar(5), NOT NULL, default 'cs'), updated composite index to (TemplateType, Language, IsDefault)
+- [x] **Migrations**: Generated `AddLanguageToClientAndContentTemplate` for both Tenant and Master contexts
+- [x] **Seed data**: Added `Language = "cs"` to all seeded ContentTemplate entries (6 tenant + 7 master)
+- [x] **IContentTemplateService**: Added language-aware overload `GetDefaultByTypeAsync(type, language, ct)` with fallback chain (exact match → any-language → null)
+- [x] **ContentTemplateService**: Implemented language-aware resolution, scoped `UnsetDefaultForTypeAsync` by (type, language), mapped Language in Create/Update
+- [x] **PdfExportService**: Reads `invoice.Client?.Language ?? "cs"`, passes to language-aware template resolution, added `GetDocumentTypeLabel` and updated `GetPaymentMethodLabel` with CZ/EN labels
+- [x] **EmailService**: Added `.Include(i => i.Client)` to invoice query, reads client language for template resolution, system emails (invitation, 2FA) use "cs" explicitly
+- [x] **UI: MainLayout**: Removed `<LanguageSwitcher />` from AppBar
+- [x] **UI: Program.cs**: Replaced localStorage culture detection with fixed `CultureInfo("cs-CZ")`
+- [x] **UI: ClientDetail + MyCompany**: Added Language `<MudSelect>` (cs/en) in edit mode, language display in read-only mode, mapped in EnableEditing/SaveClient
+- [x] **UI: ContentTemplates**: Added Language column to list table
+- [x] **UI: ContentTemplateDetail**: Added Language `<MudSelect>` in form mode, language display in read-only mode, mapped in Create/Update DTOs
+- [x] **Resources**: Added `Client_Language` ("Jazyk dokumentů" / "Document language") and `ContentTemplate_Language` ("Jazyk" / "Language")
+- [x] **Unit tests**: 8 new tests — ContentTemplateService (4: language match, fallback, null, scoped default), PdfExportService (2: cs/en client language), EmailService (2: invoice + invitation language)
+- [x] **Updated existing tests**: Fixed PdfExportServiceTests and EmailServiceTests mock signatures for new language-aware overload
+- [x] Build: 0 errors, **492 tests pass** (0 failures)
+
 ### Rebrand InvoiceApi → Fakvio + Registration Form Changes (2026-03-01)
 - [x] Global find-and-replace across 382 files: InvoiceApi → Fakvio, invoiceapi → fakvio, Invoice API → Fakvio, InvoiceApiClient → FakvioClient
 - [x] Renamed 13 project directories (InvoiceApi.* → Fakvio.*), 13 .csproj files, InvoiceApi.sln → Fakvio.sln
@@ -617,6 +637,57 @@
 - [x] Build: All 13 non-MAUI projects compile with 0 errors (MAUI requires workload install: `dotnet workload install maui`)
 - [x] Tests: All 362 unit tests pass
 
+### AI Chat Assistant (2026-03-01)
+- [x] **Domain entities**: ChatConversation, ChatMessage (BaseEntity), EChatRole enum (System/User/Assistant)
+- [x] **DTOs**: ChatConversationDto, ChatConversationListDto, ChatMessageDto, SendMessageRequest/Response in Fakvio.Contracts
+- [x] **TenantDbContext**: DbSets + Fluent API config (composite index UserId+LastMessageAt, cascade delete, Role as int)
+- [x] **IAiProvider interface**: GetCompletionAsync + StreamCompletionAsync (IAsyncEnumerable<string>)
+- [x] **4 AI providers**: ClaudeProvider (tryAGI/Anthropic SDK), OpenAiProvider (OpenAI SDK), GeminiProvider (REST), OllamaProvider (REST)
+- [x] **AiProviderFactory**: resolves by name (case-insensitive), conditional registration based on API key presence
+- [x] **ChatService**: conversation CRUD, message sending, SSE streaming, auto-title from first message
+- [x] **ChatContextBuilder**: builds system prompt with tenant business data (clients, invoices, overdue stats)
+- [x] **ChatController**: 6 endpoints (GET conversations, GET conversation/{id}, POST send, POST stream SSE, DELETE, GET providers)
+- [x] **ChatApiService**: Blazor HTTP service inheriting ApiClientBase, SSE stream reader with IAsyncEnumerable
+- [x] **4 UI components**: ChatPanel (main drawer), ChatMessageBubble, ChatInput, ChatConversationList
+- [x] **MainLayout**: AI chat toggle button (SmartToy icon) + right MudDrawer (Anchor.End, 400px)
+- [x] **Localization**: 10 Chat_ resource keys (CZ + EN)
+- [x] **DI registration**: AddAiProviders() in Infrastructure, ChatApiService in UI.Shared
+- [x] **Unit tests**: 23 new tests (13 ChatServiceTests, 7 AiProviderFactoryTests, 3 ChatContextBuilderTests)
+- [x] **NuGet packages**: Anthropic v3.3.0, OpenAI v2.2.0-beta.4
+- [x] Build: 0 errors (excl. MAUI workload), Tests: 368 pass (368 total)
+
+### AI Chat Tool System — ARES Lookup + Client Creation (2026-03-02)
+- [x] **IChatTool interface** + ChatToolResult record (Application layer): extensible tool abstraction with ToolName, Description, ParameterDescription, ExecuteAsync
+- [x] **IChatToolExecutor interface** + ParsedToolCall record (Application layer): orchestrator for tool detection, instruction building, JSON parsing, dispatch
+- [x] **AresLookupTool** (Infrastructure/Service/ChatTools): calls IAresService.GetCompanyInfoAsync, returns formatted company info (name, IČO, DIČ, VAT, address)
+- [x] **CreateClientTool** (Infrastructure/Service/ChatTools): calls IClientService.CreateClientAsync with FetchFromAres=true, checks for duplicates first
+- [x] **ChatToolExecutor** (Infrastructure/Service/ChatTools): regex-based intent detection (IČO pattern + CZ/EN keywords), JSON tool call parsing (handles markdown code blocks + preamble), tool dispatch via Dictionary<string, IChatTool>
+- [x] **ChatService two-pass flow**: when tool intent detected → non-streaming first AI call with tool instructions → parse tool call → execute tool → streaming second AI call with tool results in context; zero latency overhead for regular messages
+- [x] **DI registration**: 3 new services (IChatTool×2, IChatToolExecutor) in ServiceCollectionExtensions.cs
+- [x] **TenantContextMiddleware test fix**: added TenantDbContext registration to test service provider (fixes previous session's Schema assignment change)
+- [x] **Unit tests**: 30 new tests — ChatToolExecutorTests (15: intent detection, JSON parsing, tool dispatch), AresLookupToolTests (6: success, failure, missing params), CreateClientToolTests (7: create, duplicate, errors), ChatServiceTests (3: tool flow, fallback, skip)
+- [x] Build: 0 errors (excl. MAUI workload), Tests: 414 pass (414 total)
+
+### AI Chat → UI Interactivity: Navigation from Chat (2026-03-02)
+- [x] **ChatUiAction DTO** (Contracts/Dto/Chat): Type, Url, Parameters, factory method Navigate(url) — extensible action command from server to Blazor client
+- [x] **ChatToolResult.UiAction** (Application/Service): added optional UiAction property + SuccessWithAction() factory method to ChatToolResult record
+- [x] **NavigateTool** (Infrastructure/Service/ChatTools): new IChatTool for navigation — resolves client names via IClientService.GetClientsPagedAsync, builds URLs for new_invoice, new_credit_note, client_detail, client_list, invoice_list, new_client; handles single match (navigate), multiple matches (disambiguate), no match (error)
+- [x] **ChatToolExecutor extended**: added NavigationKeywordPattern [GeneratedRegex] (otevři, ukaž, přejdi, naviguj, zobraz, open, show, go to, new invoice, new client, etc.); DetectToolIntent now triggers on EITHER (IČO + keyword) OR (navigation keyword); BuildToolInstructions includes navigate tool with examples
+- [x] **ChatService pending action**: _pendingUiAction field captured from toolResult.UiAction after tool execution; GetPendingUiAction() method on IChatService interface; scoped per-request (safe for concurrent users)
+- [x] **ChatController SSE action event**: after [DONE], sends `event: action\ndata: {json}\n\n` if pending action exists — uses standard SSE event: field for type discrimination
+- [x] **ChatApiService**: new ChatStreamEvent class (Text/Action discriminated union); StreamMessageAsync returns IAsyncEnumerable<ChatStreamEvent>; parses SSE event: lines, tracks currentEventType, yields text or action events; continues reading after [DONE] for action events
+- [x] **ChatPanel navigation**: injects NavigationManager, captures pendingAction during streaming, executes NavigateTo(url) after 800ms delay (lets user see AI response first)
+- [x] **DI registration**: NavigateTool added to ServiceCollectionExtensions.cs
+- [x] **Unit tests**: 33 new tests — NavigateToolTests (14: basic nav, client resolution, ambiguity, errors), ChatToolExecutorTests (+5: navigation keyword detection), ChatServiceTests (+2: pending action set/null)
+- [x] Build: 0 errors (excl. MAUI workload), Tests: 447 pass (447 total)
+
+### AI Chat → Invoice Creation from Chat (2026-03-02)
+- [x] **CreateInvoiceTool** (Infrastructure/Service/ChatTools): new IChatTool that actually creates invoices via IInvoiceService.CreateInvoiceAsync; resolves client by name (IClientService.GetClientsPagedAsync), gets issuer (GetIssuerAsync), default currency CZK (ICurrencyService.GetCurrencyByCodeAsync), default VAT rate 21% (IVatRateService.GetDefaultStandardRateAsync); parses items JSON array from AI parameters; after creation navigates to /invoices/{id}
+- [x] **ChatToolExecutor extended**: added InvoiceCreationPattern [GeneratedRegex] for Czech/English invoice creation keywords (vytvoř/udělej/vystavit fakturu, create/make/generate invoice, faktura za/na + amount); DetectToolIntent now triggers on 3 paths: IČO+keyword, navigation keyword, or invoice creation pattern; BuildToolInstructions includes create_invoice tool with JSON examples
+- [x] **DI registration**: CreateInvoiceTool added to ServiceCollectionExtensions.cs
+- [x] **Unit tests**: 37 new tests — CreateInvoiceToolTests (24: single/multi item creation, navigate action, VAT defaults, quantity/unit defaults, currency resolution, client not found/ambiguous, missing params, error handling, notes), ChatToolExecutorTests (+13: invoice creation intent detection, available tools count, tool instructions)
+- [x] Build: 0 errors (excl. MAUI workload), Tests: 484 pass (484 total)
+
 ## Pending
 
 ### Future Enhancements (backlog)
@@ -628,5 +699,4 @@
 - [ ] **API Rate Limiting** — protect against abuse, per-tenant and per-endpoint limits, ASP.NET Core rate limiting middleware
 - [ ] **Performance Optimization** — Redis distributed cache, response compression, lazy loading for large datasets, query optimization
 - [ ] **Apple OAuth** — add Apple sign-in provider (requires separate NuGet package, Apple Developer account setup)
-- [ ] **AI Assistant** — in-app AI assistant for end users powered by Claude API; context-aware help with invoicing workflows (create invoice, find client, explain VAT rules), natural language search across invoices/clients, smart suggestions (auto-fill fields, detect duplicates, recommend payment terms), per-tenant conversation history, Blazor chat component with streaming responses
 

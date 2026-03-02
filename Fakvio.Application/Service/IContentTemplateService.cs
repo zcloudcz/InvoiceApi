@@ -26,10 +26,21 @@ public interface IContentTemplateService
     Task<ContentTemplateDto?> GetByIdAsync(long id, CancellationToken ct = default);
 
     /// <summary>
-    /// Gets the default template for a given template type.
+    /// Gets the default template for a given template type (any language).
     /// Returns null if no default is configured for that type.
+    /// Used by system emails (invitation, 2FA) where no client language context exists.
     /// </summary>
     Task<ContentTemplateDto?> GetDefaultByTypeAsync(EContentTemplateType templateType, CancellationToken ct = default);
+
+    /// <summary>
+    /// Gets the default template for a given template type and language.
+    /// Resolution chain:
+    /// 1. Match by (TemplateType, Language, IsDefault, IsActive) — exact language match
+    /// 2. Fallback to any-language default — (TemplateType, IsDefault, IsActive)
+    /// 3. Returns null — caller should use built-in fallback HTML
+    /// Used by document services (PDF, email) where a client's language preference is known.
+    /// </summary>
+    Task<ContentTemplateDto?> GetDefaultByTypeAsync(EContentTemplateType templateType, string language, CancellationToken ct = default);
 
     /// <summary>
     /// Creates a new content template.

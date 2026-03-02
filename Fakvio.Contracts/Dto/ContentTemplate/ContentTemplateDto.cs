@@ -16,6 +16,12 @@ public class ContentTemplateDto
     public bool IsDefault { get; set; }
     public bool IsActive { get; set; }
     public string? Description { get; set; }
+
+    /// <summary>
+    /// Language this template is written in — ISO 639-1 code (e.g., "cs", "en").
+    /// </summary>
+    public string Language { get; set; } = "cs";
+
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
 }
@@ -40,6 +46,11 @@ public class CreateContentTemplateDto
     /// Optional description / usage notes.
     /// </summary>
     public string? Description { get; set; }
+
+    /// <summary>
+    /// Language this template is written in — ISO 639-1 code. Defaults to "cs".
+    /// </summary>
+    public string Language { get; set; } = "cs";
 }
 
 /// <summary>
@@ -55,4 +66,9 @@ public class UpdateContentTemplateDto
     public bool? IsDefault { get; set; }
     public bool? IsActive { get; set; }
     public string? Description { get; set; }
+
+    /// <summary>
+    /// Language this template is written in — ISO 639-1 code. Null means "don't change".
+    /// </summary>
+    public string? Language { get; set; }
 }

@@ -60,4 +60,12 @@ public class ContentTemplate : BaseEntity
     /// Helps users understand what placeholders are available and when to use it.
     /// </summary>
     public string? Description { get; set; }
+
+    /// <summary>
+    /// Language this template is written in (ISO 639-1 code: "cs", "en", etc.).
+    /// Used for language-aware template resolution: when generating a document for a client,
+    /// the system picks the default template matching the client's Language preference.
+    /// Default is "cs" (Czech).
+    /// </summary>
+    public string Language { get; set; } = "cs";
 }

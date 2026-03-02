@@ -73,10 +73,12 @@ public class EmailService : IEmailService
     {
         _logger.LogInformation("Sending invoice {InvoiceId} via email to {Email}", invoiceId, recipientEmail);
 
-        // Load the invoice with related data for placeholder substitution
+        // Load the invoice with related data for placeholder substitution.
+        // Include Client to read the client's preferred language for template resolution.
         var invoice = await _context.Invoice
             .Include(i => i.Currency)
             .Include(i => i.Issuer)
+            .Include(i => i.Client)
             .FirstOrDefaultAsync(i => i.Id == invoiceId, ct)
             ?? throw new KeyNotFoundException($"Invoice with ID {invoiceId} not found.");
 
@@ -101,8 +103,12 @@ public class EmailService : IEmailService
             ? EContentTemplateType.CreditNoteEmail
             : EContentTemplateType.InvoiceEmail;
 
-        // Try to render from the default content template, fall back to simple HTML
-        var (subject, htmlBody) = await RenderFromTemplateOrFallbackAsync(templateType, placeholders, ct);
+        // Read client's preferred language for template resolution.
+        // Falls back to "cs" (Czech) when client or language is not set.
+        var clientLanguage = invoice.Client?.Language ?? "cs";
+
+        // Try to render from the default content template for the client's language, fall back to simple HTML
+        var (subject, htmlBody) = await RenderFromTemplateOrFallbackAsync(templateType, placeholders, clientLanguage, ct);
 
         // Send the email with the PDF attachment
         await SendEmailAsync(recipientEmail, subject, htmlBody, pdfBytes, fileName, ct);
@@ -178,9 +184,9 @@ public class EmailService : IEmailService
             ["AppName"] = _configuration["AppSettings:Name"] ?? "Fakvio"
         };
 
-        // Try to render from the default invitation template
+        // System emails (invitation, 2FA) have no client context — use "cs" as default language.
         var (subject, htmlBody) = await RenderFromTemplateOrFallbackAsync(
-            EContentTemplateType.InvitationEmail, placeholders, ct);
+            EContentTemplateType.InvitationEmail, placeholders, "cs", ct);
 
         // Use the generic SendEmailAsync — no attachment for invitation emails
         await SendEmailAsync(email, subject, htmlBody, ct: ct);
@@ -275,18 +281,20 @@ public class EmailService : IEmailService
     }
 
     /// <summary>
-    /// Tries to render subject and body from the default content template for the given type.
-    /// Falls back to simple inline text if no template is found.
+    /// Tries to render subject and body from the default content template for the given type and language.
+    /// Uses the language-aware overload of GetDefaultByTypeAsync which has a built-in fallback chain.
+    /// Falls back to simple inline text if no template is found at all.
     /// </summary>
     private async Task<(string Subject, string HtmlBody)> RenderFromTemplateOrFallbackAsync(
         EContentTemplateType templateType,
         Dictionary<string, string> placeholders,
+        string language,
         CancellationToken ct)
     {
         try
         {
-            // Look up the default content template for this type
-            var template = await _contentTemplateService.GetDefaultByTypeAsync(templateType, ct);
+            // Look up the default content template for this type and language (with fallback)
+            var template = await _contentTemplateService.GetDefaultByTypeAsync(templateType, language, ct);
             if (template != null)
             {
                 _logger.LogInformation("Using content template '{Name}' (ID {Id}) for type {Type}",

@@ -3,6 +3,7 @@
 @using Fakvio.UI.Shared.Services
 @using Fakvio.Contracts.Dto.Client
 @using Fakvio.UI.Shared.Components.Shared
+@using Fakvio.UI.Shared.Components.Chat
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
 @inject CompanyApiService CompanyService
@@ -15,8 +16,15 @@
 <MudThemeProvider @bind-IsDarkMode="_isDarkMode" />
     <MudLayout>
         <MudAppBar Elevation="1">
-            <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@((e) => DrawerToggle())" />
-            <MudText Typo="Typo.h5" Class="ml-3">@L["Layout_AppTitle"]</MudText>
+            @* Hamburger menu — only shown for authenticated users (no nav menu on login/register) *@
+            <AuthorizeView>
+                <Authorized>
+                    <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@((e) => DrawerToggle())" />
+                </Authorized>
+            </AuthorizeView>
+            @* App logo + title — switches between grey (dark mode) and color (light mode) *@
+            <MudImage Src="@_logoSrc" Alt="Fakvio" Width="32" Height="32" Class="ml-3 mr-2" />
+            <MudText Typo="Typo.h5">@L["Layout_AppTitle"]</MudText>
             <MudSpacer />
 
             <AuthorizeView>
@@ -59,8 +67,23 @@
                 </NotAuthorized>
             </AuthorizeView>
 
-            <LanguageSwitcher />
-            <MudIconButton Icon="@Icons.Material.Filled.Brightness4" Color="Color.Inherit" OnClick="@ToggleDarkMode" />
+            @* AI Chat toggle button — opens the right drawer. Uses the Fakvio logo as the AI assistant icon. *@
+            <AuthorizeView>
+                <Authorized>
+                    <MudTooltip Text="@L["Chat_Title"].Value">
+                        <MudIconButton OnClick="@ToggleChat" Color="Color.Inherit">
+                            <MudImage Src="@_logoSrc" Alt="@L["Chat_Title"].Value" Width="24" Height="24" />
+                        </MudIconButton>
+                    </MudTooltip>
+                </Authorized>
+            </AuthorizeView>
+
+            @* Dark/light mode toggle — only shown for authenticated users *@
+            <AuthorizeView>
+                <Authorized>
+                    <MudIconButton Icon="@Icons.Material.Filled.Brightness4" Color="Color.Inherit" OnClick="@ToggleDarkMode" />
+                </Authorized>
+            </AuthorizeView>
         </MudAppBar>
     <AuthorizeView>
         <Authorized>
@@ -72,6 +95,18 @@
             </MudDrawer>
         </Authorized>
     </AuthorizeView>
+
+        @* AI Chat drawer — slides in from the right *@
+        <AuthorizeView>
+            <Authorized>
+                <MudDrawer @bind-Open="_chatOpen" Anchor="Anchor.End"
+                           ClipMode="DrawerClipMode.Always" Elevation="4"
+                           Width="400px" Breakpoint="Breakpoint.Lg">
+                    <ChatPanel OnClose="@ToggleChat" />
+                </MudDrawer>
+            </Authorized>
+        </AuthorizeView>
+
         <MudMainContent>
             <MudContainer MaxWidth="MaxWidth.ExtraExtraLarge" Class="my-4">
                 @Body
@@ -82,6 +117,14 @@
 @code {
     private bool _drawerOpen = true;
     private bool _isDarkMode = true;
+    private bool _chatOpen;
+
+    /// <summary>
+    /// Returns the logo image path based on the current theme.
+    /// Grey logo for dark mode (better contrast on dark AppBar),
+    /// color logo for light mode.
+    /// </summary>
+    private string _logoSrc => _isDarkMode ? "images/logo-grey.png" : "images/logo.png";
 
     // Impersonation state — SysAdmin can select a company to "act as"
     private long? _impersonatedCompanyId;
@@ -95,6 +138,11 @@
     void ToggleDarkMode()
     {
         _isDarkMode = !_isDarkMode;
+    }
+
+    void ToggleChat()
+    {
+        _chatOpen = !_chatOpen;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

@@ -168,7 +168,13 @@ public class TenantContextMiddleware
             return;
         }
 
-        // Tenant is valid — proceed with the request
+        // Tenant is valid — set the Schema on the DI-resolved TenantDbContext
+        // so all EF Core queries are routed to the correct tenant schema (e.g., "tenant_1").
+        // Without this, TenantDbContext has no schema set and queries target the "public" schema,
+        // causing "relation does not exist" errors for tenant-only tables.
+        var tenantContext = context.RequestServices.GetRequiredService<TenantDbContext>();
+        tenantContext.Schema = tenantSettings.SchemaName;
+
         await _next(context);
     }
 

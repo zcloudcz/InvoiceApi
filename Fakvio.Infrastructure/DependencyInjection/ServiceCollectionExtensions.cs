@@ -1,9 +1,11 @@
 using AresService;
 using Fakvio.Application.Service;
+using Fakvio.Infrastructure.AiProviders;
 using Fakvio.Infrastructure.Data;
 using Fakvio.Infrastructure.Logging;
 using Fakvio.Infrastructure.Repository;
 using Fakvio.Infrastructure.Service;
+using Fakvio.Infrastructure.Service.ChatTools;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -128,6 +130,20 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ICloudStorageOrchestrator,
             Fakvio.Infrastructure.Service.CloudStorage.CloudStorageOrchestrator>();
 
+        // ── AI Chat ────────────────────────────────────────────────────────
+        AddAiProviders(services, configuration);
+        services.AddScoped<IChatService, ChatService>();
+        services.AddScoped<IChatContextBuilder, ChatContextBuilder>();
+
+        // Chat tools — each tool is registered individually as IChatTool.
+        // ChatToolExecutor discovers all tools via IEnumerable<IChatTool>.
+        // To add a new tool: implement IChatTool, register here, and it's automatically available.
+        services.AddScoped<IChatTool, AresLookupTool>();
+        services.AddScoped<IChatTool, CreateClientTool>();
+        services.AddScoped<IChatTool, NavigateTool>();
+        services.AddScoped<IChatTool, CreateInvoiceTool>();
+        services.AddScoped<IChatToolExecutor, ChatToolExecutor>();
+
         // ── Database Logging ────────────────────────────────────────────────
         // Structured logging to AppLog table in master DB.
         // Uses ConcurrentQueue for non-blocking enqueue; flushed by:
@@ -136,6 +152,49 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ILoggerProvider>(new DatabaseLoggerProvider(LogLevel.Information));
 
         return services;
+    }
+
+    /// <summary>
+    /// Registers AI providers based on configuration.
+    /// Only providers with valid API keys (or base URLs for Ollama) are registered.
+    /// This prevents runtime errors from unconfigured providers.
+    /// </summary>
+    private static void AddAiProviders(
+        IServiceCollection services,
+        IConfiguration configuration)
+    {
+        // Bind AiSettings from configuration.
+        services.Configure<AiSettings>(configuration.GetSection("AiSettings"));
+
+        var aiSettings = configuration.GetSection("AiSettings").Get<AiSettings>() ?? new AiSettings();
+
+        // Register only providers that have valid configuration.
+        // Each provider is registered as IAiProvider (multiple registrations → IEnumerable<IAiProvider>).
+
+        if (!string.IsNullOrEmpty(aiSettings.Claude.ApiKey))
+        {
+            services.AddSingleton<IAiProvider, ClaudeProvider>();
+        }
+
+        if (!string.IsNullOrEmpty(aiSettings.OpenAI.ApiKey))
+        {
+            services.AddSingleton<IAiProvider, OpenAiProvider>();
+        }
+
+        if (!string.IsNullOrEmpty(aiSettings.Gemini.ApiKey))
+        {
+            services.AddHttpClient<GeminiProvider>();
+            services.AddSingleton<IAiProvider>(sp => sp.GetRequiredService<GeminiProvider>());
+        }
+
+        if (!string.IsNullOrEmpty(aiSettings.Ollama.BaseUrl))
+        {
+            services.AddHttpClient<OllamaProvider>();
+            services.AddSingleton<IAiProvider>(sp => sp.GetRequiredService<OllamaProvider>());
+        }
+
+        // Factory resolves providers by name from the registered IEnumerable<IAiProvider>.
+        services.AddSingleton<IAiProviderFactory, AiProviderFactory>();
     }
 
     /// <summary>

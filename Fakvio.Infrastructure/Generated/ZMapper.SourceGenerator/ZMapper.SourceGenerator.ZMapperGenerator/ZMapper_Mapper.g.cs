@@ -261,6 +261,7 @@ public sealed class Mapper : IMapper
             destination.IsIssuer = source.IsIssuer;
             destination.IsActive = source.IsActive;
             destination.LastAresFetchDate = source.LastAresFetchDate;
+            destination.Language = source.Language;
             destination.Address = source.Address
                 ?.Select(item => item.ToAddressDto())
                 .ToList();
@@ -289,6 +290,7 @@ public sealed class Mapper : IMapper
             destination.IsIssuer = source.IsIssuer;
             destination.IsActive = source.IsActive;
             destination.LastAresFetchDate = source.LastAresFetchDate;
+            destination.Language = source.Language;
             destination.Address = source.Address
                 ?.Select(item => item.ToAddressDto())
                 .ToList();
@@ -574,6 +576,7 @@ public sealed class Mapper : IMapper
             destination.IsDefault = source.IsDefault;
             destination.IsActive = source.IsActive;
             destination.Description = source.Description;
+            destination.Language = source.Language;
             destination.CreatedAt = source.CreatedAt;
             destination.UpdatedAt = source.UpdatedAt;
             return destination;
@@ -589,6 +592,7 @@ public sealed class Mapper : IMapper
             destination.IsDefault = source.IsDefault;
             destination.IsActive = source.IsActive;
             destination.Description = source.Description;
+            destination.Language = source.Language;
             destination.CreatedAt = source.CreatedAt;
             destination.UpdatedAt = source.UpdatedAt;
             return destination;

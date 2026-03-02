@@ -53,6 +53,11 @@ public class ClientDto
     public DateTime? LastAresFetchDate { get; set; }
 
     /// <summary>
+    /// Preferred language for documents (PDFs, emails) — ISO 639-1 code (e.g., "cs", "en").
+    /// </summary>
+    public string Language { get; set; } = "cs";
+
+    /// <summary>
     /// Collection of client addresses
     /// </summary>
     public List<AddressDto> Address { get; set; } = new();

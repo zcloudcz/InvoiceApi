@@ -1,0 +1,66 @@
+@inject IStringLocalizer<SharedResource> L
+
+@*
+    Chat input component with a text field and send button.
+    Enter sends the message, Shift+Enter adds a new line.
+    Input is disabled while the AI is generating a response.
+*@
+
+<div class="d-flex align-end gap-2 pa-2" style="border-top: 1px solid var(--mud-palette-lines-default);">
+    <MudTextField @bind-Value="_message"
+                  Placeholder="@L["Chat_Placeholder"]"
+                  Variant="Variant.Outlined"
+                  Lines="1"
+                  MaxLines="3"
+                  AutoGrow="true"
+                  Disabled="@IsDisabled"
+                  Immediate="true"
+                  OnKeyDown="@HandleKeyDown"
+                  Class="flex-grow-1" />
+
+    <MudIconButton Icon="@Icons.Material.Filled.Send"
+                   Color="Color.Primary"
+                   Disabled="@(IsDisabled || string.IsNullOrWhiteSpace(_message))"
+                   OnClick="@HandleSend"
+                   title="@L["Chat_SendMessage"]" />
+</div>
+
+@code {
+    private string _message = string.Empty;
+
+    /// <summary>
+    /// Whether the input should be disabled (e.g., during AI response streaming).
+    /// </summary>
+    [Parameter]
+    public bool IsDisabled { get; set; }
+
+    /// <summary>
+    /// Callback when the user sends a message.
+    /// </summary>
+    [Parameter]
+    public EventCallback<string> OnSend { get; set; }
+
+    /// <summary>
+    /// Handles keyboard input: Enter sends, Shift+Enter adds newline.
+    /// </summary>
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey)
+        {
+            await HandleSend();
+        }
+    }
+
+    /// <summary>
+    /// Sends the current message and clears the input.
+    /// </summary>
+    private async Task HandleSend()
+    {
+        if (string.IsNullOrWhiteSpace(_message))
+            return;
+
+        var messageToSend = _message.Trim();
+        _message = string.Empty;
+        await OnSend.InvokeAsync(messageToSend);
+    }
+}

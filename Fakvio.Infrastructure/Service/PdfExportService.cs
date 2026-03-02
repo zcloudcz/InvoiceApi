@@ -68,8 +68,14 @@ public class PdfExportService : IPdfExportService
             ? EContentTemplateType.CreditNotePdf
             : EContentTemplateType.InvoicePdf;
 
+        // Read the client's preferred language for document generation.
+        // Falls back to "cs" (Czech) when no client or no language is set.
+        var clientLanguage = invoice.Client?.Language ?? "cs";
+
         // Resolve the PDF template from ContentTemplate system.
-        // Priority: 1) explicit contentTemplateId (user selected), 2) default for document type, 3) built-in fallback
+        // Priority: 1) explicit contentTemplateId (user selected),
+        //           2) default for document type + client language (with any-language fallback),
+        //           3) built-in fallback
         string htmlTemplate;
 
         if (contentTemplateId.HasValue)
@@ -90,13 +96,14 @@ public class PdfExportService : IPdfExportService
         }
         else
         {
-            // No explicit template — use the default for the document type
-            var contentTemplate = await _contentTemplateService.GetDefaultByTypeAsync(templateType, ct);
+            // No explicit template — use the default for the document type + client language.
+            // The overload with language parameter has a built-in fallback to any-language default.
+            var contentTemplate = await _contentTemplateService.GetDefaultByTypeAsync(templateType, clientLanguage, ct);
             if (contentTemplate != null)
             {
                 htmlTemplate = contentTemplate.HtmlBody;
-                _logger.LogInformation("Using default template '{TemplateName}' (type {Type}) for invoice {InvoiceId}",
-                    contentTemplate.Name, templateType, invoiceId);
+                _logger.LogInformation("Using default template '{TemplateName}' (type {Type}, lang {Lang}) for invoice {InvoiceId}",
+                    contentTemplate.Name, templateType, clientLanguage, invoiceId);
             }
             else
             {
@@ -189,10 +196,11 @@ public class PdfExportService : IPdfExportService
 
         var clientContact = invoice.Client?.Contact?.FirstOrDefault();
 
-        // Localized document type label: "FAKTURA" or "DOBROPIS"
-        var documentTypeLabel = invoice.DocumentType == EDocumentType.CreditNote
-            ? "DOBROPIS"
-            : "FAKTURA";
+        // Determine the document language for localized labels in the PDF.
+        var docLang = invoice.Client?.Language ?? "cs";
+
+        // Localized document type label based on client language
+        var documentTypeLabel = GetDocumentTypeLabel(invoice.DocumentType, docLang);
 
         // Dictionary maps each placeholder name to its actual value
         var replacements = new Dictionary<string, string>
@@ -234,8 +242,8 @@ public class PdfExportService : IPdfExportService
             ["BankAccountNumber"] = invoice.BankAccountNumber ?? "",
             ["IBAN"] = invoice.IBAN ?? "",
             ["SWIFT"] = invoice.SWIFT ?? "",
-            // PaymentMethod is now an enum — convert to localized Czech string for PDF
-            ["PaymentMethod"] = GetPaymentMethodLabel(invoice.PaymentMethod),
+            // PaymentMethod is now an enum — convert to localized string for PDF based on client language
+            ["PaymentMethod"] = GetPaymentMethodLabel(invoice.PaymentMethod, docLang),
 
             // Financial totals — use space as thousands separator (Czech format)
             ["TotalBeforeVat"] = invoice.TotalBeforeVat.ToString("N2"),
@@ -313,19 +321,48 @@ public class PdfExportService : IPdfExportService
     }
 
     /// <summary>
-    /// Converts the EPaymentMethod enum to a Czech label for the PDF template.
+    /// Converts the EPaymentMethod enum to a localized label for the PDF template.
+    /// Returns Czech labels for "cs", English labels for other languages.
     /// </summary>
-    private static string GetPaymentMethodLabel(Domain.Enums.EPaymentMethod? method)
+    private static string GetPaymentMethodLabel(Domain.Enums.EPaymentMethod? method, string language)
     {
+        if (language == "cs")
+        {
+            return method switch
+            {
+                Domain.Enums.EPaymentMethod.BankTransfer => "PŘEVODEM",
+                Domain.Enums.EPaymentMethod.Cash => "HOTOVĚ",
+                Domain.Enums.EPaymentMethod.CreditCard => "KARTOU",
+                Domain.Enums.EPaymentMethod.PayPal => "PAYPAL",
+                Domain.Enums.EPaymentMethod.Other => "JINÝ",
+                _ => ""
+            };
+        }
+
+        // English (and any other language) fallback
         return method switch
         {
-            Domain.Enums.EPaymentMethod.BankTransfer => "PŘEVODEM",
-            Domain.Enums.EPaymentMethod.Cash => "HOTOVĚ",
-            Domain.Enums.EPaymentMethod.CreditCard => "KARTOU",
+            Domain.Enums.EPaymentMethod.BankTransfer => "BANK TRANSFER",
+            Domain.Enums.EPaymentMethod.Cash => "CASH",
+            Domain.Enums.EPaymentMethod.CreditCard => "CREDIT CARD",
             Domain.Enums.EPaymentMethod.PayPal => "PAYPAL",
-            Domain.Enums.EPaymentMethod.Other => "JINÝ",
+            Domain.Enums.EPaymentMethod.Other => "OTHER",
             _ => ""
         };
+    }
+
+    /// <summary>
+    /// Returns a localized document type label for the PDF header.
+    /// Czech: "FAKTURA" / "DOBROPIS", English: "INVOICE" / "CREDIT NOTE".
+    /// </summary>
+    private static string GetDocumentTypeLabel(EDocumentType documentType, string language)
+    {
+        if (language == "cs")
+        {
+            return documentType == EDocumentType.CreditNote ? "DOBROPIS" : "FAKTURA";
+        }
+
+        return documentType == EDocumentType.CreditNote ? "CREDIT NOTE" : "INVOICE";
     }
 
     /// <summary>

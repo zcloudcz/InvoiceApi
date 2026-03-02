@@ -83,6 +83,10 @@ else
                             <MudSelectItem Value="EContentTemplateType.PasswordResetEmail">@L["ContentType_PasswordResetEmail"]</MudSelectItem>
                         </MudSelect>
                         <MudSwitch @bind-Value="_currentIsDefault" Label="@L["ContentTemplate_IsDefault"].Value" Color="Color.Warning" Class="mb-3" />
+                        <MudSelect T="string" @bind-Value="_currentLanguage" Label="@L["ContentTemplate_Language"].Value" Class="mb-3">
+                            <MudSelectItem Value="@("cs")">Čeština (cs)</MudSelectItem>
+                            <MudSelectItem Value="@("en")">English (en)</MudSelectItem>
+                        </MudSelect>
                         <MudTextField @bind-Value="_currentDescription" Label="@L["ContentTemplate_Description"].Value" Lines="2" />
                     }
                     else
@@ -92,6 +96,9 @@ else
                                 <MudChip T="string" Size="Size.Small" Color="@GetTemplateTypeColor(_template!.TemplateType)">
                                     @GetTemplateTypeLabel(_template.TemplateType)
                                 </MudChip>
+                            </MudListItem>
+                            <MudListItem T="string" Icon="@Icons.Material.Filled.Language">
+                                <strong>@L["ContentTemplate_Language"]:</strong> @_template.Language.ToUpperInvariant()
                             </MudListItem>
                             @if (_template?.IsDefault == true)
                             {
@@ -222,6 +229,7 @@ else
     private string _currentDescription = "";
     private EContentTemplateType _currentTemplateType = EContentTemplateType.InvoiceEmail;
     private bool _currentIsDefault = false;
+    private string _currentLanguage = "cs";
 
     // Quill rich text editor reference
     private BlazoredTextEditor? _quillEditor;
@@ -238,6 +246,7 @@ else
             _currentDescription = "";
             _currentTemplateType = EContentTemplateType.InvoiceEmail;
             _currentIsDefault = false;
+            _currentLanguage = "cs";
             _loading = false;
         }
         else
@@ -292,6 +301,7 @@ else
         _currentDescription = _template.Description ?? "";
         _currentTemplateType = _template.TemplateType;
         _currentIsDefault = _template.IsDefault;
+        _currentLanguage = _template.Language;
         _quillNeedsLoad = true;
         _isEditing = true;
         _isDirty = true; // Mark dirty when entering edit mode
@@ -328,6 +338,7 @@ else
                     HtmlBody = htmlBody,
                     TemplateType = _currentTemplateType,
                     IsDefault = _currentIsDefault,
+                    Language = _currentLanguage,
                     Description = _currentDescription
                 };
 
@@ -357,6 +368,7 @@ else
                     HtmlBody = htmlBody,
                     TemplateType = _currentTemplateType,
                     IsDefault = _currentIsDefault,
+                    Language = _currentLanguage,
                     Description = _currentDescription
                 };
 

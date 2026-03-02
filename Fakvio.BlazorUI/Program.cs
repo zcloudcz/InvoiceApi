@@ -3,8 +3,6 @@ using Fakvio.UI.Shared;
 using Fakvio.UI.Shared.Services;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
-using Microsoft.JSInterop;
-
 // Standalone Blazor WebAssembly entry point — thin host.
 // All shared UI components, services, and models live in Fakvio.UI.Shared (RCL).
 // This file only handles WASM-specific bootstrapping and HttpClient configuration.
@@ -36,23 +34,9 @@ builder.Services.AddHttpClient("InvoiceAPI", client =>
 
 var host = builder.Build();
 
-// Restore the user's preferred culture from localStorage before rendering.
-// This runs once at app startup — subsequent changes are handled by LanguageSwitcher.
-var jsRuntime = host.Services.GetRequiredService<IJSRuntime>();
-try
-{
-    var storedCulture = await jsRuntime.InvokeAsync<string?>("blazorCulture.get");
-    if (!string.IsNullOrEmpty(storedCulture))
-    {
-        var culture = new CultureInfo(storedCulture);
-        // Set UI culture for resource file lookup (cs-CZ → Czech .resx, en-US → English .resx)
-        CultureInfo.DefaultThreadCurrentUICulture = culture;
-    }
-}
-catch
-{
-    // Ignore — localStorage might not be available (e.g., during prerendering)
-}
+// UI is always Czech (cs-CZ). Per-client document language is configured on Client detail page.
+// No need to read from localStorage — the LanguageSwitcher has been removed.
+CultureInfo.DefaultThreadCurrentUICulture = new CultureInfo("cs-CZ");
 
 // Set invariant culture for number/date formatting so that decimal values (e.g., VAT rate "21.0")
 // are parsed correctly regardless of browser locale.

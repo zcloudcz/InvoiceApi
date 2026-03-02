@@ -130,6 +130,18 @@ public class TenantDbContext : DbContext
     public DbSet<BankAccount> BankAccount { get; set; }
 
     /// <summary>
+    /// AI chat conversations — one per user session.
+    /// Contains the conversation metadata (title, last message time).
+    /// </summary>
+    public DbSet<ChatConversation> ChatConversation { get; set; }
+
+    /// <summary>
+    /// AI chat messages — individual messages within a conversation.
+    /// Includes user messages, assistant responses, and system prompts.
+    /// </summary>
+    public DbSet<ChatMessage> ChatMessage { get; set; }
+
+    /// <summary>
     /// Cached ARES lookups (company registry data)
     /// </summary>
     public DbSet<AresCache> AresCache { get; set; }
@@ -171,6 +183,8 @@ public class TenantDbContext : DbContext
         ConfigureAresCache(modelBuilder);
         ConfigureVatRate(modelBuilder);
         ConfigureContentTemplate(modelBuilder);
+        ConfigureChatConversation(modelBuilder);
+        ConfigureChatMessage(modelBuilder);
 
         SeedData(modelBuilder);
     }
@@ -190,6 +204,9 @@ public class TenantDbContext : DbContext
             entity.Property(e => e.CompanyName).IsRequired().HasMaxLength(500);
             entity.Property(e => e.TaxNumber).HasMaxLength(50);
             entity.Property(e => e.TradingName).HasMaxLength(500);
+
+            // ISO 639-1 language code for document generation (e.g., "cs", "en").
+            entity.Property(e => e.Language).IsRequired().HasMaxLength(5).HasDefaultValue("cs");
 
             entity.HasMany(e => e.Address)
                 .WithOne(a => a.Client)
@@ -476,13 +493,59 @@ public class TenantDbContext : DbContext
             entity.HasIndex(e => e.TemplateType);
             entity.HasIndex(e => e.IsDefault);
             entity.HasIndex(e => e.IsActive);
-            entity.HasIndex(e => new { e.TemplateType, e.IsDefault });
+            // Composite index updated to include Language — supports "one default per (type, language)" queries.
+            entity.HasIndex(e => new { e.TemplateType, e.Language, e.IsDefault });
 
             entity.Property(e => e.Name).IsRequired().HasMaxLength(200);
             entity.Property(e => e.Subject).HasMaxLength(500);
             // PostgreSQL uses "text" type by default for string properties without MaxLength.
             entity.Property(e => e.HtmlBody).IsRequired();
             entity.Property(e => e.Description).HasMaxLength(2000);
+
+            // ISO 639-1 language code — determines which language this template is written in.
+            entity.Property(e => e.Language).IsRequired().HasMaxLength(5).HasDefaultValue("cs");
+        });
+    }
+
+    /// <summary>
+    /// ChatConversation table configuration.
+    /// Conversations are per-user, ordered by last message time.
+    /// </summary>
+    private void ConfigureChatConversation(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<ChatConversation>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            // Index for listing a user's conversations sorted by recency.
+            entity.HasIndex(e => new { e.UserId, e.LastMessageAt });
+            entity.HasIndex(e => e.IsArchived);
+
+            entity.Property(e => e.Title).IsRequired().HasMaxLength(200);
+
+            // Cascade delete: removing a conversation removes all its messages.
+            entity.HasMany(e => e.Messages)
+                .WithOne(m => m.Conversation)
+                .HasForeignKey(m => m.ConversationId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+    }
+
+    /// <summary>
+    /// ChatMessage table configuration.
+    /// Messages belong to a conversation and are ordered by CreatedAt.
+    /// </summary>
+    private void ConfigureChatMessage(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<ChatMessage>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.ConversationId);
+
+            // Store the enum as int in the database.
+            entity.Property(e => e.Role).HasConversion<int>();
+            entity.Property(e => e.Content).IsRequired();
+            entity.Property(e => e.ProviderUsed).HasMaxLength(50);
         });
     }
 
@@ -530,14 +593,14 @@ public class TenantDbContext : DbContext
             new Currency { Id = 8, Code = "RON", Name = "Romanian Leu", Symbol = "lei", DecimalPlaces = 2, IsActive = true, SortOrder = 8, DisplayFormat = "{0:N2} lei", CreatedAt = seedDate }
         );
 
-        // Seed content templates
+        // Seed content templates — all defaults are in Czech ("cs") language.
         modelBuilder.Entity<ContentTemplate>().HasData(
-            new ContentTemplate { Id = 1, Name = "Default Invoice PDF", HtmlBody = DefaultSeedData.GetDefaultInvoicePdfTemplate(), TemplateType = EContentTemplateType.InvoicePdf, IsDefault = true, IsActive = true, Description = "Default HTML template for rendering invoice PDFs.", CreatedAt = seedDate },
-            new ContentTemplate { Id = 2, Name = "Default Credit Note PDF", HtmlBody = DefaultSeedData.GetDefaultCreditNotePdfTemplate(), TemplateType = EContentTemplateType.CreditNotePdf, IsDefault = true, IsActive = true, Description = "Default HTML template for rendering credit note PDFs.", CreatedAt = seedDate },
-            new ContentTemplate { Id = 3, Name = "Default Invoice Email", Subject = "Invoice {{InvoiceNumber}} from {{CompanyName}}", HtmlBody = @"<div style=""font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;""><h2 style=""color: #1976D2;"">Invoice {{InvoiceNumber}}</h2><p>Dear customer,</p><p>Please find the attached invoice <strong>{{InvoiceNumber}}</strong>.</p><p><strong>Total:</strong> {{TotalWithVat}} {{CurrencyCode}}</p><p><strong>Due date:</strong> {{DueDate}}</p><br/><p>Thank you for your business.</p><hr style=""border: none; border-top: 1px solid #eee; margin: 20px 0;"" /><p style=""color: #999; font-size: 12px;"">{{CompanyName}}</p></div>", TemplateType = EContentTemplateType.InvoiceEmail, IsDefault = true, IsActive = true, Description = "Email body when sending an invoice.", CreatedAt = seedDate },
-            new ContentTemplate { Id = 4, Name = "Default Credit Note Email", Subject = "Credit Note {{InvoiceNumber}} from {{CompanyName}}", HtmlBody = @"<div style=""font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;""><h2 style=""color: #1976D2;"">Credit Note {{InvoiceNumber}}</h2><p>Dear customer,</p><p>Please find the attached credit note <strong>{{InvoiceNumber}}</strong>.</p><p><strong>Total:</strong> {{TotalWithVat}} {{CurrencyCode}}</p><br/><p>Thank you for your business.</p><hr style=""border: none; border-top: 1px solid #eee; margin: 20px 0;"" /><p style=""color: #999; font-size: 12px;"">{{CompanyName}}</p></div>", TemplateType = EContentTemplateType.CreditNoteEmail, IsDefault = true, IsActive = true, Description = "Email body when sending a credit note.", CreatedAt = seedDate },
-            new ContentTemplate { Id = 5, Name = "Default Invitation Email", Subject = "Invitation to {{AppName}} — Set your password", HtmlBody = @"<div style=""font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;""><h2 style=""color: #1976D2;"">Welcome to {{AppName}}</h2><p>Hello <strong>{{FullName}}</strong>,</p><p>You have been invited to {{AppName}}. Please set your password by clicking the button below:</p><div style=""text-align: center; margin: 30px 0;""><a href=""{{InvitationLink}}"" style=""background-color: #1976D2; color: white; padding: 14px 28px; text-decoration: none; border-radius: 4px; font-size: 16px;"">Set Password</a></div><p style=""color: #666; font-size: 14px;"">This link is valid for 48 hours.</p><hr style=""border: none; border-top: 1px solid #eee; margin: 20px 0;"" /><p style=""color: #999; font-size: 12px;"">{{AppName}}</p></div>", TemplateType = EContentTemplateType.InvitationEmail, IsDefault = true, IsActive = true, Description = "Email sent to new users.", CreatedAt = seedDate },
-            new ContentTemplate { Id = 6, Name = "Default Payment Reminder", Subject = "Payment reminder — Invoice {{InvoiceNumber}}", HtmlBody = @"<div style=""font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;""><h2 style=""color: #E65100;"">Payment Reminder</h2><p>Dear customer,</p><p>This is a friendly reminder that invoice <strong>{{InvoiceNumber}}</strong> is overdue.</p><p><strong>Total:</strong> {{TotalWithVat}} {{CurrencyCode}}</p><p><strong>Due date:</strong> {{DueDate}}</p><p>Please arrange payment at your earliest convenience.</p><br/><p>Thank you.</p><hr style=""border: none; border-top: 1px solid #eee; margin: 20px 0;"" /><p style=""color: #999; font-size: 12px;"">{{CompanyName}}</p></div>", TemplateType = EContentTemplateType.ReminderEmail, IsDefault = true, IsActive = true, Description = "Payment reminder for overdue invoices.", CreatedAt = seedDate }
+            new ContentTemplate { Id = 1, Name = "Default Invoice PDF", HtmlBody = DefaultSeedData.GetDefaultInvoicePdfTemplate(), TemplateType = EContentTemplateType.InvoicePdf, IsDefault = true, IsActive = true, Language = "cs", Description = "Default HTML template for rendering invoice PDFs.", CreatedAt = seedDate },
+            new ContentTemplate { Id = 2, Name = "Default Credit Note PDF", HtmlBody = DefaultSeedData.GetDefaultCreditNotePdfTemplate(), TemplateType = EContentTemplateType.CreditNotePdf, IsDefault = true, IsActive = true, Language = "cs", Description = "Default HTML template for rendering credit note PDFs.", CreatedAt = seedDate },
+            new ContentTemplate { Id = 3, Name = "Default Invoice Email", Subject = "Invoice {{InvoiceNumber}} from {{CompanyName}}", HtmlBody = @"<div style=""font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;""><h2 style=""color: #1976D2;"">Invoice {{InvoiceNumber}}</h2><p>Dear customer,</p><p>Please find the attached invoice <strong>{{InvoiceNumber}}</strong>.</p><p><strong>Total:</strong> {{TotalWithVat}} {{CurrencyCode}}</p><p><strong>Due date:</strong> {{DueDate}}</p><br/><p>Thank you for your business.</p><hr style=""border: none; border-top: 1px solid #eee; margin: 20px 0;"" /><p style=""color: #999; font-size: 12px;"">{{CompanyName}}</p></div>", TemplateType = EContentTemplateType.InvoiceEmail, IsDefault = true, IsActive = true, Language = "cs", Description = "Email body when sending an invoice.", CreatedAt = seedDate },
+            new ContentTemplate { Id = 4, Name = "Default Credit Note Email", Subject = "Credit Note {{InvoiceNumber}} from {{CompanyName}}", HtmlBody = @"<div style=""font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;""><h2 style=""color: #1976D2;"">Credit Note {{InvoiceNumber}}</h2><p>Dear customer,</p><p>Please find the attached credit note <strong>{{InvoiceNumber}}</strong>.</p><p><strong>Total:</strong> {{TotalWithVat}} {{CurrencyCode}}</p><br/><p>Thank you for your business.</p><hr style=""border: none; border-top: 1px solid #eee; margin: 20px 0;"" /><p style=""color: #999; font-size: 12px;"">{{CompanyName}}</p></div>", TemplateType = EContentTemplateType.CreditNoteEmail, IsDefault = true, IsActive = true, Language = "cs", Description = "Email body when sending a credit note.", CreatedAt = seedDate },
+            new ContentTemplate { Id = 5, Name = "Default Invitation Email", Subject = "Invitation to {{AppName}} — Set your password", HtmlBody = @"<div style=""font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;""><h2 style=""color: #1976D2;"">Welcome to {{AppName}}</h2><p>Hello <strong>{{FullName}}</strong>,</p><p>You have been invited to {{AppName}}. Please set your password by clicking the button below:</p><div style=""text-align: center; margin: 30px 0;""><a href=""{{InvitationLink}}"" style=""background-color: #1976D2; color: white; padding: 14px 28px; text-decoration: none; border-radius: 4px; font-size: 16px;"">Set Password</a></div><p style=""color: #666; font-size: 14px;"">This link is valid for 48 hours.</p><hr style=""border: none; border-top: 1px solid #eee; margin: 20px 0;"" /><p style=""color: #999; font-size: 12px;"">{{AppName}}</p></div>", TemplateType = EContentTemplateType.InvitationEmail, IsDefault = true, IsActive = true, Language = "cs", Description = "Email sent to new users.", CreatedAt = seedDate },
+            new ContentTemplate { Id = 6, Name = "Default Payment Reminder", Subject = "Payment reminder — Invoice {{InvoiceNumber}}", HtmlBody = @"<div style=""font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;""><h2 style=""color: #E65100;"">Payment Reminder</h2><p>Dear customer,</p><p>This is a friendly reminder that invoice <strong>{{InvoiceNumber}}</strong> is overdue.</p><p><strong>Total:</strong> {{TotalWithVat}} {{CurrencyCode}}</p><p><strong>Due date:</strong> {{DueDate}}</p><p>Please arrange payment at your earliest convenience.</p><br/><p>Thank you.</p><hr style=""border: none; border-top: 1px solid #eee; margin: 20px 0;"" /><p style=""color: #999; font-size: 12px;"">{{CompanyName}}</p></div>", TemplateType = EContentTemplateType.ReminderEmail, IsDefault = true, IsActive = true, Language = "cs", Description = "Payment reminder for overdue invoices.", CreatedAt = seedDate }
         );
     }
 
