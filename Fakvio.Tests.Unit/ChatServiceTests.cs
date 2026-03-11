@@ -288,10 +288,10 @@ public class ChatServiceTests : IDisposable
     // ─── Tool Flow Tests ──────────────────────────────────────────────────
 
     [Fact]
-    public async Task SendMessage_UsesTwoPassFlow_WhenToolIntentDetected()
+    public async Task SendMessage_UsesTwoPassFlow_WhenModelProducesToolCall()
     {
-        // Arrange — configure tool executor to detect intent and return a tool call.
-        _toolExecutor.DetectToolIntent(Arg.Any<string>()).Returns(true);
+        // Arrange — configure tool executor: model produces a tool call in the first pass.
+        // For non-native-tool providers, tool instructions are ALWAYS included (no regex gate).
         _toolExecutor.BuildToolInstructions().Returns("\nTOOLS: ...");
         _toolExecutor.ParseToolCall(Arg.Any<string>()).Returns(
             new ParsedToolCall
@@ -302,7 +302,7 @@ public class ChatServiceTests : IDisposable
         _toolExecutor.ExecuteToolAsync(Arg.Any<ParsedToolCall>(), Arg.Any<CancellationToken>())
             .Returns(ChatToolResult.Success("Company found: Test s.r.o."));
 
-        // Second AI call (with tool results) returns the final user-facing response.
+        // Two AI calls: first pass (tool JSON), second pass (natural language with tool result).
         _mockProvider
             .GetCompletionAsync(Arg.Any<List<ChatMessageDto>>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns("AI response text", "Found company Test s.r.o. in ARES registry.");
@@ -316,7 +316,6 @@ public class ChatServiceTests : IDisposable
         result.AssistantMessage.Content.ShouldBe("Found company Test s.r.o. in ARES registry.");
 
         // Verify the tool executor was called in the correct sequence.
-        _toolExecutor.Received(1).DetectToolIntent("Najdi firmu IČO 12345678");
         _toolExecutor.Received(1).BuildToolInstructions();
         _toolExecutor.Received(1).ParseToolCall("AI response text");
         await _toolExecutor.Received(1).ExecuteToolAsync(
@@ -346,19 +345,25 @@ public class ChatServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task SendMessage_SkipsToolFlow_WhenNoToolIntentDetected()
+    public async Task SendMessage_NoToolExecuted_WhenModelDeclinesToolCall()
     {
-        // Arrange — no tool intent (default mock already returns false).
+        // Arrange — tool instructions are always included for non-native-tool providers,
+        // but the model chooses not to produce a tool call (returns regular text).
+        _toolExecutor.BuildToolInstructions().Returns("\nTOOLS: ...");
+        _toolExecutor.ParseToolCall(Arg.Any<string>()).Returns((ParsedToolCall?)null);
+
         var request = new SendMessageRequest { Message = "Kolik mám faktur?" };
 
         // Act
         var result = await _service.SendMessageAsync(TestUserId, request);
 
-        // Assert — regular flow, no tool involvement.
+        // Assert — first-pass text response used directly, no tool executed.
         result.AssistantMessage.Content.ShouldBe("AI response text");
 
-        // BuildToolInstructions should NOT be called when no intent detected.
-        _toolExecutor.DidNotReceive().BuildToolInstructions();
+        // Tool instructions ARE sent (always), but no tool should be executed.
+        _toolExecutor.Received(1).BuildToolInstructions();
+        await _toolExecutor.DidNotReceive().ExecuteToolAsync(
+            Arg.Any<ParsedToolCall>(), Arg.Any<CancellationToken>());
     }
 
     // ─── Pending UI Action Tests ──────────────────────────────────────────
@@ -407,5 +412,172 @@ public class ChatServiceTests : IDisposable
 
         // Assert — no tool executed, so no pending action.
         _service.GetPendingUiAction().ShouldBeNull();
+    }
+
+    // ─── PDF Attachment Tests ─────────────────────────────────────────────
+
+    [Fact]
+    public async Task SendMessage_WithAttachedFile_PrependsContentToMessage()
+    {
+        // Arrange — message with attached PDF content.
+        var request = new SendMessageRequest
+        {
+            Message = "What is this document about?",
+            AttachedFileContent = "Invoice #123 for consulting services.",
+            AttachedFileName = "invoice.pdf"
+        };
+
+        // Act
+        var result = await _service.SendMessageAsync(TestUserId, request);
+
+        // Assert — the saved user message should contain both the PDF content and the question.
+        var userMessage = await _context.ChatMessage
+            .FirstOrDefaultAsync(m => m.ConversationId == result.ConversationId
+                                      && m.Role == EChatRole.User);
+
+        userMessage.ShouldNotBeNull();
+        userMessage.Content.ShouldContain("[Attached PDF: invoice.pdf]");
+        userMessage.Content.ShouldContain("Invoice #123 for consulting services.");
+        userMessage.Content.ShouldContain("What is this document about?");
+    }
+
+    [Fact]
+    public async Task SendMessage_WithoutAttachment_UsesOriginalMessage()
+    {
+        // Arrange — message without any attachment.
+        var request = new SendMessageRequest
+        {
+            Message = "How many invoices do I have?",
+            AttachedFileContent = null,
+            AttachedFileName = null
+        };
+
+        // Act
+        var result = await _service.SendMessageAsync(TestUserId, request);
+
+        // Assert — the saved user message should be the original text only.
+        var userMessage = await _context.ChatMessage
+            .FirstOrDefaultAsync(m => m.ConversationId == result.ConversationId
+                                      && m.Role == EChatRole.User);
+
+        userMessage.ShouldNotBeNull();
+        userMessage.Content.ShouldBe("How many invoices do I have?");
+        userMessage.Content.ShouldNotContain("[Attached PDF:");
+    }
+
+    [Fact]
+    public async Task SendMessage_WithEmptyAttachment_UsesOriginalMessage()
+    {
+        // Arrange — attachment properties set but content is empty/whitespace.
+        var request = new SendMessageRequest
+        {
+            Message = "Hello",
+            AttachedFileContent = "   ",
+            AttachedFileName = "empty.pdf"
+        };
+
+        // Act
+        var result = await _service.SendMessageAsync(TestUserId, request);
+
+        // Assert — empty attachment content should be ignored.
+        var userMessage = await _context.ChatMessage
+            .FirstOrDefaultAsync(m => m.ConversationId == result.ConversationId
+                                      && m.Role == EChatRole.User);
+
+        userMessage.ShouldNotBeNull();
+        userMessage.Content.ShouldBe("Hello");
+    }
+
+    // ─── Image Attachment Tests ───────────────────────────────────────────
+
+    [Fact]
+    public async Task SendMessage_WithImage_StoresPlaceholderInDb_NotBase64()
+    {
+        // Arrange — message with an attached image (base64 data).
+        // The actual base64 should NOT be stored in the database message content.
+        // Instead, a short "[Image: filename]" placeholder is stored.
+        var fakeBase64 = Convert.ToBase64String(new byte[] { 0x89, 0x50, 0x4E, 0x47 }); // PNG header bytes
+        var request = new SendMessageRequest
+        {
+            Message = "What is in this image?",
+            AttachedImageBase64 = fakeBase64,
+            AttachedFileName = "test.png"
+        };
+
+        // Act
+        var result = await _service.SendMessageAsync(TestUserId, request);
+
+        // Assert — DB message should contain the placeholder, NOT the base64 data.
+        var userMessage = await _context.ChatMessage
+            .FirstOrDefaultAsync(m => m.ConversationId == result.ConversationId
+                                      && m.Role == EChatRole.User);
+
+        userMessage.ShouldNotBeNull();
+        userMessage.Content.ShouldContain("[Image: test.png]");
+        userMessage.Content.ShouldContain("What is in this image?");
+        userMessage.Content.ShouldNotContain(fakeBase64); // Base64 must NOT be in DB
+    }
+
+    [Fact]
+    public async Task SendMessage_WithImage_PassesBase64ToProvider_ViaImagesProperty()
+    {
+        // Arrange — verify that the image base64 data is passed to the AI provider
+        // through the transient ChatMessageDto.Images property on the last user message.
+        var fakeBase64 = Convert.ToBase64String(new byte[] { 0xFF, 0xD8, 0xFF }); // JPEG header bytes
+        var request = new SendMessageRequest
+        {
+            Message = "Describe this image",
+            AttachedImageBase64 = fakeBase64,
+            AttachedFileName = "photo.jpg"
+        };
+
+        // Capture the messages passed to the AI provider.
+        List<ChatMessageDto>? capturedMessages = null;
+        _mockProvider
+            .GetCompletionAsync(
+                Arg.Do<List<ChatMessageDto>>(msgs => capturedMessages = msgs),
+                Arg.Any<string?>(),
+                Arg.Any<CancellationToken>())
+            .Returns("I see a photo.");
+
+        // Act
+        await _service.SendMessageAsync(TestUserId, request);
+
+        // Assert — the last user message should have Images set with the base64 data.
+        capturedMessages.ShouldNotBeNull();
+        var lastUserMsg = capturedMessages.LastOrDefault(m =>
+            m.Role.Equals("User", StringComparison.OrdinalIgnoreCase));
+        lastUserMsg.ShouldNotBeNull();
+        lastUserMsg.Images.ShouldNotBeNull();
+        lastUserMsg.Images.Count.ShouldBe(1);
+        lastUserMsg.Images[0].ShouldBe(fakeBase64);
+    }
+
+    [Fact]
+    public async Task SendMessage_WithImageAndPdf_ImageTakesPrecedence()
+    {
+        // Arrange — edge case: both image and PDF are set.
+        // Image should take precedence (UI prevents this, but backend has clear behavior).
+        var fakeBase64 = Convert.ToBase64String(new byte[] { 0x89, 0x50, 0x4E, 0x47 });
+        var request = new SendMessageRequest
+        {
+            Message = "Analyze this",
+            AttachedImageBase64 = fakeBase64,
+            AttachedFileName = "invoice.png",
+            AttachedFileContent = "This is extracted PDF text that should be ignored."
+        };
+
+        // Act
+        var result = await _service.SendMessageAsync(TestUserId, request);
+
+        // Assert — image placeholder should be used, not PDF content block.
+        var userMessage = await _context.ChatMessage
+            .FirstOrDefaultAsync(m => m.ConversationId == result.ConversationId
+                                      && m.Role == EChatRole.User);
+
+        userMessage.ShouldNotBeNull();
+        userMessage.Content.ShouldContain("[Image: invoice.png]");
+        userMessage.Content.ShouldNotContain("[Attached PDF:");
+        userMessage.Content.ShouldNotContain("extracted PDF text");
     }
 }

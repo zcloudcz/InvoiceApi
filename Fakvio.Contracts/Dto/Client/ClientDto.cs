@@ -79,6 +79,27 @@ public class ClientDto
     public BillingSettingsDto? BillingSettings { get; set; }
 
     /// <summary>
+    /// Tax regime used by this company (e.g., FlatRateTax, LumpSumExpenses60).
+    /// </summary>
+    public string? TaxRegime { get; set; }
+
+    /// <summary>
+    /// Type of business activity — determines lump-sum expense percentage (CZ).
+    /// </summary>
+    public string? ActivityType { get; set; }
+
+    /// <summary>
+    /// Whether this is the person's main self-employed activity.
+    /// Main activity has higher minimum insurance advances.
+    /// </summary>
+    public bool IsMainActivity { get; set; } = true;
+
+    /// <summary>
+    /// Flat-rate tax band (CZ only, 1/2/3) — for Paušální daň regime.
+    /// </summary>
+    public string? FlatRateBand { get; set; }
+
+    /// <summary>
     /// When was this record created
     /// </summary>
     public DateTime CreatedAt { get; set; }

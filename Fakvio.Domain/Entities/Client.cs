@@ -1,4 +1,5 @@
 using Fakvio.Domain.Common;
+using Fakvio.Domain.Enums;
 
 namespace Fakvio.Domain.Entities;
 
@@ -73,6 +74,35 @@ public class Client : BaseEntity
     /// Default is "cs" (Czech) — the primary audience of this application.
     /// </summary>
     public string Language { get; set; } = "cs";
+
+    // ─── Tax / Accounting regime ──────────────────────────────────────────
+
+    /// <summary>
+    /// Tax/accounting regime used by this company (OSVČ/SZČO).
+    /// Determines how income tax, social and health insurance are calculated.
+    /// Null = not configured (not applicable or unknown).
+    /// Only relevant for issuers (IsIssuer = true).
+    /// </summary>
+    public ETaxRegime? TaxRegime { get; set; }
+
+    /// <summary>
+    /// Type of self-employed activity — determines lump-sum expense percentage (CZ).
+    /// Null = not configured.
+    /// </summary>
+    public EActivityType? ActivityType { get; set; }
+
+    /// <summary>
+    /// Whether this is the person's main (primary) self-employed activity.
+    /// Main activity has higher minimum social/health insurance advances.
+    /// True = hlavní činnost, False = vedlejší činnost.
+    /// </summary>
+    public bool IsMainActivity { get; set; } = true;
+
+    /// <summary>
+    /// Flat-rate tax band (CZ only). Only applicable when TaxRegime = FlatRateTax.
+    /// Determines the fixed monthly payment amount.
+    /// </summary>
+    public EFlatRateBand? FlatRateBand { get; set; }
 
     /// <summary>
     /// Preferred currency for this client

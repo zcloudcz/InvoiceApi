@@ -1,0 +1,366 @@
+@*
+    TaxEstimation.razor — Tax obligation estimation page.
+    Allows users to calculate and compare income tax, social/health insurance
+    obligations across different tax regimes (CZ/SK).
+
+    Features:
+    - Single regime estimation with step-by-step breakdown
+    - Side-by-side comparison of all applicable regimes
+    - Pre-fills from company tax settings
+*@
+@page "/tax-estimation"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+
+@using Fakvio.Contracts.Dto.Tax
+@using Fakvio.UI.Shared.Services
+
+@inject TaxApiService TaxService
+@inject ClientApiService ClientService
+@inject IStringLocalizer<SharedResource> L
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+<PageTitle>@L["Tax_Title"]</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">@L["Tax_Title"]</MudText>
+
+@* ── Input Form ───────────────────────────────────────────────────── *@
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudGrid>
+        <MudItem xs="12" sm="6" md="3">
+            <MudNumericField T="decimal" Value="_grossIncome"
+                             ValueChanged="@(v => _grossIncome = v)"
+                             Label="@L["Tax_GrossIncome"].Value"
+                             Format="N0" Adornment="Adornment.End" AdornmentText="@_currencySymbol" />
+        </MudItem>
+        <MudItem xs="12" sm="6" md="2">
+            <MudSelect T="string" Value="_country"
+                       ValueChanged="OnCountryChanged"
+                       Label="@L["Tax_Country"].Value">
+                <MudSelectItem T="string" Value="@("CZ")">Česko (CZ)</MudSelectItem>
+                <MudSelectItem T="string" Value="@("SK")">Slovensko (SK)</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="2">
+            <MudNumericField T="int" @bind-Value="_year"
+                             Label="@L["Tax_Year"].Value" Min="2024" Max="2030" />
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudSelect T="string" Value="_regime"
+                       ValueChanged="@(v => _regime = v)"
+                       Label="@L["Tax_Regime"].Value" Clearable="true">
+                @if (_country == "CZ")
+                {
+                    <MudSelectItem T="string" Value="@("FlatRateTax")">@L["ETaxRegime_FlatRateTax"]</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("LumpSumExpenses80")">@L["ETaxRegime_LumpSumExpenses80"]</MudSelectItem>
+                }
+                <MudSelectItem T="string" Value="@("LumpSumExpenses60")">@L["ETaxRegime_LumpSumExpenses60"]</MudSelectItem>
+                @if (_country == "CZ")
+                {
+                    <MudSelectItem T="string" Value="@("LumpSumExpenses40")">@L["ETaxRegime_LumpSumExpenses40"]</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("LumpSumExpenses30")">@L["ETaxRegime_LumpSumExpenses30"]</MudSelectItem>
+                }
+                <MudSelectItem T="string" Value="@("TaxRecords")">@L["ETaxRegime_TaxRecords"]</MudSelectItem>
+                <MudSelectItem T="string" Value="@("FullAccounting")">@L["ETaxRegime_FullAccounting"]</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="2">
+            <MudSwitch T="bool" @bind-Value="_isMainActivity"
+                       Label="@L["Tax_IsMainActivity"].Value" Color="Color.Primary" />
+        </MudItem>
+
+        @if (_regime == "TaxRecords" || _regime == "FullAccounting")
+        {
+            <MudItem xs="12" sm="6" md="3">
+                <MudNumericField T="decimal?" Value="_actualExpenses"
+                                 ValueChanged="@(v => _actualExpenses = v)"
+                                 Label="@L["Tax_ActualExpenses"].Value"
+                                 Format="N0" Adornment="Adornment.End" AdornmentText="@_currencySymbol" />
+            </MudItem>
+        }
+    </MudGrid>
+
+    <div class="d-flex gap-2 mt-4">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.Calculate"
+                   OnClick="Calculate" Disabled="@(_loading || _grossIncome <= 0)">
+            @L["Tax_Calculate"]
+        </MudButton>
+        <MudButton Variant="Variant.Outlined" Color="Color.Secondary"
+                   StartIcon="@Icons.Material.Filled.CompareArrows"
+                   OnClick="CompareRegimes" Disabled="@(_loading || _grossIncome <= 0)">
+            @L["Tax_Compare"]
+        </MudButton>
+        <MudButton Variant="Variant.Outlined" Color="Color.Info"
+                   StartIcon="@Icons.Material.Filled.Receipt"
+                   OnClick="LoadIncomeFromInvoices" Disabled="@_loading">
+            @L["Tax_AutoIncome"]
+        </MudButton>
+        @if (_result != null || _showComparison)
+        {
+            <MudButton Variant="Variant.Outlined" Color="Color.Dark"
+                       StartIcon="@Icons.Material.Filled.PictureAsPdf"
+                       OnClick="ExportToPdf" Disabled="@_loading">
+                @L["Tax_ExportPdf"]
+            </MudButton>
+        }
+    </div>
+</MudPaper>
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+
+@* ── Single Estimation Result ─────────────────────────────────────── *@
+@if (_result != null && !_showComparison)
+{
+    <MudGrid Class="mb-4">
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.subtitle2" Color="Color.Primary">@L["Tax_IncomeTax"]</MudText>
+                <MudText Typo="Typo.h5">@FormatAmount(_result.IncomeTax)</MudText>
+                <MudText Typo="Typo.caption">@L["Tax_TaxCredits"]: @FormatAmount(_result.TaxCredits)</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.subtitle2" Color="Color.Warning">@L["Tax_SocialInsurance"]</MudText>
+                <MudText Typo="Typo.h5">@FormatAmount(_result.SocialInsurance)</MudText>
+                <MudText Typo="Typo.caption">@L["Tax_MonthlyAdvance"]: @FormatAmount(_result.MonthlyAdvanceSocial)</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.subtitle2" Color="Color.Info">@L["Tax_HealthInsurance"]</MudText>
+                <MudText Typo="Typo.h5">@FormatAmount(_result.HealthInsurance)</MudText>
+                <MudText Typo="Typo.caption">@L["Tax_MonthlyAdvance"]: @FormatAmount(_result.MonthlyAdvanceHealth)</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.subtitle2" Color="Color.Error">@L["Tax_TotalObligations"]</MudText>
+                <MudText Typo="Typo.h5">@FormatAmount(_result.TotalObligations)</MudText>
+                <MudText Typo="Typo.caption">@L["Tax_EffectiveRate"]: @_result.EffectiveTaxRate %</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    @* Summary row *@
+    <MudGrid Class="mb-4">
+        <MudItem xs="12" sm="4">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.subtitle2">@L["Tax_TaxBase"]</MudText>
+                <MudText Typo="Typo.h6">@FormatAmount(_result.TaxBase)</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.subtitle2">@L["Tax_Expenses"]</MudText>
+                <MudText Typo="Typo.h6">@FormatAmount(_result.Expenses)</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.subtitle2" Color="Color.Success">@L["Tax_NetIncome"]</MudText>
+                <MudText Typo="Typo.h5" Color="Color.Success">@FormatAmount(_result.NetIncome)</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    @* Calculation steps *@
+    @if (_result.Steps.Any())
+    {
+        <MudText Typo="Typo.h6" Class="mb-2">@L["Tax_Steps"]</MudText>
+        <MudTable Items="_result.Steps" Dense="true" Hover="true" Striped="true" Class="mb-4">
+            <HeaderContent>
+                <MudTh>#</MudTh>
+                <MudTh>@L["Label_Description"]</MudTh>
+                <MudTh Style="text-align: right">@L["Label_Amount"]</MudTh>
+                <MudTh>@L["Label_Formula"]</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@(_result.Steps.IndexOf(context) + 1)</MudTd>
+                <MudTd>@context.Description</MudTd>
+                <MudTd Style="text-align: right">@FormatAmount(context.Amount)</MudTd>
+                <MudTd><MudText Typo="Typo.caption">@context.Formula</MudText></MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+}
+
+@* ── Regime Comparison Table ──────────────────────────────────────── *@
+@if (_showComparison && _compareResults.Any())
+{
+    <MudText Typo="Typo.h6" Class="mb-2">@L["Tax_CompareResults"]</MudText>
+    <MudTable Items="_compareResults" Dense="true" Hover="true" Striped="true" Class="mb-4">
+        <HeaderContent>
+            <MudTh>@L["Tax_Regime"]</MudTh>
+            <MudTh Style="text-align: right">@L["Tax_Expenses"]</MudTh>
+            <MudTh Style="text-align: right">@L["Tax_IncomeTax"]</MudTh>
+            <MudTh Style="text-align: right">@L["Tax_SocialInsurance"]</MudTh>
+            <MudTh Style="text-align: right">@L["Tax_HealthInsurance"]</MudTh>
+            <MudTh Style="text-align: right">@L["Tax_TotalObligations"]</MudTh>
+            <MudTh Style="text-align: right">@L["Tax_NetIncome"]</MudTh>
+            <MudTh Style="text-align: right">@L["Tax_EffectiveRate"]</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>
+                @GetLocalizedRegime(context.TaxRegime)
+                @if (context == _compareResults.First())
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Success" Class="ml-2">
+                        @L["Tax_BestOption"]
+                    </MudChip>
+                }
+            </MudTd>
+            <MudTd Style="text-align: right">@FormatAmount(context.Expenses)</MudTd>
+            <MudTd Style="text-align: right">@FormatAmount(context.IncomeTax)</MudTd>
+            <MudTd Style="text-align: right">@FormatAmount(context.SocialInsurance)</MudTd>
+            <MudTd Style="text-align: right">@FormatAmount(context.HealthInsurance)</MudTd>
+            <MudTd Style="text-align: right"><strong>@FormatAmount(context.TotalObligations)</strong></MudTd>
+            <MudTd Style="text-align: right; color: green;">@FormatAmount(context.NetIncome)</MudTd>
+            <MudTd Style="text-align: right">@context.EffectiveTaxRate %</MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    private decimal _grossIncome;
+    private string _country = "CZ";
+    private int _year = DateTime.Today.Year;
+    private string? _regime;
+    private bool _isMainActivity = true;
+    private decimal? _actualExpenses;
+    private bool _loading;
+    private string _currencySymbol = "CZK";
+
+    private TaxEstimationResult? _result;
+    private List<TaxEstimationResult> _compareResults = new();
+    private bool _showComparison;
+
+    /// <summary>
+    /// On page load, try to pre-fill from company tax settings.
+    /// </summary>
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var issuer = await ClientService.GetIssuerAsync();
+            if (issuer != null)
+            {
+                _regime = issuer.TaxRegime;
+                _isMainActivity = issuer.IsMainActivity;
+            }
+        }
+        catch
+        {
+            // Ignore — use defaults
+        }
+    }
+
+    private void OnCountryChanged(string country)
+    {
+        _country = country;
+        _currencySymbol = country == "SK" ? "EUR" : "CZK";
+        _regime = null; // Reset — regime options change per country
+    }
+
+    /// <summary>
+    /// Calculates tax estimation for the selected regime.
+    /// </summary>
+    private async Task Calculate()
+    {
+        if (string.IsNullOrEmpty(_regime)) return;
+
+        _loading = true;
+        _showComparison = false;
+
+        var request = new TaxEstimationRequest
+        {
+            GrossIncome = _grossIncome,
+            Country = _country,
+            Year = _year,
+            TaxRegime = _regime,
+            IsMainActivity = _isMainActivity,
+            ActualExpenses = _actualExpenses
+        };
+
+        _result = await TaxService.EstimateAsync(request);
+        _loading = false;
+    }
+
+    /// <summary>
+    /// Compares all applicable regimes side by side.
+    /// </summary>
+    private async Task CompareRegimes()
+    {
+        _loading = true;
+        _showComparison = true;
+        _result = null;
+
+        _compareResults = await TaxService.CompareRegimesAsync(
+            _grossIncome, _country, _year, null, _isMainActivity, _actualExpenses);
+
+        _loading = false;
+    }
+
+    /// <summary>
+    /// Loads gross income from issued invoices for the selected year.
+    /// Calls the API endpoint that sums TotalBeforeVat of all Completed/Paid invoices.
+    /// </summary>
+    private async Task LoadIncomeFromInvoices()
+    {
+        _loading = true;
+        var income = await TaxService.GetAnnualIncomeAsync(_year);
+
+        if (income != null && income.InvoiceCount > 0)
+        {
+            _grossIncome = income.GrossIncome;
+            _currencySymbol = income.CurrencyCode;
+            var msg = string.Format(L["Tax_AutoIncomeLoaded"].Value,
+                $"{income.GrossIncome:N0} {income.CurrencyCode}", income.InvoiceCount);
+            Snackbar.Add(msg, Severity.Success);
+        }
+        else
+        {
+            Snackbar.Add(L["Tax_IncomeFromInvoices"].Value + ": 0", Severity.Info);
+        }
+
+        _loading = false;
+    }
+
+    /// <summary>
+    /// Exports the current comparison results to PDF via the API.
+    /// Opens the PDF download in a new browser tab.
+    /// </summary>
+    private async Task ExportToPdf()
+    {
+        // Build a printable URL with all current parameters.
+        // The API will generate a PDF document with the comparison table.
+        var url = $"/api/tax/compare/pdf?grossIncome={_grossIncome}&country={_country}" +
+                  $"&year={_year}&isMainActivity={_isMainActivity}";
+
+        if (_actualExpenses.HasValue)
+            url += $"&actualExpenses={_actualExpenses.Value}";
+
+        // Navigate to the PDF endpoint in a new tab (handled by browser).
+        Navigation.NavigateTo(url, forceLoad: true);
+    }
+
+    /// <summary>
+    /// Formats amount with currency symbol.
+    /// </summary>
+    private string FormatAmount(decimal amount) =>
+        $"{amount:N0} {_currencySymbol}";
+
+    /// <summary>
+    /// Localizes a tax regime name using resource keys.
+    /// </summary>
+    private string GetLocalizedRegime(string regime)
+    {
+        var key = $"ETaxRegime_{regime}";
+        var localized = L[key];
+        return localized.ResourceNotFound ? regime : localized.Value;
+    }
+}

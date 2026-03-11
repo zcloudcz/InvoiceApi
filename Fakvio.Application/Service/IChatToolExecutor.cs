@@ -84,4 +84,15 @@ public interface IChatToolExecutor
     /// Returns the list of registered tool names (for logging and debugging).
     /// </summary>
     IReadOnlyList<string> AvailableTools { get; }
+
+    /// <summary>
+    /// Builds native tool definitions from all registered IChatTool instances.
+    /// Used by providers that support native tool calling (e.g., Ollama).
+    /// Each IChatTool is converted to a NativeToolDefinition with JSON Schema parameters.
+    ///
+    /// Junior note: Native tool calling is more reliable than text-based instructions
+    /// because the AI model was fine-tuned to produce structured tool calls,
+    /// not free-text JSON that needs parsing.
+    /// </summary>
+    List<NativeToolDefinition> GetToolDefinitions();
 }

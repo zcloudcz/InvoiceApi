@@ -67,7 +67,8 @@ public class OllamaSettings
     public string BaseUrl { get; set; } = string.Empty;
 
     /// <summary>
-    /// Model to use (e.g., "llama3.2", "mistral", "codellama").
+    /// Model to use (e.g., "gemma3:12b", "llama3.2", "mistral", "codellama").
+    /// Gemma3 is multimodal — it supports both text and image inputs.
     /// </summary>
-    public string Model { get; set; } = "llama3.2";
+    public string Model { get; set; } = "gemma3:12b";
 }

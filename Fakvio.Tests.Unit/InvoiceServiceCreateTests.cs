@@ -299,9 +299,11 @@ public class InvoiceServiceCreateTests : IDisposable
         // Assert
         deleted.ShouldBeTrue();
 
-        // Verify it's hidden from normal queries
+        // After soft delete, GetInvoiceByIdAsync still returns the invoice
+        // (so users can view details and restore it), but with Deleted status.
         var loaded = await _service.GetInvoiceByIdAsync(invoice.Id);
-        loaded.ShouldBeNull();
+        loaded.ShouldNotBeNull();
+        loaded.Status.ShouldBe(EInvoiceStatus.Deleted);
     }
 
     [Fact]
@@ -315,5 +317,43 @@ public class InvoiceServiceCreateTests : IDisposable
         var act = () => _service.DeleteInvoiceAsync(invoice.Id);
         var ex = await Should.ThrowAsync<InvalidOperationException>(act);
         ex.Message.ShouldContain("Only draft invoices can be deleted");
+    }
+
+    // =====================================================================
+    // Variable Symbol duplicate check
+    // =====================================================================
+
+    [Fact]
+    public async Task CreateInvoiceAsync_DuplicateVariableSymbol_ShouldThrow()
+    {
+        // Arrange — create the first invoice (gets VS from auto-generated document number)
+        var firstInvoice = await _service.CreateInvoiceAsync(CreateValidInvoiceDto());
+        firstInvoice.VariableSymbol.ShouldNotBeNullOrEmpty();
+
+        // The second invoice will get the same document number from the mock,
+        // which means the same VariableSymbol — should throw.
+
+        // Act & Assert
+        var act = () => _service.CreateInvoiceAsync(CreateValidInvoiceDto());
+        var ex = await Should.ThrowAsync<InvalidOperationException>(act);
+        ex.Message.ShouldContain("Variable Symbol");
+        ex.Message.ShouldContain("already exists");
+    }
+
+    [Fact]
+    public async Task CreateInvoiceAsync_DuplicateVsOnDeletedInvoice_ShouldNotThrow()
+    {
+        // Arrange — create an invoice, then soft-delete it
+        var firstInvoice = await _service.CreateInvoiceAsync(CreateValidInvoiceDto());
+        firstInvoice.VariableSymbol.ShouldNotBeNullOrEmpty();
+        await _service.DeleteInvoiceAsync(firstInvoice.Id);
+
+        // Act — creating a second invoice with the same VS should succeed
+        // because the first one is deleted (Status = Deleted is excluded from duplicate check).
+        var secondInvoice = await _service.CreateInvoiceAsync(CreateValidInvoiceDto());
+
+        // Assert
+        secondInvoice.ShouldNotBeNull();
+        secondInvoice.VariableSymbol.ShouldBe(firstInvoice.VariableSymbol);
     }
 }

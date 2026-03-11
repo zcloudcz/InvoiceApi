@@ -1,0 +1,291 @@
+@page "/received-invoices"
+@attribute [Authorize]
+
+@using Fakvio.Contracts.Dto.ReceivedInvoice
+@using Fakvio.Contracts.Dto.Client
+@using Fakvio.Domain.Enums
+@using Fakvio.UI.Shared.Services
+@using Fakvio.UI.Shared.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.Extensions.Localization
+
+@inject ReceivedInvoiceApiService ReceivedInvoiceService
+@inject ClientApiService ClientService
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject IStringLocalizer<SharedResource> L
+@inject IJSRuntime JS
+
+<PageTitle>@L["ReceivedInvoice_Title"]</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">@L["ReceivedInvoice_Title"]</MudText>
+
+@* ── Filter Bar ─────────────────────────────────────────────────────── *@
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudGrid>
+        <MudItem xs="12" sm="4">
+            <MudTextField @bind-Value="_search"
+                          Label="@L["Common_Search"]"
+                          Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Filled.Search"
+                          Immediate="true"
+                          DebounceInterval="300"
+                          TextChanged="OnSearchChanged" />
+        </MudItem>
+        <MudItem xs="12" sm="2">
+            <EnumSelect TEnum="EReceivedInvoiceStatus"
+                        NullableValue="_statusFilter"
+                        NullableValueChanged="OnStatusChanged"
+                        Label="@L["Common_Status"]"
+                        Nullable="true" />
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudDatePicker Label="@L["ReceivedInvoice_IssueDateFrom"]"
+                           Date="_issueDateFrom"
+                           DateChanged="OnIssueDateFromChanged" />
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudDatePicker Label="@L["ReceivedInvoice_IssueDateTo"]"
+                           Date="_issueDateTo"
+                           DateChanged="OnIssueDateToChanged" />
+        </MudItem>
+    </MudGrid>
+    <MudGrid Class="mt-2">
+        <MudItem xs="12" sm="6" Class="d-flex gap-2">
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Add"
+                       OnClick="CreateNew">
+                @L["ReceivedInvoice_New"]
+            </MudButton>
+            <MudButton Variant="Variant.Outlined"
+                       Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.UploadFile"
+                       OnClick="@(() => Navigation.NavigateTo("/received-invoices/import?target=ReceivedInvoice"))">
+                @L["Nav_ImportInvoices"]
+            </MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@* ── Data Grid ──────────────────────────────────────────────────────── *@
+<MudTable @ref="_table"
+          T="ReceivedInvoiceDto"
+          ServerData="LoadServerData"
+          Dense="true"
+          Hover="true"
+          Striped="true"
+          OnRowClick="OnRowClick"
+          RowStyle="cursor: pointer;"
+          Loading="_loading">
+    <HeaderContent>
+        <MudTh><MudTableSortLabel SortLabel="DocumentNumber" T="ReceivedInvoiceDto">@L["Invoice_DocumentNumber"]</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel SortLabel="SupplierName" T="ReceivedInvoiceDto">@L["ReceivedInvoice_Supplier"]</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel SortLabel="IssueDate" T="ReceivedInvoiceDto">@L["Invoice_IssueDate"]</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel SortLabel="DueDate" T="ReceivedInvoiceDto">@L["Invoice_DueDate"]</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel SortLabel="TotalWithVat" T="ReceivedInvoiceDto">@L["Invoice_TotalWithVat"]</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel SortLabel="Status" T="ReceivedInvoiceDto">@L["Common_Status"]</MudTableSortLabel></MudTh>
+        <MudTh>@L["Common_Actions"]</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="@L["Invoice_DocumentNumber"]">@(context.DocumentNumber ?? "—")</MudTd>
+        <MudTd DataLabel="@L["ReceivedInvoice_Supplier"]">@context.SupplierName</MudTd>
+        <MudTd DataLabel="@L["Invoice_IssueDate"]">@(context.IssueDate?.ToString("d") ?? "—")</MudTd>
+        <MudTd DataLabel="@L["Invoice_DueDate"]">
+            @if (context.DueDate.HasValue)
+            {
+                var isOverdue = context.Status == EReceivedInvoiceStatus.Approved && context.DueDate < DateTime.UtcNow;
+                <MudText Color="@(isOverdue ? Color.Error : Color.Default)">
+                    @context.DueDate.Value.ToString("d")
+                </MudText>
+            }
+            else
+            {
+                <span>—</span>
+            }
+        </MudTd>
+        <MudTd DataLabel="@L["Invoice_TotalWithVat"]">
+            @context.TotalWithVat.ToString("N2") @context.CurrencySymbol
+        </MudTd>
+        <MudTd DataLabel="@L["Common_Status"]">
+            <MudChip T="string"
+                     Size="Size.Small"
+                     Color="@GetStatusColor(context.Status)">
+                @L[$"EReceivedInvoiceStatus_{context.Status}"]
+            </MudChip>
+        </MudTd>
+        <MudTd>
+            @* Action buttons based on status *@
+            @if (context.Status == EReceivedInvoiceStatus.Received)
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.CheckCircle"
+                               Color="Color.Success"
+                               Size="Size.Small"
+                               Title="@L["ReceivedInvoice_Approve"]"
+                               OnClick="@(() => Approve(context))" />
+                <MudIconButton Icon="@Icons.Material.Filled.Cancel"
+                               Color="Color.Warning"
+                               Size="Size.Small"
+                               Title="@L["ReceivedInvoice_Reject"]"
+                               OnClick="@(() => Reject(context))" />
+            }
+            @if (context.Status == EReceivedInvoiceStatus.Approved)
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.Paid"
+                               Color="Color.Success"
+                               Size="Size.Small"
+                               Title="@L["Invoice_MarkAsPaid"]"
+                               OnClick="@(() => MarkAsPaid(context))" />
+            }
+            @if (context.Status == EReceivedInvoiceStatus.Received || context.Status == EReceivedInvoiceStatus.Rejected)
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                               Color="Color.Error"
+                               Size="Size.Small"
+                               Title="@L["Common_Delete"]"
+                               OnClick="@(() => Delete(context))" />
+            }
+        </MudTd>
+    </RowTemplate>
+    <NoRecordsContent>
+        <MudText>@L["Common_NoRecords"]</MudText>
+    </NoRecordsContent>
+    <PagerContent>
+        <MudTablePager />
+    </PagerContent>
+</MudTable>
+
+@code {
+    private MudTable<ReceivedInvoiceDto>? _table;
+    private bool _loading;
+    private string? _search;
+    private EReceivedInvoiceStatus? _statusFilter;
+    private DateTime? _issueDateFrom;
+    private DateTime? _issueDateTo;
+
+    /// <summary>
+    /// Server-side data loading callback for MudTable.
+    /// Converts MudBlazor's TableState into our ReceivedInvoiceFilterDto.
+    /// </summary>
+    private async Task<TableData<ReceivedInvoiceDto>> LoadServerData(TableState state, CancellationToken ct)
+    {
+        _loading = true;
+
+        var sortDirection = state.SortDirection == SortDirection.Descending ? "desc" : "asc";
+
+        var result = await ReceivedInvoiceService.GetPagedAsync(
+            page: state.Page + 1, // MudTable is 0-based, API is 1-based
+            pageSize: state.PageSize,
+            search: _search,
+            sortBy: state.SortLabel,
+            sortDirection: sortDirection,
+            status: _statusFilter,
+            issueDateFrom: _issueDateFrom,
+            issueDateTo: _issueDateTo);
+
+        _loading = false;
+
+        return new TableData<ReceivedInvoiceDto>
+        {
+            TotalItems = result.TotalCount,
+            Items = result.Items
+        };
+    }
+
+    private async Task OnSearchChanged(string value)
+    {
+        _search = value;
+        if (_table is not null)
+            await _table.ReloadServerData();
+    }
+
+    private async Task OnStatusChanged(EReceivedInvoiceStatus? value)
+    {
+        _statusFilter = value;
+        if (_table is not null)
+            await _table.ReloadServerData();
+    }
+
+    private async Task OnIssueDateFromChanged(DateTime? value)
+    {
+        _issueDateFrom = value;
+        if (_table is not null)
+            await _table.ReloadServerData();
+    }
+
+    private async Task OnIssueDateToChanged(DateTime? value)
+    {
+        _issueDateTo = value;
+        if (_table is not null)
+            await _table.ReloadServerData();
+    }
+
+    private void CreateNew()
+    {
+        Navigation.NavigateTo("/received-invoices/create");
+    }
+
+    private void OnRowClick(TableRowClickEventArgs<ReceivedInvoiceDto> args)
+    {
+        Navigation.NavigateTo($"/received-invoices/{args.Item!.Id}");
+    }
+
+    private async Task Approve(ReceivedInvoiceDto invoice)
+    {
+        var result = await ReceivedInvoiceService.ApproveAsync(invoice.Id);
+        if (result is not null)
+        {
+            Snackbar.Add(L["ReceivedInvoice_Approved"].Value, Severity.Success);
+            await _table!.ReloadServerData();
+        }
+    }
+
+    private async Task MarkAsPaid(ReceivedInvoiceDto invoice)
+    {
+        var result = await ReceivedInvoiceService.MarkAsPaidAsync(invoice.Id);
+        if (result is not null)
+        {
+            Snackbar.Add(L["Invoice_MarkedAsPaid"].Value, Severity.Success);
+            await _table!.ReloadServerData();
+        }
+    }
+
+    private async Task Reject(ReceivedInvoiceDto invoice)
+    {
+        var confirmed = await JS.InvokeAsync<bool>("confirm", L["ReceivedInvoice_RejectConfirm"].Value);
+        if (!confirmed) return;
+
+        var result = await ReceivedInvoiceService.RejectAsync(invoice.Id);
+        if (result is not null)
+        {
+            Snackbar.Add(L["ReceivedInvoice_Rejected"].Value, Severity.Warning);
+            await _table!.ReloadServerData();
+        }
+    }
+
+    private async Task Delete(ReceivedInvoiceDto invoice)
+    {
+        var confirmed = await JS.InvokeAsync<bool>("confirm", L["Common_DeleteConfirm"].Value);
+        if (!confirmed) return;
+
+        var deleted = await ReceivedInvoiceService.DeleteAsync(invoice.Id);
+        if (deleted)
+        {
+            Snackbar.Add(L["Common_Deleted"].Value, Severity.Success);
+            await _table!.ReloadServerData();
+        }
+    }
+
+    /// <summary>
+    /// Returns MudBlazor color for each received invoice status.
+    /// </summary>
+    private static Color GetStatusColor(EReceivedInvoiceStatus status) => status switch
+    {
+        EReceivedInvoiceStatus.Received => Color.Default,
+        EReceivedInvoiceStatus.Approved => Color.Info,
+        EReceivedInvoiceStatus.Paid => Color.Success,
+        EReceivedInvoiceStatus.Rejected => Color.Warning,
+        EReceivedInvoiceStatus.Deleted => Color.Error,
+        _ => Color.Default
+    };
+}

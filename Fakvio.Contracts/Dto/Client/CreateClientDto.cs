@@ -55,6 +55,26 @@ public class CreateClientDto
     public string Language { get; set; } = "cs";
 
     /// <summary>
+    /// Tax regime used by this company (e.g., FlatRateTax, LumpSumExpenses60).
+    /// </summary>
+    public string? TaxRegime { get; set; }
+
+    /// <summary>
+    /// Type of business activity — determines lump-sum expense percentage (CZ).
+    /// </summary>
+    public string? ActivityType { get; set; }
+
+    /// <summary>
+    /// Whether this is the person's main self-employed activity.
+    /// </summary>
+    public bool IsMainActivity { get; set; } = true;
+
+    /// <summary>
+    /// Flat-rate tax band (CZ only, 1/2/3).
+    /// </summary>
+    public string? FlatRateBand { get; set; }
+
+    /// <summary>
     /// Should this client be fetched from ARES automatically?
     /// If true, system will try to fetch data from ARES by registration number
     /// </summary>

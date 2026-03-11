@@ -1,0 +1,415 @@
+@page "/invoices/import"
+@page "/received-invoices/import"
+@attribute [Authorize]
+
+@using Fakvio.Contracts.Dto.Import
+@using Microsoft.AspNetCore.Authorization
+
+@inject ImportApiService ImportService
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject IStringLocalizer<SharedResource> L
+
+<PageTitle>@L["Import_Title"]</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">@L["Import_Title"]</MudText>
+
+@* ── Step 1: Upload ──────────────────────────────────────────────── *@
+@if (_step == ImportStep.Upload)
+{
+    <MudPaper Class="pa-6 mb-4">
+        <MudText Typo="Typo.h6" Class="mb-3">@L["Import_SelectTarget"]</MudText>
+
+        <MudRadioGroup Value="_target" ValueChanged="@((EImportTarget val) => _target = val)">
+            <MudRadio Value="EImportTarget.IssuedInvoice" Color="Color.Primary">
+                @L["Import_IssuedInvoice"]
+            </MudRadio>
+            <MudRadio Value="EImportTarget.ReceivedInvoice" Color="Color.Secondary">
+                @L["Import_ReceivedInvoice"]
+            </MudRadio>
+        </MudRadioGroup>
+
+        <MudDivider Class="my-4" />
+
+        <MudText Typo="Typo.h6" Class="mb-3">@L["Import_UploadFiles"]</MudText>
+
+        <MudFileUpload T="IReadOnlyList<IBrowserFile>"
+                       FilesChanged="HandleFilesSelected"
+                       Accept=".pdf"
+                       MaximumFileCount="20">
+            <ActivatorContent>
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.CloudUpload">
+                    @L["Import_SelectPdfs"]
+                </MudButton>
+            </ActivatorContent>
+        </MudFileUpload>
+
+        @if (_selectedFiles.Count > 0)
+        {
+            <MudList T="string" Class="mt-3">
+                @foreach (var file in _selectedFiles)
+                {
+                    <MudListItem Icon="@Icons.Material.Filled.PictureAsPdf">
+                        @file.FileName (@FormatSize(file.Bytes.Length))
+                    </MudListItem>
+                }
+            </MudList>
+
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       Class="mt-4"
+                       StartIcon="@Icons.Material.Filled.Search"
+                       Disabled="_isProcessing"
+                       OnClick="ProcessFiles">
+                @if (_isProcessing)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate Class="mr-2" />
+                }
+                @L["Import_Analyze"] (@_selectedFiles.Count)
+            </MudButton>
+        }
+    </MudPaper>
+}
+
+@* ── Step 2: Preview ─────────────────────────────────────────────── *@
+@if (_step == ImportStep.Preview)
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h6" Class="mb-3">@L["Import_Preview"]</MudText>
+
+        <MudTable Items="_previews" Hover Dense Striped>
+            <HeaderContent>
+                <MudTh>@L["Import_FileName"]</MudTh>
+                <MudTh>QR</MudTh>
+                <MudTh>@L["Import_Source"]</MudTh>
+                <MudTh>@L["Import_DocNumber"]</MudTh>
+                <MudTh>@L["Import_Amount"]</MudTh>
+                <MudTh>@L["Import_Client"]</MudTh>
+                <MudTh>@L["Import_Status"]</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.FileName</MudTd>
+                <MudTd>
+                    @if (context.HasQrCode)
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.QrCode" Color="Color.Success"
+                                 Title="@(context.QrType ?? "QR")" />
+                    }
+                    else
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.QrCode" Color="Color.Default"
+                                 Title="@L["Import_QrNotFound"]" />
+                    }
+                </MudTd>
+                <MudTd>
+                    <MudChip T="string" Size="Size.Small"
+                             Color="@GetSourceColor(context.ExtractionSource)">
+                        @context.ExtractionSource
+                    </MudChip>
+                </MudTd>
+                <MudTd>@(context.DocumentNumber ?? "—")</MudTd>
+                <MudTd>
+                    @if (context.TotalAmount.HasValue)
+                    {
+                        @context.TotalAmount.Value.ToString("N2")
+                        @(context.Currency ?? "CZK")
+                    }
+                    else
+                    {
+                        <text>—</text>
+                    }
+                </MudTd>
+                <MudTd>
+                    @if (context.ResolvedClientId.HasValue)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Success">
+                            @context.ResolvedClientName
+                        </MudChip>
+                    }
+                    else if (context.ClientNeedsCreation)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Warning">
+                            @L["Import_NewClient"]
+                        </MudChip>
+                    }
+                    else
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Error">
+                            @L["Import_NoClient"]
+                        </MudChip>
+                    }
+                </MudTd>
+                <MudTd>
+                    @if (context.IsValid)
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" />
+                    }
+                    else
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.Error" Color="Color.Error" />
+                    }
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+
+        @* Validation details *@
+        @foreach (var preview in _previews.Where(p => p.Validations.Any()))
+        {
+            <MudExpansionPanels Class="mt-2">
+                <MudExpansionPanel Text="@($"{preview.FileName} — {preview.Validations.Count} validation(s)")">
+                    @foreach (var v in preview.Validations)
+                    {
+                        <MudAlert Severity="@GetSeverity(v.Severity)" Dense Class="mb-1">
+                            <strong>@v.Field:</strong> @v.Message
+                        </MudAlert>
+                    }
+                </MudExpansionPanel>
+            </MudExpansionPanels>
+        }
+
+        <div class="d-flex gap-2 mt-4">
+            <MudButton Variant="Variant.Outlined" OnClick="GoBackToUpload">
+                @L["Import_Back"]
+            </MudButton>
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       Disabled="@(!_previews.Any(p => p.IsValid) || _isProcessing)"
+                       OnClick="ConfirmImport">
+                @if (_isProcessing)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate Class="mr-2" />
+                }
+                @L["Import_Confirm"] (@_previews.Count(p => p.IsValid))
+            </MudButton>
+        </div>
+    </MudPaper>
+}
+
+@* ── Step 3: Results ─────────────────────────────────────────────── *@
+@if (_step == ImportStep.Results)
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h6" Class="mb-3">@L["Import_Results"]</MudText>
+
+        <MudTable Items="_results" Hover Dense Striped>
+            <HeaderContent>
+                <MudTh>@L["Import_FileName"]</MudTh>
+                <MudTh>@L["Import_Status"]</MudTh>
+                <MudTh>@L["Import_DocNumber"]</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.FileName</MudTd>
+                <MudTd>
+                    @if (context.Success)
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" />
+                    }
+                    else
+                    {
+                        <MudTooltip Text="@context.ErrorMessage">
+                            <MudIcon Icon="@Icons.Material.Filled.Error" Color="Color.Error" />
+                        </MudTooltip>
+                    }
+                </MudTd>
+                <MudTd>@(context.DocumentNumber ?? "—")</MudTd>
+                <MudTd>
+                    @if (context.Success && context.InvoiceId.HasValue)
+                    {
+                        <MudButton Size="Size.Small"
+                                   Variant="Variant.Text"
+                                   Color="Color.Primary"
+                                   OnClick="@(() => NavigateToInvoice(context))">
+                            @L["Import_ViewDetail"]
+                        </MudButton>
+                    }
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   Class="mt-4"
+                   OnClick="GoBackToUpload">
+            @L["Import_ImportMore"]
+        </MudButton>
+    </MudPaper>
+}
+
+@code {
+    /// <summary>Target type from query string — set when navigating from Invoices or ReceivedInvoices page.</summary>
+    [SupplyParameterFromQuery]
+    public string? Target { get; set; }
+
+    private enum ImportStep { Upload, Preview, Results }
+    private ImportStep _step = ImportStep.Upload;
+    private EImportTarget _target = EImportTarget.IssuedInvoice;
+    private bool _isProcessing;
+
+    // Step 1 data
+    private List<(string FileName, byte[] Bytes)> _selectedFiles = new();
+
+    // Step 2 data
+    private List<InvoiceImportPreviewDto> _previews = new();
+
+    // Step 3 data
+    private List<ImportResultDto> _results = new();
+
+    protected override void OnInitialized()
+    {
+        // Auto-select target from query string (e.g., ?target=ReceivedInvoice)
+        if (Enum.TryParse<EImportTarget>(Target, true, out var target))
+        {
+            _target = target;
+        }
+        // Also detect from URL path
+        else if (Navigation.Uri.Contains("received-invoices", StringComparison.OrdinalIgnoreCase))
+        {
+            _target = EImportTarget.ReceivedInvoice;
+        }
+    }
+
+    /// <summary>
+    /// Reads selected PDF files into byte arrays.
+    /// Files are read immediately to avoid stale IBrowserFile references after re-render.
+    /// </summary>
+    private async Task HandleFilesSelected(IReadOnlyList<IBrowserFile> files)
+    {
+        _selectedFiles.Clear();
+        const long maxSize = 10 * 1024 * 1024; // 10 MB per file
+
+        foreach (var file in files)
+        {
+            if (file.Size > maxSize)
+            {
+                Snackbar.Add($"{file.Name}: {L["Import_FileTooLarge"]}", MudBlazor.Severity.Warning);
+                continue;
+            }
+
+            var bytes = new byte[file.Size];
+            await file.OpenReadStream(maxAllowedSize: maxSize).ReadAsync(bytes);
+            _selectedFiles.Add((file.Name, bytes));
+        }
+    }
+
+    /// <summary>
+    /// Sends files to the preview endpoint and transitions to Step 2.
+    /// </summary>
+    private async Task ProcessFiles()
+    {
+        _isProcessing = true;
+        StateHasChanged();
+
+        try
+        {
+            _previews = await ImportService.PreviewAsync(_selectedFiles, _target);
+            _step = ImportStep.Preview;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", MudBlazor.Severity.Error);
+        }
+        finally
+        {
+            _isProcessing = false;
+        }
+    }
+
+    /// <summary>
+    /// Confirms the import of valid previews.
+    /// </summary>
+    private async Task ConfirmImport()
+    {
+        _isProcessing = true;
+        StateHasChanged();
+
+        try
+        {
+            var request = new ConfirmInvoiceImportRequest
+            {
+                Target = _target,
+                Items = _previews.Where(p => p.IsValid).Select((p, idx) => new ConfirmImportItemDto
+                {
+                    FileName = p.FileName,
+                    PdfBytes = _selectedFiles.FirstOrDefault(f => f.FileName == p.FileName).Bytes ?? [],
+                    DocumentNumber = p.DocumentNumber,
+                    IssueDate = p.IssueDate,
+                    DueDate = p.DueDate,
+                    TaxableSupplyDate = p.TaxableSupplyDate,
+                    TotalAmount = p.TotalAmount,
+                    TotalVat = p.TotalVat,
+                    TotalBeforeVat = p.TotalBeforeVat,
+                    Currency = p.Currency,
+                    VariableSymbol = p.VariableSymbol,
+                    IBAN = p.IBAN,
+                    SWIFT = p.SWIFT,
+                    BankAccountNumber = p.BankAccountNumber,
+                    ClientId = p.ResolvedClientId,
+                    CreateClient = p.ClientNeedsCreation,
+                    NewClientRegistrationNumber = p.ClientNeedsCreation
+                        ? (_target == EImportTarget.IssuedInvoice
+                            ? p.RecipientRegistrationNumber
+                            : p.IssuerRegistrationNumber)
+                        : null,
+                    Items = p.Items
+                }).ToList()
+            };
+
+            _results = await ImportService.ConfirmAsync(request);
+            _step = ImportStep.Results;
+
+            var successCount = _results.Count(r => r.Success);
+            Snackbar.Add($"{L["Import_Imported"]}: {successCount}/{_results.Count}",
+                successCount == _results.Count ? MudBlazor.Severity.Success : MudBlazor.Severity.Warning);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", MudBlazor.Severity.Error);
+        }
+        finally
+        {
+            _isProcessing = false;
+        }
+    }
+
+    private void GoBackToUpload()
+    {
+        _step = ImportStep.Upload;
+        _selectedFiles.Clear();
+        _previews.Clear();
+        _results.Clear();
+    }
+
+    private void NavigateToInvoice(ImportResultDto result)
+    {
+        if (_target == EImportTarget.IssuedInvoice)
+            Navigation.NavigateTo($"/invoices/{result.InvoiceId}");
+        else
+            Navigation.NavigateTo($"/received-invoices/{result.InvoiceId}");
+    }
+
+    // ─── Helper methods ──────────────────────────────────────────────────
+
+    private static string FormatSize(int bytes) =>
+        bytes < 1024 ? $"{bytes} B" :
+        bytes < 1024 * 1024 ? $"{bytes / 1024} KB" :
+        $"{bytes / 1024 / 1024:F1} MB";
+
+    private static Color GetSourceColor(string source) => source switch
+    {
+        "QrCode" => Color.Success,
+        "AiExtraction" => Color.Info,
+        "Merged" => Color.Primary,
+        "RegexFallback" => Color.Warning,
+        _ => Color.Default
+    };
+
+    private static MudBlazor.Severity GetSeverity(EImportValidationSeverity severity) => severity switch
+    {
+        EImportValidationSeverity.Error => MudBlazor.Severity.Error,
+        EImportValidationSeverity.Warning => MudBlazor.Severity.Warning,
+        _ => MudBlazor.Severity.Info
+    };
+}

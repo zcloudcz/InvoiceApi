@@ -194,6 +194,12 @@ else
             <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.Delete"
                        OnClick="DeleteInvoice">@L["Btn_Delete"]</MudButton>
         }
+        @* Restore button — only visible for deleted invoices, allows undoing accidental deletes *@
+        @if (_invoice.Status == EInvoiceStatus.Deleted)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Warning" StartIcon="@Icons.Material.Filled.RestoreFromTrash"
+                       OnClick="RestoreInvoice">@L["Invoice_Restore"]</MudButton>
+        }
         @if (_isEditing)
         {
             <MudButton Variant="Variant.Text" OnClick="CancelEditing">@L["Btn_Cancel"]</MudButton>
@@ -1293,6 +1299,26 @@ else
             {
                 Snackbar.Add(L["Invoice_Deleted"].Value, Severity.Success);
                 Navigation.NavigateTo("/invoices");
+            }
+        }
+        catch (Exception ex) { Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error); }
+    }
+
+    /// <summary>
+    /// Restores a soft-deleted invoice back to Draft status.
+    /// After a successful restore, reloads the invoice data so the UI
+    /// reflects the updated status and re-enables editing actions.
+    /// </summary>
+    private async Task RestoreInvoice()
+    {
+        try
+        {
+            var result = await InvoiceService.RestoreAsync(Id);
+            if (result != null)
+            {
+                Snackbar.Add(L["Invoice_Restored"].Value, Severity.Success);
+                // Reload invoice data to refresh status chip and action buttons.
+                _invoice = result;
             }
         }
         catch (Exception ex) { Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error); }

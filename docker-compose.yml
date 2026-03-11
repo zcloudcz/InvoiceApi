@@ -49,7 +49,7 @@ services:
     container_name: fakvio-pgadmin
     restart: unless-stopped
     environment:
-      PGADMIN_DEFAULT_EMAIL: admin@fakvio.local
+      PGADMIN_DEFAULT_EMAIL: admin@fakvio.cz
       PGADMIN_DEFAULT_PASSWORD: admin
       # Disable telemetry and master password prompt for dev convenience
       PGADMIN_CONFIG_ENHANCED_COOKIE_PROTECTION: "False"

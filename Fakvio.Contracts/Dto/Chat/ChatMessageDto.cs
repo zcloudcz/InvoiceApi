@@ -29,4 +29,15 @@ public class ChatMessageDto
     /// When this message was created.
     /// </summary>
     public DateTime CreatedAt { get; set; }
+
+    /// <summary>
+    /// Transient property for passing image data from ChatService to IAiProvider
+    /// within a single request. Contains base64-encoded image strings.
+    ///
+    /// [JsonIgnore] prevents accidental serialization of multi-MB base64 data
+    /// to the API response or database. This field is only used in-memory
+    /// during the ChatService → IAiProvider call chain.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public List<string>? Images { get; set; }
 }

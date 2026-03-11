@@ -67,6 +67,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<TwoFactorApiService>();
         services.AddScoped<CloudStorageApiService>();
         services.AddScoped<ChatApiService>();
+        services.AddScoped<ReceivedInvoiceApiService>();
+        services.AddScoped<VatReportApiService>();
+        services.AddScoped<TaxApiService>();
+        services.AddScoped<ImportApiService>();
 
         // Shared app state — cross-component notifications (e.g., company list changed → refresh dropdown)
         services.AddScoped<AppStateService>();

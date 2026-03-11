@@ -1,5 +1,10 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
+  <!-- Allow test project to access internal members (e.g., ParseAiResponse for unit testing) -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Fakvio.Tests.Unit" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\Fakvio.Application\Fakvio.Application.csproj" />
     <ProjectReference Include="..\Fakvio.Domain\Fakvio.Domain.csproj" />
@@ -40,6 +45,7 @@
     <PackageReference Include="Microsoft.AspNetCore.Authentication.Google" Version="10.0.3" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.MicrosoftAccount" Version="10.0.3" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.Facebook" Version="10.0.3" />
+    <PackageReference Include="ZXing.Net.Bindings.SkiaSharp" Version="0.16.22" />
   </ItemGroup>
 
   <PropertyGroup>

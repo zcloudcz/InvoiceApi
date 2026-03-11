@@ -1,0 +1,336 @@
+@*
+    TaxYearConfigs.razor — Admin page for managing tax year configurations.
+    Allows SysAdmin/Admin to view, create, edit, and delete TaxYearConfig records
+    that store annual tax rates and thresholds for CZ/SK.
+*@
+@page "/tax-configs"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin,SysAdmin")]
+
+@using Fakvio.Contracts.Dto.Tax
+@using Fakvio.UI.Shared.Services
+
+@inject TaxApiService TaxService
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject IStringLocalizer<SharedResource> L
+
+<PageTitle>@L["TaxConfig_Title"]</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">@L["TaxConfig_Title"]</MudText>
+
+@* Action bar with "New Configuration" button *@
+<div class="d-flex justify-end mb-4">
+    <MudButton Variant="Variant.Filled" Color="Color.Primary"
+               StartIcon="@Icons.Material.Filled.Add"
+               OnClick="OpenCreateDialog">
+        @L["TaxConfig_CreateNew"]
+    </MudButton>
+</div>
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else
+{
+    @* Main table showing all tax year configs *@
+    <MudTable Items="_configs" Dense="true" Hover="true" Striped="true" Elevation="2">
+        <HeaderContent>
+            <MudTh>@L["Tax_Year"]</MudTh>
+            <MudTh>@L["Tax_Country"]</MudTh>
+            <MudTh Style="text-align: right">@L["Tax_IncomeTax"] %</MudTh>
+            <MudTh Style="text-align: right">@L["Tax_SocialInsurance"] %</MudTh>
+            <MudTh Style="text-align: right">@L["Tax_HealthInsurance"] %</MudTh>
+            <MudTh Style="text-align: right">@L["Tax_TaxCredits"]</MudTh>
+            <MudTh Style="text-align: center">@L["Btn_Actions"]</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="@L["Tax_Year"].Value">
+                <MudChip T="string" Size="Size.Small">@context.Year</MudChip>
+            </MudTd>
+            <MudTd DataLabel="@L["Tax_Country"].Value">
+                <MudChip T="string" Size="Size.Small"
+                         Color="@(context.Country == "CZ" ? Color.Primary : Color.Secondary)">
+                    @context.Country (@context.CurrencyCode)
+                </MudChip>
+            </MudTd>
+            <MudTd DataLabel="@L["Tax_IncomeTax"].Value" Style="text-align: right">
+                @context.IncomeTaxRate% / @context.ProgressiveTaxRate%
+            </MudTd>
+            <MudTd Style="text-align: right">@context.SocialInsuranceRate%</MudTd>
+            <MudTd Style="text-align: right">@context.HealthInsuranceRate%</MudTd>
+            <MudTd Style="text-align: right">@context.BasicTaxpayerCredit.ToString("N0")</MudTd>
+            <MudTd Style="text-align: center">
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                               Color="Color.Primary" OnClick="@(() => OpenEditDialog(context))" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
+                               Color="Color.Error" OnClick="@(() => DeleteConfig(context))" />
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@* ── Edit/Create Dialog ──────────────────────────────────────────────── *@
+<MudDialog @bind-Visible="_dialogVisible" Options="@(new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true })">
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            @(_editingId.HasValue ? L["TaxConfig_Edit"] : L["TaxConfig_CreateNew"])
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_form != null)
+        {
+            <MudGrid>
+                @* ── Identification ── *@
+                <MudItem xs="12" sm="4">
+                    <MudNumericField T="int" @bind-Value="_form.Year"
+                                     Label="@L["Tax_Year"].Value" Min="2024" Max="2035" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudSelect T="string" @bind-Value="_form.Country" Label="@L["Tax_Country"].Value">
+                        <MudSelectItem T="string" Value="@("CZ")">Česko (CZ)</MudSelectItem>
+                        <MudSelectItem T="string" Value="@("SK")">Slovensko (SK)</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudSelect T="string" @bind-Value="_form.CurrencyCode" Label="Currency">
+                        <MudSelectItem T="string" Value="@("CZK")">CZK</MudSelectItem>
+                        <MudSelectItem T="string" Value="@("EUR")">EUR</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+
+                @* ── Common Rates ── *@
+                <MudItem xs="12">
+                    <MudText Typo="Typo.subtitle1" Class="mt-2">@L["TaxConfig_CommonRates"]</MudText>
+                    <MudDivider />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudNumericField T="decimal" @bind-Value="_form.AverageMonthlyWage" Label="Average Monthly Wage" Format="N0" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudNumericField T="decimal" @bind-Value="_form.LivingMinimum" Label="Living Minimum (SK)" Format="N2" />
+                </MudItem>
+
+                @* ── Income Tax ── *@
+                <MudItem xs="12">
+                    <MudText Typo="Typo.subtitle1" Class="mt-2">@L["TaxConfig_IncomeTax"]</MudText>
+                    <MudDivider />
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudNumericField T="decimal" @bind-Value="_form.IncomeTaxRate" Label="Tax Rate %" Format="N1" />
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudNumericField T="decimal" @bind-Value="_form.ProgressiveTaxRate" Label="Progressive Rate %" Format="N1" />
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudNumericField T="decimal" @bind-Value="_form.ProgressiveThreshold" Label="Progressive Threshold" Format="N0" />
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudNumericField T="decimal" @bind-Value="_form.BasicTaxpayerCredit" Label="Taxpayer Credit" Format="N0" />
+                </MudItem>
+
+                @* ── Social Insurance ── *@
+                <MudItem xs="12">
+                    <MudText Typo="Typo.subtitle1" Class="mt-2">@L["TaxConfig_SocialInsurance"]</MudText>
+                    <MudDivider />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudNumericField T="decimal" @bind-Value="_form.SocialInsuranceRate" Label="Rate %" Format="N1" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudNumericField T="decimal" @bind-Value="_form.SocialAssessmentBasePercent" Label="Assessment Base %" Format="N0" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudNumericField T="decimal" @bind-Value="_form.MaxSocialAssessmentBase" Label="Max Assessment Base" Format="N0" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudNumericField T="decimal" @bind-Value="_form.MinMonthlySocialMain" Label="Min Monthly (Main)" Format="N0" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudNumericField T="decimal" @bind-Value="_form.MinMonthlySocialSecondary" Label="Min Monthly (Secondary)" Format="N0" />
+                </MudItem>
+
+                @* ── Health Insurance ── *@
+                <MudItem xs="12">
+                    <MudText Typo="Typo.subtitle1" Class="mt-2">@L["TaxConfig_HealthInsurance"]</MudText>
+                    <MudDivider />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudNumericField T="decimal" @bind-Value="_form.HealthInsuranceRate" Label="Rate %" Format="N1" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudNumericField T="decimal" @bind-Value="_form.HealthAssessmentBasePercent" Label="Assessment Base %" Format="N0" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudNumericField T="decimal" @bind-Value="_form.MinMonthlyHealthMain" Label="Min Monthly (Main)" Format="N0" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudNumericField T="decimal" @bind-Value="_form.MaxHealthAssessmentBase" Label="Max Assessment Base" Format="N0" />
+                </MudItem>
+
+                @* ── Flat-Rate Tax (CZ only) ── *@
+                <MudItem xs="12">
+                    <MudText Typo="Typo.subtitle1" Class="mt-2">@L["TaxConfig_FlatRate"]</MudText>
+                    <MudDivider />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudNumericField T="decimal" @bind-Value="_form.FlatRateBand1Monthly" Label="Band 1 Monthly" Format="N0" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudNumericField T="decimal" @bind-Value="_form.FlatRateBand2Monthly" Label="Band 2 Monthly" Format="N0" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudNumericField T="decimal" @bind-Value="_form.FlatRateBand3Monthly" Label="Band 3 Monthly" Format="N0" />
+                </MudItem>
+
+                @* ── Lump-Sum Caps ── *@
+                <MudItem xs="12">
+                    <MudText Typo="Typo.subtitle1" Class="mt-2">@L["TaxConfig_LumpSumCaps"]</MudText>
+                    <MudDivider />
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudNumericField T="decimal" @bind-Value="_form.LumpSum80Cap" Label="80% Cap" Format="N0" />
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudNumericField T="decimal" @bind-Value="_form.LumpSum60Cap" Label="60% Cap" Format="N0" />
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudNumericField T="decimal" @bind-Value="_form.LumpSum40Cap" Label="40% Cap" Format="N0" />
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudNumericField T="decimal" @bind-Value="_form.LumpSum30Cap" Label="30% Cap" Format="N0" />
+                </MudItem>
+            </MudGrid>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _dialogVisible = false)">@L["Btn_Cancel"]</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveConfig">@L["Btn_Save"]</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<TaxYearConfigDto> _configs = new();
+    private bool _loading = true;
+    private bool _dialogVisible;
+    private long? _editingId;
+    private CreateTaxYearConfigDto? _form;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadConfigs();
+    }
+
+    private async Task LoadConfigs()
+    {
+        _loading = true;
+        _configs = await TaxService.GetAllConfigsAsync();
+        _loading = false;
+    }
+
+    /// <summary>
+    /// Opens the dialog in "create" mode with default values.
+    /// </summary>
+    private void OpenCreateDialog()
+    {
+        _editingId = null;
+        _form = new CreateTaxYearConfigDto
+        {
+            Year = DateTime.Today.Year,
+            Country = "CZ",
+            CurrencyCode = "CZK"
+        };
+        _dialogVisible = true;
+    }
+
+    /// <summary>
+    /// Opens the dialog in "edit" mode, pre-filled from the existing config.
+    /// </summary>
+    private void OpenEditDialog(TaxYearConfigDto config)
+    {
+        _editingId = config.Id;
+        _form = new CreateTaxYearConfigDto
+        {
+            Year = config.Year,
+            Country = config.Country,
+            CurrencyCode = config.CurrencyCode,
+            AverageMonthlyWage = config.AverageMonthlyWage,
+            LivingMinimum = config.LivingMinimum,
+            IncomeTaxRate = config.IncomeTaxRate,
+            ProgressiveTaxRate = config.ProgressiveTaxRate,
+            ProgressiveThreshold = config.ProgressiveThreshold,
+            BasicTaxpayerCredit = config.BasicTaxpayerCredit,
+            SocialInsuranceRate = config.SocialInsuranceRate,
+            SocialAssessmentBasePercent = config.SocialAssessmentBasePercent,
+            MinMonthlySocialMain = config.MinMonthlySocialMain,
+            MinMonthlySocialSecondary = config.MinMonthlySocialSecondary,
+            MaxSocialAssessmentBase = config.MaxSocialAssessmentBase,
+            HealthInsuranceRate = config.HealthInsuranceRate,
+            HealthAssessmentBasePercent = config.HealthAssessmentBasePercent,
+            MinMonthlyHealthMain = config.MinMonthlyHealthMain,
+            MaxHealthAssessmentBase = config.MaxHealthAssessmentBase,
+            FlatRateBand1Monthly = config.FlatRateBand1Monthly,
+            FlatRateBand2Monthly = config.FlatRateBand2Monthly,
+            FlatRateBand3Monthly = config.FlatRateBand3Monthly,
+            LumpSum80Cap = config.LumpSum80Cap,
+            LumpSum60Cap = config.LumpSum60Cap,
+            LumpSum40Cap = config.LumpSum40Cap,
+            LumpSum30Cap = config.LumpSum30Cap
+        };
+        _dialogVisible = true;
+    }
+
+    /// <summary>
+    /// Saves the config (create or update) and reloads the list.
+    /// </summary>
+    private async Task SaveConfig()
+    {
+        if (_form == null) return;
+
+        TaxYearConfigDto? result;
+
+        if (_editingId.HasValue)
+        {
+            result = await TaxService.UpdateConfigAsync(_editingId.Value, _form);
+        }
+        else
+        {
+            result = await TaxService.CreateConfigAsync(_form);
+        }
+
+        if (result != null)
+        {
+            Snackbar.Add(L["TaxConfig_Saved"].Value, Severity.Success);
+            _dialogVisible = false;
+            await LoadConfigs();
+        }
+        else
+        {
+            Snackbar.Add(L["Msg_Error"].Value, Severity.Error);
+        }
+    }
+
+    /// <summary>
+    /// Deletes a config after confirmation.
+    /// </summary>
+    private async Task DeleteConfig(TaxYearConfigDto config)
+    {
+        var message = string.Format(L["TaxConfig_DeleteConfirm"].Value, config.Country, config.Year);
+        var confirmed = await DialogService.ShowMessageBox(
+            L["Btn_Delete"].Value, message,
+            yesText: L["Btn_Delete"].Value, cancelText: L["Btn_Cancel"].Value);
+
+        if (confirmed != true) return;
+
+        var deleted = await TaxService.DeleteConfigAsync(config.Id);
+        if (deleted)
+        {
+            Snackbar.Add(L["TaxConfig_Deleted"].Value, Severity.Success);
+            await LoadConfigs();
+        }
+        else
+        {
+            Snackbar.Add(L["Msg_Error"].Value, Severity.Error);
+        }
+    }
+}

@@ -117,12 +117,16 @@ public class ChatService : IChatService
         // Resolve or create the conversation.
         var conversation = await GetOrCreateConversationAsync(userId, request.ConversationId, request.Message, ct);
 
+        // If a PDF file is attached, prepend its content to the user message.
+        // This gives the AI full context of the document so it can answer questions about it.
+        var effectiveMessage = BuildMessageWithAttachment(request);
+
         // Save the user's message.
         var userMessage = new ChatMessage
         {
             ConversationId = conversation.Id,
             Role = EChatRole.User,
-            Content = request.Message
+            Content = effectiveMessage
         };
         _context.ChatMessage.Add(userMessage);
         await _context.SaveChangesAsync(ct);
@@ -132,17 +136,29 @@ public class ChatService : IChatService
         var systemPrompt = await _contextBuilder.BuildSystemPromptAsync(ct);
         var history = await GetConversationHistoryAsync(conversation.Id, ct);
 
+        // If an image is attached, set the transient Images property on the last user message.
+        // This passes the base64 data to the AI provider without storing it in the database.
+        AttachImageToLastMessage(history, request);
+
         string responseText;
 
-        // ─── Tool detection: two-pass flow when IČO + keyword found ──────
-        // If the user's message mentions an IČO and a relevant keyword (e.g., "najdi firmu"),
-        // we do a non-streaming first AI call to get a structured tool call,
-        // execute the tool, then make a second AI call with the tool result.
-        if (_toolExecutor.DetectToolIntent(request.Message))
+        // ─── Path A: Native tool calling (for providers that support it) ────────────
+        // Always send tool definitions — the model decides when to use a tool.
+        // No regex gate needed: models with native tool support are fine-tuned to determine
+        // when a tool is appropriate based on the user's message and context.
+        if (provider.SupportsNativeTools)
+        {
+            responseText = await HandleNativeToolCallAsync(
+                provider, history, systemPrompt, conversation.Id, ct);
+        }
+        // ─── Path B: Text-based tool calling (for providers WITHOUT native tool API) ─
+        // Always include tool instructions — the LLM decides whether to use a tool.
+        // No regex gate: the model is the decision maker.
+        else
         {
             _logger.LogInformation(
-                "Tool intent detected in conversation {ConversationId}, starting two-pass flow",
-                conversation.Id);
+                "Using text-based tool flow for {Provider} in conversation {ConversationId}",
+                provider.ProviderName, conversation.Id);
 
             // First pass: AI call with tool instructions appended to the system prompt.
             var toolSystemPrompt = systemPrompt + _toolExecutor.BuildToolInstructions();
@@ -162,7 +178,6 @@ public class ChatService : IChatService
                 _pendingUiAction = toolResult.UiAction;
 
                 // Second pass: AI call with tool result injected into the system prompt.
-                // The AI uses this to generate a natural-language response for the user.
                 var resultPrompt = systemPrompt +
                     $"\n\nTool '{toolCall.Action}' was executed. Result:\n{toolResult.OutputText}\n\n" +
                     "Now respond to the user in a friendly, concise way based on the tool result above. " +
@@ -173,18 +188,9 @@ public class ChatService : IChatService
             else
             {
                 // AI decided no tool was needed — use its text response directly.
-                _logger.LogDebug("Tool intent detected but AI did not produce a tool call, using direct response");
+                _logger.LogDebug("No tool call in first pass, using text response directly");
                 responseText = firstPassResponse;
             }
-        }
-        else
-        {
-            // ─── Regular path (no tool intent) ───────────────────────────
-            _logger.LogInformation(
-                "Sending message to {Provider} in conversation {ConversationId}",
-                provider.ProviderName, conversation.Id);
-
-            responseText = await provider.GetCompletionAsync(history, systemPrompt, ct);
         }
 
         // Save the assistant's response.
@@ -219,12 +225,15 @@ public class ChatService : IChatService
         // Resolve or create the conversation.
         var conversation = await GetOrCreateConversationAsync(userId, request.ConversationId, request.Message, ct);
 
+        // If a PDF file is attached, prepend its content to the user message.
+        var effectiveMessage = BuildMessageWithAttachment(request);
+
         // Save the user's message.
         var userMessage = new ChatMessage
         {
             ConversationId = conversation.Id,
             Role = EChatRole.User,
-            Content = request.Message
+            Content = effectiveMessage
         };
         _context.ChatMessage.Add(userMessage);
         await _context.SaveChangesAsync(ct);
@@ -234,21 +243,119 @@ public class ChatService : IChatService
         var systemPrompt = await _contextBuilder.BuildSystemPromptAsync(ct);
         var history = await GetConversationHistoryAsync(conversation.Id, ct);
 
-        // ─── Tool detection: two-pass flow when IČO + keyword found ──────
-        // Check if the user's message looks like it needs a tool (IČO + keyword).
-        // If so, do a non-streaming "first pass" to get the tool call JSON,
-        // execute the tool, then stream the "second pass" with tool results.
-        if (_toolExecutor.DetectToolIntent(request.Message))
+        // If an image is attached, set the transient Images property on the last user message.
+        // This passes the base64 data to the AI provider without storing it in the database.
+        AttachImageToLastMessage(history, request);
+
+        // ─── Path A: Native tool calling (for providers that support it) ────────────
+        // Always send tool definitions — the model decides when to use a tool.
+        // The initial non-streaming call may block briefly while the model processes,
+        // but the UI shows a "thinking" spinner during this time. This is acceptable
+        // because it enables reliable tool calling without regex heuristics.
+        if (provider.SupportsNativeTools)
         {
             _logger.LogInformation(
-                "Tool intent detected in conversation {ConversationId}, starting two-pass streaming flow",
-                conversation.Id);
+                "Using native tool calling for {Provider} in conversation {ConversationId}",
+                provider.ProviderName, conversation.Id);
 
-            // First pass: non-streaming call with tool instructions in the system prompt.
+            // Heartbeat to keep SSE connection alive during the non-streaming tool call.
+            yield return "";
+
+            var toolDefs = _toolExecutor.GetToolDefinitions();
+            var nativeResult = await provider.GetCompletionWithToolsAsync(history, systemPrompt, toolDefs, ct);
+
+            if (nativeResult?.HasToolCalls == true)
+            {
+                // Execute the first tool call (single-tool per turn for now).
+                var nativeToolCall = nativeResult.ToolCalls[0];
+                _logger.LogInformation("Native tool call: {ToolName}, executing...", nativeToolCall.ToolName);
+
+                var parsedCall = new ParsedToolCall
+                {
+                    Action = nativeToolCall.ToolName,
+                    Parameters = nativeToolCall.Arguments
+                };
+                var toolResult = await _toolExecutor.ExecuteToolAsync(parsedCall, ct);
+                _pendingUiAction = toolResult.UiAction;
+
+                // Second pass: stream the final response with tool result context.
+                var resultPrompt = systemPrompt +
+                    $"\n\nTool '{nativeToolCall.ToolName}' was executed. Result:\n{toolResult.OutputText}\n\n" +
+                    "Now respond to the user in a friendly, concise way based on the tool result above. " +
+                    "Include the key information from the result. Respond in the same language as the user.";
+
+                var toolFullResponse = new StringBuilder();
+                await foreach (var chunk in provider.StreamCompletionAsync(history, resultPrompt, ct))
+                {
+                    toolFullResponse.Append(chunk);
+                    yield return chunk;
+                }
+
+                var nativeAssistantMsg = new ChatMessage
+                {
+                    ConversationId = conversation.Id,
+                    Role = EChatRole.Assistant,
+                    Content = toolFullResponse.ToString(),
+                    ProviderUsed = provider.ProviderName
+                };
+                _context.ChatMessage.Add(nativeAssistantMsg);
+                conversation.LastMessageAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync(ct);
+                yield break;
+            }
+
+            // Model received tools but chose not to use them — use its text directly.
+            if (!string.IsNullOrEmpty(nativeResult?.TextContent))
+            {
+                _logger.LogDebug("Native tool calling: model chose text response, yielding directly");
+
+                yield return nativeResult.TextContent;
+
+                var directMsg = new ChatMessage
+                {
+                    ConversationId = conversation.Id,
+                    Role = EChatRole.Assistant,
+                    Content = nativeResult.TextContent,
+                    ProviderUsed = provider.ProviderName
+                };
+                _context.ChatMessage.Add(directMsg);
+                conversation.LastMessageAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync(ct);
+                yield break;
+            }
+
+            // Null result — fall through to regular streaming as fallback.
+            _logger.LogDebug("Native tool calling returned null, falling through to regular streaming");
+        }
+
+        // ─── Path B: Text-based tool calling (for providers WITHOUT native tool API) ─
+        // For models that don't support the native tools API (e.g., gemma3, phi4),
+        // we always do a "first pass" non-streaming call with tool instructions in the system prompt.
+        // The model decides whether to produce a JSON tool call or a regular text response.
+        // No regex gate — the LLM is the decision maker, not a regex pattern.
+        //
+        // Flow:
+        // 1. First pass (non-streaming): AI sees tool instructions → responds with JSON tool call or text
+        // 2a. If tool call → execute tool → second pass (streaming) with tool result → yield chunks
+        // 2b. If no tool call → yield the first-pass text directly (no second call)
+        if (!provider.SupportsNativeTools)
+        {
+            _logger.LogInformation(
+                "Using text-based tool flow for {Provider} in conversation {ConversationId}",
+                provider.ProviderName, conversation.Id);
+
+            // Yield an empty string as a SSE heartbeat to keep the connection alive.
+            // The first pass is non-streaming and can take 30-120+ seconds with local models.
+            // Without this, the HTTP client may time out before the model responds.
+            // The empty string is harmless — ChatApiService skips empty chunks.
+            yield return "";
+
+            // First pass: non-streaming call with tool instructions appended to the system prompt.
+            // The model sees the available tools and decides whether to use one.
             var toolSystemPrompt = systemPrompt + _toolExecutor.BuildToolInstructions();
             var firstPassResponse = await provider.GetCompletionAsync(history, toolSystemPrompt, ct);
 
-            // Try to parse a tool call from the AI's response.
+            // Try to parse a structured tool call from the AI response.
             var toolCall = _toolExecutor.ParseToolCall(firstPassResponse);
 
             if (toolCall != null)
@@ -287,16 +394,29 @@ public class ChatService : IChatService
                 conversation.LastMessageAt = DateTime.UtcNow;
                 await _context.SaveChangesAsync(ct);
 
-                yield break; // Two-pass complete, skip regular streaming below.
+                yield break; // Two-pass complete, done.
             }
 
-            // AI decided no tool was needed despite intent detection.
-            // Fall through to regular streaming with the first-pass response.
-            _logger.LogDebug(
-                "Tool intent detected but AI did not produce a tool call, falling through to regular streaming");
+            // AI decided no tool was needed — yield its text response directly.
+            // No second AI call needed — avoids double latency.
+            _logger.LogDebug("First pass: no tool call, yielding text response directly");
+
+            yield return firstPassResponse;
+
+            var firstPassMsg = new ChatMessage
+            {
+                ConversationId = conversation.Id,
+                Role = EChatRole.Assistant,
+                Content = firstPassResponse,
+                ProviderUsed = provider.ProviderName
+            };
+            _context.ChatMessage.Add(firstPassMsg);
+            conversation.LastMessageAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync(ct);
+            yield break;
         }
 
-        // ─── Regular streaming path (no tool intent or AI declined tool) ──
+        // ─── Path C: Regular streaming (should not normally reach here) ──
         _logger.LogInformation(
             "Streaming message from {Provider} in conversation {ConversationId}",
             provider.ProviderName, conversation.Id);
@@ -349,6 +469,64 @@ public class ChatService : IChatService
     }
 
     // ─── Private helpers ────────────────────────────────────────────────
+
+    /// <summary>
+    /// Handles the non-streaming native tool calling flow.
+    /// Sends tool definitions to the provider, executes any tool calls,
+    /// and returns the final AI response text.
+    ///
+    /// Flow:
+    /// 1. Send messages + tool definitions to the provider
+    /// 2. If the model produces a tool call → execute it → second AI call with results
+    /// 3. If the model produces text → return it directly
+    /// </summary>
+    private async Task<string> HandleNativeToolCallAsync(
+        IAiProvider provider,
+        List<ChatMessageDto> history,
+        string systemPrompt,
+        long conversationId,
+        CancellationToken ct)
+    {
+        _logger.LogInformation(
+            "Using native tool calling for {Provider} in conversation {ConversationId}",
+            provider.ProviderName, conversationId);
+
+        var toolDefs = _toolExecutor.GetToolDefinitions();
+        var nativeResult = await provider.GetCompletionWithToolsAsync(history, systemPrompt, toolDefs, ct);
+
+        if (nativeResult?.HasToolCalls == true)
+        {
+            // Execute the first tool call (single-tool per turn for now).
+            var nativeToolCall = nativeResult.ToolCalls[0];
+            _logger.LogInformation("Native tool call: {ToolName}, executing...", nativeToolCall.ToolName);
+
+            var parsedCall = new ParsedToolCall
+            {
+                Action = nativeToolCall.ToolName,
+                Parameters = nativeToolCall.Arguments
+            };
+            var toolResult = await _toolExecutor.ExecuteToolAsync(parsedCall, ct);
+
+            // Capture any UI action for the controller.
+            _pendingUiAction = toolResult.UiAction;
+
+            // Second pass: AI generates a natural-language response using the tool result.
+            var resultPrompt = systemPrompt +
+                $"\n\nTool '{nativeToolCall.ToolName}' was executed. Result:\n{toolResult.OutputText}\n\n" +
+                "Now respond to the user in a friendly, concise way based on the tool result above. " +
+                "Include the key information from the result. Respond in the same language as the user.";
+
+            return await provider.GetCompletionAsync(history, resultPrompt, ct);
+        }
+
+        // Model chose not to use a tool — return its text response.
+        if (!string.IsNullOrEmpty(nativeResult?.TextContent))
+            return nativeResult.TextContent;
+
+        // Fallback: regular completion without tools.
+        _logger.LogDebug("Native tool calling returned null, falling back to regular completion");
+        return await provider.GetCompletionAsync(history, systemPrompt, ct);
+    }
 
     /// <summary>
     /// Gets an existing conversation or creates a new one.
@@ -429,5 +607,66 @@ public class ChatService : IChatService
             ProviderUsed = message.ProviderUsed,
             CreatedAt = message.CreatedAt
         };
+    }
+
+    /// <summary>
+    /// Builds the effective message content by prepending attachment context (if any).
+    /// Supports two types of attachments:
+    ///   1. Image (base64) — stored as a short placeholder "[Image: filename.jpg]" in DB,
+    ///      actual image bytes are passed separately via ChatMessageDto.Images
+    ///   2. PDF (extracted text) — stored inline with the full extracted text
+    ///
+    /// Image takes precedence when both are set (edge case, UI prevents this).
+    /// </summary>
+    private static string BuildMessageWithAttachment(SendMessageRequest request)
+    {
+        // Image attachment takes precedence over PDF — the actual base64 data
+        // is passed via ChatMessageDto.Images (not stored in the message text).
+        // We only store a short placeholder in the database to indicate an image was attached.
+        if (!string.IsNullOrWhiteSpace(request.AttachedImageBase64))
+        {
+            var imageFileName = request.AttachedFileName ?? "image.png";
+            return $"[Image: {imageFileName}]\n\nUser question: {request.Message}";
+        }
+
+        // PDF attachment — extracted text is included inline for the AI to reference.
+        if (!string.IsNullOrWhiteSpace(request.AttachedFileContent))
+        {
+            var fileName = request.AttachedFileName ?? "document.pdf";
+
+            return $"""
+                [Attached PDF: {fileName}]
+                --- PDF Content ---
+                {request.AttachedFileContent}
+                --- End PDF Content ---
+
+                User question: {request.Message}
+                """;
+        }
+
+        // No attachment — return the original message as-is.
+        return request.Message;
+    }
+
+    /// <summary>
+    /// Attaches image data to the last user message in the conversation history.
+    /// This sets the transient ChatMessageDto.Images property so that the AI provider
+    /// (e.g., OllamaProvider with Gemma3) can include the image in its API request.
+    ///
+    /// The image is NOT stored in the database — only passed in-memory during this request.
+    /// </summary>
+    private static void AttachImageToLastMessage(List<ChatMessageDto> history, SendMessageRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.AttachedImageBase64))
+            return;
+
+        // Find the last user message in the history and attach the image to it.
+        var lastUserMessage = history.LastOrDefault(m =>
+            m.Role.Equals("User", StringComparison.OrdinalIgnoreCase));
+
+        if (lastUserMessage != null)
+        {
+            lastUserMessage.Images = new List<string> { request.AttachedImageBase64 };
+        }
     }
 }

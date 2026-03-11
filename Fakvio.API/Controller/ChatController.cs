@@ -3,6 +3,7 @@ using System.Text.Json;
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.Chat;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Fakvio.API.Controller;
@@ -20,11 +21,21 @@ namespace Fakvio.API.Controller;
 public class ChatController : ControllerBase
 {
     private readonly IChatService _chatService;
+    private readonly IPdfTextExtractorService _pdfTextExtractor;
     private readonly ILogger<ChatController> _logger;
 
-    public ChatController(IChatService chatService, ILogger<ChatController> logger)
+    /// <summary>
+    /// Maximum allowed PDF file size for text extraction (10 MB).
+    /// </summary>
+    private const int MaxPdfSizeBytes = 10 * 1024 * 1024;
+
+    public ChatController(
+        IChatService chatService,
+        IPdfTextExtractorService pdfTextExtractor,
+        ILogger<ChatController> logger)
     {
         _chatService = chatService;
+        _pdfTextExtractor = pdfTextExtractor;
         _logger = logger;
     }
 
@@ -200,6 +211,71 @@ public class ChatController : ControllerBase
     public ActionResult<IReadOnlyList<string>> GetProviders()
     {
         return Ok(_chatService.GetAvailableProviders());
+    }
+
+    /// <summary>
+    /// Extracts text content from an uploaded PDF file.
+    /// Used by the Blazor UI to get text from a PDF before sending it to the AI.
+    ///
+    /// Accepts a single PDF file via multipart/form-data.
+    /// Validates the file extension (.pdf) and size (max 10 MB).
+    /// Returns the extracted text as a JSON object: { "text": "..." }
+    /// </summary>
+    /// <param name="file">The PDF file uploaded via multipart/form-data.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <response code="200">Extracted text from the PDF</response>
+    /// <response code="400">Invalid file (wrong extension, too large, corrupt, or password-protected)</response>
+    [HttpPost("extract-pdf")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult> ExtractPdfText(IFormFile file, CancellationToken ct = default)
+    {
+        // Validate that a file was provided.
+        if (file == null || file.Length == 0)
+        {
+            return BadRequest(new { message = "No file was uploaded." });
+        }
+
+        // Validate file extension — only .pdf files are accepted.
+        var extension = Path.GetExtension(file.FileName)?.ToLowerInvariant();
+        if (extension != ".pdf")
+        {
+            return BadRequest(new { message = "Only PDF files are supported." });
+        }
+
+        // Validate file size — reject files larger than 10 MB.
+        if (file.Length > MaxPdfSizeBytes)
+        {
+            return BadRequest(new { message = $"File exceeds the maximum allowed size of {MaxPdfSizeBytes / (1024 * 1024)} MB." });
+        }
+
+        try
+        {
+            // Read the uploaded file into a byte array.
+            using var memoryStream = new MemoryStream();
+            await file.CopyToAsync(memoryStream, ct);
+            var pdfBytes = memoryStream.ToArray();
+
+            // Extract text using iText7-based service.
+            var extractedText = await _pdfTextExtractor.ExtractTextAsync(pdfBytes, ct);
+
+            _logger.LogInformation(
+                "Extracted {CharCount} characters from uploaded PDF '{FileName}'",
+                extractedText.Length, file.FileName);
+
+            return Ok(new { text = extractedText });
+        }
+        catch (ArgumentException ex)
+        {
+            // Service-level validation errors (corrupt, password-protected, etc.)
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error extracting text from PDF '{FileName}'", file.FileName);
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { message = "An error occurred while extracting text from the PDF." });
+        }
     }
 
     // ─── Private helpers ────────────────────────────────────────────────

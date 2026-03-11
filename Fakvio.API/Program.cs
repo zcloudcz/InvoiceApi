@@ -154,8 +154,15 @@ app.UseCorrelationId();
     });
 //}
 
-app.UseHttpsRedirection();
 app.UseCors();
+
+// HTTPS redirect breaks CORS in development — the browser follows the redirect
+// to https://localhost:7047 which is a different origin than http://localhost:5237,
+// causing "No Access-Control-Allow-Origin" errors on the redirected request.
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
 
 // Authentication must come before Authorization
 app.UseAuthentication();

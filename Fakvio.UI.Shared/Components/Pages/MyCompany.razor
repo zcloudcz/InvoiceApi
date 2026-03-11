@@ -234,6 +234,80 @@ else
         </MudItem>
     </MudGrid>
 
+    @* ── Tax Settings Card ────────────────────────────────────────────── *@
+    <MudPaper Elevation="2" Class="pa-4 mb-4">
+        <MudText Typo="Typo.h6" Class="mb-3">@L["Client_TaxSection"]</MudText>
+        @if (_isEditing)
+        {
+            <MudGrid>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudSelect T="string" Value="_editClient.TaxRegime"
+                               ValueChanged="@(v => { _editClient.TaxRegime = v; _isDirty = true; })"
+                               Label="@L["Client_TaxRegime"].Value" Clearable="true">
+                        <MudSelectItem T="string" Value="@("FlatRateTax")">@L["ETaxRegime_FlatRateTax"]</MudSelectItem>
+                        <MudSelectItem T="string" Value="@("LumpSumExpenses80")">@L["ETaxRegime_LumpSumExpenses80"]</MudSelectItem>
+                        <MudSelectItem T="string" Value="@("LumpSumExpenses60")">@L["ETaxRegime_LumpSumExpenses60"]</MudSelectItem>
+                        <MudSelectItem T="string" Value="@("LumpSumExpenses40")">@L["ETaxRegime_LumpSumExpenses40"]</MudSelectItem>
+                        <MudSelectItem T="string" Value="@("LumpSumExpenses30")">@L["ETaxRegime_LumpSumExpenses30"]</MudSelectItem>
+                        <MudSelectItem T="string" Value="@("TaxRecords")">@L["ETaxRegime_TaxRecords"]</MudSelectItem>
+                        <MudSelectItem T="string" Value="@("FullAccounting")">@L["ETaxRegime_FullAccounting"]</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudSelect T="string" Value="_editClient.ActivityType"
+                               ValueChanged="@(v => { _editClient.ActivityType = v; _isDirty = true; })"
+                               Label="@L["Client_ActivityType"].Value" Clearable="true">
+                        <MudSelectItem T="string" Value="@("CraftTrade")">@L["EActivityType_CraftTrade"]</MudSelectItem>
+                        <MudSelectItem T="string" Value="@("NonCraftTrade")">@L["EActivityType_NonCraftTrade"]</MudSelectItem>
+                        <MudSelectItem T="string" Value="@("RegulatedProfession")">@L["EActivityType_RegulatedProfession"]</MudSelectItem>
+                        <MudSelectItem T="string" Value="@("Rental")">@L["EActivityType_Rental"]</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudSwitch T="bool" Value="_editClient.IsMainActivity"
+                               ValueChanged="@(v => { _editClient.IsMainActivity = v; _isDirty = true; })"
+                               Label="@L["Client_IsMainActivity"].Value" Color="Color.Primary" />
+                </MudItem>
+                @if (_editClient.TaxRegime == "FlatRateTax")
+                {
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudSelect T="string" Value="_editClient.FlatRateBand"
+                                   ValueChanged="@(v => { _editClient.FlatRateBand = v; _isDirty = true; })"
+                                   Label="@L["Client_FlatRateBand"].Value" Clearable="true">
+                            <MudSelectItem T="string" Value="@("Band1")">@L["EFlatRateBand_Band1"]</MudSelectItem>
+                            <MudSelectItem T="string" Value="@("Band2")">@L["EFlatRateBand_Band2"]</MudSelectItem>
+                            <MudSelectItem T="string" Value="@("Band3")">@L["EFlatRateBand_Band3"]</MudSelectItem>
+                        </MudSelect>
+                    </MudItem>
+                }
+            </MudGrid>
+        }
+        else
+        {
+            <MudGrid>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">@L["Client_TaxRegime"]</MudText>
+                    <MudText>@(GetLocalizedEnum("ETaxRegime", _company.TaxRegime))</MudText>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">@L["Client_ActivityType"]</MudText>
+                    <MudText>@(GetLocalizedEnum("EActivityType", _company.ActivityType))</MudText>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">@L["Client_IsMainActivity"]</MudText>
+                    <MudText>@(_company.IsMainActivity ? L["Label_Yes"].Value : L["Label_No"].Value)</MudText>
+                </MudItem>
+                @if (!string.IsNullOrEmpty(_company.FlatRateBand))
+                {
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">@L["Client_FlatRateBand"]</MudText>
+                        <MudText>@(GetLocalizedEnum("EFlatRateBand", _company.FlatRateBand))</MudText>
+                    </MudItem>
+                }
+            </MudGrid>
+        }
+    </MudPaper>
+
     @* Full-width section: 1:N Addresses managed by the shared AddressListEditor component *@
     <MudPaper Elevation="2" Class="pa-4 mb-4">
         @if (_isEditing)
@@ -521,7 +595,12 @@ else
             IsVatPayer = _company.IsVatPayer,
             IsIssuer = true, // Company is always an issuer
             Language = _company.Language,
-            FetchFromAres = false
+            FetchFromAres = false,
+            // Tax regime fields
+            TaxRegime = _company.TaxRegime,
+            ActivityType = _company.ActivityType,
+            IsMainActivity = _company.IsMainActivity,
+            FlatRateBand = _company.FlatRateBand
         };
 
         // Populate ALL addresses (1:N) into the editable list
@@ -615,6 +694,11 @@ else
                 IsActive = true,
                 Language = _editClient.Language,
                 RefreshFromAres = _editClient.FetchFromAres,
+                // Tax regime fields
+                TaxRegime = _editClient.TaxRegime,
+                ActivityType = _editClient.ActivityType,
+                IsMainActivity = _editClient.IsMainActivity,
+                FlatRateBand = _editClient.FlatRateBand,
                 // Send ALL addresses (1:N) — backend uses replace-all strategy
                 Address = _addresses.Select(a => new UpdateAddressDto
                 {
@@ -1086,4 +1170,17 @@ else
         "en" => "English (en)",
         _ => language
     };
+
+    /// <summary>
+    /// Looks up localized display name for an enum value.
+    /// Key format: "{EnumTypeName}_{EnumValue}" (e.g., "ETaxRegime_FlatRateTax").
+    /// Returns "—" for null/empty values.
+    /// </summary>
+    private string GetLocalizedEnum(string enumTypeName, string? value)
+    {
+        if (string.IsNullOrEmpty(value)) return "—";
+        var key = $"{enumTypeName}_{value}";
+        var localized = L[key];
+        return localized.ResourceNotFound ? value : localized.Value;
+    }
 }

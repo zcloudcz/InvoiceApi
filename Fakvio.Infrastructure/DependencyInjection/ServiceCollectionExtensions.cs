@@ -111,7 +111,12 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IEmailService, EmailService>();
         services.AddScoped<IContentTemplateService, ContentTemplateService>();
         services.AddScoped<IDashboardService, DashboardService>();
+        services.AddScoped<IReceivedInvoiceService, ReceivedInvoiceService>();
+        services.AddScoped<IVatReportService, VatReportService>();
         services.AddScoped<ISystemConfigurationService, SystemConfigurationService>();
+
+        // Tax estimation — calculates income tax, social/health insurance for CZ/SK self-employed.
+        services.AddScoped<ITaxEstimationService, TaxEstimationService>();
 
         // Tenant provisioning — creates, migrates, activates/deactivates tenant schemas.
         // SysAdmin uses this through CompanyController to manage tenant lifecycle.
@@ -129,6 +134,21 @@ public static class ServiceCollectionExtensions
             sp.GetRequiredService<Fakvio.Infrastructure.Service.CloudStorage.OneDriveStorageService>());
         services.AddScoped<ICloudStorageOrchestrator,
             Fakvio.Infrastructure.Service.CloudStorage.CloudStorageOrchestrator>();
+
+        // ── PDF Text Extraction ──────────────────────────────────────────────
+        // Used by the AI chat to extract text from uploaded PDF files.
+        services.AddScoped<IPdfTextExtractorService, PdfTextExtractorService>();
+
+        // ── Invoice Import (PDF extraction pipeline: QR → AI → Regex) ────
+        // QR code extraction from PDF images — uses iText7 + ZXing to find and decode QR codes.
+        services.AddScoped<IQrCodeExtractor, QrCodeExtractorService>();
+        // AI-based invoice data extraction — uses the default AI provider to parse PDF text.
+        // Falls back gracefully if no AI provider is configured.
+        services.AddScoped<IInvoiceAiExtractor, InvoiceAiExtractorService>();
+        // Regex-based invoice data extraction — last resort fallback when QR and AI fail.
+        services.AddScoped<IInvoiceTextExtractor, InvoiceTextExtractorService>();
+        // Import orchestrator — waterfall pipeline + validation + client resolution.
+        services.AddScoped<IInvoiceImportService, InvoiceImportService>();
 
         // ── AI Chat ────────────────────────────────────────────────────────
         AddAiProviders(services, configuration);

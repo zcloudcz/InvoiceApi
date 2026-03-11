@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <!-- PackAsTool allows installing this server as a .NET global/local tool:
+         dotnet tool install -g Fakvio.McpServer
+         Then run: fakvio-mcp -->
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>fakvio-mcp</ToolCommandName>
+    <PackageId>Fakvio.McpServer</PackageId>
+    <Description>MCP (Model Context Protocol) server for Fakvio invoicing — exposes invoice, client, template, and reporting tools for AI assistants.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- ModelContextProtocol — official C# SDK for MCP (stdio transport, tool discovery) -->
+    <PackageReference Include="ModelContextProtocol" Version="1.0.0" />
+
+    <!-- Generic Host for DI, configuration, and lifetime management -->
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.0" />
+
+    <!-- IHttpClientFactory for typed HttpClient registration -->
+    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Contracts only — zero DB/Infrastructure dependencies.
+         Gives us all DTOs, enums, and pagination types. -->
+    <ProjectReference Include="..\Fakvio.Contracts\Fakvio.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -36,8 +36,13 @@ public partial class ClientProfile : IMapperProfile
         config.CreateMap<BillingSettings, BillingSettingsDto>();
 
         // Client → ClientDto: nested Address/Contact/BankAccount collections and BillingSettings
-        // are mapped automatically because their type mappings are registered above
-        config.CreateMap<Client, ClientDto>();
+        // are mapped automatically because their type mappings are registered above.
+        // Tax regime enum fields (ETaxRegime? → string?) cannot be auto-mapped by ZMapper,
+        // so we ignore them here and handle them manually in ClientService.MapToDto().
+        config.CreateMap<Client, ClientDto>()
+            .ForMember(d => d.TaxRegime, opt => opt.Ignore())
+            .ForMember(d => d.ActivityType, opt => opt.Ignore())
+            .ForMember(d => d.FlatRateBand, opt => opt.Ignore());
 
         // =====================================================================
         // CREATE direction: CreateDto → Entity (for creating new records)

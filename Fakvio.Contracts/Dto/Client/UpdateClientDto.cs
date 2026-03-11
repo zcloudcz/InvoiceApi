@@ -49,6 +49,26 @@ public class UpdateClientDto
     public string? Language { get; set; }
 
     /// <summary>
+    /// Tax regime used by this company. Null = don't change.
+    /// </summary>
+    public string? TaxRegime { get; set; }
+
+    /// <summary>
+    /// Type of business activity. Null = don't change.
+    /// </summary>
+    public string? ActivityType { get; set; }
+
+    /// <summary>
+    /// Whether this is the person's main self-employed activity.
+    /// </summary>
+    public bool? IsMainActivity { get; set; }
+
+    /// <summary>
+    /// Flat-rate tax band (CZ only). Null = don't change.
+    /// </summary>
+    public string? FlatRateBand { get; set; }
+
+    /// <summary>
     /// Should data be refreshed from ARES?
     /// </summary>
     public bool RefreshFromAres { get; set; } = false;

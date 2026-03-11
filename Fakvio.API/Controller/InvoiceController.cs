@@ -391,6 +391,46 @@ public class InvoiceController : ControllerBase
     }
 
     /// <summary>
+    /// Restores a soft-deleted invoice back to Draft status.
+    /// Only allowed for Deleted invoices — other statuses return 400 Bad Request.
+    /// This lets users undo an accidental delete without creating a new invoice.
+    /// </summary>
+    /// <param name="id">Invoice ID</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <response code="200">Invoice restored to Draft</response>
+    /// <response code="404">Invoice not found</response>
+    /// <response code="400">Invoice cannot be restored (not in Deleted status)</response>
+    [HttpPost("{id}/restore")]
+    [ProducesResponseType(typeof(InvoiceDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<InvoiceDto>> RestoreInvoice(
+        long id,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("POST /api/invoice/{Id}/restore", id);
+
+        try
+        {
+            var invoice = await _invoiceService.RestoreInvoiceAsync(id, cancellationToken);
+
+            if (invoice == null)
+            {
+                return NotFound(new { message = $"Invoice with ID {id} not found" });
+            }
+
+            _logger.LogInformation("Invoice {Id} restored to Draft", id);
+            return Ok(invoice);
+        }
+        catch (InvalidOperationException ex)
+        {
+            // This happens when the invoice is not in Deleted status.
+            _logger.LogWarning("Cannot restore invoice {Id}: {Message}", id, ex.Message);
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    /// <summary>
     /// Creates a credit note for an existing invoice
     /// Automatically marks the original invoice as creditnoted
     /// </summary>

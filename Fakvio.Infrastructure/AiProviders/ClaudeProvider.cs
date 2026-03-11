@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using Anthropic;
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.Chat;
@@ -14,11 +15,15 @@ namespace Fakvio.Infrastructure.AiProviders;
 /// Supports both synchronous and streaming completions via the Messages API.
 /// System prompts are passed as a separate parameter (Claude API separates system from messages).
 ///
+/// Also supports native tool/function calling via the Claude Tools API.
+/// Claude is excellent at tool selection — it reliably determines when and which tool to use.
+///
 /// API surface (v3.3.0):
 ///   - Non-streaming: client.Messages.MessagesPostAsync(model, messages, maxTokens, system: ...)
 ///   - Streaming: client.CreateMessageAsStreamAsync(CreateMessageParams)
 ///   - Messages: InputMessage with InputMessageRole.User / InputMessageRole.Assistant
 ///   - Text extraction: response.AsSimpleText() / evt.ContentBlockDelta?.Delta.TextDelta?.Text
+///   - Tools: Tool with InputSchema, response.Content with ToolUseContent
 /// </summary>
 public class ClaudeProvider : IAiProvider, IDisposable
 {
@@ -28,12 +33,19 @@ public class ClaudeProvider : IAiProvider, IDisposable
 
     public string ProviderName => "Claude";
 
+    /// <summary>
+    /// Claude supports native tool calling via its Tools API.
+    /// This allows the model to produce structured tool_use blocks in its response
+    /// instead of free-text JSON that needs manual parsing.
+    /// </summary>
+    public bool SupportsNativeTools => true;
+
     public ClaudeProvider(IOptions<AiSettings> settings, ILogger<ClaudeProvider> logger)
     {
         _logger = logger;
         var config = settings.Value.Claude;
         _client = new AnthropicClient(config.ApiKey);
-        _model = string.IsNullOrEmpty(config.Model) ? "claude-3-5-sonnet-20241022" : config.Model;
+        _model = string.IsNullOrEmpty(config.Model) ? "claude-sonnet-4-6" : config.Model;
     }
 
     /// <summary>
@@ -51,8 +63,6 @@ public class ClaudeProvider : IAiProvider, IDisposable
 
         try
         {
-            // Call the Messages API with individual parameters.
-            // The 'system' parameter accepts AnyOf<string, IList<RequestTextBlock>>? — string works via implicit conversion.
             var response = await _client.Messages.MessagesPostAsync(
                 model: _model,
                 messages: anthropicMessages,
@@ -60,12 +70,10 @@ public class ClaudeProvider : IAiProvider, IDisposable
                 system: systemPrompt,
                 cancellationToken: ct);
 
-            // AsSimpleText() extracts the concatenated text from all content blocks.
             return response.AsSimpleText();
         }
         catch (Exception ex)
         {
-            // Log the full error response from Claude API for debugging.
             _logger.LogError(ex, "Claude API error: {Message}", ex.Message);
             throw;
         }
@@ -74,7 +82,6 @@ public class ClaudeProvider : IAiProvider, IDisposable
     /// <summary>
     /// Streams the response from Claude token-by-token.
     /// Uses client.CreateMessageAsStreamAsync() which returns IAsyncEnumerable of MessageStreamEvent.
-    /// Each event is a discriminated union — we look for ContentBlockDelta events containing text.
     /// </summary>
     public async IAsyncEnumerable<string> StreamCompletionAsync(
         List<ChatMessageDto> messages,
@@ -85,7 +92,6 @@ public class ClaudeProvider : IAiProvider, IDisposable
 
         _logger.LogDebug("Starting streaming from Claude model {Model}", _model);
 
-        // CreateMessageAsStreamAsync takes a CreateMessageParams object and returns IAsyncEnumerable<MessageStreamEvent>.
         var events = _client.CreateMessageAsStreamAsync(
             new CreateMessageParams
             {
@@ -98,8 +104,6 @@ public class ClaudeProvider : IAiProvider, IDisposable
 
         await foreach (var evt in events.WithCancellation(ct))
         {
-            // Each streaming event may contain a ContentBlockDelta with a TextDelta.
-            // The path is: evt.ContentBlockDelta?.Delta.TextDelta?.Text
             var text = evt.ContentBlockDelta?.Delta.TextDelta?.Text;
             if (!string.IsNullOrEmpty(text))
             {
@@ -109,13 +113,180 @@ public class ClaudeProvider : IAiProvider, IDisposable
     }
 
     /// <summary>
+    /// Sends messages with native tool definitions to Claude's Messages API.
+    /// Claude uses the "tools" parameter to receive tool definitions, and responds with
+    /// tool_use content blocks when it decides to call a tool.
+    ///
+    /// Claude's tool calling is very reliable — it correctly determines:
+    /// - WHEN to use a tool (vs. just answering in text)
+    /// - WHICH tool to use (based on the user's intent)
+    /// - WHAT parameters to pass (extracted from the conversation)
+    ///
+    /// Response handling:
+    /// - If response contains ToolUseContent → extract tool name + arguments → return as NativeToolCallResult
+    /// - If response contains only TextContent → return as text response
+    /// </summary>
+    public async Task<NativeToolCallResult?> GetCompletionWithToolsAsync(
+        List<ChatMessageDto> messages,
+        string? systemPrompt,
+        List<NativeToolDefinition> tools,
+        CancellationToken ct = default)
+    {
+        var anthropicMessages = BuildMessages(messages);
+        var anthropicTools = BuildClaudeTools(tools);
+
+        _logger.LogInformation(
+            "Sending {Count} messages to Claude with {ToolCount} native tools (model: {Model})",
+            messages.Count, tools.Count, _model);
+
+        try
+        {
+            // The SDK expects IList<OneOf<Tool, BashTool20250124, TextEditor20250124>>.
+            // OneOf has an implicit conversion from Tool, so we cast each Tool to OneOf.
+            var toolsParam = anthropicTools
+                .Select(t => (OneOf<Tool, BashTool20250124, TextEditor20250124>)t)
+                .ToList();
+
+            var response = await _client.Messages.MessagesPostAsync(
+                model: _model,
+                messages: anthropicMessages,
+                maxTokens: 4096,
+                system: systemPrompt,
+                tools: toolsParam,
+                cancellationToken: ct);
+
+            // Check if Claude chose to use a tool.
+            // Claude's response.Content is a list of ContentBlock items:
+            // - TextContent: regular text response
+            // - ToolUseContent: structured tool call with name + input (JSON object)
+            var result = new NativeToolCallResult();
+
+            foreach (var block in response.Content)
+            {
+                // Check for tool_use content block.
+                if (block.IsToolUse)
+                {
+                    var toolUse = block.ToolUse!;
+
+                    _logger.LogInformation(
+                        "Claude native tool call: {ToolName}, input: {Input}",
+                        toolUse.Name, toolUse.Input);
+
+                    var args = new Dictionary<string, string>();
+
+                    // Parse the tool input — Claude returns it as a JsonNode/string.
+                    // We need to convert it to Dictionary<string, string> for IChatTool compatibility.
+                    if (toolUse.Input != null)
+                    {
+                        try
+                        {
+                            var inputJson = toolUse.Input.ToString();
+                            if (!string.IsNullOrEmpty(inputJson))
+                            {
+                                using var doc = JsonDocument.Parse(inputJson);
+                                foreach (var prop in doc.RootElement.EnumerateObject())
+                                {
+                                    args[prop.Name] = prop.Value.ValueKind == JsonValueKind.String
+                                        ? prop.Value.GetString() ?? ""
+                                        : prop.Value.GetRawText();
+                                }
+                            }
+                        }
+                        catch (JsonException ex)
+                        {
+                            _logger.LogWarning(ex, "Failed to parse Claude tool input as JSON");
+                        }
+                    }
+
+                    result.ToolCalls.Add(new NativeToolCall
+                    {
+                        ToolName = toolUse.Name,
+                        Arguments = args
+                    });
+                }
+                else if (block.IsText)
+                {
+                    // Collect text content (Claude sometimes includes text alongside tool calls).
+                    result.TextContent = (result.TextContent ?? "") + block.Text;
+                }
+            }
+
+            // If we found tool calls, return them (they take priority over text).
+            if (result.HasToolCalls)
+                return result;
+
+            // No tool calls — return text content.
+            return new NativeToolCallResult
+            {
+                TextContent = response.AsSimpleText()
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Claude API error during tool calling: {Message}", ex.Message);
+            return null;
+        }
+    }
+
+    // ─── Private helpers ──────────────────────────────────────────────────
+
+    /// <summary>
+    /// Builds Claude Tool definitions from NativeToolDefinition list.
+    /// Claude uses JSON Schema for tool input parameters.
+    ///
+    /// Format:
+    ///   Tool { Name, Description, InputSchema { Type = "object", Properties = {...}, Required = [...] } }
+    /// </summary>
+    private static List<Tool> BuildClaudeTools(List<NativeToolDefinition> tools)
+    {
+        return tools.Select(tool =>
+        {
+            // Build JSON Schema properties dictionary.
+            var properties = new Dictionary<string, object>();
+            foreach (var param in tool.Parameters)
+            {
+                var propDef = new Dictionary<string, object>
+                {
+                    ["type"] = param.Type,
+                    ["description"] = param.Description
+                };
+
+                if (param.EnumValues is { Count: > 0 })
+                {
+                    propDef["enum"] = param.EnumValues;
+                }
+
+                properties[param.Name] = propDef;
+            }
+
+            // Claude's InputSchema follows JSON Schema format.
+            // The SDK's InputSchema class doesn't have a Required property,
+            // so we build the schema as a plain dictionary and pass it as Tool.InputSchema (which is object).
+            var inputSchema = new Dictionary<string, object>
+            {
+                ["type"] = "object",
+                ["properties"] = properties
+            };
+
+            // Add "required" array if there are required parameters.
+            if (tool.Required is { Count: > 0 })
+            {
+                inputSchema["required"] = tool.Required;
+            }
+
+            return new Tool
+            {
+                Name = tool.Name,
+                Description = tool.Description,
+                InputSchema = inputSchema
+            };
+        }).ToList();
+    }
+
+    /// <summary>
     /// Builds the Anthropic InputMessage list from our DTOs.
     /// Maps "User" → InputMessageRole.User, "Assistant" → InputMessageRole.Assistant.
     /// System messages are excluded (they go to the system parameter).
-    ///
-    /// The SDK provides string extension methods:
-    ///   - Implicit string → InputMessage conversion (defaults to User role)
-    ///   - string.AsAssistantMessage() → InputMessage with Assistant role
     /// </summary>
     private static List<InputMessage> BuildMessages(List<ChatMessageDto> messages)
     {
@@ -123,17 +294,14 @@ public class ClaudeProvider : IAiProvider, IDisposable
 
         foreach (var msg in messages)
         {
-            // System messages are handled separately via the system parameter.
             if (msg.Role == "System") continue;
 
             if (msg.Role == "Assistant")
             {
-                // AsAssistantMessage() is a string extension that creates an InputMessage with Role = Assistant.
                 result.Add(msg.Content.AsAssistantMessage());
             }
             else
             {
-                // Implicit string → InputMessage conversion creates a User message.
                 result.Add(msg.Content);
             }
         }

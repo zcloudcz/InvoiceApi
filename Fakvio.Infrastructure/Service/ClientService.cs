@@ -38,7 +38,15 @@ public class ClientService : IClientService
     /// </summary>
     private static ClientDto MapToDto(Client entity)
     {
-        return entity.ToClientDto();
+        var dto = entity.ToClientDto();
+
+        // Manual mapping for enum → string properties (ZMapper can't auto-map enum? → string?).
+        dto.TaxRegime = entity.TaxRegime?.ToString();
+        dto.ActivityType = entity.ActivityType?.ToString();
+        dto.IsMainActivity = entity.IsMainActivity;
+        dto.FlatRateBand = entity.FlatRateBand?.ToString();
+
+        return dto;
     }
 
     /// <summary>
@@ -285,7 +293,12 @@ public class ClientService : IClientService
             IsVatPayer = createDto.IsVatPayer,
             IsIssuer = createDto.IsIssuer,
             IsActive = true,
-            LastAresFetchDate = createDto.FetchFromAres ? DateTime.UtcNow : null
+            LastAresFetchDate = createDto.FetchFromAres ? DateTime.UtcNow : null,
+            // Tax regime fields — parse enum strings to strongly-typed values.
+            TaxRegime = Enum.TryParse<Domain.Enums.ETaxRegime>(createDto.TaxRegime, out var regime) ? regime : null,
+            ActivityType = Enum.TryParse<Domain.Enums.EActivityType>(createDto.ActivityType, out var activity) ? activity : null,
+            IsMainActivity = createDto.IsMainActivity,
+            FlatRateBand = Enum.TryParse<Domain.Enums.EFlatRateBand>(createDto.FlatRateBand, out var band) ? band : null
         };
 
         // Add addresses — ZMapper handles property mapping (AddressType, Street, City, etc.)
@@ -380,6 +393,19 @@ public class ClientService : IClientService
 
         if (updateDto.IsActive.HasValue)
             client.IsActive = updateDto.IsActive.Value;
+
+        // Update tax regime fields if provided.
+        if (updateDto.TaxRegime != null)
+            client.TaxRegime = Enum.TryParse<Domain.Enums.ETaxRegime>(updateDto.TaxRegime, out var regime) ? regime : null;
+
+        if (updateDto.ActivityType != null)
+            client.ActivityType = Enum.TryParse<Domain.Enums.EActivityType>(updateDto.ActivityType, out var activity) ? activity : null;
+
+        if (updateDto.IsMainActivity.HasValue)
+            client.IsMainActivity = updateDto.IsMainActivity.Value;
+
+        if (updateDto.FlatRateBand != null)
+            client.FlatRateBand = Enum.TryParse<Domain.Enums.EFlatRateBand>(updateDto.FlatRateBand, out var band) ? band : null;
 
         // Update addresses if provided — replaces all existing addresses
         if (updateDto.Address != null)

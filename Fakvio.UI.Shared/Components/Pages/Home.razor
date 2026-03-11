@@ -4,8 +4,10 @@
 @using Fakvio.Contracts.Dto.Dashboard
 @using Fakvio.Contracts.Dto.Invoice
 @using Fakvio.Domain.Enums
+@using Fakvio.Contracts.Dto.Tax
 @using Fakvio.UI.Shared.Services
 @inject DashboardApiService DashboardService
+@inject TaxApiService TaxService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
@@ -221,6 +223,66 @@ else
         </MudItem>
     </MudGrid>
 
+    @* ─── Tax Estimate & Insurance Advance Cards ─── *@
+    @if (_insuranceAdvance != null)
+    {
+        <MudGrid Class="mt-6">
+            <MudItem xs="12" sm="6" md="4">
+                <MudCard Elevation="2" Class="rounded-lg cursor-pointer" @onclick="@(() => Navigation.NavigateTo("/tax-estimation"))">
+                    <MudCardContent>
+                        <div class="d-flex justify-space-between align-center mb-2">
+                            <MudIcon Icon="@Icons.Material.Filled.AccountBalance" Color="Color.Tertiary" Size="Size.Large" />
+                            <MudChip T="string" Color="Color.Tertiary" Size="Size.Small">@DateTime.Today.Year</MudChip>
+                        </div>
+                        <MudText Typo="Typo.h5" GutterBottom="true">
+                            @_insuranceAdvance.MonthlyTotal.ToString("N0") @_insuranceAdvance.CurrencyCode
+                        </MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">@L["Dashboard_InsuranceTotal"]</MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="4">
+                <MudCard Elevation="2" Class="rounded-lg">
+                    <MudCardContent>
+                        <div class="d-flex justify-space-between align-center mb-2">
+                            <MudIcon Icon="@Icons.Material.Filled.EventNote" Size="Size.Large"
+                                     Color="@(_insuranceAdvance.DaysUntilPayment <= 5 ? Color.Error : Color.Info)" />
+                            @if (_insuranceAdvance.DaysUntilPayment <= 0)
+                            {
+                                <MudChip T="string" Color="Color.Error" Size="Size.Small">@L["Dashboard_InsuranceOverdue"]</MudChip>
+                            }
+                            else
+                            {
+                                <MudChip T="string" Color="@(_insuranceAdvance.DaysUntilPayment <= 5 ? Color.Warning : Color.Info)" Size="Size.Small">
+                                    @string.Format(L["Dashboard_InsuranceDueIn"].Value, _insuranceAdvance.DaysUntilPayment)
+                                </MudChip>
+                            }
+                        </div>
+                        <MudText Typo="Typo.h6" GutterBottom="true">
+                            @_insuranceAdvance.NextPaymentDate.ToShortDateString()
+                        </MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">@L["Dashboard_InsuranceNextDate"]</MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+            <MudItem xs="12" sm="12" md="4">
+                <MudCard Elevation="2" Class="rounded-lg">
+                    <MudCardContent>
+                        <MudText Typo="Typo.subtitle2" Class="mb-2">@L["Dashboard_InsuranceAdvance"]</MudText>
+                        <div class="d-flex justify-space-between mb-1">
+                            <MudText>@L["Dashboard_InsuranceSocial"]</MudText>
+                            <MudText><strong>@_insuranceAdvance.MonthlySocial.ToString("N0") @_insuranceAdvance.CurrencyCode</strong></MudText>
+                        </div>
+                        <div class="d-flex justify-space-between">
+                            <MudText>@L["Dashboard_InsuranceHealth"]</MudText>
+                            <MudText><strong>@_insuranceAdvance.MonthlyHealth.ToString("N0") @_insuranceAdvance.CurrencyCode</strong></MudText>
+                        </div>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        </MudGrid>
+    }
+
     @* ─── Donut Charts Row — side-by-side: Invoices by Status + Top Clients by Revenue ─── *@
     @if (_dashboard.InvoiceCountByStatus.Count > 0 || _dashboard.InvoiceTotalByClient.Count > 0)
     {
@@ -411,6 +473,7 @@ else
     // Dashboard data loaded from the API
     private DashboardDto _dashboard = new();
     private SysAdminDashboardDto? _sysAdminDashboard;
+    private InsuranceAdvanceDto? _insuranceAdvance;
     private bool _loading = true;
     private bool _isSysAdmin = false;
     private bool _isImpersonating = false;
@@ -453,6 +516,16 @@ else
             {
                 // Regular user or impersonating SysAdmin → load tenant dashboard
                 _dashboard = await DashboardService.GetDashboardAsync();
+
+                // Load insurance advance notification (non-blocking — null if not configured)
+                try
+                {
+                    _insuranceAdvance = await TaxService.GetInsuranceAdvanceAsync();
+                }
+                catch
+                {
+                    // Ignore — insurance advance is optional
+                }
             }
         }
         catch (Exception ex)

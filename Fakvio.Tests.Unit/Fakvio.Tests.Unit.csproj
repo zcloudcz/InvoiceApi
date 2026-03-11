@@ -30,6 +30,7 @@
     <ProjectReference Include="..\Fakvio.Infrastructure\Fakvio.Infrastructure.csproj" />
     <ProjectReference Include="..\Fakvio.API\Fakvio.API.csproj" />
     <ProjectReference Include="..\Fakvio.UI.Shared\Fakvio.UI.Shared.csproj" />
+    <ProjectReference Include="..\Fakvio.McpServer\Fakvio.McpServer.csproj" />
   </ItemGroup>
 
 </Project>

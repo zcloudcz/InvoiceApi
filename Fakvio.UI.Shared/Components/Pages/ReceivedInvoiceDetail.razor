@@ -1,0 +1,536 @@
+@page "/received-invoices/create"
+@page "/received-invoices/{Id:long}"
+@attribute [Authorize]
+
+@using Fakvio.Contracts.Dto.ReceivedInvoice
+@using Fakvio.Contracts.Dto.Client
+@using Fakvio.Domain.Enums
+@using Fakvio.UI.Shared.Services
+@using Fakvio.UI.Shared.Models
+@using Fakvio.UI.Shared.Components.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.Extensions.Localization
+
+@inject ReceivedInvoiceApiService ReceivedInvoiceService
+@inject ClientApiService ClientService
+@inject VatRateApiService VatRateService
+@inject CurrencyApiService CurrencyService
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject IStringLocalizer<SharedResource> L
+@inject IJSRuntime JS
+
+<PageTitle>@(_isCreateMode ? L["ReceivedInvoice_New"] : L["ReceivedInvoice_Detail"])</PageTitle>
+
+<UnsavedChangesLock IsDirty="_isDirty" />
+
+@* ── Top Bar ────────────────────────────────────────────────────────── *@
+<MudGrid Class="mb-4">
+    <MudItem xs="6">
+        <MudButton Variant="Variant.Text"
+                   StartIcon="@Icons.Material.Filled.ArrowBack"
+                   OnClick="GoBack">
+            @L["Common_Back"]
+        </MudButton>
+    </MudItem>
+    <MudItem xs="6" Class="d-flex justify-end gap-2">
+        @if (_isEditMode)
+        {
+            <MudButton Variant="Variant.Outlined" OnClick="CancelEdit">@L["Common_Cancel"]</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save">@L["Common_Save"]</MudButton>
+        }
+        else if (_invoice is not null)
+        {
+            @if (_invoice.Status == EReceivedInvoiceStatus.Received || _invoice.Status == EReceivedInvoiceStatus.Approved)
+            {
+                <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Edit" OnClick="EnableEditing">@L["Common_Edit"]</MudButton>
+            }
+            @if (_invoice.Status == EReceivedInvoiceStatus.Received)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="Approve">@L["ReceivedInvoice_Approve"]</MudButton>
+            }
+            @if (_invoice.Status == EReceivedInvoiceStatus.Approved)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="MarkAsPaid">@L["Invoice_MarkAsPaid"]</MudButton>
+            }
+        }
+    </MudItem>
+</MudGrid>
+
+<MudText Typo="Typo.h5" Class="mb-4">
+    @if (_isCreateMode)
+    {
+        @L["ReceivedInvoice_New"]
+    }
+    else if (_invoice is not null)
+    {
+        @($"{L["ReceivedInvoice_Detail"]} — {_invoice.DocumentNumber ?? "#" + _invoice.Id}")
+        <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(_invoice.Status)" Class="ml-2">
+            @L[$"EReceivedInvoiceStatus_{_invoice.Status}"]
+        </MudChip>
+    }
+</MudText>
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else
+{
+    <MudGrid>
+        @* ── Left Column: Core Data ────────────────────────────────────── *@
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.h6" Class="mb-3">@L["ReceivedInvoice_BasicInfo"]</MudText>
+
+                <MudTextField @bind-Value="_docNumber"
+                              Label="@L["Invoice_DocumentNumber"]"
+                              ReadOnly="!_isEditMode"
+                              Class="mb-2" />
+
+                @if (_isEditMode && _isCreateMode)
+                {
+                    <MudSelect T="long?"
+                               Value="_supplierId"
+                               ValueChanged="OnSupplierChanged"
+                               Label="@L["ReceivedInvoice_Supplier"]"
+                               Class="mb-2">
+                        @foreach (var client in _clients)
+                        {
+                            <MudSelectItem T="long?" Value="@((long?)client.Id)">@client.CompanyName</MudSelectItem>
+                        }
+                    </MudSelect>
+                }
+                else
+                {
+                    <MudTextField Value="@(_invoice?.SupplierName ?? "")"
+                                  Label="@L["ReceivedInvoice_Supplier"]"
+                                  ReadOnly="true"
+                                  Class="mb-2" />
+                }
+
+                <MudDatePicker Label="@L["Invoice_IssueDate"]"
+                               Date="_issueDate"
+                               DateChanged="@(v => { _issueDate = v; _isDirty = true; })"
+                               ReadOnly="!_isEditMode"
+                               Class="mb-2" />
+
+                <MudDatePicker Label="@L["ReceivedInvoice_ReceivedDate"]"
+                               Date="_receivedDate"
+                               DateChanged="@(v => { _receivedDate = v; _isDirty = true; })"
+                               ReadOnly="!_isEditMode"
+                               Class="mb-2" />
+
+                <MudDatePicker Label="@L["Invoice_DueDate"]"
+                               Date="_dueDate"
+                               DateChanged="@(v => { _dueDate = v; _isDirty = true; })"
+                               ReadOnly="!_isEditMode"
+                               Class="mb-2" />
+
+                <MudDatePicker Label="@L["Invoice_TaxableSupplyDate"]"
+                               Date="_taxableSupplyDate"
+                               DateChanged="@(v => { _taxableSupplyDate = v; _isDirty = true; })"
+                               ReadOnly="!_isEditMode"
+                               Class="mb-2" />
+            </MudPaper>
+        </MudItem>
+
+        @* ── Right Column: Payment Info ────────────────────────────────── *@
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.h6" Class="mb-3">@L["Invoice_PaymentInfo"]</MudText>
+
+                <MudTextField @bind-Value="_variableSymbol"
+                              Label="@L["Invoice_VariableSymbol"]"
+                              ReadOnly="!_isEditMode"
+                              Class="mb-2" />
+
+                <MudTextField @bind-Value="_bankAccountNumber"
+                              Label="@L["Invoice_BankAccount"]"
+                              ReadOnly="!_isEditMode"
+                              Class="mb-2" />
+
+                <MudTextField @bind-Value="_iban"
+                              Label="IBAN"
+                              ReadOnly="!_isEditMode"
+                              Class="mb-2" />
+
+                <MudTextField @bind-Value="_swift"
+                              Label="SWIFT"
+                              ReadOnly="!_isEditMode"
+                              Class="mb-2" />
+
+                @if (_isEditMode)
+                {
+                    <EnumSelect TEnum="EPaymentMethod"
+                                NullableValue="_paymentMethod"
+                                NullableValueChanged="@(v => { _paymentMethod = v; _isDirty = true; })"
+                                Label="@L["Invoice_PaymentMethod"]"
+                                Nullable="true" />
+                }
+                else
+                {
+                    <MudTextField Value="@(_paymentMethod?.ToString() ?? "—")"
+                                  Label="@L["Invoice_PaymentMethod"]"
+                                  ReadOnly="true"
+                                  Class="mb-2" />
+                }
+
+                <MudTextField @bind-Value="_notes"
+                              Label="@L["Invoice_Notes"]"
+                              Lines="3"
+                              ReadOnly="!_isEditMode"
+                              Class="mb-2" />
+            </MudPaper>
+        </MudItem>
+
+        @* ── Items Section ─────────────────────────────────────────────── *@
+        <MudItem xs="12">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.h6" Class="mb-3">@L["Invoice_Items"]</MudText>
+
+                @if (_isEditMode)
+                {
+                    <MudButton Variant="Variant.Outlined"
+                               Size="Size.Small"
+                               StartIcon="@Icons.Material.Filled.Add"
+                               OnClick="AddItem"
+                               Class="mb-2">
+                        @L["Invoice_AddItem"]
+                    </MudButton>
+                }
+
+                <MudTable Items="_items" Dense="true" Hover="true" Striped="true">
+                    <HeaderContent>
+                        <MudTh>#</MudTh>
+                        <MudTh>@L["InvoiceItem_Description"]</MudTh>
+                        <MudTh>@L["InvoiceItem_Quantity"]</MudTh>
+                        <MudTh>@L["InvoiceItem_Unit"]</MudTh>
+                        <MudTh>@L["InvoiceItem_UnitPrice"]</MudTh>
+                        <MudTh>@L["InvoiceItem_VatRate"]</MudTh>
+                        <MudTh>@L["Invoice_TotalBeforeVat"]</MudTh>
+                        <MudTh>@L["Invoice_TotalVat"]</MudTh>
+                        <MudTh>@L["Invoice_TotalWithVat"]</MudTh>
+                        @if (_isEditMode)
+                        {
+                            <MudTh></MudTh>
+                        }
+                    </HeaderContent>
+                    <RowTemplate>
+                        @if (_isEditMode)
+                        {
+                            <MudTd>@context.OrderIndex</MudTd>
+                            <MudTd><MudTextField @bind-Value="context.Description" Variant="Variant.Text" Margin="Margin.Dense" /></MudTd>
+                            <MudTd><MudNumericField T="decimal" Value="context.Quantity" ValueChanged="@((decimal v) => { context.Quantity = v; RecalculateItem(context); })" Variant="Variant.Text" Margin="Margin.Dense" /></MudTd>
+                            <MudTd><MudTextField @bind-Value="context.Unit" Variant="Variant.Text" Margin="Margin.Dense" /></MudTd>
+                            <MudTd><MudNumericField T="decimal" Value="context.UnitPrice" ValueChanged="@((decimal v) => { context.UnitPrice = v; RecalculateItem(context); })" Variant="Variant.Text" Margin="Margin.Dense" /></MudTd>
+                            <MudTd><MudNumericField T="decimal" Value="context.VatRatePercentage" ValueChanged="@((decimal v) => { context.VatRatePercentage = v; RecalculateItem(context); })" Variant="Variant.Text" Margin="Margin.Dense" /></MudTd>
+                            <MudTd>@context.TotalBeforeVat.ToString("N2")</MudTd>
+                            <MudTd>@context.VatAmount.ToString("N2")</MudTd>
+                            <MudTd>@context.TotalWithVat.ToString("N2")</MudTd>
+                            <MudTd>
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                               OnClick="@(() => RemoveItem(context))" />
+                            </MudTd>
+                        }
+                        else
+                        {
+                            <MudTd>@context.OrderIndex</MudTd>
+                            <MudTd>@context.Description</MudTd>
+                            <MudTd>@context.Quantity.ToString("N2")</MudTd>
+                            <MudTd>@context.Unit</MudTd>
+                            <MudTd>@context.UnitPrice.ToString("N2")</MudTd>
+                            <MudTd>@(context.VatRatePercentage > 0 ? $"{context.VatRatePercentage}%" : "0%")</MudTd>
+                            <MudTd>@context.TotalBeforeVat.ToString("N2")</MudTd>
+                            <MudTd>@context.VatAmount.ToString("N2")</MudTd>
+                            <MudTd>@context.TotalWithVat.ToString("N2")</MudTd>
+                        }
+                    </RowTemplate>
+                </MudTable>
+
+                @* ── Totals ────────────────────────────────────────────────── *@
+                <MudGrid Class="mt-3">
+                    <MudItem xs="12" sm="4" Class="ml-auto">
+                        <MudText><strong>@L["Invoice_TotalBeforeVat"]:</strong> @_items.Sum(i => i.TotalBeforeVat).ToString("N2")</MudText>
+                        <MudText><strong>@L["Invoice_TotalVat"]:</strong> @_items.Sum(i => i.VatAmount).ToString("N2")</MudText>
+                        <MudText Typo="Typo.h6"><strong>@L["Invoice_TotalWithVat"]:</strong> @_items.Sum(i => i.TotalWithVat).ToString("N2")</MudText>
+                    </MudItem>
+                </MudGrid>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private bool _isCreateMode => Id == 0;
+    private bool _isEditMode;
+    private bool _isDirty;
+    private bool _loading;
+
+    private ReceivedInvoiceDto? _invoice;
+    private List<ClientDto> _clients = new();
+
+    // Form fields
+    private string? _docNumber;
+    private long? _supplierId;
+    private DateTime? _issueDate;
+    private DateTime? _receivedDate;
+    private DateTime? _dueDate;
+    private DateTime? _taxableSupplyDate;
+    private string? _variableSymbol;
+    private string? _bankAccountNumber;
+    private string? _iban;
+    private string? _swift;
+    private EPaymentMethod? _paymentMethod;
+    private string? _notes;
+    private long _currencyId = 1; // Default CZK
+
+    // Items as editable model
+    private List<EditableItem> _items = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _loading = true;
+
+        // Load clients for supplier dropdown
+        _clients = (await ClientService.GetAllAsync()) ?? new();
+
+        if (_isCreateMode)
+        {
+            _isEditMode = true;
+            _receivedDate = DateTime.Today;
+            _issueDate = DateTime.Today;
+            _taxableSupplyDate = DateTime.Today;
+            AddItem();
+        }
+        else
+        {
+            await LoadInvoice();
+        }
+
+        _loading = false;
+    }
+
+    private async Task LoadInvoice()
+    {
+        _invoice = await ReceivedInvoiceService.GetByIdAsync(Id);
+        if (_invoice is null)
+        {
+            Snackbar.Add(L["Common_NotFound"].Value, Severity.Error);
+            Navigation.NavigateTo("/received-invoices");
+            return;
+        }
+
+        // Map to form fields
+        _docNumber = _invoice.DocumentNumber;
+        _supplierId = _invoice.SupplierId;
+        _issueDate = _invoice.IssueDate;
+        _receivedDate = _invoice.ReceivedDate;
+        _dueDate = _invoice.DueDate;
+        _taxableSupplyDate = _invoice.TaxableSupplyDate;
+        _variableSymbol = _invoice.VariableSymbol;
+        _bankAccountNumber = _invoice.BankAccountNumber;
+        _iban = _invoice.IBAN;
+        _swift = _invoice.SWIFT;
+        _paymentMethod = _invoice.PaymentMethod;
+        _notes = _invoice.Notes;
+        _currencyId = _invoice.CurrencyId;
+
+        _items = _invoice.Items.Select(i => new EditableItem
+        {
+            OrderIndex = i.OrderIndex,
+            Description = i.Description,
+            Quantity = i.Quantity,
+            Unit = i.Unit,
+            UnitPrice = i.UnitPrice,
+            VatRateId = i.VatRateId,
+            VatRatePercentage = i.VatRatePercentage,
+            TotalBeforeVat = i.TotalBeforeVat,
+            VatAmount = i.VatAmount,
+            TotalWithVat = i.TotalWithVat
+        }).ToList();
+    }
+
+    private void EnableEditing()
+    {
+        _isEditMode = true;
+    }
+
+    private async Task CancelEdit()
+    {
+        _isEditMode = false;
+        _isDirty = false;
+        if (!_isCreateMode) await LoadInvoice();
+        else Navigation.NavigateTo("/received-invoices");
+    }
+
+    private async Task Save()
+    {
+        if (!_supplierId.HasValue)
+        {
+            Snackbar.Add(L["ReceivedInvoice_SupplierRequired"].Value, Severity.Warning);
+            return;
+        }
+
+        if (!_items.Any())
+        {
+            Snackbar.Add(L["Invoice_ItemsRequired"].Value, Severity.Warning);
+            return;
+        }
+
+        var items = _items.Select(i => new CreateReceivedInvoiceItemDto
+        {
+            OrderIndex = i.OrderIndex,
+            Description = i.Description,
+            Quantity = i.Quantity,
+            Unit = i.Unit,
+            UnitPrice = i.UnitPrice,
+            VatRateId = i.VatRateId,
+            VatRatePercentage = i.VatRatePercentage
+        }).ToList();
+
+        if (_isCreateMode)
+        {
+            var dto = new CreateReceivedInvoiceDto
+            {
+                DocumentNumber = _docNumber,
+                SupplierId = _supplierId.Value,
+                IssueDate = _issueDate,
+                ReceivedDate = _receivedDate,
+                DueDate = _dueDate,
+                TaxableSupplyDate = _taxableSupplyDate,
+                VariableSymbol = _variableSymbol,
+                CurrencyId = _currencyId,
+                PaymentMethod = _paymentMethod,
+                BankAccountNumber = _bankAccountNumber,
+                IBAN = _iban,
+                SWIFT = _swift,
+                Notes = _notes,
+                Items = items
+            };
+
+            var result = await ReceivedInvoiceService.CreateAsync(dto);
+            if (result is not null)
+            {
+                Snackbar.Add(L["Common_Created"].Value, Severity.Success);
+                _isDirty = false;
+                Navigation.NavigateTo($"/received-invoices/{result.Id}");
+            }
+        }
+        else
+        {
+            var dto = new UpdateReceivedInvoiceDto
+            {
+                DocumentNumber = _docNumber,
+                IssueDate = _issueDate,
+                ReceivedDate = _receivedDate,
+                DueDate = _dueDate,
+                TaxableSupplyDate = _taxableSupplyDate,
+                VariableSymbol = _variableSymbol,
+                CurrencyId = _currencyId,
+                PaymentMethod = _paymentMethod,
+                BankAccountNumber = _bankAccountNumber,
+                IBAN = _iban,
+                SWIFT = _swift,
+                Notes = _notes,
+                Items = items
+            };
+
+            var result = await ReceivedInvoiceService.UpdateAsync(Id, dto);
+            if (result is not null)
+            {
+                Snackbar.Add(L["Common_Saved"].Value, Severity.Success);
+                _isDirty = false;
+                _isEditMode = false;
+                await LoadInvoice();
+            }
+        }
+    }
+
+    private async Task Approve()
+    {
+        var result = await ReceivedInvoiceService.ApproveAsync(Id);
+        if (result is not null)
+        {
+            Snackbar.Add(L["ReceivedInvoice_Approved"].Value, Severity.Success);
+            await LoadInvoice();
+        }
+    }
+
+    private async Task MarkAsPaid()
+    {
+        var result = await ReceivedInvoiceService.MarkAsPaidAsync(Id);
+        if (result is not null)
+        {
+            Snackbar.Add(L["Invoice_MarkedAsPaid"].Value, Severity.Success);
+            await LoadInvoice();
+        }
+    }
+
+    private void OnSupplierChanged(long? value)
+    {
+        _supplierId = value;
+        _isDirty = true;
+    }
+
+    private void AddItem()
+    {
+        _items.Add(new EditableItem
+        {
+            OrderIndex = _items.Count + 1,
+            Unit = "pcs",
+            Quantity = 1,
+            VatRatePercentage = 21 // Default Czech standard rate
+        });
+        _isDirty = true;
+    }
+
+    private void RemoveItem(EditableItem item)
+    {
+        _items.Remove(item);
+        // Reindex
+        for (int i = 0; i < _items.Count; i++)
+            _items[i].OrderIndex = i + 1;
+        _isDirty = true;
+    }
+
+    private void RecalculateItem(EditableItem item)
+    {
+        item.TotalBeforeVat = item.Quantity * item.UnitPrice;
+        item.VatAmount = item.TotalBeforeVat * (item.VatRatePercentage / 100m);
+        item.TotalWithVat = item.TotalBeforeVat + item.VatAmount;
+        _isDirty = true;
+    }
+
+    private void GoBack() => Navigation.NavigateTo("/received-invoices");
+
+    private static Color GetStatusColor(EReceivedInvoiceStatus status) => status switch
+    {
+        EReceivedInvoiceStatus.Received => Color.Default,
+        EReceivedInvoiceStatus.Approved => Color.Info,
+        EReceivedInvoiceStatus.Paid => Color.Success,
+        EReceivedInvoiceStatus.Rejected => Color.Warning,
+        EReceivedInvoiceStatus.Deleted => Color.Error,
+        _ => Color.Default
+    };
+
+    /// <summary>
+    /// Editable item model for inline editing in the table.
+    /// Mirrors CreateReceivedInvoiceItemDto but with calculated fields.
+    /// </summary>
+    private class EditableItem
+    {
+        public int OrderIndex { get; set; }
+        public string Description { get; set; } = string.Empty;
+        public decimal Quantity { get; set; }
+        public string Unit { get; set; } = "pcs";
+        public decimal UnitPrice { get; set; }
+        public long? VatRateId { get; set; }
+        public decimal VatRatePercentage { get; set; }
+        public decimal TotalBeforeVat { get; set; }
+        public decimal VatAmount { get; set; }
+        public decimal TotalWithVat { get; set; }
+    }
+}

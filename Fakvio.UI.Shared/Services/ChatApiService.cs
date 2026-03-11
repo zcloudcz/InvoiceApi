@@ -243,6 +243,79 @@ public class ChatApiService : ApiClientBase
     }
 
     /// <summary>
+    /// Extracts text content from a PDF file by sending it to the API.
+    /// The API uses iText7 to parse the PDF and return the extracted text.
+    ///
+    /// How it works:
+    /// 1. Wraps the PDF byte array in a MultipartFormDataContent (simulates file upload)
+    /// 2. Sends it to POST /api/chat/extract-pdf
+    /// 3. Parses the JSON response { "text": "..." } and returns the text
+    ///
+    /// Returns null if extraction fails (corrupt file, server error, etc.).
+    /// </summary>
+    /// <param name="fileBytes">Raw byte array of the PDF file.</param>
+    /// <param name="fileName">Original file name (sent to the API for logging).</param>
+    /// <returns>Extracted text content, or null on failure.</returns>
+    public async Task<string?> ExtractPdfTextAsync(byte[] fileBytes, string fileName)
+    {
+        try
+        {
+            await AddAuthorizationHeaderAsync();
+            _logger.LogInformation("POST (multipart) /api/chat/extract-pdf — file: {FileName}", fileName);
+
+            // Build multipart/form-data content with the PDF file.
+            // The field name "file" must match the IFormFile parameter name in the controller.
+            using var content = new MultipartFormDataContent();
+            var fileContent = new ByteArrayContent(fileBytes);
+            fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/pdf");
+            content.Add(fileContent, "file", fileName);
+
+            var response = await _httpClient.PostAsync("/api/chat/extract-pdf", content);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorBody = await response.Content.ReadAsStringAsync();
+                _logger.LogWarning("PDF extraction failed with status {Status}: {Error}",
+                    response.StatusCode, errorBody);
+
+                // Try to extract a user-friendly error message from JSON response.
+                try
+                {
+                    var errorDoc = JsonDocument.Parse(errorBody);
+                    if (errorDoc.RootElement.TryGetProperty("message", out var msgProp))
+                    {
+                        throw new ApiException(response.StatusCode, msgProp.GetString() ?? "PDF extraction failed.", "/api/chat/extract-pdf");
+                    }
+                }
+                catch (JsonException) { }
+
+                throw new ApiException(response.StatusCode, "PDF extraction failed.", "/api/chat/extract-pdf");
+            }
+
+            // Parse the response JSON: { "text": "extracted content..." }
+            var responseBody = await response.Content.ReadAsStringAsync();
+            var doc = JsonDocument.Parse(responseBody);
+
+            if (doc.RootElement.TryGetProperty("text", out var textProp))
+            {
+                return textProp.GetString();
+            }
+
+            _logger.LogWarning("PDF extraction response did not contain 'text' property");
+            return null;
+        }
+        catch (ApiException)
+        {
+            throw; // Re-throw API exceptions as-is for the UI to handle.
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error extracting text from PDF '{FileName}'", fileName);
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Deletes a conversation and all its messages.
     /// </summary>
     public async Task<bool> DeleteConversationAsync(long conversationId)

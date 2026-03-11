@@ -92,6 +92,10 @@
                                  Icon="@Icons.Material.Filled.ContentPaste">
                         @L["Invoice_NewFromTemplate"]
                     </MudMenuItem>
+                    <MudMenuItem OnClick="@(() => Navigation.NavigateTo("/invoices/import?target=IssuedInvoice"))"
+                                 Icon="@Icons.Material.Filled.UploadFile">
+                        @L["Nav_ImportInvoices"]
+                    </MudMenuItem>
                 </MudMenu>
             </MudButtonGroup>
         </MudItem>
@@ -193,6 +197,11 @@
         {
             <MudIconButton Icon="@Icons.Material.Filled.Check" Size="Size.Small" Color="Color.Success"
                            OnClick="@(() => MarkAsPaid(context.Id))" title="@L["Invoice_MarkAsPaid"].Value" />
+        }
+        @if (context.Status == EInvoiceStatus.Deleted)
+        {
+            <MudIconButton Icon="@Icons.Material.Filled.RestoreFromTrash" Size="Size.Small" Color="Color.Warning"
+                           OnClick="@(() => RestoreInvoice(context.Id))" title="@L["Invoice_Restore"].Value" />
         }
         @* PDF download with template selection — primary: default template, menu: pick specific template *@
         <MudMenu Icon="@Icons.Material.Filled.PictureAsPdf" Size="Size.Small" Color="Color.Secondary"
@@ -479,6 +488,24 @@
             if (await InvoiceService.DeleteAsync(id))
             {
                 Snackbar.Add(L["Invoice_Deleted"].Value, Severity.Success);
+                await SearchInvoices();
+            }
+        }
+        catch (Exception ex) { Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error); }
+    }
+
+    /// <summary>
+    /// Restores a soft-deleted invoice back to Draft status.
+    /// Called from the restore icon button in the row actions for deleted invoices.
+    /// </summary>
+    private async Task RestoreInvoice(long id)
+    {
+        try
+        {
+            var result = await InvoiceService.RestoreAsync(id);
+            if (result != null)
+            {
+                Snackbar.Add(L["Invoice_Restored"].Value, Severity.Success);
                 await SearchInvoices();
             }
         }

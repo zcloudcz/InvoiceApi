@@ -340,6 +340,9 @@ namespace Fakvio.Infrastructure.Migrations.Master
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
 
+                    b.Property<int?>("ActivityType")
+                        .HasColumnType("integer");
+
                     b.Property<string>("CompanyName")
                         .IsRequired()
                         .HasMaxLength(500)
@@ -351,10 +354,16 @@ namespace Fakvio.Infrastructure.Migrations.Master
                     b.Property<long?>("CreatedByUserId")
                         .HasColumnType("bigint");
 
+                    b.Property<int?>("FlatRateBand")
+                        .HasColumnType("integer");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
                     b.Property<bool>("IsIssuer")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsMainActivity")
                         .HasColumnType("boolean");
 
                     b.Property<bool>("IsVatPayer")
@@ -381,6 +390,9 @@ namespace Fakvio.Infrastructure.Migrations.Master
                     b.Property<string>("TaxNumber")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
+
+                    b.Property<int?>("TaxRegime")
+                        .HasColumnType("integer");
 
                     b.Property<string>("TradingName")
                         .HasMaxLength(500)
@@ -1044,6 +1056,257 @@ namespace Fakvio.Infrastructure.Migrations.Master
                     b.HasKey("Id");
 
                     b.ToTable("SystemConfiguration");
+                });
+
+            modelBuilder.Entity("Fakvio.Domain.Entities.TaxYearConfig", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<decimal>("AverageMonthlyWage")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("BasicTaxpayerCredit")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<string>("Country")
+                        .IsRequired()
+                        .HasMaxLength(5)
+                        .HasColumnType("character varying(5)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("CreatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("CurrencyCode")
+                        .IsRequired()
+                        .HasMaxLength(5)
+                        .HasColumnType("character varying(5)");
+
+                    b.Property<decimal>("FlatRateBand1Monthly")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("FlatRateBand2Monthly")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("FlatRateBand3Monthly")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("HealthAssessmentBasePercent")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)");
+
+                    b.Property<decimal>("HealthInsuranceRate")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)");
+
+                    b.Property<decimal>("IncomeTaxRate")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)");
+
+                    b.Property<decimal>("LivingMinimum")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("LumpSum30Cap")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("LumpSum40Cap")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("LumpSum60Cap")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("LumpSum80Cap")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("MaxHealthAssessmentBase")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("MaxSocialAssessmentBase")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("MinMonthlyHealthMain")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("MinMonthlySocialMain")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("MinMonthlySocialSecondary")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("ProgressiveTaxRate")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)");
+
+                    b.Property<decimal>("ProgressiveThreshold")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("SocialAssessmentBasePercent")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)");
+
+                    b.Property<decimal>("SocialInsuranceRate")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("UpdatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("Year")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Year", "Country")
+                        .IsUnique();
+
+                    b.ToTable("TaxYearConfig");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1L,
+                            AverageMonthlyWage = 43967m,
+                            BasicTaxpayerCredit = 30840m,
+                            Country = "CZ",
+                            CreatedAt = new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
+                            CurrencyCode = "CZK",
+                            FlatRateBand1Monthly = 7498m,
+                            FlatRateBand2Monthly = 16000m,
+                            FlatRateBand3Monthly = 26000m,
+                            HealthAssessmentBasePercent = 50m,
+                            HealthInsuranceRate = 13.5m,
+                            IncomeTaxRate = 15m,
+                            LivingMinimum = 4860m,
+                            LumpSum30Cap = 600000m,
+                            LumpSum40Cap = 800000m,
+                            LumpSum60Cap = 1200000m,
+                            LumpSum80Cap = 1600000m,
+                            MaxHealthAssessmentBase = 0m,
+                            MaxSocialAssessmentBase = 25324992m,
+                            MinMonthlyHealthMain = 2968m,
+                            MinMonthlySocialMain = 3852m,
+                            MinMonthlySocialSecondary = 0m,
+                            ProgressiveTaxRate = 23m,
+                            ProgressiveThreshold = 1582812m,
+                            SocialAssessmentBasePercent = 50m,
+                            SocialInsuranceRate = 29.2m,
+                            Year = 2025
+                        },
+                        new
+                        {
+                            Id = 2L,
+                            AverageMonthlyWage = 45617m,
+                            BasicTaxpayerCredit = 30840m,
+                            Country = "CZ",
+                            CreatedAt = new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
+                            CurrencyCode = "CZK",
+                            FlatRateBand1Monthly = 8716m,
+                            FlatRateBand2Monthly = 16000m,
+                            FlatRateBand3Monthly = 26000m,
+                            HealthAssessmentBasePercent = 50m,
+                            HealthInsuranceRate = 13.5m,
+                            IncomeTaxRate = 15m,
+                            LivingMinimum = 4860m,
+                            LumpSum30Cap = 600000m,
+                            LumpSum40Cap = 800000m,
+                            LumpSum60Cap = 1200000m,
+                            LumpSum80Cap = 1600000m,
+                            MaxHealthAssessmentBase = 0m,
+                            MaxSocialAssessmentBase = 26275392m,
+                            MinMonthlyHealthMain = 3079m,
+                            MinMonthlySocialMain = 4096m,
+                            MinMonthlySocialSecondary = 0m,
+                            ProgressiveTaxRate = 23m,
+                            ProgressiveThreshold = 1642212m,
+                            SocialAssessmentBasePercent = 50m,
+                            SocialInsuranceRate = 29.2m,
+                            Year = 2026
+                        },
+                        new
+                        {
+                            Id = 3L,
+                            AverageMonthlyWage = 1430m,
+                            BasicTaxpayerCredit = 5646.48m,
+                            Country = "SK",
+                            CreatedAt = new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
+                            CurrencyCode = "EUR",
+                            FlatRateBand1Monthly = 0m,
+                            FlatRateBand2Monthly = 0m,
+                            FlatRateBand3Monthly = 0m,
+                            HealthAssessmentBasePercent = 50m,
+                            HealthInsuranceRate = 14m,
+                            IncomeTaxRate = 15m,
+                            LivingMinimum = 268.88m,
+                            LumpSum30Cap = 0m,
+                            LumpSum40Cap = 0m,
+                            LumpSum60Cap = 20000m,
+                            LumpSum80Cap = 0m,
+                            MaxHealthAssessmentBase = 0m,
+                            MaxSocialAssessmentBase = 120120m,
+                            MinMonthlyHealthMain = 97.80m,
+                            MinMonthlySocialMain = 216.13m,
+                            MinMonthlySocialSecondary = 0m,
+                            ProgressiveTaxRate = 25m,
+                            ProgressiveThreshold = 47537.984m,
+                            SocialAssessmentBasePercent = 50m,
+                            SocialInsuranceRate = 33.15m,
+                            Year = 2025
+                        },
+                        new
+                        {
+                            Id = 4L,
+                            AverageMonthlyWage = 1500m,
+                            BasicTaxpayerCredit = 5753.79m,
+                            Country = "SK",
+                            CreatedAt = new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
+                            CurrencyCode = "EUR",
+                            FlatRateBand1Monthly = 0m,
+                            FlatRateBand2Monthly = 0m,
+                            FlatRateBand3Monthly = 0m,
+                            HealthAssessmentBasePercent = 50m,
+                            HealthInsuranceRate = 14m,
+                            IncomeTaxRate = 15m,
+                            LivingMinimum = 273.99m,
+                            LumpSum30Cap = 0m,
+                            LumpSum40Cap = 0m,
+                            LumpSum60Cap = 20000m,
+                            LumpSum80Cap = 0m,
+                            MaxHealthAssessmentBase = 0m,
+                            MaxSocialAssessmentBase = 126000m,
+                            MinMonthlyHealthMain = 105m,
+                            MinMonthlySocialMain = 225m,
+                            MinMonthlySocialSecondary = 0m,
+                            ProgressiveTaxRate = 25m,
+                            ProgressiveThreshold = 48441.432m,
+                            SocialAssessmentBasePercent = 50m,
+                            SocialInsuranceRate = 33.15m,
+                            Year = 2026
+                        });
                 });
 
             modelBuilder.Entity("Fakvio.Domain.Entities.User", b =>

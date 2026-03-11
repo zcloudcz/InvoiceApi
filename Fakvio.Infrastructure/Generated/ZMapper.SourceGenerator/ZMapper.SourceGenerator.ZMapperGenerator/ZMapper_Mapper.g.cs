@@ -274,6 +274,7 @@ public sealed class Mapper : IMapper
             destination.BillingSettings = source.BillingSettings != null
                 ? source.BillingSettings.ToBillingSettingsDto()
                 : null;
+            destination.IsMainActivity = source.IsMainActivity;
             destination.CreatedAt = source.CreatedAt;
             destination.UpdatedAt = source.UpdatedAt;
             return destination;
@@ -303,6 +304,7 @@ public sealed class Mapper : IMapper
             destination.BillingSettings = source.BillingSettings != null
                 ? source.BillingSettings.ToBillingSettingsDto()
                 : null;
+            destination.IsMainActivity = source.IsMainActivity;
             destination.CreatedAt = source.CreatedAt;
             destination.UpdatedAt = source.UpdatedAt;
             return destination;
@@ -1083,6 +1085,168 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
+        public Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceItemDto Map_ReceivedInvoiceItem_To_ReceivedInvoiceItemDto(Fakvio.Domain.Entities.ReceivedInvoiceItem source)
+        {
+            var destination = new Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceItemDto();
+            destination.Id = source.Id;
+            destination.OrderIndex = source.OrderIndex;
+            destination.Description = source.Description;
+            destination.Quantity = source.Quantity;
+            destination.Unit = source.Unit;
+            destination.UnitPrice = source.UnitPrice;
+            destination.VatRateId = source.VatRateId;
+            destination.VatRatePercentage = source.VatRatePercentage;
+            destination.TotalBeforeVat = source.TotalBeforeVat;
+            destination.VatAmount = source.VatAmount;
+            destination.TotalWithVat = source.TotalWithVat;
+            destination.ProductCode = source.ProductCode;
+            destination.Notes = source.Notes;
+            return destination;
+        }
+
+        public Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceItemDto Map_ReceivedInvoiceItem_To_ReceivedInvoiceItemDto(Fakvio.Domain.Entities.ReceivedInvoiceItem source, Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceItemDto destination)
+        {
+            destination.Id = source.Id;
+            destination.OrderIndex = source.OrderIndex;
+            destination.Description = source.Description;
+            destination.Quantity = source.Quantity;
+            destination.Unit = source.Unit;
+            destination.UnitPrice = source.UnitPrice;
+            destination.VatRateId = source.VatRateId;
+            destination.VatRatePercentage = source.VatRatePercentage;
+            destination.TotalBeforeVat = source.TotalBeforeVat;
+            destination.VatAmount = source.VatAmount;
+            destination.TotalWithVat = source.TotalWithVat;
+            destination.ProductCode = source.ProductCode;
+            destination.Notes = source.Notes;
+            return destination;
+        }
+
+        public Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceItemDto[] MapArray_ReceivedInvoiceItem_To_ReceivedInvoiceItemDto(System.ReadOnlySpan<Fakvio.Domain.Entities.ReceivedInvoiceItem> source)
+        {
+            var destination = new Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceItemDto[source.Length];
+            for (int i = 0; i < source.Length; i++)
+            {
+                destination[i] = source[i].ToReceivedInvoiceItemDto();
+            }
+
+            return destination;
+        }
+
+        public List<Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceItemDto> MapList_ReceivedInvoiceItem_To_ReceivedInvoiceItemDto(System.Collections.Generic.IReadOnlyList<Fakvio.Domain.Entities.ReceivedInvoiceItem> source)
+        {
+            var destination = new List<Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceItemDto>(source.Count);
+            for (int i = 0; i < source.Count; i++)
+            {
+                destination.Add(source[i].ToReceivedInvoiceItemDto());
+            }
+            return destination;
+        }
+
+        public List<Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceItemDto> MapList_ReceivedInvoiceItem_To_ReceivedInvoiceItemDto_Enumerable(System.Collections.Generic.IEnumerable<Fakvio.Domain.Entities.ReceivedInvoiceItem> source)
+        {
+            var destination = new List<Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceItemDto>();
+            foreach (var item in source)
+            {
+                destination.Add(item.ToReceivedInvoiceItemDto());
+            }
+            return destination;
+        }
+
+        public Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceDto Map_ReceivedInvoice_To_ReceivedInvoiceDto(Fakvio.Domain.Entities.ReceivedInvoice source)
+        {
+            var destination = new Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceDto();
+            destination.Id = source.Id;
+            destination.DocumentNumber = source.DocumentNumber;
+            destination.Status = source.Status;
+            destination.SupplierId = source.SupplierId;
+            destination.IssueDate = source.IssueDate;
+            destination.ReceivedDate = source.ReceivedDate;
+            destination.DueDate = source.DueDate;
+            destination.TaxableSupplyDate = source.TaxableSupplyDate;
+            destination.VariableSymbol = source.VariableSymbol;
+            destination.TotalBeforeVat = source.TotalBeforeVat;
+            destination.TotalVat = source.TotalVat;
+            destination.TotalWithVat = source.TotalWithVat;
+            destination.CurrencyId = source.CurrencyId;
+            destination.PaymentMethod = source.PaymentMethod;
+            destination.BankAccountNumber = source.BankAccountNumber;
+            destination.IBAN = source.IBAN;
+            destination.SWIFT = source.SWIFT;
+            destination.PaidAt = source.PaidAt;
+            destination.Notes = source.Notes;
+            destination.AttachmentFileName = source.AttachmentFileName;
+            destination.AttachmentContentType = source.AttachmentContentType;
+            destination.Items = source.Items
+                ?.Select(item => item.ToReceivedInvoiceItemDto())
+                .ToList();
+            destination.CreatedAt = source.CreatedAt;
+            destination.UpdatedAt = source.UpdatedAt;
+            return destination;
+        }
+
+        public Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceDto Map_ReceivedInvoice_To_ReceivedInvoiceDto(Fakvio.Domain.Entities.ReceivedInvoice source, Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceDto destination)
+        {
+            destination.Id = source.Id;
+            destination.DocumentNumber = source.DocumentNumber;
+            destination.Status = source.Status;
+            destination.SupplierId = source.SupplierId;
+            destination.IssueDate = source.IssueDate;
+            destination.ReceivedDate = source.ReceivedDate;
+            destination.DueDate = source.DueDate;
+            destination.TaxableSupplyDate = source.TaxableSupplyDate;
+            destination.VariableSymbol = source.VariableSymbol;
+            destination.TotalBeforeVat = source.TotalBeforeVat;
+            destination.TotalVat = source.TotalVat;
+            destination.TotalWithVat = source.TotalWithVat;
+            destination.CurrencyId = source.CurrencyId;
+            destination.PaymentMethod = source.PaymentMethod;
+            destination.BankAccountNumber = source.BankAccountNumber;
+            destination.IBAN = source.IBAN;
+            destination.SWIFT = source.SWIFT;
+            destination.PaidAt = source.PaidAt;
+            destination.Notes = source.Notes;
+            destination.AttachmentFileName = source.AttachmentFileName;
+            destination.AttachmentContentType = source.AttachmentContentType;
+            destination.Items = source.Items
+                ?.Select(item => item.ToReceivedInvoiceItemDto())
+                .ToList();
+            destination.CreatedAt = source.CreatedAt;
+            destination.UpdatedAt = source.UpdatedAt;
+            return destination;
+        }
+
+        public Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceDto[] MapArray_ReceivedInvoice_To_ReceivedInvoiceDto(System.ReadOnlySpan<Fakvio.Domain.Entities.ReceivedInvoice> source)
+        {
+            var destination = new Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceDto[source.Length];
+            for (int i = 0; i < source.Length; i++)
+            {
+                destination[i] = source[i].ToReceivedInvoiceDto();
+            }
+
+            return destination;
+        }
+
+        public List<Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceDto> MapList_ReceivedInvoice_To_ReceivedInvoiceDto(System.Collections.Generic.IReadOnlyList<Fakvio.Domain.Entities.ReceivedInvoice> source)
+        {
+            var destination = new List<Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceDto>(source.Count);
+            for (int i = 0; i < source.Count; i++)
+            {
+                destination.Add(source[i].ToReceivedInvoiceDto());
+            }
+            return destination;
+        }
+
+        public List<Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceDto> MapList_ReceivedInvoice_To_ReceivedInvoiceDto_Enumerable(System.Collections.Generic.IEnumerable<Fakvio.Domain.Entities.ReceivedInvoice> source)
+        {
+            var destination = new List<Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceDto>();
+            foreach (var item in source)
+            {
+                destination.Add(item.ToReceivedInvoiceDto());
+            }
+            return destination;
+        }
+
         public Fakvio.Contracts.Dto.User.UserDto Map_User_To_UserDto(Fakvio.Domain.Entities.User source)
         {
             var destination = new Fakvio.Contracts.Dto.User.UserDto();
@@ -1253,6 +1417,10 @@ public sealed class Mapper : IMapper
                 return (TDestination)(object)((Fakvio.Domain.Entities.NumberSequenceFormat)(object)source!).ToNumberSequenceFormatDto();
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.NumberSequence) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.NumberSequence.NumberSequenceDto))
                 return (TDestination)(object)((Fakvio.Domain.Entities.NumberSequence)(object)source!).ToNumberSequenceDto();
+            if (typeof(TSource) == typeof(Fakvio.Domain.Entities.ReceivedInvoiceItem) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceItemDto))
+                return (TDestination)(object)((Fakvio.Domain.Entities.ReceivedInvoiceItem)(object)source!).ToReceivedInvoiceItemDto();
+            if (typeof(TSource) == typeof(Fakvio.Domain.Entities.ReceivedInvoice) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceDto))
+                return (TDestination)(object)((Fakvio.Domain.Entities.ReceivedInvoice)(object)source!).ToReceivedInvoiceDto();
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.User) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.User.UserDto))
                 return (TDestination)(object)((Fakvio.Domain.Entities.User)(object)source!).ToUserDto();
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.VatRate) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.VatRate.VatRateDto))
@@ -1294,6 +1462,10 @@ public sealed class Mapper : IMapper
                 return (TDestination)(object)Map_NumberSequenceFormat_To_NumberSequenceFormatDto((Fakvio.Domain.Entities.NumberSequenceFormat)(object)source!, (Fakvio.Contracts.Dto.NumberSequence.NumberSequenceFormatDto)(object)destination!);
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.NumberSequence) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.NumberSequence.NumberSequenceDto))
                 return (TDestination)(object)Map_NumberSequence_To_NumberSequenceDto((Fakvio.Domain.Entities.NumberSequence)(object)source!, (Fakvio.Contracts.Dto.NumberSequence.NumberSequenceDto)(object)destination!);
+            if (typeof(TSource) == typeof(Fakvio.Domain.Entities.ReceivedInvoiceItem) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceItemDto))
+                return (TDestination)(object)Map_ReceivedInvoiceItem_To_ReceivedInvoiceItemDto((Fakvio.Domain.Entities.ReceivedInvoiceItem)(object)source!, (Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceItemDto)(object)destination!);
+            if (typeof(TSource) == typeof(Fakvio.Domain.Entities.ReceivedInvoice) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceDto))
+                return (TDestination)(object)Map_ReceivedInvoice_To_ReceivedInvoiceDto((Fakvio.Domain.Entities.ReceivedInvoice)(object)source!, (Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceDto)(object)destination!);
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.User) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.User.UserDto))
                 return (TDestination)(object)Map_User_To_UserDto((Fakvio.Domain.Entities.User)(object)source!, (Fakvio.Contracts.Dto.User.UserDto)(object)destination!);
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.VatRate) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.VatRate.VatRateDto))
@@ -1383,6 +1555,16 @@ public sealed class Mapper : IMapper
                 var typedSource = System.Runtime.CompilerServices.Unsafe.As<System.ReadOnlySpan<TSource>, System.ReadOnlySpan<Fakvio.Domain.Entities.NumberSequence>>(ref source);
                 return (TDestination[])(object)MapArray_NumberSequence_To_NumberSequenceDto(typedSource);
             }
+            else if (typeof(TSource) == typeof(Fakvio.Domain.Entities.ReceivedInvoiceItem) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceItemDto))
+            {
+                var typedSource = System.Runtime.CompilerServices.Unsafe.As<System.ReadOnlySpan<TSource>, System.ReadOnlySpan<Fakvio.Domain.Entities.ReceivedInvoiceItem>>(ref source);
+                return (TDestination[])(object)MapArray_ReceivedInvoiceItem_To_ReceivedInvoiceItemDto(typedSource);
+            }
+            else if (typeof(TSource) == typeof(Fakvio.Domain.Entities.ReceivedInvoice) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceDto))
+            {
+                var typedSource = System.Runtime.CompilerServices.Unsafe.As<System.ReadOnlySpan<TSource>, System.ReadOnlySpan<Fakvio.Domain.Entities.ReceivedInvoice>>(ref source);
+                return (TDestination[])(object)MapArray_ReceivedInvoice_To_ReceivedInvoiceDto(typedSource);
+            }
             else if (typeof(TSource) == typeof(Fakvio.Domain.Entities.User) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.User.UserDto))
             {
                 var typedSource = System.Runtime.CompilerServices.Unsafe.As<System.ReadOnlySpan<TSource>, System.ReadOnlySpan<Fakvio.Domain.Entities.User>>(ref source);
@@ -1430,6 +1612,10 @@ public sealed class Mapper : IMapper
                 return (List<TDestination>)(object)MapList_NumberSequenceFormat_To_NumberSequenceFormatDto((System.Collections.Generic.IReadOnlyList<Fakvio.Domain.Entities.NumberSequenceFormat>)(object)source);
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.NumberSequence) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.NumberSequence.NumberSequenceDto))
                 return (List<TDestination>)(object)MapList_NumberSequence_To_NumberSequenceDto((System.Collections.Generic.IReadOnlyList<Fakvio.Domain.Entities.NumberSequence>)(object)source);
+            if (typeof(TSource) == typeof(Fakvio.Domain.Entities.ReceivedInvoiceItem) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceItemDto))
+                return (List<TDestination>)(object)MapList_ReceivedInvoiceItem_To_ReceivedInvoiceItemDto((System.Collections.Generic.IReadOnlyList<Fakvio.Domain.Entities.ReceivedInvoiceItem>)(object)source);
+            if (typeof(TSource) == typeof(Fakvio.Domain.Entities.ReceivedInvoice) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceDto))
+                return (List<TDestination>)(object)MapList_ReceivedInvoice_To_ReceivedInvoiceDto((System.Collections.Generic.IReadOnlyList<Fakvio.Domain.Entities.ReceivedInvoice>)(object)source);
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.User) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.User.UserDto))
                 return (List<TDestination>)(object)MapList_User_To_UserDto((System.Collections.Generic.IReadOnlyList<Fakvio.Domain.Entities.User>)(object)source);
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.VatRate) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.VatRate.VatRateDto))
@@ -1471,6 +1657,10 @@ public sealed class Mapper : IMapper
                 return (List<TDestination>)(object)MapList_NumberSequenceFormat_To_NumberSequenceFormatDto_Enumerable((System.Collections.Generic.IEnumerable<Fakvio.Domain.Entities.NumberSequenceFormat>)(object)source);
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.NumberSequence) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.NumberSequence.NumberSequenceDto))
                 return (List<TDestination>)(object)MapList_NumberSequence_To_NumberSequenceDto_Enumerable((System.Collections.Generic.IEnumerable<Fakvio.Domain.Entities.NumberSequence>)(object)source);
+            if (typeof(TSource) == typeof(Fakvio.Domain.Entities.ReceivedInvoiceItem) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceItemDto))
+                return (List<TDestination>)(object)MapList_ReceivedInvoiceItem_To_ReceivedInvoiceItemDto_Enumerable((System.Collections.Generic.IEnumerable<Fakvio.Domain.Entities.ReceivedInvoiceItem>)(object)source);
+            if (typeof(TSource) == typeof(Fakvio.Domain.Entities.ReceivedInvoice) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceDto))
+                return (List<TDestination>)(object)MapList_ReceivedInvoice_To_ReceivedInvoiceDto_Enumerable((System.Collections.Generic.IEnumerable<Fakvio.Domain.Entities.ReceivedInvoice>)(object)source);
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.User) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.User.UserDto))
                 return (List<TDestination>)(object)MapList_User_To_UserDto_Enumerable((System.Collections.Generic.IEnumerable<Fakvio.Domain.Entities.User>)(object)source);
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.VatRate) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.VatRate.VatRateDto))

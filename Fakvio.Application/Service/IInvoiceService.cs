@@ -100,6 +100,15 @@ public interface IInvoiceService
     Task<bool> DeleteInvoiceAsync(long invoiceId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Restores a soft-deleted invoice back to Draft status.
+    /// Only allowed for invoices with Status == Deleted.
+    /// </summary>
+    /// <param name="invoiceId">Invoice ID to restore</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Restored invoice DTO, or null if not found</returns>
+    Task<InvoiceDto?> RestoreInvoiceAsync(long invoiceId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Creates a credit note for an existing invoice
     /// Automatically sets DocumentType = CreditNote and references original invoice
     /// </summary>

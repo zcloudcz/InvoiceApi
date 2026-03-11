@@ -132,6 +132,12 @@ public class MasterDbContext : DbContext
     /// </summary>
     public DbSet<AresCache> AresCache { get; set; }
 
+    /// <summary>
+    /// Tax year configurations — annual rates and thresholds for CZ and SK.
+    /// Stored in master DB (shared across all tenants).
+    /// </summary>
+    public DbSet<TaxYearConfig> TaxYearConfig { get; set; }
+
     // ─── Entity Configuration ─────────────────────────────────────────────────
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -164,6 +170,7 @@ public class MasterDbContext : DbContext
         ConfigureSystemConfiguration(modelBuilder);
         ConfigureAppLog(modelBuilder);
         ConfigureAresCache(modelBuilder);
+        ConfigureTaxYearConfig(modelBuilder);
 
         SeedData(modelBuilder);
     }
@@ -692,6 +699,45 @@ public class MasterDbContext : DbContext
     }
 
     /// <summary>
+    /// TaxYearConfig table configuration — annual tax rates per country.
+    /// Unique index on (Year, Country) ensures one config per year/country.
+    /// </summary>
+    private void ConfigureTaxYearConfig(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<TaxYearConfig>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.Year, e.Country }).IsUnique();
+
+            entity.Property(e => e.Country).IsRequired().HasMaxLength(5);
+            entity.Property(e => e.CurrencyCode).IsRequired().HasMaxLength(5);
+
+            entity.Property(e => e.AverageMonthlyWage).HasPrecision(18, 2);
+            entity.Property(e => e.LivingMinimum).HasPrecision(18, 2);
+            entity.Property(e => e.IncomeTaxRate).HasPrecision(5, 2);
+            entity.Property(e => e.ProgressiveTaxRate).HasPrecision(5, 2);
+            entity.Property(e => e.ProgressiveThreshold).HasPrecision(18, 2);
+            entity.Property(e => e.BasicTaxpayerCredit).HasPrecision(18, 2);
+            entity.Property(e => e.SocialInsuranceRate).HasPrecision(5, 2);
+            entity.Property(e => e.SocialAssessmentBasePercent).HasPrecision(5, 2);
+            entity.Property(e => e.MinMonthlySocialMain).HasPrecision(18, 2);
+            entity.Property(e => e.MinMonthlySocialSecondary).HasPrecision(18, 2);
+            entity.Property(e => e.MaxSocialAssessmentBase).HasPrecision(18, 2);
+            entity.Property(e => e.HealthInsuranceRate).HasPrecision(5, 2);
+            entity.Property(e => e.HealthAssessmentBasePercent).HasPrecision(5, 2);
+            entity.Property(e => e.MinMonthlyHealthMain).HasPrecision(18, 2);
+            entity.Property(e => e.MaxHealthAssessmentBase).HasPrecision(18, 2);
+            entity.Property(e => e.FlatRateBand1Monthly).HasPrecision(18, 2);
+            entity.Property(e => e.FlatRateBand2Monthly).HasPrecision(18, 2);
+            entity.Property(e => e.FlatRateBand3Monthly).HasPrecision(18, 2);
+            entity.Property(e => e.LumpSum80Cap).HasPrecision(18, 2);
+            entity.Property(e => e.LumpSum60Cap).HasPrecision(18, 2);
+            entity.Property(e => e.LumpSum40Cap).HasPrecision(18, 2);
+            entity.Property(e => e.LumpSum30Cap).HasPrecision(18, 2);
+        });
+    }
+
+    /// <summary>
     /// Seeds initial data: SysAdmin user, default code tables (VatRates, Currencies, etc.)
     /// </summary>
     private void SeedData(ModelBuilder modelBuilder)
@@ -741,6 +787,78 @@ public class MasterDbContext : DbContext
             new NumberSequenceFormat { Id = 2, Name = "Short yearly format (yyNNN)", FormatPattern = "yyNNN", CounterDigits = 3, ResetsYearly = true, ResetsMonthly = false, IsActive = true, CreatedAt = seedDate },
             new NumberSequenceFormat { Id = 3, Name = "Monthly format (yyMMNNN)", FormatPattern = "yyMMNNN", CounterDigits = 3, ResetsYearly = true, ResetsMonthly = true, IsActive = true, CreatedAt = seedDate },
             new NumberSequenceFormat { Id = 4, Name = "Continuous format (NNNNNN)", FormatPattern = "NNNNNN", CounterDigits = 6, ResetsYearly = false, ResetsMonthly = false, IsActive = true, CreatedAt = seedDate }
+        );
+
+        // Seed TaxYearConfig — annual tax rates for CZ and SK.
+        // These are real-world rates for 2025 and 2026 used to calculate tax obligations.
+        modelBuilder.Entity<TaxYearConfig>().HasData(
+            // ── Czech Republic 2025 ──────────────────────────────────────────
+            new TaxYearConfig
+            {
+                Id = 1, Year = 2025, Country = "CZ", CurrencyCode = "CZK",
+                AverageMonthlyWage = 43_967m, LivingMinimum = 4_860m,
+                IncomeTaxRate = 15m, ProgressiveTaxRate = 23m,
+                ProgressiveThreshold = 36 * 43_967m, // 36x average wage
+                BasicTaxpayerCredit = 30_840m,
+                SocialInsuranceRate = 29.2m, SocialAssessmentBasePercent = 50m,
+                MinMonthlySocialMain = 3_852m, MinMonthlySocialSecondary = 0m,
+                MaxSocialAssessmentBase = 48 * 43_967m * 12, // 48x annual average wage
+                HealthInsuranceRate = 13.5m, HealthAssessmentBasePercent = 50m,
+                MinMonthlyHealthMain = 2_968m, MaxHealthAssessmentBase = 0m, // No cap
+                FlatRateBand1Monthly = 7_498m, FlatRateBand2Monthly = 16_000m, FlatRateBand3Monthly = 26_000m,
+                LumpSum80Cap = 1_600_000m, LumpSum60Cap = 1_200_000m,
+                LumpSum40Cap = 800_000m, LumpSum30Cap = 600_000m
+            },
+            // ── Czech Republic 2026 ──────────────────────────────────────────
+            new TaxYearConfig
+            {
+                Id = 2, Year = 2026, Country = "CZ", CurrencyCode = "CZK",
+                AverageMonthlyWage = 45_617m, LivingMinimum = 4_860m,
+                IncomeTaxRate = 15m, ProgressiveTaxRate = 23m,
+                ProgressiveThreshold = 36 * 45_617m,
+                BasicTaxpayerCredit = 30_840m,
+                SocialInsuranceRate = 29.2m, SocialAssessmentBasePercent = 50m,
+                MinMonthlySocialMain = 4_096m, MinMonthlySocialSecondary = 0m,
+                MaxSocialAssessmentBase = 48 * 45_617m * 12,
+                HealthInsuranceRate = 13.5m, HealthAssessmentBasePercent = 50m,
+                MinMonthlyHealthMain = 3_079m, MaxHealthAssessmentBase = 0m,
+                FlatRateBand1Monthly = 8_716m, FlatRateBand2Monthly = 16_000m, FlatRateBand3Monthly = 26_000m,
+                LumpSum80Cap = 1_600_000m, LumpSum60Cap = 1_200_000m,
+                LumpSum40Cap = 800_000m, LumpSum30Cap = 600_000m
+            },
+            // ── Slovakia 2025 ────────────────────────────────────────────────
+            new TaxYearConfig
+            {
+                Id = 3, Year = 2025, Country = "SK", CurrencyCode = "EUR",
+                AverageMonthlyWage = 1_430m, LivingMinimum = 268.88m,
+                IncomeTaxRate = 15m, ProgressiveTaxRate = 25m,
+                ProgressiveThreshold = 176.8m * 268.88m, // 176.8x living minimum
+                BasicTaxpayerCredit = 21 * 268.88m, // 21x living minimum (nezdaniteľná časť)
+                SocialInsuranceRate = 33.15m, SocialAssessmentBasePercent = 50m,
+                MinMonthlySocialMain = 216.13m, MinMonthlySocialSecondary = 0m,
+                MaxSocialAssessmentBase = 7 * 1_430m * 12, // 7x average annual wage
+                HealthInsuranceRate = 14m, HealthAssessmentBasePercent = 50m,
+                MinMonthlyHealthMain = 97.80m, MaxHealthAssessmentBase = 0m,
+                FlatRateBand1Monthly = 0m, FlatRateBand2Monthly = 0m, FlatRateBand3Monthly = 0m, // Not applicable in SK
+                LumpSum80Cap = 0m, // SK uses only 60% lump sum
+                LumpSum60Cap = 20_000m, LumpSum40Cap = 0m, LumpSum30Cap = 0m
+            },
+            // ── Slovakia 2026 ────────────────────────────────────────────────
+            new TaxYearConfig
+            {
+                Id = 4, Year = 2026, Country = "SK", CurrencyCode = "EUR",
+                AverageMonthlyWage = 1_500m, LivingMinimum = 273.99m,
+                IncomeTaxRate = 15m, ProgressiveTaxRate = 25m,
+                ProgressiveThreshold = 176.8m * 273.99m,
+                BasicTaxpayerCredit = 21 * 273.99m,
+                SocialInsuranceRate = 33.15m, SocialAssessmentBasePercent = 50m,
+                MinMonthlySocialMain = 225m, MinMonthlySocialSecondary = 0m,
+                MaxSocialAssessmentBase = 7 * 1_500m * 12,
+                HealthInsuranceRate = 14m, HealthAssessmentBasePercent = 50m,
+                MinMonthlyHealthMain = 105m, MaxHealthAssessmentBase = 0m,
+                FlatRateBand1Monthly = 0m, FlatRateBand2Monthly = 0m, FlatRateBand3Monthly = 0m,
+                LumpSum80Cap = 0m, LumpSum60Cap = 20_000m, LumpSum40Cap = 0m, LumpSum30Cap = 0m
+            }
         );
 
         // Seed content templates (PDF + email) — all defaults are in Czech ("cs") language.

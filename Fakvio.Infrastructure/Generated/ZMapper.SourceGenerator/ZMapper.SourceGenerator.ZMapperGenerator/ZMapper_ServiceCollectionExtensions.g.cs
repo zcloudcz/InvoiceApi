@@ -33,6 +33,8 @@ public static class ZMapper_ServiceCollectionExtensions
         new Fakvio.Infrastructure.Mapping.InvoiceTemplateProfile().Configure(config);
         // Register mappings from NumberSequenceProfile
         new Fakvio.Infrastructure.Mapping.NumberSequenceProfile().Configure(config);
+        // Register mappings from ReceivedInvoiceProfile
+        new Fakvio.Infrastructure.Mapping.ReceivedInvoiceProfile().Configure(config);
         // Register mappings from UserProfile
         new Fakvio.Infrastructure.Mapping.UserProfile().Configure(config);
         // Register mappings from VatRateProfile

@@ -157,6 +157,18 @@ public class FakvioService : ApiClientBase
     }
 
     /// <summary>
+    /// Restores a soft-deleted invoice back to Draft status.
+    /// Calls POST /api/invoice/{id}/restore on the backend.
+    /// Only works for invoices that are currently in Deleted status.
+    /// </summary>
+    /// <param name="id">Invoice ID to restore</param>
+    /// <returns>Restored invoice DTO, or null on failure</returns>
+    public async Task<InvoiceDto?> RestoreAsync(long id)
+    {
+        return await PostAsync<object, InvoiceDto>($"/api/invoice/{id}/restore", new { });
+    }
+
+    /// <summary>
     /// Downloads the invoice as a PDF byte array using the default template.
     /// Uses GetBytesAsync from the base class for binary content.
     /// </summary>

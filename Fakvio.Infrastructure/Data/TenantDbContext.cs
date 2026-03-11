@@ -142,6 +142,16 @@ public class TenantDbContext : DbContext
     public DbSet<ChatMessage> ChatMessage { get; set; }
 
     /// <summary>
+    /// Received (incoming) invoices from suppliers — expense tracking.
+    /// </summary>
+    public DbSet<ReceivedInvoice> ReceivedInvoice { get; set; }
+
+    /// <summary>
+    /// Line items on received invoices.
+    /// </summary>
+    public DbSet<ReceivedInvoiceItem> ReceivedInvoiceItem { get; set; }
+
+    /// <summary>
     /// Cached ARES lookups (company registry data)
     /// </summary>
     public DbSet<AresCache> AresCache { get; set; }
@@ -183,6 +193,8 @@ public class TenantDbContext : DbContext
         ConfigureAresCache(modelBuilder);
         ConfigureVatRate(modelBuilder);
         ConfigureContentTemplate(modelBuilder);
+        ConfigureReceivedInvoice(modelBuilder);
+        ConfigureReceivedInvoiceItem(modelBuilder);
         ConfigureChatConversation(modelBuilder);
         ConfigureChatMessage(modelBuilder);
 
@@ -235,6 +247,19 @@ public class TenantDbContext : DbContext
                 .HasForeignKey(e => e.PreferredCurrencyId)
                 .OnDelete(DeleteBehavior.Restrict)
                 .IsRequired(false);
+
+            // Tax regime fields — store enum values as strings for readability.
+            entity.Property(e => e.TaxRegime)
+                .HasConversion<string?>()
+                .HasMaxLength(30);
+
+            entity.Property(e => e.ActivityType)
+                .HasConversion<string?>()
+                .HasMaxLength(30);
+
+            entity.Property(e => e.FlatRateBand)
+                .HasConversion<string?>()
+                .HasMaxLength(10);
         });
     }
 
@@ -504,6 +529,85 @@ public class TenantDbContext : DbContext
 
             // ISO 639-1 language code — determines which language this template is written in.
             entity.Property(e => e.Language).IsRequired().HasMaxLength(5).HasDefaultValue("cs");
+        });
+    }
+
+    /// <summary>
+    /// ReceivedInvoice table configuration — incoming invoices from suppliers (expenses).
+    /// Follows same patterns as Invoice configuration for consistency.
+    /// </summary>
+    private void ConfigureReceivedInvoice(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<ReceivedInvoice>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            entity.HasIndex(e => e.Status);
+            entity.HasIndex(e => e.SupplierId);
+            entity.HasIndex(e => e.IssueDate);
+            entity.HasIndex(e => e.DueDate);
+            entity.HasIndex(e => e.ReceivedDate);
+            entity.HasIndex(e => e.TaxableSupplyDate);
+
+            entity.Property(e => e.DocumentNumber).HasMaxLength(100);
+            entity.Property(e => e.VariableSymbol).HasMaxLength(50);
+            entity.Property(e => e.BankAccountNumber).HasMaxLength(100);
+            entity.Property(e => e.IBAN).HasMaxLength(50);
+            entity.Property(e => e.SWIFT).HasMaxLength(50);
+            entity.Property(e => e.PaymentMethod).HasConversion<int?>();
+            entity.Property(e => e.Notes).HasMaxLength(5000);
+            entity.Property(e => e.AttachmentFileName).HasMaxLength(500);
+            entity.Property(e => e.AttachmentContentType).HasMaxLength(100);
+
+            entity.Property(e => e.TotalBeforeVat).HasPrecision(18, 2);
+            entity.Property(e => e.TotalVat).HasPrecision(18, 2);
+            entity.Property(e => e.TotalWithVat).HasPrecision(18, 2);
+
+            // Supplier is a Client record — Restrict to prevent accidental deletion of supplier with invoices.
+            entity.HasOne(e => e.Supplier)
+                .WithMany()
+                .HasForeignKey(e => e.SupplierId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.Currency)
+                .WithMany()
+                .HasForeignKey(e => e.CurrencyId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Cascade delete items when received invoice is removed
+            entity.HasMany(e => e.Items)
+                .WithOne(i => i.ReceivedInvoice)
+                .HasForeignKey(i => i.ReceivedInvoiceId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+    }
+
+    /// <summary>
+    /// ReceivedInvoiceItem table configuration — line items on received invoices.
+    /// Mirrors InvoiceItem configuration for consistency.
+    /// </summary>
+    private void ConfigureReceivedInvoiceItem(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<ReceivedInvoiceItem>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.ReceivedInvoiceId);
+
+            entity.Property(e => e.Description).IsRequired().HasMaxLength(1000);
+            entity.Property(e => e.Unit).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.Quantity).HasPrecision(18, 4);
+            entity.Property(e => e.UnitPrice).HasPrecision(18, 2);
+            entity.Property(e => e.VatRatePercentage).HasPrecision(5, 2);
+            entity.Property(e => e.TotalBeforeVat).HasPrecision(18, 2);
+            entity.Property(e => e.VatAmount).HasPrecision(18, 2);
+            entity.Property(e => e.TotalWithVat).HasPrecision(18, 2);
+            entity.Property(e => e.ProductCode).HasMaxLength(100);
+            entity.Property(e => e.Notes).HasMaxLength(1000);
+
+            entity.HasOne(e => e.VatRate)
+                .WithMany()
+                .HasForeignKey(e => e.VatRateId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
     }
 

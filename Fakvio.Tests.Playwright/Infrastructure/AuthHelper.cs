@@ -1,0 +1,95 @@
+using System.Net.Http.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
+namespace Fakvio.Tests.Playwright.Infrastructure;
+
+/// <summary>
+/// Static helper that authenticates against the Fakvio API and returns
+/// the serialized session JSON for injection into browser localStorage.
+///
+/// IMPORTANT: The API returns camelCase JSON (ASP.NET Core default),
+/// but Blazor's CustomAuthenticationStateProvider stores PascalCase JSON
+/// because C#'s JsonSerializer.Serialize uses PascalCase by default.
+/// This helper converts the API response to PascalCase to match
+/// what the Blazor app expects in localStorage.
+/// </summary>
+public static class AuthHelper
+{
+    /// <summary>
+    /// Calls POST /api/auth/login, converts the response to PascalCase JSON
+    /// (matching Blazored.LocalStorage format), and returns it.
+    /// This JSON can be injected directly into localStorage as "UserSession".
+    /// </summary>
+    public static async Task<string> GetSessionJsonAsync(string apiUrl, string email, string password)
+    {
+        using var http = new HttpClient { BaseAddress = new Uri(apiUrl) };
+
+        var response = await http.PostAsJsonAsync("api/auth/login", new
+        {
+            Email = email,
+            Password = password
+        });
+
+        response.EnsureSuccessStatusCode();
+
+        // Read the API response as camelCase JSON
+        var camelJson = await response.Content.ReadAsStringAsync();
+
+        // Deserialize with camelCase, then re-serialize with PascalCase
+        // to match what Blazor's JsonSerializer.Serialize(loginResponse) produces
+        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        var loginResponse = JsonSerializer.Deserialize<LoginResponseDto>(camelJson, options)
+            ?? throw new InvalidOperationException("Failed to deserialize login response");
+
+        if (string.IsNullOrEmpty(loginResponse.Token))
+        {
+            throw new InvalidOperationException(
+                $"Login response does not contain a token. Response: {camelJson[..Math.Min(camelJson.Length, 200)]}");
+        }
+
+        // Serialize with default PascalCase (matches Blazor app behavior)
+        return JsonSerializer.Serialize(loginResponse);
+    }
+
+    /// <summary>
+    /// Gets just the JWT token string for use in direct API calls.
+    /// </summary>
+    public static async Task<string> GetTokenAsync(string apiUrl, string email, string password)
+    {
+        using var http = new HttpClient { BaseAddress = new Uri(apiUrl) };
+
+        var response = await http.PostAsJsonAsync("api/auth/login", new
+        {
+            Email = email,
+            Password = password
+        });
+
+        response.EnsureSuccessStatusCode();
+
+        var json = await response.Content.ReadAsStringAsync();
+        using var doc = JsonDocument.Parse(json);
+        return doc.RootElement.GetProperty("token").GetString()
+            ?? throw new InvalidOperationException("Token is null in login response.");
+    }
+
+    /// <summary>
+    /// Minimal DTO matching the LoginResponse model used by the Blazor app.
+    /// Properties use PascalCase which matches C# JsonSerializer defaults.
+    /// </summary>
+    private class LoginResponseDto
+    {
+        public string Token { get; set; } = "";
+        public DateTime ExpiresAt { get; set; }
+        public long UserId { get; set; }
+        public string Email { get; set; } = "";
+        public string FullName { get; set; } = "";
+        public int Role { get; set; }
+        public long? CompanyId { get; set; }
+        public string? CompanyName { get; set; }
+        public bool IsExternalLogin { get; set; }
+        public bool RequiresTwoFactor { get; set; }
+        public string? TwoFactorSessionToken { get; set; }
+        public int? TwoFactorMethod { get; set; }
+    }
+}

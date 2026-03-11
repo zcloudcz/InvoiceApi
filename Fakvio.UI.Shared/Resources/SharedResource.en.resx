@@ -425,6 +425,8 @@
   <data name="Invoice_Created" xml:space="preserve"><value>Invoice created</value></data>
   <data name="Invoice_CreateFailed" xml:space="preserve"><value>Failed to create invoice</value></data>
   <data name="Invoice_Deleted" xml:space="preserve"><value>Invoice deleted</value></data>
+  <data name="Invoice_Restore" xml:space="preserve"><value>Restore</value></data>
+  <data name="Invoice_Restored" xml:space="preserve"><value>Invoice restored</value></data>
   <data name="Invoice_Issued" xml:space="preserve"><value>Invoice issued</value></data>
   <data name="Invoice_MarkedAsPaid" xml:space="preserve"><value>Invoice marked as paid</value></data>
   <data name="Invoice_PdfDownloaded" xml:space="preserve"><value>PDF downloaded</value></data>
@@ -947,6 +949,175 @@
   <data name="Chat_Provider" xml:space="preserve"><value>Provider</value></data>
   <data name="Chat_DeleteConfirm" xml:space="preserve"><value>Delete conversation?</value></data>
   <data name="Chat_Thinking" xml:space="preserve"><value>Thinking...</value></data>
+  <data name="Chat_AttachFile" xml:space="preserve"><value>Attach file</value></data>
+  <data name="Chat_DragDropHint" xml:space="preserve"><value>Drag and drop a file here</value></data>
+  <data name="Chat_DropFileHere" xml:space="preserve"><value>Drop file here</value></data>
+  <data name="Chat_FileAttached" xml:space="preserve"><value>File attached</value></data>
+  <data name="Chat_RemoveAttachment" xml:space="preserve"><value>Remove attachment</value></data>
+  <data name="Chat_ExtractingText" xml:space="preserve"><value>Extracting text from PDF...</value></data>
+  <data name="Chat_PdfOnly" xml:space="preserve"><value>Only PDF files are supported.</value></data>
+  <data name="Chat_UnsupportedFileType" xml:space="preserve"><value>Unsupported file type.</value></data>
+  <data name="Chat_FileTooLarge" xml:space="preserve"><value>File exceeds the maximum allowed size of 10 MB.</value></data>
   <data name="EChatRole_User" xml:space="preserve"><value>You</value></data>
   <data name="EChatRole_Assistant" xml:space="preserve"><value>Assistant</value></data>
+  <!-- Received Invoices (Expenses) -->
+  <data name="Nav_ReceivedInvoices" xml:space="preserve"><value>Received Invoices</value></data>
+  <data name="Nav_VatReport" xml:space="preserve"><value>VAT Report</value></data>
+  <data name="ReceivedInvoice_Title" xml:space="preserve"><value>Received Invoices</value></data>
+  <data name="ReceivedInvoice_New" xml:space="preserve"><value>New Received Invoice</value></data>
+  <data name="ReceivedInvoice_Detail" xml:space="preserve"><value>Received Invoice Detail</value></data>
+  <data name="ReceivedInvoice_Supplier" xml:space="preserve"><value>Supplier</value></data>
+  <data name="ReceivedInvoice_SupplierRequired" xml:space="preserve"><value>Supplier is required.</value></data>
+  <data name="ReceivedInvoice_ReceivedDate" xml:space="preserve"><value>Received Date</value></data>
+  <data name="ReceivedInvoice_IssueDateFrom" xml:space="preserve"><value>Issue Date From</value></data>
+  <data name="ReceivedInvoice_IssueDateTo" xml:space="preserve"><value>Issue Date To</value></data>
+  <data name="ReceivedInvoice_Approve" xml:space="preserve"><value>Approve</value></data>
+  <data name="ReceivedInvoice_Approved" xml:space="preserve"><value>Received invoice approved</value></data>
+  <data name="ReceivedInvoice_Reject" xml:space="preserve"><value>Reject</value></data>
+  <data name="ReceivedInvoice_Rejected" xml:space="preserve"><value>Received invoice rejected</value></data>
+  <data name="ReceivedInvoice_RejectConfirm" xml:space="preserve"><value>Are you sure you want to reject this received invoice?</value></data>
+  <data name="ReceivedInvoice_BasicInfo" xml:space="preserve"><value>Basic Information</value></data>
+  <data name="EReceivedInvoiceStatus_Received" xml:space="preserve"><value>Received</value></data>
+  <data name="EReceivedInvoiceStatus_Approved" xml:space="preserve"><value>Approved</value></data>
+  <data name="EReceivedInvoiceStatus_Paid" xml:space="preserve"><value>Paid</value></data>
+  <data name="EReceivedInvoiceStatus_Rejected" xml:space="preserve"><value>Rejected</value></data>
+  <data name="EReceivedInvoiceStatus_Deleted" xml:space="preserve"><value>Deleted</value></data>
+  <!-- VAT Report -->
+  <data name="VatReport_Title" xml:space="preserve"><value>VAT Report</value></data>
+  <data name="VatReport_PeriodFrom" xml:space="preserve"><value>Period From</value></data>
+  <data name="VatReport_PeriodTo" xml:space="preserve"><value>Period To</value></data>
+  <data name="VatReport_Generate" xml:space="preserve"><value>Generate Report</value></data>
+  <data name="VatReport_CurrentMonth" xml:space="preserve"><value>This Month</value></data>
+  <data name="VatReport_CurrentQuarter" xml:space="preserve"><value>This Quarter</value></data>
+  <data name="VatReport_OutputVat" xml:space="preserve"><value>Output VAT</value></data>
+  <data name="VatReport_InputVat" xml:space="preserve"><value>Input VAT</value></data>
+  <data name="VatReport_TaxLiability" xml:space="preserve"><value>Tax Liability</value></data>
+  <data name="VatReport_OwedToTaxOffice" xml:space="preserve"><value>Owed to tax office</value></data>
+  <data name="VatReport_Refund" xml:space="preserve"><value>Refund (excess deduction)</value></data>
+  <data name="VatReport_Revenue" xml:space="preserve"><value>Revenue (excl. VAT)</value></data>
+  <data name="VatReport_Expenses" xml:space="preserve"><value>Expenses (excl. VAT)</value></data>
+  <data name="VatReport_Profit" xml:space="preserve"><value>Profit</value></data>
+  <data name="VatReport_IssuedInvoices" xml:space="preserve"><value>issued invoices</value></data>
+  <data name="VatReport_ReceivedInvoices" xml:space="preserve"><value>received invoices</value></data>
+  <data name="VatReport_OutputVatBreakdown" xml:space="preserve"><value>Output VAT by Rate</value></data>
+  <data name="VatReport_InputVatBreakdown" xml:space="preserve"><value>Input VAT by Rate</value></data>
+  <data name="VatReport_VatRate" xml:space="preserve"><value>VAT Rate</value></data>
+  <data name="VatReport_BaseAmount" xml:space="preserve"><value>Base Amount</value></data>
+  <data name="VatReport_VatAmount" xml:space="preserve"><value>VAT Amount</value></data>
+  <data name="VatReport_ItemCount" xml:space="preserve"><value>Item Count</value></data>
+  <data name="VatReport_NoOutputVat" xml:space="preserve"><value>No issued invoices in this period.</value></data>
+  <data name="VatReport_NoInputVat" xml:space="preserve"><value>No received invoices in this period.</value></data>
+
+  <!-- Tax regime enum labels (ETaxRegime) -->
+  <data name="ETaxRegime_FlatRateTax" xml:space="preserve"><value>Flat-rate tax</value></data>
+  <data name="ETaxRegime_LumpSumExpenses80" xml:space="preserve"><value>Lump-sum expenses 80%</value></data>
+  <data name="ETaxRegime_LumpSumExpenses60" xml:space="preserve"><value>Lump-sum expenses 60%</value></data>
+  <data name="ETaxRegime_LumpSumExpenses40" xml:space="preserve"><value>Lump-sum expenses 40%</value></data>
+  <data name="ETaxRegime_LumpSumExpenses30" xml:space="preserve"><value>Lump-sum expenses 30%</value></data>
+  <data name="ETaxRegime_TaxRecords" xml:space="preserve"><value>Tax records</value></data>
+  <data name="ETaxRegime_FullAccounting" xml:space="preserve"><value>Full accounting</value></data>
+
+  <!-- Activity type enum labels (EActivityType) -->
+  <data name="EActivityType_CraftTrade" xml:space="preserve"><value>Craft trade</value></data>
+  <data name="EActivityType_NonCraftTrade" xml:space="preserve"><value>Non-craft trade</value></data>
+  <data name="EActivityType_RegulatedProfession" xml:space="preserve"><value>Regulated profession</value></data>
+  <data name="EActivityType_Rental" xml:space="preserve"><value>Rental</value></data>
+
+  <!-- Flat-rate band enum labels (EFlatRateBand) -->
+  <data name="EFlatRateBand_Band1" xml:space="preserve"><value>Band 1 (up to 1M CZK)</value></data>
+  <data name="EFlatRateBand_Band2" xml:space="preserve"><value>Band 2 (1–1.5M CZK)</value></data>
+  <data name="EFlatRateBand_Band3" xml:space="preserve"><value>Band 3 (1.5–2M CZK)</value></data>
+
+  <!-- Tax estimation page -->
+  <data name="Tax_Title" xml:space="preserve"><value>Tax Obligation Estimate</value></data>
+  <data name="Tax_GrossIncome" xml:space="preserve"><value>Gross Annual Income</value></data>
+  <data name="Tax_ActualExpenses" xml:space="preserve"><value>Actual Expenses</value></data>
+  <data name="Tax_Country" xml:space="preserve"><value>Country</value></data>
+  <data name="Tax_Year" xml:space="preserve"><value>Year</value></data>
+  <data name="Tax_Regime" xml:space="preserve"><value>Tax Regime</value></data>
+  <data name="Tax_ActivityType" xml:space="preserve"><value>Activity Type</value></data>
+  <data name="Tax_IsMainActivity" xml:space="preserve"><value>Main Activity</value></data>
+  <data name="Tax_Calculate" xml:space="preserve"><value>Calculate</value></data>
+  <data name="Tax_Compare" xml:space="preserve"><value>Compare Regimes</value></data>
+  <data name="Tax_IncomeTax" xml:space="preserve"><value>Income Tax</value></data>
+  <data name="Tax_SocialInsurance" xml:space="preserve"><value>Social Insurance</value></data>
+  <data name="Tax_HealthInsurance" xml:space="preserve"><value>Health Insurance</value></data>
+  <data name="Tax_TotalObligations" xml:space="preserve"><value>Total Obligations</value></data>
+  <data name="Tax_NetIncome" xml:space="preserve"><value>Net Income</value></data>
+  <data name="Tax_EffectiveRate" xml:space="preserve"><value>Effective Rate</value></data>
+  <data name="Tax_MonthlyAdvance" xml:space="preserve"><value>Monthly Advance</value></data>
+  <data name="Tax_TaxBase" xml:space="preserve"><value>Tax Base</value></data>
+  <data name="Tax_Expenses" xml:space="preserve"><value>Expenses</value></data>
+  <data name="Tax_TaxCredits" xml:space="preserve"><value>Taxpayer Credit</value></data>
+  <data name="Tax_Steps" xml:space="preserve"><value>Calculation Steps</value></data>
+  <data name="Tax_CompareResults" xml:space="preserve"><value>Tax Regime Comparison</value></data>
+  <data name="Tax_BestOption" xml:space="preserve"><value>Best option</value></data>
+  <data name="Tax_Annual" xml:space="preserve"><value>Annual</value></data>
+  <data name="Tax_Monthly" xml:space="preserve"><value>Monthly</value></data>
+
+  <!-- Client tax regime section -->
+  <data name="Client_TaxRegime" xml:space="preserve"><value>Tax Regime</value></data>
+  <data name="Client_ActivityType" xml:space="preserve"><value>Activity Type</value></data>
+  <data name="Client_IsMainActivity" xml:space="preserve"><value>Main Activity</value></data>
+  <data name="Client_FlatRateBand" xml:space="preserve"><value>Flat-rate Tax Band</value></data>
+  <data name="Client_TaxSection" xml:space="preserve"><value>Tax Settings</value></data>
+
+  <!-- Navigation and generic labels for tax estimation -->
+  <data name="Nav_TaxEstimation" xml:space="preserve"><value>Tax Estimation</value></data>
+  <data name="Label_Description" xml:space="preserve"><value>Description</value></data>
+  <data name="Label_Amount" xml:space="preserve"><value>Amount</value></data>
+  <data name="Label_Formula" xml:space="preserve"><value>Formula</value></data>
+  <data name="TaxConfig_Title" xml:space="preserve"><value>Tax Year Configuration</value></data>
+  <data name="TaxConfig_CreateNew" xml:space="preserve"><value>New Configuration</value></data>
+  <data name="TaxConfig_Edit" xml:space="preserve"><value>Edit Configuration</value></data>
+  <data name="TaxConfig_DeleteConfirm" xml:space="preserve"><value>Are you sure you want to delete the configuration for {0}/{1}?</value></data>
+  <data name="TaxConfig_Saved" xml:space="preserve"><value>Configuration saved</value></data>
+  <data name="TaxConfig_Deleted" xml:space="preserve"><value>Configuration deleted</value></data>
+  <data name="TaxConfig_CommonRates" xml:space="preserve"><value>Common Rates</value></data>
+  <data name="TaxConfig_IncomeTax" xml:space="preserve"><value>Income Tax</value></data>
+  <data name="TaxConfig_SocialInsurance" xml:space="preserve"><value>Social Insurance</value></data>
+  <data name="TaxConfig_HealthInsurance" xml:space="preserve"><value>Health Insurance</value></data>
+  <data name="TaxConfig_FlatRate" xml:space="preserve"><value>Flat-Rate Tax (CZ)</value></data>
+  <data name="TaxConfig_LumpSumCaps" xml:space="preserve"><value>Lump-Sum Expense Caps</value></data>
+  <data name="Tax_AutoIncome" xml:space="preserve"><value>Load from invoices</value></data>
+  <data name="Tax_AutoIncomeLoaded" xml:space="preserve"><value>Income loaded: {0} from {1} invoices</value></data>
+  <data name="Tax_ExportPdf" xml:space="preserve"><value>Export to PDF</value></data>
+  <data name="Tax_IncomeFromInvoices" xml:space="preserve"><value>Income from issued invoices</value></data>
+  <data name="Nav_TaxConfig" xml:space="preserve"><value>Tax Rates</value></data>
+  <data name="Dashboard_TaxEstimate" xml:space="preserve"><value>Tax Estimate</value></data>
+  <data name="Dashboard_TaxEstimateDesc" xml:space="preserve"><value>Estimated annual obligations</value></data>
+  <data name="Dashboard_InsuranceAdvance" xml:space="preserve"><value>Insurance Advances</value></data>
+  <data name="Dashboard_InsuranceDueIn" xml:space="preserve"><value>Due in {0} days</value></data>
+  <data name="Dashboard_InsuranceOverdue" xml:space="preserve"><value>Overdue!</value></data>
+  <data name="Dashboard_InsuranceSocial" xml:space="preserve"><value>Social</value></data>
+  <data name="Dashboard_InsuranceHealth" xml:space="preserve"><value>Health</value></data>
+  <data name="Dashboard_InsuranceTotal" xml:space="preserve"><value>Total monthly</value></data>
+  <data name="Dashboard_InsuranceNextDate" xml:space="preserve"><value>Next due date</value></data>
+
+  <!-- Import PDF -->
+  <data name="Import_Title" xml:space="preserve"><value>Import Invoices from PDF</value></data>
+  <data name="Import_SelectTarget" xml:space="preserve"><value>Select Import Target</value></data>
+  <data name="Import_IssuedInvoice" xml:space="preserve"><value>Issued Invoice</value></data>
+  <data name="Import_ReceivedInvoice" xml:space="preserve"><value>Received Invoice</value></data>
+  <data name="Import_UploadFiles" xml:space="preserve"><value>Upload PDF Files</value></data>
+  <data name="Import_SelectPdfs" xml:space="preserve"><value>Select PDF Files</value></data>
+  <data name="Import_Analyze" xml:space="preserve"><value>Analyze</value></data>
+  <data name="Import_Preview" xml:space="preserve"><value>Preview Extracted Data</value></data>
+  <data name="Import_FileName" xml:space="preserve"><value>File Name</value></data>
+  <data name="Import_Source" xml:space="preserve"><value>Source</value></data>
+  <data name="Import_DocNumber" xml:space="preserve"><value>Document Number</value></data>
+  <data name="Import_Amount" xml:space="preserve"><value>Amount</value></data>
+  <data name="Import_Client" xml:space="preserve"><value>Client</value></data>
+  <data name="Import_Status" xml:space="preserve"><value>Status</value></data>
+  <data name="Import_NewClient" xml:space="preserve"><value>New Client</value></data>
+  <data name="Import_NoClient" xml:space="preserve"><value>No Client</value></data>
+  <data name="Import_QrNotFound" xml:space="preserve"><value>QR code not found</value></data>
+  <data name="Import_Back" xml:space="preserve"><value>Back</value></data>
+  <data name="Import_Confirm" xml:space="preserve"><value>Confirm Import</value></data>
+  <data name="Import_Results" xml:space="preserve"><value>Import Results</value></data>
+  <data name="Import_ViewDetail" xml:space="preserve"><value>View Detail</value></data>
+  <data name="Import_ImportMore" xml:space="preserve"><value>Import More</value></data>
+  <data name="Import_Imported" xml:space="preserve"><value>Imported</value></data>
+  <data name="Import_FileTooLarge" xml:space="preserve"><value>File too large (max 10 MB)</value></data>
+  <data name="Nav_ImportInvoices" xml:space="preserve"><value>Import PDF</value></data>
 </root>

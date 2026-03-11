@@ -65,12 +65,13 @@ public partial class ChatToolExecutor : IChatToolExecutor
     /// Matches Czech and English keywords indicating the user wants to interact
     /// with company/client data. Case-insensitive.
     ///
-    /// Czech: klient, firma, ARES, založ, najdi, vyhledej, společnost, etc.
-    /// English: client, company, create, lookup, find, search, ARES, register, etc.
+    /// Czech: klient, firma, ARES, založ, najdi, vyhledej, společnost, přidej, etc.
+    /// English: client, company, create, lookup, find, search, ARES, register, add, etc.
     /// </summary>
     [GeneratedRegex(
-        @"\b(klient|firma|založ|zaloz|zaklad|najdi|najít|najit|vyhledej|hledej|ares|společnost|spolecnost|" +
-        @"client|company|create|lookup|find|search|register)\b",
+        @"\b(klient[aůuy]?|firm[auy]?|založ|zaloz|zaklad|založit|zalozit|najdi|najít|najit|vyhledej|hledej|" +
+        @"ares|společnost|spolecnost|přidej|pridej|přidat|pridat|" +
+        @"client|company|create|lookup|find|search|register|add)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled)]
     private static partial Regex ToolKeywordPattern();
 
@@ -84,10 +85,12 @@ public partial class ChatToolExecutor : IChatToolExecutor
     /// This is a separate path from IČO + keyword detection — navigation doesn't require an IČO.
     /// </summary>
     [GeneratedRegex(
-        @"\b(otevři|otevri|ukaž|ukaz|přejdi|prejdi|naviguj|zobraz|zobrazit|" +
-        @"jdi na|jdi do|přejít|prejit|otevřít|otevrit|" +
-        @"nová faktura|nova faktura|nový klient|novy klient|nový dobropis|novy dobropis|" +
-        @"seznam faktur|seznam klientů|seznam klientu|" +
+        @"\b(otevři|otevri|otevřít|otevrit|ukaž|ukaz|ukázat|ukazat|přejdi|prejdi|přejít|prejit|" +
+        @"naviguj|navigovat|zobraz|zobrazit|" +
+        @"jdi na|jdi do|chci|potřebuju|potrebuju|" +
+        @"nová faktura|nova faktura|novou fakturu|nový klient|novy klient|nového klienta|noveho klienta|" +
+        @"nový dobropis|novy dobropis|" +
+        @"seznam faktur|seznam klientů|seznam klientu|přehled faktur|prehled faktur|" +
         @"open|show|go to|navigate|display|" +
         @"new invoice|new client|new credit note|" +
         @"invoice list|client list)\b",
@@ -278,6 +281,107 @@ public partial class ChatToolExecutor : IChatToolExecutor
                 aiResponse[..Math.Min(200, aiResponse.Length)]);
             return null;
         }
+    }
+
+    // ─── Native Tool Definitions ─────────────────────────────────────────
+
+    /// <summary>
+    /// Builds NativeToolDefinition list from all registered IChatTool instances.
+    /// Used by providers that support native tool calling (Ollama, etc.).
+    ///
+    /// Each tool's ParameterDescription is parsed into structured JSON Schema parameters.
+    /// Since IChatTool doesn't define structured parameters, we use a hardcoded mapping
+    /// for known tools. Unknown tools get a single "input" string parameter as fallback.
+    ///
+    /// Junior note: Native tool calling works much better than text-based instructions
+    /// because models are fine-tuned to produce structured tool calls. The API enforces
+    /// the parameter schema, so the model can't produce malformed output.
+    /// </summary>
+    public List<NativeToolDefinition> GetToolDefinitions()
+    {
+        var definitions = new List<NativeToolDefinition>();
+
+        foreach (var tool in _tools.Values)
+        {
+            var def = new NativeToolDefinition
+            {
+                Name = tool.ToolName,
+                Description = tool.Description
+            };
+
+            // Map known tools to structured parameters.
+            // This is a hardcoded mapping because IChatTool uses free-text ParameterDescription.
+            switch (tool.ToolName)
+            {
+                case "ares_lookup":
+                    def.Parameters = new List<NativeToolParameter>
+                    {
+                        new() { Name = "registration_number", Type = "string",
+                            Description = "Czech company registration number (IČO), exactly 8 digits" }
+                    };
+                    def.Required = new List<string> { "registration_number" };
+                    break;
+
+                case "create_client":
+                    def.Parameters = new List<NativeToolParameter>
+                    {
+                        new() { Name = "registration_number", Type = "string",
+                            Description = "Czech company registration number (IČO), exactly 8 digits. " +
+                                          "Company data will be fetched from ARES automatically." }
+                    };
+                    def.Required = new List<string> { "registration_number" };
+                    break;
+
+                case "navigate":
+                    def.Parameters = new List<NativeToolParameter>
+                    {
+                        new() { Name = "target", Type = "string",
+                            Description = "Where to navigate in the application",
+                            EnumValues = new List<string>
+                            {
+                                "new_invoice", "new_credit_note", "client_detail",
+                                "client_list", "invoice_list", "new_client"
+                            }
+                        },
+                        new() { Name = "client_name", Type = "string",
+                            Description = "Client/company name (required for client_detail, optional for new_invoice to pre-select client)" }
+                    };
+                    def.Required = new List<string> { "target" };
+                    break;
+
+                case "create_invoice":
+                    def.Parameters = new List<NativeToolParameter>
+                    {
+                        new() { Name = "client_name", Type = "string",
+                            Description = "Name of the client/company to invoice" },
+                        new() { Name = "items", Type = "string",
+                            Description = "JSON array of invoice line items. Each item has: " +
+                                          "\"description\" (string, required), \"quantity\" (number, default 1), " +
+                                          "\"unit_price\" (number, required). " +
+                                          "Example: [{\"description\": \"Web development\", \"quantity\": 10, \"unit_price\": 1500}]" },
+                        new() { Name = "currency", Type = "string",
+                            Description = "Currency code (e.g., \"CZK\", \"EUR\"). Default: CZK" },
+                        new() { Name = "notes", Type = "string",
+                            Description = "Optional notes to include on the invoice" }
+                    };
+                    def.Required = new List<string> { "client_name", "items" };
+                    break;
+
+                default:
+                    // Fallback for unknown tools: single "input" parameter.
+                    def.Parameters = new List<NativeToolParameter>
+                    {
+                        new() { Name = "input", Type = "string",
+                            Description = tool.ParameterDescription }
+                    };
+                    def.Required = new List<string> { "input" };
+                    break;
+            }
+
+            definitions.Add(def);
+        }
+
+        return definitions;
     }
 
     // ─── Tool Execution ───────────────────────────────────────────────────

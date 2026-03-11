@@ -60,8 +60,8 @@
     @if (_showConversationList)
     {
         @* Conversation list sidebar view *@
-        <ChatConversationList Conversations="_conversations"
-                              SelectedConversationId="_currentConversation?.Id"
+        <ChatConversationList Conversations="@_conversations"
+                              SelectedConversationId="@_currentConversation?.Id"
                               OnSelectConversation="LoadConversation"
                               OnDeleteConversation="DeleteConversation"
                               OnNewConversation="StartNewConversation" />
@@ -111,7 +111,13 @@
         </div>
 
         @* ─── Input area ───────────────────────────────────────────────── *@
-        <ChatInput IsDisabled="_isStreaming" OnSend="HandleSendMessage" />
+        <ChatInput IsDisabled="@_isStreaming"
+                   IsExtracting="@_isExtractingPdf"
+                   AttachedFileName="@_attachedFileName"
+                   AttachedImagePreview="@_attachedImagePreview"
+                   OnSend="HandleSendMessage"
+                   OnFileAttached="HandleFileData"
+                   OnFileRemoved="HandleFileRemoved" />
     }
 </div>
 
@@ -135,6 +141,15 @@
     private bool _isStreaming;
     private string _streamingContent = string.Empty;
     private ElementReference _messagesContainer;
+
+    // ─── Attachment state (PDF or image) ─────────────────────────────────
+    private bool _isExtractingPdf;
+    private string? _attachedFileName;
+    private string? _attachedFileContent;
+
+    // Image-specific state: base64 for the API and data URI for the UI preview.
+    private string? _attachedImageBase64;
+    private string? _attachedImagePreview;
 
     // ─── Lifecycle ───────────────────────────────────────────────────────
 
@@ -194,12 +209,22 @@
 
         try
         {
+            // Build the request — include attached PDF content or image base64 if present.
             var request = new SendMessageRequest
             {
                 ConversationId = _currentConversation?.Id,
                 Message = message,
-                Provider = _selectedProvider
+                Provider = _selectedProvider,
+                AttachedFileContent = _attachedFileContent,
+                AttachedFileName = _attachedFileName,
+                AttachedImageBase64 = _attachedImageBase64
             };
+
+            // Clear all attachment state after sending — the content is now part of the request.
+            _attachedFileName = null;
+            _attachedFileContent = null;
+            _attachedImageBase64 = null;
+            _attachedImagePreview = null;
 
             // Stream the response — ChatStreamEvent can be text or UI action.
             ChatUiAction? pendingAction = null;
@@ -276,6 +301,110 @@
             _streamingContent = string.Empty;
             StateHasChanged();
         }
+    }
+
+    // ─── File Attachment ─────────────────────────────────────────────────
+
+    private static readonly HashSet<string> ImageExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".jpg", ".jpeg", ".png", ".gif", ".webp"
+    };
+
+    /// <summary>
+    /// Receives pre-read file bytes from ChatInput.
+    /// ChatInput reads bytes eagerly before any re-render to avoid stale IBrowserFile.
+    /// Routes to PDF extraction or image base64 encoding based on extension.
+    /// </summary>
+    private async Task HandleFileData((string FileName, byte[] Bytes) fileData)
+    {
+        var extension = Path.GetExtension(fileData.FileName)?.ToLowerInvariant();
+
+        if (extension == ".pdf")
+        {
+            await HandlePdfBytes(fileData.FileName, fileData.Bytes);
+        }
+        else if (extension != null && ImageExtensions.Contains(extension))
+        {
+            HandleImageBytes(fileData.FileName, fileData.Bytes, extension);
+        }
+        else
+        {
+            Logger.LogWarning("Unsupported file type: {FileName}", fileData.FileName);
+        }
+    }
+
+    /// <summary>
+    /// Sends pre-read PDF bytes to the API for text extraction.
+    /// </summary>
+    private async Task HandlePdfBytes(string fileName, byte[] fileBytes)
+    {
+        _isExtractingPdf = true;
+        StateHasChanged();
+
+        try
+        {
+            var extractedText = await ChatApi.ExtractPdfTextAsync(fileBytes, fileName);
+
+            if (!string.IsNullOrWhiteSpace(extractedText))
+            {
+                _attachedFileName = fileName;
+                _attachedFileContent = extractedText;
+                Logger.LogInformation("PDF text extracted: {FileName} ({Chars} chars)",
+                    fileName, extractedText.Length);
+            }
+            else
+            {
+                Logger.LogWarning("PDF extraction returned empty text for {FileName}", fileName);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to extract text from PDF '{FileName}'", fileName);
+            _attachedFileName = null;
+            _attachedFileContent = null;
+        }
+        finally
+        {
+            _isExtractingPdf = false;
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>
+    /// Converts pre-read image bytes to base64 for multimodal AI and builds UI preview.
+    /// </summary>
+    private void HandleImageBytes(string fileName, byte[] imageBytes, string extension)
+    {
+        _attachedImageBase64 = Convert.ToBase64String(imageBytes);
+
+        var mimeType = extension switch
+        {
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".png" => "image/png",
+            ".gif" => "image/gif",
+            ".webp" => "image/webp",
+            _ => "image/png"
+        };
+
+        _attachedImagePreview = $"data:{mimeType};base64,{_attachedImageBase64}";
+        _attachedFileName = fileName;
+
+        Logger.LogInformation("Image attached: {FileName} ({Size} bytes)", fileName, imageBytes.Length);
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Removes the currently attached file (PDF or image).
+    /// Clears all attachment-related state.
+    /// Called when the user clicks the close button on the file chip.
+    /// </summary>
+    private void HandleFileRemoved()
+    {
+        _attachedFileName = null;
+        _attachedFileContent = null;
+        _attachedImageBase64 = null;
+        _attachedImagePreview = null;
+        StateHasChanged();
     }
 
     /// <summary>

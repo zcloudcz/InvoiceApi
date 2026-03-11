@@ -96,6 +96,7 @@ public static class Mapper_Extensions
         destination.BillingSettings = source.BillingSettings != null
             ? source.BillingSettings.ToBillingSettingsDto()
             : null;
+        destination.IsMainActivity = source.IsMainActivity;
         destination.CreatedAt = source.CreatedAt;
         destination.UpdatedAt = source.UpdatedAt;
         return destination;
@@ -316,6 +317,59 @@ public static class Mapper_Extensions
         destination.CurrentYear = source.CurrentYear;
         destination.CurrentMonth = source.CurrentMonth;
         destination.IsActive = source.IsActive;
+        return destination;
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    public static Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceItemDto ToReceivedInvoiceItemDto(this Fakvio.Domain.Entities.ReceivedInvoiceItem source)
+    {
+        var destination = new Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceItemDto();
+        destination.Id = source.Id;
+        destination.OrderIndex = source.OrderIndex;
+        destination.Description = source.Description;
+        destination.Quantity = source.Quantity;
+        destination.Unit = source.Unit;
+        destination.UnitPrice = source.UnitPrice;
+        destination.VatRateId = source.VatRateId;
+        destination.VatRatePercentage = source.VatRatePercentage;
+        destination.TotalBeforeVat = source.TotalBeforeVat;
+        destination.VatAmount = source.VatAmount;
+        destination.TotalWithVat = source.TotalWithVat;
+        destination.ProductCode = source.ProductCode;
+        destination.Notes = source.Notes;
+        return destination;
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    public static Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceDto ToReceivedInvoiceDto(this Fakvio.Domain.Entities.ReceivedInvoice source)
+    {
+        var destination = new Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceDto();
+        destination.Id = source.Id;
+        destination.DocumentNumber = source.DocumentNumber;
+        destination.Status = source.Status;
+        destination.SupplierId = source.SupplierId;
+        destination.IssueDate = source.IssueDate;
+        destination.ReceivedDate = source.ReceivedDate;
+        destination.DueDate = source.DueDate;
+        destination.TaxableSupplyDate = source.TaxableSupplyDate;
+        destination.VariableSymbol = source.VariableSymbol;
+        destination.TotalBeforeVat = source.TotalBeforeVat;
+        destination.TotalVat = source.TotalVat;
+        destination.TotalWithVat = source.TotalWithVat;
+        destination.CurrencyId = source.CurrencyId;
+        destination.PaymentMethod = source.PaymentMethod;
+        destination.BankAccountNumber = source.BankAccountNumber;
+        destination.IBAN = source.IBAN;
+        destination.SWIFT = source.SWIFT;
+        destination.PaidAt = source.PaidAt;
+        destination.Notes = source.Notes;
+        destination.AttachmentFileName = source.AttachmentFileName;
+        destination.AttachmentContentType = source.AttachmentContentType;
+        destination.Items = source.Items
+            ?.Select(item => item.ToReceivedInvoiceItemDto())
+            .ToList();
+        destination.CreatedAt = source.CreatedAt;
+        destination.UpdatedAt = source.UpdatedAt;
         return destination;
     }
 

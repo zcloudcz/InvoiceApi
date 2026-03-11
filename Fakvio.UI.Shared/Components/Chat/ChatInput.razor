@@ -1,20 +1,78 @@
 @inject IStringLocalizer<SharedResource> L
 
 @*
-    Chat input component with a text field and send button.
-    Enter sends the message, Shift+Enter adds a new line.
-    Input is disabled while the AI is generating a response.
+    Chat input component — text field + file upload (click or drag & drop) + send button.
+    Enter sends, Shift+Enter adds newline.
+
+    File data is read immediately when selected/dropped (before any re-render),
+    then passed to the parent as (fileName, bytes) to avoid stale IBrowserFile references.
 *@
 
+@* ── Attached file chip ── *@
+@if (!string.IsNullOrEmpty(AttachedFileName))
+{
+    <div class="px-2 pt-2 d-flex align-center gap-2">
+        @if (!string.IsNullOrEmpty(AttachedImagePreview))
+        {
+            <img src="@AttachedImagePreview" alt="@AttachedFileName"
+                 style="width: 80px; height: 80px; object-fit: cover; border-radius: 8px; border: 1px solid var(--mud-palette-lines-default);" />
+            <MudChip T="string" Icon="@Icons.Material.Filled.Image" Color="Color.Info" Size="Size.Small"
+                     OnClose="@HandleRemoveAttachment">@AttachedFileName</MudChip>
+        }
+        else
+        {
+            <MudChip T="string" Icon="@Icons.Material.Filled.PictureAsPdf" Color="Color.Info" Size="Size.Small"
+                     OnClose="@HandleRemoveAttachment">@AttachedFileName</MudChip>
+        }
+    </div>
+}
+
+@* ── Extracting indicator ── *@
+@if (IsExtracting)
+{
+    <div class="px-2 pt-2 d-flex align-center gap-2">
+        <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+        <MudText Typo="Typo.caption">@L["Chat_ExtractingText"]</MudText>
+    </div>
+}
+
+@* ── Drop zone — always visible when no file attached, doubles as click target ── *@
+@if (string.IsNullOrEmpty(AttachedFileName) && !IsExtracting)
+{
+    <div style="position: relative; border: 2px dashed var(--mud-palette-lines-default); border-radius: 8px; margin: 4px 8px; padding: 24px 0; text-align: center; cursor: pointer;"
+         class="d-flex align-center justify-center gap-1">
+        <MudIcon Icon="@Icons.Material.Filled.CloudUpload" Size="Size.Small" Style="opacity: 0.5;" />
+        <MudText Typo="Typo.caption" Style="opacity: 0.5;">@L["Chat_DragDropHint"]</MudText>
+        <InputFile OnChange="@HandleFileFromInput"
+                   accept=".pdf,.jpg,.jpeg,.png,.gif,.webp"
+                   style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer;" />
+    </div>
+}
+
+@* ── Input row ── *@
 <div class="d-flex align-end gap-2 pa-2" style="border-top: 1px solid var(--mud-palette-lines-default);">
+    <MudFileUpload T="IBrowserFile"
+                   Accept=".pdf,.jpg,.jpeg,.png,.gif,.webp"
+                   FilesChanged="@HandleFileFromMudUpload"
+                   MaximumFileCount="1"
+                   Disabled="@(IsDisabled || IsExtracting)">
+        <ActivatorContent>
+            <MudIconButton Icon="@Icons.Material.Filled.AttachFile"
+                           Color="Color.Default"
+                           Disabled="@(IsDisabled || IsExtracting)"
+                           title="@L["Chat_AttachFile"]" />
+        </ActivatorContent>
+    </MudFileUpload>
+
+    @* NOTE: Do NOT bind Disabled to IsDisabled here. Changing Disabled during render
+       triggers MudBlazor's JS blur handler while the WASM heap is locked, causing
+       "Assertion failed - heap is currently locked" errors. Instead, we block sending
+       via HandleKeyDown and HandleSend logic. The send button is already disabled. *@
     <MudTextField @bind-Value="_message"
                   Placeholder="@L["Chat_Placeholder"]"
                   Variant="Variant.Outlined"
-                  Lines="1"
-                  MaxLines="3"
-                  AutoGrow="true"
-                  Disabled="@IsDisabled"
-                  Immediate="true"
+                  Lines="1" MaxLines="3" AutoGrow="true"
+                  ReadOnly="@IsDisabled" Immediate="true"
                   OnKeyDown="@HandleKeyDown"
                   Class="flex-grow-1" />
 
@@ -27,40 +85,70 @@
 
 @code {
     private string _message = string.Empty;
+    private const long MaxFileSize = 10 * 1024 * 1024; // 10 MB
+
+    [Parameter] public bool IsDisabled { get; set; }
+    [Parameter] public bool IsExtracting { get; set; }
+    [Parameter] public string? AttachedFileName { get; set; }
+    [Parameter] public string? AttachedImagePreview { get; set; }
+    [Parameter] public EventCallback<string> OnSend { get; set; }
 
     /// <summary>
-    /// Whether the input should be disabled (e.g., during AI response streaming).
+    /// Callback with (fileName, fileBytes) — bytes are read eagerly before any re-render
+    /// to prevent stale IBrowserFile references when the InputFile is removed from DOM.
     /// </summary>
-    [Parameter]
-    public bool IsDisabled { get; set; }
+    [Parameter] public EventCallback<(string FileName, byte[] Bytes)> OnFileAttached { get; set; }
 
-    /// <summary>
-    /// Callback when the user sends a message.
-    /// </summary>
-    [Parameter]
-    public EventCallback<string> OnSend { get; set; }
+    [Parameter] public EventCallback OnFileRemoved { get; set; }
 
-    /// <summary>
-    /// Handles keyboard input: Enter sends, Shift+Enter adds newline.
-    /// </summary>
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
         if (e.Key == "Enter" && !e.ShiftKey)
-        {
             await HandleSend();
-        }
+    }
+
+    private async Task HandleSend()
+    {
+        if (string.IsNullOrWhiteSpace(_message)) return;
+        var msg = _message.Trim();
+        _message = string.Empty;
+        await OnSend.InvokeAsync(msg);
     }
 
     /// <summary>
-    /// Sends the current message and clears the input.
+    /// Reads file bytes eagerly from IBrowserFile, then notifies parent.
+    /// This must happen BEFORE any StateHasChanged that could remove the InputFile from DOM.
     /// </summary>
-    private async Task HandleSend()
+    private async Task ReadAndNotify(IBrowserFile file)
     {
-        if (string.IsNullOrWhiteSpace(_message))
-            return;
+        if (file == null || file.Size > MaxFileSize) return;
 
-        var messageToSend = _message.Trim();
-        _message = string.Empty;
-        await OnSend.InvokeAsync(messageToSend);
+        // Read bytes NOW while the InputFile is still in the DOM
+        using var stream = file.OpenReadStream(maxAllowedSize: MaxFileSize);
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+        var bytes = ms.ToArray();
+
+        // Safe to re-render now — we already have the bytes
+        await OnFileAttached.InvokeAsync((file.Name, bytes));
+    }
+
+    // From drag & drop InputFile
+    private async Task HandleFileFromInput(InputFileChangeEventArgs e)
+    {
+        if (e.File != null)
+            await ReadAndNotify(e.File);
+    }
+
+    // From paper clip MudFileUpload
+    private async Task HandleFileFromMudUpload(IBrowserFile file)
+    {
+        if (file != null)
+            await ReadAndNotify(file);
+    }
+
+    private async Task HandleRemoveAttachment()
+    {
+        await OnFileRemoved.InvokeAsync();
     }
 }

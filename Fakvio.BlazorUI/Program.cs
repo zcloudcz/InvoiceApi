@@ -26,6 +26,9 @@ builder.Services.AddHttpClient("InvoiceAPI", client =>
     client.BaseAddress = new Uri(
         builder.Configuration["ApiSettings:BaseUrl"]!);
     client.DefaultRequestHeaders.Add("Accept", "application/json");
+    // Chat streaming with local LLMs (Ollama) can take 2+ minutes for the first pass
+    // (non-streaming tool-check call). Default 100s timeout is too short.
+    client.Timeout = TimeSpan.FromMinutes(5);
 })
 // CorrelationIdHandler runs first: adds X-Correlation-Id to every outgoing request.
 // UnauthorizedRedirectHandler runs second: intercepts 401 responses for auto-redirect.
@@ -38,8 +41,12 @@ var host = builder.Build();
 // No need to read from localStorage — the LanguageSwitcher has been removed.
 CultureInfo.DefaultThreadCurrentUICulture = new CultureInfo("cs-CZ");
 
-// Set invariant culture for number/date formatting so that decimal values (e.g., VAT rate "21.0")
-// are parsed correctly regardless of browser locale.
-CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
+// Czech culture for date formatting (dd.MM.yyyy) in MudDatePicker and other date inputs.
+// Override the number format to use '.' as decimal separator — this prevents issues
+// with decimal parsing in numeric inputs (VAT rates "21.0", prices, etc.).
+var czechCulture = new CultureInfo("cs-CZ");
+czechCulture.NumberFormat.NumberDecimalSeparator = ".";
+czechCulture.NumberFormat.CurrencyDecimalSeparator = ".";
+CultureInfo.DefaultThreadCurrentCulture = czechCulture;
 
 await host.RunAsync();

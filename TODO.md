@@ -2,6 +2,178 @@
 
 ## Completed
 
+### Playwright E2E Tests (2026-03-10)
+Comprehensive browser-based UI tests using Microsoft.Playwright.NUnit (Chromium headless).
+
+- [x] **Fakvio.Tests.Playwright** project: NUnit + Playwright 1.52.0, added to solution
+- [x] **Infrastructure**: TestConfiguration (env vars), PlaywrightSetup (health checks), FakvioPageTest (base class), AuthHelper (API login + PascalCase localStorage injection + SysAdmin impersonation)
+- [x] **Auth tests** (5): Login form rendering, valid/invalid credentials, OAuth buttons, registration link
+- [x] **Navigation tests** (3): Dashboard link, multiple nav links, settings group
+- [x] **Authorization tests** (6): 5 protected routes redirect to login, authenticated user can access dashboard
+- [x] **Dashboard tests** (3): Page content, nav menu visibility, page title
+- [x] **Invoice list tests** (8): Table headers, search, filters, new button, pagination, import dropdown, credit notes
+- [x] **Invoice create tests** (4): Form selects, buttons, date pickers, credit note mode
+- [x] **Received invoice tests** (6): Table, new/import buttons, filters, date pickers, pagination
+- [x] **Import wizard tests** (5): Upload step, radio buttons, file upload button, query params, analyze hidden
+- [x] **Client list tests** (3): Table, search, new button
+- [x] **Settings tests** (5): VAT rates table + actions, number sequences, My Company heading + inputs
+- [x] **Key fix**: Blazored.LocalStorage stores PascalCase JSON (C# default), not camelCase (API default). AuthHelper converts API response to PascalCase before injection
+- [x] **Key fix**: SysAdmin needs `ImpersonatedCompanyId` in localStorage to see invoicing pages
+- [x] **Key fix**: `.mud-paper` selector matches hidden MudPopover elements — use `h4` instead
+- [x] **48 Playwright tests passing** + 756 unit tests passing
+
+### PDF Invoice Import (2026-03-10)
+3-tier extraction pipeline: QR Code → AI → Regex fallback. 2-step wizard: Preview → Confirm.
+
+- [x] **SindParser**: Reverse of SindBuilder — parses SIND QR Faktura strings with CRC32 validation
+- [x] **SpdParser**: Reverse of SpdIntegrator — parses SPD QR Platba strings, decodes embedded X-INV SIND
+- [x] **InvoiceExtractedData**: Unified data model for all extraction sources (QR/AI/Regex)
+- [x] **InvoiceAiExtractorService** (IInvoiceAiExtractor): AI-based extraction via IAiProviderFactory, structured JSON prompt, graceful fallback on error/timeout
+- [x] **InvoiceTextExtractorService** (IInvoiceTextExtractor): Regex fallback for Czech invoices — document number, dates, amounts, IČO/DIČ, bank accounts, currency
+- [x] **QrCodeExtractorService** (IQrCodeExtractor): ZXing.Net.Bindings.SkiaSharp, iText7 ImageRenderListener, extracts QR from PDF embedded images
+- [x] **InvoiceImportService** (IInvoiceImportService): Waterfall pipeline (QR → AI → Regex → Merge), client lookup/creation by IČO, duplicate detection, validation
+- [x] **Import DTOs**: EImportTarget, InvoiceImportPreviewDto, ConfirmInvoiceImportRequest, ConfirmImportItemDto, ImportResultDto, ImportValidationMessage
+- [x] **ImportController**: POST /api/import/preview (multipart/form-data, 50MB), POST /api/import/confirm (JSON)
+- [x] **ImportApiService**: Blazor HTTP service with multipart upload for preview, JSON POST for confirm
+- [x] **InvoiceImport.razor**: 3-step wizard (Upload → Preview → Results), MudFileUpload, MudTable, validation panels
+- [x] **UI integration**: Import buttons on Invoices + ReceivedInvoices pages, NavMenu entry
+- [x] **Localization**: 25 Import_* resource keys in CZ/EN
+- [x] **DI registration**: All 4 services registered (IQrCodeExtractor, IInvoiceAiExtractor, IInvoiceTextExtractor, IInvoiceImportService)
+- [x] **InternalsVisibleTo**: Infrastructure → Tests.Unit for internal method testing
+- [x] **105 new tests**: SindParser (17), SpdParser (15), InvoiceAiExtractorService (13), InvoiceTextExtractorService (28), QrCodeExtractorService (12), InvoiceImportService (20)
+- [x] **756 total tests passing** (0 failures)
+
+### AI Chat Hardening, VS Duplicate Check, Invoice Restore, Date Locale Fix (2026-03-07)
+- [x] **AI tool calling**: Removed regex-based intent detection — LLM now decides when to use tools via native API (Path A) or text-based instructions (Path B)
+- [x] **Anti-hallucination**: System prompt explicitly declares capabilities and forbids claiming actions without tool confirmation
+- [x] **OllamaProvider dynamic tool support**: `SupportsNativeTools` starts true, auto-disables on "does not support tools" error (gemma3:12b, phi4 don't support tools)
+- [x] **SSE heartbeat**: `yield return ""` before blocking non-streaming calls to prevent HTTP timeout
+- [x] **HttpClient timeout**: Increased from 100s to 5min in BlazorUI Program.cs
+- [x] **Variable Symbol duplicate check**: InvoiceService.CreateInvoiceAsync + CompleteInvoiceAsync — checks for existing non-deleted invoice with same VS before saving, throws InvalidOperationException
+- [x] **ChatContextBuilder VS rules**: System prompt instructs AI to check for duplicate VS and warn user
+- [x] **Invoice restore**: RestoreInvoiceAsync (interface, service, controller POST {id}/restore, API service, UI button), only Deleted → Draft
+- [x] **Deleted invoice viewable**: GetInvoiceByIdAsync no longer filters out Deleted status
+- [x] **Date picker Czech locale**: BlazorUI Program.cs uses `cs-CZ` culture (dd.MM.yyyy) instead of InvariantCulture, with `.` decimal separator override
+- [x] **Localization**: Invoice_Restore/Invoice_Restored (CZ+EN)
+- [x] **Unit tests**: 2 VS duplicate tests + 6 restore tests = 8 new tests
+- [x] Build: 0 errors, **651 tests** (all pass)
+
+### Tax Estimation Extensions — CRUD, Income, MCP, Dashboard, PDF, Insurance (2026-03-07)
+- [x] **CreateTaxYearConfigDto**: DTO for CRUD operations on TaxYearConfig
+- [x] **AnnualIncomeDto**: DTO for auto-calculated annual gross income from invoices (year, grossIncome, grossIncomeWithVat, invoiceCount, currencyCode)
+- [x] **InsuranceAdvanceDto**: DTO for insurance advance notification (monthlySocial, monthlyHealth, nextPaymentDate, daysUntilPayment)
+- [x] **ITaxEstimationService extended**: +CreateConfigAsync, +UpdateConfigAsync, +DeleteConfigAsync, +GetAnnualIncomeAsync, +GetInsuranceAdvanceAsync
+- [x] **TaxEstimationService extended**: Full CRUD (duplicate check, update, delete), annual income from invoices (Completed/Paid, excludes Drafts/CreditNotes), insurance advance calculation (issuer TaxRegime → estimation → monthly amounts + next 20th date)
+- [x] **TaxController extended**: 6 new endpoints (POST config, PUT config/{id}, DELETE config/{id}, GET income/{year}, GET insurance-advance, GET compare/pdf)
+- [x] **PDF export**: GET /api/tax/compare/pdf — generates HTML comparison table → iText7 PDF, with filename tax-comparison-{country}-{year}.pdf
+- [x] **TaxApiService extended**: +CreateConfigAsync, +UpdateConfigAsync, +DeleteConfigAsync, +GetAnnualIncomeAsync, +GetInsuranceAdvanceAsync
+- [x] **TaxYearConfigs.razor**: New admin page (SysAdmin/Admin only) — CRUD table + dialog form with grouped sections (Common, IncomeTax, Social, Health, FlatRate, LumpSum)
+- [x] **TaxEstimation.razor updated**: "Load from invoices" button (auto-fills gross income from issued invoices), "Export to PDF" button (opens comparison PDF in new tab)
+- [x] **Dashboard (Home.razor) updated**: Insurance advance cards (monthly total, next payment date with due-in-days/overdue chip, social+health breakdown) — clickable → /tax-estimation
+- [x] **NavMenu.razor**: Added "Tax Rates / Daňové sazby" link under SysAdmin settings
+- [x] **MCP Server**: 5 new tax tools (EstimateTax, CompareTaxRegimes, GetAnnualIncome, GetInsuranceAdvance, GetTaxConfig), IFakvioApiClient + FakvioApiClient extended
+- [x] **Localization**: ~25 CZ + ~25 EN new keys (TaxConfig_*, Tax_AutoIncome/ExportPdf, Dashboard_InsuranceAdvance/Social/Health/Total/NextDate/DueIn/Overdue, Nav_TaxConfig)
+- [x] **MCP TaxTools tests**: 11 new tests — EstimateTax (3), CompareTaxRegimes (2), GetAnnualIncome (2), GetInsuranceAdvance (2), GetTaxConfig (2)
+- [x] **Unit tests**: 13 new TaxEstimationService tests — CRUD (6), annual income (4), insurance advance (3)
+- [x] **EF Migrations**: Master (AddTaxYearConfigAndClientTaxFields) + Tenant (AddClientTaxFields) — TaxYearConfig table + Client tax fields + seed data (CZ/SK 2025/2026)
+- [x] Build: 0 errors, **643 tests** (all pass)
+
+### Ollama Native Tool Calling Optimization (2026-03-07)
+- [x] **IAiProvider extended**: Added `SupportsNativeTools` (default false), `GetCompletionWithToolsAsync` (default null), `NativeToolDefinition`, `NativeToolParameter`, `NativeToolCallResult`, `NativeToolCall` models
+- [x] **OllamaProvider rewritten**: Uses Ollama's native `tools` parameter in `/api/chat` — model produces structured `tool_calls` instead of free-text JSON. Parses `tool_calls[].function.name` + `arguments` from NDJSON response
+- [x] **IChatToolExecutor extended**: Added `GetToolDefinitions()` — converts IChatTool registry into NativeToolDefinition list with JSON Schema parameters (per-tool hardcoded mapping for ares_lookup, create_client, navigate, create_invoice)
+- [x] **ChatService dual-path architecture**: Path A (native tools) — always sends tool definitions, model decides; Path B (text-based) — regex intent detection + two-pass AI flow. Both sync and streaming paths updated
+- [x] **Regex patterns broadened**: ToolKeywordPattern (added Czech declensions: klienta/firmu/přidat/pridej), NavigationKeywordPattern (added: chci, potřebuju, přehled faktur, nového klienta, ukázat, navigovat)
+- [x] Build: 0 errors, **643 tests** (all pass)
+
+### Tax Regime & Estimation System (2026-03-06)
+- [x] **3 new enums**: ETaxRegime (7 values: FlatRateTax, LumpSumExpenses 80/60/40/30, TaxRecords, FullAccounting), EActivityType (4 values: CraftTrade, NonCraftTrade, RegulatedProfession, Rental), EFlatRateBand (Band1/2/3)
+- [x] **TaxYearConfig entity**: Annual tax rates per country (AverageMonthlyWage, IncomeTaxRate, ProgressiveTaxRate, SocialInsuranceRate, HealthInsuranceRate, FlatRateBand monthly amounts, LumpSum caps, min/max thresholds)
+- [x] **Client entity extended**: +TaxRegime, +ActivityType, +IsMainActivity, +FlatRateBand fields
+- [x] **TaxYearConfig seed data**: CZ 2025, CZ 2026, SK 2025, SK 2026 with real-world rates
+- [x] **Contracts DTOs**: TaxEstimationRequest, TaxEstimationResult (full breakdown + calculation steps), TaxYearConfigDto
+- [x] **Client DTOs updated**: ClientDto, CreateClientDto, UpdateClientDto — all have TaxRegime, ActivityType, IsMainActivity, FlatRateBand (string for API, enum in entity)
+- [x] **ITaxEstimationService + TaxEstimationService**: Full CZ/SK tax calculation (flat-rate, lump-sum, tax records, full accounting), progressive tax, social/health insurance with min/max enforcement, regime comparison, step-by-step breakdown
+- [x] **TaxController**: 4 endpoints (POST /estimate, GET /compare, GET /config/{country}/{year}, GET /configs)
+- [x] **DI registration**: TaxEstimationService in ServiceCollectionExtensions
+- [x] **MasterDbContext**: ConfigureTaxYearConfig (precision, unique index on Year+Country)
+- [x] **TenantDbContext**: Client config extended with enum→string conversion for TaxRegime, ActivityType, FlatRateBand
+- [x] **ClientService**: Create and Update methods map string→enum for tax fields; MapToDto handles enum→string manually (ZMapper can't auto-map enum?→string?)
+- [x] **ClientProfile**: ZMapper ForMember Ignore on TaxRegime, ActivityType, FlatRateBand (manual mapping in service)
+- [x] **TaxApiService**: Blazor UI service (estimate, compare, getConfig, getAllConfigs) inheriting ApiClientBase
+- [x] **UI service registration**: TaxApiService in UI.Shared ServiceCollectionExtensions
+- [x] **Localization**: ~50 CZ + ~50 EN keys (ETaxRegime_*, EActivityType_*, EFlatRateBand_*, Tax_*, Client_TaxSection/TaxRegime/ActivityType/IsMainActivity/FlatRateBand)
+- [x] **Unit tests**: 35 new tests — flat-rate (4), lump-sum (4), income tax (2), social insurance (2), health insurance (1), tax records/accounting (3), totals (3), SK (3), error handling (2), compare regimes (4), config (3), edge cases (2) — all pass
+- [x] **TaxEstimation.razor**: Full Blazor page — single regime estimation with summary cards + step-by-step breakdown, side-by-side regime comparison table with "Best option" chip, country-aware regime selection (CZ/SK), pre-fills from company tax settings
+- [x] **MyCompany.razor**: Tax Settings section (4-field card: TaxRegime, ActivityType, IsMainActivity, FlatRateBand) with read/edit modes, conditional FlatRateBand visibility
+- [x] **ClientDetail.razor**: Tax Settings section (same layout), wired into EnableEditing + SaveClient, GetLocalizedEnum helper
+- [x] **NavMenu.razor**: Added "Odhad daní" / "Tax Estimation" link with AccountBalance icon
+- [x] Build: 0 errors, **619 tests** (35 new + 584 existing)
+
+### Received Invoices + VAT Report (2026-03-06)
+- [x] **ReceivedInvoice domain**: New entity `ReceivedInvoice` + `ReceivedInvoiceItem` with full DUZP support, supplier FK, status lifecycle (Received→Approved→Paid, Rejected, Deleted)
+- [x] **EReceivedInvoiceStatus enum**: Received=1, Approved=2, Paid=3, Rejected=4, Deleted=5
+- [x] **Contracts DTOs**: ReceivedInvoiceDto, CreateReceivedInvoiceDto, UpdateReceivedInvoiceDto, ReceivedInvoiceFilterDto, ReceivedInvoiceItemDto, CreateReceivedInvoiceItemDto
+- [x] **VatReport DTOs**: VatReportDto (output/input VAT, tax liability, revenue/expenses/profit), VatReportLineDto (per VAT rate breakdown)
+- [x] **IReceivedInvoiceService + ReceivedInvoiceService**: Full CRUD + status transitions, totals calculation, paged filtering/sorting
+- [x] **IVatReportService + VatReportService**: Aggregates output VAT (issued invoices) vs input VAT (received invoices) by DUZP period, excludes Draft/Deleted/Received/Rejected
+- [x] **ZMapper profile**: ReceivedInvoiceProfile with SupplierName/CurrencyCode/CurrencySymbol ignored (manual mapping)
+- [x] **TenantDbContext**: DbSet<ReceivedInvoice>, DbSet<ReceivedInvoiceItem>, ConfigureReceivedInvoice/ConfigureReceivedInvoiceItem with indexes and FKs
+- [x] **DI registration**: ReceivedInvoiceService + VatReportService in ServiceCollectionExtensions
+- [x] **ReceivedInvoiceController**: 9 endpoints (GET, GET/paged, GET/{id}, POST, PUT/{id}, POST/{id}/approve, POST/{id}/mark-paid, POST/{id}/reject, DELETE/{id})
+- [x] **VatReportController**: GET endpoint with from/to query params
+- [x] **MCP Server**: 6 ReceivedInvoice tools + 2 new ReportingTools (GetVatReport, GetOverdueReceivedInvoices), FakvioApiClient extended
+- [x] **Blazor UI**: ReceivedInvoices list page (server-side paging, filters, status actions), ReceivedInvoiceDetail (create/edit/view with inline items), VatReport (period selection, summary cards, VAT breakdowns)
+- [x] **Nav menu**: Added "Přijaté faktury" and "Přehled DPH" links
+- [x] **Localization**: ~45 CZ + ~45 EN keys for ReceivedInvoice_* and VatReport_*
+- [x] **UI services**: ReceivedInvoiceApiService + VatReportApiService (ApiClientBase inheritance)
+- [x] **Unit tests**: 36 new tests (26 ReceivedInvoiceService + 10 VatReportService) — all pass
+- [x] Build: 0 errors, **584 tests pass** (36 new + 548 existing, 0 failures)
+
+### Image Upload Support for AI Chat + Gemma3:12b Default (2026-03-03)
+- [x] **Default model**: Changed Ollama default from llama3.1:8b/llama3.2 to gemma3:12b (multimodal, already pulled in Docker)
+- [x] **SendMessageRequest DTO**: Added `AttachedImageBase64` (raw base64, max ~10 MB) for image uploads
+- [x] **ChatMessageDto DTO**: Added `[JsonIgnore] Images` list — transient property to pass base64 data from ChatService to IAiProvider without DB/API serialization
+- [x] **OllamaProvider**: `BuildRequestBody` now emits `images[]` array when `msg.Images` has entries, enabling multimodal Gemma3 processing
+- [x] **ChatService**: `BuildMessageWithAttachment` — image takes precedence over PDF; stores `[Image: filename]` placeholder in DB (not base64). New `AttachImageToLastMessage` helper sets Images on last user message for provider
+- [x] **ChatInput.razor**: Accept filter expanded to `.pdf,.jpg,.jpeg,.png,.gif,.webp`. New `AttachedImagePreview` parameter shows 80x80 thumbnail with Image icon chip
+- [x] **ChatPanel.razor**: New `_attachedImageBase64`/`_attachedImagePreview` state. Refactored `HandleFileAttached` to route by extension (PDF → server extraction, Image → client base64). `HandleImageAttached` reads bytes in browser via `Convert.ToBase64String`
+- [x] **Localization**: Updated `Chat_AttachFile` ("Připojit soubor" / "Attach file"), added `Chat_UnsupportedFileType`
+- [x] **3 new tests**: Image stores placeholder in DB (not base64), image base64 passed via ChatMessageDto.Images, image takes precedence over PDF
+- [x] Build: 0 errors, **548 tests pass** (3 new image + 545 existing, 0 failures)
+
+### Phase D: MCP Server — AI-Assisted Invoicing (2026-03-03)
+- [x] **Fakvio.McpServer**: New console app project (net10.0, PackAsTool, ToolCommandName=fakvio-mcp)
+- [x] **NuGet**: ModelContextProtocol 1.0.0 + Microsoft.Extensions.Hosting + Microsoft.Extensions.Http
+- [x] **ProjectRef**: Fakvio.Contracts only (zero DB/Infrastructure deps — thin wrapper over REST API)
+- [x] **McpServerSettings**: POCO for FAKVIO_API_URL + FAKVIO_API_TOKEN env vars
+- [x] **IFakvioApiClient + FakvioApiClient**: Typed HttpClient wrapper with ~20 methods mapping to API endpoints, query string builder, error extraction
+- [x] **Program.cs**: Host builder, stderr-only logging (stdout reserved for MCP protocol), env var config, HttpClient with Bearer auth, MCP stdio transport, WithToolsFromAssembly
+- [x] **InvoiceTools** (8 tools): ListInvoices, GetInvoice, FindInvoiceByNumber, CreateInvoice, CompleteInvoice, MarkInvoicePaid, SendInvoiceEmail, DeleteInvoice
+- [x] **ClientTools** (6 tools): ListClients, GetClient, CreateClient, UpdateClient, LookupAres, GetIssuer
+- [x] **TemplateTools** (3 tools): ListTemplates, GetTemplate, CreateInvoiceFromTemplate
+- [x] **ReportingTools** (4 tools): GetDashboard, GetOverdueInvoices, GetClientInvoices, GetInvoicesByDateRange
+- [x] **21 MCP tools total** — all with [Description] for AI model guidance, enum string parsing, JSON string params for complex DTOs
+- [x] **JsonStringEnumConverter**: All tool JSON options include enum-as-string for natural AI interaction
+- [x] **Solution**: Added Fakvio.McpServer to Fakvio.sln, added ProjectReference in Tests.Unit
+- [x] **FakvioApiClientTests** (18 tests): MockHttpMessageHandler, query string verification, error handling (400/404/500), URL encoding
+- [x] **InvoiceToolsTests** (24 tests): All 4 tool classes tested — JSON serialization, null handling, enum parsing, date parsing, error wrapping
+- [x] Build: 0 errors, **545 tests pass** (42 new MCP + 503 existing, 0 failures)
+
+### PDF Text Extraction for AI Chat (2026-03-03)
+- [x] **IPdfTextExtractorService**: New interface in Application/Service — `ExtractTextAsync(byte[], CancellationToken)`
+- [x] **PdfTextExtractorService**: Infrastructure implementation using iText7 `PdfTextExtractor` + `SimpleTextExtractionStrategy`, validates size (10 MB max), handles corrupt/password-protected PDFs
+- [x] **SendMessageRequest DTO**: Added optional `AttachedFileContent` and `AttachedFileName` properties
+- [x] **ChatController**: New `POST extract-pdf` endpoint accepting `IFormFile`, validates .pdf extension + 10 MB size limit
+- [x] **ChatService**: `BuildMessageWithAttachment()` helper prepends PDF content as context block (`[Attached PDF: filename]` + content + user question)
+- [x] **ChatApiService**: New `ExtractPdfTextAsync(byte[], string)` method sending multipart/form-data to API
+- [x] **ChatInput.razor**: Added `MudFileUpload` (paper clip icon) for PDF files, file chip indicator with remove button, extraction progress indicator
+- [x] **ChatPanel.razor**: Handles file attachment lifecycle (select → extract → attach → send → clear), includes content in `SendMessageRequest`
+- [x] **DI**: Registered `IPdfTextExtractorService` → `PdfTextExtractorService` (scoped) in Infrastructure ServiceCollectionExtensions
+- [x] **Localization**: 6 new keys (Chat_AttachFile, Chat_FileAttached, Chat_RemoveAttachment, Chat_ExtractingText, Chat_PdfOnly, Chat_FileTooLarge) in both CZ/EN
+- [x] **Unit tests**: 8 PdfTextExtractorServiceTests (valid PDF, multi-page, empty, null/empty/corrupt bytes, oversize, cancellation) + 3 ChatServiceTests (attachment prepend, no-attachment passthrough, empty attachment ignored)
+- [x] Build: 0 errors (excl. MAUI workload), **503 tests pass** (0 failures)
+
 ### Per-Client Language for Documents + Default cs-CZ UI (2026-03-02)
 - [x] **Domain**: Added `string Language` property to `Client.cs` and `ContentTemplate.cs` (ISO 639-1, default "cs")
 - [x] **DTOs**: Added Language to all 6 DTOs (ClientDto, CreateClientDto, UpdateClientDto, ContentTemplateDto, CreateContentTemplateDto, UpdateContentTemplateDto)
@@ -699,4 +871,5 @@
 - [ ] **API Rate Limiting** — protect against abuse, per-tenant and per-endpoint limits, ASP.NET Core rate limiting middleware
 - [ ] **Performance Optimization** — Redis distributed cache, response compression, lazy loading for large datasets, query optimization
 - [ ] **Apple OAuth** — add Apple sign-in provider (requires separate NuGet package, Apple Developer account setup)
+- [ ] **MCP Server (Phase D)** — Model Context Protocol server exposing Fakvio functionality to AI assistants (Claude, etc.); thin wrapper over existing REST API; new `Fakvio.McpServer` project with tools: InvoiceTools (create, list, complete, mark-paid, send email), ClientTools (lookup, list, create), ReportingTools (revenue, overdue, summaries, aging), TemplateTools (list, preview); MCP resources for invoice/client data; JWT auth forwarding + tenant isolation; enables natural-language invoicing ("create invoice for client X"), AI-assisted reporting ("top 5 clients by revenue"), and integration with other MCP servers (calendar, email, accounting)
 

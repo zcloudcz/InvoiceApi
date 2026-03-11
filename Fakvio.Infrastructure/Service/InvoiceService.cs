@@ -125,18 +125,19 @@ public class InvoiceService : IInvoiceService
         if (filter.IssuerId.HasValue)
             query = query.Where(i => i.IssuerId == filter.IssuerId.Value);
 
-        // Date range filters
+        // Date range filters — ensure UTC Kind for PostgreSQL 'timestamp with time zone' columns.
+        // Dates from query string binding arrive with Kind=Unspecified which Npgsql rejects.
         if (filter.IssueDateFrom.HasValue)
-            query = query.Where(i => i.IssueDate >= filter.IssueDateFrom.Value);
+            query = query.Where(i => i.IssueDate >= DateTime.SpecifyKind(filter.IssueDateFrom.Value, DateTimeKind.Utc));
 
         if (filter.IssueDateTo.HasValue)
-            query = query.Where(i => i.IssueDate <= filter.IssueDateTo.Value);
+            query = query.Where(i => i.IssueDate <= DateTime.SpecifyKind(filter.IssueDateTo.Value, DateTimeKind.Utc));
 
         if (filter.DueDateFrom.HasValue)
-            query = query.Where(i => i.DueDate >= filter.DueDateFrom.Value);
+            query = query.Where(i => i.DueDate >= DateTime.SpecifyKind(filter.DueDateFrom.Value, DateTimeKind.Utc));
 
         if (filter.DueDateTo.HasValue)
-            query = query.Where(i => i.DueDate <= filter.DueDateTo.Value);
+            query = query.Where(i => i.DueDate <= DateTime.SpecifyKind(filter.DueDateTo.Value, DateTimeKind.Utc));
 
         // Overdue filter
         if (filter.IsOverdue.HasValue && filter.IsOverdue.Value)
@@ -194,7 +195,9 @@ public class InvoiceService : IInvoiceService
             .Include(i => i.Currency)
             .Include(i => i.InvoiceItem.OrderBy(item => item.OrderIndex))
             .Include(i => i.OriginalInvoice)
-            .FirstOrDefaultAsync(i => i.Id == invoiceId && i.Status != EInvoiceStatus.Deleted, cancellationToken);
+            // Allow loading deleted invoices so users can view details and restore them.
+            // List endpoints (GetAll, GetPaged) still hide deleted invoices by default.
+            .FirstOrDefaultAsync(i => i.Id == invoiceId, cancellationToken);
 
         return invoice == null ? null : MapToDto(invoice);
     }
@@ -209,7 +212,9 @@ public class InvoiceService : IInvoiceService
             .Include(i => i.Currency)
             .Include(i => i.InvoiceItem.OrderBy(item => item.OrderIndex))
             .Include(i => i.OriginalInvoice)
-            .FirstOrDefaultAsync(i => i.DocumentNumber == documentNumber && i.Status != EInvoiceStatus.Deleted, cancellationToken);
+            // Allow loading deleted invoices so users can view details and restore them.
+            // List endpoints (GetAll, GetPaged) still hide deleted invoices by default.
+            .FirstOrDefaultAsync(i => i.DocumentNumber == documentNumber, cancellationToken);
 
         return invoice == null ? null : MapToDto(invoice);
     }
@@ -354,6 +359,29 @@ public class InvoiceService : IInvoiceService
         {
             invoice.VariableSymbol = new string(invoice.DocumentNumber
                 .Where(char.IsDigit).Take(10).ToArray());
+        }
+
+        // Check for duplicate Variable Symbol (VS) before saving.
+        // Czech banking requires unique VS per invoice — duplicate VS would cause
+        // payment matching issues (bank can't tell which invoice was paid).
+        if (!string.IsNullOrEmpty(invoice.VariableSymbol))
+        {
+            var duplicateExists = await _context.Invoice
+                .AsNoTracking()
+                .AnyAsync(i => i.Id != invoice.Id
+                    && i.VariableSymbol == invoice.VariableSymbol
+                    && i.Status != EInvoiceStatus.Deleted,
+                    cancellationToken);
+
+            if (duplicateExists)
+            {
+                _logger.LogWarning(
+                    "Duplicate VariableSymbol '{VS}' detected for invoice ID {Id}",
+                    invoice.VariableSymbol, invoice.Id);
+                throw new InvalidOperationException(
+                    $"An invoice with Variable Symbol '{invoice.VariableSymbol}' already exists. " +
+                    "Each invoice must have a unique Variable Symbol for payment tracking.");
+            }
         }
 
         await _context.SaveChangesAsync(cancellationToken);
@@ -523,6 +551,25 @@ public class InvoiceService : IInvoiceService
                 .Where(char.IsDigit).Take(10).ToArray());
         }
 
+        // Check for duplicate Variable Symbol before completing.
+        // Same guard as in CreateInvoiceAsync — prevents duplicate VS on legacy DRAFT invoices.
+        if (!string.IsNullOrEmpty(invoice.VariableSymbol))
+        {
+            var duplicateExists = await _context.Invoice
+                .AsNoTracking()
+                .AnyAsync(i => i.Id != invoice.Id
+                    && i.VariableSymbol == invoice.VariableSymbol
+                    && i.Status != EInvoiceStatus.Deleted,
+                    cancellationToken);
+
+            if (duplicateExists)
+            {
+                throw new InvalidOperationException(
+                    $"An invoice with Variable Symbol '{invoice.VariableSymbol}' already exists. " +
+                    "Each invoice must have a unique Variable Symbol for payment tracking.");
+            }
+        }
+
         invoice.Status = EInvoiceStatus.Completed;
 
         await _context.SaveChangesAsync(cancellationToken);
@@ -568,6 +615,39 @@ public class InvoiceService : IInvoiceService
         await _context.SaveChangesAsync(cancellationToken);
 
         return true;
+    }
+
+    /// <summary>
+    /// Restores a soft-deleted invoice back to Draft status.
+    /// Only invoices with Status == Deleted can be restored — all other statuses
+    /// throw InvalidOperationException so the caller can return 400 Bad Request.
+    /// After restoring, the invoice is re-fetched with all navigation properties
+    /// to return a fully populated DTO.
+    /// </summary>
+    /// <param name="invoiceId">ID of the invoice to restore</param>
+    /// <param name="cancellationToken">Cancellation token for async operations</param>
+    /// <returns>Restored invoice DTO, or null if the invoice does not exist</returns>
+    public async Task<InvoiceDto?> RestoreInvoiceAsync(long invoiceId, CancellationToken cancellationToken = default)
+    {
+        // FindAsync uses the primary key — no need for a LINQ query.
+        var invoice = await _context.Invoice.FindAsync(new object[] { invoiceId }, cancellationToken);
+
+        if (invoice == null)
+            return null;
+
+        // Only deleted invoices can be restored.
+        if (invoice.Status != EInvoiceStatus.Deleted)
+            throw new InvalidOperationException("Only deleted invoices can be restored.");
+
+        _logger.LogInformation("Restoring {DocumentType} {Id} to Draft", invoice.DocumentType, invoice.Id);
+
+        // Reset status back to Draft so the user can edit and re-issue the invoice.
+        invoice.Status = EInvoiceStatus.Draft;
+
+        await _context.SaveChangesAsync(cancellationToken);
+
+        // Re-fetch with all navigation properties to return a complete DTO.
+        return await GetInvoiceByIdAsync(invoice.Id, cancellationToken);
     }
 
     public async Task<InvoiceDto> CreateCreditNoteAsync(long originalInvoiceId, CreateInvoiceDto createDto, CancellationToken cancellationToken = default)

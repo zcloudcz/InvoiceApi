@@ -1,0 +1,190 @@
+@page "/vat-report"
+@attribute [Authorize]
+
+@using Fakvio.Contracts.Dto.VatReport
+@using Fakvio.UI.Shared.Services
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.Extensions.Localization
+
+@inject VatReportApiService VatReportService
+@inject IStringLocalizer<SharedResource> L
+
+<PageTitle>@L["VatReport_Title"]</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">@L["VatReport_Title"]</MudText>
+
+@* ── Period Selection ───────────────────────────────────────────────── *@
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudGrid>
+        <MudItem xs="12" sm="3">
+            <MudDatePicker Label="@L["VatReport_PeriodFrom"]"
+                           Date="_periodFrom"
+                           DateChanged="@(v => _periodFrom = v)" />
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudDatePicker Label="@L["VatReport_PeriodTo"]"
+                           Date="_periodTo"
+                           DateChanged="@(v => _periodTo = v)" />
+        </MudItem>
+        <MudItem xs="12" sm="3" Class="d-flex align-end">
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       OnClick="LoadReport"
+                       Disabled="_loading">
+                @L["VatReport_Generate"]
+            </MudButton>
+        </MudItem>
+        <MudItem xs="12" sm="3" Class="d-flex align-end gap-2">
+            <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="SetCurrentMonth">@L["VatReport_CurrentMonth"]</MudButton>
+            <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="SetCurrentQuarter">@L["VatReport_CurrentQuarter"]</MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+
+@if (_report is not null)
+{
+    @* ── Summary Cards ──────────────────────────────────────────────── *@
+    <MudGrid Class="mb-4">
+        <MudItem xs="12" sm="4">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.subtitle2" Color="Color.Primary">@L["VatReport_OutputVat"]</MudText>
+                <MudText Typo="Typo.h5">@_report.TotalOutputVat.ToString("N2") CZK</MudText>
+                <MudText Typo="Typo.caption">@_report.IssuedInvoiceCount @L["VatReport_IssuedInvoices"]</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.subtitle2" Color="Color.Secondary">@L["VatReport_InputVat"]</MudText>
+                <MudText Typo="Typo.h5">@_report.TotalInputVat.ToString("N2") CZK</MudText>
+                <MudText Typo="Typo.caption">@_report.ReceivedInvoiceCount @L["VatReport_ReceivedInvoices"]</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.subtitle2"
+                         Color="@(_report.TaxLiability >= 0 ? Color.Error : Color.Success)">
+                    @L["VatReport_TaxLiability"]
+                </MudText>
+                <MudText Typo="Typo.h5"
+                         Color="@(_report.TaxLiability >= 0 ? Color.Error : Color.Success)">
+                    @_report.TaxLiability.ToString("N2") CZK
+                </MudText>
+                <MudText Typo="Typo.caption">
+                    @(_report.TaxLiability >= 0
+                        ? L["VatReport_OwedToTaxOffice"]
+                        : L["VatReport_Refund"])
+                </MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    @* ── Revenue / Expenses / Profit ────────────────────────────────── *@
+    <MudGrid Class="mb-4">
+        <MudItem xs="12" sm="4">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.subtitle2">@L["VatReport_Revenue"]</MudText>
+                <MudText Typo="Typo.h6">@_report.TotalRevenue.ToString("N2") CZK</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.subtitle2">@L["VatReport_Expenses"]</MudText>
+                <MudText Typo="Typo.h6">@_report.TotalExpenses.ToString("N2") CZK</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.subtitle2"
+                         Color="@(_report.Profit >= 0 ? Color.Success : Color.Error)">
+                    @L["VatReport_Profit"]
+                </MudText>
+                <MudText Typo="Typo.h6"
+                         Color="@(_report.Profit >= 0 ? Color.Success : Color.Error)">
+                    @_report.Profit.ToString("N2") CZK
+                </MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    @* ── Output VAT Breakdown ───────────────────────────────────────── *@
+    <MudText Typo="Typo.h6" Class="mb-2">@L["VatReport_OutputVatBreakdown"]</MudText>
+    <MudTable Items="_report.OutputVat" Dense="true" Hover="true" Striped="true" Class="mb-4">
+        <HeaderContent>
+            <MudTh>@L["VatReport_VatRate"]</MudTh>
+            <MudTh>@L["VatReport_BaseAmount"]</MudTh>
+            <MudTh>@L["VatReport_VatAmount"]</MudTh>
+            <MudTh>@L["VatReport_ItemCount"]</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.VatRateLabel</MudTd>
+            <MudTd>@context.BaseAmount.ToString("N2")</MudTd>
+            <MudTd>@context.VatAmount.ToString("N2")</MudTd>
+            <MudTd>@context.ItemCount</MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>@L["VatReport_NoOutputVat"]</MudText>
+        </NoRecordsContent>
+    </MudTable>
+
+    @* ── Input VAT Breakdown ────────────────────────────────────────── *@
+    <MudText Typo="Typo.h6" Class="mb-2">@L["VatReport_InputVatBreakdown"]</MudText>
+    <MudTable Items="_report.InputVat" Dense="true" Hover="true" Striped="true" Class="mb-4">
+        <HeaderContent>
+            <MudTh>@L["VatReport_VatRate"]</MudTh>
+            <MudTh>@L["VatReport_BaseAmount"]</MudTh>
+            <MudTh>@L["VatReport_VatAmount"]</MudTh>
+            <MudTh>@L["VatReport_ItemCount"]</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.VatRateLabel</MudTd>
+            <MudTd>@context.BaseAmount.ToString("N2")</MudTd>
+            <MudTd>@context.VatAmount.ToString("N2")</MudTd>
+            <MudTd>@context.ItemCount</MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>@L["VatReport_NoInputVat"]</MudText>
+        </NoRecordsContent>
+    </MudTable>
+}
+
+@code {
+    private VatReportDto? _report;
+    private bool _loading;
+    private DateTime? _periodFrom;
+    private DateTime? _periodTo;
+
+    protected override void OnInitialized()
+    {
+        // Default to current month
+        SetCurrentMonth();
+    }
+
+    private async Task LoadReport()
+    {
+        if (!_periodFrom.HasValue || !_periodTo.HasValue) return;
+
+        _loading = true;
+        _report = await VatReportService.GetReportAsync(_periodFrom.Value, _periodTo.Value);
+        _loading = false;
+    }
+
+    private void SetCurrentMonth()
+    {
+        var now = DateTime.Today;
+        _periodFrom = new DateTime(now.Year, now.Month, 1);
+        _periodTo = _periodFrom.Value.AddMonths(1).AddDays(-1);
+    }
+
+    private void SetCurrentQuarter()
+    {
+        var now = DateTime.Today;
+        var quarterMonth = ((now.Month - 1) / 3) * 3 + 1;
+        _periodFrom = new DateTime(now.Year, quarterMonth, 1);
+        _periodTo = _periodFrom.Value.AddMonths(3).AddDays(-1);
+    }
+}
