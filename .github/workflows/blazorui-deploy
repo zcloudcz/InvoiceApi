@@ -1,0 +1,62 @@
+name: BlazorUI Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'BlazorUI/**'   # spustí se JEN při změnách v BlazorUI projektu
+
+# Potřebná oprávnění pro GitHub Pages deployment
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Zabrání souběžným deploymentům
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.x'
+
+      - name: Publish BlazorUI (WASM)
+        run: |
+          dotnet publish BlazorUI/BlazorUI.csproj \
+            -c Release \
+            -o ./publish
+
+      - name: Připrav složku pro GitHub Pages
+        run: |
+          cp -r ./publish/wwwroot ./pages-output
+
+          # DŮLEŽITÉ: zabrání Jekyll zpracování (_framework, _content atd.)
+          touch ./pages-output/.nojekyll
+
+          # Workaround pro client-side routing – 404 přesměruje na index.html
+          cp ./pages-output/index.html ./pages-output/404.html
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './pages-output'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
