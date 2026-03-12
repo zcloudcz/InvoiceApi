@@ -5,7 +5,7 @@ on:
   push:
     branches: [ main ]
     paths:
-      - 'BlazorUI/**'   # spustí se JEN při změnách v BlazorUI projektu
+      - 'Fakvio.BlazorUI/**'   # spustí se JEN při změnách v BlazorUI projektu
 
 # Potřebná oprávnění pro GitHub Pages deployment
 permissions:
