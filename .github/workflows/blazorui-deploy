@@ -43,9 +43,11 @@ jobs:
       - name: Připrav složku pro GitHub Pages
         run: |
           cp -r ./publish/wwwroot ./pages-output
-
+          
           # DŮLEŽITÉ: zabrání Jekyll zpracování (_framework, _content atd.)
           touch ./pages-output/.nojekyll
+
+          echo "app.fakvio.cz" > ./pages-output/CNAME
 
           # Workaround pro client-side routing – 404 přesměruje na index.html
           cp ./pages-output/index.html ./pages-output/404.html
