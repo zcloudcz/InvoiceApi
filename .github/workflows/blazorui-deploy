@@ -40,6 +40,9 @@ jobs:
             -c Release \
             -o ./publish
 
+      - name: Debug - zobraz strukturu publish výstupu
+        run: find ./publish -type f | head -50
+
       - name: Připrav složku pro GitHub Pages
         run: |
           cp -r ./publish/wwwroot ./pages-output
