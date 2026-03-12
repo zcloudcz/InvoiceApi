@@ -36,7 +36,7 @@ jobs:
 
       - name: Publish BlazorUI (WASM)
         run: |
-          dotnet publish BlazorUI/BlazorUI.csproj \
+          dotnet publish Fakvio.BlazorUI/Fakvio.BlazorUI.csproj \
             -c Release \
             -o ./publish
 
