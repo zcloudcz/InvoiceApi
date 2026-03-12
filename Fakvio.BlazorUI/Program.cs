@@ -3,6 +3,7 @@ using Fakvio.UI.Shared;
 using Fakvio.UI.Shared.Services;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
+
 // Standalone Blazor WebAssembly entry point — thin host.
 // All shared UI components, services, and models live in Fakvio.UI.Shared (RCL).
 // This file only handles WASM-specific bootstrapping and HttpClient configuration.
