@@ -70,7 +70,7 @@
             <MudDivider />
 
             @* OAuth provider buttons — alternative login methods *@
-            <MudText Typo="Typo.body2" Align="Align.Center" Color="Color.Secondary">
+            @* <MudText Typo="Typo.body2" Align="Align.Center" Color="Color.Secondary">
                 @L["Login_OrContinueWith"]
             </MudText>
             <MudStack Row="true" Spacing="2" Justify="Justify.Center">
@@ -94,9 +94,9 @@
                                Variant="Variant.Outlined"
                                OnClick="@(() => LoginWithProvider("Apple"))"
                                title="Apple" />
-            </MudStack>
+            </MudStack> 
 
-            <MudDivider />
+            <MudDivider />*@
 
             @* Registration link *@
             <MudText Typo="Typo.body2" Align="Align.Center">
@@ -105,9 +105,9 @@
                 </MudLink>
             </MudText>
 
-            <MudText Typo="Typo.caption" Align="Align.Center" Color="Color.Secondary">
+            @* <MudText Typo="Typo.caption" Align="Align.Center" Color="Color.Secondary">
                 @L["Login_DefaultCredentials"]
-            </MudText>
+            </MudText> *@
         </MudStack>
     </MudPaper>
 </MudContainer>
