@@ -2,6 +2,16 @@
 
 ## Completed
 
+### Schema Permissions for Azure PostgreSQL (2026-03-15)
+GRANT ALL + ALTER DEFAULT PRIVILEGES on tenant schemas — ensures the Azure (Entra ID) user has full access to all existing and future objects.
+
+- [x] **TenantProvisioningService.CreateSchemaAsync**: After CREATE SCHEMA, grants ALL on schema + existing tables/sequences + sets ALTER DEFAULT PRIVILEGES for future tables/sequences/functions
+- [x] **TenantProvisioningService.GrantSchemaPermissionsAsync**: New private helper — resolves CURRENT_USER, applies 6 GRANT/ALTER DEFAULT PRIVILEGES statements
+- [x] **TenantProvisioningService.EnsureSchemaPermissionsAsync**: New private helper — opens own connection, calls GrantSchemaPermissionsAsync (used after MigrateAsync)
+- [x] **TenantProvisioningService.MigrateTenantAsync**: Re-applies permissions after EF Core migration (new tables from migration get proper grants)
+- [x] **TenantOperationController.FixSchemaPermissions**: New POST /api/tenant-operation/fix-permissions endpoint — retroactively fixes permissions for ALL provisioned schemas (one-time SysAdmin action)
+- [x] **MigrationTool.DataMigrationService**: Added GrantSchemaPermissionsAsync after schema creation (same pattern as TenantProvisioningService)
+
 ### Playwright E2E Tests (2026-03-10)
 Comprehensive browser-based UI tests using Microsoft.Playwright.NUnit (Chromium headless).
 

@@ -103,7 +103,8 @@
       "WebFetch(domain:csharp.sdk.modelcontextprotocol.io)",
       "Bash(docker exec:*)",
       "Bash(echo $result:*)",
-      "Bash(pwsh -Command \"& {C:/GIT/ZCLOUD/InvoiceApi/Fakvio.Tests.Playwright/bin/Debug/net10.0/playwright.ps1 install chromium}\" 2>&1 | tail -10)"
+      "Bash(pwsh -Command \"& {C:/GIT/ZCLOUD/InvoiceApi/Fakvio.Tests.Playwright/bin/Debug/net10.0/playwright.ps1 install chromium}\" 2>&1 | tail -10)",
+      "Bash(for proj:*)"
     ]
   }
 }

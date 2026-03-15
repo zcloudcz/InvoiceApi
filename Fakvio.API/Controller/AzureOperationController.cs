@@ -390,7 +390,129 @@ public class TenantOperationController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Fixes schema permissions for ALL provisioned tenant schemas.
+    ///
+    /// This endpoint retroactively applies GRANT ALL + ALTER DEFAULT PRIVILEGES
+    /// on every provisioned tenant schema, ensuring the current Azure (Entra ID) user
+    /// has full access to all existing AND future objects (tables, sequences, functions).
+    ///
+    /// USE CASE: Run this once after deploying the permissions fix, to update schemas
+    /// that were provisioned BEFORE the fix was added to the provisioning pipeline.
+    /// Safe to run multiple times — PostgreSQL silently ignores duplicate grants.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Summary of schemas updated</returns>
+    /// <response code="200">Permissions fixed for all schemas</response>
+    /// <response code="500">Error applying permissions</response>
+    [HttpPost("fix-permissions")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> FixSchemaPermissions(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogInformation("SysAdmin requested schema permissions fix for all provisioned tenants");
+
+            // Load all provisioned tenant schemas from master DB
+            var provisionedSettings = await _masterContext.CompanySystemSettings
+                .AsNoTracking()
+                .Where(s => s.IsProvisioned && !string.IsNullOrEmpty(s.SchemaName))
+                .ToListAsync(cancellationToken);
+
+            if (provisionedSettings.Count == 0)
+            {
+                return Ok(new { message = "No provisioned schemas found.", schemasFixed = 0 });
+            }
+
+            // Open a single connection to apply permissions to all schemas
+            var connectionString = _configuration.GetConnectionString("DefaultConnection")
+                ?? throw new InvalidOperationException("DefaultConnection string is not configured.");
+
+            await using var connection = new NpgsqlConnection(connectionString);
+            await connection.OpenAsync(cancellationToken);
+
+            // Resolve current database user once (AAD principal on Azure, password user locally)
+            await using var userCmd = connection.CreateCommand();
+            userCmd.CommandText = "SELECT CURRENT_USER";
+            var currentUser = (string)(await userCmd.ExecuteScalarAsync(cancellationToken))!;
+
+            var fixedSchemas = new List<string>();
+            var failedSchemas = new List<string>();
+
+            foreach (var settings in provisionedSettings)
+            {
+                try
+                {
+                    var safeName = new string(settings.SchemaName
+                        .Where(c => char.IsLetterOrDigit(c) || c == '_').ToArray()).ToLowerInvariant();
+
+                    if (string.IsNullOrEmpty(safeName)) continue;
+
+                    // Grant ALL on schema itself (USAGE + CREATE)
+                    await ExecuteNonQueryAsync(connection,
+                        $"GRANT ALL ON SCHEMA \"{safeName}\" TO \"{currentUser}\"", cancellationToken);
+
+                    // Grant ALL on existing tables and sequences
+                    await ExecuteNonQueryAsync(connection,
+                        $"GRANT ALL ON ALL TABLES IN SCHEMA \"{safeName}\" TO \"{currentUser}\"", cancellationToken);
+                    await ExecuteNonQueryAsync(connection,
+                        $"GRANT ALL ON ALL SEQUENCES IN SCHEMA \"{safeName}\" TO \"{currentUser}\"", cancellationToken);
+
+                    // ALTER DEFAULT PRIVILEGES for future objects (tables, sequences, functions)
+                    await ExecuteNonQueryAsync(connection,
+                        $"ALTER DEFAULT PRIVILEGES IN SCHEMA \"{safeName}\" GRANT ALL ON TABLES TO \"{currentUser}\"", cancellationToken);
+                    await ExecuteNonQueryAsync(connection,
+                        $"ALTER DEFAULT PRIVILEGES IN SCHEMA \"{safeName}\" GRANT ALL ON SEQUENCES TO \"{currentUser}\"", cancellationToken);
+                    await ExecuteNonQueryAsync(connection,
+                        $"ALTER DEFAULT PRIVILEGES IN SCHEMA \"{safeName}\" GRANT ALL ON FUNCTIONS TO \"{currentUser}\"", cancellationToken);
+
+                    fixedSchemas.Add(safeName);
+                    _logger.LogInformation("Fixed permissions for schema '{Schema}' → user '{User}'",
+                        safeName, currentUser);
+                }
+                catch (Exception ex)
+                {
+                    failedSchemas.Add(settings.SchemaName);
+                    _logger.LogError(ex, "Failed to fix permissions for schema '{Schema}'", settings.SchemaName);
+                }
+            }
+
+            _logger.LogInformation(
+                "Schema permissions fix complete: {Fixed} fixed, {Failed} failed",
+                fixedSchemas.Count, failedSchemas.Count);
+
+            return Ok(new
+            {
+                message = $"Permissions fixed for {fixedSchemas.Count} schemas.",
+                currentUser,
+                schemasFixed = fixedSchemas.Count,
+                schemasFailed = failedSchemas.Count,
+                fixedSchemas,
+                failedSchemas
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error during schema permissions fix");
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { message = "An error occurred while fixing schema permissions. Check server logs." });
+        }
+    }
+
     #region Private helpers
+
+    /// <summary>
+    /// Executes a non-query SQL command on an open connection.
+    /// Helper to avoid repeating the create-command-execute pattern.
+    /// </summary>
+    private static async Task ExecuteNonQueryAsync(
+        NpgsqlConnection connection, string sql, CancellationToken ct)
+    {
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = sql;
+        await cmd.ExecuteNonQueryAsync(ct);
+    }
 
     /// <summary>
     /// Maps a CompanySystemSettings entity to a TenantSchemaStatusDto for API responses.

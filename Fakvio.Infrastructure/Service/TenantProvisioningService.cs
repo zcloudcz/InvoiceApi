@@ -165,6 +165,11 @@ public class TenantProvisioningService : ITenantProvisioningService
         using var tenantContext = CreateTenantContext(settings.SchemaName);
         await tenantContext.Database.MigrateAsync(cancellationToken);
 
+        // Re-apply permissions after migration — EF Core may have created new tables/sequences
+        // that the current user needs access to (ALTER DEFAULT PRIVILEGES covers future objects,
+        // but GRANT ALL ON ALL TABLES covers newly created objects from this migration run).
+        await EnsureSchemaPermissionsAsync(settings.SchemaName, cancellationToken);
+
         _logger.LogInformation("Migrated tenant schema '{SchemaName}' for company {CompanyId}",
             settings.SchemaName, companyId);
         return true;
@@ -260,11 +265,33 @@ public class TenantProvisioningService : ITenantProvisioningService
     #region Private helpers
 
     /// <summary>
-    /// Creates a PostgreSQL schema for a tenant.
-    /// Connects to the shared database and executes CREATE SCHEMA.
+    /// Ensures schema permissions are set for the current database user.
+    /// Opens its own connection — can be called from anywhere (e.g., after MigrateAsync).
+    /// IDEMPOTENT: safe to call multiple times.
+    /// </summary>
+    private async Task EnsureSchemaPermissionsAsync(string schemaName, CancellationToken cancellationToken)
+    {
+        var connectionString = GetConnectionString();
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+
+        var safeName = SanitizeSchemaName(schemaName);
+        await GrantSchemaPermissionsAsync(connection, safeName, cancellationToken);
+    }
+
+    /// <summary>
+    /// Creates a PostgreSQL schema for a tenant and grants full permissions.
+    /// Connects to the shared database and executes CREATE SCHEMA + GRANT statements.
+    ///
+    /// PERMISSIONS: After creating the schema, we grant ALL privileges on the schema
+    /// to the current database user (CURRENT_USER) and set ALTER DEFAULT PRIVILEGES
+    /// so that any future tables, sequences, and functions created in this schema
+    /// will automatically inherit full permissions. This is critical for Azure PostgreSQL
+    /// where the application may connect via Entra ID (managed identity) — without
+    /// default privileges, newly created objects in tenant schemas would not be accessible.
     ///
     /// IDEMPOTENT: Checks information_schema.schemata before creating.
-    /// If the schema already exists, it's skipped without error.
+    /// If the schema already exists, permissions are still applied (safe to re-run).
     /// </summary>
     private async Task CreateSchemaAsync(string schemaName, CancellationToken cancellationToken)
     {
@@ -294,6 +321,82 @@ public class TenantProvisioningService : ITenantProvisioningService
         {
             _logger.LogInformation("PostgreSQL schema '{SchemaName}' already exists, skipping creation", safeName);
         }
+
+        // Grant full permissions on the schema to the current user.
+        // This ensures the application user can create/alter/drop objects in this schema,
+        // even if the schema was created by a different role (e.g., admin vs. managed identity).
+        await GrantSchemaPermissionsAsync(connection, safeName, cancellationToken);
+    }
+
+    /// <summary>
+    /// Grants full permissions on a tenant schema to the current database user.
+    ///
+    /// WHY THIS IS NEEDED:
+    /// In Azure PostgreSQL with Entra ID authentication, the application may connect
+    /// as a managed identity or AAD user. When schemas are created, the owner has full access,
+    /// but if the connecting identity changes (e.g., rotating from one managed identity to another,
+    /// or switching from admin to app identity), the new identity won't have access to existing schemas.
+    ///
+    /// ALTER DEFAULT PRIVILEGES ensures that any objects (tables, sequences, functions) created
+    /// in this schema IN THE FUTURE will automatically grant ALL privileges to the current user.
+    /// This is the PostgreSQL equivalent of "give this role access to everything, now and forever."
+    ///
+    /// IDEMPOTENT: All GRANT and ALTER DEFAULT PRIVILEGES statements are safe to re-run.
+    /// PostgreSQL silently ignores duplicate grants.
+    /// </summary>
+    private async Task GrantSchemaPermissionsAsync(
+        NpgsqlConnection connection,
+        string safeName,
+        CancellationToken cancellationToken)
+    {
+        // Get the current database user name — this is the role we're granting to.
+        // On Azure PostgreSQL with Entra ID, this returns the AAD principal name.
+        // On local Docker PostgreSQL, this returns the password-auth username (e.g., "fakvio").
+        await using var userCmd = connection.CreateCommand();
+        userCmd.CommandText = "SELECT CURRENT_USER";
+        var currentUser = (string)(await userCmd.ExecuteScalarAsync(cancellationToken))!;
+
+        // GRANT USAGE + CREATE on the schema itself — allows the user to access and create objects.
+        // GRANT ALL is shorthand for USAGE + CREATE on schemas.
+        await using var grantSchemaCmd = connection.CreateCommand();
+        grantSchemaCmd.CommandText = $"GRANT ALL ON SCHEMA \"{safeName}\" TO \"{currentUser}\"";
+        await grantSchemaCmd.ExecuteNonQueryAsync(cancellationToken);
+
+        // GRANT ALL on all EXISTING tables in the schema — covers re-provisioning scenarios
+        // where tables already exist but a new user needs access.
+        await using var grantTablesCmd = connection.CreateCommand();
+        grantTablesCmd.CommandText = $"GRANT ALL ON ALL TABLES IN SCHEMA \"{safeName}\" TO \"{currentUser}\"";
+        await grantTablesCmd.ExecuteNonQueryAsync(cancellationToken);
+
+        // GRANT ALL on all EXISTING sequences — needed for auto-increment (SERIAL/IDENTITY) columns.
+        // Without this, INSERT operations would fail with "permission denied for sequence".
+        await using var grantSeqCmd = connection.CreateCommand();
+        grantSeqCmd.CommandText = $"GRANT ALL ON ALL SEQUENCES IN SCHEMA \"{safeName}\" TO \"{currentUser}\"";
+        await grantSeqCmd.ExecuteNonQueryAsync(cancellationToken);
+
+        // ALTER DEFAULT PRIVILEGES — this is the critical part for FUTURE objects.
+        // Any tables created in this schema after this point will automatically grant ALL to the user.
+        // This covers EF Core migrations that create new tables when the app is updated.
+        await using var defaultTablesCmd = connection.CreateCommand();
+        defaultTablesCmd.CommandText =
+            $"ALTER DEFAULT PRIVILEGES IN SCHEMA \"{safeName}\" GRANT ALL ON TABLES TO \"{currentUser}\"";
+        await defaultTablesCmd.ExecuteNonQueryAsync(cancellationToken);
+
+        // Same for sequences — EF Core migrations may create new sequences for identity columns.
+        await using var defaultSeqCmd = connection.CreateCommand();
+        defaultSeqCmd.CommandText =
+            $"ALTER DEFAULT PRIVILEGES IN SCHEMA \"{safeName}\" GRANT ALL ON SEQUENCES TO \"{currentUser}\"";
+        await defaultSeqCmd.ExecuteNonQueryAsync(cancellationToken);
+
+        // Same for functions — stored procedures or functions created by future migrations.
+        await using var defaultFuncCmd = connection.CreateCommand();
+        defaultFuncCmd.CommandText =
+            $"ALTER DEFAULT PRIVILEGES IN SCHEMA \"{safeName}\" GRANT ALL ON FUNCTIONS TO \"{currentUser}\"";
+        await defaultFuncCmd.ExecuteNonQueryAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "Granted full permissions on schema '{SchemaName}' to user '{User}' (including default privileges for future objects)",
+            safeName, currentUser);
     }
 
     /// <summary>

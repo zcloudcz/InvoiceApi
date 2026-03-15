@@ -1096,7 +1096,8 @@ public class DataMigrationService
     #region Database Helpers
 
     /// <summary>
-    /// Creates a PostgreSQL schema within the shared database if it doesn't already exist.
+    /// Creates a PostgreSQL schema within the shared database if it doesn't already exist,
+    /// and grants full permissions (including ALTER DEFAULT PRIVILEGES for future objects).
     /// Queries information_schema.schemata to check for existence, then runs CREATE SCHEMA.
     /// This is used for schema-per-tenant isolation — all tenants share one PostgreSQL database.
     /// </summary>
@@ -1123,6 +1124,58 @@ public class DataMigrationService
             await createCmd.ExecuteNonQueryAsync(ct);
             _logger.LogInformation("Created PostgreSQL schema '{Schema}'", safeName);
         }
+
+        // Grant full permissions on the schema to the current user, including
+        // ALTER DEFAULT PRIVILEGES for future tables/sequences/functions.
+        // This ensures the Azure (Entra ID) user has access to all objects
+        // in this schema, even if they were created by a different role.
+        await GrantSchemaPermissionsAsync(connection, safeName, ct);
+    }
+
+    /// <summary>
+    /// Grants full permissions on a schema to the current database user.
+    /// Sets ALTER DEFAULT PRIVILEGES so future objects (tables, sequences, functions)
+    /// automatically inherit full permissions — critical for Azure PostgreSQL with Entra ID.
+    /// IDEMPOTENT: PostgreSQL silently ignores duplicate grants.
+    /// </summary>
+    private async Task GrantSchemaPermissionsAsync(
+        NpgsqlConnection connection, string safeName, CancellationToken ct)
+    {
+        // Resolve the current database user (AAD principal on Azure, password user locally)
+        await using var userCmd = connection.CreateCommand();
+        userCmd.CommandText = "SELECT CURRENT_USER";
+        var currentUser = (string)(await userCmd.ExecuteScalarAsync(ct))!;
+
+        // Grant ALL on schema (USAGE + CREATE)
+        await using var gs = connection.CreateCommand();
+        gs.CommandText = $"GRANT ALL ON SCHEMA \"{safeName}\" TO \"{currentUser}\"";
+        await gs.ExecuteNonQueryAsync(ct);
+
+        // Grant ALL on existing tables and sequences
+        await using var gt = connection.CreateCommand();
+        gt.CommandText = $"GRANT ALL ON ALL TABLES IN SCHEMA \"{safeName}\" TO \"{currentUser}\"";
+        await gt.ExecuteNonQueryAsync(ct);
+
+        await using var gq = connection.CreateCommand();
+        gq.CommandText = $"GRANT ALL ON ALL SEQUENCES IN SCHEMA \"{safeName}\" TO \"{currentUser}\"";
+        await gq.ExecuteNonQueryAsync(ct);
+
+        // ALTER DEFAULT PRIVILEGES — ensures future objects get permissions automatically
+        await using var dt = connection.CreateCommand();
+        dt.CommandText = $"ALTER DEFAULT PRIVILEGES IN SCHEMA \"{safeName}\" GRANT ALL ON TABLES TO \"{currentUser}\"";
+        await dt.ExecuteNonQueryAsync(ct);
+
+        await using var ds = connection.CreateCommand();
+        ds.CommandText = $"ALTER DEFAULT PRIVILEGES IN SCHEMA \"{safeName}\" GRANT ALL ON SEQUENCES TO \"{currentUser}\"";
+        await ds.ExecuteNonQueryAsync(ct);
+
+        await using var df = connection.CreateCommand();
+        df.CommandText = $"ALTER DEFAULT PRIVILEGES IN SCHEMA \"{safeName}\" GRANT ALL ON FUNCTIONS TO \"{currentUser}\"";
+        await df.ExecuteNonQueryAsync(ct);
+
+        _logger.LogInformation(
+            "Granted full permissions on schema '{Schema}' to '{User}' (incl. default privileges)",
+            safeName, currentUser);
     }
 
     /// <summary>

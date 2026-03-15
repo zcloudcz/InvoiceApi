@@ -1,4 +1,5 @@
 using AresService;
+using Azure.Identity;
 using Fakvio.Application.Service;
 using Fakvio.Infrastructure.AiProviders;
 using Fakvio.Infrastructure.Data;
@@ -12,6 +13,8 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Npgsql;
+using Npgsql.EntityFrameworkCore.PostgreSQL.Infrastructure;
 using ZMapper;
 
 namespace Fakvio.Infrastructure.DependencyInjection;
@@ -222,6 +225,11 @@ public static class ServiceCollectionExtensions
     /// Single database, schema-per-tenant isolation:
     /// - MasterDbContext uses the "public" schema (default PostgreSQL schema)
     /// - TenantDbContext dynamically sets its schema per-request from CompanySystemSettings.SchemaName
+    ///
+    /// Authentication modes (controlled by "UseAzureAdAuthentication" config flag):
+    /// - false (default, local dev): standard password-based connection string
+    /// - true (Azure production): Microsoft Entra ID (Azure AD) token-based authentication
+    ///   using DefaultAzureCredential + NpgsqlDataSource with automatic token refresh
     /// </summary>
     private static void AddDatabaseContexts(
         IServiceCollection services,
@@ -234,19 +242,22 @@ public static class ServiceCollectionExtensions
                 "Set it in appsettings.json, local.settings.json, or environment variable " +
                 "ConnectionStrings__DefaultConnection.");
 
+        // Determine authentication mode:
+        // - Local development: password in connection string (UseAzureAdAuthentication = false)
+        // - Azure production: Entra ID managed identity token (UseAzureAdAuthentication = true)
+        var useAzureAd = configuration.GetValue<bool>("UseAzureAdAuthentication");
+
+        // When Azure AD is enabled, we build a shared NpgsqlDataSource that automatically
+        // acquires and refreshes Entra ID access tokens every 55 minutes (tokens expire at 60 min).
+        // This eliminates the need for passwords in the connection string.
+        NpgsqlDataSource? dataSource = useAzureAd ? CreateAzureDataSource(connectionString) : null;
+
         // MasterDbContext — "public" schema containing Users, Companies, CompanySystemSettings, code tables.
         // EnableRetryOnFailure handles transient PostgreSQL/Azure errors (network blips,
         // connection pool exhaustion, failovers) by automatically retrying failed operations.
         services.AddDbContext<MasterDbContext>(options =>
         {
-            options.UseNpgsql(connectionString, b =>
-            {
-                b.MigrationsAssembly("Fakvio.Infrastructure");
-                b.EnableRetryOnFailure(
-                    maxRetryCount: 3,
-                    maxRetryDelay: TimeSpan.FromSeconds(5),
-                    errorCodesToAdd: null);
-            });
+            ConfigureNpgsql(options, connectionString, dataSource);
 
             // EF Core 10 throws PendingModelChangesWarning by default when the current model
             // doesn't exactly match the latest migration snapshot. This blocks MigrateAsync()
@@ -269,14 +280,7 @@ public static class ServiceCollectionExtensions
         services.AddDbContext<TenantDbContext>((serviceProvider, options) =>
         {
             // All tenants share the same PostgreSQL connection — schema isolation, not DB isolation.
-            options.UseNpgsql(connectionString, b =>
-            {
-                b.MigrationsAssembly("Fakvio.Infrastructure");
-                b.EnableRetryOnFailure(
-                    maxRetryCount: 3,
-                    maxRetryDelay: TimeSpan.FromSeconds(5),
-                    errorCodesToAdd: null);
-            });
+            ConfigureNpgsql(options, connectionString, dataSource);
 
             // Custom model cache: one cached model per schema (tenant_42, tenant_99, etc.)
             options.ReplaceService<IModelCacheKeyFactory, TenantModelCacheKeyFactory>();
@@ -285,5 +289,87 @@ public static class ServiceCollectionExtensions
             options.ConfigureWarnings(w =>
                 w.Log(RelationalEventId.PendingModelChangesWarning));
         });
+    }
+
+    /// <summary>
+    /// Creates an NpgsqlDataSource that uses Microsoft Entra ID (Azure AD) for authentication.
+    /// Uses DefaultAzureCredential which supports:
+    /// - Managed Identity (App Service, Azure Functions — zero-config in Azure)
+    /// - Azure CLI credential (local dev with `az login`)
+    /// - Visual Studio / VS Code credential
+    ///
+    /// The token is automatically refreshed every 55 minutes (Azure AD tokens expire at 60 min).
+    /// If a refresh fails, it retries every 10 seconds until successful.
+    /// </summary>
+    /// <param name="connectionString">PostgreSQL connection string WITHOUT password.</param>
+    /// <returns>NpgsqlDataSource configured with periodic token refresh.</returns>
+    private static NpgsqlDataSource CreateAzureDataSource(string connectionString)
+    {
+        // DefaultAzureCredential tries multiple credential sources in order:
+        // 1. Environment variables (AZURE_CLIENT_ID, etc.)
+        // 2. Managed Identity (automatic in App Service / Functions)
+        // 3. Azure CLI (`az login` — useful for local dev against Azure DB)
+        // 4. Visual Studio / VS Code credentials
+        var credential = new DefaultAzureCredential();
+
+        var dataSourceBuilder = new NpgsqlDataSourceBuilder(connectionString);
+
+        // UsePeriodicPasswordProvider replaces the static password with a dynamically
+        // acquired Azure AD access token. Npgsql calls this callback:
+        // - Once at startup to get the initial token
+        // - Every 55 minutes (successRefreshInterval) to refresh before expiry
+        // - Every 10 seconds (failureRefreshInterval) if the previous refresh failed
+        dataSourceBuilder.UsePeriodicPasswordProvider(
+            async (_, cancellationToken) =>
+            {
+                // Request an access token for Azure Database for PostgreSQL.
+                // The scope "https://ossrdbms-aad.database.windows.net/.default" is the
+                // standard Azure resource identifier for PostgreSQL Flexible Server.
+                var tokenRequest = new Azure.Core.TokenRequestContext(
+                    ["https://ossrdbms-aad.database.windows.net/.default"]);
+
+                var token = await credential.GetTokenAsync(tokenRequest, cancellationToken);
+                return token.Token;
+            },
+            successRefreshInterval: TimeSpan.FromMinutes(55),  // Refresh 5 min before expiry
+            failureRefreshInterval: TimeSpan.FromSeconds(10)); // Retry quickly on failure
+
+        return dataSourceBuilder.Build();
+    }
+
+    /// <summary>
+    /// Configures Npgsql for a DbContext, using either a pre-built NpgsqlDataSource
+    /// (Azure AD token auth) or a plain connection string (password auth).
+    /// Centralizes shared Npgsql options (migrations assembly, retry policy).
+    /// </summary>
+    /// <param name="options">EF Core DbContext options builder.</param>
+    /// <param name="connectionString">Fallback connection string (used when dataSource is null).</param>
+    /// <param name="dataSource">Pre-built NpgsqlDataSource with token auth, or null for password auth.</param>
+    private static void ConfigureNpgsql(
+        DbContextOptionsBuilder options,
+        string connectionString,
+        NpgsqlDataSource? dataSource)
+    {
+        // Action to configure shared Npgsql-specific options (migrations + retry).
+        void ConfigureNpgsqlOptions(NpgsqlDbContextOptionsBuilder b)
+        {
+            b.MigrationsAssembly("Fakvio.Infrastructure");
+            b.EnableRetryOnFailure(
+                maxRetryCount: 3,
+                maxRetryDelay: TimeSpan.FromSeconds(5),
+                errorCodesToAdd: null);
+        }
+
+        if (dataSource is not null)
+        {
+            // Azure AD mode: use NpgsqlDataSource which handles token acquisition/refresh.
+            // The dataSource already contains the connection string + token provider.
+            options.UseNpgsql(dataSource, ConfigureNpgsqlOptions);
+        }
+        else
+        {
+            // Password mode: use the connection string directly (local development).
+            options.UseNpgsql(connectionString, ConfigureNpgsqlOptions);
+        }
     }
 }
