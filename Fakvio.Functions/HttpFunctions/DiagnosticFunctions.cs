@@ -107,8 +107,23 @@ public class DiagnosticFunctions
             _logger.LogError(ex, "Health check: Master DB connection failed");
         }
 
+        // Top-level flag: true only when we can actually connect to the database
+        // and there are no pending migrations. This is the single field to check
+        // in monitoring dashboards or Azure health probes.
+        var isConnected = result.TryGetValue("masterDbCanConnect", out var canConn) && canConn is true;
+        var hasPending = result.TryGetValue("masterDbPendingMigrations", out var pendingCount) && pendingCount is int p && p > 0;
+        result["databaseConnected"] = isConnected;
+        result["databaseReady"] = isConnected && !hasPending;
+
         result["timestamp"] = DateTime.UtcNow;
         result["environment"] = Environment.GetEnvironmentVariable("AZURE_FUNCTIONS_ENVIRONMENT") ?? "unknown";
+
+        // Return 503 Service Unavailable when database is not reachable,
+        // so Azure health probes and monitoring tools can detect the issue.
+        if (!isConnected)
+        {
+            return new ObjectResult(result) { StatusCode = 503 };
+        }
 
         return new OkObjectResult(result);
     }

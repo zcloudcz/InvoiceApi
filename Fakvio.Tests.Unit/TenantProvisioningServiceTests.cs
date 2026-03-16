@@ -4,6 +4,7 @@ using Fakvio.Infrastructure.Service;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Npgsql;
 using NSubstitute;
 using Shouldly;
 
@@ -49,7 +50,13 @@ public class TenantProvisioningServiceTests : IDisposable
             .Build();
 
         _logger = Substitute.For<ILogger<TenantProvisioningService>>();
-        _service = new TenantProvisioningService(_masterContext, _configuration, _logger);
+
+        // NpgsqlDataSource for unit tests — points to localhost, won't actually connect.
+        // Tests that trigger real DB operations will fail at SQL level (expected in unit tests).
+        var dataSource = new NpgsqlDataSourceBuilder(
+            "Host=localhost;Database=fakvio;Username=fakvio;Password=test").Build();
+
+        _service = new TenantProvisioningService(_masterContext, _configuration, dataSource, _logger);
     }
 
     /// <summary>

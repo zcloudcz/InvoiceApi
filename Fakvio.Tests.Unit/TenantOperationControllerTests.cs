@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Npgsql;
 using NSubstitute;
 using Shouldly;
 
@@ -54,8 +55,14 @@ public class TenantOperationControllerTests : IDisposable
 
         _logger = Substitute.For<ILogger<TenantOperationController>>();
 
+        // NpgsqlDataSource for unit tests — points to localhost, won't actually connect.
+        // Tests that call FixSchemaPermissions will fail at SQL execution (no real DB),
+        // but the controller handles per-schema exceptions gracefully.
+        var dataSource = new NpgsqlDataSourceBuilder(
+            "Host=localhost;Database=fakvio;Username=fakvio;Password=test").Build();
+
         _controller = new TenantOperationController(
-            _provisioningService, _masterContext, _configuration, _logger);
+            _provisioningService, _masterContext, _configuration, dataSource, _logger);
     }
 
     /// <summary>

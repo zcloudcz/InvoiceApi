@@ -28,7 +28,7 @@ namespace Fakvio.Functions;
 /// </summary>
 public class TimerFunctions
 {
-    private readonly string _connectionString;
+    private readonly NpgsqlDataSource _dataSource;
     private readonly ILogger<TimerFunctions> _logger;
 
     /// <summary>
@@ -56,13 +56,13 @@ public class TimerFunctions
                 "Ensure the field still exists in Fakvio.Infrastructure.Logging.DatabaseLoggerProvider."));
     });
 
-    public TimerFunctions(IConfiguration configuration, ILogger<TimerFunctions> logger)
+    /// <summary>
+    /// Constructor — injects NpgsqlDataSource for Azure AD-compatible connection creation.
+    /// NpgsqlDataSource is registered as singleton in DI by AddFakvioCore().
+    /// </summary>
+    public TimerFunctions(NpgsqlDataSource dataSource, ILogger<TimerFunctions> logger)
     {
-        // PostgreSQL: Changed from "MasterConnection" to "DefaultConnection" for PostgreSQL migration.
-        // DefaultConnection points to the database where the AppLog table lives.
-        _connectionString = configuration.GetConnectionString("DefaultConnection")
-            ?? throw new InvalidOperationException(
-                "DefaultConnection string not configured for TimerFunctions.");
+        _dataSource = dataSource;
         _logger = logger;
     }
 
@@ -98,8 +98,7 @@ public class TimerFunctions
         try
         {
             // PostgreSQL: NpgsqlConnection replaces SqlConnection for PostgreSQL database access
-            await using var connection = new NpgsqlConnection(_connectionString);
-            await connection.OpenAsync();
+            await using var connection = await _dataSource.OpenConnectionAsync();
 
             // Insert each log entry with parameterized SQL to prevent injection.
             // Same INSERT logic as LogFlushService.FlushAsync().
@@ -154,8 +153,7 @@ public class TimerFunctions
             var cutoff = DateTime.UtcNow - RetentionPeriod;
 
             // PostgreSQL: NpgsqlConnection replaces SqlConnection for PostgreSQL database access
-            await using var connection = new NpgsqlConnection(_connectionString);
-            await connection.OpenAsync();
+            await using var connection = await _dataSource.OpenConnectionAsync();
 
             await using var cmd = connection.CreateCommand();
             // PostgreSQL: Use double-quoted identifiers instead of SQL Server bracket identifiers [Table]

@@ -48,6 +48,10 @@ public class TenantOperationController : ControllerBase
     // Configuration for reading the shared PostgreSQL connection string
     private readonly IConfiguration _configuration;
 
+    // Shared NpgsqlDataSource — creates connections with Azure AD token auth support.
+    // ALWAYS use _dataSource.OpenConnectionAsync() instead of new NpgsqlConnection().
+    private readonly NpgsqlDataSource _dataSource;
+
     // Structured logger for tracing provisioning operations
     private readonly ILogger<TenantOperationController> _logger;
 
@@ -59,11 +63,13 @@ public class TenantOperationController : ControllerBase
         ITenantProvisioningService provisioningService,
         MasterDbContext masterContext,
         IConfiguration configuration,
+        NpgsqlDataSource dataSource,
         ILogger<TenantOperationController> logger)
     {
         _provisioningService = provisioningService;
         _masterContext = masterContext;
         _configuration = configuration;
+        _dataSource = dataSource;
         _logger = logger;
     }
 
@@ -325,13 +331,8 @@ public class TenantOperationController : ControllerBase
 
             // ── Step 2: Drop the PostgreSQL schema with CASCADE ──────────────
             // CASCADE removes all objects in the schema (tables, views, sequences, etc.).
-            // We use a raw NpgsqlConnection to execute DDL that EF Core doesn't support.
-            var connectionString = _configuration.GetConnectionString("MasterConnection")
-                ?? throw new InvalidOperationException(
-                    "MasterConnection connection string is not configured.");
-
-            await using var connection = new NpgsqlConnection(connectionString);
-            await connection.OpenAsync(cancellationToken);
+            // Use NpgsqlDataSource for Azure AD token auth support.
+            await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
 
             // Use a parameterized-safe approach: schema names can't use @parameters in DDL,
             // but we validate the schema name format (alphanumeric + underscore only)
@@ -425,12 +426,8 @@ public class TenantOperationController : ControllerBase
                 return Ok(new { message = "No provisioned schemas found.", schemasFixed = 0 });
             }
 
-            // Open a single connection to apply permissions to all schemas
-            var connectionString = _configuration.GetConnectionString("DefaultConnection")
-                ?? throw new InvalidOperationException("DefaultConnection string is not configured.");
-
-            await using var connection = new NpgsqlConnection(connectionString);
-            await connection.OpenAsync(cancellationToken);
+            // Open a single connection via NpgsqlDataSource — supports Azure AD token auth.
+            await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
 
             // Resolve current database user once (AAD principal on Azure, password user locally)
             await using var userCmd = connection.CreateCommand();

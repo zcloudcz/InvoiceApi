@@ -23,15 +23,17 @@ namespace Fakvio.Infrastructure.Logging;
 /// </summary>
 public class LogFlushService : BackgroundService
 {
-    private readonly string _connectionString;
+    private readonly NpgsqlDataSource _dataSource;
     private readonly TimeSpan _flushInterval;
     private readonly ILogger<LogFlushService> _logger;
 
-    public LogFlushService(IConfiguration configuration, ILogger<LogFlushService> logger)
+    /// <summary>
+    /// Constructor — injects NpgsqlDataSource for Azure AD-compatible connection creation.
+    /// Uses NpgsqlDataSource instead of raw connection string to support Entra ID token auth.
+    /// </summary>
+    public LogFlushService(NpgsqlDataSource dataSource, ILogger<LogFlushService> logger)
     {
-        // PostgreSQL: Changed from "MasterConnection" to "DefaultConnection" for PostgreSQL migration
-        _connectionString = configuration.GetConnectionString("DefaultConnection")
-            ?? throw new InvalidOperationException("DefaultConnection string not configured for LogFlushService.");
+        _dataSource = dataSource;
         _flushInterval = TimeSpan.FromSeconds(20);
         _logger = logger;
     }
@@ -69,9 +71,8 @@ public class LogFlushService : BackgroundService
 
         try
         {
-            // PostgreSQL: NpgsqlConnection replaces SqlConnection for PostgreSQL database access
-            await using var connection = new NpgsqlConnection(_connectionString);
-            await connection.OpenAsync();
+            // Use NpgsqlDataSource for connection — supports Azure AD token auth automatically.
+            await using var connection = await _dataSource.OpenConnectionAsync();
 
             // Build a batch INSERT statement for all log entries.
             // Using parameterized queries to prevent SQL injection.

@@ -25,15 +25,25 @@ public class TenantProvisioningService : ITenantProvisioningService
 {
     private readonly MasterDbContext _masterContext;
     private readonly IConfiguration _configuration;
+    private readonly NpgsqlDataSource _dataSource;
     private readonly ILogger<TenantProvisioningService> _logger;
 
+    /// <summary>
+    /// Constructor with dependency injection.
+    /// NpgsqlDataSource is the shared connection factory that handles both
+    /// Azure AD token auth and password auth transparently.
+    /// All raw NpgsqlConnection instances MUST come from _dataSource.OpenConnectionAsync()
+    /// — never from "new NpgsqlConnection(connectionString)" — to ensure Azure AD tokens are used.
+    /// </summary>
     public TenantProvisioningService(
         MasterDbContext masterContext,
         IConfiguration configuration,
+        NpgsqlDataSource dataSource,
         ILogger<TenantProvisioningService> logger)
     {
         _masterContext = masterContext;
         _configuration = configuration;
+        _dataSource = dataSource;
         _logger = logger;
     }
 
@@ -234,15 +244,13 @@ public class TenantProvisioningService : ITenantProvisioningService
 
         _logger.LogInformation("Found {Count} provisioned tenants to delete", tenants.Count);
 
-        var connectionString = GetConnectionString();
-
         foreach (var settings in tenants)
         {
             try
             {
-                // Drop the entire schema with CASCADE to remove all objects inside it
-                await using var connection = new NpgsqlConnection(connectionString);
-                await connection.OpenAsync(cancellationToken);
+                // Drop the entire schema with CASCADE to remove all objects inside it.
+                // Use NpgsqlDataSource for connection — handles Azure AD token auth.
+                await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
 
                 var safeName = SanitizeSchemaName(settings.SchemaName);
                 await using var dropCmd = connection.CreateCommand();
@@ -271,9 +279,8 @@ public class TenantProvisioningService : ITenantProvisioningService
     /// </summary>
     private async Task EnsureSchemaPermissionsAsync(string schemaName, CancellationToken cancellationToken)
     {
-        var connectionString = GetConnectionString();
-        await using var connection = new NpgsqlConnection(connectionString);
-        await connection.OpenAsync(cancellationToken);
+        // Use NpgsqlDataSource to get a connection — supports Azure AD token auth automatically.
+        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
 
         var safeName = SanitizeSchemaName(schemaName);
         await GrantSchemaPermissionsAsync(connection, safeName, cancellationToken);
@@ -295,10 +302,8 @@ public class TenantProvisioningService : ITenantProvisioningService
     /// </summary>
     private async Task CreateSchemaAsync(string schemaName, CancellationToken cancellationToken)
     {
-        var connectionString = GetConnectionString();
-
-        await using var connection = new NpgsqlConnection(connectionString);
-        await connection.OpenAsync(cancellationToken);
+        // Use NpgsqlDataSource for connection — handles Azure AD token auth transparently.
+        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
 
         // Sanitize schema name to prevent SQL injection (identifiers can't use parameters)
         var safeName = SanitizeSchemaName(schemaName);
@@ -405,10 +410,9 @@ public class TenantProvisioningService : ITenantProvisioningService
     /// </summary>
     private TenantDbContext CreateTenantContext(string schemaName)
     {
-        var connectionString = GetConnectionString();
-
+        // Use NpgsqlDataSource for the TenantDbContext — ensures Azure AD token auth works.
         var options = new DbContextOptionsBuilder<TenantDbContext>()
-            .UseNpgsql(connectionString, b =>
+            .UseNpgsql(_dataSource, b =>
             {
                 b.MigrationsAssembly("Fakvio.Infrastructure");
                 b.EnableRetryOnFailure(
@@ -439,15 +443,6 @@ public class TenantProvisioningService : ITenantProvisioningService
         if (string.IsNullOrEmpty(sanitized))
             throw new InvalidOperationException($"Invalid schema name: '{name}' — must contain alphanumeric characters.");
         return sanitized;
-    }
-
-    /// <summary>
-    /// Gets the shared PostgreSQL connection string from configuration.
-    /// </summary>
-    private string GetConnectionString()
-    {
-        return _configuration.GetConnectionString("DefaultConnection")
-            ?? throw new InvalidOperationException("DefaultConnection string not configured.");
     }
 
     /// <summary>
