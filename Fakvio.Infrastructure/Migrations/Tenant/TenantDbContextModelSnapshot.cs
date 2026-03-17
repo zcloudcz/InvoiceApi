@@ -17,7 +17,6 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasDefaultSchema("tenant_template")
                 .HasAnnotation("ProductVersion", "10.0.0")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
@@ -82,7 +81,7 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
 
                     b.HasIndex("ClientId");
 
-                    b.ToTable("Address", "tenant_template");
+                    b.ToTable("Address");
                 });
 
             modelBuilder.Entity("Fakvio.Domain.Entities.AresCache", b =>
@@ -145,7 +144,7 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                     b.HasIndex("RegistrationNumber")
                         .IsUnique();
 
-                    b.ToTable("AresCache", "tenant_template");
+                    b.ToTable("AresCache");
                 });
 
             modelBuilder.Entity("Fakvio.Domain.Entities.BankAccount", b =>
@@ -205,7 +204,7 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
 
                     b.HasIndex("ClientId", "IsDefault");
 
-                    b.ToTable("BankAccount", "tenant_template");
+                    b.ToTable("BankAccount");
                 });
 
             modelBuilder.Entity("Fakvio.Domain.Entities.BillingSettings", b =>
@@ -279,7 +278,7 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
 
                     b.HasIndex("CustomInvoiceNumberSequenceId");
 
-                    b.ToTable("BillingSettings", "tenant_template");
+                    b.ToTable("BillingSettings");
                 });
 
             modelBuilder.Entity("Fakvio.Domain.Entities.ChatConversation", b =>
@@ -322,7 +321,7 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
 
                     b.HasIndex("UserId", "LastMessageAt");
 
-                    b.ToTable("ChatConversation", "tenant_template");
+                    b.ToTable("ChatConversation");
                 });
 
             modelBuilder.Entity("Fakvio.Domain.Entities.ChatMessage", b =>
@@ -366,7 +365,7 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
 
                     b.HasIndex("ConversationId");
 
-                    b.ToTable("ChatMessage", "tenant_template");
+                    b.ToTable("ChatMessage");
                 });
 
             modelBuilder.Entity("Fakvio.Domain.Entities.Client", b =>
@@ -455,7 +454,7 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                     b.HasIndex("RegistrationNumber")
                         .IsUnique();
 
-                    b.ToTable("Client", "tenant_template");
+                    b.ToTable("Client");
                 });
 
             modelBuilder.Entity("Fakvio.Domain.Entities.Contact", b =>
@@ -502,7 +501,7 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
 
                     b.HasIndex("ContactType");
 
-                    b.ToTable("Contact", "tenant_template");
+                    b.ToTable("Contact");
                 });
 
             modelBuilder.Entity("Fakvio.Domain.Entities.ContentTemplate", b =>
@@ -568,7 +567,7 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
 
                     b.HasIndex("TemplateType", "Language", "IsDefault");
 
-                    b.ToTable("ContentTemplate", "tenant_template");
+                    b.ToTable("ContentTemplate");
 
                     b.HasData(
                         new
@@ -706,7 +705,7 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
 
                     b.HasIndex("SortOrder");
 
-                    b.ToTable("Currency", "tenant_template");
+                    b.ToTable("Currency");
 
                     b.HasData(
                         new
@@ -943,7 +942,7 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
 
                     b.HasIndex("Status");
 
-                    b.ToTable("Invoice", "tenant_template");
+                    b.ToTable("Invoice");
 
                     b.HasDiscriminator<string>("InvoiceType").HasValue("Invoice");
 
@@ -1027,7 +1026,7 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
 
                     b.HasIndex("VatRateId");
 
-                    b.ToTable("InvoiceItem", "tenant_template");
+                    b.ToTable("InvoiceItem");
                 });
 
             modelBuilder.Entity("Fakvio.Domain.Entities.NumberSequence", b =>
@@ -1098,7 +1097,7 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
 
                     b.HasIndex("DocumentType", "IsDefault");
 
-                    b.ToTable("NumberSequence", "tenant_template");
+                    b.ToTable("NumberSequence");
 
                     b.HasData(
                         new
@@ -1175,7 +1174,7 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
 
                     b.HasIndex("IsActive");
 
-                    b.ToTable("NumberSequenceFormat", "tenant_template");
+                    b.ToTable("NumberSequenceFormat");
 
                     b.HasData(
                         new
@@ -1331,7 +1330,7 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
 
                     b.HasIndex("TaxableSupplyDate");
 
-                    b.ToTable("ReceivedInvoice", "tenant_template");
+                    b.ToTable("ReceivedInvoice");
                 });
 
             modelBuilder.Entity("Fakvio.Domain.Entities.ReceivedInvoiceItem", b =>
@@ -1411,7 +1410,7 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
 
                     b.HasIndex("VatRateId");
 
-                    b.ToTable("ReceivedInvoiceItem", "tenant_template");
+                    b.ToTable("ReceivedInvoiceItem");
                 });
 
             modelBuilder.Entity("Fakvio.Domain.Entities.VatRate", b =>
@@ -1470,7 +1469,7 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
 
                     b.HasIndex("IsDefault", "IsReduced");
 
-                    b.ToTable("VatRate", "tenant_template");
+                    b.ToTable("VatRate");
 
                     b.HasData(
                         new

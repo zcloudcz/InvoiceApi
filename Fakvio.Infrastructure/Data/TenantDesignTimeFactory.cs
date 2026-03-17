@@ -42,11 +42,15 @@ public class TenantDesignTimeFactory : IDesignTimeDbContextFactory<TenantDbConte
         // Register custom model cache key factory for schema-aware model caching
         optionsBuilder.ReplaceService<IModelCacheKeyFactory, TenantModelCacheKeyFactory>();
 
-        // Create context with the template schema — migration SQL will target "tenant_template" schema.
-        // When applying migrations to real tenants, TenantProvisioningService creates a context
-        // with the actual tenant schema (e.g., "tenant_42") and calls MigrateAsync().
+        // IMPORTANT: Schema is intentionally left as null at design time.
+        // This ensures generated migration files do NOT contain hardcoded schema names
+        // (e.g., schema: "tenant_template"). Instead, HasDefaultSchema() in OnModelCreating
+        // applies the schema DYNAMICALLY at runtime when MigrateAsync() is called.
+        //
+        // Previously, Schema was set to "tenant_template" here, which caused all migration SQL
+        // to hardcode that schema name. This meant MigrateAsync() with Schema="tenant_1" would
+        // still create tables in "tenant_template" instead of "tenant_1" — breaking provisioning.
         var context = new TenantDbContext(optionsBuilder.Options);
-        context.Schema = "tenant_template";
         return context;
     }
 }

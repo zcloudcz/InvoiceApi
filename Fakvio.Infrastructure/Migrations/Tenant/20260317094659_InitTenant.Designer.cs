@@ -12,15 +12,14 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Fakvio.Infrastructure.Migrations.Tenant
 {
     [DbContext(typeof(TenantDbContext))]
-    [Migration("20260302080749_AddChatEntities")]
-    partial class AddChatEntities
+    [Migration("20260317094659_InitTenant")]
+    partial class InitTenant
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasDefaultSchema("tenant_template")
                 .HasAnnotation("ProductVersion", "10.0.0")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
@@ -85,7 +84,7 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
 
                     b.HasIndex("ClientId");
 
-                    b.ToTable("Address", "tenant_template");
+                    b.ToTable("Address");
                 });
 
             modelBuilder.Entity("Fakvio.Domain.Entities.AresCache", b =>
@@ -148,7 +147,7 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                     b.HasIndex("RegistrationNumber")
                         .IsUnique();
 
-                    b.ToTable("AresCache", "tenant_template");
+                    b.ToTable("AresCache");
                 });
 
             modelBuilder.Entity("Fakvio.Domain.Entities.BankAccount", b =>
@@ -208,7 +207,7 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
 
                     b.HasIndex("ClientId", "IsDefault");
 
-                    b.ToTable("BankAccount", "tenant_template");
+                    b.ToTable("BankAccount");
                 });
 
             modelBuilder.Entity("Fakvio.Domain.Entities.BillingSettings", b =>
@@ -282,7 +281,7 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
 
                     b.HasIndex("CustomInvoiceNumberSequenceId");
 
-                    b.ToTable("BillingSettings", "tenant_template");
+                    b.ToTable("BillingSettings");
                 });
 
             modelBuilder.Entity("Fakvio.Domain.Entities.ChatConversation", b =>
@@ -325,7 +324,7 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
 
                     b.HasIndex("UserId", "LastMessageAt");
 
-                    b.ToTable("ChatConversation", "tenant_template");
+                    b.ToTable("ChatConversation");
                 });
 
             modelBuilder.Entity("Fakvio.Domain.Entities.ChatMessage", b =>
@@ -369,7 +368,7 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
 
                     b.HasIndex("ConversationId");
 
-                    b.ToTable("ChatMessage", "tenant_template");
+                    b.ToTable("ChatMessage");
                 });
 
             modelBuilder.Entity("Fakvio.Domain.Entities.Client", b =>
@@ -379,6 +378,10 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                         .HasColumnType("bigint");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("ActivityType")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
 
                     b.Property<string>("CompanyName")
                         .IsRequired()
@@ -391,14 +394,28 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                     b.Property<long?>("CreatedByUserId")
                         .HasColumnType("bigint");
 
+                    b.Property<string>("FlatRateBand")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
                     b.Property<bool>("IsIssuer")
                         .HasColumnType("boolean");
 
+                    b.Property<bool>("IsMainActivity")
+                        .HasColumnType("boolean");
+
                     b.Property<bool>("IsVatPayer")
                         .HasColumnType("boolean");
+
+                    b.Property<string>("Language")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(5)
+                        .HasColumnType("character varying(5)")
+                        .HasDefaultValue("cs");
 
                     b.Property<DateTime?>("LastAresFetchDate")
                         .HasColumnType("timestamp with time zone");
@@ -414,6 +431,10 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                     b.Property<string>("TaxNumber")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
+
+                    b.Property<string>("TaxRegime")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
 
                     b.Property<string>("TradingName")
                         .HasMaxLength(500)
@@ -436,7 +457,7 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                     b.HasIndex("RegistrationNumber")
                         .IsUnique();
 
-                    b.ToTable("Client", "tenant_template");
+                    b.ToTable("Client");
                 });
 
             modelBuilder.Entity("Fakvio.Domain.Entities.Contact", b =>
@@ -483,7 +504,7 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
 
                     b.HasIndex("ContactType");
 
-                    b.ToTable("Contact", "tenant_template");
+                    b.ToTable("Contact");
                 });
 
             modelBuilder.Entity("Fakvio.Domain.Entities.ContentTemplate", b =>
@@ -514,6 +535,13 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                     b.Property<bool>("IsDefault")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("Language")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(5)
+                        .HasColumnType("character varying(5)")
+                        .HasDefaultValue("cs");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -540,9 +568,9 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
 
                     b.HasIndex("TemplateType");
 
-                    b.HasIndex("TemplateType", "IsDefault");
+                    b.HasIndex("TemplateType", "Language", "IsDefault");
 
-                    b.ToTable("ContentTemplate", "tenant_template");
+                    b.ToTable("ContentTemplate");
 
                     b.HasData(
                         new
@@ -553,6 +581,7 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                             HtmlBody = "<!DOCTYPE html>\r\n<html>\r\n<head>\r\n<meta charset=\"utf-8\" />\r\n<style>\r\n    body {\r\n        font-family: Arial, Helvetica, sans-serif;\r\n        font-size: 11px;\r\n        color: #333;\r\n        margin: 25px 30px;\r\n        line-height: 1.4;\r\n    }\r\n\r\n    /* ── Supplier (DODAVATEL) section ── */\r\n    table.issuer-block {\r\n        width: 100%;\r\n        border-collapse: collapse;\r\n        margin-bottom: 15px;\r\n    }\r\n    table.issuer-block td {\r\n        vertical-align: top;\r\n        padding: 2px 0;\r\n    }\r\n    .issuer-label {\r\n        font-size: 10px;\r\n        color: #777;\r\n        text-transform: uppercase;\r\n        letter-spacing: 0.5px;\r\n        padding-bottom: 4px;\r\n    }\r\n    .issuer-name {\r\n        font-size: 13px;\r\n        font-weight: bold;\r\n        color: #333;\r\n    }\r\n    .issuer-detail {\r\n        color: #555;\r\n        font-size: 11px;\r\n    }\r\n\r\n    /* ── Blue header bar (document type + number) ── */\r\n    table.doc-header {\r\n        width: 100%;\r\n        border-collapse: collapse;\r\n        margin: 12px 0 15px 0;\r\n    }\r\n    .doc-header-bar {\r\n        background-color: #5B7D9D;\r\n        color: #fff;\r\n        padding: 8px 12px;\r\n        font-size: 12px;\r\n    }\r\n    .doc-header-bar .doc-type {\r\n        font-size: 14px;\r\n        font-weight: bold;\r\n        text-transform: uppercase;\r\n    }\r\n    .doc-header-bar .doc-subtitle {\r\n        font-size: 10px;\r\n        font-weight: bold;\r\n        text-transform: uppercase;\r\n    }\r\n    .doc-number-cell {\r\n        background-color: #5B7D9D;\r\n        color: #fff;\r\n        text-align: right;\r\n        padding: 8px 12px;\r\n        font-size: 22px;\r\n        font-weight: bold;\r\n        letter-spacing: 1px;\r\n    }\r\n\r\n    /* ── Client (ODBĚRATEL) + dates section ── */\r\n    table.client-dates {\r\n        width: 100%;\r\n        border-collapse: collapse;\r\n        margin-bottom: 20px;\r\n    }\r\n    table.client-dates td {\r\n        vertical-align: top;\r\n        padding: 2px 0;\r\n    }\r\n    .client-label {\r\n        font-size: 10px;\r\n        color: #777;\r\n        text-transform: uppercase;\r\n        letter-spacing: 0.5px;\r\n        padding-bottom: 4px;\r\n    }\r\n    .client-name {\r\n        font-weight: bold;\r\n        font-size: 12px;\r\n    }\r\n    .date-label {\r\n        color: #777;\r\n        font-size: 10px;\r\n        text-transform: uppercase;\r\n        padding: 3px 10px 3px 0;\r\n    }\r\n    .date-value {\r\n        text-align: right;\r\n        font-weight: bold;\r\n        padding: 3px 0;\r\n    }\r\n\r\n    /* ── Items table ── */\r\n    table.items {\r\n        width: 100%;\r\n        border-collapse: collapse;\r\n        margin: 5px 0 15px 0;\r\n    }\r\n    table.items th {\r\n        background-color: #5B7D9D;\r\n        color: #fff;\r\n        padding: 6px 8px;\r\n        font-size: 10px;\r\n        text-transform: uppercase;\r\n        font-weight: bold;\r\n        text-align: left;\r\n    }\r\n    table.items td {\r\n        padding: 6px 8px;\r\n        border-bottom: 1px solid #e0e0e0;\r\n        font-size: 11px;\r\n    }\r\n\r\n    /* ── VAT breakdown + grand total ── */\r\n    table.vat-summary {\r\n        width: 100%;\r\n        border-collapse: collapse;\r\n        margin-top: 10px;\r\n    }\r\n    table.vat-summary th {\r\n        background-color: #e8e8e8;\r\n        padding: 5px 10px;\r\n        font-size: 10px;\r\n        text-transform: uppercase;\r\n        font-weight: bold;\r\n        text-align: center;\r\n    }\r\n    table.vat-summary td {\r\n        padding: 4px 10px;\r\n        font-size: 11px;\r\n    }\r\n    .grand-total-row {\r\n        background-color: #f0f0f0;\r\n    }\r\n    .grand-total-row td {\r\n        font-weight: bold;\r\n        font-size: 13px;\r\n        padding: 8px 10px;\r\n        text-transform: uppercase;\r\n    }\r\n\r\n    /* ── Payment info + QR code ── */\r\n    table.payment-info {\r\n        width: 100%;\r\n        border-collapse: collapse;\r\n        margin-top: 20px;\r\n    }\r\n    table.payment-info td {\r\n        vertical-align: top;\r\n        padding: 2px 5px;\r\n    }\r\n    .payment-label {\r\n        color: #777;\r\n        font-size: 10px;\r\n    }\r\n\r\n    /* ── Separator line ── */\r\n    .separator {\r\n        border: none;\r\n        border-top: 1px solid #ccc;\r\n        margin: 10px 0;\r\n    }\r\n</style>\r\n</head>\r\n<body>\r\n\r\n<!-- ═══════ ISSUER (DODAVATEL) SECTION ═══════ -->\r\n<table class=\"issuer-block\">\r\n    <tr>\r\n        <td style=\"width:50%\">\r\n            <div class=\"issuer-label\">DODAVATEL</div>\r\n            <div class=\"issuer-name\">{{IssuerName}}</div>\r\n            <div class=\"issuer-detail\">{{IssuerStreet}}</div>\r\n            <div class=\"issuer-detail\">{{IssuerPostalCode}} {{IssuerCity}}</div>\r\n            <div class=\"issuer-detail\">{{IssuerCountry}}</div>\r\n        </td>\r\n        <td style=\"width:50%; text-align:right\">\r\n            <table style=\"margin-left:auto; border-collapse:collapse;\">\r\n                <tr><td class=\"issuer-detail\" style=\"text-align:left; padding:1px 5px;\">Tel:</td><td class=\"issuer-detail\" style=\"padding:1px 5px;\">{{IssuerPhone}}</td></tr>\r\n                <tr><td class=\"issuer-detail\" style=\"text-align:left; padding:1px 5px;\">Email:</td><td class=\"issuer-detail\" style=\"padding:1px 5px;\">{{IssuerEmail}}</td></tr>\r\n                <tr><td class=\"issuer-detail\" style=\"text-align:left; padding:1px 5px;\">IČ:</td><td class=\"issuer-detail\" style=\"padding:1px 5px;\">{{IssuerRegistrationNumber}}</td></tr>\r\n                <tr><td class=\"issuer-detail\" style=\"text-align:left; padding:1px 5px;\">DIČ:</td><td class=\"issuer-detail\" style=\"padding:1px 5px;\">{{IssuerTaxNumber}}</td></tr>\r\n                <tr><td class=\"issuer-detail\" style=\"text-align:left; padding:1px 5px;\">B.Ú.:</td><td class=\"issuer-detail\" style=\"padding:1px 5px;\">{{BankAccountNumber}}</td></tr>\r\n            </table>\r\n        </td>\r\n    </tr>\r\n</table>\r\n\r\n<!-- ═══════ DOCUMENT HEADER BAR ═══════ -->\r\n<table class=\"doc-header\">\r\n    <tr>\r\n        <td class=\"doc-header-bar\" style=\"width:60%\">\r\n            <span class=\"doc-type\">{{DocumentTypeLabel}}</span>\r\n            <span style=\"font-size:11px; font-weight:normal;\">(variabilní symbol)</span>\r\n            <br/>\r\n            <span class=\"doc-subtitle\">DAŇOVÝ DOKLAD</span>\r\n        </td>\r\n        <td class=\"doc-number-cell\">{{VariableSymbol}}</td>\r\n    </tr>\r\n</table>\r\n\r\n<!-- ═══════ CLIENT (ODBĚRATEL) + DATES ═══════ -->\r\n<table class=\"client-dates\">\r\n    <tr>\r\n        <td style=\"width:50%\">\r\n            <div class=\"client-label\">ODBĚRATEL</div>\r\n            <div class=\"client-name\">{{ClientName}}</div>\r\n            <div class=\"issuer-detail\">{{ClientStreet}}</div>\r\n            <div class=\"issuer-detail\">{{ClientPostalCode}} {{ClientCity}}</div>\r\n            <div class=\"issuer-detail\">IČ: {{ClientRegistrationNumber}}</div>\r\n            <div class=\"issuer-detail\">DIČ: {{ClientTaxNumber}}</div>\r\n        </td>\r\n        <td style=\"width:50%; vertical-align:top; padding-left:30px;\">\r\n            <table style=\"width:100%; border-collapse:collapse;\">\r\n                <tr><td class=\"date-label\">DATUM VYSTAVENÍ</td><td class=\"date-value\">{{IssueDate}}</td></tr>\r\n                <tr><td class=\"date-label\">DATUM SPLATNOSTI</td><td class=\"date-value\">{{DueDate}}</td></tr>\r\n                <tr><td class=\"date-label\">DATUM ZDAN. PLNĚNÍ</td><td class=\"date-value\">{{TaxableSupplyDate}}</td></tr>\r\n                <tr><td class=\"date-label\">FORMA ÚHRADY</td><td class=\"date-value\">{{PaymentMethod}}</td></tr>\r\n            </table>\r\n        </td>\r\n    </tr>\r\n</table>\r\n\r\n<hr class=\"separator\" />\r\n\r\n<!-- ═══════ INVOICE ITEMS TABLE ═══════ -->\r\n<table class=\"items\">\r\n    <thead>\r\n        <tr>\r\n            <th style=\"width:40%\">POPIS POLOŽKY</th>\r\n            <th style=\"text-align:center; width:8%\">MJ</th>\r\n            <th style=\"text-align:center; width:8%\">DPH</th>\r\n            <th style=\"text-align:center; width:8%\">POČET</th>\r\n            <th style=\"text-align:right; width:18%\">CENA/MJ</th>\r\n            <th style=\"text-align:right; width:18%\">CELKEM BEZ DPH</th>\r\n        </tr>\r\n    </thead>\r\n    <tbody>\r\n        {{InvoiceItems}}\r\n    </tbody>\r\n</table>\r\n\r\n<!-- ═══════ VAT BREAKDOWN + GRAND TOTAL ═══════ -->\r\n<table class=\"vat-summary\">\r\n    <thead>\r\n        <tr>\r\n            <th style=\"width:34%\">SAZBA</th>\r\n            <th style=\"width:33%; text-align:right\">ZÁKLAD</th>\r\n            <th style=\"width:33%; text-align:right\">DPH</th>\r\n        </tr>\r\n    </thead>\r\n    <tbody>\r\n        {{VatBreakdown}}\r\n    </tbody>\r\n</table>\r\n\r\n<table class=\"vat-summary\" style=\"margin-top:0\">\r\n    <tr class=\"grand-total-row\">\r\n        <td style=\"width:67%\">CELKEM K ÚHRADĚ</td>\r\n        <td style=\"width:33%; text-align:right\">{{TotalWithVat}} {{CurrencySymbol}}</td>\r\n    </tr>\r\n</table>\r\n\r\n<!-- ═══════ QR CODE (if available) ═══════ -->\r\n<table class=\"payment-info\">\r\n    <tr>\r\n        <td style=\"text-align:right\">\r\n            {{QrCodeImage}}\r\n        </td>\r\n    </tr>\r\n</table>\r\n\r\n</body>\r\n</html>",
                             IsActive = true,
                             IsDefault = true,
+                            Language = "cs",
                             Name = "Default Invoice PDF",
                             TemplateType = 1
                         },
@@ -564,6 +593,7 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                             HtmlBody = "<!DOCTYPE html>\r\n<html>\r\n<head>\r\n<meta charset=\"utf-8\" />\r\n<style>\r\n    body {\r\n        font-family: Arial, Helvetica, sans-serif;\r\n        font-size: 11px;\r\n        color: #333;\r\n        margin: 25px 30px;\r\n        line-height: 1.4;\r\n    }\r\n\r\n    /* ── Supplier (DODAVATEL) section ── */\r\n    table.issuer-block {\r\n        width: 100%;\r\n        border-collapse: collapse;\r\n        margin-bottom: 15px;\r\n    }\r\n    table.issuer-block td {\r\n        vertical-align: top;\r\n        padding: 2px 0;\r\n    }\r\n    .issuer-label {\r\n        font-size: 10px;\r\n        color: #777;\r\n        text-transform: uppercase;\r\n        letter-spacing: 0.5px;\r\n        padding-bottom: 4px;\r\n    }\r\n    .issuer-name {\r\n        font-size: 13px;\r\n        font-weight: bold;\r\n        color: #333;\r\n    }\r\n    .issuer-detail {\r\n        color: #555;\r\n        font-size: 11px;\r\n    }\r\n\r\n    /* ── Blue header bar (document type + number) ── */\r\n    table.doc-header {\r\n        width: 100%;\r\n        border-collapse: collapse;\r\n        margin: 12px 0 15px 0;\r\n    }\r\n    .doc-header-bar {\r\n        background-color: #A05050;\r\n        color: #fff;\r\n        padding: 8px 12px;\r\n        font-size: 12px;\r\n    }\r\n    .doc-header-bar .doc-type {\r\n        font-size: 14px;\r\n        font-weight: bold;\r\n        text-transform: uppercase;\r\n    }\r\n    .doc-header-bar .doc-subtitle {\r\n        font-size: 10px;\r\n        font-weight: bold;\r\n        text-transform: uppercase;\r\n    }\r\n    .doc-number-cell {\r\n        background-color: #A05050;\r\n        color: #fff;\r\n        text-align: right;\r\n        padding: 8px 12px;\r\n        font-size: 22px;\r\n        font-weight: bold;\r\n        letter-spacing: 1px;\r\n    }\r\n\r\n    /* ── Client (ODBĚRATEL) + dates section ── */\r\n    table.client-dates {\r\n        width: 100%;\r\n        border-collapse: collapse;\r\n        margin-bottom: 20px;\r\n    }\r\n    table.client-dates td {\r\n        vertical-align: top;\r\n        padding: 2px 0;\r\n    }\r\n    .client-label {\r\n        font-size: 10px;\r\n        color: #777;\r\n        text-transform: uppercase;\r\n        letter-spacing: 0.5px;\r\n        padding-bottom: 4px;\r\n    }\r\n    .client-name {\r\n        font-weight: bold;\r\n        font-size: 12px;\r\n    }\r\n    .date-label {\r\n        color: #777;\r\n        font-size: 10px;\r\n        text-transform: uppercase;\r\n        padding: 3px 10px 3px 0;\r\n    }\r\n    .date-value {\r\n        text-align: right;\r\n        font-weight: bold;\r\n        padding: 3px 0;\r\n    }\r\n\r\n    /* ── Items table ── */\r\n    table.items {\r\n        width: 100%;\r\n        border-collapse: collapse;\r\n        margin: 5px 0 15px 0;\r\n    }\r\n    table.items th {\r\n        background-color: #A05050;\r\n        color: #fff;\r\n        padding: 6px 8px;\r\n        font-size: 10px;\r\n        text-transform: uppercase;\r\n        font-weight: bold;\r\n        text-align: left;\r\n    }\r\n    table.items td {\r\n        padding: 6px 8px;\r\n        border-bottom: 1px solid #e0e0e0;\r\n        font-size: 11px;\r\n    }\r\n\r\n    /* ── VAT breakdown + grand total ── */\r\n    table.vat-summary {\r\n        width: 100%;\r\n        border-collapse: collapse;\r\n        margin-top: 10px;\r\n    }\r\n    table.vat-summary th {\r\n        background-color: #e8e8e8;\r\n        padding: 5px 10px;\r\n        font-size: 10px;\r\n        text-transform: uppercase;\r\n        font-weight: bold;\r\n        text-align: center;\r\n    }\r\n    table.vat-summary td {\r\n        padding: 4px 10px;\r\n        font-size: 11px;\r\n    }\r\n    .grand-total-row {\r\n        background-color: #f0f0f0;\r\n    }\r\n    .grand-total-row td {\r\n        font-weight: bold;\r\n        font-size: 13px;\r\n        padding: 8px 10px;\r\n        text-transform: uppercase;\r\n    }\r\n\r\n    /* ── Payment info + QR code ── */\r\n    table.payment-info {\r\n        width: 100%;\r\n        border-collapse: collapse;\r\n        margin-top: 20px;\r\n    }\r\n    table.payment-info td {\r\n        vertical-align: top;\r\n        padding: 2px 5px;\r\n    }\r\n    .payment-label {\r\n        color: #777;\r\n        font-size: 10px;\r\n    }\r\n\r\n    /* ── Separator line ── */\r\n    .separator {\r\n        border: none;\r\n        border-top: 1px solid #ccc;\r\n        margin: 10px 0;\r\n    }\r\n</style>\r\n</head>\r\n<body>\r\n\r\n<!-- ═══════ ISSUER (DODAVATEL) SECTION ═══════ -->\r\n<table class=\"issuer-block\">\r\n    <tr>\r\n        <td style=\"width:50%\">\r\n            <div class=\"issuer-label\">DODAVATEL</div>\r\n            <div class=\"issuer-name\">{{IssuerName}}</div>\r\n            <div class=\"issuer-detail\">{{IssuerStreet}}</div>\r\n            <div class=\"issuer-detail\">{{IssuerPostalCode}} {{IssuerCity}}</div>\r\n            <div class=\"issuer-detail\">{{IssuerCountry}}</div>\r\n        </td>\r\n        <td style=\"width:50%; text-align:right\">\r\n            <table style=\"margin-left:auto; border-collapse:collapse;\">\r\n                <tr><td class=\"issuer-detail\" style=\"text-align:left; padding:1px 5px;\">Tel:</td><td class=\"issuer-detail\" style=\"padding:1px 5px;\">{{IssuerPhone}}</td></tr>\r\n                <tr><td class=\"issuer-detail\" style=\"text-align:left; padding:1px 5px;\">Email:</td><td class=\"issuer-detail\" style=\"padding:1px 5px;\">{{IssuerEmail}}</td></tr>\r\n                <tr><td class=\"issuer-detail\" style=\"text-align:left; padding:1px 5px;\">IČ:</td><td class=\"issuer-detail\" style=\"padding:1px 5px;\">{{IssuerRegistrationNumber}}</td></tr>\r\n                <tr><td class=\"issuer-detail\" style=\"text-align:left; padding:1px 5px;\">DIČ:</td><td class=\"issuer-detail\" style=\"padding:1px 5px;\">{{IssuerTaxNumber}}</td></tr>\r\n                <tr><td class=\"issuer-detail\" style=\"text-align:left; padding:1px 5px;\">B.Ú.:</td><td class=\"issuer-detail\" style=\"padding:1px 5px;\">{{BankAccountNumber}}</td></tr>\r\n            </table>\r\n        </td>\r\n    </tr>\r\n</table>\r\n\r\n<!-- ═══════ DOCUMENT HEADER BAR ═══════ -->\r\n<table class=\"doc-header\">\r\n    <tr>\r\n        <td class=\"doc-header-bar\" style=\"width:60%\">\r\n            <span class=\"doc-type\">{{DocumentTypeLabel}}</span>\r\n            <span style=\"font-size:11px; font-weight:normal;\">(variabilní symbol)</span>\r\n            <br/>\r\n            <span class=\"doc-subtitle\">DAŇOVÝ DOKLAD</span>\r\n        </td>\r\n        <td class=\"doc-number-cell\">{{VariableSymbol}}</td>\r\n    </tr>\r\n</table>\r\n\r\n<!-- ═══════ CLIENT (ODBĚRATEL) + DATES ═══════ -->\r\n<table class=\"client-dates\">\r\n    <tr>\r\n        <td style=\"width:50%\">\r\n            <div class=\"client-label\">ODBĚRATEL</div>\r\n            <div class=\"client-name\">{{ClientName}}</div>\r\n            <div class=\"issuer-detail\">{{ClientStreet}}</div>\r\n            <div class=\"issuer-detail\">{{ClientPostalCode}} {{ClientCity}}</div>\r\n            <div class=\"issuer-detail\">IČ: {{ClientRegistrationNumber}}</div>\r\n            <div class=\"issuer-detail\">DIČ: {{ClientTaxNumber}}</div>\r\n        </td>\r\n        <td style=\"width:50%; vertical-align:top; padding-left:30px;\">\r\n            <table style=\"width:100%; border-collapse:collapse;\">\r\n                <tr><td class=\"date-label\">DATUM VYSTAVENÍ</td><td class=\"date-value\">{{IssueDate}}</td></tr>\r\n                <tr><td class=\"date-label\">DATUM SPLATNOSTI</td><td class=\"date-value\">{{DueDate}}</td></tr>\r\n                <tr><td class=\"date-label\">DATUM ZDAN. PLNĚNÍ</td><td class=\"date-value\">{{TaxableSupplyDate}}</td></tr>\r\n                <tr><td class=\"date-label\">FORMA ÚHRADY</td><td class=\"date-value\">{{PaymentMethod}}</td></tr>\r\n            </table>\r\n        </td>\r\n    </tr>\r\n</table>\r\n\r\n<hr class=\"separator\" />\r\n\r\n<!-- ═══════ INVOICE ITEMS TABLE ═══════ -->\r\n<table class=\"items\">\r\n    <thead>\r\n        <tr>\r\n            <th style=\"width:40%\">POPIS POLOŽKY</th>\r\n            <th style=\"text-align:center; width:8%\">MJ</th>\r\n            <th style=\"text-align:center; width:8%\">DPH</th>\r\n            <th style=\"text-align:center; width:8%\">POČET</th>\r\n            <th style=\"text-align:right; width:18%\">CENA/MJ</th>\r\n            <th style=\"text-align:right; width:18%\">CELKEM BEZ DPH</th>\r\n        </tr>\r\n    </thead>\r\n    <tbody>\r\n        {{InvoiceItems}}\r\n    </tbody>\r\n</table>\r\n\r\n<!-- ═══════ VAT BREAKDOWN + GRAND TOTAL ═══════ -->\r\n<table class=\"vat-summary\">\r\n    <thead>\r\n        <tr>\r\n            <th style=\"width:34%\">SAZBA</th>\r\n            <th style=\"width:33%; text-align:right\">ZÁKLAD</th>\r\n            <th style=\"width:33%; text-align:right\">DPH</th>\r\n        </tr>\r\n    </thead>\r\n    <tbody>\r\n        {{VatBreakdown}}\r\n    </tbody>\r\n</table>\r\n\r\n<table class=\"vat-summary\" style=\"margin-top:0\">\r\n    <tr class=\"grand-total-row\">\r\n        <td style=\"width:67%\">CELKEM K ÚHRADĚ</td>\r\n        <td style=\"width:33%; text-align:right\">{{TotalWithVat}} {{CurrencySymbol}}</td>\r\n    </tr>\r\n</table>\r\n\r\n<!-- ═══════ QR CODE (if available) ═══════ -->\r\n<table class=\"payment-info\">\r\n    <tr>\r\n        <td style=\"text-align:right\">\r\n            {{QrCodeImage}}\r\n        </td>\r\n    </tr>\r\n</table>\r\n\r\n</body>\r\n</html>",
                             IsActive = true,
                             IsDefault = true,
+                            Language = "cs",
                             Name = "Default Credit Note PDF",
                             TemplateType = 2
                         },
@@ -575,6 +605,7 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                             HtmlBody = "<div style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;\"><h2 style=\"color: #1976D2;\">Invoice {{InvoiceNumber}}</h2><p>Dear customer,</p><p>Please find the attached invoice <strong>{{InvoiceNumber}}</strong>.</p><p><strong>Total:</strong> {{TotalWithVat}} {{CurrencyCode}}</p><p><strong>Due date:</strong> {{DueDate}}</p><br/><p>Thank you for your business.</p><hr style=\"border: none; border-top: 1px solid #eee; margin: 20px 0;\" /><p style=\"color: #999; font-size: 12px;\">{{CompanyName}}</p></div>",
                             IsActive = true,
                             IsDefault = true,
+                            Language = "cs",
                             Name = "Default Invoice Email",
                             Subject = "Invoice {{InvoiceNumber}} from {{CompanyName}}",
                             TemplateType = 10
@@ -587,6 +618,7 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                             HtmlBody = "<div style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;\"><h2 style=\"color: #1976D2;\">Credit Note {{InvoiceNumber}}</h2><p>Dear customer,</p><p>Please find the attached credit note <strong>{{InvoiceNumber}}</strong>.</p><p><strong>Total:</strong> {{TotalWithVat}} {{CurrencyCode}}</p><br/><p>Thank you for your business.</p><hr style=\"border: none; border-top: 1px solid #eee; margin: 20px 0;\" /><p style=\"color: #999; font-size: 12px;\">{{CompanyName}}</p></div>",
                             IsActive = true,
                             IsDefault = true,
+                            Language = "cs",
                             Name = "Default Credit Note Email",
                             Subject = "Credit Note {{InvoiceNumber}} from {{CompanyName}}",
                             TemplateType = 11
@@ -599,6 +631,7 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                             HtmlBody = "<div style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;\"><h2 style=\"color: #1976D2;\">Welcome to {{AppName}}</h2><p>Hello <strong>{{FullName}}</strong>,</p><p>You have been invited to {{AppName}}. Please set your password by clicking the button below:</p><div style=\"text-align: center; margin: 30px 0;\"><a href=\"{{InvitationLink}}\" style=\"background-color: #1976D2; color: white; padding: 14px 28px; text-decoration: none; border-radius: 4px; font-size: 16px;\">Set Password</a></div><p style=\"color: #666; font-size: 14px;\">This link is valid for 48 hours.</p><hr style=\"border: none; border-top: 1px solid #eee; margin: 20px 0;\" /><p style=\"color: #999; font-size: 12px;\">{{AppName}}</p></div>",
                             IsActive = true,
                             IsDefault = true,
+                            Language = "cs",
                             Name = "Default Invitation Email",
                             Subject = "Invitation to {{AppName}} — Set your password",
                             TemplateType = 20
@@ -611,6 +644,7 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                             HtmlBody = "<div style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;\"><h2 style=\"color: #E65100;\">Payment Reminder</h2><p>Dear customer,</p><p>This is a friendly reminder that invoice <strong>{{InvoiceNumber}}</strong> is overdue.</p><p><strong>Total:</strong> {{TotalWithVat}} {{CurrencyCode}}</p><p><strong>Due date:</strong> {{DueDate}}</p><p>Please arrange payment at your earliest convenience.</p><br/><p>Thank you.</p><hr style=\"border: none; border-top: 1px solid #eee; margin: 20px 0;\" /><p style=\"color: #999; font-size: 12px;\">{{CompanyName}}</p></div>",
                             IsActive = true,
                             IsDefault = true,
+                            Language = "cs",
                             Name = "Default Payment Reminder",
                             Subject = "Payment reminder — Invoice {{InvoiceNumber}}",
                             TemplateType = 21
@@ -674,7 +708,7 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
 
                     b.HasIndex("SortOrder");
 
-                    b.ToTable("Currency", "tenant_template");
+                    b.ToTable("Currency");
 
                     b.HasData(
                         new
@@ -911,7 +945,7 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
 
                     b.HasIndex("Status");
 
-                    b.ToTable("Invoice", "tenant_template");
+                    b.ToTable("Invoice");
 
                     b.HasDiscriminator<string>("InvoiceType").HasValue("Invoice");
 
@@ -995,7 +1029,7 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
 
                     b.HasIndex("VatRateId");
 
-                    b.ToTable("InvoiceItem", "tenant_template");
+                    b.ToTable("InvoiceItem");
                 });
 
             modelBuilder.Entity("Fakvio.Domain.Entities.NumberSequence", b =>
@@ -1066,7 +1100,7 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
 
                     b.HasIndex("DocumentType", "IsDefault");
 
-                    b.ToTable("NumberSequence", "tenant_template");
+                    b.ToTable("NumberSequence");
 
                     b.HasData(
                         new
@@ -1143,7 +1177,7 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
 
                     b.HasIndex("IsActive");
 
-                    b.ToTable("NumberSequenceFormat", "tenant_template");
+                    b.ToTable("NumberSequenceFormat");
 
                     b.HasData(
                         new
@@ -1190,6 +1224,196 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                             ResetsMonthly = false,
                             ResetsYearly = false
                         });
+                });
+
+            modelBuilder.Entity("Fakvio.Domain.Entities.ReceivedInvoice", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("AttachmentContentType")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("AttachmentFileName")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("BankAccountNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("CreatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("CurrencyId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("DocumentNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTime?>("DueDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("IBAN")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTime?>("IssueDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(5000)
+                        .HasColumnType("character varying(5000)");
+
+                    b.Property<DateTime?>("PaidAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("PaymentMethod")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("ReceivedDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("SWIFT")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("SupplierId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("TaxableSupplyDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("TotalBeforeVat")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("TotalVat")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("TotalWithVat")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("UpdatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("VariableSymbol")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CurrencyId");
+
+                    b.HasIndex("DueDate");
+
+                    b.HasIndex("IssueDate");
+
+                    b.HasIndex("ReceivedDate");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("SupplierId");
+
+                    b.HasIndex("TaxableSupplyDate");
+
+                    b.ToTable("ReceivedInvoice");
+                });
+
+            modelBuilder.Entity("Fakvio.Domain.Entities.ReceivedInvoiceItem", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("CreatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<int>("OrderIndex")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ProductCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<decimal>("Quantity")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)");
+
+                    b.Property<long>("ReceivedInvoiceId")
+                        .HasColumnType("bigint");
+
+                    b.Property<decimal>("TotalBeforeVat")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("TotalWithVat")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<string>("Unit")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<decimal>("UnitPrice")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("UpdatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<decimal>("VatAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<long?>("VatRateId")
+                        .HasColumnType("bigint");
+
+                    b.Property<decimal>("VatRatePercentage")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReceivedInvoiceId");
+
+                    b.HasIndex("VatRateId");
+
+                    b.ToTable("ReceivedInvoiceItem");
                 });
 
             modelBuilder.Entity("Fakvio.Domain.Entities.VatRate", b =>
@@ -1248,7 +1472,7 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
 
                     b.HasIndex("IsDefault", "IsReduced");
 
-                    b.ToTable("VatRate", "tenant_template");
+                    b.ToTable("VatRate");
 
                     b.HasData(
                         new
@@ -1470,6 +1694,43 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                     b.Navigation("NumberSequenceFormat");
                 });
 
+            modelBuilder.Entity("Fakvio.Domain.Entities.ReceivedInvoice", b =>
+                {
+                    b.HasOne("Fakvio.Domain.Entities.Currency", "Currency")
+                        .WithMany()
+                        .HasForeignKey("CurrencyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Fakvio.Domain.Entities.Client", "Supplier")
+                        .WithMany()
+                        .HasForeignKey("SupplierId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Currency");
+
+                    b.Navigation("Supplier");
+                });
+
+            modelBuilder.Entity("Fakvio.Domain.Entities.ReceivedInvoiceItem", b =>
+                {
+                    b.HasOne("Fakvio.Domain.Entities.ReceivedInvoice", "ReceivedInvoice")
+                        .WithMany("Items")
+                        .HasForeignKey("ReceivedInvoiceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Fakvio.Domain.Entities.VatRate", "VatRate")
+                        .WithMany()
+                        .HasForeignKey("VatRateId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("ReceivedInvoice");
+
+                    b.Navigation("VatRate");
+                });
+
             modelBuilder.Entity("Fakvio.Domain.Entities.InvoiceTemplate", b =>
                 {
                     b.HasOne("Fakvio.Domain.Entities.NumberSequence", "NumberSequence")
@@ -1501,6 +1762,11 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                     b.Navigation("CreditNote");
 
                     b.Navigation("InvoiceItem");
+                });
+
+            modelBuilder.Entity("Fakvio.Domain.Entities.ReceivedInvoice", b =>
+                {
+                    b.Navigation("Items");
                 });
 
             modelBuilder.Entity("Fakvio.Domain.Entities.VatRate", b =>
