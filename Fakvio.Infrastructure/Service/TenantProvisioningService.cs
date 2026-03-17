@@ -451,18 +451,48 @@ public class TenantProvisioningService : ITenantProvisioningService
     /// <summary>
     /// Creates a new TenantDbContext configured for a specific schema.
     /// Used during provisioning and migration operations.
+    ///
+    /// IMPORTANT: Migration files are generated WITHOUT explicit schema names (no `schema:` parameter).
+    /// This means MigrateAsync() would normally create tables in the default "public" schema.
+    /// To redirect migrations to the correct tenant schema, we set PostgreSQL's `search_path`
+    /// on the underlying NpgsqlDataSource connection string. This tells PostgreSQL to resolve
+    /// all unqualified table references to the tenant schema instead of "public".
+    ///
+    /// The search_path approach is cleaner than hardcoding schema names in migration files,
+    /// because it allows the SAME migration to be applied to ANY tenant schema dynamically.
     /// </summary>
     private TenantDbContext CreateTenantContext(string schemaName)
     {
-        // Use NpgsqlDataSource for the TenantDbContext — ensures Azure AD token auth works.
+        var safeName = SanitizeSchemaName(schemaName);
+
+        // Build a new NpgsqlDataSource with search_path pointing to the tenant schema.
+        // This ensures that MigrateAsync() CREATE TABLE statements (which have no explicit schema)
+        // are created in the tenant schema, not in "public".
+        // We also include "public" in the search_path as a fallback for shared extensions/functions.
+        var connStringBuilder = new NpgsqlConnectionStringBuilder(_dataSource.ConnectionString)
+        {
+            SearchPath = $"\"{safeName}\", public"
+        };
+
+        // Create a per-tenant NpgsqlDataSource — needed for search_path override.
+        // Azure AD token auth is inherited from the connection string (no password needed).
+        var useAzureAd = _configuration.GetValue<bool>("UseAzureAdAuthentication");
+        var tenantDataSource = useAzureAd
+            ? CreateAzureDataSourceFromConnectionString(connStringBuilder.ToString())
+            : new NpgsqlDataSourceBuilder(connStringBuilder.ToString()).Build();
+
         var options = new DbContextOptionsBuilder<TenantDbContext>()
-            .UseNpgsql(_dataSource, b =>
+            .UseNpgsql(tenantDataSource, b =>
             {
                 b.MigrationsAssembly("Fakvio.Infrastructure");
                 b.EnableRetryOnFailure(
                     maxRetryCount: 3,
                     maxRetryDelay: TimeSpan.FromSeconds(5),
                     errorCodesToAdd: null);
+                // Set the migrations history table in the tenant schema.
+                // Without this, all tenants share one __EFMigrationsHistory in "public",
+                // causing conflicts (tenant_1 migration marks as applied → tenant_2 skips it).
+                b.MigrationsHistoryTable("__EFMigrationsHistory", safeName);
             })
             .ReplaceService<IModelCacheKeyFactory, TenantModelCacheKeyFactory>()
             // Downgrade PendingModelChangesWarning from Throw → Log so MigrateAsync()
@@ -474,6 +504,30 @@ public class TenantProvisioningService : ITenantProvisioningService
         var context = new TenantDbContext(options);
         context.Schema = schemaName;
         return context;
+    }
+
+    /// <summary>
+    /// Creates an NpgsqlDataSource with Azure AD token auth from a connection string.
+    /// Similar to ServiceCollectionExtensions.CreateAzureDataSource but accepts
+    /// a custom connection string (with modified search_path for tenant schema).
+    /// </summary>
+    private static NpgsqlDataSource CreateAzureDataSourceFromConnectionString(string connectionString)
+    {
+        var credential = new Azure.Identity.DefaultAzureCredential();
+        var dataSourceBuilder = new NpgsqlDataSourceBuilder(connectionString);
+
+        dataSourceBuilder.UsePeriodicPasswordProvider(
+            async (_, cancellationToken) =>
+            {
+                var tokenRequest = new Azure.Core.TokenRequestContext(
+                    ["https://ossrdbms-aad.database.windows.net/.default"]);
+                var token = await credential.GetTokenAsync(tokenRequest, cancellationToken);
+                return token.Token;
+            },
+            successRefreshInterval: TimeSpan.FromMinutes(55),
+            failureRefreshInterval: TimeSpan.FromSeconds(10));
+
+        return dataSourceBuilder.Build();
     }
 
     /// <summary>
