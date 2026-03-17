@@ -825,6 +825,7 @@
   <data name="VerifyEmail_Success" xml:space="preserve"><value>E-mail ověřen! Váš účet je připraven.</value></data>
   <data name="VerifyEmail_Failed" xml:space="preserve"><value>Neplatný nebo expirovaný ověřovací odkaz.</value></data>
   <data name="VerifyEmail_GoToLogin" xml:space="preserve"><value>Přejít na přihlášení</value></data>
+  <data name="VerifyEmail_ProvisioningFailed" xml:space="preserve"><value>E-mail ověřen, ale nastavení pracovního prostoru selhalo. Administrátor dokončí nastavení. Můžete se přihlásit.</value></data>
   <!-- ── OAuth Provider Names ─────────────────────────────────────────────── -->
   <data name="EExternalProvider_Google" xml:space="preserve"><value>Google</value></data>
   <data name="EExternalProvider_Microsoft" xml:space="preserve"><value>Microsoft</value></data>

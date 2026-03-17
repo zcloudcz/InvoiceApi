@@ -1,5 +1,8 @@
 using Fakvio.UI.Shared.Models;
 using System.Net.Http.Json;
+// Import only VerifyEmailResponse from Contracts — other Auth DTOs (LoginRequest, etc.)
+// are defined in Fakvio.UI.Shared.Models and would cause ambiguous reference errors.
+using VerifyEmailResponse = Fakvio.Contracts.Dto.Auth.VerifyEmailResponse;
 
 namespace Fakvio.UI.Shared.Services;
 
@@ -71,20 +74,45 @@ public class AuthApiService
 
     /// <summary>
     /// Verifies a user's email using the token from the verification link.
-    /// Returns true if verification succeeded.
+    /// Returns a detailed response with email verification AND tenant provisioning status.
+    /// This allows the UI to show a warning if provisioning failed (workspace not ready).
     /// </summary>
-    public async Task<bool> VerifyEmailAsync(string token)
+    public async Task<VerifyEmailResponse> VerifyEmailAsync(string token)
     {
         try
         {
             var response = await _httpClient.PostAsJsonAsync("/api/auth/verify-email",
                 new { Token = token });
 
-            return response.IsSuccessStatusCode;
+            if (response.IsSuccessStatusCode)
+            {
+                // Deserialize the full response to get provisioning details
+                var result = await response.Content.ReadFromJsonAsync<VerifyEmailResponse>();
+                return result ?? new VerifyEmailResponse
+                {
+                    EmailVerified = true,
+                    TenantProvisioned = true,
+                    Message = "Email verified successfully."
+                };
+            }
+
+            // API returned 400 (invalid/expired token) — try to read error message
+            var errorContent = await response.Content.ReadAsStringAsync();
+            return new VerifyEmailResponse
+            {
+                EmailVerified = false,
+                TenantProvisioned = false,
+                Message = errorContent
+            };
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            return false;
+            return new VerifyEmailResponse
+            {
+                EmailVerified = false,
+                TenantProvisioned = false,
+                Message = ex.Message
+            };
         }
     }
 

@@ -125,12 +125,14 @@ public class AuthController : ControllerBase
         {
             var result = await _authService.VerifyEmailAsync(request.Token);
 
-            if (!result)
+            if (!result.EmailVerified)
             {
-                return BadRequest(new { message = "Invalid or expired verification token." });
+                return BadRequest(new { message = result.Message });
             }
 
-            return Ok(new { message = "Email verified successfully. You can now log in." });
+            // Email verified — return full response including provisioning status.
+            // HTTP 200 even if provisioning failed (email IS verified, tenant can be retried).
+            return Ok(result);
         }
         catch (Exception ex)
         {

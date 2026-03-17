@@ -452,7 +452,7 @@ public class AuthServiceTests : IDisposable
 
         var result = await _service.VerifyEmailAsync(token);
 
-        result.ShouldBeTrue();
+        result.EmailVerified.ShouldBeTrue();
         var user = await _context.User.FindAsync(100L);
         user!.IsEmailVerified.ShouldBeTrue();
         user.EmailVerificationToken.ShouldBeNull();
@@ -483,7 +483,7 @@ public class AuthServiceTests : IDisposable
 
         var result = await _service.VerifyEmailAsync(token);
 
-        result.ShouldBeFalse();
+        result.EmailVerified.ShouldBeFalse();
     }
 
     /// <summary>
@@ -493,7 +493,7 @@ public class AuthServiceTests : IDisposable
     public async Task VerifyEmail_InvalidToken_ReturnsFalse()
     {
         var result = await _service.VerifyEmailAsync("nonexistent-token-12345");
-        result.ShouldBeFalse();
+        result.EmailVerified.ShouldBeFalse();
     }
 
     /// <summary>
@@ -535,11 +535,16 @@ public class AuthServiceTests : IDisposable
         _provisioningService.ProvisionTenantAsync(200, Arg.Any<CancellationToken>())
             .Returns(true);
 
-        await _service.VerifyEmailAsync(token);
+        var result = await _service.VerifyEmailAsync(token);
 
         // Verify provisioning was called with the correct company ID
         await _provisioningService.Received(1)
             .ProvisionTenantAsync(200, Arg.Any<CancellationToken>());
+
+        // Verify response indicates both email verified and tenant provisioned
+        result.EmailVerified.ShouldBeTrue();
+        result.TenantProvisioned.ShouldBeTrue();
+        result.ProvisioningError.ShouldBeNull();
     }
 
     // ─── Login with Unverified Email / OAuth Tests ───────────────────────────

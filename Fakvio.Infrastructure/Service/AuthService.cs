@@ -298,7 +298,7 @@ public class AuthService : IAuthService
     /// Verifies a user's email using the token from the verification link.
     /// On success: sets IsEmailVerified = true, clears token, triggers tenant provisioning.
     /// </summary>
-    public async Task<bool> VerifyEmailAsync(string token, CancellationToken ct = default)
+    public async Task<VerifyEmailResponse> VerifyEmailAsync(string token, CancellationToken ct = default)
     {
         // Find user by verification token
         var user = await _context.User
@@ -307,7 +307,12 @@ public class AuthService : IAuthService
         if (user == null)
         {
             _logger.LogWarning("Email verification attempted with invalid token");
-            return false;
+            return new VerifyEmailResponse
+            {
+                EmailVerified = false,
+                TenantProvisioned = false,
+                Message = "Invalid or expired verification token."
+            };
         }
 
         // Check if token has expired (24 hours from registration)
@@ -315,7 +320,12 @@ public class AuthService : IAuthService
             user.EmailVerificationTokenExpiresAt.Value < DateTime.UtcNow)
         {
             _logger.LogWarning("Email verification attempted with expired token for user {Email}", user.Email);
-            return false;
+            return new VerifyEmailResponse
+            {
+                EmailVerified = false,
+                TenantProvisioned = false,
+                Message = "Verification token has expired. Please request a new one."
+            };
         }
 
         // Mark email as verified and clear token fields
@@ -326,27 +336,44 @@ public class AuthService : IAuthService
 
         await _context.SaveChangesAsync(ct);
 
-        // Trigger tenant database provisioning for the user's company
+        // Trigger tenant database provisioning for the user's company.
+        // Provisioning failure should NOT fail the email verification — it can be retried by SysAdmin.
+        // But we now surface the error in the response so the UI and logs show what happened.
+        var tenantProvisioned = false;
+        string? provisioningError = null;
+
         if (user.CompanyId.HasValue)
         {
             try
             {
                 await _provisioningService.ProvisionTenantAsync(user.CompanyId.Value, ct);
+                tenantProvisioned = true;
                 _logger.LogInformation(
                     "Tenant provisioned for company {CompanyId} after email verification by user {Email}",
                     user.CompanyId.Value, user.Email);
             }
             catch (Exception ex)
             {
-                // Provisioning failure should not fail the verification — can be retried by SysAdmin
+                // Log the full error chain — ProvisionTenantAsync now includes step info in the message.
+                provisioningError = ex.Message;
                 _logger.LogError(ex,
-                    "Tenant provisioning failed for company {CompanyId} after email verification",
-                    user.CompanyId.Value);
+                    "Tenant provisioning failed for company {CompanyId} after email verification by user {Email}",
+                    user.CompanyId.Value, user.Email);
             }
         }
 
-        _logger.LogInformation("Email verified for user {Email} (UserId={UserId})", user.Email, user.Id);
-        return true;
+        _logger.LogInformation("Email verified for user {Email} (UserId={UserId}), TenantProvisioned={TenantProvisioned}",
+            user.Email, user.Id, tenantProvisioned);
+
+        return new VerifyEmailResponse
+        {
+            EmailVerified = true,
+            TenantProvisioned = tenantProvisioned,
+            Message = tenantProvisioned
+                ? "Email verified successfully. Your workspace is ready."
+                : "Email verified successfully, but workspace setup failed. Please contact support.",
+            ProvisioningError = provisioningError
+        };
     }
 
     // ─── External OAuth Login ────────────────────────────────────────────────

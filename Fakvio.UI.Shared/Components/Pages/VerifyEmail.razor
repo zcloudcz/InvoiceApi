@@ -12,6 +12,11 @@
     Anonymous page — no [Authorize] attribute.
     Accessed via the verification link in the registration email (/verify-email?token=xxx).
     Follows the same pattern as SetPassword.razor (token validation → success/error states).
+
+    Now shows three possible outcomes:
+    1. Email verified + tenant provisioned → full success (green)
+    2. Email verified + tenant provisioning FAILED → partial success (warning)
+    3. Invalid/expired token → error (red)
 *@
 
 <MudContainer MaxWidth="MaxWidth.Small" Class="mt-8">
@@ -32,12 +37,32 @@
                 <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
                 <MudText Align="Align.Center">@L["VerifyEmail_Verifying"]</MudText>
             }
-            @* Success state — email verified *@
-            else if (_isSuccess)
+            @* Success state — email verified AND tenant provisioned *@
+            else if (_isSuccess && _tenantProvisioned)
             {
                 <MudAlert Severity="Severity.Success" Variant="Variant.Filled">
                     @L["VerifyEmail_Success"]
                 </MudAlert>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true"
+                           OnClick="@(() => Navigation.NavigateTo("/login"))">
+                    @L["VerifyEmail_GoToLogin"]
+                </MudButton>
+            }
+            @* Partial success — email verified but tenant provisioning failed *@
+            else if (_isSuccess && !_tenantProvisioned)
+            {
+                <MudAlert Severity="Severity.Success" Variant="Variant.Filled">
+                    @L["VerifyEmail_Success"]
+                </MudAlert>
+                <MudAlert Severity="Severity.Warning" Variant="Variant.Filled" Class="mt-2">
+                    @L["VerifyEmail_ProvisioningFailed"]
+                </MudAlert>
+                @if (!string.IsNullOrEmpty(_provisioningError))
+                {
+                    <MudAlert Severity="Severity.Info" Variant="Variant.Text" Dense="true">
+                        @_provisioningError
+                    </MudAlert>
+                }
                 <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true"
                            OnClick="@(() => Navigation.NavigateTo("/login"))">
                     @L["VerifyEmail_GoToLogin"]
@@ -67,11 +92,14 @@
 
     private bool _isVerifying = true;
     private bool _isSuccess = false;
+    private bool _tenantProvisioned = false;
     private string? _errorMessage;
+    private string? _provisioningError;
 
     /// <summary>
     /// On page load, immediately verify the token via the API.
-    /// If successful, shows success message. If not, shows error.
+    /// The response now includes both email verification and tenant provisioning status,
+    /// so the user sees exactly what happened (and SysAdmin can see the error details).
     /// </summary>
     protected override async Task OnInitializedAsync()
     {
@@ -85,17 +113,28 @@
 
         try
         {
-            // Call the API to verify the email token
+            // Call the API to verify the email token — returns full status with provisioning details
             var result = await AuthApiService.VerifyEmailAsync(Token);
 
-            if (result)
+            if (result.EmailVerified)
             {
                 _isSuccess = true;
-                Snackbar.Add(L["VerifyEmail_Success"].Value, Severity.Success);
+                _tenantProvisioned = result.TenantProvisioned;
+                _provisioningError = result.ProvisioningError;
+
+                if (result.TenantProvisioned)
+                {
+                    Snackbar.Add(L["VerifyEmail_Success"].Value, Severity.Success);
+                }
+                else
+                {
+                    // Email OK but provisioning failed — show warning
+                    Snackbar.Add(L["VerifyEmail_ProvisioningFailed"].Value, Severity.Warning);
+                }
             }
             else
             {
-                _errorMessage = L["VerifyEmail_Failed"].Value;
+                _errorMessage = result.Message ?? L["VerifyEmail_Failed"].Value;
             }
         }
         catch (Exception ex)

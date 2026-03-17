@@ -57,11 +57,12 @@ public interface IAuthService
     /// <summary>
     /// Verifies a user's email address using the token from the verification link.
     /// Sets IsEmailVerified = true and triggers tenant provisioning.
+    /// Returns a detailed response with both email verification and provisioning status.
     /// </summary>
     /// <param name="token">Email verification token (GUID string)</param>
     /// <param name="ct">Cancellation token</param>
-    /// <returns>True if verification succeeded; false if token is invalid or expired</returns>
-    Task<bool> VerifyEmailAsync(string token, CancellationToken ct = default);
+    /// <returns>VerifyEmailResponse with verification + provisioning status details</returns>
+    Task<VerifyEmailResponse> VerifyEmailAsync(string token, CancellationToken ct = default);
 
     /// <summary>
     /// Handles login/linking for users authenticated via an external OAuth provider.

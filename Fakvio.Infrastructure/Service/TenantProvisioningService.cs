@@ -50,74 +50,118 @@ public class TenantProvisioningService : ITenantProvisioningService
     /// <inheritdoc />
     public async Task<bool> ProvisionTenantAsync(long companyId, CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Starting provisioning for company {CompanyId}", companyId);
+        // Track which step we're on so that if an exception is thrown,
+        // the caller (and logs) know exactly WHERE provisioning failed.
+        var currentStep = "Init";
 
-        // 1. Load CompanySystemSettings from master DB
-        var settings = await _masterContext.CompanySystemSettings
-            .FirstOrDefaultAsync(s => s.CompanyId == companyId, cancellationToken);
-
-        if (settings == null)
-            throw new InvalidOperationException(
-                $"CompanySystemSettings not found for company {companyId}. " +
-                "Create the settings record first before provisioning.");
-
-        // Allow re-provisioning: if already provisioned, log a warning and continue.
-        // This makes the entire flow idempotent — safe to re-run after a partial failure
-        // (e.g., schema created but tables not seeded, or code tables inserted partially).
-        if (settings.IsProvisioned)
+        try
         {
-            _logger.LogWarning(
-                "Company {CompanyId} is already marked as provisioned (schema: {SchemaName}). " +
-                "Re-running provisioning to ensure all data is consistent.",
+            _logger.LogInformation("Starting provisioning for company {CompanyId}", companyId);
+
+            // ── Step 1: Load CompanySystemSettings ──────────────────────────
+            currentStep = "Step 1: Load CompanySystemSettings";
+            _logger.LogInformation("[Provision:{CompanyId}] {Step}", companyId, currentStep);
+
+            var settings = await _masterContext.CompanySystemSettings
+                .FirstOrDefaultAsync(s => s.CompanyId == companyId, cancellationToken);
+
+            if (settings == null)
+                throw new InvalidOperationException(
+                    $"CompanySystemSettings not found for company {companyId}. " +
+                    "Create the settings record first before provisioning.");
+
+            // Allow re-provisioning: if already provisioned, log a warning and continue.
+            // This makes the entire flow idempotent — safe to re-run after a partial failure
+            // (e.g., schema created but tables not seeded, or code tables inserted partially).
+            if (settings.IsProvisioned)
+            {
+                _logger.LogWarning(
+                    "Company {CompanyId} is already marked as provisioned (schema: {SchemaName}). " +
+                    "Re-running provisioning to ensure all data is consistent.",
+                    companyId, settings.SchemaName);
+            }
+
+            // ── Step 2: Load company (issuer) data from master DB ───────────
+            currentStep = "Step 2: Load company issuer data";
+            _logger.LogInformation("[Provision:{CompanyId}] {Step}", companyId, currentStep);
+
+            // AsSplitQuery: Address and Contact are both collection navigations — prevents cartesian explosion.
+            var company = await _masterContext.Client
+                .AsSplitQuery()
+                .Include(c => c.Address)
+                .Include(c => c.Contact)
+                .FirstOrDefaultAsync(c => c.Id == companyId && c.IsIssuer, cancellationToken)
+                ?? throw new InvalidOperationException(
+                    $"Company with ID {companyId} not found or is not marked as issuer.");
+
+            // ── Step 3: Create the PostgreSQL schema ────────────────────────
+            currentStep = $"Step 3: Create schema '{settings.SchemaName}'";
+            _logger.LogInformation("[Provision:{CompanyId}] {Step}", companyId, currentStep);
+
+            await CreateSchemaAsync(settings.SchemaName, cancellationToken);
+
+            // ── Step 4: Apply EF Core migrations ────────────────────────────
+            currentStep = $"Step 4: Apply migrations to schema '{settings.SchemaName}'";
+            _logger.LogInformation("[Provision:{CompanyId}] {Step}", companyId, currentStep);
+
+            using var tenantContext = CreateTenantContext(settings.SchemaName);
+            await tenantContext.Database.MigrateAsync(cancellationToken);
+
+            // ── Step 5: Copy code tables from master DB ─────────────────────
+            currentStep = $"Step 5: Copy code tables to schema '{settings.SchemaName}'";
+            _logger.LogInformation("[Provision:{CompanyId}] {Step}", companyId, currentStep);
+
+            await CopyCodeTablesAsync(tenantContext, settings.SchemaName, cancellationToken);
+
+            // ── Step 6: Create issuer in tenant schema ──────────────────────
+            currentStep = $"Step 6: Create issuer in schema '{settings.SchemaName}'";
+            _logger.LogInformation("[Provision:{CompanyId}] {Step}", companyId, currentStep);
+
+            await CreateIssuerInTenantAsync(tenantContext, company, cancellationToken);
+
+            // ── Step 7: Create default number sequences ─────────────────────
+            currentStep = $"Step 7: Create default number sequences in schema '{settings.SchemaName}'";
+            _logger.LogInformation("[Provision:{CompanyId}] {Step}", companyId, currentStep);
+
+            await CreateDefaultNumberSequencesAsync(tenantContext, cancellationToken);
+
+            // ── Step 8: Mark as provisioned in master DB ────────────────────
+            currentStep = "Step 8: Mark as provisioned in master DB";
+            _logger.LogInformation("[Provision:{CompanyId}] {Step}", companyId, currentStep);
+
+            settings.IsProvisioned = true;
+            settings.IsActive = true;
+            settings.ProvisionedAt = DateTime.UtcNow;
+            await _masterContext.SaveChangesAsync(cancellationToken);
+
+            _logger.LogInformation(
+                "[Provision:{CompanyId}] ALL STEPS COMPLETE → schema '{SchemaName}' is ready",
                 companyId, settings.SchemaName);
+
+            return true;
         }
+        catch (Exception ex)
+        {
+            // Log the exact step where provisioning failed — this is the key diagnostic info.
+            // Without this, Azure logs just show a generic "provisioning failed" with a stack trace
+            // that doesn't clearly indicate which step (schema creation, migration, seed, etc.) broke.
+            _logger.LogError(ex,
+                "[Provision:{CompanyId}] FAILED at '{CurrentStep}'. Exception: {ExceptionType}: {Message}",
+                companyId, currentStep, ex.GetType().Name, ex.Message);
 
-        // 2. Load the company (issuer) data from master DB — will be copied to tenant schema.
-        // AsSplitQuery: Address and Contact are both collection navigations — prevents cartesian explosion.
-        var company = await _masterContext.Client
-            .AsSplitQuery()
-            .Include(c => c.Address)
-            .Include(c => c.Contact)
-            .FirstOrDefaultAsync(c => c.Id == companyId && c.IsIssuer, cancellationToken)
-            ?? throw new InvalidOperationException(
-                $"Company with ID {companyId} not found or is not marked as issuer.");
+            // If the exception wraps an inner exception (common with EF Core / Npgsql),
+            // log that too — the real cause is often buried in the InnerException.
+            if (ex.InnerException != null)
+            {
+                _logger.LogError(
+                    "[Provision:{CompanyId}] Inner exception: {InnerType}: {InnerMessage}",
+                    companyId, ex.InnerException.GetType().Name, ex.InnerException.Message);
+            }
 
-        // 3. Create the PostgreSQL schema
-        await CreateSchemaAsync(settings.SchemaName, cancellationToken);
-        _logger.LogInformation("Created schema '{SchemaName}' for company {CompanyId}",
-            settings.SchemaName, companyId);
-
-        // 4. Apply TenantDbContext migrations to the new schema
-        using var tenantContext = CreateTenantContext(settings.SchemaName);
-        await tenantContext.Database.MigrateAsync(cancellationToken);
-        _logger.LogInformation("Applied migrations to tenant schema '{SchemaName}'",
-            settings.SchemaName);
-
-        // 5. Copy code tables from master DB to tenant schema
-        await CopyCodeTablesAsync(tenantContext, settings.SchemaName, cancellationToken);
-        _logger.LogInformation("Copied code tables to tenant schema '{SchemaName}'",
-            settings.SchemaName);
-
-        // 6. Create the issuer (company) record in the tenant schema
-        await CreateIssuerInTenantAsync(tenantContext, company, cancellationToken);
-        _logger.LogInformation("Created issuer in tenant schema '{SchemaName}'",
-            settings.SchemaName);
-
-        // 7. Create default number sequences for Invoice and CreditNote
-        await CreateDefaultNumberSequencesAsync(tenantContext, cancellationToken);
-        _logger.LogInformation("Created default number sequences in tenant schema '{SchemaName}'",
-            settings.SchemaName);
-
-        // 8. Mark as provisioned in master DB
-        settings.IsProvisioned = true;
-        settings.IsActive = true;
-        settings.ProvisionedAt = DateTime.UtcNow;
-        await _masterContext.SaveChangesAsync(cancellationToken);
-
-        _logger.LogInformation("Provisioning complete for company {CompanyId} → schema '{SchemaName}'",
-            companyId, settings.SchemaName);
-
-        return true;
+            // Re-throw with step info prepended so callers (AuthService, Controller) see it too
+            throw new InvalidOperationException(
+                $"Tenant provisioning failed at '{currentStep}' for company {companyId}: {ex.Message}", ex);
+        }
     }
 
     /// <inheritdoc />

@@ -825,6 +825,7 @@
   <data name="VerifyEmail_Success" xml:space="preserve"><value>Email verified! Your account is ready.</value></data>
   <data name="VerifyEmail_Failed" xml:space="preserve"><value>Invalid or expired verification link.</value></data>
   <data name="VerifyEmail_GoToLogin" xml:space="preserve"><value>Go to Login</value></data>
+  <data name="VerifyEmail_ProvisioningFailed" xml:space="preserve"><value>Email verified, but workspace setup failed. An administrator will complete the setup. You can log in.</value></data>
   <!-- ── OAuth Provider Names ─────────────────────────────────────────────── -->
   <data name="EExternalProvider_Google" xml:space="preserve"><value>Google</value></data>
   <data name="EExternalProvider_Microsoft" xml:space="preserve"><value>Microsoft</value></data>
