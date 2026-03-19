@@ -32,6 +32,7 @@ public class ChatService : IChatService
 {
     private readonly TenantDbContext _context;
     private readonly IAiProviderFactory _providerFactory;
+    private readonly ICompanyAiSettingsResolver _companyAiResolver;
     private readonly IChatContextBuilder _contextBuilder;
     private readonly IChatToolExecutor _toolExecutor;
     private readonly ILogger<ChatService> _logger;
@@ -46,12 +47,14 @@ public class ChatService : IChatService
     public ChatService(
         TenantDbContext context,
         IAiProviderFactory providerFactory,
+        ICompanyAiSettingsResolver companyAiResolver,
         IChatContextBuilder contextBuilder,
         IChatToolExecutor toolExecutor,
         ILogger<ChatService> logger)
     {
         _context = context;
         _providerFactory = providerFactory;
+        _companyAiResolver = companyAiResolver;
         _contextBuilder = contextBuilder;
         _toolExecutor = toolExecutor;
         _logger = logger;
@@ -132,7 +135,7 @@ public class ChatService : IChatService
         await _context.SaveChangesAsync(ct);
 
         // Build context and get AI response.
-        var provider = ResolveProvider(request.Provider);
+        var provider = await ResolveProviderAsync(request.Provider, ct);
         var systemPrompt = await _contextBuilder.BuildSystemPromptAsync(ct);
         var history = await GetConversationHistoryAsync(conversation.Id, ct);
 
@@ -239,7 +242,7 @@ public class ChatService : IChatService
         await _context.SaveChangesAsync(ct);
 
         // Build context and start streaming.
-        var provider = ResolveProvider(request.Provider);
+        var provider = await ResolveProviderAsync(request.Provider, ct);
         var systemPrompt = await _contextBuilder.BuildSystemPromptAsync(ct);
         var history = await GetConversationHistoryAsync(conversation.Id, ct);
 
@@ -461,11 +464,12 @@ public class ChatService : IChatService
     }
 
     /// <summary>
-    /// Returns the list of available AI provider names.
+    /// Returns the list of available AI provider names for the current company.
+    /// Includes company-specific providers (if configured) plus system-wide providers.
     /// </summary>
-    public IReadOnlyList<string> GetAvailableProviders()
+    public async Task<IReadOnlyList<string>> GetAvailableProvidersAsync(CancellationToken ct = default)
     {
-        return _providerFactory.AvailableProviders;
+        return await _companyAiResolver.GetAvailableProvidersAsync(ct);
     }
 
     // ─── Private helpers ────────────────────────────────────────────────
@@ -585,13 +589,16 @@ public class ChatService : IChatService
     }
 
     /// <summary>
-    /// Resolves the AI provider by name, or returns the default if no name specified.
+    /// Resolves the AI provider for the current request.
+    /// Uses company-level AI settings first (from CompanySystemSettings),
+    /// then falls back to system-wide settings (from appsettings.json).
+    ///
+    /// This enables per-company AI provider configuration (e.g., company's own Claude API key)
+    /// following the same 2-tier pattern as SMTP resolution in EmailService.
     /// </summary>
-    private IAiProvider ResolveProvider(string? providerName)
+    private async Task<IAiProvider> ResolveProviderAsync(string? providerName, CancellationToken ct = default)
     {
-        return string.IsNullOrEmpty(providerName)
-            ? _providerFactory.GetDefaultProvider()
-            : _providerFactory.GetProvider(providerName);
+        return await _companyAiResolver.ResolveProviderAsync(providerName, ct);
     }
 
     /// <summary>

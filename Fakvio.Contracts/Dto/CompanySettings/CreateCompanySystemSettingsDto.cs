@@ -83,4 +83,61 @@ public class CreateCompanySystemSettingsDto
     /// Whether to use SSL/TLS for the SMTP connection.
     /// </summary>
     public bool? SmtpUseSsl { get; set; }
+
+    // ─── Company-Specific AI Settings (optional at creation) ─────────────────
+    // Can be set during company creation or updated later.
+
+    /// <summary>
+    /// Default AI provider for this company (e.g., "Claude", "OpenAI", "Gemini", "Ollama").
+    /// </summary>
+    [StringLength(50)]
+    public string? AiDefaultProvider { get; set; }
+
+    /// <summary>
+    /// Claude API key for this company.
+    /// </summary>
+    [StringLength(500)]
+    public string? AiClaudeApiKey { get; set; }
+
+    /// <summary>
+    /// Claude model identifier (e.g., "claude-sonnet-4-6").
+    /// </summary>
+    [StringLength(100)]
+    public string? AiClaudeModel { get; set; }
+
+    /// <summary>
+    /// OpenAI API key for this company.
+    /// </summary>
+    [StringLength(500)]
+    public string? AiOpenAiApiKey { get; set; }
+
+    /// <summary>
+    /// OpenAI model identifier (e.g., "gpt-4o").
+    /// </summary>
+    [StringLength(100)]
+    public string? AiOpenAiModel { get; set; }
+
+    /// <summary>
+    /// Gemini API key for this company.
+    /// </summary>
+    [StringLength(500)]
+    public string? AiGeminiApiKey { get; set; }
+
+    /// <summary>
+    /// Gemini model identifier (e.g., "gemini-2.0-flash").
+    /// </summary>
+    [StringLength(100)]
+    public string? AiGeminiModel { get; set; }
+
+    /// <summary>
+    /// Ollama server base URL (e.g., "http://localhost:11434").
+    /// </summary>
+    [StringLength(500)]
+    public string? AiOllamaBaseUrl { get; set; }
+
+    /// <summary>
+    /// Ollama model identifier (e.g., "gemma3:12b").
+    /// </summary>
+    [StringLength(100)]
+    public string? AiOllamaModel { get; set; }
 }

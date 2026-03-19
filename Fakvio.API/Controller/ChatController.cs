@@ -208,9 +208,10 @@ public class ChatController : ControllerBase
     /// <response code="200">List of provider names (e.g., ["Claude", "OpenAI"])</response>
     [HttpGet("providers")]
     [ProducesResponseType(typeof(IReadOnlyList<string>), StatusCodes.Status200OK)]
-    public ActionResult<IReadOnlyList<string>> GetProviders()
+    public async Task<ActionResult<IReadOnlyList<string>>> GetProviders(CancellationToken ct = default)
     {
-        return Ok(_chatService.GetAvailableProviders());
+        // Returns providers available for the current company (company-specific + system-wide).
+        return Ok(await _chatService.GetAvailableProvidersAsync(ct));
     }
 
     /// <summary>

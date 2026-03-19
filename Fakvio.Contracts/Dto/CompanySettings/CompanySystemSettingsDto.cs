@@ -94,6 +94,57 @@ public class CompanySystemSettingsDto
     /// </summary>
     public bool HasSmtpPassword { get; set; }
 
+    // ─── Company AI Settings (read-only view) ──────────────────────────────
+    // These are returned so Admin/SysAdmin can see what's configured.
+    // API keys are NEVER exposed — only flags indicating whether they are set.
+
+    /// <summary>
+    /// Default AI provider for this company (e.g., "Claude", "OpenAI").
+    /// Null means "use system default".
+    /// </summary>
+    public string? AiDefaultProvider { get; set; }
+
+    /// <summary>
+    /// Claude model identifier. Null means "use system default model".
+    /// </summary>
+    public string? AiClaudeModel { get; set; }
+
+    /// <summary>
+    /// Indicates whether a Claude API key has been configured for this company.
+    /// The actual key is never exposed — only this flag.
+    /// </summary>
+    public bool HasAiClaudeApiKey { get; set; }
+
+    /// <summary>
+    /// OpenAI model identifier. Null means "use system default model".
+    /// </summary>
+    public string? AiOpenAiModel { get; set; }
+
+    /// <summary>
+    /// Indicates whether an OpenAI API key has been configured for this company.
+    /// </summary>
+    public bool HasAiOpenAiApiKey { get; set; }
+
+    /// <summary>
+    /// Gemini model identifier. Null means "use system default model".
+    /// </summary>
+    public string? AiGeminiModel { get; set; }
+
+    /// <summary>
+    /// Indicates whether a Gemini API key has been configured for this company.
+    /// </summary>
+    public bool HasAiGeminiApiKey { get; set; }
+
+    /// <summary>
+    /// Ollama server base URL for this company. Null means "use system default".
+    /// </summary>
+    public string? AiOllamaBaseUrl { get; set; }
+
+    /// <summary>
+    /// Ollama model identifier. Null means "use system default model".
+    /// </summary>
+    public string? AiOllamaModel { get; set; }
+
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
 }

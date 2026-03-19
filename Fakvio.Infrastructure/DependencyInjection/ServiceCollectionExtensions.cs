@@ -155,6 +155,9 @@ public static class ServiceCollectionExtensions
 
         // ── AI Chat ────────────────────────────────────────────────────────
         AddAiProviders(services, configuration);
+        // Company-level AI settings resolver — checks CompanySystemSettings first,
+        // then falls back to system-wide IAiProviderFactory (same pattern as SMTP).
+        services.AddScoped<ICompanyAiSettingsResolver, CompanyAiSettingsResolver>();
         services.AddScoped<IChatService, ChatService>();
         services.AddScoped<IChatContextBuilder, ChatContextBuilder>();
 

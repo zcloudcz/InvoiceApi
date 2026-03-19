@@ -71,4 +71,66 @@ public class UpdateCompanySystemSettingsDto
     /// Whether to use SSL/TLS for the SMTP connection.
     /// </summary>
     public bool? SmtpUseSsl { get; set; }
+
+    // ─── Company-Specific AI Settings ────────────────────────────────────────
+    // All optional — null means "keep existing", empty string means "clear and use system default".
+
+    /// <summary>
+    /// Default AI provider for this company (e.g., "Claude", "OpenAI", "Gemini", "Ollama").
+    /// Set to empty string to clear and fall back to system default.
+    /// </summary>
+    [StringLength(50)]
+    public string? AiDefaultProvider { get; set; }
+
+    /// <summary>
+    /// Claude API key.
+    /// Send null to keep existing, empty string to clear.
+    /// </summary>
+    [StringLength(500)]
+    public string? AiClaudeApiKey { get; set; }
+
+    /// <summary>
+    /// Claude model identifier (e.g., "claude-sonnet-4-6").
+    /// </summary>
+    [StringLength(100)]
+    public string? AiClaudeModel { get; set; }
+
+    /// <summary>
+    /// OpenAI API key.
+    /// Send null to keep existing, empty string to clear.
+    /// </summary>
+    [StringLength(500)]
+    public string? AiOpenAiApiKey { get; set; }
+
+    /// <summary>
+    /// OpenAI model identifier (e.g., "gpt-4o").
+    /// </summary>
+    [StringLength(100)]
+    public string? AiOpenAiModel { get; set; }
+
+    /// <summary>
+    /// Gemini API key.
+    /// Send null to keep existing, empty string to clear.
+    /// </summary>
+    [StringLength(500)]
+    public string? AiGeminiApiKey { get; set; }
+
+    /// <summary>
+    /// Gemini model identifier (e.g., "gemini-2.0-flash").
+    /// </summary>
+    [StringLength(100)]
+    public string? AiGeminiModel { get; set; }
+
+    /// <summary>
+    /// Ollama server base URL (e.g., "http://localhost:11434").
+    /// Set to empty string to clear.
+    /// </summary>
+    [StringLength(500)]
+    public string? AiOllamaBaseUrl { get; set; }
+
+    /// <summary>
+    /// Ollama model identifier (e.g., "gemma3:12b").
+    /// </summary>
+    [StringLength(100)]
+    public string? AiOllamaModel { get; set; }
 }

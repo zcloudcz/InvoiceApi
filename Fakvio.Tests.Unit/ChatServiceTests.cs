@@ -21,6 +21,7 @@ public class ChatServiceTests : IDisposable
     private readonly TenantDbContext _context;
     private readonly ChatService _service;
     private readonly IAiProviderFactory _providerFactory;
+    private readonly ICompanyAiSettingsResolver _companyAiResolver;
     private readonly IAiProvider _mockProvider;
     private readonly IChatContextBuilder _contextBuilder;
     private readonly IChatToolExecutor _toolExecutor;
@@ -61,7 +62,16 @@ public class ChatServiceTests : IDisposable
         _toolExecutor = Substitute.For<IChatToolExecutor>();
         _toolExecutor.DetectToolIntent(Arg.Any<string>()).Returns(false);
 
-        _service = new ChatService(_context, _providerFactory, _contextBuilder, _toolExecutor, _logger);
+        // Mock company AI settings resolver — delegates to the global factory by default.
+        _companyAiResolver = Substitute.For<ICompanyAiSettingsResolver>();
+        _companyAiResolver
+            .ResolveProviderAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(_mockProvider);
+        _companyAiResolver
+            .GetAvailableProvidersAsync(Arg.Any<CancellationToken>())
+            .Returns(new List<string> { "TestProvider" }.AsReadOnly());
+
+        _service = new ChatService(_context, _providerFactory, _companyAiResolver, _contextBuilder, _toolExecutor, _logger);
     }
 
     public void Dispose()
@@ -278,9 +288,9 @@ public class ChatServiceTests : IDisposable
     // ─── GetAvailableProviders Tests ─────────────────────────────────────
 
     [Fact]
-    public void GetAvailableProviders_ReturnsProviderList()
+    public async Task GetAvailableProviders_ReturnsProviderList()
     {
-        var providers = _service.GetAvailableProviders();
+        var providers = await _service.GetAvailableProvidersAsync();
         providers.Count.ShouldBe(1);
         providers[0].ShouldBe("TestProvider");
     }

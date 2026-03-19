@@ -206,4 +206,69 @@ public class CompanySystemSettings : BaseEntity
     /// Stored for UI display purposes — the actual upload uses OneDriveFolderId.
     /// </summary>
     public string? OneDriveFolderName { get; set; }
+
+    // ─── Company-Specific AI Assistant Settings ──────────────────────────────
+    // When configured (e.g., AiClaudeApiKey is non-empty), the AI chat assistant
+    // uses these settings instead of the system-wide AI config from appsettings.json.
+    // All properties are nullable — null/empty means "use system AI settings" (fallback).
+    // This follows the same 3-tier pattern as SMTP:
+    //   1. Company AI settings (this entity) → 2. System appsettings.json → 3. No provider
+
+    /// <summary>
+    /// Default AI provider for this company (e.g., "Claude", "OpenAI", "Gemini", "Ollama").
+    /// When non-empty, overrides the system-wide DefaultProvider from appsettings.json.
+    /// Null/empty means "use system default provider".
+    /// </summary>
+    public string? AiDefaultProvider { get; set; }
+
+    /// <summary>
+    /// Anthropic Claude API key for this company.
+    /// When non-empty, the company uses its own Claude API key instead of the system-wide one.
+    /// Stored encrypted in production — never exposed in read DTOs.
+    /// </summary>
+    public string? AiClaudeApiKey { get; set; }
+
+    /// <summary>
+    /// Claude model identifier (e.g., "claude-sonnet-4-6", "claude-opus-4-6").
+    /// Null/empty means "use system default model".
+    /// </summary>
+    public string? AiClaudeModel { get; set; }
+
+    /// <summary>
+    /// OpenAI API key for this company.
+    /// When non-empty, the company uses its own OpenAI key instead of the system-wide one.
+    /// Stored encrypted in production — never exposed in read DTOs.
+    /// </summary>
+    public string? AiOpenAiApiKey { get; set; }
+
+    /// <summary>
+    /// OpenAI model identifier (e.g., "gpt-4o", "gpt-4-turbo").
+    /// Null/empty means "use system default model".
+    /// </summary>
+    public string? AiOpenAiModel { get; set; }
+
+    /// <summary>
+    /// Google Gemini API key for this company.
+    /// When non-empty, the company uses its own Gemini key instead of the system-wide one.
+    /// Stored encrypted in production — never exposed in read DTOs.
+    /// </summary>
+    public string? AiGeminiApiKey { get; set; }
+
+    /// <summary>
+    /// Gemini model identifier (e.g., "gemini-2.0-flash").
+    /// Null/empty means "use system default model".
+    /// </summary>
+    public string? AiGeminiModel { get; set; }
+
+    /// <summary>
+    /// Ollama server base URL for this company (e.g., "http://localhost:11434").
+    /// When non-empty, the company uses its own Ollama server.
+    /// </summary>
+    public string? AiOllamaBaseUrl { get; set; }
+
+    /// <summary>
+    /// Ollama model identifier (e.g., "gemma3:12b", "llama3.2").
+    /// Null/empty means "use system default model".
+    /// </summary>
+    public string? AiOllamaModel { get; set; }
 }

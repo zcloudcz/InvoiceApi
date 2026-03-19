@@ -712,6 +712,16 @@ public class CompanyController : ControllerBase
                 SmtpSenderEmail = dto.SmtpSenderEmail,
                 SmtpSenderName = dto.SmtpSenderName,
                 SmtpUseSsl = dto.SmtpUseSsl,
+                // Optional company AI settings (can also be configured later via UpdateSettings)
+                AiDefaultProvider = dto.AiDefaultProvider,
+                AiClaudeApiKey = dto.AiClaudeApiKey,
+                AiClaudeModel = dto.AiClaudeModel,
+                AiOpenAiApiKey = dto.AiOpenAiApiKey,
+                AiOpenAiModel = dto.AiOpenAiModel,
+                AiGeminiApiKey = dto.AiGeminiApiKey,
+                AiGeminiModel = dto.AiGeminiModel,
+                AiOllamaBaseUrl = dto.AiOllamaBaseUrl,
+                AiOllamaModel = dto.AiOllamaModel,
                 CreatedAt = DateTime.UtcNow
             };
 
@@ -776,6 +786,19 @@ public class CompanyController : ControllerBase
             if (dto.SmtpSenderEmail != null) settings.SmtpSenderEmail = dto.SmtpSenderEmail;
             if (dto.SmtpSenderName != null) settings.SmtpSenderName = dto.SmtpSenderName;
             if (dto.SmtpUseSsl.HasValue) settings.SmtpUseSsl = dto.SmtpUseSsl;
+
+            // Update AI settings — same partial update pattern as SMTP.
+            // null = keep existing, empty string = clear (fall back to system default).
+            if (dto.AiDefaultProvider != null) settings.AiDefaultProvider = dto.AiDefaultProvider;
+            // AiClaudeApiKey: null = keep existing, empty = clear, non-empty = update
+            if (dto.AiClaudeApiKey != null) settings.AiClaudeApiKey = dto.AiClaudeApiKey;
+            if (dto.AiClaudeModel != null) settings.AiClaudeModel = dto.AiClaudeModel;
+            if (dto.AiOpenAiApiKey != null) settings.AiOpenAiApiKey = dto.AiOpenAiApiKey;
+            if (dto.AiOpenAiModel != null) settings.AiOpenAiModel = dto.AiOpenAiModel;
+            if (dto.AiGeminiApiKey != null) settings.AiGeminiApiKey = dto.AiGeminiApiKey;
+            if (dto.AiGeminiModel != null) settings.AiGeminiModel = dto.AiGeminiModel;
+            if (dto.AiOllamaBaseUrl != null) settings.AiOllamaBaseUrl = dto.AiOllamaBaseUrl;
+            if (dto.AiOllamaModel != null) settings.AiOllamaModel = dto.AiOllamaModel;
 
             settings.UpdatedAt = DateTime.UtcNow;
 
@@ -1059,6 +1082,16 @@ public class CompanyController : ControllerBase
             SmtpSenderName = settings.SmtpSenderName,
             SmtpUseSsl = settings.SmtpUseSsl,
             HasSmtpPassword = !string.IsNullOrEmpty(settings.SmtpPassword),
+            // Company AI settings — API keys are never exposed, only flags
+            AiDefaultProvider = settings.AiDefaultProvider,
+            AiClaudeModel = settings.AiClaudeModel,
+            HasAiClaudeApiKey = !string.IsNullOrEmpty(settings.AiClaudeApiKey),
+            AiOpenAiModel = settings.AiOpenAiModel,
+            HasAiOpenAiApiKey = !string.IsNullOrEmpty(settings.AiOpenAiApiKey),
+            AiGeminiModel = settings.AiGeminiModel,
+            HasAiGeminiApiKey = !string.IsNullOrEmpty(settings.AiGeminiApiKey),
+            AiOllamaBaseUrl = settings.AiOllamaBaseUrl,
+            AiOllamaModel = settings.AiOllamaModel,
             CreatedAt = settings.CreatedAt,
             UpdatedAt = settings.UpdatedAt
         };

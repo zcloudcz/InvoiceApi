@@ -47,9 +47,10 @@ public interface IChatService
     Task DeleteConversationAsync(long conversationId, long userId, CancellationToken ct = default);
 
     /// <summary>
-    /// Returns the list of available AI provider names (e.g., ["Claude", "OpenAI"]).
+    /// Returns the list of available AI provider names for the current company.
+    /// Includes company-specific providers (if configured) plus system-wide providers.
     /// </summary>
-    IReadOnlyList<string> GetAvailableProviders();
+    Task<IReadOnlyList<string>> GetAvailableProvidersAsync(CancellationToken ct = default);
 
     /// <summary>
     /// Gets the UI action from the last tool execution in this request scope.

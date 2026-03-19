@@ -2,6 +2,22 @@
 
 ## Completed
 
+### Company-Level AI Settings (2026-03-19)
+Per-company AI provider configuration — same 2-tier pattern as SMTP (Company → System fallback).
+
+- [x] **CompanySystemSettings entity**: Added 9 AI fields (AiDefaultProvider, AiClaudeApiKey/Model, AiOpenAiApiKey/Model, AiGeminiApiKey/Model, AiOllamaBaseUrl/Model)
+- [x] **DTOs**: Updated CompanySystemSettingsDto (read), CreateCompanySystemSettingsDto, UpdateCompanySystemSettingsDto — API keys never exposed, only HasXxxApiKey flags
+- [x] **CompanyController**: Updated CreateSettings, UpdateSettings, MapSettingsToDto for AI fields
+- [x] **ICompanyAiSettingsResolver**: New interface in Application — 2-tier provider resolution (company → system)
+- [x] **CompanyAiSettingsResolver**: Implementation with ad-hoc provider creation (AdHocClaudeProvider, AdHocOpenAiProvider)
+- [x] **ChatService**: Uses ICompanyAiSettingsResolver instead of direct IAiProviderFactory; GetAvailableProviders → async GetAvailableProvidersAsync
+- [x] **ChatController**: GetProviders endpoint updated to async
+- [x] **DI Registration**: ICompanyAiSettingsResolver registered as scoped in ServiceCollectionExtensions
+- [x] **EF Migration**: AddCompanyAiSettings migration for MasterDbContext
+- [x] **Ad-hoc providers**: AdHocClaudeProvider, AdHocOpenAiProvider, AdHocGeminiProvider (REST API + SSE streaming), AdHocOllamaProvider (NDJSON streaming + native tool calling)
+- [x] **IHttpClientFactory**: Injected into CompanyAiSettingsResolver for Gemini/Ollama ad-hoc HttpClient creation
+- [x] **Tests**: 9 CompanyAiSettingsResolverTests (incl. Gemini + Ollama) + 24 ChatServiceTests = 33 total
+
 ### Schema Permissions for Azure PostgreSQL (2026-03-15)
 GRANT ALL + ALTER DEFAULT PRIVILEGES on tenant schemas — ensures the Azure (Entra ID) user has full access to all existing and future objects.
 
