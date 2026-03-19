@@ -502,11 +502,11 @@ else
         </Authorized>
     </AuthorizeView>
 
-    @* ─── AI Assistant Settings Section (Admin-only) ─────────────────────── *@
+    @* ─── AI Assistant Settings Section (Admin/SysAdmin) ─────────────────── *@
     @* Company-level AI provider configuration. When configured, the AI chat assistant
        uses these API keys instead of the system-wide defaults.
        Follows the same 2-tier pattern as SMTP: Company → System fallback. *@
-    <AuthorizeView Roles="Admin">
+    <AuthorizeView Roles="Admin,SysAdmin">
         <Authorized>
             <MudPaper Elevation="2" Class="pa-4 mb-4 mt-4">
                 <MudText Typo="Typo.h6" Class="mb-2">@L["Ai_Title"]</MudText>
