@@ -94,7 +94,7 @@ public class InvoiceFunctions
     /// </summary>
     [Function("Invoice_GetInvoiceById")]
     public async Task<IActionResult> Invoice_GetInvoiceById(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/invoice/{id}")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/invoice/{id:long}")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
@@ -162,7 +162,7 @@ public class InvoiceFunctions
     /// </summary>
     [Function("Invoice_UpdateInvoice")]
     public async Task<IActionResult> Invoice_UpdateInvoice(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "api/invoice/{id}")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "api/invoice/{id:long}")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
@@ -185,11 +185,11 @@ public class InvoiceFunctions
     }
 
     /// <summary>
-    /// POST api/invoice/{id}/complete → InvoiceController.CompleteInvoice
+    /// POST api/invoice/{id:long}/complete → InvoiceController.CompleteInvoice
     /// </summary>
     [Function("Invoice_CompleteInvoice")]
     public async Task<IActionResult> Invoice_CompleteInvoice(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/invoice/{id}/complete")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/invoice/{id:long}/complete")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
@@ -210,11 +210,11 @@ public class InvoiceFunctions
     }
 
     /// <summary>
-    /// POST api/invoice/{id}/mark-paid → InvoiceController.MarkAsPaid
+    /// POST api/invoice/{id:long}/mark-paid → InvoiceController.MarkAsPaid
     /// </summary>
     [Function("Invoice_MarkAsPaid")]
     public async Task<IActionResult> Invoice_MarkAsPaid(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/invoice/{id}/mark-paid")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/invoice/{id:long}/mark-paid")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
@@ -240,7 +240,7 @@ public class InvoiceFunctions
     /// </summary>
     [Function("Invoice_DeleteInvoice")]
     public async Task<IActionResult> Invoice_DeleteInvoice(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "api/invoice/{id}")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "api/invoice/{id:long}")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
@@ -261,11 +261,11 @@ public class InvoiceFunctions
     }
 
     /// <summary>
-    /// POST api/invoice/{invoiceId}/credit-note → InvoiceController.CreateCreditNote
+    /// POST api/invoice/{invoiceId:long}/credit-note → InvoiceController.CreateCreditNote
     /// </summary>
     [Function("Invoice_CreateCreditNote")]
     public async Task<IActionResult> Invoice_CreateCreditNote(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/invoice/{invoiceId}/credit-note")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/invoice/{invoiceId:long}/credit-note")] HttpRequest req,
         string invoiceId)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
@@ -288,11 +288,11 @@ public class InvoiceFunctions
     }
 
     /// <summary>
-    /// GET api/invoice/{invoiceId}/credit-notes → InvoiceController.GetCreditNotesForInvoice
+    /// GET api/invoice/{invoiceId:long}/credit-notes → InvoiceController.GetCreditNotesForInvoice
     /// </summary>
     [Function("Invoice_GetCreditNotesForInvoice")]
     public async Task<IActionResult> Invoice_GetCreditNotesForInvoice(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/invoice/{invoiceId}/credit-notes")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/invoice/{invoiceId:long}/credit-notes")] HttpRequest req,
         string invoiceId)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
@@ -313,11 +313,11 @@ public class InvoiceFunctions
     }
 
     /// <summary>
-    /// GET api/invoice/{id}/pdf → InvoiceController.ExportToPdf
+    /// GET api/invoice/{id:long}/pdf → InvoiceController.ExportToPdf
     /// </summary>
     [Function("Invoice_ExportToPdf")]
     public async Task<IActionResult> Invoice_ExportToPdf(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/invoice/{id}/pdf")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/invoice/{id:long}/pdf")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
@@ -339,11 +339,11 @@ public class InvoiceFunctions
     }
 
     /// <summary>
-    /// POST api/invoice/{id}/send-email → InvoiceController.SendInvoiceEmail
+    /// POST api/invoice/{id:long}/send-email → InvoiceController.SendInvoiceEmail
     /// </summary>
     [Function("Invoice_SendInvoiceEmail")]
     public async Task<IActionResult> Invoice_SendInvoiceEmail(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/invoice/{id}/send-email")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/invoice/{id:long}/send-email")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
@@ -366,11 +366,11 @@ public class InvoiceFunctions
     }
 
     /// <summary>
-    /// GET api/invoice/{id}/qr → InvoiceController.GetQrCode
+    /// GET api/invoice/{id:long}/qr → InvoiceController.GetQrCode
     /// </summary>
     [Function("Invoice_GetQrCode")]
     public async Task<IActionResult> Invoice_GetQrCode(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/invoice/{id}/qr")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/invoice/{id:long}/qr")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
@@ -393,11 +393,11 @@ public class InvoiceFunctions
     }
 
     /// <summary>
-    /// GET api/invoice/{id}/qr/sind → InvoiceController.GetSindString
+    /// GET api/invoice/{id:long}/qr/sind → InvoiceController.GetSindString
     /// </summary>
     [Function("Invoice_GetSindString")]
     public async Task<IActionResult> Invoice_GetSindString(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/invoice/{id}/qr/sind")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/invoice/{id:long}/qr/sind")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
@@ -418,11 +418,11 @@ public class InvoiceFunctions
     }
 
     /// <summary>
-    /// GET api/invoice/{id}/qr/spd → InvoiceController.GetSpdString
+    /// GET api/invoice/{id:long}/qr/spd → InvoiceController.GetSpdString
     /// </summary>
     [Function("Invoice_GetSpdString")]
     public async Task<IActionResult> Invoice_GetSpdString(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/invoice/{id}/qr/spd")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/invoice/{id:long}/qr/spd")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)

@@ -166,7 +166,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function10);
             var Function11RawBindings = new List<string>();
-            Function11RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/client/{id}""}");
+            Function11RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/client/{id:long}""}");
             Function11RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function11 = new DefaultFunctionMetadata
@@ -218,7 +218,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function14);
             var Function15RawBindings = new List<string>();
-            Function15RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/client/{id}""}");
+            Function15RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/client/{id:long}""}");
             Function15RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function15 = new DefaultFunctionMetadata
@@ -231,7 +231,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function15);
             var Function16RawBindings = new List<string>();
-            Function16RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""delete""],""route"":""api/client/{id}""}");
+            Function16RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""delete""],""route"":""api/client/{id:long}""}");
             Function16RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function16 = new DefaultFunctionMetadata
@@ -257,7 +257,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function17);
             var Function18RawBindings = new List<string>();
-            Function18RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/client/{id}/address""}");
+            Function18RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/client/{id:long}/address""}");
             Function18RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function18 = new DefaultFunctionMetadata
@@ -270,7 +270,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function18);
             var Function19RawBindings = new List<string>();
-            Function19RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/client/{id}/contact""}");
+            Function19RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/client/{id:long}/contact""}");
             Function19RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function19 = new DefaultFunctionMetadata
@@ -283,7 +283,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function19);
             var Function20RawBindings = new List<string>();
-            Function20RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/client/{id}/bank-account""}");
+            Function20RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/client/{id:long}/bank-account""}");
             Function20RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function20 = new DefaultFunctionMetadata
@@ -296,7 +296,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function20);
             var Function21RawBindings = new List<string>();
-            Function21RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/client/{id}/billing-settings""}");
+            Function21RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/client/{id:long}/billing-settings""}");
             Function21RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function21 = new DefaultFunctionMetadata
@@ -426,7 +426,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function30);
             var Function31RawBindings = new List<string>();
-            Function31RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/company/{id}""}");
+            Function31RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/company/{id:long}""}");
             Function31RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function31 = new DefaultFunctionMetadata
@@ -452,7 +452,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function32);
             var Function33RawBindings = new List<string>();
-            Function33RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/company/{id}""}");
+            Function33RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/company/{id:long}""}");
             Function33RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function33 = new DefaultFunctionMetadata
@@ -465,7 +465,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function33);
             var Function34RawBindings = new List<string>();
-            Function34RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""delete""],""route"":""api/company/{id}""}");
+            Function34RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""delete""],""route"":""api/company/{id:long}""}");
             Function34RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function34 = new DefaultFunctionMetadata
@@ -491,7 +491,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function35);
             var Function36RawBindings = new List<string>();
-            Function36RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/company/{id}/settings""}");
+            Function36RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/company/{id:long}/settings""}");
             Function36RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function36 = new DefaultFunctionMetadata
@@ -530,7 +530,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function38);
             var Function39RawBindings = new List<string>();
-            Function39RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/company/{id}/settings""}");
+            Function39RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/company/{id:long}/settings""}");
             Function39RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function39 = new DefaultFunctionMetadata
@@ -543,7 +543,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function39);
             var Function40RawBindings = new List<string>();
-            Function40RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/company/{id}/provision""}");
+            Function40RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/company/{id:long}/provision""}");
             Function40RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function40 = new DefaultFunctionMetadata
@@ -556,7 +556,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function40);
             var Function41RawBindings = new List<string>();
-            Function41RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/company/{id}/activate""}");
+            Function41RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/company/{id:long}/activate""}");
             Function41RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function41 = new DefaultFunctionMetadata
@@ -569,7 +569,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function41);
             var Function42RawBindings = new List<string>();
-            Function42RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/company/{id}/deactivate""}");
+            Function42RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/company/{id:long}/deactivate""}");
             Function42RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function42 = new DefaultFunctionMetadata
@@ -582,7 +582,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function42);
             var Function43RawBindings = new List<string>();
-            Function43RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/company/{id}/migrate""}");
+            Function43RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/company/{id:long}/migrate""}");
             Function43RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function43 = new DefaultFunctionMetadata
@@ -595,7 +595,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function43);
             var Function44RawBindings = new List<string>();
-            Function44RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/company/{id}/test-smtp""}");
+            Function44RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/company/{id:long}/test-smtp""}");
             Function44RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function44 = new DefaultFunctionMetadata
@@ -621,7 +621,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function45);
             var Function46RawBindings = new List<string>();
-            Function46RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/contenttemplate/{id}""}");
+            Function46RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/contenttemplate/{id:long}""}");
             Function46RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function46 = new DefaultFunctionMetadata
@@ -660,7 +660,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function48);
             var Function49RawBindings = new List<string>();
-            Function49RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/contenttemplate/{id}""}");
+            Function49RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/contenttemplate/{id:long}""}");
             Function49RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function49 = new DefaultFunctionMetadata
@@ -673,7 +673,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function49);
             var Function50RawBindings = new List<string>();
-            Function50RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""delete""],""route"":""api/contenttemplate/{id}""}");
+            Function50RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""delete""],""route"":""api/contenttemplate/{id:long}""}");
             Function50RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function50 = new DefaultFunctionMetadata
@@ -725,7 +725,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function53);
             var Function54RawBindings = new List<string>();
-            Function54RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/currency/{id}""}");
+            Function54RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/currency/{id:long}""}");
             Function54RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function54 = new DefaultFunctionMetadata
@@ -751,7 +751,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function55);
             var Function56RawBindings = new List<string>();
-            Function56RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/currency/{id}""}");
+            Function56RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/currency/{id:long}""}");
             Function56RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function56 = new DefaultFunctionMetadata
@@ -764,7 +764,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function56);
             var Function57RawBindings = new List<string>();
-            Function57RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""delete""],""route"":""api/currency/{id}""}");
+            Function57RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""delete""],""route"":""api/currency/{id:long}""}");
             Function57RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function57 = new DefaultFunctionMetadata
@@ -868,7 +868,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function64);
             var Function65RawBindings = new List<string>();
-            Function65RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/invoice/{id}""}");
+            Function65RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/invoice/{id:long}""}");
             Function65RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function65 = new DefaultFunctionMetadata
@@ -907,7 +907,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function67);
             var Function68RawBindings = new List<string>();
-            Function68RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/invoice/{id}""}");
+            Function68RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/invoice/{id:long}""}");
             Function68RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function68 = new DefaultFunctionMetadata
@@ -920,7 +920,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function68);
             var Function69RawBindings = new List<string>();
-            Function69RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/invoice/{id}/complete""}");
+            Function69RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/invoice/{id:long}/complete""}");
             Function69RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function69 = new DefaultFunctionMetadata
@@ -933,7 +933,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function69);
             var Function70RawBindings = new List<string>();
-            Function70RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/invoice/{id}/mark-paid""}");
+            Function70RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/invoice/{id:long}/mark-paid""}");
             Function70RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function70 = new DefaultFunctionMetadata
@@ -946,7 +946,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function70);
             var Function71RawBindings = new List<string>();
-            Function71RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""delete""],""route"":""api/invoice/{id}""}");
+            Function71RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""delete""],""route"":""api/invoice/{id:long}""}");
             Function71RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function71 = new DefaultFunctionMetadata
@@ -959,7 +959,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function71);
             var Function72RawBindings = new List<string>();
-            Function72RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/invoice/{invoiceId}/credit-note""}");
+            Function72RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/invoice/{invoiceId:long}/credit-note""}");
             Function72RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function72 = new DefaultFunctionMetadata
@@ -972,7 +972,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function72);
             var Function73RawBindings = new List<string>();
-            Function73RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/invoice/{invoiceId}/credit-notes""}");
+            Function73RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/invoice/{invoiceId:long}/credit-notes""}");
             Function73RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function73 = new DefaultFunctionMetadata
@@ -985,7 +985,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function73);
             var Function74RawBindings = new List<string>();
-            Function74RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/invoice/{id}/pdf""}");
+            Function74RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/invoice/{id:long}/pdf""}");
             Function74RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function74 = new DefaultFunctionMetadata
@@ -998,7 +998,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function74);
             var Function75RawBindings = new List<string>();
-            Function75RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/invoice/{id}/send-email""}");
+            Function75RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/invoice/{id:long}/send-email""}");
             Function75RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function75 = new DefaultFunctionMetadata
@@ -1011,7 +1011,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function75);
             var Function76RawBindings = new List<string>();
-            Function76RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/invoice/{id}/qr""}");
+            Function76RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/invoice/{id:long}/qr""}");
             Function76RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function76 = new DefaultFunctionMetadata
@@ -1024,7 +1024,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function76);
             var Function77RawBindings = new List<string>();
-            Function77RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/invoice/{id}/qr/sind""}");
+            Function77RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/invoice/{id:long}/qr/sind""}");
             Function77RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function77 = new DefaultFunctionMetadata
@@ -1037,7 +1037,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function77);
             var Function78RawBindings = new List<string>();
-            Function78RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/invoice/{id}/qr/spd""}");
+            Function78RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/invoice/{id:long}/qr/spd""}");
             Function78RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function78 = new DefaultFunctionMetadata
@@ -1141,7 +1141,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function85);
             var Function86RawBindings = new List<string>();
-            Function86RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/invoicetemplate/{id}""}");
+            Function86RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/invoicetemplate/{id:long}""}");
             Function86RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function86 = new DefaultFunctionMetadata
@@ -1167,7 +1167,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function87);
             var Function88RawBindings = new List<string>();
-            Function88RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/invoicetemplate/{id}""}");
+            Function88RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/invoicetemplate/{id:long}""}");
             Function88RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function88 = new DefaultFunctionMetadata
@@ -1180,7 +1180,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function88);
             var Function89RawBindings = new List<string>();
-            Function89RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""delete""],""route"":""api/invoicetemplate/{id}""}");
+            Function89RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""delete""],""route"":""api/invoicetemplate/{id:long}""}");
             Function89RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function89 = new DefaultFunctionMetadata
@@ -1193,7 +1193,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function89);
             var Function90RawBindings = new List<string>();
-            Function90RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/invoicetemplate/{id}/create-invoice""}");
+            Function90RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/invoicetemplate/{id:long}/create-invoice""}");
             Function90RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function90 = new DefaultFunctionMetadata
@@ -1206,7 +1206,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function90);
             var Function91RawBindings = new List<string>();
-            Function91RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/invoicetemplate/from-invoice/{invoiceId}""}");
+            Function91RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/invoicetemplate/from-invoice/{invoiceId:long}""}");
             Function91RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function91 = new DefaultFunctionMetadata
@@ -1232,7 +1232,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function92);
             var Function93RawBindings = new List<string>();
-            Function93RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/numbersequence/formats/{id}""}");
+            Function93RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/numbersequence/formats/{id:long}""}");
             Function93RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function93 = new DefaultFunctionMetadata
@@ -1258,7 +1258,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function94);
             var Function95RawBindings = new List<string>();
-            Function95RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/numbersequence/formats/{id}""}");
+            Function95RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/numbersequence/formats/{id:long}""}");
             Function95RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function95 = new DefaultFunctionMetadata
@@ -1297,7 +1297,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function97);
             var Function98RawBindings = new List<string>();
-            Function98RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/numbersequence/{id}""}");
+            Function98RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/numbersequence/{id:long}""}");
             Function98RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function98 = new DefaultFunctionMetadata
@@ -1336,7 +1336,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function100);
             var Function101RawBindings = new List<string>();
-            Function101RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/numbersequence/{id}""}");
+            Function101RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/numbersequence/{id:long}""}");
             Function101RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function101 = new DefaultFunctionMetadata
@@ -1349,7 +1349,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function101);
             var Function102RawBindings = new List<string>();
-            Function102RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/numbersequence/{id}/set-default""}");
+            Function102RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/numbersequence/{id:long}/set-default""}");
             Function102RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function102 = new DefaultFunctionMetadata
@@ -1362,7 +1362,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function102);
             var Function103RawBindings = new List<string>();
-            Function103RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""delete""],""route"":""api/numbersequence/{id}""}");
+            Function103RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""delete""],""route"":""api/numbersequence/{id:long}""}");
             Function103RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function103 = new DefaultFunctionMetadata
@@ -1375,7 +1375,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function103);
             var Function104RawBindings = new List<string>();
-            Function104RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/numbersequence/{id}/preview""}");
+            Function104RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/numbersequence/{id:long}/preview""}");
             Function104RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function104 = new DefaultFunctionMetadata
@@ -1505,7 +1505,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function113);
             var Function114RawBindings = new List<string>();
-            Function114RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/twofactor/admin/force-disable/{userId}""}");
+            Function114RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/twofactor/admin/force-disable/{userId:long}""}");
             Function114RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function114 = new DefaultFunctionMetadata
@@ -1544,7 +1544,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function116);
             var Function117RawBindings = new List<string>();
-            Function117RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/user/{id}""}");
+            Function117RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/user/{id:long}""}");
             Function117RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function117 = new DefaultFunctionMetadata
@@ -1570,7 +1570,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function118);
             var Function119RawBindings = new List<string>();
-            Function119RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/user/{id}""}");
+            Function119RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/user/{id:long}""}");
             Function119RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function119 = new DefaultFunctionMetadata
@@ -1583,7 +1583,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function119);
             var Function120RawBindings = new List<string>();
-            Function120RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/user/{id}/change-password""}");
+            Function120RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/user/{id:long}/change-password""}");
             Function120RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function120 = new DefaultFunctionMetadata
@@ -1596,7 +1596,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function120);
             var Function121RawBindings = new List<string>();
-            Function121RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/user/{id}/admin-reset-password""}");
+            Function121RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/user/{id:long}/admin-reset-password""}");
             Function121RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function121 = new DefaultFunctionMetadata
@@ -1609,7 +1609,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function121);
             var Function122RawBindings = new List<string>();
-            Function122RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""delete""],""route"":""api/user/{id}""}");
+            Function122RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""delete""],""route"":""api/user/{id:long}""}");
             Function122RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function122 = new DefaultFunctionMetadata
@@ -1674,7 +1674,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function126);
             var Function127RawBindings = new List<string>();
-            Function127RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/vatrate/{id}""}");
+            Function127RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/vatrate/{id:long}""}");
             Function127RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function127 = new DefaultFunctionMetadata
@@ -1739,7 +1739,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function131);
             var Function132RawBindings = new List<string>();
-            Function132RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/vatrate/{id}""}");
+            Function132RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/vatrate/{id:long}""}");
             Function132RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function132 = new DefaultFunctionMetadata
@@ -1752,7 +1752,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function132);
             var Function133RawBindings = new List<string>();
-            Function133RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""delete""],""route"":""api/vatrate/{id}""}");
+            Function133RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""delete""],""route"":""api/vatrate/{id:long}""}");
             Function133RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function133 = new DefaultFunctionMetadata
@@ -1765,7 +1765,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function133);
             var Function134RawBindings = new List<string>();
-            Function134RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/vatrate/{id}/set-default""}");
+            Function134RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/vatrate/{id:long}/set-default""}");
             Function134RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function134 = new DefaultFunctionMetadata

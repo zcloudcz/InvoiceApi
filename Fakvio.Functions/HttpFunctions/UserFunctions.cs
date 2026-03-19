@@ -83,7 +83,7 @@ public class UserFunctions
     /// </summary>
     [Function("User_GetUserById")]
     public async Task<IActionResult> User_GetUserById(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/user/{id}")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/user/{id:long}")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
@@ -131,7 +131,7 @@ public class UserFunctions
     /// </summary>
     [Function("User_UpdateUser")]
     public async Task<IActionResult> User_UpdateUser(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "api/user/{id}")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "api/user/{id:long}")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
@@ -157,11 +157,11 @@ public class UserFunctions
     }
 
     /// <summary>
-    /// POST api/user/{id}/change-password → UserController.ChangePassword
+    /// POST api/user/{id:long}/change-password → UserController.ChangePassword
     /// </summary>
     [Function("User_ChangePassword")]
     public async Task<IActionResult> User_ChangePassword(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/user/{id}/change-password")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/user/{id:long}/change-password")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
@@ -183,11 +183,11 @@ public class UserFunctions
     }
 
     /// <summary>
-    /// POST api/user/{id}/admin-reset-password → UserController.AdminResetPassword
+    /// POST api/user/{id:long}/admin-reset-password → UserController.AdminResetPassword
     /// </summary>
     [Function("User_AdminResetPassword")]
     public async Task<IActionResult> User_AdminResetPassword(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/user/{id}/admin-reset-password")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/user/{id:long}/admin-reset-password")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
@@ -217,7 +217,7 @@ public class UserFunctions
     /// </summary>
     [Function("User_DeleteUser")]
     public async Task<IActionResult> User_DeleteUser(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "api/user/{id}")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "api/user/{id:long}")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)

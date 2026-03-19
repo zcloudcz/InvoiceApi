@@ -61,7 +61,7 @@ public class VatRateFunctions
     /// </summary>
     [Function("VatRate_GetVatRateById")]
     public async Task<IActionResult> VatRate_GetVatRateById(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/vatrate/{id}")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/vatrate/{id:long}")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
@@ -173,7 +173,7 @@ public class VatRateFunctions
     /// </summary>
     [Function("VatRate_UpdateVatRate")]
     public async Task<IActionResult> VatRate_UpdateVatRate(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "api/vatrate/{id}")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "api/vatrate/{id:long}")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
@@ -204,7 +204,7 @@ public class VatRateFunctions
     /// </summary>
     [Function("VatRate_DeleteVatRate")]
     public async Task<IActionResult> VatRate_DeleteVatRate(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "api/vatrate/{id}")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "api/vatrate/{id:long}")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
@@ -229,11 +229,11 @@ public class VatRateFunctions
     }
 
     /// <summary>
-    /// POST api/vatrate/{id}/set-default → VatRateController.SetAsDefault
+    /// POST api/vatrate/{id:long}/set-default → VatRateController.SetAsDefault
     /// </summary>
     [Function("VatRate_SetAsDefault")]
     public async Task<IActionResult> VatRate_SetAsDefault(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/vatrate/{id}/set-default")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/vatrate/{id:long}/set-default")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)

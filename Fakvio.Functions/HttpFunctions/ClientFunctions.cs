@@ -83,7 +83,7 @@ public class ClientFunctions
     /// </summary>
     [Function("Client_GetClientById")]
     public async Task<IActionResult> Client_GetClientById(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/client/{id}")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/client/{id:long}")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
@@ -171,7 +171,7 @@ public class ClientFunctions
     /// </summary>
     [Function("Client_UpdateClient")]
     public async Task<IActionResult> Client_UpdateClient(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "api/client/{id}")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "api/client/{id:long}")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
@@ -198,7 +198,7 @@ public class ClientFunctions
     /// </summary>
     [Function("Client_DeleteClient")]
     public async Task<IActionResult> Client_DeleteClient(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "api/client/{id}")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "api/client/{id:long}")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
@@ -240,11 +240,11 @@ public class ClientFunctions
     }
 
     /// <summary>
-    /// POST api/client/{id}/address → ClientController.AddAddress
+    /// POST api/client/{id:long}/address → ClientController.AddAddress
     /// </summary>
     [Function("Client_AddAddress")]
     public async Task<IActionResult> Client_AddAddress(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/client/{id}/address")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/client/{id:long}/address")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
@@ -267,11 +267,11 @@ public class ClientFunctions
     }
 
     /// <summary>
-    /// POST api/client/{id}/contact → ClientController.AddContact
+    /// POST api/client/{id:long}/contact → ClientController.AddContact
     /// </summary>
     [Function("Client_AddContact")]
     public async Task<IActionResult> Client_AddContact(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/client/{id}/contact")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/client/{id:long}/contact")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
@@ -294,11 +294,11 @@ public class ClientFunctions
     }
 
     /// <summary>
-    /// POST api/client/{id}/bank-account → ClientController.AddBankAccount
+    /// POST api/client/{id:long}/bank-account → ClientController.AddBankAccount
     /// </summary>
     [Function("Client_AddBankAccount")]
     public async Task<IActionResult> Client_AddBankAccount(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/client/{id}/bank-account")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/client/{id:long}/bank-account")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
@@ -321,11 +321,11 @@ public class ClientFunctions
     }
 
     /// <summary>
-    /// PUT api/client/{id}/billing-settings → ClientController.UpdateBillingSettings
+    /// PUT api/client/{id:long}/billing-settings → ClientController.UpdateBillingSettings
     /// </summary>
     [Function("Client_UpdateBillingSettings")]
     public async Task<IActionResult> Client_UpdateBillingSettings(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "api/client/{id}/billing-settings")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "api/client/{id:long}/billing-settings")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)

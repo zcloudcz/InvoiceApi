@@ -62,7 +62,7 @@ public class NumberSequenceFunctions
     /// </summary>
     [Function("NumberSequence_GetFormatById")]
     public async Task<IActionResult> NumberSequence_GetFormatById(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/numbersequence/formats/{id}")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/numbersequence/formats/{id:long}")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
@@ -113,7 +113,7 @@ public class NumberSequenceFunctions
     /// </summary>
     [Function("NumberSequence_UpdateFormat")]
     public async Task<IActionResult> NumberSequence_UpdateFormat(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "api/numbersequence/formats/{id}")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "api/numbersequence/formats/{id:long}")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
@@ -189,7 +189,7 @@ public class NumberSequenceFunctions
     /// </summary>
     [Function("NumberSequence_GetSequenceById")]
     public async Task<IActionResult> NumberSequence_GetSequenceById(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/numbersequence/{id}")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/numbersequence/{id:long}")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
@@ -261,7 +261,7 @@ public class NumberSequenceFunctions
     /// </summary>
     [Function("NumberSequence_UpdateSequence")]
     public async Task<IActionResult> NumberSequence_UpdateSequence(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "api/numbersequence/{id}")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "api/numbersequence/{id:long}")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
@@ -288,11 +288,11 @@ public class NumberSequenceFunctions
     }
 
     /// <summary>
-    /// POST api/numbersequence/{id}/set-default → NumberSequenceController.SetAsDefault
+    /// POST api/numbersequence/{id:long}/set-default → NumberSequenceController.SetAsDefault
     /// </summary>
     [Function("NumberSequence_SetAsDefault")]
     public async Task<IActionResult> NumberSequence_SetAsDefault(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/numbersequence/{id}/set-default")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/numbersequence/{id:long}/set-default")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
@@ -321,7 +321,7 @@ public class NumberSequenceFunctions
     /// </summary>
     [Function("NumberSequence_DeactivateSequence")]
     public async Task<IActionResult> NumberSequence_DeactivateSequence(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "api/numbersequence/{id}")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "api/numbersequence/{id:long}")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
@@ -346,11 +346,11 @@ public class NumberSequenceFunctions
     }
 
     /// <summary>
-    /// GET api/numbersequence/{id}/preview → NumberSequenceController.PreviewNextNumber
+    /// GET api/numbersequence/{id:long}/preview → NumberSequenceController.PreviewNextNumber
     /// </summary>
     [Function("NumberSequence_PreviewNextNumber")]
     public async Task<IActionResult> NumberSequence_PreviewNextNumber(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/numbersequence/{id}/preview")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/numbersequence/{id:long}/preview")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)

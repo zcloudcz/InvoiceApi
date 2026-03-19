@@ -84,8 +84,11 @@ public class CloudStorageOrchestrator : ICloudStorageOrchestrator
     /// <inheritdoc />
     public async Task<List<CloudStorageStatusDto>> GetProvidersStatusAsync(CancellationToken ct = default)
     {
-        var companyId = _tenantResolver.GetCurrentCompanyId()
-            ?? throw new InvalidOperationException("No company context.");
+        var companyId = _tenantResolver.GetCurrentCompanyId();
+        // No company context (e.g., SysAdmin without impersonation) — return empty status list
+        // instead of throwing, so the UI gracefully shows "no providers configured".
+        if (!companyId.HasValue)
+            return new List<CloudStorageStatusDto>();
 
         var settings = await _masterContext.CompanySystemSettings
             .AsNoTracking()

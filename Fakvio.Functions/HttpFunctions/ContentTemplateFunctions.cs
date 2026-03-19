@@ -66,7 +66,7 @@ public class ContentTemplateFunctions
     /// </summary>
     [Function("ContentTemplate_GetById")]
     public async Task<IActionResult> ContentTemplate_GetById(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/contenttemplate/{id}")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/contenttemplate/{id:long}")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
@@ -138,7 +138,7 @@ public class ContentTemplateFunctions
     /// </summary>
     [Function("ContentTemplate_Update")]
     public async Task<IActionResult> ContentTemplate_Update(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "api/contenttemplate/{id}")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "api/contenttemplate/{id:long}")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
@@ -169,7 +169,7 @@ public class ContentTemplateFunctions
     /// </summary>
     [Function("ContentTemplate_Delete")]
     public async Task<IActionResult> ContentTemplate_Delete(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "api/contenttemplate/{id}")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "api/contenttemplate/{id:long}")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)

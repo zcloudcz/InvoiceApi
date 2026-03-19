@@ -92,7 +92,7 @@ public class CurrencyFunctions
     /// </summary>
     [Function("Currency_GetCurrencyById")]
     public async Task<IActionResult> Currency_GetCurrencyById(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/currency/{id}")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/currency/{id:long}")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
@@ -143,7 +143,7 @@ public class CurrencyFunctions
     /// </summary>
     [Function("Currency_UpdateCurrency")]
     public async Task<IActionResult> Currency_UpdateCurrency(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "api/currency/{id}")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "api/currency/{id:long}")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
@@ -174,7 +174,7 @@ public class CurrencyFunctions
     /// </summary>
     [Function("Currency_DeleteCurrency")]
     public async Task<IActionResult> Currency_DeleteCurrency(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "api/currency/{id}")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "api/currency/{id:long}")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)

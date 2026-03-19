@@ -100,7 +100,7 @@ public class InvoiceTemplateFunctions
     /// </summary>
     [Function("InvoiceTemplate_GetTemplateById")]
     public async Task<IActionResult> InvoiceTemplate_GetTemplateById(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/invoicetemplate/{id}")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/invoicetemplate/{id:long}")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
@@ -147,7 +147,7 @@ public class InvoiceTemplateFunctions
     /// </summary>
     [Function("InvoiceTemplate_UpdateTemplate")]
     public async Task<IActionResult> InvoiceTemplate_UpdateTemplate(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "api/invoicetemplate/{id}")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "api/invoicetemplate/{id:long}")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
@@ -174,7 +174,7 @@ public class InvoiceTemplateFunctions
     /// </summary>
     [Function("InvoiceTemplate_DeleteTemplate")]
     public async Task<IActionResult> InvoiceTemplate_DeleteTemplate(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "api/invoicetemplate/{id}")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "api/invoicetemplate/{id:long}")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
@@ -195,11 +195,11 @@ public class InvoiceTemplateFunctions
     }
 
     /// <summary>
-    /// POST api/invoicetemplate/{id}/create-invoice → InvoiceTemplateController.CreateInvoiceFromTemplate
+    /// POST api/invoicetemplate/{id:long}/create-invoice → InvoiceTemplateController.CreateInvoiceFromTemplate
     /// </summary>
     [Function("InvoiceTemplate_CreateInvoiceFromTemplate")]
     public async Task<IActionResult> InvoiceTemplate_CreateInvoiceFromTemplate(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/invoicetemplate/{id}/create-invoice")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/invoicetemplate/{id:long}/create-invoice")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
@@ -226,7 +226,7 @@ public class InvoiceTemplateFunctions
     /// </summary>
     [Function("InvoiceTemplate_CreateTemplateFromInvoice")]
     public async Task<IActionResult> InvoiceTemplate_CreateTemplateFromInvoice(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/invoicetemplate/from-invoice/{invoiceId}")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/invoicetemplate/from-invoice/{invoiceId:long}")] HttpRequest req,
         string invoiceId)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)

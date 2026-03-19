@@ -92,7 +92,7 @@ public class CompanyFunctions
     /// </summary>
     [Function("Company_GetCompanyById")]
     public async Task<IActionResult> Company_GetCompanyById(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/company/{id}")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/company/{id:long}")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
@@ -161,7 +161,7 @@ public class CompanyFunctions
     /// </summary>
     [Function("Company_UpdateCompany")]
     public async Task<IActionResult> Company_UpdateCompany(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "api/company/{id}")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "api/company/{id:long}")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
@@ -205,7 +205,7 @@ public class CompanyFunctions
     /// </summary>
     [Function("Company_DeleteCompany")]
     public async Task<IActionResult> Company_DeleteCompany(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "api/company/{id}")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "api/company/{id:long}")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
@@ -255,11 +255,11 @@ public class CompanyFunctions
     }
 
     /// <summary>
-    /// GET api/company/{id}/settings → CompanyController.GetSettings
+    /// GET api/company/{id:long}/settings → CompanyController.GetSettings
     /// </summary>
     [Function("Company_GetSettings")]
     public async Task<IActionResult> Company_GetSettings(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/company/{id}/settings")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/company/{id:long}/settings")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
@@ -346,11 +346,11 @@ public class CompanyFunctions
     }
 
     /// <summary>
-    /// PUT api/company/{id}/settings → CompanyController.UpdateSettings
+    /// PUT api/company/{id:long}/settings → CompanyController.UpdateSettings
     /// </summary>
     [Function("Company_UpdateSettings")]
     public async Task<IActionResult> Company_UpdateSettings(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "api/company/{id}/settings")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "api/company/{id:long}/settings")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
@@ -389,11 +389,11 @@ public class CompanyFunctions
     }
 
     /// <summary>
-    /// POST api/company/{id}/provision → CompanyController.ProvisionTenant
+    /// POST api/company/{id:long}/provision → CompanyController.ProvisionTenant
     /// </summary>
     [Function("Company_ProvisionTenant")]
     public async Task<IActionResult> Company_ProvisionTenant(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/company/{id}/provision")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/company/{id:long}/provision")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
@@ -418,11 +418,11 @@ public class CompanyFunctions
     }
 
     /// <summary>
-    /// PUT api/company/{id}/activate → CompanyController.ActivateTenant
+    /// PUT api/company/{id:long}/activate → CompanyController.ActivateTenant
     /// </summary>
     [Function("Company_ActivateTenant")]
     public async Task<IActionResult> Company_ActivateTenant(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "api/company/{id}/activate")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "api/company/{id:long}/activate")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
@@ -447,11 +447,11 @@ public class CompanyFunctions
     }
 
     /// <summary>
-    /// PUT api/company/{id}/deactivate → CompanyController.DeactivateTenant
+    /// PUT api/company/{id:long}/deactivate → CompanyController.DeactivateTenant
     /// </summary>
     [Function("Company_DeactivateTenant")]
     public async Task<IActionResult> Company_DeactivateTenant(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "api/company/{id}/deactivate")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "api/company/{id:long}/deactivate")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
@@ -476,11 +476,11 @@ public class CompanyFunctions
     }
 
     /// <summary>
-    /// POST api/company/{id}/migrate → CompanyController.MigrateTenant
+    /// POST api/company/{id:long}/migrate → CompanyController.MigrateTenant
     /// </summary>
     [Function("Company_MigrateTenant")]
     public async Task<IActionResult> Company_MigrateTenant(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/company/{id}/migrate")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/company/{id:long}/migrate")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
@@ -505,11 +505,11 @@ public class CompanyFunctions
     }
 
     /// <summary>
-    /// POST api/company/{id}/test-smtp → CompanyController.TestSmtp
+    /// POST api/company/{id:long}/test-smtp → CompanyController.TestSmtp
     /// </summary>
     [Function("Company_TestSmtp")]
     public async Task<IActionResult> Company_TestSmtp(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/company/{id}/test-smtp")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/company/{id:long}/test-smtp")] HttpRequest req,
         string id)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)

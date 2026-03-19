@@ -155,7 +155,7 @@ public class TwoFactorFunctions
     /// </summary>
     [Function("TwoFactor_ForceDisableTwoFactor")]
     public async Task<IActionResult> TwoFactor_ForceDisableTwoFactor(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/twofactor/admin/force-disable/{userId}")] HttpRequest req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/twofactor/admin/force-disable/{userId:long}")] HttpRequest req,
         string userId)
     {
         // Parse route parameter from string to long (Azure Functions can't bind long directly)
