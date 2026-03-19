@@ -1121,4 +1121,13 @@
   <data name="Import_Imported" xml:space="preserve"><value>Naimportováno</value></data>
   <data name="Import_FileTooLarge" xml:space="preserve"><value>Soubor je příliš velký (max 10 MB)</value></data>
   <data name="Nav_ImportInvoices" xml:space="preserve"><value>Import PDF</value></data>
+  <!-- ── AI Assistant Settings ──────────────────────────────────────── -->
+  <data name="Ai_Title" xml:space="preserve"><value>AI Asistent</value></data>
+  <data name="Ai_InfoText" xml:space="preserve"><value>Nastavte API klíče AI poskytovatele pro vaši společnost. Pokud jsou nastaveny, AI chat asistent použije tyto klíče místo systémových výchozích.</value></data>
+  <data name="Ai_DefaultProvider" xml:space="preserve"><value>Výchozí poskytovatel</value></data>
+  <data name="Ai_SystemDefault" xml:space="preserve"><value>Systémové výchozí</value></data>
+  <data name="Ai_ApiKey" xml:space="preserve"><value>API klíč</value></data>
+  <data name="Ai_ApiKeyPlaceholder" xml:space="preserve"><value>(nastaveno)</value></data>
+  <data name="Ai_Model" xml:space="preserve"><value>Model</value></data>
+  <data name="Ai_OllamaBaseUrl" xml:space="preserve"><value>URL serveru</value></data>
 </root>

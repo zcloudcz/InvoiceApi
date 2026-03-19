@@ -1121,4 +1121,13 @@
   <data name="Import_Imported" xml:space="preserve"><value>Imported</value></data>
   <data name="Import_FileTooLarge" xml:space="preserve"><value>File too large (max 10 MB)</value></data>
   <data name="Nav_ImportInvoices" xml:space="preserve"><value>Import PDF</value></data>
+  <!-- ── AI Assistant Settings ──────────────────────────────────────── -->
+  <data name="Ai_Title" xml:space="preserve"><value>AI Assistant</value></data>
+  <data name="Ai_InfoText" xml:space="preserve"><value>Configure AI provider API keys for your company. When set, the AI chat assistant uses these keys instead of the system default.</value></data>
+  <data name="Ai_DefaultProvider" xml:space="preserve"><value>Default Provider</value></data>
+  <data name="Ai_SystemDefault" xml:space="preserve"><value>System default</value></data>
+  <data name="Ai_ApiKey" xml:space="preserve"><value>API Key</value></data>
+  <data name="Ai_ApiKeyPlaceholder" xml:space="preserve"><value>(configured)</value></data>
+  <data name="Ai_Model" xml:space="preserve"><value>Model</value></data>
+  <data name="Ai_OllamaBaseUrl" xml:space="preserve"><value>Server URL</value></data>
 </root>

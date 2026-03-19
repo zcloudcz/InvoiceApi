@@ -502,6 +502,116 @@ else
         </Authorized>
     </AuthorizeView>
 
+    @* ─── AI Assistant Settings Section (Admin-only) ─────────────────────── *@
+    @* Company-level AI provider configuration. When configured, the AI chat assistant
+       uses these API keys instead of the system-wide defaults.
+       Follows the same 2-tier pattern as SMTP: Company → System fallback. *@
+    <AuthorizeView Roles="Admin">
+        <Authorized>
+            <MudPaper Elevation="2" Class="pa-4 mb-4 mt-4">
+                <MudText Typo="Typo.h6" Class="mb-2">@L["Ai_Title"]</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">@L["Ai_InfoText"]</MudText>
+
+                @if (_aiLoading)
+                {
+                    <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-2" />
+                }
+                else
+                {
+                    @* Default provider selector *@
+                    <MudGrid>
+                        <MudItem xs="12" md="6">
+                            <MudSelect @bind-Value="_aiDefaultProvider" Label="@L["Ai_DefaultProvider"].Value"
+                                       Placeholder="@L["Ai_SystemDefault"].Value"
+                                       Clearable="true" Class="mb-3">
+                                <MudSelectItem Value="@("Claude")">Claude</MudSelectItem>
+                                <MudSelectItem Value="@("OpenAI")">OpenAI</MudSelectItem>
+                                <MudSelectItem Value="@("Gemini")">Gemini</MudSelectItem>
+                                <MudSelectItem Value="@("Ollama")">Ollama</MudSelectItem>
+                            </MudSelect>
+                        </MudItem>
+                    </MudGrid>
+
+                    @* Claude settings *@
+                    <MudExpansionPanels MultiExpansion="true" Class="mb-3">
+                        <MudExpansionPanel Text="Claude (Anthropic)">
+                            <MudGrid>
+                                <MudItem xs="12" md="6">
+                                    <MudTextField @bind-Value="_aiClaudeApiKey" Label="@L["Ai_ApiKey"].Value"
+                                                  InputType="InputType.Password"
+                                                  Placeholder="@(_hasAiClaudeApiKey ? L["Ai_ApiKeyPlaceholder"].Value : "sk-ant-...")"
+                                                  Class="mb-3" />
+                                </MudItem>
+                                <MudItem xs="12" md="6">
+                                    <MudTextField @bind-Value="_aiClaudeModel" Label="@L["Ai_Model"].Value"
+                                                  Placeholder="claude-sonnet-4-6" Class="mb-3" />
+                                </MudItem>
+                            </MudGrid>
+                        </MudExpansionPanel>
+
+                        @* OpenAI settings *@
+                        <MudExpansionPanel Text="OpenAI">
+                            <MudGrid>
+                                <MudItem xs="12" md="6">
+                                    <MudTextField @bind-Value="_aiOpenAiApiKey" Label="@L["Ai_ApiKey"].Value"
+                                                  InputType="InputType.Password"
+                                                  Placeholder="@(_hasAiOpenAiApiKey ? L["Ai_ApiKeyPlaceholder"].Value : "sk-...")"
+                                                  Class="mb-3" />
+                                </MudItem>
+                                <MudItem xs="12" md="6">
+                                    <MudTextField @bind-Value="_aiOpenAiModel" Label="@L["Ai_Model"].Value"
+                                                  Placeholder="gpt-4o" Class="mb-3" />
+                                </MudItem>
+                            </MudGrid>
+                        </MudExpansionPanel>
+
+                        @* Gemini settings *@
+                        <MudExpansionPanel Text="Gemini (Google)">
+                            <MudGrid>
+                                <MudItem xs="12" md="6">
+                                    <MudTextField @bind-Value="_aiGeminiApiKey" Label="@L["Ai_ApiKey"].Value"
+                                                  InputType="InputType.Password"
+                                                  Placeholder="@(_hasAiGeminiApiKey ? L["Ai_ApiKeyPlaceholder"].Value : "")"
+                                                  Class="mb-3" />
+                                </MudItem>
+                                <MudItem xs="12" md="6">
+                                    <MudTextField @bind-Value="_aiGeminiModel" Label="@L["Ai_Model"].Value"
+                                                  Placeholder="gemini-2.0-flash" Class="mb-3" />
+                                </MudItem>
+                            </MudGrid>
+                        </MudExpansionPanel>
+
+                        @* Ollama settings *@
+                        <MudExpansionPanel Text="Ollama (Local)">
+                            <MudGrid>
+                                <MudItem xs="12" md="6">
+                                    <MudTextField @bind-Value="_aiOllamaBaseUrl" Label="@L["Ai_OllamaBaseUrl"].Value"
+                                                  Placeholder="http://localhost:11434" Class="mb-3" />
+                                </MudItem>
+                                <MudItem xs="12" md="6">
+                                    <MudTextField @bind-Value="_aiOllamaModel" Label="@L["Ai_Model"].Value"
+                                                  Placeholder="gemma3:12b" Class="mb-3" />
+                                </MudItem>
+                            </MudGrid>
+                        </MudExpansionPanel>
+                    </MudExpansionPanels>
+
+                    <div class="d-flex gap-2 mt-3">
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                   StartIcon="@Icons.Material.Filled.Save"
+                                   OnClick="SaveAiSettings" Disabled="_aiSaving">
+                            @if (_aiSaving)
+                            {
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                            }
+                            @L["Btn_Save"]
+                        </MudButton>
+                    </div>
+                }
+            </MudPaper>
+        </Authorized>
+    </AuthorizeView>
+
     @* Full-page overlay during save operations *@
     <MudOverlay Visible="_saving" DarkBackground="true" Absolute="false" ZIndex="9999">
         <MudProgressCircular Color="Color.Primary" Indeterminate="true" Size="Size.Large" />
@@ -543,6 +653,22 @@ else
     private bool _cloudStorageLoading = true;
     private List<CloudStorageStatusDto> _cloudStorageStatuses = new();
 
+    // AI Assistant settings form fields (Admin-only section)
+    private bool _aiLoading = true;
+    private bool _aiSaving = false;
+    private string? _aiDefaultProvider;
+    private string? _aiClaudeApiKey;
+    private string? _aiClaudeModel;
+    private bool _hasAiClaudeApiKey = false;
+    private string? _aiOpenAiApiKey;
+    private string? _aiOpenAiModel;
+    private bool _hasAiOpenAiApiKey = false;
+    private string? _aiGeminiApiKey;
+    private string? _aiGeminiModel;
+    private bool _hasAiGeminiApiKey = false;
+    private string? _aiOllamaBaseUrl;
+    private string? _aiOllamaModel;
+
     /// <summary>
     /// Loads the user's company (issuer), SMTP settings, and cloud storage status on first render.
     /// Uses ClientApiService.GetIssuerAsync() which auto-resolves from JWT CompanyId.
@@ -552,6 +678,7 @@ else
     {
         await LoadCompany();
         await LoadSmtpSettings();
+        await LoadAiSettings();
         await LoadCloudStorageStatus();
     }
 
@@ -1016,6 +1143,107 @@ else
         finally
         {
             _smtpTesting = false;
+        }
+    }
+
+    // ─── AI Assistant Settings Methods (Admin only) ────────────────────────────
+
+    /// <summary>
+    /// Loads the company's AI settings from CompanySystemSettings.
+    /// Reuses _companySettings loaded by LoadSmtpSettings (both come from the same record).
+    /// </summary>
+    private async Task LoadAiSettings()
+    {
+        try
+        {
+            _aiLoading = true;
+            if (_company == null) return;
+
+            // Reuse _companySettings if already loaded by LoadSmtpSettings
+            if (_companySettings == null)
+            {
+                _companySettings = await SettingsService.GetByCompanyIdAsync(_company.Id);
+            }
+
+            if (_companySettings != null)
+            {
+                // Populate AI form fields from the loaded settings
+                _aiDefaultProvider = _companySettings.AiDefaultProvider;
+                _aiClaudeModel = _companySettings.AiClaudeModel;
+                _hasAiClaudeApiKey = _companySettings.HasAiClaudeApiKey;
+                _aiOpenAiModel = _companySettings.AiOpenAiModel;
+                _hasAiOpenAiApiKey = _companySettings.HasAiOpenAiApiKey;
+                _aiGeminiModel = _companySettings.AiGeminiModel;
+                _hasAiGeminiApiKey = _companySettings.HasAiGeminiApiKey;
+                _aiOllamaBaseUrl = _companySettings.AiOllamaBaseUrl;
+                _aiOllamaModel = _companySettings.AiOllamaModel;
+                // API keys are NEVER returned — keep fields empty
+                _aiClaudeApiKey = null;
+                _aiOpenAiApiKey = null;
+                _aiGeminiApiKey = null;
+            }
+        }
+        catch
+        {
+            // CompanySystemSettings may not exist yet — that's okay.
+        }
+        finally
+        {
+            _aiLoading = false;
+        }
+    }
+
+    /// <summary>
+    /// Saves the AI settings via PUT /api/company/{companyId}/settings.
+    /// API key handling: null = keep existing, empty = clear, non-empty = update.
+    /// </summary>
+    private async Task SaveAiSettings()
+    {
+        if (_company == null) return;
+
+        _aiSaving = true;
+        try
+        {
+            var dto = new UpdateCompanySystemSettingsDto
+            {
+                AiDefaultProvider = _aiDefaultProvider,
+                // Only send API key if the user typed something new.
+                // null = keep existing key unchanged on the server.
+                AiClaudeApiKey = string.IsNullOrEmpty(_aiClaudeApiKey) ? null : _aiClaudeApiKey,
+                AiClaudeModel = _aiClaudeModel,
+                AiOpenAiApiKey = string.IsNullOrEmpty(_aiOpenAiApiKey) ? null : _aiOpenAiApiKey,
+                AiOpenAiModel = _aiOpenAiModel,
+                AiGeminiApiKey = string.IsNullOrEmpty(_aiGeminiApiKey) ? null : _aiGeminiApiKey,
+                AiGeminiModel = _aiGeminiModel,
+                AiOllamaBaseUrl = _aiOllamaBaseUrl,
+                AiOllamaModel = _aiOllamaModel
+            };
+
+            var result = await SettingsService.UpdateSettingsAsync(_company.Id, dto);
+            if (result != null)
+            {
+                Snackbar.Add(L["Msg_SaveSuccess"].Value, Severity.Success);
+                // Update the "has key" flags from the response
+                _hasAiClaudeApiKey = result.HasAiClaudeApiKey;
+                _hasAiOpenAiApiKey = result.HasAiOpenAiApiKey;
+                _hasAiGeminiApiKey = result.HasAiGeminiApiKey;
+                // Clear API key fields after save (same pattern as SMTP password)
+                _aiClaudeApiKey = null;
+                _aiOpenAiApiKey = null;
+                _aiGeminiApiKey = null;
+            }
+            else
+            {
+                Snackbar.Add(L["Msg_Error"].Value, Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _aiSaving = false;
         }
     }
 
