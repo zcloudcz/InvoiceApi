@@ -64,6 +64,13 @@ var host = new HostBuilder()
         // and populates HttpContext.User with the authenticated ClaimsPrincipal.
         // Without this, HttpContext.User stays anonymous → all auth checks return 401.
         app.UseMiddleware<JwtAuthenticationMiddleware>();
+
+        // ── Tenant Context Middleware ──────────────────────────────────────────────
+        // MUST run AFTER JwtAuthenticationMiddleware (needs User.Claims populated).
+        // Reads CompanyId from JWT claims → looks up schema name in master DB →
+        // sets TenantDbContext.Schema so EF Core queries target the correct tenant schema.
+        // Without this, TenantDbContext queries go to "public" schema → "relation does not exist".
+        app.UseMiddleware<TenantContextMiddleware>();
     })
     .ConfigureServices((context, services) =>
     {
