@@ -84,8 +84,12 @@ public class ClientFunctions
     [Function("Client_GetClientById")]
     public async Task<IActionResult> Client_GetClientById(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/client/{id}")] HttpRequest req,
-        long id)
+        string id)
     {
+        // Parse route parameter from string to long (Azure Functions can't bind long directly)
+        if (!long.TryParse(id, out var __id_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
+
         // Wire up the controller's HttpContext so it can access User claims, Request, etc.
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
 
@@ -96,7 +100,7 @@ public class ClientFunctions
         var cancellationToken = req.HttpContext.RequestAborted;
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.GetClientById(id, cancellationToken));
+        return FunctionResultHelper.Normalize(await _controller.GetClientById(__id_parsed, cancellationToken));
     }
 
     /// <summary>
@@ -168,8 +172,12 @@ public class ClientFunctions
     [Function("Client_UpdateClient")]
     public async Task<IActionResult> Client_UpdateClient(
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "api/client/{id}")] HttpRequest req,
-        long id)
+        string id)
     {
+        // Parse route parameter from string to long (Azure Functions can't bind long directly)
+        if (!long.TryParse(id, out var __id_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
+
         // Wire up the controller's HttpContext so it can access User claims, Request, etc.
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
 
@@ -182,7 +190,7 @@ public class ClientFunctions
         var cancellationToken = req.HttpContext.RequestAborted;
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.UpdateClient(id, updateDto!, cancellationToken));
+        return FunctionResultHelper.Normalize(await _controller.UpdateClient(__id_parsed, updateDto!, cancellationToken));
     }
 
     /// <summary>
@@ -191,8 +199,12 @@ public class ClientFunctions
     [Function("Client_DeleteClient")]
     public async Task<IActionResult> Client_DeleteClient(
         [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "api/client/{id}")] HttpRequest req,
-        long id)
+        string id)
     {
+        // Parse route parameter from string to long (Azure Functions can't bind long directly)
+        if (!long.TryParse(id, out var __id_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
+
         // Wire up the controller's HttpContext so it can access User claims, Request, etc.
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
 
@@ -203,7 +215,7 @@ public class ClientFunctions
         var cancellationToken = req.HttpContext.RequestAborted;
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.DeleteClient(id, cancellationToken));
+        return FunctionResultHelper.Normalize(await _controller.DeleteClient(__id_parsed, cancellationToken));
     }
 
     /// <summary>
@@ -233,8 +245,12 @@ public class ClientFunctions
     [Function("Client_AddAddress")]
     public async Task<IActionResult> Client_AddAddress(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/client/{id}/address")] HttpRequest req,
-        long id)
+        string id)
     {
+        // Parse route parameter from string to long (Azure Functions can't bind long directly)
+        if (!long.TryParse(id, out var __id_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
+
         // Wire up the controller's HttpContext so it can access User claims, Request, etc.
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
 
@@ -247,7 +263,7 @@ public class ClientFunctions
         var cancellationToken = req.HttpContext.RequestAborted;
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.AddAddress(id, addressDto!, cancellationToken));
+        return FunctionResultHelper.Normalize(await _controller.AddAddress(__id_parsed, addressDto!, cancellationToken));
     }
 
     /// <summary>
@@ -256,8 +272,12 @@ public class ClientFunctions
     [Function("Client_AddContact")]
     public async Task<IActionResult> Client_AddContact(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/client/{id}/contact")] HttpRequest req,
-        long id)
+        string id)
     {
+        // Parse route parameter from string to long (Azure Functions can't bind long directly)
+        if (!long.TryParse(id, out var __id_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
+
         // Wire up the controller's HttpContext so it can access User claims, Request, etc.
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
 
@@ -270,7 +290,7 @@ public class ClientFunctions
         var cancellationToken = req.HttpContext.RequestAborted;
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.AddContact(id, contactDto!, cancellationToken));
+        return FunctionResultHelper.Normalize(await _controller.AddContact(__id_parsed, contactDto!, cancellationToken));
     }
 
     /// <summary>
@@ -279,8 +299,12 @@ public class ClientFunctions
     [Function("Client_AddBankAccount")]
     public async Task<IActionResult> Client_AddBankAccount(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/client/{id}/bank-account")] HttpRequest req,
-        long id)
+        string id)
     {
+        // Parse route parameter from string to long (Azure Functions can't bind long directly)
+        if (!long.TryParse(id, out var __id_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
+
         // Wire up the controller's HttpContext so it can access User claims, Request, etc.
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
 
@@ -293,7 +317,7 @@ public class ClientFunctions
         var cancellationToken = req.HttpContext.RequestAborted;
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.AddBankAccount(id, bankAccountDto!, cancellationToken));
+        return FunctionResultHelper.Normalize(await _controller.AddBankAccount(__id_parsed, bankAccountDto!, cancellationToken));
     }
 
     /// <summary>
@@ -302,8 +326,12 @@ public class ClientFunctions
     [Function("Client_UpdateBillingSettings")]
     public async Task<IActionResult> Client_UpdateBillingSettings(
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "api/client/{id}/billing-settings")] HttpRequest req,
-        long id)
+        string id)
     {
+        // Parse route parameter from string to long (Azure Functions can't bind long directly)
+        if (!long.TryParse(id, out var __id_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
+
         // Wire up the controller's HttpContext so it can access User claims, Request, etc.
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
 
@@ -316,6 +344,6 @@ public class ClientFunctions
         var cancellationToken = req.HttpContext.RequestAborted;
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.UpdateBillingSettings(id, settingsDto!, cancellationToken));
+        return FunctionResultHelper.Normalize(await _controller.UpdateBillingSettings(__id_parsed, settingsDto!, cancellationToken));
     }
 }

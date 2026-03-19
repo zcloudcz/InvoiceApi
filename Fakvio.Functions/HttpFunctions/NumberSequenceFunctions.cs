@@ -63,8 +63,12 @@ public class NumberSequenceFunctions
     [Function("NumberSequence_GetFormatById")]
     public async Task<IActionResult> NumberSequence_GetFormatById(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/numbersequence/formats/{id}")] HttpRequest req,
-        long id)
+        string id)
     {
+        // Parse route parameter from string to long (Azure Functions can't bind long directly)
+        if (!long.TryParse(id, out var __id_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
+
         // Wire up the controller's HttpContext so it can access User claims, Request, etc.
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
 
@@ -75,7 +79,7 @@ public class NumberSequenceFunctions
         var cancellationToken = req.HttpContext.RequestAborted;
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.GetFormatById(id, cancellationToken));
+        return FunctionResultHelper.Normalize(await _controller.GetFormatById(__id_parsed, cancellationToken));
     }
 
     /// <summary>
@@ -110,8 +114,12 @@ public class NumberSequenceFunctions
     [Function("NumberSequence_UpdateFormat")]
     public async Task<IActionResult> NumberSequence_UpdateFormat(
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "api/numbersequence/formats/{id}")] HttpRequest req,
-        long id)
+        string id)
     {
+        // Parse route parameter from string to long (Azure Functions can't bind long directly)
+        if (!long.TryParse(id, out var __id_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
+
         // Wire up the controller's HttpContext so it can access User claims, Request, etc.
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
 
@@ -128,7 +136,7 @@ public class NumberSequenceFunctions
         var cancellationToken = req.HttpContext.RequestAborted;
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.UpdateFormat(id, updateDto!, cancellationToken));
+        return FunctionResultHelper.Normalize(await _controller.UpdateFormat(__id_parsed, updateDto!, cancellationToken));
     }
 
     /// <summary>
@@ -182,8 +190,12 @@ public class NumberSequenceFunctions
     [Function("NumberSequence_GetSequenceById")]
     public async Task<IActionResult> NumberSequence_GetSequenceById(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/numbersequence/{id}")] HttpRequest req,
-        long id)
+        string id)
     {
+        // Parse route parameter from string to long (Azure Functions can't bind long directly)
+        if (!long.TryParse(id, out var __id_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
+
         // Wire up the controller's HttpContext so it can access User claims, Request, etc.
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
 
@@ -194,7 +206,7 @@ public class NumberSequenceFunctions
         var cancellationToken = req.HttpContext.RequestAborted;
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.GetSequenceById(id, cancellationToken));
+        return FunctionResultHelper.Normalize(await _controller.GetSequenceById(__id_parsed, cancellationToken));
     }
 
     /// <summary>
@@ -250,8 +262,12 @@ public class NumberSequenceFunctions
     [Function("NumberSequence_UpdateSequence")]
     public async Task<IActionResult> NumberSequence_UpdateSequence(
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "api/numbersequence/{id}")] HttpRequest req,
-        long id)
+        string id)
     {
+        // Parse route parameter from string to long (Azure Functions can't bind long directly)
+        if (!long.TryParse(id, out var __id_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
+
         // Wire up the controller's HttpContext so it can access User claims, Request, etc.
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
 
@@ -268,7 +284,7 @@ public class NumberSequenceFunctions
         var cancellationToken = req.HttpContext.RequestAborted;
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.UpdateSequence(id, updateDto!, cancellationToken));
+        return FunctionResultHelper.Normalize(await _controller.UpdateSequence(__id_parsed, updateDto!, cancellationToken));
     }
 
     /// <summary>
@@ -277,8 +293,12 @@ public class NumberSequenceFunctions
     [Function("NumberSequence_SetAsDefault")]
     public async Task<IActionResult> NumberSequence_SetAsDefault(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/numbersequence/{id}/set-default")] HttpRequest req,
-        long id)
+        string id)
     {
+        // Parse route parameter from string to long (Azure Functions can't bind long directly)
+        if (!long.TryParse(id, out var __id_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
+
         // Wire up the controller's HttpContext so it can access User claims, Request, etc.
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
 
@@ -293,7 +313,7 @@ public class NumberSequenceFunctions
         var cancellationToken = req.HttpContext.RequestAborted;
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.SetAsDefault(id, cancellationToken));
+        return FunctionResultHelper.Normalize(await _controller.SetAsDefault(__id_parsed, cancellationToken));
     }
 
     /// <summary>
@@ -302,8 +322,12 @@ public class NumberSequenceFunctions
     [Function("NumberSequence_DeactivateSequence")]
     public async Task<IActionResult> NumberSequence_DeactivateSequence(
         [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "api/numbersequence/{id}")] HttpRequest req,
-        long id)
+        string id)
     {
+        // Parse route parameter from string to long (Azure Functions can't bind long directly)
+        if (!long.TryParse(id, out var __id_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
+
         // Wire up the controller's HttpContext so it can access User claims, Request, etc.
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
 
@@ -318,7 +342,7 @@ public class NumberSequenceFunctions
         var cancellationToken = req.HttpContext.RequestAborted;
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.DeactivateSequence(id, cancellationToken));
+        return FunctionResultHelper.Normalize(await _controller.DeactivateSequence(__id_parsed, cancellationToken));
     }
 
     /// <summary>
@@ -327,8 +351,12 @@ public class NumberSequenceFunctions
     [Function("NumberSequence_PreviewNextNumber")]
     public async Task<IActionResult> NumberSequence_PreviewNextNumber(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/numbersequence/{id}/preview")] HttpRequest req,
-        long id)
+        string id)
     {
+        // Parse route parameter from string to long (Azure Functions can't bind long directly)
+        if (!long.TryParse(id, out var __id_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
+
         // Wire up the controller's HttpContext so it can access User claims, Request, etc.
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
 
@@ -340,7 +368,7 @@ public class NumberSequenceFunctions
         var cancellationToken = req.HttpContext.RequestAborted;
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.PreviewNextNumber(id, issueDate, cancellationToken));
+        return FunctionResultHelper.Normalize(await _controller.PreviewNextNumber(__id_parsed, issueDate, cancellationToken));
     }
 
     /// <summary>

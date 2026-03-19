@@ -1505,7 +1505,7 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function113);
             var Function114RawBindings = new List<string>();
-            Function114RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/twofactor/admin/force-disable/{userId:long}""}");
+            Function114RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/twofactor/admin/force-disable/{userId}""}");
             Function114RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function114 = new DefaultFunctionMetadata

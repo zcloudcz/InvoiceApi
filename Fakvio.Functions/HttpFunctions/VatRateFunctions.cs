@@ -62,8 +62,12 @@ public class VatRateFunctions
     [Function("VatRate_GetVatRateById")]
     public async Task<IActionResult> VatRate_GetVatRateById(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/vatrate/{id}")] HttpRequest req,
-        long id)
+        string id)
     {
+        // Parse route parameter from string to long (Azure Functions can't bind long directly)
+        if (!long.TryParse(id, out var __id_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
+
         // Wire up the controller's HttpContext so it can access User claims, Request, etc.
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
 
@@ -74,7 +78,7 @@ public class VatRateFunctions
         var cancellationToken = req.HttpContext.RequestAborted;
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.GetVatRateById(id, cancellationToken));
+        return FunctionResultHelper.Normalize(await _controller.GetVatRateById(__id_parsed, cancellationToken));
     }
 
     /// <summary>
@@ -170,8 +174,12 @@ public class VatRateFunctions
     [Function("VatRate_UpdateVatRate")]
     public async Task<IActionResult> VatRate_UpdateVatRate(
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "api/vatrate/{id}")] HttpRequest req,
-        long id)
+        string id)
     {
+        // Parse route parameter from string to long (Azure Functions can't bind long directly)
+        if (!long.TryParse(id, out var __id_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
+
         // Wire up the controller's HttpContext so it can access User claims, Request, etc.
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
 
@@ -188,7 +196,7 @@ public class VatRateFunctions
         var cancellationToken = req.HttpContext.RequestAborted;
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.UpdateVatRate(id, updateDto!, cancellationToken));
+        return FunctionResultHelper.Normalize(await _controller.UpdateVatRate(__id_parsed, updateDto!, cancellationToken));
     }
 
     /// <summary>
@@ -197,8 +205,12 @@ public class VatRateFunctions
     [Function("VatRate_DeleteVatRate")]
     public async Task<IActionResult> VatRate_DeleteVatRate(
         [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "api/vatrate/{id}")] HttpRequest req,
-        long id)
+        string id)
     {
+        // Parse route parameter from string to long (Azure Functions can't bind long directly)
+        if (!long.TryParse(id, out var __id_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
+
         // Wire up the controller's HttpContext so it can access User claims, Request, etc.
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
 
@@ -213,7 +225,7 @@ public class VatRateFunctions
         var cancellationToken = req.HttpContext.RequestAborted;
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.DeleteVatRate(id, cancellationToken));
+        return FunctionResultHelper.Normalize(await _controller.DeleteVatRate(__id_parsed, cancellationToken));
     }
 
     /// <summary>
@@ -222,8 +234,12 @@ public class VatRateFunctions
     [Function("VatRate_SetAsDefault")]
     public async Task<IActionResult> VatRate_SetAsDefault(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/vatrate/{id}/set-default")] HttpRequest req,
-        long id)
+        string id)
     {
+        // Parse route parameter from string to long (Azure Functions can't bind long directly)
+        if (!long.TryParse(id, out var __id_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
+
         // Wire up the controller's HttpContext so it can access User claims, Request, etc.
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
 
@@ -238,6 +254,6 @@ public class VatRateFunctions
         var cancellationToken = req.HttpContext.RequestAborted;
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.SetAsDefault(id, cancellationToken));
+        return FunctionResultHelper.Normalize(await _controller.SetAsDefault(__id_parsed, cancellationToken));
     }
 }

@@ -155,9 +155,13 @@ public class TwoFactorFunctions
     /// </summary>
     [Function("TwoFactor_ForceDisableTwoFactor")]
     public async Task<IActionResult> TwoFactor_ForceDisableTwoFactor(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/twofactor/admin/force-disable/{userId:long}")] HttpRequest req,
-        long userId)
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/twofactor/admin/force-disable/{userId}")] HttpRequest req,
+        string userId)
     {
+        // Parse route parameter from string to long (Azure Functions can't bind long directly)
+        if (!long.TryParse(userId, out var __userId_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'userId'." });
+
         // Wire up the controller's HttpContext so it can access User claims, Request, etc.
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
 
@@ -170,6 +174,6 @@ public class TwoFactorFunctions
             return new ForbidResult();
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.ForceDisableTwoFactor(userId));
+        return FunctionResultHelper.Normalize(await _controller.ForceDisableTwoFactor(__userId_parsed));
     }
 }

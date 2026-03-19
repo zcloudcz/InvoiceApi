@@ -93,8 +93,12 @@ public class CompanyFunctions
     [Function("Company_GetCompanyById")]
     public async Task<IActionResult> Company_GetCompanyById(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/company/{id}")] HttpRequest req,
-        long id)
+        string id)
     {
+        // Parse route parameter from string to long (Azure Functions can't bind long directly)
+        if (!long.TryParse(id, out var __id_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
+
         // Wire up the controller's HttpContext so it can access User claims, Request, etc.
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
 
@@ -109,7 +113,7 @@ public class CompanyFunctions
         var cancellationToken = req.HttpContext.RequestAborted;
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.GetCompanyById(id, cancellationToken));
+        return FunctionResultHelper.Normalize(await _controller.GetCompanyById(__id_parsed, cancellationToken));
     }
 
     /// <summary>
@@ -158,8 +162,12 @@ public class CompanyFunctions
     [Function("Company_UpdateCompany")]
     public async Task<IActionResult> Company_UpdateCompany(
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "api/company/{id}")] HttpRequest req,
-        long id)
+        string id)
     {
+        // Parse route parameter from string to long (Azure Functions can't bind long directly)
+        if (!long.TryParse(id, out var __id_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
+
         // Wire up the controller's HttpContext so it can access User claims, Request, etc.
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
 
@@ -189,7 +197,7 @@ public class CompanyFunctions
         var cancellationToken = req.HttpContext.RequestAborted;
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.UpdateCompany(id, updateDto!, cancellationToken));
+        return FunctionResultHelper.Normalize(await _controller.UpdateCompany(__id_parsed, updateDto!, cancellationToken));
     }
 
     /// <summary>
@@ -198,8 +206,12 @@ public class CompanyFunctions
     [Function("Company_DeleteCompany")]
     public async Task<IActionResult> Company_DeleteCompany(
         [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "api/company/{id}")] HttpRequest req,
-        long id)
+        string id)
     {
+        // Parse route parameter from string to long (Azure Functions can't bind long directly)
+        if (!long.TryParse(id, out var __id_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
+
         // Wire up the controller's HttpContext so it can access User claims, Request, etc.
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
 
@@ -214,7 +226,7 @@ public class CompanyFunctions
         var cancellationToken = req.HttpContext.RequestAborted;
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.DeleteCompany(id, cancellationToken));
+        return FunctionResultHelper.Normalize(await _controller.DeleteCompany(__id_parsed, cancellationToken));
     }
 
     /// <summary>
@@ -248,8 +260,12 @@ public class CompanyFunctions
     [Function("Company_GetSettings")]
     public async Task<IActionResult> Company_GetSettings(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/company/{id}/settings")] HttpRequest req,
-        long id)
+        string id)
     {
+        // Parse route parameter from string to long (Azure Functions can't bind long directly)
+        if (!long.TryParse(id, out var __id_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
+
         // Wire up the controller's HttpContext so it can access User claims, Request, etc.
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
 
@@ -264,7 +280,7 @@ public class CompanyFunctions
         var cancellationToken = req.HttpContext.RequestAborted;
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.GetSettings(id, cancellationToken));
+        return FunctionResultHelper.Normalize(await _controller.GetSettings(__id_parsed, cancellationToken));
     }
 
     /// <summary>
@@ -335,8 +351,12 @@ public class CompanyFunctions
     [Function("Company_UpdateSettings")]
     public async Task<IActionResult> Company_UpdateSettings(
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "api/company/{id}/settings")] HttpRequest req,
-        long id)
+        string id)
     {
+        // Parse route parameter from string to long (Azure Functions can't bind long directly)
+        if (!long.TryParse(id, out var __id_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
+
         // Wire up the controller's HttpContext so it can access User claims, Request, etc.
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
 
@@ -365,7 +385,7 @@ public class CompanyFunctions
         var cancellationToken = req.HttpContext.RequestAborted;
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.UpdateSettings(id, dto, cancellationToken));
+        return FunctionResultHelper.Normalize(await _controller.UpdateSettings(__id_parsed, dto, cancellationToken));
     }
 
     /// <summary>
@@ -374,8 +394,12 @@ public class CompanyFunctions
     [Function("Company_ProvisionTenant")]
     public async Task<IActionResult> Company_ProvisionTenant(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/company/{id}/provision")] HttpRequest req,
-        long id)
+        string id)
     {
+        // Parse route parameter from string to long (Azure Functions can't bind long directly)
+        if (!long.TryParse(id, out var __id_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
+
         // Wire up the controller's HttpContext so it can access User claims, Request, etc.
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
 
@@ -390,7 +414,7 @@ public class CompanyFunctions
         var cancellationToken = req.HttpContext.RequestAborted;
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.ProvisionTenant(id, cancellationToken));
+        return FunctionResultHelper.Normalize(await _controller.ProvisionTenant(__id_parsed, cancellationToken));
     }
 
     /// <summary>
@@ -399,8 +423,12 @@ public class CompanyFunctions
     [Function("Company_ActivateTenant")]
     public async Task<IActionResult> Company_ActivateTenant(
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "api/company/{id}/activate")] HttpRequest req,
-        long id)
+        string id)
     {
+        // Parse route parameter from string to long (Azure Functions can't bind long directly)
+        if (!long.TryParse(id, out var __id_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
+
         // Wire up the controller's HttpContext so it can access User claims, Request, etc.
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
 
@@ -415,7 +443,7 @@ public class CompanyFunctions
         var cancellationToken = req.HttpContext.RequestAborted;
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.ActivateTenant(id, cancellationToken));
+        return FunctionResultHelper.Normalize(await _controller.ActivateTenant(__id_parsed, cancellationToken));
     }
 
     /// <summary>
@@ -424,8 +452,12 @@ public class CompanyFunctions
     [Function("Company_DeactivateTenant")]
     public async Task<IActionResult> Company_DeactivateTenant(
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "api/company/{id}/deactivate")] HttpRequest req,
-        long id)
+        string id)
     {
+        // Parse route parameter from string to long (Azure Functions can't bind long directly)
+        if (!long.TryParse(id, out var __id_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
+
         // Wire up the controller's HttpContext so it can access User claims, Request, etc.
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
 
@@ -440,7 +472,7 @@ public class CompanyFunctions
         var cancellationToken = req.HttpContext.RequestAborted;
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.DeactivateTenant(id, cancellationToken));
+        return FunctionResultHelper.Normalize(await _controller.DeactivateTenant(__id_parsed, cancellationToken));
     }
 
     /// <summary>
@@ -449,8 +481,12 @@ public class CompanyFunctions
     [Function("Company_MigrateTenant")]
     public async Task<IActionResult> Company_MigrateTenant(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/company/{id}/migrate")] HttpRequest req,
-        long id)
+        string id)
     {
+        // Parse route parameter from string to long (Azure Functions can't bind long directly)
+        if (!long.TryParse(id, out var __id_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
+
         // Wire up the controller's HttpContext so it can access User claims, Request, etc.
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
 
@@ -465,7 +501,7 @@ public class CompanyFunctions
         var cancellationToken = req.HttpContext.RequestAborted;
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.MigrateTenant(id, cancellationToken));
+        return FunctionResultHelper.Normalize(await _controller.MigrateTenant(__id_parsed, cancellationToken));
     }
 
     /// <summary>
@@ -474,8 +510,12 @@ public class CompanyFunctions
     [Function("Company_TestSmtp")]
     public async Task<IActionResult> Company_TestSmtp(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/company/{id}/test-smtp")] HttpRequest req,
-        long id)
+        string id)
     {
+        // Parse route parameter from string to long (Azure Functions can't bind long directly)
+        if (!long.TryParse(id, out var __id_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
+
         // Wire up the controller's HttpContext so it can access User claims, Request, etc.
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
 
@@ -490,6 +530,6 @@ public class CompanyFunctions
         var cancellationToken = req.HttpContext.RequestAborted;
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.TestSmtp(id, cancellationToken));
+        return FunctionResultHelper.Normalize(await _controller.TestSmtp(__id_parsed, cancellationToken));
     }
 }

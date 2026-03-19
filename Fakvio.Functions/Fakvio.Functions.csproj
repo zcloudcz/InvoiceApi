@@ -27,12 +27,15 @@
     <!-- IMPORTANT: v3.0.0 crashes Azure Functions with TypeLoadException (ITelemetryInitializer).
          The Azure Functions worker runtime requires the 2.x line of ApplicationInsights. -->
     <PackageReference Include="Microsoft.ApplicationInsights.WorkerService" Version="2.22.0" />
-    <PackageReference Include="Microsoft.Azure.Functions.Worker" Version="2.*" />
-    <PackageReference Include="Microsoft.Azure.Functions.Worker.Sdk" Version="2.*" />
-    <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Timer" Version="4.*" />
+    <!-- Versions pinned to prevent breaking changes from floating version resolution.
+         2.51.0 broke long route parameter binding (FunctionInputConverterException) — fixed by
+         using string params + TryParse in HttpFunctions. Pin to avoid future surprises. -->
+    <PackageReference Include="Microsoft.Azure.Functions.Worker" Version="2.51.0" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Sdk" Version="2.0.7" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Timer" Version="4.3.1" />
     <!-- ASP.NET Core integration: provides HttpRequest/IActionResult support in HTTP triggers.
          This does NOT enable MVC routing (MapControllers) — each function is a separate endpoint. -->
-    <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Http.AspNetCore" Version="2.*" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Http.AspNetCore" Version="2.1.0" />
     <!-- Application Insights — structured telemetry (logs, requests, exceptions, dependencies)
          sent to Azure Monitor for centralized monitoring, alerting, and diagnostics. -->
     <PackageReference Include="Microsoft.Azure.Functions.Worker.ApplicationInsights" Version="2.50.0" />

@@ -67,8 +67,12 @@ public class ContentTemplateFunctions
     [Function("ContentTemplate_GetById")]
     public async Task<IActionResult> ContentTemplate_GetById(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/contenttemplate/{id}")] HttpRequest req,
-        long id)
+        string id)
     {
+        // Parse route parameter from string to long (Azure Functions can't bind long directly)
+        if (!long.TryParse(id, out var __id_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
+
         // Wire up the controller's HttpContext so it can access User claims, Request, etc.
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
 
@@ -79,7 +83,7 @@ public class ContentTemplateFunctions
         var cancellationToken = req.HttpContext.RequestAborted;
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.GetById(id, cancellationToken));
+        return FunctionResultHelper.Normalize(await _controller.GetById(__id_parsed, cancellationToken));
     }
 
     /// <summary>
@@ -135,8 +139,12 @@ public class ContentTemplateFunctions
     [Function("ContentTemplate_Update")]
     public async Task<IActionResult> ContentTemplate_Update(
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "api/contenttemplate/{id}")] HttpRequest req,
-        long id)
+        string id)
     {
+        // Parse route parameter from string to long (Azure Functions can't bind long directly)
+        if (!long.TryParse(id, out var __id_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
+
         // Wire up the controller's HttpContext so it can access User claims, Request, etc.
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
 
@@ -153,7 +161,7 @@ public class ContentTemplateFunctions
         var cancellationToken = req.HttpContext.RequestAborted;
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.Update(id, updateDto!, cancellationToken));
+        return FunctionResultHelper.Normalize(await _controller.Update(__id_parsed, updateDto!, cancellationToken));
     }
 
     /// <summary>
@@ -162,8 +170,12 @@ public class ContentTemplateFunctions
     [Function("ContentTemplate_Delete")]
     public async Task<IActionResult> ContentTemplate_Delete(
         [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "api/contenttemplate/{id}")] HttpRequest req,
-        long id)
+        string id)
     {
+        // Parse route parameter from string to long (Azure Functions can't bind long directly)
+        if (!long.TryParse(id, out var __id_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
+
         // Wire up the controller's HttpContext so it can access User claims, Request, etc.
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
 
@@ -178,6 +190,6 @@ public class ContentTemplateFunctions
         var cancellationToken = req.HttpContext.RequestAborted;
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.Delete(id, cancellationToken));
+        return FunctionResultHelper.Normalize(await _controller.Delete(__id_parsed, cancellationToken));
     }
 }

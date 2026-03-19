@@ -84,8 +84,12 @@ public class UserFunctions
     [Function("User_GetUserById")]
     public async Task<IActionResult> User_GetUserById(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/user/{id}")] HttpRequest req,
-        long id)
+        string id)
     {
+        // Parse route parameter from string to long (Azure Functions can't bind long directly)
+        if (!long.TryParse(id, out var __id_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
+
         // Wire up the controller's HttpContext so it can access User claims, Request, etc.
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
 
@@ -94,7 +98,7 @@ public class UserFunctions
             return new UnauthorizedResult();
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.GetUserById(id));
+        return FunctionResultHelper.Normalize(await _controller.GetUserById(__id_parsed));
     }
 
     /// <summary>
@@ -128,8 +132,12 @@ public class UserFunctions
     [Function("User_UpdateUser")]
     public async Task<IActionResult> User_UpdateUser(
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "api/user/{id}")] HttpRequest req,
-        long id)
+        string id)
     {
+        // Parse route parameter from string to long (Azure Functions can't bind long directly)
+        if (!long.TryParse(id, out var __id_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
+
         // Wire up the controller's HttpContext so it can access User claims, Request, etc.
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
 
@@ -145,7 +153,7 @@ public class UserFunctions
         var updateDto = await System.Text.Json.JsonSerializer.DeserializeAsync<global::Fakvio.Contracts.Dto.User.UpdateUserDto>(req.Body, FunctionResultHelper.JsonOptions, req.HttpContext.RequestAborted);
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.UpdateUser(id, updateDto!));
+        return FunctionResultHelper.Normalize(await _controller.UpdateUser(__id_parsed, updateDto!));
     }
 
     /// <summary>
@@ -154,8 +162,12 @@ public class UserFunctions
     [Function("User_ChangePassword")]
     public async Task<IActionResult> User_ChangePassword(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/user/{id}/change-password")] HttpRequest req,
-        long id)
+        string id)
     {
+        // Parse route parameter from string to long (Azure Functions can't bind long directly)
+        if (!long.TryParse(id, out var __id_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
+
         // Wire up the controller's HttpContext so it can access User claims, Request, etc.
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
 
@@ -167,7 +179,7 @@ public class UserFunctions
         var changePasswordDto = await System.Text.Json.JsonSerializer.DeserializeAsync<global::Fakvio.Contracts.Dto.User.ChangePasswordDto>(req.Body, FunctionResultHelper.JsonOptions, req.HttpContext.RequestAborted);
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.ChangePassword(id, changePasswordDto!));
+        return FunctionResultHelper.Normalize(await _controller.ChangePassword(__id_parsed, changePasswordDto!));
     }
 
     /// <summary>
@@ -176,8 +188,12 @@ public class UserFunctions
     [Function("User_AdminResetPassword")]
     public async Task<IActionResult> User_AdminResetPassword(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/user/{id}/admin-reset-password")] HttpRequest req,
-        long id)
+        string id)
     {
+        // Parse route parameter from string to long (Azure Functions can't bind long directly)
+        if (!long.TryParse(id, out var __id_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
+
         // Wire up the controller's HttpContext so it can access User claims, Request, etc.
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
 
@@ -193,7 +209,7 @@ public class UserFunctions
         var dto = await System.Text.Json.JsonSerializer.DeserializeAsync<global::Fakvio.Contracts.Dto.User.AdminResetPasswordDto>(req.Body, FunctionResultHelper.JsonOptions, req.HttpContext.RequestAborted);
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.AdminResetPassword(id, dto!));
+        return FunctionResultHelper.Normalize(await _controller.AdminResetPassword(__id_parsed, dto!));
     }
 
     /// <summary>
@@ -202,8 +218,12 @@ public class UserFunctions
     [Function("User_DeleteUser")]
     public async Task<IActionResult> User_DeleteUser(
         [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "api/user/{id}")] HttpRequest req,
-        long id)
+        string id)
     {
+        // Parse route parameter from string to long (Azure Functions can't bind long directly)
+        if (!long.TryParse(id, out var __id_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
+
         // Wire up the controller's HttpContext so it can access User claims, Request, etc.
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
 
@@ -216,7 +236,7 @@ public class UserFunctions
             return new ForbidResult();
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.DeleteUser(id));
+        return FunctionResultHelper.Normalize(await _controller.DeleteUser(__id_parsed));
     }
 
     /// <summary>

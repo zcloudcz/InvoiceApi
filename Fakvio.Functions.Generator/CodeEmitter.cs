@@ -135,11 +135,14 @@ internal static class CodeEmitter
         sb.Append("        [HttpTrigger(AuthorizationLevel.Anonymous, \"" +
                   action.HttpMethod + "\", Route = \"" + action.Route + "\")] HttpRequest req");
 
-        // Add route parameters as function parameters (Azure Functions binds them automatically)
+        // Add route parameters as string function parameters.
+        // IMPORTANT: Azure Functions Isolated Worker cannot reliably bind non-string route
+        // parameters (e.g., long, int) — it throws FunctionInputConverterException.
+        // We emit all route params as string and parse them manually in the function body.
         foreach (var param in action.Parameters.Where(p => p.Source == BindingSource.Route))
         {
             sb.AppendLine(",");
-            sb.Append("        " + param.FullTypeName + " " + param.Name);
+            sb.Append("        string " + param.Name);
         }
 
         sb.AppendLine(")");
@@ -238,8 +241,11 @@ internal static class CodeEmitter
             switch (param.Source)
             {
                 case BindingSource.Route:
-                    // Route params are bound by Azure Functions runtime as function parameters.
-                    // No extraction needed — they're passed directly to the function method.
+                    // Route params arrive as strings and must be parsed to the target type.
+                    // Azure Functions Isolated Worker cannot reliably bind non-string types
+                    // (throws FunctionInputConverterException for long, int, etc.).
+                    hasExtractions = true;
+                    EmitRouteParameterParse(sb, param);
                     break;
 
                 case BindingSource.Body:
@@ -421,9 +427,14 @@ internal static class CodeEmitter
                 // Body param: pass the deserialized variable (non-null assertion for value types)
                 args.Add(param.Name + (param.IsNullable ? "" : "!"));
             }
+            else if (param.Source == BindingSource.Route && !IsStringType(param.FullTypeName))
+            {
+                // Route param was received as string and parsed to __{name}_parsed
+                args.Add("__" + param.Name + "_parsed");
+            }
             else
             {
-                // Route, Query, CancellationToken: pass by name
+                // Query, CancellationToken, string route: pass by name
                 args.Add(param.Name);
             }
         }
@@ -578,6 +589,60 @@ internal static class FunctionResultHelper
         return obj;
     }
 }";
+    }
+
+    // ========================================================================
+    // Route Parameter Parsing
+    // ========================================================================
+
+    /// <summary>
+    /// Generates code to parse a route parameter from string to its target type.
+    /// Route params are received as string because Azure Functions Isolated Worker
+    /// cannot reliably bind non-string types (FunctionInputConverterException).
+    /// The parsed value is stored in __{name}_parsed for use in the controller call.
+    /// </summary>
+    private static void EmitRouteParameterParse(StringBuilder sb, ParamInfo param)
+    {
+        var specialType = GetSpecialTypeName(param.FullTypeName);
+
+        // String route params need no parsing
+        if (specialType == "string")
+            return;
+
+        var parsedVar = "__" + param.Name + "_parsed";
+
+        switch (specialType)
+        {
+            case "long":
+                sb.AppendLine("        // Parse route parameter '{" + param.Name + "}' from string to long");
+                sb.AppendLine("        if (!long.TryParse(" + param.Name + ", out var " + parsedVar + "))");
+                sb.AppendLine("            return new BadRequestObjectResult(new { message = \"Invalid route parameter '" + param.Name + "': expected a number.\" });");
+                break;
+            case "int":
+                sb.AppendLine("        // Parse route parameter '{" + param.Name + "}' from string to int");
+                sb.AppendLine("        if (!int.TryParse(" + param.Name + ", out var " + parsedVar + "))");
+                sb.AppendLine("            return new BadRequestObjectResult(new { message = \"Invalid route parameter '" + param.Name + "': expected a number.\" });");
+                break;
+            case "Guid":
+                sb.AppendLine("        // Parse route parameter '{" + param.Name + "}' from string to Guid");
+                sb.AppendLine("        if (!Guid.TryParse(" + param.Name + ", out var " + parsedVar + "))");
+                sb.AppendLine("            return new BadRequestObjectResult(new { message = \"Invalid route parameter '" + param.Name + "': expected a GUID.\" });");
+                break;
+            default:
+                // For other types, try a generic parse approach
+                sb.AppendLine("        // Parse route parameter '{" + param.Name + "}' — type: " + specialType);
+                sb.AppendLine("        var " + parsedVar + " = " + param.Name + ";");
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Returns true if the fully qualified type name represents a string.
+    /// </summary>
+    private static bool IsStringType(string fullTypeName)
+    {
+        var name = fullTypeName.Replace("global::", "").TrimEnd('?');
+        return name == "System.String" || name == "string";
     }
 
     // ========================================================================

@@ -101,8 +101,12 @@ public class InvoiceTemplateFunctions
     [Function("InvoiceTemplate_GetTemplateById")]
     public async Task<IActionResult> InvoiceTemplate_GetTemplateById(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/invoicetemplate/{id}")] HttpRequest req,
-        long id)
+        string id)
     {
+        // Parse route parameter from string to long (Azure Functions can't bind long directly)
+        if (!long.TryParse(id, out var __id_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
+
         // Wire up the controller's HttpContext so it can access User claims, Request, etc.
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
 
@@ -113,7 +117,7 @@ public class InvoiceTemplateFunctions
         var cancellationToken = req.HttpContext.RequestAborted;
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.GetTemplateById(id, cancellationToken));
+        return FunctionResultHelper.Normalize(await _controller.GetTemplateById(__id_parsed, cancellationToken));
     }
 
     /// <summary>
@@ -144,8 +148,12 @@ public class InvoiceTemplateFunctions
     [Function("InvoiceTemplate_UpdateTemplate")]
     public async Task<IActionResult> InvoiceTemplate_UpdateTemplate(
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "api/invoicetemplate/{id}")] HttpRequest req,
-        long id)
+        string id)
     {
+        // Parse route parameter from string to long (Azure Functions can't bind long directly)
+        if (!long.TryParse(id, out var __id_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
+
         // Wire up the controller's HttpContext so it can access User claims, Request, etc.
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
 
@@ -158,7 +166,7 @@ public class InvoiceTemplateFunctions
         var cancellationToken = req.HttpContext.RequestAborted;
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.UpdateTemplate(id, updateDto!, cancellationToken));
+        return FunctionResultHelper.Normalize(await _controller.UpdateTemplate(__id_parsed, updateDto!, cancellationToken));
     }
 
     /// <summary>
@@ -167,8 +175,12 @@ public class InvoiceTemplateFunctions
     [Function("InvoiceTemplate_DeleteTemplate")]
     public async Task<IActionResult> InvoiceTemplate_DeleteTemplate(
         [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "api/invoicetemplate/{id}")] HttpRequest req,
-        long id)
+        string id)
     {
+        // Parse route parameter from string to long (Azure Functions can't bind long directly)
+        if (!long.TryParse(id, out var __id_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
+
         // Wire up the controller's HttpContext so it can access User claims, Request, etc.
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
 
@@ -179,7 +191,7 @@ public class InvoiceTemplateFunctions
         var cancellationToken = req.HttpContext.RequestAborted;
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.DeleteTemplate(id, cancellationToken));
+        return FunctionResultHelper.Normalize(await _controller.DeleteTemplate(__id_parsed, cancellationToken));
     }
 
     /// <summary>
@@ -188,8 +200,12 @@ public class InvoiceTemplateFunctions
     [Function("InvoiceTemplate_CreateInvoiceFromTemplate")]
     public async Task<IActionResult> InvoiceTemplate_CreateInvoiceFromTemplate(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/invoicetemplate/{id}/create-invoice")] HttpRequest req,
-        long id)
+        string id)
     {
+        // Parse route parameter from string to long (Azure Functions can't bind long directly)
+        if (!long.TryParse(id, out var __id_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
+
         // Wire up the controller's HttpContext so it can access User claims, Request, etc.
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
 
@@ -202,7 +218,7 @@ public class InvoiceTemplateFunctions
         var cancellationToken = req.HttpContext.RequestAborted;
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.CreateInvoiceFromTemplate(id, createDto!, cancellationToken));
+        return FunctionResultHelper.Normalize(await _controller.CreateInvoiceFromTemplate(__id_parsed, createDto!, cancellationToken));
     }
 
     /// <summary>
@@ -211,8 +227,12 @@ public class InvoiceTemplateFunctions
     [Function("InvoiceTemplate_CreateTemplateFromInvoice")]
     public async Task<IActionResult> InvoiceTemplate_CreateTemplateFromInvoice(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/invoicetemplate/from-invoice/{invoiceId}")] HttpRequest req,
-        long invoiceId)
+        string invoiceId)
     {
+        // Parse route parameter from string to long (Azure Functions can't bind long directly)
+        if (!long.TryParse(invoiceId, out var __invoiceId_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'invoiceId'." });
+
         // Wire up the controller's HttpContext so it can access User claims, Request, etc.
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
 
@@ -225,6 +245,6 @@ public class InvoiceTemplateFunctions
         var cancellationToken = req.HttpContext.RequestAborted;
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.CreateTemplateFromInvoice(invoiceId, request!, cancellationToken));
+        return FunctionResultHelper.Normalize(await _controller.CreateTemplateFromInvoice(__invoiceId_parsed, request!, cancellationToken));
     }
 }
