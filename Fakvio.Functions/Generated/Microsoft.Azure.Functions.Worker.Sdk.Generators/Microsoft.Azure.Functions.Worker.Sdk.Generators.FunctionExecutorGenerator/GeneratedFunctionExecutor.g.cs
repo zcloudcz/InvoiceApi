@@ -18,6 +18,7 @@ namespace Fakvio.Functions
         {
             { "Fakvio.Functions.Generated.AppLogFunctions", Type.GetType("Fakvio.Functions.Generated.AppLogFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "Fakvio.Functions.Generated.AuthFunctions", Type.GetType("Fakvio.Functions.Generated.AuthFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
+            { "Fakvio.Functions.Generated.ChatFunctions", Type.GetType("Fakvio.Functions.Generated.ChatFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "Fakvio.Functions.Generated.ClientFunctions", Type.GetType("Fakvio.Functions.Generated.ClientFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "Fakvio.Functions.Generated.CloudStorageFunctions", Type.GetType("Fakvio.Functions.Generated.CloudStorageFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "Fakvio.Functions.Generated.CompanyFunctions", Type.GetType("Fakvio.Functions.Generated.CompanyFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
@@ -109,6 +110,55 @@ namespace Fakvio.Functions
                 var instanceType = types["Fakvio.Functions.Generated.AuthFunctions"];
                 var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.AuthFunctions;
                 context.GetInvocationResult().Value = await i.Auth_RefreshToken((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.ChatFunctions.Chat_GetConversations", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.ChatFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.ChatFunctions;
+                context.GetInvocationResult().Value = await i.Chat_GetConversations((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.ChatFunctions.Chat_GetConversation", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.ChatFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.ChatFunctions;
+                context.GetInvocationResult().Value = await i.Chat_GetConversation((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0], (string)inputArguments[1]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.ChatFunctions.Chat_SendMessage", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.ChatFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.ChatFunctions;
+                context.GetInvocationResult().Value = await i.Chat_SendMessage((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.ChatFunctions.Chat_StreamMessage", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.ChatFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.ChatFunctions;
+                context.GetInvocationResult().Value = await i.Chat_StreamMessage((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.ChatFunctions.Chat_DeleteConversation", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.ChatFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.ChatFunctions;
+                context.GetInvocationResult().Value = await i.Chat_DeleteConversation((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0], (string)inputArguments[1]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.ChatFunctions.Chat_GetProviders", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.ChatFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.ChatFunctions;
+                context.GetInvocationResult().Value = await i.Chat_GetProviders((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.ChatFunctions.Chat_ExtractPdfText", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.ChatFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.ChatFunctions;
+                context.GetInvocationResult().Value = await i.Chat_ExtractPdfText((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
                 return;
             }
             if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.ClientFunctions.Client_GetAllClients", StringComparison.Ordinal))
