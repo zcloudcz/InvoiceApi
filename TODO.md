@@ -1,5 +1,22 @@
 # Fakvio TODO
 
+## Pending
+
+### Eliminate IHttpContextAccessor dependency from services (Tech Debt)
+Azure Functions Isolated Worker has two DI scopes per request (`httpContext.RequestServices` vs `context.InstanceServices`). `IHttpContextAccessor` returns null in the worker scope where injected services live. Current workaround: `ChatService` falls back to parsing CompanyId from `TenantDbContext.Schema` (`"tenant_42"` → `42`).
+
+**Clean solution:** Pass `companyId` explicitly through the entire call chain instead of relying on `IHttpContextAccessor`/`ITenantResolver`:
+- [ ] Add `companyId` parameter to `IChatService` methods (`SendMessageAsync`, `StreamMessageAsync`, `GetAvailableProvidersAsync`)
+- [ ] `ChatController` reads CompanyId from JWT claims and passes it down
+- [ ] Remove `ITenantResolver` dependency from `ChatService`
+- [ ] Remove `ParseCompanyIdFromSchema` workaround
+- [ ] Audit other services that use `ITenantResolver` — same problem may exist (EmailService, etc.)
+- [ ] Consider removing `ITenantResolver` entirely if all callers can pass CompanyId explicitly
+
+**Why:** `IHttpContextAccessor` is unreliable in Azure Functions dual-scope architecture. Explicit parameter passing is safer, testable, and doesn't depend on ambient state.
+
+---
+
 ## Completed
 
 ### Company-Level AI Settings (2026-03-19)

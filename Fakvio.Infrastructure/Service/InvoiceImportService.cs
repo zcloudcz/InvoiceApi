@@ -5,6 +5,7 @@ using Fakvio.Contracts.Dto.Import;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Contracts.Dto.ReceivedInvoice;
 using Fakvio.Domain.Enums;
+using Fakvio.Infrastructure.Data;
 using Microsoft.Extensions.Logging;
 
 namespace Fakvio.Infrastructure.Service;
@@ -26,6 +27,7 @@ namespace Fakvio.Infrastructure.Service;
 /// </summary>
 public class InvoiceImportService : IInvoiceImportService
 {
+    private readonly TenantDbContext _context;
     private readonly IQrCodeExtractor _qrExtractor;
     private readonly IInvoiceAiExtractor _aiExtractor;
     private readonly IInvoiceTextExtractor _textExtractor;
@@ -37,6 +39,7 @@ public class InvoiceImportService : IInvoiceImportService
     private readonly ILogger<InvoiceImportService> _logger;
 
     public InvoiceImportService(
+        TenantDbContext context,
         IQrCodeExtractor qrExtractor,
         IInvoiceAiExtractor aiExtractor,
         IInvoiceTextExtractor textExtractor,
@@ -47,6 +50,7 @@ public class InvoiceImportService : IInvoiceImportService
         ICurrencyService currencyService,
         ILogger<InvoiceImportService> logger)
     {
+        _context = context;
         _qrExtractor = qrExtractor;
         _aiExtractor = aiExtractor;
         _textExtractor = textExtractor;
@@ -91,11 +95,14 @@ public class InvoiceImportService : IInvoiceImportService
             _logger.LogInformation("QR code found ({Type}) in {FileName}", qrResult.QrType, fileName);
         }
 
-        // Step 3: Level 2 — AI extraction (if QR insufficient or not found)
+        // Step 3: Level 2 — AI extraction (if QR insufficient or not found).
+        // CompanyId is derived from TenantDbContext.Schema ("tenant_42" → 42)
+        // to resolve company-specific AI provider settings from master DB.
         InvoiceExtractedData? aiData = null;
-        if (_aiExtractor.IsAvailable && !string.IsNullOrWhiteSpace(pdfText))
+        var companyId = ParseCompanyIdFromSchema(_context.Schema);
+        if (!string.IsNullOrWhiteSpace(pdfText))
         {
-            aiData = await _aiExtractor.ExtractAsync(pdfText, ct);
+            aiData = await _aiExtractor.ExtractAsync(companyId, pdfText, ct);
             if (aiData != null)
             {
                 _logger.LogInformation("AI extraction successful for {FileName}", fileName);
@@ -660,5 +667,17 @@ public class InvoiceImportService : IInvoiceImportService
                 }
             }
         };
+    }
+
+    /// <summary>
+    /// Extracts CompanyId from the tenant schema name (e.g., "tenant_42" → 42).
+    /// Used to pass companyId to AI extractor for company-specific provider resolution.
+    /// </summary>
+    private static long? ParseCompanyIdFromSchema(string? schema)
+    {
+        if (string.IsNullOrEmpty(schema) || !schema.StartsWith("tenant_"))
+            return null;
+
+        return long.TryParse(schema.AsSpan("tenant_".Length), out var id) ? id : null;
     }
 }

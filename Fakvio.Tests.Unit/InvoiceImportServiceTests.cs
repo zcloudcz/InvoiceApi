@@ -6,7 +6,9 @@ using Fakvio.Contracts.Dto.Import;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Contracts.Dto.ReceivedInvoice;
 using Fakvio.Domain.Enums;
+using Fakvio.Infrastructure.Data;
 using Fakvio.Infrastructure.Service;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 using Shouldly;
@@ -52,8 +54,15 @@ public class InvoiceImportServiceTests
         _currencyService = Substitute.For<ICurrencyService>();
         var logger = Substitute.For<ILogger<InvoiceImportService>>();
 
+        // Create an in-memory TenantDbContext with a test schema name.
+        var tenantOptions = new DbContextOptionsBuilder<TenantDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        var tenantContext = new TenantDbContext(tenantOptions);
+        tenantContext.Schema = "tenant_1";
+
         _service = new InvoiceImportService(
-            _qrExtractor, _aiExtractor, _textExtractor, _pdfReader,
+            tenantContext, _qrExtractor, _aiExtractor, _textExtractor, _pdfReader,
             _clientService, _invoiceService, _receivedInvoiceService,
             _currencyService, logger);
 
@@ -65,8 +74,9 @@ public class InvoiceImportServiceTests
         _qrExtractor.ExtractFromPdfAsync(Arg.Any<byte[]>())
             .Returns(QrExtractionResult.NotFound());
 
-        // Default: AI not available
-        _aiExtractor.IsAvailable.Returns(false);
+        // Default: AI returns null (simulates no provider or extraction failure).
+        _aiExtractor.ExtractAsync(Arg.Any<long?>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns((InvoiceExtractedData?)null);
 
         // Default: regex returns empty
         _textExtractor.Extract(Arg.Any<string>())
@@ -383,9 +393,8 @@ public class InvoiceImportServiceTests
     [Fact]
     public async Task PreviewImportAsync_NoQr_AiAvailable_UsesAi()
     {
-        // Arrange: no QR, but AI is available and extracts data
-        _aiExtractor.IsAvailable.Returns(true);
-        _aiExtractor.ExtractAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+        // Arrange: no QR, but AI extracts data successfully
+        _aiExtractor.ExtractAsync(Arg.Any<long?>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new InvoiceExtractedData
             {
                 DocumentNumber = "FV-AI",

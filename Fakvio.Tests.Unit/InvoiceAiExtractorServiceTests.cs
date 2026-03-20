@@ -18,64 +18,44 @@ namespace Fakvio.Tests.Unit;
 /// </summary>
 public class InvoiceAiExtractorServiceTests
 {
-    private readonly IAiProviderFactory _providerFactory;
+    private readonly ICompanyAiSettingsResolver _companyAiResolver;
     private readonly IAiProvider _provider;
     private readonly ILogger<InvoiceAiExtractorService> _logger;
     private readonly InvoiceAiExtractorService _service;
 
     public InvoiceAiExtractorServiceTests()
     {
-        _providerFactory = Substitute.For<IAiProviderFactory>();
+        _companyAiResolver = Substitute.For<ICompanyAiSettingsResolver>();
         _provider = Substitute.For<IAiProvider>();
         _logger = Substitute.For<ILogger<InvoiceAiExtractorService>>();
 
-        // Default: one provider available
-        _providerFactory.AvailableProviders.Returns(new List<string> { "Claude" });
-        _providerFactory.GetDefaultProvider().Returns(_provider);
+        // Default: resolver returns the mock provider for any companyId.
+        _companyAiResolver.ResolveProviderAsync(Arg.Any<long?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(_provider);
 
-        _service = new InvoiceAiExtractorService(_providerFactory, _logger);
-    }
-
-    // ─── IsAvailable tests ───────────────────────────────────────────────
-
-    [Fact]
-    public void IsAvailable_NoProviders_ReturnsFalse()
-    {
-        // Arrange: no AI providers configured
-        _providerFactory.AvailableProviders.Returns(new List<string>());
-
-        // Act & Assert
-        _service.IsAvailable.ShouldBeFalse();
-    }
-
-    [Fact]
-    public void IsAvailable_ProviderConfigured_ReturnsTrue()
-    {
-        _service.IsAvailable.ShouldBeTrue();
+        _service = new InvoiceAiExtractorService(_companyAiResolver, _logger);
     }
 
     // ─── ExtractAsync integration tests ──────────────────────────────────
 
     [Fact]
-    public async Task ExtractAsync_NoProviderAvailable_ReturnsNull()
+    public async Task ExtractAsync_ResolverThrows_ReturnsNull()
     {
-        // Arrange
-        _providerFactory.AvailableProviders.Returns(new List<string>());
+        // Arrange: no AI provider configured — resolver throws.
+        _companyAiResolver.ResolveProviderAsync(Arg.Any<long?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns<IAiProvider>(_ => throw new InvalidOperationException("No AI providers configured"));
 
         // Act
-        var result = await _service.ExtractAsync("some invoice text");
+        var result = await _service.ExtractAsync(1L, "some invoice text");
 
-        // Assert
+        // Assert: should NOT propagate the exception — returns null for regex fallback.
         result.ShouldBeNull();
-        // Should not even call the provider
-        await _provider.DidNotReceive().GetCompletionAsync(
-            Arg.Any<List<ChatMessageDto>>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
     public async Task ExtractAsync_EmptyText_ReturnsNull()
     {
-        var result = await _service.ExtractAsync("");
+        var result = await _service.ExtractAsync(1L, "");
         result.ShouldBeNull();
     }
 
@@ -102,7 +82,7 @@ public class InvoiceAiExtractorServiceTests
             .Returns(aiJson);
 
         // Act
-        var result = await _service.ExtractAsync("Faktura č. FV2026001...");
+        var result = await _service.ExtractAsync(1L, "Faktura č. FV2026001...");
 
         // Assert
         result.ShouldNotBeNull();
@@ -121,7 +101,7 @@ public class InvoiceAiExtractorServiceTests
             .ThrowsAsync(new HttpRequestException("API key invalid"));
 
         // Act
-        var result = await _service.ExtractAsync("some text");
+        var result = await _service.ExtractAsync(1L, "some text");
 
         // Assert: should NOT propagate the exception
         result.ShouldBeNull();
@@ -139,7 +119,7 @@ public class InvoiceAiExtractorServiceTests
             .ThrowsAsync(new OperationCanceledException());
 
         // Act
-        var result = await _service.ExtractAsync("some text", cts.Token);
+        var result = await _service.ExtractAsync(1L, "some text", cts.Token);
 
         // Assert
         result.ShouldBeNull();

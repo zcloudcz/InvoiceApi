@@ -25,7 +25,7 @@ namespace Fakvio.Infrastructure.Service;
 /// </summary>
 public class InvoiceAiExtractorService : IInvoiceAiExtractor
 {
-    private readonly IAiProviderFactory _providerFactory;
+    private readonly ICompanyAiSettingsResolver _companyAiResolver;
     private readonly ILogger<InvoiceAiExtractorService> _logger;
 
     /// <summary>
@@ -36,33 +36,19 @@ public class InvoiceAiExtractorService : IInvoiceAiExtractor
     private static readonly TimeSpan AiTimeout = TimeSpan.FromSeconds(30);
 
     public InvoiceAiExtractorService(
-        IAiProviderFactory providerFactory,
+        ICompanyAiSettingsResolver companyAiResolver,
         ILogger<InvoiceAiExtractorService> logger)
     {
-        _providerFactory = providerFactory;
+        _companyAiResolver = companyAiResolver;
         _logger = logger;
     }
-
-    /// <summary>
-    /// Returns true if at least one AI provider is configured.
-    /// Checks IAiProviderFactory.AvailableProviders — only providers
-    /// with valid API keys (or reachable Ollama URLs) are listed.
-    /// </summary>
-    public bool IsAvailable => _providerFactory.AvailableProviders.Count > 0;
 
     /// <summary>
     /// Sends PDF text to the default AI provider and parses the structured JSON response.
     /// Returns null on any failure — the caller should fall back to regex extraction.
     /// </summary>
-    public async Task<InvoiceExtractedData?> ExtractAsync(string pdfText, CancellationToken ct = default)
+    public async Task<InvoiceExtractedData?> ExtractAsync(long? companyId, string pdfText, CancellationToken ct = default)
     {
-        // Guard: no AI provider configured
-        if (!IsAvailable)
-        {
-            _logger.LogDebug("No AI provider available, skipping AI extraction");
-            return null;
-        }
-
         // Guard: empty text — nothing to extract from
         if (string.IsNullOrWhiteSpace(pdfText))
         {
@@ -72,7 +58,10 @@ public class InvoiceAiExtractorService : IInvoiceAiExtractor
 
         try
         {
-            var provider = _providerFactory.GetDefaultProvider();
+            // Resolve AI provider using company-specific settings (Tier 1) or global fallback (Tier 2).
+            // CompanyId is passed explicitly from the caller (InvoiceImportService) to avoid
+            // IHttpContextAccessor issues in Azure Functions.
+            var provider = await _companyAiResolver.ResolveProviderAsync(companyId, null, ct);
 
             _logger.LogInformation(
                 "Starting AI invoice extraction using provider {Provider}, text length: {Length} chars",
