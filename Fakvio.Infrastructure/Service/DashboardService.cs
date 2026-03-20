@@ -56,12 +56,14 @@ public class DashboardService : IDashboardService
         // when comparing against PostgreSQL 'timestamp with time zone' columns.
         var firstDayOfMonth = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
 
-        // Base query for invoices — filtered by company (issuer) if provided.
+        // Base query for invoices — excludes templates (TPH) and soft-deleted invoices.
+        // Filtered by company (issuer) if provided.
         // When companyId is null (SysAdmin without impersonation), all invoices are shown.
         // AsNoTracking: entire dashboard is read-only — no entity modifications
         var invoiceQuery = _context.Invoice
             .AsNoTracking()
-            .Where(i => !(i is Domain.Entities.InvoiceTemplate)); // Exclude templates (TPH)
+            .Where(i => !(i is Domain.Entities.InvoiceTemplate)) // Exclude templates (TPH)
+            .Where(i => i.Status != EInvoiceStatus.Deleted);      // Exclude soft-deleted
 
         if (companyId.HasValue)
         {
@@ -116,16 +118,16 @@ public class DashboardService : IDashboardService
 
         // ─── Chart Data Queries ───────────────────────────────────────────────
 
-        // Invoice count grouped by status (for donut chart) — excludes Deleted
+        // Invoice count grouped by status (for donut chart).
+        // Deleted invoices already excluded by base query.
         var invoiceCountByStatus = await invoiceQuery
-            .Where(i => i.Status != EInvoiceStatus.Deleted)
             .GroupBy(i => i.Status)
             .Select(g => new { Status = g.Key, Count = g.Count() })
             .ToListAsync(ct);
 
         // Top 10 clients by total invoice revenue (for donut chart)
         var topClientsByRevenue = await invoiceQuery
-            .Where(i => i.Status != EInvoiceStatus.Deleted && i.Client != null)
+            .Where(i => i.Client != null)
             .GroupBy(i => i.Client!.CompanyName)
             .Select(g => new { ClientName = g.Key ?? "Unknown", Total = g.Sum(i => i.TotalWithVat) })
             .OrderByDescending(x => x.Total)
@@ -134,7 +136,7 @@ public class DashboardService : IDashboardService
 
         // Top 10 clients by invoice count
         var topClientsByCount = await invoiceQuery
-            .Where(i => i.Status != EInvoiceStatus.Deleted && i.Client != null)
+            .Where(i => i.Client != null)
             .GroupBy(i => i.Client!.CompanyName)
             .Select(g => new { ClientName = g.Key ?? "Unknown", Count = g.Count() })
             .OrderByDescending(x => x.Count)
