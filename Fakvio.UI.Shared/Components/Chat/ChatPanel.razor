@@ -310,17 +310,14 @@
         {
             Logger.LogError(ex, "Error streaming chat message");
 
-            // Show the actual error message so the user knows what went wrong.
-            var errorText = ex.Message;
-            if (string.IsNullOrWhiteSpace(errorText))
-            {
-                errorText = "An unexpected error occurred while processing your message.";
-            }
+            // Show the full error so the user sees what's going on.
+            // Include inner exceptions — the real cause is often wrapped.
+            var errorText = ex.ToString();
 
             _messages.Add(new ChatMessageDto
             {
                 Role = "Assistant",
-                Content = $"⚠️ {errorText}",
+                Content = $"**Error:** {errorText}",
                 CreatedAt = DateTime.UtcNow
             });
         }

@@ -67,6 +67,11 @@ public class CompanyAiSettingsResolver : ICompanyAiSettingsResolver
     {
         // ── Tier 1: Company-specific AI settings ──────────────────────────────
         var companyId = _tenantResolver.GetCurrentCompanyId();
+
+        _logger.LogInformation(
+            "AI resolver: CompanyId={CompanyId}, RequestedProvider={Provider}",
+            companyId, requestedProvider);
+
         if (companyId.HasValue)
         {
             var companySettings = await _masterContext.CompanySystemSettings
@@ -85,6 +90,14 @@ public class CompanyAiSettingsResolver : ICompanyAiSettingsResolver
                         ? companySettings.AiDefaultProvider
                         : null;
 
+                _logger.LogInformation(
+                    "AI resolver: CompanyId={CompanyId}, EffectiveProvider={Provider}, " +
+                    "DefaultProvider={Default}, HasClaudeKey={HasClaude}, HasOpenAiKey={HasOpenAi}",
+                    companyId.Value, effectiveProvider,
+                    companySettings.AiDefaultProvider,
+                    !string.IsNullOrEmpty(companySettings.AiClaudeApiKey),
+                    !string.IsNullOrEmpty(companySettings.AiOpenAiApiKey));
+
                 if (!string.IsNullOrEmpty(effectiveProvider))
                 {
                     // Try to create a company-specific provider with custom API key.
@@ -96,8 +109,31 @@ public class CompanyAiSettingsResolver : ICompanyAiSettingsResolver
                             effectiveProvider, companyId.Value);
                         return companyProvider;
                     }
+
+                    _logger.LogWarning(
+                        "AI resolver: failed to create company provider '{Provider}' for CompanyId {CompanyId} — " +
+                        "API key may be missing for this provider. Falling through to system default.",
+                        effectiveProvider, companyId.Value);
+                }
+                else
+                {
+                    _logger.LogWarning(
+                        "AI resolver: CompanyId {CompanyId} has no default AI provider set " +
+                        "and no provider was requested. Falling through to system default.",
+                        companyId.Value);
                 }
             }
+            else
+            {
+                _logger.LogWarning(
+                    "AI resolver: no CompanySystemSettings found for CompanyId {CompanyId}",
+                    companyId.Value);
+            }
+        }
+        else
+        {
+            _logger.LogWarning("AI resolver: ITenantResolver returned null CompanyId — " +
+                "cannot check company-specific AI settings");
         }
 
         // ── Tier 2: System-wide AI settings (appsettings.json) ───────────────
