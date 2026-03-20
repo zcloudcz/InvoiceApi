@@ -119,7 +119,7 @@ public class InvoiceAiExtractorServiceTests
             .ThrowsAsync(new OperationCanceledException());
 
         // Act
-        var result = await _service.ExtractAsync(1L, "some text", cts.Token);
+        var result = await _service.ExtractAsync(1L, "some text", null, cts.Token);
 
         // Assert
         result.ShouldBeNull();

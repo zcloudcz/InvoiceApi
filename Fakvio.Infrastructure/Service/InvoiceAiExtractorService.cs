@@ -47,7 +47,10 @@ public class InvoiceAiExtractorService : IInvoiceAiExtractor
     /// Sends PDF text to the default AI provider and parses the structured JSON response.
     /// Returns null on any failure — the caller should fall back to regex extraction.
     /// </summary>
-    public async Task<InvoiceExtractedData?> ExtractAsync(long? companyId, string pdfText, CancellationToken ct = default)
+    public async Task<InvoiceExtractedData?> ExtractAsync(
+        long? companyId, string pdfText,
+        ImportCompanyContext? companyContext = null,
+        CancellationToken ct = default)
     {
         // Guard: empty text — nothing to extract from
         if (string.IsNullOrWhiteSpace(pdfText))
@@ -68,9 +71,11 @@ public class InvoiceAiExtractorService : IInvoiceAiExtractor
                 provider.ProviderName, pdfText.Length);
 
             // Create a linked cancellation token that also enforces our timeout.
-            // This way, both user cancellation and timeout will stop the AI request.
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeoutCts.CancelAfter(AiTimeout);
+
+            // Build the system prompt — base prompt + company context if available.
+            var effectivePrompt = BuildEffectivePrompt(companyContext);
 
             // Build the messages: system prompt + user message with the PDF text
             var messages = new List<ChatMessageDto>
@@ -85,7 +90,7 @@ public class InvoiceAiExtractorService : IInvoiceAiExtractor
             // Get the AI response
             var jsonResponse = await provider.GetCompletionAsync(
                 messages,
-                systemPrompt: SystemPrompt,
+                systemPrompt: effectivePrompt,
                 ct: timeoutCts.Token);
 
             if (string.IsNullOrWhiteSpace(jsonResponse))
@@ -238,17 +243,54 @@ public class InvoiceAiExtractorService : IInvoiceAiExtractor
     // ─── System prompt ───────────────────────────────────────────────────
 
     /// <summary>
-    /// The system prompt sent to the AI provider for invoice data extraction.
-    /// Carefully crafted to produce consistent, parseable JSON output.
+    /// Builds the effective system prompt by combining the base extraction prompt
+    /// with company-specific context (if available).
     ///
-    /// Key design decisions:
-    /// - Explicit "return ONLY JSON" instruction (prevents chatty responses)
-    /// - Full schema with types and examples (reduces ambiguity)
-    /// - Czech-specific field descriptions (IČO, DIČ, VS, DUZP)
-    /// - Instruction to use null for missing fields (not empty strings)
-    /// - Date format: YYYY-MM-DD (ISO 8601 — unambiguous parsing)
+    /// When company context is provided, the AI knows:
+    /// - Which company is importing (name, IČO, DIČ)
+    /// - Whether we're importing issued or received invoices
+    /// - Special rules for issued imports (preserve document number exactly)
     /// </summary>
-    internal const string SystemPrompt = """
+    private static string BuildEffectivePrompt(ImportCompanyContext? ctx)
+    {
+        if (ctx == null)
+            return BaseSystemPrompt;
+
+        var direction = ctx.IsIssuedImport
+            ? $"""
+
+              ISSUED INVOICE IMPORT — Our company is the ISSUER (dodavatel/vystavitel).
+              - The other party on the invoice is the RECIPIENT (odběratel/příjemce) = our customer.
+              - CRITICAL: The document number (číslo dokladu/faktury) must be extracted EXACTLY as printed
+                on the invoice. Do NOT modify, reformat, or normalize it — it is part of our accounting
+                sequence and must match our records precisely.
+              - If the issuer IČO on the PDF does not match our IČO ({ctx.RegistrationNumber}),
+                the document may not belong to this company.
+              """
+            : $"""
+
+              RECEIVED INVOICE IMPORT — Our company is the RECIPIENT (odběratel/příjemce).
+              - The other party on the invoice is the ISSUER (dodavatel/vystavitel) = our supplier.
+              - The document number is the supplier's number — extract it as-is.
+              - If the recipient IČO on the PDF does not match our IČO ({ctx.RegistrationNumber}),
+                the document may not be addressed to this company.
+              """;
+
+        return BaseSystemPrompt + $"""
+
+            IMPORTING COMPANY:
+            - Company name: {ctx.CompanyName}
+            - IČO: {ctx.RegistrationNumber}
+            - DIČ: {ctx.TaxNumber ?? "N/A"}
+            {direction}
+            """;
+    }
+
+    /// <summary>
+    /// Base system prompt for invoice data extraction.
+    /// Extended at runtime by BuildEffectivePrompt with company-specific context.
+    /// </summary>
+    internal const string BaseSystemPrompt = """
         You are an invoice data extraction assistant. Your task is to extract structured data from the provided invoice text.
 
         IMPORTANT: Return ONLY a valid JSON object. No markdown, no explanation, no code blocks. Just pure JSON.
@@ -256,7 +298,7 @@ public class InvoiceAiExtractorService : IInvoiceAiExtractor
         Extract the following fields. Use null for any field you cannot find in the text.
 
         {
-          "documentNumber": "string — the invoice/document number (e.g., FV2026001, 20260042)",
+          "documentNumber": "string — the invoice/document number EXACTLY as printed (e.g., FV2026001, 20260042). Do NOT modify or reformat.",
           "issueDate": "YYYY-MM-DD — date when the invoice was issued",
           "dueDate": "YYYY-MM-DD — payment due date (datum splatnosti)",
           "taxableSupplyDate": "YYYY-MM-DD — date of taxable supply (DUZP / datum uskutečnění zdanitelného plnění)",
@@ -296,6 +338,7 @@ public class InvoiceAiExtractorService : IInvoiceAiExtractor
         - DIČ starts with country code (usually "CZ" for Czech) followed by digits
         - If items table is not found, set items to null (not empty array)
         - Distinguish between issuer (who created the invoice) and recipient (who receives it)
+        - Document number must be extracted EXACTLY as it appears — no reformatting
         """;
 
     // ─── AI response model ───────────────────────────────────────────────

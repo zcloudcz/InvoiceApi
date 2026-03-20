@@ -162,6 +162,32 @@ public interface INumberSequenceService
         EDocumentType documentType, DateTime issueDate, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Releases (decrements) the last generated number in a sequence.
+    /// Called when a draft invoice is deleted to keep the numbering continuous.
+    ///
+    /// IMPORTANT: Only decrements if the current counter matches the expected value
+    /// (i.e., the deleted invoice had the last number in the sequence).
+    /// If another invoice was created after this one, the number cannot be released
+    /// because it would create a gap.
+    ///
+    /// Junior note: If invoice #5 is deleted but invoice #6 already exists,
+    /// we can't release #5 because #6 would become a gap. Only the LAST number
+    /// in the sequence can be safely released.
+    /// </summary>
+    /// <param name="documentType">Document type to find the sequence for.</param>
+    /// <param name="expectedCurrentNumber">
+    /// The counter value we expect. Only decrements if it matches.
+    /// This is the number AFTER the deleted invoice was generated
+    /// (e.g., if deleted invoice was #5, expectedCurrentNumber is 6).
+    /// </param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>True if the number was released, false if not (counter already moved past).</returns>
+    Task<bool> TryReleaseLastNumberAsync(
+        EDocumentType documentType,
+        int expectedCurrentNumber,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Validates a format pattern
     /// Checks if the pattern is valid and can be used for number generation
     /// </summary>

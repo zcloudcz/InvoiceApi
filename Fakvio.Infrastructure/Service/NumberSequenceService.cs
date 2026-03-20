@@ -514,6 +514,60 @@ public class NumberSequenceService : INumberSequenceService
         return await PreviewNextNumberAsync(defaultSequence.Id, issueDate, cancellationToken);
     }
 
+    /// <inheritdoc />
+    public async Task<bool> TryReleaseLastNumberAsync(
+        EDocumentType documentType,
+        int expectedCurrentNumber,
+        CancellationToken cancellationToken = default)
+    {
+        // Find the default sequence for this document type.
+        var sequence = await _tenantContext.NumberSequence
+            .OrderBy(s => s.Id)
+            .FirstOrDefaultAsync(
+                s => s.DocumentType == documentType && s.IsDefault && s.IsActive,
+                cancellationToken);
+
+        if (sequence == null)
+        {
+            _logger.LogDebug("No default sequence for {DocumentType} — cannot release number", documentType);
+            return false;
+        }
+
+        // Only decrement if the counter is exactly what we expect.
+        // This means the deleted invoice had the LAST generated number.
+        // If another invoice was created after it, CurrentNumber will be higher
+        // and we cannot release (would create a gap).
+        if (sequence.CurrentNumber != expectedCurrentNumber)
+        {
+            _logger.LogDebug(
+                "Cannot release number for {DocumentType}: expected counter={Expected}, actual={Actual}. " +
+                "Another document was generated after the deleted one.",
+                documentType, expectedCurrentNumber, sequence.CurrentNumber);
+            return false;
+        }
+
+        // Decrement — the deleted invoice's number will be reused by the next invoice.
+        sequence.CurrentNumber--;
+
+        _logger.LogInformation(
+            "Released last number for {DocumentType} sequence '{Name}': counter decremented from {From} to {To}",
+            documentType, sequence.Name, expectedCurrentNumber, sequence.CurrentNumber);
+
+        try
+        {
+            await _tenantContext.SaveChangesAsync(cancellationToken);
+            return true;
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // Another request modified the sequence concurrently — cannot safely release.
+            _logger.LogWarning(
+                "Concurrency conflict releasing number for {DocumentType} — number NOT released",
+                documentType);
+            return false;
+        }
+    }
+
     #endregion
 
     #region Format validation

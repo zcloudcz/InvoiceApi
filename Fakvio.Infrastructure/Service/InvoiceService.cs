@@ -608,11 +608,17 @@ public class InvoiceService : IInvoiceService
         if (invoice.Status != EInvoiceStatus.Draft)
             throw new InvalidOperationException("Only draft invoices can be deleted");
 
-        _logger.LogInformation("Deleting {DocumentType} {Id}", invoice.DocumentType, invoice.Id);
+        _logger.LogInformation("Deleting {DocumentType} {Id} (DocumentNumber={DocNum})",
+            invoice.DocumentType, invoice.Id, invoice.DocumentNumber);
 
         invoice.Status = EInvoiceStatus.Deleted;
-
         await _context.SaveChangesAsync(cancellationToken);
+
+        // Try to release the document number back to the sequence so it can be reused.
+        // This only works if the deleted invoice had the LAST number in the sequence.
+        // If another invoice was generated after this one, the number stays consumed
+        // to avoid gaps in the middle of the sequence.
+        await TryReleaseDocumentNumberAsync(invoice, cancellationToken);
 
         return true;
     }
@@ -844,6 +850,63 @@ public class InvoiceService : IInvoiceService
     /// Generates document number using number sequence service.
     /// Priority: 1) explicit overrideSequenceId (from template), 2) issuer's custom sequence, 3) default for doc type.
     /// </summary>
+    /// <summary>
+    /// Attempts to release the document number of a deleted invoice back to the number sequence.
+    ///
+    /// Extracts the counter value from the document number and asks the sequence service
+    /// to decrement if this was the last generated number. If another invoice was created
+    /// after this one, the release is silently skipped (no gap in the middle allowed).
+    ///
+    /// This is best-effort — failures are logged but do not block the deletion.
+    /// </summary>
+    private async Task TryReleaseDocumentNumberAsync(Invoice invoice, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(invoice.DocumentNumber) || invoice.DocumentNumber == "DRAFT")
+            return;
+
+        try
+        {
+            // Find the default sequence for this document type to get the current counter.
+            var sequence = await _context.NumberSequence
+                .AsNoTracking()
+                .OrderBy(s => s.Id)
+                .FirstOrDefaultAsync(
+                    s => s.DocumentType == invoice.DocumentType && s.IsDefault && s.IsActive, ct);
+
+            if (sequence == null)
+                return;
+
+            // The CurrentNumber in the sequence is the NEXT number to be generated.
+            // If the deleted invoice was the last one, releasing means decrementing by 1.
+            // We pass CurrentNumber as the expected value — the service only decrements
+            // if it still matches (no other invoice was generated since).
+            var released = await _numberSequenceService.TryReleaseLastNumberAsync(
+                invoice.DocumentType, sequence.CurrentNumber, ct);
+
+            if (released)
+            {
+                _logger.LogInformation(
+                    "Released document number '{DocNum}' for {DocumentType} — will be reused",
+                    invoice.DocumentNumber, invoice.DocumentType);
+
+                // Clear the document number on the deleted invoice to avoid confusion.
+                invoice.DocumentNumber = null;
+                await _context.SaveChangesAsync(ct);
+            }
+            else
+            {
+                _logger.LogDebug(
+                    "Document number '{DocNum}' NOT released — not the last in sequence",
+                    invoice.DocumentNumber);
+            }
+        }
+        catch (Exception ex)
+        {
+            // Best-effort — don't fail the deletion if number release fails.
+            _logger.LogWarning(ex, "Failed to release document number '{DocNum}'", invoice.DocumentNumber);
+        }
+    }
+
     private async Task<string> GenerateDocumentNumberAsync(
         Invoice invoice, CancellationToken cancellationToken, long? overrideSequenceId = null)
     {

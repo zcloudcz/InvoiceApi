@@ -75,7 +75,7 @@ public class InvoiceImportServiceTests
             .Returns(QrExtractionResult.NotFound());
 
         // Default: AI returns null (simulates no provider or extraction failure).
-        _aiExtractor.ExtractAsync(Arg.Any<long?>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+        _aiExtractor.ExtractAsync(Arg.Any<long?>(), Arg.Any<string>(), Arg.Any<ImportCompanyContext?>(), Arg.Any<CancellationToken>())
             .Returns((InvoiceExtractedData?)null);
 
         // Default: regex returns empty
@@ -394,7 +394,7 @@ public class InvoiceImportServiceTests
     public async Task PreviewImportAsync_NoQr_AiAvailable_UsesAi()
     {
         // Arrange: no QR, but AI extracts data successfully
-        _aiExtractor.ExtractAsync(Arg.Any<long?>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+        _aiExtractor.ExtractAsync(Arg.Any<long?>(), Arg.Any<string>(), Arg.Any<ImportCompanyContext?>(), Arg.Any<CancellationToken>())
             .Returns(new InvoiceExtractedData
             {
                 DocumentNumber = "FV-AI",

@@ -96,13 +96,16 @@ public class InvoiceImportService : IInvoiceImportService
         }
 
         // Step 3: Level 2 — AI extraction (if QR insufficient or not found).
-        // CompanyId is derived from TenantDbContext.Schema ("tenant_42" → 42)
-        // to resolve company-specific AI provider settings from master DB.
+        // Pass company context so AI knows which company is importing and can:
+        // - Distinguish issuer vs recipient correctly
+        // - Preserve document number exactly for issued invoices
         InvoiceExtractedData? aiData = null;
         var companyId = ParseCompanyIdFromSchema(_context.Schema);
         if (!string.IsNullOrWhiteSpace(pdfText))
         {
-            aiData = await _aiExtractor.ExtractAsync(companyId, pdfText, ct);
+            // Build company context for AI — issuer info + import direction.
+            var companyContext = await BuildCompanyContextAsync(target, ct);
+            aiData = await _aiExtractor.ExtractAsync(companyId, pdfText, companyContext, ct);
             if (aiData != null)
             {
                 _logger.LogInformation("AI extraction successful for {FileName}", fileName);
@@ -667,6 +670,33 @@ public class InvoiceImportService : IInvoiceImportService
                 }
             }
         };
+    }
+
+    /// <summary>
+    /// Builds company context for the AI extractor — tells the AI which company is importing
+    /// and whether this is an issued or received invoice import.
+    /// Returns null if issuer info is not available (AI falls back to guessing from context).
+    /// </summary>
+    private async Task<ImportCompanyContext?> BuildCompanyContextAsync(
+        EImportTarget target, CancellationToken ct)
+    {
+        try
+        {
+            var issuer = await _clientService.GetIssuerAsync(ct);
+            if (issuer == null)
+                return null;
+
+            return new ImportCompanyContext(
+                CompanyName: issuer.CompanyName,
+                RegistrationNumber: issuer.RegistrationNumber,
+                TaxNumber: issuer.TaxNumber,
+                IsIssuedImport: target == EImportTarget.IssuedInvoice);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load issuer for AI context — AI will guess from document content");
+            return null;
+        }
     }
 
     /// <summary>
