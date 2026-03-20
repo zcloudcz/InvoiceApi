@@ -139,6 +139,10 @@ public abstract class ApiClientBase
 
             if (response.IsSuccessStatusCode)
             {
+                // 204 No Content — nothing to deserialize, return default (null for reference types).
+                if (response.StatusCode == System.Net.HttpStatusCode.NoContent)
+                    return default;
+
                 return await response.Content.ReadFromJsonAsync<T>();
             }
 

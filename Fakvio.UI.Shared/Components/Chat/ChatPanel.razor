@@ -265,6 +265,13 @@
                 }
             }
 
+            // If stream completed with no content at all, show a warning.
+            // This happens when the AI provider fails silently or returns nothing.
+            if (string.IsNullOrWhiteSpace(_streamingContent))
+            {
+                _streamingContent = "No response received from AI provider. Check server logs for details.";
+            }
+
             // Streaming complete — add the final assistant message to the list.
             _messages.Add(new ChatMessageDto
             {

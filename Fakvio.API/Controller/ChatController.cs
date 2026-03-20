@@ -129,6 +129,8 @@ public class ChatController : ControllerBase
         Response.Headers.CacheControl = "no-cache";
         Response.Headers.Connection = "keep-alive";
 
+        var hasContent = false;
+
         try
         {
             var userId = GetCurrentUserId();
@@ -139,6 +141,25 @@ public class ChatController : ControllerBase
                 var json = JsonSerializer.Serialize(chunk);
                 await Response.WriteAsync($"data: {json}\n\n", HttpContext.RequestAborted);
                 await Response.Body.FlushAsync(HttpContext.RequestAborted);
+
+                // Track whether we sent any non-empty content.
+                if (!string.IsNullOrEmpty(chunk))
+                    hasContent = true;
+            }
+
+            // If the stream completed without yielding any actual text, send a warning.
+            // This catches silent failures where the AI provider returns nothing.
+            if (!hasContent)
+            {
+                _logger.LogWarning("SSE stream completed with no content — possible AI provider issue");
+                var emptyPayload = JsonSerializer.Serialize(new
+                {
+                    error = "AI provider returned no response. Check server logs for details. " +
+                            $"Provider: {request.Provider ?? "(default)"}, " +
+                            $"ConversationId: {request.ConversationId?.ToString() ?? "new"}"
+                });
+                await Response.WriteAsync($"data: {emptyPayload}\n\n", HttpContext.RequestAborted);
+                await Response.Body.FlushAsync(HttpContext.RequestAborted);
             }
 
             // Signal end of stream.
@@ -146,8 +167,6 @@ public class ChatController : ControllerBase
             await Response.Body.FlushAsync(HttpContext.RequestAborted);
 
             // If a tool produced a UI action (e.g., navigation), send it as a separate SSE event.
-            // The Blazor client reads this after [DONE] and executes the action.
-            // Uses the standard SSE "event:" field to distinguish from text data events.
             var pendingAction = _chatService.GetPendingUiAction();
             if (pendingAction != null)
             {
@@ -160,7 +179,6 @@ public class ChatController : ControllerBase
         }
         catch (OperationCanceledException)
         {
-            // Client disconnected — this is normal for SSE, not an error.
             _logger.LogDebug("SSE stream cancelled (client disconnected)");
         }
         catch (Exception ex)
