@@ -31,6 +31,7 @@ namespace Fakvio.Functions
             { "Fakvio.Functions.Generated.InvoiceTemplateFunctions", Type.GetType("Fakvio.Functions.Generated.InvoiceTemplateFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "Fakvio.Functions.Generated.NumberSequenceFunctions", Type.GetType("Fakvio.Functions.Generated.NumberSequenceFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "Fakvio.Functions.Generated.SystemConfigurationFunctions", Type.GetType("Fakvio.Functions.Generated.SystemConfigurationFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
+            { "Fakvio.Functions.Generated.TaxFunctions", Type.GetType("Fakvio.Functions.Generated.TaxFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "Fakvio.Functions.Generated.TwoFactorFunctions", Type.GetType("Fakvio.Functions.Generated.TwoFactorFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "Fakvio.Functions.Generated.UserFunctions", Type.GetType("Fakvio.Functions.Generated.UserFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "Fakvio.Functions.Generated.VatRateFunctions", Type.GetType("Fakvio.Functions.Generated.VatRateFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
@@ -852,6 +853,76 @@ namespace Fakvio.Functions
                 var instanceType = types["Fakvio.Functions.Generated.SystemConfigurationFunctions"];
                 var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.SystemConfigurationFunctions;
                 context.GetInvocationResult().Value = await i.SystemConfiguration_Update((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.TaxFunctions.Tax_Estimate", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.TaxFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.TaxFunctions;
+                context.GetInvocationResult().Value = await i.Tax_Estimate((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.TaxFunctions.Tax_Compare", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.TaxFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.TaxFunctions;
+                context.GetInvocationResult().Value = await i.Tax_Compare((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.TaxFunctions.Tax_GetConfig", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.TaxFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.TaxFunctions;
+                context.GetInvocationResult().Value = await i.Tax_GetConfig((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0], (string)inputArguments[1], (int)inputArguments[2]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.TaxFunctions.Tax_GetAllConfigs", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.TaxFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.TaxFunctions;
+                context.GetInvocationResult().Value = await i.Tax_GetAllConfigs((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.TaxFunctions.Tax_CreateConfig", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.TaxFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.TaxFunctions;
+                context.GetInvocationResult().Value = await i.Tax_CreateConfig((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.TaxFunctions.Tax_UpdateConfig", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.TaxFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.TaxFunctions;
+                context.GetInvocationResult().Value = await i.Tax_UpdateConfig((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0], (string)inputArguments[1]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.TaxFunctions.Tax_DeleteConfig", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.TaxFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.TaxFunctions;
+                context.GetInvocationResult().Value = await i.Tax_DeleteConfig((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0], (string)inputArguments[1]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.TaxFunctions.Tax_GetAnnualIncome", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.TaxFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.TaxFunctions;
+                context.GetInvocationResult().Value = await i.Tax_GetAnnualIncome((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0], (int)inputArguments[1]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.TaxFunctions.Tax_GetInsuranceAdvance", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.TaxFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.TaxFunctions;
+                context.GetInvocationResult().Value = await i.Tax_GetInsuranceAdvance((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.TaxFunctions.Tax_ExportComparisonPdf", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.TaxFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.TaxFunctions;
+                context.GetInvocationResult().Value = await i.Tax_ExportComparisonPdf((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
                 return;
             }
             if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.TwoFactorFunctions.TwoFactor_GetStatus", StringComparison.Ordinal))

@@ -247,7 +247,13 @@
 
             await foreach (var evt in ChatApi.StreamMessageAsync(request))
             {
-                if (evt.IsText)
+                if (evt.IsError)
+                {
+                    // Server-side error — display it as the assistant response so user sees it.
+                    _streamingContent += $"\n\n**Error:** {evt.Error}";
+                    StateHasChanged();
+                }
+                else if (evt.IsText)
                 {
                     _streamingContent += evt.Text;
                     StateHasChanged();

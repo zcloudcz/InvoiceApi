@@ -20,20 +20,29 @@ namespace Fakvio.UI.Shared.Services;
 public class ChatStreamEvent
 {
     /// <summary>
-    /// Text content (non-null for text chunks, null for action events).
+    /// Text content (non-null for text chunks, null for action/error events).
     /// </summary>
     public string? Text { get; init; }
 
     /// <summary>
-    /// UI action to execute (non-null for action events, null for text chunks).
+    /// UI action to execute (non-null for action events, null for text/error chunks).
     /// </summary>
     public ChatUiAction? Action { get; init; }
+
+    /// <summary>
+    /// Server-side error message (non-null when the AI provider or service throws).
+    /// The Blazor UI should display this to the user so errors are visible, not silent.
+    /// </summary>
+    public string? Error { get; init; }
 
     /// <summary>True if this event contains a text chunk.</summary>
     public bool IsText => Text != null;
 
     /// <summary>True if this event contains a UI action command.</summary>
     public bool IsAction => Action != null;
+
+    /// <summary>True if this event contains an error from the server.</summary>
+    public bool IsError => Error != null;
 }
 
 /// <summary>
@@ -224,7 +233,35 @@ public class ChatApiService : ApiClientBase
             if (doneReceived)
                 continue;
 
-            // Default: text chunk event.
+            // Check if the data is an error object: {"error":"..."}
+            // The server sends this when an exception occurs during streaming.
+            // Note: yield return cannot be inside try/catch, so we extract the error
+            // message first, then yield outside the try block.
+            string? serverError = null;
+            if (data.StartsWith("{"))
+            {
+                try
+                {
+                    using var doc = JsonDocument.Parse(data);
+                    if (doc.RootElement.TryGetProperty("error", out var errorProp))
+                    {
+                        serverError = errorProp.GetString() ?? "Unknown server error";
+                        _logger.LogError("SSE error from server: {Error}", serverError);
+                    }
+                }
+                catch (JsonException)
+                {
+                    // Not valid JSON object — fall through to text chunk parsing.
+                }
+            }
+
+            if (serverError != null)
+            {
+                yield return new ChatStreamEvent { Error = serverError };
+                continue;
+            }
+
+            // Default: text chunk event (JSON-encoded string like "hello").
             string? chunk = null;
             try
             {

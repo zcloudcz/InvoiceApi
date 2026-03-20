@@ -106,8 +106,9 @@ public class ChatController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error sending chat message");
+            // TODO: In production, consider replacing ex.ToString() with a safe message.
             return StatusCode(StatusCodes.Status500InternalServerError,
-                new { message = "An error occurred while processing your message." });
+                new { message = ex.ToString() });
         }
     }
 
@@ -166,12 +167,13 @@ public class ChatController : ControllerBase
         {
             _logger.LogError(ex, "Error during SSE streaming");
 
-            // Try to send an error event to the client (may fail if connection is broken).
+            // Send the full exception to the client so we can see what's going on.
+            // TODO: In production, consider replacing ex.ToString() with a safe message.
             try
             {
-                await Response.WriteAsync(
-                    $"data: {JsonSerializer.Serialize(new { error = "An error occurred." })}\n\n",
-                    HttpContext.RequestAborted);
+                var errorPayload = JsonSerializer.Serialize(new { error = ex.ToString() });
+                await Response.WriteAsync($"data: {errorPayload}\n\n", HttpContext.RequestAborted);
+                await Response.Body.FlushAsync(HttpContext.RequestAborted);
             }
             catch { /* Connection already closed */ }
         }
