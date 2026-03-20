@@ -49,13 +49,23 @@ public class TenantContextMiddleware : IFunctionsWorkerMiddleware
         // No HTTP context (timer triggers, etc.) — skip tenant resolution.
         if (httpContext == null)
         {
+            _logger.LogDebug("TenantMiddleware: No HttpContext — skipping (timer trigger?)");
             await next(context);
             return;
         }
 
+        var path = httpContext.Request.Path.Value ?? "";
+        var isAuth = httpContext.User.Identity?.IsAuthenticated == true;
+
+        _logger.LogInformation(
+            "TenantMiddleware: {Method} {Path} — IsAuthenticated={IsAuth}, Claims=[{Claims}]",
+            httpContext.Request.Method, path, isAuth,
+            string.Join(", ", httpContext.User.Claims.Select(c => $"{c.Type}={c.Value}")));
+
         // Only resolve tenant for authenticated users with a CompanyId claim.
-        if (httpContext.User.Identity?.IsAuthenticated != true)
+        if (!isAuth)
         {
+            _logger.LogDebug("TenantMiddleware: Not authenticated — skipping for {Path}", path);
             await next(context);
             return;
         }
@@ -64,6 +74,8 @@ public class TenantContextMiddleware : IFunctionsWorkerMiddleware
         if (string.IsNullOrEmpty(companyIdClaim) || !long.TryParse(companyIdClaim, out var companyId))
         {
             // No CompanyId — SysAdmin without impersonation, or system endpoints.
+            _logger.LogWarning("TenantMiddleware: No CompanyId claim for {Path} (CompanyId='{Claim}')",
+                path, companyIdClaim);
             await next(context);
             return;
         }

@@ -70,7 +70,23 @@
     {
         @* Messages view *@
         <div class="flex-grow-1 overflow-y-auto pa-2" @ref="_messagesContainer" id="chat-messages">
-            @if (_messages.Count == 0 && !_isStreaming)
+            @if (_providers.Count == 0 && !_isStreaming)
+            {
+                @* No AI providers configured — show setup instructions *@
+                <div class="d-flex flex-column align-center justify-center pa-4" style="height: 100%;">
+                    <MudIcon Icon="@Icons.Material.Filled.SmartToy" Size="Size.Large" Color="Color.Warning" />
+                    <MudText Typo="Typo.h6" Class="mt-3" Align="Align.Center">@L["Chat_NoProviders_Title"]</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-2" Align="Align.Center">
+                        @L["Chat_NoProviders_Description"]
+                    </MudText>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" Class="mt-4"
+                               StartIcon="@Icons.Material.Filled.Settings"
+                               Href="/my-company">
+                        @L["Chat_NoProviders_GoToSettings"]
+                    </MudButton>
+                </div>
+            }
+            else if (_messages.Count == 0 && !_isStreaming)
             {
                 <div class="d-flex flex-column align-center justify-center" style="height: 100%; opacity: 0.5;">
                     <MudIcon Icon="@Icons.Material.Filled.SmartToy" Size="Size.Large" />
@@ -111,7 +127,7 @@
         </div>
 
         @* ─── Input area ───────────────────────────────────────────────── *@
-        <ChatInput IsDisabled="@_isStreaming"
+        <ChatInput IsDisabled="@(_isStreaming || _providers.Count == 0)"
                    IsExtracting="@_isExtractingPdf"
                    AttachedFileName="@_attachedFileName"
                    AttachedImagePreview="@_attachedImagePreview"

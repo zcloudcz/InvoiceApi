@@ -1130,4 +1130,7 @@
   <data name="Ai_ApiKeyPlaceholder" xml:space="preserve"><value>(nastaveno)</value></data>
   <data name="Ai_Model" xml:space="preserve"><value>Model</value></data>
   <data name="Ai_OllamaBaseUrl" xml:space="preserve"><value>URL serveru</value></data>
+  <data name="Chat_NoProviders_Title" xml:space="preserve"><value>AI asistent není nastaven</value></data>
+  <data name="Chat_NoProviders_Description" xml:space="preserve"><value>Pro vaši společnost není nastaven žádný AI poskytovatel. Požádejte administrátora o nastavení API klíče (např. Claude, OpenAI) v nastavení společnosti.</value></data>
+  <data name="Chat_NoProviders_GoToSettings" xml:space="preserve"><value>Přejít do nastavení</value></data>
 </root>

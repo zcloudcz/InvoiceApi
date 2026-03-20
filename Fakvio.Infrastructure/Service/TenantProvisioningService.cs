@@ -217,6 +217,12 @@ public class TenantProvisioningService : ITenantProvisioningService
             return false;
 
         using var tenantContext = CreateTenantContext(settings.SchemaName);
+
+        // Reconcile migration history before applying new migrations.
+        // This handles the case where old migrations were squashed into InitTenant
+        // but existing tenants still have old migration names in __EFMigrationsHistory.
+        await ReconcileMigrationHistoryAsync(tenantContext, settings.SchemaName, cancellationToken);
+
         await tenantContext.Database.MigrateAsync(cancellationToken);
 
         // Re-apply permissions after migration — EF Core may have created new tables/sequences
@@ -249,6 +255,13 @@ public class TenantProvisioningService : ITenantProvisioningService
             try
             {
                 using var tenantContext = CreateTenantContext(settings.SchemaName);
+
+                // Reconcile migration history before applying new migrations.
+                // Without this, MigrateAsync would try to apply InitTenant on existing tenants
+                // (whose tables already exist from old squashed migrations), causing it to fail
+                // and preventing new migrations (like AddChatTables) from being applied.
+                await ReconcileMigrationHistoryAsync(tenantContext, settings.SchemaName, cancellationToken);
+
                 await tenantContext.Database.MigrateAsync(cancellationToken);
                 successCount++;
 
@@ -446,6 +459,115 @@ public class TenantProvisioningService : ITenantProvisioningService
         _logger.LogInformation(
             "Granted full permissions on schema '{SchemaName}' to user '{User}' (including default privileges for future objects)",
             safeName, currentUser);
+    }
+
+    /// <summary>
+    /// Reconciles migration history for existing tenants that were provisioned with older migrations
+    /// that have since been squashed into InitTenant.
+    ///
+    /// Problem:
+    /// When old migrations are squashed/reset into a single InitTenant migration, existing tenants
+    /// have the old migration names in their __EFMigrationsHistory table, but the code only knows
+    /// about InitTenant. When MigrateAsync runs, it sees InitTenant as "pending" and tries to
+    /// create ALL tables — but they already exist → PostgreSQL throws "relation already exists"
+    /// → the entire migration fails → new migrations (AddChatTables) never get applied.
+    ///
+    /// Fix:
+    /// Before running MigrateAsync, check if InitTenant is already in the history.
+    /// If not (meaning old migrations exist), clear the old entries and insert InitTenant.
+    /// This tells EF Core "InitTenant was already applied" so it skips it and only applies
+    /// truly new migrations (like AddChatTables).
+    ///
+    /// Junior note: __EFMigrationsHistory is a table EF Core uses to track which migrations
+    /// have been applied to a database. Each row has a MigrationId (e.g., "20260317094659_InitTenant")
+    /// and a ProductVersion (e.g., "10.0.0").
+    /// </summary>
+    private async Task ReconcileMigrationHistoryAsync(
+        TenantDbContext tenantContext,
+        string schemaName,
+        CancellationToken cancellationToken)
+    {
+        var safeName = SanitizeSchemaName(schemaName);
+        const string initTenantMigrationId = "20260317094659_InitTenant";
+
+        try
+        {
+            // Check if the __EFMigrationsHistory table exists in this tenant schema.
+            // If it doesn't exist, this is a fresh tenant — no reconciliation needed
+            // (MigrateAsync will create it and apply InitTenant normally).
+            var connection = tenantContext.Database.GetDbConnection();
+            await connection.OpenAsync(cancellationToken);
+
+            await using var checkTableCmd = (NpgsqlCommand)connection.CreateCommand();
+            checkTableCmd.CommandText = $@"
+                SELECT EXISTS (
+                    SELECT 1 FROM information_schema.tables
+                    WHERE table_schema = '{safeName}'
+                    AND table_name = '__EFMigrationsHistory'
+                )";
+            var historyTableExists = (bool)(await checkTableCmd.ExecuteScalarAsync(cancellationToken))!;
+
+            if (!historyTableExists)
+            {
+                _logger.LogDebug(
+                    "No __EFMigrationsHistory in schema '{SchemaName}' — fresh tenant, skipping reconciliation",
+                    schemaName);
+                await connection.CloseAsync();
+                return;
+            }
+
+            // Check if InitTenant is already recorded as applied.
+            // If it is, the history is consistent — no reconciliation needed.
+            await using var checkCmd = (NpgsqlCommand)connection.CreateCommand();
+            checkCmd.CommandText = $@"
+                SELECT COUNT(*) FROM ""{safeName}"".""__EFMigrationsHistory""
+                WHERE ""MigrationId"" = '{initTenantMigrationId}'";
+            var initTenantCount = (long)(await checkCmd.ExecuteScalarAsync(cancellationToken))!;
+
+            if (initTenantCount > 0)
+            {
+                _logger.LogDebug(
+                    "InitTenant already in migration history for schema '{SchemaName}' — no reconciliation needed",
+                    schemaName);
+                await connection.CloseAsync();
+                return;
+            }
+
+            // InitTenant is NOT in history but the tenant has tables (it was provisioned with
+            // older migrations). Clear old entries and insert InitTenant to mark it as applied.
+            _logger.LogInformation(
+                "Reconciling migration history for schema '{SchemaName}': " +
+                "replacing old migration entries with InitTenant",
+                schemaName);
+
+            // Remove all old migration entries (they reference migrations that no longer exist in code).
+            await using var deleteCmd = (NpgsqlCommand)connection.CreateCommand();
+            deleteCmd.CommandText = $@"DELETE FROM ""{safeName}"".""__EFMigrationsHistory""";
+            var deletedCount = await deleteCmd.ExecuteNonQueryAsync(cancellationToken);
+
+            // Insert InitTenant as "already applied" so MigrateAsync skips it.
+            await using var insertCmd = (NpgsqlCommand)connection.CreateCommand();
+            insertCmd.CommandText = $@"
+                INSERT INTO ""{safeName}"".""__EFMigrationsHistory"" (""MigrationId"", ""ProductVersion"")
+                VALUES ('{initTenantMigrationId}', '10.0.0')";
+            await insertCmd.ExecuteNonQueryAsync(cancellationToken);
+
+            _logger.LogInformation(
+                "Migration history reconciled for schema '{SchemaName}': removed {DeletedCount} old entries, " +
+                "inserted InitTenant. New migrations will now be applied correctly.",
+                schemaName, deletedCount);
+
+            await connection.CloseAsync();
+        }
+        catch (Exception ex)
+        {
+            // Don't fail the entire migration if reconciliation fails — log and let MigrateAsync try.
+            // It might still work if the history is actually consistent.
+            _logger.LogWarning(ex,
+                "Migration history reconciliation failed for schema '{SchemaName}' — " +
+                "MigrateAsync will attempt to proceed anyway",
+                schemaName);
+        }
     }
 
     /// <summary>
