@@ -137,11 +137,25 @@ public class CompanyAiSettingsResolver : ICompanyAiSettingsResolver
         }
 
         // ── Tier 2: System-wide AI settings (appsettings.json) ───────────────
-        // Delegate to the global singleton factory.
-        if (!string.IsNullOrEmpty(requestedProvider))
-            return _globalFactory.GetProvider(requestedProvider);
+        // If we reached here, Tier 1 (company-specific) didn't resolve a provider.
+        // Log WHY so we can diagnose configuration issues.
+        _logger.LogError(
+            "AI resolver fell through to global fallback. " +
+            "CompanyId={CompanyId}, RequestedProvider={RequestedProvider}. " +
+            "This means either: (1) ITenantResolver returned null CompanyId, " +
+            "(2) CompanySystemSettings not found, (3) AiDefaultProvider is empty, " +
+            "or (4) TryCreateCompanyProvider failed (API key missing for that provider).",
+            _tenantResolver.GetCurrentCompanyId(), requestedProvider);
 
-        return _globalFactory.GetDefaultProvider();
+        // Instead of falling through to global factory (which has no keys configured),
+        // throw a descriptive error that tells us exactly why company resolution failed.
+        var diagCompanyId = _tenantResolver.GetCurrentCompanyId();
+        throw new InvalidOperationException(
+            $"No AI provider resolved. CompanyId={diagCompanyId?.ToString() ?? "NULL"}, " +
+            $"RequestedProvider={requestedProvider ?? "NULL"}. " +
+            "Check: (1) CompanySystemSettings exists for this CompanyId in master DB, " +
+            "(2) AiDefaultProvider column is not empty, " +
+            "(3) The corresponding API key column (e.g. AiClaudeApiKey) has a value.");
     }
 
     /// <inheritdoc />
