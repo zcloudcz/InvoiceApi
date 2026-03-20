@@ -65,11 +65,19 @@ var host = new HostBuilder()
         // Without this, HttpContext.User stays anonymous → all auth checks return 401.
         app.UseMiddleware<JwtAuthenticationMiddleware>();
 
+        // ── Impersonation Middleware ────────────────────────────────────────────────
+        // MUST run AFTER JwtAuthenticationMiddleware (needs User.Claims populated)
+        // and BEFORE TenantContextMiddleware (which reads the CompanyId claim).
+        // When SysAdmin sends X-Company-Id header, adds CompanyId claim to identity
+        // so tenant resolution picks it up automatically.
+        // Without this, SysAdmin requests have no CompanyId → no Schema → crash.
+        app.UseMiddleware<ImpersonationMiddleware>();
+
         // ── Tenant Context Middleware ──────────────────────────────────────────────
-        // MUST run AFTER JwtAuthenticationMiddleware (needs User.Claims populated).
-        // Reads CompanyId from JWT claims → looks up schema name in master DB →
-        // sets TenantDbContext.Schema so EF Core queries target the correct tenant schema.
-        // Without this, TenantDbContext queries go to "public" schema → "relation does not exist".
+        // MUST run AFTER ImpersonationMiddleware (needs CompanyId claim set).
+        // Validates tenant (provisioned? active?), sets TenantDbContext.Schema,
+        // and lazily applies pending migrations.
+        // Returns 403 if SysAdmin tries tenant endpoint without impersonation.
         app.UseMiddleware<TenantContextMiddleware>();
     })
     .ConfigureServices((context, services) =>
