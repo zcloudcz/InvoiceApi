@@ -29,6 +29,7 @@ public class TenantDbContextFactoryTests : IDisposable
 {
     private readonly MasterDbContext _masterDb;
     private readonly ITenantResolver _tenantResolver;
+    private readonly ITenantProvisioningService _provisioningService;
     private readonly IConfiguration _configuration;
     private readonly ILogger<TenantDbContextFactory> _logger;
 
@@ -42,6 +43,7 @@ public class TenantDbContextFactoryTests : IDisposable
         _masterDb = new MasterDbContext(options);
 
         _tenantResolver = Substitute.For<ITenantResolver>();
+        _provisioningService = Substitute.For<ITenantProvisioningService>();
         _logger = Substitute.For<ILogger<TenantDbContextFactory>>();
 
         // Configuration with a PostgreSQL connection string (shared database for all schemas)
@@ -99,6 +101,7 @@ public class TenantDbContextFactoryTests : IDisposable
         return new TenantDbContextFactory(
             _tenantResolver,
             _masterDb,
+            _provisioningService,
             _configuration,
             _logger);
     }
@@ -125,7 +128,7 @@ public class TenantDbContextFactoryTests : IDisposable
         // Act & Assert
         var act = () => factory.CreateContextForCompanyAsync(999);
         var ex = await Should.ThrowAsync<InvalidOperationException>(act);
-        ex.Message.ShouldContain("No CompanySystemSettings found");
+        ex.Message.ShouldContain("not found, not provisioned, or inactive");
     }
 
     [Fact]
@@ -138,7 +141,7 @@ public class TenantDbContextFactoryTests : IDisposable
         // Act & Assert
         var act = () => factory.CreateContextForCompanyAsync(10);
         var ex = await Should.ThrowAsync<InvalidOperationException>(act);
-        ex.Message.ShouldContain("not been provisioned");
+        ex.Message.ShouldContain("not found, not provisioned, or inactive");
     }
 
     [Fact]

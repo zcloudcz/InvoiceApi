@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Fakvio.Application.Service;
 using Fakvio.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -7,15 +8,16 @@ namespace Fakvio.API.Middleware;
 /// <summary>
 /// Middleware that validates tenant context for tenant-scoped API endpoints.
 ///
-/// For endpoints that require a tenant database (invoices, clients, templates, etc.),
-/// this middleware verifies:
-/// 1. The user has a CompanyId claim (set by JWT or impersonation middleware)
-/// 2. The company has a provisioned and active tenant database
+/// For endpoints that require a tenant database (invoices, clients, templates, chat, etc.),
+/// this middleware:
+/// 1. Reads CompanyId from JWT claims
+/// 2. Calls ITenantDbContextFactory.ResolveSchemaAsync to get the schema name
+///    (single source of truth — no duplicated MasterDb lookup here)
+/// 3. Sets TenantDbContext.Schema so EF Core queries target the correct tenant schema
+/// 4. Calls EnsureMigratedAsync to lazily apply pending migrations (cached per schema)
 ///
 /// Endpoints that DON'T need a tenant are skipped:
-/// - /api/auth (login, password management — uses master DB)
-/// - /api/user (user management — uses master DB)
-/// - /api/company (company management — uses master DB, SysAdmin only)
+/// - /api/auth, /api/user, /api/company (master DB only)
 /// - /swagger, /health, etc.
 ///
 /// Must be registered in the pipeline AFTER UseAuthentication, UseAuthorization,
@@ -81,15 +83,10 @@ public class TenantContextMiddleware
             return;
         }
 
-        // Extract role and CompanyId claims for tenant resolution.
-        // CompanyId is set by JWT (regular users) or ImpersonationMiddleware (SysAdmin).
         var roleClaim = context.User.FindFirst(ClaimTypes.Role)?.Value;
         var companyIdClaim = context.User.FindFirst("CompanyId")?.Value;
 
         // SysAdmin without impersonation: allow access to code table endpoints
-        // (currencies, VAT rates, content templates, number sequences).
-        // These services use dual-context — they automatically switch to MasterDbContext
-        // when no tenant is available, allowing SysAdmin to manage global code tables.
         if (roleClaim == "SysAdmin" && string.IsNullOrEmpty(companyIdClaim))
         {
             if (IsSysAdminCodeTablePath(path))
@@ -100,11 +97,6 @@ public class TenantContextMiddleware
                 await _next(context);
                 return;
             }
-
-            _logger.LogWarning(
-                "SysAdmin tried to access tenant endpoint {Path} without impersonation. " +
-                "Use X-Company-Id header to specify the target tenant.",
-                path);
 
             context.Response.StatusCode = StatusCodes.Status403Forbidden;
             await context.Response.WriteAsJsonAsync(new
@@ -118,9 +110,6 @@ public class TenantContextMiddleware
         // Regular user or impersonating SysAdmin — must have a valid CompanyId
         if (string.IsNullOrEmpty(companyIdClaim) || !long.TryParse(companyIdClaim, out var companyId))
         {
-            _logger.LogWarning("Tenant access denied: no CompanyId claim for user {User}",
-                context.User.FindFirst(ClaimTypes.Email)?.Value ?? "unknown");
-
             context.Response.StatusCode = StatusCodes.Status403Forbidden;
             await context.Response.WriteAsJsonAsync(new
             {
@@ -129,67 +118,37 @@ public class TenantContextMiddleware
             return;
         }
 
-        // Verify the tenant is provisioned and active in master DB
-        var masterContext = context.RequestServices.GetRequiredService<MasterDbContext>();
-        var tenantSettings = await masterContext.CompanySystemSettings
-            .AsNoTracking()
-            .FirstOrDefaultAsync(s => s.CompanyId == companyId);
+        // Delegate to ITenantDbContextFactory — single source of truth for schema resolution.
+        // No MasterDb query here — the factory handles it.
+        var factory = context.RequestServices.GetRequiredService<ITenantDbContextFactory>();
+        var schemaName = await factory.ResolveSchemaAsync(companyId, context.RequestAborted);
 
-        if (tenantSettings == null)
+        if (schemaName == null)
         {
-            _logger.LogWarning("Tenant access denied: no CompanySystemSettings for company {CompanyId}", companyId);
             context.Response.StatusCode = StatusCodes.Status403Forbidden;
             await context.Response.WriteAsJsonAsync(new
             {
-                message = "Company is not configured for multi-tenant access. Contact your administrator."
+                message = "Company is not configured, not provisioned, or inactive. Contact your administrator."
             });
             return;
         }
 
-        if (!tenantSettings.IsProvisioned)
-        {
-            _logger.LogWarning("Tenant access denied: company {CompanyId} is not provisioned", companyId);
-            context.Response.StatusCode = StatusCodes.Status403Forbidden;
-            await context.Response.WriteAsJsonAsync(new
-            {
-                message = "Company database has not been provisioned yet. Contact your administrator."
-            });
-            return;
-        }
-
-        if (!tenantSettings.IsActive)
-        {
-            _logger.LogWarning("Tenant access denied: company {CompanyId} is deactivated", companyId);
-            context.Response.StatusCode = StatusCodes.Status403Forbidden;
-            await context.Response.WriteAsJsonAsync(new
-            {
-                message = "Company account is currently deactivated. Contact your administrator."
-            });
-            return;
-        }
-
-        // Tenant is valid — set the Schema on the DI-resolved TenantDbContext
-        // so all EF Core queries are routed to the correct tenant schema (e.g., "tenant_1").
-        // Without this, TenantDbContext has no schema set and queries target the "public" schema,
-        // causing "relation does not exist" errors for tenant-only tables.
+        // Set Schema on the DI-scoped TenantDbContext so all EF Core queries
+        // in this request target the correct tenant schema (e.g., "tenant_1").
         var tenantContext = context.RequestServices.GetRequiredService<TenantDbContext>();
-        tenantContext.Schema = tenantSettings.SchemaName;
+        tenantContext.Schema = schemaName;
+
+        // Lazily ensure migrations are applied (cached — only runs once per schema per process).
+        await factory.EnsureMigratedAsync(companyId, context.RequestAborted);
 
         await _next(context);
     }
 
-    /// <summary>
-    /// Checks if the request path is a master-only endpoint that doesn't need tenant validation.
-    /// </summary>
     private static bool IsMasterOnlyPath(string path)
     {
         return MasterOnlyPaths.Any(prefix => path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
     }
 
-    /// <summary>
-    /// Checks if the request path is a code table endpoint that SysAdmin can access
-    /// without impersonation. These services use dual-context (MasterDbContext fallback).
-    /// </summary>
     private static bool IsSysAdminCodeTablePath(string path)
     {
         return SysAdminCodeTablePaths.Any(prefix => path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));

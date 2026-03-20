@@ -1,9 +1,12 @@
 using System.Security.Claims;
 using Fakvio.API.Middleware;
+using Fakvio.Application.Service;
 using Fakvio.Domain.Entities;
 using Fakvio.Infrastructure.Data;
+using Fakvio.Infrastructure.Service;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
@@ -77,16 +80,26 @@ public class TenantContextMiddlewareTests : IDisposable
             context.User = new ClaimsPrincipal(identity);
         }
 
-        // Set up a service provider so the middleware can resolve MasterDbContext and TenantDbContext.
-        // The middleware needs both: MasterDbContext for tenant validation (CompanySystemSettings),
-        // and TenantDbContext for setting the Schema property on valid tenant requests.
+        // Set up a service provider so the middleware can resolve ITenantDbContextFactory and TenantDbContext.
+        // The middleware delegates tenant resolution to the factory (single source of truth).
         var tenantOptions = new DbContextOptionsBuilder<TenantDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
 
+        var configData = new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:DefaultConnection"] = "Host=localhost;Database=test;Username=test;Password=test"
+        };
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(configData).Build();
+
         var services = new ServiceCollection();
         services.AddSingleton(_masterContext);
         services.AddScoped(_ => new TenantDbContext(tenantOptions));
+        services.AddSingleton<ITenantResolver>(Substitute.For<ITenantResolver>());
+        services.AddSingleton<ITenantProvisioningService>(Substitute.For<ITenantProvisioningService>());
+        services.AddSingleton<IConfiguration>(configuration);
+        services.AddSingleton(Substitute.For<ILogger<TenantDbContextFactory>>());
+        services.AddScoped<ITenantDbContextFactory, TenantDbContextFactory>();
         context.RequestServices = services.BuildServiceProvider();
 
         // Set up response body stream for WriteAsJsonAsync

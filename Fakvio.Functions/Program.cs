@@ -113,11 +113,11 @@ var host = new HostBuilder()
     })
     .Build();
 
-// ── Startup database migrations ────────────────────────────────────────────
-// Apply EF Core migrations on startup — same as the API project does.
+// ── Startup database migration (master DB only) ───────────────────────────
 // Step 1: Migrate master DB (Users, Companies, SystemSettings, code tables).
-// Step 2: Migrate all active tenant databases (Invoices, Clients, etc.).
-// This ensures the Azure SQL databases have all tables before any function runs.
+// Step 2: Tenant migrations are handled LAZILY by ITenantDbContextFactory.EnsureMigratedAsync
+//         — each tenant schema is migrated on first request (cached per process lifetime).
+//         This is faster at startup and handles tenants provisioned while the app is running.
 using (var scope = host.Services.CreateScope())
 {
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
@@ -130,11 +130,6 @@ using (var scope = host.Services.CreateScope())
         logger.LogInformation("Startup: applying master database migrations...");
         await masterDb.Database.MigrateAsync();
         logger.LogInformation("Startup: master database migrated successfully");
-
-        // Tenant DBs — migrate all provisioned + active tenants
-        var provisioningService = scope.ServiceProvider.GetRequiredService<ITenantProvisioningService>();
-        var migrated = await provisioningService.MigrateAllTenantsAsync();
-        logger.LogInformation("Startup: migrated {Count} tenant database(s)", migrated);
     }
     catch (Exception ex)
     {

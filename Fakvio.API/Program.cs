@@ -113,7 +113,9 @@ var app = builder.Build();
 // ── Startup migrations ──────────────────────────────────────────────────────
 // Apply database migrations automatically on startup.
 // Step 1: Migrate the master database (Users, Companies, CompanySystemSettings, code tables).
-// Step 2: Migrate all provisioned + active tenant databases (invoices, clients, etc.).
+// Step 2: Tenant migrations are handled LAZILY by ITenantDbContextFactory.EnsureMigratedAsync
+//         — each tenant schema is migrated on first request (cached per process lifetime).
+//         This is faster at startup and handles tenants provisioned while the app is running.
 // Skip during integration tests — InMemoryDatabase does not support migrations.
 if (!app.Environment.IsEnvironment("Testing"))
 {
@@ -121,17 +123,10 @@ if (!app.Environment.IsEnvironment("Testing"))
     {
         // Master DB migrations — always applied first
         var masterDb = scope.ServiceProvider.GetRequiredService<MasterDbContext>();
-
         await masterDb.Database.MigrateAsync();
 
-        // Tenant DB migrations — applied to all active tenants.
-        // Uses per-tenant error handling so one failed tenant doesn't block the others.
-        var provisioningService = scope.ServiceProvider.GetRequiredService<ITenantProvisioningService>();
-        var migrated = await provisioningService.MigrateAllTenantsAsync();
-        var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-        logger.LogInformation("Startup: migrated {Count} tenant database(s)", migrated);
-
         // FOR DEVELOPMENT ONLY - delete all dbs and start fresh on each run. Comment out in production!
+        //var provisioningService = scope.ServiceProvider.GetRequiredService<ITenantProvisioningService>();
         //await provisioningService.DeleteAllTenantDbs();
         //await masterDb.Database.EnsureDeletedAsync();
         //await masterDb.Database.MigrateAsync();
