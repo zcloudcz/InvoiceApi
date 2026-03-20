@@ -36,7 +36,6 @@ namespace Fakvio.Infrastructure.Service;
 public class CompanyAiSettingsResolver : ICompanyAiSettingsResolver
 {
     private readonly MasterDbContext _masterContext;
-    private readonly ITenantResolver _tenantResolver;
     private readonly IAiProviderFactory _globalFactory;
     private readonly IOptions<AiSettings> _globalSettings;
     private readonly IHttpClientFactory _httpClientFactory;
@@ -45,7 +44,6 @@ public class CompanyAiSettingsResolver : ICompanyAiSettingsResolver
 
     public CompanyAiSettingsResolver(
         MasterDbContext masterContext,
-        ITenantResolver tenantResolver,
         IAiProviderFactory globalFactory,
         IOptions<AiSettings> globalSettings,
         IHttpClientFactory httpClientFactory,
@@ -53,7 +51,6 @@ public class CompanyAiSettingsResolver : ICompanyAiSettingsResolver
         ILogger<CompanyAiSettingsResolver> logger)
     {
         _masterContext = masterContext;
-        _tenantResolver = tenantResolver;
         _globalFactory = globalFactory;
         _globalSettings = globalSettings;
         _httpClientFactory = httpClientFactory;
@@ -63,11 +60,10 @@ public class CompanyAiSettingsResolver : ICompanyAiSettingsResolver
 
     /// <inheritdoc />
     public async Task<IAiProvider> ResolveProviderAsync(
-        string? requestedProvider, CancellationToken ct = default)
+        long? companyId, string? requestedProvider, CancellationToken ct = default)
     {
-        // ── Tier 1: Company-specific AI settings ──────────────────────────────
-        var companyId = _tenantResolver.GetCurrentCompanyId();
-
+        // CompanyId is passed explicitly by the caller (ChatService, ChatController, etc.)
+        // — no dependency on IHttpContextAccessor/ITenantResolver.
         _logger.LogInformation(
             "AI resolver: CompanyId={CompanyId}, RequestedProvider={Provider}",
             companyId, requestedProvider);
@@ -132,40 +128,44 @@ public class CompanyAiSettingsResolver : ICompanyAiSettingsResolver
         }
         else
         {
-            _logger.LogWarning("AI resolver: ITenantResolver returned null CompanyId — " +
+            _logger.LogWarning("AI resolver: CompanyId is null — " +
                 "cannot check company-specific AI settings");
         }
 
         // ── Tier 2: System-wide AI settings (appsettings.json) ───────────────
-        // If we reached here, Tier 1 (company-specific) didn't resolve a provider.
-        // Log WHY so we can diagnose configuration issues.
-        _logger.LogError(
-            "AI resolver fell through to global fallback. " +
-            "CompanyId={CompanyId}, RequestedProvider={RequestedProvider}. " +
-            "This means either: (1) ITenantResolver returned null CompanyId, " +
-            "(2) CompanySystemSettings not found, (3) AiDefaultProvider is empty, " +
-            "or (4) TryCreateCompanyProvider failed (API key missing for that provider).",
-            _tenantResolver.GetCurrentCompanyId(), requestedProvider);
+        // Tier 1 didn't resolve. Try global factory as fallback.
+        // If global factory also has no providers, throw a descriptive error.
+        _logger.LogWarning(
+            "AI resolver: Tier 1 (company) didn't resolve. Trying global fallback. " +
+            "CompanyId={CompanyId}, RequestedProvider={RequestedProvider}",
+            companyId, requestedProvider);
 
-        // Instead of falling through to global factory (which has no keys configured),
-        // throw a descriptive error that tells us exactly why company resolution failed.
-        var diagCompanyId = _tenantResolver.GetCurrentCompanyId();
-        throw new InvalidOperationException(
-            $"No AI provider resolved. CompanyId={diagCompanyId?.ToString() ?? "NULL"}, " +
-            $"RequestedProvider={requestedProvider ?? "NULL"}. " +
-            "Check: (1) CompanySystemSettings exists for this CompanyId in master DB, " +
-            "(2) AiDefaultProvider column is not empty, " +
-            "(3) The corresponding API key column (e.g. AiClaudeApiKey) has a value.");
+        try
+        {
+            if (!string.IsNullOrEmpty(requestedProvider))
+                return _globalFactory.GetProvider(requestedProvider);
+
+            return _globalFactory.GetDefaultProvider();
+        }
+        catch (InvalidOperationException)
+        {
+            // Global factory also has no providers — throw a descriptive error
+            // that tells the user exactly what to configure.
+            throw new InvalidOperationException(
+                $"No AI provider resolved. CompanyId={companyId?.ToString() ?? "NULL"}, " +
+                $"RequestedProvider={requestedProvider ?? "NULL"}. " +
+                "Tier 1 (company-specific) failed — check: " +
+                "(1) CompanySystemSettings.AiDefaultProvider is set, " +
+                "(2) The corresponding API key column (e.g. AiClaudeApiKey) has a value. " +
+                "Tier 2 (global appsettings) also has no providers configured.");
+        }
     }
 
     /// <inheritdoc />
-    public async Task<IReadOnlyList<string>> GetAvailableProvidersAsync(CancellationToken ct = default)
+    public async Task<IReadOnlyList<string>> GetAvailableProvidersAsync(long? companyId, CancellationToken ct = default)
     {
         // Start with system-wide providers.
         var providers = new HashSet<string>(_globalFactory.AvailableProviders, StringComparer.OrdinalIgnoreCase);
-
-        // Add company-specific providers (if they have API keys that aren't in system config).
-        var companyId = _tenantResolver.GetCurrentCompanyId();
         if (companyId.HasValue)
         {
             var companySettings = await _masterContext.CompanySystemSettings

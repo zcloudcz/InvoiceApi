@@ -31,6 +31,7 @@ namespace Fakvio.Infrastructure.Service;
 public class ChatService : IChatService
 {
     private readonly TenantDbContext _context;
+    private readonly ITenantResolver _tenantResolver;
     private readonly IAiProviderFactory _providerFactory;
     private readonly ICompanyAiSettingsResolver _companyAiResolver;
     private readonly IChatContextBuilder _contextBuilder;
@@ -46,6 +47,7 @@ public class ChatService : IChatService
 
     public ChatService(
         TenantDbContext context,
+        ITenantResolver tenantResolver,
         IAiProviderFactory providerFactory,
         ICompanyAiSettingsResolver companyAiResolver,
         IChatContextBuilder contextBuilder,
@@ -53,6 +55,7 @@ public class ChatService : IChatService
         ILogger<ChatService> logger)
     {
         _context = context;
+        _tenantResolver = tenantResolver;
         _providerFactory = providerFactory;
         _companyAiResolver = companyAiResolver;
         _contextBuilder = contextBuilder;
@@ -469,7 +472,8 @@ public class ChatService : IChatService
     /// </summary>
     public async Task<IReadOnlyList<string>> GetAvailableProvidersAsync(CancellationToken ct = default)
     {
-        return await _companyAiResolver.GetAvailableProvidersAsync(ct);
+        var companyId = _tenantResolver.GetCurrentCompanyId();
+        return await _companyAiResolver.GetAvailableProvidersAsync(companyId, ct);
     }
 
     // ─── Private helpers ────────────────────────────────────────────────
@@ -598,7 +602,8 @@ public class ChatService : IChatService
     /// </summary>
     private async Task<IAiProvider> ResolveProviderAsync(string? providerName, CancellationToken ct = default)
     {
-        return await _companyAiResolver.ResolveProviderAsync(providerName, ct);
+        var companyId = _tenantResolver.GetCurrentCompanyId();
+        return await _companyAiResolver.ResolveProviderAsync(companyId, providerName, ct);
     }
 
     /// <summary>

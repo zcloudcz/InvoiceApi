@@ -65,13 +65,17 @@ public class ChatServiceTests : IDisposable
         // Mock company AI settings resolver — delegates to the global factory by default.
         _companyAiResolver = Substitute.For<ICompanyAiSettingsResolver>();
         _companyAiResolver
-            .ResolveProviderAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .ResolveProviderAsync(Arg.Any<long?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(_mockProvider);
         _companyAiResolver
-            .GetAvailableProvidersAsync(Arg.Any<CancellationToken>())
+            .GetAvailableProvidersAsync(Arg.Any<long?>(), Arg.Any<CancellationToken>())
             .Returns(new List<string> { "TestProvider" }.AsReadOnly());
 
-        _service = new ChatService(_context, _providerFactory, _companyAiResolver, _contextBuilder, _toolExecutor, _logger);
+        // Mock tenant resolver — returns a default CompanyId for tests.
+        var tenantResolver = Substitute.For<ITenantResolver>();
+        tenantResolver.GetCurrentCompanyId().Returns(1L);
+
+        _service = new ChatService(_context, tenantResolver, _providerFactory, _companyAiResolver, _contextBuilder, _toolExecutor, _logger);
     }
 
     public void Dispose()

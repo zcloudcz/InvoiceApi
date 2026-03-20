@@ -61,7 +61,7 @@ public class CompanyAiSettingsResolverTests : IDisposable
         _logger = Substitute.For<ILogger<CompanyAiSettingsResolver>>();
 
         _resolver = new CompanyAiSettingsResolver(
-            _masterContext, _tenantResolver, _globalFactory,
+            _masterContext, _globalFactory,
             _globalSettings, httpClientFactory, _loggerFactory, _logger);
     }
 
@@ -77,10 +77,8 @@ public class CompanyAiSettingsResolverTests : IDisposable
     public async Task ResolveProvider_FallsBackToGlobalFactory_WhenNoCompanyId()
     {
         // Arrange — no company in the request context.
-        _tenantResolver.GetCurrentCompanyId().Returns((long?)null);
-
-        // Act
-        var provider = await _resolver.ResolveProviderAsync(null);
+        // Act — pass null companyId explicitly.
+        var provider = await _resolver.ResolveProviderAsync(null, null);
 
         // Assert — should use the global default provider.
         provider.ShouldBe(_globalProvider);
@@ -91,10 +89,8 @@ public class CompanyAiSettingsResolverTests : IDisposable
     {
         // Arrange — company exists but has no AI settings configured.
         var companyId = await SeedCompanyWithSettings(aiClaudeApiKey: null);
-        _tenantResolver.GetCurrentCompanyId().Returns(companyId);
-
-        // Act
-        var provider = await _resolver.ResolveProviderAsync(null);
+        // Act — pass companyId explicitly (no more ITenantResolver dependency).
+        var provider = await _resolver.ResolveProviderAsync(companyId, null);
 
         // Assert — should fall back to the global default.
         provider.ShouldBe(_globalProvider);
@@ -112,11 +108,9 @@ public class CompanyAiSettingsResolverTests : IDisposable
             aiDefaultProvider: "Claude",
             aiClaudeApiKey: "company-claude-key",
             aiClaudeModel: "claude-opus-4-6");
-        _tenantResolver.GetCurrentCompanyId().Returns(companyId);
-
         // Act — in test environment, ad-hoc Claude provider creation may fail,
         // so it falls through to the global factory.
-        var provider = await _resolver.ResolveProviderAsync(null);
+        var provider = await _resolver.ResolveProviderAsync(companyId, null);
 
         // Assert — provider should be resolved (either ad-hoc or global fallback).
         provider.ProviderName.ShouldBe("Claude");
@@ -129,10 +123,8 @@ public class CompanyAiSettingsResolverTests : IDisposable
         var companyId = await SeedCompanyWithSettings(
             aiDefaultProvider: "Claude",
             aiClaudeApiKey: "company-key");
-        _tenantResolver.GetCurrentCompanyId().Returns(companyId);
-
-        // Act
-        var provider = await _resolver.ResolveProviderAsync(null);
+        // Act — pass companyId explicitly (no more ITenantResolver dependency).
+        var provider = await _resolver.ResolveProviderAsync(companyId, null);
 
         // Assert — should use the company's default provider (or fallback to global Claude).
         provider.ProviderName.ShouldBe("Claude");
@@ -145,10 +137,8 @@ public class CompanyAiSettingsResolverTests : IDisposable
         var companyId = await SeedCompanyWithSettings(
             aiDefaultProvider: "Claude",
             aiClaudeApiKey: "company-claude-key");
-        _tenantResolver.GetCurrentCompanyId().Returns(companyId);
-
         // Act — request "Gemini" which company doesn't have.
-        var provider = await _resolver.ResolveProviderAsync("Gemini");
+        var provider = await _resolver.ResolveProviderAsync(companyId, "Gemini");
 
         // Assert — should fall through to the global factory.
         _globalFactory.Received(1).GetProvider("Gemini");
@@ -161,10 +151,8 @@ public class CompanyAiSettingsResolverTests : IDisposable
         var companyId = await SeedCompanyWithSettings(
             aiDefaultProvider: "Gemini",
             aiGeminiApiKey: "company-gemini-key");
-        _tenantResolver.GetCurrentCompanyId().Returns(companyId);
-
-        // Act
-        var provider = await _resolver.ResolveProviderAsync(null);
+        // Act — pass companyId explicitly (no more ITenantResolver dependency).
+        var provider = await _resolver.ResolveProviderAsync(companyId, null);
 
         // Assert — should create an ad-hoc Gemini provider (not the global Claude).
         provider.ProviderName.ShouldBe("Gemini");
@@ -179,10 +167,8 @@ public class CompanyAiSettingsResolverTests : IDisposable
             aiDefaultProvider: "Ollama",
             aiOllamaBaseUrl: "http://company-ollama:11434",
             aiOllamaModel: "llama3.2");
-        _tenantResolver.GetCurrentCompanyId().Returns(companyId);
-
-        // Act
-        var provider = await _resolver.ResolveProviderAsync(null);
+        // Act — pass companyId explicitly (no more ITenantResolver dependency).
+        var provider = await _resolver.ResolveProviderAsync(companyId, null);
 
         // Assert — should create an ad-hoc Ollama provider.
         provider.ProviderName.ShouldBe("Ollama");
@@ -198,10 +184,8 @@ public class CompanyAiSettingsResolverTests : IDisposable
         var companyId = await SeedCompanyWithSettings(
             aiClaudeApiKey: "key1",
             aiOpenAiApiKey: "key2");
-        _tenantResolver.GetCurrentCompanyId().Returns(companyId);
-
         // Act
-        var providers = await _resolver.GetAvailableProvidersAsync();
+        var providers = await _resolver.GetAvailableProvidersAsync(companyId);
 
         // Assert — should include both system Claude and company OpenAI.
         providers.ShouldContain("Claude");
@@ -212,10 +196,8 @@ public class CompanyAiSettingsResolverTests : IDisposable
     public async Task GetAvailableProviders_ReturnsOnlySystemProviders_WhenNoCompany()
     {
         // Arrange — no company context.
-        _tenantResolver.GetCurrentCompanyId().Returns((long?)null);
-
         // Act
-        var providers = await _resolver.GetAvailableProvidersAsync();
+        var providers = await _resolver.GetAvailableProvidersAsync(null);
 
         // Assert
         providers.Count.ShouldBe(1);
