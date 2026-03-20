@@ -472,7 +472,8 @@ public class ChatService : IChatService
     /// </summary>
     public async Task<IReadOnlyList<string>> GetAvailableProvidersAsync(CancellationToken ct = default)
     {
-        var companyId = _tenantResolver.GetCurrentCompanyId();
+        var companyId = _tenantResolver.GetCurrentCompanyId()
+            ?? ParseCompanyIdFromSchema(_context.Schema);
         return await _companyAiResolver.GetAvailableProvidersAsync(companyId, ct);
     }
 
@@ -602,8 +603,26 @@ public class ChatService : IChatService
     /// </summary>
     private async Task<IAiProvider> ResolveProviderAsync(string? providerName, CancellationToken ct = default)
     {
-        var companyId = _tenantResolver.GetCurrentCompanyId();
+        // Get CompanyId from ITenantResolver (reads JWT claims via IHttpContextAccessor).
+        // If that returns null (can happen in Azure Functions dual-scope),
+        // fall back to parsing the CompanyId from TenantDbContext.Schema ("tenant_42" → 42).
+        var companyId = _tenantResolver.GetCurrentCompanyId()
+            ?? ParseCompanyIdFromSchema(_context.Schema);
+
         return await _companyAiResolver.ResolveProviderAsync(companyId, providerName, ct);
+    }
+
+    /// <summary>
+    /// Extracts CompanyId from the tenant schema name (e.g., "tenant_42" → 42).
+    /// Used as fallback when ITenantResolver can't read claims from IHttpContextAccessor.
+    /// Returns null if the schema name doesn't follow the "tenant_{id}" convention.
+    /// </summary>
+    private static long? ParseCompanyIdFromSchema(string? schema)
+    {
+        if (string.IsNullOrEmpty(schema) || !schema.StartsWith("tenant_"))
+            return null;
+
+        return long.TryParse(schema.AsSpan("tenant_".Length), out var id) ? id : null;
     }
 
     /// <summary>
