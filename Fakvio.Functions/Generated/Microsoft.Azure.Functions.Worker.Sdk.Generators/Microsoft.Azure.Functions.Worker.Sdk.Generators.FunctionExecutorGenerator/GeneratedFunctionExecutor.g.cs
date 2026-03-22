@@ -27,6 +27,7 @@ namespace Fakvio.Functions
             { "Fakvio.Functions.Generated.CurrencyFunctions", Type.GetType("Fakvio.Functions.Generated.CurrencyFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "Fakvio.Functions.Generated.DashboardFunctions", Type.GetType("Fakvio.Functions.Generated.DashboardFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "Fakvio.Functions.HttpFunctions.DiagnosticFunctions", Type.GetType("Fakvio.Functions.HttpFunctions.DiagnosticFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
+            { "Fakvio.Functions.Generated.EmailFunctions", Type.GetType("Fakvio.Functions.Generated.EmailFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "Fakvio.Functions.Generated.InvoiceFunctions", Type.GetType("Fakvio.Functions.Generated.InvoiceFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "Fakvio.Functions.Generated.InvoiceTemplateFunctions", Type.GetType("Fakvio.Functions.Generated.InvoiceTemplateFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "Fakvio.Functions.Generated.NumberSequenceFunctions", Type.GetType("Fakvio.Functions.Generated.NumberSequenceFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
@@ -538,6 +539,13 @@ namespace Fakvio.Functions
                 var instanceType = types["Fakvio.Functions.HttpFunctions.DiagnosticFunctions"];
                 var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.HttpFunctions.DiagnosticFunctions;
                 context.GetInvocationResult().Value = i.AuthDiagnostic((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.EmailFunctions.Email_Send", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.EmailFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.EmailFunctions;
+                context.GetInvocationResult().Value = await i.Email_Send((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
                 return;
             }
             if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.InvoiceFunctions.Invoice_GetAllInvoices", StringComparison.Ordinal))

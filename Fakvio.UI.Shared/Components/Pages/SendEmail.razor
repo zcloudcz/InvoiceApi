@@ -1,0 +1,92 @@
+@page "/sysadmin/email"
+@attribute [Authorize(Roles = "SysAdmin")]
+
+@using Fakvio.Contracts.Dto.Email
+@using Fakvio.UI.Shared.Services
+@using Microsoft.AspNetCore.Authorization
+
+@inject EmailAdminApiService EmailApi
+@inject ISnackbar Snackbar
+@inject IStringLocalizer<SharedResource> L
+
+<PageTitle>@L["Email_Title"]</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">@L["Email_Title"]</MudText>
+
+<MudPaper Class="pa-6" MaxWidth="800px">
+    <MudForm @ref="_form">
+        <MudTextField @bind-Value="_dto.To"
+                      Label="@L["Email_To"]"
+                      Required
+                      RequiredError="@L["Msg_Required"]"
+                      InputType="InputType.Email"
+                      Variant="Variant.Outlined"
+                      Class="mb-3" />
+
+        <MudTextField @bind-Value="_dto.Subject"
+                      Label="@L["Email_Subject"]"
+                      Required
+                      RequiredError="@L["Msg_Required"]"
+                      Variant="Variant.Outlined"
+                      Class="mb-3" />
+
+        <MudTextField @bind-Value="_dto.HtmlBody"
+                      Label="@L["Email_Body"]"
+                      Required
+                      RequiredError="@L["Msg_Required"]"
+                      Variant="Variant.Outlined"
+                      Lines="12"
+                      HelperText="@L["Email_BodyHelper"]"
+                      Class="mb-4" />
+
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   OnClick="HandleSendAsync"
+                   Disabled="_isSending"
+                   StartIcon="@Icons.Material.Filled.Send">
+            @if (_isSending)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate Class="mr-2" />
+                @L["Email_Sending"]
+            }
+            else
+            {
+                @L["Email_Send"]
+            }
+        </MudButton>
+    </MudForm>
+</MudPaper>
+
+@code {
+    private MudForm _form = null!;
+    private SendEmailDto _dto = new();
+    private bool _isSending;
+
+    private async Task HandleSendAsync()
+    {
+        await _form.Validate();
+        if (!_form.IsValid) return;
+
+        _isSending = true;
+        StateHasChanged();
+
+        try
+        {
+            var message = await EmailApi.SendEmailAsync(_dto);
+            Snackbar.Add(message, MudBlazor.Severity.Success);
+
+            // Clear form after successful send.
+            _dto = new SendEmailDto();
+            await _form.ResetAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Email_Failed"]}: {ex.Message}", MudBlazor.Severity.Error,
+                config => config.VisibleStateDuration = 10000);
+        }
+        finally
+        {
+            _isSending = false;
+        }
+    }
+}

@@ -54,7 +54,8 @@ public class TenantContextMiddleware : IFunctionsWorkerMiddleware
         "/api/dashboard/sysadmin",
         "/api/logs",
         "/api/twofactor",
-        "/api/cloud-storage"
+        "/api/cloud-storage",
+        "/api/email"                // SysAdmin email — uses system SMTP, no tenant needed
     ];
 
     /// <summary>

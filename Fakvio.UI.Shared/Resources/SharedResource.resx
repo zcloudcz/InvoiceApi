@@ -1134,4 +1134,14 @@
   <data name="Chat_NoProviders_Title" xml:space="preserve"><value>AI asistent není nastaven</value></data>
   <data name="Chat_NoProviders_Description" xml:space="preserve"><value>Pro vaši společnost není nastaven žádný AI poskytovatel. Požádejte administrátora o nastavení API klíče (např. Claude, OpenAI) v nastavení společnosti.</value></data>
   <data name="Chat_NoProviders_GoToSettings" xml:space="preserve"><value>Přejít do nastavení</value></data>
+  <!-- ── SysAdmin Email ──────────────────────────────────────────────────── -->
+  <data name="Nav_SendEmail" xml:space="preserve"><value>Odeslat email</value></data>
+  <data name="Email_Title" xml:space="preserve"><value>Odeslat email</value></data>
+  <data name="Email_To" xml:space="preserve"><value>Příjemce</value></data>
+  <data name="Email_Subject" xml:space="preserve"><value>Předmět</value></data>
+  <data name="Email_Body" xml:space="preserve"><value>Obsah (HTML)</value></data>
+  <data name="Email_BodyHelper" xml:space="preserve"><value>Lze použít HTML značky pro formátování.</value></data>
+  <data name="Email_Send" xml:space="preserve"><value>Odeslat</value></data>
+  <data name="Email_Sending" xml:space="preserve"><value>Odesílám...</value></data>
+  <data name="Email_Failed" xml:space="preserve"><value>Odeslání se nezdařilo</value></data>
 </root>

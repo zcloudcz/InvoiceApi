@@ -42,6 +42,7 @@ public class TenantContextMiddleware
         "/api/logs",                 // Application logs — master DB, SysAdmin only
         "/api/twofactor",            // 2FA setup/verify — operates on master DB User table
         "/api/cloud-storage",        // Cloud storage settings — stored in master DB CompanySystemSettings
+        "/api/email",                // SysAdmin email — uses system SMTP, no tenant needed
         "/swagger",
         "/health"
     ];
