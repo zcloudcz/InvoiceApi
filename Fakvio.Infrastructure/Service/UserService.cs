@@ -486,22 +486,35 @@ public class UserService : IUserService
 
         await _context.SaveChangesAsync(cancellationToken);
 
-        // Trigger tenant database provisioning after password is set (for self-registered users)
+        // Trigger tenant database provisioning after password is set (for self-registered users).
+        // Provisioning creates the PostgreSQL schema, applies migrations, copies code tables, etc.
         if (user.CompanyId.HasValue)
         {
             try
             {
-                await _provisioningService.ProvisionTenantAsync(user.CompanyId.Value, cancellationToken);
                 _logger.LogInformation(
-                    "Tenant provisioned for company {CompanyId} after password set by user {Email}",
+                    "Starting tenant provisioning for CompanyId={CompanyId} (triggered by password set, user={Email})",
                     user.CompanyId.Value, user.Email);
+
+                await _provisioningService.ProvisionTenantAsync(user.CompanyId.Value, cancellationToken);
+
+                _logger.LogInformation(
+                    "Tenant provisioning SUCCEEDED for CompanyId={CompanyId}, user={Email}",
+                    user.CompanyId.Value, user.Email);
+            }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("already provisioned"))
+            {
+                // Already provisioned — this is fine (idempotent, e.g. SysAdmin provisioned first).
+                _logger.LogInformation(
+                    "Tenant already provisioned for CompanyId={CompanyId} — skipping",
+                    user.CompanyId.Value);
             }
             catch (Exception ex)
             {
-                // Provisioning failure should not fail password setting — can be retried by SysAdmin
+                // Provisioning failure should not fail password setting — can be retried by SysAdmin.
                 _logger.LogError(ex,
-                    "Tenant provisioning failed for company {CompanyId} after password set",
-                    user.CompanyId.Value);
+                    "Tenant provisioning FAILED for CompanyId={CompanyId}, user={Email}: {Error}",
+                    user.CompanyId.Value, user.Email, ex.Message);
             }
         }
 

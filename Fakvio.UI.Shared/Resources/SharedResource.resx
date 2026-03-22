@@ -814,6 +814,7 @@
   <data name="Register_Registering" xml:space="preserve"><value>Registrace...</value></data>
   <data name="Register_Success" xml:space="preserve"><value>Registrace úspěšná! Zkontrolujte e-mail.</value></data>
   <data name="Register_SuccessSetPassword" xml:space="preserve"><value>Registrace úspěšná! Zkontrolujte svůj e-mail a nastavte si heslo.</value></data>
+  <data name="Register_SuccessNoEmail" xml:space="preserve"><value>Registrace úspěšná, ale e-mail se nepodařilo odeslat. Kontaktujte podporu.</value></data>
   <data name="Register_Error" xml:space="preserve"><value>Registrace se nezdařila</value></data>
   <data name="Register_AlreadyHaveAccount" xml:space="preserve"><value>Už máte účet? Přihlásit se</value></data>
   <!-- ── Login additions ──────────────────────────────────────────────────── -->

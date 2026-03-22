@@ -247,7 +247,11 @@ public class AuthService : IAuthService
         _context.User.Add(user);
         await _context.SaveChangesAsync(ct);
 
-        // 6. Send "set your password" email — this link also verifies the email address
+        // 6. Send "set your password" email — this link also verifies the email address.
+        // Track success/failure so the frontend can inform the user.
+        var emailSent = false;
+        string? emailError = null;
+
         try
         {
             var setPasswordLink = $"{baseUrl.TrimEnd('/')}/set-password?token={invitationToken}";
@@ -271,24 +275,34 @@ public class AuthService : IAuthService
                 </div>";
 
             await _emailService.SendEmailAsync(request.Email, subject, htmlBody, ct: ct);
-            _logger.LogInformation("Verification email sent to {Email}", request.Email);
+            emailSent = true;
+            _logger.LogInformation(
+                "Registration email SENT to {Email} for company '{CompanyName}' (ClientId={ClientId}, UserId={UserId})",
+                request.Email, companyName, client.Id, user.Id);
         }
         catch (Exception ex)
         {
-            // Email failure should not block registration — user can request resend later
-            _logger.LogError(ex, "Failed to send verification email to {Email}", request.Email);
+            // Email failure should not block registration — user can request resend later.
+            emailError = ex.Message;
+            _logger.LogError(ex,
+                "Registration email FAILED for {Email}, company '{CompanyName}' (ClientId={ClientId}, UserId={UserId}): {Error}",
+                request.Email, companyName, client.Id, user.Id, ex.Message);
         }
 
         _logger.LogInformation(
-            "New company registered: {CompanyName} (ClientId={ClientId}), User: {Email} (UserId={UserId})",
-            companyName, client.Id, request.Email, user.Id);
+            "New company registered: {CompanyName} (ClientId={ClientId}), User: {Email} (UserId={UserId}), EmailSent={EmailSent}",
+            companyName, client.Id, request.Email, user.Id, emailSent);
 
         return new RegisterResponse
         {
             UserId = user.Id,
             Email = user.Email,
-            Message = "Registration successful. Please check your email to set your password.",
-            RequiresEmailVerification = true
+            Message = emailSent
+                ? "Registration successful. Please check your email to set your password."
+                : "Registration successful, but the email could not be sent. Please contact support.",
+            RequiresEmailVerification = true,
+            EmailSent = emailSent,
+            EmailError = emailError
         };
     }
 

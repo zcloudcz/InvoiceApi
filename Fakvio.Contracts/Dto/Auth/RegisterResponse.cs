@@ -26,4 +26,16 @@ public class RegisterResponse
     /// Always true for self-registration; false for OAuth users (auto-verified).
     /// </summary>
     public bool RequiresEmailVerification { get; set; }
+
+    /// <summary>
+    /// True if the set-password email was sent successfully.
+    /// False if SMTP failed — user should be informed to contact support
+    /// or request a resend.
+    /// </summary>
+    public bool EmailSent { get; set; }
+
+    /// <summary>
+    /// Error message if email sending failed. Null if successful.
+    /// </summary>
+    public string? EmailError { get; set; }
 }

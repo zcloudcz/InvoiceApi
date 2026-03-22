@@ -814,6 +814,7 @@
   <data name="Register_Registering" xml:space="preserve"><value>Registering...</value></data>
   <data name="Register_Success" xml:space="preserve"><value>Registration successful! Check your email.</value></data>
   <data name="Register_SuccessSetPassword" xml:space="preserve"><value>Registration successful! Check your email to set your password.</value></data>
+  <data name="Register_SuccessNoEmail" xml:space="preserve"><value>Registration successful, but the email could not be sent. Please contact support.</value></data>
   <data name="Register_Error" xml:space="preserve"><value>Registration failed</value></data>
   <data name="Register_AlreadyHaveAccount" xml:space="preserve"><value>Already have an account? Log in</value></data>
   <!-- ── Login additions ──────────────────────────────────────────────────── -->

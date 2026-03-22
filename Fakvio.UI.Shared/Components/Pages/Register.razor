@@ -204,7 +204,19 @@
             if (response != null)
             {
                 _isSuccess = true;
-                Snackbar.Add(L["Register_SuccessSetPassword"].Value, Severity.Success);
+
+                if (response.EmailSent)
+                {
+                    Snackbar.Add(L["Register_SuccessSetPassword"].Value, Severity.Success);
+                }
+                else
+                {
+                    // Registration succeeded but email failed — warn the user.
+                    Snackbar.Add(
+                        $"{L["Register_SuccessNoEmail"].Value} {response.EmailError}",
+                        Severity.Warning,
+                        config => config.VisibleStateDuration = 10000);
+                }
             }
             else
             {

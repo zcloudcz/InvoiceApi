@@ -98,32 +98,35 @@ public static class ServiceCollectionExtensions
         // Data Protection — used by TwoFactorService for encrypting TOTP secrets and session tokens
         services.AddDataProtection();
 
-        // ── Application Services ────────────────────────────────────────────
+        // ── Application Services (with automatic logging proxy) ──────────────
+        // AddScopedWithLogging wraps each service in LoggingProxy which automatically
+        // logs ENTER/EXIT/FAILED with elapsed time for every method call.
+        // This provides unified logging across all services without modifying their code.
 
-        services.AddScoped<ITwoFactorService, TwoFactorService>();
-        services.AddScoped<IClientService, ClientService>();
-        services.AddScoped<IInvoiceService, InvoiceService>();
-        services.AddScoped<INumberSequenceService, NumberSequenceService>();
-        services.AddScoped<IVatRateService, VatRateService>();
-        services.AddScoped<IAuthService, AuthService>();
-        services.AddScoped<IUserService, UserService>();
-        services.AddScoped<ICurrencyService, CurrencyService>();
-        services.AddScoped<IInvoiceTemplateService, InvoiceTemplateService>();
-        services.AddScoped<IPdfExportService, PdfExportService>();
-        services.AddScoped<IQrPaymentService, QrPaymentService>();
-        services.AddScoped<IEmailService, EmailService>();
-        services.AddScoped<IContentTemplateService, ContentTemplateService>();
-        services.AddScoped<IDashboardService, DashboardService>();
-        services.AddScoped<IReceivedInvoiceService, ReceivedInvoiceService>();
-        services.AddScoped<IVatReportService, VatReportService>();
-        services.AddScoped<ISystemConfigurationService, SystemConfigurationService>();
+        services.AddScopedWithLogging<ITwoFactorService, TwoFactorService>();
+        services.AddScopedWithLogging<IClientService, ClientService>();
+        services.AddScopedWithLogging<IInvoiceService, InvoiceService>();
+        services.AddScopedWithLogging<INumberSequenceService, NumberSequenceService>();
+        services.AddScopedWithLogging<IVatRateService, VatRateService>();
+        services.AddScopedWithLogging<IAuthService, AuthService>();
+        services.AddScopedWithLogging<IUserService, UserService>();
+        services.AddScopedWithLogging<ICurrencyService, CurrencyService>();
+        services.AddScopedWithLogging<IInvoiceTemplateService, InvoiceTemplateService>();
+        services.AddScopedWithLogging<IPdfExportService, PdfExportService>();
+        services.AddScopedWithLogging<IQrPaymentService, QrPaymentService>();
+        services.AddScopedWithLogging<IEmailService, EmailService>();
+        services.AddScopedWithLogging<IContentTemplateService, ContentTemplateService>();
+        services.AddScopedWithLogging<IDashboardService, DashboardService>();
+        services.AddScopedWithLogging<IReceivedInvoiceService, ReceivedInvoiceService>();
+        services.AddScopedWithLogging<IVatReportService, VatReportService>();
+        services.AddScopedWithLogging<ISystemConfigurationService, SystemConfigurationService>();
 
         // Tax estimation — calculates income tax, social/health insurance for CZ/SK self-employed.
-        services.AddScoped<ITaxEstimationService, TaxEstimationService>();
+        services.AddScopedWithLogging<ITaxEstimationService, TaxEstimationService>();
 
         // Tenant provisioning — creates, migrates, activates/deactivates tenant schemas.
         // SysAdmin uses this through CompanyController to manage tenant lifecycle.
-        services.AddScoped<ITenantProvisioningService, TenantProvisioningService>();
+        services.AddScopedWithLogging<ITenantProvisioningService, TenantProvisioningService>();
 
         // ── Cloud Storage ───────────────────────────────────────────────────
         // Google Drive and OneDrive registered as IExternalCloudStorage.
@@ -135,31 +138,24 @@ public static class ServiceCollectionExtensions
         services.AddHttpClient<Fakvio.Infrastructure.Service.CloudStorage.OneDriveStorageService>();
         services.AddScoped<IExternalCloudStorage>(sp =>
             sp.GetRequiredService<Fakvio.Infrastructure.Service.CloudStorage.OneDriveStorageService>());
-        services.AddScoped<ICloudStorageOrchestrator,
+        services.AddScopedWithLogging<ICloudStorageOrchestrator,
             Fakvio.Infrastructure.Service.CloudStorage.CloudStorageOrchestrator>();
 
         // ── PDF Text Extraction ──────────────────────────────────────────────
         // Used by the AI chat to extract text from uploaded PDF files.
-        services.AddScoped<IPdfTextExtractorService, PdfTextExtractorService>();
+        services.AddScopedWithLogging<IPdfTextExtractorService, PdfTextExtractorService>();
 
         // ── Invoice Import (PDF extraction pipeline: QR → AI → Regex) ────
-        // QR code extraction from PDF images — uses iText7 + ZXing to find and decode QR codes.
-        services.AddScoped<IQrCodeExtractor, QrCodeExtractorService>();
-        // AI-based invoice data extraction — uses the default AI provider to parse PDF text.
-        // Falls back gracefully if no AI provider is configured.
-        services.AddScoped<IInvoiceAiExtractor, InvoiceAiExtractorService>();
-        // Regex-based invoice data extraction — last resort fallback when QR and AI fail.
-        services.AddScoped<IInvoiceTextExtractor, InvoiceTextExtractorService>();
-        // Import orchestrator — waterfall pipeline + validation + client resolution.
-        services.AddScoped<IInvoiceImportService, InvoiceImportService>();
+        services.AddScopedWithLogging<IQrCodeExtractor, QrCodeExtractorService>();
+        services.AddScopedWithLogging<IInvoiceAiExtractor, InvoiceAiExtractorService>();
+        services.AddScopedWithLogging<IInvoiceTextExtractor, InvoiceTextExtractorService>();
+        services.AddScopedWithLogging<IInvoiceImportService, InvoiceImportService>();
 
         // ── AI Chat ────────────────────────────────────────────────────────
         AddAiProviders(services, configuration);
-        // Company-level AI settings resolver — checks CompanySystemSettings first,
-        // then falls back to system-wide IAiProviderFactory (same pattern as SMTP).
-        services.AddScoped<ICompanyAiSettingsResolver, CompanyAiSettingsResolver>();
-        services.AddScoped<IChatService, ChatService>();
-        services.AddScoped<IChatContextBuilder, ChatContextBuilder>();
+        services.AddScopedWithLogging<ICompanyAiSettingsResolver, CompanyAiSettingsResolver>();
+        services.AddScopedWithLogging<IChatService, ChatService>();
+        services.AddScopedWithLogging<IChatContextBuilder, ChatContextBuilder>();
 
         // Chat tools — each tool is registered individually as IChatTool.
         // ChatToolExecutor discovers all tools via IEnumerable<IChatTool>.
@@ -168,7 +164,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IChatTool, CreateClientTool>();
         services.AddScoped<IChatTool, NavigateTool>();
         services.AddScoped<IChatTool, CreateInvoiceTool>();
-        services.AddScoped<IChatToolExecutor, ChatToolExecutor>();
+        services.AddScopedWithLogging<IChatToolExecutor, ChatToolExecutor>();
 
         // ── Database Logging ────────────────────────────────────────────────
         // Structured logging to AppLog table in master DB.
