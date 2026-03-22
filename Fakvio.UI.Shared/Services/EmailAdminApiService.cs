@@ -1,4 +1,5 @@
 using Fakvio.Contracts.Dto.Email;
+using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Extensions.Logging;
 
 namespace Fakvio.UI.Shared.Services;
@@ -12,7 +13,7 @@ public class EmailAdminApiService : ApiClientBase
     public EmailAdminApiService(
         IHttpClientFactory httpClientFactory,
         ILogger<EmailAdminApiService> logger,
-        CustomAuthenticationStateProvider authStateProvider)
+        AuthenticationStateProvider authStateProvider)
         : base(httpClientFactory, logger, authStateProvider)
     {
     }
