@@ -24,6 +24,13 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <!-- Copy appsettings.json to output directory so tests can load real SMTP config -->
+  <ItemGroup>
+    <None Update="appsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\Fakvio.Domain\Fakvio.Domain.csproj" />
     <ProjectReference Include="..\Fakvio.Application\Fakvio.Application.csproj" />

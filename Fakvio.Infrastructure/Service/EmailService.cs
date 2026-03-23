@@ -165,6 +165,57 @@ public class EmailService : IEmailService
             smtp.Host, smtp.Port, socketOptions);
 
         using var smtpClient = new SmtpClient();
+
+        // Accept server certificates even when CRL (Certificate Revocation List) endpoints
+        // are unreachable. Many corporate/self-hosted SMTP servers use certificates whose
+        // CRL distribution points are internal or offline — MailKit's default validation
+        // rejects these with "unable to get certificate CRL". We still validate the chain;
+        // we only relax the revocation check, which matches how most email clients behave.
+        smtpClient.ServerCertificateValidationCallback = (sender, certificate, chain, sslPolicyErrors) =>
+        {
+            // No errors at all — fully trusted certificate
+            if (sslPolicyErrors == System.Net.Security.SslPolicyErrors.None)
+                return true;
+
+            // If the only issue is the remote certificate chain (e.g. CRL unreachable),
+            // check whether every chain status is a revocation-related status we can tolerate.
+            if (sslPolicyErrors == System.Net.Security.SslPolicyErrors.RemoteCertificateChainErrors
+                && chain != null)
+            {
+                foreach (var chainElement in chain.ChainElements)
+                {
+                    foreach (var status in chainElement.ChainElementStatus)
+                    {
+                        // Skip "no error" entries
+                        if (status.Status == System.Security.Cryptography.X509Certificates.X509ChainStatusFlags.NoError)
+                            continue;
+
+                        // Tolerate revocation-related flags (CRL offline, revocation undetermined)
+                        if (status.Status == System.Security.Cryptography.X509Certificates.X509ChainStatusFlags.RevocationStatusUnknown
+                            || status.Status == System.Security.Cryptography.X509Certificates.X509ChainStatusFlags.OfflineRevocation)
+                            continue;
+
+                        // Any other chain error (expired, untrusted root, name mismatch) → reject
+                        _logger.LogWarning(
+                            "SMTP TLS certificate chain error: {Status} — {Info}",
+                            status.Status, status.StatusInformation);
+                        return false;
+                    }
+                }
+
+                // All chain statuses were revocation-related — accept the certificate
+                _logger.LogDebug(
+                    "SMTP TLS certificate accepted despite CRL unavailability for {Host}:{Port}",
+                    smtp.Host, smtp.Port);
+                return true;
+            }
+
+            // Other SSL errors (name mismatch, untrusted root without chain detail) → reject
+            _logger.LogWarning("SMTP TLS rejected: SslPolicyErrors={Errors} for {Host}:{Port}",
+                sslPolicyErrors, smtp.Host, smtp.Port);
+            return false;
+        };
+
         await smtpClient.ConnectAsync(smtp.Host, smtp.Port, socketOptions, ct);
 
         // Authenticate if credentials are provided.
