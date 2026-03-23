@@ -108,7 +108,10 @@ public class LoggingProxy<TInterface> : DispatchProxy where TInterface : class
     private object? InvokeAsync(MethodInfo method, object?[]? args, Type returnType)
     {
         var sw = Stopwatch.StartNew();
-        _logger.LogDebug("{Service}.{Method} → ENTER", _serviceName, method.Name);
+        // Log at Information level (not Debug) so entries reach the DatabaseLoggerProvider,
+        // which has a minimum level of Information. Using Debug here caused async service logs
+        // to be silently dropped from the database — only sync methods (LogInformation) were visible.
+        _logger.LogInformation("{Service}.{Method} → ENTER", _serviceName, method.Name);
 
         try
         {
@@ -151,7 +154,8 @@ public class LoggingProxy<TInterface> : DispatchProxy where TInterface : class
         {
             await task;
             sw.Stop();
-            _logger.LogDebug("{Service}.{Method} → EXIT ({Elapsed}ms)",
+            // Information level — must match DatabaseLoggerProvider minimum to persist to DB.
+            _logger.LogInformation("{Service}.{Method} → EXIT ({Elapsed}ms)",
                 _serviceName, methodName, sw.ElapsedMilliseconds);
         }
         catch (Exception ex)
@@ -174,7 +178,8 @@ public class LoggingProxy<TInterface> : DispatchProxy where TInterface : class
         {
             var result = await (Task<T>)taskObj;
             sw.Stop();
-            _logger.LogDebug("{Service}.{Method} → EXIT ({Elapsed}ms)",
+            // Information level — must match DatabaseLoggerProvider minimum to persist to DB.
+            _logger.LogInformation("{Service}.{Method} → EXIT ({Elapsed}ms)",
                 _serviceName, methodName, sw.ElapsedMilliseconds);
             return result;
         }

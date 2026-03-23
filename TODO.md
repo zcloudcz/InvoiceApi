@@ -19,6 +19,15 @@ Azure Functions Isolated Worker has two DI scopes per request (`httpContext.Requ
 
 ## Completed
 
+### Fix service logging + SMTP authentication (2026-03-23)
+LoggingProxy used `LogDebug` for async ENTER/EXIT — silently dropped by DatabaseLoggerProvider (minimum: Information). SMTP used bool `UseSsl` → mapped to `SslOnConnect` even on port 587, causing `AuthenticationException`.
+
+- [x] **LoggingProxy.cs**: Changed `LogDebug` → `LogInformation` for async ENTER/EXIT/method logging (lines 111, 154, 177) — now all service method calls are persisted to AppLog DB table
+- [x] **EmailService.cs**: Replaced `bool useSsl` ConnectAsync overload with `SecureSocketOptions` — port 465 → SslOnConnect, port 587 → StartTls, UseSsl=false → None
+- [x] **EmailService.cs**: Added `ResolveSocketOptions` helper method with port-based SSL strategy
+- [x] **EmailService.cs**: Added try-catch around `AuthenticateAsync` with detailed error logging (username, host, port, socket options)
+- [x] **Tests**: All 9 EmailService tests pass
+
 ### Company-Level AI Settings (2026-03-19)
 Per-company AI provider configuration — same 2-tier pattern as SMTP (Company → System fallback).
 

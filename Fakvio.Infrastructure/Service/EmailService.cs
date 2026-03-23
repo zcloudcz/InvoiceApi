@@ -1,6 +1,7 @@
 using Fakvio.Application.Service;
 using Fakvio.Domain.Enums;
 using Fakvio.Infrastructure.Data;
+using MailKit.Security;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -152,14 +153,37 @@ public class EmailService : IEmailService
 
         message.Body = bodyBuilder.ToMessageBody();
 
-        // Connect to the SMTP server and send the email using MailKit
-        using var smtpClient = new SmtpClient();
-        await smtpClient.ConnectAsync(smtp.Host, smtp.Port, smtp.UseSsl, ct);
+        // Connect to the SMTP server and send the email using MailKit.
+        // Resolve the correct SecureSocketOptions based on port and UseSsl flag:
+        //   - Port 465 → SslOnConnect (implicit TLS, connection is encrypted from the start)
+        //   - Port 587 → StartTls (connect plain, then STARTTLS upgrade — most common for submission)
+        //   - UseSsl=false → None (no encryption, for internal/relay servers only)
+        // Previously this used a bool overload which mapped true→SslOnConnect even on port 587,
+        // causing AuthenticationException because the server expected STARTTLS, not implicit SSL.
+        var socketOptions = ResolveSocketOptions(smtp.Port, smtp.UseSsl);
+        _logger.LogInformation("Connecting to SMTP {Host}:{Port} with {Options}",
+            smtp.Host, smtp.Port, socketOptions);
 
-        // Authenticate if credentials are provided
+        using var smtpClient = new SmtpClient();
+        await smtpClient.ConnectAsync(smtp.Host, smtp.Port, socketOptions, ct);
+
+        // Authenticate if credentials are provided.
+        // Wrapped in try-catch to log the exact SMTP server error before re-throwing,
+        // as MailKit's AuthenticationException message can be generic.
         if (!string.IsNullOrEmpty(smtp.Username) && !string.IsNullOrEmpty(smtp.Password))
         {
-            await smtpClient.AuthenticateAsync(smtp.Username, smtp.Password, ct);
+            try
+            {
+                await smtpClient.AuthenticateAsync(smtp.Username, smtp.Password, ct);
+            }
+            catch (AuthenticationException ex)
+            {
+                _logger.LogError(ex,
+                    "SMTP authentication failed for user '{Username}' on {Host}:{Port} ({Options}). " +
+                    "Verify credentials and that the server supports the selected security option.",
+                    smtp.Username, smtp.Host, smtp.Port, socketOptions);
+                throw;
+            }
         }
 
         await smtpClient.SendAsync(message, ct);
@@ -312,6 +336,29 @@ public class EmailService : IEmailService
         // Fallback — build a simple HTML email inline
         _logger.LogInformation("No content template found for type {Type}, using fallback HTML", templateType);
         return BuildFallbackEmail(templateType, placeholders);
+    }
+
+    /// <summary>
+    /// Determines the correct MailKit SecureSocketOptions based on the SMTP port and UseSsl flag.
+    ///
+    /// Port 465 = implicit SSL (SslOnConnect) — entire session encrypted from the first byte.
+    /// Port 587 = submission port — uses STARTTLS (connect plain, then upgrade to TLS).
+    /// Port 25  = relay port — typically no encryption (internal servers).
+    /// UseSsl=false = explicitly disabled encryption (for trusted internal relay servers).
+    ///
+    /// This replaces the previous bool-based ConnectAsync overload, which mapped true→SslOnConnect
+    /// even on port 587, causing AuthenticationException when the server expected STARTTLS.
+    /// </summary>
+    private static SecureSocketOptions ResolveSocketOptions(int port, bool useSsl)
+    {
+        if (!useSsl)
+            return SecureSocketOptions.None;
+
+        // Port 465 is the only port that uses implicit SSL (SslOnConnect).
+        // All other ports (587, 25, custom) should use StartTls when SSL is requested.
+        return port == 465
+            ? SecureSocketOptions.SslOnConnect
+            : SecureSocketOptions.StartTls;
     }
 
     /// <summary>
