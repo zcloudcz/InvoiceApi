@@ -3,7 +3,9 @@ name: BlazorUI Deploy to GitHub Pages
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches: [ master ]
+    paths:
+      - 'Fakvio.BlazorUI/**'   # spustí se JEN při změnách v BlazorUI projektu
 
 # Potřebná oprávnění pro GitHub Pages deployment
 permissions:
