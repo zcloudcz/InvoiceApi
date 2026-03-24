@@ -257,14 +257,32 @@ else
 
     /// <summary>
     /// After render hook — loads HTML into Quill editor when entering edit mode.
-    /// Quill needs the DOM to be ready before we can load content into it.
+    /// Quill needs the DOM to be fully ready AND the Quill JS instance to be initialized
+    /// before we can load content. A short delay ensures the Blazored.TextEditor JS interop
+    /// has finished creating the Quill instance (which happens asynchronously after DOM render).
+    /// Without this delay, LoadHTMLContent throws "Cannot read properties of undefined (reading 'root')"
+    /// because the Quill object doesn't exist yet in the JS runtime.
     /// </summary>
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (_quillNeedsLoad && _quillEditor != null)
         {
             _quillNeedsLoad = false;
-            await _quillEditor.LoadHTMLContent(_currentHtmlBody);
+            // Wait for Quill JS to initialize — the BlazoredTextEditor component renders
+            // the DOM element first, then Quill attaches to it asynchronously via JS interop.
+            // 100ms is enough for the JS initialization to complete.
+            await Task.Delay(100);
+            try
+            {
+                await _quillEditor.LoadHTMLContent(_currentHtmlBody);
+            }
+            catch (Microsoft.JSInterop.JSException)
+            {
+                // Retry once after a longer delay if Quill still isn't ready
+                // (can happen on slow connections where JS files load late)
+                await Task.Delay(300);
+                await _quillEditor.LoadHTMLContent(_currentHtmlBody);
+            }
         }
     }
 
