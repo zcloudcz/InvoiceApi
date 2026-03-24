@@ -46,15 +46,24 @@ public class SystemConfigurationService : ISystemConfigurationService
     {
         var entity = await GetOrCreateAsync(ct);
 
-        // Update all fields from the DTO.
-        // SmtpPassword is encrypted at rest using ICredentialProtector (Data Protection API).
+        // ── Application Settings ──────────────────────────────────────────────
+        entity.AppName = dto.AppName;
+        entity.BlazorBaseUrl = dto.BlazorBaseUrl?.TrimEnd('/') ?? "";
+
+        // ── SMTP Settings ─────────────────────────────────────────────────────
         entity.SmtpHost = dto.SmtpHost;
         entity.SmtpPort = dto.SmtpPort;
         entity.SmtpUsername = dto.SmtpUsername;
-        entity.SmtpPassword = _credentialProtector.Encrypt(dto.SmtpPassword);
+        // SmtpPassword: null = keep existing (UI didn't send it), empty = clear, non-empty = encrypt.
+        // BUG FIX: Previously unconditionally overwrote SmtpPassword from DTO — if the UI
+        // sent null (e.g., password field not included in the form), the password was cleared.
+        if (dto.SmtpPassword != null)
+            entity.SmtpPassword = _credentialProtector.Encrypt(dto.SmtpPassword);
         entity.SmtpSenderEmail = dto.SmtpSenderEmail;
         entity.SmtpSenderName = dto.SmtpSenderName;
         entity.SmtpUseSsl = dto.SmtpUseSsl;
+
+        // ── JWT Settings ──────────────────────────────────────────────────────
         entity.JwtExpirationHours = dto.JwtExpirationHours;
 
         await _context.SaveChangesAsync(ct);
@@ -102,6 +111,10 @@ public class SystemConfigurationService : ISystemConfigurationService
         return new SystemConfigurationDto
         {
             Id = entity.Id,
+            // Application settings
+            AppName = entity.AppName,
+            BlazorBaseUrl = entity.BlazorBaseUrl,
+            // SMTP settings
             SmtpHost = entity.SmtpHost,
             SmtpPort = entity.SmtpPort,
             SmtpUsername = entity.SmtpUsername,
@@ -111,6 +124,7 @@ public class SystemConfigurationService : ISystemConfigurationService
             SmtpSenderEmail = entity.SmtpSenderEmail,
             SmtpSenderName = entity.SmtpSenderName,
             SmtpUseSsl = entity.SmtpUseSsl,
+            // JWT settings
             JwtExpirationHours = entity.JwtExpirationHours
         };
     }

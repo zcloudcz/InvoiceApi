@@ -7,8 +7,26 @@ namespace Fakvio.Contracts.Dto.SystemConfiguration;
 /// Sent via PUT /api/system-configuration.
 /// All SMTP fields are optional — only non-null fields are updated.
 /// </summary>
+/// <summary>
+/// DTO for updating system configuration.
+/// Sent via PUT /api/system-configuration.
+///
+/// IMPORTANT: Partial update semantics for sensitive fields:
+///   - SmtpPassword: null = keep existing, empty = clear, non-empty = encrypt and update
+///   - Other fields: always updated from DTO value (use current values for unchanged fields)
+/// </summary>
 public class UpdateSystemConfigurationDto
 {
+    // ─── Application Settings ─────────────────────────────────────────────────
+
+    /// <summary>Application display name. Default: "Fakvio".</summary>
+    [StringLength(200)]
+    public string AppName { get; set; } = "Fakvio";
+
+    /// <summary>Blazor UI base URL for email links. No trailing slash.</summary>
+    [StringLength(500)]
+    public string BlazorBaseUrl { get; set; } = "";
+
     // ─── SMTP Settings ───────────────────────────────────────────────────────
 
     [StringLength(500)]

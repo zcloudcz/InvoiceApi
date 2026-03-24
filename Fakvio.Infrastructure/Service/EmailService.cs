@@ -99,7 +99,7 @@ public class EmailService : IEmailService
             ["CurrencyCode"] = invoice.Currency?.Code ?? "",
             ["DueDate"] = invoice.DueDate?.ToString("dd.MM.yyyy") ?? "N/A",
             ["IssueDate"] = invoice.IssueDate?.ToString("dd.MM.yyyy") ?? "N/A",
-            ["AppName"] = _configuration["AppSettings:Name"] ?? "Fakvio"
+            ["AppName"] = await ResolveAppNameAsync(ct)
         };
 
         // Determine email template type based on document type (invoice vs credit note)
@@ -271,7 +271,7 @@ public class EmailService : IEmailService
         {
             ["FullName"] = fullName,
             ["InvitationLink"] = invitationLink,
-            ["AppName"] = _configuration["AppSettings:Name"] ?? "Fakvio"
+            ["AppName"] = await ResolveAppNameAsync(ct)
         };
 
         // System emails (invitation, 2FA) have no client context — use "cs" as default language.
@@ -477,5 +477,18 @@ public class EmailService : IEmailService
                 HtmlBody: "<p>Email content</p>"
             )
         };
+    }
+
+    /// <summary>
+    /// Resolves the application name from SystemConfiguration DB, with fallback to appsettings.json.
+    /// Used in email placeholders ({{AppName}}).
+    /// </summary>
+    private async Task<string> ResolveAppNameAsync(CancellationToken ct)
+    {
+        var dbConfig = await _systemConfigService.GetAsync(ct);
+        if (!string.IsNullOrWhiteSpace(dbConfig.AppName))
+            return dbConfig.AppName;
+
+        return _configuration["AppSettings:Name"] ?? "Fakvio";
     }
 }

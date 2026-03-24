@@ -19,17 +19,20 @@ public class UserController : ControllerBase
 {
     private readonly IUserService _userService;
     private readonly IEmailService _emailService;
+    private readonly ISystemConfigurationService _systemConfigService;
     private readonly IConfiguration _configuration;
     private readonly ILogger<UserController> _logger;
 
     public UserController(
         IUserService userService,
         IEmailService emailService,
+        ISystemConfigurationService systemConfigService,
         IConfiguration configuration,
         ILogger<UserController> logger)
     {
         _userService = userService;
         _emailService = emailService;
+        _systemConfigService = systemConfigService;
         _configuration = configuration;
         _logger = logger;
     }
@@ -487,12 +490,9 @@ public class UserController : ControllerBase
             // Create the user with invitation token
             var user = await _userService.InviteUserAsync(inviteDto);
 
-            // Build the invitation link pointing to the Blazor UI set-password page
-            // Reads the base URL from configuration (AppSettings:BlazorBaseUrl)
-            var blazorBaseUrl = _configuration["AppSettings:BlazorBaseUrl"]?.TrimEnd('/')
-                ?? "https://localhost:5002";
-
-            // The invitation token is included in the UserDto returned by InviteUserAsync
+            // Build the invitation link pointing to the Blazor UI set-password page.
+            // Priority: SystemConfiguration DB (SysAdmin-editable) → appsettings.json fallback.
+            var blazorBaseUrl = await ResolveBlazorBaseUrlAsync();
             var invitationLink = $"{blazorBaseUrl}/set-password?token={Uri.EscapeDataString(user.InvitationToken ?? "")}";
 
             // Send the invitation email
@@ -580,8 +580,7 @@ public class UserController : ControllerBase
             // Response is always the same — no info leakage about email existence.
             if (token != null)
             {
-                var blazorBaseUrl = _configuration["AppSettings:BlazorBaseUrl"]?.TrimEnd('/')
-                    ?? "https://localhost:5002";
+                var blazorBaseUrl = await ResolveBlazorBaseUrlAsync();
                 var resetLink = $"{blazorBaseUrl}/set-password?token={Uri.EscapeDataString(token)}";
 
                 try
@@ -628,6 +627,21 @@ public class UserController : ControllerBase
     }
 
     #region Helper Methods
+
+    /// <summary>
+    /// Resolves the Blazor UI base URL using a 2-tier fallback:
+    ///   1. SystemConfiguration DB (SysAdmin-editable via /system-settings)
+    ///   2. appsettings.json "AppSettings:BlazorBaseUrl" (for fresh installs)
+    /// Used for building email links (invitation, password reset, etc.).
+    /// </summary>
+    private async Task<string> ResolveBlazorBaseUrlAsync()
+    {
+        var dbConfig = await _systemConfigService.GetAsync();
+        if (!string.IsNullOrWhiteSpace(dbConfig.BlazorBaseUrl))
+            return dbConfig.BlazorBaseUrl.TrimEnd('/');
+
+        return _configuration["AppSettings:BlazorBaseUrl"]?.TrimEnd('/') ?? "https://localhost:5002";
+    }
 
     /// <summary>
     /// Gets current user's ID from JWT claims

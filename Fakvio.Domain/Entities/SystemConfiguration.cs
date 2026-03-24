@@ -3,17 +3,32 @@ using Fakvio.Domain.Common;
 namespace Fakvio.Domain.Entities;
 
 /// <summary>
-/// Stores global system configuration for SMTP email settings and JWT token settings.
+/// Stores global system configuration: app settings, SMTP, and JWT.
 /// This is a single-row table in the master database — there is always exactly one record.
 ///
 /// SysAdmin can edit these settings via the /system-settings Blazor page.
 /// EmailService reads SMTP settings from this table (with fallback to appsettings.json).
-///
-/// IMPORTANT: SmtpPassword is stored in plain text for simplicity.
-/// In production, consider encrypting it or using Azure Key Vault.
+/// SmtpPassword is encrypted at rest via ICredentialProtector (Data Protection API).
 /// </summary>
 public class SystemConfiguration : BaseEntity
 {
+    // ─── Application Settings ─────────────────────────────────────────────────
+    // General app-wide settings. Editable by SysAdmin, override appsettings.json values.
+
+    /// <summary>
+    /// Public display name of the application (used in emails, QR codes, page titles).
+    /// Overrides appsettings.json "AppSettings:Name". Default: "Fakvio".
+    /// </summary>
+    public string AppName { get; set; } = "Fakvio";
+
+    /// <summary>
+    /// Base URL of the Blazor WASM frontend (e.g., "https://app.fakvio.cz").
+    /// Used for building links in emails (invitation, password reset, etc.).
+    /// Overrides appsettings.json "AppSettings:BlazorBaseUrl".
+    /// Must NOT have a trailing slash.
+    /// </summary>
+    public string BlazorBaseUrl { get; set; } = "";
+
     // ─── SMTP Settings ───────────────────────────────────────────────────────
     // Used by EmailService (MailKit) for sending invoices, invitations, reminders.
 

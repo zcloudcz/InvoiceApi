@@ -17,12 +17,18 @@ namespace Fakvio.API.Controller;
 public class AuthController : ControllerBase
 {
     private readonly IAuthService _authService;
+    private readonly ISystemConfigurationService _systemConfigService;
     private readonly IConfiguration _configuration;
     private readonly ILogger<AuthController> _logger;
 
-    public AuthController(IAuthService authService, IConfiguration configuration, ILogger<AuthController> logger)
+    public AuthController(
+        IAuthService authService,
+        ISystemConfigurationService systemConfigService,
+        IConfiguration configuration,
+        ILogger<AuthController> logger)
     {
         _authService = authService;
+        _systemConfigService = systemConfigService;
         _configuration = configuration;
         _logger = logger;
     }
@@ -83,8 +89,12 @@ public class AuthController : ControllerBase
         {
             // Use the Blazor UI base URL for the set-password link in the email.
             // The /set-password page lives in the Blazor WASM app, not the API.
-            var blazorBaseUrl = _configuration["AppSettings:BlazorBaseUrl"]?.TrimEnd('/')
-                ?? $"{Request.Scheme}://{Request.Host}";
+            // Priority: SystemConfiguration DB → appsettings.json → current request host
+            var dbConfig = await _systemConfigService.GetAsync();
+            var blazorBaseUrl = !string.IsNullOrWhiteSpace(dbConfig.BlazorBaseUrl)
+                ? dbConfig.BlazorBaseUrl.TrimEnd('/')
+                : _configuration["AppSettings:BlazorBaseUrl"]?.TrimEnd('/')
+                    ?? $"{Request.Scheme}://{Request.Host}";
 
             var response = await _authService.RegisterAsync(request, blazorBaseUrl);
 

@@ -55,19 +55,31 @@
     <script src="_content/Blazored.TextEditor/quill-blot-formatter.min.js"></script>
     <script src="_content/Blazored.TextEditor/Blazored-BlazorQuill.js"></script>
     <!-- Fix: Blazored.TextEditor's createQuill does NOT store the Quill instance
-         on the DOM element, causing "Cannot read properties of undefined" errors.
-         This patch stores the instance so subsequent API calls work. -->
+         on the DOM element. This replaces createQuill to capture the return value. -->
     <script>
         (function () {
-            var originalCreateQuill = window.QuillFunctions.createQuill;
             window.QuillFunctions.createQuill = function (
                 quillElement, toolBar, readOnly,
                 placeholder, theme, formats, debugLevel) {
-                originalCreateQuill(quillElement, toolBar, readOnly,
-                    placeholder, theme, formats, debugLevel);
-                if (!quillElement.__quill) {
-                    quillElement.__quill = Quill.find(quillElement);
+
+                Quill.register('modules/blotFormatter', QuillBlotFormatter.default);
+
+                var options = {
+                    debug: debugLevel,
+                    modules: {
+                        toolbar: toolBar,
+                        blotFormatter: {}
+                    },
+                    placeholder: placeholder,
+                    readOnly: readOnly,
+                    theme: theme
+                };
+
+                if (formats) {
+                    options.formats = formats;
                 }
+
+                quillElement.__quill = new Quill(quillElement, options);
             };
         })();
     </script>

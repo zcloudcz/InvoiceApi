@@ -9,6 +9,13 @@ public class SystemConfigurationDto
 {
     public long Id { get; set; }
 
+    // ─── Application Settings ─────────────────────────────────────────────────
+    /// <summary>Application display name (emails, page titles). Default: "Fakvio".</summary>
+    public string AppName { get; set; } = "Fakvio";
+
+    /// <summary>Blazor UI base URL for email links (e.g., "https://app.fakvio.cz").</summary>
+    public string BlazorBaseUrl { get; set; } = "";
+
     // ─── SMTP Settings ───────────────────────────────────────────────────────
     public string SmtpHost { get; set; } = "";
     public int SmtpPort { get; set; } = 587;

@@ -79,22 +79,34 @@
     <!-- Fix: Blazored.TextEditor's createQuill does NOT store the Quill instance
          on the DOM element (quillElement.__quill), so all subsequent calls
          (getQuillHTML, loadQuillHTMLContent, etc.) fail with "Cannot read properties
-         of undefined (reading 'root')". This patch overrides createQuill to store
-         the instance, which fixes the bug. -->
+         of undefined (reading 'root')". This replaces createQuill entirely to capture
+         the Quill constructor return value into quillElement.__quill. -->
     <script>
         (function () {
-            var originalCreateQuill = window.QuillFunctions.createQuill;
             window.QuillFunctions.createQuill = function (
                 quillElement, toolBar, readOnly,
                 placeholder, theme, formats, debugLevel) {
-                originalCreateQuill(quillElement, toolBar, readOnly,
-                    placeholder, theme, formats, debugLevel);
-                // Quill 1.x stores itself on the DOM element via __quill,
-                // but only when using the jQuery-style API. The direct constructor
-                // does NOT set it. We need to find the Quill instance and store it.
-                if (!quillElement.__quill) {
-                    quillElement.__quill = Quill.find(quillElement);
+
+                Quill.register('modules/blotFormatter', QuillBlotFormatter.default);
+
+                var options = {
+                    debug: debugLevel,
+                    modules: {
+                        toolbar: toolBar,
+                        blotFormatter: {}
+                    },
+                    placeholder: placeholder,
+                    readOnly: readOnly,
+                    theme: theme
+                };
+
+                if (formats) {
+                    options.formats = formats;
                 }
+
+                // Store the Quill instance on the DOM element so that
+                // getQuillHTML, loadQuillHTMLContent, etc. can access it via __quill.
+                quillElement.__quill = new Quill(quillElement, options);
             };
         })();
     </script>
