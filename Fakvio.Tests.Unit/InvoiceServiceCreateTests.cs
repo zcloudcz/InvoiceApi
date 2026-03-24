@@ -307,16 +307,17 @@ public class InvoiceServiceCreateTests : IDisposable
     }
 
     [Fact]
-    public async Task DeleteInvoiceAsync_CompletedInvoice_ShouldThrow()
+    public async Task DeleteInvoiceAsync_LastCompletedInvoice_ShouldSucceed()
     {
-        // Arrange — create and complete an invoice
+        // Arrange — create and complete an invoice (it's the only one → last in sequence)
         var invoice = await _service.CreateInvoiceAsync(CreateValidInvoiceDto());
         await _service.CompleteInvoiceAsync(invoice.Id);
 
-        // Act & Assert — cannot delete completed invoices
-        var act = () => _service.DeleteInvoiceAsync(invoice.Id);
-        var ex = await Should.ThrowAsync<InvalidOperationException>(act);
-        ex.Message.ShouldContain("Only draft invoices can be deleted");
+        // Act — the last completed invoice CAN be deleted
+        var result = await _service.DeleteInvoiceAsync(invoice.Id);
+
+        // Assert — deletion should succeed because it's the last issued invoice
+        result.ShouldBeTrue();
     }
 
     // =====================================================================

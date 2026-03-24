@@ -424,30 +424,40 @@ public class InvoiceServiceBulkTests : IDisposable
     /// The error message should indicate "Only draft invoices can be deleted".
     /// </summary>
     [Fact]
-    public async Task BulkDelete_CompletedInvoice_ShouldFail()
+    public async Task BulkDelete_LastCompletedInvoice_ShouldSucceed()
     {
-        // Arrange — create a completed invoice (cannot be deleted)
+        // Arrange — create a single completed invoice (it's the last one → can be deleted)
         var completedId = AddInvoice("BULK-D-COMPLETED", EInvoiceStatus.Completed);
         var ids = new List<long> { completedId };
 
-        // Act — attempt to delete a completed invoice
+        // Act — the last completed invoice can be deleted
         var result = await _service.BulkDeleteAsync(ids);
 
-        // Assert — should fail with 1 error
-        result.SuccessCount.ShouldBe(0);
-        result.FailedCount.ShouldBe(1);
-        result.Errors.Count.ShouldBe(1);
+        // Assert — should succeed
+        result.SuccessCount.ShouldBe(1);
+        result.FailedCount.ShouldBe(0);
 
-        // Verify the error references the correct invoice and explains why it failed
-        var error = result.Errors.First();
-        error.InvoiceId.ShouldBe(completedId);
-        error.Error.ShouldContain("Only draft invoices can be deleted");
-
-        // Verify the invoice status is unchanged (still Completed)
+        // Verify the invoice status is now Deleted
         var invoice = await _context.Invoice.AsNoTracking()
             .FirstOrDefaultAsync(i => i.Id == completedId);
         invoice.ShouldNotBeNull();
-        invoice.Status.ShouldBe(EInvoiceStatus.Completed);
+        invoice.Status.ShouldBe(EInvoiceStatus.Deleted);
+    }
+
+    [Fact]
+    public async Task BulkDelete_PaidInvoice_ShouldFail()
+    {
+        // Arrange — create a paid invoice (can never be deleted)
+        var paidId = AddInvoice("BULK-D-PAID", EInvoiceStatus.Paid);
+        var ids = new List<long> { paidId };
+
+        // Act
+        var result = await _service.BulkDeleteAsync(ids);
+
+        // Assert — paid invoices cannot be deleted
+        result.SuccessCount.ShouldBe(0);
+        result.FailedCount.ShouldBe(1);
+        result.Errors.First().Error.ShouldContain("Cannot delete");
     }
 
     /// <summary>

@@ -604,12 +604,29 @@ public class InvoiceService : IInvoiceService
         if (invoice == null)
             return false;
 
-        // Only draft invoices can be deleted
-        if (invoice.Status != EInvoiceStatus.Draft)
-            throw new InvalidOperationException("Only draft invoices can be deleted");
+        // Paid or Creditnoted invoices cannot be deleted under any circumstances —
+        // they have financial implications (payments received, credit notes issued).
+        if (invoice.Status == EInvoiceStatus.Paid || invoice.Status == EInvoiceStatus.Creditnoted)
+            throw new InvalidOperationException(
+                $"Cannot delete a {invoice.Status} invoice. Only Draft or the last Completed invoice can be deleted.");
 
-        _logger.LogInformation("Deleting {DocumentType} {Id} (DocumentNumber={DocNum})",
-            invoice.DocumentType, invoice.Id, invoice.DocumentNumber);
+        if (invoice.Status == EInvoiceStatus.Deleted)
+            throw new InvalidOperationException("Invoice is already deleted.");
+
+        // Completed invoices can only be deleted if they are the LAST issued document
+        // of their type (Invoice or CreditNote). Deleting a Completed invoice in the middle
+        // of the sequence would break the continuous numbering required by tax law.
+        if (invoice.Status == EInvoiceStatus.Completed)
+        {
+            var isLast = await IsLastIssuedInvoiceAsync(invoice, cancellationToken);
+            if (!isLast)
+                throw new InvalidOperationException(
+                    "Only the last completed invoice can be deleted. " +
+                    "This invoice has subsequent documents in the numbering sequence.");
+        }
+
+        _logger.LogInformation("Deleting {DocumentType} {Id} (Status={Status}, DocumentNumber={DocNum})",
+            invoice.DocumentType, invoice.Id, invoice.Status, invoice.DocumentNumber);
 
         invoice.Status = EInvoiceStatus.Deleted;
         await _context.SaveChangesAsync(cancellationToken);
@@ -621,6 +638,24 @@ public class InvoiceService : IInvoiceService
         await TryReleaseDocumentNumberAsync(invoice, cancellationToken);
 
         return true;
+    }
+
+    /// <summary>
+    /// Checks whether the given invoice is the last issued (non-deleted) document
+    /// of its DocumentType. Used to determine if a Completed invoice can be deleted.
+    ///
+    /// "Last" is determined by the highest ID among non-deleted invoices of the same type,
+    /// because IDs are sequential and always increment. This is simpler and more reliable
+    /// than parsing document numbers (which may have variable formats with prefixes/suffixes).
+    /// </summary>
+    private async Task<bool> IsLastIssuedInvoiceAsync(Invoice invoice, CancellationToken ct)
+    {
+        var lastId = await _context.Invoice
+            .Where(i => i.DocumentType == invoice.DocumentType
+                     && i.Status != EInvoiceStatus.Deleted)
+            .MaxAsync(i => (long?)i.Id, ct);
+
+        return lastId == invoice.Id;
     }
 
     /// <summary>
