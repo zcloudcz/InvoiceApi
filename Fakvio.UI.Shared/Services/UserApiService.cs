@@ -176,6 +176,18 @@ public class UserApiService : ApiClientBase
     }
 
     /// <summary>
+    /// Initiates the "Forgot Password" flow — sends a password reset email.
+    /// Anonymous call — no auth header needed.
+    /// Always returns true (server never reveals whether the email exists).
+    /// </summary>
+    public async Task<bool> ForgotPasswordAsync(string email)
+    {
+        var dto = new ForgotPasswordDto { Email = email };
+        var response = await _httpClient.PostAsJsonAsync("/api/user/forgot-password", dto);
+        return response.IsSuccessStatusCode;
+    }
+
+    /// <summary>
     /// Helper class for deserializing the invitation token validation response
     /// </summary>
     private class InvitationValidationResult

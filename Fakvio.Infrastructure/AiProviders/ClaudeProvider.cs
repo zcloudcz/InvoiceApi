@@ -68,6 +68,7 @@ public class ClaudeProvider : IAiProvider, IDisposable
                 messages: anthropicMessages,
                 maxTokens: 4096,
                 system: systemPrompt,
+                temperature: 0.2,
                 cancellationToken: ct);
 
             return response.AsSimpleText();

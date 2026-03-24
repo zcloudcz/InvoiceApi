@@ -3,6 +3,7 @@
 @using Fakvio.UI.Shared.Services
 @using Microsoft.AspNetCore.Components.Authorization
 @inject AuthApiService AuthApiService
+@inject UserApiService UserApiService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
 @inject IConfiguration Configuration
@@ -64,8 +65,56 @@
                             <span>@L["Btn_Login"]</span>
                         }
                     </MudButton>
+
+                    @* "Forgot Password?" link — opens inline form to request reset email *@
+                    <MudLink Color="Color.Primary" Typo="Typo.body2"
+                             Style="cursor:pointer; text-align:right;"
+                             OnClick="@(() => _showForgotPassword = true)">
+                        @L["Login_ForgotPassword"]
+                    </MudLink>
                 </MudStack>
             </EditForm>
+
+            @* ── Forgot Password inline form ── *@
+            @if (_showForgotPassword)
+            {
+                <MudDivider />
+                <MudStack Spacing="2">
+                    <MudText Typo="Typo.subtitle1" Color="Color.Primary">@L["ForgotPassword_Title"]</MudText>
+
+                    @if (_forgotPasswordSent)
+                    {
+                        <MudAlert Severity="Severity.Success">@L["ForgotPassword_Sent"]</MudAlert>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">@L["ForgotPassword_Subtitle"]</MudText>
+                        <MudTextField @bind-Value="_forgotEmail"
+                                      Label="@L["Label_Email"].Value"
+                                      Variant="Variant.Outlined"
+                                      InputType="InputType.Email"
+                                      Adornment="Adornment.Start"
+                                      AdornmentIcon="@Icons.Material.Filled.Email" />
+
+                        <MudStack Row="true" Spacing="2" Justify="Justify.FlexEnd">
+                            <MudButton Variant="Variant.Text"
+                                       OnClick="@(() => _showForgotPassword = false)">
+                                @L["Btn_Cancel"]
+                            </MudButton>
+                            <MudButton Variant="Variant.Filled"
+                                       Color="Color.Primary"
+                                       Disabled="@_isSendingReset"
+                                       OnClick="HandleForgotPasswordAsync">
+                                @if (_isSendingReset)
+                                {
+                                    <MudProgressCircular Class="mr-2" Size="Size.Small" Indeterminate="true" />
+                                }
+                                @L["ForgotPassword_Send"]
+                            </MudButton>
+                        </MudStack>
+                    }
+                </MudStack>
+            }
 
             <MudDivider />
 
@@ -116,6 +165,12 @@
     private LoginRequest _loginRequest = new();
     private string? _errorMessage;
     private bool _isLoading;
+
+    // Forgot Password state
+    private bool _showForgotPassword;
+    private string _forgotEmail = "";
+    private bool _isSendingReset;
+    private bool _forgotPasswordSent;
 
     [CascadingParameter]
     private Task<AuthenticationState>? AuthenticationState { get; set; }
@@ -179,6 +234,31 @@
         finally
         {
             _isLoading = false;
+        }
+    }
+
+    /// <summary>
+    /// Handles the "Forgot Password" form submission.
+    /// Calls the anonymous endpoint which always returns success (no email enumeration).
+    /// </summary>
+    private async Task HandleForgotPasswordAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_forgotEmail)) return;
+
+        _isSendingReset = true;
+        try
+        {
+            await UserApiService.ForgotPasswordAsync(_forgotEmail.Trim());
+            _forgotPasswordSent = true;
+        }
+        catch
+        {
+            // Even on error, show success — don't reveal anything to potential attacker
+            _forgotPasswordSent = true;
+        }
+        finally
+        {
+            _isSendingReset = false;
         }
     }
 

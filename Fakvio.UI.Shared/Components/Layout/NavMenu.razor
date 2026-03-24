@@ -13,7 +13,7 @@
             {
                 <MudNavGroup Title="@L["Nav_Invoicing"].Value" Icon="@Icons.Material.Filled.Receipt" Expanded="true">
                     <MudNavLink Href="/invoices" Icon="@Icons.Material.Filled.Description">@L["Nav_Invoices"]</MudNavLink>
-                    <MudNavLink Href="/invoices?type=CreditNote" Icon="@Icons.Material.Filled.Undo">@L["Nav_CreditNotes"]</MudNavLink>
+                    @* Credit Notes removed from nav — accessible via filter on Invoices page *@
                     <MudNavLink Href="/invoice-templates" Icon="@Icons.Material.Filled.ContentCopy">@L["Nav_InvoiceTemplates"]</MudNavLink>
                     <MudNavLink Href="/content-templates" Icon="@Icons.Material.Filled.Article">@L["Nav_ContentTemplates"]</MudNavLink>
                     <MudNavLink Href="/clients" Icon="@Icons.Material.Filled.People">@L["Nav_Clients"]</MudNavLink>

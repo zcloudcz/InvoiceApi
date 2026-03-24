@@ -114,4 +114,16 @@ public interface IUserService
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>True if the token is valid and not expired</returns>
     Task<bool> ValidateInvitationTokenAsync(string token, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Initiates the "Forgot Password" flow for an existing user.
+    /// Reuses the InvitationToken field — generates a new GUID token with 48-hour expiration,
+    /// so the existing SetPassword page and ValidateInvitationToken endpoint work unchanged.
+    /// Returns the generated token (caller is responsible for sending the email).
+    /// Returns null if the email is not found (caller should NOT reveal this to the user).
+    /// </summary>
+    /// <param name="email">User's email address.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The reset token if user exists, null otherwise.</returns>
+    Task<string?> ForgotPasswordAsync(string email, CancellationToken cancellationToken = default);
 }

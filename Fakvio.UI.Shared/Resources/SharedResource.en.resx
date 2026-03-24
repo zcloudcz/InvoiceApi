@@ -819,6 +819,11 @@
   <data name="Register_AlreadyHaveAccount" xml:space="preserve"><value>Already have an account? Log in</value></data>
   <!-- ── Login additions ──────────────────────────────────────────────────── -->
   <data name="Login_NoAccount" xml:space="preserve"><value>Don't have an account? Register</value></data>
+  <data name="Login_ForgotPassword" xml:space="preserve"><value>Forgot your password?</value></data>
+  <data name="ForgotPassword_Title" xml:space="preserve"><value>Password Recovery</value></data>
+  <data name="ForgotPassword_Subtitle" xml:space="preserve"><value>Enter your email and we'll send you a link to set a new password.</value></data>
+  <data name="ForgotPassword_Send" xml:space="preserve"><value>Send reset link</value></data>
+  <data name="ForgotPassword_Sent" xml:space="preserve"><value>If the email is registered, a password reset link has been sent. Check your inbox.</value></data>
   <data name="Login_OrContinueWith" xml:space="preserve"><value>Or continue with</value></data>
   <!-- ── Email Verification ───────────────────────────────────────────────── -->
   <data name="VerifyEmail_Title" xml:space="preserve"><value>Email Verification</value></data>

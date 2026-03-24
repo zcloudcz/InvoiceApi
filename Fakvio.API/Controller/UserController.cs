@@ -558,6 +558,59 @@ public class UserController : ControllerBase
     }
 
     /// <summary>
+    /// Initiates the "Forgot Password" flow. Generates a reset token and sends an email
+    /// with a link to the set-password page. Reuses the invitation token infrastructure
+    /// so the existing SetPassword and ValidateInvitationToken endpoints work unchanged.
+    ///
+    /// SECURITY: Always returns 200 OK regardless of whether the email exists.
+    /// This prevents email enumeration attacks (attacker cannot discover valid emails).
+    /// </summary>
+    /// <param name="dto">Email address of the user requesting password reset.</param>
+    /// <returns>Always returns success message (even if email doesn't exist).</returns>
+    [HttpPost("forgot-password")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<ActionResult> ForgotPassword([FromBody] ForgotPasswordDto dto)
+    {
+        try
+        {
+            var token = await _userService.ForgotPasswordAsync(dto.Email);
+
+            // Only send email if user exists (token is non-null).
+            // Response is always the same — no info leakage about email existence.
+            if (token != null)
+            {
+                var blazorBaseUrl = _configuration["AppSettings:BlazorBaseUrl"]?.TrimEnd('/')
+                    ?? "https://localhost:5002";
+                var resetLink = $"{blazorBaseUrl}/set-password?token={Uri.EscapeDataString(token)}";
+
+                try
+                {
+                    // Reuse PasswordResetEmail template type (EContentTemplateType = 22).
+                    // Falls back to InvitationEmail template if PasswordResetEmail is not configured.
+                    await _emailService.SendInvitationEmailAsync(
+                        dto.Email,
+                        dto.Email, // Use email as display name (we don't expose user details)
+                        resetLink);
+                }
+                catch (Exception ex)
+                {
+                    // Email failure should not fail the endpoint — token is already saved.
+                    // User can request again if they don't receive the email.
+                    _logger.LogError(ex, "Failed to send password reset email to {Email}", dto.Email);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error processing forgot password for {Email}", dto.Email);
+        }
+
+        // Always return success — never reveal whether the email exists
+        return Ok(new { message = "If the email exists, a password reset link has been sent." });
+    }
+
+    /// <summary>
     /// Validates an invitation token — checks if it exists and is not expired.
     /// Used by the frontend to verify the token before showing the password form.
     /// This endpoint is anonymous — no authentication needed.

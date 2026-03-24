@@ -521,6 +521,40 @@ public class UserService : IUserService
         return true;
     }
 
+    /// <inheritdoc />
+    /// <summary>
+    /// Initiates "Forgot Password" by reusing the InvitationToken field.
+    /// This means SetPasswordAsync and ValidateInvitationTokenAsync work for both
+    /// invitation and password reset flows — zero code duplication.
+    /// </summary>
+    public async Task<string?> ForgotPasswordAsync(string email, CancellationToken cancellationToken = default)
+    {
+        // Find the user by email (case-insensitive).
+        // Return null if not found — caller must NOT reveal whether the email exists.
+        var user = await _context.User
+            .FirstOrDefaultAsync(u => u.Email.ToLower() == email.ToLower(), cancellationToken);
+
+        if (user == null)
+        {
+            _logger.LogInformation("Forgot password requested for unknown email {Email} — ignoring", email);
+            return null;
+        }
+
+        // Reuse InvitationToken for password reset. The existing SetPassword page
+        // and ValidateInvitationToken endpoint work with this token unchanged.
+        user.InvitationToken = Guid.NewGuid().ToString();
+        user.InvitationTokenExpiresAt = DateTime.UtcNow.AddHours(48);
+        // Do NOT set IsInvitationPending — the user can still log in with their current
+        // password until they actually reset it. This is different from invitation flow
+        // where the user has no valid password yet.
+        user.UpdatedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation("Password reset token generated for user {Email} (expires in 48h)", email);
+        return user.InvitationToken;
+    }
+
     /// <summary>
     /// Validates whether an invitation token exists and has not expired.
     /// Used by the frontend to verify the token before showing the password form.

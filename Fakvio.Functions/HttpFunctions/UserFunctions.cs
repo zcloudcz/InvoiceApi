@@ -284,6 +284,23 @@ public class UserFunctions
     }
 
     /// <summary>
+    /// POST api/user/forgot-password → UserController.ForgotPassword
+    /// </summary>
+    [Function("User_ForgotPassword")]
+    public async Task<IActionResult> User_ForgotPassword(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/user/forgot-password")] HttpRequest req)
+    {
+        _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
+
+        // No authentication required ([AllowAnonymous])
+
+        var dto = await System.Text.Json.JsonSerializer.DeserializeAsync<global::Fakvio.Contracts.Dto.User.ForgotPasswordDto>(
+            req.Body, FunctionResultHelper.JsonOptions, req.HttpContext.RequestAborted);
+
+        return FunctionResultHelper.Normalize(await _controller.ForgotPassword(dto!));
+    }
+
+    /// <summary>
     /// GET api/user/validate-invitation → UserController.ValidateInvitationToken
     /// </summary>
     [Function("User_ValidateInvitationToken")]
