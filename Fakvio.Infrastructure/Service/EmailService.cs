@@ -218,6 +218,14 @@ public class EmailService : IEmailService
 
         await smtpClient.ConnectAsync(smtp.Host, smtp.Port, socketOptions, ct);
 
+        // Remove SASL mechanisms that cause "535 5.7.8 incorrect credentials" on providers
+        // like Seznam.cz when running in Azure Functions. MailKit negotiates the auth mechanism
+        // with the server, and in cloud environments it may attempt XOAUTH2 or NTLM before
+        // falling back to PLAIN/LOGIN. Seznam.cz doesn't support these, so remove them
+        // to force PLAIN or LOGIN authentication which is what the server actually expects.
+        smtpClient.AuthenticationMechanisms.Remove("XOAUTH2");
+        smtpClient.AuthenticationMechanisms.Remove("NTLM");
+
         // Authenticate if credentials are provided.
         // Wrapped in try-catch to log the exact SMTP server error before re-throwing,
         // as MailKit's AuthenticationException message can be generic.
@@ -225,7 +233,11 @@ public class EmailService : IEmailService
         {
             try
             {
-                await smtpClient.AuthenticateAsync(smtp.Username, smtp.Password, ct);
+                // Use explicit UTF-8 encoding — Azure environment variable handling can
+                // mangle non-ASCII characters in passwords, and some SMTP servers require
+                // UTF-8 encoding for the SASL PLAIN mechanism.
+                await smtpClient.AuthenticateAsync(
+                    System.Text.Encoding.UTF8, smtp.Username, smtp.Password, ct);
             }
             catch (AuthenticationException ex)
             {
