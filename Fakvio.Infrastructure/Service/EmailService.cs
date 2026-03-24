@@ -306,7 +306,7 @@ public class EmailService : IEmailService
 
                 return new SmtpSettings(
                     Host: companySettings.SmtpHost,
-                    Port: companySettings.SmtpPort ?? 587,
+                    Port: companySettings.SmtpPort ?? 465,
                     Username: companySettings.SmtpUsername,
                     Password: companySettings.SmtpPassword,
                     SenderEmail: companySettings.SmtpSenderEmail

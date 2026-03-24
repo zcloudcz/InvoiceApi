@@ -363,3 +363,4 @@ MigrationBackup/
 FodyWeavers.xsd
 /InvoiceApi.API/nul
 /.claude/settings.local.json
+/Fakvio.Tests.Unit/appsettings.json

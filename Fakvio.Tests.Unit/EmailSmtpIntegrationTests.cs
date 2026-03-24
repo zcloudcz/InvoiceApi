@@ -39,7 +39,7 @@ public class EmailSmtpIntegrationTests
     ///   SmtpSettings:UseSsl      — true = TLS/SSL, false = no encryption
     ///   TestEmail:Recipient      — who receives the test email
     /// </summary>
-    [Fact(Skip = "Manual test — fill in appsettings.json with real SMTP credentials and remove Skip to run")]
+    [Fact]
     public async Task SendRealEmail_ViaSmtp()
     {
         // ── Load real config from appsettings.json ──────────────────────────
