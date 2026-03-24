@@ -58,6 +58,10 @@ public class EmailServiceTests : IDisposable
     // Mocked logger — just satisfies the dependency
     private readonly ILogger<EmailService> _logger;
 
+    // Mocked credential protector — passes through values unchanged in tests
+    // (no real encryption/decryption needed for unit tests)
+    private readonly ICredentialProtector _credentialProtector;
+
     // In-memory configuration — provides SMTP settings without appsettings.json
     private readonly IConfiguration _configuration;
 
@@ -80,6 +84,12 @@ public class EmailServiceTests : IDisposable
         _systemConfig = Substitute.For<ISystemConfigurationService>();
         _tenantResolver = Substitute.For<ITenantResolver>();
         _logger = Substitute.For<ILogger<EmailService>>();
+
+        // Pass-through credential protector — no real encryption in unit tests.
+        // Encrypt returns the input unchanged, Decrypt returns the input unchanged.
+        _credentialProtector = Substitute.For<ICredentialProtector>();
+        _credentialProtector.Encrypt(Arg.Any<string?>()).Returns(callInfo => callInfo.Arg<string?>());
+        _credentialProtector.Decrypt(Arg.Any<string?>()).Returns(callInfo => callInfo.Arg<string?>());
 
         // Return empty config by default — forces EmailService to fall back to appsettings.json
         _systemConfig.GetAsync(Arg.Any<CancellationToken>())
@@ -199,6 +209,7 @@ public class EmailServiceTests : IDisposable
             _pdfExport,
             _contentTemplate,
             _systemConfig,
+            _credentialProtector,
             _tenantResolver,
             _configuration,
             _logger);
@@ -279,7 +290,7 @@ public class EmailServiceTests : IDisposable
 
         var service = new EmailService(
             _tenantContext, _masterContext, _pdfExport, _contentTemplate,
-            _systemConfig, _tenantResolver, emptyConfig, _logger);
+            _systemConfig, _credentialProtector, _tenantResolver, emptyConfig, _logger);
 
         // Act & Assert — missing SMTP host in all 3 tiers should throw a clear error
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(

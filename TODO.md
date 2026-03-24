@@ -19,6 +19,23 @@ Azure Functions Isolated Worker has two DI scopes per request (`httpContext.Requ
 
 ## Completed
 
+### Credential encryption at rest (2026-03-24)
+All sensitive credentials stored in the database are now encrypted using ASP.NET Core Data Protection API (AES-256-CBC + HMACSHA256). Migration-safe: legacy plaintext values are returned unchanged by Decrypt and automatically encrypted on next save.
+
+- [x] **ICredentialProtector** interface (Application layer) — Encrypt/Decrypt with null-safety and migration safety
+- [x] **CredentialProtector** implementation (Infrastructure) — uses IDataProtectionProvider with "Fakvio.Credentials.v1" purpose
+- [x] **CompanyController.CreateSettings** — encrypts SmtpPassword, AiClaudeApiKey, AiOpenAiApiKey, AiGeminiApiKey
+- [x] **CompanyController.UpdateSettings** — encrypts SmtpPassword, AI API keys on update
+- [x] **SystemConfigurationService.UpdateAsync** — encrypts SmtpPassword on save
+- [x] **SystemConfigurationService.MapToDto** — decrypts SmtpPassword for downstream consumers
+- [x] **EmailService.ResolveSmtpSettingsAsync** — decrypts SmtpPassword (tier 1: CompanySystemSettings)
+- [x] **CompanyAiSettingsResolver** — decrypts AI API keys after loading from DB
+- [x] **GoogleDriveStorageService** — encrypts/decrypts OAuth tokens (access + refresh)
+- [x] **OneDriveStorageService** — encrypts/decrypts OAuth tokens (access + refresh)
+- [x] **DI Registration** — ICredentialProtector as Singleton in ServiceCollectionExtensions
+- [x] **Tests** — 15 CredentialProtectorTests (roundtrip, null-safety, legacy plaintext, different IVs)
+- [x] **All affected tests updated** — pass-through mock protector in EmailServiceTests, SystemConfigurationServiceTests, CompanyAiSettingsResolverTests
+
 ### Fix service logging + SMTP authentication (2026-03-23)
 LoggingProxy used `LogDebug` for async ENTER/EXIT — silently dropped by DatabaseLoggerProvider (minimum: Information). SMTP used bool `UseSsl` → mapped to `SslOnConnect` even on port 587, causing `AuthenticationException`.
 

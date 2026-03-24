@@ -31,6 +31,7 @@ public class GoogleDriveStorageService : IExternalCloudStorage
 {
     private readonly MasterDbContext _masterContext;
     private readonly ITenantResolver _tenantResolver;
+    private readonly ICredentialProtector _credentialProtector;
     private readonly IConfiguration _configuration;
     private readonly ILogger<GoogleDriveStorageService> _logger;
     private readonly HttpClient _httpClient;
@@ -53,12 +54,14 @@ public class GoogleDriveStorageService : IExternalCloudStorage
     public GoogleDriveStorageService(
         MasterDbContext masterContext,
         ITenantResolver tenantResolver,
+        ICredentialProtector credentialProtector,
         IConfiguration configuration,
         ILogger<GoogleDriveStorageService> logger,
         HttpClient httpClient)
     {
         _masterContext = masterContext;
         _tenantResolver = tenantResolver;
+        _credentialProtector = credentialProtector;
         _configuration = configuration;
         _logger = logger;
         _httpClient = httpClient;
@@ -358,8 +361,18 @@ public class GoogleDriveStorageService : IExternalCloudStorage
         var companyId = _tenantResolver.GetCurrentCompanyId()
             ?? throw new InvalidOperationException("No company context — cannot access cloud storage settings.");
 
-        return await _masterContext.CompanySystemSettings
+        var settings = await _masterContext.CompanySystemSettings
             .FirstOrDefaultAsync(s => s.CompanyId == companyId, ct);
+
+        // Decrypt OAuth tokens — they are stored encrypted at rest in the database.
+        // Decrypt in-memory so all downstream code works with plaintext tokens.
+        if (settings != null)
+        {
+            settings.GoogleDriveAccessToken = _credentialProtector.Decrypt(settings.GoogleDriveAccessToken);
+            settings.GoogleDriveRefreshToken = _credentialProtector.Decrypt(settings.GoogleDriveRefreshToken);
+        }
+
+        return settings;
     }
 
     /// <summary>
@@ -377,13 +390,14 @@ public class GoogleDriveStorageService : IExternalCloudStorage
             ?? throw new InvalidOperationException($"CompanySystemSettings not found for company {companyId}.");
 
         settings.GoogleDriveEnabled = true;
-        settings.GoogleDriveAccessToken = accessToken;
+        // Encrypt OAuth tokens before storing — they contain sensitive bearer credentials.
+        settings.GoogleDriveAccessToken = _credentialProtector.Encrypt(accessToken);
         settings.GoogleDriveTokenExpiresAt = DateTime.UtcNow.AddSeconds(expiresInSeconds - 60); // 60s buffer
 
         // Only update refresh token if provided (initial auth gives it; refresh does not)
         if (!string.IsNullOrEmpty(refreshToken))
         {
-            settings.GoogleDriveRefreshToken = refreshToken;
+            settings.GoogleDriveRefreshToken = _credentialProtector.Encrypt(refreshToken);
         }
 
         await _masterContext.SaveChangesAsync(ct);

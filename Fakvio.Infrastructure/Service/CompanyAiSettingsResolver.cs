@@ -38,6 +38,7 @@ public class CompanyAiSettingsResolver : ICompanyAiSettingsResolver
     private readonly MasterDbContext _masterContext;
     private readonly IAiProviderFactory _globalFactory;
     private readonly IOptions<AiSettings> _globalSettings;
+    private readonly ICredentialProtector _credentialProtector;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<CompanyAiSettingsResolver> _logger;
@@ -46,6 +47,7 @@ public class CompanyAiSettingsResolver : ICompanyAiSettingsResolver
         MasterDbContext masterContext,
         IAiProviderFactory globalFactory,
         IOptions<AiSettings> globalSettings,
+        ICredentialProtector credentialProtector,
         IHttpClientFactory httpClientFactory,
         ILoggerFactory loggerFactory,
         ILogger<CompanyAiSettingsResolver> logger)
@@ -53,6 +55,7 @@ public class CompanyAiSettingsResolver : ICompanyAiSettingsResolver
         _masterContext = masterContext;
         _globalFactory = globalFactory;
         _globalSettings = globalSettings;
+        _credentialProtector = credentialProtector;
         _httpClientFactory = httpClientFactory;
         _loggerFactory = loggerFactory;
         _logger = logger;
@@ -76,6 +79,13 @@ public class CompanyAiSettingsResolver : ICompanyAiSettingsResolver
 
             if (companySettings != null)
             {
+                // Decrypt API keys — they are stored encrypted at rest in the database.
+                // Decrypt once here so all downstream code works with plaintext keys.
+                // Migration-safe: legacy plaintext values are returned unchanged.
+                companySettings.AiClaudeApiKey = _credentialProtector.Decrypt(companySettings.AiClaudeApiKey);
+                companySettings.AiOpenAiApiKey = _credentialProtector.Decrypt(companySettings.AiOpenAiApiKey);
+                companySettings.AiGeminiApiKey = _credentialProtector.Decrypt(companySettings.AiGeminiApiKey);
+
                 // Determine which provider to use:
                 // 1. User explicitly requested a provider → use that
                 // 2. Company has a default provider set → use that

@@ -34,6 +34,7 @@ public class CompanyController : ControllerBase
     private readonly IAresService _aresService;
     private readonly ITenantProvisioningService _provisioningService;
     private readonly IEmailService _emailService;
+    private readonly ICredentialProtector _credentialProtector;
     private readonly MasterDbContext _masterContext;
     private readonly ILogger<CompanyController> _logger;
 
@@ -41,12 +42,14 @@ public class CompanyController : ControllerBase
         IAresService aresService,
         ITenantProvisioningService provisioningService,
         IEmailService emailService,
+        ICredentialProtector credentialProtector,
         MasterDbContext masterContext,
         ILogger<CompanyController> logger)
     {
         _aresService = aresService;
         _provisioningService = provisioningService;
         _emailService = emailService;
+        _credentialProtector = credentialProtector;
         _masterContext = masterContext;
         _logger = logger;
     }
@@ -705,20 +708,22 @@ public class CompanyController : ControllerBase
                 IsProvisioned = false,
                 IsActive = false, // Not active until provisioned
                 // Optional company SMTP settings (can also be configured later via UpdateSettings)
+                // Passwords and API keys are encrypted at rest using ICredentialProtector
+                // (Data Protection API) before being stored in the database.
                 SmtpHost = dto.SmtpHost,
                 SmtpPort = dto.SmtpPort,
                 SmtpUsername = dto.SmtpUsername,
-                SmtpPassword = dto.SmtpPassword,
+                SmtpPassword = _credentialProtector.Encrypt(dto.SmtpPassword),
                 SmtpSenderEmail = dto.SmtpSenderEmail,
                 SmtpSenderName = dto.SmtpSenderName,
                 SmtpUseSsl = dto.SmtpUseSsl,
-                // Optional company AI settings (can also be configured later via UpdateSettings)
+                // Optional company AI settings — API keys encrypted at rest
                 AiDefaultProvider = dto.AiDefaultProvider,
-                AiClaudeApiKey = dto.AiClaudeApiKey,
+                AiClaudeApiKey = _credentialProtector.Encrypt(dto.AiClaudeApiKey),
                 AiClaudeModel = dto.AiClaudeModel,
-                AiOpenAiApiKey = dto.AiOpenAiApiKey,
+                AiOpenAiApiKey = _credentialProtector.Encrypt(dto.AiOpenAiApiKey),
                 AiOpenAiModel = dto.AiOpenAiModel,
-                AiGeminiApiKey = dto.AiGeminiApiKey,
+                AiGeminiApiKey = _credentialProtector.Encrypt(dto.AiGeminiApiKey),
                 AiGeminiModel = dto.AiGeminiModel,
                 AiOllamaBaseUrl = dto.AiOllamaBaseUrl,
                 AiOllamaModel = dto.AiOllamaModel,
@@ -781,21 +786,22 @@ public class CompanyController : ControllerBase
             if (dto.SmtpHost != null) settings.SmtpHost = dto.SmtpHost;
             if (dto.SmtpPort.HasValue) settings.SmtpPort = dto.SmtpPort;
             if (dto.SmtpUsername != null) settings.SmtpUsername = dto.SmtpUsername;
-            // SmtpPassword: null = keep existing, empty = clear, non-empty = update
-            if (dto.SmtpPassword != null) settings.SmtpPassword = dto.SmtpPassword;
+            // SmtpPassword: null = keep existing, empty = clear, non-empty = encrypt and update.
+            // Passwords and API keys are encrypted at rest using ICredentialProtector.
+            if (dto.SmtpPassword != null) settings.SmtpPassword = _credentialProtector.Encrypt(dto.SmtpPassword);
             if (dto.SmtpSenderEmail != null) settings.SmtpSenderEmail = dto.SmtpSenderEmail;
             if (dto.SmtpSenderName != null) settings.SmtpSenderName = dto.SmtpSenderName;
             if (dto.SmtpUseSsl.HasValue) settings.SmtpUseSsl = dto.SmtpUseSsl;
 
             // Update AI settings — same partial update pattern as SMTP.
             // null = keep existing, empty string = clear (fall back to system default).
+            // API keys are encrypted at rest using ICredentialProtector.
             if (dto.AiDefaultProvider != null) settings.AiDefaultProvider = dto.AiDefaultProvider;
-            // AiClaudeApiKey: null = keep existing, empty = clear, non-empty = update
-            if (dto.AiClaudeApiKey != null) settings.AiClaudeApiKey = dto.AiClaudeApiKey;
+            if (dto.AiClaudeApiKey != null) settings.AiClaudeApiKey = _credentialProtector.Encrypt(dto.AiClaudeApiKey);
             if (dto.AiClaudeModel != null) settings.AiClaudeModel = dto.AiClaudeModel;
-            if (dto.AiOpenAiApiKey != null) settings.AiOpenAiApiKey = dto.AiOpenAiApiKey;
+            if (dto.AiOpenAiApiKey != null) settings.AiOpenAiApiKey = _credentialProtector.Encrypt(dto.AiOpenAiApiKey);
             if (dto.AiOpenAiModel != null) settings.AiOpenAiModel = dto.AiOpenAiModel;
-            if (dto.AiGeminiApiKey != null) settings.AiGeminiApiKey = dto.AiGeminiApiKey;
+            if (dto.AiGeminiApiKey != null) settings.AiGeminiApiKey = _credentialProtector.Encrypt(dto.AiGeminiApiKey);
             if (dto.AiGeminiModel != null) settings.AiGeminiModel = dto.AiGeminiModel;
             if (dto.AiOllamaBaseUrl != null) settings.AiOllamaBaseUrl = dto.AiOllamaBaseUrl;
             if (dto.AiOllamaModel != null) settings.AiOllamaModel = dto.AiOllamaModel;

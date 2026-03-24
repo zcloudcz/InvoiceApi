@@ -66,6 +66,11 @@ public class EmailSmtpIntegrationTests
         var tenantResolver = Substitute.For<ITenantResolver>();
         var logger = Substitute.For<ILogger<EmailService>>();
 
+        // Pass-through credential protector — no encryption for integration test
+        var credentialProtector = Substitute.For<ICredentialProtector>();
+        credentialProtector.Encrypt(Arg.Any<string?>()).Returns(ci => ci.Arg<string?>());
+        credentialProtector.Decrypt(Arg.Any<string?>()).Returns(ci => ci.Arg<string?>());
+
         // No company context → skip tier 1, go straight to tier 2/3
         tenantResolver.GetCurrentCompanyId().Returns((long?)null);
 
@@ -76,7 +81,7 @@ public class EmailSmtpIntegrationTests
 
         var service = new EmailService(
             tenantContext, masterContext, pdfExport, contentTemplate,
-            systemConfig, tenantResolver, configuration, logger);
+            systemConfig, credentialProtector, tenantResolver, configuration, logger);
 
         // ── Act — send a real email ─────────────────────────────────────────
         await service.SendEmailAsync(

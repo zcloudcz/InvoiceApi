@@ -32,6 +32,7 @@ public class OneDriveStorageService : IExternalCloudStorage
 {
     private readonly MasterDbContext _masterContext;
     private readonly ITenantResolver _tenantResolver;
+    private readonly ICredentialProtector _credentialProtector;
     private readonly IConfiguration _configuration;
     private readonly ILogger<OneDriveStorageService> _logger;
     private readonly HttpClient _httpClient;
@@ -46,12 +47,14 @@ public class OneDriveStorageService : IExternalCloudStorage
     public OneDriveStorageService(
         MasterDbContext masterContext,
         ITenantResolver tenantResolver,
+        ICredentialProtector credentialProtector,
         IConfiguration configuration,
         ILogger<OneDriveStorageService> logger,
         HttpClient httpClient)
     {
         _masterContext = masterContext;
         _tenantResolver = tenantResolver;
+        _credentialProtector = credentialProtector;
         _configuration = configuration;
         _logger = logger;
         _httpClient = httpClient;
@@ -332,8 +335,17 @@ public class OneDriveStorageService : IExternalCloudStorage
         var companyId = _tenantResolver.GetCurrentCompanyId()
             ?? throw new InvalidOperationException("No company context — cannot access cloud storage settings.");
 
-        return await _masterContext.CompanySystemSettings
+        var settings = await _masterContext.CompanySystemSettings
             .FirstOrDefaultAsync(s => s.CompanyId == companyId, ct);
+
+        // Decrypt OAuth tokens — they are stored encrypted at rest in the database.
+        if (settings != null)
+        {
+            settings.OneDriveAccessToken = _credentialProtector.Decrypt(settings.OneDriveAccessToken);
+            settings.OneDriveRefreshToken = _credentialProtector.Decrypt(settings.OneDriveRefreshToken);
+        }
+
+        return settings;
     }
 
     /// <summary>
@@ -350,12 +362,13 @@ public class OneDriveStorageService : IExternalCloudStorage
             ?? throw new InvalidOperationException($"CompanySystemSettings not found for company {companyId}.");
 
         settings.OneDriveEnabled = true;
-        settings.OneDriveAccessToken = accessToken;
+        // Encrypt OAuth tokens before storing — they contain sensitive bearer credentials.
+        settings.OneDriveAccessToken = _credentialProtector.Encrypt(accessToken);
         settings.OneDriveTokenExpiresAt = DateTime.UtcNow.AddSeconds(expiresInSeconds - 60); // 60s buffer
 
         if (!string.IsNullOrEmpty(refreshToken))
         {
-            settings.OneDriveRefreshToken = refreshToken;
+            settings.OneDriveRefreshToken = _credentialProtector.Encrypt(refreshToken);
         }
 
         await _masterContext.SaveChangesAsync(ct);

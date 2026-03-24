@@ -31,6 +31,7 @@ public class EmailService : IEmailService
     private readonly IPdfExportService _pdfExportService;
     private readonly IContentTemplateService _contentTemplateService;
     private readonly ISystemConfigurationService _systemConfigService;
+    private readonly ICredentialProtector _credentialProtector;
     private readonly ITenantResolver _tenantResolver;
     private readonly IConfiguration _configuration;
     private readonly ILogger<EmailService> _logger;
@@ -55,6 +56,7 @@ public class EmailService : IEmailService
         IPdfExportService pdfExportService,
         IContentTemplateService contentTemplateService,
         ISystemConfigurationService systemConfigService,
+        ICredentialProtector credentialProtector,
         ITenantResolver tenantResolver,
         IConfiguration configuration,
         ILogger<EmailService> logger)
@@ -64,6 +66,7 @@ public class EmailService : IEmailService
         _pdfExportService = pdfExportService;
         _contentTemplateService = contentTemplateService;
         _systemConfigService = systemConfigService;
+        _credentialProtector = credentialProtector;
         _tenantResolver = tenantResolver;
         _configuration = configuration;
         _logger = logger;
@@ -320,7 +323,8 @@ public class EmailService : IEmailService
                     Host: companySettings.SmtpHost,
                     Port: companySettings.SmtpPort ?? 465,
                     Username: companySettings.SmtpUsername,
-                    Password: companySettings.SmtpPassword,
+                    // Decrypt the SMTP password — it's stored encrypted at rest in the database.
+                    Password: _credentialProtector.Decrypt(companySettings.SmtpPassword),
                     SenderEmail: companySettings.SmtpSenderEmail
                                  ?? companySettings.SmtpUsername ?? "",
                     SenderName: companySettings.SmtpSenderName ?? "Invoice",

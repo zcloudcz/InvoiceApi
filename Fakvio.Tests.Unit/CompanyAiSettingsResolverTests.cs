@@ -60,9 +60,14 @@ public class CompanyAiSettingsResolverTests : IDisposable
         _loggerFactory.CreateLogger(Arg.Any<string>()).Returns(Substitute.For<ILogger>());
         _logger = Substitute.For<ILogger<CompanyAiSettingsResolver>>();
 
+        // Pass-through credential protector — no real encryption in unit tests
+        var credentialProtector = Substitute.For<ICredentialProtector>();
+        credentialProtector.Encrypt(Arg.Any<string?>()).Returns(ci => ci.Arg<string?>());
+        credentialProtector.Decrypt(Arg.Any<string?>()).Returns(ci => ci.Arg<string?>());
+
         _resolver = new CompanyAiSettingsResolver(
             _masterContext, _globalFactory,
-            _globalSettings, httpClientFactory, _loggerFactory, _logger);
+            _globalSettings, credentialProtector, httpClientFactory, _loggerFactory, _logger);
     }
 
     public void Dispose()

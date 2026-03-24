@@ -95,8 +95,14 @@ public static class ServiceCollectionExtensions
         // ZMapper — source-generated object mapping (compile-time, zero reflection overhead)
         services.AddZMapper();
 
-        // Data Protection — used by TwoFactorService for encrypting TOTP secrets and session tokens
+        // Data Protection — used by TwoFactorService for encrypting TOTP secrets and session tokens,
+        // and by CredentialProtector for encrypting SMTP passwords, AI API keys, and OAuth tokens at rest.
         services.AddDataProtection();
+
+        // Credential encryption — encrypts sensitive fields (passwords, API keys, OAuth tokens)
+        // before storing them in the database, and decrypts on read. Singleton because
+        // IDataProtector is thread-safe and the purpose string never changes.
+        services.AddSingleton<ICredentialProtector, CredentialProtector>();
 
         // ── Application Services (with automatic logging proxy) ──────────────
         // AddScopedWithLogging wraps each service in LoggingProxy which automatically

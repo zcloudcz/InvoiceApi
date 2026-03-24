@@ -1,3 +1,4 @@
+using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.SystemConfiguration;
 using Fakvio.Domain.Entities;
 using Fakvio.Infrastructure.Data;
@@ -30,7 +31,13 @@ public class SystemConfigurationServiceTests : IDisposable
 
         _context = new MasterDbContext(options);
         var logger = Substitute.For<ILogger<SystemConfigurationService>>();
-        _service = new SystemConfigurationService(_context, logger);
+
+        // Pass-through credential protector — no real encryption in unit tests
+        var credentialProtector = Substitute.For<ICredentialProtector>();
+        credentialProtector.Encrypt(Arg.Any<string?>()).Returns(ci => ci.Arg<string?>());
+        credentialProtector.Decrypt(Arg.Any<string?>()).Returns(ci => ci.Arg<string?>());
+
+        _service = new SystemConfigurationService(_context, credentialProtector, logger);
     }
 
     public void Dispose()

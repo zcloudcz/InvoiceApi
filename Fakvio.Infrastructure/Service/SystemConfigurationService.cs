@@ -1,5 +1,5 @@
-using Fakvio.Contracts.Dto.SystemConfiguration;
 using Fakvio.Application.Service;
+using Fakvio.Contracts.Dto.SystemConfiguration;
 using Fakvio.Domain.Entities;
 using Fakvio.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -21,11 +21,16 @@ namespace Fakvio.Infrastructure.Service;
 public class SystemConfigurationService : ISystemConfigurationService
 {
     private readonly MasterDbContext _context;
+    private readonly ICredentialProtector _credentialProtector;
     private readonly ILogger<SystemConfigurationService> _logger;
 
-    public SystemConfigurationService(MasterDbContext context, ILogger<SystemConfigurationService> logger)
+    public SystemConfigurationService(
+        MasterDbContext context,
+        ICredentialProtector credentialProtector,
+        ILogger<SystemConfigurationService> logger)
     {
         _context = context;
+        _credentialProtector = credentialProtector;
         _logger = logger;
     }
 
@@ -41,11 +46,12 @@ public class SystemConfigurationService : ISystemConfigurationService
     {
         var entity = await GetOrCreateAsync(ct);
 
-        // Update all fields from the DTO
+        // Update all fields from the DTO.
+        // SmtpPassword is encrypted at rest using ICredentialProtector (Data Protection API).
         entity.SmtpHost = dto.SmtpHost;
         entity.SmtpPort = dto.SmtpPort;
         entity.SmtpUsername = dto.SmtpUsername;
-        entity.SmtpPassword = dto.SmtpPassword;
+        entity.SmtpPassword = _credentialProtector.Encrypt(dto.SmtpPassword);
         entity.SmtpSenderEmail = dto.SmtpSenderEmail;
         entity.SmtpSenderName = dto.SmtpSenderName;
         entity.SmtpUseSsl = dto.SmtpUseSsl;
@@ -89,8 +95,9 @@ public class SystemConfigurationService : ISystemConfigurationService
 
     /// <summary>
     /// Maps the SystemConfiguration entity to a DTO for API responses.
+    /// SmtpPassword is decrypted from the database — it's stored encrypted at rest.
     /// </summary>
-    private static SystemConfigurationDto MapToDto(SystemConfiguration entity)
+    private SystemConfigurationDto MapToDto(SystemConfiguration entity)
     {
         return new SystemConfigurationDto
         {
@@ -98,7 +105,9 @@ public class SystemConfigurationService : ISystemConfigurationService
             SmtpHost = entity.SmtpHost,
             SmtpPort = entity.SmtpPort,
             SmtpUsername = entity.SmtpUsername,
-            SmtpPassword = entity.SmtpPassword,
+            // Decrypt the password for downstream consumers (EmailService, SysAdmin UI).
+            // Migration-safe: if the value is legacy plaintext, Decrypt returns it unchanged.
+            SmtpPassword = _credentialProtector.Decrypt(entity.SmtpPassword),
             SmtpSenderEmail = entity.SmtpSenderEmail,
             SmtpSenderName = entity.SmtpSenderName,
             SmtpUseSsl = entity.SmtpUseSsl,
