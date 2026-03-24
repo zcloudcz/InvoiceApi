@@ -2,6 +2,18 @@ html, body {
     font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
 }
 
+/* Initial dark background before MudBlazor loads — prevents white flash on WASM startup.
+   Once MudThemeProvider renders, it applies .mud-theme-dark or removes it,
+   and MudBlazor's own background CSS takes over. */
+body {
+    background: #1e1e2e;
+}
+/* MudLayout sets the background via its own CSS classes, but the body background
+   bleeds through on MudMainContent. Let MudBlazor's theme variables control it. */
+.mud-main-content {
+    background-color: var(--mud-palette-background);
+}
+
 a, .btn-link {
     color: #006bb7;
 }
@@ -57,6 +69,19 @@ h1:focus {
 
 .form-floating > .form-control-plaintext:focus::placeholder, .form-floating > .form-control:focus::placeholder {
     text-align: start;
+}
+
+/* AppBar select (company impersonation dropdown) — inherits text color from MudAppBar.
+   MudAppBar uses white text on dark theme, dark text on light theme.
+   Previously hardcoded "color: white" which was invisible on light theme. */
+.appbar-select .mud-input {
+    color: inherit !important;
+}
+.appbar-select .mud-input-control .mud-input-label {
+    color: inherit !important;
+}
+.appbar-select .mud-select-input .mud-icon-root {
+    color: inherit !important;
 }
 
 /* Clickable dashboard cards and table rows — shows pointer cursor on hover */

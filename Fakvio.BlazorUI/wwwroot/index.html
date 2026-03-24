@@ -31,8 +31,10 @@
     <title>Fakvio</title>
 </head>
 
-<!-- Dark background prevents white flash before Blazor dark theme loads -->
-<body style="background:#1e1e2e;">
+<!-- Initial dark background prevents white flash before Blazor WASM loads.
+     Once MudThemeProvider renders, it takes over body background via CSS class.
+     The inline style is removed by Blazor startup (MudThemeProvider sets mud-theme-dark/light). -->
+<body>
     <!-- Blazor WASM root component — App.razor is mounted here by Program.cs -->
     <div id="app">
         <!-- Loading indicator shown while WASM runtime downloads (~2-5 MB first load).

@@ -31,11 +31,13 @@
                 <Authorized>
                     @* Impersonation selector — only visible for SysAdmin *@
                     <AuthorizeView Roles="SysAdmin" Context="sysAdminImpContext">
+                        @* Company selector — uses Color.Inherit so text color follows AppBar theme
+                           (white on dark AppBar, dark on light AppBar) instead of hardcoded white *@
                         <MudSelect T="long?" Value="_impersonatedCompanyId"
                                    ValueChanged="OnImpersonatedCompanyChanged"
                                    Label="" Placeholder="Zvolit společnost..."
                                    Variant="Variant.Outlined" Dense="true" Margin="Margin.Dense"
-                                   Class="mr-4" Style="min-width: 220px; color: white;"
+                                   Class="mr-4 appbar-select" Style="min-width: 220px;"
                                    Clearable="true"
                                    ToStringFunc="@(id => _availableCompanies.FirstOrDefault(c => c.Id == id)?.CompanyName ?? L["Layout_NoCompany"].Value)">
                             @foreach (var company in _availableCompanies)
