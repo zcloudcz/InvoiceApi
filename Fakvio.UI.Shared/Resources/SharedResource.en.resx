@@ -613,6 +613,13 @@
   <data name="SystemSettings_Subtitle" xml:space="preserve">
     <value>Configure SMTP email and JWT token settings. Changes take effect immediately.</value>
   </data>
+  <data name="Cookie_Text" xml:space="preserve"><value>This application uses cookies and localStorage to ensure proper functionality, authentication, and to save your preferences. By using the application, you agree to their use.</value></data>
+  <data name="Cookie_Accept" xml:space="preserve"><value>I understand</value></data>
+  <data name="SystemSettings_AppTitle" xml:space="preserve"><value>Application Settings</value></data>
+  <data name="SystemSettings_AppName" xml:space="preserve"><value>Application Name</value></data>
+  <data name="SystemSettings_AppNameHint" xml:space="preserve"><value>Shown in emails, QR codes, and page titles</value></data>
+  <data name="SystemSettings_BlazorBaseUrl" xml:space="preserve"><value>Application URL (Blazor UI)</value></data>
+  <data name="SystemSettings_BlazorBaseUrlHint" xml:space="preserve"><value>Used for email links (invitations, password reset). No trailing slash.</value></data>
   <data name="SystemSettings_SmtpTitle" xml:space="preserve">
     <value>SMTP Settings</value>
   </data>

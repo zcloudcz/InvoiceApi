@@ -41,8 +41,16 @@ var host = new HostBuilder()
     // NOTE: This does NOT enable MVC routing (MapControllers) — each function handles its own route.
     .ConfigureFunctionsWebApplication(app =>
     {
+        // ── Global Exception Handler ─────────────────────────────────────────────
+        // MUST be the VERY FIRST middleware — wraps the entire pipeline.
+        // Catches unhandled exceptions from ALL subsequent middleware (CORS, JWT,
+        // tenant, etc.) and function code, then logs them via ILogger → AppLog DB.
+        // Without this, unhandled exceptions go ONLY to App Insights and never
+        // appear in the application's AppLog table.
+        app.UseMiddleware<GlobalExceptionMiddleware>();
+
         // ── CorrelationId Middleware ──────────────────────────────────────────────
-        // MUST be first in the pipeline — before CORS, JWT, etc.
+        // MUST be second — before CORS, JWT, etc.
         // Reads X-Correlation-Id from incoming request (or generates a new GUID),
         // stores it in HttpContext.Items and DatabaseLoggerProvider.CurrentCorrelationId,
         // and adds it to the response headers for client-side debugging.

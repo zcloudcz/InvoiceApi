@@ -613,6 +613,13 @@
   <data name="SystemSettings_Subtitle" xml:space="preserve">
     <value>Konfigurace SMTP emailu a JWT tokenů. Změny se projeví okamžitě.</value>
   </data>
+  <data name="Cookie_Text" xml:space="preserve"><value>Tato aplikace používá cookies a localStorage pro zajištění správného fungování, přihlášení a uložení vašich preferencí. Používáním aplikace souhlasíte s jejich využitím.</value></data>
+  <data name="Cookie_Accept" xml:space="preserve"><value>Rozumím</value></data>
+  <data name="SystemSettings_AppTitle" xml:space="preserve"><value>Nastavení aplikace</value></data>
+  <data name="SystemSettings_AppName" xml:space="preserve"><value>Název aplikace</value></data>
+  <data name="SystemSettings_AppNameHint" xml:space="preserve"><value>Zobrazuje se v emailech, QR kódech a nadpisech stránek</value></data>
+  <data name="SystemSettings_BlazorBaseUrl" xml:space="preserve"><value>URL aplikace (Blazor UI)</value></data>
+  <data name="SystemSettings_BlazorBaseUrlHint" xml:space="preserve"><value>Používá se v emailových odkazech (pozvánky, reset hesla). Bez lomítka na konci.</value></data>
   <data name="SystemSettings_SmtpTitle" xml:space="preserve">
     <value>Nastavení SMTP</value>
   </data>

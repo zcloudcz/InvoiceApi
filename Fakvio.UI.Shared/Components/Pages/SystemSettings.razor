@@ -44,6 +44,46 @@ else
     </div>
 
     <MudGrid>
+        @* Card 0: Application Settings (AppName, BlazorBaseUrl) *@
+        <MudItem xs="12" md="6">
+            <MudCard Elevation="2" Class="mb-4">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">
+                            <MudIcon Icon="@Icons.Material.Filled.Settings" Class="mr-2" />
+                            @L["SystemSettings_AppTitle"]
+                        </MudText>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    @if (_isEditing)
+                    {
+                        <MudTextField @bind-Value="_editDto.AppName"
+                                      Label="@L["SystemSettings_AppName"].Value"
+                                      Placeholder="Fakvio" Class="mb-3"
+                                      HelperText="@L["SystemSettings_AppNameHint"].Value" />
+                        <MudTextField @bind-Value="_editDto.BlazorBaseUrl"
+                                      Label="@L["SystemSettings_BlazorBaseUrl"].Value"
+                                      Placeholder="https://app.fakvio.cz" Class="mb-3"
+                                      HelperText="@L["SystemSettings_BlazorBaseUrlHint"].Value" />
+                    }
+                    else
+                    {
+                        <MudList T="string" Dense="true">
+                            <MudListItem T="string">
+                                <strong>@L["SystemSettings_AppName"]:</strong>
+                                @(_config?.AppName ?? "Fakvio")
+                            </MudListItem>
+                            <MudListItem T="string">
+                                <strong>@L["SystemSettings_BlazorBaseUrl"]:</strong>
+                                @(string.IsNullOrEmpty(_config?.BlazorBaseUrl) ? "—" : _config.BlazorBaseUrl)
+                            </MudListItem>
+                        </MudList>
+                    }
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+
         @* Card 1: SMTP Settings *@
         <MudItem xs="12" md="6">
             <MudCard Elevation="2" Class="mb-4">
@@ -202,6 +242,11 @@ else
 
         _editDto = new UpdateSystemConfigurationDto
         {
+            // Application settings
+            AppName = _config.AppName,
+            BlazorBaseUrl = _config.BlazorBaseUrl,
+            // SMTP settings — SmtpPassword is null here so it won't overwrite
+            // the existing encrypted password unless the user explicitly changes it.
             SmtpHost = _config.SmtpHost,
             SmtpPort = _config.SmtpPort,
             SmtpUsername = _config.SmtpUsername,
@@ -209,6 +254,7 @@ else
             SmtpSenderEmail = _config.SmtpSenderEmail,
             SmtpSenderName = _config.SmtpSenderName,
             SmtpUseSsl = _config.SmtpUseSsl,
+            // JWT settings
             JwtExpirationHours = _config.JwtExpirationHours
         };
         _isEditing = true;

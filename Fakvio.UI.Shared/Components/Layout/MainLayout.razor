@@ -9,6 +9,7 @@
 @inject CompanyApiService CompanyService
 @inject IStringLocalizer<SharedResource> L
 @inject AppStateService AppState
+@inject IJSRuntime JS
 @implements IDisposable
 
 @* NOTE: CascadingAuthenticationState is provided by App.razor — no need to wrap here.
@@ -114,12 +115,32 @@
                 @Body
             </MudContainer>
         </MudMainContent>
+
+        @* GDPR cookie consent banner — shown until user accepts *@
+        @if (!_cookiesAccepted)
+        {
+            <MudPaper Elevation="8" Class="cookie-banner pa-4"
+                      Style="position:fixed;bottom:0;left:0;right:0;z-index:9999;">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Spacing="4" Class="flex-wrap">
+                    <MudText Typo="Typo.body2">
+                        @L["Cookie_Text"]
+                    </MudText>
+                    <MudStack Row="true" Spacing="2">
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                                   OnClick="AcceptCookies">
+                            @L["Cookie_Accept"]
+                        </MudButton>
+                    </MudStack>
+                </MudStack>
+            </MudPaper>
+        }
     </MudLayout>
 
 @code {
     private bool _drawerOpen = true;
     private bool _isDarkMode;
     private bool _chatOpen;
+    private bool _cookiesAccepted = true; // default true to avoid flash
 
     /// <summary>
     /// Returns the logo image path based on the current theme.
@@ -147,10 +168,23 @@
         _chatOpen = !_chatOpen;
     }
 
+    /// <summary>
+    /// Accepts cookies — stores consent in localStorage so the banner doesn't show again.
+    /// </summary>
+    private async Task AcceptCookies()
+    {
+        _cookiesAccepted = true;
+        await JS.InvokeVoidAsync("localStorage.setItem", "cookieConsent", "true");
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
         {
+            // Check if user already accepted cookies
+            var consent = await JS.InvokeAsync<string?>("localStorage.getItem", "cookieConsent");
+            _cookiesAccepted = consent == "true";
+            StateHasChanged();
             // Subscribe to company list changes (e.g., CompanyDetail creates a new company).
             // This replaces forceLoad: true navigation which restarts the WASM app.
             AppState.OnCompanyListChanged += OnCompanyListChanged;
