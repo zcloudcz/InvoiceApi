@@ -912,33 +912,37 @@ public class InvoiceService : IInvoiceService
     {
         _logger.LogInformation("Generating document number for {DocumentType} invoice {Id}", invoice.DocumentType, invoice.Id);
 
-        // Load issuer with billing settings to check for custom sequences
-        var issuer = await _context.Client
+        // Load the CLIENT (customer) with billing settings to check for custom sequences.
+        // BillingSettings defines how invoices should be generated FOR this particular client
+        // (e.g., "-EU" suffix for EU clients, custom sequence for export invoices).
+        // BUG FIX: Previously loaded Issuer instead of Client, which meant client-specific
+        // prefix/suffix/sequence settings were always ignored.
+        var client = await _context.Client
             .Include(c => c.BillingSettings)
-            .FirstOrDefaultAsync(c => c.Id == invoice.IssuerId, cancellationToken);
+            .FirstOrDefaultAsync(c => c.Id == invoice.ClientId, cancellationToken);
 
         string? customPrefix = null;
         string? customSuffix = null;
         long? customSequenceId = null;
 
-        // Priority: 1) explicit override (from template), 2) issuer's billing settings
+        // Priority: 1) explicit override (from template), 2) client's billing settings
         if (overrideSequenceId.HasValue)
         {
             customSequenceId = overrideSequenceId.Value;
         }
-        else if (issuer?.BillingSettings != null)
+        else if (client?.BillingSettings != null)
         {
             if (invoice.DocumentType == EDocumentType.Invoice)
             {
-                customSequenceId = issuer.BillingSettings.CustomInvoiceNumberSequenceId;
-                customPrefix = issuer.BillingSettings.InvoiceNumberPrefix;
-                customSuffix = issuer.BillingSettings.InvoiceNumberSuffix;
+                customSequenceId = client.BillingSettings.CustomInvoiceNumberSequenceId;
+                customPrefix = client.BillingSettings.InvoiceNumberPrefix;
+                customSuffix = client.BillingSettings.InvoiceNumberSuffix;
             }
             else if (invoice.DocumentType == EDocumentType.CreditNote)
             {
-                customSequenceId = issuer.BillingSettings.CustomCreditNoteNumberSequenceId;
-                customPrefix = issuer.BillingSettings.CreditNoteNumberPrefix;
-                customSuffix = issuer.BillingSettings.CreditNoteNumberSuffix;
+                customSequenceId = client.BillingSettings.CustomCreditNoteNumberSequenceId;
+                customPrefix = client.BillingSettings.CreditNoteNumberPrefix;
+                customSuffix = client.BillingSettings.CreditNoteNumberSuffix;
             }
         }
 
