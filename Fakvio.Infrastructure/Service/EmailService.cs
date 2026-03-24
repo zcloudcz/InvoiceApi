@@ -338,11 +338,15 @@ public class EmailService : IEmailService
         {
             _logger.LogInformation("Using system SMTP ({Host})", dbConfig.SmtpHost);
 
+            // Password is fetched separately via GetSmtpPasswordAsync — it's NOT in the DTO
+            // (removed to prevent the UI from receiving and re-sending it on every save).
+            var smtpPassword = await _systemConfigService.GetSmtpPasswordAsync(ct);
+
             return new SmtpSettings(
                 Host: dbConfig.SmtpHost,
                 Port: dbConfig.SmtpPort,
                 Username: dbConfig.SmtpUsername,
-                Password: dbConfig.SmtpPassword,
+                Password: smtpPassword,
                 SenderEmail: dbConfig.SmtpSenderEmail,
                 SenderName: dbConfig.SmtpSenderName,
                 UseSsl: dbConfig.SmtpUseSsl);

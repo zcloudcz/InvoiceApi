@@ -632,9 +632,9 @@
   <data name="SystemSettings_SmtpUsername" xml:space="preserve">
     <value>Uživatelské jméno</value>
   </data>
-  <data name="SystemSettings_SmtpPassword" xml:space="preserve">
-    <value>Heslo</value>
-  </data>
+  <data name="SystemSettings_SmtpPassword" xml:space="preserve"><value>Heslo</value></data>
+  <data name="SystemSettings_SmtpPasswordUnchanged" xml:space="preserve"><value>Ponechat stávající heslo</value></data>
+  <data name="SystemSettings_SmtpPasswordHint" xml:space="preserve"><value>Ponechte prázdné pro zachování stávajícího hesla</value></data>
   <data name="SystemSettings_SmtpSenderEmail" xml:space="preserve">
     <value>Email odesílatele</value>
   </data>

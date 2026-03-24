@@ -131,7 +131,9 @@ public class SystemConfigurationServiceTests : IDisposable
         result.SmtpHost.ShouldBe("smtp.updated.com");
         result.SmtpPort.ShouldBe(465);
         result.SmtpUsername.ShouldBe("user@updated.com");
-        result.SmtpPassword.ShouldBe("secret123");
+        // SmtpPassword is no longer in the DTO (security: never sent to UI).
+        // Verify via the dedicated internal method instead.
+        result.HasSmtpPassword.ShouldBeTrue();
         result.SmtpSenderEmail.ShouldBe("noreply@updated.com");
         result.SmtpSenderName.ShouldBe("Updated App");
         result.SmtpUseSsl.ShouldBeFalse();

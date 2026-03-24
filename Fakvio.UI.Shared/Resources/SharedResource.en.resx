@@ -632,9 +632,9 @@
   <data name="SystemSettings_SmtpUsername" xml:space="preserve">
     <value>Username</value>
   </data>
-  <data name="SystemSettings_SmtpPassword" xml:space="preserve">
-    <value>Password</value>
-  </data>
+  <data name="SystemSettings_SmtpPassword" xml:space="preserve"><value>Password</value></data>
+  <data name="SystemSettings_SmtpPasswordUnchanged" xml:space="preserve"><value>Keep existing password</value></data>
+  <data name="SystemSettings_SmtpPasswordHint" xml:space="preserve"><value>Leave empty to keep the current password</value></data>
   <data name="SystemSettings_SmtpSenderEmail" xml:space="preserve">
     <value>Sender Email</value>
   </data>

@@ -102,9 +102,16 @@ public class SystemConfigurationService : ISystemConfigurationService
         return defaultConfig;
     }
 
+    /// <inheritdoc />
+    public async Task<string?> GetSmtpPasswordAsync(CancellationToken ct = default)
+    {
+        var entity = await GetOrCreateAsync(ct);
+        return _credentialProtector.Decrypt(entity.SmtpPassword);
+    }
+
     /// <summary>
     /// Maps the SystemConfiguration entity to a DTO for API responses.
-    /// SmtpPassword is decrypted from the database — it's stored encrypted at rest.
+    /// SmtpPassword is NOT included — only a HasSmtpPassword flag.
     /// </summary>
     private SystemConfigurationDto MapToDto(SystemConfiguration entity)
     {
@@ -118,9 +125,9 @@ public class SystemConfigurationService : ISystemConfigurationService
             SmtpHost = entity.SmtpHost,
             SmtpPort = entity.SmtpPort,
             SmtpUsername = entity.SmtpUsername,
-            // Decrypt the password for downstream consumers (EmailService, SysAdmin UI).
-            // Migration-safe: if the value is legacy plaintext, Decrypt returns it unchanged.
-            SmtpPassword = _credentialProtector.Decrypt(entity.SmtpPassword),
+            // Password is NEVER sent to the UI — only a boolean flag.
+            // EmailService uses GetSmtpPasswordAsync() to read the actual password internally.
+            HasSmtpPassword = !string.IsNullOrEmpty(entity.SmtpPassword),
             SmtpSenderEmail = entity.SmtpSenderEmail,
             SmtpSenderName = entity.SmtpSenderName,
             SmtpUseSsl = entity.SmtpUseSsl,

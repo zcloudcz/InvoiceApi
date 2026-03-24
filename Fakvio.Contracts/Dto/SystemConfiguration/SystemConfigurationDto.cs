@@ -20,9 +20,13 @@ public class SystemConfigurationDto
     public string SmtpHost { get; set; } = "";
     public int SmtpPort { get; set; } = 587;
     public string? SmtpUsername { get; set; }
-    // NOTE: Password is intentionally included so SysAdmin can see the current value.
-    // The API is SysAdmin-only, and there's no public exposure.
-    public string? SmtpPassword { get; set; }
+    /// <summary>
+    /// SMTP password is NEVER sent to the UI — only this boolean flag.
+    /// This prevents the password from being re-sent on every save,
+    /// which caused unwanted re-encryption or accidental clearing.
+    /// The actual password stays encrypted in the database.
+    /// </summary>
+    public bool HasSmtpPassword { get; set; }
     public string SmtpSenderEmail { get; set; } = "";
     public string SmtpSenderName { get; set; } = "Fakvio";
     public bool SmtpUseSsl { get; set; } = true;

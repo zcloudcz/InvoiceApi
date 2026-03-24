@@ -108,7 +108,9 @@ else
                                       Label="@L["SystemSettings_SmtpUsername"].Value" Class="mb-3" />
                         <MudTextField @bind-Value="_editDto.SmtpPassword"
                                       Label="@L["SystemSettings_SmtpPassword"].Value"
-                                      InputType="InputType.Password" Class="mb-3" />
+                                      InputType="InputType.Password" Class="mb-3"
+                                      Placeholder="@(_config?.HasSmtpPassword == true ? L["SystemSettings_SmtpPasswordUnchanged"].Value : "")"
+                                      HelperText="@L["SystemSettings_SmtpPasswordHint"].Value" />
                         <MudTextField @bind-Value="_editDto.SmtpSenderEmail"
                                       Label="@L["SystemSettings_SmtpSenderEmail"].Value"
                                       InputType="InputType.Email" Class="mb-3" />
@@ -134,7 +136,7 @@ else
                             </MudListItem>
                             <MudListItem T="string">
                                 <strong>@L["SystemSettings_SmtpPassword"]:</strong>
-                                @(string.IsNullOrEmpty(_config?.SmtpPassword) ? "—" : "••••••••")
+                                @(_config?.HasSmtpPassword == true ? "••••••••" : "—")
                             </MudListItem>
                             <MudListItem T="string">
                                 <strong>@L["SystemSettings_SmtpSenderEmail"]:</strong>
@@ -245,12 +247,13 @@ else
             // Application settings
             AppName = _config.AppName,
             BlazorBaseUrl = _config.BlazorBaseUrl,
-            // SMTP settings — SmtpPassword is null here so it won't overwrite
-            // the existing encrypted password unless the user explicitly changes it.
+            // SMTP settings — SmtpPassword is null so it won't overwrite the existing
+            // encrypted password. The user must explicitly type a new password to change it.
+            // The server never sends the actual password — only HasSmtpPassword flag.
             SmtpHost = _config.SmtpHost,
             SmtpPort = _config.SmtpPort,
             SmtpUsername = _config.SmtpUsername,
-            SmtpPassword = _config.SmtpPassword,
+            SmtpPassword = null,
             SmtpSenderEmail = _config.SmtpSenderEmail,
             SmtpSenderName = _config.SmtpSenderName,
             SmtpUseSsl = _config.SmtpUseSsl,

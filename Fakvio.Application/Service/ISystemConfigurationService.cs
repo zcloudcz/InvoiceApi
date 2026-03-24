@@ -20,4 +20,11 @@ public interface ISystemConfigurationService
     /// Creates a default record first if none exists.
     /// </summary>
     Task<SystemConfigurationDto> UpdateAsync(UpdateSystemConfigurationDto dto, CancellationToken ct = default);
+
+    /// <summary>
+    /// Gets the decrypted SMTP password for internal service use (EmailService).
+    /// This is NOT exposed via API — the password never leaves the server.
+    /// Returns null if no password is configured.
+    /// </summary>
+    Task<string?> GetSmtpPasswordAsync(CancellationToken ct = default);
 }
