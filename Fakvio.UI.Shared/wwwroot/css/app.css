@@ -2,17 +2,10 @@ html, body {
     font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
 }
 
-/* Initial dark background before MudBlazor loads — prevents white flash on WASM startup.
-   Once MudThemeProvider renders, it applies .mud-theme-dark or removes it,
-   and MudBlazor's own background CSS takes over. */
-body {
-    background: #1e1e2e;
-}
-/* MudLayout sets the background via its own CSS classes, but the body background
-   bleeds through on MudMainContent. Let MudBlazor's theme variables control it. */
-.mud-main-content {
-    background-color: var(--mud-palette-background);
-}
+/* DO NOT set background-color on body — MudBlazor.min.css already does:
+   body { background-color: var(--mud-palette-background) }
+   Adding another rule here would override MudBlazor's theme-aware background.
+   The initial dark flash during WASM load is handled by index.html #app div. */
 
 a, .btn-link {
     color: #006bb7;
