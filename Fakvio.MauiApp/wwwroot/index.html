@@ -54,6 +54,23 @@
     <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
     <script src="_content/Blazored.TextEditor/quill-blot-formatter.min.js"></script>
     <script src="_content/Blazored.TextEditor/Blazored-BlazorQuill.js"></script>
+    <!-- Fix: Blazored.TextEditor's createQuill does NOT store the Quill instance
+         on the DOM element, causing "Cannot read properties of undefined" errors.
+         This patch stores the instance so subsequent API calls work. -->
+    <script>
+        (function () {
+            var originalCreateQuill = window.QuillFunctions.createQuill;
+            window.QuillFunctions.createQuill = function (
+                quillElement, toolBar, readOnly,
+                placeholder, theme, formats, debugLevel) {
+                originalCreateQuill(quillElement, toolBar, readOnly,
+                    placeholder, theme, formats, debugLevel);
+                if (!quillElement.__quill) {
+                    quillElement.__quill = Quill.find(quillElement);
+                }
+            };
+        })();
+    </script>
     <!-- Custom JS for file download from the shared RCL -->
     <script src="_content/Fakvio.UI.Shared/js/download.js"></script>
 </body>
