@@ -374,9 +374,12 @@ public class TenantDbContext : DbContext
             // Excludes "DRAFT" placeholder (new invoices start as "DRAFT" and get a real number on creation).
             // Multiple DRAFTs are allowed, but once a real number is assigned it must be unique.
             // PostgreSQL filtered index syntax uses double-quoted identifiers
+            // Unique document number — excludes NULLs, "DRAFT" placeholders, and soft-deleted invoices.
+            // Deleted invoices (Status=5) must NOT block new invoices from reusing the same number.
+            // PostgreSQL filtered index syntax uses double-quoted identifiers.
             entity.HasIndex(e => e.DocumentNumber)
                 .IsUnique()
-                .HasFilter("\"DocumentNumber\" IS NOT NULL AND \"DocumentNumber\" <> 'DRAFT'");
+                .HasFilter("\"DocumentNumber\" IS NOT NULL AND \"DocumentNumber\" <> 'DRAFT' AND \"Status\" <> 5");
             entity.HasIndex(e => e.DocumentType);
             entity.HasIndex(e => e.Status);
             entity.HasIndex(e => e.ClientId);

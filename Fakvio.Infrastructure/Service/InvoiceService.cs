@@ -628,14 +628,19 @@ public class InvoiceService : IInvoiceService
         _logger.LogInformation("Deleting {DocumentType} {Id} (Status={Status}, DocumentNumber={DocNum})",
             invoice.DocumentType, invoice.Id, invoice.Status, invoice.DocumentNumber);
 
-        invoice.Status = EInvoiceStatus.Deleted;
-        await _context.SaveChangesAsync(cancellationToken);
-
         // Try to release the document number back to the sequence so it can be reused.
         // This only works if the deleted invoice had the LAST number in the sequence.
         // If another invoice was generated after this one, the number stays consumed
         // to avoid gaps in the middle of the sequence.
         await TryReleaseDocumentNumberAsync(invoice, cancellationToken);
+
+        // Soft delete: mark as Deleted and clear DocumentNumber.
+        // The unique index IX_Invoice_DocumentNumber excludes Status=5 (Deleted),
+        // but clearing the number explicitly prevents any edge cases and makes it
+        // obvious in the DB that the number is no longer in use.
+        invoice.Status = EInvoiceStatus.Deleted;
+        invoice.DocumentNumber = null;
+        await _context.SaveChangesAsync(cancellationToken);
 
         return true;
     }
@@ -921,12 +926,9 @@ public class InvoiceService : IInvoiceService
             if (released)
             {
                 _logger.LogInformation(
-                    "Released document number '{DocNum}' for {DocumentType} — will be reused",
+                    "Released document number '{DocNum}' for {DocumentType} — counter decremented, will be reused",
                     invoice.DocumentNumber, invoice.DocumentType);
-
-                // Clear the document number on the deleted invoice to avoid confusion.
-                invoice.DocumentNumber = null;
-                await _context.SaveChangesAsync(ct);
+                // DocumentNumber is cleared by the caller (DeleteInvoiceAsync) after this method returns.
             }
             else
             {
