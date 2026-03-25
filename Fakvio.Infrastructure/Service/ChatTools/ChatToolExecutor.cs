@@ -114,6 +114,17 @@ public partial class ChatToolExecutor : IChatToolExecutor
         RegexOptions.IgnoreCase | RegexOptions.Compiled)]
     private static partial Regex InvoiceCreationPattern();
 
+    /// <summary>
+    /// Detects invoice import intent — user pastes invoice text or asks to import.
+    /// Matches: "importuj fakturu", "import invoice", or pasted text containing
+    /// both IČO (8 digits) and a monetary amount (common in pasted invoices).
+    /// Also triggers on long messages (>300 chars) with IČO — likely pasted invoice content.
+    /// </summary>
+    [GeneratedRegex(
+        @"\b(importuj|import|naimportuj|zaúčtuj|zauctuj|zaeviduj|přidej fakturu|pridej fakturu)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled)]
+    private static partial Regex ImportKeywordPattern();
+
     // ─── Intent Detection ─────────────────────────────────────────────────
 
     /// <summary>
@@ -150,6 +161,20 @@ public partial class ChatToolExecutor : IChatToolExecutor
         if (InvoiceCreationPattern().IsMatch(userMessage))
         {
             _logger.LogDebug("Tool intent detected in message: invoice creation pattern match");
+            return true;
+        }
+
+        // Path 4: Import keyword or pasted invoice content (long text with IČO).
+        if (ImportKeywordPattern().IsMatch(userMessage))
+        {
+            _logger.LogDebug("Tool intent detected in message: import keyword match");
+            return true;
+        }
+
+        // Path 5: Long message with IČO — likely pasted invoice text for import.
+        if (userMessage.Length > 300 && IcoPattern().IsMatch(userMessage))
+        {
+            _logger.LogDebug("Tool intent detected in message: long text with IČO (likely pasted invoice)");
             return true;
         }
 
@@ -365,6 +390,40 @@ public partial class ChatToolExecutor : IChatToolExecutor
                             Description = "Optional notes to include on the invoice" }
                     };
                     def.Required = new List<string> { "client_name", "items" };
+                    break;
+
+                case "import_invoice":
+                    def.Parameters = new List<NativeToolParameter>
+                    {
+                        new() { Name = "issuer_ico", Type = "string",
+                            Description = "IČO of the invoice issuer (dodavatel/vystavitel)" },
+                        new() { Name = "issuer_name", Type = "string",
+                            Description = "Company name of the invoice issuer" },
+                        new() { Name = "recipient_ico", Type = "string",
+                            Description = "IČO of the invoice recipient (odběratel/příjemce)" },
+                        new() { Name = "recipient_name", Type = "string",
+                            Description = "Company name of the invoice recipient" },
+                        new() { Name = "document_number", Type = "string",
+                            Description = "Invoice number EXACTLY as printed on the document" },
+                        new() { Name = "issue_date", Type = "string",
+                            Description = "Date of issue in YYYY-MM-DD format, EXACTLY from the invoice" },
+                        new() { Name = "due_date", Type = "string",
+                            Description = "Payment due date in YYYY-MM-DD format, EXACTLY from the invoice" },
+                        new() { Name = "taxable_supply_date", Type = "string",
+                            Description = "DUZP in YYYY-MM-DD format, EXACTLY from the invoice" },
+                        new() { Name = "variable_symbol", Type = "string",
+                            Description = "Variable symbol (variabilní symbol) for payment" },
+                        new() { Name = "bank_account", Type = "string",
+                            Description = "Bank account number" },
+                        new() { Name = "iban", Type = "string", Description = "IBAN" },
+                        new() { Name = "swift", Type = "string", Description = "SWIFT/BIC code" },
+                        new() { Name = "currency", Type = "string",
+                            Description = "ISO 4217 currency code (CZK, EUR, etc.)" },
+                        new() { Name = "items", Type = "string",
+                            Description = "JSON array of line items: [{\"description\":\"...\",\"quantity\":1,\"unit_price\":100,\"vat_rate\":21}]" },
+                        new() { Name = "notes", Type = "string", Description = "Optional notes" }
+                    };
+                    def.Required = new List<string> { "document_number", "items" };
                     break;
 
                 default:

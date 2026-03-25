@@ -170,6 +170,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IChatTool, CreateClientTool>();
         services.AddScoped<IChatTool, NavigateTool>();
         services.AddScoped<IChatTool, CreateInvoiceTool>();
+        services.AddScoped<IChatTool, ImportInvoiceTool>();
         services.AddScopedWithLogging<IChatToolExecutor, ChatToolExecutor>();
 
         // ── Database Logging ────────────────────────────────────────────────
