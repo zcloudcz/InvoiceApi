@@ -900,6 +900,8 @@
   <data name="Bulk_ConfirmPaid" xml:space="preserve"><value>Opravdu chcete označit {0} fakturu/faktur jako zaplacené?</value></data>
   <data name="Bulk_ConfirmDelete" xml:space="preserve"><value>Opravdu chcete smazat {0} fakturu/faktur?</value></data>
   <data name="Bulk_ConfirmEmail" xml:space="preserve"><value>Opravdu chcete odeslat {0} fakturu/faktur e-mailem?</value></data>
+  <data name="Bulk_ConfirmApprove" xml:space="preserve"><value>Opravdu chcete schválit {0} fakturu/faktur?</value></data>
+  <data name="Bulk_AllSuccess" xml:space="preserve"><value>Hromadná akce dokončena: {0} úspěšně zpracováno.</value></data>
   <data name="Bulk_Success" xml:space="preserve"><value>Hromadná akce dokončena: {0} úspěšně zpracováno.</value></data>
   <data name="Bulk_PartialSuccess" xml:space="preserve"><value>Částečný úspěch: {0} úspěšně, {1} selhalo.</value></data>
   <data name="Bulk_NoneEligible" xml:space="preserve"><value>Žádné vybrané faktury nesplňují podmínky pro tuto akci.</value></data>

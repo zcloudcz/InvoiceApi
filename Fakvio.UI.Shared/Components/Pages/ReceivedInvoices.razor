@@ -68,6 +68,28 @@
     </MudGrid>
 </MudPaper>
 
+@* ── Bulk Operations Toolbar ────────────────────────────────────────── *@
+@if (_selectedInvoices.Count > 0)
+{
+    <MudPaper Class="pa-3 mb-3 d-flex flex-wrap align-center gap-2" Elevation="2">
+        <MudChip T="string" Color="Color.Info" Size="Size.Small">@_selectedInvoices.Count @L["Bulk_Selected"]</MudChip>
+        <MudButton Variant="Variant.Filled" Color="Color.Success" Size="Size.Small"
+                   StartIcon="@Icons.Material.Filled.CheckCircle" OnClick="BulkApprove"
+                   Disabled="_bulkProcessing">@L["ReceivedInvoice_Approve"]</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                   StartIcon="@Icons.Material.Filled.Paid" OnClick="BulkMarkPaid"
+                   Disabled="_bulkProcessing">@L["Invoice_MarkAsPaid"]</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Error" Size="Size.Small"
+                   StartIcon="@Icons.Material.Filled.Delete" OnClick="BulkDelete"
+                   Disabled="_bulkProcessing">@L["Common_Delete"]</MudButton>
+        <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="ClearSelection">@L["Bulk_ClearSelection"]</MudButton>
+        @if (_bulkProcessing)
+        {
+            <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+        }
+    </MudPaper>
+}
+
 @* ── Data Grid ──────────────────────────────────────────────────────── *@
 <MudTable @ref="_table"
           T="ReceivedInvoiceDto"
@@ -75,6 +97,10 @@
           Dense="true"
           Hover="true"
           Striped="true"
+          MultiSelection="true"
+          SelectOnRowClick="false"
+          SelectedItems="_selectedInvoices"
+          SelectedItemsChanged="@(items => { _selectedInvoices = items; StateHasChanged(); })"
           OnRowClick="OnRowClick"
           RowStyle="cursor: pointer;"
           Loading="_loading">
@@ -158,10 +184,12 @@
 @code {
     private MudTable<ReceivedInvoiceDto>? _table;
     private bool _loading;
+    private bool _bulkProcessing;
     private string? _search;
     private EReceivedInvoiceStatus? _statusFilter;
     private DateTime? _issueDateFrom;
     private DateTime? _issueDateTo;
+    private HashSet<ReceivedInvoiceDto> _selectedInvoices = new();
 
     /// <summary>
     /// Server-side data loading callback for MudTable.
@@ -275,6 +303,132 @@
             await _table!.ReloadServerData();
         }
     }
+
+    // ─── Bulk Operations ───────────────────────────────────────────────────
+
+    private void ClearSelection()
+    {
+        _selectedInvoices = new HashSet<ReceivedInvoiceDto>();
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Bulk approves all selected Received invoices.
+    /// </summary>
+    private async Task BulkApprove()
+    {
+        var eligible = _selectedInvoices
+            .Where(i => i.Status == EReceivedInvoiceStatus.Received).ToList();
+        if (eligible.Count == 0)
+        {
+            Snackbar.Add(L["Bulk_NoneEligible"].Value, Severity.Warning);
+            return;
+        }
+
+        var confirmed = await JS.InvokeAsync<bool>("confirm",
+            string.Format(L["Bulk_ConfirmApprove"].Value, eligible.Count));
+        if (!confirmed) return;
+
+        _bulkProcessing = true;
+        StateHasChanged();
+        int ok = 0, fail = 0;
+        try
+        {
+            foreach (var inv in eligible)
+            {
+                var result = await ReceivedInvoiceService.ApproveAsync(inv.Id);
+                if (result != null) ok++; else fail++;
+            }
+            ShowBulkSnackbar(ok, fail);
+            ClearSelection();
+            await _table!.ReloadServerData();
+        }
+        catch (Exception ex) { Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error); }
+        finally { _bulkProcessing = false; }
+    }
+
+    /// <summary>
+    /// Bulk marks all selected Approved invoices as paid.
+    /// </summary>
+    private async Task BulkMarkPaid()
+    {
+        var eligible = _selectedInvoices
+            .Where(i => i.Status == EReceivedInvoiceStatus.Approved).ToList();
+        if (eligible.Count == 0)
+        {
+            Snackbar.Add(L["Bulk_NoneEligible"].Value, Severity.Warning);
+            return;
+        }
+
+        var confirmed = await JS.InvokeAsync<bool>("confirm",
+            string.Format(L["Bulk_ConfirmPaid"].Value, eligible.Count));
+        if (!confirmed) return;
+
+        _bulkProcessing = true;
+        StateHasChanged();
+        int ok = 0, fail = 0;
+        try
+        {
+            foreach (var inv in eligible)
+            {
+                var result = await ReceivedInvoiceService.MarkAsPaidAsync(inv.Id);
+                if (result != null) ok++; else fail++;
+            }
+            ShowBulkSnackbar(ok, fail);
+            ClearSelection();
+            await _table!.ReloadServerData();
+        }
+        catch (Exception ex) { Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error); }
+        finally { _bulkProcessing = false; }
+    }
+
+    /// <summary>
+    /// Bulk deletes all selected Received/Rejected invoices.
+    /// </summary>
+    private async Task BulkDelete()
+    {
+        var eligible = _selectedInvoices
+            .Where(i => i.Status == EReceivedInvoiceStatus.Received
+                     || i.Status == EReceivedInvoiceStatus.Rejected).ToList();
+        if (eligible.Count == 0)
+        {
+            Snackbar.Add(L["Bulk_NoneEligible"].Value, Severity.Warning);
+            return;
+        }
+
+        var confirmed = await JS.InvokeAsync<bool>("confirm",
+            string.Format(L["Bulk_ConfirmDelete"].Value, eligible.Count));
+        if (!confirmed) return;
+
+        _bulkProcessing = true;
+        StateHasChanged();
+        int ok = 0, fail = 0;
+        try
+        {
+            foreach (var inv in eligible)
+            {
+                var deleted = await ReceivedInvoiceService.DeleteAsync(inv.Id);
+                if (deleted) ok++; else fail++;
+            }
+            ShowBulkSnackbar(ok, fail);
+            ClearSelection();
+            await _table!.ReloadServerData();
+        }
+        catch (Exception ex) { Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error); }
+        finally { _bulkProcessing = false; }
+    }
+
+    private void ShowBulkSnackbar(int ok, int fail)
+    {
+        if (fail == 0)
+            Snackbar.Add(string.Format(L["Bulk_AllSuccess"].Value, ok), Severity.Success);
+        else if (ok > 0)
+            Snackbar.Add(string.Format(L["Bulk_PartialSuccess"].Value, ok, fail), Severity.Warning);
+        else
+            Snackbar.Add(L["Bulk_NoneEligible"].Value, Severity.Error);
+    }
+
+    // ─── Helpers ────────────────────────────────────────────────────────────
 
     /// <summary>
     /// Returns MudBlazor color for each received invoice status.

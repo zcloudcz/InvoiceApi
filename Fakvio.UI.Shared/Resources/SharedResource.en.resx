@@ -900,6 +900,8 @@
   <data name="Bulk_ConfirmPaid" xml:space="preserve"><value>Are you sure you want to mark {0} invoice(s) as paid?</value></data>
   <data name="Bulk_ConfirmDelete" xml:space="preserve"><value>Are you sure you want to delete {0} invoice(s)?</value></data>
   <data name="Bulk_ConfirmEmail" xml:space="preserve"><value>Are you sure you want to send {0} invoice(s) by email?</value></data>
+  <data name="Bulk_ConfirmApprove" xml:space="preserve"><value>Are you sure you want to approve {0} invoice(s)?</value></data>
+  <data name="Bulk_AllSuccess" xml:space="preserve"><value>Bulk operation completed: {0} successfully processed.</value></data>
   <data name="Bulk_Success" xml:space="preserve"><value>Bulk operation completed: {0} successfully processed.</value></data>
   <data name="Bulk_PartialSuccess" xml:space="preserve"><value>Partial success: {0} succeeded, {1} failed.</value></data>
   <data name="Bulk_NoneEligible" xml:space="preserve"><value>No selected invoices are eligible for this action.</value></data>
