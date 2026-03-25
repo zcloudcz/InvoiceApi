@@ -350,8 +350,12 @@ public class ImportInvoiceTool : IChatTool
     {
         if (string.IsNullOrWhiteSpace(value)) return null;
         string[] formats = ["yyyy-MM-dd", "dd.MM.yyyy", "dd/MM/yyyy", "yyyy-MM-ddTHH:mm:ss"];
-        return DateTime.TryParseExact(value, formats, CultureInfo.InvariantCulture,
-            DateTimeStyles.None, out var d) ? d : null;
+        if (!DateTime.TryParseExact(value, formats, CultureInfo.InvariantCulture,
+                DateTimeStyles.None, out var d))
+            return null;
+
+        // PostgreSQL 'timestamp with time zone' requires UTC — Npgsql rejects DateTimeKind.Unspecified.
+        return DateTime.SpecifyKind(d, DateTimeKind.Utc);
     }
 
     /// <summary>
