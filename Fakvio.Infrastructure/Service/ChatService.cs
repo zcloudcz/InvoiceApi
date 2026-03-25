@@ -271,11 +271,11 @@ public class ChatService : IChatService
             var nativeResult = await provider.GetCompletionWithToolsAsync(history, systemPrompt, toolDefs, ct);
 
             // ── Multi-step tool call loop ─────────────────────────────────────
-            // AI models can chain multiple tool calls (e.g., create_client → import_invoice).
-            // After each tool execution, we call the AI again with the tool result appended
-            // to the system prompt. If the AI returns another tool call, we execute it too.
-            // Max 5 iterations to prevent infinite loops.
-            const int maxToolIterations = 5;
+            // AI can chain tool calls (e.g., create_client → import_invoice).
+            // After each FAILED tool, we let AI try another tool (max 3 iterations).
+            // After a SUCCESSFUL tool, we stop the loop and stream the final response.
+            // This prevents the AI from re-calling the same tool and creating duplicates.
+            const int maxToolIterations = 3;
             var toolIteration = 0;
             var toolResultsLog = new StringBuilder();
 
@@ -299,31 +299,38 @@ public class ChatService : IChatService
                 if (toolResult.UiAction != null)
                     _pendingUiAction = toolResult.UiAction;
 
-                // Accumulate tool results so AI has full context for the next decision.
+                // Accumulate tool results so AI has full context.
                 toolResultsLog.AppendLine(
                     $"Tool '{nativeToolCall.ToolName}' result: {toolResult.OutputText}");
 
-                // Ask AI again with tool results — it may call another tool or respond with text.
+                // If the tool SUCCEEDED → stop the loop. Don't let AI call more tools
+                // because it tends to re-call the same tool and create duplicates.
+                if (toolResult.IsSuccess)
+                {
+                    _logger.LogInformation("Tool '{Tool}' succeeded — stopping tool loop", nativeToolCall.ToolName);
+                    break;
+                }
+
+                // Tool FAILED → let AI try a different tool (e.g., create_client after "client not found").
+                _logger.LogInformation("Tool '{Tool}' failed — letting AI try another tool", nativeToolCall.ToolName);
                 var iterationPrompt = systemPrompt + "\n\n" + toolResultsLog +
-                    "\nIf you need to call another tool to complete the user's request, do so. " +
-                    "Otherwise respond briefly with the final result.";
+                    "\nThe previous tool failed. If you can fix the issue with another tool, do so now. " +
+                    "Otherwise explain the error to the user.";
 
                 nativeResult = await provider.GetCompletionWithToolsAsync(
                     history, iterationPrompt, toolDefs, ct);
             }
 
-            // After the loop: either AI responded with text, or we hit max iterations.
+            // After the loop: stream the final AI response summarizing all tool results.
             if (toolIteration > 0)
             {
-                // Stream the final AI response (text after all tool calls are done).
                 var finalPrompt = systemPrompt + "\n\n" + toolResultsLog +
-                    "\nAll tools have been executed. Respond to the user briefly with the results. " +
+                    "\nRespond briefly with the result. Do NOT call any more tools. " +
                     "Respond in the same language as the user.";
 
-                // If the last AI call returned text directly, use it.
-                // Otherwise stream a new response.
                 string finalText;
-                if (!string.IsNullOrEmpty(nativeResult?.TextContent))
+                if (nativeResult != null && !nativeResult.HasToolCalls
+                    && !string.IsNullOrEmpty(nativeResult.TextContent))
                 {
                     finalText = nativeResult.TextContent;
                     yield return finalText;
