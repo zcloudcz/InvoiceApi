@@ -194,6 +194,12 @@ else
             <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.Delete"
                        OnClick="DeleteInvoice">@L["Btn_Delete"]</MudButton>
         }
+        @* Delete button for Completed invoices — server validates it's the last in sequence *@
+        @if (_invoice.Status == EInvoiceStatus.Completed)
+        {
+            <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.Delete"
+                       OnClick="DeleteInvoice">@L["Btn_Delete"]</MudButton>
+        }
         @* Restore button — only visible for deleted invoices, allows undoing accidental deletes *@
         @if (_invoice.Status == EInvoiceStatus.Deleted)
         {

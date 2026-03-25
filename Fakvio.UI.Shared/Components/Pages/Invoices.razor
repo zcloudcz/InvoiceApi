@@ -788,11 +788,16 @@
     }
 
     /// <summary>
-    /// Bulk deletes all selected Draft invoices (soft delete).
+    /// Bulk deletes selected invoices (soft delete).
+    /// Draft invoices can always be deleted. Completed invoices are sent to the server
+    /// which checks if they are the last in the numbering sequence — the server decides.
+    /// Paid and Creditnoted invoices are filtered out on the client side.
     /// </summary>
     private async Task BulkDelete()
     {
-        var eligible = _selectedInvoices.Where(i => i.Status == EInvoiceStatus.Draft).ToList();
+        var eligible = _selectedInvoices
+            .Where(i => i.Status == EInvoiceStatus.Draft || i.Status == EInvoiceStatus.Completed)
+            .ToList();
         if (eligible.Count == 0)
         {
             Snackbar.Add(L["Bulk_NoneEligible"].Value, Severity.Warning);
