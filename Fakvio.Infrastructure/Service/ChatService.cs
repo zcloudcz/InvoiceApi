@@ -270,11 +270,23 @@ public class ChatService : IChatService
             var toolDefs = _toolExecutor.GetToolDefinitions();
             var nativeResult = await provider.GetCompletionWithToolsAsync(history, systemPrompt, toolDefs, ct);
 
-            if (nativeResult?.HasToolCalls == true)
+            // ── Multi-step tool call loop ─────────────────────────────────────
+            // AI models can chain multiple tool calls (e.g., create_client → import_invoice).
+            // After each tool execution, we call the AI again with the tool result appended
+            // to the system prompt. If the AI returns another tool call, we execute it too.
+            // Max 5 iterations to prevent infinite loops.
+            const int maxToolIterations = 5;
+            var toolIteration = 0;
+            var toolResultsLog = new StringBuilder();
+
+            while (nativeResult?.HasToolCalls == true && toolIteration < maxToolIterations)
             {
-                // Execute the first tool call (single-tool per turn for now).
+                toolIteration++;
                 var nativeToolCall = nativeResult.ToolCalls[0];
-                _logger.LogInformation("Native tool call: {ToolName}, executing...", nativeToolCall.ToolName);
+                _logger.LogInformation("Tool call #{Iteration}: {ToolName}", toolIteration, nativeToolCall.ToolName);
+
+                // Send heartbeat to keep SSE connection alive during tool execution.
+                yield return "";
 
                 var parsedCall = new ParsedToolCall
                 {
@@ -282,26 +294,56 @@ public class ChatService : IChatService
                     Parameters = nativeToolCall.Arguments
                 };
                 var toolResult = await _toolExecutor.ExecuteToolAsync(parsedCall, ct);
-                _pendingUiAction = toolResult.UiAction;
 
-                // Second pass: stream the final response with tool result context.
-                var resultPrompt = systemPrompt +
-                    $"\n\nTool '{nativeToolCall.ToolName}' was executed. Result:\n{toolResult.OutputText}\n\n" +
-                    "Now respond to the user in a friendly, concise way based on the tool result above. " +
-                    "Include the key information from the result. Respond in the same language as the user.";
+                // Keep the LAST UI action (e.g., navigate to the created invoice).
+                if (toolResult.UiAction != null)
+                    _pendingUiAction = toolResult.UiAction;
 
-                var toolFullResponse = new StringBuilder();
-                await foreach (var chunk in provider.StreamCompletionAsync(history, resultPrompt, ct))
+                // Accumulate tool results so AI has full context for the next decision.
+                toolResultsLog.AppendLine(
+                    $"Tool '{nativeToolCall.ToolName}' result: {toolResult.OutputText}");
+
+                // Ask AI again with tool results — it may call another tool or respond with text.
+                var iterationPrompt = systemPrompt + "\n\n" + toolResultsLog +
+                    "\nIf you need to call another tool to complete the user's request, do so. " +
+                    "Otherwise respond briefly with the final result.";
+
+                nativeResult = await provider.GetCompletionWithToolsAsync(
+                    history, iterationPrompt, toolDefs, ct);
+            }
+
+            // After the loop: either AI responded with text, or we hit max iterations.
+            if (toolIteration > 0)
+            {
+                // Stream the final AI response (text after all tool calls are done).
+                var finalPrompt = systemPrompt + "\n\n" + toolResultsLog +
+                    "\nAll tools have been executed. Respond to the user briefly with the results. " +
+                    "Respond in the same language as the user.";
+
+                // If the last AI call returned text directly, use it.
+                // Otherwise stream a new response.
+                string finalText;
+                if (!string.IsNullOrEmpty(nativeResult?.TextContent))
                 {
-                    toolFullResponse.Append(chunk);
-                    yield return chunk;
+                    finalText = nativeResult.TextContent;
+                    yield return finalText;
+                }
+                else
+                {
+                    var toolFullResponse = new StringBuilder();
+                    await foreach (var chunk in provider.StreamCompletionAsync(history, finalPrompt, ct))
+                    {
+                        toolFullResponse.Append(chunk);
+                        yield return chunk;
+                    }
+                    finalText = toolFullResponse.ToString();
                 }
 
                 var nativeAssistantMsg = new ChatMessage
                 {
                     ConversationId = conversation.Id,
                     Role = EChatRole.Assistant,
-                    Content = toolFullResponse.ToString(),
+                    Content = finalText,
                     ProviderUsed = provider.ProviderName
                 };
                 _context.ChatMessage.Add(nativeAssistantMsg);
