@@ -221,6 +221,14 @@ public class ImportInvoiceTool : IChatTool
                     $"Invoice with number '{documentNumber}' already exists.");
         }
 
+        // Resolve payment method: AI-extracted → issuer's default → BankTransfer fallback
+        var paymentMethodParam = GetParam(parameters, "payment_method");
+        EPaymentMethod? paymentMethod = null;
+        if (!string.IsNullOrEmpty(paymentMethodParam)
+            && Enum.TryParse<EPaymentMethod>(paymentMethodParam, true, out var parsed))
+            paymentMethod = parsed;
+        paymentMethod ??= issuer.BillingSettings?.DefaultPaymentMethod ?? EPaymentMethod.BankTransfer;
+
         var dto = new CreateInvoiceDto
         {
             DocumentType = EDocumentType.Invoice,
@@ -231,6 +239,7 @@ public class ImportInvoiceTool : IChatTool
             IssueDate = issueDate,
             DueDate = dueDate,
             TaxableSupplyDate = taxableSupplyDate,
+            PaymentMethod = paymentMethod,
             VariableSymbol = GetParam(parameters, "variable_symbol"),
             BankAccountNumber = GetParam(parameters, "bank_account"),
             IBAN = GetParam(parameters, "iban"),
@@ -264,6 +273,14 @@ public class ImportInvoiceTool : IChatTool
         if (items.Count == 0)
             return ChatToolResult.Failure("No valid line items found.");
 
+        // Resolve payment method: AI-extracted → BankTransfer fallback
+        var paymentMethodParam = GetParam(parameters, "payment_method");
+        EPaymentMethod? paymentMethod = null;
+        if (!string.IsNullOrEmpty(paymentMethodParam)
+            && Enum.TryParse<EPaymentMethod>(paymentMethodParam, true, out var parsedPm))
+            paymentMethod = parsedPm;
+        paymentMethod ??= EPaymentMethod.BankTransfer;
+
         var dto = new CreateReceivedInvoiceDto
         {
             SupplierId = supplierId,
@@ -273,6 +290,7 @@ public class ImportInvoiceTool : IChatTool
             DueDate = dueDate,
             TaxableSupplyDate = taxableSupplyDate,
             ReceivedDate = DateTime.UtcNow,
+            PaymentMethod = paymentMethod,
             VariableSymbol = GetParam(parameters, "variable_symbol"),
             BankAccountNumber = GetParam(parameters, "bank_account"),
             IBAN = GetParam(parameters, "iban"),

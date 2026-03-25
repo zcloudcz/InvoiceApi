@@ -109,6 +109,12 @@ public interface IInvoiceService
     Task<InvoiceDto?> RestoreInvoiceAsync(long invoiceId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Reverts a Completed invoice back to Draft so it can be fully edited.
+    /// Only Completed invoices can be reverted — Paid and Creditnoted cannot.
+    /// </summary>
+    Task<InvoiceDto?> RevertToDraftAsync(long invoiceId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Creates a credit note for an existing invoice
     /// Automatically sets DocumentType = CreditNote and references original invoice
     /// </summary>

@@ -697,6 +697,20 @@ namespace Fakvio.Functions
                 context.GetInvocationResult().Value = await i.Invoice_BulkExportPdf((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
                 return;
             }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.InvoiceFunctions.Invoice_RestoreInvoice", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.InvoiceFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.InvoiceFunctions;
+                context.GetInvocationResult().Value = await i.Invoice_RestoreInvoice((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0], (long)inputArguments[1]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.InvoiceFunctions.Invoice_RevertToDraft", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.InvoiceFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.InvoiceFunctions;
+                context.GetInvocationResult().Value = await i.Invoice_RevertToDraft((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0], (long)inputArguments[1]);
+                return;
+            }
             if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.InvoiceTemplateFunctions.InvoiceTemplate_GetActiveTemplates", StringComparison.Ordinal))
             {
                 var instanceType = types["Fakvio.Functions.Generated.InvoiceTemplateFunctions"];

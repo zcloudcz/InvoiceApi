@@ -696,6 +696,30 @@ public class InvoiceService : IInvoiceService
         return await GetInvoiceByIdAsync(invoice.Id, cancellationToken);
     }
 
+    /// <summary>
+    /// Reverts a Completed invoice back to Draft status so it can be fully edited.
+    /// Only Completed invoices can be reverted — Paid and Creditnoted cannot.
+    /// The document number is preserved so the user can re-issue with the same number.
+    /// </summary>
+    public async Task<InvoiceDto?> RevertToDraftAsync(long invoiceId, CancellationToken cancellationToken = default)
+    {
+        var invoice = await _context.Invoice.FindAsync(new object[] { invoiceId }, cancellationToken);
+
+        if (invoice == null)
+            return null;
+
+        if (invoice.Status != EInvoiceStatus.Completed)
+            throw new InvalidOperationException(
+                $"Only completed invoices can be reverted to draft. Current status: {invoice.Status}");
+
+        _logger.LogInformation("Reverting {DocumentType} {Id} from Completed to Draft", invoice.DocumentType, invoice.Id);
+
+        invoice.Status = EInvoiceStatus.Draft;
+        await _context.SaveChangesAsync(cancellationToken);
+
+        return await GetInvoiceByIdAsync(invoice.Id, cancellationToken);
+    }
+
     public async Task<InvoiceDto> CreateCreditNoteAsync(long originalInvoiceId, CreateInvoiceDto createDto, CancellationToken cancellationToken = default)
     {
         var originalInvoice = await _context.Invoice

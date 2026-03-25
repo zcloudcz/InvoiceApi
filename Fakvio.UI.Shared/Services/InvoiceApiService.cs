@@ -169,6 +169,14 @@ public class FakvioService : ApiClientBase
     }
 
     /// <summary>
+    /// Reverts a Completed invoice back to Draft for full editing.
+    /// </summary>
+    public async Task<InvoiceDto?> RevertToDraftAsync(long id)
+    {
+        return await PostAsync<object, InvoiceDto>($"/api/invoice/{id}/revert-to-draft", new { });
+    }
+
+    /// <summary>
     /// Downloads the invoice as a PDF byte array using the default template.
     /// Uses GetBytesAsync from the base class for binary content.
     /// </summary>

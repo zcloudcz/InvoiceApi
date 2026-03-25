@@ -431,6 +431,32 @@ public class InvoiceController : ControllerBase
     }
 
     /// <summary>
+    /// Reverts a Completed invoice back to Draft so it can be fully edited.
+    /// Only Completed invoices can be reverted — Paid/Creditnoted return 400.
+    /// </summary>
+    [HttpPost("{id}/revert-to-draft")]
+    [ProducesResponseType(typeof(InvoiceDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<InvoiceDto>> RevertToDraft(long id, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var invoice = await _invoiceService.RevertToDraftAsync(id, cancellationToken);
+            if (invoice == null)
+                return NotFound(new { message = $"Invoice with ID {id} not found" });
+
+            _logger.LogInformation("Invoice {Id} reverted to Draft", id);
+            return Ok(invoice);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning("Cannot revert invoice {Id}: {Message}", id, ex.Message);
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    /// <summary>
     /// Creates a credit note for an existing invoice
     /// Automatically marks the original invoice as creditnoted
     /// </summary>

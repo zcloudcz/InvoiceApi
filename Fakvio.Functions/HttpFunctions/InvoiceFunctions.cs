@@ -550,4 +550,22 @@ public class InvoiceFunctions
         // Call the controller action and normalize the response
         return FunctionResultHelper.Normalize(await _controller.BulkExportPdf(ids, cancellationToken));
     }
+
+    [Function("Invoice_RestoreInvoice")]
+    public async Task<IActionResult> Invoice_RestoreInvoice(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/invoice/{id:long}/restore")] HttpRequest req, long id)
+    {
+        _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
+        if (req.HttpContext.User.Identity?.IsAuthenticated != true) return new UnauthorizedResult();
+        return FunctionResultHelper.Normalize(await _controller.RestoreInvoice(id, req.HttpContext.RequestAborted));
+    }
+
+    [Function("Invoice_RevertToDraft")]
+    public async Task<IActionResult> Invoice_RevertToDraft(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/invoice/{id:long}/revert-to-draft")] HttpRequest req, long id)
+    {
+        _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
+        if (req.HttpContext.User.Identity?.IsAuthenticated != true) return new UnauthorizedResult();
+        return FunctionResultHelper.Normalize(await _controller.RevertToDraft(id, req.HttpContext.RequestAborted));
+    }
 }

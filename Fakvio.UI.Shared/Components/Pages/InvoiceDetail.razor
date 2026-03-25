@@ -194,19 +194,15 @@ else
             <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.Delete"
                        OnClick="DeleteInvoice">@L["Btn_Delete"]</MudButton>
         }
-        @* Completed invoice: edit non-financial metadata + delete (if last in sequence) *@
-        @if (_invoice.Status == EInvoiceStatus.Completed && !_isEditingMetadata)
+        @* Completed invoice: revert to draft (for full editing) + delete (if last in sequence) *@
+        @if (_invoice.Status == EInvoiceStatus.Completed)
         {
-            <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Edit"
-                       OnClick="EnableMetadataEditing">@L["Invoice_EditMetadata"]</MudButton>
-            <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.Delete"
+            <MudButton Variant="Variant.Outlined" Color="Color.Warning"
+                       StartIcon="@Icons.Material.Filled.Undo"
+                       OnClick="RevertToDraft">@L["Invoice_RevertToDraft"]</MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Error"
+                       StartIcon="@Icons.Material.Filled.Delete"
                        OnClick="DeleteInvoice">@L["Btn_Delete"]</MudButton>
-        }
-        @if (_isEditingMetadata)
-        {
-            <MudButton Variant="Variant.Text" OnClick="CancelMetadataEditing">@L["Btn_Cancel"]</MudButton>
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save"
-                       OnClick="SaveMetadata">@L["Btn_Save"]</MudButton>
         }
         @* Restore button — only visible for deleted invoices, allows undoing accidental deletes *@
         @if (_invoice.Status == EInvoiceStatus.Deleted)
@@ -388,21 +384,6 @@ else
                         </CardHeaderContent>
                     </MudCardHeader>
                     <MudCardContent>
-                      @if (_isEditingMetadata)
-                      {
-                        <EnumSelect TEnum="EPaymentMethod"
-                                    NullableValue="_metaPaymentMethod"
-                                    NullableValueChanged="@(v => _metaPaymentMethod = v)"
-                                    Label="@L["Invoice_PaymentMethod"].Value"
-                                    Nullable="true" Class="mb-3" />
-                        <MudTextField @bind-Value="_metaBankAccount"
-                                      Label="@L["Invoice_BankAccount"].Value" Class="mb-3" />
-                        <MudTextField @bind-Value="_metaIBAN" Label="IBAN" Class="mb-3" />
-                        <MudTextField @bind-Value="_metaSWIFT" Label="SWIFT" Class="mb-3" />
-                        <MudTextField @bind-Value="_metaNotes" Label="@L["Invoice_Notes"].Value" Lines="3" />
-                      }
-                      else
-                      {
                         <MudList T="string" Dense="true">
                             @if (!string.IsNullOrEmpty(_invoice.VariableSymbol))
                             {
@@ -437,7 +418,6 @@ else
                                 <strong>@L["Template_Currency"]:</strong> @_invoice.CurrencyCode (@_invoice.CurrencySymbol)
                             </MudListItem>
                         </MudList>
-                      }
                     </MudCardContent>
                 </MudCard>
             </MudItem>
@@ -658,13 +638,6 @@ else
     private UpdateInvoiceDto _editDto = new();
     private List<CreateInvoiceItemDto> _editItems = new();
 
-    // Metadata edit mode (for Completed invoices — non-financial fields only)
-    private bool _isEditingMetadata = false;
-    private EPaymentMethod? _metaPaymentMethod;
-    private string? _metaBankAccount;
-    private string? _metaIBAN;
-    private string? _metaSWIFT;
-    private string? _metaNotes;
     private DateTime? _editDueDate;
     private DateTime? _editTaxableSupplyDate;
 
@@ -1309,49 +1282,22 @@ else
     /// <summary>
     /// Enables editing of non-financial metadata on a Completed invoice.
     /// Only PaymentMethod, BankAccount, IBAN, SWIFT, and Notes can be changed.
-    /// Financial data (amounts, items, dates, document number) stays locked.
+    /// Reverts a Completed invoice back to Draft so the user can fully edit all fields.
     /// </summary>
-    private void EnableMetadataEditing()
+    private async Task RevertToDraft()
     {
         if (_invoice == null) return;
-        _metaPaymentMethod = _invoice.PaymentMethod;
-        _metaBankAccount = _invoice.BankAccountNumber;
-        _metaIBAN = _invoice.IBAN;
-        _metaSWIFT = _invoice.SWIFT;
-        _metaNotes = _invoice.Notes;
-        _isEditingMetadata = true;
-    }
 
-    private void CancelMetadataEditing()
-    {
-        _isEditingMetadata = false;
-    }
+        var confirmed = await JS.InvokeAsync<bool>("confirm", L["Invoice_RevertToDraftConfirm"].Value);
+        if (!confirmed) return;
 
-    /// <summary>
-    /// Saves only non-financial metadata via the existing UpdateInvoiceAsync.
-    /// Sends null for all financial fields (items, currency, dates) so they stay unchanged.
-    /// </summary>
-    private async Task SaveMetadata()
-    {
-        if (_invoice == null) return;
         try
         {
-            var dto = new UpdateInvoiceDto
-            {
-                PaymentMethod = _metaPaymentMethod,
-                BankAccountNumber = _metaBankAccount,
-                IBAN = _metaIBAN,
-                SWIFT = _metaSWIFT,
-                Notes = _metaNotes
-                // All other fields are null → backend skips them (partial update pattern)
-            };
-
-            var result = await InvoiceService.UpdateAsync(Id, dto);
+            var result = await InvoiceService.RevertToDraftAsync(Id);
             if (result != null)
             {
                 _invoice = result;
-                _isEditingMetadata = false;
-                Snackbar.Add(L["Msg_SaveSuccess"].Value, Severity.Success);
+                Snackbar.Add(L["Invoice_RevertedToDraft"].Value, Severity.Success);
             }
             else
             {
