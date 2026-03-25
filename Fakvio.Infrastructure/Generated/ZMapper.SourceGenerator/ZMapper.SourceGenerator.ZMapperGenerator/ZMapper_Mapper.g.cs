@@ -704,6 +704,7 @@ public sealed class Mapper : IMapper
             destination.UnitPrice = source.UnitPrice;
             destination.VatRateId = source.VatRateId;
             destination.VatRatePercentage = source.VatRatePercentage;
+            destination.IsTextRow = source.IsTextRow;
             destination.TotalBeforeVat = source.TotalBeforeVat;
             destination.VatAmount = source.VatAmount;
             destination.TotalWithVat = source.TotalWithVat;
@@ -722,6 +723,7 @@ public sealed class Mapper : IMapper
             destination.UnitPrice = source.UnitPrice;
             destination.VatRateId = source.VatRateId;
             destination.VatRatePercentage = source.VatRatePercentage;
+            destination.IsTextRow = source.IsTextRow;
             destination.TotalBeforeVat = source.TotalBeforeVat;
             destination.VatAmount = source.VatAmount;
             destination.TotalWithVat = source.TotalWithVat;

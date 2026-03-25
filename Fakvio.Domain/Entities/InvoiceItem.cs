@@ -100,6 +100,14 @@ public class InvoiceItem : BaseEntity
     public decimal TotalWithVat { get; set; }
 
     /// <summary>
+    /// When true, this row is a text-only note (e.g., "Práce provedeny dle smlouvy č. 123").
+    /// Text rows are displayed in the invoice item table but excluded from totals calculation.
+    /// All numeric fields (Quantity, UnitPrice, TotalBeforeVat, etc.) are ignored for text rows.
+    /// Only Description is used.
+    /// </summary>
+    public bool IsTextRow { get; set; }
+
+    /// <summary>
     /// Optional product/service code
     /// For linking to product catalog or accounting codes
     /// Example: "SVC-001", "PROD-123"

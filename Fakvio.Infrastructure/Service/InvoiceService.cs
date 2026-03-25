@@ -283,7 +283,7 @@ public class InvoiceService : IInvoiceService
         // Validate VAT requirements: If issuer is VAT payer, all items must have VatRateId
         if (issuer.IsVatPayer)
         {
-            var itemsWithoutVatRate = createDto.InvoiceItem.Where(i => !i.VatRateId.HasValue).ToList();
+            var itemsWithoutVatRate = createDto.InvoiceItem.Where(i => !i.IsTextRow && !i.VatRateId.HasValue).ToList();
             if (itemsWithoutVatRate.Any())
             {
                 throw new InvalidOperationException(
@@ -298,34 +298,41 @@ public class InvoiceService : IInvoiceService
 
         foreach (var itemDto in createDto.InvoiceItem)
         {
-            // Fetch VAT rate percentage if VatRateId is provided
+            var item = new InvoiceItem
+            {
+                OrderIndex = itemDto.OrderIndex,
+                IsTextRow = itemDto.IsTextRow,
+                Description = itemDto.Description,
+                ProductCode = itemDto.ProductCode,
+                Notes = itemDto.Notes
+            };
+
+            // Text rows are display-only notes — no quantity, price, or VAT calculation.
+            if (itemDto.IsTextRow)
+            {
+                item.Quantity = 0;
+                item.UnitPrice = 0;
+                item.Unit = "";
+                invoice.InvoiceItem.Add(item);
+                continue;
+            }
+
+            // Regular billable item — resolve VAT and calculate totals.
             decimal vatRatePercentage = itemDto.VatRatePercentage;
             if (itemDto.VatRateId.HasValue)
             {
                 var vatRate = await _context.VatRate.FindAsync(new object[] { itemDto.VatRateId.Value }, cancellationToken);
                 if (vatRate == null)
-                {
                     throw new InvalidOperationException($"VAT rate with ID {itemDto.VatRateId} not found");
-                }
-
-                // Use rate from VAT rate entity (overrides any value in DTO)
                 vatRatePercentage = vatRate.Rate;
             }
 
-            var item = new InvoiceItem
-            {
-                OrderIndex = itemDto.OrderIndex,
-                Description = itemDto.Description,
-                Quantity = itemDto.Quantity,
-                Unit = itemDto.Unit,
-                UnitPrice = itemDto.UnitPrice,
-                VatRateId = itemDto.VatRateId,
-                VatRatePercentage = vatRatePercentage,
-                ProductCode = itemDto.ProductCode,
-                Notes = itemDto.Notes
-            };
+            item.Quantity = itemDto.Quantity;
+            item.Unit = itemDto.Unit;
+            item.UnitPrice = itemDto.UnitPrice;
+            item.VatRateId = itemDto.VatRateId;
+            item.VatRatePercentage = vatRatePercentage;
 
-            // Calculate item totals
             item.TotalBeforeVat = item.Quantity * item.UnitPrice;
             item.VatAmount = item.TotalBeforeVat * (item.VatRatePercentage / 100);
             item.TotalWithVat = item.TotalBeforeVat + item.VatAmount;
@@ -453,10 +460,12 @@ public class InvoiceService : IInvoiceService
             if (issuer == null)
                 throw new InvalidOperationException($"Issuer with ID {invoice.IssuerId} not found");
 
-            // Validate VAT requirements: If issuer is VAT payer, all items must have VatRateId
+            // Validate VAT requirements: If issuer is VAT payer, all billable items must have VatRateId
+            // Text rows are excluded — they have no financial data.
             if (issuer.IsVatPayer)
             {
-                var itemsWithoutVatRate = updateDto.InvoiceItem.Where(i => !i.VatRateId.HasValue).ToList();
+                var itemsWithoutVatRate = updateDto.InvoiceItem
+                    .Where(i => !i.IsTextRow && !i.VatRateId.HasValue).ToList();
                 if (itemsWithoutVatRate.Any())
                 {
                     throw new InvalidOperationException(
@@ -474,34 +483,39 @@ public class InvoiceService : IInvoiceService
 
             foreach (var itemDto in updateDto.InvoiceItem)
             {
-                // Fetch VAT rate percentage if VatRateId is provided
+                var item = new InvoiceItem
+                {
+                    OrderIndex = itemDto.OrderIndex,
+                    IsTextRow = itemDto.IsTextRow,
+                    Description = itemDto.Description,
+                    ProductCode = itemDto.ProductCode,
+                    Notes = itemDto.Notes
+                };
+
+                if (itemDto.IsTextRow)
+                {
+                    item.Quantity = 0;
+                    item.UnitPrice = 0;
+                    item.Unit = "";
+                    invoice.InvoiceItem.Add(item);
+                    continue;
+                }
+
                 decimal vatRatePercentage = itemDto.VatRatePercentage;
                 if (itemDto.VatRateId.HasValue)
                 {
                     var vatRate = await _context.VatRate.FindAsync(new object[] { itemDto.VatRateId.Value }, cancellationToken);
                     if (vatRate == null)
-                    {
                         throw new InvalidOperationException($"VAT rate with ID {itemDto.VatRateId} not found");
-                    }
-
-                    // Use rate from VAT rate entity (overrides any value in DTO)
                     vatRatePercentage = vatRate.Rate;
                 }
 
-                var item = new InvoiceItem
-                {
-                    OrderIndex = itemDto.OrderIndex,
-                    Description = itemDto.Description,
-                    Quantity = itemDto.Quantity,
-                    Unit = itemDto.Unit,
-                    UnitPrice = itemDto.UnitPrice,
-                    VatRateId = itemDto.VatRateId,
-                    VatRatePercentage = vatRatePercentage,
-                    ProductCode = itemDto.ProductCode,
-                    Notes = itemDto.Notes
-                };
+                item.Quantity = itemDto.Quantity;
+                item.Unit = itemDto.Unit;
+                item.UnitPrice = itemDto.UnitPrice;
+                item.VatRateId = itemDto.VatRateId;
+                item.VatRatePercentage = vatRatePercentage;
 
-                // Calculate item totals
                 item.TotalBeforeVat = item.Quantity * item.UnitPrice;
                 item.VatAmount = item.TotalBeforeVat * (item.VatRatePercentage / 100);
                 item.TotalWithVat = item.TotalBeforeVat + item.VatAmount;

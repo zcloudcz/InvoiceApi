@@ -10,11 +10,16 @@
 @* Inline editable grid for invoice items — each row is directly editable *@
 <div class="d-flex justify-space-between align-center mb-2">
     <MudText Typo="Typo.h6">@L["InvoiceItem_Items"]</MudText>
-    @* Add row button — placed above the grid for easy access *@
-    <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
-               OnClick="AddNewRow" StartIcon="@Icons.Material.Filled.Add">
-        @L["Btn_AddItem"]
-    </MudButton>
+    <MudStack Row="true" Spacing="2">
+        <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
+                   OnClick="AddNewRow" StartIcon="@Icons.Material.Filled.Add">
+            @L["Btn_AddItem"]
+        </MudButton>
+        <MudButton Variant="Variant.Outlined" Color="Color.Default" Size="Size.Small"
+                   OnClick="AddTextRow" StartIcon="@Icons.Material.Filled.Notes">
+            @L["Btn_AddTextRow"]
+        </MudButton>
+    </MudStack>
 </div>
 
 <MudTable T="CreateInvoiceItemDto" Items="@Items" Dense="true" Hover="true" Breakpoint="Breakpoint.Sm">
@@ -30,59 +35,87 @@
         <MudTh Style="width: 50px;"></MudTh>
     </HeaderContent>
     <RowTemplate>
-        <MudTd>
-            <MudNumericField T="int" Value="@context.OrderIndex"
-                             ValueChanged="@(v => { context.OrderIndex = v; NotifyChanged(); })"
-                             Variant="Variant.Text" Margin="Margin.Dense" Min="1"
-                             HideSpinButtons="true" Style="width: 50px;" />
-        </MudTd>
-        <MudTd>
-            <MudTextField T="string" Value="@context.ProductCode"
-                          ValueChanged="@(v => { context.ProductCode = v; NotifyChanged(); })"
-                          Variant="Variant.Text" Margin="Margin.Dense" />
-        </MudTd>
-        <MudTd>
-            <MudTextField T="string" Value="@context.Description"
-                          ValueChanged="@(v => { context.Description = v; NotifyChanged(); })"
-                          Variant="Variant.Text" Margin="Margin.Dense" Required="true" />
-        </MudTd>
-        <MudTd>
-            <MudNumericField T="decimal" Value="@context.Quantity"
-                             ValueChanged="@(v => { context.Quantity = v; NotifyChanged(); })"
-                             Variant="Variant.Text" Margin="Margin.Dense" Min="0.01m"
-                             Format="N2" HideSpinButtons="true" />
-        </MudTd>
-        <MudTd>
-            <MudTextField T="string" Value="@context.Unit"
-                          ValueChanged="@(v => { context.Unit = v; NotifyChanged(); })"
-                          Variant="Variant.Text" Margin="Margin.Dense" />
-        </MudTd>
-        <MudTd>
-            <MudNumericField T="decimal" Value="@context.UnitPrice"
-                             ValueChanged="@(v => { context.UnitPrice = v; NotifyChanged(); })"
-                             Variant="Variant.Text" Margin="Margin.Dense" Min="0"
-                             Format="N2" HideSpinButtons="true" />
-        </MudTd>
-        <MudTd>
-            <MudSelect T="long?" Value="@context.VatRateId"
-                       ValueChanged="@(v => OnVatRateChanged(context, v))"
-                       Variant="Variant.Text" Margin="Margin.Dense" Dense="true">
-                @foreach (var vr in _vatRates)
-                {
-                    <MudSelectItem T="long?" Value="@((long?)vr.Id)">@vr.Rate%</MudSelectItem>
-                }
-            </MudSelect>
-        </MudTd>
-        <MudTd>
-            @* Computed total = Quantity * UnitPrice (before VAT) — read-only display *@
-            <MudText Typo="Typo.body2" Align="Align.Right">
-                @((context.Quantity * context.UnitPrice).ToString("N2"))
-            </MudText>
-        </MudTd>
-        <MudTd>
-            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
-                           OnClick="@(() => DeleteItem(context))" />
-        </MudTd>
+        @if (context.IsTextRow)
+        {
+            @* Text row — spans most columns, only description + order + delete *@
+            <MudTd>
+                <MudNumericField T="int" Value="@context.OrderIndex"
+                                 ValueChanged="@(v => { context.OrderIndex = v; NotifyChanged(); })"
+                                 Variant="Variant.Text" Margin="Margin.Dense" Min="1"
+                                 HideSpinButtons="true" Style="width: 50px;" />
+            </MudTd>
+            <MudTd></MudTd>
+            <MudTd colspan="5">
+                <MudTextField T="string" Value="@context.Description"
+                              ValueChanged="@(v => { context.Description = v; NotifyChanged(); })"
+                              Variant="Variant.Text" Margin="Margin.Dense"
+                              Placeholder="@L["InvoiceItem_TextRowPlaceholder"].Value"
+                              Style="font-style:italic;" />
+            </MudTd>
+            <MudTd>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">@L["InvoiceItem_TextRow"]</MudText>
+            </MudTd>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                               OnClick="@(() => DeleteItem(context))" />
+            </MudTd>
+        }
+        else
+        {
+            @* Regular billable item row *@
+            <MudTd>
+                <MudNumericField T="int" Value="@context.OrderIndex"
+                                 ValueChanged="@(v => { context.OrderIndex = v; NotifyChanged(); })"
+                                 Variant="Variant.Text" Margin="Margin.Dense" Min="1"
+                                 HideSpinButtons="true" Style="width: 50px;" />
+            </MudTd>
+            <MudTd>
+                <MudTextField T="string" Value="@context.ProductCode"
+                              ValueChanged="@(v => { context.ProductCode = v; NotifyChanged(); })"
+                              Variant="Variant.Text" Margin="Margin.Dense" />
+            </MudTd>
+            <MudTd>
+                <MudTextField T="string" Value="@context.Description"
+                              ValueChanged="@(v => { context.Description = v; NotifyChanged(); })"
+                              Variant="Variant.Text" Margin="Margin.Dense" Required="true" />
+            </MudTd>
+            <MudTd>
+                <MudNumericField T="decimal" Value="@context.Quantity"
+                                 ValueChanged="@(v => { context.Quantity = v; NotifyChanged(); })"
+                                 Variant="Variant.Text" Margin="Margin.Dense" Min="0.01m"
+                                 Format="N2" HideSpinButtons="true" />
+            </MudTd>
+            <MudTd>
+                <MudTextField T="string" Value="@context.Unit"
+                              ValueChanged="@(v => { context.Unit = v; NotifyChanged(); })"
+                              Variant="Variant.Text" Margin="Margin.Dense" />
+            </MudTd>
+            <MudTd>
+                <MudNumericField T="decimal" Value="@context.UnitPrice"
+                                 ValueChanged="@(v => { context.UnitPrice = v; NotifyChanged(); })"
+                                 Variant="Variant.Text" Margin="Margin.Dense" Min="0"
+                                 Format="N2" HideSpinButtons="true" />
+            </MudTd>
+            <MudTd>
+                <MudSelect T="long?" Value="@context.VatRateId"
+                           ValueChanged="@(v => OnVatRateChanged(context, v))"
+                           Variant="Variant.Text" Margin="Margin.Dense" Dense="true">
+                    @foreach (var vr in _vatRates)
+                    {
+                        <MudSelectItem T="long?" Value="@((long?)vr.Id)">@vr.Rate%</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudTd>
+            <MudTd>
+                <MudText Typo="Typo.body2" Align="Align.Right">
+                    @((context.Quantity * context.UnitPrice).ToString("N2"))
+                </MudText>
+            </MudTd>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                               OnClick="@(() => DeleteItem(context))" />
+            </MudTd>
+        }
     </RowTemplate>
     <NoRecordsContent>
         <MudText Color="Color.Secondary">@L["InvoiceItem_NoItems"]</MudText>
@@ -172,6 +205,24 @@
     }
 
     /// <summary>
+    /// Adds a text-only row (note/comment) — not a billable item.
+    /// </summary>
+    private void AddTextRow()
+    {
+        var nextOrder = Items.Any() ? Items.Max(i => i.OrderIndex) + 1 : 1;
+        Items.Add(new CreateInvoiceItemDto
+        {
+            OrderIndex = nextOrder,
+            IsTextRow = true,
+            Description = "",
+            Unit = "",
+            Quantity = 0,
+            UnitPrice = 0
+        });
+        NotifyChanged();
+    }
+
+    /// <summary>
     /// Removes an item from the list and notifies the parent
     /// </summary>
     private void DeleteItem(CreateInvoiceItemDto item)
@@ -211,12 +262,12 @@
 
     private decimal CalculateTotalBeforeVat()
     {
-        return Items.Sum(i => i.Quantity * i.UnitPrice);
+        return Items.Where(i => !i.IsTextRow).Sum(i => i.Quantity * i.UnitPrice);
     }
 
     private decimal CalculateTotalVat()
     {
-        return Items.Sum(i => i.Quantity * i.UnitPrice * i.VatRatePercentage / 100);
+        return Items.Where(i => !i.IsTextRow).Sum(i => i.Quantity * i.UnitPrice * i.VatRatePercentage / 100);
     }
 
     private decimal CalculateTotalWithVatAll()

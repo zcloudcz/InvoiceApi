@@ -269,14 +269,24 @@ public class PdfExportService : IPdfExportService
         {
             foreach (var item in invoice.InvoiceItem.OrderBy(i => i.OrderIndex))
             {
-                itemsHtml += $@"<tr>
-                    <td>{item.Description}</td>
-                    <td style=""text-align:center"">{item.Unit}</td>
-                    <td style=""text-align:center"">{item.VatRatePercentage:N0} %</td>
-                    <td style=""text-align:center"">{item.Quantity:N0}</td>
-                    <td style=""text-align:right"">{item.UnitPrice:N2} {invoice.Currency?.Symbol ?? ""}</td>
-                    <td style=""text-align:right"">{item.TotalBeforeVat:N2} {invoice.Currency?.Symbol ?? ""}</td>
-                </tr>";
+                if (item.IsTextRow)
+                {
+                    // Text row spans all columns — display-only note, no financial data
+                    itemsHtml += $@"<tr>
+                        <td colspan=""6"" style=""font-style:italic;color:#555"">{item.Description}</td>
+                    </tr>";
+                }
+                else
+                {
+                    itemsHtml += $@"<tr>
+                        <td>{item.Description}</td>
+                        <td style=""text-align:center"">{item.Unit}</td>
+                        <td style=""text-align:center"">{item.VatRatePercentage:N0} %</td>
+                        <td style=""text-align:center"">{item.Quantity:N0}</td>
+                        <td style=""text-align:right"">{item.UnitPrice:N2} {invoice.Currency?.Symbol ?? ""}</td>
+                        <td style=""text-align:right"">{item.TotalBeforeVat:N2} {invoice.Currency?.Symbol ?? ""}</td>
+                    </tr>";
+                }
             }
         }
 

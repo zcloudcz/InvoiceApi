@@ -24,6 +24,7 @@ public class InvoiceItemDto
     /// </summary>
     public decimal VatRatePercentage { get; set; }
 
+    public bool IsTextRow { get; set; }
     public decimal TotalBeforeVat { get; set; }
     public decimal VatAmount { get; set; }
     public decimal TotalWithVat { get; set; }
@@ -43,7 +44,13 @@ public class CreateInvoiceItemDto
     public int OrderIndex { get; set; }
 
     /// <summary>
-    /// Description of product/service
+    /// When true, this is a text-only row (note/comment) — not a billable item.
+    /// Only Description is used; Quantity, UnitPrice, VatRate are ignored and set to 0.
+    /// </summary>
+    public bool IsTextRow { get; set; }
+
+    /// <summary>
+    /// Description of product/service (or text content for text rows)
     /// </summary>
     public string Description { get; set; } = string.Empty;
 
@@ -96,6 +103,7 @@ public class CreateInvoiceItemDto
 public class UpdateInvoiceItemDto
 {
     public int? OrderIndex { get; set; }
+    public bool IsTextRow { get; set; }
     public string? Description { get; set; }
     public decimal? Quantity { get; set; }
     public string? Unit { get; set; }

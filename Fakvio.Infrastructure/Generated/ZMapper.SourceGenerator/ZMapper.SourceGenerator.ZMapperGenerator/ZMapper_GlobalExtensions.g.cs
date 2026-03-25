@@ -206,6 +206,7 @@ public static class Mapper_Extensions
         destination.UnitPrice = source.UnitPrice;
         destination.VatRateId = source.VatRateId;
         destination.VatRatePercentage = source.VatRatePercentage;
+        destination.IsTextRow = source.IsTextRow;
         destination.TotalBeforeVat = source.TotalBeforeVat;
         destination.VatAmount = source.VatAmount;
         destination.TotalWithVat = source.TotalWithVat;

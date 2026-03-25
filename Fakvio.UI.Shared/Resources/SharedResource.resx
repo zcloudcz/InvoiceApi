@@ -146,6 +146,9 @@
   <data name="Invoice_PdfExported" xml:space="preserve"><value>PDF bylo exportováno</value></data>
   <data name="Invoice_PaymentInfo" xml:space="preserve"><value>Platební údaje</value></data>
   <data name="Invoice_RevertToDraft" xml:space="preserve"><value>Vrátit do konceptu</value></data>
+  <data name="Btn_AddTextRow" xml:space="preserve"><value>Přidat textový řádek</value></data>
+  <data name="InvoiceItem_TextRow" xml:space="preserve"><value>text</value></data>
+  <data name="InvoiceItem_TextRowPlaceholder" xml:space="preserve"><value>Poznámka / textový řádek...</value></data>
   <data name="Invoice_RevertToDraftConfirm" xml:space="preserve"><value>Opravdu chcete vrátit fakturu do stavu Koncept? Budete ji moci plně editovat.</value></data>
   <data name="Invoice_RevertedToDraft" xml:space="preserve"><value>Faktura vrácena do stavu Koncept.</value></data>
   <data name="Invoice_Summary" xml:space="preserve"><value>Souhrn</value></data>

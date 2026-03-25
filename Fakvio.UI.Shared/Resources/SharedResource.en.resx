@@ -146,6 +146,9 @@
   <data name="Invoice_PdfExported" xml:space="preserve"><value>PDF has been exported</value></data>
   <data name="Invoice_PaymentInfo" xml:space="preserve"><value>Payment Details</value></data>
   <data name="Invoice_RevertToDraft" xml:space="preserve"><value>Revert to Draft</value></data>
+  <data name="Btn_AddTextRow" xml:space="preserve"><value>Add text row</value></data>
+  <data name="InvoiceItem_TextRow" xml:space="preserve"><value>text</value></data>
+  <data name="InvoiceItem_TextRowPlaceholder" xml:space="preserve"><value>Note / text row...</value></data>
   <data name="Invoice_RevertToDraftConfirm" xml:space="preserve"><value>Are you sure you want to revert this invoice to Draft? You will be able to fully edit it.</value></data>
   <data name="Invoice_RevertedToDraft" xml:space="preserve"><value>Invoice reverted to Draft status.</value></data>
   <data name="Invoice_Summary" xml:space="preserve"><value>Summary</value></data>
