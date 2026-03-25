@@ -417,12 +417,14 @@ public class InvoiceImportService : IInvoiceImportService
             });
         }
 
-        // Document number duplicate check for issued invoices
+        // Document number duplicate check for issued invoices.
+        // Exclude deleted invoices — a deleted invoice should not block re-import.
         if (!string.IsNullOrWhiteSpace(preview.DocumentNumber))
         {
             var existing = await _invoiceService.GetAllInvoicesAsync(
                 documentType: EDocumentType.Invoice, cancellationToken: ct);
-            if (existing.Any(i => i.DocumentNumber == preview.DocumentNumber))
+            if (existing.Any(i => i.DocumentNumber == preview.DocumentNumber
+                               && i.Status != EInvoiceStatus.Deleted))
             {
                 preview.Validations.Add(new ImportValidationMessage
                 {
@@ -477,12 +479,16 @@ public class InvoiceImportService : IInvoiceImportService
                     Severity = EImportValidationSeverity.Info
                 });
 
-                // Duplicate check: same document number from same supplier
+                // Duplicate check: same document number from same supplier.
+                // Exclude deleted/rejected invoices — they should not block re-import.
                 if (!string.IsNullOrWhiteSpace(preview.DocumentNumber))
                 {
                     var existing = await _receivedInvoiceService.GetAllAsync(ct: ct);
                     if (existing.Any(i =>
-                        i.DocumentNumber == preview.DocumentNumber && i.SupplierId == supplier.Id))
+                        i.DocumentNumber == preview.DocumentNumber
+                        && i.SupplierId == supplier.Id
+                        && i.Status != EReceivedInvoiceStatus.Deleted
+                        && i.Status != EReceivedInvoiceStatus.Rejected))
                     {
                         preview.Validations.Add(new ImportValidationMessage
                         {

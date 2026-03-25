@@ -330,8 +330,12 @@ public class InvoiceAiExtractorService : IInvoiceAiExtractor
         }
 
         Rules:
-        - Dates MUST be in YYYY-MM-DD format
-        - Amounts are decimal numbers (not strings)
+        - ALL dates MUST be extracted EXACTLY as they appear on the invoice, converted to YYYY-MM-DD format.
+          NEVER generate, guess, or substitute dates. If a date field is not found on the invoice, use null.
+          Common Czech date labels: "Datum vystavení" = issueDate, "Datum splatnosti" = dueDate,
+          "DUZP" or "Datum uskutečnění zdanitelného plnění" = taxableSupplyDate.
+        - ALL amounts MUST be extracted EXACTLY as printed on the invoice. Do NOT recalculate or round.
+          Amounts are decimal numbers (not strings).
         - Currency should be the 3-letter ISO 4217 code
         - If you find "Kč" in the text, the currency is "CZK"
         - IČO is always 8 digits (Czech registration number)
@@ -339,6 +343,7 @@ public class InvoiceAiExtractorService : IInvoiceAiExtractor
         - If items table is not found, set items to null (not empty array)
         - Distinguish between issuer (who created the invoice) and recipient (who receives it)
         - Document number must be extracted EXACTLY as it appears — no reformatting
+        - Extract ALL data faithfully from the document. Your job is OCR-like extraction, not generation.
         """;
 
     // ─── AI response model ───────────────────────────────────────────────
