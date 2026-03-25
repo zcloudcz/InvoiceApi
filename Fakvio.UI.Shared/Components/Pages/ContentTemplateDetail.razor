@@ -233,8 +233,6 @@ else
 
     // Quill rich text editor reference
     private BlazoredTextEditor? _quillEditor;
-    // Flag to load HTML into Quill after render
-    private bool _quillNeedsLoad = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -255,19 +253,10 @@ else
         }
     }
 
-    /// <summary>
-    /// After render hook — loads HTML into Quill editor when entering edit mode.
-    /// Quill needs the DOM to be rendered before we can load content via JS interop.
-    /// The _quillNeedsLoad flag is set by EnableEditing() and cleared here after loading.
-    /// </summary>
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (_quillNeedsLoad && _quillEditor != null)
-        {
-            _quillNeedsLoad = false;
-            await _quillEditor.LoadHTMLContent(_currentHtmlBody);
-        }
-    }
+    // No OnAfterRenderAsync needed for Quill — the <EditorContent> block
+    // already sets the initial HTML when the BlazoredTextEditor first renders.
+    // Calling LoadHTMLContent() was causing "Cannot read properties of undefined"
+    // because the Quill JS instance isn't available when Blazor calls OnAfterRender.
 
     private async Task LoadTemplate()
     {
@@ -303,7 +292,6 @@ else
         _currentTemplateType = _template.TemplateType;
         _currentIsDefault = _template.IsDefault;
         _currentLanguage = _template.Language;
-        _quillNeedsLoad = true;
         _isEditing = true;
         _isDirty = true; // Mark dirty when entering edit mode
     }

@@ -54,33 +54,6 @@
     <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
     <script src="_content/Blazored.TextEditor/quill-blot-formatter.min.js"></script>
     <script src="_content/Blazored.TextEditor/Blazored-BlazorQuill.js"></script>
-    <!-- Fix: Blazored.TextEditor Quill instance resolution — same patch as BlazorUI -->
-    <script>
-        (function () {
-            function getQuill(el) {
-                if (el.__quill) return el.__quill;
-                var children = el.querySelectorAll('.ql-container');
-                for (var i = 0; i < children.length; i++) {
-                    if (children[i].__quill) { el.__quill = children[i].__quill; return el.__quill; }
-                }
-                return null;
-            }
-            window.QuillFunctions.createQuill = function (el, toolBar, readOnly, placeholder, theme, formats, debugLevel) {
-                Quill.register('modules/blotFormatter', QuillBlotFormatter.default);
-                var opts = { debug: debugLevel, modules: { toolbar: toolBar, blotFormatter: {} }, placeholder: placeholder, readOnly: readOnly, theme: theme };
-                if (formats) opts.formats = formats;
-                el.__quill = new Quill(el, opts);
-            };
-            window.QuillFunctions.getQuillHTML = function (el) { var q = getQuill(el); return q ? q.root.innerHTML : ''; };
-            window.QuillFunctions.getQuillText = function (el) { var q = getQuill(el); return q ? q.getText() : ''; };
-            window.QuillFunctions.getQuillContent = function (el) { var q = getQuill(el); return q ? JSON.stringify(q.getContents()) : '{}'; };
-            window.QuillFunctions.loadQuillContent = function (el, c) { var q = getQuill(el); if (q) q.setContents(JSON.parse(c), 'api'); };
-            window.QuillFunctions.loadQuillHTMLContent = function (el, h) { var q = getQuill(el); if (q) q.root.innerHTML = h; };
-            window.QuillFunctions.enableQuillEditor = function (el, m) { var q = getQuill(el); if (q) q.enable(m); };
-            window.QuillFunctions.insertQuillImage = function (el, url) { var q = getQuill(el); if (!q) return; var i = q.getSelection() ? q.getSelection().index : 0; q.updateContents(new (Quill.import('delta'))().retain(i).insert({ image: url }, { alt: url })); };
-            window.QuillFunctions.insertQuillText = function (el, t) { var q = getQuill(el); if (!q) return; var s = q.getSelection(), i = s ? s.index : 0, l = s ? s.length : 0; q.deleteText(i, l); q.insertText(i, t); };
-        })();
-    </script>
     <!-- Custom JS for file download from the shared RCL -->
     <script src="_content/Fakvio.UI.Shared/js/download.js"></script>
 </body>
