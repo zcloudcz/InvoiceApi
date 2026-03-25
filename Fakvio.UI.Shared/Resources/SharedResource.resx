@@ -145,6 +145,7 @@
   <data name="Invoice_EmailSent" xml:space="preserve"><value>Faktura byla odeslána e-mailem</value></data>
   <data name="Invoice_PdfExported" xml:space="preserve"><value>PDF bylo exportováno</value></data>
   <data name="Invoice_PaymentInfo" xml:space="preserve"><value>Platební údaje</value></data>
+  <data name="Invoice_EditMetadata" xml:space="preserve"><value>Upravit údaje</value></data>
   <data name="Invoice_Summary" xml:space="preserve"><value>Souhrn</value></data>
   <data name="Invoice_PaidOn" xml:space="preserve"><value>Zaplaceno dne</value></data>
   <data name="Invoice_Draft" xml:space="preserve"><value>Koncept</value></data>

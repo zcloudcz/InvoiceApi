@@ -145,6 +145,7 @@
   <data name="Invoice_EmailSent" xml:space="preserve"><value>Invoice has been sent by email</value></data>
   <data name="Invoice_PdfExported" xml:space="preserve"><value>PDF has been exported</value></data>
   <data name="Invoice_PaymentInfo" xml:space="preserve"><value>Payment Details</value></data>
+  <data name="Invoice_EditMetadata" xml:space="preserve"><value>Edit details</value></data>
   <data name="Invoice_Summary" xml:space="preserve"><value>Summary</value></data>
   <data name="Invoice_PaidOn" xml:space="preserve"><value>Paid on</value></data>
   <data name="Invoice_Draft" xml:space="preserve"><value>Draft</value></data>

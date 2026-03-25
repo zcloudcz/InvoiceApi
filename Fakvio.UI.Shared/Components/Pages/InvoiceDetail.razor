@@ -194,11 +194,19 @@ else
             <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.Delete"
                        OnClick="DeleteInvoice">@L["Btn_Delete"]</MudButton>
         }
-        @* Delete button for Completed invoices — server validates it's the last in sequence *@
-        @if (_invoice.Status == EInvoiceStatus.Completed)
+        @* Completed invoice: edit non-financial metadata + delete (if last in sequence) *@
+        @if (_invoice.Status == EInvoiceStatus.Completed && !_isEditingMetadata)
         {
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Edit"
+                       OnClick="EnableMetadataEditing">@L["Invoice_EditMetadata"]</MudButton>
             <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.Delete"
                        OnClick="DeleteInvoice">@L["Btn_Delete"]</MudButton>
+        }
+        @if (_isEditingMetadata)
+        {
+            <MudButton Variant="Variant.Text" OnClick="CancelMetadataEditing">@L["Btn_Cancel"]</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save"
+                       OnClick="SaveMetadata">@L["Btn_Save"]</MudButton>
         }
         @* Restore button — only visible for deleted invoices, allows undoing accidental deletes *@
         @if (_invoice.Status == EInvoiceStatus.Deleted)
@@ -371,7 +379,7 @@ else
                 </MudCard>
             </MudItem>
 
-            @* Middle column: Payment info *@
+            @* Middle column: Payment info (editable for metadata edit mode) *@
             <MudItem xs="12" md="4">
                 <MudCard Elevation="2" Class="mb-4">
                     <MudCardHeader>
@@ -380,6 +388,21 @@ else
                         </CardHeaderContent>
                     </MudCardHeader>
                     <MudCardContent>
+                      @if (_isEditingMetadata)
+                      {
+                        <EnumSelect TEnum="EPaymentMethod"
+                                    NullableValue="_metaPaymentMethod"
+                                    NullableValueChanged="@(v => _metaPaymentMethod = v)"
+                                    Label="@L["Invoice_PaymentMethod"].Value"
+                                    Nullable="true" Class="mb-3" />
+                        <MudTextField @bind-Value="_metaBankAccount"
+                                      Label="@L["Invoice_BankAccount"].Value" Class="mb-3" />
+                        <MudTextField @bind-Value="_metaIBAN" Label="IBAN" Class="mb-3" />
+                        <MudTextField @bind-Value="_metaSWIFT" Label="SWIFT" Class="mb-3" />
+                        <MudTextField @bind-Value="_metaNotes" Label="@L["Invoice_Notes"].Value" Lines="3" />
+                      }
+                      else
+                      {
                         <MudList T="string" Dense="true">
                             @if (!string.IsNullOrEmpty(_invoice.VariableSymbol))
                             {
@@ -387,12 +410,17 @@ else
                                     <strong>@L["Invoice_VariableSymbol"]:</strong> @_invoice.VariableSymbol
                                 </MudListItem>
                             }
-                            @if (_invoice.PaymentMethod.HasValue)
-                            {
-                                <MudListItem T="string" Icon="@Icons.Material.Filled.Payment">
-                                    <strong>@L["Invoice_PaymentMethod"]:</strong> @_invoice.PaymentMethod
-                                </MudListItem>
-                            }
+                            <MudListItem T="string" Icon="@Icons.Material.Filled.Payment">
+                                <strong>@L["Invoice_PaymentMethod"]:</strong>
+                                @if (_invoice.PaymentMethod.HasValue)
+                                {
+                                    @L[$"EPaymentMethod_{_invoice.PaymentMethod.Value}"]
+                                }
+                                else
+                                {
+                                    <span>—</span>
+                                }
+                            </MudListItem>
                             @if (!string.IsNullOrEmpty(_invoice.BankAccountNumber))
                             {
                                 <MudListItem T="string" Icon="@Icons.Material.Filled.AccountBalance">
@@ -409,6 +437,7 @@ else
                                 <strong>@L["Template_Currency"]:</strong> @_invoice.CurrencyCode (@_invoice.CurrencySymbol)
                             </MudListItem>
                         </MudList>
+                      }
                     </MudCardContent>
                 </MudCard>
             </MudItem>
@@ -628,6 +657,14 @@ else
     private bool _isEditing = false;
     private UpdateInvoiceDto _editDto = new();
     private List<CreateInvoiceItemDto> _editItems = new();
+
+    // Metadata edit mode (for Completed invoices — non-financial fields only)
+    private bool _isEditingMetadata = false;
+    private EPaymentMethod? _metaPaymentMethod;
+    private string? _metaBankAccount;
+    private string? _metaIBAN;
+    private string? _metaSWIFT;
+    private string? _metaNotes;
     private DateTime? _editDueDate;
     private DateTime? _editTaxableSupplyDate;
 
@@ -1255,6 +1292,66 @@ else
                 Snackbar.Add(L["Msg_SaveSuccess"].Value, Severity.Success);
                 _isEditing = false;
                 _invoice = result; // Update displayed data with API response
+            }
+            else
+            {
+                Snackbar.Add(L["Msg_Error"].Value, Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+    }
+
+    // --- Metadata edit (Completed invoices — non-financial fields) ---
+
+    /// <summary>
+    /// Enables editing of non-financial metadata on a Completed invoice.
+    /// Only PaymentMethod, BankAccount, IBAN, SWIFT, and Notes can be changed.
+    /// Financial data (amounts, items, dates, document number) stays locked.
+    /// </summary>
+    private void EnableMetadataEditing()
+    {
+        if (_invoice == null) return;
+        _metaPaymentMethod = _invoice.PaymentMethod;
+        _metaBankAccount = _invoice.BankAccountNumber;
+        _metaIBAN = _invoice.IBAN;
+        _metaSWIFT = _invoice.SWIFT;
+        _metaNotes = _invoice.Notes;
+        _isEditingMetadata = true;
+    }
+
+    private void CancelMetadataEditing()
+    {
+        _isEditingMetadata = false;
+    }
+
+    /// <summary>
+    /// Saves only non-financial metadata via the existing UpdateInvoiceAsync.
+    /// Sends null for all financial fields (items, currency, dates) so they stay unchanged.
+    /// </summary>
+    private async Task SaveMetadata()
+    {
+        if (_invoice == null) return;
+        try
+        {
+            var dto = new UpdateInvoiceDto
+            {
+                PaymentMethod = _metaPaymentMethod,
+                BankAccountNumber = _metaBankAccount,
+                IBAN = _metaIBAN,
+                SWIFT = _metaSWIFT,
+                Notes = _metaNotes
+                // All other fields are null → backend skips them (partial update pattern)
+            };
+
+            var result = await InvoiceService.UpdateAsync(Id, dto);
+            if (result != null)
+            {
+                _invoice = result;
+                _isEditingMetadata = false;
+                Snackbar.Add(L["Msg_SaveSuccess"].Value, Severity.Success);
             }
             else
             {
