@@ -65,10 +65,31 @@ public class ChatContextBuilder : IChatContextBuilder
                 .Where(i => i.Status == EInvoiceStatus.Paid)
                 .CountAsync(ct);
 
+            // Load the user's company (issuer) — critical for AI to know who "we" are.
+            var issuer = await _context.Client
+                .AsNoTracking()
+                .Where(c => c.IsIssuer)
+                .Select(c => new { c.CompanyName, c.RegistrationNumber, c.TaxNumber })
+                .FirstOrDefaultAsync(ct);
+
             // Build the system prompt with capabilities and business context.
             var sb = new StringBuilder();
             sb.AppendLine("You are Fakvio AI Assistant — connected to the Fakvio invoicing system.");
             sb.AppendLine();
+
+            // Tell the AI exactly who the user's company is — critical for import_invoice tool.
+            if (issuer != null)
+            {
+                sb.AppendLine("YOUR COMPANY (the user's company — you represent this entity):");
+                sb.AppendLine($"- Name: {issuer.CompanyName}");
+                sb.AppendLine($"- IČO: {issuer.RegistrationNumber}");
+                if (!string.IsNullOrEmpty(issuer.TaxNumber))
+                    sb.AppendLine($"- DIČ: {issuer.TaxNumber}");
+                sb.AppendLine("When importing invoices: if YOUR IČO appears as the issuer (dodavatel), it's an ISSUED invoice.");
+                sb.AppendLine("If YOUR IČO appears as the recipient (odběratel), it's a RECEIVED invoice.");
+                sb.AppendLine();
+            }
+
             sb.AppendLine("RESPONSE STYLE: Answer in ONE sentence maximum. No greetings, no filler, no repetition.");
             sb.AppendLine("Just do what the user asks and confirm the result briefly.");
             sb.AppendLine("Respond in the same language the user writes in (Czech or English).");

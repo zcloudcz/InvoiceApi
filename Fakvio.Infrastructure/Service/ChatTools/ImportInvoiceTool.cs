@@ -202,9 +202,10 @@ public class ImportInvoiceTool : IChatTool
             return ChatToolResult.Failure("No issuer (your company) configured.");
 
         var vatRates = await _vatRateService.GetAllVatRatesAsync(cancellationToken: ct);
-        var defaultVatRate = vatRates.FirstOrDefault(v => v.IsDefault && v.IsActive)?.Rate ?? 21m;
+        var activeVatRates = vatRates.Where(v => v.IsActive).ToList();
+        var defaultVatRate = activeVatRates.FirstOrDefault(v => v.IsDefault);
 
-        var items = ParseItems(itemsJson, defaultVatRate);
+        var items = ParseItems(itemsJson, activeVatRates, defaultVatRate);
         if (items.Count == 0)
             return ChatToolResult.Failure("No valid line items found. Provide at least one item.");
 
@@ -353,20 +354,36 @@ public class ImportInvoiceTool : IChatTool
             DateTimeStyles.None, out var d) ? d : null;
     }
 
-    private static List<CreateInvoiceItemDto> ParseItems(string? json, decimal defaultVatRate)
+    /// <summary>
+    /// Parses AI-provided item JSON and resolves VatRateId from the active VAT rates.
+    /// VatRateId is required when the issuer is a VAT payer — without it, CreateInvoiceAsync throws.
+    /// Matches the AI-extracted percentage (e.g., 21) to the closest active VatRate entity.
+    /// </summary>
+    private static List<CreateInvoiceItemDto> ParseItems(
+        string? json,
+        List<Contracts.Dto.VatRate.VatRateDto> activeVatRates,
+        Contracts.Dto.VatRate.VatRateDto? defaultVatRate)
     {
         if (string.IsNullOrWhiteSpace(json)) return new();
         try
         {
             var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
             var raw = JsonSerializer.Deserialize<List<RawItem>>(json, options) ?? new();
-            return raw.Select(r => new CreateInvoiceItemDto
+            return raw.Select(r =>
             {
-                Description = r.Description ?? "Item",
-                Quantity = r.Quantity > 0 ? r.Quantity : 1,
-                UnitPrice = r.UnitPrice,
-                VatRatePercentage = r.VatRate > 0 ? r.VatRate : defaultVatRate,
-                Unit = r.Unit ?? "ks"
+                var pct = r.VatRate > 0 ? r.VatRate : (defaultVatRate?.Rate ?? 21m);
+                // Find the VatRate entity that matches this percentage (exact or closest).
+                var matchedRate = activeVatRates.FirstOrDefault(v => v.Rate == pct) ?? defaultVatRate;
+
+                return new CreateInvoiceItemDto
+                {
+                    Description = r.Description ?? "Item",
+                    Quantity = r.Quantity > 0 ? r.Quantity : 1,
+                    UnitPrice = r.UnitPrice,
+                    VatRateId = matchedRate?.Id,
+                    VatRatePercentage = pct,
+                    Unit = r.Unit ?? "ks"
+                };
             }).ToList();
         }
         catch { return new(); }
