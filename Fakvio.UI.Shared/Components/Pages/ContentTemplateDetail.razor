@@ -156,11 +156,10 @@ else
                 <MudCardContent>
                     @if (_isFormMode)
                     {
-                        @* Quill WYSIWYG editor for creating/editing HTML content *@
+                        @* Quill WYSIWYG editor — content loaded via LoadHTMLContent after Quill JS initializes.
+                           EditorContent is empty on purpose — if we put HTML here, it renders as plaintext. *@
                         <BlazoredTextEditor @ref="_quillEditor" Placeholder="@L["Template_EditorPlaceholder"].Value">
-                            <EditorContent>
-                                @((MarkupString)_currentHtmlBody)
-                            </EditorContent>
+                            <EditorContent></EditorContent>
                         </BlazoredTextEditor>
                     }
                     else
@@ -253,10 +252,45 @@ else
         }
     }
 
-    // No OnAfterRenderAsync needed for Quill — the <EditorContent> block
-    // already sets the initial HTML when the BlazoredTextEditor first renders.
-    // Calling LoadHTMLContent() was causing "Cannot read properties of undefined"
-    // because the Quill JS instance isn't available when Blazor calls OnAfterRender.
+    // Flag to load HTML into Quill after it has been rendered and initialized.
+    private bool _quillNeedsLoad;
+
+    /// <summary>
+    /// Loads HTML content into the Quill editor after it has been fully initialized.
+    /// Quill's JS instance is NOT available in the same OnAfterRenderAsync cycle where
+    /// the BlazoredTextEditor component first renders. We must wait for the NEXT render
+    /// cycle (firstRender=false) after the component has been shown.
+    ///
+    /// Flow: EnableEditing() sets _quillNeedsLoad → first render creates the DOM →
+    /// Quill JS initializes → NEXT OnAfterRenderAsync sees _quillNeedsLoad=true and loads HTML.
+    /// </summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_quillNeedsLoad && _quillEditor != null)
+        {
+            _quillNeedsLoad = false;
+            // Wait for Quill JS to fully initialize — it happens asynchronously
+            // after the DOM element is created. 200ms is reliable across connections.
+            await Task.Delay(200);
+            try
+            {
+                await _quillEditor.LoadHTMLContent(_currentHtmlBody ?? "");
+            }
+            catch (Microsoft.JSInterop.JSException ex) when (ex.Message.Contains("root"))
+            {
+                // Quill still not ready — retry once after a longer wait
+                await Task.Delay(500);
+                try
+                {
+                    await _quillEditor.LoadHTMLContent(_currentHtmlBody ?? "");
+                }
+                catch
+                {
+                    // Give up silently — user can manually paste content
+                }
+            }
+        }
+    }
 
     private async Task LoadTemplate()
     {
@@ -293,6 +327,16 @@ else
         _currentIsDefault = _template.IsDefault;
         _currentLanguage = _template.Language;
         _isEditing = true;
+        // Don't set _quillNeedsLoad here — Quill DOM doesn't exist yet.
+        // After StateHasChanged + render, the component appears. We need one MORE
+        // render cycle for Quill JS to initialize. Use InvokeAsync to schedule after render.
+        _ = Task.Run(async () =>
+        {
+            // Wait for Blazor to render the BlazoredTextEditor component
+            await Task.Delay(100);
+            _quillNeedsLoad = true;
+            await InvokeAsync(StateHasChanged);
+        });
         _isDirty = true; // Mark dirty when entering edit mode
     }
 
