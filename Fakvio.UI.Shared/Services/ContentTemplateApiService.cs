@@ -86,4 +86,24 @@ public class ContentTemplateApiService : ApiClientBase
     {
         return await base.DeleteAsync($"/api/contenttemplate/{id}");
     }
+
+    /// <summary>
+    /// Previews a content template with real or sample data.
+    /// - PDF templates: returns PDF bytes (rendered with first valid invoice).
+    /// - Email templates: returns rendered HTML string.
+    /// GET /api/contenttemplate/{id}/preview
+    /// </summary>
+    public async Task<byte[]?> PreviewPdfAsync(long id)
+    {
+        return await GetBytesAsync($"/api/contenttemplate/{id}/preview");
+    }
+
+    /// <summary>
+    /// Previews an email template — returns rendered HTML string.
+    /// GET /api/contenttemplate/{id}/preview (Content-Type: text/html)
+    /// </summary>
+    public async Task<string?> PreviewHtmlAsync(long id)
+    {
+        return await GetStringAsync($"/api/contenttemplate/{id}/preview");
+    }
 }

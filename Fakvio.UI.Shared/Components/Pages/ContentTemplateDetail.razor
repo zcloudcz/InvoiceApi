@@ -50,6 +50,11 @@ else
         }
         else if (!_isEditing)
         {
+            <MudButton Variant="Variant.Outlined" Color="Color.Default" StartIcon="@Icons.Material.Filled.Preview"
+                       OnClick="PreviewTemplate" Disabled="_previewing">
+                @if (_previewing) { <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-1" /> }
+                @L["ContentTemplate_Preview"]
+            </MudButton>
             <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Edit"
                        OnClick="EnableEditing">@L["Btn_Edit"]</MudButton>
             <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.Delete"
@@ -231,6 +236,24 @@ else
     </MudGrid>
 }
 
+@* Dialog for email template HTML preview *@
+<MudDialog @bind-Visible="_showPreviewDialog" Options="@(new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true })">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@L["ContentTemplate_PreviewTitle"]</MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (!string.IsNullOrEmpty(_previewHtml))
+        {
+            <div class="pa-4" style="border: 1px solid #e0e0e0; border-radius: 4px; min-height: 200px; background: white; color: black;">
+                @((MarkupString)_previewHtml)
+            </div>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showPreviewDialog = false)">@L["Btn_Close"]</MudButton>
+    </DialogActions>
+</MudDialog>
+
 @code {
     [Parameter] public long Id { get; set; }
 
@@ -241,6 +264,11 @@ else
     private bool _isEditing = false;
     private bool _isDirty = false; // Dirty tracking for unsaved changes warning
     private bool _isFormMode => _isCreateMode || _isEditing;
+
+    // Preview state
+    private bool _previewing = false;
+    private bool _showPreviewDialog = false;
+    private string? _previewHtml;
 
     // Form fields — separate from DTO to allow independent editing
     private string _currentName = "";
@@ -440,6 +468,61 @@ else
         EContentTemplateType.PasswordResetEmail => L["ContentType_PasswordResetEmail"].Value,
         _ => type.ToString()
     };
+
+    // ========== Preview ==========
+
+    /// <summary>
+    /// Previews the template:
+    /// - PDF templates (InvoicePdf, CreditNotePdf): downloads a rendered PDF using first valid invoice.
+    /// - Email templates: shows rendered HTML in a popup dialog.
+    /// </summary>
+    private async Task PreviewTemplate()
+    {
+        if (_template == null) return;
+
+        _previewing = true;
+        StateHasChanged();
+        try
+        {
+            if (IsPdfType(_template.TemplateType))
+            {
+                // PDF preview — download rendered PDF via JS interop
+                var pdfBytes = await TemplateService.PreviewPdfAsync(Id);
+                if (pdfBytes != null && pdfBytes.Length > 0)
+                {
+                    var base64 = Convert.ToBase64String(pdfBytes);
+                    var fileName = $"Preview_{SanitizeFileName(_template.Name)}.pdf";
+                    await JS.InvokeVoidAsync("downloadFile", fileName, base64, "application/pdf");
+                }
+                else
+                {
+                    Snackbar.Add(L["ContentTemplate_PreviewNoData"].Value, Severity.Warning);
+                }
+            }
+            else
+            {
+                // Email preview — fetch rendered HTML and show in a dialog
+                var html = await TemplateService.PreviewHtmlAsync(Id);
+                if (!string.IsNullOrEmpty(html))
+                {
+                    _previewHtml = html;
+                    _showPreviewDialog = true;
+                }
+                else
+                {
+                    Snackbar.Add(L["Msg_Error"].Value, Severity.Error);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _previewing = false;
+        }
+    }
 
     // ========== Download / Upload HTML ==========
 

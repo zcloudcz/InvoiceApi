@@ -538,6 +538,9 @@
   <data name="ContentTemplate_UploadHtml" xml:space="preserve"><value>Nahrát HTML</value></data>
   <data name="ContentTemplate_HtmlUploaded" xml:space="preserve"><value>HTML obsah nahrán</value></data>
   <data name="ContentTemplate_InvalidFile" xml:space="preserve"><value>Povoleny jsou pouze .html a .htm soubory</value></data>
+  <data name="ContentTemplate_Preview" xml:space="preserve"><value>Náhled</value></data>
+  <data name="ContentTemplate_PreviewTitle" xml:space="preserve"><value>Náhled šablony</value></data>
+  <data name="ContentTemplate_PreviewNoData" xml:space="preserve"><value>Žádná data pro náhled — vytvořte nejprve dokument odpovídajícího typu</value></data>
   <data name="ContentType_InvoicePdf" xml:space="preserve"><value>PDF faktury</value></data>
   <data name="ContentType_CreditNotePdf" xml:space="preserve"><value>PDF dobropisu</value></data>
   <data name="ContentType_InvoiceEmail" xml:space="preserve"><value>Email faktury</value></data>

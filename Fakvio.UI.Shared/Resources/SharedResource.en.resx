@@ -538,6 +538,9 @@
   <data name="ContentTemplate_UploadHtml" xml:space="preserve"><value>Upload HTML</value></data>
   <data name="ContentTemplate_HtmlUploaded" xml:space="preserve"><value>HTML content uploaded</value></data>
   <data name="ContentTemplate_InvalidFile" xml:space="preserve"><value>Only .html and .htm files are allowed</value></data>
+  <data name="ContentTemplate_Preview" xml:space="preserve"><value>Preview</value></data>
+  <data name="ContentTemplate_PreviewTitle" xml:space="preserve"><value>Template Preview</value></data>
+  <data name="ContentTemplate_PreviewNoData" xml:space="preserve"><value>No data for preview — create a document of the matching type first</value></data>
   <data name="ContentType_InvoicePdf" xml:space="preserve"><value>Invoice PDF</value></data>
   <data name="ContentType_CreditNotePdf" xml:space="preserve"><value>Credit Note PDF</value></data>
   <data name="ContentType_InvoiceEmail" xml:space="preserve"><value>Invoice Email</value></data>

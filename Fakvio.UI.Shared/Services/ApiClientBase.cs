@@ -285,6 +285,37 @@ public abstract class ApiClientBase
     }
 
     /// <summary>
+    /// Performs GET request and returns raw string content (e.g., rendered HTML).
+    /// Throws ApiException on non-success status codes.
+    /// </summary>
+    protected async Task<string?> GetStringAsync(string endpoint)
+    {
+        try
+        {
+            await AddAuthorizationHeaderAsync();
+            _logger.LogInformation("GET (string) {Endpoint}", endpoint);
+            var response = await _httpClient.GetAsync(endpoint);
+
+            if (response.IsSuccessStatusCode)
+            {
+                return await response.Content.ReadAsStringAsync();
+            }
+
+            await HandleErrorResponseAsync(response, "GET (string)", endpoint);
+            return null; // Unreachable
+        }
+        catch (ApiException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during GET (string) {Endpoint}", endpoint);
+            throw;
+        }
+    }
+
+    /// <summary>
     /// Performs POST request without a request body and deserializes the response.
     /// Useful for action endpoints like /complete or /mark-paid that only need the URL.
     /// Throws ApiException on non-success status codes.

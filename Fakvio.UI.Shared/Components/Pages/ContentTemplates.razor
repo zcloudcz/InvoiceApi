@@ -40,6 +40,12 @@
                  OnEdit="@(t => Navigation.NavigateTo($"/content-templates/{t.Id}"))"
                  OnDelete="@(item => DeleteTemplate(item.Id))">
         <RowActions>
+            @* Preview template with real/sample data *@
+            <MudIconButton Icon="@Icons.Material.Filled.Preview"
+                           Size="Size.Medium" Color="Color.Default"
+                           Disabled="@string.IsNullOrEmpty(context.HtmlBody)"
+                           OnClick="@(() => PreviewTemplate(context))"
+                           Title="@L["ContentTemplate_Preview"].Value" />
             @* Download HTML body as .html file *@
             <MudIconButton Icon="@Icons.Material.Filled.Download"
                            Size="Size.Medium" Color="Color.Default"
@@ -112,12 +118,34 @@
     </AppDataGrid>
 </MudPaper>
 
+@* Dialog for email template HTML preview *@
+<MudDialog @bind-Visible="_showPreviewDialog" Options="@(new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true })">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@L["ContentTemplate_PreviewTitle"]</MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (!string.IsNullOrEmpty(_previewHtml))
+        {
+            <div class="pa-4" style="border: 1px solid #e0e0e0; border-radius: 4px; min-height: 200px; background: white; color: black;">
+                @((MarkupString)_previewHtml)
+            </div>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showPreviewDialog = false)">@L["Btn_Close"]</MudButton>
+    </DialogActions>
+</MudDialog>
+
 @code {
     private List<ContentTemplateDto> _templates = new();
     private List<ContentTemplateDto> _filteredTemplates = new();
     private bool _loading = true;
     private string _searchString = "";
     private string _activeFilter = "all";
+
+    // Preview state
+    private bool _showPreviewDialog = false;
+    private string? _previewHtml;
 
     protected override async Task OnInitializedAsync()
     {
@@ -188,6 +216,51 @@
             {
                 Snackbar.Add(L["Msg_DeleteSuccess"].Value, Severity.Success);
                 await LoadTemplates();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+    }
+
+    // ========== Preview ==========
+
+    /// <summary>
+    /// Previews a template: PDF templates download a rendered PDF, email templates open a dialog.
+    /// </summary>
+    private async Task PreviewTemplate(ContentTemplateDto template)
+    {
+        try
+        {
+            if (IsPdfType(template.TemplateType))
+            {
+                // PDF preview — download rendered PDF
+                var pdfBytes = await TemplateService.PreviewPdfAsync(template.Id);
+                if (pdfBytes != null && pdfBytes.Length > 0)
+                {
+                    var base64 = Convert.ToBase64String(pdfBytes);
+                    var fileName = $"Preview_{SanitizeFileName(template.Name)}.pdf";
+                    await JS.InvokeVoidAsync("downloadFile", fileName, base64, "application/pdf");
+                }
+                else
+                {
+                    Snackbar.Add(L["ContentTemplate_PreviewNoData"].Value, Severity.Warning);
+                }
+            }
+            else
+            {
+                // Email preview — show rendered HTML in dialog
+                var html = await TemplateService.PreviewHtmlAsync(template.Id);
+                if (!string.IsNullOrEmpty(html))
+                {
+                    _previewHtml = html;
+                    _showPreviewDialog = true;
+                }
+                else
+                {
+                    Snackbar.Add(L["Msg_Error"].Value, Severity.Error);
+                }
             }
         }
         catch (Exception ex)
