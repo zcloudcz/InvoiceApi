@@ -435,6 +435,11 @@
   <data name="Invoice_Restored" xml:space="preserve"><value>Faktura obnovena</value></data>
   <data name="Invoice_Issued" xml:space="preserve"><value>Faktura vystavena</value></data>
   <data name="Invoice_MarkedAsPaid" xml:space="preserve"><value>Faktura označena jako zaplacená</value></data>
+  <data name="FileName_Invoice" xml:space="preserve"><value>Faktura</value></data>
+  <data name="FileName_CreditNote" xml:space="preserve"><value>Dobropis</value></data>
+  <data name="FileName_Invoices" xml:space="preserve"><value>Faktury</value></data>
+  <data name="FileName_CreditNotes" xml:space="preserve"><value>Dobropisy</value></data>
+  <data name="FileName_TaxComparison" xml:space="preserve"><value>porovnani-dani</value></data>
   <data name="Invoice_PdfDownloaded" xml:space="preserve"><value>PDF staženo</value></data>
   <data name="Invoice_PdfFailed" xml:space="preserve"><value>Nepodařilo se vygenerovat PDF</value></data>
   <data name="Invoice_EmailSentTo" xml:space="preserve"><value>Faktura odeslána na {0}</value></data>

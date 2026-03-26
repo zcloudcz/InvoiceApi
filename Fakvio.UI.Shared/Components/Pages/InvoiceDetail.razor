@@ -1385,7 +1385,10 @@ else
             if (pdfBytes != null && pdfBytes.Length > 0)
             {
                 var base64 = Convert.ToBase64String(pdfBytes);
-                var fileName = $"Invoice_{_invoice.DocumentNumber ?? Id.ToString()}.pdf";
+                // Use localized file name prefix based on document type (Invoice vs CreditNote)
+                var prefix = _invoice.DocumentType == EDocumentType.CreditNote
+                    ? L["FileName_CreditNote"].Value : L["FileName_Invoice"].Value;
+                var fileName = $"{prefix}_{_invoice.DocumentNumber ?? Id.ToString()}.pdf";
                 await JS.InvokeVoidAsync("downloadFile", fileName, base64, "application/pdf");
                 Snackbar.Add(L["Invoice_PdfDownloaded"].Value, Severity.Success);
             }
@@ -1458,7 +1461,10 @@ else
             if (pdfBytes != null && pdfBytes.Length > 0)
             {
                 var base64 = Convert.ToBase64String(pdfBytes);
-                var fileName = $"Invoice_{_invoice.DocumentNumber ?? Id.ToString()}.pdf";
+                // Use localized file name prefix based on document type (Invoice vs CreditNote)
+                var prefix = _invoice.DocumentType == EDocumentType.CreditNote
+                    ? L["FileName_CreditNote"].Value : L["FileName_Invoice"].Value;
+                var fileName = $"{prefix}_{_invoice.DocumentNumber ?? Id.ToString()}.pdf";
                 await JS.InvokeVoidAsync("downloadFile", fileName, base64, "application/pdf");
                 Snackbar.Add(L["Invoice_PdfDownloaded"].Value, Severity.Success);
             }

@@ -543,9 +543,11 @@ public class InvoiceController : ControllerBase
             // Generate the PDF bytes via the export service — pass optional templateId for template selection
             var pdfBytes = await _pdfExportService.GenerateInvoicePdfAsync(id, templateId, cancellationToken);
 
-            // Fetch the invoice to get the document number for the file name
+            // Fetch the invoice to get the document number and document type for the file name
             var invoice = await _invoiceService.GetInvoiceByIdAsync(id, cancellationToken);
-            var fileName = $"Invoice_{invoice?.DocumentNumber ?? id.ToString()}.pdf";
+            // Use document type prefix — "Invoice" for invoices, "CreditNote" for credit notes
+            var prefix = invoice?.DocumentType == EDocumentType.CreditNote ? "CreditNote" : "Invoice";
+            var fileName = $"{prefix}_{invoice?.DocumentNumber ?? id.ToString()}.pdf";
 
             _logger.LogInformation("PDF generated for invoice {Id}, size: {Size} bytes", id, pdfBytes.Length);
 
@@ -824,7 +826,9 @@ public class InvoiceController : ControllerBase
                 {
                     var pdfBytes = await _pdfExportService.GenerateInvoicePdfAsync(id, null, cancellationToken);
                     var invoice = await _invoiceService.GetInvoiceByIdAsync(id, cancellationToken);
-                    var fileName = $"Invoice_{invoice?.DocumentNumber ?? id.ToString()}.pdf";
+                    // Use document type prefix — "Invoice" for invoices, "CreditNote" for credit notes
+                    var prefix = invoice?.DocumentType == EDocumentType.CreditNote ? "CreditNote" : "Invoice";
+                    var fileName = $"{prefix}_{invoice?.DocumentNumber ?? id.ToString()}.pdf";
 
                     // Add each PDF as an entry in the ZIP archive
                     var entry = archive.CreateEntry(fileName, System.IO.Compression.CompressionLevel.Optimal);
@@ -841,6 +845,7 @@ public class InvoiceController : ControllerBase
 
         // Return the ZIP as a downloadable file
         zipStream.Position = 0;
-        return File(zipStream.ToArray(), "application/zip", $"Invoices_{DateTime.UtcNow:yyyyMMdd}.zip");
+        // ZIP archive name — "Documents" is a neutral term covering both invoices and credit notes
+        return File(zipStream.ToArray(), "application/zip", $"Documents_{DateTime.UtcNow:yyyyMMdd}.zip");
     }
 }

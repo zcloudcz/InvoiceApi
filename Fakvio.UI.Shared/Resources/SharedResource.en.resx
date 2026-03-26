@@ -435,6 +435,11 @@
   <data name="Invoice_Restored" xml:space="preserve"><value>Invoice restored</value></data>
   <data name="Invoice_Issued" xml:space="preserve"><value>Invoice issued</value></data>
   <data name="Invoice_MarkedAsPaid" xml:space="preserve"><value>Invoice marked as paid</value></data>
+  <data name="FileName_Invoice" xml:space="preserve"><value>Invoice</value></data>
+  <data name="FileName_CreditNote" xml:space="preserve"><value>CreditNote</value></data>
+  <data name="FileName_Invoices" xml:space="preserve"><value>Invoices</value></data>
+  <data name="FileName_CreditNotes" xml:space="preserve"><value>CreditNotes</value></data>
+  <data name="FileName_TaxComparison" xml:space="preserve"><value>tax-comparison</value></data>
   <data name="Invoice_PdfDownloaded" xml:space="preserve"><value>PDF downloaded</value></data>
   <data name="Invoice_PdfFailed" xml:space="preserve"><value>Failed to generate PDF</value></data>
   <data name="Invoice_EmailSentTo" xml:space="preserve"><value>Invoice sent to {0}</value></data>

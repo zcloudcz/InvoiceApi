@@ -23,8 +23,9 @@
     <PackageReference Include="MudBlazor" Version="8.15.0" />
     <!-- Browser localStorage for JWT token persistence (works in both WASM and MAUI WebView) -->
     <PackageReference Include="Blazored.LocalStorage" Version="4.5.0" />
-    <!-- Quill WYSIWYG rich-text editor for invoice/email template editing -->
-    <PackageReference Include="Blazored.TextEditor" Version="1.1.3" />
+    <!-- MudBlazor-native WYSIWYG rich-text editor (Quill 2.x) for template editing.
+         Replaces abandoned Blazored.TextEditor (Quill 1.x, last release 2022). -->
+    <PackageReference Include="Tizzani.MudBlazor.HtmlEditor" Version="2.3.0" />
     <!-- Authorization components (AuthorizeView, CascadingAuthenticationState, etc.) -->
     <PackageReference Include="Microsoft.AspNetCore.Components.Authorization" Version="10.0.2" />
     <!-- HttpClient factory for named/typed HTTP clients + IHttpClientFactory -->

@@ -549,7 +549,10 @@
             if (pdfBytes != null && pdfBytes.Length > 0)
             {
                 var base64 = Convert.ToBase64String(pdfBytes);
-                var fileName = $"Invoice_{invoice.DocumentNumber ?? invoice.Id.ToString()}.pdf";
+                // Use localized file name prefix based on document type (Invoice vs CreditNote)
+                var prefix = invoice.DocumentType == EDocumentType.CreditNote
+                    ? L["FileName_CreditNote"].Value : L["FileName_Invoice"].Value;
+                var fileName = $"{prefix}_{invoice.DocumentNumber ?? invoice.Id.ToString()}.pdf";
                 await JS.InvokeVoidAsync("downloadFile", fileName, base64, "application/pdf");
                 Snackbar.Add(L["Invoice_PdfDownloaded"].Value, Severity.Success);
             }
@@ -704,7 +707,10 @@
             if (pdfBytes != null && pdfBytes.Length > 0)
             {
                 var base64 = Convert.ToBase64String(pdfBytes);
-                var fileName = $"Invoice_{invoice.DocumentNumber ?? invoice.Id.ToString()}.pdf";
+                // Use localized file name prefix based on document type (Invoice vs CreditNote)
+                var prefix = invoice.DocumentType == EDocumentType.CreditNote
+                    ? L["FileName_CreditNote"].Value : L["FileName_Invoice"].Value;
+                var fileName = $"{prefix}_{invoice.DocumentNumber ?? invoice.Id.ToString()}.pdf";
                 await JS.InvokeVoidAsync("downloadFile", fileName, base64, "application/pdf");
                 Snackbar.Add(L["Invoice_PdfDownloaded"].Value, Severity.Success);
             }
@@ -862,7 +868,10 @@
             if (zipBytes != null && zipBytes.Length > 0)
             {
                 var base64 = Convert.ToBase64String(zipBytes);
-                var fileName = $"Invoices_{DateTime.Now:yyyyMMdd}.zip";
+                // Use localized ZIP name based on current view (Invoices vs CreditNotes)
+                var zipPrefix = _isCreditNoteView
+                    ? L["FileName_CreditNotes"].Value : L["FileName_Invoices"].Value;
+                var fileName = $"{zipPrefix}_{DateTime.Now:yyyyMMdd}.zip";
                 await JS.InvokeVoidAsync("downloadFile", fileName, base64, "application/zip");
                 Snackbar.Add(L["Bulk_Success"].Value, Severity.Success);
             }

@@ -88,7 +88,9 @@ public class EmailService : IEmailService
 
         // Generate the PDF attachment using the PDF export service
         var pdfBytes = await _pdfExportService.GenerateInvoicePdfAsync(invoiceId, ct);
-        var fileName = $"Invoice_{invoice.DocumentNumber ?? invoiceId.ToString()}.pdf";
+        // Use document type prefix for the attachment file name (Invoice vs CreditNote)
+        var prefix = invoice.DocumentType == EDocumentType.CreditNote ? "CreditNote" : "Invoice";
+        var fileName = $"{prefix}_{invoice.DocumentNumber ?? invoiceId.ToString()}.pdf";
 
         // Build placeholders dictionary for template substitution
         var placeholders = new Dictionary<string, string>

@@ -19,6 +19,27 @@ Azure Functions Isolated Worker has two DI scopes per request (`httpContext.Requ
 
 ## Completed
 
+### Localized file names + MudBlazor.HtmlEditor migration (2026-03-26)
+Two improvements implemented in a single pass:
+
+**1. Localized download file names:**
+- [x] Added resource keys `FileName_Invoice`, `FileName_CreditNote`, `FileName_Invoices`, `FileName_CreditNotes` (CZ: Faktura/Dobropis/Faktury/Dobropisy, EN: Invoice/CreditNote/Invoices/CreditNotes)
+- [x] `Invoices.razor` — 3 places: single PDF download, template PDF download, bulk ZIP download (uses `_isCreditNoteView` for ZIP name)
+- [x] `InvoiceDetail.razor` — 2 places: default PDF download, template PDF download (uses `_invoice.DocumentType`)
+- [x] `InvoiceController.cs` — 3 places: single PDF, bulk PDF entries, ZIP archive name (uses `invoice.DocumentType`)
+- [x] `EmailService.cs` — email attachment file name (uses `invoice.DocumentType`)
+
+**2. WYSIWYG editor migration (Blazored.TextEditor → Tizzani.MudBlazor.HtmlEditor):**
+- [x] Replaced `Blazored.TextEditor` v1.1.3 (abandoned, Quill 1.x) with `Tizzani.MudBlazor.HtmlEditor` v2.3.0 (active, Quill 2.x, MudBlazor-native)
+- [x] Rewrote `ContentTemplateDetail.razor` — replaced `BlazoredTextEditor` with `MudHtmlEditor` + `@bind-Value`
+- [x] Removed 30-attempt polling hack in `OnAfterRenderAsync` (no longer needed — MudHtmlEditor handles lifecycle)
+- [x] Removed `_quillEditor`, `_quillNeedsLoad`, `_quillReady` fields
+- [x] Updated `index.html` (BlazorUI + MauiApp): removed Quill 1.x CDN + Blazored.TextEditor scripts, added Quill 2.x CDN + MudHtmlEditor CSS/JS
+- [x] Updated `Fakvio.UI.Shared.csproj`: swapped NuGet packages
+
+---
+
+
 ### Credential encryption at rest (2026-03-24)
 All sensitive credentials stored in the database are now encrypted using ASP.NET Core Data Protection API (AES-256-CBC + HMACSHA256). Migration-safe: legacy plaintext values are returned unchanged by Decrypt and automatically encrypted on next save.
 

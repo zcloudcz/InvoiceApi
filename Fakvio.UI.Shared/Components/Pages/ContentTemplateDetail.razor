@@ -3,7 +3,7 @@
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 @using Fakvio.Contracts.Dto.ContentTemplate
 @using Fakvio.Domain.Enums
-@using Blazored.TextEditor
+@using Tizzani.MudBlazor.HtmlEditor
 @inject ContentTemplateApiService TemplateService
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
@@ -154,16 +154,15 @@ else
                     <CardHeaderContent><MudText Typo="Typo.h6">@L["ContentTemplate_HtmlBody"]</MudText></CardHeaderContent>
                 </MudCardHeader>
                 <MudCardContent>
-                    @* Quill WYSIWYG editor — ALWAYS in DOM so Quill JS is pre-initialized.
-                       Hidden via CSS in read mode, visible in edit mode.
-                       This avoids the "root undefined" error caused by calling LoadHTMLContent
-                       before Quill JS has finished initializing on a freshly rendered element. *@
-                    <div style="@(_isFormMode ? "" : "display:none;")">
-                        <BlazoredTextEditor @ref="_quillEditor" Placeholder="@L["Template_EditorPlaceholder"].Value">
-                            <EditorContent></EditorContent>
-                        </BlazoredTextEditor>
-                    </div>
-                    @if (!_isFormMode && _template != null)
+                    @if (_isFormMode)
+                    {
+                        @* MudHtmlEditor — MudBlazor-native WYSIWYG (Quill 2.x under the hood).
+                           No polling hack needed — just @bind-Value for two-way HTML binding. *@
+                        <MudHtmlEditor @bind-Value="_currentHtmlBody"
+                                       Placeholder="@L["Template_EditorPlaceholder"].Value"
+                                       Style="min-height: 300px;" />
+                    }
+                    else if (_template != null)
                     {
                         @* Read-only HTML preview *@
                         <div class="pa-4" style="border: 1px solid #e0e0e0; border-radius: 4px; min-height: 200px;">
@@ -222,7 +221,7 @@ else
     private bool _isDirty = false; // Dirty tracking for unsaved changes warning
     private bool _isFormMode => _isCreateMode || _isEditing;
 
-    // Form fields — separate from DTO to work with Quill editor
+    // Form fields — separate from DTO to allow independent editing
     private string _currentName = "";
     private string? _currentSubject = "";
     private string _currentHtmlBody = "";
@@ -230,9 +229,6 @@ else
     private EContentTemplateType _currentTemplateType = EContentTemplateType.InvoiceEmail;
     private bool _currentIsDefault = false;
     private string _currentLanguage = "cs";
-
-    // Quill rich text editor reference
-    private BlazoredTextEditor? _quillEditor;
 
     protected override async Task OnInitializedAsync()
     {
@@ -253,41 +249,6 @@ else
         }
     }
 
-    // Tracks whether Quill needs HTML content loaded.
-    private bool _quillNeedsLoad;
-    // Tracks whether Quill has been initialized (first successful LoadHTMLContent).
-    private bool _quillReady;
-
-    /// <summary>
-    /// After the page renders, wait for Quill JS to initialize and pre-load the HTML content.
-    /// The BlazoredTextEditor is always in the DOM (hidden in read mode), so Quill initializes
-    /// on page load — not when the user clicks Edit. This eliminates the race condition.
-    ///
-    /// Polls every 100ms (up to 3 seconds) until LoadHTMLContent succeeds.
-    /// </summary>
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (!_quillNeedsLoad || _quillEditor == null)
-            return;
-
-        _quillNeedsLoad = false;
-
-        for (var attempt = 0; attempt < 30; attempt++)
-        {
-            await Task.Delay(100);
-            try
-            {
-                await _quillEditor.LoadHTMLContent(_currentHtmlBody ?? "");
-                _quillReady = true;
-                return;
-            }
-            catch (Microsoft.JSInterop.JSException)
-            {
-                // Quill not ready yet — retry
-            }
-        }
-    }
-
     private async Task LoadTemplate()
     {
         try
@@ -295,12 +256,10 @@ else
             _loading = true;
             _template = await TemplateService.GetByIdAsync(Id);
 
-            // Pre-load the HTML body so Quill is ready when user clicks Edit.
-            // _quillNeedsLoad triggers OnAfterRenderAsync polling.
+            // Pre-load the HTML body so it's ready when user clicks Edit
             if (_template != null)
             {
                 _currentHtmlBody = _template.HtmlBody;
-                _quillNeedsLoad = true;
             }
         }
         catch (Exception ex)
@@ -316,7 +275,7 @@ else
 
     /// <summary>
     /// Switches to edit mode — copies template data into form fields.
-    /// Sets _quillNeedsLoad so OnAfterRenderAsync loads HTML into the editor.
+    /// MudHtmlEditor uses @bind-Value, so no manual content loading is needed.
     /// </summary>
     private void EnableEditing()
     {
@@ -330,10 +289,6 @@ else
         _currentIsDefault = _template.IsDefault;
         _currentLanguage = _template.Language;
         _isEditing = true;
-
-        // If Quill wasn't pre-loaded yet (e.g., slow connection), schedule load now.
-        if (!_quillReady)
-            _quillNeedsLoad = true;
         _isDirty = true; // Mark dirty when entering edit mode
     }
 
@@ -348,24 +303,20 @@ else
     }
 
     /// <summary>
-    /// Saves the template — reads HTML from Quill editor, then creates or updates.
+    /// Saves the template — reads HTML from the bound _currentHtmlBody field.
+    /// No need to call GetHTML() — MudHtmlEditor syncs via @bind-Value automatically.
     /// </summary>
     private async Task SaveTemplate()
     {
         try
         {
-            // Read HTML content from the Quill editor
-            var htmlBody = _quillEditor != null
-                ? await _quillEditor.GetHTML()
-                : _currentHtmlBody;
-
             if (_isCreateMode)
             {
                 var createDto = new CreateContentTemplateDto
                 {
                     Name = _currentName,
                     Subject = IsEmailType(_currentTemplateType) ? _currentSubject : null,
-                    HtmlBody = htmlBody,
+                    HtmlBody = _currentHtmlBody,
                     TemplateType = _currentTemplateType,
                     IsDefault = _currentIsDefault,
                     Language = _currentLanguage,
@@ -395,7 +346,7 @@ else
                 {
                     Name = _currentName,
                     Subject = IsEmailType(_currentTemplateType) ? _currentSubject : null,
-                    HtmlBody = htmlBody,
+                    HtmlBody = _currentHtmlBody,
                     TemplateType = _currentTemplateType,
                     IsDefault = _currentIsDefault,
                     Language = _currentLanguage,
