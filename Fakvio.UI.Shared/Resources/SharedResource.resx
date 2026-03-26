@@ -534,6 +534,10 @@
   <data name="ContentTemplate_Description" xml:space="preserve"><value>Popis</value></data>
   <data name="ContentTemplate_Language" xml:space="preserve"><value>Jazyk</value></data>
   <data name="ContentTemplate_System" xml:space="preserve"><value>Systémové</value></data>
+  <data name="ContentTemplate_DownloadHtml" xml:space="preserve"><value>Stáhnout HTML</value></data>
+  <data name="ContentTemplate_UploadHtml" xml:space="preserve"><value>Nahrát HTML</value></data>
+  <data name="ContentTemplate_HtmlUploaded" xml:space="preserve"><value>HTML obsah nahrán</value></data>
+  <data name="ContentTemplate_InvalidFile" xml:space="preserve"><value>Povoleny jsou pouze .html a .htm soubory</value></data>
   <data name="ContentType_InvoicePdf" xml:space="preserve"><value>PDF faktury</value></data>
   <data name="ContentType_CreditNotePdf" xml:space="preserve"><value>PDF dobropisu</value></data>
   <data name="ContentType_InvoiceEmail" xml:space="preserve"><value>Email faktury</value></data>

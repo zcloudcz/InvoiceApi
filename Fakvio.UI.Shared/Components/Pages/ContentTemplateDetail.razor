@@ -7,6 +7,7 @@
 @inject ContentTemplateApiService TemplateService
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
+@inject IJSRuntime JS
 @inject IStringLocalizer<SharedResource> L
 
 <PageTitle>@(_isCreateMode ? L["ContentTemplate_New"] : L["ContentTemplate_Detail"])</PageTitle>
@@ -152,6 +153,26 @@ else
             <MudCard Elevation="2" Class="mb-4">
                 <MudCardHeader>
                     <CardHeaderContent><MudText Typo="Typo.h6">@L["ContentTemplate_HtmlBody"]</MudText></CardHeaderContent>
+                    <CardHeaderActions>
+                        @* Download HTML body as .html file *@
+                        @if (!_isCreateMode && _template != null && !string.IsNullOrEmpty(_template.HtmlBody))
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.Download"
+                                           Title="@L["ContentTemplate_DownloadHtml"].Value"
+                                           OnClick="DownloadHtml" />
+                        }
+                        @* Upload HTML file — only in edit/create mode *@
+                        @if (_isFormMode)
+                        {
+                            <MudFileUpload T="IBrowserFile" Accept=".html,.htm"
+                                           FilesChanged="HandleHtmlFileUpload" Class="d-inline-flex ma-0">
+                                <ActivatorContent>
+                                    <MudIconButton Icon="@Icons.Material.Filled.Upload"
+                                                   Title="@L["ContentTemplate_UploadHtml"].Value" />
+                                </ActivatorContent>
+                            </MudFileUpload>
+                        }
+                    </CardHeaderActions>
                 </MudCardHeader>
                 <MudCardContent>
                     @if (_isFormMode)
@@ -419,4 +440,59 @@ else
         EContentTemplateType.PasswordResetEmail => L["ContentType_PasswordResetEmail"].Value,
         _ => type.ToString()
     };
+
+    // ========== Download / Upload HTML ==========
+
+    /// <summary>
+    /// Downloads the template's HTML body as a .html file via JS interop.
+    /// File name is derived from the template name (sanitized for filesystem safety).
+    /// </summary>
+    private async Task DownloadHtml()
+    {
+        if (_template == null || string.IsNullOrEmpty(_template.HtmlBody)) return;
+
+        var safeName = SanitizeFileName(_template.Name);
+        var fileName = $"{safeName}.html";
+        var base64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(_template.HtmlBody));
+        await JS.InvokeVoidAsync("downloadFile", fileName, base64, "text/html");
+    }
+
+    /// <summary>
+    /// Handles an uploaded .html/.htm file — reads its content and sets it as the current HTML body.
+    /// Also loads the content into the MudHtmlEditor via _currentHtmlBody binding.
+    /// </summary>
+    private async Task HandleHtmlFileUpload(IBrowserFile file)
+    {
+        // Validate file extension
+        var ext = Path.GetExtension(file.Name)?.ToLowerInvariant();
+        if (ext != ".html" && ext != ".htm")
+        {
+            Snackbar.Add(L["ContentTemplate_InvalidFile"].Value, Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            // Read the file content as UTF-8 string (max 5 MB)
+            using var stream = file.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024);
+            using var reader = new StreamReader(stream, System.Text.Encoding.UTF8);
+            _currentHtmlBody = await reader.ReadToEndAsync();
+            _isDirty = true;
+            Snackbar.Add(L["ContentTemplate_HtmlUploaded"].Value, Severity.Success);
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+    }
+
+    /// <summary>
+    /// Removes characters that are invalid in file names.
+    /// </summary>
+    private static string SanitizeFileName(string name)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        return string.Concat(name.Where(c => !invalid.Contains(c)));
+    }
 }

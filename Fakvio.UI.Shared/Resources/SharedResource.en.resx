@@ -534,6 +534,10 @@
   <data name="ContentTemplate_Description" xml:space="preserve"><value>Description</value></data>
   <data name="ContentTemplate_Language" xml:space="preserve"><value>Language</value></data>
   <data name="ContentTemplate_System" xml:space="preserve"><value>System</value></data>
+  <data name="ContentTemplate_DownloadHtml" xml:space="preserve"><value>Download HTML</value></data>
+  <data name="ContentTemplate_UploadHtml" xml:space="preserve"><value>Upload HTML</value></data>
+  <data name="ContentTemplate_HtmlUploaded" xml:space="preserve"><value>HTML content uploaded</value></data>
+  <data name="ContentTemplate_InvalidFile" xml:space="preserve"><value>Only .html and .htm files are allowed</value></data>
   <data name="ContentType_InvoicePdf" xml:space="preserve"><value>Invoice PDF</value></data>
   <data name="ContentType_CreditNotePdf" xml:space="preserve"><value>Credit Note PDF</value></data>
   <data name="ContentType_InvoiceEmail" xml:space="preserve"><value>Invoice Email</value></data>

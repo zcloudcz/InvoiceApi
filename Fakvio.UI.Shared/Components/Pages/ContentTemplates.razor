@@ -5,6 +5,7 @@
 @inject ContentTemplateApiService TemplateService
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
+@inject IJSRuntime JS
 @inject IStringLocalizer<SharedResource> L
 
 <PageTitle>@L["ContentTemplate_Title"]</PageTitle>
@@ -38,6 +39,29 @@
                  OnRowClick="@(t => Navigation.NavigateTo($"/content-templates/{t.Id}"))"
                  OnEdit="@(t => Navigation.NavigateTo($"/content-templates/{t.Id}"))"
                  OnDelete="@(item => DeleteTemplate(item.Id))">
+        <RowActions>
+            @* Download HTML body as .html file *@
+            <MudIconButton Icon="@Icons.Material.Filled.Download"
+                           Size="Size.Medium" Color="Color.Default"
+                           Disabled="@string.IsNullOrEmpty(context.HtmlBody)"
+                           OnClick="@(() => DownloadHtml(context))"
+                           Title="@L["ContentTemplate_DownloadHtml"].Value" />
+            @* Upload HTML file to replace template body *@
+            @{
+                // Capture the row item — inside MudFileUpload's ActivatorContent,
+                // "context" refers to the upload component, not the grid row.
+                var rowItem = context;
+            }
+            <MudFileUpload T="IBrowserFile" Accept=".html,.htm"
+                           FilesChanged="@(file => HandleHtmlFileUpload(rowItem, file))"
+                           Class="d-inline-flex ma-0" Style="min-width:0;">
+                <ActivatorContent>
+                    <MudIconButton Icon="@Icons.Material.Filled.Upload"
+                                   Size="Size.Medium" Color="Color.Default"
+                                   Title="@L["ContentTemplate_UploadHtml"].Value" />
+                </ActivatorContent>
+            </MudFileUpload>
+        </RowActions>
         <ToolBarContent>
             @* Search box for filtering by name, subject, or description *@
             <MudTextField @bind-Value="_searchString" Placeholder="@L["Btn_Search"].Value"
@@ -170,6 +194,78 @@
         {
             Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
         }
+    }
+
+    // ========== Download / Upload HTML ==========
+
+    /// <summary>
+    /// Downloads the template's HTML body as a .html file via JS interop.
+    /// </summary>
+    private async Task DownloadHtml(ContentTemplateDto template)
+    {
+        if (string.IsNullOrEmpty(template.HtmlBody)) return;
+
+        var safeName = SanitizeFileName(template.Name);
+        var fileName = $"{safeName}.html";
+        var base64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(template.HtmlBody));
+        await JS.InvokeVoidAsync("downloadFile", fileName, base64, "text/html");
+    }
+
+    /// <summary>
+    /// Handles an uploaded .html/.htm file — reads its content and updates the template via API.
+    /// </summary>
+    private async Task HandleHtmlFileUpload(ContentTemplateDto template, IBrowserFile file)
+    {
+        var ext = Path.GetExtension(file.Name)?.ToLowerInvariant();
+        if (ext != ".html" && ext != ".htm")
+        {
+            Snackbar.Add(L["ContentTemplate_InvalidFile"].Value, Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            // Read uploaded HTML content (max 5 MB)
+            using var stream = file.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024);
+            using var reader = new StreamReader(stream, System.Text.Encoding.UTF8);
+            var htmlContent = await reader.ReadToEndAsync();
+
+            // Update the template with the new HTML body via API
+            var updateDto = new UpdateContentTemplateDto
+            {
+                Name = template.Name,
+                Subject = template.Subject,
+                HtmlBody = htmlContent,
+                TemplateType = template.TemplateType,
+                IsDefault = template.IsDefault,
+                Language = template.Language,
+                Description = template.Description
+            };
+
+            var result = await TemplateService.UpdateAsync(template.Id, updateDto);
+            if (result != null)
+            {
+                Snackbar.Add(L["ContentTemplate_HtmlUploaded"].Value, Severity.Success);
+                await LoadTemplates(); // Refresh list
+            }
+            else
+            {
+                Snackbar.Add(L["Msg_Error"].Value, Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+    }
+
+    /// <summary>
+    /// Removes characters that are invalid in file names.
+    /// </summary>
+    private static string SanitizeFileName(string name)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        return string.Concat(name.Where(c => !invalid.Contains(c)));
     }
 
     // ========== Type helpers ==========
