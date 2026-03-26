@@ -157,8 +157,8 @@ else
                     @if (_isFormMode)
                     {
                         @* MudHtmlEditor — MudBlazor-native WYSIWYG (Quill 2.x under the hood).
-                           No polling hack needed — just @bind-Value for two-way HTML binding. *@
-                        <MudHtmlEditor @bind-Value="_currentHtmlBody"
+                           Uses @bind-Html for two-way HTML binding (not @bind-Value). *@
+                        <MudHtmlEditor @bind-Html="_currentHtmlBody"
                                        Placeholder="@L["Template_EditorPlaceholder"].Value"
                                        Style="min-height: 300px;" />
                     }
