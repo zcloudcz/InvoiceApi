@@ -37,12 +37,12 @@ public class ExportInvoiceTool : IChatTool
 
     public string Description =>
         "Export/download an invoice or credit note as a PDF file. " +
-        "Finds the document by number or by client name (most recent).";
+        "Finds the document by number, by client name (most recent), or exports the most recent invoice if no parameters given.";
 
     public string ParameterDescription =>
         "document_number (string, optional): Invoice number (e.g., FV-2024-0001). " +
         "client_name (string, optional): Client name — exports the most recent invoice for this client. " +
-        "At least one parameter is required.";
+        "If neither is provided, exports the most recent invoice in the system.";
 
     /// <summary>
     /// Finds the invoice and returns a download action with the PDF endpoint URL.
@@ -59,13 +59,6 @@ public class ExportInvoiceTool : IChatTool
             "ExportInvoiceTool: document_number={DocNum}, client_name={Client}",
             documentNumber, clientName);
 
-        // Validate: at least one parameter is required
-        if (string.IsNullOrWhiteSpace(documentNumber) && string.IsNullOrWhiteSpace(clientName))
-        {
-            return ChatToolResult.Failure(
-                "Please specify a document number or client name to export.");
-        }
-
         // --- Path 1: Find by document number ---
         if (!string.IsNullOrWhiteSpace(documentNumber))
         {
@@ -73,7 +66,13 @@ public class ExportInvoiceTool : IChatTool
         }
 
         // --- Path 2: Find by client name (most recent invoice) ---
-        return await ExportByClientNameAsync(clientName!.Trim(), ct);
+        if (!string.IsNullOrWhiteSpace(clientName))
+        {
+            return await ExportByClientNameAsync(clientName.Trim(), ct);
+        }
+
+        // --- Path 3: No parameters — export the most recent invoice ---
+        return await ExportMostRecentAsync(ct);
     }
 
     /// <summary>
@@ -91,6 +90,27 @@ public class ExportInvoiceTool : IChatTool
 
         return BuildDownloadResult(invoice.Id, invoice.DocumentNumber ?? documentNumber,
             invoice.DocumentType, invoice.ClientName ?? "");
+    }
+
+    /// <summary>
+    /// Exports the most recent invoice in the system (no filter).
+    /// </summary>
+    private async Task<ChatToolResult> ExportMostRecentAsync(CancellationToken ct)
+    {
+        var invoices = await _invoiceService.GetAllInvoicesAsync(null, null, null, null, ct);
+        var latest = invoices
+            .OrderByDescending(i => i.CreatedAt)
+            .FirstOrDefault();
+
+        if (latest == null)
+        {
+            return ChatToolResult.Failure("No invoices found in the system.");
+        }
+
+        return BuildDownloadResult(latest.Id,
+            latest.DocumentNumber ?? latest.Id.ToString(),
+            latest.DocumentType,
+            latest.ClientName ?? "");
     }
 
     /// <summary>

@@ -133,7 +133,8 @@ public partial class ChatToolExecutor : IChatToolExecutor
         @"\b(stáhni|stahni|stáhnout|stahnout|exportuj|exportovat|export|download|" +
         @"vygeneruj|generuj|generate|" +
         @"stáhnout pdf|stahnout pdf|pošli pdf|posli pdf|ukaž pdf|ukaz pdf)\b.*\b(fakturu?|faktur|invoice|dobropis|credit note|pdf)\b|" +
-        @"\b(fakturu?|faktur|invoice|dobropis|credit note)\b.*\b(stáhni|stahni|exportuj|download|pdf|export)\b",
+        @"\b(fakturu?|faktur|invoice|dobropis|credit note)\b.*\b(stáhni|stahni|exportuj|download|pdf|export)\b|" +
+        @"\b(nejnovější|nejnovejsi|poslední|posledni|latest|last|recent)\b.*\b(fakturu?|faktur|invoice|dobropis)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled)]
     private static partial Regex ExportKeywordPattern();
 
@@ -231,7 +232,7 @@ public partial class ChatToolExecutor : IChatToolExecutor
             "  Use \"navigate\" with target \"new_invoice\" when the user just wants to open the form.\n" +
             "  The items parameter must be a JSON array. Extract items from the user's message.\n" +
             "- If the user wants to EXPORT/DOWNLOAD/PRINT an invoice as PDF, use \"export_invoice\".\n" +
-            "  Provide document_number (e.g. FV-2024-0001) or client_name to find the invoice.\n\n" +
+            "  Provide document_number or client_name. If neither is specified, exports the most recent invoice.\n\n" +
             "HOW TO USE TOOLS:\n" +
             "Your ENTIRE response must be ONLY this JSON, nothing else:\n" +
             "{\"action\": \"tool_name\", \"parameters\": {\"key\": \"value\"}}\n\n" +
@@ -244,7 +245,8 @@ public partial class ChatToolExecutor : IChatToolExecutor
             "- Create invoice: {\"action\": \"create_invoice\", \"parameters\": {\"client_name\": \"Alza\", \"items\": \"[{\\\"description\\\": \\\"Mléko\\\", \\\"quantity\\\": 1, \\\"unit_price\\\": 999}]\"}}\n" +
             "- Create invoice with multiple items: {\"action\": \"create_invoice\", \"parameters\": {\"client_name\": \"ABC\", \"items\": \"[{\\\"description\\\": \\\"Item 1\\\", \\\"quantity\\\": 2, \\\"unit_price\\\": 500}, {\\\"description\\\": \\\"Item 2\\\", \\\"quantity\\\": 1, \\\"unit_price\\\": 300}]\"}}\n" +
             "- Export invoice by number: {\"action\": \"export_invoice\", \"parameters\": {\"document_number\": \"FV-2024-0001\"}}\n" +
-            "- Export latest invoice for client: {\"action\": \"export_invoice\", \"parameters\": {\"client_name\": \"Alza\"}}\n\n" +
+            "- Export latest invoice for client: {\"action\": \"export_invoice\", \"parameters\": {\"client_name\": \"Alza\"}}\n" +
+            "- Export the most recent invoice: {\"action\": \"export_invoice\", \"parameters\": {}}\n\n" +
             "If no tool is needed, respond normally with text.";
     }
 

@@ -238,9 +238,46 @@ public class ExportInvoiceToolTests
     // ─── Validation ───────────────────────────────────────────────────
 
     [Fact]
-    public async Task NoParameters_ReturnsFailure()
+    public async Task NoParameters_ExportsMostRecentInvoice()
     {
-        // Arrange — neither document_number nor client_name provided
+        // Arrange — no parameters, should export most recent invoice
+        var invoices = new List<InvoiceDto>
+        {
+            new()
+            {
+                Id = 1, ClientId = 1, ClientName = "Old Client",
+                DocumentNumber = "FV-2024-0001", DocumentType = EDocumentType.Invoice,
+                CreatedAt = new DateTime(2024, 1, 1)
+            },
+            new()
+            {
+                Id = 3, ClientId = 2, ClientName = "New Client",
+                DocumentNumber = "FV-2024-0003", DocumentType = EDocumentType.Invoice,
+                CreatedAt = new DateTime(2024, 12, 1) // Most recent
+            }
+        };
+        _invoiceService.GetAllInvoicesAsync(null, null, null, null, Arg.Any<CancellationToken>())
+            .Returns(invoices);
+
+        var parameters = new Dictionary<string, string>();
+
+        // Act
+        var result = await _tool.ExecuteAsync(parameters);
+
+        // Assert — should pick the most recent (Id=3)
+        result.IsSuccess.ShouldBeTrue();
+        result.UiAction.ShouldNotBeNull();
+        result.UiAction.Type.ShouldBe("download");
+        result.UiAction.Url.ShouldBe("/api/invoice/3/pdf");
+    }
+
+    [Fact]
+    public async Task NoParameters_NoInvoices_ReturnsFailure()
+    {
+        // Arrange — no invoices exist at all
+        _invoiceService.GetAllInvoicesAsync(null, null, null, null, Arg.Any<CancellationToken>())
+            .Returns(new List<InvoiceDto>());
+
         var parameters = new Dictionary<string, string>();
 
         // Act
@@ -248,7 +285,7 @@ public class ExportInvoiceToolTests
 
         // Assert
         result.IsSuccess.ShouldBeFalse();
-        result.OutputText.ShouldContain("document number");
+        result.OutputText.ShouldContain("No invoices");
     }
 
     [Fact]
