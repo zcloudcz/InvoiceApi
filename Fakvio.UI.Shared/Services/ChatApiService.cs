@@ -353,6 +353,35 @@ public class ChatApiService : ApiClientBase
     }
 
     /// <summary>
+    /// Downloads raw bytes from an API endpoint (e.g., PDF file for export_invoice tool).
+    /// Uses the authenticated HttpClient to fetch binary content.
+    /// </summary>
+    /// <param name="url">API endpoint path (e.g., "/api/invoice/5/pdf")</param>
+    /// <returns>File bytes, or null on failure.</returns>
+    public async Task<byte[]?> DownloadFileAsync(string url)
+    {
+        try
+        {
+            await AddAuthorizationHeaderAsync();
+            _logger.LogInformation("GET (download) {Url}", url);
+            var response = await _httpClient.GetAsync(url);
+
+            if (response.IsSuccessStatusCode)
+            {
+                return await response.Content.ReadAsByteArrayAsync();
+            }
+
+            _logger.LogWarning("Download failed with status {Status}: {Url}", response.StatusCode, url);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error downloading file from {Url}", url);
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Deletes a conversation and all its messages.
     /// </summary>
     public async Task<bool> DeleteConversationAsync(long conversationId)

@@ -9,6 +9,7 @@ namespace Fakvio.Contracts.Dto.Chat;
 ///
 /// Currently supported types:
 /// - "navigate": Navigate to a page URL
+/// - "download": Download a file (PDF, etc.) via JS interop
 ///
 /// Future types (extensible): "openDialog", "showNotification", "scrollTo", etc.
 ///
@@ -19,7 +20,7 @@ public class ChatUiAction
 {
     /// <summary>
     /// The type of UI action to perform.
-    /// Currently: "navigate". Future: "openDialog", "showNotification", etc.
+    /// Currently: "navigate", "download". Future: "openDialog", "showNotification", etc.
     /// </summary>
     public string Type { get; set; } = string.Empty;
 
@@ -43,4 +44,23 @@ public class ChatUiAction
     /// </summary>
     public static ChatUiAction Navigate(string url)
         => new() { Type = "navigate", Url = url };
+
+    /// <summary>
+    /// Creates a file download action. The Blazor client will trigger a browser download
+    /// using the provided URL (calls the API endpoint and downloads via JS interop).
+    /// </summary>
+    /// <param name="url">API endpoint that returns the file (e.g., "/api/invoice/5/pdf")</param>
+    /// <param name="fileName">Suggested file name for the download (e.g., "Faktura_FV2024001.pdf")</param>
+    /// <param name="mimeType">MIME type (e.g., "application/pdf")</param>
+    public static ChatUiAction Download(string url, string fileName, string mimeType = "application/pdf")
+        => new()
+        {
+            Type = "download",
+            Url = url,
+            Parameters = new Dictionary<string, string>
+            {
+                ["fileName"] = fileName,
+                ["mimeType"] = mimeType
+            }
+        };
 }

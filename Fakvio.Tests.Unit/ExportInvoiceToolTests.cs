@@ -1,0 +1,286 @@
+using Fakvio.Application.Service;
+using Fakvio.Contracts.Dto.Client;
+using Fakvio.Contracts.Dto.Invoice;
+using Fakvio.Domain.Enums;
+using Fakvio.Infrastructure.Service.ChatTools;
+using Microsoft.Extensions.Logging;
+using NSubstitute;
+using Shouldly;
+
+namespace Fakvio.Tests.Unit;
+
+/// <summary>
+/// Unit tests for ExportInvoiceTool.
+/// Tests invoice lookup (by document number and by client name),
+/// download action generation, and error handling.
+///
+/// Uses NSubstitute to mock IInvoiceService and IClientService.
+/// </summary>
+public class ExportInvoiceToolTests
+{
+    private readonly ExportInvoiceTool _tool;
+    private readonly IInvoiceService _invoiceService;
+    private readonly IClientService _clientService;
+
+    public ExportInvoiceToolTests()
+    {
+        _invoiceService = Substitute.For<IInvoiceService>();
+        _clientService = Substitute.For<IClientService>();
+        var logger = Substitute.For<ILogger<ExportInvoiceTool>>();
+        _tool = new ExportInvoiceTool(_invoiceService, _clientService, logger);
+    }
+
+    // ─── Basic Properties ─────────────────────────────────────────────
+
+    [Fact]
+    public void ToolName_ShouldBeExportInvoice()
+    {
+        _tool.ToolName.ShouldBe("export_invoice");
+    }
+
+    // ─── Export by Document Number ────────────────────────────────────
+
+    [Fact]
+    public async Task ExportByDocumentNumber_Found_ReturnsDownloadAction()
+    {
+        // Arrange — invoice exists with the given document number
+        var invoice = new InvoiceDto
+        {
+            Id = 42,
+            DocumentNumber = "FV-2024-0001",
+            DocumentType = EDocumentType.Invoice,
+            ClientName = "Test s.r.o."
+        };
+        _invoiceService.GetInvoiceByDocumentNumberAsync("FV-2024-0001", Arg.Any<CancellationToken>())
+            .Returns(invoice);
+
+        var parameters = new Dictionary<string, string>
+        {
+            ["document_number"] = "FV-2024-0001"
+        };
+
+        // Act
+        var result = await _tool.ExecuteAsync(parameters);
+
+        // Assert — should return a download action pointing to the PDF endpoint
+        result.IsSuccess.ShouldBeTrue();
+        result.UiAction.ShouldNotBeNull();
+        result.UiAction.Type.ShouldBe("download");
+        result.UiAction.Url.ShouldBe("/api/invoice/42/pdf");
+        result.UiAction.Parameters.ShouldNotBeNull();
+        result.UiAction.Parameters!["fileName"].ShouldBe("Invoice_FV-2024-0001.pdf");
+        result.UiAction.Parameters["mimeType"].ShouldBe("application/pdf");
+        result.OutputText.ShouldContain("FV-2024-0001");
+    }
+
+    [Fact]
+    public async Task ExportByDocumentNumber_CreditNote_ReturnsCorrectPrefix()
+    {
+        // Arrange — credit note (dobropis) should use "CreditNote" prefix in file name
+        var invoice = new InvoiceDto
+        {
+            Id = 10,
+            DocumentNumber = "DP-2024-0001",
+            DocumentType = EDocumentType.CreditNote,
+            ClientName = "ABC"
+        };
+        _invoiceService.GetInvoiceByDocumentNumberAsync("DP-2024-0001", Arg.Any<CancellationToken>())
+            .Returns(invoice);
+
+        var parameters = new Dictionary<string, string>
+        {
+            ["document_number"] = "DP-2024-0001"
+        };
+
+        // Act
+        var result = await _tool.ExecuteAsync(parameters);
+
+        // Assert — file name should use CreditNote prefix
+        result.IsSuccess.ShouldBeTrue();
+        result.UiAction.ShouldNotBeNull();
+        result.UiAction.Parameters!["fileName"].ShouldBe("CreditNote_DP-2024-0001.pdf");
+        result.OutputText.ShouldContain("credit note");
+    }
+
+    [Fact]
+    public async Task ExportByDocumentNumber_NotFound_ReturnsFailure()
+    {
+        // Arrange — no invoice with this document number
+        _invoiceService.GetInvoiceByDocumentNumberAsync("INVALID", Arg.Any<CancellationToken>())
+            .Returns((InvoiceDto?)null);
+
+        var parameters = new Dictionary<string, string>
+        {
+            ["document_number"] = "INVALID"
+        };
+
+        // Act
+        var result = await _tool.ExecuteAsync(parameters);
+
+        // Assert
+        result.IsSuccess.ShouldBeFalse();
+        result.UiAction.ShouldBeNull();
+        result.OutputText.ShouldContain("INVALID");
+    }
+
+    // ─── Export by Client Name ────────────────────────────────────────
+
+    [Fact]
+    public async Task ExportByClientName_Found_ReturnsMostRecentInvoice()
+    {
+        // Arrange — client found, two invoices exist, should pick the most recent one
+        var client = new ClientDto { Id = 5, CompanyName = "Alza.cz" };
+        _clientService.GetAllClientsAsync(false, Arg.Any<CancellationToken>())
+            .Returns(new List<ClientDto> { client });
+
+        var invoices = new List<InvoiceDto>
+        {
+            new()
+            {
+                Id = 1, ClientId = 5, ClientName = "Alza.cz",
+                DocumentNumber = "FV-2024-0001", DocumentType = EDocumentType.Invoice,
+                CreatedAt = new DateTime(2024, 1, 1)
+            },
+            new()
+            {
+                Id = 2, ClientId = 5, ClientName = "Alza.cz",
+                DocumentNumber = "FV-2024-0002", DocumentType = EDocumentType.Invoice,
+                CreatedAt = new DateTime(2024, 6, 1) // More recent
+            }
+        };
+        _invoiceService.GetAllInvoicesAsync(null, null, null, null, Arg.Any<CancellationToken>())
+            .Returns(invoices);
+
+        var parameters = new Dictionary<string, string>
+        {
+            ["client_name"] = "Alza"
+        };
+
+        // Act
+        var result = await _tool.ExecuteAsync(parameters);
+
+        // Assert — should pick the most recent invoice (Id=2)
+        result.IsSuccess.ShouldBeTrue();
+        result.UiAction.ShouldNotBeNull();
+        result.UiAction.Type.ShouldBe("download");
+        result.UiAction.Url.ShouldBe("/api/invoice/2/pdf");
+        result.UiAction.Parameters!["fileName"].ShouldBe("Invoice_FV-2024-0002.pdf");
+    }
+
+    [Fact]
+    public async Task ExportByClientName_NoClient_ReturnsFailure()
+    {
+        // Arrange — no client matches
+        _clientService.GetAllClientsAsync(false, Arg.Any<CancellationToken>())
+            .Returns(new List<ClientDto>());
+
+        var parameters = new Dictionary<string, string>
+        {
+            ["client_name"] = "NonExistent"
+        };
+
+        // Act
+        var result = await _tool.ExecuteAsync(parameters);
+
+        // Assert
+        result.IsSuccess.ShouldBeFalse();
+        result.OutputText.ShouldContain("NonExistent");
+    }
+
+    [Fact]
+    public async Task ExportByClientName_TooManyMatches_ReturnsFailure()
+    {
+        // Arrange — more than 5 clients match → too ambiguous
+        var clients = Enumerable.Range(1, 6)
+            .Select(i => new ClientDto { Id = i, CompanyName = $"ABC Company {i}" })
+            .ToList();
+        _clientService.GetAllClientsAsync(false, Arg.Any<CancellationToken>())
+            .Returns(clients);
+
+        var parameters = new Dictionary<string, string>
+        {
+            ["client_name"] = "ABC"
+        };
+
+        // Act
+        var result = await _tool.ExecuteAsync(parameters);
+
+        // Assert
+        result.IsSuccess.ShouldBeFalse();
+        result.OutputText.ShouldContain("6");
+        result.OutputText.ShouldContain("specific");
+    }
+
+    [Fact]
+    public async Task ExportByClientName_ClientFoundButNoInvoices_ReturnsFailure()
+    {
+        // Arrange — client exists but has no invoices
+        var client = new ClientDto { Id = 5, CompanyName = "Empty Corp" };
+        _clientService.GetAllClientsAsync(false, Arg.Any<CancellationToken>())
+            .Returns(new List<ClientDto> { client });
+
+        _invoiceService.GetAllInvoicesAsync(null, null, null, null, Arg.Any<CancellationToken>())
+            .Returns(new List<InvoiceDto>());
+
+        var parameters = new Dictionary<string, string>
+        {
+            ["client_name"] = "Empty"
+        };
+
+        // Act
+        var result = await _tool.ExecuteAsync(parameters);
+
+        // Assert
+        result.IsSuccess.ShouldBeFalse();
+        result.OutputText.ShouldContain("Empty Corp");
+    }
+
+    // ─── Validation ───────────────────────────────────────────────────
+
+    [Fact]
+    public async Task NoParameters_ReturnsFailure()
+    {
+        // Arrange — neither document_number nor client_name provided
+        var parameters = new Dictionary<string, string>();
+
+        // Act
+        var result = await _tool.ExecuteAsync(parameters);
+
+        // Assert
+        result.IsSuccess.ShouldBeFalse();
+        result.OutputText.ShouldContain("document number");
+    }
+
+    [Fact]
+    public async Task DocumentNumberTakesPriority_OverClientName()
+    {
+        // Arrange — both parameters provided, document_number should be used first
+        var invoice = new InvoiceDto
+        {
+            Id = 99,
+            DocumentNumber = "FV-2024-0099",
+            DocumentType = EDocumentType.Invoice,
+            ClientName = "Some Client"
+        };
+        _invoiceService.GetInvoiceByDocumentNumberAsync("FV-2024-0099", Arg.Any<CancellationToken>())
+            .Returns(invoice);
+
+        var parameters = new Dictionary<string, string>
+        {
+            ["document_number"] = "FV-2024-0099",
+            ["client_name"] = "Alza"
+        };
+
+        // Act
+        var result = await _tool.ExecuteAsync(parameters);
+
+        // Assert — should use document_number path, not client_name
+        result.IsSuccess.ShouldBeTrue();
+        result.UiAction.ShouldNotBeNull();
+        result.UiAction.Url.ShouldBe("/api/invoice/99/pdf");
+
+        // Client search should NOT have been called
+        await _clientService.DidNotReceive()
+            .GetAllClientsAsync(Arg.Any<bool>(), Arg.Any<CancellationToken>());
+    }
+}

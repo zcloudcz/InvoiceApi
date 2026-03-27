@@ -261,6 +261,49 @@ public static class InvoiceTools
     }
 
     /// <summary>
+    /// Exports an invoice as a PDF file, returned as a base64-encoded string.
+    /// The AI client can save this to a file or present it to the user.
+    /// </summary>
+    [McpServerTool, Description(
+        "Export an invoice as PDF. Returns the PDF as a base64-encoded string. " +
+        "Use this when the user asks to download, export, print, or get a PDF of an invoice. " +
+        "You can find the invoice ID using FindInvoiceByNumber first.")]
+    public static async Task<string> ExportInvoicePdf(
+        IFakvioApiClient api,
+        [Description("The invoice ID to export as PDF")] long invoiceId,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            // Fetch the invoice metadata for the file name
+            var invoice = await api.GetInvoiceByIdAsync(invoiceId, ct);
+            if (invoice is null)
+                return JsonSerializer.Serialize(new { error = $"Invoice with ID {invoiceId} not found." }, JsonOptions);
+
+            // Download the PDF bytes from the API
+            var pdfBytes = await api.ExportInvoicePdfAsync(invoiceId, ct);
+
+            // Build a descriptive file name based on document type
+            var prefix = invoice.DocumentType == EDocumentType.CreditNote ? "CreditNote" : "Invoice";
+            var fileName = $"{prefix}_{invoice.DocumentNumber ?? invoiceId.ToString()}.pdf";
+
+            // Return base64-encoded PDF with metadata — AI client saves the file
+            return JsonSerializer.Serialize(new
+            {
+                success = true,
+                fileName,
+                mimeType = "application/pdf",
+                sizeBytes = pdfBytes.Length,
+                base64Content = Convert.ToBase64String(pdfBytes)
+            }, JsonOptions);
+        }
+        catch (Exception ex)
+        {
+            return JsonSerializer.Serialize(new { error = ex.Message }, JsonOptions);
+        }
+    }
+
+    /// <summary>
     /// Soft-deletes a draft invoice.
     /// Only invoices in Draft status can be deleted.
     /// </summary>

@@ -108,6 +108,16 @@ public class FakvioApiClient : IFakvioApiClient
         await EnsureSuccessAsync(response, ct);
     }
 
+    /// <summary>
+    /// Downloads the invoice PDF as raw bytes from GET /api/invoice/{id}/pdf.
+    /// </summary>
+    public async Task<byte[]> ExportInvoicePdfAsync(long id, CancellationToken ct = default)
+    {
+        var response = await _http.GetAsync($"api/invoice/{id}/pdf", ct);
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadAsByteArrayAsync(ct);
+    }
+
     // ── Client endpoints ───────────────────────────────────────────────
 
     public async Task<PagedResult<ClientDto>> GetClientsPagedAsync(ClientFilterDto filter, CancellationToken ct = default)

@@ -2,6 +2,7 @@
 @using Fakvio.UI.Shared.Services
 @inject ChatApiService ChatApi
 @inject NavigationManager Navigation
+@inject IJSRuntime JS
 @inject IStringLocalizer<SharedResource> L
 @inject ILogger<ChatPanel> Logger
 
@@ -298,12 +299,21 @@
             }
 
             // Execute the pending UI action AFTER the stream is finalized and the UI is updated.
-            // Small delay so the user can see the AI response before navigating away.
-            if (pendingAction is { Type: "navigate", Url: not null })
+            // Small delay so the user can see the AI response before acting.
+            if (pendingAction is { Url: not null })
             {
                 StateHasChanged(); // Ensure the final message is rendered.
                 await Task.Delay(800); // Let the user read the AI response.
-                Navigation.NavigateTo(pendingAction.Url);
+
+                if (pendingAction.Type == "navigate")
+                {
+                    Navigation.NavigateTo(pendingAction.Url);
+                }
+                else if (pendingAction.Type == "download")
+                {
+                    // Download file via API — fetch bytes and trigger browser download via JS interop
+                    await HandleDownloadActionAsync(pendingAction);
+                }
             }
         }
         catch (Exception ex)
@@ -356,6 +366,35 @@
         else
         {
             Logger.LogWarning("Unsupported file type: {FileName}", fileData.FileName);
+        }
+    }
+
+    /// <summary>
+    /// Handles a "download" UI action from a chat tool — fetches binary content from the API
+    /// endpoint and triggers a browser file download via JS interop.
+    /// </summary>
+    private async Task HandleDownloadActionAsync(ChatUiAction action)
+    {
+        try
+        {
+            var fileName = action.Parameters?.GetValueOrDefault("fileName") ?? "download.pdf";
+            var mimeType = action.Parameters?.GetValueOrDefault("mimeType") ?? "application/pdf";
+
+            // Fetch the file bytes from the API endpoint (uses authenticated HttpClient)
+            var fileBytes = await ChatApi.DownloadFileAsync(action.Url!);
+            if (fileBytes != null && fileBytes.Length > 0)
+            {
+                var base64 = Convert.ToBase64String(fileBytes);
+                await JS.InvokeVoidAsync("downloadFile", fileName, base64, mimeType);
+            }
+            else
+            {
+                Logger.LogWarning("Download action returned empty content: {Url}", action.Url);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error handling download action: {Url}", action.Url);
         }
     }
 

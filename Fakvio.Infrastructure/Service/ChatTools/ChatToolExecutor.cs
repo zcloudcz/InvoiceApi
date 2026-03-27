@@ -125,6 +125,18 @@ public partial class ChatToolExecutor : IChatToolExecutor
         RegexOptions.IgnoreCase | RegexOptions.Compiled)]
     private static partial Regex ImportKeywordPattern();
 
+    /// <summary>
+    /// Matches Czech and English keywords indicating the user wants to EXPORT/DOWNLOAD
+    /// an invoice as PDF. Covers: stáhni, exportuj, download, export, pošli PDF, etc.
+    /// </summary>
+    [GeneratedRegex(
+        @"\b(stáhni|stahni|stáhnout|stahnout|exportuj|exportovat|export|download|" +
+        @"vygeneruj|generuj|generate|" +
+        @"stáhnout pdf|stahnout pdf|pošli pdf|posli pdf|ukaž pdf|ukaz pdf)\b.*\b(fakturu?|faktur|invoice|dobropis|credit note|pdf)\b|" +
+        @"\b(fakturu?|faktur|invoice|dobropis|credit note)\b.*\b(stáhni|stahni|exportuj|download|pdf|export)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled)]
+    private static partial Regex ExportKeywordPattern();
+
     // ─── Intent Detection ─────────────────────────────────────────────────
 
     /// <summary>
@@ -178,6 +190,13 @@ public partial class ChatToolExecutor : IChatToolExecutor
             return true;
         }
 
+        // Path 6: Export/download keyword — user wants to download a PDF.
+        if (ExportKeywordPattern().IsMatch(userMessage))
+        {
+            _logger.LogDebug("Tool intent detected in message: export/download keyword match");
+            return true;
+        }
+
         return false;
     }
 
@@ -210,7 +229,9 @@ public partial class ChatToolExecutor : IChatToolExecutor
             "- If the user wants to CREATE an invoice (not just open the form), use \"create_invoice\".\n" +
             "  IMPORTANT: Use \"create_invoice\" when the user provides item details (description, price).\n" +
             "  Use \"navigate\" with target \"new_invoice\" when the user just wants to open the form.\n" +
-            "  The items parameter must be a JSON array. Extract items from the user's message.\n\n" +
+            "  The items parameter must be a JSON array. Extract items from the user's message.\n" +
+            "- If the user wants to EXPORT/DOWNLOAD/PRINT an invoice as PDF, use \"export_invoice\".\n" +
+            "  Provide document_number (e.g. FV-2024-0001) or client_name to find the invoice.\n\n" +
             "HOW TO USE TOOLS:\n" +
             "Your ENTIRE response must be ONLY this JSON, nothing else:\n" +
             "{\"action\": \"tool_name\", \"parameters\": {\"key\": \"value\"}}\n\n" +
@@ -221,7 +242,9 @@ public partial class ChatToolExecutor : IChatToolExecutor
             "- Show client detail: {\"action\": \"navigate\", \"parameters\": {\"target\": \"client_detail\", \"client_name\": \"ABC\"}}\n" +
             "- Open client list: {\"action\": \"navigate\", \"parameters\": {\"target\": \"client_list\"}}\n" +
             "- Create invoice: {\"action\": \"create_invoice\", \"parameters\": {\"client_name\": \"Alza\", \"items\": \"[{\\\"description\\\": \\\"Mléko\\\", \\\"quantity\\\": 1, \\\"unit_price\\\": 999}]\"}}\n" +
-            "- Create invoice with multiple items: {\"action\": \"create_invoice\", \"parameters\": {\"client_name\": \"ABC\", \"items\": \"[{\\\"description\\\": \\\"Item 1\\\", \\\"quantity\\\": 2, \\\"unit_price\\\": 500}, {\\\"description\\\": \\\"Item 2\\\", \\\"quantity\\\": 1, \\\"unit_price\\\": 300}]\"}}\n\n" +
+            "- Create invoice with multiple items: {\"action\": \"create_invoice\", \"parameters\": {\"client_name\": \"ABC\", \"items\": \"[{\\\"description\\\": \\\"Item 1\\\", \\\"quantity\\\": 2, \\\"unit_price\\\": 500}, {\\\"description\\\": \\\"Item 2\\\", \\\"quantity\\\": 1, \\\"unit_price\\\": 300}]\"}}\n" +
+            "- Export invoice by number: {\"action\": \"export_invoice\", \"parameters\": {\"document_number\": \"FV-2024-0001\"}}\n" +
+            "- Export latest invoice for client: {\"action\": \"export_invoice\", \"parameters\": {\"client_name\": \"Alza\"}}\n\n" +
             "If no tool is needed, respond normally with text.";
     }
 

@@ -46,6 +46,9 @@ public interface IFakvioApiClient
     /// <summary>POST /api/invoice/{id}/send-email — send invoice PDF via email.</summary>
     Task SendInvoiceEmailAsync(long id, SendInvoiceEmailDto dto, CancellationToken ct = default);
 
+    /// <summary>GET /api/invoice/{id}/pdf — export invoice as PDF file (raw bytes).</summary>
+    Task<byte[]> ExportInvoicePdfAsync(long id, CancellationToken ct = default);
+
     // ── Client endpoints ───────────────────────────────────────────────
 
     /// <summary>GET /api/client/paged — paginated client list with filters.</summary>

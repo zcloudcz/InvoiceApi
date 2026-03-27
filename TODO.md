@@ -17,6 +17,57 @@ Azure Functions Isolated Worker has two DI scopes per request (`httpContext.Requ
 
 ---
 
+### Multi-page document support (PDF templates)
+Current state: `PdfExportService` renders the entire HTML template as a single block via iText7 `HtmlConverter.ConvertToPdf` — no pagination control, no repeating headers/footers.
+
+**Goal:** Professional multi-page invoices with repeating header/footer and proper page numbering.
+
+**Template structure — 3 sections:**
+- [ ] `{{#header}}` section — repeats on every page (company logo, document number, issuer/client info)
+- [ ] `{{#body}}` section — main content (invoice items table), auto-flows across pages
+- [ ] `{{#footer}}` section — repeats at bottom of every page (page number, QR code, signature, bank details)
+
+**Backend (PdfExportService + iText7):**
+- [ ] Parse template HTML into 3 sections (header/body/footer) before rendering
+- [ ] Implement iText7 `IEventHandler` for repeating header/footer on each page
+- [ ] CSS `@page` rules for margins (reserve space for header/footer)
+- [ ] `{{PageNumber}}` / `{{TotalPages}}` placeholders (two-pass rendering or iText7 page events)
+- [ ] Invoice items table: auto-overflow with repeated `<thead>` on each page
+
+**Template editor UI:**
+- [ ] Split editor into 3 tabs/sections (Header / Body / Footer)
+- [ ] Live preview of page layout
+- [ ] Migration: existing single-body templates treated as "body only" (backwards compatible)
+
+**Database:**
+- [ ] Add `HeaderHtml` and `FooterHtml` columns to `ContentTemplate` entity (nullable — backwards compatible)
+- [ ] Migration for existing templates
+
+---
+
+### AI Chat: export_invoice tool + download action type (2026-03-27)
+- [x] New `ChatUiAction.Download(url, fileName, mimeType)` factory — extends UI action system beyond "navigate"
+- [x] New `ExportInvoiceTool` (6th chat tool) — finds invoice by document number or client name, returns download action
+- [x] Export regex detection pattern in `ChatToolExecutor` (Czech + English: stáhni/exportuj/download fakturu)
+- [x] `ChatPanel.razor` handles `download` action type — fetches PDF bytes via API, triggers browser download via JS interop
+- [x] `ChatApiService.DownloadFileAsync(url)` — authenticated binary file download
+- [x] `ApiClientBase.GetStringAsync(endpoint)` — raw string HTTP response
+- [x] Updated `ChatContextBuilder` and `BuildToolInstructions` with export_invoice tool description + examples
+- [x] DI registration for `ExportInvoiceTool`
+- [x] 10 unit tests (ExportInvoiceToolTests) — all passing
+- [x] MCP Server: `ExportInvoicePdf` tool (returns base64 PDF) + `IFakvioApiClient.ExportInvoicePdfAsync`
+- [x] 3 MCP unit tests (InvoiceToolsTests) — ExportInvoicePdf success, credit note prefix, not found
+
+### Template download/upload + preview (2026-03-26)
+- [x] Download HTML body as `.html` file (detail page + list page)
+- [x] Upload `.html`/`.htm` file to replace template body (detail page in edit mode + list page inline)
+- [x] Preview button: PDF templates → download rendered PDF with first valid invoice; email templates → rendered HTML in MudDialog popup
+- [x] New API endpoint `GET /api/contenttemplate/{id}/preview` with sample placeholder data from issuer company
+- [x] `GetStringAsync` added to `ApiClientBase` for raw string API responses
+- [x] Resource keys: `ContentTemplate_DownloadHtml`, `ContentTemplate_UploadHtml`, `ContentTemplate_Preview`, `ContentTemplate_PreviewTitle`
+
+---
+
 ## Completed
 
 ### Localized file names + MudBlazor.HtmlEditor migration (2026-03-26)

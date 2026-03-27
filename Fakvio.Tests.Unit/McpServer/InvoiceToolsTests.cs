@@ -250,6 +250,68 @@ public class InvoiceToolsTests
         doc.RootElement.GetProperty("error").GetString().ShouldContain("Connection refused");
     }
 
+    // ── ExportInvoicePdf tests ──────────────────────────────────────────
+
+    [Fact]
+    public async Task ExportInvoicePdf_ReturnsBase64Content()
+    {
+        // Arrange — invoice exists and PDF bytes are returned
+        var invoice = new InvoiceDto
+        {
+            Id = 42, DocumentNumber = "FV-2024-0001",
+            DocumentType = EDocumentType.Invoice
+        };
+        _api.GetInvoiceByIdAsync(42, Arg.Any<CancellationToken>()).Returns(invoice);
+        _api.ExportInvoicePdfAsync(42, Arg.Any<CancellationToken>())
+            .Returns(new byte[] { 0x25, 0x50, 0x44, 0x46 }); // %PDF header
+
+        // Act
+        var json = await InvoiceTools.ExportInvoicePdf(_api, 42);
+
+        // Assert — should contain base64 content and correct file name
+        var doc = JsonDocument.Parse(json);
+        doc.RootElement.GetProperty("success").GetBoolean().ShouldBeTrue();
+        doc.RootElement.GetProperty("fileName").GetString().ShouldBe("Invoice_FV-2024-0001.pdf");
+        doc.RootElement.GetProperty("mimeType").GetString().ShouldBe("application/pdf");
+        doc.RootElement.GetProperty("base64Content").GetString().ShouldNotBeNullOrEmpty();
+        doc.RootElement.GetProperty("sizeBytes").GetInt32().ShouldBe(4);
+    }
+
+    [Fact]
+    public async Task ExportInvoicePdf_CreditNote_UsesCorrectPrefix()
+    {
+        // Arrange
+        var invoice = new InvoiceDto
+        {
+            Id = 10, DocumentNumber = "DP-2024-0001",
+            DocumentType = EDocumentType.CreditNote
+        };
+        _api.GetInvoiceByIdAsync(10, Arg.Any<CancellationToken>()).Returns(invoice);
+        _api.ExportInvoicePdfAsync(10, Arg.Any<CancellationToken>())
+            .Returns(new byte[] { 0x25, 0x50 });
+
+        // Act
+        var json = await InvoiceTools.ExportInvoicePdf(_api, 10);
+
+        // Assert
+        var doc = JsonDocument.Parse(json);
+        doc.RootElement.GetProperty("fileName").GetString().ShouldBe("CreditNote_DP-2024-0001.pdf");
+    }
+
+    [Fact]
+    public async Task ExportInvoicePdf_NotFound_ReturnsError()
+    {
+        // Arrange
+        _api.GetInvoiceByIdAsync(999, Arg.Any<CancellationToken>()).Returns((InvoiceDto?)null);
+
+        // Act
+        var json = await InvoiceTools.ExportInvoicePdf(_api, 999);
+
+        // Assert
+        var doc = JsonDocument.Parse(json);
+        doc.RootElement.GetProperty("error").GetString().ShouldContain("999");
+    }
+
     // ── ClientTools tests ──────────────────────────────────────────────
 
     [Fact]

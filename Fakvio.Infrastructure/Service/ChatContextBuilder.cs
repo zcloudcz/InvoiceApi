@@ -101,6 +101,7 @@ public class ChatContextBuilder : IChatContextBuilder
             sb.AppendLine("- import_invoice: Import invoice from pasted text/data — auto-detects issued vs received");
             sb.AppendLine("  by matching IČO against the company DB, finds client automatically, preserves all dates exactly");
             sb.AppendLine("- navigate: Navigate user to a page");
+            sb.AppendLine("- export_invoice: Export/download invoice as PDF (by document number or client name)");
             sb.AppendLine();
             sb.AppendLine("IMPORT RULES:");
             sb.AppendLine("- When user pastes invoice text, extract ALL data and call import_invoice immediately.");
