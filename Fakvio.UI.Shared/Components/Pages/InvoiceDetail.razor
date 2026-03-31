@@ -882,9 +882,11 @@ else
                 Notes = template.Notes,
                 NumberSequenceId = template.NumberSequenceId,
                 // Copy invoice items from template
+                // Copy invoice items from template — preserve IsTextRow for text-only rows
                 InvoiceItem = template.InvoiceItem.Select(item => new CreateInvoiceItemDto
                 {
                     OrderIndex = item.OrderIndex,
+                    IsTextRow = item.IsTextRow,
                     Description = item.Description,
                     Quantity = item.Quantity,
                     Unit = item.Unit,
@@ -1212,9 +1214,12 @@ else
         _editTaxableSupplyDate = _invoice.TaxableSupplyDate;
 
         // Copy items for editing
+        // Map existing items to editable DTOs — IsTextRow must be preserved
+        // so the InvoiceItemEditor renders text rows correctly (italic, colspan).
         _editItems = _invoice.InvoiceItem.Select(i => new CreateInvoiceItemDto
         {
             OrderIndex = i.OrderIndex,
+            IsTextRow = i.IsTextRow,
             Description = i.Description,
             Quantity = i.Quantity,
             Unit = i.Unit,

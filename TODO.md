@@ -13,6 +13,21 @@ After removing the dual-context pattern (IsMasterContext) from services, SysAdmi
 
 ---
 
+### Dual-context pattern removed — data isolation fix (2026-03-31) ✅
+**Bug:** `NumberSequenceService.CreateSequenceAsync` threw `InvalidOperationException: Number sequence format with ID 1 not found` in production (Azure Functions). Root cause: dual-context pattern (`IsMasterContext`) caused `GetAllFormatsAsync` to read formats from **master DB** while `CreateSequenceAsync` validated against **tenant DB** — ID mismatch.
+
+**Fix applied:**
+- [x] `NumberSequenceService` — always tenant DB (formats + sequences are per-tenant)
+- [x] `VatRateService` — always tenant DB (VAT rates are per-tenant)
+- [x] `ContentTemplateService` — always tenant DB (templates are per-tenant)
+- [x] `CurrencyService` — always master DB (currencies are global/shared, tenant table exists only for FK integrity)
+- [x] `CurrencyServiceTests` — seed data moved to master context
+- [x] `EnsureDefaultFormatsExistAsync` — added PG sequence reset to prevent ID gaps after re-seeding
+
+**Verified:** Full document number generation chain is consistent (Invoice → NumberSequence → NumberSequenceFormat — all tenant DB). `BillingSettings.CustomInvoiceNumberSequenceId` / `CustomCreditNoteNumberSequenceId` correctly reference tenant `NumberSequence.Id`.
+
+---
+
 ### Eliminate IHttpContextAccessor dependency from services (Tech Debt)
 Azure Functions Isolated Worker has two DI scopes per request (`httpContext.RequestServices` vs `context.InstanceServices`). `IHttpContextAccessor` returns null in the worker scope where injected services live. Current workaround: `ChatService` falls back to parsing CompanyId from `TenantDbContext.Schema` (`"tenant_42"` → `42`).
 

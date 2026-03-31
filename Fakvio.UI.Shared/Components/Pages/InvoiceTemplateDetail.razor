@@ -409,9 +409,11 @@ else
             Notes = _template.Notes,
             NumberSequenceId = _template.NumberSequenceId,
             IsActive = _template.IsActive,
+            // Preserve IsTextRow so text-only rows render correctly in the editor
             Items = _template.InvoiceItem.Select(i => new CreateInvoiceItemDto
             {
                 OrderIndex = i.OrderIndex,
+                IsTextRow = i.IsTextRow,
                 Description = i.Description,
                 Quantity = i.Quantity,
                 Unit = i.Unit,
