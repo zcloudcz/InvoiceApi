@@ -679,107 +679,137 @@ public class TenantProvisioningService : ITenantProvisioningService
     {
         var safeName = SanitizeSchemaName(schemaName);
 
-        // Delete existing records in FK-safe order (children before parents).
-        // NumberSequence references NumberSequenceFormat, so it must be deleted first.
-        // Using raw SQL because EF change tracker doesn't support efficient bulk deletes.
-        // PostgreSQL uses double-quoted identifiers for schema-qualified table names.
-        _logger.LogInformation("Clearing existing code tables in tenant schema '{SchemaName}' for idempotent re-seeding", schemaName);
-        await tenantContext.Database.ExecuteSqlRawAsync($"DELETE FROM \"{safeName}\".\"NumberSequence\"", cancellationToken);
-        await tenantContext.Database.ExecuteSqlRawAsync($"DELETE FROM \"{safeName}\".\"NumberSequenceFormat\"", cancellationToken);
-        await tenantContext.Database.ExecuteSqlRawAsync($"DELETE FROM \"{safeName}\".\"ContentTemplate\"", cancellationToken);
-        await tenantContext.Database.ExecuteSqlRawAsync($"DELETE FROM \"{safeName}\".\"Currency\"", cancellationToken);
-        await tenantContext.Database.ExecuteSqlRawAsync($"DELETE FROM \"{safeName}\".\"VatRate\"", cancellationToken);
-
-        // Reset PostgreSQL sequences so IDs start from 1 (cleaner for new tenants).
-        // PostgreSQL uses ALTER SEQUENCE ... RESTART WITH 1 instead of DBCC CHECKIDENT.
-        // Note: sequence names follow the convention "{Table}_{Column}_seq" by default.
-        await tenantContext.Database.ExecuteSqlRawAsync($"ALTER SEQUENCE IF EXISTS \"{safeName}\".\"NumberSequence_Id_seq\" RESTART WITH 1", cancellationToken);
-        await tenantContext.Database.ExecuteSqlRawAsync($"ALTER SEQUENCE IF EXISTS \"{safeName}\".\"NumberSequenceFormat_Id_seq\" RESTART WITH 1", cancellationToken);
-        await tenantContext.Database.ExecuteSqlRawAsync($"ALTER SEQUENCE IF EXISTS \"{safeName}\".\"ContentTemplate_Id_seq\" RESTART WITH 1", cancellationToken);
-        await tenantContext.Database.ExecuteSqlRawAsync($"ALTER SEQUENCE IF EXISTS \"{safeName}\".\"Currency_Id_seq\" RESTART WITH 1", cancellationToken);
-        await tenantContext.Database.ExecuteSqlRawAsync($"ALTER SEQUENCE IF EXISTS \"{safeName}\".\"VatRate_Id_seq\" RESTART WITH 1", cancellationToken);
-
-        // Copy VatRates (all active rates from master)
+        // Pre-fetch all code table data from master DB.
+        // Only tables that have records in master will be cleared and re-seeded.
+        // If master has no records for a table, the migration-seeded defaults are preserved.
         var vatRates = await _masterContext.VatRate
             .AsNoTracking()
             .Where(v => v.IsActive)
             .ToListAsync(cancellationToken);
 
-        foreach (var rate in vatRates)
-        {
-            tenantContext.VatRate.Add(new VatRate
-            {
-                Name = rate.Name,
-                Rate = rate.Rate,
-                ValidFrom = rate.ValidFrom,
-                ValidTo = rate.ValidTo,
-                IsReduced = rate.IsReduced,
-                IsDefault = rate.IsDefault,
-                IsActive = rate.IsActive,
-                CreatedAt = DateTime.UtcNow
-            });
-        }
-
-        // Copy Currencies (all active currencies from master)
         var currencies = await _masterContext.Currency
             .AsNoTracking()
             .Where(c => c.IsActive)
             .ToListAsync(cancellationToken);
 
-        foreach (var currency in currencies)
-        {
-            tenantContext.Currency.Add(new Currency
-            {
-                Code = currency.Code,
-                Name = currency.Name,
-                Symbol = currency.Symbol,
-                DecimalPlaces = currency.DecimalPlaces,
-                SortOrder = currency.SortOrder,
-                DisplayFormat = currency.DisplayFormat,
-                IsActive = currency.IsActive,
-                CreatedAt = DateTime.UtcNow
-            });
-        }
-
-        // Copy NumberSequenceFormats (all active formats from master)
         var formats = await _masterContext.NumberSequenceFormat
             .AsNoTracking()
             .Where(f => f.IsActive)
             .ToListAsync(cancellationToken);
 
-        foreach (var format in formats)
-        {
-            tenantContext.NumberSequenceFormat.Add(new NumberSequenceFormat
-            {
-                Name = format.Name,
-                FormatPattern = format.FormatPattern,
-                CounterDigits = format.CounterDigits,
-                ResetsYearly = format.ResetsYearly,
-                ResetsMonthly = format.ResetsMonthly,
-                IsActive = format.IsActive,
-                CreatedAt = DateTime.UtcNow
-            });
-        }
-
-        // Copy ContentTemplates (all active + default templates from master)
         var templates = await _masterContext.ContentTemplate
             .AsNoTracking()
             .Where(t => t.IsActive)
             .ToListAsync(cancellationToken);
 
-        foreach (var template in templates)
+        _logger.LogInformation(
+            "Code tables from master: {VatRates} VAT rates, {Currencies} currencies, " +
+            "{Formats} number sequence formats, {Templates} content templates",
+            vatRates.Count, currencies.Count, formats.Count, templates.Count);
+
+        // Only clear and re-seed tables that have records in master.
+        // This prevents destroying migration-seeded defaults when master hasn't been migrated yet.
+
+        if (vatRates.Count > 0)
         {
-            tenantContext.ContentTemplate.Add(new ContentTemplate
+            await tenantContext.Database.ExecuteSqlRawAsync($"DELETE FROM \"{safeName}\".\"VatRate\"", cancellationToken);
+            await tenantContext.Database.ExecuteSqlRawAsync($"ALTER SEQUENCE IF EXISTS \"{safeName}\".\"VatRate_Id_seq\" RESTART WITH 1", cancellationToken);
+
+            foreach (var rate in vatRates)
             {
-                Name = template.Name,
-                Subject = template.Subject,
-                HtmlBody = template.HtmlBody,
-                TemplateType = template.TemplateType,
-                IsDefault = template.IsDefault,
-                IsActive = template.IsActive,
-                Description = template.Description,
-                CreatedAt = DateTime.UtcNow
-            });
+                tenantContext.VatRate.Add(new VatRate
+                {
+                    Name = rate.Name,
+                    Rate = rate.Rate,
+                    ValidFrom = rate.ValidFrom,
+                    ValidTo = rate.ValidTo,
+                    IsReduced = rate.IsReduced,
+                    IsDefault = rate.IsDefault,
+                    IsActive = rate.IsActive,
+                    CreatedAt = DateTime.UtcNow
+                });
+            }
+        }
+        else
+        {
+            _logger.LogWarning("Master DB has no active VAT rates — keeping migration-seeded defaults in tenant");
+        }
+
+        if (currencies.Count > 0)
+        {
+            await tenantContext.Database.ExecuteSqlRawAsync($"DELETE FROM \"{safeName}\".\"Currency\"", cancellationToken);
+            await tenantContext.Database.ExecuteSqlRawAsync($"ALTER SEQUENCE IF EXISTS \"{safeName}\".\"Currency_Id_seq\" RESTART WITH 1", cancellationToken);
+
+            foreach (var currency in currencies)
+            {
+                tenantContext.Currency.Add(new Currency
+                {
+                    Code = currency.Code,
+                    Name = currency.Name,
+                    Symbol = currency.Symbol,
+                    DecimalPlaces = currency.DecimalPlaces,
+                    SortOrder = currency.SortOrder,
+                    DisplayFormat = currency.DisplayFormat,
+                    IsActive = currency.IsActive,
+                    CreatedAt = DateTime.UtcNow
+                });
+            }
+        }
+        else
+        {
+            _logger.LogWarning("Master DB has no active currencies — keeping migration-seeded defaults in tenant");
+        }
+
+        if (formats.Count > 0)
+        {
+            // NumberSequence references NumberSequenceFormat via FK, so delete sequences first.
+            await tenantContext.Database.ExecuteSqlRawAsync($"DELETE FROM \"{safeName}\".\"NumberSequence\"", cancellationToken);
+            await tenantContext.Database.ExecuteSqlRawAsync($"DELETE FROM \"{safeName}\".\"NumberSequenceFormat\"", cancellationToken);
+            await tenantContext.Database.ExecuteSqlRawAsync($"ALTER SEQUENCE IF EXISTS \"{safeName}\".\"NumberSequence_Id_seq\" RESTART WITH 1", cancellationToken);
+            await tenantContext.Database.ExecuteSqlRawAsync($"ALTER SEQUENCE IF EXISTS \"{safeName}\".\"NumberSequenceFormat_Id_seq\" RESTART WITH 1", cancellationToken);
+
+            foreach (var format in formats)
+            {
+                tenantContext.NumberSequenceFormat.Add(new NumberSequenceFormat
+                {
+                    Name = format.Name,
+                    FormatPattern = format.FormatPattern,
+                    CounterDigits = format.CounterDigits,
+                    ResetsYearly = format.ResetsYearly,
+                    ResetsMonthly = format.ResetsMonthly,
+                    IsActive = format.IsActive,
+                    CreatedAt = DateTime.UtcNow
+                });
+            }
+        }
+        else
+        {
+            _logger.LogWarning("Master DB has no active number sequence formats — keeping migration-seeded defaults in tenant");
+        }
+
+        if (templates.Count > 0)
+        {
+            await tenantContext.Database.ExecuteSqlRawAsync($"DELETE FROM \"{safeName}\".\"ContentTemplate\"", cancellationToken);
+            await tenantContext.Database.ExecuteSqlRawAsync($"ALTER SEQUENCE IF EXISTS \"{safeName}\".\"ContentTemplate_Id_seq\" RESTART WITH 1", cancellationToken);
+
+            foreach (var template in templates)
+            {
+                tenantContext.ContentTemplate.Add(new ContentTemplate
+                {
+                    Name = template.Name,
+                    Subject = template.Subject,
+                    HtmlBody = template.HtmlBody,
+                    TemplateType = template.TemplateType,
+                    IsDefault = template.IsDefault,
+                    IsActive = template.IsActive,
+                    Description = template.Description,
+                    CreatedAt = DateTime.UtcNow
+                });
+            }
+        }
+        else
+        {
+            _logger.LogWarning("Master DB has no active content templates — keeping migration-seeded defaults in tenant");
         }
 
         await tenantContext.SaveChangesAsync(cancellationToken);
