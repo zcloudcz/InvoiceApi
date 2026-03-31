@@ -88,6 +88,21 @@ public class NumberSequenceService : INumberSequenceService
 
         _logger.LogWarning("Tenant has no NumberSequenceFormats — seeding defaults");
 
+        // Reset the PostgreSQL sequence so new format IDs start from 1.
+        // Without this, if formats were previously deleted, the sequence counter
+        // continues from the last value (e.g., 5,6,7,8 instead of 1,2,3,4),
+        // causing FK mismatches with existing NumberSequence records that reference old IDs.
+        // Reset sequence using the tenant's schema name from the DbContext.
+        // TenantDbContext.Schema is set per-request by ITenantDbContextFactory.
+        var tenantSchema = _tenantContext.Schema;
+        if (!string.IsNullOrEmpty(tenantSchema))
+        {
+            var safeName = tenantSchema.Replace("\"", "");
+            await _tenantContext.Database.ExecuteSqlRawAsync(
+                $"ALTER SEQUENCE IF EXISTS \"{safeName}\".\"NumberSequenceFormat_Id_seq\" RESTART WITH 1",
+                cancellationToken);
+        }
+
         var seedDate = DateTime.UtcNow;
         _tenantContext.NumberSequenceFormat.AddRange(
             new NumberSequenceFormat { Name = "Standard yearly format (yyyyNNN)", FormatPattern = "yyyyNNN", CounterDigits = 3, ResetsYearly = true, ResetsMonthly = false, IsActive = true, CreatedAt = seedDate },
@@ -258,10 +273,32 @@ public class NumberSequenceService : INumberSequenceService
         // Auto-seed default formats for tenants that were provisioned with empty tables
         await EnsureDefaultFormatsExistAsync(cancellationToken);
 
-        // Validate format exists
+        // Validate format exists — if the requested ID is stale (e.g., after re-provisioning
+        // reset the PG sequence and assigned new IDs), fall back to the first active format.
         var format = await _tenantContext.NumberSequenceFormat.FindAsync(new object[] { createDto.NumberSequenceFormatId }, cancellationToken);
         if (format == null)
-            throw new InvalidOperationException($"Number sequence format with ID {createDto.NumberSequenceFormatId} not found");
+        {
+            // Attempt auto-recovery: use the first active format instead of failing.
+            // This handles the case where the UI sent a stale format ID (e.g., after
+            // tenant re-provisioning or EnsureDefaultFormatsExistAsync assigned new IDs).
+            var fallbackFormat = await _tenantContext.NumberSequenceFormat
+                .OrderBy(f => f.Id)
+                .FirstOrDefaultAsync(f => f.IsActive, cancellationToken);
+
+            if (fallbackFormat == null)
+            {
+                throw new InvalidOperationException(
+                    $"Number sequence format with ID {createDto.NumberSequenceFormatId} not found " +
+                    "and no active formats exist in the database. Please create a format first.");
+            }
+
+            _logger.LogWarning(
+                "Requested NumberSequenceFormat ID {RequestedId} not found — falling back to ID {FallbackId} ({FallbackName})",
+                createDto.NumberSequenceFormatId, fallbackFormat.Id, fallbackFormat.Name);
+
+            format = fallbackFormat;
+            createDto.NumberSequenceFormatId = fallbackFormat.Id;
+        }
 
         // If this is set as default, unset other defaults for this document type
         if (createDto.IsDefault)
