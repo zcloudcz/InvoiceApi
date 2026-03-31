@@ -72,10 +72,41 @@ public class NumberSequenceService : INumberSequenceService
         return entity.ToNumberSequenceDto();
     }
 
+    /// <summary>
+    /// Ensures the tenant has at least the default NumberSequenceFormats.
+    /// Existing tenants provisioned before the fix may have empty format tables
+    /// because CopyCodeTablesAsync deleted migration-seeded data when master was empty.
+    /// This method seeds the 4 standard formats if the tenant has none at all.
+    /// </summary>
+    private async Task EnsureDefaultFormatsExistAsync(CancellationToken cancellationToken)
+    {
+        // Only applies to tenant context — master formats are seeded by migration
+        if (IsMasterContext) return;
+
+        var hasAnyFormat = await _tenantContext.NumberSequenceFormat.AnyAsync(cancellationToken);
+        if (hasAnyFormat) return;
+
+        _logger.LogWarning("Tenant has no NumberSequenceFormats — seeding defaults");
+
+        var seedDate = DateTime.UtcNow;
+        _tenantContext.NumberSequenceFormat.AddRange(
+            new NumberSequenceFormat { Name = "Standard yearly format (yyyyNNN)", FormatPattern = "yyyyNNN", CounterDigits = 3, ResetsYearly = true, ResetsMonthly = false, IsActive = true, CreatedAt = seedDate },
+            new NumberSequenceFormat { Name = "Short yearly format (yyNNN)", FormatPattern = "yyNNN", CounterDigits = 3, ResetsYearly = true, ResetsMonthly = false, IsActive = true, CreatedAt = seedDate },
+            new NumberSequenceFormat { Name = "Monthly format (yyMMNNN)", FormatPattern = "yyMMNNN", CounterDigits = 3, ResetsYearly = true, ResetsMonthly = true, IsActive = true, CreatedAt = seedDate },
+            new NumberSequenceFormat { Name = "Continuous format (NNNNNN)", FormatPattern = "NNNNNN", CounterDigits = 6, ResetsYearly = false, ResetsMonthly = false, IsActive = true, CreatedAt = seedDate }
+        );
+        await _tenantContext.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation("Seeded 4 default NumberSequenceFormats for tenant");
+    }
+
     #region NumberSequenceFormat operations
 
     public async Task<List<NumberSequenceFormatDto>> GetAllFormatsAsync(bool includeInactive = false, CancellationToken cancellationToken = default)
     {
+        // Auto-seed default formats for tenants that were provisioned with empty tables
+        await EnsureDefaultFormatsExistAsync(cancellationToken);
+
         // AsNoTracking: read-only list — results are mapped to DTOs
         var query = FormatSet.AsNoTracking().AsQueryable();
 
@@ -173,6 +204,9 @@ public class NumberSequenceService : INumberSequenceService
         bool includeInactive = false,
         CancellationToken cancellationToken = default)
     {
+        // Auto-seed default formats for tenants that were provisioned with empty tables
+        await EnsureDefaultFormatsExistAsync(cancellationToken);
+
         // AsNoTracking: read-only list — results are mapped to DTOs
         var query = _tenantContext.NumberSequence
             .AsNoTracking()
@@ -220,6 +254,9 @@ public class NumberSequenceService : INumberSequenceService
     public async Task<NumberSequenceDto> CreateSequenceAsync(CreateNumberSequenceDto createDto, CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Creating new number sequence: {Name} for {DocumentType}", createDto.Name, createDto.DocumentType);
+
+        // Auto-seed default formats for tenants that were provisioned with empty tables
+        await EnsureDefaultFormatsExistAsync(cancellationToken);
 
         // Validate format exists
         var format = await _tenantContext.NumberSequenceFormat.FindAsync(new object[] { createDto.NumberSequenceFormatId }, cancellationToken);
