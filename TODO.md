@@ -2,6 +2,17 @@
 
 ## Pending
 
+### SysAdmin master code table management (Architecture Decision Needed)
+After removing the dual-context pattern (IsMasterContext) from services, SysAdmin currently has no way to manage master-level code tables (VatRate, ContentTemplate, NumberSequenceFormat). These master records serve as **templates for new tenant provisioning** (CopyCodeTablesAsync copies them).
+
+**Options:**
+1. **Dedicated SysAdmin endpoints** — separate controller/service for master code table CRUD (e.g., `SysAdminCodeTableController` using `MasterDbContext` directly)
+2. **Explicit `useMaster` flag** — add parameter to existing service methods, gated by SysAdmin role check
+
+**Scope:** VatRate, ContentTemplate, NumberSequenceFormat only. Currency already reads from master (global/shared).
+
+---
+
 ### Eliminate IHttpContextAccessor dependency from services (Tech Debt)
 Azure Functions Isolated Worker has two DI scopes per request (`httpContext.RequestServices` vs `context.InstanceServices`). `IHttpContextAccessor` returns null in the worker scope where injected services live. Current workaround: `ChatService` falls back to parsing CompanyId from `TenantDbContext.Schema` (`"tenant_42"` → `42`).
 

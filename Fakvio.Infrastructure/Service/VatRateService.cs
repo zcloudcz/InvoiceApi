@@ -12,15 +12,13 @@ namespace Fakvio.Infrastructure.Service;
 /// Implementation of VAT rate service.
 /// Handles all VAT rate-related business logic.
 ///
-/// Dual-context: uses TenantDbContext when a tenant is available (regular users
-/// or impersonating SysAdmin), and falls back to MasterDbContext when SysAdmin
-/// operates without impersonation (managing global/master code tables).
+/// All operations use TenantDbContext — VAT rates are tenant-specific.
+/// Master DB VAT rates serve only as a template during tenant provisioning (CopyCodeTablesAsync).
+/// After provisioning, each tenant owns and customizes its own VAT rates independently.
 /// </summary>
 public class VatRateService : IVatRateService
 {
     private readonly TenantDbContext _tenantContext;
-    private readonly MasterDbContext _masterContext;
-    private readonly ITenantResolver _tenantResolver;
     private readonly ILogger<VatRateService> _logger;
 
     public VatRateService(
@@ -30,25 +28,10 @@ public class VatRateService : IVatRateService
         ILogger<VatRateService> logger)
     {
         _tenantContext = tenantContext;
-        _masterContext = masterContext;
-        _tenantResolver = tenantResolver;
+        // masterContext and tenantResolver kept in constructor signature for DI compatibility
+        // but no longer used — all operations go through tenant context.
         _logger = logger;
     }
-
-    /// <summary>
-    /// Whether we're operating in master context (SysAdmin without impersonation).
-    /// </summary>
-    private bool IsMasterContext => !_tenantResolver.GetCurrentCompanyId().HasValue;
-
-    /// <summary>
-    /// Resolves the correct VatRate DbSet based on context.
-    /// </summary>
-    private DbSet<VatRate> VatRateSet => IsMasterContext ? _masterContext.VatRate : _tenantContext.VatRate;
-
-    /// <summary>
-    /// Resolves the correct DbContext for SaveChanges operations.
-    /// </summary>
-    private DbContext ActiveContext => IsMasterContext ? _masterContext : _tenantContext;
 
     /// <summary>
     /// Gets all VAT rates
@@ -60,7 +43,7 @@ public class VatRateService : IVatRateService
         _logger.LogInformation("Fetching all VAT rates (includeInactive: {IncludeInactive})", includeInactive);
 
         // AsNoTracking: read-only list — results are mapped to DTOs
-        var query = VatRateSet.AsNoTracking().AsQueryable();
+        var query = _tenantContext.VatRate.AsNoTracking().AsQueryable();
 
         if (!includeInactive)
         {
@@ -85,7 +68,7 @@ public class VatRateService : IVatRateService
         _logger.LogInformation("Fetching VAT rate by ID: {VatRateId}", vatRateId);
 
         // AsNoTracking: read-only lookup — result is mapped to DTO
-        var rate = await VatRateSet
+        var rate = await _tenantContext.VatRate
             .AsNoTracking()
             .FirstOrDefaultAsync(v => v.Id == vatRateId, cancellationToken);
 
@@ -103,7 +86,7 @@ public class VatRateService : IVatRateService
         _logger.LogInformation("Fetching active VAT rates for date: {Date}", checkDate);
 
         // AsNoTracking: read-only list — results are mapped to DTOs
-        var rates = await VatRateSet
+        var rates = await _tenantContext.VatRate
             .AsNoTracking()
             .Where(v => v.IsActive &&
                        v.ValidFrom <= checkDate &&
@@ -125,7 +108,7 @@ public class VatRateService : IVatRateService
 
         // AsNoTracking: read-only lookup — result is mapped to DTO
         // OrderBy(Id): deterministic ordering — avoids EF warning when predicate could match multiple rows.
-        var rate = await VatRateSet
+        var rate = await _tenantContext.VatRate
             .AsNoTracking()
             .OrderBy(v => v.Id)
             .FirstOrDefaultAsync(v => v.IsDefault && !v.IsReduced && v.IsActive, cancellationToken);
@@ -143,7 +126,7 @@ public class VatRateService : IVatRateService
 
         // AsNoTracking: read-only lookup — result is mapped to DTO
         // OrderBy(Id): deterministic ordering — avoids EF warning when predicate could match multiple rows.
-        var rate = await VatRateSet
+        var rate = await _tenantContext.VatRate
             .AsNoTracking()
             .OrderBy(v => v.Id)
             .FirstOrDefaultAsync(v => v.IsDefault && v.IsReduced && v.IsActive, cancellationToken);
@@ -184,8 +167,8 @@ public class VatRateService : IVatRateService
             IsActive = createDto.IsActive
         };
 
-        VatRateSet.Add(vatRate);
-        await ActiveContext.SaveChangesAsync(cancellationToken);
+        _tenantContext.VatRate.Add(vatRate);
+        await _tenantContext.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation("VAT rate created with ID: {VatRateId}", vatRate.Id);
 
@@ -203,7 +186,7 @@ public class VatRateService : IVatRateService
     {
         _logger.LogInformation("Updating VAT rate: {VatRateId}", vatRateId);
 
-        var vatRate = await VatRateSet
+        var vatRate = await _tenantContext.VatRate
             .FirstOrDefaultAsync(v => v.Id == vatRateId, cancellationToken);
 
         if (vatRate == null)
@@ -233,7 +216,7 @@ public class VatRateService : IVatRateService
         vatRate.IsDefault = updateDto.IsDefault;
         vatRate.IsActive = updateDto.IsActive;
 
-        await ActiveContext.SaveChangesAsync(cancellationToken);
+        await _tenantContext.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation("VAT rate updated: {VatRateId}", vatRateId);
 
@@ -249,7 +232,7 @@ public class VatRateService : IVatRateService
     {
         _logger.LogInformation("Deleting VAT rate: {VatRateId}", vatRateId);
 
-        var vatRate = await VatRateSet
+        var vatRate = await _tenantContext.VatRate
             .FirstOrDefaultAsync(v => v.Id == vatRateId, cancellationToken);
 
         if (vatRate == null)
@@ -258,24 +241,19 @@ public class VatRateService : IVatRateService
             return false;
         }
 
-        // Check if rate is used in any invoice items (tenant-only check).
-        // In master context (SysAdmin without impersonation), invoices don't exist —
-        // skip the FK check and allow soft delete of the master code table record.
-        if (!IsMasterContext)
-        {
-            var isUsedInInvoices = await _tenantContext.InvoiceItem
-                .AnyAsync(i => i.VatRateId == vatRateId, cancellationToken);
+        // Check if rate is used in any invoice items before allowing soft delete.
+        var isUsedInInvoices = await _tenantContext.InvoiceItem
+            .AnyAsync(i => i.VatRateId == vatRateId, cancellationToken);
 
-            if (isUsedInInvoices)
-            {
-                _logger.LogWarning("Cannot delete VAT rate {VatRateId} - it is used in invoice items", vatRateId);
-                throw new InvalidOperationException("Cannot delete VAT rate that is used in invoices. Set it as inactive instead.");
-            }
+        if (isUsedInInvoices)
+        {
+            _logger.LogWarning("Cannot delete VAT rate {VatRateId} - it is used in invoice items", vatRateId);
+            throw new InvalidOperationException("Cannot delete VAT rate that is used in invoices. Set it as inactive instead.");
         }
 
         // Soft delete
         vatRate.IsActive = false;
-        await ActiveContext.SaveChangesAsync(cancellationToken);
+        await _tenantContext.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation("VAT rate deleted (soft): {VatRateId}", vatRateId);
 
@@ -292,7 +270,7 @@ public class VatRateService : IVatRateService
     {
         _logger.LogInformation("Setting VAT rate as default: {VatRateId}", vatRateId);
 
-        var vatRate = await VatRateSet
+        var vatRate = await _tenantContext.VatRate
             .FirstOrDefaultAsync(v => v.Id == vatRateId, cancellationToken);
 
         if (vatRate == null)
@@ -310,7 +288,7 @@ public class VatRateService : IVatRateService
 
         // Unset the previous default rate of the same type (standard/reduced).
         // OrderBy(Id): deterministic ordering — avoids EF warning when predicate could match multiple rows.
-        var previousDefault = await VatRateSet
+        var previousDefault = await _tenantContext.VatRate
             .OrderBy(v => v.Id)
             .FirstOrDefaultAsync(v => v.IsDefault && v.IsReduced == vatRate.IsReduced && v.Id != vatRateId, cancellationToken);
 
@@ -322,7 +300,7 @@ public class VatRateService : IVatRateService
 
         // Set new default
         vatRate.IsDefault = true;
-        await ActiveContext.SaveChangesAsync(cancellationToken);
+        await _tenantContext.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation("VAT rate set as default: {VatRateId}", vatRateId);
 
@@ -353,7 +331,7 @@ public class VatRateService : IVatRateService
         bool isReduced,
         CancellationToken cancellationToken)
     {
-        var query = VatRateSet
+        var query = _tenantContext.VatRate
             .Where(v => v.IsDefault && v.IsReduced == isReduced);
 
         if (excludeVatRateId.HasValue)

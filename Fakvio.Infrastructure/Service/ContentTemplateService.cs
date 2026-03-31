@@ -16,16 +16,13 @@ namespace Fakvio.Infrastructure.Service;
 /// Replaces the old EmailTemplateService by supporting both PDF and email templates.
 /// Placeholders use the format {{PlaceholderName}} and are replaced at render time.
 ///
-/// Dual-context: uses TenantDbContext when a tenant is available (regular users
-/// or impersonating SysAdmin), and falls back to MasterDbContext when SysAdmin
-/// operates without impersonation or when no tenant context exists (e.g., during
-/// invitation emails sent before tenant provisioning completes).
+/// All operations use TenantDbContext — content templates are tenant-specific.
+/// Master DB templates serve only as defaults during tenant provisioning (CopyCodeTablesAsync).
+/// After provisioning, each tenant owns and customizes its own templates independently.
 /// </summary>
 public partial class ContentTemplateService : IContentTemplateService
 {
     private readonly TenantDbContext _tenantContext;
-    private readonly MasterDbContext _masterContext;
-    private readonly ITenantResolver _tenantResolver;
     private readonly ILogger<ContentTemplateService> _logger;
 
     public ContentTemplateService(
@@ -35,32 +32,17 @@ public partial class ContentTemplateService : IContentTemplateService
         ILogger<ContentTemplateService> logger)
     {
         _tenantContext = tenantContext;
-        _masterContext = masterContext;
-        _tenantResolver = tenantResolver;
+        // masterContext and tenantResolver kept in constructor signature for DI compatibility
+        // but no longer used — all operations go through tenant context.
         _logger = logger;
     }
-
-    /// <summary>
-    /// Whether we're operating in master context (SysAdmin without impersonation).
-    /// </summary>
-    private bool IsMasterContext => !_tenantResolver.GetCurrentCompanyId().HasValue;
-
-    /// <summary>
-    /// Resolves the correct ContentTemplate DbSet based on context.
-    /// </summary>
-    private DbSet<ContentTemplate> TemplateSet => IsMasterContext ? _masterContext.ContentTemplate : _tenantContext.ContentTemplate;
-
-    /// <summary>
-    /// Resolves the correct DbContext for SaveChanges operations.
-    /// </summary>
-    private DbContext ActiveContext => IsMasterContext ? _masterContext : _tenantContext;
 
     /// <inheritdoc />
     public async Task<List<ContentTemplateDto>> GetAllAsync(bool includeInactive = false, CancellationToken ct = default)
     {
         _logger.LogInformation("Getting all content templates, includeInactive: {IncludeInactive}", includeInactive);
 
-        var query = TemplateSet.AsNoTracking();
+        var query = _tenantContext.ContentTemplate.AsNoTracking();
 
         if (!includeInactive)
         {
@@ -81,7 +63,7 @@ public partial class ContentTemplateService : IContentTemplateService
     {
         _logger.LogInformation("Getting content templates for type: {TemplateType}", templateType);
 
-        var query = TemplateSet
+        var query = _tenantContext.ContentTemplate
             .AsNoTracking()
             .Where(t => t.TemplateType == templateType);
 
@@ -102,7 +84,7 @@ public partial class ContentTemplateService : IContentTemplateService
     {
         _logger.LogInformation("Getting content template by ID: {Id}", id);
 
-        var template = await TemplateSet
+        var template = await _tenantContext.ContentTemplate
             .AsNoTracking()
             .FirstOrDefaultAsync(t => t.Id == id, ct);
 
@@ -116,7 +98,7 @@ public partial class ContentTemplateService : IContentTemplateService
 
         // OrderBy(Id): deterministic ordering — EF warns when FirstOrDefault has no OrderBy
         // and the predicate could match multiple rows (e.g., multiple default templates).
-        var template = await TemplateSet
+        var template = await _tenantContext.ContentTemplate
             .AsNoTracking()
             .Where(t => t.TemplateType == templateType && t.IsDefault && t.IsActive)
             .OrderBy(t => t.Id)
@@ -134,7 +116,7 @@ public partial class ContentTemplateService : IContentTemplateService
             templateType, language);
 
         // Step 1: Try to find an exact match — same type + same language + default + active.
-        var template = await TemplateSet
+        var template = await _tenantContext.ContentTemplate
             .AsNoTracking()
             .Where(t => t.TemplateType == templateType
                         && t.Language == language
@@ -184,8 +166,8 @@ public partial class ContentTemplateService : IContentTemplateService
             await UnsetDefaultForTypeAsync(entity.TemplateType, entity.Language, ct);
         }
 
-        TemplateSet.Add(entity);
-        await ActiveContext.SaveChangesAsync(ct);
+        _tenantContext.ContentTemplate.Add(entity);
+        await _tenantContext.SaveChangesAsync(ct);
 
         _logger.LogInformation("Content template created with ID: {Id}", entity.Id);
         return entity.ToContentTemplateDto();
@@ -196,7 +178,7 @@ public partial class ContentTemplateService : IContentTemplateService
     {
         _logger.LogInformation("Updating content template {Id}", id);
 
-        var entity = await TemplateSet.FirstOrDefaultAsync(t => t.Id == id, ct);
+        var entity = await _tenantContext.ContentTemplate.FirstOrDefaultAsync(t => t.Id == id, ct);
         if (entity == null)
         {
             _logger.LogWarning("Content template {Id} not found", id);
@@ -223,7 +205,7 @@ public partial class ContentTemplateService : IContentTemplateService
             entity.IsDefault = updateDto.IsDefault.Value;
         }
 
-        await ActiveContext.SaveChangesAsync(ct);
+        await _tenantContext.SaveChangesAsync(ct);
 
         _logger.LogInformation("Content template {Id} updated", id);
         return entity.ToContentTemplateDto();
@@ -234,7 +216,7 @@ public partial class ContentTemplateService : IContentTemplateService
     {
         _logger.LogInformation("Soft-deleting content template {Id}", id);
 
-        var entity = await TemplateSet.FirstOrDefaultAsync(t => t.Id == id, ct);
+        var entity = await _tenantContext.ContentTemplate.FirstOrDefaultAsync(t => t.Id == id, ct);
         if (entity == null)
         {
             _logger.LogWarning("Content template {Id} not found for deletion", id);
@@ -243,7 +225,7 @@ public partial class ContentTemplateService : IContentTemplateService
 
         // Soft delete — set IsActive to false
         entity.IsActive = false;
-        await ActiveContext.SaveChangesAsync(ct);
+        await _tenantContext.SaveChangesAsync(ct);
 
         _logger.LogInformation("Content template {Id} soft-deleted", id);
         return true;
@@ -257,7 +239,7 @@ public partial class ContentTemplateService : IContentTemplateService
     {
         _logger.LogInformation("Rendering content template {TemplateId} with {Count} placeholders", templateId, placeholders.Count);
 
-        var template = await TemplateSet
+        var template = await _tenantContext.ContentTemplate
             .AsNoTracking()
             .FirstOrDefaultAsync(t => t.Id == templateId, ct)
             ?? throw new KeyNotFoundException($"Content template with ID {templateId} not found.");
@@ -294,7 +276,7 @@ public partial class ContentTemplateService : IContentTemplateService
     private async Task UnsetDefaultForTypeAsync(
         EContentTemplateType templateType, string language, CancellationToken ct)
     {
-        var currentDefaults = await TemplateSet
+        var currentDefaults = await _tenantContext.ContentTemplate
             .Where(t => t.TemplateType == templateType && t.Language == language && t.IsDefault)
             .ToListAsync(ct);
 

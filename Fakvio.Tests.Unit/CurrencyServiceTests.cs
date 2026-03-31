@@ -56,11 +56,12 @@ public class CurrencyServiceTests : IDisposable
     }
 
     /// <summary>
-    /// Seeds test currencies — one active, one inactive.
+    /// Seeds test currencies into master context — CurrencyService reads from master DB.
+    /// Currencies are global/shared data, not tenant-specific.
     /// </summary>
     private void SeedTestData()
     {
-        _context.Currency.AddRange(
+        _masterContext.Currency.AddRange(
             new Currency
             {
                 Id = 1, Code = "CZK", Name = "Czech Koruna", Symbol = "Kč",
@@ -77,7 +78,7 @@ public class CurrencyServiceTests : IDisposable
                 DecimalPlaces = 2, SortOrder = 3, IsActive = false
             }
         );
-        _context.SaveChanges();
+        _masterContext.SaveChanges();
     }
 
     // --- Soft Delete Tests ---
@@ -86,7 +87,7 @@ public class CurrencyServiceTests : IDisposable
     public async Task DeleteCurrencyAsync_ShouldSoftDelete_SetIsActiveToFalse()
     {
         // Arrange — CZK (Id=1) is active
-        var currencyBefore = await _context.Currency.FindAsync(1L);
+        var currencyBefore = await _masterContext.Currency.FindAsync(1L);
         currencyBefore!.IsActive.ShouldBeTrue();
 
         // Act — delete should set IsActive = false, NOT remove from database
@@ -95,8 +96,8 @@ public class CurrencyServiceTests : IDisposable
         // Assert
         result.ShouldBeTrue();
 
-        // Currency should still exist in database but be inactive
-        var currencyAfter = await _context.Currency.FindAsync(1L);
+        // Currency should still exist in master database but be inactive
+        var currencyAfter = await _masterContext.Currency.FindAsync(1L);
         currencyAfter.ShouldNotBeNull();
         currencyAfter!.IsActive.ShouldBeFalse();
     }
@@ -131,7 +132,7 @@ public class CurrencyServiceTests : IDisposable
 
         // Assert — no exception, currency is deactivated
         result.ShouldBeTrue();
-        var currency = await _context.Currency.FindAsync(1L);
+        var currency = await _masterContext.Currency.FindAsync(1L);
         currency!.IsActive.ShouldBeFalse();
     }
 

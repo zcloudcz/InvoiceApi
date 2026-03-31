@@ -15,15 +15,13 @@ namespace Fakvio.Infrastructure.Service;
 /// Implementation of currency service.
 /// Handles all business logic for currency management.
 ///
-/// Dual-context: uses TenantDbContext when a tenant is available (regular users
-/// or impersonating SysAdmin), and falls back to MasterDbContext when SysAdmin
-/// operates without impersonation (managing global/master code tables).
+/// All operations use MasterDbContext — currencies are global/shared data (CZK, EUR, USD).
+/// There is no need to duplicate currencies per tenant. Tenant DB has a Currency table
+/// only for FK integrity (Invoice → Currency), populated during provisioning.
 /// </summary>
 public class CurrencyService : ICurrencyService
 {
-    private readonly TenantDbContext _tenantContext;
     private readonly MasterDbContext _masterContext;
-    private readonly ITenantResolver _tenantResolver;
     private readonly ILogger<CurrencyService> _logger;
 
     public CurrencyService(
@@ -32,34 +30,18 @@ public class CurrencyService : ICurrencyService
         ITenantResolver tenantResolver,
         ILogger<CurrencyService> logger)
     {
-        _tenantContext = tenantContext;
         _masterContext = masterContext;
-        _tenantResolver = tenantResolver;
+        // tenantContext and tenantResolver kept in constructor signature for DI compatibility
+        // but no longer used — currencies are global, all reads/writes go through master context.
         _logger = logger;
     }
-
-    /// <summary>
-    /// Whether we're operating in master context (SysAdmin without impersonation).
-    /// When true, queries go to MasterDbContext; when false, to TenantDbContext.
-    /// </summary>
-    private bool IsMasterContext => !_tenantResolver.GetCurrentCompanyId().HasValue;
-
-    /// <summary>
-    /// Resolves the correct Currency DbSet based on context.
-    /// </summary>
-    private DbSet<Currency> CurrencySet => IsMasterContext ? _masterContext.Currency : _tenantContext.Currency;
-
-    /// <summary>
-    /// Resolves the correct DbContext for SaveChanges operations.
-    /// </summary>
-    private DbContext ActiveContext => IsMasterContext ? _masterContext : _tenantContext;
 
     public async Task<List<CurrencyDto>> GetActiveCurrenciesAsync(CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Fetching all active currencies");
 
         // AsNoTracking: read-only list — results are mapped to DTOs
-        var currencies = await CurrencySet
+        var currencies = await _masterContext.Currency
             .AsNoTracking()
             .Where(c => c.IsActive)
             .OrderBy(c => c.SortOrder)
@@ -81,7 +63,7 @@ public class CurrencyService : ICurrencyService
             page, pageSize, search);
 
         // AsNoTracking: read-only paged query — results are mapped to DTOs
-        var query = CurrencySet.AsNoTracking().AsQueryable();
+        var query = _masterContext.Currency.AsNoTracking().AsQueryable();
 
         // Apply filters
         if (isActive.HasValue)
@@ -118,7 +100,7 @@ public class CurrencyService : ICurrencyService
     public async Task<CurrencyDto?> GetCurrencyByIdAsync(long currencyId, CancellationToken cancellationToken = default)
     {
         // AsNoTracking: read-only lookup — result is mapped to DTO
-        var currency = await CurrencySet
+        var currency = await _masterContext.Currency
             .AsNoTracking()
             .FirstOrDefaultAsync(c => c.Id == currencyId, cancellationToken);
 
@@ -128,7 +110,7 @@ public class CurrencyService : ICurrencyService
     public async Task<CurrencyDto?> GetCurrencyByCodeAsync(string code, CancellationToken cancellationToken = default)
     {
         // AsNoTracking: read-only lookup — result is mapped to DTO
-        var currency = await CurrencySet
+        var currency = await _masterContext.Currency
             .AsNoTracking()
             .FirstOrDefaultAsync(c => c.Code.ToLower() == code.ToLower(), cancellationToken);
 
@@ -140,7 +122,7 @@ public class CurrencyService : ICurrencyService
         _logger.LogInformation("Creating new currency: {Code}", createDto.Code);
 
         // Check if currency code already exists
-        var existingCurrency = await CurrencySet
+        var existingCurrency = await _masterContext.Currency
             .FirstOrDefaultAsync(c => c.Code.ToLower() == createDto.Code.ToLower(), cancellationToken);
 
         if (existingCurrency != null)
@@ -157,8 +139,8 @@ public class CurrencyService : ICurrencyService
             DisplayFormat = createDto.DisplayFormat
         };
 
-        CurrencySet.Add(currency);
-        await ActiveContext.SaveChangesAsync(cancellationToken);
+        _masterContext.Currency.Add(currency);
+        await _masterContext.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation("Created currency {Code} with ID {Id}", currency.Code, currency.Id);
 
@@ -167,7 +149,7 @@ public class CurrencyService : ICurrencyService
 
     public async Task<CurrencyDto?> UpdateCurrencyAsync(long currencyId, UpdateCurrencyDto updateDto, CancellationToken cancellationToken = default)
     {
-        var currency = await CurrencySet
+        var currency = await _masterContext.Currency
             .FirstOrDefaultAsync(c => c.Id == currencyId, cancellationToken);
 
         if (currency == null)
@@ -194,7 +176,7 @@ public class CurrencyService : ICurrencyService
         if (updateDto.DisplayFormat != null)
             currency.DisplayFormat = updateDto.DisplayFormat;
 
-        await ActiveContext.SaveChangesAsync(cancellationToken);
+        await _masterContext.SaveChangesAsync(cancellationToken);
 
         return MapToDto(currency);
     }
@@ -219,7 +201,7 @@ public class CurrencyService : ICurrencyService
     /// </summary>
     public async Task<bool> DeleteCurrencyAsync(long currencyId, CancellationToken cancellationToken = default)
     {
-        var currency = await CurrencySet
+        var currency = await _masterContext.Currency
             .FirstOrDefaultAsync(c => c.Id == currencyId, cancellationToken);
 
         if (currency == null)
@@ -229,7 +211,7 @@ public class CurrencyService : ICurrencyService
 
         // Soft delete — deactivate instead of removing from database
         currency.IsActive = false;
-        await ActiveContext.SaveChangesAsync(cancellationToken);
+        await _masterContext.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation("Soft-deleted currency {Code} (ID: {Id})", currency.Code, currency.Id);
 

@@ -14,15 +14,13 @@ namespace Fakvio.Infrastructure.Service;
 /// Implementation of number sequence service.
 /// Handles all number generation logic for invoices and credit notes.
 ///
-/// Dual-context for FORMAT operations: MasterDbContext when SysAdmin has no tenant,
-/// TenantDbContext when impersonating or regular user.
-/// SEQUENCE operations always use TenantDbContext (sequences are per-tenant with counters).
+/// All operations use TenantDbContext — both formats and sequences are tenant-specific.
+/// Master DB formats serve only as a template during tenant provisioning (CopyCodeTablesAsync).
+/// After provisioning, each tenant owns and customizes its own formats independently.
 /// </summary>
 public class NumberSequenceService : INumberSequenceService
 {
     private readonly TenantDbContext _tenantContext;
-    private readonly MasterDbContext _masterContext;
-    private readonly ITenantResolver _tenantResolver;
     private readonly ILogger<NumberSequenceService> _logger;
 
     public NumberSequenceService(
@@ -32,27 +30,10 @@ public class NumberSequenceService : INumberSequenceService
         ILogger<NumberSequenceService> logger)
     {
         _tenantContext = tenantContext;
-        _masterContext = masterContext;
-        _tenantResolver = tenantResolver;
+        // masterContext and tenantResolver kept in constructor signature for DI compatibility
+        // but no longer used — all operations go through tenant context.
         _logger = logger;
     }
-
-    /// <summary>
-    /// Whether we're operating in master context (SysAdmin without impersonation).
-    /// </summary>
-    private bool IsMasterContext => !_tenantResolver.GetCurrentCompanyId().HasValue;
-
-    /// <summary>
-    /// Resolves the correct NumberSequenceFormat DbSet based on context.
-    /// Formats exist in both master and tenant databases.
-    /// </summary>
-    private DbSet<NumberSequenceFormat> FormatSet =>
-        IsMasterContext ? _masterContext.NumberSequenceFormat : _tenantContext.NumberSequenceFormat;
-
-    /// <summary>
-    /// Resolves the correct DbContext for format SaveChanges operations.
-    /// </summary>
-    private DbContext FormatContext => IsMasterContext ? _masterContext : _tenantContext;
 
     /// <summary>
     /// Maps a NumberSequenceFormat entity to NumberSequenceFormatDto using ZMapper v1.1.0.
@@ -80,8 +61,6 @@ public class NumberSequenceService : INumberSequenceService
     /// </summary>
     private async Task EnsureDefaultFormatsExistAsync(CancellationToken cancellationToken)
     {
-        // Only applies to tenant context — master formats are seeded by migration
-        if (IsMasterContext) return;
 
         var hasAnyFormat = await _tenantContext.NumberSequenceFormat.AnyAsync(cancellationToken);
         if (hasAnyFormat) return;
@@ -123,7 +102,7 @@ public class NumberSequenceService : INumberSequenceService
         await EnsureDefaultFormatsExistAsync(cancellationToken);
 
         // AsNoTracking: read-only list — results are mapped to DTOs
-        var query = FormatSet.AsNoTracking().AsQueryable();
+        var query = _tenantContext.NumberSequenceFormat.AsNoTracking().AsQueryable();
 
         if (!includeInactive)
             query = query.Where(f => f.IsActive);
@@ -137,7 +116,7 @@ public class NumberSequenceService : INumberSequenceService
 
     public async Task<NumberSequenceFormatDto?> GetFormatByIdAsync(long formatId, CancellationToken cancellationToken = default)
     {
-        var format = await FormatSet.FindAsync(new object[] { formatId }, cancellationToken);
+        var format = await _tenantContext.NumberSequenceFormat.FindAsync(new object[] { formatId }, cancellationToken);
         return format == null ? null : MapFormatToDto(format);
     }
 
@@ -162,8 +141,8 @@ public class NumberSequenceService : INumberSequenceService
             IsActive = true
         };
 
-        FormatSet.Add(format);
-        await FormatContext.SaveChangesAsync(cancellationToken);
+        _tenantContext.NumberSequenceFormat.Add(format);
+        await _tenantContext.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation("Created number sequence format with ID {Id}", format.Id);
         return MapFormatToDto(format);
@@ -178,7 +157,7 @@ public class NumberSequenceService : INumberSequenceService
     {
         _logger.LogInformation("Updating number sequence format {Id}", formatId);
 
-        var format = await FormatSet.FindAsync(new object[] { formatId }, cancellationToken);
+        var format = await _tenantContext.NumberSequenceFormat.FindAsync(new object[] { formatId }, cancellationToken);
         if (format == null)
         {
             _logger.LogWarning("Number sequence format {Id} not found", formatId);
@@ -204,7 +183,7 @@ public class NumberSequenceService : INumberSequenceService
             format.ResetsMonthly = resetsMonthly;
         }
 
-        await FormatContext.SaveChangesAsync(cancellationToken);
+        await _tenantContext.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation("Number sequence format {Id} updated", formatId);
         return MapFormatToDto(format);
@@ -273,32 +252,11 @@ public class NumberSequenceService : INumberSequenceService
         // Auto-seed default formats for tenants that were provisioned with empty tables
         await EnsureDefaultFormatsExistAsync(cancellationToken);
 
-        // Validate format exists — if the requested ID is stale (e.g., after re-provisioning
-        // reset the PG sequence and assigned new IDs), fall back to the first active format.
+        // Validate that the referenced format exists in the tenant database.
+        // Both formats and sequences live in the tenant DB — no cross-database references.
         var format = await _tenantContext.NumberSequenceFormat.FindAsync(new object[] { createDto.NumberSequenceFormatId }, cancellationToken);
         if (format == null)
-        {
-            // Attempt auto-recovery: use the first active format instead of failing.
-            // This handles the case where the UI sent a stale format ID (e.g., after
-            // tenant re-provisioning or EnsureDefaultFormatsExistAsync assigned new IDs).
-            var fallbackFormat = await _tenantContext.NumberSequenceFormat
-                .OrderBy(f => f.Id)
-                .FirstOrDefaultAsync(f => f.IsActive, cancellationToken);
-
-            if (fallbackFormat == null)
-            {
-                throw new InvalidOperationException(
-                    $"Number sequence format with ID {createDto.NumberSequenceFormatId} not found " +
-                    "and no active formats exist in the database. Please create a format first.");
-            }
-
-            _logger.LogWarning(
-                "Requested NumberSequenceFormat ID {RequestedId} not found — falling back to ID {FallbackId} ({FallbackName})",
-                createDto.NumberSequenceFormatId, fallbackFormat.Id, fallbackFormat.Name);
-
-            format = fallbackFormat;
-            createDto.NumberSequenceFormatId = fallbackFormat.Id;
-        }
+            throw new InvalidOperationException($"Number sequence format with ID {createDto.NumberSequenceFormatId} not found");
 
         // If this is set as default, unset other defaults for this document type
         if (createDto.IsDefault)
