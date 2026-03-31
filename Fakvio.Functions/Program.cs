@@ -35,6 +35,11 @@ using Microsoft.Extensions.Logging;
 CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
 CultureInfo.DefaultThreadCurrentUICulture = CultureInfo.InvariantCulture;
 
+// Npgsql 10.x strictly requires DateTimeKind.Utc for "timestamp with time zone" columns.
+// Blazor WASM date pickers and JSON deserialization produce DateTime with Kind=Local or Unspecified,
+// which Npgsql rejects with ArgumentException. This switch restores the pre-10.x behavior.
+AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
+
 var host = new HostBuilder()
     // ConfigureFunctionsWebApplication — enables ASP.NET Core integration for HTTP triggers.
     // This gives generated functions access to HttpRequest, IActionResult, HttpContext, etc.

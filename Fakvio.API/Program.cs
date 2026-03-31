@@ -15,6 +15,12 @@ using Swashbuckle.AspNetCore.SwaggerGen;
 CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
 CultureInfo.DefaultThreadCurrentUICulture = CultureInfo.InvariantCulture;
 
+// Npgsql 10.x strictly requires DateTimeKind.Utc for "timestamp with time zone" columns.
+// Blazor WASM date pickers and JSON deserialization produce DateTime with Kind=Local or Unspecified,
+// which Npgsql rejects with ArgumentException. This switch restores the pre-10.x behavior
+// that accepts any DateTimeKind and converts automatically.
+AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
+
 var builder = WebApplication.CreateBuilder(args);
 
 // ── Shared DI registrations ─────────────────────────────────────────────────

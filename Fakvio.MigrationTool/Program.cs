@@ -27,6 +27,10 @@ using Microsoft.Extensions.Logging;
 ///   - Public schema (master) will be used automatically
 /// </summary>
 
+// Npgsql 10.x strictly requires DateTimeKind.Utc for "timestamp with time zone" columns.
+// Legacy data may contain non-UTC DateTimes — this switch prevents ArgumentException during migration.
+AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
+
 // Parse command-line arguments
 var dryRun = args.Contains("--dry-run", StringComparer.OrdinalIgnoreCase);
 var verifyOnly = args.Contains("--verify", StringComparer.OrdinalIgnoreCase);
