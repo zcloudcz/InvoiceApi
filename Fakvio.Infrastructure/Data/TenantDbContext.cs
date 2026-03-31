@@ -722,6 +722,7 @@ public class TenantDbContext : DbContext
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
         UpdateTimestamps();
+        NormalizeDateTimesToUtc();
         return base.SaveChangesAsync(cancellationToken);
     }
 
@@ -753,6 +754,30 @@ public class TenantDbContext : DbContext
             if (currentUserId.HasValue)
             {
                 entity.UpdatedByUserId = currentUserId.Value;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Npgsql 10.x requires DateTime values with DateTimeKind.Utc for "timestamp with time zone" columns.
+    /// Blazor date pickers send DateTimeKind.Unspecified — this method normalizes all DateTime properties
+    /// on added/modified entities to UTC before they reach the database driver.
+    /// </summary>
+    private void NormalizeDateTimesToUtc()
+    {
+        var entries = ChangeTracker.Entries()
+            .Where(e => e.State == EntityState.Added || e.State == EntityState.Modified);
+
+        foreach (var entry in entries)
+        {
+            foreach (var property in entry.Properties)
+            {
+                if (property.CurrentValue is DateTime dt && dt.Kind != DateTimeKind.Utc)
+                {
+                    // Treat Unspecified/Local as UTC — the app already uses UtcNow everywhere,
+                    // and Blazor WASM date pickers produce Unspecified values that are logically UTC.
+                    property.CurrentValue = DateTime.SpecifyKind(dt, DateTimeKind.Utc);
+                }
             }
         }
     }
