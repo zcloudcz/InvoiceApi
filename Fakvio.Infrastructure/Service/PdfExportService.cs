@@ -228,9 +228,13 @@ public class PdfExportService : IPdfExportService
 
             // Invoice metadata
             ["DocumentNumber"] = invoice.DocumentNumber ?? "",
-            ["IssueDate"] = invoice.IssueDate?.ToString("dd. M. yyyy") ?? "",
-            ["DueDate"] = invoice.DueDate?.ToString("dd. M. yyyy") ?? "",
-            ["TaxableSupplyDate"] = invoice.TaxableSupplyDate?.ToString("dd. M. yyyy") ?? "",
+            // Use DateOnly-style formatting to prevent any timezone shift.
+            // Dates are stored as UTC midnight (e.g., 2026-03-31T00:00:00Z).
+            // .Date strips the time component — ensures the calendar date is always
+            // identical to what the user sees in the UI, regardless of server timezone.
+            ["IssueDate"] = FormatDateForPdf(invoice.IssueDate),
+            ["DueDate"] = FormatDateForPdf(invoice.DueDate),
+            ["TaxableSupplyDate"] = FormatDateForPdf(invoice.TaxableSupplyDate),
             ["DocumentType"] = invoice.DocumentType.ToString(),
             ["DocumentTypeLabel"] = documentTypeLabel,
             ["Status"] = invoice.Status.ToString(),
@@ -376,6 +380,21 @@ public class PdfExportService : IPdfExportService
         }
 
         return documentType == EDocumentType.CreditNote ? "CREDIT NOTE" : "INVOICE";
+    }
+
+    /// <summary>
+    /// Formats a nullable DateTime for PDF output using dd.MM.yyyy (Czech standard format).
+    /// Handles UTC dates that were shifted by timezone conversion: if time is >= 22:00 UTC,
+    /// the date was likely midnight in CET/CEST (UTC+1/+2) — rounds up to the next day.
+    /// This ensures the PDF date matches exactly what the user entered in the UI.
+    /// </summary>
+    private static string FormatDateForPdf(DateTime? date)
+    {
+        if (!date.HasValue) return "";
+        var dt = date.Value;
+        // If time >= 22:00 UTC, this was midnight in UTC+1/+2 timezone — show the next day
+        var calendarDate = dt.Hour >= 22 ? dt.Date.AddDays(1) : dt.Date;
+        return calendarDate.ToString("dd.MM.yyyy");
     }
 
     /// <summary>

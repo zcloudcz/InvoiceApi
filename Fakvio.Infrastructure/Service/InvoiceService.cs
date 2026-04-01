@@ -252,8 +252,14 @@ public class InvoiceService : IInvoiceService
             DocumentType = createDto.DocumentType,
             Status = EInvoiceStatus.Draft,
             DocumentNumber = createDto.CustomDocumentNumber ?? "DRAFT", // Placeholder — replaced below after save
-            IssueDate = createDto.IssueDate ?? DateTime.UtcNow,
-            TaxableSupplyDate = createDto.TaxableSupplyDate ?? (createDto.IssueDate ?? DateTime.UtcNow),
+            // NormalizeToUtcMidnight: date-only fields must be stored as UTC midnight.
+            // Blazor WASM may send dates with local timezone offset (e.g., "2026-05-01T00:00:00+02:00")
+            // which System.Text.Json deserializes as "2026-04-30T22:00:00Z" — the PREVIOUS day in UTC.
+            // Stripping time via .Date and stamping as UTC ensures the calendar date is always preserved.
+            IssueDate = NormalizeToUtcMidnight(createDto.IssueDate) ?? DateTime.UtcNow.Date,
+            TaxableSupplyDate = NormalizeToUtcMidnight(createDto.TaxableSupplyDate)
+                                ?? NormalizeToUtcMidnight(createDto.IssueDate)
+                                ?? DateTime.UtcNow.Date,
             ClientId = createDto.ClientId,
             IssuerId = createDto.IssuerId,
             OriginalInvoiceId = createDto.OriginalInvoiceId,
@@ -419,11 +425,13 @@ public class InvoiceService : IInvoiceService
         _logger.LogInformation("Updating {DocumentType} {Id}", invoice.DocumentType, invoice.Id);
 
         // Update fields
+        // NormalizeToUtcMidnight: date-only fields must be stored as UTC midnight to prevent
+        // timezone-induced day shifts (see CreateInvoiceAsync for detailed explanation).
         if (updateDto.DueDate.HasValue)
-            invoice.DueDate = updateDto.DueDate.Value;
+            invoice.DueDate = NormalizeToUtcMidnight(updateDto.DueDate)!.Value;
 
         if (updateDto.TaxableSupplyDate.HasValue)
-            invoice.TaxableSupplyDate = updateDto.TaxableSupplyDate.Value;
+            invoice.TaxableSupplyDate = NormalizeToUtcMidnight(updateDto.TaxableSupplyDate)!.Value;
 
         if (updateDto.VariableSymbol != null)
             invoice.VariableSymbol = updateDto.VariableSymbol;
@@ -903,25 +911,55 @@ public class InvoiceService : IInvoiceService
     private DateTime CalculateDueDate(CreateInvoiceDto createDto, Client client)
     {
         // If user explicitly set a due date, respect their manual override
+        // Normalize to UTC midnight to prevent timezone day shifts.
         if (createDto.DueDate.HasValue)
-            return createDto.DueDate.Value;
+            return NormalizeToUtcMidnight(createDto.DueDate)!.Value;
 
-        var issueDate = createDto.IssueDate ?? DateTime.UtcNow;
+        var issueDate = NormalizeToUtcMidnight(createDto.IssueDate) ?? DateTime.UtcNow.Date;
 
         // Use client's billing settings if available (DueDateCalculationType + DueDays)
         if (client.BillingSettings != null)
         {
-            return DueDateCalculator.Calculate(
+            return NormalizeToUtcMidnight(DueDateCalculator.Calculate(
                 issueDate,
                 client.BillingSettings.DueDays,
-                client.BillingSettings.DueDateCalculationType);
+                client.BillingSettings.DueDateCalculationType))!.Value;
         }
 
         // Default: DaysFromIssue with 14 days (when client has no billing settings)
-        return DueDateCalculator.Calculate(
+        return NormalizeToUtcMidnight(DueDateCalculator.Calculate(
             issueDate,
             dueDays: 14,
-            EDueDateCalculationType.DaysFromIssue);
+            EDueDateCalculationType.DaysFromIssue))!.Value;
+    }
+
+    /// <summary>
+    /// Normalizes a date-only value to UTC midnight — strips time and sets Kind=Utc.
+    ///
+    /// Why this is needed:
+    /// Blazor WASM date pickers may produce DateTime with Kind=Local (e.g., DateTime.Now).
+    /// System.Text.Json serializes Local as "2026-05-01T00:00:00+02:00" (with TZ offset).
+    /// The server (Azure, UTC) deserializes this as "2026-04-30T22:00:00" — the PREVIOUS day.
+    /// Simply calling .Date would preserve this shifted date (April 30 instead of May 1).
+    ///
+    /// Fix: If the time component is >= 22:00 (indicating a midnight+offset conversion for
+    /// European timezones UTC+1..+2), round UP to the next day. Otherwise use .Date as-is.
+    /// This handles the common case where a date-only value was shifted back by 1-2 hours.
+    /// </summary>
+    private static DateTime? NormalizeToUtcMidnight(DateTime? date)
+    {
+        if (!date.HasValue) return null;
+        var dt = date.Value;
+
+        // If time is very close to midnight of the NEXT day (22:00-23:59 UTC),
+        // this was likely a midnight local time converted to UTC with negative offset.
+        // Round up to next day to recover the intended calendar date.
+        if (dt.Hour >= 22)
+        {
+            return DateTime.SpecifyKind(dt.Date.AddDays(1), DateTimeKind.Utc);
+        }
+
+        return DateTime.SpecifyKind(dt.Date, DateTimeKind.Utc);
     }
 
     /// <summary>

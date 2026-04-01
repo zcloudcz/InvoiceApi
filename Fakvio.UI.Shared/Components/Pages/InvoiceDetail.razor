@@ -601,9 +601,12 @@ else
     // Create mode state — true when Id == 0 (navigated to /invoices/create)
     private bool _isCreateMode => Id == 0;
     private CreateInvoiceDto _createDto = new();
-    private DateTime? _createIssueDate = DateTime.Now;
-    private DateTime? _createDueDate = DateTime.Now.AddDays(14);
-    private DateTime? _createTaxableSupplyDate = DateTime.Now;
+    // Use DateTime.UtcNow.Date (UTC midnight) instead of DateTime.Now to prevent timezone offset
+    // in JSON serialization. DateTime.Now has Kind=Local → serialized as "...+02:00" → server
+    // converts to UTC → date shifts back by 1 day for CET/CEST timezones.
+    private DateTime? _createIssueDate = DateTime.UtcNow.Date;
+    private DateTime? _createDueDate = DateTime.UtcNow.Date.AddDays(14);
+    private DateTime? _createTaxableSupplyDate = DateTime.UtcNow.Date;
     private List<ClientDto> _allClients = new();
     private List<CurrencyDto> _currencies = new();
     private ClientDto? _issuer;
