@@ -10,6 +10,11 @@ namespace Fakvio.Contracts.Dto.Invoice;
 public class UpdateInvoiceDto
 {
     /// <summary>
+    /// Issue date - when the invoice was issued
+    /// </summary>
+    public DateTime? IssueDate { get; set; }
+
+    /// <summary>
     /// Due date - when payment is due
     /// </summary>
     public DateTime? DueDate { get; set; }

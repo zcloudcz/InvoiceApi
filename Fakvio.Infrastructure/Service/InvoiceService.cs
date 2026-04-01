@@ -427,6 +427,9 @@ public class InvoiceService : IInvoiceService
         // Update fields
         // NormalizeToUtcMidnight: date-only fields must be stored as UTC midnight to prevent
         // timezone-induced day shifts (see CreateInvoiceAsync for detailed explanation).
+        if (updateDto.IssueDate.HasValue)
+            invoice.IssueDate = NormalizeToUtcMidnight(updateDto.IssueDate)!.Value;
+
         if (updateDto.DueDate.HasValue)
             invoice.DueDate = NormalizeToUtcMidnight(updateDto.DueDate)!.Value;
 

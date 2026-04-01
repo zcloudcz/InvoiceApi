@@ -278,8 +278,7 @@ else
                         </CardHeaderContent>
                     </MudCardHeader>
                     <MudCardContent>
-                        @* Issue date — readonly after creation *@
-                        <MudTextField Value="@_invoice.IssueDate?.ToShortDateString()" Label="@L["Table_IssueDate"].Value" ReadOnly="true" Class="mb-3" />
+                        <MudDatePicker @bind-Date="_editIssueDate" Label="@L["Table_IssueDate"].Value" Class="mb-3" />
                         <MudDatePicker @bind-Date="_editDueDate" Label="@L["Table_DueDate"].Value" Class="mb-3" />
                         <MudDatePicker @bind-Date="_editTaxableSupplyDate" Label="@L["Invoice_TaxableSupplyDate"].Value" Class="mb-3" />
                     </MudCardContent>
@@ -641,6 +640,7 @@ else
     private UpdateInvoiceDto _editDto = new();
     private List<CreateInvoiceItemDto> _editItems = new();
 
+    private DateTime? _editIssueDate;
     private DateTime? _editDueDate;
     private DateTime? _editTaxableSupplyDate;
 
@@ -1213,6 +1213,7 @@ else
             Notes = _invoice.Notes
         };
 
+        _editIssueDate = _invoice.IssueDate;
         _editDueDate = _invoice.DueDate;
         _editTaxableSupplyDate = _invoice.TaxableSupplyDate;
 
@@ -1262,6 +1263,7 @@ else
                 return;
             }
 
+            _editDto.IssueDate = _editIssueDate;
             _editDto.DueDate = _editDueDate;
             _editDto.TaxableSupplyDate = _editTaxableSupplyDate;
             _editDto.InvoiceItem = _editItems;
