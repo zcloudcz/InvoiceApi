@@ -98,7 +98,8 @@
         @* Only show pager for server-side data — client-side grids show all items *@
         @if (ServerData != null)
         {
-            <MudTablePager PageSizeOptions="new int[] { 10, 25, 50, 100 }" />
+            <MudTablePager PageSizeOptions="new int[] { 10, 25, 50, 100 }"
+                          RowsPerPageString="@L["Table_RowsPerPage"].Value" />
         }
     </PagerContent>
 </MudTable>

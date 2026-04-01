@@ -425,7 +425,8 @@ else
                 <MudText>@L["Client_NoInvoices"]</MudText>
             </NoRecordsContent>
             <PagerContent>
-                <MudTablePager PageSizeOptions="new int[] { 10, 25, 50 }" />
+                <MudTablePager PageSizeOptions="new int[] { 10, 25, 50 }"
+                               RowsPerPageString="@L["Table_RowsPerPage"].Value" />
             </PagerContent>
         </MudTable>
     }

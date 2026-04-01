@@ -221,6 +221,9 @@
                           MaxLength="50" Class="mb-3" />
             <MudTextField @bind-Value="_editSequence.Suffix" Label="@L["NumSeq_Suffix"].Value"
                           MaxLength="50" Class="mb-3" />
+            <MudNumericField @bind-Value="_editSequence.CurrentNumber" Label="@L["NumSeq_CurrentNumber"].Value"
+                             Min="0" Class="mb-3" HideSpinButtons="true"
+                             HelperText="@L["NumSeq_CurrentNumberHelp"].Value" />
         </MudForm>
     </DialogContent>
     <DialogActions>
@@ -486,7 +489,8 @@
         {
             Name = sequence.Name,
             Prefix = sequence.Prefix ?? "",
-            Suffix = sequence.Suffix ?? ""
+            Suffix = sequence.Suffix ?? "",
+            CurrentNumber = sequence.CurrentNumber
         };
         _showEditSequenceDialog = true;
     }

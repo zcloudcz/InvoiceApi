@@ -98,4 +98,10 @@ public class UpdateNumberSequenceDto
     /// Suffix appended to generated numbers
     /// </summary>
     public string? Suffix { get; set; }
+
+    /// <summary>
+    /// Current counter value — the next generated number will be CurrentNumber + 1.
+    /// Allows manual adjustment (e.g., resetting counter or skipping numbers).
+    /// </summary>
+    public int? CurrentNumber { get; set; }
 }

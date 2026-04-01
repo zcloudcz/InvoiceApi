@@ -507,6 +507,7 @@
   <data name="NumSeq_Prefix" xml:space="preserve"><value>Prefix</value></data>
   <data name="NumSeq_Suffix" xml:space="preserve"><value>Suffix</value></data>
   <data name="NumSeq_CurrentNumber" xml:space="preserve"><value>Aktuální číslo</value></data>
+  <data name="NumSeq_CurrentNumberHelp" xml:space="preserve"><value>Další vygenerované číslo bude o 1 vyšší</value></data>
   <data name="NumSeq_Preview" xml:space="preserve"><value>Náhled</value></data>
   <data name="NumSeq_Default" xml:space="preserve"><value>Výchozí</value></data>
   <data name="NumSeq_IsDefault" xml:space="preserve"><value>Výchozí</value></data>
@@ -973,6 +974,19 @@
   <data name="BankAccount_SWIFT" xml:space="preserve"><value>SWIFT/BIC</value></data>
   <data name="BankAccount_Currency" xml:space="preserve"><value>Měna</value></data>
   <data name="BankAccount_SelectAccount" xml:space="preserve"><value>Bankovní účet</value></data>
+
+  <!-- Billing Settings (Client detail) -->
+  <data name="Billing_Title" xml:space="preserve"><value>Fakturační nastavení</value></data>
+  <data name="Billing_DueDateCalcType" xml:space="preserve"><value>Typ výpočtu splatnosti</value></data>
+  <data name="Billing_DueDays" xml:space="preserve"><value>Počet dnů splatnosti</value></data>
+  <data name="Billing_InvoiceNumberPrefix" xml:space="preserve"><value>Prefix čísla faktury</value></data>
+  <data name="Billing_InvoiceNumberSuffix" xml:space="preserve"><value>Suffix čísla faktury</value></data>
+  <data name="Billing_CreditNotePrefix" xml:space="preserve"><value>Prefix čísla dobropisu</value></data>
+  <data name="Billing_CreditNoteSuffix" xml:space="preserve"><value>Suffix čísla dobropisu</value></data>
+  <data name="Billing_PaymentMethod" xml:space="preserve"><value>Platební metoda</value></data>
+  <data name="Billing_BankAccount" xml:space="preserve"><value>Bankovní účet</value></data>
+  <data name="Billing_Notes" xml:space="preserve"><value>Poznámky</value></data>
+  <data name="Billing_NotConfigured" xml:space="preserve"><value>Fakturační nastavení není nakonfigurováno</value></data>
 
   <!-- AI Chat -->
   <data name="Chat_Title" xml:space="preserve"><value>AI Asistent</value></data>

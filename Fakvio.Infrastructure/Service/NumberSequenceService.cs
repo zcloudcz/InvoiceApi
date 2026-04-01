@@ -321,6 +321,10 @@ public class NumberSequenceService : INumberSequenceService
         if (updateDto.Suffix != null)
             sequence.Suffix = updateDto.Suffix;
 
+        // Allow manual adjustment of the counter (e.g., reset or skip numbers)
+        if (updateDto.CurrentNumber.HasValue)
+            sequence.CurrentNumber = updateDto.CurrentNumber.Value;
+
         await _tenantContext.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation("Number sequence {Id} updated", sequenceId);
