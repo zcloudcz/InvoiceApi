@@ -298,7 +298,10 @@ public class PdfExportService : IPdfExportService
         var vatBreakdownHtml = "";
         if (invoice.InvoiceItem != null)
         {
+            // Exclude text rows — they have no financial data (VatRatePercentage = 0)
+            // and would create a spurious "0%" line in the VAT recapitulation.
             var vatGroups = invoice.InvoiceItem
+                .Where(i => !i.IsTextRow)
                 .GroupBy(i => i.VatRatePercentage)
                 .OrderByDescending(g => g.Key);
 
