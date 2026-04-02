@@ -27,6 +27,7 @@
                  ShowEditAction="false"
                  OnDelete="@(async (client) => await DeleteClientAsync(client.Id))"
                  Filter="@FilterFunc"
+                 CustomRowStyle="@GetClientRowStyle"
                  NoRecordsText="@L["Client_NoRecords"].Value">
         <ToolBarContent>
             <MudTextField @bind-Value="_searchString" Placeholder="@L["Btn_Search"].Value" Adornment="Adornment.Start"
@@ -128,5 +129,20 @@
         {
             Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
         }
+    }
+
+    /// <summary>
+    /// Returns background-color CSS style based on the client's display color.
+    /// Uses !important to override MudBlazor striped row styling.
+    /// </summary>
+    private static string GetClientRowStyle(ClientDto client)
+    {
+        if (string.IsNullOrEmpty(client.Color)) return "";
+        var hex = client.Color.TrimStart('#');
+        if (hex.Length < 6) return "";
+        var r = Convert.ToInt32(hex[..2], 16);
+        var g = Convert.ToInt32(hex[2..4], 16);
+        var b = Convert.ToInt32(hex[4..6], 16);
+        return $"background-color: rgba({r},{g},{b},0.12) !important;";
     }
 }

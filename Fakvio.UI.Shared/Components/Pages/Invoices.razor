@@ -933,9 +933,27 @@
     /// Returns a background-color CSS style for the row based on the client's display color.
     /// Uses low opacity (15%) so the text remains readable over the tinted background.
     /// </summary>
+    /// <summary>
+    /// Returns a background-color CSS style for the row based on the client's display color.
+    /// Converts hex color to rgba with low opacity so text remains readable.
+    /// Uses !important to override MudBlazor's striped row styling.
+    /// </summary>
     private string GetClientRowStyle(InvoiceDto invoice)
     {
         if (string.IsNullOrEmpty(invoice.ClientColor)) return "";
-        return $"background-color: {invoice.ClientColor}22;"; // 22 = ~13% opacity hex alpha
+        return $"background-color: {HexToRgba(invoice.ClientColor, 0.12)} !important;";
+    }
+
+    /// <summary>
+    /// Converts a CSS hex color (e.g., "#FF5722") to rgba with given opacity.
+    /// </summary>
+    private static string HexToRgba(string hex, double opacity)
+    {
+        hex = hex.TrimStart('#');
+        if (hex.Length < 6) return $"rgba(0,0,0,{opacity})";
+        var r = Convert.ToInt32(hex[..2], 16);
+        var g = Convert.ToInt32(hex[2..4], 16);
+        var b = Convert.ToInt32(hex[4..6], 16);
+        return $"rgba({r},{g},{b},{opacity})";
     }
 }
