@@ -343,6 +343,10 @@ namespace Fakvio.Infrastructure.Migrations.Master
                     b.Property<int?>("ActivityType")
                         .HasColumnType("integer");
 
+                    b.Property<string>("Color")
+                        .HasMaxLength(9)
+                        .HasColumnType("character varying(9)");
+
                     b.Property<string>("CompanyName")
                         .IsRequired()
                         .HasMaxLength(500)
