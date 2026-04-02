@@ -507,6 +507,7 @@ else
             IsVatPayer = _client.IsVatPayer,
             IsIssuer = _client.IsIssuer,
             Language = _client.Language,
+            Color = _client.Color,
             FetchFromAres = false,
             // Tax regime fields
             TaxRegime = _client.TaxRegime,
@@ -618,6 +619,7 @@ else
                     IsIssuer = _editClient.IsIssuer,
                     IsActive = true,
                     Language = _editClient.Language,
+                    Color = _editClient.Color ?? "",
                     RefreshFromAres = _editClient.FetchFromAres,
                     // Tax regime fields
                     TaxRegime = _editClient.TaxRegime,
