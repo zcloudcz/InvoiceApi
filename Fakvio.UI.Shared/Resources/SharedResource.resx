@@ -78,6 +78,8 @@
   <data name="Label_Active" xml:space="preserve"><value>Aktivní</value></data>
   <data name="Label_Inactive" xml:space="preserve"><value>Neaktivní</value></data>
   <data name="Label_Actions" xml:space="preserve"><value>Akce</value></data>
+  <data name="Label_ShowDeleted" xml:space="preserve"><value>Zobrazit smazané</value></data>
+  <data name="Btn_Restore" xml:space="preserve"><value>Obnovit</value></data>
   <data name="Label_Yes" xml:space="preserve"><value>Ano</value></data>
   <data name="Label_No" xml:space="preserve"><value>Ne</value></data>
   <data name="Label_Loading" xml:space="preserve"><value>Načítání...</value></data>
@@ -333,6 +335,7 @@
   <data name="Client_NoInvoices" xml:space="preserve"><value>Pro tohoto klienta nebyly nalezeny žádné faktury</value></data>
   <data name="Client_FetchFromAres" xml:space="preserve"><value>Načítat z ARES</value></data>
   <data name="Client_Language" xml:space="preserve"><value>Jazyk dokumentů</value></data>
+  <data name="Client_Color" xml:space="preserve"><value>Barva klienta</value></data>
   <data name="Company_Subtitle" xml:space="preserve"><value>Správa společností vystavujících faktury</value></data>
   <data name="Company_NoRecords" xml:space="preserve"><value>Nebyly nalezeny žádné společnosti.</value></data>
   <data name="Company_Detail" xml:space="preserve"><value>Detail společnosti</value></data>
@@ -1036,7 +1039,9 @@
   <data name="VatReport_PeriodTo" xml:space="preserve"><value>Období do</value></data>
   <data name="VatReport_Generate" xml:space="preserve"><value>Zobrazit přehled</value></data>
   <data name="VatReport_CurrentMonth" xml:space="preserve"><value>Tento měsíc</value></data>
+  <data name="VatReport_PreviousMonth" xml:space="preserve"><value>Předchozí měsíc</value></data>
   <data name="VatReport_CurrentQuarter" xml:space="preserve"><value>Toto čtvrtletí</value></data>
+  <data name="VatReport_PreviousQuarter" xml:space="preserve"><value>Předchozí čtvrtletí</value></data>
   <data name="VatReport_OutputVat" xml:space="preserve"><value>Výstupní DPH</value></data>
   <data name="VatReport_InputVat" xml:space="preserve"><value>Vstupní DPH</value></data>
   <data name="VatReport_TaxLiability" xml:space="preserve"><value>Daňová povinnost</value></data>

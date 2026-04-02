@@ -105,6 +105,13 @@ public class Client : BaseEntity
     public EFlatRateBand? FlatRateBand { get; set; }
 
     /// <summary>
+    /// Display color for this client in grids and UI elements.
+    /// CSS hex color code (e.g., "#FF5722", "#4CAF50").
+    /// Null = no custom color (default row styling).
+    /// </summary>
+    public string? Color { get; set; }
+
+    /// <summary>
     /// Preferred currency for this client
     /// Used as default when creating invoices for this client
     /// If null, system default currency (CZK) is used

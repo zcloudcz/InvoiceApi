@@ -401,6 +401,68 @@ public class NumberSequenceController : ControllerBase
     }
 
     /// <summary>
+    /// Reactivates a previously deactivated number sequence.
+    /// </summary>
+    [HttpPost("{id}/activate")]
+    [Authorize(Roles = "Admin,SysAdmin")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> ActivateSequence(long id, CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("POST /api/numbersequence/{Id}/activate", id);
+
+        var activated = await _numberSequenceService.ActivateSequenceAsync(id, cancellationToken);
+        if (!activated)
+            return NotFound(new { message = $"Sequence with ID {id} not found" });
+
+        return NoContent();
+    }
+
+    /// <summary>
+    /// Deactivates a number sequence format (soft delete).
+    /// </summary>
+    [HttpDelete("formats/{id}")]
+    [Authorize(Roles = "Admin,SysAdmin")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> DeactivateFormat(long id, CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("DELETE /api/numbersequence/formats/{Id}", id);
+
+        try
+        {
+            var deactivated = await _numberSequenceService.DeactivateFormatAsync(id, cancellationToken);
+            if (!deactivated)
+                return NotFound(new { message = $"Format with ID {id} not found" });
+
+            return NoContent();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Reactivates a previously deactivated number sequence format.
+    /// </summary>
+    [HttpPost("formats/{id}/activate")]
+    [Authorize(Roles = "Admin,SysAdmin")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> ActivateFormat(long id, CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("POST /api/numbersequence/formats/{Id}/activate", id);
+
+        var activated = await _numberSequenceService.ActivateFormatAsync(id, cancellationToken);
+        if (!activated)
+            return NotFound(new { message = $"Format with ID {id} not found" });
+
+        return NoContent();
+    }
+
+    /// <summary>
     /// Previews what the next number would be for a sequence
     /// Does not increment the counter
     /// </summary>

@@ -58,6 +58,11 @@ public class ClientDto
     public string Language { get; set; } = "cs";
 
     /// <summary>
+    /// Display color for this client in grids (CSS hex, e.g., "#FF5722"). Null = default.
+    /// </summary>
+    public string? Color { get; set; }
+
+    /// <summary>
     /// Collection of client addresses
     /// </summary>
     public List<AddressDto> Address { get; set; } = new();

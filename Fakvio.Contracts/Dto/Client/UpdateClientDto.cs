@@ -49,6 +49,12 @@ public class UpdateClientDto
     public string? Language { get; set; }
 
     /// <summary>
+    /// Display color for this client in grids (CSS hex). Null = don't change, "" = clear.
+    /// </summary>
+    [StringLength(9)]
+    public string? Color { get; set; }
+
+    /// <summary>
     /// Tax regime used by this company. Null = don't change.
     /// </summary>
     public string? TaxRegime { get; set; }

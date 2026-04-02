@@ -315,6 +315,8 @@ public class MasterDbContext : DbContext
             // ISO 639-1 language code for document generation (e.g., "cs", "en").
             entity.Property(e => e.Language).IsRequired().HasMaxLength(5).HasDefaultValue("cs");
 
+            entity.Property(e => e.Color).HasMaxLength(9);
+
             // Company addresses and contacts are stored in the master DB
             // so SysAdmin can manage them without needing a tenant database.
             entity.HasMany(e => e.Address)

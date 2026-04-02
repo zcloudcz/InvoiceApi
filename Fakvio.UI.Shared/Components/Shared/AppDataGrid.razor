@@ -227,6 +227,12 @@
     /// </summary>
     [Parameter] public Func<TItem, bool>? Filter { get; set; }
 
+    /// <summary>
+    /// Optional custom row style function — returns CSS style string for each row.
+    /// Used for client-color row highlighting. Combined with the cursor style.
+    /// </summary>
+    [Parameter] public Func<TItem, string>? CustomRowStyle { get; set; }
+
     // ========== INTERNAL STATE ==========
 
     /// <summary>
@@ -264,7 +270,11 @@
     /// </summary>
     private string RowCursorStyle(TItem item, int index)
     {
-        return OnRowClick.HasDelegate ? "cursor: pointer;" : "";
+        var style = OnRowClick.HasDelegate ? "cursor: pointer;" : "";
+        // Append custom row style (e.g., background-color from client color)
+        if (CustomRowStyle != null)
+            style += CustomRowStyle(item);
+        return style;
     }
 
     /// <summary>

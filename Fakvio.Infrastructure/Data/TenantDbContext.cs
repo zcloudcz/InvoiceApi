@@ -220,6 +220,9 @@ public class TenantDbContext : DbContext
             // ISO 639-1 language code for document generation (e.g., "cs", "en").
             entity.Property(e => e.Language).IsRequired().HasMaxLength(5).HasDefaultValue("cs");
 
+            // CSS hex color for row highlighting in grids (e.g., "#FF5722").
+            entity.Property(e => e.Color).HasMaxLength(9);
+
             entity.HasMany(e => e.Address)
                 .WithOne(a => a.Client)
                 .HasForeignKey(a => a.ClientId)

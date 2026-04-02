@@ -141,7 +141,8 @@
              MultiSelection="true"
              SelectedItems="_selectedInvoices"
              SelectedItemsChanged="@(items => { _selectedInvoices = items; StateHasChanged(); })"
-             NoRecordsText="@L["Invoice_NoRecords"].Value">
+             NoRecordsText="@L["Invoice_NoRecords"].Value"
+             CustomRowStyle="@GetClientRowStyle">
     <Columns>
         <MudTh><MudTableSortLabel SortLabel="DocumentNumber" T="InvoiceDto">@L["Table_Number"]</MudTableSortLabel></MudTh>
         <MudTh><MudTableSortLabel SortLabel="ClientName" T="InvoiceDto">@L["Invoice_Client"]</MudTableSortLabel></MudTh>
@@ -927,4 +928,14 @@
         EInvoiceStatus.Deleted => L["Invoice_StatusDeleted"].Value,
         _ => status.ToString()
     };
+
+    /// <summary>
+    /// Returns a background-color CSS style for the row based on the client's display color.
+    /// Uses low opacity (15%) so the text remains readable over the tinted background.
+    /// </summary>
+    private string GetClientRowStyle(InvoiceDto invoice)
+    {
+        if (string.IsNullOrEmpty(invoice.ClientColor)) return "";
+        return $"background-color: {invoice.ClientColor}22;"; // 22 = ~13% opacity hex alpha
+    }
 }

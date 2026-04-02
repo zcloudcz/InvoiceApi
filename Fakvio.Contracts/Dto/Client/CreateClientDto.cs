@@ -55,6 +55,12 @@ public class CreateClientDto
     public string Language { get; set; } = "cs";
 
     /// <summary>
+    /// Display color for this client in grids (CSS hex, e.g., "#FF5722"). Null = default.
+    /// </summary>
+    [StringLength(9)]
+    public string? Color { get; set; }
+
+    /// <summary>
     /// Tax regime used by this company (e.g., FlatRateTax, LumpSumExpenses60).
     /// </summary>
     public string? TaxRegime { get; set; }

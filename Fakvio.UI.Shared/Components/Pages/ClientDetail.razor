@@ -105,6 +105,14 @@ else
                             <MudSelectItem Value="@("cs")">Čeština (cs)</MudSelectItem>
                             <MudSelectItem Value="@("en")">English (en)</MudSelectItem>
                         </MudSelect>
+                        <MudColorPicker @bind-Text="_editClient.Color"
+                                        Label="@L["Client_Color"].Value"
+                                        ColorPickerMode="ColorPickerMode.HEX"
+                                        Clearable="true"
+                                        Class="mt-3"
+                                        Placeholder="#FF5722"
+                                        Adornment="Adornment.Start"
+                                        AdornmentIcon="@Icons.Material.Filled.Palette" />
                     }
                     else
                     {
@@ -134,6 +142,16 @@ else
                             <MudListItem T="string" Icon="@Icons.Material.Filled.Language">
                                 <strong>@L["Client_Language"]:</strong> @GetLanguageDisplayName(_client.Language)
                             </MudListItem>
+                            @if (!string.IsNullOrEmpty(_client.Color))
+                            {
+                                <MudListItem T="string" Icon="@Icons.Material.Filled.Palette">
+                                    <strong>@L["Client_Color"]:</strong>
+                                    <MudChip T="string" Size="Size.Small"
+                                             Style="@($"background-color:{_client.Color}; color:white;")">
+                                        @_client.Color
+                                    </MudChip>
+                                </MudListItem>
+                            }
                         </MudList>
                     }
                 </MudCardContent>
@@ -271,80 +289,6 @@ else
             </MudExpansionPanels>
         </MudItem>
     </MudGrid>
-
-    @* ── Tax Settings (full-width section) ────────────────────────────── *@
-    <MudPaper Elevation="2" Class="pa-4 mb-4">
-        <MudText Typo="Typo.h6" Class="mb-3">@L["Client_TaxSection"]</MudText>
-        @if (_isFormMode)
-        {
-            <MudGrid>
-                <MudItem xs="12" sm="6" md="3">
-                    <MudSelect T="string" Value="_editClient.TaxRegime"
-                               ValueChanged="@(v => { _editClient.TaxRegime = v; _isDirty = true; })"
-                               Label="@L["Client_TaxRegime"].Value" Clearable="true">
-                        <MudSelectItem T="string" Value="@("FlatRateTax")">@L["ETaxRegime_FlatRateTax"]</MudSelectItem>
-                        <MudSelectItem T="string" Value="@("LumpSumExpenses80")">@L["ETaxRegime_LumpSumExpenses80"]</MudSelectItem>
-                        <MudSelectItem T="string" Value="@("LumpSumExpenses60")">@L["ETaxRegime_LumpSumExpenses60"]</MudSelectItem>
-                        <MudSelectItem T="string" Value="@("LumpSumExpenses40")">@L["ETaxRegime_LumpSumExpenses40"]</MudSelectItem>
-                        <MudSelectItem T="string" Value="@("LumpSumExpenses30")">@L["ETaxRegime_LumpSumExpenses30"]</MudSelectItem>
-                        <MudSelectItem T="string" Value="@("TaxRecords")">@L["ETaxRegime_TaxRecords"]</MudSelectItem>
-                        <MudSelectItem T="string" Value="@("FullAccounting")">@L["ETaxRegime_FullAccounting"]</MudSelectItem>
-                    </MudSelect>
-                </MudItem>
-                <MudItem xs="12" sm="6" md="3">
-                    <MudSelect T="string" Value="_editClient.ActivityType"
-                               ValueChanged="@(v => { _editClient.ActivityType = v; _isDirty = true; })"
-                               Label="@L["Client_ActivityType"].Value" Clearable="true">
-                        <MudSelectItem T="string" Value="@("CraftTrade")">@L["EActivityType_CraftTrade"]</MudSelectItem>
-                        <MudSelectItem T="string" Value="@("NonCraftTrade")">@L["EActivityType_NonCraftTrade"]</MudSelectItem>
-                        <MudSelectItem T="string" Value="@("RegulatedProfession")">@L["EActivityType_RegulatedProfession"]</MudSelectItem>
-                        <MudSelectItem T="string" Value="@("Rental")">@L["EActivityType_Rental"]</MudSelectItem>
-                    </MudSelect>
-                </MudItem>
-                <MudItem xs="12" sm="6" md="3">
-                    <MudSwitch T="bool" Value="_editClient.IsMainActivity"
-                               ValueChanged="@(v => { _editClient.IsMainActivity = v; _isDirty = true; })"
-                               Label="@L["Client_IsMainActivity"].Value" Color="Color.Primary" />
-                </MudItem>
-                @if (_editClient.TaxRegime == "FlatRateTax")
-                {
-                    <MudItem xs="12" sm="6" md="3">
-                        <MudSelect T="string" Value="_editClient.FlatRateBand"
-                                   ValueChanged="@(v => { _editClient.FlatRateBand = v; _isDirty = true; })"
-                                   Label="@L["Client_FlatRateBand"].Value" Clearable="true">
-                            <MudSelectItem T="string" Value="@("Band1")">@L["EFlatRateBand_Band1"]</MudSelectItem>
-                            <MudSelectItem T="string" Value="@("Band2")">@L["EFlatRateBand_Band2"]</MudSelectItem>
-                            <MudSelectItem T="string" Value="@("Band3")">@L["EFlatRateBand_Band3"]</MudSelectItem>
-                        </MudSelect>
-                    </MudItem>
-                }
-            </MudGrid>
-        }
-        else if (_client != null)
-        {
-            <MudGrid>
-                <MudItem xs="12" sm="6" md="3">
-                    <MudText Typo="Typo.body2" Color="Color.Secondary">@L["Client_TaxRegime"]</MudText>
-                    <MudText>@(GetLocalizedEnum("ETaxRegime", _client.TaxRegime))</MudText>
-                </MudItem>
-                <MudItem xs="12" sm="6" md="3">
-                    <MudText Typo="Typo.body2" Color="Color.Secondary">@L["Client_ActivityType"]</MudText>
-                    <MudText>@(GetLocalizedEnum("EActivityType", _client.ActivityType))</MudText>
-                </MudItem>
-                <MudItem xs="12" sm="6" md="3">
-                    <MudText Typo="Typo.body2" Color="Color.Secondary">@L["Client_IsMainActivity"]</MudText>
-                    <MudText>@(_client.IsMainActivity ? L["Label_Yes"].Value : L["Label_No"].Value)</MudText>
-                </MudItem>
-                @if (!string.IsNullOrEmpty(_client.FlatRateBand))
-                {
-                    <MudItem xs="12" sm="6" md="3">
-                        <MudText Typo="Typo.body2" Color="Color.Secondary">@L["Client_FlatRateBand"]</MudText>
-                        <MudText>@(GetLocalizedEnum("EFlatRateBand", _client.FlatRateBand))</MudText>
-                    </MudItem>
-                }
-            </MudGrid>
-        }
-    </MudPaper>
 
     @* Full-width section: 1:N Addresses managed by the shared AddressListEditor component *@
     <MudPaper Elevation="2" Class="pa-4 mb-4">

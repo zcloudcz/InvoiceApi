@@ -111,6 +111,22 @@ public interface INumberSequenceService
     /// <returns>True if deactivated, false if not found</returns>
     Task<bool> DeactivateSequenceAsync(long sequenceId, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Reactivates a previously deactivated number sequence.
+    /// </summary>
+    Task<bool> ActivateSequenceAsync(long sequenceId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Deactivates a number sequence format (soft delete).
+    /// Cannot be deactivated if used by active sequences.
+    /// </summary>
+    Task<bool> DeactivateFormatAsync(long formatId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Reactivates a previously deactivated number sequence format.
+    /// </summary>
+    Task<bool> ActivateFormatAsync(long formatId, CancellationToken cancellationToken = default);
+
     // Number generation
 
     /// <summary>

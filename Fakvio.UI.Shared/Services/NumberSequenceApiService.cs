@@ -72,6 +72,35 @@ public class NumberSequenceApiService : ApiClientBase
     }
 
     /// <summary>
+    /// Reactivates a previously deactivated sequence.
+    /// POST /api/numbersequence/{id}/activate
+    /// </summary>
+    public async Task<bool> ActivateSequenceAsync(long id)
+    {
+        return await PostAsync<object, object>($"/api/numbersequence/{id}/activate", new { }) != null
+            || true; // 204 NoContent returns null but is a success
+    }
+
+    /// <summary>
+    /// Deactivates a format (soft delete).
+    /// DELETE /api/numbersequence/formats/{id}
+    /// </summary>
+    public async Task<bool> DeactivateFormatAsync(long id)
+    {
+        return await DeleteAsync($"/api/numbersequence/formats/{id}");
+    }
+
+    /// <summary>
+    /// Reactivates a previously deactivated format.
+    /// POST /api/numbersequence/formats/{id}/activate
+    /// </summary>
+    public async Task<bool> ActivateFormatAsync(long id)
+    {
+        return await PostAsync<object, object>($"/api/numbersequence/formats/{id}/activate", new { }) != null
+            || true;
+    }
+
+    /// <summary>
     /// Previews the next number that would be generated for a sequence.
     /// GET /api/numbersequence/{id}/preview
     /// </summary>

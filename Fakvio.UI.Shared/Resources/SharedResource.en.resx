@@ -78,6 +78,8 @@
   <data name="Label_Active" xml:space="preserve"><value>Active</value></data>
   <data name="Label_Inactive" xml:space="preserve"><value>Inactive</value></data>
   <data name="Label_Actions" xml:space="preserve"><value>Actions</value></data>
+  <data name="Label_ShowDeleted" xml:space="preserve"><value>Show deleted</value></data>
+  <data name="Btn_Restore" xml:space="preserve"><value>Restore</value></data>
   <data name="Label_Yes" xml:space="preserve"><value>Yes</value></data>
   <data name="Label_No" xml:space="preserve"><value>No</value></data>
   <data name="Label_Loading" xml:space="preserve"><value>Loading...</value></data>
@@ -333,6 +335,7 @@
   <data name="Client_NoInvoices" xml:space="preserve"><value>No invoices found for this client</value></data>
   <data name="Client_FetchFromAres" xml:space="preserve"><value>Fetch from ARES</value></data>
   <data name="Client_Language" xml:space="preserve"><value>Document language</value></data>
+  <data name="Client_Color" xml:space="preserve"><value>Client color</value></data>
   <data name="Company_Subtitle" xml:space="preserve"><value>Manage invoicing companies</value></data>
   <data name="Company_NoRecords" xml:space="preserve"><value>No companies found.</value></data>
   <data name="Company_Detail" xml:space="preserve"><value>Company detail</value></data>
@@ -1036,7 +1039,9 @@
   <data name="VatReport_PeriodTo" xml:space="preserve"><value>Period To</value></data>
   <data name="VatReport_Generate" xml:space="preserve"><value>Generate Report</value></data>
   <data name="VatReport_CurrentMonth" xml:space="preserve"><value>This Month</value></data>
+  <data name="VatReport_PreviousMonth" xml:space="preserve"><value>Previous Month</value></data>
   <data name="VatReport_CurrentQuarter" xml:space="preserve"><value>This Quarter</value></data>
+  <data name="VatReport_PreviousQuarter" xml:space="preserve"><value>Previous Quarter</value></data>
   <data name="VatReport_OutputVat" xml:space="preserve"><value>Output VAT</value></data>
   <data name="VatReport_InputVat" xml:space="preserve"><value>Input VAT</value></data>
   <data name="VatReport_TaxLiability" xml:space="preserve"><value>Tax Liability</value></data>

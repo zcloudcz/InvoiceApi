@@ -372,6 +372,63 @@ public class NumberSequenceService : INumberSequenceService
         return true;
     }
 
+    /// <summary>
+    /// Reactivates a previously deactivated number sequence.
+    /// </summary>
+    public async Task<bool> ActivateSequenceAsync(long sequenceId, CancellationToken cancellationToken = default)
+    {
+        var sequence = await _tenantContext.NumberSequence.FindAsync(new object[] { sequenceId }, cancellationToken);
+        if (sequence == null)
+            return false;
+
+        _logger.LogInformation("Activating sequence {Id}", sequenceId);
+
+        sequence.IsActive = true;
+        await _tenantContext.SaveChangesAsync(cancellationToken);
+
+        return true;
+    }
+
+    /// <summary>
+    /// Deactivates a number sequence format (soft delete).
+    /// </summary>
+    public async Task<bool> DeactivateFormatAsync(long formatId, CancellationToken cancellationToken = default)
+    {
+        var format = await _tenantContext.NumberSequenceFormat.FindAsync(new object[] { formatId }, cancellationToken);
+        if (format == null)
+            return false;
+
+        // Check if any active sequences use this format
+        var usedBySequences = await _tenantContext.NumberSequence
+            .AnyAsync(s => s.NumberSequenceFormatId == formatId && s.IsActive, cancellationToken);
+        if (usedBySequences)
+            throw new InvalidOperationException("Cannot deactivate format that is used by active sequences.");
+
+        _logger.LogInformation("Deactivating format {Id}", formatId);
+
+        format.IsActive = false;
+        await _tenantContext.SaveChangesAsync(cancellationToken);
+
+        return true;
+    }
+
+    /// <summary>
+    /// Reactivates a previously deactivated number sequence format.
+    /// </summary>
+    public async Task<bool> ActivateFormatAsync(long formatId, CancellationToken cancellationToken = default)
+    {
+        var format = await _tenantContext.NumberSequenceFormat.FindAsync(new object[] { formatId }, cancellationToken);
+        if (format == null)
+            return false;
+
+        _logger.LogInformation("Activating format {Id}", formatId);
+
+        format.IsActive = true;
+        await _tenantContext.SaveChangesAsync(cancellationToken);
+
+        return true;
+    }
+
     #endregion
 
     #region Number generation

@@ -298,7 +298,8 @@ public class ClientService : IClientService
             TaxRegime = Enum.TryParse<Domain.Enums.ETaxRegime>(createDto.TaxRegime, out var regime) ? regime : null,
             ActivityType = Enum.TryParse<Domain.Enums.EActivityType>(createDto.ActivityType, out var activity) ? activity : null,
             IsMainActivity = createDto.IsMainActivity,
-            FlatRateBand = Enum.TryParse<Domain.Enums.EFlatRateBand>(createDto.FlatRateBand, out var band) ? band : null
+            FlatRateBand = Enum.TryParse<Domain.Enums.EFlatRateBand>(createDto.FlatRateBand, out var band) ? band : null,
+            Color = createDto.Color
         };
 
         // Add addresses — ZMapper handles property mapping (AddressType, Street, City, etc.)
@@ -393,6 +394,10 @@ public class ClientService : IClientService
 
         if (updateDto.IsActive.HasValue)
             client.IsActive = updateDto.IsActive.Value;
+
+        // Update display color — empty string clears the color
+        if (updateDto.Color != null)
+            client.Color = string.IsNullOrEmpty(updateDto.Color) ? null : updateDto.Color;
 
         // Update tax regime fields if provided.
         if (updateDto.TaxRegime != null)

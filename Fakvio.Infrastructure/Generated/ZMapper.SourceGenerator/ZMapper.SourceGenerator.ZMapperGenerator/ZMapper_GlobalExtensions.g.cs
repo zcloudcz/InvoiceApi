@@ -84,6 +84,7 @@ public static class Mapper_Extensions
         destination.IsActive = source.IsActive;
         destination.LastAresFetchDate = source.LastAresFetchDate;
         destination.Language = source.Language;
+        destination.Color = source.Color;
         destination.Address = source.Address
             ?.Select(item => item.ToAddressDto())
             .ToList();

@@ -34,9 +34,11 @@
                 @L["VatReport_Generate"]
             </MudButton>
         </MudItem>
-        <MudItem xs="12" sm="3" Class="d-flex align-end gap-2">
+        <MudItem xs="12" sm="3" Class="d-flex align-end flex-wrap gap-2">
             <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="SetCurrentMonth">@L["VatReport_CurrentMonth"]</MudButton>
+            <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="SetPreviousMonth">@L["VatReport_PreviousMonth"]</MudButton>
             <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="SetCurrentQuarter">@L["VatReport_CurrentQuarter"]</MudButton>
+            <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="SetPreviousQuarter">@L["VatReport_PreviousQuarter"]</MudButton>
         </MudItem>
     </MudGrid>
 </MudPaper>
@@ -180,11 +182,28 @@
         _periodTo = _periodFrom.Value.AddMonths(1).AddDays(-1);
     }
 
+    private void SetPreviousMonth()
+    {
+        var now = DateTime.Today;
+        var firstOfCurrent = new DateTime(now.Year, now.Month, 1);
+        _periodFrom = firstOfCurrent.AddMonths(-1);
+        _periodTo = firstOfCurrent.AddDays(-1);
+    }
+
     private void SetCurrentQuarter()
     {
         var now = DateTime.Today;
         var quarterMonth = ((now.Month - 1) / 3) * 3 + 1;
         _periodFrom = new DateTime(now.Year, quarterMonth, 1);
         _periodTo = _periodFrom.Value.AddMonths(3).AddDays(-1);
+    }
+
+    private void SetPreviousQuarter()
+    {
+        var now = DateTime.Today;
+        var quarterMonth = ((now.Month - 1) / 3) * 3 + 1;
+        var firstOfCurrentQuarter = new DateTime(now.Year, quarterMonth, 1);
+        _periodFrom = firstOfCurrentQuarter.AddMonths(-3);
+        _periodTo = firstOfCurrentQuarter.AddDays(-1);
     }
 }

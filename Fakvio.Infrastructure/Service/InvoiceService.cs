@@ -44,6 +44,7 @@ public class InvoiceService : IInvoiceService
         // Navigation-derived properties — ZMapper cannot flatten navigation paths
         // (e.g., entity.Client.CompanyName → dto.ClientName) so we set them manually.
         dto.ClientName = entity.Client?.CompanyName ?? string.Empty;
+        dto.ClientColor = entity.Client?.Color;
         dto.IssuerName = entity.Issuer?.CompanyName ?? string.Empty;
         dto.CurrencyCode = entity.Currency?.Code ?? string.Empty;
         dto.CurrencySymbol = entity.Currency?.Symbol ?? string.Empty;
@@ -168,11 +169,13 @@ public class InvoiceService : IInvoiceService
         }
 
         // Apply sorting
+        // Default sort: DocumentNumber descending (newest first) when no explicit sort is requested
         var validSortFields = new[] { "DocumentNumber", "IssueDate", "DueDate", "TotalWithVat", "Status", "CreatedAt", "UpdatedAt" };
-        var sortBy = !string.IsNullOrWhiteSpace(filter.SortBy) && validSortFields.Contains(filter.SortBy, StringComparer.OrdinalIgnoreCase)
-            ? filter.SortBy : "IssueDate";
+        var hasSortField = !string.IsNullOrWhiteSpace(filter.SortBy) && validSortFields.Contains(filter.SortBy, StringComparer.OrdinalIgnoreCase);
+        var sortBy = hasSortField ? filter.SortBy : "DocumentNumber";
+        var isDescending = hasSortField ? filter.IsDescending : true;
 
-        query = query.ApplySorting(sortBy, filter.IsDescending);
+        query = query.ApplySorting(sortBy, isDescending);
 
         // Get paged results
         var pagedResult = await query.ToPagedResultAsync(filter.Page, filter.PageSize, cancellationToken);

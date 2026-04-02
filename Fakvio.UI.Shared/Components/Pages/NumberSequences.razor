@@ -16,7 +16,7 @@
 <MudText Typo="Typo.h5" Class="mt-6 mb-2">@L["NumSeq_Formats"]</MudText>
 
 <AppDataGrid TItem="NumberSequenceFormatDto"
-             Items="@_formats"
+             Items="@_filteredFormats"
              Loading="@_loadingFormats"
              OnRowClick="@(OpenEditFormatDialog)"
              OnEdit="@(OpenEditFormatDialog)"
@@ -27,6 +27,9 @@
                    StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateFormatDialog">
             @L["NumSeq_NewFormat"]
         </MudButton>
+        <MudSpacer />
+        <MudSwitch T="bool" @bind-Value="_showDeletedFormats" Label="@L["Label_ShowDeleted"].Value"
+                   Color="Color.Warning" />
     </ToolBarContent>
     <Columns>
         <MudTh>@L["Label_Name"]</MudTh>
@@ -54,13 +57,25 @@
             </MudChip>
         </MudTd>
     </RowContent>
+    <RowActions>
+        @if (context.IsActive)
+        {
+            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                           OnClick="@(() => DeactivateFormat(context))" Title="@L["Btn_Delete"].Value" />
+        }
+        else
+        {
+            <MudIconButton Icon="@Icons.Material.Filled.Restore" Size="Size.Small" Color="Color.Success"
+                           OnClick="@(() => ActivateFormat(context))" Title="@L["Btn_Restore"].Value" />
+        }
+    </RowActions>
 </AppDataGrid>
 
 @* ========== Number Sequences — AppDataGrid for consistent styling ========== *@
 <MudText Typo="Typo.h5" Class="mt-6 mb-2">@L["NumSeq_Sequences"]</MudText>
 
 <AppDataGrid TItem="NumberSequenceDto"
-             Items="@_sequences"
+             Items="@_filteredSequences"
              Loading="@_loadingSequences"
              OnRowClick="@(OpenEditSequenceDialog)"
              OnEdit="@(OpenEditSequenceDialog)"
@@ -71,6 +86,9 @@
                    StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateSequenceDialog">
             @L["NumSeq_NewSequence"]
         </MudButton>
+        <MudSpacer />
+        <MudSwitch T="bool" @bind-Value="_showDeletedSequences" Label="@L["Label_ShowDeleted"].Value"
+                   Color="Color.Warning" />
     </ToolBarContent>
     <Columns>
         <MudTh>@L["Label_Name"]</MudTh>
@@ -107,17 +125,19 @@
             }
         </MudTd>
     </RowContent>
-    @* Custom row actions: SetDefault star icon + Deactivate delete icon (conditional per row) *@
+    @* Custom row actions: SetDefault, Delete, Restore (conditional per row) *@
     <RowActions>
-        @if (!context.IsDefault)
+        @if (!context.IsDefault && context.IsActive)
         {
             <MudIconButton Icon="@Icons.Material.Filled.Star" Size="Size.Small" Color="Color.Warning"
                            OnClick="@(() => SetAsDefault(context.Id))" title="@L["NumSeq_SetDefault"].Value" />
-        }
-        @if (!context.IsDefault && context.IsActive)
-        {
             <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
                            OnClick="@(() => DeactivateSequence(context))" title="@L["Btn_Delete"].Value" />
+        }
+        @if (!context.IsActive)
+        {
+            <MudIconButton Icon="@Icons.Material.Filled.Restore" Size="Size.Small" Color="Color.Success"
+                           OnClick="@(() => ActivateSequence(context))" Title="@L["Btn_Restore"].Value" />
         }
     </RowActions>
 </AppDataGrid>
@@ -243,6 +263,16 @@
     // Data
     private List<NumberSequenceFormatDto> _formats = new();
     private List<NumberSequenceDto> _sequences = new();
+
+    // Filter: show/hide deleted (inactive) records
+    private bool _showDeletedFormats = false;
+    private bool _showDeletedSequences = false;
+
+    // Computed filtered lists — active only by default, all when "show deleted" is on
+    private List<NumberSequenceFormatDto> _filteredFormats =>
+        _showDeletedFormats ? _formats : _formats.Where(f => f.IsActive).ToList();
+    private List<NumberSequenceDto> _filteredSequences =>
+        _showDeletedSequences ? _sequences : _sequences.Where(s => s.IsActive).ToList();
     private Dictionary<long, string> _previews = new();
 
     // Dialog state
@@ -434,6 +464,60 @@
             {
                 Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
             }
+        }
+    }
+
+    // --- Format Delete / Restore ---
+
+    private async Task DeactivateFormat(NumberSequenceFormatDto format)
+    {
+        bool? result = await DialogService.ShowMessageBox(
+            L["Msg_ConfirmDeleteTitle"].Value,
+            $"{L["NumSeq_ConfirmDeactivate"].Value} ({format.Name})",
+            yesText: L["Btn_Delete"].Value, cancelText: L["Btn_Cancel"].Value);
+
+        if (result == true)
+        {
+            try
+            {
+                await SequenceService.DeactivateFormatAsync(format.Id);
+                Snackbar.Add(L["Msg_DeleteSuccess"].Value, Severity.Success);
+                await LoadFormats();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private async Task ActivateFormat(NumberSequenceFormatDto format)
+    {
+        try
+        {
+            await SequenceService.ActivateFormatAsync(format.Id);
+            Snackbar.Add(L["Msg_SaveSuccess"].Value, Severity.Success);
+            await LoadFormats();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+    }
+
+    // --- Sequence Restore ---
+
+    private async Task ActivateSequence(NumberSequenceDto sequence)
+    {
+        try
+        {
+            await SequenceService.ActivateSequenceAsync(sequence.Id);
+            Snackbar.Add(L["Msg_SaveSuccess"].Value, Severity.Success);
+            await LoadSequences();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
         }
     }
 

@@ -18,6 +18,10 @@ public class InvoiceDto
 
     public long? ClientId { get; set; }
     public string ClientName { get; set; } = string.Empty;
+    /// <summary>
+    /// Client's display color (CSS hex) for row highlighting in grids. Null = default.
+    /// </summary>
+    public string? ClientColor { get; set; }
 
     public long IssuerId { get; set; }
     public string IssuerName { get; set; } = string.Empty;
