@@ -54,4 +54,37 @@ public class UpdateSystemConfigurationDto
 
     [Range(1, 720, ErrorMessage = "JWT expiration must be between 1 and 720 hours (30 days).")]
     public int JwtExpirationHours { get; set; } = 24;
+
+    // ─── AI Settings ─────────────────────────────────────────────────────────
+    // Same partial-update semantics as SMTP: null = keep existing, empty = clear.
+
+    [StringLength(50)]
+    public string? AiDefaultProvider { get; set; }
+
+    /// <summary>Claude API key. Null = keep existing, "" = clear.</summary>
+    [StringLength(500)]
+    public string? AiClaudeApiKey { get; set; }
+
+    [StringLength(100)]
+    public string? AiClaudeModel { get; set; }
+
+    /// <summary>OpenAI API key. Null = keep existing, "" = clear.</summary>
+    [StringLength(500)]
+    public string? AiOpenAiApiKey { get; set; }
+
+    [StringLength(100)]
+    public string? AiOpenAiModel { get; set; }
+
+    /// <summary>Gemini API key. Null = keep existing, "" = clear.</summary>
+    [StringLength(500)]
+    public string? AiGeminiApiKey { get; set; }
+
+    [StringLength(100)]
+    public string? AiGeminiModel { get; set; }
+
+    [StringLength(500)]
+    public string? AiOllamaBaseUrl { get; set; }
+
+    [StringLength(100)]
+    public string? AiOllamaModel { get; set; }
 }

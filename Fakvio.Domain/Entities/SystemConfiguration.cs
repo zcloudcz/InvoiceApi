@@ -79,4 +79,39 @@ public class SystemConfiguration : BaseEntity
     /// Default: 24 hours. Shorter = more secure, longer = less re-login friction.
     /// </summary>
     public int JwtExpirationHours { get; set; } = 24;
+
+    // ─── AI Settings ─────────────────────────────────────────────────────────
+    // System-wide AI provider configuration. Overrides appsettings.json values.
+    // Company-level settings in CompanySystemSettings take priority over these.
+    // API keys are encrypted at rest via ICredentialProtector.
+
+    /// <summary>
+    /// Default AI provider for the entire system (e.g., "Claude", "OpenAI", "Gemini", "Ollama").
+    /// Company-level AiDefaultProvider overrides this.
+    /// </summary>
+    public string? AiDefaultProvider { get; set; }
+
+    /// <summary>Anthropic Claude API key (encrypted at rest).</summary>
+    public string? AiClaudeApiKey { get; set; }
+
+    /// <summary>Claude model identifier (e.g., "claude-sonnet-4-6").</summary>
+    public string? AiClaudeModel { get; set; }
+
+    /// <summary>OpenAI API key (encrypted at rest).</summary>
+    public string? AiOpenAiApiKey { get; set; }
+
+    /// <summary>OpenAI model identifier (e.g., "gpt-4o").</summary>
+    public string? AiOpenAiModel { get; set; }
+
+    /// <summary>Google Gemini API key (encrypted at rest).</summary>
+    public string? AiGeminiApiKey { get; set; }
+
+    /// <summary>Gemini model identifier (e.g., "gemini-2.0-flash").</summary>
+    public string? AiGeminiModel { get; set; }
+
+    /// <summary>Ollama server base URL (e.g., "http://localhost:11434").</summary>
+    public string? AiOllamaBaseUrl { get; set; }
+
+    /// <summary>Ollama model identifier (e.g., "gemma3:12b").</summary>
+    public string? AiOllamaModel { get; set; }
 }

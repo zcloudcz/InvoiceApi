@@ -194,6 +194,107 @@ else
                 </MudCardContent>
             </MudCard>
         </MudItem>
+
+        @* Card 3: AI Settings — system-wide default provider + API keys *@
+        <MudItem xs="12">
+            <MudCard Elevation="2" Class="mb-4">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">
+                            <MudIcon Icon="@Icons.Material.Filled.SmartToy" Class="mr-2" />
+                            @L["SystemSettings_AiTitle"]
+                        </MudText>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    @if (_isEditing)
+                    {
+                        <MudSelect @bind-Value="_editDto.AiDefaultProvider"
+                                   Label="@L["SystemSettings_AiDefaultProvider"].Value"
+                                   Clearable="true" Class="mb-4">
+                            <MudSelectItem Value="@("Claude")">Claude (Anthropic)</MudSelectItem>
+                            <MudSelectItem Value="@("OpenAI")">OpenAI</MudSelectItem>
+                            <MudSelectItem Value="@("Gemini")">Gemini (Google)</MudSelectItem>
+                            <MudSelectItem Value="@("Ollama")">Ollama (Local)</MudSelectItem>
+                        </MudSelect>
+
+                        <MudGrid>
+                            @* Claude *@
+                            <MudItem xs="12" md="6">
+                                <MudText Typo="Typo.subtitle2" Class="mb-2">Claude (Anthropic)</MudText>
+                                <MudTextField @bind-Value="_editDto.AiClaudeApiKey"
+                                              Label="API Key" InputType="InputType.Password" Class="mb-2"
+                                              Placeholder="@(_config?.HasAiClaudeApiKey == true ? L["SystemSettings_SmtpPasswordUnchanged"].Value : "")" />
+                                <MudTextField @bind-Value="_editDto.AiClaudeModel"
+                                              Label="Model" Placeholder="claude-sonnet-4-6" />
+                            </MudItem>
+
+                            @* OpenAI *@
+                            <MudItem xs="12" md="6">
+                                <MudText Typo="Typo.subtitle2" Class="mb-2">OpenAI</MudText>
+                                <MudTextField @bind-Value="_editDto.AiOpenAiApiKey"
+                                              Label="API Key" InputType="InputType.Password" Class="mb-2"
+                                              Placeholder="@(_config?.HasAiOpenAiApiKey == true ? L["SystemSettings_SmtpPasswordUnchanged"].Value : "")" />
+                                <MudTextField @bind-Value="_editDto.AiOpenAiModel"
+                                              Label="Model" Placeholder="gpt-4o" />
+                            </MudItem>
+
+                            @* Gemini *@
+                            <MudItem xs="12" md="6">
+                                <MudText Typo="Typo.subtitle2" Class="mb-2">Gemini (Google)</MudText>
+                                <MudTextField @bind-Value="_editDto.AiGeminiApiKey"
+                                              Label="API Key" InputType="InputType.Password" Class="mb-2"
+                                              Placeholder="@(_config?.HasAiGeminiApiKey == true ? L["SystemSettings_SmtpPasswordUnchanged"].Value : "")" />
+                                <MudTextField @bind-Value="_editDto.AiGeminiModel"
+                                              Label="Model" Placeholder="gemini-2.0-flash" />
+                            </MudItem>
+
+                            @* Ollama *@
+                            <MudItem xs="12" md="6">
+                                <MudText Typo="Typo.subtitle2" Class="mb-2">Ollama (Local)</MudText>
+                                <MudTextField @bind-Value="_editDto.AiOllamaBaseUrl"
+                                              Label="Base URL" Placeholder="http://localhost:11434" Class="mb-2" />
+                                <MudTextField @bind-Value="_editDto.AiOllamaModel"
+                                              Label="Model" Placeholder="gemma3:12b" />
+                            </MudItem>
+                        </MudGrid>
+                    }
+                    else
+                    {
+                        <MudList T="string" Dense="true">
+                            <MudListItem T="string">
+                                <strong>@L["SystemSettings_AiDefaultProvider"]:</strong>
+                                @(string.IsNullOrEmpty(_config?.AiDefaultProvider) ? "—" : _config.AiDefaultProvider)
+                            </MudListItem>
+                            <MudListItem T="string">
+                                <strong>Claude API Key:</strong>
+                                @(_config?.HasAiClaudeApiKey == true ? "••••••••" : "—")
+                                @if (!string.IsNullOrEmpty(_config?.AiClaudeModel))
+                                { <text> (@_config.AiClaudeModel)</text> }
+                            </MudListItem>
+                            <MudListItem T="string">
+                                <strong>OpenAI API Key:</strong>
+                                @(_config?.HasAiOpenAiApiKey == true ? "••••••••" : "—")
+                                @if (!string.IsNullOrEmpty(_config?.AiOpenAiModel))
+                                { <text> (@_config.AiOpenAiModel)</text> }
+                            </MudListItem>
+                            <MudListItem T="string">
+                                <strong>Gemini API Key:</strong>
+                                @(_config?.HasAiGeminiApiKey == true ? "••••••••" : "—")
+                                @if (!string.IsNullOrEmpty(_config?.AiGeminiModel))
+                                { <text> (@_config.AiGeminiModel)</text> }
+                            </MudListItem>
+                            <MudListItem T="string">
+                                <strong>Ollama:</strong>
+                                @(string.IsNullOrEmpty(_config?.AiOllamaBaseUrl) ? "—" : $"{_config.AiOllamaBaseUrl}")
+                                @if (!string.IsNullOrEmpty(_config?.AiOllamaModel))
+                                { <text> (@_config.AiOllamaModel)</text> }
+                            </MudListItem>
+                        </MudList>
+                    }
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
     </MudGrid>
 
     @* Full-page overlay during save *@
@@ -258,7 +359,17 @@ else
             SmtpSenderName = _config.SmtpSenderName,
             SmtpUseSsl = _config.SmtpUseSsl,
             // JWT settings
-            JwtExpirationHours = _config.JwtExpirationHours
+            JwtExpirationHours = _config.JwtExpirationHours,
+            // AI settings — API keys are null (keep existing), models are pre-filled
+            AiDefaultProvider = _config.AiDefaultProvider,
+            AiClaudeApiKey = null,
+            AiClaudeModel = _config.AiClaudeModel,
+            AiOpenAiApiKey = null,
+            AiOpenAiModel = _config.AiOpenAiModel,
+            AiGeminiApiKey = null,
+            AiGeminiModel = _config.AiGeminiModel,
+            AiOllamaBaseUrl = _config.AiOllamaBaseUrl,
+            AiOllamaModel = _config.AiOllamaModel
         };
         _isEditing = true;
     }

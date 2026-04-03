@@ -16,28 +16,27 @@ using OpenAI;
 namespace Fakvio.Infrastructure.Service;
 
 /// <summary>
-/// Resolves the effective AI provider for the current request using a 2-tier chain:
+/// Resolves the effective AI provider for the current request using a 3-tier chain:
 ///
 ///   Tier 1: Company-specific AI settings from CompanySystemSettings (master DB).
 ///           Used when the company has a non-empty API key for the requested provider.
-///   Tier 2: System-wide AI settings from appsettings.json (IAiProviderFactory singleton).
+///   Tier 2: System-wide AI settings from SystemConfiguration (master DB, SysAdmin UI).
 ///           Fallback when company settings are not configured.
+///   Tier 3: appsettings.json (IAiProviderFactory singleton).
+///           Fallback when neither company nor system DB settings are configured.
 ///
-/// This follows the same pattern as EmailService's SMTP resolution:
-///   - Check company settings → check system settings → error if nothing configured.
-///
-/// Ad-hoc providers are created on-the-fly for company-specific keys.
+/// Ad-hoc providers are created on-the-fly for company/system-specific keys.
 /// They are lightweight (just an HTTP client + API key) and scoped to the request.
 ///
 /// Junior note: This service is SCOPED — one instance per HTTP request.
 /// The ad-hoc providers it creates live only for the duration of the request.
-/// The singleton IAiProviderFactory is the fallback for system-wide settings.
 /// </summary>
 public class CompanyAiSettingsResolver : ICompanyAiSettingsResolver
 {
     private readonly MasterDbContext _masterContext;
     private readonly IAiProviderFactory _globalFactory;
     private readonly IOptions<AiSettings> _globalSettings;
+    private readonly ISystemConfigurationService _systemConfigService;
     private readonly ICredentialProtector _credentialProtector;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILoggerFactory _loggerFactory;
@@ -47,6 +46,7 @@ public class CompanyAiSettingsResolver : ICompanyAiSettingsResolver
         MasterDbContext masterContext,
         IAiProviderFactory globalFactory,
         IOptions<AiSettings> globalSettings,
+        ISystemConfigurationService systemConfigService,
         ICredentialProtector credentialProtector,
         IHttpClientFactory httpClientFactory,
         ILoggerFactory loggerFactory,
@@ -55,6 +55,7 @@ public class CompanyAiSettingsResolver : ICompanyAiSettingsResolver
         _masterContext = masterContext;
         _globalFactory = globalFactory;
         _globalSettings = globalSettings;
+        _systemConfigService = systemConfigService;
         _credentialProtector = credentialProtector;
         _httpClientFactory = httpClientFactory;
         _loggerFactory = loggerFactory;
@@ -142,13 +143,37 @@ public class CompanyAiSettingsResolver : ICompanyAiSettingsResolver
                 "cannot check company-specific AI settings");
         }
 
-        // ── Tier 2: System-wide AI settings (appsettings.json) ───────────────
-        // Tier 1 didn't resolve. Try global factory as fallback.
-        // If global factory also has no providers, throw a descriptive error.
-        _logger.LogWarning(
-            "AI resolver: Tier 1 (company) didn't resolve. Trying global fallback. " +
+        // ── Tier 2: System-wide AI settings from SystemConfiguration DB ──────
+        // SysAdmin configures these via /system-settings page.
+        _logger.LogInformation(
+            "AI resolver: Tier 1 (company) didn't resolve. Trying system DB settings. " +
             "CompanyId={CompanyId}, RequestedProvider={RequestedProvider}",
             companyId, requestedProvider);
+
+        try
+        {
+            var systemAi = await _systemConfigService.GetAiSettingsAsync(ct);
+            var systemProvider = !string.IsNullOrEmpty(requestedProvider)
+                ? requestedProvider
+                : systemAi.DefaultProvider;
+
+            if (!string.IsNullOrEmpty(systemProvider))
+            {
+                var provider = TryCreateSystemProvider(systemProvider, systemAi);
+                if (provider != null)
+                {
+                    _logger.LogInformation("Using system DB AI provider {Provider}", systemProvider);
+                    return provider;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "AI resolver: failed to load system AI settings from DB");
+        }
+
+        // ── Tier 3: appsettings.json (singleton factory) ────────────────────
+        _logger.LogWarning("AI resolver: Tier 2 (system DB) didn't resolve. Trying appsettings.json fallback.");
 
         try
         {
@@ -159,23 +184,32 @@ public class CompanyAiSettingsResolver : ICompanyAiSettingsResolver
         }
         catch (InvalidOperationException)
         {
-            // Global factory also has no providers — throw a descriptive error
-            // that tells the user exactly what to configure.
             throw new InvalidOperationException(
                 $"No AI provider resolved. CompanyId={companyId?.ToString() ?? "NULL"}, " +
                 $"RequestedProvider={requestedProvider ?? "NULL"}. " +
-                "Tier 1 (company-specific) failed — check: " +
-                "(1) CompanySystemSettings.AiDefaultProvider is set, " +
-                "(2) The corresponding API key column (e.g. AiClaudeApiKey) has a value. " +
-                "Tier 2 (global appsettings) also has no providers configured.");
+                "Tier 1 (company) → Tier 2 (system DB) → Tier 3 (appsettings.json) all failed. " +
+                "Configure AI settings in SysAdmin System Settings or company settings.");
         }
     }
 
     /// <inheritdoc />
     public async Task<IReadOnlyList<string>> GetAvailableProvidersAsync(long? companyId, CancellationToken ct = default)
     {
-        // Start with system-wide providers.
+        // Start with Tier 3: appsettings.json providers
         var providers = new HashSet<string>(_globalFactory.AvailableProviders, StringComparer.OrdinalIgnoreCase);
+
+        // Add Tier 2: system DB providers
+        try
+        {
+            var systemAi = await _systemConfigService.GetAiSettingsAsync(ct);
+            if (!string.IsNullOrEmpty(systemAi.ClaudeApiKey)) providers.Add("Claude");
+            if (!string.IsNullOrEmpty(systemAi.OpenAiApiKey)) providers.Add("OpenAI");
+            if (!string.IsNullOrEmpty(systemAi.GeminiApiKey)) providers.Add("Gemini");
+            if (!string.IsNullOrEmpty(systemAi.OllamaBaseUrl)) providers.Add("Ollama");
+        }
+        catch { /* system config may not exist yet */ }
+
+        // Add Tier 1: company-specific providers
         if (companyId.HasValue)
         {
             var companySettings = await _masterContext.CompanySystemSettings
@@ -184,19 +218,49 @@ public class CompanyAiSettingsResolver : ICompanyAiSettingsResolver
 
             if (companySettings != null)
             {
-                // Add providers that have company-specific API keys configured.
-                if (!string.IsNullOrEmpty(companySettings.AiClaudeApiKey))
-                    providers.Add("Claude");
-                if (!string.IsNullOrEmpty(companySettings.AiOpenAiApiKey))
-                    providers.Add("OpenAI");
-                if (!string.IsNullOrEmpty(companySettings.AiGeminiApiKey))
-                    providers.Add("Gemini");
-                if (!string.IsNullOrEmpty(companySettings.AiOllamaBaseUrl))
-                    providers.Add("Ollama");
+                if (!string.IsNullOrEmpty(companySettings.AiClaudeApiKey)) providers.Add("Claude");
+                if (!string.IsNullOrEmpty(companySettings.AiOpenAiApiKey)) providers.Add("OpenAI");
+                if (!string.IsNullOrEmpty(companySettings.AiGeminiApiKey)) providers.Add("Gemini");
+                if (!string.IsNullOrEmpty(companySettings.AiOllamaBaseUrl)) providers.Add("Ollama");
             }
         }
 
         return providers.ToList().AsReadOnly();
+    }
+
+    /// <summary>
+    /// Tries to create an ad-hoc AI provider using system-wide DB settings (Tier 2).
+    /// Same pattern as TryCreateCompanyProvider but reads from SystemAiSettingsInternal.
+    /// Returns null if the system doesn't have an API key for the requested provider.
+    /// </summary>
+    private IAiProvider? TryCreateSystemProvider(string providerName, SystemAiSettingsInternal sys)
+    {
+        try
+        {
+            if (providerName.Equals("Claude", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(sys.ClaudeApiKey))
+                return new AdHocClaudeProvider(sys.ClaudeApiKey, sys.ClaudeModel ?? _globalSettings.Value.Claude.Model ?? "claude-sonnet-4-6", _loggerFactory.CreateLogger<ClaudeProvider>());
+
+            if (providerName.Equals("OpenAI", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(sys.OpenAiApiKey))
+                return new AdHocOpenAiProvider(sys.OpenAiApiKey, sys.OpenAiModel ?? _globalSettings.Value.OpenAI.Model ?? "gpt-4o", _loggerFactory.CreateLogger<OpenAiProvider>());
+
+            if (providerName.Equals("Gemini", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(sys.GeminiApiKey))
+            {
+                var httpClient = _httpClientFactory.CreateClient("AdHocGemini");
+                return new AdHocGeminiProvider(httpClient, sys.GeminiApiKey, sys.GeminiModel ?? _globalSettings.Value.Gemini.Model ?? "gemini-2.0-flash", _loggerFactory.CreateLogger<GeminiProvider>());
+            }
+
+            if (providerName.Equals("Ollama", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(sys.OllamaBaseUrl))
+            {
+                var httpClient = _httpClientFactory.CreateClient("AdHocOllama");
+                httpClient.BaseAddress = new Uri(sys.OllamaBaseUrl.TrimEnd('/'));
+                return new AdHocOllamaProvider(httpClient, sys.OllamaModel ?? _globalSettings.Value.Ollama.Model ?? "gemma3:12b", _loggerFactory.CreateLogger<OllamaProvider>());
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to create system-level {Provider} provider", providerName);
+        }
+        return null;
     }
 
     /// <summary>

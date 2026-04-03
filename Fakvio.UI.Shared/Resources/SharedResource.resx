@@ -678,6 +678,8 @@
   <data name="SystemSettings_Hours" xml:space="preserve">
     <value>hodin</value>
   </data>
+  <data name="SystemSettings_AiTitle" xml:space="preserve"><value>Nastavení AI</value></data>
+  <data name="SystemSettings_AiDefaultProvider" xml:space="preserve"><value>Výchozí AI poskytovatel</value></data>
   <data name="Log_Title" xml:space="preserve">
     <value>Logy aplikace</value>
   </data>

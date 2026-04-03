@@ -66,6 +66,31 @@ public class SystemConfigurationService : ISystemConfigurationService
         // ── JWT Settings ──────────────────────────────────────────────────────
         entity.JwtExpirationHours = dto.JwtExpirationHours;
 
+        // ── AI Settings ──────────────────────────────────────────────────────
+        // Same partial-update pattern as SMTP: null = keep, "" = clear, value = encrypt+update
+        if (dto.AiDefaultProvider != null)
+            entity.AiDefaultProvider = string.IsNullOrEmpty(dto.AiDefaultProvider) ? null : dto.AiDefaultProvider;
+
+        if (dto.AiClaudeApiKey != null)
+            entity.AiClaudeApiKey = string.IsNullOrEmpty(dto.AiClaudeApiKey) ? null : _credentialProtector.Encrypt(dto.AiClaudeApiKey);
+        if (dto.AiClaudeModel != null)
+            entity.AiClaudeModel = string.IsNullOrEmpty(dto.AiClaudeModel) ? null : dto.AiClaudeModel;
+
+        if (dto.AiOpenAiApiKey != null)
+            entity.AiOpenAiApiKey = string.IsNullOrEmpty(dto.AiOpenAiApiKey) ? null : _credentialProtector.Encrypt(dto.AiOpenAiApiKey);
+        if (dto.AiOpenAiModel != null)
+            entity.AiOpenAiModel = string.IsNullOrEmpty(dto.AiOpenAiModel) ? null : dto.AiOpenAiModel;
+
+        if (dto.AiGeminiApiKey != null)
+            entity.AiGeminiApiKey = string.IsNullOrEmpty(dto.AiGeminiApiKey) ? null : _credentialProtector.Encrypt(dto.AiGeminiApiKey);
+        if (dto.AiGeminiModel != null)
+            entity.AiGeminiModel = string.IsNullOrEmpty(dto.AiGeminiModel) ? null : dto.AiGeminiModel;
+
+        if (dto.AiOllamaBaseUrl != null)
+            entity.AiOllamaBaseUrl = string.IsNullOrEmpty(dto.AiOllamaBaseUrl) ? null : dto.AiOllamaBaseUrl;
+        if (dto.AiOllamaModel != null)
+            entity.AiOllamaModel = string.IsNullOrEmpty(dto.AiOllamaModel) ? null : dto.AiOllamaModel;
+
         await _context.SaveChangesAsync(ct);
         _logger.LogInformation("System configuration updated successfully");
 
@@ -109,6 +134,24 @@ public class SystemConfigurationService : ISystemConfigurationService
         return _credentialProtector.Decrypt(entity.SmtpPassword);
     }
 
+    /// <inheritdoc />
+    public async Task<SystemAiSettingsInternal> GetAiSettingsAsync(CancellationToken ct = default)
+    {
+        var entity = await GetOrCreateAsync(ct);
+        return new SystemAiSettingsInternal
+        {
+            DefaultProvider = entity.AiDefaultProvider,
+            ClaudeApiKey = _credentialProtector.Decrypt(entity.AiClaudeApiKey),
+            ClaudeModel = entity.AiClaudeModel,
+            OpenAiApiKey = _credentialProtector.Decrypt(entity.AiOpenAiApiKey),
+            OpenAiModel = entity.AiOpenAiModel,
+            GeminiApiKey = _credentialProtector.Decrypt(entity.AiGeminiApiKey),
+            GeminiModel = entity.AiGeminiModel,
+            OllamaBaseUrl = entity.AiOllamaBaseUrl,
+            OllamaModel = entity.AiOllamaModel
+        };
+    }
+
     /// <summary>
     /// Maps the SystemConfiguration entity to a DTO for API responses.
     /// SmtpPassword is NOT included — only a HasSmtpPassword flag.
@@ -132,7 +175,17 @@ public class SystemConfigurationService : ISystemConfigurationService
             SmtpSenderName = entity.SmtpSenderName,
             SmtpUseSsl = entity.SmtpUseSsl,
             // JWT settings
-            JwtExpirationHours = entity.JwtExpirationHours
+            JwtExpirationHours = entity.JwtExpirationHours,
+            // AI settings — API keys are NEVER exposed, only boolean flags
+            AiDefaultProvider = entity.AiDefaultProvider,
+            AiClaudeModel = entity.AiClaudeModel,
+            HasAiClaudeApiKey = !string.IsNullOrEmpty(entity.AiClaudeApiKey),
+            AiOpenAiModel = entity.AiOpenAiModel,
+            HasAiOpenAiApiKey = !string.IsNullOrEmpty(entity.AiOpenAiApiKey),
+            AiGeminiModel = entity.AiGeminiModel,
+            HasAiGeminiApiKey = !string.IsNullOrEmpty(entity.AiGeminiApiKey),
+            AiOllamaBaseUrl = entity.AiOllamaBaseUrl,
+            AiOllamaModel = entity.AiOllamaModel
         };
     }
 }

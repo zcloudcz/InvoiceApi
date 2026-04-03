@@ -27,4 +27,28 @@ public interface ISystemConfigurationService
     /// Returns null if no password is configured.
     /// </summary>
     Task<string?> GetSmtpPasswordAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Gets decrypted system-wide AI settings for internal service use (CompanyAiSettingsResolver).
+    /// API keys are decrypted on-demand. NOT exposed via API.
+    /// Returns null values for unconfigured providers.
+    /// </summary>
+    Task<SystemAiSettingsInternal> GetAiSettingsAsync(CancellationToken ct = default);
+}
+
+/// <summary>
+/// Internal DTO for decrypted AI settings — used only by CompanyAiSettingsResolver.
+/// Never exposed via API (API uses SystemConfigurationDto with HasXxxApiKey flags).
+/// </summary>
+public class SystemAiSettingsInternal
+{
+    public string? DefaultProvider { get; set; }
+    public string? ClaudeApiKey { get; set; }
+    public string? ClaudeModel { get; set; }
+    public string? OpenAiApiKey { get; set; }
+    public string? OpenAiModel { get; set; }
+    public string? GeminiApiKey { get; set; }
+    public string? GeminiModel { get; set; }
+    public string? OllamaBaseUrl { get; set; }
+    public string? OllamaModel { get; set; }
 }

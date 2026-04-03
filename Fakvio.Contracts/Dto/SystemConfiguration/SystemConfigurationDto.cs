@@ -33,4 +33,16 @@ public class SystemConfigurationDto
 
     // ─── JWT Settings ────────────────────────────────────────────────────────
     public int JwtExpirationHours { get; set; } = 24;
+
+    // ─── AI Settings ─────────────────────────────────────────────────────────
+    // API keys are NEVER sent to the UI — only boolean HasXxx flags (same pattern as SMTP).
+    public string? AiDefaultProvider { get; set; }
+    public string? AiClaudeModel { get; set; }
+    public bool HasAiClaudeApiKey { get; set; }
+    public string? AiOpenAiModel { get; set; }
+    public bool HasAiOpenAiApiKey { get; set; }
+    public string? AiGeminiModel { get; set; }
+    public bool HasAiGeminiApiKey { get; set; }
+    public string? AiOllamaBaseUrl { get; set; }
+    public string? AiOllamaModel { get; set; }
 }
