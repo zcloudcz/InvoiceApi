@@ -125,14 +125,14 @@
         @* Issue date — short date format *@
         <PropertyColumn Property="x => x.IssueDate" Title="@L["Invoice_IssueDate"].Value" Format="d">
             <FilterTemplate>
-                <DateColumnFilter T="ReceivedInvoiceDto" Context="context" />
+                <DateColumnFilter T="ReceivedInvoiceDto" Context="context" ValueFunc="x => x.IssueDate" />
             </FilterTemplate>
         </PropertyColumn>
 
         @* Due date — highlight overdue invoices in red *@
         <PropertyColumn Property="x => x.DueDate" Title="@L["Invoice_DueDate"].Value">
             <FilterTemplate>
-                <DateColumnFilter T="ReceivedInvoiceDto" Context="context" />
+                <DateColumnFilter T="ReceivedInvoiceDto" Context="context" ValueFunc="x => x.DueDate" />
             </FilterTemplate>
             <CellTemplate>
                 @if (context.Item.DueDate.HasValue)

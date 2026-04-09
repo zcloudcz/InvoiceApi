@@ -116,7 +116,7 @@
         <PropertyColumn Property="x => x.IssueDate" Title="@L["Table_IssueDate"].Value"
                         Format="d">
             <FilterTemplate>
-                <DateColumnFilter T="InvoiceDto" Context="context" />
+                <DateColumnFilter T="InvoiceDto" Context="context" ValueFunc="x => x.IssueDate" />
             </FilterTemplate>
         </PropertyColumn>
 
@@ -126,7 +126,7 @@
             <PropertyColumn Property="x => x.TaxableSupplyDate" Title="@L["Invoice_TaxableSupplyDate"].Value"
                             Format="d">
                 <FilterTemplate>
-                    <DateColumnFilter T="InvoiceDto" Context="context" />
+                    <DateColumnFilter T="InvoiceDto" Context="context" ValueFunc="x => x.TaxableSupplyDate" />
                 </FilterTemplate>
             </PropertyColumn>
         }
@@ -135,7 +135,7 @@
         <PropertyColumn Property="x => x.DueDate" Title="@L["Table_DueDate"].Value"
                         Format="d">
             <FilterTemplate>
-                <DateColumnFilter T="InvoiceDto" Context="context" />
+                <DateColumnFilter T="InvoiceDto" Context="context" ValueFunc="x => x.DueDate" />
             </FilterTemplate>
         </PropertyColumn>
 

@@ -1197,4 +1197,10 @@
   <data name="Email_Send" xml:space="preserve"><value>Odeslat</value></data>
   <data name="Email_Sending" xml:space="preserve"><value>Odesílám...</value></data>
   <data name="Email_Failed" xml:space="preserve"><value>Odeslání se nezdařilo</value></data>
+  <data name="DateFilter_Is" xml:space="preserve"><value>rovno</value></data>
+  <data name="DateFilter_After" xml:space="preserve"><value>po</value></data>
+  <data name="DateFilter_OnOrAfter" xml:space="preserve"><value>od</value></data>
+  <data name="DateFilter_Before" xml:space="preserve"><value>před</value></data>
+  <data name="DateFilter_OnOrBefore" xml:space="preserve"><value>do</value></data>
+  <data name="DateFilter_Range" xml:space="preserve"><value>rozmezí</value></data>
 </root>

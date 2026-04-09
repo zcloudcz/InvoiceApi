@@ -361,13 +361,13 @@ else
                 @* Issue date — short date format *@
                 <PropertyColumn Property="x => x.IssueDate" Title="@L["Table_IssueDate"].Value" Sortable="true" Format="d">
                     <FilterTemplate>
-                        <DateColumnFilter T="InvoiceDto" Context="context" />
+                        <DateColumnFilter T="InvoiceDto" Context="context" ValueFunc="x => x.IssueDate" />
                     </FilterTemplate>
                 </PropertyColumn>
                 @* Due date — short date format *@
                 <PropertyColumn Property="x => x.DueDate" Title="@L["Table_DueDate"].Value" Sortable="true" Format="d">
                     <FilterTemplate>
-                        <DateColumnFilter T="InvoiceDto" Context="context" />
+                        <DateColumnFilter T="InvoiceDto" Context="context" ValueFunc="x => x.DueDate" />
                     </FilterTemplate>
                 </PropertyColumn>
                 @* Total with VAT — bold amount + currency code *@

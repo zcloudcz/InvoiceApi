@@ -99,7 +99,7 @@
         </PropertyColumn>
         <PropertyColumn Property="x => x.LastUsedAt" Title="@L["Template_LastUsed"].Value" Format="d">
             <FilterTemplate>
-                <DateColumnFilter T="InvoiceTemplateDto" Context="context" />
+                <DateColumnFilter T="InvoiceTemplateDto" Context="context" ValueFunc="x => x.LastUsedAt" />
             </FilterTemplate>
             <CellTemplate>
                 @if (context.Item.LastUsedAt.HasValue)

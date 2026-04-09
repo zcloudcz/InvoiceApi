@@ -1197,4 +1197,10 @@
   <data name="Email_Send" xml:space="preserve"><value>Send</value></data>
   <data name="Email_Sending" xml:space="preserve"><value>Sending...</value></data>
   <data name="Email_Failed" xml:space="preserve"><value>Failed to send</value></data>
+  <data name="DateFilter_Is" xml:space="preserve"><value>equals</value></data>
+  <data name="DateFilter_After" xml:space="preserve"><value>after</value></data>
+  <data name="DateFilter_OnOrAfter" xml:space="preserve"><value>from</value></data>
+  <data name="DateFilter_Before" xml:space="preserve"><value>before</value></data>
+  <data name="DateFilter_OnOrBefore" xml:space="preserve"><value>until</value></data>
+  <data name="DateFilter_Range" xml:space="preserve"><value>range</value></data>
 </root>
