@@ -6,7 +6,6 @@
 @using Fakvio.Contracts.Dto.Currency
 @using Fakvio.Domain.Enums
 @using Microsoft.AspNetCore.Authorization
-@using Fakvio.UI.Shared.Components.Shared
 @using Fakvio.UI.Shared.Services
 @* Use typed API services instead of raw HttpClient — they handle BaseAddress, auth, logging *@
 @inject InvoiceTemplateApiService TemplateService
@@ -58,64 +57,83 @@
     </MudGrid>
 </MudPaper>
 
-@* AppDataGrid provides consistent Dense+Hover+Striped+pointer styling and server-side pagination *@
-<AppDataGrid TItem="InvoiceTemplateDto"
+@* MudDataGrid with server-side pagination, column filters, and inline actions *@
+<MudDataGrid T="InvoiceTemplateDto"
              ServerData="LoadData"
+             @ref="_dataGrid"
+             Dense="true"
+             Hover="true"
+             Striped="true"
              Loading="@_loading"
-             OnRowClick="@(t => Navigation.NavigateTo($"/invoice-templates/{t.Id}"))"
-             OnEdit="@(t => Navigation.NavigateTo($"/invoice-templates/{t.Id}"))"
-             OnDelete="@(DeleteTemplate)"
-             NoRecordsText="@L["Template_NoRecords"].Value"
-             @ref="_table">
+             LoadingProgressColor="Color.Primary"
+             RowClick="@(args => Navigation.NavigateTo($"/invoice-templates/{args.Item.Id}"))"
+             RowStyleFunc="@((item, idx) => "cursor: pointer;")"
+             FilterMode="DataGridFilterMode.ColumnFilterRow"
+             SortMode="SortMode.Single"
+             Filterable="true"
+             ColumnResizeMode="ResizeMode.Column">
     <Columns>
-        <MudTh><MudTableSortLabel SortLabel="Name" T="InvoiceTemplateDto">@L["Label_Name"]</MudTableSortLabel></MudTh>
-        <MudTh>@L["Template_DocumentType"]</MudTh>
-        <MudTh>@L["Invoice_Client"]</MudTh>
-        <MudTh>@L["Template_Currency"]</MudTh>
-        <MudTh><MudTableSortLabel SortLabel="UsageCount" T="InvoiceTemplateDto">@L["Template_UsageCount"]</MudTableSortLabel></MudTh>
-        <MudTh><MudTableSortLabel SortLabel="LastUsedAt" T="InvoiceTemplateDto">@L["Template_LastUsed"]</MudTableSortLabel></MudTh>
-        <MudTh>@L["Label_Status"]</MudTh>
+        @* PropertyColumn: sortable + filterable by default. CellTemplate uses context.Item. *@
+        <PropertyColumn Property="x => x.Name" Title="@L["Label_Name"].Value">
+            <CellTemplate>
+                <MudText Typo="Typo.body2"><strong>@context.Item.Name</strong></MudText>
+                @if (!string.IsNullOrEmpty(context.Item.Description))
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">@context.Item.Description</MudText>
+                }
+            </CellTemplate>
+        </PropertyColumn>
+        <PropertyColumn Property="x => x.DocumentType" Title="@L["Template_DocumentType"].Value" Sortable="false">
+            <CellTemplate>
+                <MudChip T="string" Size="Size.Small" Color="@(context.Item.DocumentType == EDocumentType.Invoice ? Color.Primary : Color.Warning)">
+                    @(context.Item.DocumentType == EDocumentType.Invoice ? L["Template_DocumentTypeInvoice"] : L["Template_DocumentTypeCreditNote"])
+                </MudChip>
+            </CellTemplate>
+        </PropertyColumn>
+        <PropertyColumn Property="x => x.ClientName" Title="@L["Invoice_Client"].Value" Sortable="false" />
+        <PropertyColumn Property="x => x.CurrencyCode" Title="@L["Template_Currency"].Value" Sortable="false" Filterable="false" />
+        <PropertyColumn Property="x => x.UsageCount" Title="@L["Template_UsageCount"].Value">
+            <CellTemplate>@context.Item.UsageCount×</CellTemplate>
+        </PropertyColumn>
+        <PropertyColumn Property="x => x.LastUsedAt" Title="@L["Template_LastUsed"].Value" Format="d">
+            <CellTemplate>
+                @if (context.Item.LastUsedAt.HasValue)
+                {
+                    @context.Item.LastUsedAt.Value.ToShortDateString()
+                }
+                else
+                {
+                    <MudText Color="Color.Secondary">@L["Template_Never"]</MudText>
+                }
+            </CellTemplate>
+        </PropertyColumn>
+        <PropertyColumn Property="x => x.IsActive" Title="@L["Label_Status"].Value">
+            <CellTemplate>
+                <MudChip T="string" Size="Size.Small" Color="@(context.Item.IsActive ? Color.Success : Color.Default)">
+                    @(context.Item.IsActive ? L["Label_Active"] : L["Label_Inactive"])
+                </MudChip>
+            </CellTemplate>
+        </PropertyColumn>
+        @* Actions column — edit, delete, and create invoice from template *@
+        <TemplateColumn T="InvoiceTemplateDto" Title="@L["Label_Actions"].Value" Sortable="false" Filterable="false" CellStyle="white-space:nowrap;">
+            <CellTemplate>
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary"
+                               OnClick="@(() => Navigation.NavigateTo($"/invoice-templates/{context.Item.Id}"))" Title="@L["Btn_Edit"].Value" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                               OnClick="@(() => DeleteTemplate(context.Item))" Title="@L["Btn_Delete"].Value" />
+                @* Create invoice from template — extra action specific to InvoiceTemplates page *@
+                <MudIconButton Icon="@Icons.Material.Filled.PlayArrow" Size="Size.Small" Color="Color.Success"
+                               OnClick="@(() => OpenCreateInvoiceDialog(context.Item))" Title="@L["Template_CreateInvoiceTooltip"].Value" />
+            </CellTemplate>
+        </TemplateColumn>
     </Columns>
-    <RowContent>
-        <MudTd DataLabel="@L["Label_Name"].Value">
-            <MudText Typo="Typo.body2"><strong>@context.Name</strong></MudText>
-            @if (!string.IsNullOrEmpty(context.Description))
-            {
-                <MudText Typo="Typo.caption" Color="Color.Secondary">@context.Description</MudText>
-            }
-        </MudTd>
-        <MudTd DataLabel="@L["Template_DocumentType"].Value">
-            <MudChip T="string" Size="Size.Small" Color="@(context.DocumentType == EDocumentType.Invoice ? Color.Primary : Color.Warning)">
-                @(context.DocumentType == EDocumentType.Invoice ? L["Template_DocumentTypeInvoice"] : L["Template_DocumentTypeCreditNote"])
-            </MudChip>
-        </MudTd>
-        <MudTd DataLabel="@L["Invoice_Client"].Value">@(context.ClientName ?? "—")</MudTd>
-        <MudTd DataLabel="@L["Template_Currency"].Value">@context.CurrencyCode</MudTd>
-        <MudTd DataLabel="@L["Template_UsageCount"].Value">@context.UsageCount×</MudTd>
-        <MudTd DataLabel="@L["Template_LastUsed"].Value">
-            @if (context.LastUsedAt.HasValue)
-            {
-                @context.LastUsedAt.Value.ToShortDateString()
-            }
-            else
-            {
-                <MudText Color="Color.Secondary">@L["Template_Never"]</MudText>
-            }
-        </MudTd>
-        <MudTd DataLabel="@L["Label_Status"].Value">
-            <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">
-                @(context.IsActive ? L["Label_Active"] : L["Label_Inactive"])
-            </MudChip>
-        </MudTd>
-    </RowContent>
-    <RowActions>
-        @* Create invoice from template — extra action specific to InvoiceTemplates page *@
-        <MudTooltip Text="@L["Template_CreateInvoiceTooltip"].Value">
-            <MudIconButton Icon="@Icons.Material.Filled.PlayArrow" Size="Size.Small" Color="Color.Success"
-                           OnClick="@(() => OpenCreateInvoiceDialog(context))" />
-        </MudTooltip>
-    </RowActions>
-</AppDataGrid>
+    <NoRecordsContent>
+        <MudText>@L["Template_NoRecords"]</MudText>
+    </NoRecordsContent>
+    <PagerContent>
+        <MudDataGridPager T="InvoiceTemplateDto" />
+    </PagerContent>
+</MudDataGrid>
 
 @* Dialog for creating an invoice from a template — kept as small popup *@
 <MudDialog @bind-Visible="_showCreateInvoiceDialog" Options="_dialogOptions">
@@ -158,7 +176,7 @@
 </MudDialog>
 
 @code {
-    private AppDataGrid<InvoiceTemplateDto>? _table;
+    private MudDataGrid<InvoiceTemplateDto>? _dataGrid;
     private MudForm? _invoiceForm;
     private bool _loading = false;
     private bool _showCreateInvoiceDialog = false;
@@ -209,21 +227,23 @@
 
     /// <summary>
     /// Loads paged template data via InvoiceTemplateApiService.
-    /// Called by MudTable when the page, sort, or search changes.
+    /// Called by MudDataGrid when the page, sort, or filter changes.
+    /// GridState&lt;T&gt; replaces old TableState — uses SortDefinitions for sort info.
     /// </summary>
-    private async Task<TableData<InvoiceTemplateDto>> LoadData(TableState state, CancellationToken cancellationToken)
+    private async Task<GridData<InvoiceTemplateDto>> LoadData(GridState<InvoiceTemplateDto> state)
     {
         _loading = true;
         StateHasChanged();
 
         try
         {
-            var sortBy = state.SortLabel ?? "Name";
-            var isDescending = state.SortDirection == SortDirection.Descending;
+            // Extract sort info from GridState — MudDataGrid uses SortDefinitions collection
+            var sortDef = state.SortDefinitions.FirstOrDefault();
+            var sortBy = sortDef?.SortBy ?? "Name";
+            var isDescending = sortDef?.Descending ?? false;
 
-            // Use InvoiceTemplateApiService instead of raw HttpClient
             var response = await TemplateService.GetPagedAsync(
-                page: state.Page + 1,
+                page: state.Page + 1, // MudDataGrid is 0-based, API is 1-based
                 pageSize: state.PageSize,
                 search: _searchString,
                 documentType: _filterDocumentType,
@@ -231,7 +251,7 @@
                 sortBy: sortBy,
                 isDescending: isDescending);
 
-            return new TableData<InvoiceTemplateDto>
+            return new GridData<InvoiceTemplateDto>
             {
                 Items = response.Items,
                 TotalItems = response.TotalCount
@@ -247,14 +267,14 @@
             StateHasChanged();
         }
 
-        return new TableData<InvoiceTemplateDto> { Items = new List<InvoiceTemplateDto>(), TotalItems = 0 };
+        return new GridData<InvoiceTemplateDto> { Items = new List<InvoiceTemplateDto>(), TotalItems = 0 };
     }
 
     private async Task SearchTemplates()
     {
-        if (_table != null)
+        if (_dataGrid != null)
         {
-            await _table.ReloadServerDataAsync();
+            await _dataGrid.ReloadServerData();
         }
     }
 

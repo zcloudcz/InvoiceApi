@@ -80,6 +80,31 @@
          Path is "/js/download.js" (not "_content/...") because UI.Shared has
          StaticWebAssetBasePath="/" which maps RCL wwwroot to the site root. -->
     <script src="js/download.js"></script>
+
+    <!-- reCAPTCHA v3 (invisible) — loaded with site key from configuration.
+         The site key is injected by Blazor via JS interop (initRecaptcha).
+         If not configured, the script is not loaded and getRecaptchaToken returns empty. -->
+    <script>
+        // Initialize reCAPTCHA with the site key from Blazor configuration.
+        // Called once from Login/Register pages via JS interop.
+        window.initRecaptcha = function (siteKey) {
+            if (!siteKey || document.getElementById('recaptcha-script')) return;
+            window._recaptchaSiteKey = siteKey;
+            var script = document.createElement('script');
+            script.id = 'recaptcha-script';
+            script.src = 'https://www.google.com/recaptcha/api.js?render=' + siteKey;
+            document.head.appendChild(script);
+        };
+
+        // Get a reCAPTCHA token for the given action (e.g., "login", "register").
+        // Returns empty string if reCAPTCHA is not initialized (dev mode).
+        window.getRecaptchaToken = function (action) {
+            if (typeof grecaptcha === 'undefined' || !window._recaptchaSiteKey) {
+                return Promise.resolve('');
+            }
+            return grecaptcha.execute(window._recaptchaSiteKey, { action: action });
+        };
+    </script>
 </body>
 
 </html>

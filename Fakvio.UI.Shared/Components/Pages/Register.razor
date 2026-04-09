@@ -6,6 +6,7 @@
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
 @inject IConfiguration Configuration
+@inject IJSRuntime JS
 @* Localization service for multi-language support *@
 @inject IStringLocalizer<SharedResource> L
 
@@ -171,7 +172,15 @@
             if (authState.User.Identity?.IsAuthenticated == true)
             {
                 Navigation.NavigateTo("/");
+                return;
             }
+        }
+
+        // Initialize reCAPTCHA v3 with site key from configuration
+        var siteKey = Configuration["Recaptcha:SiteKey"] ?? "";
+        if (!string.IsNullOrEmpty(siteKey))
+        {
+            await JS.InvokeVoidAsync("initRecaptcha", siteKey);
         }
     }
 
@@ -199,7 +208,10 @@
 
         try
         {
-            var response = await AuthApiService.RegisterAsync(_request);
+            // Get reCAPTCHA v3 token (empty string if not configured — dev mode)
+            var captchaToken = await JS.InvokeAsync<string>("getRecaptchaToken", "register");
+
+            var response = await AuthApiService.RegisterAsync(_request, captchaToken);
 
             if (response != null)
             {

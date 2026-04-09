@@ -14,15 +14,20 @@
 <MudText Typo="Typo.h4" GutterBottom="true">@L["User_Title"]</MudText>
 <MudText Class="mb-4">@L["User_Subtitle"]</MudText>
 
-@* AppDataGrid provides consistent Dense+Hover+Striped+pointer styling across all grid pages *@
-<AppDataGrid TItem="UserDto"
+@* MudDataGrid with column filters, quick search, and inline actions *@
+<MudDataGrid T="UserDto"
              Items="@_users"
              Loading="@_loading"
-             Filter="@FilterFunc"
-             OnRowClick="@(OpenEditDialog)"
-             OnEdit="@(OpenEditDialog)"
-             OnDelete="@((u) => DeleteUser(u.Id))"
-             NoRecordsText="@L["User_NoRecords"].Value">
+             Dense="true"
+             Hover="true"
+             Striped="true"
+             FilterMode="DataGridFilterMode.ColumnFilterRow"
+             SortMode="SortMode.Single"
+             Filterable="true"
+             ColumnResizeMode="ResizeMode.Column"
+             QuickFilter="@FilterFunc"
+             RowClick="@(args => OpenEditDialog(args.Item))"
+             RowStyleFunc="@((item, idx) => "cursor: pointer;")">
     <ToolBarContent>
         <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialog" Class="mr-4">
             @L["User_New"]
@@ -31,37 +36,46 @@
                       AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0"></MudTextField>
     </ToolBarContent>
     <Columns>
-        <MudTh>@L["Label_Email"]</MudTh>
-        <MudTh>@L["User_FullName"]</MudTh>
-        <MudTh>@L["User_Role"]</MudTh>
-        <MudTh>@L["User_Company"]</MudTh>
-        <MudTh>@L["User_LastLogin"]</MudTh>
-        <MudTh>@L["Label_Status"]</MudTh>
+        <PropertyColumn Property="x => x.Email" Title="@L["Label_Email"].Value" />
+        <PropertyColumn Property="x => x.FullName" Title="@L["User_FullName"].Value" />
+        <PropertyColumn Property="x => x.Role" Title="@L["User_Role"].Value">
+            <CellTemplate>
+                <MudChip T="string" Size="Size.Small" Color="@GetRoleColor(context.Item.Role)">
+                    @GetRoleText(context.Item.Role)
+                </MudChip>
+            </CellTemplate>
+        </PropertyColumn>
+        <PropertyColumn Property="x => x.CompanyName" Title="@L["User_Company"].Value">
+            <CellTemplate>@(context.Item.CompanyName ?? "—")</CellTemplate>
+        </PropertyColumn>
+        <PropertyColumn Property="x => x.LastLoginAt" Title="@L["User_LastLogin"].Value" Filterable="false">
+            <CellTemplate>
+                @(context.Item.LastLoginAt?.ToString("dd.MM.yyyy HH:mm") ?? L["User_Never"].Value)
+            </CellTemplate>
+        </PropertyColumn>
+        <PropertyColumn Property="x => x.IsActive" Title="@L["Label_Status"].Value">
+            <CellTemplate>
+                <MudChip T="string" Size="Size.Small" Color="@(context.Item.IsActive ? Color.Success : Color.Default)">
+                    @(context.Item.IsActive ? L["Label_Active"].Value : L["Label_Inactive"].Value)
+                </MudChip>
+            </CellTemplate>
+        </PropertyColumn>
+        @* Actions column — edit, change password, and delete buttons *@
+        <TemplateColumn T="UserDto" Sortable="false" Filterable="false">
+            <CellTemplate>
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary"
+                               OnClick="@(() => OpenEditDialog(context.Item))" Title="@L["Btn_Edit"].Value" />
+                <MudIconButton Icon="@Icons.Material.Filled.Key" Size="Size.Small" Color="Color.Info"
+                               OnClick="@(() => OpenChangePasswordDialog(context.Item))" Title="@L["User_ChangePassword"].Value" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                               OnClick="@(async () => await DeleteUser(context.Item.Id))" Title="@L["Btn_Delete"].Value" />
+            </CellTemplate>
+        </TemplateColumn>
     </Columns>
-    <RowContent>
-        <MudTd DataLabel="@L["Label_Email"].Value">@context.Email</MudTd>
-        <MudTd DataLabel="@L["User_FullName"].Value">@context.FullName</MudTd>
-        <MudTd DataLabel="@L["User_Role"].Value">
-            <MudChip T="string" Size="Size.Small" Color="@GetRoleColor(context.Role)">
-                @GetRoleText(context.Role)
-            </MudChip>
-        </MudTd>
-        <MudTd DataLabel="@L["User_Company"].Value">@(context.CompanyName ?? "—")</MudTd>
-        <MudTd DataLabel="@L["User_LastLogin"].Value">
-            @(context.LastLoginAt?.ToString("dd.MM.yyyy HH:mm") ?? L["User_Never"].Value)
-        </MudTd>
-        <MudTd DataLabel="@L["Label_Status"].Value">
-            <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">
-                @(context.IsActive ? L["Label_Active"].Value : L["Label_Inactive"].Value)
-            </MudChip>
-        </MudTd>
-    </RowContent>
-    <RowActions>
-        @* Change password icon — extra action specific to Users page *@
-        <MudIconButton Icon="@Icons.Material.Filled.Key" Size="Size.Small" Color="Color.Info"
-                       OnClick="@(() => OpenChangePasswordDialog(context))" title="@L["User_ChangePassword"].Value" />
-    </RowActions>
-</AppDataGrid>
+    <NoRecordsContent>
+        <MudAlert Severity="Severity.Info">@L["User_NoRecords"]</MudAlert>
+    </NoRecordsContent>
+</MudDataGrid>
 
 <MudDialog @bind-Visible="_showDialog" Options="_dialogOptions">
     <TitleContent>

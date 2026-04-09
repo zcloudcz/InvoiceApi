@@ -1,6 +1,7 @@
 using Fakvio.Contracts.Dto.Auth;
 using Fakvio.Application.Service;
 using Fakvio.Domain.Enums;
+using Fakvio.Infrastructure.Service;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -11,6 +12,7 @@ namespace Fakvio.API.Controller;
 /// <summary>
 /// Controller for authentication operations.
 /// Handles login, self-registration, email verification, and external OAuth login.
+/// reCAPTCHA v3 is validated on login and register endpoints via X-Captcha-Token header.
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
@@ -18,17 +20,20 @@ public class AuthController : ControllerBase
 {
     private readonly IAuthService _authService;
     private readonly ISystemConfigurationService _systemConfigService;
+    private readonly ICaptchaService _captchaService;
     private readonly IConfiguration _configuration;
     private readonly ILogger<AuthController> _logger;
 
     public AuthController(
         IAuthService authService,
         ISystemConfigurationService systemConfigService,
+        ICaptchaService captchaService,
         IConfiguration configuration,
         ILogger<AuthController> logger)
     {
         _authService = authService;
         _systemConfigService = systemConfigService;
+        _captchaService = captchaService;
         _configuration = configuration;
         _logger = logger;
     }
@@ -50,6 +55,15 @@ public class AuthController : ControllerBase
     {
         try
         {
+            // Validate reCAPTCHA v3 token (sent via X-Captcha-Token header from Blazor UI).
+            // When SecretKey is not configured, verification is skipped (dev mode).
+            var captchaToken = Request.Headers["X-Captcha-Token"].FirstOrDefault();
+            if (!await _captchaService.VerifyAsync(captchaToken))
+            {
+                _logger.LogWarning("reCAPTCHA verification failed for login: {Email}", loginRequest.Email);
+                return BadRequest(new { message = "CAPTCHA verification failed. Please try again." });
+            }
+
             var response = await _authService.LoginAsync(loginRequest);
 
             if (response == null)
@@ -87,6 +101,14 @@ public class AuthController : ControllerBase
     {
         try
         {
+            // Validate reCAPTCHA v3 token
+            var captchaToken = Request.Headers["X-Captcha-Token"].FirstOrDefault();
+            if (!await _captchaService.VerifyAsync(captchaToken))
+            {
+                _logger.LogWarning("reCAPTCHA verification failed for registration: {Email}", request.Email);
+                return BadRequest(new { message = "CAPTCHA verification failed. Please try again." });
+            }
+
             // Use the Blazor UI base URL for the set-password link in the email.
             // The /set-password page lives in the Blazor WASM app, not the API.
             // Priority: SystemConfiguration DB → appsettings.json → current request host

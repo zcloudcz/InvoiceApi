@@ -19,51 +19,62 @@
         @L["Client_New"]
     </MudButton>
 
-    @* AppDataGrid — client-side data with search filter *@
-    <AppDataGrid TItem="ClientDto"
+    @* MudDataGrid with column filters, quick search, and inline actions *@
+    <MudDataGrid T="ClientDto"
                  Items="@_clients"
                  Loading="@_loading"
-                 OnRowClick="@(client => Navigation.NavigateTo($"/clients/{client.Id}"))"
-                 ShowEditAction="false"
-                 OnDelete="@(async (client) => await DeleteClientAsync(client.Id))"
-                 Filter="@FilterFunc"
-                 CustomRowStyle="@GetClientRowStyle"
-                 NoRecordsText="@L["Client_NoRecords"].Value">
+                 Dense="true"
+                 Hover="true"
+                 Striped="true"
+                 FilterMode="DataGridFilterMode.ColumnFilterRow"
+                 SortMode="SortMode.Single"
+                 Filterable="true"
+                 ColumnResizeMode="ResizeMode.Column"
+                 QuickFilter="@FilterFunc"
+                 RowClick="@(args => Navigation.NavigateTo($"/clients/{args.Item.Id}"))"
+                 RowStyleFunc="@((item, idx) => $"cursor: pointer; {GetClientRowStyle(item)}")">
         <ToolBarContent>
             <MudTextField @bind-Value="_searchString" Placeholder="@L["Btn_Search"].Value" Adornment="Adornment.Start"
                           AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0"></MudTextField>
         </ToolBarContent>
         <Columns>
-            <MudTh>@L["Client_CompanyName"]</MudTh>
-            <MudTh>@L["Client_RegistrationNumber"]</MudTh>
-            <MudTh>@L["Client_TaxNumber"]</MudTh>
-            <MudTh>@L["Client_City"]</MudTh>
-            <MudTh>@L["Client_IsVatPayer"]</MudTh>
-            <MudTh>@L["Label_Status"]</MudTh>
+            <PropertyColumn Property="x => x.CompanyName" Title="@L["Client_CompanyName"].Value" />
+            <PropertyColumn Property="x => x.RegistrationNumber" Title="@L["Client_RegistrationNumber"].Value" />
+            <PropertyColumn Property="x => x.TaxNumber" Title="@L["Client_TaxNumber"].Value">
+                <CellTemplate>@(context.Item.TaxNumber ?? "—")</CellTemplate>
+            </PropertyColumn>
+            <TemplateColumn T="ClientDto" Title="@L["Client_City"].Value" Sortable="false">
+                <CellTemplate>@(context.Item.Address.FirstOrDefault()?.City ?? "—")</CellTemplate>
+            </TemplateColumn>
+            <PropertyColumn Property="x => x.IsVatPayer" Title="@L["Client_IsVatPayer"].Value" Filterable="false">
+                <CellTemplate>
+                    @if (context.Item.IsVatPayer)
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.Check" Color="Color.Success" Size="Size.Small" />
+                    }
+                </CellTemplate>
+            </PropertyColumn>
+            <PropertyColumn Property="x => x.IsActive" Title="@L["Label_Status"].Value">
+                <CellTemplate>
+                    <MudChip T="string" Size="Size.Small" Color="@(context.Item.IsActive ? Color.Success : Color.Default)">
+                        @(context.Item.IsActive ? L["Label_Active"].Value : L["Label_Inactive"].Value)
+                    </MudChip>
+                </CellTemplate>
+            </PropertyColumn>
+            @* Actions column — view and delete buttons, not sortable or filterable *@
+            <TemplateColumn T="ClientDto" Sortable="false" Filterable="false">
+                <CellTemplate>
+                    <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" Color="Color.Info"
+                                   OnClick="@(() => Navigation.NavigateTo($"/clients/{context.Item.Id}"))" Title="@L["Btn_View"].Value" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                   OnClick="@(async () => await DeleteClientAsync(context.Item.Id))" Title="@L["Btn_Delete"].Value" />
+                </CellTemplate>
+            </TemplateColumn>
         </Columns>
-        <RowContent>
-            <MudTd DataLabel="@L["Client_CompanyName"].Value">@context.CompanyName</MudTd>
-            <MudTd DataLabel="@L["Client_RegistrationNumber"].Value">@context.RegistrationNumber</MudTd>
-            <MudTd DataLabel="@L["Client_TaxNumber"].Value">@(context.TaxNumber ?? "—")</MudTd>
-            <MudTd DataLabel="@L["Client_City"].Value">@(context.Address.FirstOrDefault()?.City ?? "—")</MudTd>
-            <MudTd DataLabel="@L["Client_IsVatPayer"].Value">
-                @if (context.IsVatPayer)
-                {
-                    <MudIcon Icon="@Icons.Material.Filled.Check" Color="Color.Success" Size="Size.Small" />
-                }
-            </MudTd>
-            <MudTd DataLabel="@L["Label_Status"].Value">
-                <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">
-                    @(context.IsActive ? L["Label_Active"].Value : L["Label_Inactive"].Value)
-                </MudChip>
-            </MudTd>
-        </RowContent>
-        <RowActions>
-            @* View navigates to client detail page *@
-            <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" Color="Color.Info"
-                           OnClick="@(() => Navigation.NavigateTo($"/clients/{context.Id}"))" title="@L["Btn_View"].Value" />
-        </RowActions>
-    </AppDataGrid>
+        <NoRecordsContent>
+            <MudAlert Severity="Severity.Info">@L["Client_NoRecords"]</MudAlert>
+        </NoRecordsContent>
+    </MudDataGrid>
 </MudPaper>
 
 @code {

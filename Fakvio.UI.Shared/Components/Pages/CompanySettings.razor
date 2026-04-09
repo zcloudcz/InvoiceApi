@@ -29,14 +29,20 @@
 <MudText Typo="Typo.h4" GutterBottom="true">@L["TenantSettings_Title"]</MudText>
 <MudText Class="mb-4">@L["TenantSettings_Subtitle"]</MudText>
 
-@* ========== Main Grid: All Company Tenant Settings ========== *@
-<AppDataGrid TItem="CompanySystemSettingsDto"
+@* ========== Main Grid: All Company Tenant Settings — MudDataGrid with inline actions ========== *@
+<MudDataGrid T="CompanySystemSettingsDto"
              Items="@_settings"
+             Dense="true"
+             Hover="true"
+             Striped="true"
              Loading="@_loading"
-             OnRowClick="@(OpenEditDialog)"
-             OnEdit="@(OpenEditDialog)"
-             ShowDeleteAction="false"
-             NoRecordsText="@L["TenantSettings_NoRecords"].Value">
+             LoadingProgressColor="Color.Primary"
+             FilterMode="DataGridFilterMode.ColumnFilterRow"
+             SortMode="SortMode.Single"
+             Filterable="true"
+             ColumnResizeMode="ResizeMode.Column"
+             RowClick="@(args => OpenEditDialog(args.Item))"
+             RowStyleFunc="@((item, idx) => "cursor: pointer;")">
     <ToolBarContent>
         <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
                    StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialog">
@@ -44,69 +50,78 @@
         </MudButton>
     </ToolBarContent>
     <Columns>
-        <MudTh>@L["Label_Name"]</MudTh>
-        <MudTh>@L["TenantSettings_SchemaName"]</MudTh>
-        <MudTh>@L["TenantSettings_Provisioned"]</MudTh>
-        <MudTh>@L["Label_Status"]</MudTh>
-        <MudTh>@L["TenantSettings_MaxUsers"]</MudTh>
+        <PropertyColumn Property="x => x.CompanyName" Title="@L["Label_Name"].Value" />
+        <PropertyColumn Property="x => x.SchemaName" Title="@L["TenantSettings_SchemaName"].Value">
+            <CellTemplate>
+                <MudChip T="string" Size="Size.Small" Color="Color.Info">@context.Item.SchemaName</MudChip>
+            </CellTemplate>
+        </PropertyColumn>
+        <PropertyColumn Property="x => x.IsProvisioned" Title="@L["TenantSettings_Provisioned"].Value">
+            <CellTemplate>
+                @if (context.Item.IsProvisioned)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Success">
+                        @L["TenantSettings_Yes"] (@context.Item.ProvisionedAt?.ToString("d"))
+                    </MudChip>
+                }
+                else
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Warning">
+                        @L["TenantSettings_No"]
+                    </MudChip>
+                }
+            </CellTemplate>
+        </PropertyColumn>
+        <PropertyColumn Property="x => x.IsActive" Title="@L["Label_Status"].Value">
+            <CellTemplate>
+                <MudChip T="string" Size="Size.Small"
+                         Color="@(context.Item.IsActive ? Color.Success : Color.Default)">
+                    @(context.Item.IsActive ? L["Label_Active"] : L["Label_Inactive"])
+                </MudChip>
+            </CellTemplate>
+        </PropertyColumn>
+        <PropertyColumn Property="x => x.MaxUsers" Title="@L["TenantSettings_MaxUsers"].Value" Filterable="false">
+            <CellTemplate>
+                @(context.Item.MaxUsers?.ToString() ?? L["TenantSettings_Unlimited"].Value)
+            </CellTemplate>
+        </PropertyColumn>
+        @* Actions column — Edit + Provision/Activate/Deactivate/Migrate per row (conditional on state) *@
+        <TemplateColumn T="CompanySystemSettingsDto" Title="@L["Label_Actions"].Value" Sortable="false" Filterable="false"
+                        CellStyle="white-space:nowrap;">
+            <CellTemplate>
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary"
+                               OnClick="@(() => OpenEditDialog(context.Item))" Title="@L["Btn_Edit"].Value" />
+                @if (!context.Item.IsProvisioned)
+                {
+                    @* Not yet provisioned — show Provision button *@
+                    <MudIconButton Icon="@Icons.Material.Filled.PlayArrow" Size="Size.Small"
+                                   Color="Color.Primary" OnClick="@(() => ProvisionTenant(context.Item))"
+                                   Title="@L["TenantSettings_Provision"].Value" />
+                }
+                else if (!context.Item.IsActive)
+                {
+                    @* Provisioned but inactive — show Activate button *@
+                    <MudIconButton Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small"
+                                   Color="Color.Success" OnClick="@(() => ActivateTenant(context.Item.CompanyId))"
+                                   Title="@L["TenantSettings_Activate"].Value" />
+                }
+                else
+                {
+                    @* Provisioned and active — show Deactivate + Migrate buttons *@
+                    <MudIconButton Icon="@Icons.Material.Filled.Block" Size="Size.Small"
+                                   Color="Color.Error" OnClick="@(() => DeactivateTenant(context.Item))"
+                                   Title="@L["TenantSettings_Deactivate"].Value" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Storage" Size="Size.Small"
+                                   Color="Color.Info" OnClick="@(() => MigrateTenant(context.Item.CompanyId))"
+                                   Title="@L["TenantSettings_Migrate"].Value" />
+                }
+            </CellTemplate>
+        </TemplateColumn>
     </Columns>
-    <RowContent>
-        <MudTd DataLabel="@L["Label_Name"].Value">@context.CompanyName</MudTd>
-        <MudTd DataLabel="@L["TenantSettings_SchemaName"].Value">
-            <MudChip T="string" Size="Size.Small" Color="Color.Info">@context.SchemaName</MudChip>
-        </MudTd>
-        <MudTd DataLabel="@L["TenantSettings_Provisioned"].Value">
-            @if (context.IsProvisioned)
-            {
-                <MudChip T="string" Size="Size.Small" Color="Color.Success">
-                    @L["TenantSettings_Yes"] (@context.ProvisionedAt?.ToString("d"))
-                </MudChip>
-            }
-            else
-            {
-                <MudChip T="string" Size="Size.Small" Color="Color.Warning">
-                    @L["TenantSettings_No"]
-                </MudChip>
-            }
-        </MudTd>
-        <MudTd DataLabel="@L["Label_Status"].Value">
-            <MudChip T="string" Size="Size.Small"
-                     Color="@(context.IsActive ? Color.Success : Color.Default)">
-                @(context.IsActive ? L["Label_Active"] : L["Label_Inactive"])
-            </MudChip>
-        </MudTd>
-        <MudTd DataLabel="@L["TenantSettings_MaxUsers"].Value">
-            @(context.MaxUsers?.ToString() ?? L["TenantSettings_Unlimited"].Value)
-        </MudTd>
-    </RowContent>
-    @* Custom row actions: Provision / Activate / Deactivate / Migrate buttons (conditional per row state) *@
-    <RowActions>
-        @if (!context.IsProvisioned)
-        {
-            @* Not yet provisioned — show Provision button *@
-            <MudIconButton Icon="@Icons.Material.Filled.PlayArrow" Size="Size.Small"
-                           Color="Color.Primary" OnClick="@(() => ProvisionTenant(context))"
-                           title="@L["TenantSettings_Provision"].Value" />
-        }
-        else if (!context.IsActive)
-        {
-            @* Provisioned but inactive — show Activate button *@
-            <MudIconButton Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small"
-                           Color="Color.Success" OnClick="@(() => ActivateTenant(context.CompanyId))"
-                           title="@L["TenantSettings_Activate"].Value" />
-        }
-        else
-        {
-            @* Provisioned and active — show Deactivate + Migrate buttons *@
-            <MudIconButton Icon="@Icons.Material.Filled.Block" Size="Size.Small"
-                           Color="Color.Error" OnClick="@(() => DeactivateTenant(context))"
-                           title="@L["TenantSettings_Deactivate"].Value" />
-            <MudIconButton Icon="@Icons.Material.Filled.Storage" Size="Size.Small"
-                           Color="Color.Info" OnClick="@(() => MigrateTenant(context.CompanyId))"
-                           title="@L["TenantSettings_Migrate"].Value" />
-        }
-    </RowActions>
-</AppDataGrid>
+    <NoRecordsContent>
+        <MudAlert Severity="Severity.Info">@L["TenantSettings_NoRecords"]</MudAlert>
+    </NoRecordsContent>
+</MudDataGrid>
 
 @* ========== Create Settings Dialog ========== *@
 <MudDialog @bind-Visible="_showCreateDialog" Options="_dialogOptions">

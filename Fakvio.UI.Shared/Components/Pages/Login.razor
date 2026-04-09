@@ -7,6 +7,7 @@
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
 @inject IConfiguration Configuration
+@inject IJSRuntime JS
 @* Localization service for multi-language support *@
 @inject IStringLocalizer<SharedResource> L
 
@@ -184,7 +185,16 @@
             if (authState.User.Identity?.IsAuthenticated == true)
             {
                 Navigation.NavigateTo("/");
+                return;
             }
+        }
+
+        // Initialize reCAPTCHA v3 with site key from configuration.
+        // If SiteKey is empty (dev mode), the JS function is a no-op.
+        var siteKey = Configuration["Recaptcha:SiteKey"] ?? "";
+        if (!string.IsNullOrEmpty(siteKey))
+        {
+            await JS.InvokeVoidAsync("initRecaptcha", siteKey);
         }
     }
 
@@ -195,8 +205,11 @@
 
         try
         {
-            // Call API to authenticate user
-            var response = await AuthApiService.LoginAsync(_loginRequest);
+            // Get reCAPTCHA v3 token (empty string if not configured — dev mode)
+            var captchaToken = await JS.InvokeAsync<string>("getRecaptchaToken", "login");
+
+            // Call API to authenticate user (captcha token sent via X-Captcha-Token header)
+            var response = await AuthApiService.LoginAsync(_loginRequest, captchaToken);
 
             if (response == null)
             {

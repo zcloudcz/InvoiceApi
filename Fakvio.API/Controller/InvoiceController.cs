@@ -808,10 +808,11 @@ public class InvoiceController : ControllerBase
         [FromQuery] string ids,
         CancellationToken cancellationToken = default)
     {
-        // Parse comma-separated IDs
+        // Parse comma-separated IDs and deduplicate to prevent duplicate entries in the ZIP
         var invoiceIds = ids.Split(',', StringSplitOptions.RemoveEmptyEntries)
             .Select(s => long.TryParse(s.Trim(), out var id) ? id : 0)
             .Where(id => id > 0)
+            .Distinct()
             .ToList();
 
         _logger.LogInformation("GET /api/invoice/bulk/pdf - {Count} invoices", invoiceIds.Count);

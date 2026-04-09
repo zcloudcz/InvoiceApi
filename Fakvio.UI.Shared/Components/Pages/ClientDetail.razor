@@ -339,40 +339,50 @@ else
             </MudGrid>
         </MudPaper>
 
-        <MudTable T="InvoiceDto" ServerData="LoadClientInvoices" @ref="_invoiceTable"
-                  Dense="true" Hover="true" Striped="true" Loading="@_invoiceLoading" LoadingProgressColor="Color.Primary">
-            <HeaderContent>
-                <MudTh><MudTableSortLabel SortLabel="DocumentNumber" T="InvoiceDto">@L["Table_Number"]</MudTableSortLabel></MudTh>
-                <MudTh><MudTableSortLabel SortLabel="IssueDate" T="InvoiceDto">@L["Table_IssueDate"]</MudTableSortLabel></MudTh>
-                <MudTh><MudTableSortLabel SortLabel="DueDate" T="InvoiceDto">@L["Table_DueDate"]</MudTableSortLabel></MudTh>
-                <MudTh><MudTableSortLabel SortLabel="TotalWithVat" T="InvoiceDto">@L["Invoice_TotalWithVat"]</MudTableSortLabel></MudTh>
-                <MudTh>@L["Label_Status"]</MudTh>
-            </HeaderContent>
-            <RowTemplate>
-                <MudTd DataLabel="@L["Table_Number"].Value">
-                    <MudChip T="string" Size="Size.Small" Icon="@Icons.Material.Filled.Description">
-                        @context.DocumentNumber
-                    </MudChip>
-                </MudTd>
-                <MudTd DataLabel="@L["Table_IssueDate"].Value">@context.IssueDate?.ToShortDateString()</MudTd>
-                <MudTd DataLabel="@L["Table_DueDate"].Value">@context.DueDate?.ToShortDateString()</MudTd>
-                <MudTd DataLabel="@L["Invoice_TotalWithVat"].Value">
-                    <strong>@context.TotalWithVat.ToString("N2") @context.CurrencyCode</strong>
-                </MudTd>
-                <MudTd DataLabel="@L["Label_Status"].Value">
-                    <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">
-                        @GetStatusText(context.Status)
-                    </MudChip>
-                </MudTd>
-            </RowTemplate>
+        @* MudDataGrid replaces MudTable for richer column features (filtering, resizing, sorting) *@
+        <MudDataGrid T="InvoiceDto"
+                     ServerData="LoadClientInvoices"
+                     @ref="_invoiceGrid"
+                     Dense="true" Hover="true" Striped="true"
+                     Loading="@_invoiceLoading" LoadingProgressColor="Color.Primary"
+                     SortMode="SortMode.Single"
+                     ColumnResizeMode="ResizeMode.Column">
+            <Columns>
+                @* Document number column with chip display *@
+                <PropertyColumn Property="x => x.DocumentNumber" Title="@L["Table_Number"].Value" Sortable="true">
+                    <CellTemplate>
+                        <MudChip T="string" Size="Size.Small" Icon="@Icons.Material.Filled.Description">
+                            @context.Item.DocumentNumber
+                        </MudChip>
+                    </CellTemplate>
+                </PropertyColumn>
+                @* Issue date — short date format *@
+                <PropertyColumn Property="x => x.IssueDate" Title="@L["Table_IssueDate"].Value" Sortable="true" Format="d" />
+                @* Due date — short date format *@
+                <PropertyColumn Property="x => x.DueDate" Title="@L["Table_DueDate"].Value" Sortable="true" Format="d" />
+                @* Total with VAT — bold amount + currency code *@
+                <PropertyColumn Property="x => x.TotalWithVat" Title="@L["Invoice_TotalWithVat"].Value" Sortable="true">
+                    <CellTemplate>
+                        <strong>@context.Item.TotalWithVat.ToString("N2") @context.Item.CurrencyCode</strong>
+                    </CellTemplate>
+                </PropertyColumn>
+                @* Status column with colored chip *@
+                <PropertyColumn Property="x => x.Status" Title="@L["Label_Status"].Value" Sortable="false">
+                    <CellTemplate>
+                        <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Item.Status)">
+                            @GetStatusText(context.Item.Status)
+                        </MudChip>
+                    </CellTemplate>
+                </PropertyColumn>
+            </Columns>
             <NoRecordsContent>
                 <MudText>@L["Client_NoInvoices"]</MudText>
             </NoRecordsContent>
             <PagerContent>
-                <MudTablePager PageSizeOptions="new int[] { 10, 25, 50 }"
-                               RowsPerPageString="@L["Table_RowsPerPage"].Value" />
+                <MudDataGridPager T="InvoiceDto" PageSizeOptions="new int[] { 10, 25, 50 }"
+                                  RowsPerPageString="@L["Table_RowsPerPage"].Value" />
             </PagerContent>
-        </MudTable>
+        </MudDataGrid>
     }
 }
 
@@ -408,8 +418,8 @@ else
     // OnParametersSetAsync fires every time [Parameter] values change.
     private long _previousId = -1;
 
-    // Invoice history filter state
-    private MudTable<InvoiceDto>? _invoiceTable;
+    // Invoice history filter state — MudDataGrid replaces MudTable
+    private MudDataGrid<InvoiceDto>? _invoiceGrid;
     private string _invoiceSearch = "";
     private EInvoiceStatus? _invoiceStatusFilter;
 
@@ -817,27 +827,31 @@ else
     // --- Invoice history ---
 
     /// <summary>
-    /// Server-side data loading for the client's invoice history table.
+    /// Server-side data loading for the client's invoice history grid.
+    /// GridState provides sort definitions instead of SortLabel/SortDirection used by MudTable.
     /// </summary>
-    private async Task<TableData<InvoiceDto>> LoadClientInvoices(TableState state, CancellationToken ct)
+    private async Task<GridData<InvoiceDto>> LoadClientInvoices(GridState<InvoiceDto> state)
     {
         _invoiceLoading = true;
         StateHasChanged();
 
         try
         {
-            var sortDirection = state.SortDirection == SortDirection.Descending ? "desc" : "asc";
+            // Extract sort info from GridState — MudDataGrid uses SortDefinitions collection
+            var sortDef = state.SortDefinitions.FirstOrDefault();
+            var sortBy = sortDef?.SortBy;
+            var sortDirection = sortDef?.Descending == true ? "desc" : "asc";
 
             var result = await InvoiceService.GetPagedAsync(
                 page: state.Page + 1,
                 pageSize: state.PageSize,
                 search: _invoiceSearch,
-                sortBy: state.SortLabel,
+                sortBy: sortBy,
                 sortDirection: sortDirection,
                 clientId: Id,
                 status: _invoiceStatusFilter);
 
-            return new TableData<InvoiceDto>
+            return new GridData<InvoiceDto>
             {
                 Items = result.Items,
                 TotalItems = result.TotalCount
@@ -846,7 +860,7 @@ else
         catch (Exception ex)
         {
             Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
-            return new TableData<InvoiceDto> { Items = new List<InvoiceDto>(), TotalItems = 0 };
+            return new GridData<InvoiceDto> { Items = new List<InvoiceDto>(), TotalItems = 0 };
         }
         finally
         {
@@ -855,9 +869,12 @@ else
         }
     }
 
+    /// <summary>
+    /// Triggers a server data reload on the invoice grid when search/filter changes.
+    /// </summary>
     private async Task SearchClientInvoices()
     {
-        if (_invoiceTable != null) await _invoiceTable.ReloadServerData();
+        if (_invoiceGrid != null) await _invoiceGrid.ReloadServerData();
     }
 
     private void GoBack() => Navigation.NavigateTo("/clients");

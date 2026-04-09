@@ -73,6 +73,10 @@ public static class ServiceCollectionExtensions
         // Paylibo.com — Czech QR Platba (SPD) generation from domestic bank account format
         services.AddHttpClient<IPayliboClient, PayliboClient>();
 
+        // reCAPTCHA v3 verification — validates tokens from Google's invisible captcha.
+        // When SecretKey is not configured, verification is skipped (dev mode).
+        services.AddHttpClient<ICaptchaService, CaptchaService>();
+
         // ── Core Infrastructure ─────────────────────────────────────────────
 
         // HttpContextAccessor — required by CurrentUserService and HttpContextTenantResolver

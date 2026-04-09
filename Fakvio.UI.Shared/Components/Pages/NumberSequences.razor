@@ -12,16 +12,22 @@
 <MudText Typo="Typo.h4" GutterBottom="true">@L["Nav_NumberSequences"]</MudText>
 <MudText Class="mb-4">@L["NumSeq_Subtitle"]</MudText>
 
-@* ========== Number Sequence Formats — AppDataGrid for consistent styling ========== *@
+@* ========== Number Sequence Formats — MudDataGrid with inline actions ========== *@
 <MudText Typo="Typo.h5" Class="mt-6 mb-2">@L["NumSeq_Formats"]</MudText>
 
-<AppDataGrid TItem="NumberSequenceFormatDto"
+<MudDataGrid T="NumberSequenceFormatDto"
              Items="@_filteredFormats"
+             Dense="true"
+             Hover="true"
+             Striped="true"
              Loading="@_loadingFormats"
-             OnRowClick="@(OpenEditFormatDialog)"
-             OnEdit="@(OpenEditFormatDialog)"
-             ShowDeleteAction="false"
-             NoRecordsText="@L["NumSeq_NoFormats"].Value">
+             LoadingProgressColor="Color.Primary"
+             FilterMode="DataGridFilterMode.ColumnFilterRow"
+             SortMode="SortMode.Single"
+             Filterable="true"
+             ColumnResizeMode="ResizeMode.Column"
+             RowClick="@(args => OpenEditFormatDialog(args.Item))"
+             RowStyleFunc="@((item, idx) => "cursor: pointer;")">
     <ToolBarContent>
         <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
                    StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateFormatDialog">
@@ -32,55 +38,70 @@
                    Color="Color.Warning" />
     </ToolBarContent>
     <Columns>
-        <MudTh>@L["Label_Name"]</MudTh>
-        <MudTh>@L["NumSeq_FormatPattern"]</MudTh>
-        <MudTh>@L["NumSeq_CounterDigits"]</MudTh>
-        <MudTh>@L["NumSeq_ResetsYearly"]</MudTh>
-        <MudTh>@L["NumSeq_ResetsMonthly"]</MudTh>
-        <MudTh>@L["Label_Status"]</MudTh>
+        <PropertyColumn Property="x => x.Name" Title="@L["Label_Name"].Value" />
+        <PropertyColumn Property="x => x.FormatPattern" Title="@L["NumSeq_FormatPattern"].Value">
+            <CellTemplate>
+                <MudChip T="string" Size="Size.Small" Color="Color.Info">@context.Item.FormatPattern</MudChip>
+            </CellTemplate>
+        </PropertyColumn>
+        <PropertyColumn Property="x => x.CounterDigits" Title="@L["NumSeq_CounterDigits"].Value" Filterable="false" />
+        <PropertyColumn Property="x => x.ResetsYearly" Title="@L["NumSeq_ResetsYearly"].Value" Filterable="false">
+            <CellTemplate>
+                <MudCheckBox T="bool" Value="@context.Item.ResetsYearly" ReadOnly="true" Dense="true" />
+            </CellTemplate>
+        </PropertyColumn>
+        <PropertyColumn Property="x => x.ResetsMonthly" Title="@L["NumSeq_ResetsMonthly"].Value" Filterable="false">
+            <CellTemplate>
+                <MudCheckBox T="bool" Value="@context.Item.ResetsMonthly" ReadOnly="true" Dense="true" />
+            </CellTemplate>
+        </PropertyColumn>
+        <PropertyColumn Property="x => x.IsActive" Title="@L["Label_Status"].Value">
+            <CellTemplate>
+                <MudChip T="string" Size="Size.Small" Color="@(context.Item.IsActive ? Color.Success : Color.Default)">
+                    @(context.Item.IsActive ? L["Label_Active"] : L["Label_Inactive"])
+                </MudChip>
+            </CellTemplate>
+        </PropertyColumn>
+        @* Actions column — Edit + Deactivate/Activate per row *@
+        <TemplateColumn T="NumberSequenceFormatDto" Title="@L["Label_Actions"].Value" Sortable="false" Filterable="false"
+                        CellStyle="white-space:nowrap;">
+            <CellTemplate>
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary"
+                               OnClick="@(() => OpenEditFormatDialog(context.Item))" Title="@L["Btn_Edit"].Value" />
+                @if (context.Item.IsActive)
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                   OnClick="@(() => DeactivateFormat(context.Item))" Title="@L["Btn_Delete"].Value" />
+                }
+                else
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.Restore" Size="Size.Small" Color="Color.Success"
+                                   OnClick="@(() => ActivateFormat(context.Item))" Title="@L["Btn_Restore"].Value" />
+                }
+            </CellTemplate>
+        </TemplateColumn>
     </Columns>
-    <RowContent>
-        <MudTd DataLabel="@L["Label_Name"].Value">@context.Name</MudTd>
-        <MudTd DataLabel="@L["NumSeq_FormatPattern"].Value">
-            <MudChip T="string" Size="Size.Small" Color="Color.Info">@context.FormatPattern</MudChip>
-        </MudTd>
-        <MudTd DataLabel="@L["NumSeq_CounterDigits"].Value">@context.CounterDigits</MudTd>
-        <MudTd DataLabel="@L["NumSeq_ResetsYearly"].Value">
-            <MudCheckBox T="bool" Value="@context.ResetsYearly" ReadOnly="true" Dense="true" />
-        </MudTd>
-        <MudTd DataLabel="@L["NumSeq_ResetsMonthly"].Value">
-            <MudCheckBox T="bool" Value="@context.ResetsMonthly" ReadOnly="true" Dense="true" />
-        </MudTd>
-        <MudTd DataLabel="@L["Label_Status"].Value">
-            <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">
-                @(context.IsActive ? L["Label_Active"] : L["Label_Inactive"])
-            </MudChip>
-        </MudTd>
-    </RowContent>
-    <RowActions>
-        @if (context.IsActive)
-        {
-            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
-                           OnClick="@(() => DeactivateFormat(context))" Title="@L["Btn_Delete"].Value" />
-        }
-        else
-        {
-            <MudIconButton Icon="@Icons.Material.Filled.Restore" Size="Size.Small" Color="Color.Success"
-                           OnClick="@(() => ActivateFormat(context))" Title="@L["Btn_Restore"].Value" />
-        }
-    </RowActions>
-</AppDataGrid>
+    <NoRecordsContent>
+        <MudAlert Severity="Severity.Info">@L["NumSeq_NoFormats"]</MudAlert>
+    </NoRecordsContent>
+</MudDataGrid>
 
-@* ========== Number Sequences — AppDataGrid for consistent styling ========== *@
+@* ========== Number Sequences — MudDataGrid with inline actions ========== *@
 <MudText Typo="Typo.h5" Class="mt-6 mb-2">@L["NumSeq_Sequences"]</MudText>
 
-<AppDataGrid TItem="NumberSequenceDto"
+<MudDataGrid T="NumberSequenceDto"
              Items="@_filteredSequences"
+             Dense="true"
+             Hover="true"
+             Striped="true"
              Loading="@_loadingSequences"
-             OnRowClick="@(OpenEditSequenceDialog)"
-             OnEdit="@(OpenEditSequenceDialog)"
-             ShowDeleteAction="false"
-             NoRecordsText="@L["NumSeq_NoSequences"].Value">
+             LoadingProgressColor="Color.Primary"
+             FilterMode="DataGridFilterMode.ColumnFilterRow"
+             SortMode="SortMode.Single"
+             Filterable="true"
+             ColumnResizeMode="ResizeMode.Column"
+             RowClick="@(args => OpenEditSequenceDialog(args.Item))"
+             RowStyleFunc="@((item, idx) => "cursor: pointer;")">
     <ToolBarContent>
         <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
                    StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateSequenceDialog">
@@ -91,56 +112,62 @@
                    Color="Color.Warning" />
     </ToolBarContent>
     <Columns>
-        <MudTh>@L["Label_Name"]</MudTh>
-        <MudTh>@L["NumSeq_DocumentType"]</MudTh>
-        <MudTh>@L["NumSeq_Format"]</MudTh>
-        <MudTh>@L["NumSeq_Prefix"]</MudTh>
-        <MudTh>@L["NumSeq_Suffix"]</MudTh>
-        <MudTh>@L["NumSeq_CurrentNumber"]</MudTh>
-        <MudTh>@L["NumSeq_Preview"]</MudTh>
-        <MudTh>@L["NumSeq_Default"]</MudTh>
+        <PropertyColumn Property="x => x.Name" Title="@L["Label_Name"].Value" />
+        <PropertyColumn Property="x => x.DocumentType" Title="@L["NumSeq_DocumentType"].Value">
+            <CellTemplate>
+                <MudChip T="string" Size="Size.Small"
+                         Color="@(context.Item.DocumentType == EDocumentType.Invoice ? Color.Primary : Color.Warning)">
+                    @(context.Item.DocumentType == EDocumentType.Invoice ? L["Template_DocumentTypeInvoice"] : L["Template_DocumentTypeCreditNote"])
+                </MudChip>
+            </CellTemplate>
+        </PropertyColumn>
+        <TemplateColumn T="NumberSequenceDto" Title="@L["NumSeq_Format"].Value" Sortable="false">
+            <CellTemplate>@context.Item.NumberSequenceFormat?.FormatPattern</CellTemplate>
+        </TemplateColumn>
+        <PropertyColumn Property="x => x.Prefix" Title="@L["NumSeq_Prefix"].Value" />
+        <PropertyColumn Property="x => x.Suffix" Title="@L["NumSeq_Suffix"].Value" />
+        <PropertyColumn Property="x => x.CurrentNumber" Title="@L["NumSeq_CurrentNumber"].Value" Filterable="false" />
+        <TemplateColumn T="NumberSequenceDto" Title="@L["NumSeq_Preview"].Value" Sortable="false" Filterable="false">
+            <CellTemplate>
+                @if (_previews.TryGetValue(context.Item.Id, out var preview))
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Info">@preview</MudChip>
+                }
+            </CellTemplate>
+        </TemplateColumn>
+        <PropertyColumn Property="x => x.IsDefault" Title="@L["NumSeq_Default"].Value" Filterable="false">
+            <CellTemplate>
+                @if (context.Item.IsDefault)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Success">@L["NumSeq_IsDefault"]</MudChip>
+                }
+            </CellTemplate>
+        </PropertyColumn>
+        @* Actions column — Edit + SetDefault/Delete/Restore per row (conditional on state) *@
+        <TemplateColumn T="NumberSequenceDto" Title="@L["Label_Actions"].Value" Sortable="false" Filterable="false"
+                        CellStyle="white-space:nowrap;">
+            <CellTemplate>
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary"
+                               OnClick="@(() => OpenEditSequenceDialog(context.Item))" Title="@L["Btn_Edit"].Value" />
+                @if (!context.Item.IsDefault && context.Item.IsActive)
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.Star" Size="Size.Small" Color="Color.Warning"
+                                   OnClick="@(() => SetAsDefault(context.Item.Id))" Title="@L["NumSeq_SetDefault"].Value" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                   OnClick="@(() => DeactivateSequence(context.Item))" Title="@L["Btn_Delete"].Value" />
+                }
+                @if (!context.Item.IsActive)
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.Restore" Size="Size.Small" Color="Color.Success"
+                                   OnClick="@(() => ActivateSequence(context.Item))" Title="@L["Btn_Restore"].Value" />
+                }
+            </CellTemplate>
+        </TemplateColumn>
     </Columns>
-    <RowContent>
-        <MudTd DataLabel="@L["Label_Name"].Value">@context.Name</MudTd>
-        <MudTd DataLabel="@L["NumSeq_DocumentType"].Value">
-            <MudChip T="string" Size="Size.Small"
-                     Color="@(context.DocumentType == EDocumentType.Invoice ? Color.Primary : Color.Warning)">
-                @(context.DocumentType == EDocumentType.Invoice ? L["Template_DocumentTypeInvoice"] : L["Template_DocumentTypeCreditNote"])
-            </MudChip>
-        </MudTd>
-        <MudTd DataLabel="@L["NumSeq_Format"].Value">@context.NumberSequenceFormat?.FormatPattern</MudTd>
-        <MudTd DataLabel="@L["NumSeq_Prefix"].Value">@context.Prefix</MudTd>
-        <MudTd DataLabel="@L["NumSeq_Suffix"].Value">@context.Suffix</MudTd>
-        <MudTd DataLabel="@L["NumSeq_CurrentNumber"].Value">@context.CurrentNumber</MudTd>
-        <MudTd DataLabel="@L["NumSeq_Preview"].Value">
-            @if (_previews.TryGetValue(context.Id, out var preview))
-            {
-                <MudChip T="string" Size="Size.Small" Color="Color.Info">@preview</MudChip>
-            }
-        </MudTd>
-        <MudTd DataLabel="@L["NumSeq_Default"].Value">
-            @if (context.IsDefault)
-            {
-                <MudChip T="string" Size="Size.Small" Color="Color.Success">@L["NumSeq_IsDefault"]</MudChip>
-            }
-        </MudTd>
-    </RowContent>
-    @* Custom row actions: SetDefault, Delete, Restore (conditional per row) *@
-    <RowActions>
-        @if (!context.IsDefault && context.IsActive)
-        {
-            <MudIconButton Icon="@Icons.Material.Filled.Star" Size="Size.Small" Color="Color.Warning"
-                           OnClick="@(() => SetAsDefault(context.Id))" title="@L["NumSeq_SetDefault"].Value" />
-            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
-                           OnClick="@(() => DeactivateSequence(context))" title="@L["Btn_Delete"].Value" />
-        }
-        @if (!context.IsActive)
-        {
-            <MudIconButton Icon="@Icons.Material.Filled.Restore" Size="Size.Small" Color="Color.Success"
-                           OnClick="@(() => ActivateSequence(context))" Title="@L["Btn_Restore"].Value" />
-        }
-    </RowActions>
-</AppDataGrid>
+    <NoRecordsContent>
+        <MudAlert Severity="Severity.Info">@L["NumSeq_NoSequences"]</MudAlert>
+    </NoRecordsContent>
+</MudDataGrid>
 
 @* ========== Create Format Dialog ========== *@
 <MudDialog @bind-Visible="_showFormatDialog" Options="_dialogOptions">

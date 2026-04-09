@@ -11,58 +11,75 @@
 <MudText Typo="Typo.h4" GutterBottom="true">@L["VatRate_Title"]</MudText>
 <MudText Class="mb-4">@L["VatRate_Subtitle"]</MudText>
 
-@* AppDataGrid provides consistent Dense+Hover+Striped+pointer styling across all grid pages *@
-<AppDataGrid TItem="VatRateDto"
+@* MudDataGrid with client-side Items — small dataset, no server paging needed *@
+<MudDataGrid T="VatRateDto"
              Items="@_vatRates"
-             Loading="@_loading"
-             OnRowClick="@(OpenEditDialog)"
-             OnEdit="@(OpenEditDialog)"
-             OnDelete="@((vr) => DeleteVatRate(vr.Id))"
-             NoRecordsText="@L["VatRate_NoRecords"].Value">
+             Dense="true" Hover="true" Striped="true"
+             Loading="@_loading" LoadingProgressColor="Color.Primary"
+             FilterMode="DataGridFilterMode.ColumnFilterRow"
+             SortMode="SortMode.Single"
+             Filterable="true"
+             ColumnResizeMode="ResizeMode.Column"
+             RowClick="@(args => OpenEditDialog(args.Item))"
+             RowStyleFunc="@((item, idx) => "cursor: pointer;")">
     <ToolBarContent>
         <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialog">
             @L["VatRate_New"]
         </MudButton>
     </ToolBarContent>
     <Columns>
-        <MudTh>@L["VatRate_Name"]</MudTh>
-        <MudTh>@L["VatRate_Rate"]</MudTh>
-        <MudTh>@L["VatRate_ValidFrom"]</MudTh>
-        <MudTh>@L["VatRate_ValidTo"]</MudTh>
-        <MudTh>@L["VatRate_Type"]</MudTh>
-        <MudTh>@L["VatRate_IsDefault"]</MudTh>
-        <MudTh>@L["Label_Status"]</MudTh>
+        @* PropertyColumn: sortable + filterable by default. CellTemplate uses context.Item. *@
+        <PropertyColumn Property="x => x.Name" Title="@L["VatRate_Name"].Value" />
+        <PropertyColumn Property="x => x.Rate" Title="@L["VatRate_Rate"].Value">
+            <CellTemplate>
+                <MudChip T="string" Size="Size.Small" Color="Color.Primary">@context.Item.Rate.ToString("0.##") %</MudChip>
+            </CellTemplate>
+        </PropertyColumn>
+        <PropertyColumn Property="x => x.ValidFrom" Title="@L["VatRate_ValidFrom"].Value" Format="d" />
+        <PropertyColumn Property="x => x.ValidTo" Title="@L["VatRate_ValidTo"].Value" Format="d">
+            <CellTemplate>@(context.Item.ValidTo?.ToShortDateString() ?? "—")</CellTemplate>
+        </PropertyColumn>
+        <PropertyColumn Property="x => x.IsReduced" Title="@L["VatRate_Type"].Value" Filterable="false">
+            <CellTemplate>
+                <MudChip T="string" Size="Size.Small" Color="@(context.Item.IsReduced ? Color.Info : Color.Secondary)">
+                    @(context.Item.IsReduced ? L["VatRate_Reduced"].Value : L["VatRate_Standard"].Value)
+                </MudChip>
+            </CellTemplate>
+        </PropertyColumn>
+        <TemplateColumn T="VatRateDto" Title="@L["VatRate_IsDefault"].Value" Sortable="false" Filterable="false">
+            <CellTemplate>
+                @if (context.Item.IsDefault)
+                {
+                    <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Small" />
+                }
+                else
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.Star" Size="Size.Small" OnClick="@(() => SetAsDefault(context.Item.Id))"
+                                   Title="@L["VatRate_SetAsDefault"].Value"/>
+                }
+            </CellTemplate>
+        </TemplateColumn>
+        <PropertyColumn Property="x => x.IsActive" Title="@L["Label_Status"].Value">
+            <CellTemplate>
+                <MudChip T="string" Size="Size.Small" Color="@(context.Item.IsActive ? Color.Success : Color.Default)">
+                    @(context.Item.IsActive ? L["Label_Active"].Value : L["Label_Inactive"].Value)
+                </MudChip>
+            </CellTemplate>
+        </PropertyColumn>
+        @* Actions column — edit and delete buttons, not sortable/filterable *@
+        <TemplateColumn T="VatRateDto" Title="@L["Label_Actions"].Value" Sortable="false" Filterable="false" CellStyle="white-space:nowrap;">
+            <CellTemplate>
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary"
+                               OnClick="@(() => OpenEditDialog(context.Item))" Title="@L["Btn_Edit"].Value" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                               OnClick="@(() => DeleteVatRate(context.Item.Id))" Title="@L["Btn_Delete"].Value" />
+            </CellTemplate>
+        </TemplateColumn>
     </Columns>
-    <RowContent>
-        <MudTd DataLabel="@L["VatRate_Name"].Value">@context.Name</MudTd>
-        <MudTd DataLabel="@L["VatRate_Rate"].Value">
-            <MudChip T="string" Size="Size.Small" Color="Color.Primary">@context.Rate.ToString("0.##") %</MudChip>
-        </MudTd>
-        <MudTd DataLabel="@L["VatRate_ValidFrom"].Value">@context.ValidFrom.ToShortDateString()</MudTd>
-        <MudTd DataLabel="@L["VatRate_ValidTo"].Value">@(context.ValidTo?.ToShortDateString() ?? "—")</MudTd>
-        <MudTd DataLabel="@L["VatRate_Type"].Value">
-            <MudChip T="string" Size="Size.Small" Color="@(context.IsReduced ? Color.Info : Color.Secondary)">
-                @(context.IsReduced ? L["VatRate_Reduced"].Value : L["VatRate_Standard"].Value)
-            </MudChip>
-        </MudTd>
-        <MudTd DataLabel="@L["VatRate_IsDefault"].Value">
-            @if (context.IsDefault)
-            {
-                <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Small" />
-            }
-            else
-            {
-                <MudIconButton Icon="@Icons.Material.Filled.Star" Size="Size.Small" OnClick="@(() => SetAsDefault(context.Id))"
-                               title="@L["VatRate_SetAsDefault"].Value"/>
-            }
-        </MudTd>
-        <MudTd DataLabel="@L["Label_Status"].Value">
-            <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">
-                @(context.IsActive ? L["Label_Active"].Value : L["Label_Inactive"].Value)
-            </MudChip>
-        </MudTd>
-    </RowContent>
-</AppDataGrid>
+    <NoRecordsContent>
+        <MudAlert Severity="Severity.Info">@L["VatRate_NoRecords"]</MudAlert>
+    </NoRecordsContent>
+</MudDataGrid>
 
 @* ========== Create Dialog — Options enables ESC key to close ========== *@
 <MudDialog @bind-Visible="_showCreateDialog" Options="_dialogOptions">

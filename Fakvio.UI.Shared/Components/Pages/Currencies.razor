@@ -39,38 +39,53 @@
     </MudGrid>
 </MudPaper>
 
-@* Refactored to use AppDataGrid for consistent behavior and reduced boilerplate code *@
-<AppDataGrid TItem="CurrencyDto"
+@* MudDataGrid with ServerData — loads paged data from API, supports sorting and filtering *@
+<MudDataGrid T="CurrencyDto"
              ServerData="LoadData"
-             OnEdit="OpenEditDialog"
-             OnDelete="DeleteCurrency"
-             Loading="@_loading"
-             @ref="_table">
-    @* Define header columns — MudTableSortLabel components enable server-side sorting *@
+             @ref="_dataGrid"
+             Dense="true" Hover="true" Striped="true"
+             Loading="@_loading" LoadingProgressColor="Color.Primary"
+             FilterMode="DataGridFilterMode.ColumnFilterRow"
+             SortMode="SortMode.Single"
+             Filterable="true"
+             ColumnResizeMode="ResizeMode.Column"
+             RowClick="@(args => OpenEditDialog(args.Item))"
+             RowStyleFunc="@((item, idx) => "cursor: pointer;")">
     <Columns>
-        <MudTh><MudTableSortLabel SortLabel="Code" T="CurrencyDto">@L["Currency_Code"]</MudTableSortLabel></MudTh>
-        <MudTh><MudTableSortLabel SortLabel="Name" T="CurrencyDto">@L["Label_Name"]</MudTableSortLabel></MudTh>
-        <MudTh>@L["Currency_Symbol"]</MudTh>
-        <MudTh>@L["Currency_DecimalPlaces"]</MudTh>
-        <MudTh>@L["Currency_SortOrder"]</MudTh>
-        <MudTh><MudTableSortLabel SortLabel="IsActive" T="CurrencyDto">@L["Label_Status"]</MudTableSortLabel></MudTh>
+        @* PropertyColumn: sortable + filterable by default. CellTemplate uses context.Item (CellContext<T>). *@
+        <PropertyColumn Property="x => x.Code" Title="@L["Currency_Code"].Value">
+            <CellTemplate>
+                <MudChip T="string" Size="Size.Small" Color="Color.Primary">@context.Item.Code</MudChip>
+            </CellTemplate>
+        </PropertyColumn>
+        <PropertyColumn Property="x => x.Name" Title="@L["Label_Name"].Value" />
+        <PropertyColumn Property="x => x.Symbol" Title="@L["Currency_Symbol"].Value" Sortable="false" />
+        <PropertyColumn Property="x => x.DecimalPlaces" Title="@L["Currency_DecimalPlaces"].Value" Sortable="false" Filterable="false" />
+        <PropertyColumn Property="x => x.SortOrder" Title="@L["Currency_SortOrder"].Value" Sortable="false" Filterable="false" />
+        <PropertyColumn Property="x => x.IsActive" Title="@L["Label_Status"].Value">
+            <CellTemplate>
+                <MudChip T="string" Size="Size.Small" Color="@(context.Item.IsActive ? Color.Success : Color.Default)">
+                    @(context.Item.IsActive ? L["Label_Active"].Value : L["Label_Inactive"].Value)
+                </MudChip>
+            </CellTemplate>
+        </PropertyColumn>
+        @* Actions column — edit and delete buttons, not sortable/filterable *@
+        <TemplateColumn T="CurrencyDto" Title="@L["Label_Actions"].Value" Sortable="false" Filterable="false" CellStyle="white-space:nowrap;">
+            <CellTemplate>
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary"
+                               OnClick="@(() => OpenEditDialog(context.Item))" Title="@L["Btn_Edit"].Value" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                               OnClick="@(() => DeleteCurrency(context.Item))" Title="@L["Btn_Delete"].Value" />
+            </CellTemplate>
+        </TemplateColumn>
     </Columns>
-    @* Define row cells — context is the CurrencyDto for the current row *@
-    <RowContent>
-        <MudTd DataLabel="@L["Currency_Code"].Value">
-            <MudChip T="string" Size="Size.Small" Color="Color.Primary">@context.Code</MudChip>
-        </MudTd>
-        <MudTd DataLabel="@L["Label_Name"].Value">@context.Name</MudTd>
-        <MudTd DataLabel="@L["Currency_Symbol"].Value">@context.Symbol</MudTd>
-        <MudTd DataLabel="@L["Currency_DecimalPlaces"].Value">@context.DecimalPlaces</MudTd>
-        <MudTd DataLabel="@L["Currency_SortOrder"].Value">@context.SortOrder</MudTd>
-        <MudTd DataLabel="@L["Label_Status"].Value">
-            <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">
-                @(context.IsActive ? L["Label_Active"].Value : L["Label_Inactive"].Value)
-            </MudChip>
-        </MudTd>
-    </RowContent>
-</AppDataGrid>
+    <NoRecordsContent>
+        <MudAlert Severity="Severity.Info">@L["Msg_NoRecords"]</MudAlert>
+    </NoRecordsContent>
+    <PagerContent>
+        <MudDataGridPager T="CurrencyDto" PageSizeOptions="new int[] { 10, 25, 50, 100 }" RowsPerPageString="@L["Table_RowsPerPage"].Value" />
+    </PagerContent>
+</MudDataGrid>
 
 @* Dialog for creating/editing a currency — uses @bind-Visible (not @bind-IsVisible, renamed in MudBlazor v8) *@
 <MudDialog @bind-Visible="_showDialog" Options="_dialogOptions">
@@ -115,8 +130,8 @@
 </MudDialog>
 
 @code {
-    // Changed from MudTable<CurrencyDto> to AppDataGrid<CurrencyDto> to match the refactored component
-    private AppDataGrid<CurrencyDto>? _table;
+    // MudDataGrid reference — used for ReloadServerData() when search/filter changes
+    private MudDataGrid<CurrencyDto>? _dataGrid;
     private MudForm? _form;
     private bool _loading = false;
     private bool _showDialog = false;
@@ -136,29 +151,30 @@
 
     /// <summary>
     /// Loads paged currency data via CurrencyApiService.
-    /// Called by AppDataGrid (via MudTable's ServerData) when the page, sort, or search changes.
-    /// The signature is unchanged — TableState and CancellationToken parameters are passed through by AppDataGrid.
+    /// Called by MudDataGrid's ServerData when the page, sort, or filter changes.
+    /// GridState&lt;T&gt; contains page, pageSize, sort definitions — replaces old TableState.
     /// </summary>
-    private async Task<TableData<CurrencyDto>> LoadData(TableState state, CancellationToken cancellationToken)
+    private async Task<GridData<CurrencyDto>> LoadData(GridState<CurrencyDto> state)
     {
         _loading = true;
         StateHasChanged();
 
         try
         {
-            var sortBy = state.SortLabel ?? "SortOrder";
-            var isDescending = state.SortDirection == SortDirection.Descending;
+            // Extract sort info from GridState — MudDataGrid uses SortDefinitions collection
+            var sortDef = state.SortDefinitions.FirstOrDefault();
+            var sortBy = sortDef?.SortBy ?? "SortOrder";
+            var isDescending = sortDef?.Descending ?? false;
 
-            // Use CurrencyApiService instead of raw HttpClient
             var response = await CurrencyService.GetPagedAsync(
-                page: state.Page + 1,
+                page: state.Page + 1, // MudDataGrid is 0-based, API is 1-based
                 pageSize: state.PageSize,
                 search: _searchString,
                 isActive: _filterActive,
                 sortBy: sortBy,
                 isDescending: isDescending);
 
-            return new TableData<CurrencyDto>
+            return new GridData<CurrencyDto>
             {
                 Items = response.Items,
                 TotalItems = response.TotalCount
@@ -174,18 +190,18 @@
             StateHasChanged();
         }
 
-        return new TableData<CurrencyDto> { Items = new List<CurrencyDto>(), TotalItems = 0 };
+        return new GridData<CurrencyDto> { Items = new List<CurrencyDto>(), TotalItems = 0 };
     }
 
     /// <summary>
     /// Triggers a server data reload when search/filter parameters change.
-    /// Uses AppDataGrid's ReloadServerDataAsync method instead of MudTable's ReloadServerData.
+    /// Calls MudDataGrid.ReloadServerData() which re-invokes the ServerData callback.
     /// </summary>
     private async Task SearchCurrencies()
     {
-        if (_table != null)
+        if (_dataGrid != null)
         {
-            await _table.ReloadServerDataAsync();
+            await _dataGrid.ReloadServerData();
         }
     }
 

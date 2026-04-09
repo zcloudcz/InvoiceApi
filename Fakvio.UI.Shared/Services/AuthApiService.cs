@@ -20,21 +20,24 @@ public class AuthApiService
     }
 
     /// <summary>
-    /// Authenticates user with email and password
+    /// Authenticates user with email and password.
+    /// Sends reCAPTCHA v3 token via X-Captcha-Token header for bot protection.
     /// </summary>
-    public async Task<LoginResponse?> LoginAsync(LoginRequest loginRequest)
+    public async Task<LoginResponse?> LoginAsync(LoginRequest loginRequest, string? captchaToken = null)
     {
         try
         {
-            var response = await _httpClient.PostAsJsonAsync("/api/auth/login", loginRequest);
+            using var request = new HttpRequestMessage(HttpMethod.Post, "/api/auth/login");
+            request.Content = JsonContent.Create(loginRequest);
+            if (!string.IsNullOrEmpty(captchaToken))
+                request.Headers.Add("X-Captcha-Token", captchaToken);
+
+            var response = await _httpClient.SendAsync(request);
 
             if (!response.IsSuccessStatusCode)
-            {
                 return null;
-            }
 
-            var loginResponse = await response.Content.ReadFromJsonAsync<LoginResponse>();
-            return loginResponse;
+            return await response.Content.ReadFromJsonAsync<LoginResponse>();
         }
         catch (Exception)
         {
@@ -46,15 +49,23 @@ public class AuthApiService
     /// Registers a new company and admin user.
     /// Returns registration response with verification instructions.
     /// </summary>
-    public async Task<RegisterResponse?> RegisterAsync(RegisterRequest request)
+    /// <summary>
+    /// Registers a new company and admin user.
+    /// Sends reCAPTCHA v3 token via X-Captcha-Token header for bot protection.
+    /// </summary>
+    public async Task<RegisterResponse?> RegisterAsync(RegisterRequest registerRequest, string? captchaToken = null)
     {
         try
         {
-            var response = await _httpClient.PostAsJsonAsync("/api/auth/register", request);
+            using var request = new HttpRequestMessage(HttpMethod.Post, "/api/auth/register");
+            request.Content = JsonContent.Create(registerRequest);
+            if (!string.IsNullOrEmpty(captchaToken))
+                request.Headers.Add("X-Captcha-Token", captchaToken);
+
+            var response = await _httpClient.SendAsync(request);
 
             if (!response.IsSuccessStatusCode)
             {
-                // Try to extract error message from response body
                 var errorContent = await response.Content.ReadAsStringAsync();
                 throw new InvalidOperationException(
                     !string.IsNullOrEmpty(errorContent) ? errorContent : "Registration failed.");
@@ -64,7 +75,7 @@ public class AuthApiService
         }
         catch (InvalidOperationException)
         {
-            throw; // Re-throw business errors
+            throw;
         }
         catch (Exception ex)
         {

@@ -130,97 +130,133 @@
     </MudPaper>
 }
 
-@* AppDataGrid for consistent server-side pagination with multi-select for bulk operations *@
-<AppDataGrid TItem="InvoiceDto"
+@* MudDataGrid with server-side pagination, column filters, multi-select *@
+<MudDataGrid T="InvoiceDto"
              ServerData="LoadServerData"
-             @ref="_table"
-             OnRowClick="OnInvoiceRowClick"
-             ShowEditAction="false"
-             ShowDeleteAction="false"
+             @ref="_dataGrid"
+             Dense="true"
+             Hover="true"
+             Striped="true"
              Loading="@_loading"
+             LoadingProgressColor="Color.Primary"
              MultiSelection="true"
              SelectedItems="_selectedInvoices"
              SelectedItemsChanged="@(items => { _selectedInvoices = items; StateHasChanged(); })"
-             NoRecordsText="@L["Invoice_NoRecords"].Value"
-             CustomRowStyle="@GetClientRowStyle">
+             RowClick="@(args => OnInvoiceRowClick(args.Item))"
+             RowStyleFunc="@DataGridRowStyle"
+             FilterMode="DataGridFilterMode.ColumnFilterRow"
+             SortMode="SortMode.Single"
+             Filterable="true"
+             ColumnResizeMode="ResizeMode.Column">
     <Columns>
-        <MudTh><MudTableSortLabel SortLabel="DocumentNumber" T="InvoiceDto">@L["Table_Number"]</MudTableSortLabel></MudTh>
-        <MudTh><MudTableSortLabel SortLabel="ClientName" T="InvoiceDto">@L["Invoice_Client"]</MudTableSortLabel></MudTh>
-        <MudTh><MudTableSortLabel SortLabel="IssueDate" T="InvoiceDto">@L["Table_IssueDate"]</MudTableSortLabel></MudTh>
-        <MudTh><MudTableSortLabel SortLabel="DueDate" T="InvoiceDto">@L["Table_DueDate"]</MudTableSortLabel></MudTh>
-        <MudTh><MudTableSortLabel SortLabel="TotalWithVat" T="InvoiceDto">@L["Invoice_TotalWithVat"]</MudTableSortLabel></MudTh>
-        <MudTh>@L["Label_Status"]</MudTh>
-        <MudTh>@L["Invoice_EmailColumn"]</MudTh>
-    </Columns>
-    <RowContent>
-        <MudTd DataLabel="@L["Table_Number"].Value">
-            <MudChip T="string" Size="Size.Small" Icon="@Icons.Material.Filled.Description">
-                @context.DocumentNumber
-            </MudChip>
-        </MudTd>
-        <MudTd DataLabel="@L["Invoice_Client"].Value">@context.ClientName</MudTd>
-        <MudTd DataLabel="@L["Table_IssueDate"].Value">@context.IssueDate?.ToShortDateString()</MudTd>
-        <MudTd DataLabel="@L["Table_DueDate"].Value">@context.DueDate?.ToShortDateString()</MudTd>
-        <MudTd DataLabel="@L["Invoice_TotalWithVat"].Value">
-            <strong>@context.TotalWithVat.ToString("N2") @context.CurrencyCode</strong>
-        </MudTd>
-        <MudTd DataLabel="@L["Label_Status"].Value">
-            <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">
-                @GetStatusText(context.Status)
-            </MudChip>
-        </MudTd>
-        @* Email sent indicator — green icon with tooltip showing date, or dash if not sent *@
-        <MudTd DataLabel="@L["Invoice_EmailColumn"].Value">
-            @if (context.IsSentByEmail)
-            {
-                <MudTooltip Text="@context.LastSentByEmailAt?.ToString("g")">
-                    <MudIcon Icon="@Icons.Material.Filled.MarkEmailRead" Color="Color.Success" Size="Size.Small" />
+        @* Document number — sortable, filterable *@
+        <PropertyColumn Property="x => x.DocumentNumber" Title="@L["Table_Number"].Value" SortBy="x => x.DocumentNumber">
+            <CellTemplate>
+                <MudChip T="string" Size="Size.Small" Icon="@Icons.Material.Filled.Description">
+                    @context.Item.DocumentNumber
+                </MudChip>
+            </CellTemplate>
+        </PropertyColumn>
+
+        @* Client name — sortable, filterable *@
+        <PropertyColumn Property="x => x.ClientName" Title="@L["Invoice_Client"].Value" />
+
+        @* Issue date — sortable, filterable *@
+        <PropertyColumn Property="x => x.IssueDate" Title="@L["Table_IssueDate"].Value"
+                        Format="d" />
+
+        @* Taxable supply date (DUZP) — only visible when issuer is VAT payer *@
+        @if (_issuerIsVatPayer)
+        {
+            <PropertyColumn Property="x => x.TaxableSupplyDate" Title="@L["Invoice_TaxableSupplyDate"].Value"
+                            Format="d" />
+        }
+
+        @* Due date — sortable, filterable *@
+        <PropertyColumn Property="x => x.DueDate" Title="@L["Table_DueDate"].Value"
+                        Format="d" />
+
+        @* Total with VAT — sortable, filterable *@
+        <PropertyColumn Property="x => x.TotalWithVat" Title="@L["Invoice_TotalWithVat"].Value"
+                        SortBy="x => x.TotalWithVat">
+            <CellTemplate>
+                <strong>@context.Item.TotalWithVat.ToString("N2") @context.Item.CurrencyCode</strong>
+            </CellTemplate>
+        </PropertyColumn>
+
+        @* Status — filterable chip *@
+        <PropertyColumn Property="x => x.Status" Title="@L["Label_Status"].Value" Filterable="true">
+            <CellTemplate>
+                <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Item.Status)">
+                    @GetStatusText(context.Item.Status)
+                </MudChip>
+            </CellTemplate>
+        </PropertyColumn>
+
+        @* Email sent indicator *@
+        <TemplateColumn T="InvoiceDto" Title="@L["Invoice_EmailColumn"].Value" Sortable="false" Filterable="false">
+            <CellTemplate>
+                @if (context.Item.IsSentByEmail)
+                {
+                    <MudTooltip Text="@context.Item.LastSentByEmailAt?.ToString("g")">
+                        <MudIcon Icon="@Icons.Material.Filled.MarkEmailRead" Color="Color.Success" Size="Size.Small" />
+                    </MudTooltip>
+                }
+                else
+                {
+                    <MudText Color="Color.Secondary">—</MudText>
+                }
+            </CellTemplate>
+        </TemplateColumn>
+
+        @* Row actions column — conditional buttons based on invoice status *@
+        <TemplateColumn T="InvoiceDto" Title="@L["Label_Actions"].Value" Sortable="false" Filterable="false"
+                        CellStyle="white-space:nowrap;">
+            <CellTemplate>
+                <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" Color="Color.Info"
+                               OnClick="@(() => Navigation.NavigateTo($"/invoices/{context.Item.Id}"))" title="@L["Btn_View"].Value" />
+                @if (context.Item.Status == EInvoiceStatus.Draft)
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.Send" Size="Size.Small" Color="Color.Success"
+                                   OnClick="@(() => IssueInvoice(context.Item.Id))" title="@L["Invoice_Issue"].Value" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                   OnClick="@(() => DeleteInvoice(context.Item.Id))" title="@L["Btn_Delete"].Value" />
+                }
+                @if (context.Item.Status == EInvoiceStatus.Completed)
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.Check" Size="Size.Small" Color="Color.Success"
+                                   OnClick="@(() => MarkAsPaid(context.Item.Id))" title="@L["Invoice_MarkAsPaid"].Value" />
+                }
+                @if (context.Item.Status == EInvoiceStatus.Deleted)
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.RestoreFromTrash" Size="Size.Small" Color="Color.Warning"
+                                   OnClick="@(() => RestoreInvoice(context.Item.Id))" title="@L["Invoice_Restore"].Value" />
+                }
+                <MudMenu Icon="@Icons.Material.Filled.PictureAsPdf" Size="Size.Small" Color="Color.Secondary"
+                         title="@L["Invoice_DownloadPdf"].Value" Dense="true">
+                    <MudMenuItem OnClick="@(() => DownloadPdf(context.Item))">@L["Pdf_DefaultTemplate"]</MudMenuItem>
+                    @foreach (var tmpl in _pdfTemplates)
+                    {
+                        <MudMenuItem OnClick="@(() => DownloadPdfWithTemplate(context.Item, tmpl.Id))">@tmpl.Name</MudMenuItem>
+                    }
+                </MudMenu>
+                <MudIconButton Icon="@Icons.Material.Filled.Email" Size="Size.Small" Color="Color.Tertiary"
+                               OnClick="@(() => OpenEmailDialog(context.Item))" title="@L["Invoice_SendByEmail"].Value" />
+                <MudTooltip Text="@L["Invoice_CreateFromTemplate"].Value">
+                    <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small" Color="Color.Primary"
+                                   OnClick="@(() => OpenCreateTemplateDialog(context.Item))" />
                 </MudTooltip>
-            }
-            else
-            {
-                <MudText Color="Color.Secondary">—</MudText>
-            }
-        </MudTd>
-    </RowContent>
-    @* Custom row actions — conditional based on invoice status *@
-    <RowActions>
-        <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" Color="Color.Info"
-                       OnClick="@(() => Navigation.NavigateTo($"/invoices/{context.Id}"))" title="@L["Btn_View"].Value" />
-        @if (context.Status == EInvoiceStatus.Draft)
-        {
-            <MudIconButton Icon="@Icons.Material.Filled.Send" Size="Size.Small" Color="Color.Success"
-                           OnClick="@(() => IssueInvoice(context.Id))" title="@L["Invoice_Issue"].Value" />
-            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
-                           OnClick="@(() => DeleteInvoice(context.Id))" title="@L["Btn_Delete"].Value" />
-        }
-        @if (context.Status == EInvoiceStatus.Completed)
-        {
-            <MudIconButton Icon="@Icons.Material.Filled.Check" Size="Size.Small" Color="Color.Success"
-                           OnClick="@(() => MarkAsPaid(context.Id))" title="@L["Invoice_MarkAsPaid"].Value" />
-        }
-        @if (context.Status == EInvoiceStatus.Deleted)
-        {
-            <MudIconButton Icon="@Icons.Material.Filled.RestoreFromTrash" Size="Size.Small" Color="Color.Warning"
-                           OnClick="@(() => RestoreInvoice(context.Id))" title="@L["Invoice_Restore"].Value" />
-        }
-        @* PDF download with template selection — primary: default template, menu: pick specific template *@
-        <MudMenu Icon="@Icons.Material.Filled.PictureAsPdf" Size="Size.Small" Color="Color.Secondary"
-                 title="@L["Invoice_DownloadPdf"].Value" Dense="true">
-            <MudMenuItem OnClick="@(() => DownloadPdf(context))">@L["Pdf_DefaultTemplate"]</MudMenuItem>
-            @foreach (var tmpl in _pdfTemplates)
-            {
-                <MudMenuItem OnClick="@(() => DownloadPdfWithTemplate(context, tmpl.Id))">@tmpl.Name</MudMenuItem>
-            }
-        </MudMenu>
-        <MudIconButton Icon="@Icons.Material.Filled.Email" Size="Size.Small" Color="Color.Tertiary"
-                       OnClick="@(() => OpenEmailDialog(context))" title="@L["Invoice_SendByEmail"].Value" />
-        <MudTooltip Text="@L["Invoice_CreateFromTemplate"].Value">
-            <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small" Color="Color.Primary"
-                           OnClick="@(() => OpenCreateTemplateDialog(context))" />
-        </MudTooltip>
-    </RowActions>
-</AppDataGrid>
+            </CellTemplate>
+        </TemplateColumn>
+    </Columns>
+    <NoRecordsContent>
+        <MudAlert Severity="Severity.Info">@L["Invoice_NoRecords"]</MudAlert>
+    </NoRecordsContent>
+    <PagerContent>
+        <MudDataGridPager T="InvoiceDto" PageSizeOptions="new int[] { 10, 25, 50, 100 }"
+                          RowsPerPageString="@L["Table_RowsPerPage"].Value" />
+    </PagerContent>
+</MudDataGrid>
 
 @* Email dialog - allows user to enter recipient email and send invoice *@
 <MudDialog @bind-Visible="_showEmailDialog" Options="_emailDialogOptions">
@@ -326,11 +362,14 @@
     [SupplyParameterFromQuery(Name = "type")]
     public string? TypeFilter { get; set; }
 
-    private AppDataGrid<InvoiceDto>? _table;
+    private MudDataGrid<InvoiceDto>? _dataGrid;
     private bool _loading = false;
 
     // Computed: true when navigated from "Credit Notes" nav link
     private bool _isCreditNoteView => TypeFilter == "CreditNote";
+
+    // Whether the issuer (logged-in company) is a VAT payer — controls DUZP column visibility
+    private bool _issuerIsVatPayer = false;
 
     // Filter state
     private string _searchString = "";
@@ -383,14 +422,28 @@
             _filterDocumentType = EDocumentType.CreditNote;
         }
 
-        // Load clients, templates, and PDF templates in parallel — all needed for dropdowns
-        await Task.WhenAll(LoadClients(), LoadTemplates(), LoadPdfTemplates());
+        // Load clients, templates, PDF templates, and issuer info in parallel
+        await Task.WhenAll(LoadClients(), LoadTemplates(), LoadPdfTemplates(), LoadIssuerAsync());
     }
 
     private async Task LoadClients()
     {
         try { _allClients = await ClientService.GetAllAsync(includeInactive: false); }
         catch (Exception ex) { Snackbar.Add($"Error loading clients: {ex.Message}", Severity.Error); }
+    }
+
+    /// <summary>
+    /// Loads the issuer (current company) to check VAT payer status.
+    /// When the issuer is a VAT payer, the Taxable Supply Date (DUZP) column is shown.
+    /// </summary>
+    private async Task LoadIssuerAsync()
+    {
+        try
+        {
+            var issuer = await ClientService.GetIssuerAsync();
+            _issuerIsVatPayer = issuer?.IsVatPayer ?? false;
+        }
+        catch { /* Issuer may not exist yet — column simply stays hidden */ }
     }
 
     /// <summary>
@@ -419,23 +472,37 @@
     }
 
     /// <summary>
-    /// Server-side data loading callback for AppDataGrid.
+    /// Server-side data loading callback for MudDataGrid.
     /// Passes all current filter values to the API.
     /// </summary>
-    private async Task<TableData<InvoiceDto>> LoadServerData(TableState state, CancellationToken ct)
+    /// <summary>
+    /// Server-side data loading callback for MudDataGrid.
+    /// GridState contains page, pageSize, sort definitions.
+    /// Column-level filters from FilterMode.ColumnFilterRow are handled client-side by MudDataGrid
+    /// (after server returns data), while toolbar filters are sent to the API.
+    /// </summary>
+    private async Task<GridData<InvoiceDto>> LoadServerData(GridState<InvoiceDto> state)
     {
         _loading = true;
         StateHasChanged();
 
         try
         {
-            var sortDirection = state.SortDirection == SortDirection.Descending ? "desc" : "asc";
+            // Extract sort info from GridState — MudDataGrid uses SortDefinitions collection
+            string? sortBy = null;
+            string sortDirection = "desc";
+            var sortDef = state.SortDefinitions.FirstOrDefault();
+            if (sortDef != null)
+            {
+                sortBy = sortDef.SortBy;
+                sortDirection = sortDef.Descending ? "desc" : "asc";
+            }
 
             var result = await InvoiceService.GetPagedAsync(
                 page: state.Page + 1,
                 pageSize: state.PageSize,
                 search: _searchString,
-                sortBy: state.SortLabel,
+                sortBy: sortBy,
                 sortDirection: sortDirection,
                 documentType: _filterDocumentType,
                 status: _filterStatus,
@@ -443,7 +510,7 @@
                 issueDateFrom: _issueDateFrom,
                 issueDateTo: _issueDateTo);
 
-            return new TableData<InvoiceDto>
+            return new GridData<InvoiceDto>
             {
                 Items = result.Items,
                 TotalItems = result.TotalCount
@@ -452,7 +519,7 @@
         catch (Exception ex)
         {
             Snackbar.Add($"Error loading invoices: {ex.Message}", Severity.Error);
-            return new TableData<InvoiceDto> { Items = new List<InvoiceDto>(), TotalItems = 0 };
+            return new GridData<InvoiceDto> { Items = new List<InvoiceDto>(), TotalItems = 0 };
         }
         finally
         {
@@ -466,7 +533,7 @@
     /// </summary>
     private async Task SearchInvoices()
     {
-        if (_table != null) await _table.ReloadServerDataAsync();
+        if (_dataGrid != null) await _dataGrid.ReloadServerData();
     }
 
     /// <summary>
@@ -865,7 +932,8 @@
         StateHasChanged();
         try
         {
-            var zipBytes = await InvoiceService.BulkExportPdfAsync(_selectedInvoices.Select(i => i.Id).ToList());
+            // Deduplicate IDs — HashSet uses reference equality so duplicates can sneak in after table refresh
+            var zipBytes = await InvoiceService.BulkExportPdfAsync(_selectedInvoices.Select(i => i.Id).Distinct().ToList());
             if (zipBytes != null && zipBytes.Length > 0)
             {
                 var base64 = Convert.ToBase64String(zipBytes);
@@ -938,6 +1006,18 @@
     /// Converts hex color to rgba with low opacity so text remains readable.
     /// Uses !important to override MudBlazor's striped row styling.
     /// </summary>
+    /// <summary>
+    /// Row style function for MudDataGrid — combines cursor pointer + client color highlighting.
+    /// MudDataGrid RowStyleFunc signature: (InvoiceDto item, int index) → string.
+    /// </summary>
+    private string DataGridRowStyle(InvoiceDto item, int index)
+    {
+        var style = "cursor: pointer;";
+        if (!string.IsNullOrEmpty(item.ClientColor))
+            style += $" background-color: {HexToRgba(item.ClientColor, 0.12)} !important;";
+        return style;
+    }
+
     private string GetClientRowStyle(InvoiceDto invoice)
     {
         if (string.IsNullOrEmpty(invoice.ClientColor)) return "";
