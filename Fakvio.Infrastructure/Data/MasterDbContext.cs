@@ -492,6 +492,11 @@ public class MasterDbContext : DbContext
             entity.Property(e => e.OneDriveRefreshToken).HasMaxLength(2000);
             entity.Property(e => e.OneDriveFolderId).HasMaxLength(500);
             entity.Property(e => e.OneDriveFolderName).HasMaxLength(500);
+
+            // ── Azure Blob Storage settings (all optional) ──────────────────
+            // Connection string encrypted at rest via ICredentialProtector.
+            entity.Property(e => e.AzureBlobConnectionString).HasMaxLength(2000);
+            entity.Property(e => e.AzureBlobContainerPrefix).HasMaxLength(100);
         });
     }
 
@@ -677,6 +682,11 @@ public class MasterDbContext : DbContext
             entity.Property(e => e.SmtpSenderName)
                 .IsRequired()
                 .HasMaxLength(200);
+
+            // ── Azure Blob Storage settings (all optional) ──────────────────
+            // System-wide blob storage config. Connection string encrypted at rest.
+            entity.Property(e => e.AzureBlobConnectionString).HasMaxLength(2000);
+            entity.Property(e => e.AzureBlobContainerPrefix).HasMaxLength(100);
         });
     }
 

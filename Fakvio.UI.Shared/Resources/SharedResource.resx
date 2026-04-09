@@ -1203,4 +1203,30 @@
   <data name="DateFilter_Before" xml:space="preserve"><value>před</value></data>
   <data name="DateFilter_OnOrBefore" xml:space="preserve"><value>do</value></data>
   <data name="DateFilter_Range" xml:space="preserve"><value>rozmezí</value></data>
+  <!-- File Attachments -->
+  <data name="FileAttachments_Title" xml:space="preserve"><value>Přílohy</value></data>
+  <data name="FileAttachments_Upload" xml:space="preserve"><value>Nahrát</value></data>
+  <data name="FileAttachments_Uploading" xml:space="preserve"><value>Nahrávám...</value></data>
+  <data name="FileAttachments_NoFiles" xml:space="preserve"><value>Žádné přílohy</value></data>
+  <data name="FileAttachments_FileName" xml:space="preserve"><value>Název souboru</value></data>
+  <data name="FileAttachments_Size" xml:space="preserve"><value>Velikost</value></data>
+  <data name="FileAttachments_Description" xml:space="preserve"><value>Popis</value></data>
+  <data name="FileAttachments_UploadedAt" xml:space="preserve"><value>Nahráno</value></data>
+  <data name="FileAttachments_Actions" xml:space="preserve"><value>Akce</value></data>
+  <data name="FileAttachments_Download" xml:space="preserve"><value>Stáhnout</value></data>
+  <data name="FileAttachments_Delete" xml:space="preserve"><value>Smazat</value></data>
+  <data name="FileAttachments_DeleteTitle" xml:space="preserve"><value>Smazat přílohu</value></data>
+  <data name="FileAttachments_DeleteConfirm" xml:space="preserve"><value>Opravdu chcete smazat soubor "{0}"?</value></data>
+  <data name="FileAttachments_Deleted" xml:space="preserve"><value>Příloha byla smazána</value></data>
+  <data name="FileAttachments_DeleteError" xml:space="preserve"><value>Chyba při mazání přílohy</value></data>
+  <data name="FileAttachments_UploadSuccess" xml:space="preserve"><value>{0} soubor(ů) úspěšně nahráno</value></data>
+  <data name="FileAttachments_UploadError" xml:space="preserve"><value>Chyba při nahrávání souboru "{0}"</value></data>
+  <data name="FileAttachments_FileTooLarge" xml:space="preserve"><value>Soubor "{0}" je příliš velký (max {1})</value></data>
+  <data name="FileAttachments_LoadError" xml:space="preserve"><value>Chyba při načítání příloh</value></data>
+  <data name="FileAttachments_DownloadError" xml:space="preserve"><value>Chyba při stahování souboru</value></data>
+  <!-- Azure Blob Storage Settings -->
+  <data name="Settings_AzureBlobStorage" xml:space="preserve"><value>Azure Blob Storage</value></data>
+  <data name="Settings_AzureBlobConnectionString" xml:space="preserve"><value>Connection String</value></data>
+  <data name="Settings_AzureBlobContainerPrefix" xml:space="preserve"><value>Prefix kontejneru</value></data>
+  <data name="Settings_AzureBlobContainerPrefixHelper" xml:space="preserve"><value>Výchozí: "tenant". Kontejner: {prefix}-{companyId}</value></data>
 </root>

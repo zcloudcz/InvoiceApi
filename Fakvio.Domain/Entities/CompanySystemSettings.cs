@@ -271,4 +271,24 @@ public class CompanySystemSettings : BaseEntity
     /// Null/empty means "use system default model".
     /// </summary>
     public string? AiOllamaModel { get; set; }
+
+    // ─── Azure Blob Storage Settings ────────────────────────────────────────
+    // Company-specific blob storage configuration for file attachments.
+    // When set, overrides the system-wide settings from SystemConfiguration.
+    // Null/empty means "use system blob storage settings" (3-tier fallback).
+    // Connection string is encrypted at rest via ICredentialProtector.
+
+    /// <summary>
+    /// Azure Blob Storage connection string for this company (encrypted at rest).
+    /// When non-empty, this company uses its own storage account.
+    /// Null/empty means "use system-wide AzureBlobConnectionString from SystemConfiguration".
+    /// </summary>
+    public string? AzureBlobConnectionString { get; set; }
+
+    /// <summary>
+    /// Override for the blob container name prefix.
+    /// Null/empty means "use system-wide prefix" (default: "tenant").
+    /// Container name: "{prefix}-{companyId}" (e.g., "tenant-42").
+    /// </summary>
+    public string? AzureBlobContainerPrefix { get; set; }
 }

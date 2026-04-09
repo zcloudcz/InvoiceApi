@@ -395,6 +395,14 @@ else
         </MudDataGrid>
         <GridStatePersistence T="InvoiceDto" DataGrid="_invoiceGrid" GridKey="client-invoices" />
     }
+
+    @* File attachments — entity-agnostic component, works for any entity *@
+    @if (!_isCreateMode)
+    {
+        <FileAttachmentManager EntityName="Client"
+                               RecordId="_client!.Id"
+                               ReadOnly="@(!_isEditing)" />
+    }
 }
 
 @code {

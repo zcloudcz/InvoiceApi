@@ -114,4 +114,24 @@ public class SystemConfiguration : BaseEntity
 
     /// <summary>Ollama model identifier (e.g., "gemma3:12b").</summary>
     public string? AiOllamaModel { get; set; }
+
+    // ─── Azure Blob Storage Settings ────────────────────────────────────────
+    // System-wide blob storage configuration for file attachments.
+    // Company-level settings in CompanySystemSettings take priority over these.
+    // Connection string is encrypted at rest via ICredentialProtector.
+
+    /// <summary>
+    /// Azure Blob Storage connection string (encrypted at rest).
+    /// Used by AzureBlobFileStorage for tenant file attachments.
+    /// Company-level AzureBlobConnectionString overrides this.
+    /// Example: "DefaultEndpointsProtocol=https;AccountName=...;AccountKey=...;EndpointSuffix=core.windows.net"
+    /// </summary>
+    public string? AzureBlobConnectionString { get; set; }
+
+    /// <summary>
+    /// Prefix for blob container names. Default: "tenant".
+    /// Container name is built as "{prefix}-{companyId}" (e.g., "tenant-42").
+    /// Override this if you need a different naming convention for your storage account.
+    /// </summary>
+    public string? AzureBlobContainerPrefix { get; set; }
 }

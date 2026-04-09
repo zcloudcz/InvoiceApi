@@ -1,0 +1,346 @@
+@using Fakvio.Contracts.Dto.FileAttachment
+@using Fakvio.UI.Shared.Services
+@using Microsoft.Extensions.Localization
+@inject FileAttachmentApiService FileAttachmentService
+@inject IStringLocalizer<SharedResource> L
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+@*
+    Reusable file attachment manager component.
+    Drop this on any entity detail page to enable file uploads, downloads, and deletions.
+
+    Usage:
+        <FileAttachmentManager EntityName="Invoice" RecordId="_invoice.Id" />
+        <FileAttachmentManager EntityName="Client" RecordId="_client.Id" ReadOnly="true" />
+
+    The component is fully self-contained — it manages its own state, loads attachments
+    on initialization, and handles all CRUD operations via FileAttachmentApiService.
+*@
+
+@if (RecordId > 0)
+{
+    <MudPaper Class="pa-4 mt-4" Elevation="1">
+        @* Header with title and upload button *@
+        <div class="d-flex align-center justify-space-between mb-3">
+            <MudText Typo="Typo.h6">
+                <MudIcon Icon="@Icons.Material.Filled.AttachFile" Class="mr-1" Size="Size.Small" />
+                @L["FileAttachments_Title"] (@_attachments.Count)
+            </MudText>
+
+            @if (!ReadOnly)
+            {
+                <MudFileUpload T="IReadOnlyList<IBrowserFile>"
+                               FilesChanged="HandleFilesSelected"
+                               MaximumFileCount="10"
+                               Accept="@AllowedFileTypes">
+                    <ActivatorContent>
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Primary"
+                                   StartIcon="@Icons.Material.Filled.CloudUpload"
+                                   Disabled="_isUploading">
+                            @if (_isUploading)
+                            {
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                                @L["FileAttachments_Uploading"]
+                            }
+                            else
+                            {
+                                @L["FileAttachments_Upload"]
+                            }
+                        </MudButton>
+                    </ActivatorContent>
+                </MudFileUpload>
+            }
+        </div>
+
+        @* Upload progress *@
+        @if (_isUploading)
+        {
+            <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mb-3" />
+        }
+
+        @* File list *@
+        @if (_isLoading)
+        {
+            <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+        }
+        else if (_attachments.Count == 0)
+        {
+            <MudText Typo="Typo.body2" Color="Color.Default" Class="py-4 text-center">
+                @L["FileAttachments_NoFiles"]
+            </MudText>
+        }
+        else
+        {
+            <MudTable Items="_attachments" Dense="true" Hover="true" Elevation="0"
+                      Breakpoint="Breakpoint.Sm">
+                <HeaderContent>
+                    <MudTh>@L["FileAttachments_FileName"]</MudTh>
+                    <MudTh>@L["FileAttachments_Size"]</MudTh>
+                    <MudTh>@L["FileAttachments_Description"]</MudTh>
+                    <MudTh>@L["FileAttachments_UploadedAt"]</MudTh>
+                    <MudTh Style="width: 120px;">@L["FileAttachments_Actions"]</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="@L["FileAttachments_FileName"]">
+                        <div class="d-flex align-center">
+                            <MudIcon Icon="@GetFileIcon(context.ContentType)" Size="Size.Small" Class="mr-2" />
+                            <MudText Typo="Typo.body2">@context.OriginalFileName</MudText>
+                        </div>
+                    </MudTd>
+                    <MudTd DataLabel="@L["FileAttachments_Size"]">
+                        <MudText Typo="Typo.body2">@FormatFileSize(context.FileSizeBytes)</MudText>
+                    </MudTd>
+                    <MudTd DataLabel="@L["FileAttachments_Description"]">
+                        <MudText Typo="Typo.body2">@(context.Description ?? "—")</MudText>
+                    </MudTd>
+                    <MudTd DataLabel="@L["FileAttachments_UploadedAt"]">
+                        <MudText Typo="Typo.body2">@context.CreatedAt.ToLocalTime().ToString("g")</MudText>
+                    </MudTd>
+                    <MudTd>
+                        <MudIconButton Icon="@Icons.Material.Filled.Download"
+                                       Size="Size.Small"
+                                       Title="@L["FileAttachments_Download"]"
+                                       OnClick="() => DownloadFile(context)" />
+                        @if (!ReadOnly)
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                           Size="Size.Small"
+                                           Color="Color.Error"
+                                           Title="@L["FileAttachments_Delete"]"
+                                           OnClick="() => DeleteFile(context)" />
+                        }
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </MudPaper>
+}
+
+@code {
+    /// <summary>
+    /// Entity type name (e.g., "Invoice", "Client", "ReceivedInvoice").
+    /// Must match the entity class name.
+    /// </summary>
+    [Parameter]
+    public string EntityName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Primary key of the entity record. Must be > 0 for the component to render.
+    /// When 0 (e.g., new unsaved record), the component is hidden.
+    /// </summary>
+    [Parameter]
+    public long RecordId { get; set; }
+
+    /// <summary>
+    /// When true, hides upload and delete buttons (view-only mode).
+    /// </summary>
+    [Parameter]
+    public bool ReadOnly { get; set; }
+
+    // ─── State ───────────────────────────────────────────────────────────────
+
+    private List<FileAttachmentDto> _attachments = [];
+    private bool _isLoading = true;
+    private bool _isUploading;
+
+    /// <summary>
+    /// Accepted file types for the file picker (MIME types).
+    /// Matches the whitelist in FileAttachmentService.
+    /// </summary>
+    private const string AllowedFileTypes =
+        ".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.rtf,.odt,.ods," +
+        ".png,.jpg,.jpeg,.gif,.bmp,.svg,.webp,.tiff," +
+        ".zip,.rar,.7z,.xml,.json,.html";
+
+    /// <summary>
+    /// Maximum file size in bytes (50 MB) — matches server-side limit.
+    /// </summary>
+    private const long MaxFileSize = 50 * 1024 * 1024;
+
+    // ─── Lifecycle ───────────────────────────────────────────────────────────
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Reload attachments when EntityName or RecordId changes
+        if (RecordId > 0)
+        {
+            await LoadAttachments();
+        }
+    }
+
+    private async Task LoadAttachments()
+    {
+        _isLoading = true;
+        try
+        {
+            _attachments = await FileAttachmentService.GetByEntityAsync(EntityName, RecordId);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(L["FileAttachments_LoadError"], Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    // ─── Upload ──────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Handles file selection from MudFileUpload. Uploads each file sequentially
+    /// and refreshes the list after all uploads complete.
+    /// </summary>
+    private async Task HandleFilesSelected(IReadOnlyList<IBrowserFile> files)
+    {
+        if (files == null || files.Count == 0) return;
+
+        _isUploading = true;
+        StateHasChanged();
+
+        var successCount = 0;
+        var errorCount = 0;
+
+        foreach (var file in files)
+        {
+            try
+            {
+                // Validate file size client-side before uploading
+                if (file.Size > MaxFileSize)
+                {
+                    Snackbar.Add(
+                        string.Format(L["FileAttachments_FileTooLarge"], file.Name, FormatFileSize(MaxFileSize)),
+                        Severity.Warning);
+                    errorCount++;
+                    continue;
+                }
+
+                // Read file bytes eagerly to avoid stale IBrowserFile references
+                using var stream = file.OpenReadStream(MaxFileSize);
+                using var ms = new MemoryStream();
+                await stream.CopyToAsync(ms);
+                var bytes = ms.ToArray();
+
+                await FileAttachmentService.UploadAsync(
+                    EntityName, RecordId,
+                    file.Name,
+                    file.ContentType ?? "application/octet-stream",
+                    bytes);
+
+                successCount++;
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add(
+                    string.Format(L["FileAttachments_UploadError"], file.Name),
+                    Severity.Error);
+                errorCount++;
+            }
+        }
+
+        if (successCount > 0)
+        {
+            Snackbar.Add(
+                string.Format(L["FileAttachments_UploadSuccess"], successCount),
+                Severity.Success);
+        }
+
+        _isUploading = false;
+
+        // Refresh the list to show newly uploaded files
+        await LoadAttachments();
+        StateHasChanged();
+    }
+
+    // ─── Download ────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Downloads a file and triggers a browser file save via JS interop.
+    /// Uses the existing downloadFile JS function (wwwroot/js/download.js).
+    /// </summary>
+    private async Task DownloadFile(FileAttachmentDto attachment)
+    {
+        try
+        {
+            var bytes = await FileAttachmentService.DownloadAsync(attachment.Id);
+            if (bytes == null)
+            {
+                Snackbar.Add(L["FileAttachments_DownloadError"], Severity.Error);
+                return;
+            }
+
+            // Convert to base64 and trigger browser download via JS interop
+            var base64 = Convert.ToBase64String(bytes);
+            await JS.InvokeVoidAsync("downloadFile", attachment.OriginalFileName, base64, attachment.ContentType);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(L["FileAttachments_DownloadError"], Severity.Error);
+        }
+    }
+
+    // ─── Delete ──────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Deletes a file attachment after user confirmation.
+    /// </summary>
+    private async Task DeleteFile(FileAttachmentDto attachment)
+    {
+        // Show confirmation dialog before deleting
+        var confirmed = await DialogService.ShowMessageBox(
+            L["FileAttachments_DeleteTitle"],
+            string.Format(L["FileAttachments_DeleteConfirm"], attachment.OriginalFileName),
+            yesText: L["Btn_Delete"],
+            cancelText: L["Btn_Cancel"]);
+
+        if (confirmed != true) return;
+
+        try
+        {
+            var deleted = await FileAttachmentService.DeleteAsync(attachment.Id);
+            if (deleted)
+            {
+                Snackbar.Add(L["FileAttachments_Deleted"], Severity.Success);
+                await LoadAttachments();
+            }
+            else
+            {
+                Snackbar.Add(L["FileAttachments_DeleteError"], Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(L["FileAttachments_DeleteError"], Severity.Error);
+        }
+    }
+
+    // ─── Helpers ─────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns a Material icon based on the file's MIME type.
+    /// </summary>
+    private static string GetFileIcon(string contentType) => contentType switch
+    {
+        _ when contentType.StartsWith("image/") => Icons.Material.Filled.Image,
+        "application/pdf" => Icons.Material.Filled.PictureAsPdf,
+        _ when contentType.Contains("spreadsheet") || contentType.Contains("excel") => Icons.Material.Filled.TableChart,
+        _ when contentType.Contains("word") || contentType.Contains("document") => Icons.Material.Filled.Description,
+        _ when contentType.StartsWith("text/") => Icons.Material.Filled.TextSnippet,
+        _ when contentType.Contains("zip") || contentType.Contains("rar") || contentType.Contains("7z") => Icons.Material.Filled.FolderZip,
+        _ => Icons.Material.Filled.InsertDriveFile
+    };
+
+    /// <summary>
+    /// Formats file size in bytes to a human-readable string (B, KB, MB, GB).
+    /// </summary>
+    private static string FormatFileSize(long bytes) => bytes switch
+    {
+        < 1024 => $"{bytes} B",
+        < 1024 * 1024 => $"{bytes / 1024.0:F1} KB",
+        < 1024 * 1024 * 1024 => $"{bytes / (1024.0 * 1024.0):F1} MB",
+        _ => $"{bytes / (1024.0 * 1024.0 * 1024.0):F2} GB"
+    };
+}

@@ -18,6 +18,7 @@
 
   <ItemGroup>
     <!-- Azure Identity for DefaultAzureCredential (used by other Azure services if needed) -->
+    <PackageReference Include="Azure.Storage.Blobs" Version="12.24.0" />
     <PackageReference Include="Anthropic" Version="3.3.0" />
     <PackageReference Include="Azure.Identity" Version="1.17.1" />
     <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />

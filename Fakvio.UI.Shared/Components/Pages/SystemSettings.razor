@@ -295,6 +295,45 @@ else
                 </MudCardContent>
             </MudCard>
         </MudItem>
+        @* Card 4: Azure Blob Storage Settings *@
+        <MudItem xs="12" md="6">
+            <MudCard Elevation="2">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">
+                            <MudIcon Icon="@Icons.Material.Filled.Cloud" Class="mr-1" />
+                            @L["Settings_AzureBlobStorage"]
+                        </MudText>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    @if (_isEditing)
+                    {
+                        <MudTextField @bind-Value="_editDto.AzureBlobConnectionString"
+                                      Label="@L["Settings_AzureBlobConnectionString"].Value"
+                                      InputType="InputType.Password"
+                                      Class="mb-3" />
+                        <MudTextField @bind-Value="_editDto.AzureBlobContainerPrefix"
+                                      Label="@L["Settings_AzureBlobContainerPrefix"].Value"
+                                      HelperText="@L["Settings_AzureBlobContainerPrefixHelper"].Value"
+                                      Placeholder="tenant" />
+                    }
+                    else
+                    {
+                        <MudList T="string" Dense="true">
+                            <MudListItem>
+                                <strong>@L["Settings_AzureBlobConnectionString"]:</strong>
+                                @(_config?.HasAzureBlobConnectionString == true ? "********" : "—")
+                            </MudListItem>
+                            <MudListItem>
+                                <strong>@L["Settings_AzureBlobContainerPrefix"]:</strong>
+                                @(string.IsNullOrEmpty(_config?.AzureBlobContainerPrefix) ? "tenant (default)" : _config.AzureBlobContainerPrefix)
+                            </MudListItem>
+                        </MudList>
+                    }
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
     </MudGrid>
 
     @* Full-page overlay during save *@
@@ -369,7 +408,10 @@ else
             AiGeminiApiKey = null,
             AiGeminiModel = _config.AiGeminiModel,
             AiOllamaBaseUrl = _config.AiOllamaBaseUrl,
-            AiOllamaModel = _config.AiOllamaModel
+            AiOllamaModel = _config.AiOllamaModel,
+            // Azure Blob Storage — connection string null (keep existing), prefix pre-filled
+            AzureBlobConnectionString = null,
+            AzureBlobContainerPrefix = _config.AzureBlobContainerPrefix
         };
         _isEditing = true;
     }

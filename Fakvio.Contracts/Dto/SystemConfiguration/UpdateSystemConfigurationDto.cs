@@ -87,4 +87,12 @@ public class UpdateSystemConfigurationDto
 
     [StringLength(100)]
     public string? AiOllamaModel { get; set; }
+
+    // ─── Azure Blob Storage Settings ────────────────────────────────────────
+    /// <summary>Azure Blob connection string. Null = keep existing, "" = clear.</summary>
+    [StringLength(2000)]
+    public string? AzureBlobConnectionString { get; set; }
+
+    [StringLength(100)]
+    public string? AzureBlobContainerPrefix { get; set; }
 }

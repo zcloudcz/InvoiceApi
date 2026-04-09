@@ -65,9 +65,10 @@ public class CompanyAiSettingsResolverTests : IDisposable
         credentialProtector.Encrypt(Arg.Any<string?>()).Returns(ci => ci.Arg<string?>());
         credentialProtector.Decrypt(Arg.Any<string?>()).Returns(ci => ci.Arg<string?>());
 
+        var systemConfigService = Substitute.For<ISystemConfigurationService>();
         _resolver = new CompanyAiSettingsResolver(
             _masterContext, _globalFactory,
-            _globalSettings, credentialProtector, httpClientFactory, _loggerFactory, _logger);
+            _globalSettings, systemConfigService, credentialProtector, httpClientFactory, _loggerFactory, _logger);
     }
 
     public void Dispose()

@@ -156,6 +156,13 @@ public class TenantDbContext : DbContext
     /// </summary>
     public DbSet<AresCache> AresCache { get; set; }
 
+    /// <summary>
+    /// File attachments — entity-agnostic file metadata.
+    /// Actual file bytes are stored in Azure Blob Storage; this table holds metadata + blob path.
+    /// Polymorphic FK via (EntityName, RecordId) — can attach files to any entity type.
+    /// </summary>
+    public DbSet<FileAttachment> FileAttachment { get; set; }
+
     // ─── Entity Configuration ─────────────────────────────────────────────────
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -197,6 +204,7 @@ public class TenantDbContext : DbContext
         ConfigureReceivedInvoiceItem(modelBuilder);
         ConfigureChatConversation(modelBuilder);
         ConfigureChatMessage(modelBuilder);
+        ConfigureFileAttachment(modelBuilder);
 
         SeedData(modelBuilder);
     }
@@ -656,6 +664,32 @@ public class TenantDbContext : DbContext
             entity.Property(e => e.Role).HasConversion<int>();
             entity.Property(e => e.Content).IsRequired();
             entity.Property(e => e.ProviderUsed).HasMaxLength(50);
+        });
+    }
+
+    /// <summary>
+    /// Configures the FileAttachment entity — entity-agnostic file metadata.
+    /// Uses (EntityName, RecordId) as a composite index for fast lookups,
+    /// and a unique index on FileGuid to prevent duplicate blob references.
+    /// No FK constraint on RecordId because it can reference any entity type.
+    /// </summary>
+    private void ConfigureFileAttachment(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<FileAttachment>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            // Composite index — fast lookup for "all files attached to Invoice #42"
+            entity.HasIndex(e => new { e.EntityName, e.RecordId });
+
+            // Unique index — prevents duplicate blob references
+            entity.HasIndex(e => e.FileGuid).IsUnique();
+
+            entity.Property(e => e.EntityName).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.OriginalFileName).IsRequired().HasMaxLength(500);
+            entity.Property(e => e.ContentType).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.BlobPath).IsRequired().HasMaxLength(1000);
+            entity.Property(e => e.Description).HasMaxLength(500);
         });
     }
 

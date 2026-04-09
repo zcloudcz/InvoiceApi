@@ -259,6 +259,14 @@ else
             </MudPaper>
         </MudItem>
     </MudGrid>
+
+    @* File attachments — attach scans, originals, etc. to received invoices *@
+    @if (!_isCreateMode)
+    {
+        <FileAttachmentManager EntityName="ReceivedInvoice"
+                               RecordId="Id"
+                               ReadOnly="@(!_isEditMode)" />
+    }
 }
 
 @code {

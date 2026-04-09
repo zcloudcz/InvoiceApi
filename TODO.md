@@ -1,5 +1,30 @@
 # Fakvio TODO
 
+## Completed (2026-04-09)
+
+### File Attachments — Entity-Agnostic File Upload System ✅
+**Feature:** Attach files (PDF, images, documents) to any entity in the system.
+
+**Implemented:**
+- [x] `FileAttachment` entity (Domain) — polymorphic FK via EntityName + RecordId + FileGuid
+- [x] `IFileStorage` interface (Application) — pure storage abstraction (upload/download/delete/exists)
+- [x] `IFileAttachmentService` interface (Application) — business logic layer
+- [x] `FileAttachmentDto` + `FileAttachmentUploadDto` (Contracts)
+- [x] `AzureBlobFileStorage` (Infrastructure) — Azure Blob Storage with 3-tier connection string fallback
+- [x] `FileAttachmentService` (Infrastructure) — coordinates EF + blob storage, file type whitelist, 50MB limit
+- [x] `FileAttachmentController` (API) — multipart upload, download, list, delete endpoints
+- [x] `FileAttachmentApiService` (UI.Shared) — Blazor API service with multipart upload
+- [x] `FileAttachmentManager.razor` (UI.Shared) — reusable MudBlazor component (drag-and-drop, download, delete)
+- [x] Integrated into InvoiceDetail, ClientDetail, ReceivedInvoiceDetail pages
+- [x] Azure Blob settings added to CompanySystemSettings + SystemConfiguration (encrypted)
+- [x] System Settings UI section for Azure Blob Storage configuration
+- [x] CZ/EN localization (25 resource keys)
+- [x] 9 unit tests (FileAttachmentServiceTests)
+- [x] EF migrations: `AddFileAttachment` (tenant) + `AddBlobStorageSettings` (master)
+- [x] DI registration in ServiceCollectionExtensions
+
+---
+
 ## Pending
 
 ### SysAdmin master code table management (Architecture Decision Needed)

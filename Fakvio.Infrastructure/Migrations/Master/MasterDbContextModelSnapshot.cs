@@ -461,6 +461,14 @@ namespace Fakvio.Infrastructure.Migrations.Master
                     b.Property<string>("AiOpenAiModel")
                         .HasColumnType("text");
 
+                    b.Property<string>("AzureBlobConnectionString")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("AzureBlobContainerPrefix")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<long>("CompanyId")
                         .HasColumnType("bigint");
 
@@ -1070,6 +1078,14 @@ namespace Fakvio.Infrastructure.Migrations.Master
                     b.Property<string>("AppName")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<string>("AzureBlobConnectionString")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("AzureBlobContainerPrefix")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.Property<string>("BlazorBaseUrl")
                         .IsRequired()

@@ -45,4 +45,9 @@ public class SystemConfigurationDto
     public bool HasAiGeminiApiKey { get; set; }
     public string? AiOllamaBaseUrl { get; set; }
     public string? AiOllamaModel { get; set; }
+
+    // ─── Azure Blob Storage Settings ────────────────────────────────────────
+    /// <summary>Whether a blob storage connection string is configured (never expose the actual value).</summary>
+    public bool HasAzureBlobConnectionString { get; set; }
+    public string? AzureBlobContainerPrefix { get; set; }
 }

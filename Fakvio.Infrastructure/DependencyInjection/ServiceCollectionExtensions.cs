@@ -151,6 +151,13 @@ public static class ServiceCollectionExtensions
         services.AddScopedWithLogging<ICloudStorageOrchestrator,
             Fakvio.Infrastructure.Service.CloudStorage.CloudStorageOrchestrator>();
 
+        // ── File Storage ───────────────────────────────────────────────────────
+        // Azure Blob Storage — primary file storage for tenant file attachments.
+        // Resolves connection string from CompanySystemSettings → SystemConfiguration → appsettings.json.
+        services.AddScopedWithLogging<IFileStorage,
+            Fakvio.Infrastructure.Service.FileStorage.AzureBlobFileStorage>();
+        services.AddScopedWithLogging<IFileAttachmentService, FileAttachmentService>();
+
         // ── PDF Text Extraction ──────────────────────────────────────────────
         // Used by the AI chat to extract text from uploaded PDF files.
         services.AddScopedWithLogging<IPdfTextExtractorService, PdfTextExtractorService>();

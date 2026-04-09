@@ -91,6 +91,14 @@ public class SystemConfigurationService : ISystemConfigurationService
         if (dto.AiOllamaModel != null)
             entity.AiOllamaModel = string.IsNullOrEmpty(dto.AiOllamaModel) ? null : dto.AiOllamaModel;
 
+        // Azure Blob Storage — same partial-update pattern: null = keep, "" = clear, non-empty = encrypt & store
+        if (dto.AzureBlobConnectionString != null)
+            entity.AzureBlobConnectionString = string.IsNullOrEmpty(dto.AzureBlobConnectionString)
+                ? null : _credentialProtector.Encrypt(dto.AzureBlobConnectionString);
+        if (dto.AzureBlobContainerPrefix != null)
+            entity.AzureBlobContainerPrefix = string.IsNullOrEmpty(dto.AzureBlobContainerPrefix)
+                ? null : dto.AzureBlobContainerPrefix;
+
         await _context.SaveChangesAsync(ct);
         _logger.LogInformation("System configuration updated successfully");
 
@@ -185,7 +193,10 @@ public class SystemConfigurationService : ISystemConfigurationService
             AiGeminiModel = entity.AiGeminiModel,
             HasAiGeminiApiKey = !string.IsNullOrEmpty(entity.AiGeminiApiKey),
             AiOllamaBaseUrl = entity.AiOllamaBaseUrl,
-            AiOllamaModel = entity.AiOllamaModel
+            AiOllamaModel = entity.AiOllamaModel,
+            // Azure Blob Storage — connection string never exposed, only boolean flag
+            HasAzureBlobConnectionString = !string.IsNullOrEmpty(entity.AzureBlobConnectionString),
+            AzureBlobContainerPrefix = entity.AzureBlobContainerPrefix
         };
     }
 }

@@ -1203,4 +1203,30 @@
   <data name="DateFilter_Before" xml:space="preserve"><value>before</value></data>
   <data name="DateFilter_OnOrBefore" xml:space="preserve"><value>until</value></data>
   <data name="DateFilter_Range" xml:space="preserve"><value>range</value></data>
+  <!-- File Attachments -->
+  <data name="FileAttachments_Title" xml:space="preserve"><value>Attachments</value></data>
+  <data name="FileAttachments_Upload" xml:space="preserve"><value>Upload</value></data>
+  <data name="FileAttachments_Uploading" xml:space="preserve"><value>Uploading...</value></data>
+  <data name="FileAttachments_NoFiles" xml:space="preserve"><value>No attachments</value></data>
+  <data name="FileAttachments_FileName" xml:space="preserve"><value>File Name</value></data>
+  <data name="FileAttachments_Size" xml:space="preserve"><value>Size</value></data>
+  <data name="FileAttachments_Description" xml:space="preserve"><value>Description</value></data>
+  <data name="FileAttachments_UploadedAt" xml:space="preserve"><value>Uploaded</value></data>
+  <data name="FileAttachments_Actions" xml:space="preserve"><value>Actions</value></data>
+  <data name="FileAttachments_Download" xml:space="preserve"><value>Download</value></data>
+  <data name="FileAttachments_Delete" xml:space="preserve"><value>Delete</value></data>
+  <data name="FileAttachments_DeleteTitle" xml:space="preserve"><value>Delete Attachment</value></data>
+  <data name="FileAttachments_DeleteConfirm" xml:space="preserve"><value>Are you sure you want to delete "{0}"?</value></data>
+  <data name="FileAttachments_Deleted" xml:space="preserve"><value>Attachment deleted</value></data>
+  <data name="FileAttachments_DeleteError" xml:space="preserve"><value>Error deleting attachment</value></data>
+  <data name="FileAttachments_UploadSuccess" xml:space="preserve"><value>{0} file(s) uploaded successfully</value></data>
+  <data name="FileAttachments_UploadError" xml:space="preserve"><value>Error uploading file "{0}"</value></data>
+  <data name="FileAttachments_FileTooLarge" xml:space="preserve"><value>File "{0}" is too large (max {1})</value></data>
+  <data name="FileAttachments_LoadError" xml:space="preserve"><value>Error loading attachments</value></data>
+  <data name="FileAttachments_DownloadError" xml:space="preserve"><value>Error downloading file</value></data>
+  <!-- Azure Blob Storage Settings -->
+  <data name="Settings_AzureBlobStorage" xml:space="preserve"><value>Azure Blob Storage</value></data>
+  <data name="Settings_AzureBlobConnectionString" xml:space="preserve"><value>Connection String</value></data>
+  <data name="Settings_AzureBlobContainerPrefix" xml:space="preserve"><value>Container Prefix</value></data>
+  <data name="Settings_AzureBlobContainerPrefixHelper" xml:space="preserve"><value>Default: "tenant". Container name: {prefix}-{companyId}</value></data>
 </root>
