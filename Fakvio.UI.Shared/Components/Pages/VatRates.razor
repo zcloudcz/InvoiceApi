@@ -13,6 +13,7 @@
 
 @* MudDataGrid with client-side Items — small dataset, no server paging needed *@
 <MudDataGrid T="VatRateDto"
+             @ref="_dataGrid"
              Items="@_vatRates"
              Dense="true" Hover="true" Striped="true"
              Loading="@_loading" LoadingProgressColor="Color.Primary"
@@ -20,6 +21,8 @@
              SortMode="SortMode.Single"
              Filterable="true"
              ColumnResizeMode="ResizeMode.Column"
+             DragDropColumnReordering="true"
+             Hideable="true"
              RowClick="@(args => OpenEditDialog(args.Item))"
              RowStyleFunc="@((item, idx) => "cursor: pointer;")">
     <ToolBarContent>
@@ -35,8 +38,15 @@
                 <MudChip T="string" Size="Size.Small" Color="Color.Primary">@context.Item.Rate.ToString("0.##") %</MudChip>
             </CellTemplate>
         </PropertyColumn>
-        <PropertyColumn Property="x => x.ValidFrom" Title="@L["VatRate_ValidFrom"].Value" Format="d" />
+        <PropertyColumn Property="x => x.ValidFrom" Title="@L["VatRate_ValidFrom"].Value" Format="d">
+            <FilterTemplate>
+                <DateColumnFilter T="VatRateDto" Context="context" />
+            </FilterTemplate>
+        </PropertyColumn>
         <PropertyColumn Property="x => x.ValidTo" Title="@L["VatRate_ValidTo"].Value" Format="d">
+            <FilterTemplate>
+                <DateColumnFilter T="VatRateDto" Context="context" />
+            </FilterTemplate>
             <CellTemplate>@(context.Item.ValidTo?.ToShortDateString() ?? "—")</CellTemplate>
         </PropertyColumn>
         <PropertyColumn Property="x => x.IsReduced" Title="@L["VatRate_Type"].Value" Filterable="false">
@@ -80,6 +90,7 @@
         <MudAlert Severity="Severity.Info">@L["VatRate_NoRecords"]</MudAlert>
     </NoRecordsContent>
 </MudDataGrid>
+<GridStatePersistence T="VatRateDto" DataGrid="_dataGrid" GridKey="vat-rates" />
 
 @* ========== Create Dialog — Options enables ESC key to close ========== *@
 <MudDialog @bind-Visible="_showCreateDialog" Options="_dialogOptions">
@@ -122,6 +133,7 @@
 </MudDialog>
 
 @code {
+    private MudDataGrid<VatRateDto>? _dataGrid;
     private List<VatRateDto> _vatRates = new();
     private bool _loading = true;
 

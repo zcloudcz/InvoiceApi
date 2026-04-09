@@ -23,6 +23,7 @@
 
     @* MudDataGrid with column filters, quick search, and inline actions *@
     <MudDataGrid T="ClientDto"
+                 @ref="_dataGrid"
                  Items="@_companies"
                  Loading="@_loading"
                  Dense="true"
@@ -32,6 +33,8 @@
                  SortMode="SortMode.Single"
                  Filterable="true"
                  ColumnResizeMode="ResizeMode.Column"
+             DragDropColumnReordering="true"
+                 Hideable="true"
                  QuickFilter="@FilterFunc"
                  RowClick="@(args => Navigation.NavigateTo($"/companies/{args.Item.Id}"))"
                  RowStyleFunc="@((item, idx) => "cursor: pointer;")">
@@ -100,9 +103,11 @@
             <MudAlert Severity="Severity.Info">@L["Company_NoRecords"]</MudAlert>
         </NoRecordsContent>
     </MudDataGrid>
+    <GridStatePersistence T="ClientDto" DataGrid="_dataGrid" GridKey="companies" />
 </MudPaper>
 
 @code {
+    private MudDataGrid<ClientDto>? _dataGrid;
     private List<ClientDto> _companies = new();
     private Dictionary<long, CompanySystemSettingsDto> _settingsMap = new();
     private bool _loading = true;

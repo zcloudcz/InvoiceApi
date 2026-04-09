@@ -22,86 +22,6 @@
 <MudText Typo="Typo.h4" GutterBottom="true">@(_isCreditNoteView ? L["Nav_CreditNotes"] : L["Invoice_Title"])</MudText>
 <MudText Class="mb-4">@(_isCreditNoteView ? L["CreditNote_Subtitle"] : L["Invoice_Subtitle"])</MudText>
 
-@* Filter bar - search, date range, status, client selection *@
-<MudPaper Class="pa-4 mb-4">
-    <MudGrid>
-        <MudItem xs="12" sm="6" md="3">
-            <MudTextField @bind-Value="_searchString" Label="@L["Btn_Search"].Value" Adornment="Adornment.Start"
-                          AdornmentIcon="@Icons.Material.Filled.Search" Immediate="true"
-                          DebounceInterval="300" OnDebounceIntervalElapsed="SearchInvoices"
-                          Placeholder="@L["Invoice_SearchPlaceholder"].Value" />
-        </MudItem>
-        <MudItem xs="12" sm="6" md="2">
-            @* MudBlazor v8: OnChange removed — use Value + ValueChanged to update filter and reload data *@
-            <MudSelect Value="_filterStatus"
-                       ValueChanged="@(async (EInvoiceStatus? v) => { _filterStatus = v; await SearchInvoices(); })"
-                       Label="@L["Label_Status"].Value">
-                <MudSelectItem Value="@((EInvoiceStatus?)null)">@L["Invoice_FilterAll"]</MudSelectItem>
-                <MudSelectItem Value="@((EInvoiceStatus?)EInvoiceStatus.Draft)">@L["Invoice_FilterDraft"]</MudSelectItem>
-                <MudSelectItem Value="@((EInvoiceStatus?)EInvoiceStatus.Completed)">@L["Invoice_FilterIssued"]</MudSelectItem>
-                <MudSelectItem Value="@((EInvoiceStatus?)EInvoiceStatus.Paid)">@L["Invoice_FilterPaid"]</MudSelectItem>
-                <MudSelectItem Value="@((EInvoiceStatus?)EInvoiceStatus.Creditnoted)">@L["Invoice_FilterCredited"]</MudSelectItem>
-                <MudSelectItem Value="@((EInvoiceStatus?)EInvoiceStatus.Deleted)">@L["Invoice_FilterDeleted"]</MudSelectItem>
-            </MudSelect>
-        </MudItem>
-        @* Document type filter — only shown when not pre-filtered from nav *@
-        @if (!_isCreditNoteView)
-        {
-            <MudItem xs="12" sm="6" md="1">
-                @* MudBlazor v8: OnChange removed — use Value + ValueChanged to update filter and reload data *@
-                <MudSelect Value="_filterDocumentType"
-                           ValueChanged="@(async (EDocumentType? v) => { _filterDocumentType = v; await SearchInvoices(); })"
-                           Label="@L["Template_DocumentType"].Value" Clearable="true">
-                    <MudSelectItem Value="@((EDocumentType?)EDocumentType.Invoice)">@L["Template_DocumentTypeInvoice"]</MudSelectItem>
-                    <MudSelectItem Value="@((EDocumentType?)EDocumentType.CreditNote)">@L["Template_DocumentTypeCreditNote"]</MudSelectItem>
-                </MudSelect>
-            </MudItem>
-        }
-        <MudItem xs="12" sm="6" md="2">
-            @* MudBlazor v8: OnChange removed — use Value + ValueChanged to update filter and reload data *@
-            <MudSelect Value="_filterClientId"
-                       ValueChanged="@(async (long? v) => { _filterClientId = v; await SearchInvoices(); })"
-                       Label="@L["Invoice_Client"].Value" Clearable="true">
-                @foreach (var client in _allClients)
-                {
-                    <MudSelectItem Value="@((long?)client.Id)">@client.CompanyName</MudSelectItem>
-                }
-            </MudSelect>
-        </MudItem>
-        <MudItem xs="12" sm="6" md="2">
-            <MudDatePicker Date="_issueDateFrom" Label="@L["Invoice_FromDate"].Value" Clearable="true"
-                           DateChanged="@(async (DateTime? d) => { _issueDateFrom = d; await SearchInvoices(); })" />
-        </MudItem>
-        <MudItem xs="12" sm="6" md="2">
-            <MudDatePicker Date="_issueDateTo" Label="@L["Invoice_ToDate"].Value" Clearable="true"
-                           DateChanged="@(async (DateTime? d) => { _issueDateTo = d; await SearchInvoices(); })" />
-        </MudItem>
-        <MudItem xs="12" sm="6" md="2" Class="d-flex align-end">
-            @* Split button: Primary click = new invoice/credit note, dropdown arrow = from template *@
-            <MudButtonGroup OverrideStyles="false">
-                <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                           StartIcon="@Icons.Material.Filled.Add"
-                           OnClick="@(() => Navigation.NavigateTo(_isCreditNoteView
-                               ? "/invoices/create?type=CreditNote"
-                               : "/invoices/create"))">
-                    @(_isCreditNoteView ? L["CreditNote_New"] : L["Invoice_New"])
-                </MudButton>
-                <MudMenu Icon="@Icons.Material.Filled.ArrowDropDown"
-                         Variant="Variant.Filled" Color="Color.Primary">
-                    <MudMenuItem OnClick="OpenFromTemplateDialog"
-                                 Icon="@Icons.Material.Filled.ContentPaste">
-                        @L["Invoice_NewFromTemplate"]
-                    </MudMenuItem>
-                    <MudMenuItem OnClick="@(() => Navigation.NavigateTo("/invoices/import?target=IssuedInvoice"))"
-                                 Icon="@Icons.Material.Filled.UploadFile">
-                        @L["Nav_ImportInvoices"]
-                    </MudMenuItem>
-                </MudMenu>
-            </MudButtonGroup>
-        </MudItem>
-    </MudGrid>
-</MudPaper>
-
 @* Bulk operations toolbar — visible only when multi-select has items checked *@
 @if (_selectedInvoices.Count > 0)
 {
@@ -147,7 +67,38 @@
              FilterMode="DataGridFilterMode.ColumnFilterRow"
              SortMode="SortMode.Single"
              Filterable="true"
-             ColumnResizeMode="ResizeMode.Column">
+             ColumnResizeMode="ResizeMode.Column"
+             DragDropColumnReordering="true"
+             Hideable="true">
+    <ToolBarContent>
+        @* Global search field — searches across document number, client name, notes *@
+        <MudTextField @bind-Value="_searchString" Placeholder="@L["Invoice_SearchPlaceholder"].Value"
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                      IconSize="Size.Medium" Class="mt-0" Immediate="true"
+                      DebounceInterval="300" OnDebounceIntervalElapsed="SearchInvoices" />
+        <MudSpacer />
+        @* Split button: Primary click = new invoice/credit note, dropdown arrow = from template/import *@
+        <MudButtonGroup OverrideStyles="false">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Add"
+                       OnClick="@(() => Navigation.NavigateTo(_isCreditNoteView
+                           ? "/invoices/create?type=CreditNote"
+                           : "/invoices/create"))">
+                @(_isCreditNoteView ? L["CreditNote_New"] : L["Invoice_New"])
+            </MudButton>
+            <MudMenu Icon="@Icons.Material.Filled.ArrowDropDown"
+                     Variant="Variant.Filled" Color="Color.Primary">
+                <MudMenuItem OnClick="OpenFromTemplateDialog"
+                             Icon="@Icons.Material.Filled.ContentPaste">
+                    @L["Invoice_NewFromTemplate"]
+                </MudMenuItem>
+                <MudMenuItem OnClick="@(() => Navigation.NavigateTo("/invoices/import?target=IssuedInvoice"))"
+                             Icon="@Icons.Material.Filled.UploadFile">
+                    @L["Nav_ImportInvoices"]
+                </MudMenuItem>
+            </MudMenu>
+        </MudButtonGroup>
+    </ToolBarContent>
     <Columns>
         @* Document number — sortable, filterable *@
         <PropertyColumn Property="x => x.DocumentNumber" Title="@L["Table_Number"].Value" SortBy="x => x.DocumentNumber">
@@ -163,18 +114,30 @@
 
         @* Issue date — sortable, filterable *@
         <PropertyColumn Property="x => x.IssueDate" Title="@L["Table_IssueDate"].Value"
-                        Format="d" />
+                        Format="d">
+            <FilterTemplate>
+                <DateColumnFilter T="InvoiceDto" Context="context" />
+            </FilterTemplate>
+        </PropertyColumn>
 
         @* Taxable supply date (DUZP) — only visible when issuer is VAT payer *@
         @if (_issuerIsVatPayer)
         {
             <PropertyColumn Property="x => x.TaxableSupplyDate" Title="@L["Invoice_TaxableSupplyDate"].Value"
-                            Format="d" />
+                            Format="d">
+                <FilterTemplate>
+                    <DateColumnFilter T="InvoiceDto" Context="context" />
+                </FilterTemplate>
+            </PropertyColumn>
         }
 
         @* Due date — sortable, filterable *@
         <PropertyColumn Property="x => x.DueDate" Title="@L["Table_DueDate"].Value"
-                        Format="d" />
+                        Format="d">
+            <FilterTemplate>
+                <DateColumnFilter T="InvoiceDto" Context="context" />
+            </FilterTemplate>
+        </PropertyColumn>
 
         @* Total with VAT — sortable, filterable *@
         <PropertyColumn Property="x => x.TotalWithVat" Title="@L["Invoice_TotalWithVat"].Value"
@@ -257,6 +220,7 @@
                           RowsPerPageString="@L["Table_RowsPerPage"].Value" />
     </PagerContent>
 </MudDataGrid>
+<GridStatePersistence T="InvoiceDto" DataGrid="_dataGrid" GridKey="invoices" />
 
 @* Email dialog - allows user to enter recipient email and send invoice *@
 <MudDialog @bind-Visible="_showEmailDialog" Options="_emailDialogOptions">
@@ -371,15 +335,12 @@
     // Whether the issuer (logged-in company) is a VAT payer — controls DUZP column visibility
     private bool _issuerIsVatPayer = false;
 
-    // Filter state
+    // Filter state — only global search remains, column filters are handled by MudDataGrid client-side
     private string _searchString = "";
-    private EInvoiceStatus? _filterStatus = null;
+    // Document type is set automatically from URL query param (?type=CreditNote) — not user-selectable
     private EDocumentType? _filterDocumentType = null;
-    private long? _filterClientId = null;
-    private DateTime? _issueDateFrom = null;
-    private DateTime? _issueDateTo = null;
 
-    // Reference data loaded once — clients used for filter dropdown
+    // Reference data — clients used for "Create from template" dialog
     private List<ClientDto> _allClients = new();
 
     // PDF template list — loaded once, used for the PDF template picker menu
@@ -498,17 +459,15 @@
                 sortDirection = sortDef.Descending ? "desc" : "asc";
             }
 
+            // Only global search + document type are sent server-side.
+            // Status, client, date filters are now handled client-side by MudDataGrid column filters.
             var result = await InvoiceService.GetPagedAsync(
                 page: state.Page + 1,
                 pageSize: state.PageSize,
                 search: _searchString,
                 sortBy: sortBy,
                 sortDirection: sortDirection,
-                documentType: _filterDocumentType,
-                status: _filterStatus,
-                clientId: _filterClientId,
-                issueDateFrom: _issueDateFrom,
-                issueDateTo: _issueDateTo);
+                documentType: _filterDocumentType);
 
             return new GridData<InvoiceDto>
             {

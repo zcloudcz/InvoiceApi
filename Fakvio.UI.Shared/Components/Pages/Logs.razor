@@ -47,11 +47,17 @@
              Loading="@_loading" LoadingProgressColor="Color.Primary"
              RowClick="@(args => { _selectedLog = args.Item; })"
              RowStyleFunc="@((item, idx) => "cursor: pointer;")"
+             FilterMode="DataGridFilterMode.ColumnFilterRow"
              SortMode="SortMode.Single"
-             Filterable="false"
-             ColumnResizeMode="ResizeMode.Column">
+             Filterable="true"
+             ColumnResizeMode="ResizeMode.Column"
+             DragDropColumnReordering="true"
+             Hideable="true">
     <Columns>
         <PropertyColumn Property="x => x.Timestamp" Title="@L["Log_Timestamp"].Value">
+            <FilterTemplate>
+                <DateColumnFilter T="AppLogDto" Context="context" />
+            </FilterTemplate>
             <CellTemplate>
                 <MudText Typo="Typo.body2">@context.Item.Timestamp.ToString("yyyy-MM-dd HH:mm:ss")</MudText>
             </CellTemplate>
@@ -85,6 +91,7 @@
         <MudDataGridPager T="AppLogDto" PageSizeOptions="new int[] { 25, 50, 100 }" RowsPerPageString="@L["Table_RowsPerPage"].Value" />
     </PagerContent>
 </MudDataGrid>
+<GridStatePersistence T="AppLogDto" DataGrid="_dataGrid" GridKey="logs" />
 
 @* Detail expansion card — shown when a row is clicked *@
 @if (_selectedLog != null)

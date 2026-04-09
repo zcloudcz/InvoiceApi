@@ -61,6 +61,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ContentTemplateApiService>();
         services.AddScoped<NumberSequenceApiService>();
         services.AddScoped<CurrencyApiService>();
+        services.AddScoped<GridStateService>();
         services.AddScoped<CompanySettingsApiService>();
         services.AddScoped<SystemConfigurationApiService>();
         services.AddScoped<AppLogApiService>();

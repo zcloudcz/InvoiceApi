@@ -49,6 +49,8 @@
              SortMode="SortMode.Single"
              Filterable="true"
              ColumnResizeMode="ResizeMode.Column"
+             DragDropColumnReordering="true"
+             Hideable="true"
              RowClick="@(args => OpenEditDialog(args.Item))"
              RowStyleFunc="@((item, idx) => "cursor: pointer;")">
     <Columns>
@@ -86,6 +88,7 @@
         <MudDataGridPager T="CurrencyDto" PageSizeOptions="new int[] { 10, 25, 50, 100 }" RowsPerPageString="@L["Table_RowsPerPage"].Value" />
     </PagerContent>
 </MudDataGrid>
+<GridStatePersistence T="CurrencyDto" DataGrid="_dataGrid" GridKey="currencies" />
 
 @* Dialog for creating/editing a currency — uses @bind-Visible (not @bind-IsVisible, renamed in MudBlazor v8) *@
 <MudDialog @bind-Visible="_showDialog" Options="_dialogOptions">

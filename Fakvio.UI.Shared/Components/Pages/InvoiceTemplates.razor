@@ -71,7 +71,9 @@
              FilterMode="DataGridFilterMode.ColumnFilterRow"
              SortMode="SortMode.Single"
              Filterable="true"
-             ColumnResizeMode="ResizeMode.Column">
+             ColumnResizeMode="ResizeMode.Column"
+             DragDropColumnReordering="true"
+             Hideable="true">
     <Columns>
         @* PropertyColumn: sortable + filterable by default. CellTemplate uses context.Item. *@
         <PropertyColumn Property="x => x.Name" Title="@L["Label_Name"].Value">
@@ -96,6 +98,9 @@
             <CellTemplate>@context.Item.UsageCount×</CellTemplate>
         </PropertyColumn>
         <PropertyColumn Property="x => x.LastUsedAt" Title="@L["Template_LastUsed"].Value" Format="d">
+            <FilterTemplate>
+                <DateColumnFilter T="InvoiceTemplateDto" Context="context" />
+            </FilterTemplate>
             <CellTemplate>
                 @if (context.Item.LastUsedAt.HasValue)
                 {
@@ -134,6 +139,7 @@
         <MudDataGridPager T="InvoiceTemplateDto" />
     </PagerContent>
 </MudDataGrid>
+<GridStatePersistence T="InvoiceTemplateDto" DataGrid="_dataGrid" GridKey="invoice-templates" />
 
 @* Dialog for creating an invoice from a template — kept as small popup *@
 <MudDialog @bind-Visible="_showCreateInvoiceDialog" Options="_dialogOptions">

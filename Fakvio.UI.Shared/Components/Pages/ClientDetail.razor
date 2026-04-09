@@ -346,7 +346,9 @@ else
                      Dense="true" Hover="true" Striped="true"
                      Loading="@_invoiceLoading" LoadingProgressColor="Color.Primary"
                      SortMode="SortMode.Single"
-                     ColumnResizeMode="ResizeMode.Column">
+                     ColumnResizeMode="ResizeMode.Column"
+             DragDropColumnReordering="true"
+                     Hideable="true">
             <Columns>
                 @* Document number column with chip display *@
                 <PropertyColumn Property="x => x.DocumentNumber" Title="@L["Table_Number"].Value" Sortable="true">
@@ -357,9 +359,17 @@ else
                     </CellTemplate>
                 </PropertyColumn>
                 @* Issue date — short date format *@
-                <PropertyColumn Property="x => x.IssueDate" Title="@L["Table_IssueDate"].Value" Sortable="true" Format="d" />
+                <PropertyColumn Property="x => x.IssueDate" Title="@L["Table_IssueDate"].Value" Sortable="true" Format="d">
+                    <FilterTemplate>
+                        <DateColumnFilter T="InvoiceDto" Context="context" />
+                    </FilterTemplate>
+                </PropertyColumn>
                 @* Due date — short date format *@
-                <PropertyColumn Property="x => x.DueDate" Title="@L["Table_DueDate"].Value" Sortable="true" Format="d" />
+                <PropertyColumn Property="x => x.DueDate" Title="@L["Table_DueDate"].Value" Sortable="true" Format="d">
+                    <FilterTemplate>
+                        <DateColumnFilter T="InvoiceDto" Context="context" />
+                    </FilterTemplate>
+                </PropertyColumn>
                 @* Total with VAT — bold amount + currency code *@
                 <PropertyColumn Property="x => x.TotalWithVat" Title="@L["Invoice_TotalWithVat"].Value" Sortable="true">
                     <CellTemplate>
@@ -383,6 +393,7 @@ else
                                   RowsPerPageString="@L["Table_RowsPerPage"].Value" />
             </PagerContent>
         </MudDataGrid>
+        <GridStatePersistence T="InvoiceDto" DataGrid="_invoiceGrid" GridKey="client-invoices" />
     }
 }
 

@@ -21,6 +21,7 @@
 
     @* MudDataGrid with column filters, quick search, and inline actions *@
     <MudDataGrid T="ClientDto"
+                 @ref="_dataGrid"
                  Items="@_clients"
                  Loading="@_loading"
                  Dense="true"
@@ -30,6 +31,8 @@
                  SortMode="SortMode.Single"
                  Filterable="true"
                  ColumnResizeMode="ResizeMode.Column"
+             DragDropColumnReordering="true"
+                 Hideable="true"
                  QuickFilter="@FilterFunc"
                  RowClick="@(args => Navigation.NavigateTo($"/clients/{args.Item.Id}"))"
                  RowStyleFunc="@((item, idx) => $"cursor: pointer; {GetClientRowStyle(item)}")">
@@ -75,9 +78,11 @@
             <MudAlert Severity="Severity.Info">@L["Client_NoRecords"]</MudAlert>
         </NoRecordsContent>
     </MudDataGrid>
+    <GridStatePersistence T="ClientDto" DataGrid="_dataGrid" GridKey="clients" />
 </MudPaper>
 
 @code {
+    private MudDataGrid<ClientDto>? _dataGrid;
     private List<ClientDto> _clients = new();
     private bool _loading = true;
     private string _searchString = "";

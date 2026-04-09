@@ -108,7 +108,9 @@
              FilterMode="DataGridFilterMode.ColumnFilterRow"
              SortMode="SortMode.Single"
              Filterable="true"
-             ColumnResizeMode="ResizeMode.Column">
+             ColumnResizeMode="ResizeMode.Column"
+             DragDropColumnReordering="true"
+             Hideable="true">
     <Columns>
         @* Document number — show dash when null *@
         <PropertyColumn Property="x => x.DocumentNumber" Title="@L["Invoice_DocumentNumber"].Value">
@@ -121,10 +123,17 @@
         <PropertyColumn Property="x => x.SupplierName" Title="@L["ReceivedInvoice_Supplier"].Value" />
 
         @* Issue date — short date format *@
-        <PropertyColumn Property="x => x.IssueDate" Title="@L["Invoice_IssueDate"].Value" Format="d" />
+        <PropertyColumn Property="x => x.IssueDate" Title="@L["Invoice_IssueDate"].Value" Format="d">
+            <FilterTemplate>
+                <DateColumnFilter T="ReceivedInvoiceDto" Context="context" />
+            </FilterTemplate>
+        </PropertyColumn>
 
         @* Due date — highlight overdue invoices in red *@
         <PropertyColumn Property="x => x.DueDate" Title="@L["Invoice_DueDate"].Value">
+            <FilterTemplate>
+                <DateColumnFilter T="ReceivedInvoiceDto" Context="context" />
+            </FilterTemplate>
             <CellTemplate>
                 @if (context.Item.DueDate.HasValue)
                 {
@@ -204,6 +213,7 @@
         <MudDataGridPager T="ReceivedInvoiceDto" PageSizeOptions="new int[] { 10, 25, 50, 100 }" />
     </PagerContent>
 </MudDataGrid>
+<GridStatePersistence T="ReceivedInvoiceDto" DataGrid="_dataGrid" GridKey="received-invoices" />
 
 @code {
     // MudDataGrid reference — used for ReloadServerData() calls after actions

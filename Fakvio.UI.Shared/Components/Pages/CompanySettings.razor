@@ -31,6 +31,7 @@
 
 @* ========== Main Grid: All Company Tenant Settings — MudDataGrid with inline actions ========== *@
 <MudDataGrid T="CompanySystemSettingsDto"
+             @ref="_dataGrid"
              Items="@_settings"
              Dense="true"
              Hover="true"
@@ -41,6 +42,8 @@
              SortMode="SortMode.Single"
              Filterable="true"
              ColumnResizeMode="ResizeMode.Column"
+             DragDropColumnReordering="true"
+             Hideable="true"
              RowClick="@(args => OpenEditDialog(args.Item))"
              RowStyleFunc="@((item, idx) => "cursor: pointer;")">
     <ToolBarContent>
@@ -122,6 +125,7 @@
         <MudAlert Severity="Severity.Info">@L["TenantSettings_NoRecords"]</MudAlert>
     </NoRecordsContent>
 </MudDataGrid>
+<GridStatePersistence T="CompanySystemSettingsDto" DataGrid="_dataGrid" GridKey="company-settings" />
 
 @* ========== Create Settings Dialog ========== *@
 <MudDialog @bind-Visible="_showCreateDialog" Options="_dialogOptions">
@@ -184,6 +188,8 @@
 </MudDialog>
 
 @code {
+    private MudDataGrid<CompanySystemSettingsDto>? _dataGrid;
+
     // ========== Loading State ==========
     private bool _loading = false;
 

@@ -1,0 +1,61 @@
+@*
+    DateColumnFilter — MudDataGrid column filter that shows a MudDatePicker (date-only, no time).
+
+    Use inside <PropertyColumn> <FilterTemplate> for DateTime/DateTime? columns.
+    Replaces the default text-based filter input with a visual date picker.
+
+    Usage:
+    <PropertyColumn Property="x => x.IssueDate" Title="Issue Date" Format="d">
+        <FilterTemplate>
+            <DateColumnFilter T="InvoiceDto" Context="context" />
+        </FilterTemplate>
+    </PropertyColumn>
+*@
+@typeparam T
+
+<MudDatePicker Date="_date"
+               DateChanged="OnDateChanged"
+               Margin="Margin.Dense"
+               Variant="Variant.Outlined"
+               Clearable="true"
+               Class="mt-0" />
+
+@code {
+    /// <summary>
+    /// The MudDataGrid FilterContext — provides the filter definition and apply action.
+    /// Pass from the parent FilterTemplate's context parameter.
+    /// </summary>
+    [Parameter, EditorRequired]
+    public FilterContext<T> Context { get; set; } = default!;
+
+    private DateTime? _date;
+
+    /// <summary>
+    /// Called when user picks or clears a date.
+    /// Sets the Operator to "is" (date-only match) and the Value to the selected date.
+    /// Clearing the date removes the filter.
+    /// </summary>
+    private async Task OnDateChanged(DateTime? value)
+    {
+        _date = value;
+
+        var filterDef = Context.FilterDefinition;
+
+        if (value.HasValue)
+        {
+            // "Is" operator compares date-only — time part is ignored by MudDataGrid
+            filterDef.Operator = FilterOperator.DateTime.Is;
+            filterDef.Value = value.Value.Date;
+        }
+        else
+        {
+            // Clear the filter — null operator/value means "no filter applied"
+            filterDef.Operator = null;
+            filterDef.Value = null;
+        }
+
+        // Tell MudDataGrid to re-evaluate filters
+        if (Context.Actions != null)
+            await Context.Actions.ApplyFilterAsync(filterDef);
+    }
+}

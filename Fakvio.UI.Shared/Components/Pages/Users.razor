@@ -16,6 +16,7 @@
 
 @* MudDataGrid with column filters, quick search, and inline actions *@
 <MudDataGrid T="UserDto"
+             @ref="_dataGrid"
              Items="@_users"
              Loading="@_loading"
              Dense="true"
@@ -25,6 +26,8 @@
              SortMode="SortMode.Single"
              Filterable="true"
              ColumnResizeMode="ResizeMode.Column"
+             DragDropColumnReordering="true"
+             Hideable="true"
              QuickFilter="@FilterFunc"
              RowClick="@(args => OpenEditDialog(args.Item))"
              RowStyleFunc="@((item, idx) => "cursor: pointer;")">
@@ -76,6 +79,7 @@
         <MudAlert Severity="Severity.Info">@L["User_NoRecords"]</MudAlert>
     </NoRecordsContent>
 </MudDataGrid>
+<GridStatePersistence T="UserDto" DataGrid="_dataGrid" GridKey="users" />
 
 <MudDialog @bind-Visible="_showDialog" Options="_dialogOptions">
     <TitleContent>
@@ -159,6 +163,7 @@
 </MudDialog>
 
 @code {
+    private MudDataGrid<UserDto>? _dataGrid;
     private List<UserDto> _users = new();
     private List<ClientDto> _companies = new();
     private bool _loading = true;

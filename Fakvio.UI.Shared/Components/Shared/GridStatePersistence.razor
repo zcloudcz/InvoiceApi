@@ -1,0 +1,115 @@
+@*
+    GridStatePersistence<T> — Auto-saves and restores MudDataGrid column visibility.
+
+    Place this component next to your MudDataGrid and pass the grid reference + a unique key.
+    It restores column visibility on first render and saves state when the user leaves the page.
+
+    Usage:
+    <MudDataGrid T="InvoiceDto" @ref="_dataGrid" Hideable="true" ...>
+        ...
+    </MudDataGrid>
+    <GridStatePersistence T="InvoiceDto" DataGrid="_dataGrid" GridKey="invoices" />
+
+    What gets persisted:
+    - Column visibility (hidden/shown via column options menu)
+    - Column order index (for future restore — currently read-only)
+
+    Storage: browser localStorage via Blazored.LocalStorage, keyed by "gridState_{GridKey}".
+*@
+@typeparam T
+@implements IAsyncDisposable
+
+@code {
+    /// <summary>
+    /// Reference to the MudDataGrid whose column state should be persisted.
+    /// Must be set via @ref on the parent page.
+    /// </summary>
+    [Parameter, EditorRequired]
+    public MudDataGrid<T>? DataGrid { get; set; }
+
+    /// <summary>
+    /// Unique key identifying this grid. Used as localStorage key suffix.
+    /// Example: "invoices", "clients", "received-invoices".
+    /// </summary>
+    [Parameter, EditorRequired]
+    public string GridKey { get; set; } = "";
+
+    [Inject] private GridStateService StateService { get; set; } = default!;
+
+    private bool _stateRestored = false;
+
+    /// <summary>
+    /// After the grid renders its columns (first render), restore saved visibility.
+    /// RenderedColumns is only populated after the first render cycle.
+    /// </summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_stateRestored && DataGrid?.RenderedColumns?.Count > 0)
+        {
+            _stateRestored = true;
+            await RestoreStateAsync();
+        }
+    }
+
+    /// <summary>
+    /// Reads saved column state from localStorage and applies visibility to matching columns.
+    /// Columns are matched by Title — if a column was renamed/added/removed, it's skipped.
+    /// </summary>
+    private async Task RestoreStateAsync()
+    {
+        var savedState = await StateService.LoadAsync(GridKey);
+        if (savedState == null || savedState.Length == 0)
+            return;
+
+        var columns = DataGrid!.RenderedColumns;
+        var stateByTitle = savedState.ToDictionary(s => s.Title, s => s);
+
+        // Apply visibility — hide/show columns based on saved state
+        foreach (var col in columns)
+        {
+            if (col.Title != null && stateByTitle.TryGetValue(col.Title, out var saved))
+            {
+                // Only toggle if current state differs from saved state
+                if (saved.Hidden && !col.Hidden)
+                    await col.HideAsync();
+                else if (!saved.Hidden && col.Hidden)
+                    await col.ShowAsync();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Captures current column state (order + visibility) from the grid and saves to localStorage.
+    /// </summary>
+    public async Task SaveStateAsync()
+    {
+        if (DataGrid?.RenderedColumns == null || DataGrid.RenderedColumns.Count == 0)
+            return;
+
+        var state = DataGrid.RenderedColumns
+            .Select((col, index) => new GridColumnState
+            {
+                Title = col.Title ?? $"col_{index}",
+                Order = index,
+                Hidden = col.Hidden
+            })
+            .ToArray();
+
+        await StateService.SaveAsync(GridKey, state);
+    }
+
+    /// <summary>
+    /// Auto-save state when the component is disposed (user navigates to another page).
+    /// </summary>
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await SaveStateAsync();
+        }
+        catch
+        {
+            // Ignore errors during disposal — localStorage may not be available
+        }
+    }
+}
