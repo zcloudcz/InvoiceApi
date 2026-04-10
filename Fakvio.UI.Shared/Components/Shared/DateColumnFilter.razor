@@ -26,12 +26,15 @@
 
         @* Date picker — rendered FIRST so the operator pill (next sibling) can stack above it
            via z-index without conflicting with the picker's own click handlers.
-           Left padding is added via scoped CSS to make room for the pill. *@
+           Left padding is added via scoped CSS to make room for the pill.
+           In range mode, IsDateDisabledFunc prevents the user from picking a "from" date
+           that is later than the currently set "to" date. *@
         <MudDatePicker Date="_dateFrom"
                        DateChanged="OnDateFromChanged"
                        Margin="Margin.Dense"
                        Variant="Variant.Outlined"
                        Clearable="true"
+                       IsDateDisabledFunc="IsFromDateDisabled"
                        Class="date-col-filter-input" />
 
         @* Operator menu — overlaid as a start adornment inside the date input.
@@ -79,7 +82,8 @@
     </div>
 
     @* Range mode — second picker on the same row, separated by an arrow.
-       Visible only when the user picks the ↔ (between) operator. *@
+       Visible only when the user picks the ↔ (between) operator.
+       IsDateDisabledFunc prevents the user from picking a "to" date earlier than "from". *@
     @if (_operator == Op_Range)
     {
         <span class="date-col-filter-arrow">→</span>
@@ -88,6 +92,7 @@
                        Margin="Margin.Dense"
                        Variant="Variant.Outlined"
                        Clearable="true"
+                       IsDateDisabledFunc="IsToDateDisabled"
                        Class="date-col-filter-input-to" />
     }
 </div>
@@ -172,13 +177,52 @@
     private async Task OnDateFromChanged(DateTime? value)
     {
         _dateFrom = value;
+
+        // In range mode, if the new "from" is later than the existing "to",
+        // clear "to" so the user is prompted to pick a valid upper bound.
+        // This is a safety net for keyboard input — IsDateDisabledFunc covers calendar clicks.
+        if (_operator == Op_Range && _dateFrom.HasValue && _dateTo.HasValue && _dateFrom > _dateTo)
+        {
+            _dateTo = null;
+        }
+
         await ApplyFilterAsync();
     }
 
     private async Task OnDateToChanged(DateTime? value)
     {
+        // Reject "to" dates earlier than "from" — keyboard input safety net.
+        // (IsDateDisabledFunc already prevents this in the calendar UI.)
+        if (value.HasValue && _dateFrom.HasValue && value < _dateFrom)
+        {
+            // Snap "to" up to "from" instead of accepting an invalid value
+            value = _dateFrom;
+        }
+
         _dateTo = value;
         await ApplyFilterAsync();
+    }
+
+    /// <summary>
+    /// Disables dates in the "from" calendar that would be greater than the currently set "to".
+    /// Only active in range mode AND only when "to" already has a value — otherwise all dates are enabled.
+    /// </summary>
+    private bool IsFromDateDisabled(DateTime date)
+    {
+        if (_operator != Op_Range || !_dateTo.HasValue)
+            return false;
+        return date.Date > _dateTo.Value.Date;
+    }
+
+    /// <summary>
+    /// Disables dates in the "to" calendar that would be earlier than the currently set "from".
+    /// Only active when "from" already has a value — otherwise all dates are enabled.
+    /// </summary>
+    private bool IsToDateDisabled(DateTime date)
+    {
+        if (!_dateFrom.HasValue)
+            return false;
+        return date.Date < _dateFrom.Value.Date;
     }
 
     /// <summary>
