@@ -92,6 +92,8 @@ public class InvoiceTemplateService : IInvoiceTemplateService
         long? issuerId = null,
         string sortBy = "Name",
         bool isDescending = false,
+        DateTime? lastUsedAtFrom = null,
+        DateTime? lastUsedAtTo = null,
         CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Fetching paged templates (Page: {Page}, PageSize: {PageSize}, Search: {Search})",
@@ -129,6 +131,13 @@ public class InvoiceTemplateService : IInvoiceTemplateService
                 (t.Description != null && t.Description.ToLower().Contains(searchLower)) ||
                 (t.Category != null && t.Category.ToLower().Contains(searchLower)));
         }
+
+        // LastUsedAt date range — UTC Kind required by Npgsql for 'timestamp with time zone'
+        if (lastUsedAtFrom.HasValue)
+            query = query.Where(t => t.LastUsedAt >= DateTime.SpecifyKind(lastUsedAtFrom.Value, DateTimeKind.Utc));
+
+        if (lastUsedAtTo.HasValue)
+            query = query.Where(t => t.LastUsedAt <= DateTime.SpecifyKind(lastUsedAtTo.Value, DateTimeKind.Utc));
 
         // Apply sorting
         var validSortFields = new[] { "Name", "Category", "DocumentType", "UsageCount", "LastUsedAt", "CreatedAt", "UpdatedAt" };

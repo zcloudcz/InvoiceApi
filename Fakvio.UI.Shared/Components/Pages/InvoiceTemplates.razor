@@ -7,6 +7,7 @@
 @using Fakvio.Domain.Enums
 @using Microsoft.AspNetCore.Authorization
 @using Fakvio.UI.Shared.Services
+@using Fakvio.UI.Shared.Models
 @* Use typed API services instead of raw HttpClient — they handle BaseAddress, auth, logging *@
 @inject InvoiceTemplateApiService TemplateService
 @inject ClientApiService ClientService
@@ -99,7 +100,7 @@
         </PropertyColumn>
         <PropertyColumn Property="x => x.LastUsedAt" Title="@L["Template_LastUsed"].Value" Format="d">
             <FilterTemplate>
-                <DateColumnFilter T="InvoiceTemplateDto" Context="context" ValueFunc="x => x.LastUsedAt" />
+                <DateColumnFilter T="InvoiceTemplateDto" Context="context" ValueFunc="x => x.LastUsedAt" FilterKey="LastUsedAt" />
             </FilterTemplate>
             <CellTemplate>
                 @if (context.Item.LastUsedAt.HasValue)
@@ -248,6 +249,9 @@
             var sortBy = sortDef?.SortBy ?? "Name";
             var isDescending = sortDef?.Descending ?? false;
 
+            // Date column filter on LastUsedAt
+            var (lastUsedFrom, lastUsedTo) = state.GetDateRange("LastUsedAt");
+
             var response = await TemplateService.GetPagedAsync(
                 page: state.Page + 1, // MudDataGrid is 0-based, API is 1-based
                 pageSize: state.PageSize,
@@ -255,7 +259,9 @@
                 documentType: _filterDocumentType,
                 isActive: _filterActive,
                 sortBy: sortBy,
-                isDescending: isDescending);
+                isDescending: isDescending,
+                lastUsedAtFrom: lastUsedFrom,
+                lastUsedAtTo: lastUsedTo);
 
             return new GridData<InvoiceTemplateDto>
             {

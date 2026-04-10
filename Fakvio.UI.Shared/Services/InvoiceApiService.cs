@@ -58,6 +58,8 @@ public class FakvioService : ApiClientBase
         DateTime? issueDateTo = null,
         DateTime? dueDateFrom = null,
         DateTime? dueDateTo = null,
+        DateTime? taxableSupplyDateFrom = null,
+        DateTime? taxableSupplyDateTo = null,
         bool? isOverdue = null,
         string? currency = null,
         decimal? minAmount = null,
@@ -100,6 +102,12 @@ public class FakvioService : ApiClientBase
 
             if (dueDateTo.HasValue)
                 queryParams.Append($"&DueDateTo={dueDateTo.Value:yyyy-MM-dd}");
+
+            if (taxableSupplyDateFrom.HasValue)
+                queryParams.Append($"&TaxableSupplyDateFrom={taxableSupplyDateFrom.Value:yyyy-MM-dd}");
+
+            if (taxableSupplyDateTo.HasValue)
+                queryParams.Append($"&TaxableSupplyDateTo={taxableSupplyDateTo.Value:yyyy-MM-dd}");
 
             if (isOverdue.HasValue)
                 queryParams.Append($"&IsOverdue={isOverdue.Value}");

@@ -5,6 +5,7 @@
 @using Fakvio.Contracts.Dto.Invoice
 @using Fakvio.Contracts.Common.Pagination
 @using Fakvio.Domain.Enums
+@using Fakvio.UI.Shared.Models
 @inject ClientApiService ClientService
 @inject FakvioService InvoiceService
 @inject NavigationManager Navigation
@@ -361,13 +362,13 @@ else
                 @* Issue date — short date format *@
                 <PropertyColumn Property="x => x.IssueDate" Title="@L["Table_IssueDate"].Value" Sortable="true" Format="d">
                     <FilterTemplate>
-                        <DateColumnFilter T="InvoiceDto" Context="context" ValueFunc="x => x.IssueDate" />
+                        <DateColumnFilter T="InvoiceDto" Context="context" ValueFunc="x => x.IssueDate" FilterKey="IssueDate" />
                     </FilterTemplate>
                 </PropertyColumn>
                 @* Due date — short date format *@
                 <PropertyColumn Property="x => x.DueDate" Title="@L["Table_DueDate"].Value" Sortable="true" Format="d">
                     <FilterTemplate>
-                        <DateColumnFilter T="InvoiceDto" Context="context" ValueFunc="x => x.DueDate" />
+                        <DateColumnFilter T="InvoiceDto" Context="context" ValueFunc="x => x.DueDate" FilterKey="DueDate" />
                     </FilterTemplate>
                 </PropertyColumn>
                 @* Total with VAT — bold amount + currency code *@
@@ -861,6 +862,10 @@ else
             var sortBy = sortDef?.SortBy;
             var sortDirection = sortDef?.Descending == true ? "desc" : "asc";
 
+            // Date column filters — extracted from GridState and forwarded to the API
+            var (issueFrom, issueTo) = state.GetDateRange("IssueDate");
+            var (dueFrom, dueTo) = state.GetDateRange("DueDate");
+
             var result = await InvoiceService.GetPagedAsync(
                 page: state.Page + 1,
                 pageSize: state.PageSize,
@@ -868,7 +873,11 @@ else
                 sortBy: sortBy,
                 sortDirection: sortDirection,
                 clientId: Id,
-                status: _invoiceStatusFilter);
+                status: _invoiceStatusFilter,
+                issueDateFrom: issueFrom,
+                issueDateTo: issueTo,
+                dueDateFrom: dueFrom,
+                dueDateTo: dueTo);
 
             return new GridData<InvoiceDto>
             {

@@ -55,10 +55,13 @@ public class InvoiceTemplateController : ControllerBase
         [FromQuery] long? issuerId = null,
         [FromQuery] string sortBy = "Name",
         [FromQuery] bool isDescending = false,
+        [FromQuery] DateTime? lastUsedAtFrom = null,
+        [FromQuery] DateTime? lastUsedAtTo = null,
         CancellationToken cancellationToken = default)
     {
         var result = await _templateService.GetTemplatesPagedAsync(
-            page, pageSize, search, documentType, category, isActive, issuerId, sortBy, isDescending, cancellationToken);
+            page, pageSize, search, documentType, category, isActive, issuerId, sortBy, isDescending,
+            lastUsedAtFrom, lastUsedAtTo, cancellationToken);
 
         return Ok(result);
     }

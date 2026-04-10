@@ -32,6 +32,8 @@ public interface IInvoiceTemplateService
         long? issuerId = null,
         string sortBy = "Name",
         bool isDescending = false,
+        DateTime? lastUsedAtFrom = null,
+        DateTime? lastUsedAtTo = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>

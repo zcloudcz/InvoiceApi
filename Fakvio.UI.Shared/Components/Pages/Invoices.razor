@@ -6,6 +6,7 @@
 @using Fakvio.Contracts.Common.Pagination
 @using Fakvio.Contracts.Dto.ContentTemplate
 @using Fakvio.Domain.Enums
+@using Fakvio.UI.Shared.Models
 @inject FakvioService InvoiceService
 @inject ClientApiService ClientService
 @inject InvoiceTemplateApiService TemplateService
@@ -116,7 +117,7 @@
         <PropertyColumn Property="x => x.IssueDate" Title="@L["Table_IssueDate"].Value"
                         Format="d">
             <FilterTemplate>
-                <DateColumnFilter T="InvoiceDto" Context="context" ValueFunc="x => x.IssueDate" />
+                <DateColumnFilter T="InvoiceDto" Context="context" ValueFunc="x => x.IssueDate" FilterKey="IssueDate" />
             </FilterTemplate>
         </PropertyColumn>
 
@@ -126,7 +127,7 @@
             <PropertyColumn Property="x => x.TaxableSupplyDate" Title="@L["Invoice_TaxableSupplyDate"].Value"
                             Format="d">
                 <FilterTemplate>
-                    <DateColumnFilter T="InvoiceDto" Context="context" ValueFunc="x => x.TaxableSupplyDate" />
+                    <DateColumnFilter T="InvoiceDto" Context="context" ValueFunc="x => x.TaxableSupplyDate" FilterKey="TaxableSupplyDate" />
                 </FilterTemplate>
             </PropertyColumn>
         }
@@ -135,7 +136,7 @@
         <PropertyColumn Property="x => x.DueDate" Title="@L["Table_DueDate"].Value"
                         Format="d">
             <FilterTemplate>
-                <DateColumnFilter T="InvoiceDto" Context="context" ValueFunc="x => x.DueDate" />
+                <DateColumnFilter T="InvoiceDto" Context="context" ValueFunc="x => x.DueDate" FilterKey="DueDate" />
             </FilterTemplate>
         </PropertyColumn>
 
@@ -459,15 +460,25 @@
                 sortDirection = sortDef.Descending ? "desc" : "asc";
             }
 
-            // Only global search + document type are sent server-side.
-            // Status, client, date filters are now handled client-side by MudDataGrid column filters.
+            // Date column filters — read structured DateFilterValue out of the GridState
+            // and forward as named API parameters. Each tuple is (From, To); both null = no filter.
+            var (issueFrom, issueTo) = state.GetDateRange("IssueDate");
+            var (dueFrom, dueTo) = state.GetDateRange("DueDate");
+            var (taxableFrom, taxableTo) = state.GetDateRange("TaxableSupplyDate");
+
             var result = await InvoiceService.GetPagedAsync(
                 page: state.Page + 1,
                 pageSize: state.PageSize,
                 search: _searchString,
                 sortBy: sortBy,
                 sortDirection: sortDirection,
-                documentType: _filterDocumentType);
+                documentType: _filterDocumentType,
+                issueDateFrom: issueFrom,
+                issueDateTo: issueTo,
+                dueDateFrom: dueFrom,
+                dueDateTo: dueTo,
+                taxableSupplyDateFrom: taxableFrom,
+                taxableSupplyDateTo: taxableTo);
 
             return new GridData<InvoiceDto>
             {

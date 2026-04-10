@@ -34,6 +34,8 @@ public class ReceivedInvoiceApiService : ApiClientBase
         long? supplierId = null,
         DateTime? issueDateFrom = null,
         DateTime? issueDateTo = null,
+        DateTime? dueDateFrom = null,
+        DateTime? dueDateTo = null,
         bool? isOverdue = null)
     {
         try
@@ -54,6 +56,10 @@ public class ReceivedInvoiceApiService : ApiClientBase
                 q.Append($"&IssueDateFrom={issueDateFrom.Value:O}");
             if (issueDateTo.HasValue)
                 q.Append($"&IssueDateTo={issueDateTo.Value:O}");
+            if (dueDateFrom.HasValue)
+                q.Append($"&DueDateFrom={dueDateFrom.Value:O}");
+            if (dueDateTo.HasValue)
+                q.Append($"&DueDateTo={dueDateTo.Value:O}");
             if (isOverdue.HasValue)
                 q.Append($"&IsOverdue={isOverdue.Value.ToString().ToLowerInvariant()}");
 

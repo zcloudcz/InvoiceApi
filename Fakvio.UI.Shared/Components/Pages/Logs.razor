@@ -1,6 +1,7 @@
 @page "/logs"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "SysAdmin")]
 @using Fakvio.Contracts.Dto.AppLog
+@using Fakvio.UI.Shared.Models
 @inject AppLogApiService LogService
 @inject ISnackbar Snackbar
 @inject IStringLocalizer<SharedResource> L
@@ -56,7 +57,7 @@
     <Columns>
         <PropertyColumn Property="x => x.Timestamp" Title="@L["Log_Timestamp"].Value">
             <FilterTemplate>
-                <DateColumnFilter T="AppLogDto" Context="context" ValueFunc="x => (DateTime?)x.Timestamp" />
+                <DateColumnFilter T="AppLogDto" Context="context" ValueFunc="x => (DateTime?)x.Timestamp" FilterKey="Timestamp" />
             </FilterTemplate>
             <CellTemplate>
                 <MudText Typo="Typo.body2">@context.Item.Timestamp.ToString("yyyy-MM-dd HH:mm:ss")</MudText>
@@ -175,9 +176,15 @@
         StateHasChanged();
         try
         {
+            // Column filter on Timestamp (if set) overrides the page-level date pickers.
+            // The column filter is more specific and supports operators (=, >, <, between, …).
+            var (colFrom, colTo) = state.GetDateRange("Timestamp");
+            var effectiveFrom = colFrom ?? _dateFrom;
+            var effectiveTo = colTo ?? _dateTo;
+
             // Call the API with current filter values and the page/size from the grid state
             var result = await LogService.GetPagedAsync(
-                state.Page + 1, state.PageSize, _levelFilter, _searchFilter, _dateFrom, _dateTo);
+                state.Page + 1, state.PageSize, _levelFilter, _searchFilter, effectiveFrom, effectiveTo);
 
             // Return the data in the format MudDataGrid expects
             return new GridData<AppLogDto>

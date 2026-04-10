@@ -54,6 +54,16 @@ public class InvoiceFilterDto : PaginationParams
     public DateTime? DueDateTo { get; set; }
 
     /// <summary>
+    /// Filter by taxable supply date (DUZP — datum uskutečnění zdanitelného plnění) — lower bound
+    /// </summary>
+    public DateTime? TaxableSupplyDateFrom { get; set; }
+
+    /// <summary>
+    /// Filter by taxable supply date (DUZP) — upper bound
+    /// </summary>
+    public DateTime? TaxableSupplyDateTo { get; set; }
+
+    /// <summary>
     /// Show only overdue invoices
     /// </summary>
     public bool? IsOverdue { get; set; }

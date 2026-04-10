@@ -40,12 +40,12 @@
         </PropertyColumn>
         <PropertyColumn Property="x => x.ValidFrom" Title="@L["VatRate_ValidFrom"].Value" Format="d">
             <FilterTemplate>
-                <DateColumnFilter T="VatRateDto" Context="context" ValueFunc="x => (DateTime?)x.ValidFrom" />
+                <DateColumnFilter T="VatRateDto" Context="context" ValueFunc="x => (DateTime?)x.ValidFrom" FilterKey="ValidFrom" />
             </FilterTemplate>
         </PropertyColumn>
         <PropertyColumn Property="x => x.ValidTo" Title="@L["VatRate_ValidTo"].Value" Format="d">
             <FilterTemplate>
-                <DateColumnFilter T="VatRateDto" Context="context" ValueFunc="x => x.ValidTo" />
+                <DateColumnFilter T="VatRateDto" Context="context" ValueFunc="x => x.ValidTo" FilterKey="ValidTo" />
             </FilterTemplate>
             <CellTemplate>@(context.Item.ValidTo?.ToShortDateString() ?? "—")</CellTemplate>
         </PropertyColumn>

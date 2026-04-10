@@ -9,14 +9,25 @@
     - Range mode (↔): a second compact date picker appears next to the first one in the same row,
       separated by an arrow, so the entire filter still occupies one logical line.
 
+    Works with BOTH client-side and server-side MudDataGrids:
+    - Client-side: a custom FilterFunction is set on the FilterDefinition for ALL operators,
+      so MudDataGrid filters the in-memory items locally.
+    - Server-side: the operator + dates are also packed into a DateFilterValue stored on
+      FilterDefinition.Value. The page's LoadServerData reads it via
+      DateGridFilterExtensions.GetDateRange(FilterKey) and forwards it to the API.
+
     Usage:
     <PropertyColumn Property="x => x.IssueDate" Title="Issue Date" Format="d">
         <FilterTemplate>
-            <DateColumnFilter T="InvoiceDto" Context="context" ValueFunc="x => x.IssueDate" />
+            <DateColumnFilter T="InvoiceDto"
+                              Context="context"
+                              ValueFunc="x => x.IssueDate"
+                              FilterKey="IssueDate" />
         </FilterTemplate>
     </PropertyColumn>
 *@
 @typeparam T
+@using Fakvio.UI.Shared.Models
 
 @* Single-row container — flex layout keeps from/to pickers on one line in range mode *@
 <div class="date-col-filter">
@@ -106,12 +117,23 @@
 
     /// <summary>
     /// Function to extract the DateTime value from the row item.
-    /// Required for the range (↔) filter which uses a custom FilterFunction.
+    /// Used by the FilterFunction for client-side filtering.
     /// Must match the Property expression on the PropertyColumn.
     /// Example: ValueFunc="x => x.IssueDate"
     /// </summary>
     [Parameter, EditorRequired]
     public Func<T, DateTime?> ValueFunc { get; set; } = default!;
+
+    /// <summary>
+    /// Stable string key identifying this column for server-side filtering.
+    /// The page's LoadServerData reads this key via
+    /// <c>state.GetDateRange("IssueDate")</c> to forward the filter to the API.
+    /// Optional — only required when the grid uses ServerData and needs to
+    /// translate the filter into API parameters. For client-side grids it's
+    /// ignored (the FilterFunction handles filtering directly).
+    /// </summary>
+    [Parameter]
+    public string? FilterKey { get; set; }
 
     [Inject] private IStringLocalizer<SharedResource> L { get; set; } = default!;
 
@@ -227,8 +249,14 @@
 
     /// <summary>
     /// Applies the current operator + date(s) to the filter definition.
-    /// Standard operators (=, >, etc.) use built-in MudBlazor operators.
-    /// Range (↔) uses a custom FilterFunction with the provided ValueFunc.
+    ///
+    /// Unified approach for client-side AND server-side grids:
+    /// - <c>FilterFunction</c> is set for ALL operators so client-side grids work locally.
+    /// - <c>Value</c> is set to a structured <see cref="DateFilterValue"/> so server-side
+    ///   grids can read it via <c>DateGridFilterExtensions.GetDateRange(FilterKey)</c>
+    ///   and forward it to the API as named parameters (IssueDateFrom/To, etc.).
+    /// - <c>Operator</c> is cleared because <c>FilterFunction</c> takes precedence on
+    ///   client-side grids and server-side grids use our DateFilterValue instead.
     /// </summary>
     private async Task ApplyFilterAsync()
     {
@@ -243,42 +271,42 @@
             return;
         }
 
-        if (_operator == Op_Range)
+        if (filterDef is FilterDefinition<T> concreteDef)
         {
-            // Range: custom FilterFunction using ValueFunc to extract the date from each row
-            if (filterDef is FilterDefinition<T> concreteDef)
-            {
-                var from = _dateFrom.Value.Date;
-                var to = _dateTo?.Date;
-                var extractDate = ValueFunc;
+            var from = _dateFrom.Value.Date;
+            var to = _dateTo?.Date;
+            var extractDate = ValueFunc;
+            var op = _operator;
 
-                concreteDef.Operator = null;
-                concreteDef.Value = null;
-                concreteDef.FilterFunction = item =>
-                {
-                    var cellDate = extractDate(item)?.Date;
-                    if (cellDate == null) return false;
-                    if (to == null) return cellDate >= from;
-                    return cellDate >= from && cellDate <= to;
-                };
-            }
-        }
-        else
-        {
-            // Standard operators — clear any custom FilterFunction so the built-in operator runs
-            if (filterDef is FilterDefinition<T> concreteDef)
-                concreteDef.FilterFunction = null;
-
-            filterDef.Operator = _operator switch
+            // 1) Server-side metadata — read by LoadServerData via DateGridFilterExtensions
+            concreteDef.Value = new DateFilterValue
             {
-                Op_Is => FilterOperator.DateTime.Is,
-                Op_After => FilterOperator.DateTime.After,
-                Op_OnOrAfter => FilterOperator.DateTime.OnOrAfter,
-                Op_Before => FilterOperator.DateTime.Before,
-                Op_OnOrBefore => FilterOperator.DateTime.OnOrBefore,
-                _ => FilterOperator.DateTime.Is
+                Key = FilterKey ?? string.Empty,
+                Operator = op,
+                From = from,
+                To = to
             };
-            filterDef.Value = _dateFrom.Value.Date;
+
+            // 2) Client-side predicate — handles all operators uniformly
+            concreteDef.Operator = null;
+            concreteDef.FilterFunction = item =>
+            {
+                var cellDate = extractDate(item)?.Date;
+                if (cellDate == null) return false;
+
+                return op switch
+                {
+                    Op_Is => cellDate == from,
+                    Op_After => cellDate > from,
+                    Op_OnOrAfter => cellDate >= from,
+                    Op_Before => cellDate < from,
+                    Op_OnOrBefore => cellDate <= from,
+                    Op_Range => to == null
+                        ? cellDate >= from
+                        : cellDate >= from && cellDate <= to,
+                    _ => true
+                };
+            };
         }
 
         if (Context.Actions != null)

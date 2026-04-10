@@ -32,7 +32,9 @@ public class InvoiceTemplateApiService : ApiClientBase
         EDocumentType? documentType = null,
         bool? isActive = null,
         string sortBy = "Name",
-        bool isDescending = false)
+        bool isDescending = false,
+        DateTime? lastUsedAtFrom = null,
+        DateTime? lastUsedAtTo = null)
     {
         try
         {
@@ -41,6 +43,11 @@ public class InvoiceTemplateApiService : ApiClientBase
                            $"&documentType={documentType}" +
                            $"&isActive={isActive}" +
                            $"&sortBy={sortBy}&isDescending={isDescending}";
+
+            if (lastUsedAtFrom.HasValue)
+                endpoint += $"&lastUsedAtFrom={lastUsedAtFrom.Value:yyyy-MM-dd}";
+            if (lastUsedAtTo.HasValue)
+                endpoint += $"&lastUsedAtTo={lastUsedAtTo.Value:yyyy-MM-dd}";
 
             return await GetAsync<PagedResult<InvoiceTemplateDto>>(endpoint)
                    ?? new PagedResult<InvoiceTemplateDto>();

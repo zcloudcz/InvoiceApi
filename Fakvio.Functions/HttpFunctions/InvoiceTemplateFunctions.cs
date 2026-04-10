@@ -89,10 +89,14 @@ public class InvoiceTemplateFunctions
         long? issuerId = long.TryParse(req.Query["issuerId"], out var _issuerIdParsed) ? _issuerIdParsed : null;
         string sortBy = req.Query["sortBy"].ToString() ?? "Name";
         bool.TryParse(req.Query["isDescending"], out var isDescending);
+        DateTime? lastUsedAtFrom = DateTime.TryParse(req.Query["lastUsedAtFrom"], out var _lastUsedFromParsed) ? _lastUsedFromParsed : null;
+        DateTime? lastUsedAtTo = DateTime.TryParse(req.Query["lastUsedAtTo"], out var _lastUsedToParsed) ? _lastUsedToParsed : null;
         var cancellationToken = req.HttpContext.RequestAborted;
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.GetTemplatesPaged(page, pageSize, search, documentType, category, isActive, issuerId, sortBy, isDescending, cancellationToken));
+        return FunctionResultHelper.Normalize(await _controller.GetTemplatesPaged(
+            page, pageSize, search, documentType, category, isActive, issuerId, sortBy, isDescending,
+            lastUsedAtFrom, lastUsedAtTo, cancellationToken));
     }
 
     /// <summary>

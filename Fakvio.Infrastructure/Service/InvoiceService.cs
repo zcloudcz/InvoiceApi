@@ -140,6 +140,12 @@ public class InvoiceService : IInvoiceService
         if (filter.DueDateTo.HasValue)
             query = query.Where(i => i.DueDate <= DateTime.SpecifyKind(filter.DueDateTo.Value, DateTimeKind.Utc));
 
+        if (filter.TaxableSupplyDateFrom.HasValue)
+            query = query.Where(i => i.TaxableSupplyDate >= DateTime.SpecifyKind(filter.TaxableSupplyDateFrom.Value, DateTimeKind.Utc));
+
+        if (filter.TaxableSupplyDateTo.HasValue)
+            query = query.Where(i => i.TaxableSupplyDate <= DateTime.SpecifyKind(filter.TaxableSupplyDateTo.Value, DateTimeKind.Utc));
+
         // Overdue filter
         if (filter.IsOverdue.HasValue && filter.IsOverdue.Value)
         {
