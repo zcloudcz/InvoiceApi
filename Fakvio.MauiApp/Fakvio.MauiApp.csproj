@@ -28,9 +28,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- App icon and splash screen — MAUI automatically generates platform-specific sizes -->
-    <MauiIcon Include="Resources\Images\appicon.svg" ForegroundFile="Resources\Images\appiconfg.svg" Color="#512BD4" />
-    <MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#512BD4" BaseSize="128,128" />
+    <!-- App icon and splash screen — MAUI automatically generates platform-specific sizes from the new Fakvio "F" logo PNG -->
+    <MauiIcon Include="Resources\Images\appicon.png" />
+    <MauiSplashScreen Include="Resources\Splash\splash.png" Color="#1A0B2E" BaseSize="128,128" />
     <!-- Fonts included in the app bundle -->
     <MauiFont Include="Resources\Fonts\*" />
     <!-- Raw assets accessible via MauiAsset -->
