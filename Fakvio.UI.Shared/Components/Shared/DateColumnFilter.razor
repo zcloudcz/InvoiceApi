@@ -1,9 +1,13 @@
 @*
-    DateColumnFilter — MudDataGrid column filter with operator selection and date-only pickers.
+    DateColumnFilter — unified single-row MudDataGrid column filter for date columns.
 
-    Supports: = (exact), > (after), >= (on or after), < (before), <= (on or before), ↔ (range/between).
-    Range mode shows two date pickers (from/to) and uses a custom FilterFunction.
-    Other modes use MudDataGrid's built-in FilterOperator.DateTime operators.
+    Design: the operator selector is embedded INSIDE the date input as a start adornment,
+    so the whole filter looks and behaves like a single compact input — just like
+    the calendar icon on the right side.
+
+    - Single mode (=, >, >=, <, <=): one date picker with operator button on the left
+    - Range mode (↔): a second compact date picker appears next to the first one in the same row,
+      separated by an arrow, so the entire filter still occupies one logical line.
 
     Usage:
     <PropertyColumn Property="x => x.IssueDate" Title="Issue Date" Format="d">
@@ -14,44 +18,74 @@
 *@
 @typeparam T
 
-@* Compact layout: operator selector + date picker(s) stacked vertically *@
-<div style="min-width: 160px;">
-    @* Operator dropdown — math symbols for clarity, localized text after *@
-    <MudSelect T="string" Value="_operator" ValueChanged="OnOperatorChanged"
-               Margin="Margin.Dense" Variant="Variant.Outlined"
-               Dense="true" Class="mb-1" Style="font-size: 0.8rem;">
-        <MudSelectItem T="string" Value="@Op_Is">=&nbsp;&nbsp;&nbsp;@L["DateFilter_Is"]</MudSelectItem>
-        <MudSelectItem T="string" Value="@Op_After">&gt;&nbsp;&nbsp;&nbsp;@L["DateFilter_After"]</MudSelectItem>
-        <MudSelectItem T="string" Value="@Op_OnOrAfter">&gt;=&nbsp;@L["DateFilter_OnOrAfter"]</MudSelectItem>
-        <MudSelectItem T="string" Value="@Op_Before">&lt;&nbsp;&nbsp;&nbsp;@L["DateFilter_Before"]</MudSelectItem>
-        <MudSelectItem T="string" Value="@Op_OnOrBefore">&lt;=&nbsp;@L["DateFilter_OnOrBefore"]</MudSelectItem>
-        <MudSelectItem T="string" Value="@Op_Range">&#x2194;&nbsp;&nbsp;@L["DateFilter_Range"]</MudSelectItem>
-    </MudSelect>
+@* Single-row container — flex layout keeps from/to pickers on one line in range mode *@
+<div class="date-col-filter">
 
-    @* Primary date picker *@
-    <MudDatePicker Date="_dateFrom"
-                   DateChanged="OnDateFromChanged"
-                   Margin="Margin.Dense"
-                   Variant="Variant.Outlined"
-                   Clearable="true"
-                   Class="mt-0" />
+    @* Primary picker wrapper — relatively positioned so the operator button can overlay the input *@
+    <div class="date-col-filter-input-wrap">
 
-    @* Second date picker — only visible in range (↔) mode *@
+        @* Operator menu — overlaid as a start adornment inside the date input.
+           The activator looks like a small pill with the current operator symbol; clicking it opens a menu. *@
+        <MudMenu Dense="true"
+                 AnchorOrigin="Origin.BottomLeft"
+                 TransformOrigin="Origin.TopLeft"
+                 PopoverClass="date-col-filter-popover">
+            <ActivatorContent>
+                <button type="button"
+                        class="date-col-filter-op-btn"
+                        title="@GetOperatorTitle()"
+                        @onclick:stopPropagation="true">
+                    @GetOperatorSymbol()
+                </button>
+            </ActivatorContent>
+            <ChildContent>
+                <MudMenuItem OnClick="@(() => SetOperator(Op_Is))">
+                    <span class="date-col-filter-menu-sym">=</span> @L["DateFilter_Is"]
+                </MudMenuItem>
+                <MudMenuItem OnClick="@(() => SetOperator(Op_After))">
+                    <span class="date-col-filter-menu-sym">&gt;</span> @L["DateFilter_After"]
+                </MudMenuItem>
+                <MudMenuItem OnClick="@(() => SetOperator(Op_OnOrAfter))">
+                    <span class="date-col-filter-menu-sym">&ge;</span> @L["DateFilter_OnOrAfter"]
+                </MudMenuItem>
+                <MudMenuItem OnClick="@(() => SetOperator(Op_Before))">
+                    <span class="date-col-filter-menu-sym">&lt;</span> @L["DateFilter_Before"]
+                </MudMenuItem>
+                <MudMenuItem OnClick="@(() => SetOperator(Op_OnOrBefore))">
+                    <span class="date-col-filter-menu-sym">&le;</span> @L["DateFilter_OnOrBefore"]
+                </MudMenuItem>
+                <MudMenuItem OnClick="@(() => SetOperator(Op_Range))">
+                    <span class="date-col-filter-menu-sym">↔</span> @L["DateFilter_Range"]
+                </MudMenuItem>
+            </ChildContent>
+        </MudMenu>
+
+        @* Date picker — left padding is added via scoped CSS to make room for the operator pill *@
+        <MudDatePicker Date="_dateFrom"
+                       DateChanged="OnDateFromChanged"
+                       Margin="Margin.Dense"
+                       Variant="Variant.Outlined"
+                       Clearable="true"
+                       Class="date-col-filter-input" />
+    </div>
+
+    @* Range mode — second picker on the same row, separated by an arrow.
+       Visible only when the user picks the ↔ (between) operator. *@
     @if (_operator == Op_Range)
     {
+        <span class="date-col-filter-arrow">→</span>
         <MudDatePicker Date="_dateTo"
                        DateChanged="OnDateToChanged"
                        Margin="Margin.Dense"
                        Variant="Variant.Outlined"
                        Clearable="true"
-                       Placeholder="→"
-                       Class="mt-1" />
+                       Class="date-col-filter-input-to" />
     }
 </div>
 
 @code {
     /// <summary>
-    /// MudDataGrid FilterContext — provides filter definition and apply action.
+    /// MudDataGrid FilterContext — provides the filter definition and the apply action.
     /// </summary>
     [Parameter, EditorRequired]
     public FilterContext<T> Context { get; set; } = default!;
@@ -79,7 +113,40 @@
     private DateTime? _dateFrom;
     private DateTime? _dateTo;
 
-    private async Task OnOperatorChanged(string value)
+    /// <summary>
+    /// Returns the short symbol for the current operator (displayed in the pill button).
+    /// Kept very short to fit inside the date input start adornment.
+    /// </summary>
+    private string GetOperatorSymbol() => _operator switch
+    {
+        Op_Is => "=",
+        Op_After => ">",
+        Op_OnOrAfter => "≥",
+        Op_Before => "<",
+        Op_OnOrBefore => "≤",
+        Op_Range => "↔",
+        _ => "="
+    };
+
+    /// <summary>
+    /// Returns a localized title (tooltip) for the operator pill button.
+    /// </summary>
+    private string GetOperatorTitle() => _operator switch
+    {
+        Op_Is => L["DateFilter_Is"],
+        Op_After => L["DateFilter_After"],
+        Op_OnOrAfter => L["DateFilter_OnOrAfter"],
+        Op_Before => L["DateFilter_Before"],
+        Op_OnOrBefore => L["DateFilter_OnOrBefore"],
+        Op_Range => L["DateFilter_Range"],
+        _ => string.Empty
+    };
+
+    /// <summary>
+    /// Called when the user picks an operator from the menu.
+    /// Switching away from range mode clears the secondary date.
+    /// </summary>
+    private async Task SetOperator(string value)
     {
         _operator = value;
         if (value != Op_Range)
@@ -108,7 +175,7 @@
     {
         var filterDef = Context.FilterDefinition;
 
-        // No date → clear filter
+        // No primary date → clear filter (waiting for user input)
         if (!_dateFrom.HasValue)
         {
             ClearFilter(filterDef);
@@ -139,7 +206,7 @@
         }
         else
         {
-            // Standard operators — clear any custom FilterFunction
+            // Standard operators — clear any custom FilterFunction so the built-in operator runs
             if (filterDef is FilterDefinition<T> concreteDef)
                 concreteDef.FilterFunction = null;
 

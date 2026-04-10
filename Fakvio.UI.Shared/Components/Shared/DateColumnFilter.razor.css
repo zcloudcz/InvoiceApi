@@ -1,0 +1,97 @@
+/*
+   Scoped CSS for DateColumnFilter.
+   Uses ::deep to reach into MudDatePicker's internal markup since the component
+   is rendered as a child of this scope (Blazor scoped CSS attaches a unique attribute
+   only to elements declared directly in the .razor file; child components need ::deep).
+*/
+
+/* Top-level container — single row, items vertically centered, gap between range pickers */
+.date-col-filter {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+    min-width: 220px;
+}
+
+/* Wrapper around the primary picker — relative positioning so the operator pill
+   can be absolutely positioned INSIDE the date input on the left side */
+.date-col-filter-input-wrap {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 170px;
+}
+
+/* Operator pill — absolutely positioned inside the date input, on the left,
+   vertically centered. Looks like a small clickable badge with the current symbol. */
+.date-col-filter-input-wrap ::deep .mud-menu {
+    position: absolute;
+    left: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 3;
+}
+
+/* The actual <button> activator — styled as a small filled pill */
+.date-col-filter-op-btn {
+    background: var(--mud-palette-primary);
+    color: var(--mud-palette-primary-text);
+    border: none;
+    border-radius: 4px;
+    padding: 0 6px;
+    height: 22px;
+    min-width: 28px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 120ms ease, transform 80ms ease;
+}
+
+.date-col-filter-op-btn:hover {
+    background: var(--mud-palette-primary-darken);
+    transform: translateY(-1px);
+}
+
+.date-col-filter-op-btn:active {
+    transform: translateY(0);
+}
+
+/* Push the date input text right so it doesn't overlap the operator pill.
+   ::deep is required because MudDatePicker renders its <input> in a child component. */
+.date-col-filter-input ::deep .mud-input-slot,
+.date-col-filter-input ::deep input.mud-input-slot {
+    padding-left: 38px !important;
+}
+
+/* Arrow separator between "from" and "to" pickers in range mode */
+.date-col-filter-arrow {
+    color: var(--mud-palette-text-secondary);
+    font-size: 1.1rem;
+    font-weight: 600;
+    flex: 0 0 auto;
+    user-select: none;
+}
+
+/* Secondary "to" picker in range mode — slightly narrower so the row stays compact */
+.date-col-filter-input-to {
+    flex: 1 1 auto;
+    min-width: 150px;
+}
+
+/* Operator menu popover — slight visual tweak for the symbol column inside menu items */
+.date-col-filter-popover {
+    min-width: 180px;
+}
+
+.date-col-filter-menu-sym {
+    display: inline-block;
+    width: 24px;
+    font-weight: 700;
+    color: var(--mud-palette-primary);
+    text-align: center;
+    margin-right: 6px;
+}
