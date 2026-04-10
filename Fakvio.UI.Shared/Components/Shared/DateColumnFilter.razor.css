@@ -5,21 +5,29 @@
    THIS .razor file — children rendered by other components need ::deep to match.
 */
 
-/* Top-level container — single row, items vertically centered, gap between range pickers */
+/* Top-level container — single row, items vertically centered, gap between range pickers.
+   In range mode the container grows wider to fit two equally-sized pickers comfortably. */
 .date-col-filter {
     display: flex;
     flex-direction: row;
     align-items: center;
-    gap: 6px;
-    min-width: 220px;
+    gap: 8px;
+    min-width: 240px;
+}
+
+/* When range mode is active (second picker is rendered), widen the whole filter
+   so both pickers get enough room to display the full date string. */
+.date-col-filter:has(.date-col-filter-input-to) {
+    min-width: 480px;
 }
 
 /* Wrapper around the primary picker — relative positioning so the operator pill
-   can be absolutely positioned INSIDE the date input on the left side */
+   can be absolutely positioned INSIDE the date input on the left side.
+   flex: 1 1 0 + same min-width as the "to" picker → both pickers share the row equally. */
 .date-col-filter-input-wrap {
     position: relative;
-    flex: 1 1 auto;
-    min-width: 170px;
+    flex: 1 1 0;
+    min-width: 200px;
 }
 
 /* Operator pill wrapper — absolutely positioned over the date input on the left,
@@ -64,10 +72,11 @@
     user-select: none;
 }
 
-/* Secondary "to" picker in range mode — slightly narrower so the row stays compact */
+/* Secondary "to" picker in range mode — same flex sizing as the first input wrap
+   so both pickers visually match width and the date value is fully readable. */
 .date-col-filter-input-to {
-    flex: 1 1 auto;
-    min-width: 150px;
+    flex: 1 1 0;
+    min-width: 200px;
 }
 
 /* Operator menu popover — slightly wider so symbol + label fit comfortably */
