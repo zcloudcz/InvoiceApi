@@ -24,49 +24,58 @@
     @* Primary picker wrapper — relatively positioned so the operator button can overlay the input *@
     <div class="date-col-filter-input-wrap">
 
-        @* Operator menu — overlaid as a start adornment inside the date input.
-           The activator looks like a small pill with the current operator symbol; clicking it opens a menu. *@
-        <MudMenu Dense="true"
-                 AnchorOrigin="Origin.BottomLeft"
-                 TransformOrigin="Origin.TopLeft"
-                 PopoverClass="date-col-filter-popover">
-            <ActivatorContent>
-                <button type="button"
-                        class="date-col-filter-op-btn"
-                        title="@GetOperatorTitle()"
-                        @onclick:stopPropagation="true">
-                    @GetOperatorSymbol()
-                </button>
-            </ActivatorContent>
-            <ChildContent>
-                <MudMenuItem OnClick="@(() => SetOperator(Op_Is))">
-                    <span class="date-col-filter-menu-sym">=</span> @L["DateFilter_Is"]
-                </MudMenuItem>
-                <MudMenuItem OnClick="@(() => SetOperator(Op_After))">
-                    <span class="date-col-filter-menu-sym">&gt;</span> @L["DateFilter_After"]
-                </MudMenuItem>
-                <MudMenuItem OnClick="@(() => SetOperator(Op_OnOrAfter))">
-                    <span class="date-col-filter-menu-sym">&ge;</span> @L["DateFilter_OnOrAfter"]
-                </MudMenuItem>
-                <MudMenuItem OnClick="@(() => SetOperator(Op_Before))">
-                    <span class="date-col-filter-menu-sym">&lt;</span> @L["DateFilter_Before"]
-                </MudMenuItem>
-                <MudMenuItem OnClick="@(() => SetOperator(Op_OnOrBefore))">
-                    <span class="date-col-filter-menu-sym">&le;</span> @L["DateFilter_OnOrBefore"]
-                </MudMenuItem>
-                <MudMenuItem OnClick="@(() => SetOperator(Op_Range))">
-                    <span class="date-col-filter-menu-sym">↔</span> @L["DateFilter_Range"]
-                </MudMenuItem>
-            </ChildContent>
-        </MudMenu>
-
-        @* Date picker — left padding is added via scoped CSS to make room for the operator pill *@
+        @* Date picker — rendered FIRST so the operator pill (next sibling) can stack above it
+           via z-index without conflicting with the picker's own click handlers.
+           Left padding is added via scoped CSS to make room for the pill. *@
         <MudDatePicker Date="_dateFrom"
                        DateChanged="OnDateFromChanged"
                        Margin="Margin.Dense"
                        Variant="Variant.Outlined"
                        Clearable="true"
                        Class="date-col-filter-input" />
+
+        @* Operator menu — overlaid as a start adornment inside the date input.
+           Wrapping div uses @onclick:stopPropagation so clicks on the pill don't bubble
+           to the date picker (which would also open its calendar popup). *@
+        <div class="date-col-filter-op-wrap"
+             @onclick="NoOp"
+             @onclick:stopPropagation="true">
+            <MudMenu Dense="true"
+                     AnchorOrigin="Origin.BottomLeft"
+                     TransformOrigin="Origin.TopLeft"
+                     PopoverClass="date-col-filter-popover">
+                <ActivatorContent>
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               Size="Size.Small"
+                               DisableElevation="true"
+                               Class="date-col-filter-op-btn"
+                               title="@GetOperatorTitle()">
+                        @GetOperatorSymbol()
+                    </MudButton>
+                </ActivatorContent>
+                <ChildContent>
+                    <MudMenuItem OnClick="@(() => SetOperator(Op_Is))">
+                        <span class="date-col-filter-menu-sym">=</span> @L["DateFilter_Is"]
+                    </MudMenuItem>
+                    <MudMenuItem OnClick="@(() => SetOperator(Op_After))">
+                        <span class="date-col-filter-menu-sym">&gt;</span> @L["DateFilter_After"]
+                    </MudMenuItem>
+                    <MudMenuItem OnClick="@(() => SetOperator(Op_OnOrAfter))">
+                        <span class="date-col-filter-menu-sym">&ge;</span> @L["DateFilter_OnOrAfter"]
+                    </MudMenuItem>
+                    <MudMenuItem OnClick="@(() => SetOperator(Op_Before))">
+                        <span class="date-col-filter-menu-sym">&lt;</span> @L["DateFilter_Before"]
+                    </MudMenuItem>
+                    <MudMenuItem OnClick="@(() => SetOperator(Op_OnOrBefore))">
+                        <span class="date-col-filter-menu-sym">&le;</span> @L["DateFilter_OnOrBefore"]
+                    </MudMenuItem>
+                    <MudMenuItem OnClick="@(() => SetOperator(Op_Range))">
+                        <span class="date-col-filter-menu-sym">↔</span> @L["DateFilter_Range"]
+                    </MudMenuItem>
+                </ChildContent>
+            </MudMenu>
+        </div>
     </div>
 
     @* Range mode — second picker on the same row, separated by an arrow.
@@ -112,6 +121,12 @@
     private string _operator = Op_Is;
     private DateTime? _dateFrom;
     private DateTime? _dateTo;
+
+    /// <summary>
+    /// No-op click handler used purely to enable @onclick:stopPropagation on the operator wrapper.
+    /// Blazor requires an @onclick handler to be present for stopPropagation modifier to apply.
+    /// </summary>
+    private void NoOp() { }
 
     /// <summary>
     /// Returns the short symbol for the current operator (displayed in the pill button).
