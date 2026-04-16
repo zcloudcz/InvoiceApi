@@ -104,6 +104,9 @@
              DragDropColumnReordering="true"
              Hideable="true">
     <Columns>
+        @* Checkbox column for bulk selection — required in MudBlazor v8 MudDataGrid *@
+        <SelectColumn T="ReceivedInvoiceDto" />
+
         @* Document number — show dash when null *@
         <PropertyColumn Property="x => x.DocumentNumber" Title="@L["Invoice_DocumentNumber"].Value">
             <CellTemplate>

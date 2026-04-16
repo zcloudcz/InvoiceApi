@@ -101,6 +101,9 @@
         </MudButtonGroup>
     </ToolBarContent>
     <Columns>
+        @* Checkbox column for bulk selection — required in MudBlazor v8 MudDataGrid *@
+        <SelectColumn T="InvoiceDto" />
+
         @* Document number — sortable, filterable *@
         <PropertyColumn Property="x => x.DocumentNumber" Title="@L["Table_Number"].Value" SortBy="x => x.DocumentNumber">
             <CellTemplate>
