@@ -25,6 +25,33 @@
 
 ---
 
+## Completed (2026-04-16)
+
+### Payment Reminders (Dunning / Upomínky) ✅
+**Feature:** Automatic payment reminder system for overdue invoices with multi-level escalation.
+
+**Implemented:**
+- [x] Domain entities: `ReminderSettings`, `ReminderLevel`, `Reminder` + `EReminderStatus` enum
+- [x] `ReminderPdf = 3` added to `EContentTemplateType`
+- [x] DTOs: `ReminderDto`, `ReminderFilterDto`, `ReminderSettingsDto`, `UpdateReminderSettingsDto`, `ReminderLevelDto`, `UpdateReminderLevelDto`, `ReminderDashboardDto`
+- [x] `IReminderService` + `IInterestCalculator` interfaces (Application)
+- [x] `InterestCalculator` — statutory late payment interest per § 1970 OZ (CNB repo rate + 8 p.p.)
+- [x] `ReminderService` — settings CRUD, dunning job, send/cancel, dashboard data
+- [x] `ReminderProfile` ZMapper mapping
+- [x] TenantDbContext: 3 DbSets + Fluent API config + `AddReminders` migration
+- [x] DI registration (Scoped + Singleton)
+- [x] `ReminderController` — 8 API endpoints (settings + reminders + dashboard)
+- [x] `ReminderFunctions` — Azure Functions TimerTrigger (`ProcessReminders`, daily 6 AM UTC)
+- [x] `ReminderApiService` (UI.Shared) — Blazor API client
+- [x] `/reminders` page — MudDataGrid with bulk actions, column filters, multi-select
+- [x] `/reminders/settings` page — company defaults + client overrides management
+- [x] Dashboard widget — KPI chips + recent reminders table on Home.razor
+- [x] NavMenu links (Reminders + Credit Notes)
+- [x] CZ/EN localization (~65 resource keys)
+- [x] InterestCalculatorTests (10 tests) + ReminderServiceTests (17 tests)
+
+---
+
 ## Pending
 
 ### SysAdmin master code table management (Architecture Decision Needed)

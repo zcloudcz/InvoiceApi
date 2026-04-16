@@ -163,6 +163,23 @@ public class TenantDbContext : DbContext
     /// </summary>
     public DbSet<FileAttachment> FileAttachment { get; set; }
 
+    // ─── Reminder (Dunning) ──────────────────────────────────────────────────
+
+    /// <summary>
+    /// Reminder settings — company-level defaults and per-client overrides.
+    /// </summary>
+    public DbSet<ReminderSettings> ReminderSettings { get; set; }
+
+    /// <summary>
+    /// Escalation level definitions for reminder settings.
+    /// </summary>
+    public DbSet<ReminderLevel> ReminderLevel { get; set; }
+
+    /// <summary>
+    /// Individual reminder records for overdue invoices.
+    /// </summary>
+    public DbSet<Reminder> Reminder { get; set; }
+
     // ─── Entity Configuration ─────────────────────────────────────────────────
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -205,6 +222,9 @@ public class TenantDbContext : DbContext
         ConfigureChatConversation(modelBuilder);
         ConfigureChatMessage(modelBuilder);
         ConfigureFileAttachment(modelBuilder);
+        ConfigureReminderSettings(modelBuilder);
+        ConfigureReminderLevel(modelBuilder);
+        ConfigureReminder(modelBuilder);
 
         SeedData(modelBuilder);
     }
@@ -690,6 +710,126 @@ public class TenantDbContext : DbContext
             entity.Property(e => e.ContentType).IsRequired().HasMaxLength(200);
             entity.Property(e => e.BlobPath).IsRequired().HasMaxLength(1000);
             entity.Property(e => e.Description).HasMaxLength(500);
+        });
+    }
+
+    /// <summary>
+    /// Configures ReminderSettings entity — company-level defaults and per-client overrides.
+    /// ClientId = null means company default; non-null = per-client override.
+    /// </summary>
+    private void ConfigureReminderSettings(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<ReminderSettings>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            // Filtered unique index — at most one override per client.
+            // Company default (ClientId = null) is not covered by this index.
+            entity.HasIndex(e => e.ClientId)
+                .IsUnique()
+                .HasFilter("\"ClientId\" IS NOT NULL");
+
+            entity.Property(e => e.MaxReminderLevel).HasDefaultValue(3);
+            entity.Property(e => e.GracePeriodDays).HasDefaultValue(7);
+            entity.Property(e => e.IsEnabled).HasDefaultValue(true);
+            entity.Property(e => e.AttachInvoicePdf).HasDefaultValue(true);
+            entity.Property(e => e.AutoSendEmail).HasDefaultValue(true);
+
+            // 1:N relationship with escalation levels — cascade delete removes levels when settings are deleted.
+            entity.HasMany(e => e.Levels)
+                .WithOne(l => l.ReminderSettings)
+                .HasForeignKey(l => l.ReminderSettingsId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Optional relationship to Client — restrict delete to prevent orphaned settings.
+            entity.HasOne(e => e.Client)
+                .WithMany()
+                .HasForeignKey(e => e.ClientId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .IsRequired(false);
+        });
+    }
+
+    /// <summary>
+    /// Configures ReminderLevel entity — escalation step definitions.
+    /// Unique constraint on (ReminderSettingsId, Level) prevents duplicate levels.
+    /// </summary>
+    private void ConfigureReminderLevel(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<ReminderLevel>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            // Composite unique — one level number per settings record.
+            entity.HasIndex(e => new { e.ReminderSettingsId, e.Level }).IsUnique();
+
+            entity.Property(e => e.DaysAfterPrevious).HasDefaultValue(7);
+            entity.Property(e => e.Subject).HasMaxLength(500);
+            entity.Property(e => e.FixedFeeCzk).HasPrecision(18, 2).HasDefaultValue(0m);
+
+            // Optional FK to email template.
+            entity.HasOne(e => e.EmailTemplate)
+                .WithMany()
+                .HasForeignKey(e => e.EmailTemplateId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .IsRequired(false);
+
+            // Optional FK to PDF template.
+            entity.HasOne(e => e.PdfTemplate)
+                .WithMany()
+                .HasForeignKey(e => e.PdfTemplateId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .IsRequired(false);
+        });
+    }
+
+    /// <summary>
+    /// Configures Reminder entity — individual dunning records per invoice.
+    /// Unique constraint on (InvoiceId, Level) ensures one reminder per escalation level per invoice.
+    /// Indexes on ClientId, Status, and ReminderDate support common query patterns.
+    /// </summary>
+    private void ConfigureReminder(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<Reminder>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            // Composite unique — one reminder per level per invoice.
+            entity.HasIndex(e => new { e.InvoiceId, e.Level }).IsUnique();
+
+            // Fast lookup by client (dashboard: "all reminders for client X").
+            entity.HasIndex(e => e.ClientId);
+
+            // Filter by status (list: "show all Draft reminders").
+            entity.HasIndex(e => e.Status);
+
+            // Sort/filter by date (list: "reminders in date range").
+            entity.HasIndex(e => e.ReminderDate);
+
+            entity.Property(e => e.InvoiceAmount).HasPrecision(18, 2);
+            entity.Property(e => e.FeeCzk).HasPrecision(18, 2);
+            entity.Property(e => e.InterestCzk).HasPrecision(18, 2);
+            entity.Property(e => e.TotalCzk).HasPrecision(18, 2);
+            entity.Property(e => e.SentToEmail).HasMaxLength(500);
+            entity.Property(e => e.ErrorMessage).HasMaxLength(2000);
+            entity.Property(e => e.Notes).HasMaxLength(2000);
+
+            // Status stored as string for readability in DB.
+            entity.Property(e => e.Status)
+                .HasConversion<string>()
+                .HasMaxLength(20);
+
+            // FK to Invoice — restrict delete (can't delete invoice with reminders).
+            entity.HasOne(e => e.Invoice)
+                .WithMany()
+                .HasForeignKey(e => e.InvoiceId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // FK to Client — restrict delete (can't delete client with reminders).
+            entity.HasOne(e => e.Client)
+                .WithMany()
+                .HasForeignKey(e => e.ClientId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
     }
 

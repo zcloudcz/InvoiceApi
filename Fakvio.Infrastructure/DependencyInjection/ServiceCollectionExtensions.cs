@@ -131,6 +131,10 @@ public static class ServiceCollectionExtensions
         services.AddScopedWithLogging<IVatReportService, VatReportService>();
         services.AddScopedWithLogging<ISystemConfigurationService, SystemConfigurationService>();
 
+        // Payment reminders (dunning) — settings CRUD, dunning job, manual send/cancel.
+        services.AddScopedWithLogging<IReminderService, ReminderService>();
+        services.AddSingleton<IInterestCalculator, InterestCalculator>();
+
         // Tax estimation — calculates income tax, social/health insurance for CZ/SK self-employed.
         services.AddScopedWithLogging<ITaxEstimationService, TaxEstimationService>();
 

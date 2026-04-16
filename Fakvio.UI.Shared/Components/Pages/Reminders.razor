@@ -1,0 +1,504 @@
+@page "/reminders"
+@attribute [Authorize]
+
+@using Fakvio.Contracts.Dto.Reminder
+@using Fakvio.Contracts.Common.Pagination
+@using Fakvio.Domain.Enums
+@using Fakvio.UI.Shared.Services
+@using Fakvio.UI.Shared.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.Extensions.Localization
+
+@inject ReminderApiService ReminderService
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject IStringLocalizer<SharedResource> L
+@inject IJSRuntime JS
+
+@* Page title — displayed in the browser tab *@
+<PageTitle>@L["Reminder_Title"]</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">@L["Reminder_Title"]</MudText>
+
+@* ── Filter Bar — search + status dropdown ─────────────────────────── *@
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudGrid>
+        @* Global text search — searches across invoice number, client name, notes *@
+        <MudItem xs="12" sm="8">
+            <MudTextField @bind-Value="_search"
+                          Label="@L["Common_Search"]"
+                          Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Filled.Search"
+                          Immediate="true"
+                          DebounceInterval="300"
+                          TextChanged="OnSearchChanged" />
+        </MudItem>
+        @* Status filter — nullable EnumSelect for EReminderStatus *@
+        <MudItem xs="12" sm="4">
+            <EnumSelect TEnum="EReminderStatus"
+                        NullableValue="_statusFilter"
+                        NullableValueChanged="OnStatusChanged"
+                        Label="@L["Reminder_Status"]"
+                        Nullable="true" />
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@* ── Bulk Operations Toolbar — visible only when items are selected ── *@
+@if (_selectedReminders.Count > 0)
+{
+    <MudPaper Class="pa-3 mb-3 d-flex flex-wrap align-center gap-2" Elevation="2"
+              Style="background-color: var(--mud-palette-info-lighten);">
+        @* Badge showing how many items are currently selected *@
+        <MudChip T="string" Color="Color.Info" Size="Size.Small">
+            @_selectedReminders.Count @L["Bulk_Selected"]
+        </MudChip>
+        @* Bulk send — only Draft reminders can be sent *@
+        <MudButton Variant="Variant.Filled" Color="Color.Success" Size="Size.Small"
+                   StartIcon="@Icons.Material.Filled.Send" OnClick="BulkSend"
+                   Disabled="_bulkProcessing">@L["Reminder_Send"]</MudButton>
+        @* Bulk cancel — only Draft reminders can be cancelled *@
+        <MudButton Variant="Variant.Filled" Color="Color.Warning" Size="Size.Small"
+                   StartIcon="@Icons.Material.Filled.Cancel" OnClick="BulkCancel"
+                   Disabled="_bulkProcessing">@L["Reminder_Cancel"]</MudButton>
+        @* Clear selection — deselects all checkboxes *@
+        <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="ClearSelection">
+            @L["Bulk_ClearSelection"]
+        </MudButton>
+        @if (_bulkProcessing)
+        {
+            <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+        }
+    </MudPaper>
+}
+
+@* ── MudDataGrid with server-side pagination, sorting, column filters ── *@
+<MudDataGrid T="ReminderDto"
+             ServerData="LoadServerData"
+             @ref="_dataGrid"
+             Dense="true"
+             Hover="true"
+             Striped="true"
+             Loading="_loading"
+             LoadingProgressColor="Color.Primary"
+             MultiSelection="true"
+             SelectOnRowClick="false"
+             SelectedItems="_selectedReminders"
+             SelectedItemsChanged="@(items => { _selectedReminders = items; StateHasChanged(); })"
+             RowStyleFunc="@((item, idx) => "cursor: pointer;")"
+             FilterMode="DataGridFilterMode.ColumnFilterRow"
+             SortMode="SortMode.Single"
+             Filterable="true"
+             ColumnResizeMode="ResizeMode.Column"
+             DragDropColumnReordering="true"
+             Hideable="true">
+    <Columns>
+        @* Checkbox column for bulk selection — required in MudBlazor v8 MudDataGrid *@
+        <SelectColumn T="ReminderDto" />
+
+        @* Reminder date — when this reminder was created *@
+        <PropertyColumn Property="x => x.ReminderDate" Title="@L["Reminder_Date"].Value" Format="d">
+            <FilterTemplate>
+                <DateColumnFilter T="ReminderDto" Context="context"
+                                  ValueFunc="x => x.ReminderDate" FilterKey="ReminderDate" />
+            </FilterTemplate>
+        </PropertyColumn>
+
+        @* Invoice document number — links to the overdue invoice *@
+        <PropertyColumn Property="x => x.InvoiceNumber" Title="@L["Reminder_InvoiceNumber"].Value">
+            <CellTemplate>
+                @(context.Item.InvoiceNumber ?? "—")
+            </CellTemplate>
+        </PropertyColumn>
+
+        @* Client (debtor) name — sortable, filterable *@
+        <PropertyColumn Property="x => x.ClientName" Title="@L["Reminder_Client"].Value" />
+
+        @* Escalation level (1, 2, 3, ...) — higher levels = more serious *@
+        <PropertyColumn Property="x => x.Level" Title="@L["Reminder_Level"].Value" />
+
+        @* Status — colored chip matching the reminder lifecycle *@
+        <PropertyColumn Property="x => x.Status" Title="@L["Reminder_Status"].Value" Filterable="true">
+            <CellTemplate>
+                <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Item.Status)">
+                    @L[$"EReminderStatus_{context.Item.Status}"]
+                </MudChip>
+            </CellTemplate>
+        </PropertyColumn>
+
+        @* Outstanding invoice amount *@
+        <PropertyColumn Property="x => x.InvoiceAmount" Title="@L["Reminder_Amount"].Value"
+                        SortBy="x => x.InvoiceAmount">
+            <CellTemplate>
+                @context.Item.InvoiceAmount.ToString("N2")
+            </CellTemplate>
+        </PropertyColumn>
+
+        @* Reminder fee in CZK *@
+        <PropertyColumn Property="x => x.FeeCzk" Title="@L["Reminder_Fee"].Value"
+                        SortBy="x => x.FeeCzk">
+            <CellTemplate>
+                @context.Item.FeeCzk.ToString("N2")
+            </CellTemplate>
+        </PropertyColumn>
+
+        @* Late payment interest in CZK *@
+        <PropertyColumn Property="x => x.InterestCzk" Title="@L["Reminder_Interest"].Value"
+                        SortBy="x => x.InterestCzk">
+            <CellTemplate>
+                @context.Item.InterestCzk.ToString("N2")
+            </CellTemplate>
+        </PropertyColumn>
+
+        @* Total due: InvoiceAmount + Fee + Interest *@
+        <PropertyColumn Property="x => x.TotalCzk" Title="@L["Reminder_Total"].Value"
+                        SortBy="x => x.TotalCzk">
+            <CellTemplate>
+                <strong>@context.Item.TotalCzk.ToString("N2")</strong>
+            </CellTemplate>
+        </PropertyColumn>
+
+        @* When the reminder email was sent — null if not yet sent *@
+        <PropertyColumn Property="x => x.SentAt" Title="@L["Reminder_SentAt"].Value" Format="g">
+            <CellTemplate>
+                @if (context.Item.SentAt.HasValue)
+                {
+                    <MudTooltip Text="@context.Item.SentToEmail">
+                        <MudText>@context.Item.SentAt.Value.ToString("g")</MudText>
+                    </MudTooltip>
+                }
+                else
+                {
+                    <MudText Color="Color.Secondary">—</MudText>
+                }
+            </CellTemplate>
+        </PropertyColumn>
+
+        @* Row actions — conditional buttons based on reminder status *@
+        <TemplateColumn T="ReminderDto" Title="@L["Common_Actions"].Value"
+                        Sortable="false" Filterable="false" CellStyle="white-space:nowrap;">
+            <CellTemplate>
+                @* Send button — only available for Draft reminders *@
+                @if (context.Item.Status == EReminderStatus.Draft)
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.Send"
+                                   Color="Color.Success"
+                                   Size="Size.Small"
+                                   Title="@L["Reminder_Send"].Value"
+                                   OnClick="@(() => SendReminder(context.Item))" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Cancel"
+                                   Color="Color.Warning"
+                                   Size="Size.Small"
+                                   Title="@L["Reminder_Cancel"].Value"
+                                   OnClick="@(() => CancelReminder(context.Item))" />
+                }
+                @* Failed reminders can be retried (re-send) *@
+                @if (context.Item.Status == EReminderStatus.Failed)
+                {
+                    <MudTooltip Text="@context.Item.ErrorMessage">
+                        <MudIconButton Icon="@Icons.Material.Filled.Refresh"
+                                       Color="Color.Error"
+                                       Size="Size.Small"
+                                       Title="@L["Reminder_Retry"].Value"
+                                       OnClick="@(() => SendReminder(context.Item))" />
+                    </MudTooltip>
+                }
+            </CellTemplate>
+        </TemplateColumn>
+    </Columns>
+    <NoRecordsContent>
+        <MudAlert Severity="Severity.Info">@L["Reminder_NoRecords"]</MudAlert>
+    </NoRecordsContent>
+    <PagerContent>
+        <MudDataGridPager T="ReminderDto" PageSizeOptions="new int[] { 10, 25, 50, 100 }"
+                          RowsPerPageString="@L["Table_RowsPerPage"].Value" />
+    </PagerContent>
+</MudDataGrid>
+@* Persists grid state (column widths, sort, page) across navigation *@
+<GridStatePersistence T="ReminderDto" DataGrid="_dataGrid" GridKey="reminders" />
+
+@code {
+    // ─── State Fields ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// MudDataGrid reference — used for ReloadServerData() calls after actions.
+    /// </summary>
+    private MudDataGrid<ReminderDto>? _dataGrid;
+
+    /// <summary>
+    /// Indicates whether server data is currently being loaded.
+    /// </summary>
+    private bool _loading;
+
+    /// <summary>
+    /// Indicates whether a bulk operation is currently in progress.
+    /// Disables bulk action buttons to prevent double-clicks.
+    /// </summary>
+    private bool _bulkProcessing;
+
+    /// <summary>
+    /// Global search text — filters by invoice number, client name, or notes.
+    /// </summary>
+    private string? _search;
+
+    /// <summary>
+    /// Status filter — null means show all statuses.
+    /// </summary>
+    private EReminderStatus? _statusFilter;
+
+    /// <summary>
+    /// Set of currently selected reminders for bulk operations.
+    /// </summary>
+    private HashSet<ReminderDto> _selectedReminders = new();
+
+    // ─── Server Data Loading ───────────────────────────────────────────────
+
+    /// <summary>
+    /// Server-side data loading callback for MudDataGrid.
+    /// Converts MudBlazor's GridState into our ReminderFilterDto
+    /// and calls the API to get paginated results.
+    /// </summary>
+    private async Task<GridData<ReminderDto>> LoadServerData(GridState<ReminderDto> state)
+    {
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            // Extract sort info from GridState — MudDataGrid uses SortDefinitions collection
+            string? sortBy = null;
+            string sortDirection = "desc";
+            var sortDef = state.SortDefinitions.FirstOrDefault();
+            if (sortDef != null)
+            {
+                sortBy = sortDef.SortBy;
+                sortDirection = sortDef.Descending ? "desc" : "asc";
+            }
+
+            // Date range from column filter (ReminderDate column)
+            var (dateFrom, dateTo) = state.GetDateRange("ReminderDate");
+
+            // Build the filter DTO with all current filter values
+            var filter = new ReminderFilterDto
+            {
+                Page = state.Page + 1,        // MudDataGrid is 0-based, API is 1-based
+                PageSize = state.PageSize,
+                Search = _search,
+                Status = _statusFilter,
+                SortBy = sortBy,
+                SortDirection = sortDirection,
+                DateFrom = dateFrom,
+                DateTo = dateTo
+            };
+
+            var result = await ReminderService.GetPagedAsync(filter);
+
+            return new GridData<ReminderDto>
+            {
+                TotalItems = result?.TotalCount ?? 0,
+                Items = result?.Items ?? new List<ReminderDto>()
+            };
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading reminders: {ex.Message}", Severity.Error);
+            return new GridData<ReminderDto> { Items = new List<ReminderDto>(), TotalItems = 0 };
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    // ─── Filter Callbacks ──────────────────────────────────────────────────
+
+    /// <summary>
+    /// Called when the search text changes (with debounce).
+    /// Triggers a full server reload with the new search term.
+    /// </summary>
+    private async Task OnSearchChanged(string value)
+    {
+        _search = value;
+        if (_dataGrid is not null)
+            await _dataGrid.ReloadServerData();
+    }
+
+    /// <summary>
+    /// Called when the status filter dropdown changes.
+    /// Null means "show all statuses", otherwise filters to the selected status.
+    /// </summary>
+    private async Task OnStatusChanged(EReminderStatus? value)
+    {
+        _statusFilter = value;
+        if (_dataGrid is not null)
+            await _dataGrid.ReloadServerData();
+    }
+
+    // ─── Row Actions ───────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Sends a single Draft reminder via the API.
+    /// Also used to retry Failed reminders.
+    /// </summary>
+    private async Task SendReminder(ReminderDto reminder)
+    {
+        try
+        {
+            var result = await ReminderService.SendAsync(reminder.Id);
+            if (result is not null)
+            {
+                Snackbar.Add(L["Reminder_Sent"].Value, Severity.Success);
+                await _dataGrid!.ReloadServerData();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+    }
+
+    /// <summary>
+    /// Cancels a single reminder with user confirmation.
+    /// Cancelled reminders cannot be re-sent.
+    /// </summary>
+    private async Task CancelReminder(ReminderDto reminder)
+    {
+        // Ask for confirmation before cancelling
+        var confirmed = await JS.InvokeAsync<bool>("confirm", L["Reminder_CancelConfirm"].Value);
+        if (!confirmed) return;
+
+        try
+        {
+            var result = await ReminderService.CancelAsync(reminder.Id);
+            if (result is not null)
+            {
+                Snackbar.Add(L["Reminder_Cancelled"].Value, Severity.Warning);
+                await _dataGrid!.ReloadServerData();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+    }
+
+    // ─── Bulk Operations ───────────────────────────────────────────────────
+
+    /// <summary>
+    /// Clears the multi-select checkbox selection and hides the bulk toolbar.
+    /// </summary>
+    private void ClearSelection()
+    {
+        _selectedReminders = new HashSet<ReminderDto>();
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Bulk sends all selected Draft reminders.
+    /// Non-Draft reminders in the selection are skipped.
+    /// </summary>
+    private async Task BulkSend()
+    {
+        // Only Draft reminders can be sent
+        var eligible = _selectedReminders
+            .Where(r => r.Status == EReminderStatus.Draft).ToList();
+        if (eligible.Count == 0)
+        {
+            Snackbar.Add(L["Bulk_NoneEligible"].Value, Severity.Warning);
+            return;
+        }
+
+        var confirmed = await JS.InvokeAsync<bool>("confirm",
+            string.Format(L["Reminder_BulkSendConfirm"].Value, eligible.Count));
+        if (!confirmed) return;
+
+        _bulkProcessing = true;
+        StateHasChanged();
+        int ok = 0, fail = 0;
+        try
+        {
+            foreach (var reminder in eligible)
+            {
+                var result = await ReminderService.SendAsync(reminder.Id);
+                if (result != null) ok++; else fail++;
+            }
+            ShowBulkSnackbar(ok, fail);
+            ClearSelection();
+            await _dataGrid!.ReloadServerData();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+        finally { _bulkProcessing = false; }
+    }
+
+    /// <summary>
+    /// Bulk cancels all selected Draft reminders.
+    /// Non-Draft reminders in the selection are skipped.
+    /// </summary>
+    private async Task BulkCancel()
+    {
+        // Only Draft reminders can be cancelled
+        var eligible = _selectedReminders
+            .Where(r => r.Status == EReminderStatus.Draft).ToList();
+        if (eligible.Count == 0)
+        {
+            Snackbar.Add(L["Bulk_NoneEligible"].Value, Severity.Warning);
+            return;
+        }
+
+        var confirmed = await JS.InvokeAsync<bool>("confirm",
+            string.Format(L["Reminder_BulkCancelConfirm"].Value, eligible.Count));
+        if (!confirmed) return;
+
+        _bulkProcessing = true;
+        StateHasChanged();
+        int ok = 0, fail = 0;
+        try
+        {
+            foreach (var reminder in eligible)
+            {
+                var result = await ReminderService.CancelAsync(reminder.Id);
+                if (result != null) ok++; else fail++;
+            }
+            ShowBulkSnackbar(ok, fail);
+            ClearSelection();
+            await _dataGrid!.ReloadServerData();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+        finally { _bulkProcessing = false; }
+    }
+
+    /// <summary>
+    /// Shows a snackbar with the result of a bulk operation.
+    /// Distinguishes between full success, partial success, and complete failure.
+    /// </summary>
+    private void ShowBulkSnackbar(int ok, int fail)
+    {
+        if (fail == 0)
+            Snackbar.Add(string.Format(L["Bulk_AllSuccess"].Value, ok), Severity.Success);
+        else if (ok > 0)
+            Snackbar.Add(string.Format(L["Bulk_PartialSuccess"].Value, ok, fail), Severity.Warning);
+        else
+            Snackbar.Add(L["Bulk_NoneEligible"].Value, Severity.Error);
+    }
+
+    // ─── Helpers ────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns the MudBlazor chip color for each reminder status.
+    /// Draft=Default, Sent=Success, Failed=Error, Cancelled=Warning.
+    /// </summary>
+    private static Color GetStatusColor(EReminderStatus status) => status switch
+    {
+        EReminderStatus.Draft => Color.Default,
+        EReminderStatus.Sent => Color.Success,
+        EReminderStatus.Failed => Color.Error,
+        EReminderStatus.Cancelled => Color.Warning,
+        _ => Color.Default
+    };
+}

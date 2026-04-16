@@ -376,6 +376,43 @@ public static class Mapper_Extensions
     }
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    public static Fakvio.Contracts.Dto.Reminder.ReminderLevelDto ToReminderLevelDto(this Fakvio.Domain.Entities.ReminderLevel source)
+    {
+        var destination = new Fakvio.Contracts.Dto.Reminder.ReminderLevelDto();
+        destination.Id = source.Id;
+        destination.Level = source.Level;
+        destination.DaysAfterPrevious = source.DaysAfterPrevious;
+        destination.Subject = source.Subject;
+        destination.FixedFeeCzk = source.FixedFeeCzk;
+        destination.EmailTemplateId = source.EmailTemplateId;
+        destination.PdfTemplateId = source.PdfTemplateId;
+        return destination;
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    public static Fakvio.Contracts.Dto.Reminder.ReminderDto ToReminderDto(this Fakvio.Domain.Entities.Reminder source)
+    {
+        var destination = new Fakvio.Contracts.Dto.Reminder.ReminderDto();
+        destination.Id = source.Id;
+        destination.InvoiceId = source.InvoiceId;
+        destination.ClientId = source.ClientId;
+        destination.Level = source.Level;
+        destination.Status = source.Status;
+        destination.DueDate = source.DueDate;
+        destination.ReminderDate = source.ReminderDate;
+        destination.InvoiceAmount = source.InvoiceAmount;
+        destination.FeeCzk = source.FeeCzk;
+        destination.InterestCzk = source.InterestCzk;
+        destination.TotalCzk = source.TotalCzk;
+        destination.SentAt = source.SentAt;
+        destination.SentToEmail = source.SentToEmail;
+        destination.ErrorMessage = source.ErrorMessage;
+        destination.Notes = source.Notes;
+        destination.CreatedAt = source.CreatedAt;
+        return destination;
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     public static Fakvio.Contracts.Dto.User.UserDto ToUserDto(this Fakvio.Domain.Entities.User source)
     {
         var destination = new Fakvio.Contracts.Dto.User.UserDto();

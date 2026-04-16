@@ -1232,4 +1232,73 @@
   <data name="Settings_AzureBlobContainerPrefixHelper" xml:space="preserve"><value>Legacy pole — nepoužívá se</value></data>
   <data name="Settings_AzureBlobContainerName" xml:space="preserve"><value>Název kontejneru</value></data>
   <data name="Settings_AzureBlobContainerNameHelper" xml:space="preserve"><value>Sdílený kontejner pro všechny tenanty. Výchozí: "fakvio-files"</value></data>
+
+  <!-- ═══ Reminders (Dunning / Upomínky) ═══ -->
+  <data name="Nav_Reminders" xml:space="preserve"><value>Upomínky</value></data>
+  <data name="Nav_ReminderSettings" xml:space="preserve"><value>Nastavení upomínek</value></data>
+  <data name="Reminder_Title" xml:space="preserve"><value>Upomínky</value></data>
+  <data name="Reminder_Subtitle" xml:space="preserve"><value>Přehled upomínek k fakturám po splatnosti</value></data>
+  <data name="Reminder_Settings" xml:space="preserve"><value>Nastavení upomínek</value></data>
+  <data name="Reminder_SettingsSubtitle" xml:space="preserve"><value>Konfigurujte automatické upomínky — výchozí nastavení a přizpůsobení pro klienty</value></data>
+  <data name="Reminder_CompanyDefault" xml:space="preserve"><value>Výchozí nastavení firmy</value></data>
+  <data name="Reminder_ClientOverrides" xml:space="preserve"><value>Vlastní nastavení klientů</value></data>
+  <data name="Reminder_ClientOverride" xml:space="preserve"><value>Vlastní nastavení klienta</value></data>
+  <data name="Reminder_IsEnabled" xml:space="preserve"><value>Upomínky aktivní</value></data>
+  <data name="Reminder_MaxLevel" xml:space="preserve"><value>Maximální úroveň</value></data>
+  <data name="Reminder_GracePeriod" xml:space="preserve"><value>Odklad (dny)</value></data>
+  <data name="Reminder_GracePeriodHelper" xml:space="preserve"><value>Dny po splatnosti před první upomínkou</value></data>
+  <data name="Reminder_IncludeInterest" xml:space="preserve"><value>Zahrnout úroky z prodlení</value></data>
+  <data name="Reminder_AttachPdf" xml:space="preserve"><value>Připojit PDF faktury</value></data>
+  <data name="Reminder_AutoSend" xml:space="preserve"><value>Automaticky odeslat email</value></data>
+  <data name="Reminder_Level" xml:space="preserve"><value>Úroveň</value></data>
+  <data name="Reminder_DaysAfterPrevious" xml:space="preserve"><value>Dny po předchozí</value></data>
+  <data name="Reminder_Fee" xml:space="preserve"><value>Poplatek (CZK)</value></data>
+  <data name="Reminder_EmailTemplate" xml:space="preserve"><value>Email šablona</value></data>
+  <data name="Reminder_PdfTemplate" xml:space="preserve"><value>PDF šablona</value></data>
+  <data name="Reminder_Invoice" xml:space="preserve"><value>Faktura</value></data>
+  <data name="Reminder_Client" xml:space="preserve"><value>Klient</value></data>
+  <data name="Reminder_Status" xml:space="preserve"><value>Stav</value></data>
+  <data name="Reminder_Date" xml:space="preserve"><value>Datum upomínky</value></data>
+  <data name="Reminder_DueDate" xml:space="preserve"><value>Splatnost</value></data>
+  <data name="Reminder_Amount" xml:space="preserve"><value>Částka faktury</value></data>
+  <data name="Reminder_Interest" xml:space="preserve"><value>Úroky</value></data>
+  <data name="Reminder_Total" xml:space="preserve"><value>Celkem</value></data>
+  <data name="Reminder_SentAt" xml:space="preserve"><value>Odesláno</value></data>
+  <data name="Reminder_SentTo" xml:space="preserve"><value>Odesláno na</value></data>
+  <data name="Reminder_Error" xml:space="preserve"><value>Chyba</value></data>
+  <data name="Reminder_Notes" xml:space="preserve"><value>Poznámky</value></data>
+  <data name="Reminder_Send" xml:space="preserve"><value>Odeslat</value></data>
+  <data name="Reminder_Cancel" xml:space="preserve"><value>Zrušit</value></data>
+  <data name="Reminder_CreateManual" xml:space="preserve"><value>Vytvořit upomínku</value></data>
+  <data name="Reminder_NoRecords" xml:space="preserve"><value>Žádné upomínky</value></data>
+  <data name="Reminder_SearchPlaceholder" xml:space="preserve"><value>Hledat upomínky...</value></data>
+  <data name="Reminder_Level1" xml:space="preserve"><value>1. upomínka</value></data>
+  <data name="Reminder_Level2" xml:space="preserve"><value>2. upomínka</value></data>
+  <data name="Reminder_Level3" xml:space="preserve"><value>Poslední upozornění</value></data>
+  <data name="Reminder_AddLevel" xml:space="preserve"><value>Přidat úroveň</value></data>
+  <data name="Reminder_RemoveLevel" xml:space="preserve"><value>Odebrat úroveň</value></data>
+  <data name="Reminder_SaveSettings" xml:space="preserve"><value>Uložit nastavení</value></data>
+  <data name="Reminder_AddClientOverride" xml:space="preserve"><value>Přidat klienta</value></data>
+  <data name="Reminder_DeleteOverride" xml:space="preserve"><value>Smazat přizpůsobení</value></data>
+  <data name="Reminder_DeleteOverrideConfirm" xml:space="preserve"><value>Opravdu chcete smazat vlastní nastavení? Bude se používat výchozí nastavení firmy.</value></data>
+  <data name="Reminder_SettingsSaved" xml:space="preserve"><value>Nastavení upomínek uloženo</value></data>
+  <data name="Reminder_SentSuccess" xml:space="preserve"><value>Upomínka odeslána</value></data>
+  <data name="Reminder_CancelledSuccess" xml:space="preserve"><value>Upomínka zrušena</value></data>
+  <data name="Reminder_CancelReason" xml:space="preserve"><value>Důvod zrušení</value></data>
+  <data name="EReminderStatus_Draft" xml:space="preserve"><value>Koncept</value></data>
+  <data name="EReminderStatus_Sent" xml:space="preserve"><value>Odesláno</value></data>
+  <data name="EReminderStatus_Failed" xml:space="preserve"><value>Chyba</value></data>
+  <data name="EReminderStatus_Cancelled" xml:space="preserve"><value>Zrušeno</value></data>
+  <data name="ContentType_ReminderPdf" xml:space="preserve"><value>PDF upomínky</value></data>
+  <data name="Dashboard_Reminders" xml:space="preserve"><value>Upomínky</value></data>
+  <data name="Dashboard_DraftReminders" xml:space="preserve"><value>Koncepty</value></data>
+  <data name="Dashboard_SentReminders" xml:space="preserve"><value>Odeslané</value></data>
+  <data name="Dashboard_FailedReminders" xml:space="preserve"><value>Chybové</value></data>
+  <data name="Dashboard_OverdueInvoices" xml:space="preserve"><value>Faktury po splatnosti</value></data>
+  <data name="Dashboard_TotalOverdueAmount" xml:space="preserve"><value>Celkem dlužná částka</value></data>
+  <data name="Dashboard_RemindersLast30Days" xml:space="preserve"><value>Upomínky za 30 dní</value></data>
+  <data name="Dashboard_RecentReminders" xml:space="preserve"><value>Poslední upomínky</value></data>
+  <data name="Reminder_DaysOverdue" xml:space="preserve"><value>Dní po splatnosti</value></data>
+  <data name="Reminder_Subject" xml:space="preserve"><value>Předmět</value></data>
+  <data name="Reminder_Levels" xml:space="preserve"><value>Úrovně upomínek</value></data>
 </root>

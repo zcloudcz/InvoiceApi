@@ -21,6 +21,13 @@ public enum EContentTemplateType
     /// </summary>
     CreditNotePdf = 2,
 
+    /// <summary>
+    /// HTML template for rendering reminder (dunning) PDF letters.
+    /// Placeholders: {{CompanyName}}, {{ClientName}}, {{InvoiceNumber}}, {{DaysOverdue}},
+    /// {{InvoiceAmount}}, {{Fee}}, {{Interest}}, {{TotalDue}}, etc.
+    /// </summary>
+    ReminderPdf = 3,
+
     // ========== Document email templates (10-19) ==========
 
     /// <summary>

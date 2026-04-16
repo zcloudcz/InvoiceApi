@@ -1251,6 +1251,136 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
+        public Fakvio.Contracts.Dto.Reminder.ReminderLevelDto Map_ReminderLevel_To_ReminderLevelDto(Fakvio.Domain.Entities.ReminderLevel source)
+        {
+            var destination = new Fakvio.Contracts.Dto.Reminder.ReminderLevelDto();
+            destination.Id = source.Id;
+            destination.Level = source.Level;
+            destination.DaysAfterPrevious = source.DaysAfterPrevious;
+            destination.Subject = source.Subject;
+            destination.FixedFeeCzk = source.FixedFeeCzk;
+            destination.EmailTemplateId = source.EmailTemplateId;
+            destination.PdfTemplateId = source.PdfTemplateId;
+            return destination;
+        }
+
+        public Fakvio.Contracts.Dto.Reminder.ReminderLevelDto Map_ReminderLevel_To_ReminderLevelDto(Fakvio.Domain.Entities.ReminderLevel source, Fakvio.Contracts.Dto.Reminder.ReminderLevelDto destination)
+        {
+            destination.Id = source.Id;
+            destination.Level = source.Level;
+            destination.DaysAfterPrevious = source.DaysAfterPrevious;
+            destination.Subject = source.Subject;
+            destination.FixedFeeCzk = source.FixedFeeCzk;
+            destination.EmailTemplateId = source.EmailTemplateId;
+            destination.PdfTemplateId = source.PdfTemplateId;
+            return destination;
+        }
+
+        public Fakvio.Contracts.Dto.Reminder.ReminderLevelDto[] MapArray_ReminderLevel_To_ReminderLevelDto(System.ReadOnlySpan<Fakvio.Domain.Entities.ReminderLevel> source)
+        {
+            var destination = new Fakvio.Contracts.Dto.Reminder.ReminderLevelDto[source.Length];
+            for (int i = 0; i < source.Length; i++)
+            {
+                destination[i] = source[i].ToReminderLevelDto();
+            }
+
+            return destination;
+        }
+
+        public List<Fakvio.Contracts.Dto.Reminder.ReminderLevelDto> MapList_ReminderLevel_To_ReminderLevelDto(System.Collections.Generic.IReadOnlyList<Fakvio.Domain.Entities.ReminderLevel> source)
+        {
+            var destination = new List<Fakvio.Contracts.Dto.Reminder.ReminderLevelDto>(source.Count);
+            for (int i = 0; i < source.Count; i++)
+            {
+                destination.Add(source[i].ToReminderLevelDto());
+            }
+            return destination;
+        }
+
+        public List<Fakvio.Contracts.Dto.Reminder.ReminderLevelDto> MapList_ReminderLevel_To_ReminderLevelDto_Enumerable(System.Collections.Generic.IEnumerable<Fakvio.Domain.Entities.ReminderLevel> source)
+        {
+            var destination = new List<Fakvio.Contracts.Dto.Reminder.ReminderLevelDto>();
+            foreach (var item in source)
+            {
+                destination.Add(item.ToReminderLevelDto());
+            }
+            return destination;
+        }
+
+        public Fakvio.Contracts.Dto.Reminder.ReminderDto Map_Reminder_To_ReminderDto(Fakvio.Domain.Entities.Reminder source)
+        {
+            var destination = new Fakvio.Contracts.Dto.Reminder.ReminderDto();
+            destination.Id = source.Id;
+            destination.InvoiceId = source.InvoiceId;
+            destination.ClientId = source.ClientId;
+            destination.Level = source.Level;
+            destination.Status = source.Status;
+            destination.DueDate = source.DueDate;
+            destination.ReminderDate = source.ReminderDate;
+            destination.InvoiceAmount = source.InvoiceAmount;
+            destination.FeeCzk = source.FeeCzk;
+            destination.InterestCzk = source.InterestCzk;
+            destination.TotalCzk = source.TotalCzk;
+            destination.SentAt = source.SentAt;
+            destination.SentToEmail = source.SentToEmail;
+            destination.ErrorMessage = source.ErrorMessage;
+            destination.Notes = source.Notes;
+            destination.CreatedAt = source.CreatedAt;
+            return destination;
+        }
+
+        public Fakvio.Contracts.Dto.Reminder.ReminderDto Map_Reminder_To_ReminderDto(Fakvio.Domain.Entities.Reminder source, Fakvio.Contracts.Dto.Reminder.ReminderDto destination)
+        {
+            destination.Id = source.Id;
+            destination.InvoiceId = source.InvoiceId;
+            destination.ClientId = source.ClientId;
+            destination.Level = source.Level;
+            destination.Status = source.Status;
+            destination.DueDate = source.DueDate;
+            destination.ReminderDate = source.ReminderDate;
+            destination.InvoiceAmount = source.InvoiceAmount;
+            destination.FeeCzk = source.FeeCzk;
+            destination.InterestCzk = source.InterestCzk;
+            destination.TotalCzk = source.TotalCzk;
+            destination.SentAt = source.SentAt;
+            destination.SentToEmail = source.SentToEmail;
+            destination.ErrorMessage = source.ErrorMessage;
+            destination.Notes = source.Notes;
+            destination.CreatedAt = source.CreatedAt;
+            return destination;
+        }
+
+        public Fakvio.Contracts.Dto.Reminder.ReminderDto[] MapArray_Reminder_To_ReminderDto(System.ReadOnlySpan<Fakvio.Domain.Entities.Reminder> source)
+        {
+            var destination = new Fakvio.Contracts.Dto.Reminder.ReminderDto[source.Length];
+            for (int i = 0; i < source.Length; i++)
+            {
+                destination[i] = source[i].ToReminderDto();
+            }
+
+            return destination;
+        }
+
+        public List<Fakvio.Contracts.Dto.Reminder.ReminderDto> MapList_Reminder_To_ReminderDto(System.Collections.Generic.IReadOnlyList<Fakvio.Domain.Entities.Reminder> source)
+        {
+            var destination = new List<Fakvio.Contracts.Dto.Reminder.ReminderDto>(source.Count);
+            for (int i = 0; i < source.Count; i++)
+            {
+                destination.Add(source[i].ToReminderDto());
+            }
+            return destination;
+        }
+
+        public List<Fakvio.Contracts.Dto.Reminder.ReminderDto> MapList_Reminder_To_ReminderDto_Enumerable(System.Collections.Generic.IEnumerable<Fakvio.Domain.Entities.Reminder> source)
+        {
+            var destination = new List<Fakvio.Contracts.Dto.Reminder.ReminderDto>();
+            foreach (var item in source)
+            {
+                destination.Add(item.ToReminderDto());
+            }
+            return destination;
+        }
+
         public Fakvio.Contracts.Dto.User.UserDto Map_User_To_UserDto(Fakvio.Domain.Entities.User source)
         {
             var destination = new Fakvio.Contracts.Dto.User.UserDto();
@@ -1425,6 +1555,10 @@ public sealed class Mapper : IMapper
                 return (TDestination)(object)((Fakvio.Domain.Entities.ReceivedInvoiceItem)(object)source!).ToReceivedInvoiceItemDto();
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.ReceivedInvoice) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceDto))
                 return (TDestination)(object)((Fakvio.Domain.Entities.ReceivedInvoice)(object)source!).ToReceivedInvoiceDto();
+            if (typeof(TSource) == typeof(Fakvio.Domain.Entities.ReminderLevel) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.Reminder.ReminderLevelDto))
+                return (TDestination)(object)((Fakvio.Domain.Entities.ReminderLevel)(object)source!).ToReminderLevelDto();
+            if (typeof(TSource) == typeof(Fakvio.Domain.Entities.Reminder) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.Reminder.ReminderDto))
+                return (TDestination)(object)((Fakvio.Domain.Entities.Reminder)(object)source!).ToReminderDto();
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.User) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.User.UserDto))
                 return (TDestination)(object)((Fakvio.Domain.Entities.User)(object)source!).ToUserDto();
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.VatRate) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.VatRate.VatRateDto))
@@ -1470,6 +1604,10 @@ public sealed class Mapper : IMapper
                 return (TDestination)(object)Map_ReceivedInvoiceItem_To_ReceivedInvoiceItemDto((Fakvio.Domain.Entities.ReceivedInvoiceItem)(object)source!, (Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceItemDto)(object)destination!);
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.ReceivedInvoice) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceDto))
                 return (TDestination)(object)Map_ReceivedInvoice_To_ReceivedInvoiceDto((Fakvio.Domain.Entities.ReceivedInvoice)(object)source!, (Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceDto)(object)destination!);
+            if (typeof(TSource) == typeof(Fakvio.Domain.Entities.ReminderLevel) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.Reminder.ReminderLevelDto))
+                return (TDestination)(object)Map_ReminderLevel_To_ReminderLevelDto((Fakvio.Domain.Entities.ReminderLevel)(object)source!, (Fakvio.Contracts.Dto.Reminder.ReminderLevelDto)(object)destination!);
+            if (typeof(TSource) == typeof(Fakvio.Domain.Entities.Reminder) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.Reminder.ReminderDto))
+                return (TDestination)(object)Map_Reminder_To_ReminderDto((Fakvio.Domain.Entities.Reminder)(object)source!, (Fakvio.Contracts.Dto.Reminder.ReminderDto)(object)destination!);
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.User) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.User.UserDto))
                 return (TDestination)(object)Map_User_To_UserDto((Fakvio.Domain.Entities.User)(object)source!, (Fakvio.Contracts.Dto.User.UserDto)(object)destination!);
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.VatRate) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.VatRate.VatRateDto))
@@ -1569,6 +1707,16 @@ public sealed class Mapper : IMapper
                 var typedSource = System.Runtime.CompilerServices.Unsafe.As<System.ReadOnlySpan<TSource>, System.ReadOnlySpan<Fakvio.Domain.Entities.ReceivedInvoice>>(ref source);
                 return (TDestination[])(object)MapArray_ReceivedInvoice_To_ReceivedInvoiceDto(typedSource);
             }
+            else if (typeof(TSource) == typeof(Fakvio.Domain.Entities.ReminderLevel) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.Reminder.ReminderLevelDto))
+            {
+                var typedSource = System.Runtime.CompilerServices.Unsafe.As<System.ReadOnlySpan<TSource>, System.ReadOnlySpan<Fakvio.Domain.Entities.ReminderLevel>>(ref source);
+                return (TDestination[])(object)MapArray_ReminderLevel_To_ReminderLevelDto(typedSource);
+            }
+            else if (typeof(TSource) == typeof(Fakvio.Domain.Entities.Reminder) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.Reminder.ReminderDto))
+            {
+                var typedSource = System.Runtime.CompilerServices.Unsafe.As<System.ReadOnlySpan<TSource>, System.ReadOnlySpan<Fakvio.Domain.Entities.Reminder>>(ref source);
+                return (TDestination[])(object)MapArray_Reminder_To_ReminderDto(typedSource);
+            }
             else if (typeof(TSource) == typeof(Fakvio.Domain.Entities.User) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.User.UserDto))
             {
                 var typedSource = System.Runtime.CompilerServices.Unsafe.As<System.ReadOnlySpan<TSource>, System.ReadOnlySpan<Fakvio.Domain.Entities.User>>(ref source);
@@ -1620,6 +1768,10 @@ public sealed class Mapper : IMapper
                 return (List<TDestination>)(object)MapList_ReceivedInvoiceItem_To_ReceivedInvoiceItemDto((System.Collections.Generic.IReadOnlyList<Fakvio.Domain.Entities.ReceivedInvoiceItem>)(object)source);
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.ReceivedInvoice) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceDto))
                 return (List<TDestination>)(object)MapList_ReceivedInvoice_To_ReceivedInvoiceDto((System.Collections.Generic.IReadOnlyList<Fakvio.Domain.Entities.ReceivedInvoice>)(object)source);
+            if (typeof(TSource) == typeof(Fakvio.Domain.Entities.ReminderLevel) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.Reminder.ReminderLevelDto))
+                return (List<TDestination>)(object)MapList_ReminderLevel_To_ReminderLevelDto((System.Collections.Generic.IReadOnlyList<Fakvio.Domain.Entities.ReminderLevel>)(object)source);
+            if (typeof(TSource) == typeof(Fakvio.Domain.Entities.Reminder) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.Reminder.ReminderDto))
+                return (List<TDestination>)(object)MapList_Reminder_To_ReminderDto((System.Collections.Generic.IReadOnlyList<Fakvio.Domain.Entities.Reminder>)(object)source);
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.User) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.User.UserDto))
                 return (List<TDestination>)(object)MapList_User_To_UserDto((System.Collections.Generic.IReadOnlyList<Fakvio.Domain.Entities.User>)(object)source);
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.VatRate) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.VatRate.VatRateDto))
@@ -1665,6 +1817,10 @@ public sealed class Mapper : IMapper
                 return (List<TDestination>)(object)MapList_ReceivedInvoiceItem_To_ReceivedInvoiceItemDto_Enumerable((System.Collections.Generic.IEnumerable<Fakvio.Domain.Entities.ReceivedInvoiceItem>)(object)source);
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.ReceivedInvoice) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceDto))
                 return (List<TDestination>)(object)MapList_ReceivedInvoice_To_ReceivedInvoiceDto_Enumerable((System.Collections.Generic.IEnumerable<Fakvio.Domain.Entities.ReceivedInvoice>)(object)source);
+            if (typeof(TSource) == typeof(Fakvio.Domain.Entities.ReminderLevel) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.Reminder.ReminderLevelDto))
+                return (List<TDestination>)(object)MapList_ReminderLevel_To_ReminderLevelDto_Enumerable((System.Collections.Generic.IEnumerable<Fakvio.Domain.Entities.ReminderLevel>)(object)source);
+            if (typeof(TSource) == typeof(Fakvio.Domain.Entities.Reminder) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.Reminder.ReminderDto))
+                return (List<TDestination>)(object)MapList_Reminder_To_ReminderDto_Enumerable((System.Collections.Generic.IEnumerable<Fakvio.Domain.Entities.Reminder>)(object)source);
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.User) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.User.UserDto))
                 return (List<TDestination>)(object)MapList_User_To_UserDto_Enumerable((System.Collections.Generic.IEnumerable<Fakvio.Domain.Entities.User>)(object)source);
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.VatRate) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.VatRate.VatRateDto))

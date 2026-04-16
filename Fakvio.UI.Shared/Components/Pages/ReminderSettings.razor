@@ -1,0 +1,503 @@
+@page "/reminders/settings"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@using Fakvio.Contracts.Dto.Reminder
+@using Fakvio.UI.Shared.Services
+@using Microsoft.Extensions.Localization
+@inject ReminderApiService ReminderService
+@inject ISnackbar Snackbar
+@inject IStringLocalizer<SharedResource> L
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+
+<PageTitle>@L["Reminder_Settings"]</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">@L["Reminder_Settings"]</MudText>
+
+@* ======================== Section 1: Company Default Settings ======================== *@
+<MudCard Class="mb-6">
+    <MudCardHeader>
+        <MudText Typo="Typo.h6">@L["Reminder_CompanyDefault"]</MudText>
+    </MudCardHeader>
+    <MudCardContent>
+        @if (_loading)
+        {
+            <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+        }
+        else
+        {
+            @* Main toggle switches and numeric fields for company-level settings *@
+            <MudGrid>
+                <MudItem xs="12" sm="6" md="4">
+                    <MudSwitch @bind-Value="_settings.IsEnabled"
+                               Label="@L["Reminder_IsEnabled"].Value"
+                               Color="Color.Primary" />
+                </MudItem>
+                <MudItem xs="12" sm="6" md="4">
+                    <MudNumericField @bind-Value="_settings.MaxReminderLevel"
+                                     Label="@L["Reminder_MaxLevel"].Value"
+                                     Min="1" Max="5" />
+                </MudItem>
+                <MudItem xs="12" sm="6" md="4">
+                    <MudNumericField @bind-Value="_settings.GracePeriodDays"
+                                     Label="@L["Reminder_GracePeriod"].Value"
+                                     Min="0" Max="365" />
+                </MudItem>
+                <MudItem xs="12" sm="6" md="4">
+                    <MudSwitch @bind-Value="_settings.IncludeInterest"
+                               Label="@L["Reminder_IncludeInterest"].Value"
+                               Color="Color.Primary" />
+                </MudItem>
+                <MudItem xs="12" sm="6" md="4">
+                    <MudSwitch @bind-Value="_settings.AttachInvoicePdf"
+                               Label="@L["Reminder_AttachPdf"].Value"
+                               Color="Color.Primary" />
+                </MudItem>
+                <MudItem xs="12" sm="6" md="4">
+                    <MudSwitch @bind-Value="_settings.AutoSendEmail"
+                               Label="@L["Reminder_AutoSend"].Value"
+                               Color="Color.Primary" />
+                </MudItem>
+            </MudGrid>
+
+            @* ---- Escalation levels inline-editable table ---- *@
+            <MudText Typo="Typo.subtitle1" Class="mt-4 mb-2">@L["Reminder_Levels"]</MudText>
+
+            <MudTable T="UpdateReminderLevelDto" Items="@_levels" Dense="true" Hover="true" Striped="true"
+                      Elevation="0" Class="mb-2">
+                <HeaderContent>
+                    <MudTh>@L["Reminder_Level"]</MudTh>
+                    <MudTh>@L["Reminder_DaysAfterPrevious"]</MudTh>
+                    <MudTh>@L["Reminder_Fee"]</MudTh>
+                    <MudTh>@L["Reminder_Subject"]</MudTh>
+                    <MudTh Style="width:60px;">@L["Label_Actions"]</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    @* Level number (read-only, auto-assigned) *@
+                    <MudTd DataLabel="@L["Reminder_Level"].Value">
+                        <MudText>@context.Level</MudText>
+                    </MudTd>
+                    @* Days after previous — inline numeric input *@
+                    <MudTd DataLabel="@L["Reminder_DaysAfterPrevious"].Value">
+                        <MudNumericField T="int" Value="@context.DaysAfterPrevious"
+                                         ValueChanged="@(v => context.DaysAfterPrevious = v)"
+                                         Min="1" Max="365" Variant="Variant.Text" Margin="Margin.Dense" />
+                    </MudTd>
+                    @* Fixed fee in CZK — inline decimal input *@
+                    <MudTd DataLabel="@L["Reminder_Fee"].Value">
+                        <MudNumericField T="decimal" Value="@context.FixedFeeCzk"
+                                         ValueChanged="@(v => context.FixedFeeCzk = v)"
+                                         Min="0" Variant="Variant.Text" Margin="Margin.Dense" />
+                    </MudTd>
+                    @* Optional subject override — inline text input *@
+                    <MudTd DataLabel="@L["Reminder_Subject"].Value">
+                        <MudTextField T="string" Value="@context.Subject"
+                                      ValueChanged="@(v => context.Subject = v)"
+                                      Variant="Variant.Text" Margin="Margin.Dense" />
+                    </MudTd>
+                    @* Remove this level *@
+                    <MudTd>
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
+                                       OnClick="@(() => RemoveLevel(context))"
+                                       Title="@L["Reminder_RemoveLevel"].Value" />
+                    </MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudAlert Severity="Severity.Info" Dense="true">@L["Reminder_Levels"] — 0</MudAlert>
+                </NoRecordsContent>
+            </MudTable>
+
+            @* Add level button — only if below MaxReminderLevel cap *@
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
+                       StartIcon="@Icons.Material.Filled.Add"
+                       Disabled="@(_levels.Count >= 5)"
+                       OnClick="AddLevel">
+                @L["Reminder_AddLevel"]
+            </MudButton>
+
+            @* Save company settings button *@
+            <div class="d-flex justify-end mt-4">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.Save"
+                           Disabled="@_saving"
+                           OnClick="SaveCompanySettings">
+                    @if (_saving)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    }
+                    @L["Reminder_SaveSettings"]
+                </MudButton>
+            </div>
+        }
+    </MudCardContent>
+</MudCard>
+
+@* ======================== Section 2: Client Overrides ======================== *@
+<MudCard>
+    <MudCardHeader>
+        <MudText Typo="Typo.h6">@L["Reminder_ClientOverrides"]</MudText>
+    </MudCardHeader>
+    <MudCardContent>
+        @* Table listing all per-client override settings *@
+        <MudTable T="ReminderSettingsDto" Items="@_overrides" Dense="true" Hover="true" Striped="true"
+                  Loading="@_loadingOverrides" LoadingProgressColor="Color.Primary">
+            <ToolBarContent>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.Add"
+                           OnClick="OpenAddOverrideDialog">
+                    @L["Reminder_AddClientOverride"]
+                </MudButton>
+            </ToolBarContent>
+            <HeaderContent>
+                <MudTh>@L["Label_Client"]</MudTh>
+                <MudTh>@L["Reminder_IsEnabled"]</MudTh>
+                <MudTh>@L["Reminder_MaxLevel"]</MudTh>
+                <MudTh>@L["Reminder_GracePeriod"]</MudTh>
+                <MudTh>@L["Label_Actions"]</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="@L["Label_Client"].Value">@context.ClientName</MudTd>
+                <MudTd DataLabel="@L["Reminder_IsEnabled"].Value">
+                    <MudIcon Icon="@(context.IsEnabled ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Cancel)"
+                             Color="@(context.IsEnabled ? Color.Success : Color.Default)" Size="Size.Small" />
+                </MudTd>
+                <MudTd DataLabel="@L["Reminder_MaxLevel"].Value">@context.MaxReminderLevel</MudTd>
+                <MudTd DataLabel="@L["Reminder_GracePeriod"].Value">@context.GracePeriodDays</MudTd>
+                <MudTd>
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" Size="Size.Small"
+                                   OnClick="@(() => OpenEditOverrideDialog(context))"
+                                   Title="@L["Btn_Edit"].Value" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
+                                   OnClick="@(() => DeleteOverride(context))"
+                                   Title="@L["Reminder_DeleteOverride"].Value" />
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudAlert Severity="Severity.Info">@L["Reminder_ClientOverrides"] — 0</MudAlert>
+            </NoRecordsContent>
+        </MudTable>
+    </MudCardContent>
+</MudCard>
+
+@* ======================== Add / Edit Client Override Dialog ======================== *@
+<MudDialog @bind-Visible="_showOverrideDialog" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            @(_editingOverrideClientId.HasValue ? L["Btn_Edit"] : L["Reminder_AddClientOverride"])
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        @* Client ID input — only editable when adding a new override *@
+        <MudNumericField T="long?" @bind-Value="_overrideForm.ClientId"
+                         Label="@L["Label_Client"].Value"
+                         Required="true"
+                         Disabled="@(_editingOverrideClientId.HasValue)" />
+        <MudSwitch @bind-Value="_overrideForm.IsEnabled"
+                   Label="@L["Reminder_IsEnabled"].Value"
+                   Color="Color.Primary" />
+        <MudNumericField @bind-Value="_overrideForm.MaxReminderLevel"
+                         Label="@L["Reminder_MaxLevel"].Value"
+                         Min="1" Max="5" />
+        <MudNumericField @bind-Value="_overrideForm.GracePeriodDays"
+                         Label="@L["Reminder_GracePeriod"].Value"
+                         Min="0" Max="365" />
+        <MudSwitch @bind-Value="_overrideForm.IncludeInterest"
+                   Label="@L["Reminder_IncludeInterest"].Value"
+                   Color="Color.Primary" />
+        <MudSwitch @bind-Value="_overrideForm.AttachInvoicePdf"
+                   Label="@L["Reminder_AttachPdf"].Value"
+                   Color="Color.Primary" />
+        <MudSwitch @bind-Value="_overrideForm.AutoSendEmail"
+                   Label="@L["Reminder_AutoSend"].Value"
+                   Color="Color.Primary" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showOverrideDialog = false)">@L["Btn_Cancel"]</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveOverride">@L["Btn_Save"]</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    // ─── State: loading flags ───────────────────────────────────────────
+    private bool _loading = true;
+    private bool _loadingOverrides = true;
+    private bool _saving = false;
+
+    // ─── Company default settings form model ────────────────────────────
+    private UpdateReminderSettingsDto _settings = new();
+
+    // ─── Inline-editable escalation levels list ─────────────────────────
+    private List<UpdateReminderLevelDto> _levels = new();
+
+    // ─── Client overrides list (read from API) ──────────────────────────
+    private List<ReminderSettingsDto> _overrides = new();
+
+    // ─── Override dialog state ──────────────────────────────────────────
+    private bool _showOverrideDialog = false;
+    private long? _editingOverrideClientId; // null = adding, non-null = editing
+    private UpdateReminderSettingsDto _overrideForm = new();
+
+    // Dialog options — CloseButton enables ESC key dismissal and shows X button
+    private DialogOptions _dialogOptions = new()
+    {
+        MaxWidth = MaxWidth.Small,
+        FullWidth = true,
+        CloseButton = true
+    };
+
+    /// <summary>
+    /// Load company settings and client overrides on page init.
+    /// Both calls are independent so we fire them in parallel.
+    /// </summary>
+    protected override async Task OnInitializedAsync()
+    {
+        await Task.WhenAll(LoadCompanySettings(), LoadClientOverrides());
+    }
+
+    /// <summary>
+    /// Fetches company-level default settings from the API and maps them
+    /// into the form model (UpdateReminderSettingsDto) and levels list.
+    /// </summary>
+    private async Task LoadCompanySettings()
+    {
+        try
+        {
+            _loading = true;
+            var result = await ReminderService.GetCompanySettingsAsync();
+
+            if (result != null)
+            {
+                // Map read DTO → write DTO for the form
+                _settings = new UpdateReminderSettingsDto
+                {
+                    ClientId = null, // company default has no client
+                    IsEnabled = result.IsEnabled,
+                    MaxReminderLevel = result.MaxReminderLevel,
+                    GracePeriodDays = result.GracePeriodDays,
+                    IncludeInterest = result.IncludeInterest,
+                    AttachInvoicePdf = result.AttachInvoicePdf,
+                    AutoSendEmail = result.AutoSendEmail
+                };
+
+                // Map level read DTOs → write DTOs for inline editing
+                _levels = result.Levels
+                    .OrderBy(l => l.Level)
+                    .Select(l => new UpdateReminderLevelDto
+                    {
+                        Id = l.Id,
+                        Level = l.Level,
+                        DaysAfterPrevious = l.DaysAfterPrevious,
+                        Subject = l.Subject,
+                        FixedFeeCzk = l.FixedFeeCzk,
+                        EmailTemplateId = l.EmailTemplateId,
+                        PdfTemplateId = l.PdfTemplateId
+                    })
+                    .ToList();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    /// <summary>
+    /// Fetches all client-level override settings from the API.
+    /// </summary>
+    private async Task LoadClientOverrides()
+    {
+        try
+        {
+            _loadingOverrides = true;
+            _overrides = await ReminderService.GetClientOverridesAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loadingOverrides = false;
+        }
+    }
+
+    // ─── Level management ───────────────────────────────────────────────
+
+    /// <summary>
+    /// Adds a new escalation level to the inline table.
+    /// Auto-assigns the next level number and sensible defaults.
+    /// Capped at 5 levels maximum.
+    /// </summary>
+    private void AddLevel()
+    {
+        if (_levels.Count >= 5) return;
+
+        var nextLevel = _levels.Count > 0 ? _levels.Max(l => l.Level) + 1 : 1;
+        _levels.Add(new UpdateReminderLevelDto
+        {
+            Level = nextLevel,
+            DaysAfterPrevious = 7,
+            FixedFeeCzk = 0
+        });
+    }
+
+    /// <summary>
+    /// Removes an escalation level and re-numbers the remaining levels
+    /// so ordinals stay sequential (1, 2, 3, ...).
+    /// </summary>
+    private void RemoveLevel(UpdateReminderLevelDto level)
+    {
+        _levels.Remove(level);
+
+        // Re-number remaining levels to keep ordinals sequential
+        for (var i = 0; i < _levels.Count; i++)
+        {
+            _levels[i].Level = i + 1;
+        }
+    }
+
+    // ─── Save company settings ──────────────────────────────────────────
+
+    /// <summary>
+    /// Builds the UpdateReminderSettingsDto from the form data and levels,
+    /// then calls the upsert API endpoint.
+    /// </summary>
+    private async Task SaveCompanySettings()
+    {
+        try
+        {
+            _saving = true;
+
+            // Attach the current levels list to the settings DTO before saving
+            _settings.ClientId = null; // ensure company-level
+            _settings.Levels = _levels;
+
+            var result = await ReminderService.UpsertSettingsAsync(_settings);
+            if (result != null)
+            {
+                Snackbar.Add(L["Reminder_SettingsSaved"].Value, Severity.Success);
+                // Reload to get server-assigned IDs for levels
+                await LoadCompanySettings();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    // ─── Client override dialog ─────────────────────────────────────────
+
+    /// <summary>
+    /// Opens the dialog in "add new override" mode with default values.
+    /// </summary>
+    private void OpenAddOverrideDialog()
+    {
+        _editingOverrideClientId = null;
+        _overrideForm = new UpdateReminderSettingsDto
+        {
+            IsEnabled = true,
+            MaxReminderLevel = 3,
+            GracePeriodDays = 7,
+            AttachInvoicePdf = true,
+            AutoSendEmail = true
+        };
+        _showOverrideDialog = true;
+    }
+
+    /// <summary>
+    /// Opens the dialog in "edit" mode, pre-populated with existing override data.
+    /// The ClientId field is disabled when editing to prevent reassignment.
+    /// </summary>
+    private void OpenEditOverrideDialog(ReminderSettingsDto dto)
+    {
+        _editingOverrideClientId = dto.ClientId;
+        _overrideForm = new UpdateReminderSettingsDto
+        {
+            ClientId = dto.ClientId,
+            IsEnabled = dto.IsEnabled,
+            MaxReminderLevel = dto.MaxReminderLevel,
+            GracePeriodDays = dto.GracePeriodDays,
+            IncludeInterest = dto.IncludeInterest,
+            AttachInvoicePdf = dto.AttachInvoicePdf,
+            AutoSendEmail = dto.AutoSendEmail,
+            // Copy levels from the read DTO into the write DTO
+            Levels = dto.Levels
+                .Select(l => new UpdateReminderLevelDto
+                {
+                    Id = l.Id,
+                    Level = l.Level,
+                    DaysAfterPrevious = l.DaysAfterPrevious,
+                    Subject = l.Subject,
+                    FixedFeeCzk = l.FixedFeeCzk,
+                    EmailTemplateId = l.EmailTemplateId,
+                    PdfTemplateId = l.PdfTemplateId
+                })
+                .ToList()
+        };
+        _showOverrideDialog = true;
+    }
+
+    /// <summary>
+    /// Saves the client override (create or update) by calling the upsert API endpoint.
+    /// Closes the dialog and reloads the overrides list on success.
+    /// </summary>
+    private async Task SaveOverride()
+    {
+        try
+        {
+            if (!_overrideForm.ClientId.HasValue)
+            {
+                Snackbar.Add($"{L["Msg_Error"].Value}: ClientId is required.", Severity.Warning);
+                return;
+            }
+
+            var result = await ReminderService.UpsertSettingsAsync(_overrideForm);
+            if (result != null)
+            {
+                Snackbar.Add(L["Reminder_SettingsSaved"].Value, Severity.Success);
+                _showOverrideDialog = false;
+                await LoadClientOverrides();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+    }
+
+    /// <summary>
+    /// Deletes a client-level override after user confirmation via JS confirm dialog.
+    /// </summary>
+    private async Task DeleteOverride(ReminderSettingsDto dto)
+    {
+        if (!dto.ClientId.HasValue) return;
+
+        // Browser-native confirm dialog for safety
+        var confirmed = await JS.InvokeAsync<bool>("confirm",
+            $"{L["Reminder_DeleteOverride"].Value}: {dto.ClientName}?");
+
+        if (!confirmed) return;
+
+        try
+        {
+            var success = await ReminderService.DeleteClientSettingsAsync(dto.ClientId.Value);
+            if (success)
+            {
+                Snackbar.Add(L["Msg_DeleteSuccess"].Value, Severity.Success);
+                await LoadClientOverrides();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+    }
+}

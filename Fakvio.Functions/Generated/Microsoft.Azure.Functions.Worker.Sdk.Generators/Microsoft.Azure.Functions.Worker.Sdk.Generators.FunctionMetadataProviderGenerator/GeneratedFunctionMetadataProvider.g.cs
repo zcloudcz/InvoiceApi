@@ -2181,29 +2181,41 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function165);
             var Function166RawBindings = new List<string>();
-            Function166RawBindings.Add(@"{""name"":""timer"",""type"":""timerTrigger"",""direction"":""In"",""schedule"":""*/10 * * * * *""}");
+            Function166RawBindings.Add(@"{""name"":""timer"",""type"":""timerTrigger"",""direction"":""In"",""schedule"":""0 0 6 * * *""}");
 
             var Function166 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "LogFlush",
-                EntryPoint = "Fakvio.Functions.TimerFunctions.FlushLogs",
+                Name = "ProcessReminders",
+                EntryPoint = "Fakvio.Functions.ReminderFunctions.ProcessReminders",
                 RawBindings = Function166RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function166);
             var Function167RawBindings = new List<string>();
-            Function167RawBindings.Add(@"{""name"":""timer"",""type"":""timerTrigger"",""direction"":""In"",""schedule"":""0 0 0 * * *""}");
+            Function167RawBindings.Add(@"{""name"":""timer"",""type"":""timerTrigger"",""direction"":""In"",""schedule"":""*/10 * * * * *""}");
 
             var Function167 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "LogCleanup",
-                EntryPoint = "Fakvio.Functions.TimerFunctions.CleanupLogs",
+                Name = "LogFlush",
+                EntryPoint = "Fakvio.Functions.TimerFunctions.FlushLogs",
                 RawBindings = Function167RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function167);
+            var Function168RawBindings = new List<string>();
+            Function168RawBindings.Add(@"{""name"":""timer"",""type"":""timerTrigger"",""direction"":""In"",""schedule"":""0 0 0 * * *""}");
+
+            var Function168 = new DefaultFunctionMetadata
+            {
+                Language = "dotnet-isolated",
+                Name = "LogCleanup",
+                EntryPoint = "Fakvio.Functions.TimerFunctions.CleanupLogs",
+                RawBindings = Function168RawBindings,
+                ScriptFile = "Fakvio.Functions.dll"
+            };
+            metadataList.Add(Function168);
 
             return global::System.Threading.Tasks.Task.FromResult(metadataList.ToImmutableArray());
         }

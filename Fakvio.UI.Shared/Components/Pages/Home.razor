@@ -5,9 +5,11 @@
 @using Fakvio.Contracts.Dto.Invoice
 @using Fakvio.Domain.Enums
 @using Fakvio.Contracts.Dto.Tax
+@using Fakvio.Contracts.Dto.Reminder
 @using Fakvio.UI.Shared.Services
 @inject DashboardApiService DashboardService
 @inject TaxApiService TaxService
+@inject ReminderApiService ReminderService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
@@ -433,6 +435,86 @@ else
         </MudItem>
     </MudGrid>
 
+    @* ── Reminder (Dunning) Dashboard Widget ─────────────────────────────── *@
+    @if (_reminderDashboard != null && (_reminderDashboard.OverdueInvoiceCount > 0 || _reminderDashboard.SentCount > 0 || _reminderDashboard.DraftCount > 0))
+    {
+        <MudGrid Class="mt-6">
+            <MudItem xs="12">
+                <MudCard Elevation="2">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6">
+                                <MudIcon Icon="@Icons.Material.Filled.NotificationsActive" Class="mr-1" Size="Size.Small" />
+                                @L["Dashboard_Reminders"]
+                            </MudText>
+                        </CardHeaderContent>
+                        <CardHeaderActions>
+                            <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small"
+                                       StartIcon="@Icons.Material.Filled.ArrowForward"
+                                       OnClick="@(() => Navigation.NavigateTo("/reminders"))">
+                                @L["Common_ViewAll"]
+                            </MudButton>
+                        </CardHeaderActions>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        @* KPI chips — quick overview of reminder status *@
+                        <div class="d-flex flex-wrap gap-3 mb-4">
+                            <MudChip T="string" Color="Color.Warning" Size="Size.Small" Icon="@Icons.Material.Filled.Schedule">
+                                @_reminderDashboard.DraftCount @L["Dashboard_DraftReminders"]
+                            </MudChip>
+                            <MudChip T="string" Color="Color.Success" Size="Size.Small" Icon="@Icons.Material.Filled.Send">
+                                @_reminderDashboard.SentCount @L["Dashboard_SentReminders"]
+                            </MudChip>
+                            @if (_reminderDashboard.FailedCount > 0)
+                            {
+                                <MudChip T="string" Color="Color.Error" Size="Size.Small" Icon="@Icons.Material.Filled.Error">
+                                    @_reminderDashboard.FailedCount @L["Dashboard_FailedReminders"]
+                                </MudChip>
+                            }
+                            <MudChip T="string" Color="Color.Info" Size="Size.Small" Icon="@Icons.Material.Filled.TrendingUp">
+                                @_reminderDashboard.RemindersLast30Days @L["Dashboard_RemindersLast30Days"]
+                            </MudChip>
+                            <MudChip T="string" Color="Color.Error" Size="Size.Small" Icon="@Icons.Material.Filled.Warning">
+                                @_reminderDashboard.OverdueInvoiceCount @L["Dashboard_OverdueInvoices"]
+                                (@_reminderDashboard.TotalOverdueAmount.ToString("N2") CZK)
+                            </MudChip>
+                        </div>
+
+                        @* Recent reminders table *@
+                        @if (_reminderDashboard.RecentReminders.Any())
+                        {
+                            <MudTable T="ReminderDto" Items="@_reminderDashboard.RecentReminders"
+                                      Dense="true" Hover="true" Striped="true"
+                                      OnRowClick="@(args => { if (args.Item != null) Navigation.NavigateTo("/reminders"); })"
+                                      RowClass="cursor-pointer">
+                                <HeaderContent>
+                                    <MudTh>@L["Reminder_Date"]</MudTh>
+                                    <MudTh>@L["Reminder_Invoice"]</MudTh>
+                                    <MudTh>@L["Reminder_Client"]</MudTh>
+                                    <MudTh>@L["Reminder_Level"]</MudTh>
+                                    <MudTh>@L["Reminder_Total"]</MudTh>
+                                    <MudTh>@L["Reminder_Status"]</MudTh>
+                                </HeaderContent>
+                                <RowTemplate>
+                                    <MudTd>@context.ReminderDate.ToShortDateString()</MudTd>
+                                    <MudTd>@context.InvoiceNumber</MudTd>
+                                    <MudTd>@context.ClientName</MudTd>
+                                    <MudTd>@context.Level</MudTd>
+                                    <MudTd><strong>@context.TotalCzk.ToString("N2") CZK</strong></MudTd>
+                                    <MudTd>
+                                        <MudChip T="string" Size="Size.Small" Color="@GetReminderStatusColor(context.Status)">
+                                            @L[$"EReminderStatus_{context.Status}"]
+                                        </MudChip>
+                                    </MudTd>
+                                </RowTemplate>
+                            </MudTable>
+                        }
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        </MudGrid>
+    }
+
     @* Quick start guide for new users *@
     <MudGrid Class="mt-6">
         <MudItem xs="12">
@@ -474,6 +556,7 @@ else
     private DashboardDto _dashboard = new();
     private SysAdminDashboardDto? _sysAdminDashboard;
     private InsuranceAdvanceDto? _insuranceAdvance;
+    private ReminderDashboardDto? _reminderDashboard;
     private bool _loading = true;
     private bool _isSysAdmin = false;
     private bool _isImpersonating = false;
@@ -525,6 +608,16 @@ else
                 catch
                 {
                     // Ignore — insurance advance is optional
+                }
+
+                // Load reminder dashboard data (non-blocking — null if feature not configured)
+                try
+                {
+                    _reminderDashboard = await ReminderService.GetDashboardDataAsync();
+                }
+                catch
+                {
+                    // Ignore — reminders may not be configured yet
                 }
             }
         }
@@ -617,6 +710,19 @@ else
         "Error" => Color.Error,
         "Warning" => Color.Warning,
         "Information" => Color.Info,
+        _ => Color.Default
+    };
+
+    /// <summary>
+    /// Returns MudBlazor color for reminder status chips.
+    /// Draft=Default, Sent=Success, Failed=Error, Cancelled=Warning.
+    /// </summary>
+    private static Color GetReminderStatusColor(EReminderStatus status) => status switch
+    {
+        EReminderStatus.Draft => Color.Default,
+        EReminderStatus.Sent => Color.Success,
+        EReminderStatus.Failed => Color.Error,
+        EReminderStatus.Cancelled => Color.Warning,
         _ => Color.Default
     };
 

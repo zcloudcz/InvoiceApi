@@ -74,6 +74,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ImportApiService>();
         services.AddScoped<EmailAdminApiService>();
         services.AddScoped<FileAttachmentApiService>();
+        services.AddScoped<ReminderApiService>();
 
         // Shared app state — cross-component notifications (e.g., company list changed → refresh dropdown)
         services.AddScoped<AppStateService>();
