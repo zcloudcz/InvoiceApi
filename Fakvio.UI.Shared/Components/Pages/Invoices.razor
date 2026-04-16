@@ -208,7 +208,7 @@
                                OnClick="@(() => OpenEmailDialog(context.Item))" title="@L["Invoice_SendByEmail"].Value" />
                 <MudTooltip Text="@L["Invoice_CreateFromTemplate"].Value">
                     <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small" Color="Color.Primary"
-                                   OnClick="@(() => OpenCreateTemplateDialog(context.Item))" />
+                                   OnClick="@(() => OpenCreateTemplateDialog(context.Item))" Title="@L["Invoice_CreateFromTemplate"].Value" />
                 </MudTooltip>
             </CellTemplate>
         </TemplateColumn>

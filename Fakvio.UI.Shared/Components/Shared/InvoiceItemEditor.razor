@@ -57,7 +57,7 @@
             </MudTd>
             <MudTd>
                 <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
-                               OnClick="@(() => DeleteItem(context))" />
+                               OnClick="@(() => DeleteItem(context))" Title="@L["Btn_Delete"].Value" />
             </MudTd>
         }
         else
@@ -113,7 +113,7 @@
             </MudTd>
             <MudTd>
                 <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
-                               OnClick="@(() => DeleteItem(context))" />
+                               OnClick="@(() => DeleteItem(context))" Title="@L["Btn_Delete"].Value" />
             </MudTd>
         }
     </RowTemplate>

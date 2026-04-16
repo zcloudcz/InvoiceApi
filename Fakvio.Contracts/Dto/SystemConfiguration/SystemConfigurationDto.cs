@@ -49,5 +49,8 @@ public class SystemConfigurationDto
     // ─── Azure Blob Storage Settings ────────────────────────────────────────
     /// <summary>Whether a blob storage connection string is configured (never expose the actual value).</summary>
     public bool HasAzureBlobConnectionString { get; set; }
+    /// <summary>Legacy field — kept for backwards compatibility.</summary>
     public string? AzureBlobContainerPrefix { get; set; }
+    /// <summary>Shared blob container name. Null/empty means "use default fakvio-files".</summary>
+    public string? AzureBlobContainerName { get; set; }
 }

@@ -129,9 +129,27 @@ public class SystemConfiguration : BaseEntity
     public string? AzureBlobConnectionString { get; set; }
 
     /// <summary>
-    /// Prefix for blob container names. Default: "tenant".
-    /// Container name is built as "{prefix}-{companyId}" (e.g., "tenant-42").
-    /// Override this if you need a different naming convention for your storage account.
+    /// Prefix for blob container names. Legacy field — kept for backwards compatibility
+    /// with the original "container per tenant" architecture. The new design uses one
+    /// shared container (see <see cref="AzureBlobContainerName"/>) so this is unused
+    /// by current code. Will be removed in a future cleanup once any legacy migration
+    /// scripts are no longer needed.
     /// </summary>
     public string? AzureBlobContainerPrefix { get; set; }
+
+    /// <summary>
+    /// Name of the single shared blob container that holds all tenant attachments.
+    /// Default when null/empty: "fakvio-files".
+    ///
+    /// Architecture: ONE container, with each tenant getting a top-level directory
+    /// (named by their CompanyId). Blob paths look like "42/a1b2c3d4-e5f6-...pdf".
+    /// Tenant isolation is enforced in <c>FileAttachmentService</c> by always
+    /// prefixing the blob path with the current tenant's CompanyId from JWT.
+    ///
+    /// Constraints (Azure rules):
+    /// - lowercase letters, digits, and hyphens only
+    /// - 3–63 characters
+    /// - starts with a letter or digit
+    /// </summary>
+    public string? AzureBlobContainerName { get; set; }
 }

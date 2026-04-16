@@ -20,7 +20,7 @@
             @* Hamburger menu — only shown for authenticated users (no nav menu on login/register) *@
             <AuthorizeView>
                 <Authorized>
-                    <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@((e) => DrawerToggle())" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@((e) => DrawerToggle())" Title="Menu" />
                 </Authorized>
             </AuthorizeView>
             @* App logo + title — switches between grey (dark mode) and color (light mode) *@
@@ -84,7 +84,7 @@
             @* Dark/light mode toggle — only shown for authenticated users *@
             <AuthorizeView>
                 <Authorized>
-                    <MudIconButton Icon="@Icons.Material.Filled.Brightness4" Color="Color.Inherit" OnClick="@ToggleDarkMode" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Brightness4" Color="Color.Inherit" OnClick="@ToggleDarkMode" title="@L["Layout_ToggleDarkMode"]" />
                 </Authorized>
             </AuthorizeView>
         </MudAppBar>

@@ -27,7 +27,7 @@ else
 {
     @* Header: Back button + template name + type chip + action buttons *@
     <div class="d-flex flex-wrap align-center gap-2 mb-4">
-        <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" OnClick="GoBack" />
+        <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" OnClick="GoBack" Title="@L["Btn_Back"].Value" />
         <MudText Typo="Typo.h4" Class="mr-2">
             @if (_isCreateMode) { @L["ContentTemplate_New"] } else { @_template!.Name }
         </MudText>

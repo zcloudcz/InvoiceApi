@@ -93,6 +93,11 @@ public class UpdateSystemConfigurationDto
     [StringLength(2000)]
     public string? AzureBlobConnectionString { get; set; }
 
+    /// <summary>Legacy field — kept for backwards compatibility.</summary>
     [StringLength(100)]
     public string? AzureBlobContainerPrefix { get; set; }
+
+    /// <summary>Shared blob container name. Null/empty = use default "fakvio-files".</summary>
+    [StringLength(63)]
+    public string? AzureBlobContainerName { get; set; }
 }

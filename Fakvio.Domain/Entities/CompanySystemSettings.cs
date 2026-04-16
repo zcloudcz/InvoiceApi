@@ -286,9 +286,21 @@ public class CompanySystemSettings : BaseEntity
     public string? AzureBlobConnectionString { get; set; }
 
     /// <summary>
-    /// Override for the blob container name prefix.
-    /// Null/empty means "use system-wide prefix" (default: "tenant").
-    /// Container name: "{prefix}-{companyId}" (e.g., "tenant-42").
+    /// Legacy override for the blob container name prefix. Unused by current code —
+    /// the new design uses one shared container (see <see cref="AzureBlobContainerName"/>).
+    /// Kept for backwards compatibility; will be removed in a future cleanup.
     /// </summary>
     public string? AzureBlobContainerPrefix { get; set; }
+
+    /// <summary>
+    /// Per-company override for the shared blob container name.
+    /// Null/empty means "use system-wide AzureBlobContainerName from SystemConfiguration"
+    /// (which itself defaults to "fakvio-files" when also unset).
+    ///
+    /// This is rarely needed — only when a single tenant must store its files in
+    /// a different container (e.g., for data residency). Combined with
+    /// <see cref="AzureBlobConnectionString"/> override it allows a tenant to use
+    /// an entirely separate storage account.
+    /// </summary>
+    public string? AzureBlobContainerName { get; set; }
 }

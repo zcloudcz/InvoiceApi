@@ -98,6 +98,9 @@ public class SystemConfigurationService : ISystemConfigurationService
         if (dto.AzureBlobContainerPrefix != null)
             entity.AzureBlobContainerPrefix = string.IsNullOrEmpty(dto.AzureBlobContainerPrefix)
                 ? null : dto.AzureBlobContainerPrefix;
+        if (dto.AzureBlobContainerName != null)
+            entity.AzureBlobContainerName = string.IsNullOrEmpty(dto.AzureBlobContainerName)
+                ? null : dto.AzureBlobContainerName;
 
         await _context.SaveChangesAsync(ct);
         _logger.LogInformation("System configuration updated successfully");
@@ -196,7 +199,8 @@ public class SystemConfigurationService : ISystemConfigurationService
             AiOllamaModel = entity.AiOllamaModel,
             // Azure Blob Storage — connection string never exposed, only boolean flag
             HasAzureBlobConnectionString = !string.IsNullOrEmpty(entity.AzureBlobConnectionString),
-            AzureBlobContainerPrefix = entity.AzureBlobContainerPrefix
+            AzureBlobContainerPrefix = entity.AzureBlobContainerPrefix,
+            AzureBlobContainerName = entity.AzureBlobContainerName
         };
     }
 }

@@ -9,19 +9,22 @@ using Microsoft.Extensions.Logging;
 namespace Fakvio.Infrastructure.Service.FileStorage;
 
 /// <summary>
-/// Azure Blob Storage implementation of IFileStorage.
+/// Azure Blob Storage implementation of <see cref="IFileStorage"/>.
 /// Handles upload, download, delete, and existence checks for file blobs.
 ///
-/// Connection string resolution follows the standard 3-tier fallback pattern:
-/// 1. CompanySystemSettings.AzureBlobConnectionString (per-company override)
-/// 2. SystemConfiguration.AzureBlobConnectionString (system-wide)
-/// 3. appsettings.json "AzureBlobStorage:ConnectionString" (lowest priority)
+/// Architecture: ONE shared blob container (default "fakvio-files") holds
+/// all tenant attachments. Each tenant gets a top-level directory inside
+/// (e.g., blob path "42/a1b2c3d4.pdf" lives in container "fakvio-files"
+/// under the directory "42/").
 ///
-/// Container naming: "{prefix}-{companyId}" (e.g., "tenant-42").
-/// Containers are created lazily on first upload if they don't exist yet.
+/// Connection string AND container name both follow the same 3-tier fallback:
+/// 1. CompanySystemSettings.AzureBlob[ConnectionString|ContainerName] (per-company)
+/// 2. SystemConfiguration.AzureBlob[ConnectionString|ContainerName]   (system-wide)
+/// 3. appsettings.json "AzureBlobStorage:[ConnectionString|ContainerName]"
+/// 4. Hard-coded default container name "fakvio-files"
 ///
-/// Connection string is stored encrypted in the database — decrypted at runtime
-/// via ICredentialProtector before creating the BlobServiceClient.
+/// Connection string from the database is encrypted at rest via
+/// <see cref="ICredentialProtector"/> and decrypted on read.
 /// </summary>
 public class AzureBlobFileStorage : IFileStorage
 {
@@ -30,6 +33,12 @@ public class AzureBlobFileStorage : IFileStorage
     private readonly ICredentialProtector _credentialProtector;
     private readonly IConfiguration _configuration;
     private readonly ILogger<AzureBlobFileStorage> _logger;
+
+    /// <summary>
+    /// Hard-coded default container name when nothing is configured anywhere.
+    /// Lowercase, 3–63 chars, only letters/digits/hyphens — Azure container naming rules.
+    /// </summary>
+    private const string DefaultContainerName = "fakvio-files";
 
     public AzureBlobFileStorage(
         MasterDbContext masterContext,
@@ -47,20 +56,18 @@ public class AzureBlobFileStorage : IFileStorage
 
     /// <inheritdoc />
     public async Task<string> UploadAsync(
-        string containerName,
         string blobPath,
         byte[] content,
         string contentType,
         CancellationToken ct = default)
     {
-        var (containerClient, blobClient) = await GetBlobAndContainerClientAsync(containerName, blobPath, ct);
+        var (containerClient, blobClient) = await GetBlobAndContainerClientAsync(blobPath, ct);
 
         // Ensure the container exists before uploading.
         // CreateIfNotExistsAsync is idempotent — safe to call on every upload.
         await containerClient.CreateIfNotExistsAsync(cancellationToken: ct);
 
-        // Set Content-Type so browsers handle the file correctly on download,
-        // and Content-Disposition so the browser suggests the correct file name.
+        // Set Content-Type so browsers handle the file correctly on download.
         var headers = new BlobHttpHeaders
         {
             ContentType = contentType
@@ -73,18 +80,17 @@ public class AzureBlobFileStorage : IFileStorage
 
         _logger.LogInformation(
             "Uploaded blob {BlobPath} to container {Container} ({Size} bytes)",
-            blobPath, containerName, content.Length);
+            blobPath, containerClient.Name, content.Length);
 
         return blobPath;
     }
 
     /// <inheritdoc />
     public async Task<byte[]> DownloadAsync(
-        string containerName,
         string blobPath,
         CancellationToken ct = default)
     {
-        var (_, blobClient) = await GetBlobAndContainerClientAsync(containerName, blobPath, ct);
+        var (_, blobClient) = await GetBlobAndContainerClientAsync(blobPath, ct);
 
         var response = await blobClient.DownloadContentAsync(ct);
         return response.Value.Content.ToArray();
@@ -92,17 +98,16 @@ public class AzureBlobFileStorage : IFileStorage
 
     /// <inheritdoc />
     public async Task<bool> DeleteAsync(
-        string containerName,
         string blobPath,
         CancellationToken ct = default)
     {
-        var (_, blobClient) = await GetBlobAndContainerClientAsync(containerName, blobPath, ct);
+        var (containerClient, blobClient) = await GetBlobAndContainerClientAsync(blobPath, ct);
 
         var response = await blobClient.DeleteIfExistsAsync(cancellationToken: ct);
 
         if (response.Value)
         {
-            _logger.LogInformation("Deleted blob {BlobPath} from container {Container}", blobPath, containerName);
+            _logger.LogInformation("Deleted blob {BlobPath} from container {Container}", blobPath, containerClient.Name);
         }
 
         return response.Value;
@@ -110,11 +115,10 @@ public class AzureBlobFileStorage : IFileStorage
 
     /// <inheritdoc />
     public async Task<bool> ExistsAsync(
-        string containerName,
         string blobPath,
         CancellationToken ct = default)
     {
-        var (_, blobClient) = await GetBlobAndContainerClientAsync(containerName, blobPath, ct);
+        var (_, blobClient) = await GetBlobAndContainerClientAsync(blobPath, ct);
         var response = await blobClient.ExistsAsync(ct);
         return response.Value;
     }
@@ -122,14 +126,15 @@ public class AzureBlobFileStorage : IFileStorage
     // ─── Private Helpers ─────────────────────────────────────────────────────
 
     /// <summary>
-    /// Creates a BlobContainerClient and BlobClient for the specified container and blob path.
-    /// Resolves the connection string using the 3-tier fallback pattern.
+    /// Creates a <see cref="BlobContainerClient"/> and <see cref="BlobClient"/> for the
+    /// specified blob path. Resolves both connection string and container name using
+    /// the same 3-tier fallback (company → system → appsettings → default).
     /// Returns both clients so the caller can create the container if needed.
     /// </summary>
     private async Task<(BlobContainerClient Container, BlobClient Blob)> GetBlobAndContainerClientAsync(
-        string containerName, string blobPath, CancellationToken ct)
+        string blobPath, CancellationToken ct)
     {
-        var connectionString = await ResolveConnectionStringAsync(ct);
+        var (connectionString, containerName) = await ResolveStorageConfigAsync(ct);
 
         if (string.IsNullOrWhiteSpace(connectionString))
         {
@@ -144,16 +149,24 @@ public class AzureBlobFileStorage : IFileStorage
     }
 
     /// <summary>
-    /// Resolves the Azure Blob Storage connection string using the 3-tier fallback:
-    /// 1. CompanySystemSettings.AzureBlobConnectionString (per-company)
-    /// 2. SystemConfiguration.AzureBlobConnectionString (system-wide DB)
-    /// 3. appsettings.json "AzureBlobStorage:ConnectionString"
+    /// Resolves both the connection string AND the container name in a single pass —
+    /// they share the same 3-tier fallback logic and reading them together avoids
+    /// fetching CompanySystemSettings twice from the master database.
     ///
-    /// Connection strings from the database are decrypted via ICredentialProtector.
+    /// Resolution order (per field, independently):
+    /// 1. CompanySystemSettings (per-company override)
+    /// 2. SystemConfiguration (system-wide DB)
+    /// 3. appsettings.json
+    /// 4. Container name only — hard-coded default "fakvio-files"
+    ///
+    /// Connection strings from the database are decrypted via <see cref="ICredentialProtector"/>.
     /// </summary>
-    private async Task<string?> ResolveConnectionStringAsync(CancellationToken ct)
+    private async Task<(string? ConnectionString, string ContainerName)> ResolveStorageConfigAsync(CancellationToken ct)
     {
-        // Tier 1: Company-specific override
+        string? connectionString = null;
+        string? containerName = null;
+
+        // Tier 1: Company-specific overrides
         var companyId = _tenantResolver.GetCurrentCompanyId();
         if (companyId.HasValue)
         {
@@ -161,35 +174,67 @@ public class AzureBlobFileStorage : IFileStorage
                 .AsNoTracking()
                 .FirstOrDefaultAsync(s => s.CompanyId == companyId.Value, ct);
 
-            if (companySettings != null &&
-                !string.IsNullOrWhiteSpace(companySettings.AzureBlobConnectionString))
+            if (companySettings != null)
             {
-                _logger.LogDebug(
-                    "Using company Azure Blob Storage config for CompanyId {CompanyId}", companyId.Value);
-                return _credentialProtector.Decrypt(companySettings.AzureBlobConnectionString);
+                if (!string.IsNullOrWhiteSpace(companySettings.AzureBlobConnectionString))
+                {
+                    connectionString = _credentialProtector.Decrypt(companySettings.AzureBlobConnectionString);
+                    _logger.LogDebug("Using company Azure Blob connection string for CompanyId {CompanyId}", companyId.Value);
+                }
+
+                if (!string.IsNullOrWhiteSpace(companySettings.AzureBlobContainerName))
+                {
+                    containerName = companySettings.AzureBlobContainerName;
+                }
             }
         }
 
-        // Tier 2: System-wide DB config
-        var systemConfig = await _masterContext.Set<Domain.Entities.SystemConfiguration>()
-            .AsNoTracking()
-            .FirstOrDefaultAsync(ct);
-
-        if (systemConfig != null &&
-            !string.IsNullOrWhiteSpace(systemConfig.AzureBlobConnectionString))
+        // Tier 2: System-wide DB config (only fills fields still missing)
+        if (connectionString == null || containerName == null)
         {
-            _logger.LogDebug("Using system-wide Azure Blob Storage config from SystemConfiguration");
-            return _credentialProtector.Decrypt(systemConfig.AzureBlobConnectionString);
+            var systemConfig = await _masterContext.Set<Domain.Entities.SystemConfiguration>()
+                .AsNoTracking()
+                .OrderBy(c => c.Id)
+                .FirstOrDefaultAsync(ct);
+
+            if (systemConfig != null)
+            {
+                if (connectionString == null && !string.IsNullOrWhiteSpace(systemConfig.AzureBlobConnectionString))
+                {
+                    connectionString = _credentialProtector.Decrypt(systemConfig.AzureBlobConnectionString);
+                    _logger.LogDebug("Using system-wide Azure Blob connection string from SystemConfiguration");
+                }
+
+                if (containerName == null && !string.IsNullOrWhiteSpace(systemConfig.AzureBlobContainerName))
+                {
+                    containerName = systemConfig.AzureBlobContainerName;
+                }
+            }
         }
 
         // Tier 3: appsettings.json fallback
-        var appSettingsCs = _configuration["AzureBlobStorage:ConnectionString"];
-        if (!string.IsNullOrWhiteSpace(appSettingsCs))
+        if (connectionString == null)
         {
-            _logger.LogDebug("Using Azure Blob Storage config from appsettings.json");
-            return appSettingsCs;
+            var appSettingsCs = _configuration["AzureBlobStorage:ConnectionString"];
+            if (!string.IsNullOrWhiteSpace(appSettingsCs))
+            {
+                connectionString = appSettingsCs;
+                _logger.LogDebug("Using Azure Blob connection string from appsettings.json");
+            }
         }
 
-        return null;
+        if (containerName == null)
+        {
+            var appSettingsContainer = _configuration["AzureBlobStorage:ContainerName"];
+            if (!string.IsNullOrWhiteSpace(appSettingsContainer))
+            {
+                containerName = appSettingsContainer;
+            }
+        }
+
+        // Tier 4: hard-coded default for container name (connection string has no default)
+        containerName ??= DefaultContainerName;
+
+        return (connectionString, containerName);
     }
 }

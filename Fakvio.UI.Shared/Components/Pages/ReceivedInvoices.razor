@@ -21,9 +21,11 @@
 <MudText Typo="Typo.h4" Class="mb-4">@L["ReceivedInvoice_Title"]</MudText>
 
 @* ── Filter Bar ─────────────────────────────────────────────────────── *@
+@* IssueDate / DueDate filters live on the column headers (DateColumnFilter)
+   with operator support (=, >, <, between). No duplicate page-level pickers. *@
 <MudPaper Class="pa-4 mb-4" Elevation="1">
     <MudGrid>
-        <MudItem xs="12" sm="4">
+        <MudItem xs="12" sm="8">
             <MudTextField @bind-Value="_search"
                           Label="@L["Common_Search"]"
                           Adornment="Adornment.Start"
@@ -32,22 +34,12 @@
                           DebounceInterval="300"
                           TextChanged="OnSearchChanged" />
         </MudItem>
-        <MudItem xs="12" sm="2">
+        <MudItem xs="12" sm="4">
             <EnumSelect TEnum="EReceivedInvoiceStatus"
                         NullableValue="_statusFilter"
                         NullableValueChanged="OnStatusChanged"
                         Label="@L["Common_Status"]"
                         Nullable="true" />
-        </MudItem>
-        <MudItem xs="12" sm="3">
-            <MudDatePicker Label="@L["ReceivedInvoice_IssueDateFrom"]"
-                           Date="_issueDateFrom"
-                           DateChanged="OnIssueDateFromChanged" />
-        </MudItem>
-        <MudItem xs="12" sm="3">
-            <MudDatePicker Label="@L["ReceivedInvoice_IssueDateTo"]"
-                           Date="_issueDateTo"
-                           DateChanged="OnIssueDateToChanged" />
         </MudItem>
     </MudGrid>
     <MudGrid Class="mt-2">
@@ -222,8 +214,6 @@
     private bool _bulkProcessing;
     private string? _search;
     private EReceivedInvoiceStatus? _statusFilter;
-    private DateTime? _issueDateFrom;
-    private DateTime? _issueDateTo;
     private HashSet<ReceivedInvoiceDto> _selectedInvoices = new();
 
     /// <summary>
@@ -248,11 +238,8 @@
                 sortDirection = sortDef.Descending ? "desc" : "asc";
             }
 
-            // Column filter on IssueDate (if set) overrides the page-level _issueDateFrom/_issueDateTo.
-            // The column filter is more specific and supports operators (=, >, <, between, …).
-            var (colIssueFrom, colIssueTo) = state.GetDateRange("IssueDate");
-            var effectiveIssueFrom = colIssueFrom ?? _issueDateFrom;
-            var effectiveIssueTo = colIssueTo ?? _issueDateTo;
+            // Date ranges come exclusively from the IssueDate / DueDate column filters.
+            var (issueFrom, issueTo) = state.GetDateRange("IssueDate");
             var (dueFrom, dueTo) = state.GetDateRange("DueDate");
 
             var result = await ReceivedInvoiceService.GetPagedAsync(
@@ -262,8 +249,8 @@
                 sortBy: sortBy,
                 sortDirection: sortDirection,
                 status: _statusFilter,
-                issueDateFrom: effectiveIssueFrom,
-                issueDateTo: effectiveIssueTo,
+                issueDateFrom: issueFrom,
+                issueDateTo: issueTo,
                 dueDateFrom: dueFrom,
                 dueDateTo: dueTo);
 
@@ -294,20 +281,6 @@
     private async Task OnStatusChanged(EReceivedInvoiceStatus? value)
     {
         _statusFilter = value;
-        if (_dataGrid is not null)
-            await _dataGrid.ReloadServerData();
-    }
-
-    private async Task OnIssueDateFromChanged(DateTime? value)
-    {
-        _issueDateFrom = value;
-        if (_dataGrid is not null)
-            await _dataGrid.ReloadServerData();
-    }
-
-    private async Task OnIssueDateToChanged(DateTime? value)
-    {
-        _issueDateTo = value;
         if (_dataGrid is not null)
             await _dataGrid.ReloadServerData();
     }

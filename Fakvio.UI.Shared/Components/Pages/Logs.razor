@@ -12,8 +12,10 @@
 <MudText Class="mb-6" Color="Color.Secondary">@L["Log_Subtitle"]</MudText>
 
 @* Filters row *@
+@* Date range is no longer here — the Timestamp column header has its own DateColumnFilter
+   with operator support (=, >, <, between). One source of truth, no duplication. *@
 <MudGrid Class="mb-4">
-    <MudItem xs="12" sm="3">
+    <MudItem xs="12" sm="6">
         <MudSelect T="string" Value="_levelFilter" ValueChanged="OnLevelChanged"
                    Label="@L["Log_Level"].Value" Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense">
             <MudSelectItem T="string" Value="@("Information")">Information</MudSelectItem>
@@ -22,21 +24,11 @@
             <MudSelectItem T="string" Value="@("Critical")">Critical</MudSelectItem>
         </MudSelect>
     </MudItem>
-    <MudItem xs="12" sm="3">
+    <MudItem xs="12" sm="6">
         <MudTextField @bind-Value="_searchFilter" Label="@L["Log_Search"].Value"
                       Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Search"
                       OnKeyUp="OnSearchKeyUp" Variant="Variant.Outlined" Margin="Margin.Dense"
                       Immediate="false" />
-    </MudItem>
-    <MudItem xs="12" sm="3">
-        <MudDatePicker Date="_dateFrom" DateChanged="OnDateFromChanged"
-                       Label="@L["Log_DateFrom"].Value" Variant="Variant.Outlined" Margin="Margin.Dense"
-                       Clearable="true" />
-    </MudItem>
-    <MudItem xs="12" sm="3">
-        <MudDatePicker Date="_dateTo" DateChanged="OnDateToChanged"
-                       Label="@L["Log_DateTo"].Value" Variant="Variant.Outlined" Margin="Margin.Dense"
-                       Clearable="true" />
     </MudItem>
 </MudGrid>
 
@@ -103,7 +95,7 @@
                 <MudText Typo="Typo.h6">@L["Log_Details"]</MudText>
             </CardHeaderContent>
             <CardHeaderActions>
-                <MudIconButton Icon="@Icons.Material.Filled.Close" OnClick="@(() => _selectedLog = null)" />
+                <MudIconButton Icon="@Icons.Material.Filled.Close" OnClick="@(() => _selectedLog = null)" Title="@L["Btn_Close"].Value" />
             </CardHeaderActions>
         </MudCardHeader>
         <MudCardContent>
@@ -154,11 +146,10 @@
     // Loading flag — MudDataGrid's Loading attribute shows a progress bar automatically
     private bool _loading;
 
-    // Filter state — these are passed to the API when MudDataGrid requests a page of data
+    // Filter state — these are passed to the API when MudDataGrid requests a page of data.
+    // Date range is owned by the Timestamp column's DateColumnFilter, not by this page.
     private string? _levelFilter;
     private string? _searchFilter;
-    private DateTime? _dateFrom;
-    private DateTime? _dateTo;
 
     // The currently selected log entry, shown in the detail expansion card below the grid
     private AppLogDto? _selectedLog;
@@ -176,15 +167,13 @@
         StateHasChanged();
         try
         {
-            // Column filter on Timestamp (if set) overrides the page-level date pickers.
-            // The column filter is more specific and supports operators (=, >, <, between, …).
-            var (colFrom, colTo) = state.GetDateRange("Timestamp");
-            var effectiveFrom = colFrom ?? _dateFrom;
-            var effectiveTo = colTo ?? _dateTo;
+            // Date range comes exclusively from the Timestamp column's DateColumnFilter
+            // (operator + from + to). No page-level pickers anymore.
+            var (timestampFrom, timestampTo) = state.GetDateRange("Timestamp");
 
             // Call the API with current filter values and the page/size from the grid state
             var result = await LogService.GetPagedAsync(
-                state.Page + 1, state.PageSize, _levelFilter, _searchFilter, effectiveFrom, effectiveTo);
+                state.Page + 1, state.PageSize, _levelFilter, _searchFilter, timestampFrom, timestampTo);
 
             // Return the data in the format MudDataGrid expects
             return new GridData<AppLogDto>
@@ -221,18 +210,6 @@
         {
             if (_dataGrid != null) await _dataGrid.ReloadServerData();
         }
-    }
-
-    private async Task OnDateFromChanged(DateTime? date)
-    {
-        _dateFrom = date;
-        if (_dataGrid != null) await _dataGrid.ReloadServerData();
-    }
-
-    private async Task OnDateToChanged(DateTime? date)
-    {
-        _dateTo = date;
-        if (_dataGrid != null) await _dataGrid.ReloadServerData();
     }
 
     // ─── Helper methods ──────────────────────────────────────────────────────

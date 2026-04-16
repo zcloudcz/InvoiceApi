@@ -260,6 +260,7 @@
   <data name="Layout_AppTitle" xml:space="preserve"><value>Fakvio</value></data>
   <data name="Layout_SelectCompany" xml:space="preserve"><value>Zvolit společnost...</value></data>
   <data name="Layout_NoCompany" xml:space="preserve"><value>Bez společnosti</value></data>
+  <data name="Layout_ToggleDarkMode" xml:space="preserve"><value>Přepnout tmavý režim</value></data>
 
   <!-- Messages -->
   <data name="Msg_SaveSuccess" xml:space="preserve"><value>Uloženo úspěšně</value></data>
@@ -1227,6 +1228,8 @@
   <!-- Azure Blob Storage Settings -->
   <data name="Settings_AzureBlobStorage" xml:space="preserve"><value>Azure Blob Storage</value></data>
   <data name="Settings_AzureBlobConnectionString" xml:space="preserve"><value>Connection String</value></data>
-  <data name="Settings_AzureBlobContainerPrefix" xml:space="preserve"><value>Prefix kontejneru</value></data>
-  <data name="Settings_AzureBlobContainerPrefixHelper" xml:space="preserve"><value>Výchozí: "tenant". Kontejner: {prefix}-{companyId}</value></data>
+  <data name="Settings_AzureBlobContainerPrefix" xml:space="preserve"><value>Prefix kontejneru (legacy)</value></data>
+  <data name="Settings_AzureBlobContainerPrefixHelper" xml:space="preserve"><value>Legacy pole — nepoužívá se</value></data>
+  <data name="Settings_AzureBlobContainerName" xml:space="preserve"><value>Název kontejneru</value></data>
+  <data name="Settings_AzureBlobContainerNameHelper" xml:space="preserve"><value>Sdílený kontejner pro všechny tenanty. Výchozí: "fakvio-files"</value></data>
 </root>

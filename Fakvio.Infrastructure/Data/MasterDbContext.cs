@@ -497,6 +497,7 @@ public class MasterDbContext : DbContext
             // Connection string encrypted at rest via ICredentialProtector.
             entity.Property(e => e.AzureBlobConnectionString).HasMaxLength(2000);
             entity.Property(e => e.AzureBlobContainerPrefix).HasMaxLength(100);
+            entity.Property(e => e.AzureBlobContainerName).HasMaxLength(63);
         });
     }
 
@@ -687,6 +688,7 @@ public class MasterDbContext : DbContext
             // System-wide blob storage config. Connection string encrypted at rest.
             entity.Property(e => e.AzureBlobConnectionString).HasMaxLength(2000);
             entity.Property(e => e.AzureBlobContainerPrefix).HasMaxLength(100);
+            entity.Property(e => e.AzureBlobContainerName).HasMaxLength(63);
         });
     }
 

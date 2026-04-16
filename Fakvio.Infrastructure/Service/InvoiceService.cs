@@ -176,7 +176,7 @@ public class InvoiceService : IInvoiceService
 
         // Apply sorting
         // Default sort: DocumentNumber descending (newest first) when no explicit sort is requested
-        var validSortFields = new[] { "DocumentNumber", "IssueDate", "DueDate", "TotalWithVat", "Status", "CreatedAt", "UpdatedAt" };
+        var validSortFields = new[] { "DocumentNumber", "IssueDate", "DueDate", "TaxableSupplyDate", "TotalWithVat", "Status", "CreatedAt", "UpdatedAt" };
         var hasSortField = !string.IsNullOrWhiteSpace(filter.SortBy) && validSortFields.Contains(filter.SortBy, StringComparer.OrdinalIgnoreCase);
         var sortBy = hasSortField ? filter.SortBy : "DocumentNumber";
         var isDescending = hasSortField ? filter.IsDescending : true;

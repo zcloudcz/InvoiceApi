@@ -40,7 +40,7 @@ else if (_isCreateMode)
     @* ============================== CREATE MODE ============================== *@
     @* Header: Back button + title + Save/Cancel buttons *@
     <div class="d-flex flex-wrap align-center gap-2 mb-4">
-        <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" OnClick="GoBack" />
+        <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" OnClick="GoBack" Title="@L["Btn_Back"].Value" />
         <MudText Typo="Typo.h4" Class="mr-2">
             @(_createDto.DocumentType == EDocumentType.CreditNote ? L["CreditNote_New"] : L["Invoice_New"])
         </MudText>
@@ -168,7 +168,7 @@ else
     @* ============================== VIEW / EDIT MODE ============================== *@
     @* Header: Back button + document number + status chip + action buttons *@
     <div class="d-flex flex-wrap align-center gap-2 mb-4">
-        <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" OnClick="GoBack" />
+        <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" OnClick="GoBack" Title="@L["Btn_Back"].Value" />
         <MudText Typo="Typo.h4" Class="mr-2">
             @(_invoice!.DocumentNumber ?? L["Invoice_Draft"].Value)
         </MudText>

@@ -313,10 +313,10 @@ else
                                       Label="@L["Settings_AzureBlobConnectionString"].Value"
                                       InputType="InputType.Password"
                                       Class="mb-3" />
-                        <MudTextField @bind-Value="_editDto.AzureBlobContainerPrefix"
-                                      Label="@L["Settings_AzureBlobContainerPrefix"].Value"
-                                      HelperText="@L["Settings_AzureBlobContainerPrefixHelper"].Value"
-                                      Placeholder="tenant" />
+                        <MudTextField @bind-Value="_editDto.AzureBlobContainerName"
+                                      Label="@L["Settings_AzureBlobContainerName"].Value"
+                                      HelperText="@L["Settings_AzureBlobContainerNameHelper"].Value"
+                                      Placeholder="fakvio-files" />
                     }
                     else
                     {
@@ -326,8 +326,8 @@ else
                                 @(_config?.HasAzureBlobConnectionString == true ? "********" : "—")
                             </MudListItem>
                             <MudListItem>
-                                <strong>@L["Settings_AzureBlobContainerPrefix"]:</strong>
-                                @(string.IsNullOrEmpty(_config?.AzureBlobContainerPrefix) ? "tenant (default)" : _config.AzureBlobContainerPrefix)
+                                <strong>@L["Settings_AzureBlobContainerName"]:</strong>
+                                @(string.IsNullOrEmpty(_config?.AzureBlobContainerName) ? "fakvio-files (default)" : _config.AzureBlobContainerName)
                             </MudListItem>
                         </MudList>
                     }
@@ -409,9 +409,10 @@ else
             AiGeminiModel = _config.AiGeminiModel,
             AiOllamaBaseUrl = _config.AiOllamaBaseUrl,
             AiOllamaModel = _config.AiOllamaModel,
-            // Azure Blob Storage — connection string null (keep existing), prefix pre-filled
+            // Azure Blob Storage — connection string null (keep existing), container name pre-filled
             AzureBlobConnectionString = null,
-            AzureBlobContainerPrefix = _config.AzureBlobContainerPrefix
+            AzureBlobContainerPrefix = _config.AzureBlobContainerPrefix,
+            AzureBlobContainerName = _config.AzureBlobContainerName
         };
         _isEditing = true;
     }

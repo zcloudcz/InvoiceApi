@@ -230,7 +230,7 @@ else
                             <MudTd>@context.TotalWithVat.ToString("N2")</MudTd>
                             <MudTd>
                                 <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
-                                               OnClick="@(() => RemoveItem(context))" />
+                                               OnClick="@(() => RemoveItem(context))" Title="@L["Btn_Delete"].Value" />
                             </MudTd>
                         }
                         else

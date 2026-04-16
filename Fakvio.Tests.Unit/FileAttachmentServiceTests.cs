@@ -36,18 +36,20 @@ public class FileAttachmentServiceTests : IDisposable
 
         _context = new TenantDbContext(options);
 
-        // Mock IFileStorage — captures upload/download/delete calls
+        // Mock IFileStorage — captures upload/download/delete calls.
+        // New IFileStorage signature has no container parameter; the implementation
+        // resolves the shared container name internally from system settings.
         _fileStorageMock = Substitute.For<IFileStorage>();
         _fileStorageMock.UploadAsync(
-            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<byte[]>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns(callInfo => callInfo.ArgAt<string>(1)); // Returns blobPath
+            Arg.Any<string>(), Arg.Any<byte[]>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo => callInfo.ArgAt<string>(0)); // Returns blobPath (first arg)
 
         _fileStorageMock.DownloadAsync(
-            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new byte[] { 1, 2, 3 }); // Returns dummy bytes
 
         _fileStorageMock.DeleteAsync(
-            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(true);
 
         // Mock tenant resolver — returns a fixed CompanyId for container name resolution
@@ -92,16 +94,15 @@ public class FileAttachmentServiceTests : IDisposable
         result.Description.ShouldBe("Signed contract");
         result.FileGuid.ShouldNotBe(Guid.Empty);
 
-        // Assert — DB record created
+        // Assert — DB record created with new "{companyId}/{guid}.ext" path format
         var dbRecord = await _context.FileAttachment.FirstOrDefaultAsync();
         dbRecord.ShouldNotBeNull();
-        dbRecord.BlobPath.ShouldContain("Invoice/101/");
+        dbRecord.BlobPath.ShouldStartWith($"{TestCompanyId}/");
         dbRecord.BlobPath.ShouldEndWith(".pdf");
 
-        // Assert — IFileStorage.UploadAsync was called once with correct container
+        // Assert — IFileStorage.UploadAsync was called once (no container arg anymore)
         await _fileStorageMock.Received(1).UploadAsync(
-            $"tenant-{TestCompanyId}",
-            Arg.Any<string>(),
+            Arg.Is<string>(p => p.StartsWith($"{TestCompanyId}/") && p.EndsWith(".pdf")),
             upload.FileContent,
             "application/pdf",
             Arg.Any<CancellationToken>());
@@ -148,7 +149,7 @@ public class FileAttachmentServiceTests : IDisposable
     [Fact]
     public async Task DownloadAsync_ShouldReturnFileContent()
     {
-        // Arrange — seed a FileAttachment record
+        // Arrange — seed a FileAttachment record with new path format
         var attachment = new FileAttachment
         {
             EntityName = "Client",
@@ -157,7 +158,7 @@ public class FileAttachmentServiceTests : IDisposable
             OriginalFileName = "doc.pdf",
             ContentType = "application/pdf",
             FileSizeBytes = 3,
-            BlobPath = "Client/55/test-guid.pdf",
+            BlobPath = $"{TestCompanyId}/test-guid.pdf",
             CreatedAt = DateTime.UtcNow
         };
         _context.FileAttachment.Add(attachment);
@@ -188,10 +189,10 @@ public class FileAttachmentServiceTests : IDisposable
     {
         // Arrange — seed multiple attachments for different entities
         _context.FileAttachment.AddRange(
-            new FileAttachment { EntityName = "Invoice", RecordId = 1, FileGuid = Guid.NewGuid(), OriginalFileName = "a.pdf", ContentType = "application/pdf", BlobPath = "Invoice/1/a.pdf", CreatedAt = DateTime.UtcNow },
-            new FileAttachment { EntityName = "Invoice", RecordId = 1, FileGuid = Guid.NewGuid(), OriginalFileName = "b.pdf", ContentType = "application/pdf", BlobPath = "Invoice/1/b.pdf", CreatedAt = DateTime.UtcNow.AddMinutes(1) },
-            new FileAttachment { EntityName = "Invoice", RecordId = 2, FileGuid = Guid.NewGuid(), OriginalFileName = "c.pdf", ContentType = "application/pdf", BlobPath = "Invoice/2/c.pdf", CreatedAt = DateTime.UtcNow },
-            new FileAttachment { EntityName = "Client", RecordId = 1, FileGuid = Guid.NewGuid(), OriginalFileName = "d.pdf", ContentType = "application/pdf", BlobPath = "Client/1/d.pdf", CreatedAt = DateTime.UtcNow }
+            new FileAttachment { EntityName = "Invoice", RecordId = 1, FileGuid = Guid.NewGuid(), OriginalFileName = "a.pdf", ContentType = "application/pdf", BlobPath = $"{TestCompanyId}/a.pdf", CreatedAt = DateTime.UtcNow },
+            new FileAttachment { EntityName = "Invoice", RecordId = 1, FileGuid = Guid.NewGuid(), OriginalFileName = "b.pdf", ContentType = "application/pdf", BlobPath = $"{TestCompanyId}/b.pdf", CreatedAt = DateTime.UtcNow.AddMinutes(1) },
+            new FileAttachment { EntityName = "Invoice", RecordId = 2, FileGuid = Guid.NewGuid(), OriginalFileName = "c.pdf", ContentType = "application/pdf", BlobPath = $"{TestCompanyId}/c.pdf", CreatedAt = DateTime.UtcNow },
+            new FileAttachment { EntityName = "Client", RecordId = 1, FileGuid = Guid.NewGuid(), OriginalFileName = "d.pdf", ContentType = "application/pdf", BlobPath = $"{TestCompanyId}/d.pdf", CreatedAt = DateTime.UtcNow }
         );
         await _context.SaveChangesAsync();
 
@@ -208,6 +209,7 @@ public class FileAttachmentServiceTests : IDisposable
     public async Task DeleteAsync_ShouldRemoveBlobAndDbRecord()
     {
         // Arrange
+        var blobPath = $"{TestCompanyId}/old.pdf";
         var attachment = new FileAttachment
         {
             EntityName = "Invoice",
@@ -215,7 +217,7 @@ public class FileAttachmentServiceTests : IDisposable
             FileGuid = Guid.NewGuid(),
             OriginalFileName = "old.pdf",
             ContentType = "application/pdf",
-            BlobPath = "Invoice/1/old.pdf",
+            BlobPath = blobPath,
             CreatedAt = DateTime.UtcNow
         };
         _context.FileAttachment.Add(attachment);
@@ -231,10 +233,9 @@ public class FileAttachmentServiceTests : IDisposable
         var dbRecord = await _context.FileAttachment.FindAsync(attachment.Id);
         dbRecord.ShouldBeNull();
 
-        // IFileStorage.DeleteAsync should have been called
+        // IFileStorage.DeleteAsync should have been called with the exact stored blob path
         await _fileStorageMock.Received(1).DeleteAsync(
-            $"tenant-{TestCompanyId}",
-            "Invoice/1/old.pdf",
+            blobPath,
             Arg.Any<CancellationToken>());
     }
 

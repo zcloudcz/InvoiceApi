@@ -14,7 +14,9 @@ namespace Fakvio.Infrastructure.Service;
 ///
 /// Tenant isolation:
 /// - DB: TenantDbContext is scoped to the current tenant's schema
-/// - Blob: Container name is "tenant-{companyId}" (or custom prefix from settings)
+/// - Blob: One shared container holds all tenants; each tenant gets a top-level
+///   directory named by CompanyId. Blob paths look like "42/a1b2c3d4.pdf".
+///   The container name is resolved internally by IFileStorage from system settings.
 ///
 /// This service does NOT validate whether the referenced entity (EntityName + RecordId)
 /// actually exists — the caller is responsible for passing valid references.
@@ -26,12 +28,6 @@ public class FileAttachmentService : IFileAttachmentService
     private readonly IFileStorage _fileStorage;
     private readonly ITenantResolver _tenantResolver;
     private readonly ILogger<FileAttachmentService> _logger;
-
-    /// <summary>
-    /// Default container prefix when not overridden in settings.
-    /// Combined with companyId to form "tenant-{companyId}".
-    /// </summary>
-    private const string DefaultContainerPrefix = "tenant";
 
     /// <summary>
     /// Maximum allowed file size in bytes (50 MB).
@@ -81,13 +77,14 @@ public class FileAttachmentService : IFileAttachmentService
                 $"File extension '{extension}' is not allowed. Allowed extensions: {string.Join(", ", AllowedExtensions)}");
         }
 
-        // Generate unique identifiers for this attachment
+        // Generate unique identifiers for this attachment.
+        // Blob path is "{companyId}/{guid}{ext}" — tenant isolation lives in the path prefix.
         var fileGuid = Guid.NewGuid();
-        var blobPath = BuildBlobPath(upload.EntityName, upload.RecordId, fileGuid, extension);
-        var containerName = GetContainerName();
+        var companyId = RequireCompanyId();
+        var blobPath = BuildBlobPath(companyId, fileGuid, extension);
 
-        // Step 1: Upload bytes to blob storage
-        await _fileStorage.UploadAsync(containerName, blobPath, upload.FileContent, upload.ContentType, ct);
+        // Step 1: Upload bytes to blob storage (container resolved internally by IFileStorage)
+        await _fileStorage.UploadAsync(blobPath, upload.FileContent, upload.ContentType, ct);
 
         // Step 2: Save metadata to tenant database
         var entity = new FileAttachment
@@ -126,8 +123,7 @@ public class FileAttachmentService : IFileAttachmentService
             return null;
         }
 
-        var containerName = GetContainerName();
-        var content = await _fileStorage.DownloadAsync(containerName, entity.BlobPath, ct);
+        var content = await _fileStorage.DownloadAsync(entity.BlobPath, ct);
 
         return (content, entity.OriginalFileName, entity.ContentType);
     }
@@ -159,8 +155,7 @@ public class FileAttachmentService : IFileAttachmentService
 
         // Step 1: Delete blob from storage first.
         // If this fails, we don't remove the DB record (prevents orphaned references).
-        var containerName = GetContainerName();
-        await _fileStorage.DeleteAsync(containerName, entity.BlobPath, ct);
+        await _fileStorage.DeleteAsync(entity.BlobPath, ct);
 
         // Step 2: Remove DB record
         _context.FileAttachment.Remove(entity);
@@ -176,29 +171,33 @@ public class FileAttachmentService : IFileAttachmentService
     // ─── Private Helpers ─────────────────────────────────────────────────────
 
     /// <summary>
-    /// Builds the blob path within the container.
-    /// Format: "{EntityName}/{RecordId}/{FileGuid}{extension}"
-    /// Example: "Invoice/42/a1b2c3d4-e5f6-7890-abcd-ef1234567890.pdf"
+    /// Builds the blob path inside the shared container.
+    /// Format: "{companyId}/{fileGuid}{extension}".
+    /// Example: "42/a1b2c3d4-e5f6-7890-abcd-ef1234567890.pdf"
+    ///
+    /// Why CompanyId in the path? Tenant isolation. Even though all tenants share
+    /// one container, each blob path begins with the owning tenant's CompanyId,
+    /// so a bug elsewhere can never accidentally surface another tenant's blobs
+    /// (the path prefix is part of the blob's identity).
+    ///
+    /// EntityName + RecordId are NOT in the path because the FileAttachment row
+    /// already holds them — they're queried via the database, not the blob path.
     /// </summary>
-    private static string BuildBlobPath(string entityName, long recordId, Guid fileGuid, string? extension)
+    private static string BuildBlobPath(long companyId, Guid fileGuid, string? extension)
     {
-        return $"{entityName}/{recordId}/{fileGuid}{extension}";
+        return $"{companyId}/{fileGuid}{extension}";
     }
 
     /// <summary>
-    /// Resolves the blob container name for the current tenant.
-    /// Format: "{prefix}-{companyId}" (e.g., "tenant-42").
-    /// Azure Blob container names must be lowercase and 3-63 characters.
+    /// Returns the current tenant's CompanyId or throws if no JWT context is available.
+    /// File operations are always tenant-scoped — there is no "global" attachment.
     /// </summary>
-    private string GetContainerName()
+    private long RequireCompanyId()
     {
-        var companyId = _tenantResolver.GetCurrentCompanyId()
+        return _tenantResolver.GetCurrentCompanyId()
             ?? throw new InvalidOperationException(
-                "No company context — cannot determine blob storage container. " +
+                "No company context — cannot determine blob storage path. " +
                 "Ensure the request has a valid JWT with CompanyId claim.");
-
-        // Container name: lowercase, no underscores (Azure requirement)
-        return $"{DefaultContainerPrefix}-{companyId}".ToLowerInvariant();
     }
 
     /// <summary>

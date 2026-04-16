@@ -120,53 +120,63 @@ Pro případ, kdy konkrétní zákazník chce vlastní Azure storage account.
 
 ## 6. Container naming
 
-Automaticky vytvořené containery mají formát:
+**Architektura**: JEDEN sdílený container pro všechny tenanty. Uvnitř má každý tenant svůj top-level adresář pojmenovaný podle `CompanyId`.
 
+### Default
+Pokud není v `SystemConfiguration.AzureBlobContainerName` nastaveno jinak, použije se default:
 ```
-{prefix}-{companyId}
+fakvio-files
 ```
 
-### Příklady:
-- Default prefix `tenant`, CompanyId 42 → container `tenant-42`
-- Default prefix `tenant`, CompanyId 100 → container `tenant-100`
-- Custom prefix `fakvio-prod`, CompanyId 42 → container `fakvio-prod-42`
+### Override
+- **System-wide**: `SystemConfiguration.AzureBlobContainerName` (SysAdmin → System Settings → Azure Blob Storage → Container Name)
+- **Per-tenant** (rare): `CompanySystemSettings.AzureBlobContainerName` — pro případ data residency, kdy konkrétní zákazník musí mít data v jiném containeru/storage accountu
 
-### Pravidla pro container prefix:
-- **Pouze malá písmena, čísla, pomlčky** (Azure restrikce)
-- **3–63 znaků** celkem (včetně prefixu, pomlčky a CompanyId)
-- **Začíná písmenem nebo číslem**
+### Pravidla pro container name (Azure):
+- Pouze **malá písmena, čísla, pomlčky**
+- **3–63 znaků**
+- Začíná písmenem nebo číslem
 
-### Lazy creation:
-Containery se vytvoří automaticky při prvním uploadu — není potřeba nic dělat ručně. `CreateIfNotExistsAsync` je idempotentní operace.
+### Lazy creation
+Container se vytvoří automaticky při prvním uploadu — `CreateIfNotExistsAsync` je idempotentní, takže může být voláno při každém uploadu bez režie.
 
 ---
 
 ## 7. Blob struktura
 
-Soubory jsou v containeru organizovány hierarchicky:
+Soubory jsou v containeru organizovány podle tenanta:
 
 ```
-tenant-42/
-├── Invoice/
-│   ├── 101/
-│   │   ├── a1b2c3d4-e5f6-7890-abcd-ef1234567890.pdf  ← contract.pdf
-│   │   └── b2c3d4e5-f6a7-8901-bcde-f12345678901.jpg  ← scan.jpg
-│   └── 102/
-│       └── c3d4e5f6-a7b8-9012-cdef-123456789012.pdf
-├── Client/
-│   └── 55/
-│       └── d4e5f6a7-b8c9-0123-defa-234567890123.pdf
-└── ReceivedInvoice/
-    └── 200/
-        └── e5f6a7b8-c9d0-1234-efab-345678901234.pdf
+fakvio-files/                                            ← jediný shared container
+├── 42/                                                  ← tenant 42 (CompanyId)
+│   ├── a1b2c3d4-e5f6-7890-abcd-ef1234567890.pdf       ← contract.pdf  (metadata v DB)
+│   ├── b2c3d4e5-f6a7-8901-bcde-f12345678901.jpg       ← scan.jpg
+│   └── c3d4e5f6-a7b8-9012-cdef-123456789012.pdf
+├── 55/                                                  ← tenant 55
+│   └── d4e5f6a7-b8c9-0123-defa-234567890123.pdf
+└── 100/                                                 ← tenant 100
+    └── e5f6a7b8-c9d0-1234-efab-345678901234.pdf
 ```
 
-**Path format**: `{EntityName}/{RecordId}/{FileGuid}{extension}`
+**Path format**: `{CompanyId}/{FileGuid}{extension}`
 
-- `EntityName` = jméno entity (Invoice, Client, ReceivedInvoice, …)
-- `RecordId` = primární klíč záznamu
-- `FileGuid` = generovaný Guid (zabraňuje kolizím)
-- `extension` = původní přípona souboru
+- `CompanyId` = ID tenanta (z JWT claim) → tenant isolation
+- `FileGuid` = generovaný Guid (zabraňuje kolizím v rámci tenantu)
+- `extension` = původní přípona souboru (kvůli Azure Storage Exploreru a Content-Type fallback)
+
+### Proč není entita v path?
+`EntityName` a `RecordId` (např. `Invoice`, `42`) jsou uložené v **databázové tabulce `FileAttachment`**, ne v blob path. Důvody:
+- **Queryable** — listing příloh konkrétní entity je SQL JOIN, ne enumerace blobů
+- **Kratší path** — méně místa v DB sloupci `BlobPath`
+- **Znovupoužití souboru** — pokud by bylo potřeba, jeden blob lze napojit na víc entit (záměna `FileAttachment` na M:N) bez přesouvání bytů
+
+### Tenant isolation
+Každý blob path **musí** začínat `{CompanyId}/`. `FileAttachmentService` to vynucuje při uploadu:
+```csharp
+var companyId = _tenantResolver.GetCurrentCompanyId() ?? throw ...;
+var blobPath = $"{companyId}/{fileGuid}{extension}";
+```
+JWT claim → companyId → path prefix. Bug v query layeru nemůže vyvolat cross-tenant leak, protože blob path je součástí identity blobu.
 
 ---
 
