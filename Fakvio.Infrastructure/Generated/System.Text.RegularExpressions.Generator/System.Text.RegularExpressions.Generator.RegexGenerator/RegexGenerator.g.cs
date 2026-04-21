@@ -37,7 +37,7 @@ namespace Fakvio.Infrastructure.Service.ChatTools
         ///         ○ Match if at a word boundary.<br/>
         /// </code>
         /// </remarks>
-        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.15411")]
+        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.17701")]
         private static partial global::System.Text.RegularExpressions.Regex IcoPattern() => global::System.Text.RegularExpressions.Generated.IcoPattern_0.Instance;
     }
 }
@@ -231,7 +231,7 @@ namespace Fakvio.Infrastructure.Service.ChatTools
         /// ○ Match if at a word boundary.<br/>
         /// </code>
         /// </remarks>
-        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.15411")]
+        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.17701")]
         private static partial global::System.Text.RegularExpressions.Regex ToolKeywordPattern() => global::System.Text.RegularExpressions.Generated.ToolKeywordPattern_1.Instance;
     }
 }
@@ -627,7 +627,7 @@ namespace Fakvio.Infrastructure.Service.ChatTools
         /// ○ Match if at a word boundary.<br/>
         /// </code>
         /// </remarks>
-        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.15411")]
+        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.17701")]
         private static partial global::System.Text.RegularExpressions.Regex NavigationKeywordPattern() => global::System.Text.RegularExpressions.Generated.NavigationKeywordPattern_2.Instance;
     }
 }
@@ -831,7 +831,7 @@ namespace Fakvio.Infrastructure.Service.ChatTools
         ///         ○ Match a Unicode digit.<br/>
         /// </code>
         /// </remarks>
-        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.15411")]
+        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.17701")]
         private static partial global::System.Text.RegularExpressions.Regex InvoiceCreationPattern() => global::System.Text.RegularExpressions.Generated.InvoiceCreationPattern_3.Instance;
     }
 }
@@ -930,7 +930,7 @@ namespace Fakvio.Infrastructure.Service.ChatTools
         /// ○ Match if at a word boundary.<br/>
         /// </code>
         /// </remarks>
-        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.15411")]
+        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.17701")]
         private static partial global::System.Text.RegularExpressions.Regex ImportKeywordPattern() => global::System.Text.RegularExpressions.Generated.ImportKeywordPattern_4.Instance;
     }
 }
@@ -1320,7 +1320,7 @@ namespace Fakvio.Infrastructure.Service.ChatTools
         ///         ○ Match if at a word boundary.<br/>
         /// </code>
         /// </remarks>
-        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.15411")]
+        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.17701")]
         private static partial global::System.Text.RegularExpressions.Regex ExportKeywordPattern() => global::System.Text.RegularExpressions.Generated.ExportKeywordPattern_5.Instance;
     }
 }
@@ -1340,7 +1340,7 @@ namespace Fakvio.Infrastructure.Service
         /// ○ Match the string "}}".<br/>
         /// </code>
         /// </remarks>
-        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.15411")]
+        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.17701")]
         private static partial global::System.Text.RegularExpressions.Regex PlaceholderRegex() => global::System.Text.RegularExpressions.Generated.PlaceholderRegex_6.Instance;
     }
 }
@@ -1410,7 +1410,7 @@ namespace Fakvio.Infrastructure.Service
         ///     ○ Match a character in the set [\-/\w] atomically at least once.<br/>
         /// </code>
         /// </remarks>
-        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.15411")]
+        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.17701")]
         private static partial global::System.Text.RegularExpressions.Regex DocumentNumberRegex() => global::System.Text.RegularExpressions.Generated.DocumentNumberRegex_7.Instance;
     }
 }
@@ -1486,7 +1486,7 @@ namespace Fakvio.Infrastructure.Service
         ///             ○ Match a Unicode digit exactly 2 times.<br/>
         /// </code>
         /// </remarks>
-        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.15411")]
+        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.17701")]
         private static partial global::System.Text.RegularExpressions.Regex IssueDateRegex() => global::System.Text.RegularExpressions.Generated.IssueDateRegex_8.Instance;
     }
 }
@@ -1561,7 +1561,7 @@ namespace Fakvio.Infrastructure.Service
         ///             ○ Match a Unicode digit exactly 2 times.<br/>
         /// </code>
         /// </remarks>
-        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.15411")]
+        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.17701")]
         private static partial global::System.Text.RegularExpressions.Regex DueDateRegex() => global::System.Text.RegularExpressions.Generated.DueDateRegex_9.Instance;
     }
 }
@@ -1643,7 +1643,7 @@ namespace Fakvio.Infrastructure.Service
         ///             ○ Match a Unicode digit exactly 2 times.<br/>
         /// </code>
         /// </remarks>
-        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.15411")]
+        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.17701")]
         private static partial global::System.Text.RegularExpressions.Regex DuzpRegex() => global::System.Text.RegularExpressions.Generated.DuzpRegex_10.Instance;
     }
 }
@@ -1742,7 +1742,7 @@ namespace Fakvio.Infrastructure.Service
         ///             ○ Match a character in the set [Dd].<br/>
         /// </code>
         /// </remarks>
-        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.15411")]
+        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.17701")]
         private static partial global::System.Text.RegularExpressions.Regex TotalAmountRegex() => global::System.Text.RegularExpressions.Generated.TotalAmountRegex_11.Instance;
     }
 }
@@ -1812,7 +1812,7 @@ namespace Fakvio.Infrastructure.Service
         ///     ○ Match a character in the set [,.\d\s] atomically at least once.<br/>
         /// </code>
         /// </remarks>
-        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.15411")]
+        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.17701")]
         private static partial global::System.Text.RegularExpressions.Regex TotalBeforeVatRegex() => global::System.Text.RegularExpressions.Generated.TotalBeforeVatRegex_12.Instance;
     }
 }
@@ -1871,7 +1871,7 @@ namespace Fakvio.Infrastructure.Service
         ///     ○ Match a character in the set [,.\d\s] atomically at least once.<br/>
         /// </code>
         /// </remarks>
-        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.15411")]
+        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.17701")]
         private static partial global::System.Text.RegularExpressions.Regex TotalVatRegex() => global::System.Text.RegularExpressions.Generated.TotalVatRegex_13.Instance;
     }
 }
@@ -1914,7 +1914,7 @@ namespace Fakvio.Infrastructure.Service
         ///     ○ Match a Unicode digit atomically at least 1 and at most 10 times.<br/>
         /// </code>
         /// </remarks>
-        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.15411")]
+        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.17701")]
         private static partial global::System.Text.RegularExpressions.Regex VariableSymbolRegex() => global::System.Text.RegularExpressions.Generated.VariableSymbolRegex_14.Instance;
     }
 }
@@ -1945,7 +1945,7 @@ namespace Fakvio.Infrastructure.Service
         ///     ○ Match a Unicode digit atomically at most 4 times.<br/>
         /// </code>
         /// </remarks>
-        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.15411")]
+        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.17701")]
         private static partial global::System.Text.RegularExpressions.Regex IbanRegex() => global::System.Text.RegularExpressions.Generated.IbanRegex_15.Instance;
     }
 }
@@ -1968,7 +1968,7 @@ namespace Fakvio.Infrastructure.Service
         ///     ○ Match a Unicode digit exactly 4 times.<br/>
         /// </code>
         /// </remarks>
-        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.15411")]
+        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.17701")]
         private static partial global::System.Text.RegularExpressions.Regex CzechBankAccountRegex() => global::System.Text.RegularExpressions.Generated.CzechBankAccountRegex_16.Instance;
     }
 }
@@ -2008,7 +2008,7 @@ namespace Fakvio.Infrastructure.Service
         ///     ○ Match a Unicode digit exactly 8 times.<br/>
         /// </code>
         /// </remarks>
-        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.15411")]
+        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.17701")]
         private static partial global::System.Text.RegularExpressions.Regex RegistrationNumberRegex() => global::System.Text.RegularExpressions.Generated.RegistrationNumberRegex_17.Instance;
     }
 }
@@ -2051,7 +2051,7 @@ namespace Fakvio.Infrastructure.Service
         ///     ○ Match a Unicode digit atomically at least 8 and at most 10 times.<br/>
         /// </code>
         /// </remarks>
-        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.15411")]
+        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.17701")]
         private static partial global::System.Text.RegularExpressions.Regex TaxNumberRegex() => global::System.Text.RegularExpressions.Generated.TaxNumberRegex_18.Instance;
     }
 }
@@ -2089,7 +2089,7 @@ namespace Fakvio.Infrastructure.Service
         ///         ○ Match a character in the set [Pp].<br/>
         /// </code>
         /// </remarks>
-        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.15411")]
+        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.17701")]
         private static partial global::System.Text.RegularExpressions.Regex CurrencyRegex() => global::System.Text.RegularExpressions.Generated.CurrencyRegex_19.Instance;
     }
 }
@@ -2107,7 +2107,7 @@ namespace System.Text.RegularExpressions.Generated
     using System.Threading;
 
     /// <summary>Custom <see cref="Regex"/>-derived type for the IcoPattern method.</summary>
-    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.15411")]
+    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.17701")]
     file sealed class IcoPattern_0 : Regex
     {
         /// <summary>Cached, thread-safe singleton instance.</summary>
@@ -2493,7 +2493,7 @@ namespace System.Text.RegularExpressions.Generated
     }
     
     /// <summary>Custom <see cref="Regex"/>-derived type for the ToolKeywordPattern method.</summary>
-    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.15411")]
+    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.17701")]
     file sealed class ToolKeywordPattern_1 : Regex
     {
         /// <summary>Cached, thread-safe singleton instance.</summary>
@@ -3393,7 +3393,7 @@ namespace System.Text.RegularExpressions.Generated
     }
     
     /// <summary>Custom <see cref="Regex"/>-derived type for the NavigationKeywordPattern method.</summary>
-    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.15411")]
+    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.17701")]
     file sealed class NavigationKeywordPattern_2 : Regex
     {
         /// <summary>Cached, thread-safe singleton instance.</summary>
@@ -4797,7 +4797,7 @@ namespace System.Text.RegularExpressions.Generated
     }
     
     /// <summary>Custom <see cref="Regex"/>-derived type for the InvoiceCreationPattern method.</summary>
-    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.15411")]
+    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.17701")]
     file sealed class InvoiceCreationPattern_3 : Regex
     {
         /// <summary>Cached, thread-safe singleton instance.</summary>
@@ -5787,7 +5787,7 @@ namespace System.Text.RegularExpressions.Generated
     }
     
     /// <summary>Custom <see cref="Regex"/>-derived type for the ImportKeywordPattern method.</summary>
-    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.15411")]
+    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.17701")]
     file sealed class ImportKeywordPattern_4 : Regex
     {
         /// <summary>Cached, thread-safe singleton instance.</summary>
@@ -6186,7 +6186,7 @@ namespace System.Text.RegularExpressions.Generated
     }
     
     /// <summary>Custom <see cref="Regex"/>-derived type for the ExportKeywordPattern method.</summary>
-    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.15411")]
+    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.17701")]
     file sealed class ExportKeywordPattern_5 : Regex
     {
         /// <summary>Cached, thread-safe singleton instance.</summary>
@@ -8017,7 +8017,7 @@ namespace System.Text.RegularExpressions.Generated
     }
     
     /// <summary>Custom <see cref="Regex"/>-derived type for the PlaceholderRegex method.</summary>
-    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.15411")]
+    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.17701")]
     file sealed class PlaceholderRegex_6 : Regex
     {
         /// <summary>Cached, thread-safe singleton instance.</summary>
@@ -8191,7 +8191,7 @@ namespace System.Text.RegularExpressions.Generated
     }
     
     /// <summary>Custom <see cref="Regex"/>-derived type for the DocumentNumberRegex method.</summary>
-    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.15411")]
+    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.17701")]
     file sealed class DocumentNumberRegex_7 : Regex
     {
         /// <summary>Cached, thread-safe singleton instance.</summary>
@@ -8673,7 +8673,7 @@ namespace System.Text.RegularExpressions.Generated
     }
     
     /// <summary>Custom <see cref="Regex"/>-derived type for the IssueDateRegex method.</summary>
-    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.15411")]
+    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.17701")]
     file sealed class IssueDateRegex_8 : Regex
     {
         /// <summary>Cached, thread-safe singleton instance.</summary>
@@ -9126,7 +9126,7 @@ namespace System.Text.RegularExpressions.Generated
     }
     
     /// <summary>Custom <see cref="Regex"/>-derived type for the DueDateRegex method.</summary>
-    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.15411")]
+    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.17701")]
     file sealed class DueDateRegex_9 : Regex
     {
         /// <summary>Cached, thread-safe singleton instance.</summary>
@@ -9559,7 +9559,7 @@ namespace System.Text.RegularExpressions.Generated
     }
     
     /// <summary>Custom <see cref="Regex"/>-derived type for the DuzpRegex method.</summary>
-    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.15411")]
+    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.17701")]
     file sealed class DuzpRegex_10 : Regex
     {
         /// <summary>Cached, thread-safe singleton instance.</summary>
@@ -10077,7 +10077,7 @@ namespace System.Text.RegularExpressions.Generated
     }
     
     /// <summary>Custom <see cref="Regex"/>-derived type for the TotalAmountRegex method.</summary>
-    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.15411")]
+    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.17701")]
     file sealed class TotalAmountRegex_11 : Regex
     {
         /// <summary>Cached, thread-safe singleton instance.</summary>
@@ -10799,7 +10799,7 @@ namespace System.Text.RegularExpressions.Generated
     }
     
     /// <summary>Custom <see cref="Regex"/>-derived type for the TotalBeforeVatRegex method.</summary>
-    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.15411")]
+    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.17701")]
     file sealed class TotalBeforeVatRegex_12 : Regex
     {
         /// <summary>Cached, thread-safe singleton instance.</summary>
@@ -11287,7 +11287,7 @@ namespace System.Text.RegularExpressions.Generated
     }
     
     /// <summary>Custom <see cref="Regex"/>-derived type for the TotalVatRegex method.</summary>
-    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.15411")]
+    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.17701")]
     file sealed class TotalVatRegex_13 : Regex
     {
         /// <summary>Cached, thread-safe singleton instance.</summary>
@@ -11820,7 +11820,7 @@ namespace System.Text.RegularExpressions.Generated
     }
     
     /// <summary>Custom <see cref="Regex"/>-derived type for the VariableSymbolRegex method.</summary>
-    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.15411")]
+    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.17701")]
     file sealed class VariableSymbolRegex_14 : Regex
     {
         /// <summary>Cached, thread-safe singleton instance.</summary>
@@ -12073,7 +12073,7 @@ namespace System.Text.RegularExpressions.Generated
     }
     
     /// <summary>Custom <see cref="Regex"/>-derived type for the IbanRegex method.</summary>
-    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.15411")]
+    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.17701")]
     file sealed class IbanRegex_15 : Regex
     {
         /// <summary>Cached, thread-safe singleton instance.</summary>
@@ -12324,7 +12324,7 @@ namespace System.Text.RegularExpressions.Generated
     }
     
     /// <summary>Custom <see cref="Regex"/>-derived type for the CzechBankAccountRegex method.</summary>
-    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.15411")]
+    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.17701")]
     file sealed class CzechBankAccountRegex_16 : Regex
     {
         /// <summary>Cached, thread-safe singleton instance.</summary>
@@ -12519,7 +12519,7 @@ namespace System.Text.RegularExpressions.Generated
     }
     
     /// <summary>Custom <see cref="Regex"/>-derived type for the RegistrationNumberRegex method.</summary>
-    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.15411")]
+    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.17701")]
     file sealed class RegistrationNumberRegex_17 : Regex
     {
         /// <summary>Cached, thread-safe singleton instance.</summary>
@@ -12880,7 +12880,7 @@ namespace System.Text.RegularExpressions.Generated
     }
     
     /// <summary>Custom <see cref="Regex"/>-derived type for the TaxNumberRegex method.</summary>
-    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.15411")]
+    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.17701")]
     file sealed class TaxNumberRegex_18 : Regex
     {
         /// <summary>Cached, thread-safe singleton instance.</summary>
@@ -13171,7 +13171,7 @@ namespace System.Text.RegularExpressions.Generated
     }
     
     /// <summary>Custom <see cref="Regex"/>-derived type for the CurrencyRegex method.</summary>
-    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.15411")]
+    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.17701")]
     file sealed class CurrencyRegex_19 : Regex
     {
         /// <summary>Cached, thread-safe singleton instance.</summary>
@@ -13347,7 +13347,7 @@ namespace System.Text.RegularExpressions.Generated
     }
     
     /// <summary>Helper methods used by generated <see cref="Regex"/>-derived implementations.</summary>
-    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.15411")]
+    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.17701")]
     file static class Utilities
     {
         /// <summary>Default timeout value set in <see cref="AppContext"/>, or <see cref="Regex.InfiniteMatchTimeout"/> if none was set.</summary>

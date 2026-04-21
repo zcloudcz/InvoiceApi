@@ -170,22 +170,33 @@ else
        Shows tenant-specific invoice/client statistics.
        ════════════════════════════════════════════════════════════════════ *@
 
-    @* Top statistics cards - 4 KPIs (clickable → navigate to corresponding list page) *@
+    @* Top statistics cards - 3 KPIs (clickable → navigate to corresponding list page).
+       The first tile forecasts cashflow for the current calendar month: how many issued
+       (Completed) invoices come due before month-end, plus totals without / with VAT. *@
     <MudGrid>
-        <MudItem xs="12" sm="6" md="3">
+        <MudItem xs="12" sm="6" md="4">
             <MudCard Elevation="2" Class="rounded-lg cursor-pointer" @onclick="@(() => Navigation.NavigateTo("/invoices"))">
                 <MudCardContent>
                     <div class="d-flex justify-space-between align-center mb-4">
-                        <MudIcon Icon="@Icons.Material.Filled.Description" Color="Color.Primary" Size="Size.Large" />
+                        <MudIcon Icon="@Icons.Material.Filled.EventAvailable" Color="Color.Primary" Size="Size.Large" />
                         <MudChip T="string" Color="Color.Primary" Size="Size.Small">@L["Dashboard_ThisMonth"]</MudChip>
                     </div>
-                    <MudText Typo="Typo.h5" GutterBottom="true">@_dashboard.InvoicesThisMonth</MudText>
-                    <MudText Typo="Typo.body2" Color="Color.Secondary">@L["Dashboard_InvoicesThisMonth"]</MudText>
+                    @* Count is the main number; the two totals underneath answer "how much cashflow do I expect?" *@
+                    <MudText Typo="Typo.h5" GutterBottom="true">@_dashboard.InvoicesDueThisMonthCount</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">@L["Dashboard_InvoicesDueThisMonth"]</MudText>
+                    <div class="d-flex justify-space-between">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@L["Invoice_TotalBeforeVat"]</MudText>
+                        <MudText Typo="Typo.caption"><strong>@_dashboard.InvoicesDueThisMonthTotalWithoutVat.ToString("N2") CZK</strong></MudText>
+                    </div>
+                    <div class="d-flex justify-space-between">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@L["Invoice_TotalWithVat"]</MudText>
+                        <MudText Typo="Typo.caption"><strong>@_dashboard.InvoicesDueThisMonthTotalWithVat.ToString("N2") CZK</strong></MudText>
+                    </div>
                 </MudCardContent>
             </MudCard>
         </MudItem>
 
-        <MudItem xs="12" sm="6" md="3">
+        <MudItem xs="12" sm="6" md="4">
             <MudCard Elevation="2" Class="rounded-lg cursor-pointer" @onclick="@(() => Navigation.NavigateTo("/clients"))">
                 <MudCardContent>
                     <div class="d-flex justify-space-between align-center mb-4">
@@ -198,7 +209,7 @@ else
             </MudCard>
         </MudItem>
 
-        <MudItem xs="12" sm="6" md="3">
+        <MudItem xs="12" sm="6" md="4">
             <MudCard Elevation="2" Class="rounded-lg cursor-pointer" @onclick="@(() => Navigation.NavigateTo("/invoices"))">
                 <MudCardContent>
                     <div class="d-flex justify-space-between align-center mb-4">
@@ -207,19 +218,6 @@ else
                     </div>
                     <MudText Typo="Typo.h5" GutterBottom="true">@_dashboard.UnpaidAmount.ToString("N2") CZK</MudText>
                     <MudText Typo="Typo.body2" Color="Color.Secondary">@L["Dashboard_UnpaidAmount"]</MudText>
-                </MudCardContent>
-            </MudCard>
-        </MudItem>
-
-        <MudItem xs="12" sm="6" md="3">
-            <MudCard Elevation="2" Class="rounded-lg cursor-pointer" @onclick="@(() => Navigation.NavigateTo("/vat-rates"))">
-                <MudCardContent>
-                    <div class="d-flex justify-space-between align-center mb-4">
-                        <MudIcon Icon="@Icons.Material.Filled.Percent" Color="Color.Info" Size="Size.Large" />
-                        <MudChip T="string" Color="Color.Info" Size="Size.Small">@L["Label_Active"]</MudChip>
-                    </div>
-                    <MudText Typo="Typo.h5" GutterBottom="true">@_dashboard.ActiveVatRates</MudText>
-                    <MudText Typo="Typo.body2" Color="Color.Secondary">@L["Dashboard_VatRates"]</MudText>
                 </MudCardContent>
             </MudCard>
         </MudItem>
@@ -526,12 +524,8 @@ else
                 </MudCardHeader>
                 <MudCardContent>
                     <MudTimeline TimelineOrientation="TimelineOrientation.Vertical" TimelinePosition="TimelinePosition.Start">
-                        <MudTimelineItem Color="Color.Success" Size="Size.Small">
-                            <ItemContent>
-                                <MudText Typo="Typo.h6" GutterBottom="true">@L["Dashboard_SetupVat"]</MudText>
-                                <MudText>@L["Dashboard_SetupVatDesc"] <MudLink Href="/vat-rates" Color="Color.Primary">@L["Nav_VatRates"]</MudLink></MudText>
-                            </ItemContent>
-                        </MudTimelineItem>
+                        @* VAT rates onboarding step intentionally removed — VAT rates are a system code table,
+                           not a per-user setup step, so they no longer belong in the Quick Start guide. *@
                         <MudTimelineItem Color="Color.Info" Size="Size.Small">
                             <ItemContent>
                                 <MudText Typo="Typo.h6" GutterBottom="true">@L["Dashboard_ManageClients"]</MudText>

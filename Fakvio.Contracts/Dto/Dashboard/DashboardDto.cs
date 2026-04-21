@@ -9,9 +9,23 @@ namespace Fakvio.Contracts.Dto.Dashboard;
 public class DashboardDto
 {
     /// <summary>
-    /// Number of invoices created in the current month.
+    /// Count of issued (Completed) invoices whose DueDate falls within the current calendar month.
+    /// Drives the "cashflow due this month" tile on the dashboard.
+    /// Only counts Completed status — Paid invoices are already collected, Draft/Creditnoted/Deleted are irrelevant.
     /// </summary>
-    public int InvoicesThisMonth { get; set; }
+    public int InvoicesDueThisMonthCount { get; set; }
+
+    /// <summary>
+    /// Sum of TotalBeforeVat for invoices counted in <see cref="InvoicesDueThisMonthCount"/>.
+    /// Represents expected net cashflow for the current month.
+    /// </summary>
+    public decimal InvoicesDueThisMonthTotalWithoutVat { get; set; }
+
+    /// <summary>
+    /// Sum of TotalWithVat for invoices counted in <see cref="InvoicesDueThisMonthCount"/>.
+    /// Represents expected gross cashflow for the current month.
+    /// </summary>
+    public decimal InvoicesDueThisMonthTotalWithVat { get; set; }
 
     /// <summary>
     /// Total number of active clients (IsActive = true, IsIssuer = false).
@@ -23,11 +37,6 @@ public class DashboardDto
     /// Includes the currency code for display purposes.
     /// </summary>
     public decimal UnpaidAmount { get; set; }
-
-    /// <summary>
-    /// Number of currently active VAT rates.
-    /// </summary>
-    public int ActiveVatRates { get; set; }
 
     /// <summary>
     /// Number of invoices that are past their due date but still unpaid.

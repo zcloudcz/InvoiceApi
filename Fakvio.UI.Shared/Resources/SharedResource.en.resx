@@ -295,12 +295,11 @@
   <data name="SetPassword_ValidatingToken" xml:space="preserve"><value>Validating invitation...</value></data>
   <data name="SetPassword_SetFailed" xml:space="preserve"><value>Failed to set password. Token may have expired.</value></data>
   <data name="Dashboard_Welcome" xml:space="preserve"><value>Welcome to the Invoice Management System</value></data>
-  <data name="Dashboard_InvoicesThisMonth" xml:space="preserve"><value>Invoices this month</value></data>
+  <data name="Dashboard_InvoicesDueThisMonth" xml:space="preserve"><value>Invoices due this month</value></data>
   <data name="Dashboard_ThisMonth" xml:space="preserve"><value>This month</value></data>
   <data name="Dashboard_Clients" xml:space="preserve"><value>Clients</value></data>
   <data name="Dashboard_UnpaidAmount" xml:space="preserve"><value>Unpaid amount</value></data>
   <data name="Dashboard_Pending" xml:space="preserve"><value>Pending</value></data>
-  <data name="Dashboard_VatRates" xml:space="preserve"><value>VAT rates</value></data>
   <data name="Dashboard_OverdueAlert" xml:space="preserve"><value>overdue invoice(s) require attention!</value></data>
   <data name="Dashboard_NoInvoicesYet" xml:space="preserve"><value>No invoices yet.</value></data>
   <data name="Dashboard_CreateFirst" xml:space="preserve"><value>Create your first invoice</value></data>

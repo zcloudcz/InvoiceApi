@@ -5,7 +5,7 @@ namespace Fakvio.Tests.Playwright.Tests.Dashboard;
 
 /// <summary>
 /// Tests for the main dashboard page (/).
-/// The dashboard shows KPI cards (invoices, clients, unpaid amounts, VAT rates),
+/// The dashboard shows KPI cards (invoices due this month, clients, unpaid amount),
 /// recent invoices table, and quick-start timeline.
 ///
 /// Note: Dashboard content varies based on whether the SysAdmin is impersonating

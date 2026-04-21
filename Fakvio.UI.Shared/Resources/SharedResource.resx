@@ -295,12 +295,11 @@
   <data name="SetPassword_ValidatingToken" xml:space="preserve"><value>Ověřuji pozvánku...</value></data>
   <data name="SetPassword_SetFailed" xml:space="preserve"><value>Nepodařilo se nastavit heslo. Token mohl vypršet.</value></data>
   <data name="Dashboard_Welcome" xml:space="preserve"><value>Vítejte v systému správy faktur</value></data>
-  <data name="Dashboard_InvoicesThisMonth" xml:space="preserve"><value>Faktur tento měsíc</value></data>
+  <data name="Dashboard_InvoicesDueThisMonth" xml:space="preserve"><value>Splatnost vystavených faktur</value></data>
   <data name="Dashboard_ThisMonth" xml:space="preserve"><value>Tento měsíc</value></data>
   <data name="Dashboard_Clients" xml:space="preserve"><value>Klienti</value></data>
   <data name="Dashboard_UnpaidAmount" xml:space="preserve"><value>Nezaplacená částka</value></data>
   <data name="Dashboard_Pending" xml:space="preserve"><value>Čekající</value></data>
-  <data name="Dashboard_VatRates" xml:space="preserve"><value>Sazby DPH</value></data>
   <data name="Dashboard_OverdueAlert" xml:space="preserve"><value>faktur po splatnosti vyžaduje pozornost!</value></data>
   <data name="Dashboard_NoInvoicesYet" xml:space="preserve"><value>Zatím žádné faktury.</value></data>
   <data name="Dashboard_CreateFirst" xml:space="preserve"><value>Vytvořte svou první fakturu</value></data>

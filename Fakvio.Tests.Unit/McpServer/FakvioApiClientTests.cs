@@ -310,14 +310,14 @@ public class FakvioApiClientTests : IDisposable
     public async Task GetDashboardAsync_ReturnsDashboard()
     {
         // Arrange
-        var dashboard = new DashboardDto { InvoicesThisMonth = 15, TotalClients = 42, UnpaidAmount = 150000m };
+        var dashboard = new DashboardDto { InvoicesDueThisMonthCount = 15, TotalClients = 42, UnpaidAmount = 150000m };
         _handler.SetupResponse(HttpStatusCode.OK, dashboard);
 
         // Act
         var result = await _sut.GetDashboardAsync();
 
         // Assert
-        result.InvoicesThisMonth.ShouldBe(15);
+        result.InvoicesDueThisMonthCount.ShouldBe(15);
         result.TotalClients.ShouldBe(42);
         result.UnpaidAmount.ShouldBe(150000m);
     }

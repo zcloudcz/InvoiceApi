@@ -51,10 +51,12 @@ public class DashboardService : IDashboardService
         _logger.LogInformation("Loading dashboard statistics for companyId: {CompanyId}", companyId);
 
         var now = DateTime.UtcNow;
-        // First day of current month (used for "invoices this month" query).
+        // First day of current month (inclusive) and first day of next month (exclusive).
+        // Used to build a half-open [first, nextFirst) window for the "due this month" cashflow aggregation.
         // DateTimeKind.Utc is required — Npgsql rejects Unspecified kind
         // when comparing against PostgreSQL 'timestamp with time zone' columns.
         var firstDayOfMonth = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var firstDayOfNextMonth = firstDayOfMonth.AddMonths(1);
 
         // Base query for invoices — excludes templates (TPH) and soft-deleted invoices.
         // Filtered by company (issuer) if provided.
@@ -74,9 +76,28 @@ public class DashboardService : IDashboardService
         // Task.WhenAll on the same DbContext instance causes
         // "A second operation was started on this context instance" errors.
 
-        // Count invoices created this month
-        var invoicesThisMonth = await invoiceQuery
-            .CountAsync(i => i.CreatedAt >= firstDayOfMonth, ct);
+        // Aggregate issued invoices whose DueDate falls in the current calendar month.
+        // Single GroupBy-style aggregation returns count + both totals in one round-trip.
+        // Filter: Completed only (Paid = already collected, not cashflow forecast).
+        // DueDate is nullable on the entity — the >= / < window implicitly excludes NULLs.
+        var dueThisMonthQuery = invoiceQuery
+            .Where(i => i.Status == EInvoiceStatus.Completed
+                        && i.DueDate >= firstDayOfMonth
+                        && i.DueDate < firstDayOfNextMonth);
+
+        var dueThisMonth = await dueThisMonthQuery
+            .GroupBy(_ => 1)
+            .Select(g => new
+            {
+                Count = g.Count(),
+                WithoutVat = g.Sum(i => i.TotalBeforeVat),
+                WithVat = g.Sum(i => i.TotalWithVat)
+            })
+            .FirstOrDefaultAsync(ct);
+
+        var invoicesDueThisMonthCount = dueThisMonth?.Count ?? 0;
+        var invoicesDueThisMonthTotalWithoutVat = dueThisMonth?.WithoutVat ?? 0m;
+        var invoicesDueThisMonthTotalWithVat = dueThisMonth?.WithVat ?? 0m;
 
         // Count active clients (not issuers, only active)
         var totalClients = await _context.Client
@@ -86,10 +107,6 @@ public class DashboardService : IDashboardService
         var unpaidAmount = await invoiceQuery
             .Where(i => i.Status == EInvoiceStatus.Completed)
             .SumAsync(i => (decimal?)i.TotalWithVat ?? 0, ct);
-
-        // Count active VAT rates
-        var activeVatRates = await _context.VatRate
-            .CountAsync(v => v.IsActive, ct);
 
         // Count overdue invoices (Completed, past due date)
         var overdueCount = await invoiceQuery
@@ -146,10 +163,11 @@ public class DashboardService : IDashboardService
         // Build the dashboard DTO with all collected data including chart data
         var dashboard = new DashboardDto
         {
-            InvoicesThisMonth = invoicesThisMonth,
+            InvoicesDueThisMonthCount = invoicesDueThisMonthCount,
+            InvoicesDueThisMonthTotalWithoutVat = invoicesDueThisMonthTotalWithoutVat,
+            InvoicesDueThisMonthTotalWithVat = invoicesDueThisMonthTotalWithVat,
             TotalClients = totalClients,
             UnpaidAmount = unpaidAmount,
-            ActiveVatRates = activeVatRates,
             OverdueInvoicesCount = overdueCount,
             RecentInvoices = recentInvoices.Select(i => MapInvoiceToDto(i)).ToList(),
             OverdueInvoices = overdueInvoices.Select(i => MapInvoiceToDto(i)).ToList(),
@@ -159,8 +177,8 @@ public class DashboardService : IDashboardService
             InvoiceCountByClient = topClientsByCount.ToDictionary(x => x.ClientName, x => x.Count)
         };
 
-        _logger.LogInformation("Dashboard loaded: {InvoicesThisMonth} invoices this month, {TotalClients} clients, {UnpaidAmount:N2} unpaid",
-            dashboard.InvoicesThisMonth, dashboard.TotalClients, dashboard.UnpaidAmount);
+        _logger.LogInformation("Dashboard loaded: {DueCount} invoices due this month ({DueTotalWithVat:N2} with VAT), {TotalClients} clients, {UnpaidAmount:N2} unpaid",
+            dashboard.InvoicesDueThisMonthCount, dashboard.InvoicesDueThisMonthTotalWithVat, dashboard.TotalClients, dashboard.UnpaidAmount);
 
         return dashboard;
     }

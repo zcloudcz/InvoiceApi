@@ -437,7 +437,8 @@ public class InvoiceToolsTests
         // Arrange
         var dashboard = new DashboardDto
         {
-            InvoicesThisMonth = 10,
+            InvoicesDueThisMonthCount = 10,
+            InvoicesDueThisMonthTotalWithVat = 120_000m,
             TotalClients = 25,
             UnpaidAmount = 50000m,
             OverdueInvoicesCount = 3
@@ -449,7 +450,7 @@ public class InvoiceToolsTests
 
         // Assert
         var doc = JsonDocument.Parse(json);
-        doc.RootElement.GetProperty("invoicesThisMonth").GetInt32().ShouldBe(10);
+        doc.RootElement.GetProperty("invoicesDueThisMonthCount").GetInt32().ShouldBe(10);
         doc.RootElement.GetProperty("overdueInvoicesCount").GetInt32().ShouldBe(3);
     }
 

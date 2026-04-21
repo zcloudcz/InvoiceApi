@@ -99,7 +99,9 @@ public class DashboardServiceTests : IDisposable
         var result = await _service.GetDashboardAsync();
 
         // Assert - everything should be zero/empty
-        result.InvoicesThisMonth.ShouldBe(0);
+        result.InvoicesDueThisMonthCount.ShouldBe(0);
+        result.InvoicesDueThisMonthTotalWithoutVat.ShouldBe(0);
+        result.InvoicesDueThisMonthTotalWithVat.ShouldBe(0);
         result.TotalClients.ShouldBe(0);
         result.UnpaidAmount.ShouldBe(0);
         result.OverdueInvoicesCount.ShouldBe(0);
@@ -201,22 +203,44 @@ public class DashboardServiceTests : IDisposable
     }
 
     /// <summary>
-    /// Tests that active VAT rates are correctly counted.
+    /// Tests the "invoices due this month" cashflow aggregation:
+    /// - Only Completed invoices are counted (Draft/Paid/Creditnoted/Deleted excluded).
+    /// - Only DueDate inside the current calendar month window is counted.
+    /// - Totals (without/with VAT) sum across the matching invoices.
     /// </summary>
     [Fact]
-    public async Task GetDashboardAsync_CountsActiveVatRates()
+    public async Task GetDashboardAsync_InvoicesDueThisMonth_AggregatesCorrectly()
     {
-        // Arrange
-        _context.VatRate.Add(new VatRate { Name = "Standard", Rate = 21, IsActive = true });
-        _context.VatRate.Add(new VatRate { Name = "Reduced", Rate = 12, IsActive = true });
-        _context.VatRate.Add(new VatRate { Name = "Old rate", Rate = 15, IsActive = false });
-        await _context.SaveChangesAsync();
+        // Arrange — invoices with due dates inside and outside the current month
+        var issuer = AddClient("Issuer", isIssuer: true);
+        var client = AddClient("Client");
+
+        var now = DateTime.UtcNow;
+        var midThisMonth = new DateTime(now.Year, now.Month, 15, 0, 0, 0, DateTimeKind.Utc);
+        var endOfThisMonth = new DateTime(now.Year, now.Month, DateTime.DaysInMonth(now.Year, now.Month), 0, 0, 0, DateTimeKind.Utc);
+        var nextMonth = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(1).AddDays(5);
+        var previousMonth = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc).AddDays(-5);
+
+        // Two Completed invoices with DueDate in the current month → both counted
+        AddInvoice(client.Id, issuer.Id, EInvoiceStatus.Completed, 10_000, midThisMonth);
+        AddInvoice(client.Id, issuer.Id, EInvoiceStatus.Completed, 5_000, endOfThisMonth);
+        // Draft in the current month → excluded (not yet issued)
+        AddInvoice(client.Id, issuer.Id, EInvoiceStatus.Draft, 2_000, midThisMonth);
+        // Paid in the current month → excluded (already collected)
+        AddInvoice(client.Id, issuer.Id, EInvoiceStatus.Paid, 3_000, midThisMonth);
+        // Completed but due next month → excluded (out of window)
+        AddInvoice(client.Id, issuer.Id, EInvoiceStatus.Completed, 7_000, nextMonth);
+        // Completed but due last month → excluded (out of window, also overdue bucket)
+        AddInvoice(client.Id, issuer.Id, EInvoiceStatus.Completed, 4_000, previousMonth);
 
         // Act
         var result = await _service.GetDashboardAsync();
 
-        // Assert - only active VAT rates
-        result.ActiveVatRates.ShouldBe(2);
+        // Assert — only the two matching invoices are aggregated
+        result.InvoicesDueThisMonthCount.ShouldBe(2);
+        // AddInvoice stores TotalWithVat and derives TotalBeforeVat = TotalWithVat * 0.8264m
+        result.InvoicesDueThisMonthTotalWithVat.ShouldBe(15_000m);
+        result.InvoicesDueThisMonthTotalWithoutVat.ShouldBe(15_000m * 0.8264m);
     }
 
     // ─── Phase D: Chart Data Tests ───────────────────────────────────────────
