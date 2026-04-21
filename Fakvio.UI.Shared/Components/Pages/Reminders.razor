@@ -299,9 +299,16 @@
                 Items = result?.Items ?? new List<ReminderDto>()
             };
         }
+        catch (ApiException apiEx)
+        {
+            // Surface the concrete HTTP status + failing endpoint so empty-body 500s
+            // (unhandled server exceptions) are actionable instead of "Unknown error".
+            Snackbar.Add($"Error loading reminders [{(int)apiEx.StatusCode} {apiEx.StatusCode}] {apiEx.Endpoint}: {apiEx.Message}", Severity.Error);
+            return new GridData<ReminderDto> { Items = new List<ReminderDto>(), TotalItems = 0 };
+        }
         catch (Exception ex)
         {
-            Snackbar.Add($"Error loading reminders: {ex.Message}", Severity.Error);
+            Snackbar.Add($"Error loading reminders: {ex.GetType().Name}: {ex.Message}", Severity.Error);
             return new GridData<ReminderDto> { Items = new List<ReminderDto>(), TotalItems = 0 };
         }
         finally

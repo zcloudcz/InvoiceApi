@@ -223,25 +223,17 @@ else
         </MudItem>
     </MudGrid>
 
-    @* ─── Tax Estimate & Insurance Advance Cards ─── *@
+    @* ─── Tax Estimate & Insurance Advance Cards ─────────────────────────────
+       Two cards side-by-side: (1) next payment date with days-until countdown,
+       (2) monthly insurance advance breakdown (social + health).
+       The previous standalone "Celkem měsíčně" tile was removed — its value
+       (MonthlyTotal = MonthlySocial + MonthlyHealth) was a duplicate of what
+       the breakdown card already shows. The AccountBalance icon is kept on
+       the breakdown card as visual cue. *@
     @if (_insuranceAdvance != null)
     {
         <MudGrid Class="mt-6">
-            <MudItem xs="12" sm="6" md="4">
-                <MudCard Elevation="2" Class="rounded-lg cursor-pointer" @onclick="@(() => Navigation.NavigateTo("/tax-estimation"))">
-                    <MudCardContent>
-                        <div class="d-flex justify-space-between align-center mb-2">
-                            <MudIcon Icon="@Icons.Material.Filled.AccountBalance" Color="Color.Tertiary" Size="Size.Large" />
-                            <MudChip T="string" Color="Color.Tertiary" Size="Size.Small">@DateTime.Today.Year</MudChip>
-                        </div>
-                        <MudText Typo="Typo.h5" GutterBottom="true">
-                            @_insuranceAdvance.MonthlyTotal.ToString("N0") @_insuranceAdvance.CurrencyCode
-                        </MudText>
-                        <MudText Typo="Typo.body2" Color="Color.Secondary">@L["Dashboard_InsuranceTotal"]</MudText>
-                    </MudCardContent>
-                </MudCard>
-            </MudItem>
-            <MudItem xs="12" sm="6" md="4">
+            <MudItem xs="12" sm="6" md="6">
                 <MudCard Elevation="2" Class="rounded-lg">
                     <MudCardContent>
                         <div class="d-flex justify-space-between align-center mb-2">
@@ -265,9 +257,15 @@ else
                     </MudCardContent>
                 </MudCard>
             </MudItem>
-            <MudItem xs="12" sm="12" md="4">
-                <MudCard Elevation="2" Class="rounded-lg">
+            <MudItem xs="12" sm="6" md="6">
+                @* Navigates to tax estimation page — previously on the removed "Celkem měsíčně" tile. *@
+                <MudCard Elevation="2" Class="rounded-lg cursor-pointer" @onclick="@(() => Navigation.NavigateTo("/tax-estimation"))">
                     <MudCardContent>
+                        @* Icon inherited from the removed duplicate tile to preserve visual identity. *@
+                        <div class="d-flex justify-space-between align-center mb-2">
+                            <MudIcon Icon="@Icons.Material.Filled.AccountBalance" Color="Color.Tertiary" Size="Size.Large" />
+                            <MudChip T="string" Color="Color.Tertiary" Size="Size.Small">@DateTime.Today.Year</MudChip>
+                        </div>
                         <MudText Typo="Typo.subtitle2" Class="mb-2">@L["Dashboard_InsuranceAdvance"]</MudText>
                         <div class="d-flex justify-space-between mb-1">
                             <MudText>@L["Dashboard_InsuranceSocial"]</MudText>

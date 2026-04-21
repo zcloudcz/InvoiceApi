@@ -75,11 +75,13 @@ public abstract class ApiClientBase
     /// Extracts a user-friendly error message from an API error response.
     /// API returns JSON like {"message":"Client with ID 0 not found"} — we extract the "message" field.
     /// Falls back to the raw content if the response is not JSON or doesn't contain "message".
+    /// Empty body is a distinct signal (unhandled exception in Production, proxy failure, etc.) —
+    /// the caller appends the HTTP status code so the user sees something actionable.
     /// </summary>
     private static string ExtractErrorMessage(string errorContent)
     {
         if (string.IsNullOrWhiteSpace(errorContent))
-            return "Unknown error";
+            return string.Empty; // Caller substitutes a status-code-based fallback.
 
         try
         {
@@ -92,7 +94,8 @@ public abstract class ApiClientBase
         }
         catch (JsonException)
         {
-            // Not JSON — return raw content
+            // Not JSON (e.g., the ASP.NET developer exception HTML page). Truncate so it fits in a snackbar.
+            return errorContent.Length > 300 ? errorContent[..300] + "…" : errorContent;
         }
 
         return errorContent;
@@ -113,13 +116,17 @@ public abstract class ApiClientBase
         _logger.LogWarning("{HttpMethod} {Endpoint} failed with status {StatusCode}: {Error}",
             httpMethod, endpoint, response.StatusCode, errorContent);
 
-        var message = response.StatusCode switch
+        // 403 gets a fixed message; every other status extracts from the body and falls back
+        // to "HTTP {code} {reason}" when the body is empty — which is the common symptom of
+        // an unhandled 500 in Production (no ExceptionHandler middleware) or a proxy failure.
+        var message = response.StatusCode == HttpStatusCode.Forbidden
+            ? "Access denied. You don't have permission for this action."
+            : ExtractErrorMessage(errorContent);
+
+        if (string.IsNullOrEmpty(message))
         {
-            HttpStatusCode.Forbidden => "Access denied. You don't have permission for this action.",
-            HttpStatusCode.NotFound => ExtractErrorMessage(errorContent),
-            HttpStatusCode.Conflict => ExtractErrorMessage(errorContent),
-            _ => ExtractErrorMessage(errorContent)
-        };
+            message = $"HTTP {(int)response.StatusCode} {response.StatusCode} (empty response body)";
+        }
 
         throw new ApiException(response.StatusCode, message, endpoint);
     }
