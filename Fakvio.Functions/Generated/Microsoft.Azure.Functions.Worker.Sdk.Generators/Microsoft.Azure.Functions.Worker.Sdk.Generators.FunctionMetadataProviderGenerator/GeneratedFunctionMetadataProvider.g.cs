@@ -1648,574 +1648,717 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function124);
             var Function125RawBindings = new List<string>();
-            Function125RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/system-configuration""}");
+            Function125RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/reminder/settings""}");
             Function125RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function125 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "SystemConfiguration_Get",
-                EntryPoint = "Fakvio.Functions.Generated.SystemConfigurationFunctions.SystemConfiguration_Get",
+                Name = "Reminder_GetCompanySettings",
+                EntryPoint = "Fakvio.Functions.Generated.ReminderFunctions.Reminder_GetCompanySettings",
                 RawBindings = Function125RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function125);
             var Function126RawBindings = new List<string>();
-            Function126RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/system-configuration""}");
+            Function126RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/reminder/settings/client/{clientId:long}""}");
             Function126RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function126 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "SystemConfiguration_Update",
-                EntryPoint = "Fakvio.Functions.Generated.SystemConfigurationFunctions.SystemConfiguration_Update",
+                Name = "Reminder_GetClientSettings",
+                EntryPoint = "Fakvio.Functions.Generated.ReminderFunctions.Reminder_GetClientSettings",
                 RawBindings = Function126RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function126);
             var Function127RawBindings = new List<string>();
-            Function127RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/tax/estimate""}");
+            Function127RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/reminder/settings""}");
             Function127RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function127 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "Tax_Estimate",
-                EntryPoint = "Fakvio.Functions.Generated.TaxFunctions.Tax_Estimate",
+                Name = "Reminder_UpsertSettings",
+                EntryPoint = "Fakvio.Functions.Generated.ReminderFunctions.Reminder_UpsertSettings",
                 RawBindings = Function127RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function127);
             var Function128RawBindings = new List<string>();
-            Function128RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/tax/compare""}");
+            Function128RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""delete""],""route"":""api/reminder/settings/client/{clientId:long}""}");
             Function128RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function128 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "Tax_Compare",
-                EntryPoint = "Fakvio.Functions.Generated.TaxFunctions.Tax_Compare",
+                Name = "Reminder_DeleteClientSettings",
+                EntryPoint = "Fakvio.Functions.Generated.ReminderFunctions.Reminder_DeleteClientSettings",
                 RawBindings = Function128RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function128);
             var Function129RawBindings = new List<string>();
-            Function129RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/tax/config/{country}/{year:int}""}");
+            Function129RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/reminder/settings/overrides""}");
             Function129RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function129 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "Tax_GetConfig",
-                EntryPoint = "Fakvio.Functions.Generated.TaxFunctions.Tax_GetConfig",
+                Name = "Reminder_GetClientOverrides",
+                EntryPoint = "Fakvio.Functions.Generated.ReminderFunctions.Reminder_GetClientOverrides",
                 RawBindings = Function129RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function129);
             var Function130RawBindings = new List<string>();
-            Function130RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/tax/configs""}");
+            Function130RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/reminder/paged""}");
             Function130RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function130 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "Tax_GetAllConfigs",
-                EntryPoint = "Fakvio.Functions.Generated.TaxFunctions.Tax_GetAllConfigs",
+                Name = "Reminder_GetPaged",
+                EntryPoint = "Fakvio.Functions.Generated.ReminderFunctions.Reminder_GetPaged",
                 RawBindings = Function130RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function130);
             var Function131RawBindings = new List<string>();
-            Function131RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/tax/config""}");
+            Function131RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/reminder/invoice/{invoiceId:long}""}");
             Function131RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function131 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "Tax_CreateConfig",
-                EntryPoint = "Fakvio.Functions.Generated.TaxFunctions.Tax_CreateConfig",
+                Name = "Reminder_GetByInvoice",
+                EntryPoint = "Fakvio.Functions.Generated.ReminderFunctions.Reminder_GetByInvoice",
                 RawBindings = Function131RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function131);
             var Function132RawBindings = new List<string>();
-            Function132RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/tax/config/{id:long}""}");
+            Function132RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/reminder/dashboard""}");
             Function132RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function132 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "Tax_UpdateConfig",
-                EntryPoint = "Fakvio.Functions.Generated.TaxFunctions.Tax_UpdateConfig",
+                Name = "Reminder_GetDashboardData",
+                EntryPoint = "Fakvio.Functions.Generated.ReminderFunctions.Reminder_GetDashboardData",
                 RawBindings = Function132RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function132);
             var Function133RawBindings = new List<string>();
-            Function133RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""delete""],""route"":""api/tax/config/{id:long}""}");
+            Function133RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/reminder/{id:long}""}");
             Function133RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function133 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "Tax_DeleteConfig",
-                EntryPoint = "Fakvio.Functions.Generated.TaxFunctions.Tax_DeleteConfig",
+                Name = "Reminder_GetById",
+                EntryPoint = "Fakvio.Functions.Generated.ReminderFunctions.Reminder_GetById",
                 RawBindings = Function133RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function133);
             var Function134RawBindings = new List<string>();
-            Function134RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/tax/income/{year:int}""}");
+            Function134RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/reminder/{id:long}/send""}");
             Function134RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function134 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "Tax_GetAnnualIncome",
-                EntryPoint = "Fakvio.Functions.Generated.TaxFunctions.Tax_GetAnnualIncome",
+                Name = "Reminder_SendReminder",
+                EntryPoint = "Fakvio.Functions.Generated.ReminderFunctions.Reminder_SendReminder",
                 RawBindings = Function134RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function134);
             var Function135RawBindings = new List<string>();
-            Function135RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/tax/insurance-advance""}");
+            Function135RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/reminder/{id:long}/cancel""}");
             Function135RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function135 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "Tax_GetInsuranceAdvance",
-                EntryPoint = "Fakvio.Functions.Generated.TaxFunctions.Tax_GetInsuranceAdvance",
+                Name = "Reminder_CancelReminder",
+                EntryPoint = "Fakvio.Functions.Generated.ReminderFunctions.Reminder_CancelReminder",
                 RawBindings = Function135RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function135);
             var Function136RawBindings = new List<string>();
-            Function136RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/tax/compare/pdf""}");
+            Function136RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/system-configuration""}");
             Function136RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function136 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "Tax_ExportComparisonPdf",
-                EntryPoint = "Fakvio.Functions.Generated.TaxFunctions.Tax_ExportComparisonPdf",
+                Name = "SystemConfiguration_Get",
+                EntryPoint = "Fakvio.Functions.Generated.SystemConfigurationFunctions.SystemConfiguration_Get",
                 RawBindings = Function136RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function136);
             var Function137RawBindings = new List<string>();
-            Function137RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/twofactor/status""}");
+            Function137RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/system-configuration""}");
             Function137RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function137 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "TwoFactor_GetStatus",
-                EntryPoint = "Fakvio.Functions.Generated.TwoFactorFunctions.TwoFactor_GetStatus",
+                Name = "SystemConfiguration_Update",
+                EntryPoint = "Fakvio.Functions.Generated.SystemConfigurationFunctions.SystemConfiguration_Update",
                 RawBindings = Function137RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function137);
             var Function138RawBindings = new List<string>();
-            Function138RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/twofactor/totp/setup""}");
+            Function138RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/tax/estimate""}");
             Function138RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function138 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "TwoFactor_InitiateTotpSetup",
-                EntryPoint = "Fakvio.Functions.Generated.TwoFactorFunctions.TwoFactor_InitiateTotpSetup",
+                Name = "Tax_Estimate",
+                EntryPoint = "Fakvio.Functions.Generated.TaxFunctions.Tax_Estimate",
                 RawBindings = Function138RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function138);
             var Function139RawBindings = new List<string>();
-            Function139RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/twofactor/totp/verify""}");
+            Function139RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/tax/compare""}");
             Function139RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function139 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "TwoFactor_VerifyTotpSetup",
-                EntryPoint = "Fakvio.Functions.Generated.TwoFactorFunctions.TwoFactor_VerifyTotpSetup",
+                Name = "Tax_Compare",
+                EntryPoint = "Fakvio.Functions.Generated.TaxFunctions.Tax_Compare",
                 RawBindings = Function139RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function139);
             var Function140RawBindings = new List<string>();
-            Function140RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/twofactor/email/enable""}");
+            Function140RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/tax/config/{country}/{year:int}""}");
             Function140RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function140 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "TwoFactor_EnableEmailTwoFactor",
-                EntryPoint = "Fakvio.Functions.Generated.TwoFactorFunctions.TwoFactor_EnableEmailTwoFactor",
+                Name = "Tax_GetConfig",
+                EntryPoint = "Fakvio.Functions.Generated.TaxFunctions.Tax_GetConfig",
                 RawBindings = Function140RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function140);
             var Function141RawBindings = new List<string>();
-            Function141RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/twofactor/verify""}");
+            Function141RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/tax/configs""}");
             Function141RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function141 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "TwoFactor_VerifyTwoFactorCode",
-                EntryPoint = "Fakvio.Functions.Generated.TwoFactorFunctions.TwoFactor_VerifyTwoFactorCode",
+                Name = "Tax_GetAllConfigs",
+                EntryPoint = "Fakvio.Functions.Generated.TaxFunctions.Tax_GetAllConfigs",
                 RawBindings = Function141RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function141);
             var Function142RawBindings = new List<string>();
-            Function142RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/twofactor/disable""}");
+            Function142RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/tax/config""}");
             Function142RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function142 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "TwoFactor_DisableTwoFactor",
-                EntryPoint = "Fakvio.Functions.Generated.TwoFactorFunctions.TwoFactor_DisableTwoFactor",
+                Name = "Tax_CreateConfig",
+                EntryPoint = "Fakvio.Functions.Generated.TaxFunctions.Tax_CreateConfig",
                 RawBindings = Function142RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function142);
             var Function143RawBindings = new List<string>();
-            Function143RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/twofactor/admin/force-disable/{userId:long}""}");
+            Function143RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/tax/config/{id:long}""}");
             Function143RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function143 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "TwoFactor_ForceDisableTwoFactor",
-                EntryPoint = "Fakvio.Functions.Generated.TwoFactorFunctions.TwoFactor_ForceDisableTwoFactor",
+                Name = "Tax_UpdateConfig",
+                EntryPoint = "Fakvio.Functions.Generated.TaxFunctions.Tax_UpdateConfig",
                 RawBindings = Function143RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function143);
             var Function144RawBindings = new List<string>();
-            Function144RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/user""}");
+            Function144RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""delete""],""route"":""api/tax/config/{id:long}""}");
             Function144RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function144 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "User_GetAllUsers",
-                EntryPoint = "Fakvio.Functions.Generated.UserFunctions.User_GetAllUsers",
+                Name = "Tax_DeleteConfig",
+                EntryPoint = "Fakvio.Functions.Generated.TaxFunctions.Tax_DeleteConfig",
                 RawBindings = Function144RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function144);
             var Function145RawBindings = new List<string>();
-            Function145RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/user/paged""}");
+            Function145RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/tax/income/{year:int}""}");
             Function145RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function145 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "User_GetUsersPaged",
-                EntryPoint = "Fakvio.Functions.Generated.UserFunctions.User_GetUsersPaged",
+                Name = "Tax_GetAnnualIncome",
+                EntryPoint = "Fakvio.Functions.Generated.TaxFunctions.Tax_GetAnnualIncome",
                 RawBindings = Function145RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function145);
             var Function146RawBindings = new List<string>();
-            Function146RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/user/{id:long}""}");
+            Function146RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/tax/insurance-advance""}");
             Function146RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function146 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "User_GetUserById",
-                EntryPoint = "Fakvio.Functions.Generated.UserFunctions.User_GetUserById",
+                Name = "Tax_GetInsuranceAdvance",
+                EntryPoint = "Fakvio.Functions.Generated.TaxFunctions.Tax_GetInsuranceAdvance",
                 RawBindings = Function146RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function146);
             var Function147RawBindings = new List<string>();
-            Function147RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/user""}");
+            Function147RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/tax/compare/pdf""}");
             Function147RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function147 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "User_CreateUser",
-                EntryPoint = "Fakvio.Functions.Generated.UserFunctions.User_CreateUser",
+                Name = "Tax_ExportComparisonPdf",
+                EntryPoint = "Fakvio.Functions.Generated.TaxFunctions.Tax_ExportComparisonPdf",
                 RawBindings = Function147RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function147);
             var Function148RawBindings = new List<string>();
-            Function148RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/user/{id:long}""}");
+            Function148RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/twofactor/status""}");
             Function148RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function148 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "User_UpdateUser",
-                EntryPoint = "Fakvio.Functions.Generated.UserFunctions.User_UpdateUser",
+                Name = "TwoFactor_GetStatus",
+                EntryPoint = "Fakvio.Functions.Generated.TwoFactorFunctions.TwoFactor_GetStatus",
                 RawBindings = Function148RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function148);
             var Function149RawBindings = new List<string>();
-            Function149RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/user/{id:long}/change-password""}");
+            Function149RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/twofactor/totp/setup""}");
             Function149RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function149 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "User_ChangePassword",
-                EntryPoint = "Fakvio.Functions.Generated.UserFunctions.User_ChangePassword",
+                Name = "TwoFactor_InitiateTotpSetup",
+                EntryPoint = "Fakvio.Functions.Generated.TwoFactorFunctions.TwoFactor_InitiateTotpSetup",
                 RawBindings = Function149RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function149);
             var Function150RawBindings = new List<string>();
-            Function150RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/user/{id:long}/admin-reset-password""}");
+            Function150RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/twofactor/totp/verify""}");
             Function150RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function150 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "User_AdminResetPassword",
-                EntryPoint = "Fakvio.Functions.Generated.UserFunctions.User_AdminResetPassword",
+                Name = "TwoFactor_VerifyTotpSetup",
+                EntryPoint = "Fakvio.Functions.Generated.TwoFactorFunctions.TwoFactor_VerifyTotpSetup",
                 RawBindings = Function150RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function150);
             var Function151RawBindings = new List<string>();
-            Function151RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""delete""],""route"":""api/user/{id:long}""}");
+            Function151RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/twofactor/email/enable""}");
             Function151RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function151 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "User_DeleteUser",
-                EntryPoint = "Fakvio.Functions.Generated.UserFunctions.User_DeleteUser",
+                Name = "TwoFactor_EnableEmailTwoFactor",
+                EntryPoint = "Fakvio.Functions.Generated.TwoFactorFunctions.TwoFactor_EnableEmailTwoFactor",
                 RawBindings = Function151RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function151);
             var Function152RawBindings = new List<string>();
-            Function152RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/user/invite""}");
+            Function152RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/twofactor/verify""}");
             Function152RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function152 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "User_InviteUser",
-                EntryPoint = "Fakvio.Functions.Generated.UserFunctions.User_InviteUser",
+                Name = "TwoFactor_VerifyTwoFactorCode",
+                EntryPoint = "Fakvio.Functions.Generated.TwoFactorFunctions.TwoFactor_VerifyTwoFactorCode",
                 RawBindings = Function152RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function152);
             var Function153RawBindings = new List<string>();
-            Function153RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/user/set-password""}");
+            Function153RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/twofactor/disable""}");
             Function153RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function153 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "User_SetPassword",
-                EntryPoint = "Fakvio.Functions.Generated.UserFunctions.User_SetPassword",
+                Name = "TwoFactor_DisableTwoFactor",
+                EntryPoint = "Fakvio.Functions.Generated.TwoFactorFunctions.TwoFactor_DisableTwoFactor",
                 RawBindings = Function153RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function153);
             var Function154RawBindings = new List<string>();
-            Function154RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/user/forgot-password""}");
+            Function154RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/twofactor/admin/force-disable/{userId:long}""}");
             Function154RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function154 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "User_ForgotPassword",
-                EntryPoint = "Fakvio.Functions.Generated.UserFunctions.User_ForgotPassword",
+                Name = "TwoFactor_ForceDisableTwoFactor",
+                EntryPoint = "Fakvio.Functions.Generated.TwoFactorFunctions.TwoFactor_ForceDisableTwoFactor",
                 RawBindings = Function154RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function154);
             var Function155RawBindings = new List<string>();
-            Function155RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/user/validate-invitation""}");
+            Function155RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/user""}");
             Function155RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function155 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "User_ValidateInvitationToken",
-                EntryPoint = "Fakvio.Functions.Generated.UserFunctions.User_ValidateInvitationToken",
+                Name = "User_GetAllUsers",
+                EntryPoint = "Fakvio.Functions.Generated.UserFunctions.User_GetAllUsers",
                 RawBindings = Function155RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function155);
             var Function156RawBindings = new List<string>();
-            Function156RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/vatrate""}");
+            Function156RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/user/paged""}");
             Function156RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function156 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "VatRate_GetAllVatRates",
-                EntryPoint = "Fakvio.Functions.Generated.VatRateFunctions.VatRate_GetAllVatRates",
+                Name = "User_GetUsersPaged",
+                EntryPoint = "Fakvio.Functions.Generated.UserFunctions.User_GetUsersPaged",
                 RawBindings = Function156RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function156);
             var Function157RawBindings = new List<string>();
-            Function157RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/vatrate/{id:long}""}");
+            Function157RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/user/{id:long}""}");
             Function157RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function157 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "VatRate_GetVatRateById",
-                EntryPoint = "Fakvio.Functions.Generated.VatRateFunctions.VatRate_GetVatRateById",
+                Name = "User_GetUserById",
+                EntryPoint = "Fakvio.Functions.Generated.UserFunctions.User_GetUserById",
                 RawBindings = Function157RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function157);
             var Function158RawBindings = new List<string>();
-            Function158RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/vatrate/active""}");
+            Function158RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/user""}");
             Function158RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function158 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "VatRate_GetActiveVatRatesForDate",
-                EntryPoint = "Fakvio.Functions.Generated.VatRateFunctions.VatRate_GetActiveVatRatesForDate",
+                Name = "User_CreateUser",
+                EntryPoint = "Fakvio.Functions.Generated.UserFunctions.User_CreateUser",
                 RawBindings = Function158RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function158);
             var Function159RawBindings = new List<string>();
-            Function159RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/vatrate/default/standard""}");
+            Function159RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/user/{id:long}""}");
             Function159RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function159 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "VatRate_GetDefaultStandardRate",
-                EntryPoint = "Fakvio.Functions.Generated.VatRateFunctions.VatRate_GetDefaultStandardRate",
+                Name = "User_UpdateUser",
+                EntryPoint = "Fakvio.Functions.Generated.UserFunctions.User_UpdateUser",
                 RawBindings = Function159RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function159);
             var Function160RawBindings = new List<string>();
-            Function160RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/vatrate/default/reduced""}");
+            Function160RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/user/{id:long}/change-password""}");
             Function160RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function160 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "VatRate_GetDefaultReducedRate",
-                EntryPoint = "Fakvio.Functions.Generated.VatRateFunctions.VatRate_GetDefaultReducedRate",
+                Name = "User_ChangePassword",
+                EntryPoint = "Fakvio.Functions.Generated.UserFunctions.User_ChangePassword",
                 RawBindings = Function160RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function160);
             var Function161RawBindings = new List<string>();
-            Function161RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/vatrate""}");
+            Function161RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/user/{id:long}/admin-reset-password""}");
             Function161RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function161 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "VatRate_CreateVatRate",
-                EntryPoint = "Fakvio.Functions.Generated.VatRateFunctions.VatRate_CreateVatRate",
+                Name = "User_AdminResetPassword",
+                EntryPoint = "Fakvio.Functions.Generated.UserFunctions.User_AdminResetPassword",
                 RawBindings = Function161RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function161);
             var Function162RawBindings = new List<string>();
-            Function162RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/vatrate/{id:long}""}");
+            Function162RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""delete""],""route"":""api/user/{id:long}""}");
             Function162RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function162 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "VatRate_UpdateVatRate",
-                EntryPoint = "Fakvio.Functions.Generated.VatRateFunctions.VatRate_UpdateVatRate",
+                Name = "User_DeleteUser",
+                EntryPoint = "Fakvio.Functions.Generated.UserFunctions.User_DeleteUser",
                 RawBindings = Function162RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function162);
             var Function163RawBindings = new List<string>();
-            Function163RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""delete""],""route"":""api/vatrate/{id:long}""}");
+            Function163RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/user/invite""}");
             Function163RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function163 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "VatRate_DeleteVatRate",
-                EntryPoint = "Fakvio.Functions.Generated.VatRateFunctions.VatRate_DeleteVatRate",
+                Name = "User_InviteUser",
+                EntryPoint = "Fakvio.Functions.Generated.UserFunctions.User_InviteUser",
                 RawBindings = Function163RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function163);
             var Function164RawBindings = new List<string>();
-            Function164RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/vatrate/{id:long}/set-default""}");
+            Function164RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/user/set-password""}");
             Function164RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function164 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "VatRate_SetAsDefault",
-                EntryPoint = "Fakvio.Functions.Generated.VatRateFunctions.VatRate_SetAsDefault",
+                Name = "User_SetPassword",
+                EntryPoint = "Fakvio.Functions.Generated.UserFunctions.User_SetPassword",
                 RawBindings = Function164RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function164);
             var Function165RawBindings = new List<string>();
-            Function165RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/vat-report""}");
+            Function165RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/user/forgot-password""}");
             Function165RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function165 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "VatReport_GetReport",
-                EntryPoint = "Fakvio.Functions.Generated.VatReportFunctions.VatReport_GetReport",
+                Name = "User_ForgotPassword",
+                EntryPoint = "Fakvio.Functions.Generated.UserFunctions.User_ForgotPassword",
                 RawBindings = Function165RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function165);
             var Function166RawBindings = new List<string>();
-            Function166RawBindings.Add(@"{""name"":""timer"",""type"":""timerTrigger"",""direction"":""In"",""schedule"":""0 0 6 * * *""}");
+            Function166RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/user/validate-invitation""}");
+            Function166RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function166 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "ProcessReminders",
-                EntryPoint = "Fakvio.Functions.ReminderFunctions.ProcessReminders",
+                Name = "User_ValidateInvitationToken",
+                EntryPoint = "Fakvio.Functions.Generated.UserFunctions.User_ValidateInvitationToken",
                 RawBindings = Function166RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function166);
             var Function167RawBindings = new List<string>();
-            Function167RawBindings.Add(@"{""name"":""timer"",""type"":""timerTrigger"",""direction"":""In"",""schedule"":""*/10 * * * * *""}");
+            Function167RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/vatrate""}");
+            Function167RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function167 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "LogFlush",
-                EntryPoint = "Fakvio.Functions.TimerFunctions.FlushLogs",
+                Name = "VatRate_GetAllVatRates",
+                EntryPoint = "Fakvio.Functions.Generated.VatRateFunctions.VatRate_GetAllVatRates",
                 RawBindings = Function167RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function167);
             var Function168RawBindings = new List<string>();
-            Function168RawBindings.Add(@"{""name"":""timer"",""type"":""timerTrigger"",""direction"":""In"",""schedule"":""0 0 0 * * *""}");
+            Function168RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/vatrate/{id:long}""}");
+            Function168RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
 
             var Function168 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "LogCleanup",
-                EntryPoint = "Fakvio.Functions.TimerFunctions.CleanupLogs",
+                Name = "VatRate_GetVatRateById",
+                EntryPoint = "Fakvio.Functions.Generated.VatRateFunctions.VatRate_GetVatRateById",
                 RawBindings = Function168RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function168);
+            var Function169RawBindings = new List<string>();
+            Function169RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/vatrate/active""}");
+            Function169RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
+
+            var Function169 = new DefaultFunctionMetadata
+            {
+                Language = "dotnet-isolated",
+                Name = "VatRate_GetActiveVatRatesForDate",
+                EntryPoint = "Fakvio.Functions.Generated.VatRateFunctions.VatRate_GetActiveVatRatesForDate",
+                RawBindings = Function169RawBindings,
+                ScriptFile = "Fakvio.Functions.dll"
+            };
+            metadataList.Add(Function169);
+            var Function170RawBindings = new List<string>();
+            Function170RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/vatrate/default/standard""}");
+            Function170RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
+
+            var Function170 = new DefaultFunctionMetadata
+            {
+                Language = "dotnet-isolated",
+                Name = "VatRate_GetDefaultStandardRate",
+                EntryPoint = "Fakvio.Functions.Generated.VatRateFunctions.VatRate_GetDefaultStandardRate",
+                RawBindings = Function170RawBindings,
+                ScriptFile = "Fakvio.Functions.dll"
+            };
+            metadataList.Add(Function170);
+            var Function171RawBindings = new List<string>();
+            Function171RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/vatrate/default/reduced""}");
+            Function171RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
+
+            var Function171 = new DefaultFunctionMetadata
+            {
+                Language = "dotnet-isolated",
+                Name = "VatRate_GetDefaultReducedRate",
+                EntryPoint = "Fakvio.Functions.Generated.VatRateFunctions.VatRate_GetDefaultReducedRate",
+                RawBindings = Function171RawBindings,
+                ScriptFile = "Fakvio.Functions.dll"
+            };
+            metadataList.Add(Function171);
+            var Function172RawBindings = new List<string>();
+            Function172RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/vatrate""}");
+            Function172RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
+
+            var Function172 = new DefaultFunctionMetadata
+            {
+                Language = "dotnet-isolated",
+                Name = "VatRate_CreateVatRate",
+                EntryPoint = "Fakvio.Functions.Generated.VatRateFunctions.VatRate_CreateVatRate",
+                RawBindings = Function172RawBindings,
+                ScriptFile = "Fakvio.Functions.dll"
+            };
+            metadataList.Add(Function172);
+            var Function173RawBindings = new List<string>();
+            Function173RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""put""],""route"":""api/vatrate/{id:long}""}");
+            Function173RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
+
+            var Function173 = new DefaultFunctionMetadata
+            {
+                Language = "dotnet-isolated",
+                Name = "VatRate_UpdateVatRate",
+                EntryPoint = "Fakvio.Functions.Generated.VatRateFunctions.VatRate_UpdateVatRate",
+                RawBindings = Function173RawBindings,
+                ScriptFile = "Fakvio.Functions.dll"
+            };
+            metadataList.Add(Function173);
+            var Function174RawBindings = new List<string>();
+            Function174RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""delete""],""route"":""api/vatrate/{id:long}""}");
+            Function174RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
+
+            var Function174 = new DefaultFunctionMetadata
+            {
+                Language = "dotnet-isolated",
+                Name = "VatRate_DeleteVatRate",
+                EntryPoint = "Fakvio.Functions.Generated.VatRateFunctions.VatRate_DeleteVatRate",
+                RawBindings = Function174RawBindings,
+                ScriptFile = "Fakvio.Functions.dll"
+            };
+            metadataList.Add(Function174);
+            var Function175RawBindings = new List<string>();
+            Function175RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""post""],""route"":""api/vatrate/{id:long}/set-default""}");
+            Function175RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
+
+            var Function175 = new DefaultFunctionMetadata
+            {
+                Language = "dotnet-isolated",
+                Name = "VatRate_SetAsDefault",
+                EntryPoint = "Fakvio.Functions.Generated.VatRateFunctions.VatRate_SetAsDefault",
+                RawBindings = Function175RawBindings,
+                ScriptFile = "Fakvio.Functions.dll"
+            };
+            metadataList.Add(Function175);
+            var Function176RawBindings = new List<string>();
+            Function176RawBindings.Add(@"{""name"":""req"",""type"":""httpTrigger"",""direction"":""In"",""authLevel"":""Anonymous"",""methods"":[""get""],""route"":""api/vat-report""}");
+            Function176RawBindings.Add(@"{""name"":""$return"",""type"":""http"",""direction"":""Out""}");
+
+            var Function176 = new DefaultFunctionMetadata
+            {
+                Language = "dotnet-isolated",
+                Name = "VatReport_GetReport",
+                EntryPoint = "Fakvio.Functions.Generated.VatReportFunctions.VatReport_GetReport",
+                RawBindings = Function176RawBindings,
+                ScriptFile = "Fakvio.Functions.dll"
+            };
+            metadataList.Add(Function176);
+            var Function177RawBindings = new List<string>();
+            Function177RawBindings.Add(@"{""name"":""timer"",""type"":""timerTrigger"",""direction"":""In"",""schedule"":""0 0 6 * * *""}");
+
+            var Function177 = new DefaultFunctionMetadata
+            {
+                Language = "dotnet-isolated",
+                Name = "ProcessReminders",
+                EntryPoint = "Fakvio.Functions.ReminderFunctions.ProcessReminders",
+                RawBindings = Function177RawBindings,
+                ScriptFile = "Fakvio.Functions.dll"
+            };
+            metadataList.Add(Function177);
+            var Function178RawBindings = new List<string>();
+            Function178RawBindings.Add(@"{""name"":""timer"",""type"":""timerTrigger"",""direction"":""In"",""schedule"":""*/10 * * * * *""}");
+
+            var Function178 = new DefaultFunctionMetadata
+            {
+                Language = "dotnet-isolated",
+                Name = "LogFlush",
+                EntryPoint = "Fakvio.Functions.TimerFunctions.FlushLogs",
+                RawBindings = Function178RawBindings,
+                ScriptFile = "Fakvio.Functions.dll"
+            };
+            metadataList.Add(Function178);
+            var Function179RawBindings = new List<string>();
+            Function179RawBindings.Add(@"{""name"":""timer"",""type"":""timerTrigger"",""direction"":""In"",""schedule"":""0 0 0 * * *""}");
+
+            var Function179 = new DefaultFunctionMetadata
+            {
+                Language = "dotnet-isolated",
+                Name = "LogCleanup",
+                EntryPoint = "Fakvio.Functions.TimerFunctions.CleanupLogs",
+                RawBindings = Function179RawBindings,
+                ScriptFile = "Fakvio.Functions.dll"
+            };
+            metadataList.Add(Function179);
 
             return global::System.Threading.Tasks.Task.FromResult(metadataList.ToImmutableArray());
         }

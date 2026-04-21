@@ -32,6 +32,7 @@ namespace Fakvio.Functions
             { "Fakvio.Functions.Generated.InvoiceTemplateFunctions", Type.GetType("Fakvio.Functions.Generated.InvoiceTemplateFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "Fakvio.Functions.Generated.NumberSequenceFunctions", Type.GetType("Fakvio.Functions.Generated.NumberSequenceFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "Fakvio.Functions.Generated.ReceivedInvoiceFunctions", Type.GetType("Fakvio.Functions.Generated.ReceivedInvoiceFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
+            { "Fakvio.Functions.Generated.ReminderFunctions", Type.GetType("Fakvio.Functions.Generated.ReminderFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "Fakvio.Functions.Generated.SystemConfigurationFunctions", Type.GetType("Fakvio.Functions.Generated.SystemConfigurationFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "Fakvio.Functions.Generated.TaxFunctions", Type.GetType("Fakvio.Functions.Generated.TaxFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "Fakvio.Functions.Generated.TwoFactorFunctions", Type.GetType("Fakvio.Functions.Generated.TwoFactorFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
@@ -927,6 +928,83 @@ namespace Fakvio.Functions
                 var instanceType = types["Fakvio.Functions.Generated.ReceivedInvoiceFunctions"];
                 var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.ReceivedInvoiceFunctions;
                 context.GetInvocationResult().Value = await i.ReceivedInvoice_Delete((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0], (long)inputArguments[1]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.ReminderFunctions.Reminder_GetCompanySettings", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.ReminderFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.ReminderFunctions;
+                context.GetInvocationResult().Value = await i.Reminder_GetCompanySettings((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.ReminderFunctions.Reminder_GetClientSettings", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.ReminderFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.ReminderFunctions;
+                context.GetInvocationResult().Value = await i.Reminder_GetClientSettings((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0], (long)inputArguments[1]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.ReminderFunctions.Reminder_UpsertSettings", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.ReminderFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.ReminderFunctions;
+                context.GetInvocationResult().Value = await i.Reminder_UpsertSettings((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.ReminderFunctions.Reminder_DeleteClientSettings", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.ReminderFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.ReminderFunctions;
+                context.GetInvocationResult().Value = await i.Reminder_DeleteClientSettings((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0], (long)inputArguments[1]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.ReminderFunctions.Reminder_GetClientOverrides", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.ReminderFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.ReminderFunctions;
+                context.GetInvocationResult().Value = await i.Reminder_GetClientOverrides((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.ReminderFunctions.Reminder_GetPaged", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.ReminderFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.ReminderFunctions;
+                context.GetInvocationResult().Value = await i.Reminder_GetPaged((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.ReminderFunctions.Reminder_GetByInvoice", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.ReminderFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.ReminderFunctions;
+                context.GetInvocationResult().Value = await i.Reminder_GetByInvoice((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0], (long)inputArguments[1]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.ReminderFunctions.Reminder_GetDashboardData", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.ReminderFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.ReminderFunctions;
+                context.GetInvocationResult().Value = await i.Reminder_GetDashboardData((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.ReminderFunctions.Reminder_GetById", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.ReminderFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.ReminderFunctions;
+                context.GetInvocationResult().Value = await i.Reminder_GetById((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0], (long)inputArguments[1]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.ReminderFunctions.Reminder_SendReminder", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.ReminderFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.ReminderFunctions;
+                context.GetInvocationResult().Value = await i.Reminder_SendReminder((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0], (long)inputArguments[1]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.ReminderFunctions.Reminder_CancelReminder", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.ReminderFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.ReminderFunctions;
+                context.GetInvocationResult().Value = await i.Reminder_CancelReminder((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0], (long)inputArguments[1]);
                 return;
             }
             if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.SystemConfigurationFunctions.SystemConfiguration_Get", StringComparison.Ordinal))
