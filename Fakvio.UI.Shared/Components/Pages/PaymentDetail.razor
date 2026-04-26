@@ -1,0 +1,166 @@
+@page "/payments/{Id:long}"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@using Fakvio.Contracts.Dto.PaymentMatching
+@using Fakvio.Domain.Enums
+@inject PaymentMatchingApiService Api
+@inject NavigationManager Navigation
+@inject IStringLocalizer<SharedResource> L
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+@*
+    Read-only detail view of a single bank transaction.
+    Shows the parsed fields, the AI confidence, and the matched invoices.
+    User actions live elsewhere (Match dialog from grid, Unmatch from InvoiceDetail).
+*@
+
+<PageTitle>@L["Payments_Title"] · @Id</PageTitle>
+
+<MudButton StartIcon="@Icons.Material.Filled.ArrowBack" OnClick="@(() => Navigation.NavigateTo("/payments"))" Class="mb-3">
+    @L["PaymentDetail_BackToList"]
+</MudButton>
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else if (_tx == null)
+{
+    <MudAlert Severity="Severity.Error">@L["PaymentDetail_NotFound"]</MudAlert>
+}
+else
+{
+    <MudGrid>
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-3" Elevation="1">
+                <MudText Typo="Typo.h6" Class="mb-2">@L["PaymentDetail_TransactionTitle"]</MudText>
+                <MudList T="string" Dense="true">
+                    <MudListItem T="string"><strong>@L["Payments_Col_Date"]:</strong> @_tx.TransactionDate.ToLocalTime().ToString("g")</MudListItem>
+                    <MudListItem T="string">
+                        <strong>@L["Payments_Col_Amount"]:</strong>
+                        @_tx.Amount.ToString("N2") @_tx.CurrencyCode
+                        (@L[$"EPaymentDirection_{_tx.Direction}"])
+                    </MudListItem>
+                    <MudListItem T="string"><strong>VS:</strong> @(_tx.VariableSymbol ?? "—")</MudListItem>
+                    <MudListItem T="string"><strong>KS:</strong> @(_tx.ConstantSymbol ?? "—")</MudListItem>
+                    <MudListItem T="string"><strong>SS:</strong> @(_tx.SpecificSymbol ?? "—")</MudListItem>
+                    <MudListItem T="string"><strong>@L["Payments_Col_Counterparty"]:</strong> @(_tx.CounterpartyName ?? "—")</MudListItem>
+                    <MudListItem T="string"><strong>@L["PaymentDetail_CounterpartyAccount"]:</strong> @(_tx.CounterpartyAccount ?? "—")</MudListItem>
+                    <MudListItem T="string"><strong>@L["PaymentDetail_Message"]:</strong> @(_tx.Message ?? "—")</MudListItem>
+                </MudList>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-3" Elevation="1">
+                <MudText Typo="Typo.h6" Class="mb-2">@L["PaymentDetail_StatusTitle"]</MudText>
+                <MudChip T="string" Color="@StatusColor(_tx.MatchStatus)" Size="Size.Medium">
+                    @L[$"EMatchStatus_{_tx.MatchStatus}"]
+                </MudChip>
+
+                <MudText Typo="Typo.body2" Class="mt-2">
+                    <strong>@L["PaymentDetail_Source"]:</strong> @_tx.ImportSource
+                </MudText>
+
+                @if (_tx.ParserConfidence.HasValue)
+                {
+                    <MudText Typo="Typo.body2">
+                        <strong>@L["PaymentDetail_AiConfidence"]:</strong>
+                        @_tx.ParserConfidence.Value.ToString("P0")
+                        (@_tx.ParserModel)
+                    </MudText>
+                }
+
+                @if (_tx.MatchedInvoiceNumbers.Count > 0)
+                {
+                    <MudText Typo="Typo.subtitle2" Class="mt-3">@L["PaymentDetail_MatchedInvoices"]</MudText>
+                    <MudList T="string" Dense="true">
+                        @foreach (var inv in _tx.MatchedInvoiceNumbers)
+                        {
+                            <MudListItem T="string" Icon="@Icons.Material.Filled.Receipt">@inv</MudListItem>
+                        }
+                    </MudList>
+                }
+
+                <div class="mt-3 d-flex gap-1">
+                    @if (_tx.MatchStatus is EMatchStatus.Unmatched or EMatchStatus.NeedsReview)
+                    {
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                   StartIcon="@Icons.Material.Filled.Link"
+                                   OnClick="OpenMatchDialog">
+                            @L["InvoicePayments_MatchManually"]
+                        </MudButton>
+                        <MudButton Variant="Variant.Outlined" Color="Color.Default"
+                                   StartIcon="@Icons.Material.Filled.Block"
+                                   OnClick="IgnoreAsync">
+                            @L["Payments_Action_Ignore"]
+                        </MudButton>
+                    }
+                </div>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private BankTransactionDto? _tx;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _tx = await Api.GetTransactionAsync(Id);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task OpenMatchDialog()
+    {
+        if (_tx == null) return;
+        var parameters = new DialogParameters { ["Transaction"] = _tx };
+        var dialog = await DialogService.ShowAsync<MatchPaymentDialog>(L["MatchDialog_Title"], parameters);
+        var result = await dialog.Result;
+        if (result?.Canceled == false)
+        {
+            await LoadAsync();
+        }
+    }
+
+    private async Task IgnoreAsync()
+    {
+        if (_tx == null) return;
+        try
+        {
+            await Api.IgnoreAsync(_tx.Id);
+            Snackbar.Add(L["Payments_Ignored_Toast"], Severity.Success);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private static Color StatusColor(EMatchStatus s) => s switch
+    {
+        EMatchStatus.Matched => Color.Success,
+        EMatchStatus.PartiallyMatched => Color.Info,
+        EMatchStatus.Unmatched => Color.Warning,
+        EMatchStatus.NeedsReview => Color.Error,
+        EMatchStatus.Ignored => Color.Dark,
+        _ => Color.Default,
+    };
+}

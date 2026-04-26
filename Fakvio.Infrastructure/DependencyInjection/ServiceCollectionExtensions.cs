@@ -162,6 +162,37 @@ public static class ServiceCollectionExtensions
             Fakvio.Infrastructure.Service.FileStorage.AzureBlobFileStorage>();
         services.AddScopedWithLogging<IFileAttachmentService, FileAttachmentService>();
 
+        // ── Payment Matching (see PLATBY-ZADANI.md) ────────────────────────────
+        // Alias generator — singleton because the underlying CSPRNG is thread-safe and
+        // the helper holds no state.
+        services.AddSingleton<IAliasGenerator, AliasGenerator>();
+
+        // Tenant-scoped mailbox lifecycle (activate/deactivate/regenerate).
+        services.AddScopedWithLogging<IBankAccountMailboxService, BankAccountMailboxService>();
+
+        // SysAdmin-scoped settings (IMAP host/creds/interval).
+        services.AddScopedWithLogging<IPaymentMatchingSystemSettingsService,
+            PaymentMatchingSystemSettingsService>();
+
+        // AI-backed email parser + matching core.
+        services.AddScopedWithLogging<IBankEmailParser, AiBankEmailParser>();
+        services.AddScopedWithLogging<IPaymentMatchingService, PaymentMatchingService>();
+        services.AddScopedWithLogging<IBankTransactionQueryService, BankTransactionQueryService>();
+
+        // Stateless IMAP poll cycle service — shared by:
+        //   - ImapPollWorker (BackgroundService in API host)
+        //   - PaymentMatchingFunctions.RunImapPoll (Azure Functions TimerTrigger)
+        //   - PaymentMatchingSysAdminController.RunNow (HTTP, SysAdmin)
+        // See CLAUDE.md "API + Functions duplication" for the deployment story.
+        services.AddScopedWithLogging<IImapPollService, ImapPollService>();
+
+        // End-to-end orchestrator — used by the IMAP worker AND tests.
+        services.AddScopedWithLogging<IInboundEmailProcessor, InboundEmailProcessor>();
+
+        // Background worker that pulls the central mailbox on a timer.
+        // Registered as HostedService so the host lifecycle starts/stops it.
+        services.AddHostedService<ImapPollWorker>();
+
         // ── PDF Text Extraction ──────────────────────────────────────────────
         // Used by the AI chat to extract text from uploaded PDF files.
         services.AddScopedWithLogging<IPdfTextExtractorService, PdfTextExtractorService>();

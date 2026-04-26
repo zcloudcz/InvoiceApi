@@ -1,0 +1,211 @@
+@using Fakvio.Contracts.Dto.PaymentMatching
+@inject PaymentMatchingApiService Api
+@inject IStringLocalizer<SharedResource> L
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+@inject IDialogService DialogService
+
+@*
+    Small reusable card rendered inside BankAccount detail / dialog.
+    Shows the current mailbox state and the Activate / Deactivate / Regenerate
+    actions.  Parent passes the bank account id via the BankAccountId parameter.
+
+    Parent can subscribe to OnChanged to refresh any related counters (e.g. nav badge)
+    when the state flips.
+*@
+
+<MudPaper Class="pa-3" Elevation="1">
+    <MudText Typo="Typo.subtitle1" Class="mb-2">
+        <MudIcon Icon="@Icons.Material.Filled.Inbox" Class="mr-1" />
+        @L["BankMailbox_Title"]
+    </MudText>
+
+    @if (_loading)
+    {
+        <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+    }
+    else if (_mailbox == null)
+    {
+        @* Not yet activated — show a single CTA. *@
+        <MudText Typo="Typo.body2" Class="mb-2">@L["BankMailbox_NotActive_Explain"]</MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.PlayArrow"
+                   OnClick="ActivateAsync" Disabled="_busy">
+            @L["BankMailbox_Activate"]
+        </MudButton>
+    }
+    else
+    {
+        <div class="d-flex align-center gap-2 mb-2">
+            <MudChip T="string" Size="Size.Small"
+                     Color="@(_mailbox.IsActive ? Color.Success : Color.Default)">
+                @(_mailbox.IsActive ? L["BankMailbox_ActiveChip"] : L["BankMailbox_InactiveChip"])
+            </MudChip>
+            @if (_mailbox.IsActive)
+            {
+                <MudText Typo="Typo.caption">
+                    @string.Format(L["BankMailbox_Stats"].Value, _mailbox.EmailsReceivedCount,
+                        _mailbox.LastEmailReceivedAt?.ToLocalTime().ToString("g") ?? "—")
+                </MudText>
+            }
+        </div>
+
+        @* Alias is ALWAYS shown — even when deactivated — so the user can see history. *@
+        <MudPaper Class="pa-2 mb-2 d-flex align-center gap-2" Outlined="true">
+            <MudText Typo="Typo.body1" Style="font-family: monospace; word-break: break-all;">
+                @_mailbox.FullEmailAddress
+            </MudText>
+            <MudSpacer />
+            <MudTooltip Text="@L["BankMailbox_Copy"]">
+                <MudIconButton Size="Size.Small" Icon="@Icons.Material.Filled.ContentCopy"
+                               OnClick="CopyAsync" />
+            </MudTooltip>
+        </MudPaper>
+
+        <MudText Typo="Typo.caption" Class="mb-2">
+            @L["BankMailbox_ActiveFrom"]: @_mailbox.ActiveFrom.ToLocalTime().ToString("g")
+        </MudText>
+
+        <div class="d-flex gap-1">
+            @if (_mailbox.IsActive)
+            {
+                <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Warning"
+                           StartIcon="@Icons.Material.Filled.Pause"
+                           OnClick="DeactivateAsync" Disabled="_busy">
+                    @L["BankMailbox_Deactivate"]
+                </MudButton>
+            }
+            else
+            {
+                <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Success"
+                           StartIcon="@Icons.Material.Filled.PlayArrow"
+                           OnClick="ActivateAsync" Disabled="_busy">
+                    @L["BankMailbox_Activate"]
+                </MudButton>
+            }
+
+            <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error"
+                       StartIcon="@Icons.Material.Filled.Refresh"
+                       OnClick="RegenerateAsync" Disabled="_busy">
+                @L["BankMailbox_Regenerate"]
+            </MudButton>
+        </div>
+    }
+</MudPaper>
+
+@code {
+    [Parameter] public long BankAccountId { get; set; }
+    [Parameter] public EventCallback<BankAccountMailboxDto?> OnChanged { get; set; }
+
+    private BankAccountMailboxDto? _mailbox;
+    private bool _loading = true;
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    /// <summary>Refreshes the card when the parent's BankAccountId parameter changes.</summary>
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_mailbox?.BankAccountId != BankAccountId)
+        {
+            await LoadAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _mailbox = await Api.GetMailboxAsync(BankAccountId);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ActivateAsync()
+    {
+        _busy = true;
+        try
+        {
+            _mailbox = await Api.ActivateMailboxAsync(BankAccountId);
+            Snackbar.Add(L["BankMailbox_ActivatedToast"], Severity.Success);
+            await OnChanged.InvokeAsync(_mailbox);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task DeactivateAsync()
+    {
+        var confirmed = await DialogService.ShowMessageBox(
+            L["BankMailbox_Deactivate"],
+            L["BankMailbox_DeactivateConfirm"],
+            yesText: L["Common_Yes"], cancelText: L["Common_Cancel"]);
+        if (confirmed != true) return;
+
+        _busy = true;
+        try
+        {
+            _mailbox = await Api.DeactivateMailboxAsync(BankAccountId);
+            Snackbar.Add(L["BankMailbox_DeactivatedToast"], Severity.Info);
+            await OnChanged.InvokeAsync(_mailbox);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task RegenerateAsync()
+    {
+        var confirmed = await DialogService.ShowMessageBox(
+            L["BankMailbox_Regenerate"],
+            L["BankMailbox_RegenerateConfirm"],
+            yesText: L["Common_Yes"], cancelText: L["Common_Cancel"]);
+        if (confirmed != true) return;
+
+        _busy = true;
+        try
+        {
+            _mailbox = await Api.RegenerateMailboxAsync(BankAccountId);
+            Snackbar.Add(L["BankMailbox_RegeneratedToast"], Severity.Success);
+            await OnChanged.InvokeAsync(_mailbox);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task CopyAsync()
+    {
+        if (_mailbox == null) return;
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", _mailbox.FullEmailAddress);
+        Snackbar.Add(L["BankMailbox_CopiedToast"], Severity.Info);
+    }
+}

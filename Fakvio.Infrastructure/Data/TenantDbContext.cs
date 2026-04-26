@@ -180,6 +180,30 @@ public class TenantDbContext : DbContext
     /// </summary>
     public DbSet<Reminder> Reminder { get; set; }
 
+    // ─── Payment Matching (see PLATBY-ZADANI.md) ────────────────────────────
+
+    /// <summary>
+    /// Inbound email aliases linked to bank accounts (one per account).
+    /// Permanent rows — never deleted, only deactivated.
+    /// </summary>
+    public DbSet<BankAccountMailbox> BankAccountMailbox { get; set; }
+
+    /// <summary>
+    /// Archive of every inbound email we actually processed.
+    /// Kept for audit, reparse, and forensic review.
+    /// </summary>
+    public DbSet<InboundEmail> InboundEmail { get; set; }
+
+    /// <summary>
+    /// Parsed bank transactions (credit or debit) — the normalized shape we match against invoices.
+    /// </summary>
+    public DbSet<BankTransaction> BankTransaction { get; set; }
+
+    /// <summary>
+    /// Many-to-many links between BankTransaction and Invoice/ReceivedInvoice.
+    /// </summary>
+    public DbSet<PaymentMatch> PaymentMatch { get; set; }
+
     // ─── Entity Configuration ─────────────────────────────────────────────────
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -203,6 +227,8 @@ public class TenantDbContext : DbContext
         modelBuilder.Ignore<CompanySystemSettings>();
         modelBuilder.Ignore<SystemConfiguration>(); // Master DB only — global system settings
         modelBuilder.Ignore<AppLog>();               // Master DB only — application logs
+        modelBuilder.Ignore<MasterMailboxIndex>();   // Master DB only — global alias → tenant lookup
+        modelBuilder.Ignore<PaymentMatchingSystemSettings>(); // Master DB only — SysAdmin config
 
         ConfigureClient(modelBuilder);
         ConfigureAddress(modelBuilder);
@@ -225,6 +251,11 @@ public class TenantDbContext : DbContext
         ConfigureReminderSettings(modelBuilder);
         ConfigureReminderLevel(modelBuilder);
         ConfigureReminder(modelBuilder);
+
+        ConfigureBankAccountMailbox(modelBuilder);
+        ConfigureInboundEmail(modelBuilder);
+        ConfigureBankTransaction(modelBuilder);
+        ConfigurePaymentMatch(modelBuilder);
 
         SeedData(modelBuilder);
     }
@@ -423,6 +454,8 @@ public class TenantDbContext : DbContext
             entity.Property(e => e.TotalBeforeVat).HasPrecision(18, 2);
             entity.Property(e => e.TotalVat).HasPrecision(18, 2);
             entity.Property(e => e.TotalWithVat).HasPrecision(18, 2);
+            // PaidAmount: denormalized sum of PaymentMatch rows — kept in sync by PaymentMatchingService.
+            entity.Property(e => e.PaidAmount).HasPrecision(18, 2).HasDefaultValue(0m);
             entity.Property(e => e.VariableSymbol).HasMaxLength(50);
             entity.Property(e => e.ConstantSymbol).HasMaxLength(50);
             entity.Property(e => e.SpecificSymbol).HasMaxLength(50);
@@ -830,6 +863,172 @@ public class TenantDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(e => e.ClientId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+    }
+
+    // ─── Payment Matching configuration ──────────────────────────────────────
+
+    /// <summary>
+    /// BankAccountMailbox — one alias per bank account.
+    /// Permanent row, never deleted. Alias is unique within the tenant schema.
+    /// </summary>
+    private void ConfigureBankAccountMailbox(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<BankAccountMailbox>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            // Unique per tenant — the worker also validates against MasterMailboxIndex globally.
+            entity.HasIndex(e => e.InboundAlias).IsUnique();
+
+            // Exactly one mailbox per bank account.
+            entity.HasIndex(e => e.BankAccountId).IsUnique();
+
+            // Filter index for "active mailboxes" scans.
+            entity.HasIndex(e => e.IsActive);
+
+            entity.Property(e => e.InboundAlias).IsRequired().HasMaxLength(40);
+
+            // FK to BankAccount — Restrict: you cannot delete a bank account that has a mailbox.
+            // Deactivate the mailbox first.
+            entity.HasOne(e => e.BankAccount)
+                .WithMany()
+                .HasForeignKey(e => e.BankAccountId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+    }
+
+    /// <summary>
+    /// InboundEmail — raw archive of processed emails.
+    /// Keeps text + HTML bodies (up to ~1 MB each) for audit and reparse.
+    /// </summary>
+    private void ConfigureInboundEmail(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<InboundEmail>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            // Dedupe — unique per mailbox. Worker uses this to ignore duplicate delivery.
+            entity.HasIndex(e => new { e.BankAccountMailboxId, e.DeduplicationHash }).IsUnique();
+
+            // Filter for "NeedsReview / Failed" queues shown in UI.
+            entity.HasIndex(e => e.ParseStatus);
+
+            // List ordering.
+            entity.HasIndex(e => e.ServerReceivedAt);
+
+            entity.Property(e => e.MessageId).IsRequired().HasMaxLength(500);
+            entity.Property(e => e.ImapUid).HasMaxLength(50);
+            entity.Property(e => e.FromAddress).IsRequired().HasMaxLength(500);
+            entity.Property(e => e.FromDisplayName).HasMaxLength(500);
+            entity.Property(e => e.ToAddress).IsRequired().HasMaxLength(500);
+            entity.Property(e => e.Subject).HasMaxLength(1000);
+            // Bodies are left unbounded (PostgreSQL text type) — truncation to 1 MB happens in service code.
+            entity.Property(e => e.DeduplicationHash).IsRequired().HasMaxLength(64);
+            entity.Property(e => e.ParseError).HasMaxLength(4000);
+
+            // FK to BankAccountMailbox — Restrict: we never delete mailboxes, so this is defensive.
+            entity.HasOne(e => e.BankAccountMailbox)
+                .WithMany()
+                .HasForeignKey(e => e.BankAccountMailboxId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // FK to BankTransaction — SetNull: transaction can be deleted without losing the email archive.
+            entity.HasOne(e => e.BankTransaction)
+                .WithMany()
+                .HasForeignKey(e => e.BankTransactionId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .IsRequired(false);
+        });
+    }
+
+    /// <summary>
+    /// BankTransaction — one normalized row per parsed transaction.
+    /// Unique per (BankAccountId, DeduplicationHash) for idempotent ingest.
+    /// </summary>
+    private void ConfigureBankTransaction(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<BankTransaction>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            // Idempotency — same transaction re-ingested will violate this index.
+            entity.HasIndex(e => new { e.BankAccountId, e.DeduplicationHash }).IsUnique();
+
+            // List query: "all tx on this account ordered newest first".
+            entity.HasIndex(e => new { e.BankAccountId, e.TransactionDate });
+
+            // Dashboard counter: "how many unmatched payments".
+            entity.HasIndex(e => e.MatchStatus);
+
+            entity.Property(e => e.DeduplicationHash).IsRequired().HasMaxLength(64);
+            entity.Property(e => e.Amount).HasPrecision(18, 2);
+            entity.Property(e => e.CurrencyCode).IsRequired().HasMaxLength(3);
+            entity.Property(e => e.VariableSymbol).HasMaxLength(20);
+            entity.Property(e => e.ConstantSymbol).HasMaxLength(20);
+            entity.Property(e => e.SpecificSymbol).HasMaxLength(20);
+            entity.Property(e => e.CounterpartyAccount).HasMaxLength(100);
+            entity.Property(e => e.CounterpartyName).HasMaxLength(500);
+            entity.Property(e => e.Message).HasMaxLength(2000);
+            entity.Property(e => e.ParserConfidence).HasPrecision(4, 3);
+            entity.Property(e => e.ParserModel).HasMaxLength(100);
+            // RawPayload unbounded (PostgreSQL text).
+            entity.Property(e => e.Direction).HasConversion<int>();
+            entity.Property(e => e.ImportSource).HasConversion<int>();
+            entity.Property(e => e.MatchStatus).HasConversion<int>();
+
+            // FK to BankAccount — Restrict to prevent accidental loss of accounting history.
+            entity.HasOne(e => e.BankAccount)
+                .WithMany()
+                .HasForeignKey(e => e.BankAccountId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+    }
+
+    /// <summary>
+    /// PaymentMatch — many-to-many link rows between BankTransaction and invoices.
+    /// Composite FK constraint: exactly one of (InvoiceId, ReceivedInvoiceId) must be non-null.
+    /// </summary>
+    private void ConfigurePaymentMatch(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<PaymentMatch>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            // Fast sum for Invoice.PaidAmount recalc.
+            entity.HasIndex(e => e.InvoiceId);
+            entity.HasIndex(e => e.ReceivedInvoiceId);
+            entity.HasIndex(e => e.BankTransactionId);
+
+            entity.Property(e => e.MatchedAmount).HasPrecision(18, 2);
+            entity.Property(e => e.Note).HasMaxLength(1000);
+            entity.Property(e => e.MatchedBy).HasConversion<int>();
+
+            // FK to BankTransaction — Cascade: if we delete a transaction, drop its matches too.
+            entity.HasOne(e => e.BankTransaction)
+                .WithMany(t => t.PaymentMatch)
+                .HasForeignKey(e => e.BankTransactionId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // FK to Invoice — Restrict: cannot delete an invoice with payments attached.
+            entity.HasOne(e => e.Invoice)
+                .WithMany(i => i.PaymentMatch)
+                .HasForeignKey(e => e.InvoiceId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .IsRequired(false);
+
+            // FK to ReceivedInvoice — Restrict: same reasoning.
+            entity.HasOne(e => e.ReceivedInvoice)
+                .WithMany()
+                .HasForeignKey(e => e.ReceivedInvoiceId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .IsRequired(false);
+
+            // Database-level check: at least one of (InvoiceId, ReceivedInvoiceId) must be non-null.
+            // Enforced via raw SQL — EF Core has no fluent API for CHECK constraints.
+            entity.ToTable(t => t.HasCheckConstraint(
+                "CK_PaymentMatch_Target",
+                "\"InvoiceId\" IS NOT NULL OR \"ReceivedInvoiceId\" IS NOT NULL"));
         });
     }
 

@@ -209,6 +209,14 @@ public class Invoice : BaseEntity
     /// </summary>
     public DateTime? PaidAt { get; set; }
 
+    /// <summary>
+    /// Sum of all PaymentMatch.MatchedAmount rows linked to this invoice.
+    /// Denormalized for fast filtering / dashboard KPIs; kept in sync by PaymentMatchingService.
+    /// When PaidAmount &gt;= TotalWithVat → Status = Paid.
+    /// When 0 &lt; PaidAmount &lt; TotalWithVat → Status = PartiallyPaid.
+    /// </summary>
+    public decimal PaidAmount { get; set; }
+
     // Navigation properties
 
     /// <summary>
@@ -222,4 +230,10 @@ public class Invoice : BaseEntity
     /// Only populated if this is an invoice that has been credited
     /// </summary>
     public ICollection<Invoice> CreditNote { get; set; } = new List<Invoice>();
+
+    /// <summary>
+    /// Payment matches linking bank transactions to this invoice.
+    /// Used by the Payments panel on InvoiceDetail to show paid/remaining split.
+    /// </summary>
+    public ICollection<PaymentMatch> PaymentMatch { get; set; } = new List<PaymentMatch>();
 }

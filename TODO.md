@@ -1081,14 +1081,77 @@ Comprehensive browser-based UI tests using Microsoft.Playwright.NUnit (Chromium 
 
 ## Pending
 
-### Future Enhancements (backlog)
-- [ ] **Recurring Invoices** — auto-generate invoices from templates on schedule (monthly/quarterly/yearly), cron-based Azure Functions timer trigger
+### Payment Matching (implemented 2026-04-24, see PLATBY-ZADANI.md)
+- [x] M0: Domain entities + enums (BankAccountMailbox, BankTransaction, PaymentMatch, InboundEmail, MasterMailboxIndex, PaymentMatchingSystemSettings; EPaymentDirection, EImportSource, EMatchStatus, EMatchType, EParseStatus, EInvoiceStatus.PartiallyPaid, Invoice.PaidAmount)
+- [x] M0b: EF Core configuration for new entities + DbSet registration in TenantDbContext/MasterDbContext
+- [x] M1: AliasGenerator (CSPRNG, ~47 bit entropy) + BankAccountMailboxService with Activate/Deactivate/Regenerate lifecycle
+- [x] M2: SysAdmin config — PaymentMatchingSystemSettingsService (DPAPI-encrypted IMAP password) + PaymentMatchingSysAdminController (GET/PUT/test-connection)
+- [x] M3: ImapPollWorker (BackgroundService, MailKit, routes via MasterMailboxIndex, moves to Processed/Unrouted folders)
+- [x] M4: InboundEmailProcessor — archives every email, respects IsActive + ActiveFrom, dedup via SHA-256 hash, calls parser + matcher
+- [x] M5: AiBankEmailParser — strict JSON schema, CZ/SK bank formats, confidence threshold 0.8, prompt-injection mitigation
+- [x] M6: PaymentMatchingService — full matcher algorithm (VS exact, VS+amount disambiguation, counterparty+window fallback), manual match/unmatch/ignore, PartiallyPaid / Paid / Overpayment handling
+- [x] M7: Payments grid page + PaymentMatchingApiService + PaymentMatchingController (list / match / unmatch / ignore / unmatched-count)
+- [x] M8: BankAccountMailboxCard reusable component (Activate/Deactivate/Regenerate + copy alias + stats)
+- [x] M10: Localization CZ+EN — ~70 resource keys for Payments, EMatchStatus, EPaymentDirection, EParseStatus, BankMailbox, SysAdminPayment
+- [x] M11: 51 unit tests (AliasGenerator, AiBankEmailParser, PaymentMatchingService, InboundEmailProcessor, BankAccountMailboxService) — all green
+- [x] DI registration (tenant services + SysAdmin service + HostedService<ImapPollWorker>)
+- [x] EF migrations generated (20260425152217 tenant, 20260425152226 master)
+- [x] M9: InvoiceDetail Payments panel (progress bar + matches), MatchPaymentDialog, NavMenu entries (/payments + /sysadmin/payment-matching), dashboard KPI tile, PaymentDetail.razor
+- [x] Integration tests (5 new tests in PaymentMatchingE2ETests — settings GET/PUT, anonymous block, unmatched-count, mailbox 404)
+- [x] TenantContextMiddleware updated to allow SysAdmin payment-matching endpoint without impersonation
+- [x] Effective feature flagging via PaymentMatchingSystemSettings.IsEnabled (master) + BankAccountMailbox.IsActive (per-tenant)
+- [x] Azure Functions support: extracted `IImapPollService` (Application), `ImapPollService` (Infrastructure), `PaymentMatchingFunctions.RunImapPoll` ([TimerTrigger] every 5 min, honours configurable PollIntervalMinutes via LastRunAt check). API host's `ImapPollWorker` now thin wrapper. SysAdmin /run-now HTTP endpoint added. CLAUDE.md documents the API+Functions duplication pattern.
+- [ ] App Insights custom metrics (payment_match_auto, payment_match_manual, payment_parse_failed, inbound_email_received) — currently logged via ILogger / DatabaseLoggerProvider; metrics dashboard would require Application Insights NuGet
+- [ ] Playwright E2E tests for the UI flows (out of scope for this session)
+- [ ] Integration + Playwright tests (scaffolded in PLATBY-ZADANI.md §11.2/11.3 — to be written)
+- [ ] Golden-file email fixtures per bank (KB / ČSOB / Fio / ČS / Air / RB) — collect real (anonymized) emails
+- [x] PostgreSQL advisory lock for ImapPollWorker (multi-replica singleton, crash-safe, zero new infra)
+- [x] AI parser reads raw HTML directly (no local regex stripping — trust the model)
+
+### Feature gap vs Fakturovač.cz (gap analysis 2026-04-25)
+
+These items exist in Fakturovač and are useful for parity. Order = recommended priority
+based on how often Czech customers ask for them. Each line is sized as a standalone ticket.
+
+**Top priority (blockers for many B2B use-cases):**
+- [ ] **Zálohové faktury (proforma) + auto-překlop na běžnou fakturu** — new `EDocumentType.AdvanceInvoice` (záloha) + `EDocumentType.TaxReceiptForAdvance` (daňový doklad o přijaté platbě). When the proforma is paid, system creates the tax receipt automatically and on the final invoice deducts the advance. Heavy lifting: domain model, status transitions, PDF templates per type, invoice-from-proforma button.
+- [ ] **ISDOC export** + ISDOC attachment in invoice e-mail — Czech e-invoicing standard (ICAI XML schema), Pohoda/Money/Helios import it natively. Add `IIsdocExportService` next to `IPdfExportService`. The e-mail send flow attaches both PDF and ISDOC.
+- [ ] **EPO XML pro DPH přiznání + kontrolní hlášení** — extend `VatReportService` with `ToEpoXmlAsync()` producing the official MFČR XML (XSD published by Finanční správa). Single-button "stáhnout pro EPO" on VAT Report page.
+- [ ] **Přenesená daňová povinnost (PDP / Reverse Charge §92a–92e ZDPH)** — new `EVatRegime` enum on `InvoiceItem` (Standard / ReverseCharge / Exempt / OutOfScope). Affects DPH calculation (zero VAT row, transferred to recipient), special note on PDF/ISDOC, reflected in EPO XML. Mandatory for stavebnictví/IT/telco.
+- [ ] **Recurring Invoices** — already in backlog, raise priority. New entity `RecurringInvoiceSchedule` (templateId, frequency, day-of-month, nextRunAt, isActive). Azure Function timer trigger (daily) generates invoices from templates whose `nextRunAt <= today`. Send via existing email service.
+
+**Medium priority (nice parity items):**
+- [ ] **Dodací listy (delivery notes)** — separate document type, simpler than invoice (no totals/VAT, just items list). Reuse `Invoice` table with `EDocumentType.DeliveryNote`.
+- [ ] **Pokladní doklady / paragony** — simplified cash receipt format. Could be subtype of invoice or separate entity. Required field: cashier, optional VAT.
+- [ ] **Webhooks** — already in backlog; useful for e-shop integrations (notify when invoice paid). Outbound HTTP POST with HMAC signature, retry policy, dead-letter queue.
+- [ ] **Export do účetních systémů** — Pohoda XML, Money S3 XML, ABRA XML adapters. Each = separate `IAccountingExporter` implementation reading from the same Invoice DTOs.
+- [ ] **ČNB kurzy auto-stahování** — daily Function that fetches the official ČNB exchange rate XML feed and updates `Currency.ExchangeRate` for non-CZK currencies. Used for foreign-currency invoices to compute CZK equivalent.
+- [ ] **EU OSS / OSS DPH** — special VAT regime for cross-border B2C sales in EU (§110b ZDPH). Affects VAT rate (recipient country's rate), reporting (separate OSS return), invoice text. Big feature, mostly relevant for e-shops.
+
+**Lower priority / nice-to-have:**
+- [ ] **Klientský portál** — public link per client showing their invoices/payment history. Token-based access (no login). Useful for "send a link to your client" UX.
+- [ ] **Datové schránky** (Czech mandatory e-government inbox) — integrace přes ISDS API. Send invoices directly to client's data box. Mostly relevant for B2G.
+- [ ] **Sklad / inventory** — likely out of scope for an invoicing app, but Fakturovač/Pohoda do have it. If we add it: separate module with stock movements, low-stock alerts, FIFO/LIFO valuation.
+- [ ] **Podepisování PDF elektronickým podpisem** — qualified signature (I.CA / Eviden) on issued invoices. Library: BouncyCastle PDF signing.
+
+**Where Fakvio already wins (do not regress):**
+- Multi-tenant architecture (Fakturovač is single-account)
+- AI Chat assistant (Claude/OpenAI/Gemini/Ollama) with tools
+- AI extractor for imported PDF invoices
+- AI parser for bank notification e-mails (vs per-bank regex)
+- MCP server exposure
+- 2FA + OAuth (Google/Microsoft/Facebook/Seznam)
+- MAUI Blazor Hybrid native apps (Android/iOS/macOS/Windows)
+- Tax estimation calculator for OSVČ (CZ/SK)
+- PostgreSQL multi-schema + Azure Functions deployment-ready
+- Reusable Quill WYSIWYG editor for templates
+- Reminders with automatic interest from late payment
+
+### Future Enhancements (backlog, unrelated to Fakturovač)
 - [ ] **Real-time Notifications (SignalR)** — push notifications for new invoices, approaching due dates, tenant provisioning status, payment confirmations
 - [ ] **Reporting & Export** — CSV/Excel export of invoice/client lists, advanced reports (revenue by period, VAT summary, client aging), printable views
 - [ ] **Audit Log UI** — entity change tracking (who changed what and when), Blazor viewer with diff display, filterable by entity/user/date
-- [ ] **Webhooks** — notify external systems on invoice status changes (created, issued, paid), configurable per-tenant webhook URLs with retry logic
 - [ ] **API Rate Limiting** — protect against abuse, per-tenant and per-endpoint limits, ASP.NET Core rate limiting middleware
 - [ ] **Performance Optimization** — Redis distributed cache, response compression, lazy loading for large datasets, query optimization
 - [ ] **Apple OAuth** — add Apple sign-in provider (requires separate NuGet package, Apple Developer account setup)
-- [ ] **MCP Server (Phase D)** — Model Context Protocol server exposing Fakvio functionality to AI assistants (Claude, etc.); thin wrapper over existing REST API; new `Fakvio.McpServer` project with tools: InvoiceTools (create, list, complete, mark-paid, send email), ClientTools (lookup, list, create), ReportingTools (revenue, overdue, summaries, aging), TemplateTools (list, preview); MCP resources for invoice/client data; JWT auth forwarding + tenant isolation; enables natural-language invoicing ("create invoice for client X"), AI-assisted reporting ("top 5 clients by revenue"), and integration with other MCP servers (calendar, email, accounting)
 

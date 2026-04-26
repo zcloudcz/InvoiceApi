@@ -1,0 +1,178 @@
+@page "/sysadmin/payment-matching"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "SysAdmin")]
+@using Fakvio.Contracts.Dto.PaymentMatching
+@inject PaymentMatchingSysAdminApiService Api
+@inject IStringLocalizer<SharedResource> L
+@inject ISnackbar Snackbar
+
+@*
+    SysAdmin-only configuration for the payment matching feature:
+      - central IMAP mailbox (host, port, SSL, user, password)
+      - routing domain (e.g. pay.fakvio.cz)
+      - worker poll interval (default 30 min, min 5, max 1440)
+      - retention policy
+      - "Test connection" button validates IMAP login without saving
+    The password is not returned by GET — leaving the field blank means "keep existing".
+*@
+
+<PageTitle>@L["SysAdminPayment_Title"]</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">@L["SysAdminPayment_Title"]</MudText>
+<MudText Class="mb-4">@L["SysAdminPayment_Subtitle"]</MudText>
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else if (_model != null)
+{
+    <MudPaper Class="pa-4 mb-4" Elevation="2">
+        <MudText Typo="Typo.h6" Class="mb-3">@L["SysAdminPayment_General"]</MudText>
+
+        <MudSwitch T="bool" Value="_model.IsEnabled" ValueChanged="v => _model.IsEnabled = v"
+                   Color="Color.Primary" Label="@L["SysAdminPayment_IsEnabled"]" />
+
+        <MudTextField @bind-Value="_model.InboundDomain" Label="@L["SysAdminPayment_InboundDomain"]"
+                      Class="mt-3" />
+
+        <MudNumericField T="int" Value="_model.PollIntervalMinutes"
+                         ValueChanged="v => _model.PollIntervalMinutes = v"
+                         Label="@L["SysAdminPayment_PollIntervalMinutes"]"
+                         Min="5" Max="1440" Class="mt-3" />
+
+        <MudNumericField T="int" Value="_model.InboundEmailRetentionDays"
+                         ValueChanged="v => _model.InboundEmailRetentionDays = v"
+                         Label="@L["SysAdminPayment_RetentionDays"]"
+                         Min="30" Max="36500" Class="mt-3" />
+    </MudPaper>
+
+    <MudPaper Class="pa-4 mb-4" Elevation="2">
+        <MudText Typo="Typo.h6" Class="mb-3">@L["SysAdminPayment_Imap"]</MudText>
+
+        <MudGrid>
+            <MudItem xs="12" md="8">
+                <MudTextField @bind-Value="_model.ImapHost" Label="@L["SysAdminPayment_ImapHost"]" />
+            </MudItem>
+            <MudItem xs="6" md="2">
+                <MudNumericField T="int" Value="_model.ImapPort" ValueChanged="v => _model.ImapPort = v"
+                                 Label="@L["SysAdminPayment_ImapPort"]" Min="1" Max="65535" />
+            </MudItem>
+            <MudItem xs="6" md="2">
+                <MudSwitch T="bool" Value="_model.ImapUseSsl" ValueChanged="v => _model.ImapUseSsl = v"
+                           Color="Color.Primary" Label="@L["SysAdminPayment_UseSsl"]" />
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudTextField @bind-Value="_model.ImapUsername" Label="@L["SysAdminPayment_ImapUser"]" />
+            </MudItem>
+            <MudItem xs="12" md="6">
+                @* Password field: empty means "don't change" on save. *@
+                <MudTextField @bind-Value="_model.ImapPassword" Label="@L["SysAdminPayment_ImapPassword"]"
+                              InputType="InputType.Password"
+                              HelperText="@L["SysAdminPayment_ImapPassword_Hint"]" />
+            </MudItem>
+
+            <MudItem xs="12" md="4">
+                <MudTextField @bind-Value="_model.ImapFolder" Label="@L["SysAdminPayment_ImapFolder"]" />
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudTextField @bind-Value="_model.ProcessedFolder" Label="@L["SysAdminPayment_ProcessedFolder"]" />
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudTextField @bind-Value="_model.UnroutedFolder" Label="@L["SysAdminPayment_UnroutedFolder"]" />
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    <div class="d-flex gap-2 mb-4">
+        <MudButton Variant="Variant.Outlined" Color="Color.Info"
+                   StartIcon="@Icons.Material.Filled.NetworkCheck"
+                   OnClick="TestConnectionAsync" Disabled="_busy">
+            @L["SysAdminPayment_TestConnection"]
+        </MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.Save"
+                   OnClick="SaveAsync" Disabled="_busy">
+            @L["SysAdminPayment_Save"]
+        </MudButton>
+    </div>
+
+    <MudPaper Class="pa-4" Elevation="0" Style="background-color: var(--mud-palette-background-gray);">
+        <MudText Typo="Typo.subtitle1" Class="mb-2">@L["SysAdminPayment_WorkerStatus"]</MudText>
+        <MudText>@L["SysAdminPayment_LastRun"]: <strong>@(_model.LastRunAt?.ToLocalTime().ToString("g") ?? "—")</strong></MudText>
+        <MudText>@L["SysAdminPayment_LastStatus"]: <strong>@(_model.LastRunStatus ?? "—")</strong></MudText>
+        <MudText>@L["SysAdminPayment_LastProcessed"]: <strong>@_model.LastRunProcessedCount</strong></MudText>
+    </MudPaper>
+}
+
+@code {
+    private PaymentMatchingSystemSettingsDto? _model;
+    private bool _loading = true;
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _model = await Api.GetAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task TestConnectionAsync()
+    {
+        if (_model == null) return;
+        _busy = true;
+        try
+        {
+            var result = await Api.TestConnectionAsync(_model);
+            if (result?.Success == true)
+            {
+                Snackbar.Add(
+                    string.Format(L["SysAdminPayment_TestOk"].Value, result.MessageCount ?? 0),
+                    Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add($"{L["SysAdminPayment_TestFail"]}: {result?.ErrorMessage}", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_model == null) return;
+        _busy = true;
+        try
+        {
+            var saved = await Api.UpdateAsync(_model);
+            if (saved != null)
+            {
+                _model = saved;
+                Snackbar.Add(L["SysAdminPayment_Saved"], Severity.Success);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

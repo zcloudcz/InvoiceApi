@@ -76,6 +76,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<FileAttachmentApiService>();
         services.AddScoped<ReminderApiService>();
 
+        // Payment matching — tenant user + SysAdmin.
+        services.AddScoped<PaymentMatchingApiService>();
+        services.AddScoped<PaymentMatchingSysAdminApiService>();
+
         // Shared app state — cross-component notifications (e.g., company list changed → refresh dropdown)
         services.AddScoped<AppStateService>();
 

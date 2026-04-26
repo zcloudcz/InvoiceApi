@@ -2,6 +2,7 @@
 @using Fakvio.UI.Shared.Services
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IStringLocalizer<SharedResource> L
+@inject PaymentMatchingApiService PaymentApi
 
 <AuthorizeView>
     <Authorized>
@@ -20,6 +21,15 @@
                     <MudNavLink Href="/received-invoices" Icon="@Icons.Material.Filled.CallReceived">@L["Nav_ReceivedInvoices"]</MudNavLink>
                     <MudNavLink Href="/invoices?type=CreditNote" Icon="@Icons.Material.Filled.CreditCard">@L["Nav_CreditNotes"]</MudNavLink>
                     <MudNavLink Href="/reminders" Icon="@Icons.Material.Filled.NotificationsActive">@L["Nav_Reminders"]</MudNavLink>
+                    @* Payment matching — entry point for the auto-match feature.
+                       Badge with unmatched count is wired in MainLayout via PaymentMatchingApiService. *@
+                    <MudNavLink Href="/payments" Icon="@Icons.Material.Filled.Payments">
+                        @L["Nav_Payments"]
+                        @if (_unmatchedCount > 0)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Warning" Class="ml-2">@_unmatchedCount</MudChip>
+                        }
+                    </MudNavLink>
                     @* Import hidden — feature under development *@
                     @* <MudNavLink Href="/invoices/import" Icon="@Icons.Material.Filled.UploadFile">@L["Nav_ImportInvoices"]</MudNavLink> *@
                     <MudNavLink Href="/vat-report" Icon="@Icons.Material.Filled.Assessment">@L["Nav_VatReport"]</MudNavLink>
@@ -61,6 +71,8 @@
                         <MudNavLink Href="/content-templates" Icon="@Icons.Material.Filled.Article">@L["Nav_ContentTemplates"]</MudNavLink>
                         <MudNavLink Href="/number-sequences" Icon="@Icons.Material.Filled.Numbers">@L["Nav_NumberSequences"]</MudNavLink>
                         <MudNavLink Href="/tax-configs" Icon="@Icons.Material.Filled.AccountBalance">@L["Nav_TaxConfig"]</MudNavLink>
+                        @* Payment matching — system-wide IMAP/AI configuration. *@
+                        <MudNavLink Href="/sysadmin/payment-matching" Icon="@Icons.Material.Filled.MarkEmailRead">@L["Nav_PaymentMatching"]</MudNavLink>
                     }
                 </AuthorizeView>
             </MudNavGroup>
@@ -72,6 +84,10 @@
     // Whether to show invoicing menu items.
     // True for User/Admin (they always have a company), and for SysAdmin when impersonating.
     private bool _showInvoicing = false;
+
+    // Count shown as a chip next to the Payments nav entry.
+    // Refreshed once on first render; subsequent updates can be wired later via SignalR.
+    private int _unmatchedCount;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -94,6 +110,13 @@
                     {
                         // User/Admin always have a company
                         _showInvoicing = true;
+                    }
+
+                    // Best-effort badge load — don't block rendering on a network error.
+                    if (_showInvoicing)
+                    {
+                        try { _unmatchedCount = await PaymentApi.GetUnmatchedCountAsync(); }
+                        catch { /* badge stays at 0 */ }
                     }
 
                     StateHasChanged();

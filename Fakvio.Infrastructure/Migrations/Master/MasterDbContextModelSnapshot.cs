@@ -949,6 +949,53 @@ namespace Fakvio.Infrastructure.Migrations.Master
                         });
                 });
 
+            modelBuilder.Entity("Fakvio.Domain.Entities.MasterMailboxIndex", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("CreatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("InboundAlias")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<bool>("IsAliasRetired")
+                        .HasColumnType("boolean");
+
+                    b.Property<long>("TenantBankAccountMailboxId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("TenantSchema")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("UpdatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InboundAlias")
+                        .IsUnique()
+                        .HasFilter("\"IsAliasRetired\" = false");
+
+                    b.HasIndex("TenantSchema");
+
+                    b.ToTable("MasterMailboxIndex");
+                });
+
             modelBuilder.Entity("Fakvio.Domain.Entities.NumberSequenceFormat", b =>
                 {
                     b.Property<long>("Id")
@@ -1042,6 +1089,103 @@ namespace Fakvio.Infrastructure.Migrations.Master
                             ResetsMonthly = false,
                             ResetsYearly = false
                         });
+                });
+
+            modelBuilder.Entity("Fakvio.Domain.Entities.PaymentMatchingSystemSettings", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("CreatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("ImapFolder")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasDefaultValue("INBOX");
+
+                    b.Property<string>("ImapHost")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("ImapPasswordEncrypted")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<int>("ImapPort")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("ImapUseSsl")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("ImapUsername")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)");
+
+                    b.Property<string>("InboundDomain")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasDefaultValue("pay.fakvio.cz");
+
+                    b.Property<int>("InboundEmailRetentionDays")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1825);
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("LastRunAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("LastRunProcessedCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("LastRunStatus")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<int>("PollIntervalMinutes")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(30);
+
+                    b.Property<string>("ProcessedFolder")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasDefaultValue("Processed");
+
+                    b.Property<string>("UnroutedFolder")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasDefaultValue("Unrouted");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("UpdatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("PaymentMatchingSystemSettings");
                 });
 
             modelBuilder.Entity("Fakvio.Domain.Entities.SystemConfiguration", b =>

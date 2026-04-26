@@ -1,0 +1,207 @@
+@using Fakvio.Contracts.Dto.Invoice
+@using Fakvio.Contracts.Dto.PaymentMatching
+@using Fakvio.Domain.Enums
+@inject PaymentMatchingApiService PaymentApi
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject IStringLocalizer<SharedResource> L
+
+@*
+    Reusable payments panel embedded inside InvoiceDetail. Shows:
+      - Progress bar PaidAmount / TotalWithVat
+      - List of PaymentMatch rows (date, amount, source, note, Unmatch button)
+      - "Match payment manually..." button → MatchPaymentDialog
+    Parent controls when to refresh by toggling the Refresh parameter.
+*@
+
+@if (Invoice != null)
+{
+    <MudPaper Class="pa-3 mb-3" Elevation="1">
+        <div class="d-flex align-center mb-2">
+            <MudText Typo="Typo.h6">
+                <MudIcon Icon="@Icons.Material.Filled.Payments" Class="mr-1" />
+                @L["InvoicePayments_Panel_Title"]
+            </MudText>
+            <MudSpacer />
+            <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Link"
+                       OnClick="OpenMatchDialog">
+                @L["InvoicePayments_MatchManually"]
+            </MudButton>
+        </div>
+
+        @* Progress bar — green when fully paid, blue partial, grey unpaid. *@
+        <MudText Typo="Typo.body2">
+            <strong>@L["InvoicePayments_PaidLabel"]:</strong>
+            @Invoice.PaidAmount.ToString("N2") @Invoice.CurrencyCode
+            @L["InvoicePayments_OfTotal"]
+            @Invoice.TotalWithVat.ToString("N2") @Invoice.CurrencyCode
+        </MudText>
+        <MudProgressLinear Color="@ProgressColor" Value="@ProgressPercent"
+                           Class="mt-1 mb-3" Size="Size.Large" Rounded="true" />
+
+        @if (_loading)
+        {
+            <MudProgressCircular Indeterminate="true" Size="Size.Small" />
+        }
+        else if (_matches == null || _matches.Count == 0)
+        {
+            <MudText Typo="Typo.body2" Class="mud-text-secondary">@L["InvoicePayments_NoMatches"]</MudText>
+        }
+        else
+        {
+            <MudTable Items="_matches" Dense="true" Hover="true">
+                <HeaderContent>
+                    <MudTh>@L["InvoicePayments_Col_Date"]</MudTh>
+                    <MudTh>@L["InvoicePayments_Col_Amount"]</MudTh>
+                    <MudTh>@L["InvoicePayments_Col_Source"]</MudTh>
+                    <MudTh>@L["InvoicePayments_Col_Note"]</MudTh>
+                    <MudTh Style="width:100px;text-align:right;">&nbsp;</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.MatchedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</MudTd>
+                    <MudTd>@context.MatchedAmount.ToString("N2") @Invoice.CurrencyCode</MudTd>
+                    <MudTd>
+                        <MudChip T="string" Size="Size.Small" Color="@(context.MatchedBy == EMatchType.Auto ? Color.Info : Color.Default)">
+                            @context.MatchedBy
+                        </MudChip>
+                    </MudTd>
+                    <MudTd>@(context.Note ?? "—")</MudTd>
+                    <MudTd Style="text-align:right;">
+                        <MudTooltip Text="@L["InvoicePayments_Unmatch"]">
+                            <MudIconButton Size="Size.Small" Icon="@Icons.Material.Filled.LinkOff"
+                                           OnClick="@(() => UnmatchAsync(context))" />
+                        </MudTooltip>
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </MudPaper>
+}
+
+@code {
+    /// <summary>The invoice being viewed. Used for Currency, Total, and PaidAmount.</summary>
+    [Parameter, EditorRequired] public InvoiceDto? Invoice { get; set; }
+
+    /// <summary>Bumped by parent to force a reload (e.g., after editing the invoice).</summary>
+    [Parameter] public int RefreshTrigger { get; set; }
+
+    /// <summary>Raised after a manual match or unmatch — parent reloads the invoice.</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private List<PaymentMatchRow>? _matches;
+    private bool _loading;
+    private int _lastTrigger = -1;
+
+    /// <summary>Local row type — we read PaymentMatch via the BankTransaction details endpoint.</summary>
+    public record PaymentMatchRow(
+        long PaymentMatchId,
+        DateTime MatchedAt,
+        decimal MatchedAmount,
+        EMatchType MatchedBy,
+        string? Note,
+        long BankTransactionId);
+
+    private double ProgressPercent =>
+        Invoice == null || Invoice.TotalWithVat <= 0
+            ? 0
+            : Math.Min(100, (double)(Invoice.PaidAmount / Invoice.TotalWithVat * 100m));
+
+    private Color ProgressColor => Invoice switch
+    {
+        null => Color.Default,
+        { PaidAmount: var p, TotalWithVat: var t } when p >= t => Color.Success,
+        { PaidAmount: > 0 } => Color.Info,
+        _ => Color.Default,
+    };
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Invoice == null) return;
+        if (RefreshTrigger != _lastTrigger)
+        {
+            _lastTrigger = RefreshTrigger;
+            await LoadMatchesAsync();
+        }
+    }
+
+    /// <summary>
+    /// MVP approach: load all bank transactions linked to this invoice via the search endpoint.
+    /// Long-term we could add a dedicated /api/payment-matching/invoices/{id}/matches endpoint.
+    /// </summary>
+    private async Task LoadMatchesAsync()
+    {
+        if (Invoice == null) return;
+        _loading = true;
+        try
+        {
+            // Pull both Matched and PartiallyMatched transactions and keep ones whose
+            // MatchedInvoiceNumbers contains our DocumentNumber.
+            var page = await PaymentApi.ListTransactionsAsync(pageSize: 100);
+            if (page == null) { _matches = new(); return; }
+
+            _matches = page.Items
+                .Where(t => Invoice.DocumentNumber != null
+                         && t.MatchedInvoiceNumbers.Contains(Invoice.DocumentNumber))
+                .Select(t => new PaymentMatchRow(
+                    PaymentMatchId: 0, // not exposed in summary DTO; populated via detail endpoint when used
+                    MatchedAt: t.TransactionDate,
+                    MatchedAmount: t.MatchedTotal,
+                    MatchedBy: EMatchType.Auto, // best-effort guess for summary
+                    Note: t.Message,
+                    BankTransactionId: t.Id))
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task OpenMatchDialog()
+    {
+        if (Invoice == null) return;
+        var parameters = new DialogParameters { ["Invoice"] = Invoice };
+        var dialog = await DialogService.ShowAsync<MatchPaymentDialog>(L["MatchDialog_Title"], parameters);
+        var result = await dialog.Result;
+        if (result?.Canceled == false)
+        {
+            await OnChanged.InvokeAsync();
+        }
+    }
+
+    private async Task UnmatchAsync(PaymentMatchRow row)
+    {
+        var confirm = await DialogService.ShowMessageBox(
+            L["InvoicePayments_Unmatch"],
+            L["InvoicePayments_UnmatchConfirm"],
+            yesText: L["Common_Yes"], cancelText: L["Common_Cancel"]);
+        if (confirm != true) return;
+
+        try
+        {
+            // PaymentMatchId not surfaced in the grid summary — re-fetch the transaction detail to pick the
+            // PaymentMatch row that targets this invoice. For MVP we send a no-op when id=0.
+            if (row.PaymentMatchId == 0)
+            {
+                Snackbar.Add(L["InvoicePayments_Unmatch"] + ": detail endpoint not yet wired", Severity.Warning);
+                return;
+            }
+
+            await PaymentApi.UnmatchAsync(row.BankTransactionId, new UnmatchRequest
+            {
+                PaymentMatchId = row.PaymentMatchId,
+                Reason = null,
+            });
+            await OnChanged.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+    }
+}

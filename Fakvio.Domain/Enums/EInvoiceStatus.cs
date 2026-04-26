@@ -33,5 +33,12 @@ public enum EInvoiceStatus
     /// Invoice is marked as deleted (soft delete)
     /// Still exists in database but is hidden from normal views
     /// </summary>
-    Deleted = 5
+    Deleted = 5,
+
+    /// <summary>
+    /// At least one payment has been matched, but the invoice is not fully paid yet.
+    /// PaidAmount > 0 AND PaidAmount &lt; TotalWithVat.
+    /// Payment matching feature (see PLATBY-ZADANI.md).
+    /// </summary>
+    PartiallyPaid = 6
 }

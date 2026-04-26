@@ -138,6 +138,21 @@ public class MasterDbContext : DbContext
     /// </summary>
     public DbSet<TaxYearConfig> TaxYearConfig { get; set; }
 
+    // ─── Payment Matching (see PLATBY-ZADANI.md) ──────────────────────────────
+
+    /// <summary>
+    /// Global index mapping inbound alias → tenant schema.
+    /// The IMAP worker uses this to route incoming emails to the correct tenant.
+    /// Master-only table because the worker runs outside any tenant context.
+    /// </summary>
+    public DbSet<MasterMailboxIndex> MasterMailboxIndex { get; set; }
+
+    /// <summary>
+    /// System-wide configuration for payment matching (IMAP credentials, interval, domain).
+    /// Single-row table (Id = 1), owned by SysAdmin.
+    /// </summary>
+    public DbSet<PaymentMatchingSystemSettings> PaymentMatchingSystemSettings { get; set; }
+
     // ─── Entity Configuration ─────────────────────────────────────────────────
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -156,6 +171,12 @@ public class MasterDbContext : DbContext
         modelBuilder.Ignore<InvoiceItem>();
         modelBuilder.Ignore<NumberSequence>();
 
+        // Payment matching tenant-only entities.
+        modelBuilder.Ignore<BankAccountMailbox>();
+        modelBuilder.Ignore<InboundEmail>();
+        modelBuilder.Ignore<BankTransaction>();
+        modelBuilder.Ignore<PaymentMatch>();
+
         ConfigureUser(modelBuilder);
         ConfigureClient(modelBuilder);
         ConfigureAddress(modelBuilder);
@@ -172,7 +193,56 @@ public class MasterDbContext : DbContext
         ConfigureAresCache(modelBuilder);
         ConfigureTaxYearConfig(modelBuilder);
 
+        ConfigureMasterMailboxIndex(modelBuilder);
+        ConfigurePaymentMatchingSystemSettings(modelBuilder);
+
         SeedData(modelBuilder);
+    }
+
+    /// <summary>
+    /// MasterMailboxIndex — global lookup used by IMAP worker to resolve alias → tenant schema.
+    /// InboundAlias unique ACROSS all tenants (worker reads master DB first).
+    /// </summary>
+    private void ConfigureMasterMailboxIndex(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<MasterMailboxIndex>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            // Unique only among non-retired aliases — retired ones may share an alias
+            // that was later regenerated. Filtered index to allow collisions among retired entries.
+            entity.HasIndex(e => e.InboundAlias)
+                .IsUnique()
+                .HasFilter("\"IsAliasRetired\" = false");
+
+            entity.HasIndex(e => e.TenantSchema);
+
+            entity.Property(e => e.InboundAlias).IsRequired().HasMaxLength(40);
+            entity.Property(e => e.TenantSchema).IsRequired().HasMaxLength(100);
+        });
+    }
+
+    /// <summary>
+    /// PaymentMatchingSystemSettings — single-row configuration owned by SysAdmin.
+    /// Password is pre-encrypted before persistence (Data Protection API).
+    /// </summary>
+    private void ConfigurePaymentMatchingSystemSettings(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<PaymentMatchingSystemSettings>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.ImapHost).HasMaxLength(255);
+            entity.Property(e => e.ImapUsername).HasMaxLength(320);
+            entity.Property(e => e.ImapPasswordEncrypted).HasMaxLength(4000);
+            entity.Property(e => e.ImapFolder).HasMaxLength(100).HasDefaultValue("INBOX");
+            entity.Property(e => e.ProcessedFolder).HasMaxLength(100).HasDefaultValue("Processed");
+            entity.Property(e => e.UnroutedFolder).HasMaxLength(100).HasDefaultValue("Unrouted");
+            entity.Property(e => e.InboundDomain).HasMaxLength(255).HasDefaultValue("pay.fakvio.cz");
+            entity.Property(e => e.PollIntervalMinutes).HasDefaultValue(30);
+            entity.Property(e => e.InboundEmailRetentionDays).HasDefaultValue(1825);
+            entity.Property(e => e.LastRunStatus).HasMaxLength(500);
+        });
     }
 
     /// <summary>

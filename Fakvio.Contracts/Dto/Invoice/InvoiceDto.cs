@@ -58,6 +58,12 @@ public class InvoiceDto
     public DateTime? LastSentByEmailAt { get; set; }
     public DateTime? PaidAt { get; set; }
 
+    /// <summary>
+    /// Sum of all PaymentMatch rows linked to this invoice.
+    /// Maintained server-side by PaymentMatchingService — clients should treat as read-only.
+    /// </summary>
+    public decimal PaidAmount { get; set; }
+
     public List<InvoiceItemDto> InvoiceItem { get; set; } = new();
 
     public DateTime CreatedAt { get; set; }

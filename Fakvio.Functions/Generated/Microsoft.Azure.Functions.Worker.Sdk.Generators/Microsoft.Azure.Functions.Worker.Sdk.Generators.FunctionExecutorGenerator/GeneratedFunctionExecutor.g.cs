@@ -39,6 +39,7 @@ namespace Fakvio.Functions
             { "Fakvio.Functions.Generated.UserFunctions", Type.GetType("Fakvio.Functions.Generated.UserFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "Fakvio.Functions.Generated.VatRateFunctions", Type.GetType("Fakvio.Functions.Generated.VatRateFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "Fakvio.Functions.Generated.VatReportFunctions", Type.GetType("Fakvio.Functions.Generated.VatReportFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
+            { "Fakvio.Functions.PaymentMatchingFunctions", Type.GetType("Fakvio.Functions.PaymentMatchingFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "Fakvio.Functions.ReminderFunctions", Type.GetType("Fakvio.Functions.ReminderFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "Fakvio.Functions.TimerFunctions", Type.GetType("Fakvio.Functions.TimerFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") }
         };
@@ -1292,6 +1293,13 @@ namespace Fakvio.Functions
                 var instanceType = types["Fakvio.Functions.Generated.VatReportFunctions"];
                 var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.VatReportFunctions;
                 context.GetInvocationResult().Value = await i.VatReport_GetReport((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.PaymentMatchingFunctions.RunImapPoll", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.PaymentMatchingFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.PaymentMatchingFunctions;
+                await i.RunImapPoll((global::Microsoft.Azure.Functions.Worker.TimerInfo)inputArguments[0], (global::System.Threading.CancellationToken)inputArguments[1]);
                 return;
             }
             if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.ReminderFunctions.ProcessReminders", StringComparison.Ordinal))

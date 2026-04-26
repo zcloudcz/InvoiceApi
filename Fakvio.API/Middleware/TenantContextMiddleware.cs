@@ -43,6 +43,7 @@ public class TenantContextMiddleware
         "/api/twofactor",            // 2FA setup/verify — operates on master DB User table
         "/api/cloud-storage",        // Cloud storage settings — stored in master DB CompanySystemSettings
         "/api/email",                // SysAdmin email — uses system SMTP, no tenant needed
+        "/api/sysadmin/payment-matching", // Payment matching IMAP/poll config — master DB, SysAdmin only
         "/swagger",
         "/health"
     ];

@@ -2324,41 +2324,53 @@ namespace Fakvio.Functions
             };
             metadataList.Add(Function176);
             var Function177RawBindings = new List<string>();
-            Function177RawBindings.Add(@"{""name"":""timer"",""type"":""timerTrigger"",""direction"":""In"",""schedule"":""0 0 6 * * *""}");
+            Function177RawBindings.Add(@"{""name"":""timer"",""type"":""timerTrigger"",""direction"":""In"",""schedule"":""0 */5 * * * *""}");
 
             var Function177 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "ProcessReminders",
-                EntryPoint = "Fakvio.Functions.ReminderFunctions.ProcessReminders",
+                Name = "RunImapPoll",
+                EntryPoint = "Fakvio.Functions.PaymentMatchingFunctions.RunImapPoll",
                 RawBindings = Function177RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function177);
             var Function178RawBindings = new List<string>();
-            Function178RawBindings.Add(@"{""name"":""timer"",""type"":""timerTrigger"",""direction"":""In"",""schedule"":""*/10 * * * * *""}");
+            Function178RawBindings.Add(@"{""name"":""timer"",""type"":""timerTrigger"",""direction"":""In"",""schedule"":""0 0 6 * * *""}");
 
             var Function178 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "LogFlush",
-                EntryPoint = "Fakvio.Functions.TimerFunctions.FlushLogs",
+                Name = "ProcessReminders",
+                EntryPoint = "Fakvio.Functions.ReminderFunctions.ProcessReminders",
                 RawBindings = Function178RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function178);
             var Function179RawBindings = new List<string>();
-            Function179RawBindings.Add(@"{""name"":""timer"",""type"":""timerTrigger"",""direction"":""In"",""schedule"":""0 0 0 * * *""}");
+            Function179RawBindings.Add(@"{""name"":""timer"",""type"":""timerTrigger"",""direction"":""In"",""schedule"":""*/10 * * * * *""}");
 
             var Function179 = new DefaultFunctionMetadata
             {
                 Language = "dotnet-isolated",
-                Name = "LogCleanup",
-                EntryPoint = "Fakvio.Functions.TimerFunctions.CleanupLogs",
+                Name = "LogFlush",
+                EntryPoint = "Fakvio.Functions.TimerFunctions.FlushLogs",
                 RawBindings = Function179RawBindings,
                 ScriptFile = "Fakvio.Functions.dll"
             };
             metadataList.Add(Function179);
+            var Function180RawBindings = new List<string>();
+            Function180RawBindings.Add(@"{""name"":""timer"",""type"":""timerTrigger"",""direction"":""In"",""schedule"":""0 0 0 * * *""}");
+
+            var Function180 = new DefaultFunctionMetadata
+            {
+                Language = "dotnet-isolated",
+                Name = "LogCleanup",
+                EntryPoint = "Fakvio.Functions.TimerFunctions.CleanupLogs",
+                RawBindings = Function180RawBindings,
+                ScriptFile = "Fakvio.Functions.dll"
+            };
+            metadataList.Add(Function180);
 
             return global::System.Threading.Tasks.Task.FromResult(metadataList.ToImmutableArray());
         }

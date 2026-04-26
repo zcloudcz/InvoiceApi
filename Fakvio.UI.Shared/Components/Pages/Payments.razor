@@ -1,0 +1,240 @@
+@page "/payments"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@using Fakvio.Contracts.Common.Pagination
+@using Fakvio.Contracts.Dto.PaymentMatching
+@using Fakvio.Domain.Enums
+@inject PaymentMatchingApiService Api
+@inject IStringLocalizer<SharedResource> L
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject NavigationManager Navigation
+
+@*
+    See PLATBY-ZADANI.md §8.1 — Payments grid (server-side pagination).
+*@
+
+@*
+    Payments grid — main entry point for the payment matching feature.
+    Users see bank transactions here and can review the unmatched ones,
+    match them against invoices manually, ignore false-positives, etc.
+
+    Server-side pagination — mirrors the pattern used by Invoices.razor.
+*@
+
+<PageTitle>@L["Payments_Title"]</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">@L["Payments_Title"]</MudText>
+<MudText Class="mb-4">@L["Payments_Subtitle"]</MudText>
+
+@* Filter toolbar — status, direction, date range, free-text search *@
+<MudPaper Class="pa-3 mb-3 d-flex flex-wrap align-center gap-2" Elevation="1">
+    <MudSelect T="EMatchStatus?" Value="_statusFilter" ValueChanged="OnStatusChanged"
+               Label="@L["Payments_FilterStatus"]" Clearable="true" Dense="true" Class="flex-grow-0" Style="min-width:180px;">
+        <MudSelectItem T="EMatchStatus?" Value="@((EMatchStatus?)null)">@L["Payments_Filter_All"]</MudSelectItem>
+        <MudSelectItem T="EMatchStatus?" Value="@((EMatchStatus?)EMatchStatus.Unmatched)">@L["EMatchStatus_Unmatched"]</MudSelectItem>
+        <MudSelectItem T="EMatchStatus?" Value="@((EMatchStatus?)EMatchStatus.NeedsReview)">@L["EMatchStatus_NeedsReview"]</MudSelectItem>
+        <MudSelectItem T="EMatchStatus?" Value="@((EMatchStatus?)EMatchStatus.Matched)">@L["EMatchStatus_Matched"]</MudSelectItem>
+        <MudSelectItem T="EMatchStatus?" Value="@((EMatchStatus?)EMatchStatus.PartiallyMatched)">@L["EMatchStatus_PartiallyMatched"]</MudSelectItem>
+        <MudSelectItem T="EMatchStatus?" Value="@((EMatchStatus?)EMatchStatus.Ignored)">@L["EMatchStatus_Ignored"]</MudSelectItem>
+    </MudSelect>
+
+    <MudSelect T="EPaymentDirection?" Value="_directionFilter" ValueChanged="OnDirectionChanged"
+               Label="@L["Payments_FilterDirection"]" Clearable="true" Dense="true" Class="flex-grow-0" Style="min-width:150px;">
+        <MudSelectItem T="EPaymentDirection?" Value="@((EPaymentDirection?)null)">@L["Payments_Filter_All"]</MudSelectItem>
+        <MudSelectItem T="EPaymentDirection?" Value="@((EPaymentDirection?)EPaymentDirection.Incoming)">@L["EPaymentDirection_Incoming"]</MudSelectItem>
+        <MudSelectItem T="EPaymentDirection?" Value="@((EPaymentDirection?)EPaymentDirection.Outgoing)">@L["EPaymentDirection_Outgoing"]</MudSelectItem>
+    </MudSelect>
+
+    <MudTextField @bind-Value="_search" Immediate="false" DebounceInterval="400"
+                  OnDebounceIntervalElapsed="Reload"
+                  Label="@L["Payments_SearchPlaceholder"]"
+                  Adornment="Adornment.Start"
+                  AdornmentIcon="@Icons.Material.Filled.Search"
+                  Class="flex-grow-1" Style="min-width:240px;" />
+
+    <MudButton Variant="Variant.Text" Color="Color.Primary"
+               StartIcon="@Icons.Material.Filled.Refresh" OnClick="Reload">
+        @L["Payments_Refresh"]
+    </MudButton>
+</MudPaper>
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mb-2" />
+}
+
+@if (_page == null || _page.Items.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">@L["Payments_Empty"]</MudAlert>
+}
+else
+{
+    <MudTable Items="_page.Items" Dense="true" Hover="true" Striped="true"
+              OnRowClick="@(EventCallback.Factory.Create<TableRowClickEventArgs<BankTransactionDto>>(this, args => OpenDetail(args.Item)))">
+        <HeaderContent>
+            <MudTh>@L["Payments_Col_Date"]</MudTh>
+            <MudTh>@L["Payments_Col_Direction"]</MudTh>
+            <MudTh>@L["Payments_Col_Amount"]</MudTh>
+            <MudTh>@L["Payments_Col_VS"]</MudTh>
+            <MudTh>@L["Payments_Col_Counterparty"]</MudTh>
+            <MudTh>@L["Payments_Col_Status"]</MudTh>
+            <MudTh>@L["Payments_Col_MatchedInvoices"]</MudTh>
+            <MudTh Style="width: 120px; text-align: right;">@L["Payments_Col_Actions"]</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="@L["Payments_Col_Date"]">@context.TransactionDate.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</MudTd>
+            <MudTd DataLabel="@L["Payments_Col_Direction"]">
+                @if (context.Direction == EPaymentDirection.Incoming)
+                {
+                    <MudIcon Icon="@Icons.Material.Filled.ArrowDownward" Color="Color.Success" Size="Size.Small" />
+                }
+                else
+                {
+                    <MudIcon Icon="@Icons.Material.Filled.ArrowUpward" Color="Color.Warning" Size="Size.Small" />
+                }
+            </MudTd>
+            <MudTd DataLabel="@L["Payments_Col_Amount"]">
+                <strong>@context.Amount.ToString("N2") @context.CurrencyCode</strong>
+            </MudTd>
+            <MudTd DataLabel="@L["Payments_Col_VS"]">@(context.VariableSymbol ?? "—")</MudTd>
+            <MudTd DataLabel="@L["Payments_Col_Counterparty"]">
+                <div>@(context.CounterpartyName ?? "—")</div>
+                @if (!string.IsNullOrWhiteSpace(context.CounterpartyAccount))
+                {
+                    <MudText Typo="Typo.caption">@context.CounterpartyAccount</MudText>
+                }
+            </MudTd>
+            <MudTd DataLabel="@L["Payments_Col_Status"]">
+                <MudChip T="string" Color="@StatusColor(context.MatchStatus)" Size="Size.Small">
+                    @L[$"EMatchStatus_{context.MatchStatus}"]
+                </MudChip>
+            </MudTd>
+            <MudTd DataLabel="@L["Payments_Col_MatchedInvoices"]">
+                @if (context.MatchedInvoiceNumbers.Count == 0)
+                {
+                    <span>—</span>
+                }
+                else
+                {
+                    @string.Join(", ", context.MatchedInvoiceNumbers)
+                }
+            </MudTd>
+            <MudTd DataLabel="@L["Payments_Col_Actions"]" Style="text-align:right;">
+                @if (context.MatchStatus is EMatchStatus.Unmatched or EMatchStatus.NeedsReview)
+                {
+                    <MudTooltip Text="@L["InvoicePayments_MatchManually"]">
+                        <MudIconButton Size="Size.Small" Icon="@Icons.Material.Filled.Link"
+                                       Color="Color.Primary"
+                                       OnClick="@(() => OpenMatchDialog(context))"
+                                       OnClickStopPropagation="true" />
+                    </MudTooltip>
+                    <MudTooltip Text="@L["Payments_Action_Ignore"]">
+                        <MudIconButton Size="Size.Small" Icon="@Icons.Material.Filled.Block"
+                                       OnClick="@(() => IgnoreAsync(context))"
+                                       OnClickStopPropagation="true" />
+                    </MudTooltip>
+                }
+            </MudTd>
+        </RowTemplate>
+        <PagerContent>
+            <MudTablePager PageSizeOptions="new[] { 25, 50, 100 }"
+                           RowsPerPageString="@L["Grid_RowsPerPage"]" />
+        </PagerContent>
+    </MudTable>
+
+    <MudText Typo="Typo.caption" Class="mt-2">
+        @string.Format(L["Payments_Total_Info"].Value, _page.TotalCount)
+    </MudText>
+}
+
+@code {
+    // ─── Filter state ─────────────────────────────────────────────────────
+    private EMatchStatus? _statusFilter;
+    private EPaymentDirection? _directionFilter;
+    private string? _search;
+
+    // Loading + paged result.
+    private bool _loading;
+    private PagedResult<BankTransactionDto>? _page;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Reload();
+    }
+
+    private async Task Reload()
+    {
+        _loading = true;
+        try
+        {
+            _page = await Api.ListTransactionsAsync(
+                status: _statusFilter,
+                direction: _directionFilter,
+                search: _search,
+                page: 1,
+                pageSize: 50);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task OnStatusChanged(EMatchStatus? v)
+    {
+        _statusFilter = v;
+        await Reload();
+    }
+
+    private async Task OnDirectionChanged(EPaymentDirection? v)
+    {
+        _directionFilter = v;
+        await Reload();
+    }
+
+    /// <summary>Navigates to the read-only detail page for a single transaction.</summary>
+    private void OpenDetail(BankTransactionDto row) =>
+        Navigation.NavigateTo($"/payments/{row.Id}");
+
+    /// <summary>Opens the manual-match dialog with this transaction pre-selected.</summary>
+    private async Task OpenMatchDialog(BankTransactionDto row)
+    {
+        var parameters = new DialogParameters { ["Transaction"] = row };
+        var dialog = await DialogService.ShowAsync<MatchPaymentDialog>(L["MatchDialog_Title"], parameters);
+        var result = await dialog.Result;
+        if (result?.Canceled == false)
+        {
+            await Reload();
+        }
+    }
+
+    /// <summary>Flags a transaction as not-our-concern. Optimistic UI update → reload on success.</summary>
+    private async Task IgnoreAsync(BankTransactionDto row)
+    {
+        try
+        {
+            await Api.IgnoreAsync(row.Id);
+            Snackbar.Add(L["Payments_Ignored_Toast"], Severity.Success);
+            await Reload();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+    }
+
+    /// <summary>Maps EMatchStatus → chip color for quick visual scan.</summary>
+    private static Color StatusColor(EMatchStatus s) => s switch
+    {
+        EMatchStatus.Matched => Color.Success,
+        EMatchStatus.PartiallyMatched => Color.Info,
+        EMatchStatus.Unmatched => Color.Warning,
+        EMatchStatus.NeedsReview => Color.Error,
+        EMatchStatus.Ignored => Color.Dark,
+        _ => Color.Default,
+    };
+}

@@ -10,6 +10,7 @@
 @inject DashboardApiService DashboardService
 @inject TaxApiService TaxService
 @inject ReminderApiService ReminderService
+@inject PaymentMatchingApiService PaymentApi
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
@@ -221,6 +222,25 @@ else
                 </MudCardContent>
             </MudCard>
         </MudItem>
+
+        @* KPI tile — count of unmatched / needs-review bank transactions.
+           Hidden when zero AND payment matching is not yet activated, so the
+           tile doesn't add noise for accounts that don't use the feature. *@
+        @if (_unmatchedPaymentsCount > 0)
+        {
+            <MudItem xs="12" sm="6" md="4">
+                <MudCard Elevation="2" Class="rounded-lg cursor-pointer" @onclick="@(() => Navigation.NavigateTo("/payments"))">
+                    <MudCardContent>
+                        <div class="d-flex justify-space-between align-center mb-4">
+                            <MudIcon Icon="@Icons.Material.Filled.Payments" Color="Color.Error" Size="Size.Large" />
+                            <MudChip T="string" Color="Color.Error" Size="Size.Small">@_unmatchedPaymentsCount</MudChip>
+                        </div>
+                        <MudText Typo="Typo.h5" GutterBottom="true">@_unmatchedPaymentsCount</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">@L["Dashboard_Kpi_UnmatchedPayments"]</MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        }
     </MudGrid>
 
     @* ─── Tax Estimate & Insurance Advance Cards ─────────────────────────────
@@ -553,6 +573,9 @@ else
     private bool _isSysAdmin = false;
     private bool _isImpersonating = false;
 
+    // Count of bank transactions awaiting attention. Hidden tile when zero.
+    private int _unmatchedPaymentsCount;
+
     // Chart options — shared config for all donut charts on the dashboard
     private ChartOptions _chartOptions = new()
     {
@@ -610,6 +633,16 @@ else
                 catch
                 {
                     // Ignore — reminders may not be configured yet
+                }
+
+                // Unmatched payment count (non-blocking — feature is opt-in per company).
+                try
+                {
+                    _unmatchedPaymentsCount = await PaymentApi.GetUnmatchedCountAsync();
+                }
+                catch
+                {
+                    // Ignore — payment matching may not be configured yet.
                 }
             }
         }

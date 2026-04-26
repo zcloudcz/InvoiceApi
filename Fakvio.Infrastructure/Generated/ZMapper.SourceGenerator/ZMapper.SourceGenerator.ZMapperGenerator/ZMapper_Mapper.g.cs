@@ -795,6 +795,7 @@ public sealed class Mapper : IMapper
             destination.IsSentByEmail = source.IsSentByEmail;
             destination.LastSentByEmailAt = source.LastSentByEmailAt;
             destination.PaidAt = source.PaidAt;
+            destination.PaidAmount = source.PaidAmount;
             destination.InvoiceItem = source.InvoiceItem
                 ?.Select(item => item.ToInvoiceItemDto())
                 .ToList();
@@ -832,6 +833,7 @@ public sealed class Mapper : IMapper
             destination.IsSentByEmail = source.IsSentByEmail;
             destination.LastSentByEmailAt = source.LastSentByEmailAt;
             destination.PaidAt = source.PaidAt;
+            destination.PaidAmount = source.PaidAmount;
             destination.InvoiceItem = source.InvoiceItem
                 ?.Select(item => item.ToInvoiceItemDto())
                 .ToList();

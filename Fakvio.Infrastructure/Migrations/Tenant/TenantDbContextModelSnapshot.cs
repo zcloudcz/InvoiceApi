@@ -207,6 +207,158 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                     b.ToTable("BankAccount");
                 });
 
+            modelBuilder.Entity("Fakvio.Domain.Entities.BankAccountMailbox", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("ActiveFrom")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("BankAccountId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("CreatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("DeactivatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("EmailsReceivedCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("InboundAlias")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("LastEmailReceivedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("UpdatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BankAccountId")
+                        .IsUnique();
+
+                    b.HasIndex("InboundAlias")
+                        .IsUnique();
+
+                    b.HasIndex("IsActive");
+
+                    b.ToTable("BankAccountMailbox");
+                });
+
+            modelBuilder.Entity("Fakvio.Domain.Entities.BankTransaction", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<long>("BankAccountId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("ConstantSymbol")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("CounterpartyAccount")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("CounterpartyName")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("CreatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("CurrencyCode")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)");
+
+                    b.Property<string>("DeduplicationHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<int>("Direction")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ImportSource")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("MatchStatus")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Message")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<decimal?>("ParserConfidence")
+                        .HasPrecision(4, 3)
+                        .HasColumnType("numeric(4,3)");
+
+                    b.Property<string>("ParserModel")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("RawPayload")
+                        .HasColumnType("text");
+
+                    b.Property<string>("SpecificSymbol")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime>("TransactionDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("UpdatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("VariableSymbol")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MatchStatus");
+
+                    b.HasIndex("BankAccountId", "DeduplicationHash")
+                        .IsUnique();
+
+                    b.HasIndex("BankAccountId", "TransactionDate");
+
+                    b.ToTable("BankTransaction");
+                });
+
             modelBuilder.Entity("Fakvio.Domain.Entities.BillingSettings", b =>
                 {
                     b.Property<long>("Id")
@@ -873,6 +1025,103 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                     b.ToTable("FileAttachment");
                 });
 
+            modelBuilder.Entity("Fakvio.Domain.Entities.InboundEmail", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<long>("BankAccountMailboxId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("BankTransactionId")
+                        .HasColumnType("bigint");
+
+                    b.Property<bool>("BodyTruncated")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("CreatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("DeduplicationHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime?>("EmailDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FromAddress")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("FromDisplayName")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("HtmlBody")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ImapUid")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("MessageId")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<int>("ParseAttempts")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ParseError")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<int>("ParseStatus")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("ServerReceivedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Subject")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("TextBody")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ToAddress")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("UpdatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BankTransactionId");
+
+                    b.HasIndex("ParseStatus");
+
+                    b.HasIndex("ServerReceivedAt");
+
+                    b.HasIndex("BankAccountMailboxId", "DeduplicationHash")
+                        .IsUnique();
+
+                    b.ToTable("InboundEmail");
+                });
+
             modelBuilder.Entity("Fakvio.Domain.Entities.Invoice", b =>
                 {
                     b.Property<long>("Id")
@@ -944,6 +1193,12 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
 
                     b.Property<long?>("OriginalInvoiceId")
                         .HasColumnType("bigint");
+
+                    b.Property<decimal>("PaidAmount")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasDefaultValue(0m);
 
                     b.Property<DateTime?>("PaidAt")
                         .HasColumnType("timestamp with time zone");
@@ -1290,6 +1545,66 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                             Name = "Continuous format (NNNNNN)",
                             ResetsMonthly = false,
                             ResetsYearly = false
+                        });
+                });
+
+            modelBuilder.Entity("Fakvio.Domain.Entities.PaymentMatch", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<long>("BankTransactionId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("CreatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("InvoiceId")
+                        .HasColumnType("bigint");
+
+                    b.Property<decimal>("MatchedAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateTime>("MatchedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("MatchedBy")
+                        .HasColumnType("integer");
+
+                    b.Property<long?>("MatchedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<long?>("ReceivedInvoiceId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("UpdatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BankTransactionId");
+
+                    b.HasIndex("InvoiceId");
+
+                    b.HasIndex("ReceivedInvoiceId");
+
+                    b.ToTable("PaymentMatch", t =>
+                        {
+                            t.HasCheckConstraint("CK_PaymentMatch_Target", "\"InvoiceId\" IS NOT NULL OR \"ReceivedInvoiceId\" IS NOT NULL");
                         });
                 });
 
@@ -1846,6 +2161,28 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                     b.Navigation("Client");
                 });
 
+            modelBuilder.Entity("Fakvio.Domain.Entities.BankAccountMailbox", b =>
+                {
+                    b.HasOne("Fakvio.Domain.Entities.BankAccount", "BankAccount")
+                        .WithMany()
+                        .HasForeignKey("BankAccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("BankAccount");
+                });
+
+            modelBuilder.Entity("Fakvio.Domain.Entities.BankTransaction", b =>
+                {
+                    b.HasOne("Fakvio.Domain.Entities.BankAccount", "BankAccount")
+                        .WithMany()
+                        .HasForeignKey("BankAccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("BankAccount");
+                });
+
             modelBuilder.Entity("Fakvio.Domain.Entities.BillingSettings", b =>
                 {
                     b.HasOne("Fakvio.Domain.Entities.Client", "Client")
@@ -1901,6 +2238,24 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                         .IsRequired();
 
                     b.Navigation("Client");
+                });
+
+            modelBuilder.Entity("Fakvio.Domain.Entities.InboundEmail", b =>
+                {
+                    b.HasOne("Fakvio.Domain.Entities.BankAccountMailbox", "BankAccountMailbox")
+                        .WithMany()
+                        .HasForeignKey("BankAccountMailboxId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Fakvio.Domain.Entities.BankTransaction", "BankTransaction")
+                        .WithMany()
+                        .HasForeignKey("BankTransactionId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("BankAccountMailbox");
+
+                    b.Navigation("BankTransaction");
                 });
 
             modelBuilder.Entity("Fakvio.Domain.Entities.Invoice", b =>
@@ -1963,6 +2318,31 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                         .IsRequired();
 
                     b.Navigation("NumberSequenceFormat");
+                });
+
+            modelBuilder.Entity("Fakvio.Domain.Entities.PaymentMatch", b =>
+                {
+                    b.HasOne("Fakvio.Domain.Entities.BankTransaction", "BankTransaction")
+                        .WithMany("PaymentMatch")
+                        .HasForeignKey("BankTransactionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Fakvio.Domain.Entities.Invoice", "Invoice")
+                        .WithMany("PaymentMatch")
+                        .HasForeignKey("InvoiceId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Fakvio.Domain.Entities.ReceivedInvoice", "ReceivedInvoice")
+                        .WithMany()
+                        .HasForeignKey("ReceivedInvoiceId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("BankTransaction");
+
+                    b.Navigation("Invoice");
+
+                    b.Navigation("ReceivedInvoice");
                 });
 
             modelBuilder.Entity("Fakvio.Domain.Entities.ReceivedInvoice", b =>
@@ -2066,6 +2446,11 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                     b.Navigation("NumberSequence");
                 });
 
+            modelBuilder.Entity("Fakvio.Domain.Entities.BankTransaction", b =>
+                {
+                    b.Navigation("PaymentMatch");
+                });
+
             modelBuilder.Entity("Fakvio.Domain.Entities.ChatConversation", b =>
                 {
                     b.Navigation("Messages");
@@ -2087,6 +2472,8 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                     b.Navigation("CreditNote");
 
                     b.Navigation("InvoiceItem");
+
+                    b.Navigation("PaymentMatch");
                 });
 
             modelBuilder.Entity("Fakvio.Domain.Entities.ReceivedInvoice", b =>

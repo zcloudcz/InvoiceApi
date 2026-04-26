@@ -453,6 +453,20 @@ else
                 </MudCard>
             </MudItem>
 
+            @* Full-width: Payments panel — progress bar + matched payments + manual match button.
+               Wired only for invoices that have been issued (Completed / PartiallyPaid / Paid).
+               Drafts and credit notes don't show this section. *@
+            @if (_invoice.Status == EInvoiceStatus.Completed
+                 || _invoice.Status == EInvoiceStatus.PartiallyPaid
+                 || _invoice.Status == EInvoiceStatus.Paid)
+            {
+                <MudItem xs="12">
+                    <InvoicePaymentsPanel Invoice="_invoice"
+                                          RefreshTrigger="_paymentsRefreshTrigger"
+                                          OnChanged="OnPaymentsChanged" />
+                </MudItem>
+            }
+
             @* Full-width: Read-only items table *@
             <MudItem xs="12">
                 <MudText Typo="Typo.h6" Class="mb-2">@L["Invoice_Items"]</MudText>
@@ -601,6 +615,16 @@ else
     private InvoiceDto? _invoice;
     private bool _loading = true;
     private string? _errorMessage; // Stores API error message for display instead of generic "Not Found"
+
+    // Bumped after a manual match/unmatch so InvoicePaymentsPanel reloads its rows.
+    private int _paymentsRefreshTrigger;
+
+    /// <summary>Called when the payments panel reports a change (manual match / unmatch).</summary>
+    private async Task OnPaymentsChanged()
+    {
+        await LoadInvoice();
+        _paymentsRefreshTrigger++;
+    }
 
     // Create mode state — true when Id == 0 (navigated to /invoices/create)
     private bool _isCreateMode => Id == 0;

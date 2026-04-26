@@ -1,0 +1,241 @@
+@using Fakvio.Contracts.Dto.Invoice
+@using Fakvio.Contracts.Dto.PaymentMatching
+@using Fakvio.Domain.Enums
+@inject FakvioService InvoiceApi
+@inject PaymentMatchingApiService PaymentApi
+@inject IStringLocalizer<SharedResource> L
+@inject ISnackbar Snackbar
+
+@*
+    Manual match dialog. Two entry modes:
+      1) Caller passes a BankTransactionDto → user picks an invoice.
+      2) Caller passes an InvoiceDto       → user picks an unmatched transaction.
+    Both modes share the same backend call (PaymentMatchingService.ManualMatchAsync).
+
+    Pre-fill rules:
+      - Default Amount = min(transaction.Amount remaining, invoice.Remaining).
+      - VS-matching invoices are sorted to the top of the picker so the most
+        likely candidate sits above the fold.
+*@
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">@L["MatchDialog_Title"]</MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_loading)
+        {
+            <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+        }
+        else
+        {
+            @* Show a short summary of the "fixed" side (the one the caller passed in). *@
+            @if (Transaction != null)
+            {
+                <MudPaper Class="pa-2 mb-2" Outlined="true">
+                    <MudText Typo="Typo.body2">
+                        <strong>@L["Payments_Col_Amount"]:</strong>
+                        @Transaction.Amount.ToString("N2") @Transaction.CurrencyCode
+                    </MudText>
+                    <MudText Typo="Typo.body2">
+                        <strong>VS:</strong> @(Transaction.VariableSymbol ?? "—")
+                    </MudText>
+                    <MudText Typo="Typo.body2">
+                        <strong>@L["Payments_Col_Counterparty"]:</strong> @(Transaction.CounterpartyName ?? "—")
+                    </MudText>
+                </MudPaper>
+
+                @* Pick an invoice. *@
+                <MudAutocomplete T="InvoiceDto"
+                                 Value="_pickedInvoice"
+                                 ValueChanged="OnInvoicePicked"
+                                 SearchFunc="SearchInvoices"
+                                 ToStringFunc="@(i => i == null ? string.Empty : $"{i.DocumentNumber} — {i.ClientName} — {i.TotalWithVat - i.PaidAmount:N2} {i.CurrencyCode}")"
+                                 Label="@L["MatchDialog_PickInvoice"]"
+                                 Variant="Variant.Outlined"
+                                 ResetValueOnEmptyText="true"
+                                 ShowProgressIndicator="true" />
+            }
+            else if (Invoice != null)
+            {
+                <MudPaper Class="pa-2 mb-2" Outlined="true">
+                    <MudText Typo="Typo.body2">
+                        <strong>@Invoice.DocumentNumber</strong> — @Invoice.ClientName
+                    </MudText>
+                    <MudText Typo="Typo.body2">
+                        <strong>@L["MatchDialog_Remaining"]:</strong>
+                        @((Invoice.TotalWithVat - Invoice.PaidAmount).ToString("N2")) @Invoice.CurrencyCode
+                    </MudText>
+                </MudPaper>
+
+                <MudAutocomplete T="BankTransactionDto"
+                                 Value="_pickedTransaction"
+                                 ValueChanged="OnTransactionPicked"
+                                 SearchFunc="SearchTransactions"
+                                 ToStringFunc="@(t => t == null ? string.Empty : $"{t.TransactionDate:dd.MM.yyyy} — {t.Amount:N2} {t.CurrencyCode} — VS {t.VariableSymbol ?? "—"} — {t.CounterpartyName ?? "—"}")"
+                                 Label="@L["MatchDialog_PickTransaction"]"
+                                 Variant="Variant.Outlined"
+                                 ResetValueOnEmptyText="true"
+                                 ShowProgressIndicator="true" />
+            }
+
+            <MudNumericField T="decimal" Value="_amount" ValueChanged="v => _amount = v"
+                             Label="@L["MatchDialog_Amount"]" Min="0.01m"
+                             Format="N2" Class="mt-3" />
+
+            <MudTextField @bind-Value="_note" Label="@L["MatchDialog_Note"]" Lines="2" Class="mt-3" />
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">@L["Common_Cancel"]</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled"
+                   OnClick="Submit" Disabled="@(_busy || !CanSubmit)">
+            @L["MatchDialog_Submit"]
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = null!;
+
+    /// <summary>Pass the transaction when the user opens the dialog from the Payments grid.</summary>
+    [Parameter] public BankTransactionDto? Transaction { get; set; }
+
+    /// <summary>Pass the invoice when the user opens the dialog from InvoiceDetail.</summary>
+    [Parameter] public InvoiceDto? Invoice { get; set; }
+
+    private bool _loading;
+    private bool _busy;
+
+    private InvoiceDto? _pickedInvoice;
+    private BankTransactionDto? _pickedTransaction;
+
+    private decimal _amount;
+    private string? _note;
+
+    /// <summary>Cached candidate lists — fetched once on open. Kept simple for MVP.</summary>
+    private List<InvoiceDto>? _candidateInvoices;
+    private List<BankTransactionDto>? _candidateTransactions;
+
+    private bool CanSubmit =>
+        _amount > 0
+        && ((Transaction != null && _pickedInvoice != null)
+            || (Invoice != null && _pickedTransaction != null));
+
+    protected override async Task OnInitializedAsync()
+    {
+        _loading = true;
+        try
+        {
+            if (Transaction != null)
+            {
+                // Default amount = transaction's remaining (Amount minus already-assigned).
+                _amount = Math.Max(0, Transaction.Amount - Transaction.MatchedTotal);
+
+                // Candidates: every Completed/PartiallyPaid invoice with matching currency.
+                // Real backend filtering would scale better; for MVP we GetAll and filter client-side.
+                var all = await InvoiceApi.GetAllAsync();
+                _candidateInvoices = all
+                    .Where(i => i.Status == EInvoiceStatus.Completed || i.Status == EInvoiceStatus.PartiallyPaid)
+                    .Where(i => i.CurrencyCode == Transaction.CurrencyCode)
+                    .OrderByDescending(i => i.VariableSymbol == Transaction.VariableSymbol) // VS hits float to top
+                    .ThenByDescending(i => i.IssueDate)
+                    .ToList();
+            }
+            else if (Invoice != null)
+            {
+                _amount = Math.Max(0, Invoice.TotalWithVat - Invoice.PaidAmount);
+
+                var page = await PaymentApi.ListTransactionsAsync(
+                    status: EMatchStatus.Unmatched, pageSize: 100);
+                _candidateTransactions = page?.Items ?? new List<BankTransactionDto>();
+            }
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    /// <summary>Async source for the invoice autocomplete dropdown.</summary>
+    private Task<IEnumerable<InvoiceDto>> SearchInvoices(string? text, CancellationToken ct)
+    {
+        var src = _candidateInvoices ?? new List<InvoiceDto>();
+        if (string.IsNullOrWhiteSpace(text)) return Task.FromResult<IEnumerable<InvoiceDto>>(src);
+
+        var t = text.Trim();
+        return Task.FromResult<IEnumerable<InvoiceDto>>(src.Where(i =>
+            (i.DocumentNumber?.Contains(t, StringComparison.OrdinalIgnoreCase) ?? false)
+            || (i.ClientName?.Contains(t, StringComparison.OrdinalIgnoreCase) ?? false)
+            || (i.VariableSymbol?.Contains(t) ?? false)));
+    }
+
+    private Task<IEnumerable<BankTransactionDto>> SearchTransactions(string? text, CancellationToken ct)
+    {
+        var src = _candidateTransactions ?? new List<BankTransactionDto>();
+        if (string.IsNullOrWhiteSpace(text)) return Task.FromResult<IEnumerable<BankTransactionDto>>(src);
+
+        var t = text.Trim();
+        return Task.FromResult<IEnumerable<BankTransactionDto>>(src.Where(x =>
+            (x.VariableSymbol?.Contains(t) ?? false)
+            || (x.CounterpartyName?.Contains(t, StringComparison.OrdinalIgnoreCase) ?? false)
+            || x.Amount.ToString("N2").Contains(t)));
+    }
+
+    private void OnInvoicePicked(InvoiceDto? invoice)
+    {
+        _pickedInvoice = invoice;
+        // If we have both sides now, refine default amount = min(remainings).
+        if (invoice != null && Transaction != null)
+        {
+            var txRemaining = Math.Max(0, Transaction.Amount - Transaction.MatchedTotal);
+            var invRemaining = Math.Max(0, invoice.TotalWithVat - invoice.PaidAmount);
+            _amount = Math.Min(txRemaining, invRemaining);
+        }
+    }
+
+    private void OnTransactionPicked(BankTransactionDto? transaction)
+    {
+        _pickedTransaction = transaction;
+        if (transaction != null && Invoice != null)
+        {
+            var txRemaining = Math.Max(0, transaction.Amount - transaction.MatchedTotal);
+            var invRemaining = Math.Max(0, Invoice.TotalWithVat - Invoice.PaidAmount);
+            _amount = Math.Min(txRemaining, invRemaining);
+        }
+    }
+
+    private async Task Submit()
+    {
+        _busy = true;
+        try
+        {
+            // Resolve the BankTransactionId / InvoiceId from whichever side the caller passed.
+            var txId = Transaction?.Id ?? _pickedTransaction!.Id;
+            var invoiceId = Invoice?.Id ?? _pickedInvoice!.Id;
+
+            var result = await PaymentApi.MatchAsync(txId, new ManualMatchRequest
+            {
+                InvoiceId = invoiceId,
+                Amount = _amount,
+                Note = _note,
+            });
+
+            if (result != null)
+            {
+                Snackbar.Add(L["MatchDialog_Success"], Severity.Success);
+                Dialog.Close(DialogResult.Ok(true));
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private void Cancel() => Dialog.Cancel();
+}

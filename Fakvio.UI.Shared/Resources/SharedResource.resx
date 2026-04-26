@@ -1300,4 +1300,124 @@
   <data name="Reminder_DaysOverdue" xml:space="preserve"><value>Dní po splatnosti</value></data>
   <data name="Reminder_Subject" xml:space="preserve"><value>Předmět</value></data>
   <data name="Reminder_Levels" xml:space="preserve"><value>Úrovně upomínek</value></data>
+
+  <!-- Payment matching feature — see PLATBY-ZADANI.md -->
+  <data name="Nav_Payments" xml:space="preserve"><value>Platby</value></data>
+  <data name="Nav_PaymentMatching" xml:space="preserve"><value>Párování plateb</value></data>
+  <data name="Payments_Title" xml:space="preserve"><value>Platby</value></data>
+  <data name="Payments_Subtitle" xml:space="preserve"><value>Evidence bankovních transakcí a párování s fakturami</value></data>
+  <data name="Payments_FilterStatus" xml:space="preserve"><value>Stav</value></data>
+  <data name="Payments_FilterDirection" xml:space="preserve"><value>Směr</value></data>
+  <data name="Payments_Filter_All" xml:space="preserve"><value>Vše</value></data>
+  <data name="Payments_SearchPlaceholder" xml:space="preserve"><value>Hledat (protistrana, VS, zpráva)...</value></data>
+  <data name="Payments_Refresh" xml:space="preserve"><value>Obnovit</value></data>
+  <data name="Payments_Empty" xml:space="preserve"><value>Žádné transakce k zobrazení.</value></data>
+  <data name="Payments_Col_Date" xml:space="preserve"><value>Datum</value></data>
+  <data name="Payments_Col_Direction" xml:space="preserve"><value>Směr</value></data>
+  <data name="Payments_Col_Amount" xml:space="preserve"><value>Částka</value></data>
+  <data name="Payments_Col_VS" xml:space="preserve"><value>VS</value></data>
+  <data name="Payments_Col_Counterparty" xml:space="preserve"><value>Protistrana</value></data>
+  <data name="Payments_Col_Status" xml:space="preserve"><value>Stav</value></data>
+  <data name="Payments_Col_MatchedInvoices" xml:space="preserve"><value>Spárované faktury</value></data>
+  <data name="Payments_Col_Actions" xml:space="preserve"><value>Akce</value></data>
+  <data name="Payments_Action_Ignore" xml:space="preserve"><value>Ignorovat</value></data>
+  <data name="Payments_Ignored_Toast" xml:space="preserve"><value>Transakce byla označena jako ignorovaná.</value></data>
+  <data name="Payments_Total_Info" xml:space="preserve"><value>Celkem {0} transakcí</value></data>
+
+  <data name="EMatchStatus_Unmatched" xml:space="preserve"><value>Nespárované</value></data>
+  <data name="EMatchStatus_Matched" xml:space="preserve"><value>Spárované</value></data>
+  <data name="EMatchStatus_PartiallyMatched" xml:space="preserve"><value>Částečně spárované</value></data>
+  <data name="EMatchStatus_Ignored" xml:space="preserve"><value>Ignorované</value></data>
+  <data name="EMatchStatus_NeedsReview" xml:space="preserve"><value>Vyžaduje kontrolu</value></data>
+
+  <data name="EPaymentDirection_Incoming" xml:space="preserve"><value>Příchozí</value></data>
+  <data name="EPaymentDirection_Outgoing" xml:space="preserve"><value>Odchozí</value></data>
+
+  <data name="EParseStatus_Pending" xml:space="preserve"><value>Čeká na zpracování</value></data>
+  <data name="EParseStatus_Parsed" xml:space="preserve"><value>Zpracováno</value></data>
+  <data name="EParseStatus_NeedsReview" xml:space="preserve"><value>Vyžaduje kontrolu</value></data>
+  <data name="EParseStatus_Failed" xml:space="preserve"><value>Chyba zpracování</value></data>
+  <data name="EParseStatus_Ignored" xml:space="preserve"><value>Ignorováno</value></data>
+
+  <data name="BankMailbox_Title" xml:space="preserve"><value>Párování plateb</value></data>
+  <data name="BankMailbox_NotActive_Explain" xml:space="preserve"><value>Aktivací získáte unikátní e-mail, na který vaše banka posílá notifikace o pohybech. Systém je automaticky spáruje s fakturami.</value></data>
+  <data name="BankMailbox_Activate" xml:space="preserve"><value>Aktivovat</value></data>
+  <data name="BankMailbox_Deactivate" xml:space="preserve"><value>Deaktivovat</value></data>
+  <data name="BankMailbox_Regenerate" xml:space="preserve"><value>Vygenerovat nový alias</value></data>
+  <data name="BankMailbox_ActiveChip" xml:space="preserve"><value>Aktivní</value></data>
+  <data name="BankMailbox_InactiveChip" xml:space="preserve"><value>Neaktivní</value></data>
+  <data name="BankMailbox_Stats" xml:space="preserve"><value>Přijato {0} e-mailů, poslední {1}</value></data>
+  <data name="BankMailbox_ActiveFrom" xml:space="preserve"><value>Aktivní od</value></data>
+  <data name="BankMailbox_Copy" xml:space="preserve"><value>Zkopírovat</value></data>
+  <data name="BankMailbox_CopiedToast" xml:space="preserve"><value>Zkopírováno do schránky</value></data>
+  <data name="BankMailbox_ActivatedToast" xml:space="preserve"><value>Párování aktivováno</value></data>
+  <data name="BankMailbox_DeactivatedToast" xml:space="preserve"><value>Párování deaktivováno</value></data>
+  <data name="BankMailbox_RegeneratedToast" xml:space="preserve"><value>Alias byl přegenerován. Starý přestane přijímat platby.</value></data>
+  <data name="BankMailbox_DeactivateConfirm" xml:space="preserve"><value>Opravdu chcete deaktivovat párování? Nové e-maily se nebudou stahovat.</value></data>
+  <data name="BankMailbox_RegenerateConfirm" xml:space="preserve"><value>Vygenerovat nový alias? Starý bude trvale zneplatněn. Budete muset změnit nastavení notifikací v bance.</value></data>
+
+  <data name="SysAdminPayment_Title" xml:space="preserve"><value>Párování plateb — systémové nastavení</value></data>
+  <data name="SysAdminPayment_Subtitle" xml:space="preserve"><value>Konfigurace centrální IMAP schránky a plánovače</value></data>
+  <data name="SysAdminPayment_General" xml:space="preserve"><value>Obecné</value></data>
+  <data name="SysAdminPayment_IsEnabled" xml:space="preserve"><value>Funkce aktivní (hlavní vypínač)</value></data>
+  <data name="SysAdminPayment_InboundDomain" xml:space="preserve"><value>Příchozí doména (např. pay.fakvio.cz)</value></data>
+  <data name="SysAdminPayment_PollIntervalMinutes" xml:space="preserve"><value>Interval stahování (minuty)</value></data>
+  <data name="SysAdminPayment_RetentionDays" xml:space="preserve"><value>Retence archivu (dny)</value></data>
+  <data name="SysAdminPayment_Imap" xml:space="preserve"><value>IMAP server</value></data>
+  <data name="SysAdminPayment_ImapHost" xml:space="preserve"><value>Host</value></data>
+  <data name="SysAdminPayment_ImapPort" xml:space="preserve"><value>Port</value></data>
+  <data name="SysAdminPayment_UseSsl" xml:space="preserve"><value>SSL</value></data>
+  <data name="SysAdminPayment_ImapUser" xml:space="preserve"><value>Uživatelské jméno</value></data>
+  <data name="SysAdminPayment_ImapPassword" xml:space="preserve"><value>Heslo</value></data>
+  <data name="SysAdminPayment_ImapPassword_Hint" xml:space="preserve"><value>Prázdné = zachovat stávající heslo</value></data>
+  <data name="SysAdminPayment_ImapFolder" xml:space="preserve"><value>Vstupní složka</value></data>
+  <data name="SysAdminPayment_ProcessedFolder" xml:space="preserve"><value>Složka "zpracováno"</value></data>
+  <data name="SysAdminPayment_UnroutedFolder" xml:space="preserve"><value>Složka "neznámý alias"</value></data>
+  <data name="SysAdminPayment_TestConnection" xml:space="preserve"><value>Otestovat připojení</value></data>
+  <data name="SysAdminPayment_Save" xml:space="preserve"><value>Uložit</value></data>
+  <data name="SysAdminPayment_Saved" xml:space="preserve"><value>Nastavení uloženo.</value></data>
+  <data name="SysAdminPayment_TestOk" xml:space="preserve"><value>Připojení OK. V INBOXu je {0} zpráv.</value></data>
+  <data name="SysAdminPayment_TestFail" xml:space="preserve"><value>Připojení selhalo</value></data>
+  <data name="SysAdminPayment_WorkerStatus" xml:space="preserve"><value>Stav workera</value></data>
+  <data name="SysAdminPayment_LastRun" xml:space="preserve"><value>Poslední běh</value></data>
+  <data name="SysAdminPayment_LastStatus" xml:space="preserve"><value>Výsledek</value></data>
+  <data name="SysAdminPayment_LastProcessed" xml:space="preserve"><value>Zpracovaných e-mailů</value></data>
+
+  <data name="Common_Yes" xml:space="preserve"><value>Ano</value></data>
+  <data name="Common_Cancel" xml:space="preserve"><value>Zrušit</value></data>
+  <data name="Grid_RowsPerPage" xml:space="preserve"><value>Řádků na stránku:</value></data>
+
+  <!-- Match dialog + InvoiceDetail Payments panel -->
+  <data name="MatchDialog_Title" xml:space="preserve"><value>Spárovat platbu s fakturou</value></data>
+  <data name="MatchDialog_PickInvoice" xml:space="preserve"><value>Vyberte fakturu</value></data>
+  <data name="MatchDialog_PickTransaction" xml:space="preserve"><value>Vyberte platbu</value></data>
+  <data name="MatchDialog_Amount" xml:space="preserve"><value>Spárovaná částka</value></data>
+  <data name="MatchDialog_Note" xml:space="preserve"><value>Poznámka</value></data>
+  <data name="MatchDialog_Submit" xml:space="preserve"><value>Spárovat</value></data>
+  <data name="MatchDialog_Success" xml:space="preserve"><value>Platba byla spárována.</value></data>
+  <data name="MatchDialog_Remaining" xml:space="preserve"><value>Zbývá doplatit</value></data>
+
+  <data name="InvoicePayments_Panel_Title" xml:space="preserve"><value>Platby</value></data>
+  <data name="InvoicePayments_PaidLabel" xml:space="preserve"><value>Zaplaceno</value></data>
+  <data name="InvoicePayments_OfTotal" xml:space="preserve"><value>z</value></data>
+  <data name="InvoicePayments_NoMatches" xml:space="preserve"><value>Žádné platby zatím nebyly spárovány.</value></data>
+  <data name="InvoicePayments_MatchManually" xml:space="preserve"><value>Spárovat platbu...</value></data>
+  <data name="InvoicePayments_Col_Date" xml:space="preserve"><value>Datum</value></data>
+  <data name="InvoicePayments_Col_Amount" xml:space="preserve"><value>Částka</value></data>
+  <data name="InvoicePayments_Col_Source" xml:space="preserve"><value>Zdroj</value></data>
+  <data name="InvoicePayments_Col_Note" xml:space="preserve"><value>Poznámka</value></data>
+  <data name="InvoicePayments_Unmatch" xml:space="preserve"><value>Zrušit párování</value></data>
+  <data name="InvoicePayments_UnmatchConfirm" xml:space="preserve"><value>Opravdu zrušit párování této platby? Stav faktury se přepočítá.</value></data>
+
+  <data name="Dashboard_Kpi_UnmatchedPayments" xml:space="preserve"><value>Platby k vyřešení</value></data>
+
+  <data name="PaymentDetail_BackToList" xml:space="preserve"><value>Zpět na přehled</value></data>
+  <data name="PaymentDetail_NotFound" xml:space="preserve"><value>Platba nenalezena.</value></data>
+  <data name="PaymentDetail_TransactionTitle" xml:space="preserve"><value>Bankovní transakce</value></data>
+  <data name="PaymentDetail_StatusTitle" xml:space="preserve"><value>Stav párování</value></data>
+  <data name="PaymentDetail_CounterpartyAccount" xml:space="preserve"><value>Číslo účtu protistrany</value></data>
+  <data name="PaymentDetail_Message" xml:space="preserve"><value>Zpráva pro příjemce</value></data>
+  <data name="PaymentDetail_Source" xml:space="preserve"><value>Zdroj importu</value></data>
+  <data name="PaymentDetail_AiConfidence" xml:space="preserve"><value>Důvěra AI</value></data>
+  <data name="PaymentDetail_MatchedInvoices" xml:space="preserve"><value>Spárované faktury</value></data>
 </root>
