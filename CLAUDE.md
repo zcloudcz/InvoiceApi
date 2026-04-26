@@ -84,3 +84,8 @@ Každá pravidelná úloha (poll, dunning, log flush, log cleanup, …) **musí 
 - Payment matching: `ImapPollWorker` (BackgroundService) ↔ `PaymentMatchingFunctions.RunImapPoll`,
   oba volají `IImapPollService.RunCycleAsync`. SysAdmin "Run now" v UI volá totéž
   přes HTTP `POST /api/sysadmin/payment-matching/run-now`.
+
+## AgenticTeam workflow
+
+Tento repozitář používá AgenticTeam (Story → Task → Dev → Review → Test → Ops) řízený přes
+GitHub Project v2 board. Detaily a přechody stavů viz `.claude/BOARD-OPS.md`.

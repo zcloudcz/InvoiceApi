@@ -364,3 +364,6 @@ FodyWeavers.xsd
 /InvoiceApi.API/nul
 /.claude/settings.local.json
 /Fakvio.Tests.Unit/appsettings.json
+
+# AgenticTeam working memory (per-task scratchpad, not committed)
+MEMORY.md

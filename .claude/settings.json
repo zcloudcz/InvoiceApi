@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh:*)",
+      "Bash(git:*)",
+      "Bash(jq:*)"
+    ],
+    "deny": [
+      "Bash(rm -rf /:*)",
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git reset --hard:*)"
+    ]
+  },
+  "env": {
+    "AGENTIC_PROJECT_NUMBER": "3",
+    "AGENTIC_PROJECT_OWNER": "@me",
+    "AGENTIC_AUTO_MERGE": "false"
+  }
+}
