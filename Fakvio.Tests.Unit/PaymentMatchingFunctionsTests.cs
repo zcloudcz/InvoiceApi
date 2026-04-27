@@ -345,6 +345,186 @@ public class PaymentMatchingFunctionsTests
         await _matcher.Received(1).UnmatchAsync(77L, "wrong invoice", Arg.Any<long?>(), Arg.Any<CancellationToken>());
         result.ShouldBeOfType<NoContentResult>();
     }
+
+    // ─── Mailbox lifecycle (Activate / Deactivate / Regenerate) ─────────────
+    //
+    // These three actions share the same wrapper shape (parse id → auth → call service)
+    // so we cover each with: 401 anon, 400 bad-id, and 200 happy-path delegation.
+
+    [Theory]
+    [InlineData("activate")]
+    [InlineData("deactivate")]
+    [InlineData("regenerate")]
+    public async Task MailboxLifecycle_Anonymous_Returns401(string action)
+    {
+        var (sut, _) = BuildSut();
+        var req = BuildAnonymousRequest();
+
+        var result = action switch
+        {
+            "activate"   => await sut.PaymentMatching_ActivateMailbox(req, "1"),
+            "deactivate" => await sut.PaymentMatching_DeactivateMailbox(req, "1"),
+            "regenerate" => await sut.PaymentMatching_RegenerateMailbox(req, "1"),
+            _ => throw new ArgumentOutOfRangeException(nameof(action)),
+        };
+
+        result.ShouldBeOfType<UnauthorizedResult>();
+    }
+
+    [Theory]
+    [InlineData("activate")]
+    [InlineData("deactivate")]
+    [InlineData("regenerate")]
+    public async Task MailboxLifecycle_InvalidBankAccountId_Returns400(string action)
+    {
+        var (sut, _) = BuildSut();
+        var req = BuildAuthenticatedRequest();
+
+        var result = action switch
+        {
+            "activate"   => await sut.PaymentMatching_ActivateMailbox(req, "not-a-number"),
+            "deactivate" => await sut.PaymentMatching_DeactivateMailbox(req, "not-a-number"),
+            "regenerate" => await sut.PaymentMatching_RegenerateMailbox(req, "not-a-number"),
+            _ => throw new ArgumentOutOfRangeException(nameof(action)),
+        };
+
+        result.ShouldBeOfType<BadRequestObjectResult>();
+    }
+
+    [Fact]
+    public async Task ActivateMailbox_AuthenticatedUser_DelegatesToService()
+    {
+        // Arrange
+        const long bankAccountId = 11L;
+        var dto = new BankAccountMailboxDto
+        {
+            Id = 1,
+            BankAccountId = bankAccountId,
+            InboundAlias = "pay-new",
+            FullEmailAddress = "pay-new@pay.fakvio.cz",
+            IsActive = true,
+        };
+        _mailboxService.ActivateAsync(bankAccountId, Arg.Any<CancellationToken>()).Returns(dto);
+
+        var (sut, _) = BuildSut();
+        var req = BuildAuthenticatedRequest();
+
+        // Act
+        var result = await sut.PaymentMatching_ActivateMailbox(req, bankAccountId.ToString());
+
+        // Assert
+        await _mailboxService.Received(1).ActivateAsync(bankAccountId, Arg.Any<CancellationToken>());
+        var ok = result.ShouldBeOfType<OkObjectResult>();
+        ok.Value.ShouldBe(dto);
+    }
+
+    [Fact]
+    public async Task DeactivateMailbox_AuthenticatedUser_DelegatesToService()
+    {
+        // Arrange
+        const long bankAccountId = 12L;
+        var dto = new BankAccountMailboxDto
+        {
+            Id = 2,
+            BankAccountId = bankAccountId,
+            InboundAlias = "pay-old",
+            FullEmailAddress = "pay-old@pay.fakvio.cz",
+            IsActive = false,
+        };
+        _mailboxService.DeactivateAsync(bankAccountId, Arg.Any<CancellationToken>()).Returns(dto);
+
+        var (sut, _) = BuildSut();
+        var req = BuildAuthenticatedRequest();
+
+        // Act
+        var result = await sut.PaymentMatching_DeactivateMailbox(req, bankAccountId.ToString());
+
+        // Assert
+        await _mailboxService.Received(1).DeactivateAsync(bankAccountId, Arg.Any<CancellationToken>());
+        var ok = result.ShouldBeOfType<OkObjectResult>();
+        ok.Value.ShouldBe(dto);
+    }
+
+    [Fact]
+    public async Task RegenerateMailbox_AuthenticatedUser_DelegatesToService()
+    {
+        // Arrange — RegenerateAsync issues a brand-new alias; old one is preserved server-side.
+        const long bankAccountId = 13L;
+        var dto = new BankAccountMailboxDto
+        {
+            Id = 3,
+            BankAccountId = bankAccountId,
+            InboundAlias = "pay-fresh",
+            FullEmailAddress = "pay-fresh@pay.fakvio.cz",
+            IsActive = true,
+        };
+        _mailboxService.RegenerateAsync(bankAccountId, Arg.Any<CancellationToken>()).Returns(dto);
+
+        var (sut, _) = BuildSut();
+        var req = BuildAuthenticatedRequest();
+
+        // Act
+        var result = await sut.PaymentMatching_RegenerateMailbox(req, bankAccountId.ToString());
+
+        // Assert
+        await _mailboxService.Received(1).RegenerateAsync(bankAccountId, Arg.Any<CancellationToken>());
+        var ok = result.ShouldBeOfType<OkObjectResult>();
+        ok.Value.ShouldBe(dto);
+    }
+
+    // ─── Auth precedence on body-bearing endpoints ──────────────────────────
+    //
+    // Match/Unmatch deserialize the request body. Verifies that the auth check
+    // runs BEFORE body deserialization — anonymous callers must be rejected even
+    // when the body is malformed. Otherwise a malformed body could leak parser
+    // exceptions to unauthenticated callers.
+
+    [Fact]
+    public async Task Match_AnonymousWithBody_Returns401()
+    {
+        var (sut, _) = BuildSut();
+        // Body would deserialize fine, but auth must reject first.
+        var ctx = new DefaultHttpContext();
+        var bytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new ManualMatchRequest { InvoiceId = 1, Amount = 10m }));
+        ctx.Request.Body = new MemoryStream(bytes);
+        ctx.Request.ContentType = "application/json";
+        ctx.Request.ContentLength = bytes.Length;
+
+        var result = await sut.PaymentMatching_Match(ctx.Request, "1");
+
+        result.ShouldBeOfType<UnauthorizedResult>();
+        await _matcher.DidNotReceiveWithAnyArgs().ManualMatchAsync(
+            default, default, default, default, default, default);
+    }
+
+    [Fact]
+    public async Task Unmatch_AnonymousWithBody_Returns401()
+    {
+        var (sut, _) = BuildSut();
+        var ctx = new DefaultHttpContext();
+        var bytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new UnmatchRequest { PaymentMatchId = 1 }));
+        ctx.Request.Body = new MemoryStream(bytes);
+        ctx.Request.ContentType = "application/json";
+        ctx.Request.ContentLength = bytes.Length;
+
+        var result = await sut.PaymentMatching_Unmatch(ctx.Request, "1");
+
+        result.ShouldBeOfType<UnauthorizedResult>();
+        await _matcher.DidNotReceiveWithAnyArgs().UnmatchAsync(
+            default, default, default, default);
+    }
+
+    [Fact]
+    public async Task Ignore_Anonymous_Returns401()
+    {
+        var (sut, _) = BuildSut();
+        var req = BuildAnonymousRequest();
+
+        var result = await sut.PaymentMatching_Ignore(req, "1");
+
+        result.ShouldBeOfType<UnauthorizedResult>();
+        await _matcher.DidNotReceiveWithAnyArgs().IgnoreAsync(default, default, default);
+    }
 }
 
 /// <summary>
@@ -485,6 +665,96 @@ public class PaymentMatchingSysAdminFunctionsTests
         result.ShouldBeOfType<BadRequestObjectResult>();
         await _service.DidNotReceive().UpdateAsync(Arg.Any<PaymentMatchingSystemSettingsDto>(),
             Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task UpdateSettings_Anonymous_Returns401()
+    {
+        var (sut, _) = BuildSut();
+        var req = BuildRequest(authenticated: false, jsonBody: "{}");
+
+        var result = await sut.PaymentMatchingSysAdmin_UpdateSettings(req);
+
+        result.ShouldBeOfType<UnauthorizedResult>();
+        // Body must NOT be deserialized for anonymous callers — auth check first.
+        await _service.DidNotReceiveWithAnyArgs().UpdateAsync(default!, default);
+    }
+
+    [Fact]
+    public async Task TestConnection_Anonymous_Returns401()
+    {
+        var (sut, _) = BuildSut();
+        var req = BuildRequest(authenticated: false);
+
+        var result = await sut.PaymentMatchingSysAdmin_TestConnection(req);
+
+        result.ShouldBeOfType<UnauthorizedResult>();
+    }
+
+    [Fact]
+    public async Task TestConnection_NonSysAdmin_Returns403()
+    {
+        var (sut, _) = BuildSut();
+        var req = BuildRequest(authenticated: true, sysAdmin: false);
+
+        var result = await sut.PaymentMatchingSysAdmin_TestConnection(req);
+
+        result.ShouldBeOfType<ForbidResult>();
+        await _service.DidNotReceiveWithAnyArgs().TestConnectionAsync(default!, default);
+    }
+
+    [Fact]
+    public async Task TestConnection_AsSysAdmin_DelegatesToService()
+    {
+        // Arrange
+        var input = new PaymentMatchingSystemSettingsDto
+        {
+            ImapHost = "imap.example.com",
+            ImapPort = 993,
+            ImapUsername = "pay@example.com",
+            ImapPassword = "secret",
+        };
+        var json = JsonSerializer.Serialize(input);
+        var expected = new TestImapConnectionResult { Success = true, MessageCount = 4 };
+        _service.TestConnectionAsync(Arg.Any<PaymentMatchingSystemSettingsDto>(), Arg.Any<CancellationToken>())
+            .Returns(expected);
+
+        var (sut, _) = BuildSut();
+        var req = BuildRequest(authenticated: true, sysAdmin: true, jsonBody: json);
+
+        // Act
+        var result = await sut.PaymentMatchingSysAdmin_TestConnection(req);
+
+        // Assert
+        await _service.Received(1).TestConnectionAsync(
+            Arg.Is<PaymentMatchingSystemSettingsDto>(d => d.ImapHost == "imap.example.com"),
+            Arg.Any<CancellationToken>());
+        var ok = result.ShouldBeOfType<OkObjectResult>();
+        ok.Value.ShouldBe(expected);
+    }
+
+    [Fact]
+    public async Task TestConnection_EmptyBody_Returns400()
+    {
+        var (sut, _) = BuildSut();
+        var req = BuildRequest(authenticated: true, sysAdmin: true, jsonBody: "null");
+
+        var result = await sut.PaymentMatchingSysAdmin_TestConnection(req);
+
+        result.ShouldBeOfType<BadRequestObjectResult>();
+        await _service.DidNotReceiveWithAnyArgs().TestConnectionAsync(default!, default);
+    }
+
+    [Fact]
+    public async Task RunNow_Anonymous_Returns401()
+    {
+        var (sut, _) = BuildSut();
+        var req = BuildRequest(authenticated: false);
+
+        var result = await sut.PaymentMatchingSysAdmin_RunNow(req);
+
+        result.ShouldBeOfType<UnauthorizedResult>();
+        await _pollService.DidNotReceiveWithAnyArgs().RunCycleAsync(default);
     }
 
     [Fact]
