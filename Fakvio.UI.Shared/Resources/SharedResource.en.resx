@@ -1355,6 +1355,8 @@
   <data name="BankMailbox_RegeneratedToast" xml:space="preserve"><value>Alias regenerated. The old one will no longer accept payments.</value></data>
   <data name="BankMailbox_DeactivateConfirm" xml:space="preserve"><value>Deactivate matching? New emails will not be downloaded.</value></data>
   <data name="BankMailbox_RegenerateConfirm" xml:space="preserve"><value>Generate a new alias? The old one will be permanently retired. You will need to update the notification settings in your bank.</value></data>
+  <data name="BankMailbox_Section_Title" xml:space="preserve"><value>Email for payment matching</value></data>
+  <data name="BankMailbox_AvailableAfterSave" xml:space="preserve"><value>Mailbox can be configured after the account is first saved.</value></data>
 
   <data name="SysAdminPayment_Title" xml:space="preserve"><value>Payment matching — system settings</value></data>
   <data name="SysAdminPayment_Subtitle" xml:space="preserve"><value>Central IMAP mailbox and scheduler configuration</value></data>

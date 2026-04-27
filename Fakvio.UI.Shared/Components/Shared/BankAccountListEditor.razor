@@ -3,6 +3,11 @@
     Supports both read-only display and full CRUD editing with add/edit/delete dialogs.
     Follows the same pattern as AddressListEditor.razor.
 
+    NOTE: Internal model is BankAccountDto (not CreateBankAccountDto). The Id property
+    is required so the BankAccountDialog can render the per-account mailbox card
+    (BankAccountMailboxCard) for already-persisted accounts. New accounts are stored
+    with Id == 0; the dialog hides the mailbox card and shows a hint instead.
+
     Usage (edit mode):
       <BankAccountListEditor BankAccounts="_bankAccounts"
                              BankAccountsChanged="@(v => { _bankAccounts = v; _isDirty = true; })" />
@@ -103,15 +108,17 @@ else
     /// <summary>
     /// The list of bank accounts to display and manage.
     /// Two-way bindable via BankAccountsChanged callback.
+    /// Existing accounts have Id > 0 (loaded from API); newly added ones have Id == 0
+    /// until the parent persists them and reloads.
     /// </summary>
     [Parameter]
-    public List<CreateBankAccountDto> BankAccounts { get; set; } = new();
+    public List<BankAccountDto> BankAccounts { get; set; } = new();
 
     /// <summary>
     /// Callback fired when the bank account list changes (add, edit, delete, set default).
     /// </summary>
     [Parameter]
-    public EventCallback<List<CreateBankAccountDto>> BankAccountsChanged { get; set; }
+    public EventCallback<List<BankAccountDto>> BankAccountsChanged { get; set; }
 
     /// <summary>
     /// When true, shows a read-only view without any edit controls.
@@ -135,8 +142,9 @@ else
     /// </summary>
     private async Task AddBankAccount()
     {
-        var newAccount = new CreateBankAccountDto
+        var newAccount = new BankAccountDto
         {
+            // Id = 0 — signals "not yet persisted" to the dialog (mailbox card hidden, hint shown).
             // First account is automatically default
             IsDefault = BankAccounts.Count == 0
         };
@@ -151,7 +159,7 @@ else
         var dialog = await DialogService.ShowAsync<BankAccountDialog>(L["BankAccount_Add"].Value, parameters, options);
         var result = await dialog.Result;
 
-        if (result != null && !result.Canceled && result.Data is CreateBankAccountDto saved)
+        if (result != null && !result.Canceled && result.Data is BankAccountDto saved)
         {
             // If new account is marked as default, clear default from all others
             if (saved.IsDefault)
@@ -170,10 +178,12 @@ else
     /// </summary>
     private async Task EditBankAccount(int index)
     {
-        // Clone the account so dialog edits don't affect the list until confirmed
+        // Clone the account so dialog edits don't affect the list until confirmed.
+        // Id is copied so the dialog can render the mailbox card for persisted accounts.
         var existing = BankAccounts[index];
-        var clone = new CreateBankAccountDto
+        var clone = new BankAccountDto
         {
+            Id = existing.Id,
             Label = existing.Label,
             BankName = existing.BankName,
             AccountNumber = existing.AccountNumber,
@@ -193,7 +203,7 @@ else
         var dialog = await DialogService.ShowAsync<BankAccountDialog>(L["BankAccount_Edit"].Value, parameters, options);
         var result = await dialog.Result;
 
-        if (result != null && !result.Canceled && result.Data is CreateBankAccountDto saved)
+        if (result != null && !result.Canceled && result.Data is BankAccountDto saved)
         {
             // If edited account became default, clear default from all others
             if (saved.IsDefault)

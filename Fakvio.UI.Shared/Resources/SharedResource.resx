@@ -1355,6 +1355,8 @@
   <data name="BankMailbox_RegeneratedToast" xml:space="preserve"><value>Alias byl přegenerován. Starý přestane přijímat platby.</value></data>
   <data name="BankMailbox_DeactivateConfirm" xml:space="preserve"><value>Opravdu chcete deaktivovat párování? Nové e-maily se nebudou stahovat.</value></data>
   <data name="BankMailbox_RegenerateConfirm" xml:space="preserve"><value>Vygenerovat nový alias? Starý bude trvale zneplatněn. Budete muset změnit nastavení notifikací v bance.</value></data>
+  <data name="BankMailbox_Section_Title" xml:space="preserve"><value>Email pro párování plateb</value></data>
+  <data name="BankMailbox_AvailableAfterSave" xml:space="preserve"><value>Mailbox bude možné nastavit po prvním uložení účtu.</value></data>
 
   <data name="SysAdminPayment_Title" xml:space="preserve"><value>Párování plateb — systémové nastavení</value></data>
   <data name="SysAdminPayment_Subtitle" xml:space="preserve"><value>Konfigurace centrální IMAP schránky a plánovače</value></data>
