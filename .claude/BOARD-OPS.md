@@ -6,8 +6,28 @@ over inventing new ones.
 
 Environment variables (from `.claude/settings.json`):
 
-- `$AGENTIC_PROJECT_NUMBER` — the project's numeric ID (from its URL)
-- `$AGENTIC_PROJECT_OWNER`  — `@me` or an org login
+- `$AGENTIC_PROJECT_NUMBER`     — the project's numeric ID (from its URL)
+- `$AGENTIC_PROJECT_OWNER`      — `@me` or an org login
+- `$AGENTIC_INTEGRATION_BRANCH` — branch where feature PRs are merged
+                                  (default `develop`); see "Integration
+                                  branch model" below
+- `$AGENTIC_AUTO_MERGE`         — `"true"` lets agent-ops merge feature
+                                  PRs without human approval; default
+                                  `"false"`
+
+## Scheduled tick logs (Windows)
+
+When `/tick` runs unattended via Windows Task Scheduler (registered via
+`.claude/scripts/Register-AgenticTick.ps1`), each run appends timestamped
+output to:
+
+    %LOCALAPPDATA%\AgenticTeam\<repo-slug>.log
+
+`<repo-slug>` is the absolute repo path with `\`, `/`, `:` replaced by `_`.
+A `.lock` file in the same directory holds the PID of the currently
+running tick (if any). When the user asks why a card has not advanced,
+or what the last automated tick did, grep this log file for the most
+recent `START` / `END` block.
 
 ## Find the oldest item in a given status column
 
@@ -168,6 +188,52 @@ Rules:
 - If `MEMORY.md` does not exist when you first need it, create it with
   these headings populated for the current task.
 
+## Integration branch model
+
+AgenticTeam uses two long-lived branches:
+
+- `master` — release branch. Stable, deployable, what a fresh `git
+  clone` gets. Updated only by the `/release` slash command.
+- `$AGENTIC_INTEGRATION_BRANCH` (default `develop`) — integration
+  branch. Where feature PRs land. Cards in `Implemented` are sitting
+  here, waiting to be released.
+
+Lifecycle of a feature:
+
+    feature/issue-N-foo  ── PR ──▶  develop  ── /release PR ──▶  master
+        ↑                              ↑                            ↑
+        agent-dev                      agent-ops merges               human triggers
+        branches off develop           (squash, --base develop)     /release; Implemented
+                                                                    cards batch-move to
+                                                                    Approved
+
+Column meanings on the board:
+
+- `Implemented`   feature PR is merged into the integration branch
+                  (develop). Issue is closed. Code is integrated but
+                  not yet released.
+- `Approved`      release happened — the develop→master PR was merged
+                  and `/release` (or the user) batch-moved cards from
+                  Implemented to Approved.
+
+Merge styles:
+
+- feature PR → develop  : **squash** (one commit per feature on develop)
+- develop PR → master   : **merge commit** (preserves the squashed
+                          feature commits in master's history; release
+                          shows up as a single readable rollup)
+
+Legacy / migration:
+
+- If the integration branch does not exist on origin (existing repo
+  predating this convention), `agent-dev` creates it from `master` on
+  first use and pushes it. No manual migration required.
+- If `$AGENTIC_INTEGRATION_BRANCH` is unset or empty, agents fall back
+  to `develop` (not master — never master). To opt out of the model
+  for a single repo, set `AGENTIC_INTEGRATION_BRANCH=master` and
+  agent-ops + agent-dev will treat master as the integration target
+  and `/release` becomes a no-op.
+
 ## Transition cheat sheet
 
 Task flow (sub-issues created from a story, or standalone backlog items):
@@ -179,7 +245,9 @@ Task flow (sub-issues created from a story, or standalone backlog items):
     CodeReview  -> Test        : agent-reviewer on approve,          label -> role:tester
     Test        -> Progress    : agent-tester on failing impl,       label -> role:dev
     Test        -> Implemented : agent-tester on green CI,           label -> role:ops
-    Implemented -> Approved    : human only — final acceptance gate
+                                 (PR target is develop, not master)
+    Implemented -> Approved    : `/release` merges develop -> master, batch-moves all
+                                 Implemented cards to Approved
     any         -> Blocked     : agent-dev when it must ask a question, label +blocked:question
     Blocked     -> ToDo        : human after answering (manual)
 
@@ -191,7 +259,8 @@ Story flow (a `type:story` issue, before and around its task children):
     Decomposed  -> Decomposed* : agent-analyst materializes sub-issues into Backlog
                                  (story stays in Decomposed throughout child execution)
     Decomposed  -> Implemented : agent-ops when it merges the LAST open child of the story
-    Implemented -> Approved    : human only — final acceptance gate
+                                 into develop
+    Implemented -> Approved    : `/release` (alongside the child task cards)
 
 Approval / blocking labels on a story:
 

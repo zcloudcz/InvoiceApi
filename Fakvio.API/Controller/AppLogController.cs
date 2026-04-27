@@ -85,7 +85,8 @@ public class AppLogController : ControllerBase
                 Exception = l.Exception,
                 UserId = l.UserId,
                 CompanyId = l.CompanyId,
-                RequestPath = l.RequestPath
+                RequestPath = l.RequestPath,
+                CorrelationId = l.CorrelationId
             })
             .ToListAsync(ct);
 

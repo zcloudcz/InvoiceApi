@@ -4,6 +4,7 @@
 @using Fakvio.UI.Shared.Models
 @inject AppLogApiService LogService
 @inject ISnackbar Snackbar
+@inject IDialogService DialogService
 @inject IStringLocalizer<SharedResource> L
 
 <PageTitle>@L["Log_Title"] - Fakvio</PageTitle>
@@ -38,7 +39,7 @@
              @ref="_dataGrid"
              Dense="true" Hover="true" Striped="true"
              Loading="@_loading" LoadingProgressColor="Color.Primary"
-             RowClick="@(args => { _selectedLog = args.Item; })"
+             RowClick="@(args => OpenDetailAsync(args.Item))"
              RowStyleFunc="@((item, idx) => "cursor: pointer;")"
              FilterMode="DataGridFilterMode.ColumnFilterRow"
              SortMode="SortMode.Single"
@@ -86,59 +87,6 @@
 </MudDataGrid>
 <GridStatePersistence T="AppLogDto" DataGrid="_dataGrid" GridKey="logs" />
 
-@* Detail expansion card — shown when a row is clicked *@
-@if (_selectedLog != null)
-{
-    <MudCard Elevation="3" Class="mt-4">
-        <MudCardHeader>
-            <CardHeaderContent>
-                <MudText Typo="Typo.h6">@L["Log_Details"]</MudText>
-            </CardHeaderContent>
-            <CardHeaderActions>
-                <MudIconButton Icon="@Icons.Material.Filled.Close" OnClick="@(() => _selectedLog = null)" Title="@L["Btn_Close"].Value" />
-            </CardHeaderActions>
-        </MudCardHeader>
-        <MudCardContent>
-            <MudGrid>
-                <MudItem xs="12" sm="6">
-                    <MudText><strong>@L["Log_Timestamp"]:</strong> @_selectedLog.Timestamp.ToString("yyyy-MM-dd HH:mm:ss.fff")</MudText>
-                    <MudText><strong>@L["Log_Level"]:</strong> <MudChip T="string" Size="Size.Small" Color="@GetLevelColor(_selectedLog.Level)">@_selectedLog.Level</MudChip></MudText>
-                    <MudText><strong>@L["Log_Source"]:</strong> @_selectedLog.Source</MudText>
-                </MudItem>
-                <MudItem xs="12" sm="6">
-                    @if (_selectedLog.UserId.HasValue)
-                    {
-                        <MudText><strong>User ID:</strong> @_selectedLog.UserId</MudText>
-                    }
-                    @if (_selectedLog.CompanyId.HasValue)
-                    {
-                        <MudText><strong>Company ID:</strong> @_selectedLog.CompanyId</MudText>
-                    }
-                    @if (!string.IsNullOrEmpty(_selectedLog.RequestPath))
-                    {
-                        <MudText><strong>Request:</strong> @_selectedLog.RequestPath</MudText>
-                    }
-                </MudItem>
-                <MudItem xs="12">
-                    <MudText Typo="Typo.subtitle2" Class="mt-2">@L["Log_Message"]:</MudText>
-                    <MudText Style="white-space: pre-wrap; word-break: break-all; background: #f5f5f5; padding: 12px; border-radius: 4px;">
-                        @_selectedLog.Message
-                    </MudText>
-                </MudItem>
-                @if (!string.IsNullOrEmpty(_selectedLog.Exception))
-                {
-                    <MudItem xs="12">
-                        <MudText Typo="Typo.subtitle2" Color="Color.Error" Class="mt-2">@L["Log_Exception"]:</MudText>
-                        <MudText Style="white-space: pre-wrap; word-break: break-all; background: #fff3f3; padding: 12px; border-radius: 4px; font-family: monospace; font-size: 0.85rem;">
-                            @_selectedLog.Exception
-                        </MudText>
-                    </MudItem>
-                }
-            </MudGrid>
-        </MudCardContent>
-    </MudCard>
-}
-
 @code {
     // Reference to the MudDataGrid — used to trigger ReloadServerData() when filters change
     private MudDataGrid<AppLogDto>? _dataGrid;
@@ -150,9 +98,6 @@
     // Date range is owned by the Timestamp column's DateColumnFilter, not by this page.
     private string? _levelFilter;
     private string? _searchFilter;
-
-    // The currently selected log entry, shown in the detail expansion card below the grid
-    private AppLogDto? _selectedLog;
 
     // No OnInitializedAsync needed — MudDataGrid calls ServerData automatically on first render
 
@@ -210,6 +155,26 @@
         {
             if (_dataGrid != null) await _dataGrid.ReloadServerData();
         }
+    }
+
+    // ─── Detail dialog ────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Opens a read-only popup showing the full detail of the clicked log entry.
+    /// </summary>
+    private async Task OpenDetailAsync(AppLogDto log)
+    {
+        var parameters = new DialogParameters<LogDetailDialog>
+        {
+            { x => x.Log, log }
+        };
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Medium,
+            FullWidth = true,
+            CloseOnEscapeKey = true
+        };
+        await DialogService.ShowAsync<LogDetailDialog>(L["Log_Details"].Value, parameters, options);
     }
 
     // ─── Helper methods ──────────────────────────────────────────────────────

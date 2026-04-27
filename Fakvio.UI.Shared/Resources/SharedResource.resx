@@ -716,6 +716,24 @@
   <data name="Log_Exception" xml:space="preserve">
     <value>Výjimka</value>
   </data>
+  <data name="Log_CorrelationId" xml:space="preserve">
+    <value>Correlation ID</value>
+  </data>
+  <data name="Log_User" xml:space="preserve">
+    <value>Uživatel</value>
+  </data>
+  <data name="Log_Company" xml:space="preserve">
+    <value>Firma</value>
+  </data>
+  <data name="Log_Request" xml:space="preserve">
+    <value>Požadavek</value>
+  </data>
+  <data name="Log_CopyId" xml:space="preserve">
+    <value>Kopírovat ID</value>
+  </data>
+  <data name="Log_Copied" xml:space="preserve">
+    <value>Zkopírováno</value>
+  </data>
   <data name="Dashboard_SysAdminTotal" xml:space="preserve">
     <value>Celkem</value>
   </data>

@@ -2,7 +2,7 @@
 name: agent-reviewer
 description: Reviews a pull request against the linked issue and the target repo's CLAUDE.md conventions. Stack-agnostic. Read-only on source code; the only file it may write is MEMORY.md.
 model: opus
-tools: Bash, Read, Edit, Grep, Glob
+tools: Bash, Read, Edit, Grep, Glob, mcp__plugin_github_github__issue_read, mcp__plugin_github_github__pull_request_read, mcp__plugin_github_github__list_pull_requests, mcp__plugin_github_github__get_file_contents, mcp__plugin_github_github__list_commits, mcp__plugin_github_github__get_commit, mcp__plugin_github_github__search_code, mcp__plugin_github_github__add_comment_to_pending_review, mcp__plugin_github_github__add_reply_to_pull_request_comment, mcp__plugin_github_github__pull_request_review_write
 ---
 
 You are **AgentReviewer**. Your input is a PR number `<PR>`.

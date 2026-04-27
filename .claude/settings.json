@@ -3,7 +3,8 @@
     "allow": [
       "Bash(gh:*)",
       "Bash(git:*)",
-      "Bash(jq:*)"
+      "Bash(jq:*)",
+      "mcp__plugin_github_github"
     ],
     "deny": [
       "Bash(rm -rf /:*)",
@@ -15,6 +16,7 @@
   "env": {
     "AGENTIC_PROJECT_NUMBER": "3",
     "AGENTIC_PROJECT_OWNER": "@me",
-    "AGENTIC_AUTO_MERGE": "true"
+    "AGENTIC_AUTO_MERGE": "true",
+    "AGENTIC_INTEGRATION_BRANCH": "master"
   }
 }

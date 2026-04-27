@@ -1,0 +1,113 @@
+@*
+    Read-only popup with full detail of a single AppLog entry.
+    Opened from the /logs grid by clicking a row. SysAdmin only.
+*@
+@inject IStringLocalizer<SharedResource> L
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+@using Fakvio.Contracts.Dto.AppLog
+
+<MudDialog>
+    <DialogContent>
+        @if (Log is null)
+        {
+            <MudProgressLinear Indeterminate="true" />
+        }
+        else
+        {
+            <MudGrid>
+                <MudItem xs="12" sm="6">
+                    <MudField Label="@L["Log_Timestamp"].Value" Variant="Variant.Text">
+                        @Log.Timestamp.ToString("yyyy-MM-dd HH:mm:ss.fff")
+                    </MudField>
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudField Label="@L["Log_Level"].Value" Variant="Variant.Text">
+                        <MudChip T="string" Size="Size.Small" Color="@GetLevelColor(Log.Level)">@Log.Level</MudChip>
+                    </MudField>
+                </MudItem>
+                <MudItem xs="12">
+                    <MudField Label="@L["Log_Source"].Value" Variant="Variant.Text">@Log.Source</MudField>
+                </MudItem>
+                @if (Log.UserId.HasValue)
+                {
+                    <MudItem xs="12" sm="6">
+                        <MudField Label="@L["Log_User"].Value" Variant="Variant.Text">@Log.UserId</MudField>
+                    </MudItem>
+                }
+                @if (Log.CompanyId.HasValue)
+                {
+                    <MudItem xs="12" sm="6">
+                        <MudField Label="@L["Log_Company"].Value" Variant="Variant.Text">@Log.CompanyId</MudField>
+                    </MudItem>
+                }
+                @if (!string.IsNullOrEmpty(Log.RequestPath))
+                {
+                    <MudItem xs="12">
+                        <MudField Label="@L["Log_Request"].Value" Variant="Variant.Text">@Log.RequestPath</MudField>
+                    </MudItem>
+                }
+                @if (!string.IsNullOrEmpty(Log.CorrelationId))
+                {
+                    <MudItem xs="12">
+                        <MudField Label="@L["Log_CorrelationId"].Value" Variant="Variant.Text">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <code style="font-family: monospace;">@Log.CorrelationId</code>
+                                <MudIconButton Size="Size.Small" Icon="@Icons.Material.Filled.ContentCopy"
+                                               Title="@L["Log_CopyId"].Value"
+                                               OnClick="@(() => CopyAsync(Log.CorrelationId!))" />
+                            </div>
+                        </MudField>
+                    </MudItem>
+                }
+                <MudItem xs="12">
+                    <MudText Typo="Typo.subtitle2">@L["Log_Message"]</MudText>
+                    <pre style="white-space: pre-wrap; word-break: break-word; background: var(--mud-palette-background-grey); padding: 12px; border-radius: 4px; margin: 4px 0 0 0; max-height: 240px; overflow: auto;">@Log.Message</pre>
+                </MudItem>
+                @if (!string.IsNullOrEmpty(Log.Exception))
+                {
+                    <MudItem xs="12">
+                        <MudText Typo="Typo.subtitle2" Color="Color.Error">@L["Log_Exception"]</MudText>
+                        <pre style="white-space: pre-wrap; word-break: break-word; background: #fff3f3; padding: 12px; border-radius: 4px; font-family: monospace; font-size: 0.85rem; margin: 4px 0 0 0; max-height: 360px; overflow: auto;">@Log.Exception</pre>
+                    </MudItem>
+                }
+            </MudGrid>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Close">@L["Btn_Close"]</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter]
+    public AppLogDto? Log { get; set; }
+
+    private void Close() => MudDialog.Close();
+
+    private async Task CopyAsync(string text)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
+            Snackbar.Add(L["Log_Copied"].Value, Severity.Success);
+        }
+        catch
+        {
+            // Clipboard API can fail in non-secure contexts; ignore silently.
+        }
+    }
+
+    private static Color GetLevelColor(string level) => level switch
+    {
+        "Critical" => Color.Dark,
+        "Error" => Color.Error,
+        "Warning" => Color.Warning,
+        "Information" => Color.Info,
+        "Debug" => Color.Default,
+        _ => Color.Default
+    };
+}

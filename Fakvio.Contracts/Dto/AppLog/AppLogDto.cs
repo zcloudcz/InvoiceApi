@@ -15,4 +15,5 @@ public class AppLogDto
     public long? UserId { get; set; }
     public long? CompanyId { get; set; }
     public string? RequestPath { get; set; }
+    public string? CorrelationId { get; set; }
 }

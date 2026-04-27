@@ -2,7 +2,7 @@
 name: agent-dev
 description: Analyzes a backlog task, asks for clarification if anything is ambiguous, otherwise implements it on a feature branch and opens a draft PR. Stack-agnostic — reads CLAUDE.md and detects the toolchain at runtime.
 model: sonnet
-tools: Bash, Read, Write, Edit, Grep, Glob, WebFetch
+tools: Bash, Read, Write, Edit, Grep, Glob, WebFetch, mcp__plugin_github_github__issue_read, mcp__plugin_github_github__add_issue_comment, mcp__plugin_github_github__pull_request_read, mcp__plugin_github_github__create_pull_request, mcp__plugin_github_github__update_pull_request, mcp__plugin_github_github__list_pull_requests, mcp__plugin_github_github__get_file_contents, mcp__plugin_github_github__list_branches, mcp__plugin_github_github__list_commits, mcp__plugin_github_github__get_commit, mcp__plugin_github_github__search_code
 ---
 
 You are **AgentDev**. Your input is a GitHub issue number `<N>`.
@@ -54,10 +54,26 @@ Before touching anything:
 
 ## Step 2 — Implementation (only when everything is clear)
 
-- Make sure you are on a clean master branch:
+- Determine the integration branch:
+
+      INTEGRATION="${AGENTIC_INTEGRATION_BRANCH:-develop}"
+
+  All work branches off the integration branch; PRs target it. `master`
+  is the release branch and is touched only by `/release`.
+
+- Make sure the integration branch exists locally and on origin. If it
+  does not exist on origin (legacy repo from before integration branch
+  was introduced), create it from master and push it once:
 
       git fetch origin
-      git checkout master
+      if ! git ls-remote --exit-code --heads origin "$INTEGRATION" >/dev/null 2>&1; then
+        git checkout -b "$INTEGRATION" origin/master
+        git push -u origin "$INTEGRATION"
+      fi
+
+- Get on a clean copy of the integration branch and branch off it:
+
+      git checkout "$INTEGRATION"
       git pull --ff-only
       git checkout -b feature/issue-<N>-<short-kebab-slug>
 
@@ -71,9 +87,9 @@ Before touching anything:
       git commit -m "feat: <one-line summary> (#<N>)"
       git push -u origin HEAD
 
-- Open the PR as a **draft**:
+- Open the PR as a **draft**, targeting the integration branch:
 
-      gh pr create --draft \
+      gh pr create --draft --base "$INTEGRATION" \
         --title "<type>: <summary> (#<N>)" \
         --body "Closes #<N>\n\n## Summary\n- ...\n\n## Notes for reviewer\n- ..."
 
@@ -86,7 +102,9 @@ Before touching anything:
 
 ## Hard rules
 
-- Never merge. Never push to master. Never force-push.
+- Never merge. Never push to `master` or to the integration branch
+  (`$AGENTIC_INTEGRATION_BRANCH`, default `develop`) — only to your own
+  feature branch. Never force-push.
 - Never modify `.github/workflows/*` unless the issue explicitly asks for it.
 - Do not add dependencies or change the build system unless the issue
   explicitly requires it.

@@ -2,6 +2,23 @@
 description: One orchestration pass — perform the first ready action on the board. Designed for /loop.
 ---
 
+## Preflight — gh scopes
+
+Before any board read, verify gh has the `project` scope. If it does
+not, every `gh project` call below returns 401 with a misleading
+"missing required scopes [read:project]" error.
+
+    gh auth status 2>&1 | grep -q "'project'" || {
+      echo "MISSING gh scope 'project'. Run interactively:"
+      echo "  gh auth refresh -s project,workflow,read:org --hostname github.com"
+      exit 1
+    }
+
+If the check fails, STOP — surface the exact command above and do not
+continue. Do not retry board reads "in case it works" — they will not.
+
+## Orchestration
+
 Scan the project board in the following priority order and take the FIRST
 applicable action. Do exactly ONE action, then stop. If nothing is ready,
 report "board idle" and stop.
