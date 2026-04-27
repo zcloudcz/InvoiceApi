@@ -238,7 +238,7 @@ public class MasterDbContext : DbContext
             entity.Property(e => e.ImapFolder).HasMaxLength(100).HasDefaultValue("INBOX");
             entity.Property(e => e.ProcessedFolder).HasMaxLength(100).HasDefaultValue("Processed");
             entity.Property(e => e.UnroutedFolder).HasMaxLength(100).HasDefaultValue("Unrouted");
-            entity.Property(e => e.InboundDomain).HasMaxLength(255).HasDefaultValue("pay.fakvio.cz");
+            entity.Property(e => e.InboundDomain).HasMaxLength(255).HasDefaultValue("fakvio.cz");
             entity.Property(e => e.PollIntervalMinutes).HasDefaultValue(30);
             entity.Property(e => e.InboundEmailRetentionDays).HasDefaultValue(1825);
             entity.Property(e => e.LastRunStatus).HasMaxLength(500);

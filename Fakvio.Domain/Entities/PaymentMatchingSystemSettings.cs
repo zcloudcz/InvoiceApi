@@ -53,9 +53,9 @@ public class PaymentMatchingSystemSettings : BaseEntity
 
     /// <summary>
     /// Public-facing domain used to build aliases
-    /// (e.g., if set to "pay.fakvio.cz" the full address is "pay-xxx@pay.fakvio.cz").
+    /// (e.g., if set to "fakvio.cz" the full address is "pay-xxx@fakvio.cz").
     /// </summary>
-    public string InboundDomain { get; set; } = "pay.fakvio.cz";
+    public string InboundDomain { get; set; } = "fakvio.cz";
 
     /// <summary>
     /// Worker poll interval in minutes. Default 30 (per user requirement).

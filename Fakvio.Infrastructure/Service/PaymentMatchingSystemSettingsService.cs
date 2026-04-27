@@ -151,7 +151,7 @@ public class PaymentMatchingSystemSettingsService : IPaymentMatchingSystemSettin
             ImapFolder = "INBOX",
             ProcessedFolder = "Processed",
             UnroutedFolder = "Unrouted",
-            InboundDomain = "pay.fakvio.cz",
+            InboundDomain = "fakvio.cz",
             PollIntervalMinutes = 30,
             InboundEmailRetentionDays = 1825,
         };
