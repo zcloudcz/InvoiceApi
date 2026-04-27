@@ -25,7 +25,7 @@ public class PaymentMatchingSystemSettingsDto
     public string ProcessedFolder { get; set; } = "Processed";
     public string UnroutedFolder { get; set; } = "Unrouted";
 
-    public string InboundDomain { get; set; } = "pay.fakvio.cz";
+    public string InboundDomain { get; set; } = "fakvio.cz";
 
     /// <summary>Minutes between IMAP pull runs. Default 30.</summary>
     public int PollIntervalMinutes { get; set; } = 30;

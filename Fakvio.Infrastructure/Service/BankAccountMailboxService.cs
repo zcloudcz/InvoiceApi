@@ -217,7 +217,7 @@ public class BankAccountMailboxService : IBankAccountMailboxService
             .AsNoTracking()
             .FirstOrDefaultAsync(ct);
 
-        var domain = settings?.InboundDomain ?? "pay.fakvio.cz";
+        var domain = settings?.InboundDomain ?? "fakvio.cz";
 
         return new BankAccountMailboxDto
         {
