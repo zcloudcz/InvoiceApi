@@ -48,7 +48,7 @@ public class PaymentMatchingE2ETests : IClassFixture<FakvioFactory>
 
         // Defaults from PaymentMatchingSystemSettingsService.LoadOrCreateAsync.
         dto.PollIntervalMinutes.ShouldBe(30);
-        dto.InboundDomain.ShouldBe("pay.fakvio.cz");
+        dto.InboundDomain.ShouldBe("fakvio.cz");
         dto.IsEnabled.ShouldBeFalse();
 
         // Password is write-only from the client perspective.
