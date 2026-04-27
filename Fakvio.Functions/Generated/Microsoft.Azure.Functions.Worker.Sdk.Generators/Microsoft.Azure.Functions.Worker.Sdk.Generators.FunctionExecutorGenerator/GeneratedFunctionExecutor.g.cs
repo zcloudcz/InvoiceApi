@@ -31,6 +31,8 @@ namespace Fakvio.Functions
             { "Fakvio.Functions.Generated.InvoiceFunctions", Type.GetType("Fakvio.Functions.Generated.InvoiceFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "Fakvio.Functions.Generated.InvoiceTemplateFunctions", Type.GetType("Fakvio.Functions.Generated.InvoiceTemplateFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "Fakvio.Functions.Generated.NumberSequenceFunctions", Type.GetType("Fakvio.Functions.Generated.NumberSequenceFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
+            { "Fakvio.Functions.Generated.PaymentMatchingFunctions", Type.GetType("Fakvio.Functions.Generated.PaymentMatchingFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
+            { "Fakvio.Functions.Generated.PaymentMatchingSysAdminFunctions", Type.GetType("Fakvio.Functions.Generated.PaymentMatchingSysAdminFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "Fakvio.Functions.Generated.ReceivedInvoiceFunctions", Type.GetType("Fakvio.Functions.Generated.ReceivedInvoiceFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "Fakvio.Functions.Generated.ReminderFunctions", Type.GetType("Fakvio.Functions.Generated.ReminderFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "Fakvio.Functions.Generated.SystemConfigurationFunctions", Type.GetType("Fakvio.Functions.Generated.SystemConfigurationFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
@@ -866,6 +868,104 @@ namespace Fakvio.Functions
                 var instanceType = types["Fakvio.Functions.Generated.NumberSequenceFunctions"];
                 var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.NumberSequenceFunctions;
                 context.GetInvocationResult().Value = await i.NumberSequence_PreviewByDocumentType((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.PaymentMatchingFunctions.PaymentMatching_GetMailbox", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.PaymentMatchingFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.PaymentMatchingFunctions;
+                context.GetInvocationResult().Value = await i.PaymentMatching_GetMailbox((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0], (string)inputArguments[1]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.PaymentMatchingFunctions.PaymentMatching_ActivateMailbox", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.PaymentMatchingFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.PaymentMatchingFunctions;
+                context.GetInvocationResult().Value = await i.PaymentMatching_ActivateMailbox((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0], (string)inputArguments[1]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.PaymentMatchingFunctions.PaymentMatching_DeactivateMailbox", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.PaymentMatchingFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.PaymentMatchingFunctions;
+                context.GetInvocationResult().Value = await i.PaymentMatching_DeactivateMailbox((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0], (string)inputArguments[1]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.PaymentMatchingFunctions.PaymentMatching_RegenerateMailbox", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.PaymentMatchingFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.PaymentMatchingFunctions;
+                context.GetInvocationResult().Value = await i.PaymentMatching_RegenerateMailbox((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0], (string)inputArguments[1]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.PaymentMatchingFunctions.PaymentMatching_ListTransactions", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.PaymentMatchingFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.PaymentMatchingFunctions;
+                context.GetInvocationResult().Value = await i.PaymentMatching_ListTransactions((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.PaymentMatchingFunctions.PaymentMatching_GetTransaction", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.PaymentMatchingFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.PaymentMatchingFunctions;
+                context.GetInvocationResult().Value = await i.PaymentMatching_GetTransaction((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0], (string)inputArguments[1]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.PaymentMatchingFunctions.PaymentMatching_Match", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.PaymentMatchingFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.PaymentMatchingFunctions;
+                context.GetInvocationResult().Value = await i.PaymentMatching_Match((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0], (string)inputArguments[1]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.PaymentMatchingFunctions.PaymentMatching_Unmatch", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.PaymentMatchingFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.PaymentMatchingFunctions;
+                context.GetInvocationResult().Value = await i.PaymentMatching_Unmatch((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0], (string)inputArguments[1]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.PaymentMatchingFunctions.PaymentMatching_Ignore", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.PaymentMatchingFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.PaymentMatchingFunctions;
+                context.GetInvocationResult().Value = await i.PaymentMatching_Ignore((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0], (string)inputArguments[1]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.PaymentMatchingFunctions.PaymentMatching_UnmatchedCount", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.PaymentMatchingFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.PaymentMatchingFunctions;
+                context.GetInvocationResult().Value = await i.PaymentMatching_UnmatchedCount((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.PaymentMatchingSysAdminFunctions.PaymentMatchingSysAdmin_GetSettings", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.PaymentMatchingSysAdminFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.PaymentMatchingSysAdminFunctions;
+                context.GetInvocationResult().Value = await i.PaymentMatchingSysAdmin_GetSettings((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.PaymentMatchingSysAdminFunctions.PaymentMatchingSysAdmin_UpdateSettings", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.PaymentMatchingSysAdminFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.PaymentMatchingSysAdminFunctions;
+                context.GetInvocationResult().Value = await i.PaymentMatchingSysAdmin_UpdateSettings((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.PaymentMatchingSysAdminFunctions.PaymentMatchingSysAdmin_TestConnection", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.PaymentMatchingSysAdminFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.PaymentMatchingSysAdminFunctions;
+                context.GetInvocationResult().Value = await i.PaymentMatchingSysAdmin_TestConnection((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.PaymentMatchingSysAdminFunctions.PaymentMatchingSysAdmin_RunNow", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.PaymentMatchingSysAdminFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.PaymentMatchingSysAdminFunctions;
+                context.GetInvocationResult().Value = await i.PaymentMatchingSysAdmin_RunNow((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
                 return;
             }
             if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.ReceivedInvoiceFunctions.ReceivedInvoice_GetAll", StringComparison.Ordinal))
