@@ -1,8 +1,16 @@
 @*
     Dialog for adding or editing a bank account.
     Used by BankAccountListEditor for both "Add" and "Edit" operations.
-    Returns the edited CreateBankAccountDto via MudDialog.Close() on save.
+    Returns the edited BankAccountDto via MudDialog.Close() on save.
     Follows the same pattern as AddressDialog.razor.
+
+    Mailbox section:
+    - Edit mode (BankAccount.Id > 0): renders BankAccountMailboxCard so the user
+      can activate/deactivate/regenerate the per-account payment-matching email.
+      Mailbox actions persist immediately via PaymentMatchingApiService and are
+      independent of the dialog Save/Cancel — closing the dialog does not roll them back.
+    - Add mode (Id == 0): the account does not exist on the server yet, so the
+      mailbox card cannot bind. Show an info hint instead.
 *@
 @inject IStringLocalizer<SharedResource> L
 @using Fakvio.Contracts.Dto.Client
@@ -60,6 +68,28 @@
                            Label="@L["BankAccount_Default"].Value"
                            Color="Color.Warning" />
             </MudItem>
+
+            @* ── Mailbox section (per-bank-account payment-matching email) ───────── *@
+            @* Visually separated by a divider + section title. The card itself
+               talks to /api/payment-matching/mailbox/* and persists immediately,
+               so it does not participate in the dialog's Save/Cancel flow. *@
+            <MudItem xs="12">
+                <MudDivider Class="my-2" />
+                <MudText Typo="Typo.subtitle2" Class="mb-2">
+                    @L["BankMailbox_Section_Title"]
+                </MudText>
+                @if (BankAccount.Id > 0)
+                {
+                    <BankAccountMailboxCard BankAccountId="@BankAccount.Id" />
+                }
+                else
+                {
+                    @* Add mode — bank account not persisted yet, mailbox can only bind to a real Id. *@
+                    <MudAlert Severity="Severity.Info" Dense="true">
+                        @L["BankMailbox_AvailableAfterSave"]
+                    </MudAlert>
+                }
+            </MudItem>
         </MudGrid>
     </DialogContent>
     <DialogActions>
@@ -78,9 +108,10 @@
     /// <summary>
     /// The bank account being created or edited.
     /// Pre-populated with defaults (add) or existing values (edit) by the caller.
+    /// In edit mode the Id property is required so the mailbox card can bind.
     /// </summary>
     [Parameter]
-    public CreateBankAccountDto BankAccount { get; set; } = new();
+    public BankAccountDto BankAccount { get; set; } = new();
 
     /// <summary>
     /// Dialog title text — set by the caller to distinguish "Add" vs "Edit" mode.

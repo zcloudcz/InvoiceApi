@@ -332,7 +332,7 @@ else
         else
         {
             @* Read-only view of all bank accounts *@
-            <BankAccountListEditor BankAccounts="@MapBankAccountsToCreateDto()" ReadOnly="true" />
+            <BankAccountListEditor BankAccounts="@MapBankAccountsForReadOnly()" ReadOnly="true" />
         }
     </MudPaper>
 
@@ -631,7 +631,10 @@ else
     private CreateClientDto _editClient = new();
     private CreateBillingSettingsDto _billingSettings = new();
     private List<CreateAddressDto> _addresses = new();
-    private List<CreateBankAccountDto> _bankAccounts = new();
+    // Bank accounts use BankAccountDto so the per-account Id is preserved when
+    // entering edit mode. The dialog needs Id to bind the mailbox card to the
+    // correct backend record (via /api/payment-matching/mailbox/{bankAccountId}).
+    private List<BankAccountDto> _bankAccounts = new();
     private string _emailContact = "";
     private string _phoneContact = "";
 
@@ -742,9 +745,12 @@ else
             IsPrimary = a.IsPrimary
         }).ToList();
 
-        // Populate ALL bank accounts (1:N) into the editable list
-        _bankAccounts = _company.BankAccount.Select(b => new CreateBankAccountDto
+        // Populate ALL bank accounts (1:N) into the editable list.
+        // Carry the Id through so the BankAccountDialog can render the
+        // per-account mailbox card for already-persisted accounts.
+        _bankAccounts = _company.BankAccount.Select(b => new BankAccountDto
         {
+            Id = b.Id,
             Label = b.Label,
             BankName = b.BankName,
             AccountNumber = b.AccountNumber,
@@ -1009,15 +1015,17 @@ else
     }
 
     /// <summary>
-    /// Maps the company's BankAccountDto list to CreateBankAccountDto list for the read-only view.
-    /// The BankAccountListEditor uses CreateBankAccountDto as its data model.
+    /// Returns a defensive copy of the company's bank accounts for the read-only
+    /// BankAccountListEditor view. Cloning prevents the read-only view from
+    /// accidentally mutating the loaded ClientDto graph.
     /// </summary>
-    private List<CreateBankAccountDto> MapBankAccountsToCreateDto()
+    private List<BankAccountDto> MapBankAccountsForReadOnly()
     {
         if (_company?.BankAccount == null) return new();
 
-        return _company.BankAccount.Select(b => new CreateBankAccountDto
+        return _company.BankAccount.Select(b => new BankAccountDto
         {
+            Id = b.Id,
             Label = b.Label,
             BankName = b.BankName,
             AccountNumber = b.AccountNumber,
