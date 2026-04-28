@@ -776,4 +776,460 @@ public class IsdocExportServiceTests : IDisposable
             }
         };
     }
+
+    // =========================================================================
+    // Additional coverage tests (issue #13 strengthening pass)
+    // =========================================================================
+
+    // -------------------------------------------------------------------------
+    // UTF-8 encoding: output must NOT start with BOM (EF BB BF)
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task ExportInvoiceAsync_Output_HasNoBom()
+    {
+        // UTF-8 BOM bytes: 0xEF 0xBB 0xBF.
+        // Most XML parsers accept BOM but some Czech accounting software
+        // does not -- the service explicitly disables BOM via UTF8Encoding(false).
+        var bytes = await _service.ExportInvoiceAsync(1);
+
+        bytes.ShouldNotBeNull();
+        bytes.Length.ShouldBeGreaterThan(3);
+        // First three bytes must NOT be the UTF-8 BOM sequence
+        var hasBom = bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF;
+        hasBom.ShouldBeFalse("Output byte array must not start with UTF-8 BOM (EF BB BF)");
+    }
+
+    // -------------------------------------------------------------------------
+    // Deleted invoices must not be exported (soft-delete guard in service)
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task ExportInvoiceAsync_DeletedInvoice_ThrowsKeyNotFoundException()
+    {
+        // Seed a deleted invoice -- the service WHERE clause filters Status != Deleted.
+        _context.Invoice.Add(new Invoice
+        {
+            Id = 50,
+            DocumentType = EDocumentType.Invoice,
+            Status = EInvoiceStatus.Deleted,
+            DocumentNumber = "DEL001",
+            IssueDate = new DateTime(2026, 1, 1),
+            IssuerId = 1, ClientId = 2, CurrencyId = 1,
+            PaymentMethod = EPaymentMethod.Cash,
+            TotalBeforeVat = 100, TotalVat = 0, TotalWithVat = 100,
+            InvoiceItem = new List<InvoiceItem>
+            {
+                new InvoiceItem
+                {
+                    Id = 100, OrderIndex = 1, Description = "deleted item",
+                    Quantity = 1, Unit = "ks", UnitPrice = 100,
+                    VatRatePercentage = 0, TotalBeforeVat = 100, VatAmount = 0, TotalWithVat = 100
+                }
+            }
+        });
+        _context.SaveChanges();
+
+        // The service must treat a deleted invoice as if it does not exist.
+        await Should.ThrowAsync<KeyNotFoundException>(
+            () => _service.ExportInvoiceAsync(50));
+    }
+
+    // -------------------------------------------------------------------------
+    // PaymentMeans: PayPal and Other both map to ZZZ (UNCL4461 mutually defined)
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Map_PaymentMeans_PayPal_ProducesCodeZzz()
+    {
+        var inv = BuildMinimalInvoice();
+        inv.PaymentMethod = EPaymentMethod.PayPal;
+        inv.BankAccountNumber = null;
+        inv.VariableSymbol = null;
+        inv.DueDate = null;
+        var doc = IsdocMapper.Map(inv);
+        var ns = XNamespace.Get("http://isdoc.cz/namespace/2013");
+
+        var payment = doc.Descendants(ns + "Payment").First();
+        payment.Element(ns + "PaymentMeansCode")!.Value.ShouldBe("ZZZ");
+    }
+
+    [Fact]
+    public void Map_PaymentMeans_Other_ProducesCodeZzz()
+    {
+        var inv = BuildMinimalInvoice();
+        inv.PaymentMethod = EPaymentMethod.Other;
+        inv.BankAccountNumber = null;
+        inv.VariableSymbol = null;
+        inv.DueDate = null;
+        var doc = IsdocMapper.Map(inv);
+        var ns = XNamespace.Get("http://isdoc.cz/namespace/2013");
+
+        var payment = doc.Descendants(ns + "Payment").First();
+        payment.Element(ns + "PaymentMeansCode")!.Value.ShouldBe("ZZZ");
+    }
+
+    // -------------------------------------------------------------------------
+    // PaymentMeans: null PaymentMethod must not emit a <PaymentMeans> element
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Map_NoPaymentMethod_NoPaymentMeansElement()
+    {
+        // When PaymentMethod is null the mapper must omit the PaymentMeans element
+        // entirely (XSD: PaymentMeans is optional, minOccurs="0").
+        var inv = BuildMinimalInvoice();
+        inv.PaymentMethod = null;
+        inv.BankAccountNumber = null;
+        inv.VariableSymbol = null;
+        inv.DueDate = null;
+        var doc = IsdocMapper.Map(inv);
+        var ns = XNamespace.Get("http://isdoc.cz/namespace/2013");
+
+        doc.Descendants(ns + "PaymentMeans").ShouldBeEmpty();
+    }
+
+    // -------------------------------------------------------------------------
+    // Payment symbols: ConstantSymbol and SpecificSymbol
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Map_PaymentDetails_EmitsConstantSymbolAndSpecificSymbol()
+    {
+        // Both symbols must appear inside Details when set.
+        var inv = BuildMinimalInvoice();
+        inv.ConstantSymbol = "0308";
+        inv.SpecificSymbol = "9999";
+        var doc = IsdocMapper.Map(inv);
+        var ns = XNamespace.Get("http://isdoc.cz/namespace/2013");
+
+        var details = doc.Descendants(ns + "Details").First();
+        details.Element(ns + "ConstantSymbol")!.Value.ShouldBe("0308");
+        details.Element(ns + "SpecificSymbol")!.Value.ShouldBe("9999");
+    }
+
+    // -------------------------------------------------------------------------
+    // Text rows: IsTextRow items must be skipped from InvoiceLine and TaxTotal
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Map_TextRowItems_AreExcludedFromInvoiceLines()
+    {
+        // IsTextRow=true rows are section headers / comments -- they carry no
+        // amounts and must not appear as InvoiceLine elements in the XML.
+        var inv = BuildMinimalInvoice();
+        inv.InvoiceItem = new List<InvoiceItem>
+        {
+            // Normal billable line
+            new InvoiceItem
+            {
+                OrderIndex = 1, Description = "Vyvoj",
+                Quantity = 10, Unit = "hod", UnitPrice = 500,
+                VatRatePercentage = 21, TotalBeforeVat = 5000, VatAmount = 1050, TotalWithVat = 6050,
+                IsTextRow = false
+            },
+            // Text-only section header row -- must be skipped
+            new InvoiceItem
+            {
+                OrderIndex = 2, Description = "Tato polozka je pouze textova",
+                IsTextRow = true
+            }
+        };
+        var doc = IsdocMapper.Map(inv);
+        var ns = XNamespace.Get("http://isdoc.cz/namespace/2013");
+
+        // Only one InvoiceLine must appear (the text row is excluded)
+        var lines = doc.Descendants(ns + "InvoiceLine").ToList();
+        lines.Count.ShouldBe(1);
+        lines[0].Element(ns + "Item")!.Element(ns + "Description")!.Value.ShouldBe("Vyvoj");
+    }
+
+    // -------------------------------------------------------------------------
+    // Issuer without VAT number: PartyTaxScheme must be omitted
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Map_NonVatPayerIssuer_NoPartyTaxSchemeInSupplierParty()
+    {
+        // When the issuer is not a VAT payer the PartyTaxScheme element (which
+        // holds DIC) must NOT appear in AccountingSupplierParty.
+        var inv = BuildMinimalInvoice();
+        inv.Issuer!.IsVatPayer = false;
+        inv.Issuer.TaxNumber = null;
+        var doc = IsdocMapper.Map(inv);
+        var ns = XNamespace.Get("http://isdoc.cz/namespace/2013");
+
+        var supplierParty = doc.Descendants(ns + "AccountingSupplierParty").First();
+        supplierParty.Descendants(ns + "PartyTaxScheme").ShouldBeEmpty();
+    }
+
+    // -------------------------------------------------------------------------
+    // Customer without VAT number: PartyTaxScheme must be omitted
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Map_NonVatPayerCustomer_NoPartyTaxSchemeInCustomerParty()
+    {
+        var inv = BuildMinimalInvoice();
+        inv.Client!.IsVatPayer = false;
+        inv.Client.TaxNumber = null;
+        var doc = IsdocMapper.Map(inv);
+        var ns = XNamespace.Get("http://isdoc.cz/namespace/2013");
+
+        var customerParty = doc.Descendants(ns + "AccountingCustomerParty").First();
+        customerParty.Descendants(ns + "PartyTaxScheme").ShouldBeEmpty();
+    }
+
+    // -------------------------------------------------------------------------
+    // Different invoice IDs must produce different UUIDs
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Map_DifferentInvoiceIds_ProduceDifferentUuids()
+    {
+        // Determinism: same ID → same UUID (tested elsewhere).
+        // Uniqueness:  different ID → different UUID.
+        var inv1 = BuildMinimalInvoice(); // Id = 42
+        var inv2 = BuildMinimalInvoice();
+        inv2.Id = 43;
+
+        var doc1 = IsdocMapper.Map(inv1);
+        var doc2 = IsdocMapper.Map(inv2);
+        var ns = XNamespace.Get("http://isdoc.cz/namespace/2013");
+
+        var uuid1 = doc1.Descendants(ns + "UUID").First().Value;
+        var uuid2 = doc2.Descendants(ns + "UUID").First().Value;
+        uuid1.ShouldNotBe(uuid2);
+    }
+
+    // -------------------------------------------------------------------------
+    // Invoice without DueDate: no PaymentDueDate and no Details element for cash
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Map_CashInvoiceWithNoDueDate_NoDetailsElement()
+    {
+        // Cash payment with no due date and no bank details must not produce
+        // an empty <Details /> element.
+        var inv = BuildMinimalInvoice();
+        inv.PaymentMethod = EPaymentMethod.Cash;
+        inv.BankAccountNumber = null;
+        inv.IBAN = null;
+        inv.SWIFT = null;
+        inv.VariableSymbol = null;
+        inv.ConstantSymbol = null;
+        inv.SpecificSymbol = null;
+        inv.DueDate = null;
+        var doc = IsdocMapper.Map(inv);
+        var ns = XNamespace.Get("http://isdoc.cz/namespace/2013");
+
+        // PaymentMeans/Payment must exist (code 10) but no Details inside
+        var payment = doc.Descendants(ns + "Payment").First();
+        payment.Element(ns + "PaymentMeansCode")!.Value.ShouldBe("10");
+        payment.Element(ns + "Details").ShouldBeNull();
+    }
+
+    // -------------------------------------------------------------------------
+    // InvoiceLine: unitCode fallback to H87 when Unit is null
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Map_ItemWithNullUnit_UsesH87FallbackUnitCode()
+    {
+        // UN/ECE Recommendation 20 code H87 means "piece" and is used as
+        // fallback when InvoiceItem.Unit is null.
+        var inv = BuildMinimalInvoice();
+        inv.InvoiceItem.First().Unit = null!;
+        var doc = IsdocMapper.Map(inv);
+        var ns = XNamespace.Get("http://isdoc.cz/namespace/2013");
+
+        var qty = doc.Descendants(ns + "InvoicedQuantity").First();
+        qty.Attribute("unitCode")!.Value.ShouldBe("H87");
+    }
+
+    // -------------------------------------------------------------------------
+    // Multiple VAT rates: TaxSubTotal grouping
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Map_MixedVatRates_ProducesOneTaxSubTotalPerRate()
+    {
+        // An invoice with two different VAT rates must produce exactly two
+        // TaxSubTotal elements inside TaxTotal, one per rate.
+        var inv = BuildFullCzkInvoice(); // 21% + 15%
+        var doc = IsdocMapper.Map(inv);
+        var ns = XNamespace.Get("http://isdoc.cz/namespace/2013");
+
+        var taxSubTotals = doc.Descendants(ns + "TaxTotal")
+            .First()
+            .Elements(ns + "TaxSubTotal")
+            .ToList();
+
+        taxSubTotals.Count.ShouldBe(2);
+
+        // Rates should be present as child Percent elements
+        var rates = taxSubTotals
+            .Select(s => s.Descendants(ns + "Percent").First().Value)
+            .ToList();
+        rates.ShouldContain("21.00");
+        rates.ShouldContain("15.00");
+    }
+
+    // -------------------------------------------------------------------------
+    // CreditNote XSD validation round-trip
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Map_CreditNote_ValidatesAgainstXsd()
+    {
+        // DocumentType=5 credit notes must also be schema-valid.
+        var inv = BuildMinimalInvoice();
+        inv.DocumentType = EDocumentType.CreditNote;
+        var doc = IsdocMapper.Map(inv);
+
+        var errors = GetXsdErrors(doc);
+
+        errors.ShouldBeEmpty($"XSD validation errors for CreditNote:\n{string.Join("\n", errors)}");
+    }
+
+    // -------------------------------------------------------------------------
+    // IssuingSystem element must always be present
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Map_IssuingSystem_IsAlwaysFakvio()
+    {
+        // The IssuingSystem element identifies the software that produced the
+        // ISDOC document -- must always be "Fakvio".
+        var inv = BuildMinimalInvoice();
+        var doc = IsdocMapper.Map(inv);
+        var ns = XNamespace.Get("http://isdoc.cz/namespace/2013");
+
+        doc.Descendants(ns + "IssuingSystem").First().Value.ShouldBe("Fakvio");
+    }
+
+    // -------------------------------------------------------------------------
+    // TaxPointDate (DUZP): present when set, absent when null
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Map_WithTaxableSupplyDate_EmitsTaxPointDate()
+    {
+        var inv = BuildMinimalInvoice();
+        inv.TaxableSupplyDate = new DateTime(2026, 3, 10);
+        var doc = IsdocMapper.Map(inv);
+        var ns = XNamespace.Get("http://isdoc.cz/namespace/2013");
+
+        doc.Descendants(ns + "TaxPointDate").First().Value.ShouldBe("2026-03-10");
+    }
+
+    [Fact]
+    public void Map_WithoutTaxableSupplyDate_NoTaxPointDateElement()
+    {
+        var inv = BuildMinimalInvoice();
+        inv.TaxableSupplyDate = null;
+        var doc = IsdocMapper.Map(inv);
+        var ns = XNamespace.Get("http://isdoc.cz/namespace/2013");
+
+        // TaxPointDate is optional in the XSD (minOccurs="0") -- must be omitted
+        doc.Descendants(ns + "TaxPointDate").ShouldBeEmpty();
+    }
+
+    // -------------------------------------------------------------------------
+    // CZK invoice with only Notes (no foreign currency) has a single Note
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Map_CzkInvoiceWithNotes_EmitsSingleNoteElement()
+    {
+        // For a CZK invoice with user notes there must be exactly one Note
+        // element (no ForeignCurrencyNote appended for domestic invoices).
+        var inv = BuildMinimalInvoice();
+        inv.Notes = "Dekujeme za objednavku";
+        var doc = IsdocMapper.Map(inv);
+        var ns = XNamespace.Get("http://isdoc.cz/namespace/2013");
+
+        var notes = doc.Descendants(ns + "Note").ToList();
+        notes.Count.ShouldBe(1);
+        notes[0].Value.ShouldBe("Dekujeme za objednavku");
+    }
+
+    // -------------------------------------------------------------------------
+    // CZK invoice without Notes has no Note element at all
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Map_CzkInvoiceWithoutNotes_NoNoteElement()
+    {
+        var inv = BuildMinimalInvoice();
+        inv.Notes = null;
+        var doc = IsdocMapper.Map(inv);
+        var ns = XNamespace.Get("http://isdoc.cz/namespace/2013");
+
+        doc.Descendants(ns + "Note").ShouldBeEmpty();
+    }
+
+    // -------------------------------------------------------------------------
+    // IssueDate formatting: must always use ISO 8601 (yyyy-MM-dd)
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Map_IssueDate_FormattedAsIso8601()
+    {
+        var inv = BuildMinimalInvoice();
+        inv.IssueDate = new DateTime(2026, 12, 31);
+        var doc = IsdocMapper.Map(inv);
+        var ns = XNamespace.Get("http://isdoc.cz/namespace/2013");
+
+        doc.Descendants(ns + "IssueDate").First().Value.ShouldBe("2026-12-31");
+    }
+
+    // -------------------------------------------------------------------------
+    // ExportInvoiceAsync: cancellation is respected
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task ExportInvoiceAsync_WithAlreadyCancelledToken_ThrowsOperationCanceledException()
+    {
+        // A pre-cancelled token should prevent the async DB query from starting.
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        await Should.ThrowAsync<OperationCanceledException>(
+            () => _service.ExportInvoiceAsync(1, cts.Token));
+    }
+
+    // -------------------------------------------------------------------------
+    // XML root element: version attribute must be "6.0.2"
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Map_RootElement_HasVersion602Attribute()
+    {
+        var inv = BuildMinimalInvoice();
+        var doc = IsdocMapper.Map(inv);
+
+        var root = doc.Root!;
+        root.Name.LocalName.ShouldBe("Invoice");
+        root.Attribute("version")!.Value.ShouldBe("6.0.2");
+    }
+
+    // -------------------------------------------------------------------------
+    // IBAN-only bank transfer: still emits Details without BIC when SWIFT is null
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Map_BankTransfer_IbanWithoutSwift_EmitsIbanNoBic()
+    {
+        var inv = BuildMinimalInvoice();
+        inv.IBAN = "CZ6508000000192000145399";
+        inv.SWIFT = null; // no SWIFT code available
+        var doc = IsdocMapper.Map(inv);
+        var ns = XNamespace.Get("http://isdoc.cz/namespace/2013");
+
+        var details = doc.Descendants(ns + "Details").First();
+        details.Element(ns + "IBAN")!.Value.ShouldBe("CZ6508000000192000145399");
+        // BIC element must be absent (not emitted as empty)
+        details.Element(ns + "BIC").ShouldBeNull();
+    }
 }
