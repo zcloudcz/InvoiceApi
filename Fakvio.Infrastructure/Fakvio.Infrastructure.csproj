@@ -65,6 +65,7 @@
   <!-- Embed HTML templates as assembly resources so they can be read at runtime -->
   <ItemGroup>
     <EmbeddedResource Include="Templates\*.html" />
+    <EmbeddedResource Include="Resources\Isdoc\isdoc-6.0.2.xsd" />
   </ItemGroup>
 
   <!-- Global using for ZMapper so the source generator's output can resolve MapperConfiguration -->

@@ -1,4 +1,4 @@
-using AresService;
+﻿using AresService;
 using Azure.Identity;
 using Fakvio.Application.Service;
 using Fakvio.Infrastructure.AiProviders;
@@ -123,6 +123,7 @@ public static class ServiceCollectionExtensions
         services.AddScopedWithLogging<ICurrencyService, CurrencyService>();
         services.AddScopedWithLogging<IInvoiceTemplateService, InvoiceTemplateService>();
         services.AddScopedWithLogging<IPdfExportService, PdfExportService>();
+        services.AddScopedWithLogging<IIsdocExportService, IsdocExportService>();
         services.AddScopedWithLogging<IQrPaymentService, QrPaymentService>();
         services.AddScopedWithLogging<IEmailService, EmailService>();
         services.AddScopedWithLogging<IContentTemplateService, ContentTemplateService>();
