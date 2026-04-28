@@ -313,6 +313,32 @@ public class InvoiceFunctions
     }
 
     /// <summary>
+    /// GET api/invoice/{id:long}/isdoc → InvoiceController.ExportIsdoc
+    /// Wraps the controller action that generates an ISDOC 6.0.2 XML export.
+    /// </summary>
+    [Function("Invoice_ExportIsdoc")]
+    public async Task<IActionResult> Invoice_ExportIsdoc(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/invoice/{id:long}/isdoc")] HttpRequest req,
+        string id)
+    {
+        // Parse route parameter from string to long (Azure Functions can't bind long directly)
+        if (!long.TryParse(id, out var __id_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
+
+        // Wire up the controller's HttpContext so it can access User claims, Request, etc.
+        _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
+
+        // Authorization check: [Authorize]
+        if (req.HttpContext.User.Identity?.IsAuthenticated != true)
+            return new UnauthorizedResult();
+
+        var cancellationToken = req.HttpContext.RequestAborted;
+
+        // Call the controller action and normalize the response
+        return FunctionResultHelper.Normalize(await _controller.ExportIsdoc(__id_parsed, cancellationToken));
+    }
+
+    /// <summary>
     /// GET api/invoice/{id:long}/pdf → InvoiceController.ExportToPdf
     /// </summary>
     [Function("Invoice_ExportToPdf")]

@@ -304,6 +304,51 @@ public static class InvoiceTools
     }
 
     /// <summary>
+    /// Exports an invoice as ISDOC 6.0.2 XML, returned as a base64-encoded string.
+    /// ISDOC is the Czech electronic invoice standard importable by Pohoda, Money S3, Helios.
+    /// The AI client can save this to a file with the .isdoc extension.
+    /// </summary>
+    [McpServerTool, Description(
+        "Export an invoice as ISDOC 6.0.2 XML (Czech electronic invoice standard). " +
+        "Returns the XML as a base64-encoded string. " +
+        "Use this when the user asks to download or export an invoice as ISDOC for import into accounting software. " +
+        "You can find the invoice ID using FindInvoiceByNumber first.")]
+    public static async Task<string> ExportInvoiceIsdoc(
+        IFakvioApiClient api,
+        [Description("The invoice ID to export as ISDOC XML")] long invoiceId,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            // Fetch the invoice metadata for a meaningful file name
+            var invoice = await api.GetInvoiceByIdAsync(invoiceId, ct);
+            if (invoice is null)
+                return JsonSerializer.Serialize(new { error = $"Invoice with ID {invoiceId} not found." }, JsonOptions);
+
+            // Download the ISDOC XML bytes from the API
+            var isdocBytes = await api.ExportInvoiceIsdocAsync(invoiceId, ct);
+
+            // Build a descriptive file name based on document type
+            var prefix = invoice.DocumentType == EDocumentType.CreditNote ? "CreditNote" : "Invoice";
+            var fileName = $"{prefix}_{invoice.DocumentNumber ?? invoiceId.ToString()}.isdoc";
+
+            // Return base64-encoded XML with metadata — AI client saves the file
+            return JsonSerializer.Serialize(new
+            {
+                success = true,
+                fileName,
+                mimeType = "application/xml",
+                sizeBytes = isdocBytes.Length,
+                base64Content = Convert.ToBase64String(isdocBytes)
+            }, JsonOptions);
+        }
+        catch (Exception ex)
+        {
+            return JsonSerializer.Serialize(new { error = ex.Message }, JsonOptions);
+        }
+    }
+
+    /// <summary>
     /// Soft-deletes a draft invoice.
     /// Only invoices in Draft status can be deleted.
     /// </summary>

@@ -24,6 +24,7 @@ public class InvoiceController : ControllerBase
 {
     private readonly IInvoiceService _invoiceService;
     private readonly IPdfExportService _pdfExportService;
+    private readonly IIsdocExportService _isdocExportService;
     private readonly IEmailService _emailService;
     private readonly IQrPaymentService _qrPaymentService;
     private readonly ICloudStorageOrchestrator _cloudStorageOrchestrator;
@@ -32,6 +33,7 @@ public class InvoiceController : ControllerBase
     public InvoiceController(
         IInvoiceService invoiceService,
         IPdfExportService pdfExportService,
+        IIsdocExportService isdocExportService,
         IEmailService emailService,
         IQrPaymentService qrPaymentService,
         ICloudStorageOrchestrator cloudStorageOrchestrator,
@@ -39,6 +41,7 @@ public class InvoiceController : ControllerBase
     {
         _invoiceService = invoiceService;
         _pdfExportService = pdfExportService;
+        _isdocExportService = isdocExportService;
         _emailService = emailService;
         _qrPaymentService = qrPaymentService;
         _cloudStorageOrchestrator = cloudStorageOrchestrator;
@@ -557,6 +560,49 @@ public class InvoiceController : ControllerBase
         catch (KeyNotFoundException)
         {
             _logger.LogWarning("Invoice {Id} not found for PDF export", id);
+            return NotFound(new { message = $"Invoice with ID {id} not found" });
+        }
+    }
+
+    /// <summary>
+    /// Exports the specified invoice as an ISDOC 6.0.2 XML file.
+    /// ISDOC is the Czech electronic invoice standard (ICAI) — it can be imported
+    /// directly into Pohoda, Money S3, Helios and other Czech accounting systems.
+    /// Returns the XML as a downloadable file (application/xml, extension .isdoc).
+    /// </summary>
+    /// <param name="id">Invoice ID to export</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>ISDOC XML file</returns>
+    /// <response code="200">Returns .isdoc XML file</response>
+    /// <response code="404">Invoice not found</response>
+    [HttpGet("{id:long}/isdoc")]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> ExportIsdoc(
+        long id,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("GET /api/invoice/{Id}/isdoc - Generating ISDOC export", id);
+
+        try
+        {
+            // Generate the ISDOC XML bytes via the export service
+            var isdocBytes = await _isdocExportService.ExportInvoiceAsync(id, cancellationToken);
+
+            // Fetch the invoice to build a meaningful file name
+            var invoice = await _invoiceService.GetInvoiceByIdAsync(id, cancellationToken);
+            // Use document type prefix for clarity in the file name
+            var prefix = invoice?.DocumentType == EDocumentType.CreditNote ? "CreditNote" : "Invoice";
+            var fileName = $"{prefix}_{invoice?.DocumentNumber ?? id.ToString()}.isdoc";
+
+            _logger.LogInformation("ISDOC generated for invoice {Id}, size: {Size} bytes", id, isdocBytes.Length);
+
+            // Return as downloadable attachment — Content-Disposition is set by the File() helper
+            return File(isdocBytes, "application/xml", fileName);
+        }
+        catch (KeyNotFoundException)
+        {
+            _logger.LogWarning("Invoice {Id} not found for ISDOC export", id);
             return NotFound(new { message = $"Invoice with ID {id} not found" });
         }
     }
