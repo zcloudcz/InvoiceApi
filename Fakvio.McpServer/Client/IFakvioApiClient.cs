@@ -49,6 +49,9 @@ public interface IFakvioApiClient
     /// <summary>GET /api/invoice/{id}/pdf — export invoice as PDF file (raw bytes).</summary>
     Task<byte[]> ExportInvoicePdfAsync(long id, CancellationToken ct = default);
 
+    /// <summary>GET /api/invoice/{id}/isdoc — export invoice as ISDOC 6.0.2 XML (raw bytes).</summary>
+    Task<byte[]> ExportInvoiceIsdocAsync(long id, CancellationToken ct = default);
+
     // ── Client endpoints ───────────────────────────────────────────────
 
     /// <summary>GET /api/client/paged — paginated client list with filters.</summary>

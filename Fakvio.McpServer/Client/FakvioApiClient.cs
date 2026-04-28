@@ -118,6 +118,17 @@ public class FakvioApiClient : IFakvioApiClient
         return await response.Content.ReadAsByteArrayAsync(ct);
     }
 
+    /// <summary>
+    /// Downloads the invoice ISDOC XML as raw bytes from GET /api/invoice/{id}/isdoc.
+    /// ISDOC is the Czech electronic invoice standard used by Pohoda, Money, Helios.
+    /// </summary>
+    public async Task<byte[]> ExportInvoiceIsdocAsync(long id, CancellationToken ct = default)
+    {
+        var response = await _http.GetAsync($"api/invoice/{id}/isdoc", ct);
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadAsByteArrayAsync(ct);
+    }
+
     // ── Client endpoints ───────────────────────────────────────────────
 
     public async Task<PagedResult<ClientDto>> GetClientsPagedAsync(ClientFilterDto filter, CancellationToken ct = default)
