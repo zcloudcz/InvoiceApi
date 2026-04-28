@@ -290,7 +290,6 @@ public class FakvioService : ApiClientBase
     }
 
     /// <summary>
-    /// <summary>
     /// Downloads the invoice as an ISDOC 6.0.2 XML byte array.
     /// ISDOC is the Czech electronic invoice standard importable by Pohoda, Money S3, Helios.
     /// Uses GetBytesAsync from the base class for binary content.
@@ -300,6 +299,7 @@ public class FakvioService : ApiClientBase
         return await GetBytesAsync($"/api/invoice/{id}/isdoc");
     }
 
+    /// <summary>
     /// Downloads a ZIP archive containing PDFs for multiple invoices.
     /// Returns the ZIP as a byte array for client-side download via JS interop.
     /// </summary>
