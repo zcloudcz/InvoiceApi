@@ -6,6 +6,7 @@ using Fakvio.Infrastructure.Service;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using MimeKit;
 using NSubstitute;
 using Shouldly;
 
@@ -45,6 +46,9 @@ public class EmailServiceTests : IDisposable
     // Mocked PDF export service — returns fake PDF bytes without actual iText7 conversion
     private readonly IPdfExportService _pdfExport;
 
+    // Mocked ISDOC export service — returns fake XML bytes without real ISDOC generation
+    private readonly IIsdocExportService _isdocExport;
+
     // Mocked content template service — replaces old IEmailTemplateService
     // Controls which email/PDF template is returned for the email body
     private readonly IContentTemplateService _contentTemplate;
@@ -80,6 +84,7 @@ public class EmailServiceTests : IDisposable
         _masterContext = new MasterDbContext(masterOptions);
 
         _pdfExport = Substitute.For<IPdfExportService>();
+        _isdocExport = Substitute.For<IIsdocExportService>();
         _contentTemplate = Substitute.For<IContentTemplateService>();
         _systemConfig = Substitute.For<ISystemConfigurationService>();
         _tenantResolver = Substitute.For<ITenantResolver>();
@@ -207,6 +212,7 @@ public class EmailServiceTests : IDisposable
             _tenantContext,
             _masterContext,
             _pdfExport,
+            _isdocExport,
             _contentTemplate,
             _systemConfig,
             _credentialProtector,
@@ -235,7 +241,12 @@ public class EmailServiceTests : IDisposable
     /// Tests that SendInvoiceEmailAsync calls IPdfExportService.GenerateInvoicePdfAsync
     /// to generate the PDF attachment before sending the email.
     /// The actual SMTP send will fail in the unit test environment (no real SMTP server),
-    /// but we can still verify that the PDF generation was triggered.
+    /// but we can still verify that PDF generation was triggered before the SMTP step.
+    ///
+    /// Both export services (PDF + ISDOC) must be explicitly stubbed here.
+    /// Without the ISDOC stub the NSubstitute default is Task&lt;byte[]&gt; returning null,
+    /// which causes a NullReferenceException that was previously swallowed by a broad
+    /// try/catch — masking the missing stub rather than failing fast.
     /// </summary>
     [Fact]
     public async Task SendInvoiceEmailAsync_ValidInvoice_GeneratesPdf()
@@ -246,6 +257,13 @@ public class EmailServiceTests : IDisposable
             .GenerateInvoicePdfAsync(1, Arg.Any<CancellationToken>())
             .Returns(fakePdfBytes);
 
+        // ISDOC stub is required: ExportInvoiceAsync is called before SMTP, so it must
+        // return valid bytes. Without this, the service would throw NullReferenceException
+        // when accessing isdocBytes.Length on the log line — before even reaching SMTP.
+        _isdocExport
+            .ExportInvoiceAsync(1, Arg.Any<CancellationToken>())
+            .Returns(System.Text.Encoding.UTF8.GetBytes("<?xml version=\"1.0\"?><Invoice/>"));
+
         // Mock the content template service to return null (triggers fallback email template)
         _contentTemplate
             .GetDefaultByTypeAsync(EContentTemplateType.InvoiceEmail, Arg.Any<string>(), Arg.Any<CancellationToken>())
@@ -253,14 +271,19 @@ public class EmailServiceTests : IDisposable
 
         var service = CreateService();
 
-        // Act — this will fail at SMTP connect (expected in unit test), but we verify the PDF was requested
+        // Act — the service calls both export services, then reaches SMTP connect which
+        // fails with a network/socket error because no real SMTP server exists in unit tests.
+        // Only catch the expected SMTP infrastructure exception — any other exception
+        // (InvalidOperationException, NullReferenceException, etc.) should propagate and fail the test.
         try
         {
             await service.SendInvoiceEmailAsync(1, "test@example.com");
         }
-        catch
+        catch (Exception ex) when (ex is not InvalidOperationException and not KeyNotFoundException
+                                       and not NullReferenceException)
         {
-            // Expected: SMTP connection failure in unit test environment — no real mail server
+            // Expected: SocketException / SmtpCommandException / MailKit.Net.Smtp.SmtpProtocolException
+            // when MailKit tries to connect to smtp.test.com (from appsettings in constructor).
         }
 
         // Assert — PDF generation should have been called exactly once
@@ -289,7 +312,7 @@ public class EmailServiceTests : IDisposable
         _tenantResolver.GetCurrentCompanyId().Returns((long?)null);
 
         var service = new EmailService(
-            _tenantContext, _masterContext, _pdfExport, _contentTemplate,
+            _tenantContext, _masterContext, _pdfExport, _isdocExport, _contentTemplate,
             _systemConfig, _credentialProtector, _tenantResolver, emptyConfig, _logger);
 
         // Act & Assert — missing SMTP host in all 3 tiers should throw a clear error
@@ -512,5 +535,267 @@ public class EmailServiceTests : IDisposable
         // Assert — should have called with "cs" language
         await _contentTemplate.Received(1)
             .GetDefaultByTypeAsync(EContentTemplateType.InvitationEmail, "cs", Arg.Any<CancellationToken>());
+    }
+
+    // ─── ISDOC Attachment Tests ────────────────────────────────────────────
+
+    /// <summary>
+    /// Tests that SendInvoiceEmailAsync calls IIsdocExportService.ExportInvoiceAsync
+    /// to generate the ISDOC attachment. The actual SMTP send will fail in the test
+    /// environment (no real server), but ISDOC generation is triggered before SMTP.
+    /// </summary>
+    [Fact]
+    public async Task SendInvoiceEmailAsync_ValidInvoice_GeneratesIsdoc()
+    {
+        // Arrange — return fake bytes from both export services
+        _pdfExport
+            .GenerateInvoicePdfAsync(1, Arg.Any<CancellationToken>())
+            .Returns(new byte[] { 0x25, 0x50, 0x44, 0x46 }); // %PDF header
+
+        _isdocExport
+            .ExportInvoiceAsync(1, Arg.Any<CancellationToken>())
+            .Returns(System.Text.Encoding.UTF8.GetBytes("<?xml version=\"1.0\"?><Invoice/>"));
+
+        _contentTemplate
+            .GetDefaultByTypeAsync(EContentTemplateType.InvoiceEmail, Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns((Contracts.Dto.ContentTemplate.ContentTemplateDto?)null);
+
+        var service = CreateService();
+
+        // Act — expect SMTP failure in unit test, but export services run before SMTP
+        try { await service.SendInvoiceEmailAsync(1, "test@example.com"); } catch { }
+
+        // Assert — ISDOC export should have been called exactly once
+        await _isdocExport.Received(1)
+            .ExportInvoiceAsync(1, Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Tests that BuildInvoiceMessage produces a MimeMessage with exactly 2 attachments:
+    /// one PDF (application/pdf) and one ISDOC (application/xml).
+    ///
+    /// This test calls the internal static method directly to inspect the MimeMessage
+    /// without needing a real SMTP server — the message structure is testable in isolation.
+    /// </summary>
+    [Fact]
+    public void BuildInvoiceMessage_ProducesTwoAttachments_WithCorrectContentTypes()
+    {
+        // Arrange — minimal fake bytes for each attachment
+        var pdfBytes = new byte[] { 0x25, 0x50, 0x44, 0x46 }; // %PDF magic bytes
+        var isdocBytes = System.Text.Encoding.UTF8.GetBytes(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Invoice xmlns=\"http://isdoc.cz/namespace/2013\"/>");
+
+        // Act — build the message (this is the real production code path, no mocks needed)
+        var message = EmailService.BuildInvoiceMessage(
+            senderName: "TestApp",
+            senderEmail: "invoices@test.com",
+            to: "client@example.com",
+            subject: "Invoice INV2025001",
+            htmlBody: "<p>Please find attached.</p>",
+            pdfBytes: pdfBytes,
+            pdfFileName: "Invoice_INV2025001.pdf",
+            isdocBytes: isdocBytes,
+            isdocFileName: "Invoice_INV2025001.isdoc");
+
+        // Extract the multipart body to inspect its parts
+        var multipart = message.Body as MimeKit.Multipart;
+        multipart.ShouldNotBeNull("Email body should be multipart/mixed when it has attachments.");
+
+        // Collect all parts that are attachments (not the HTML body)
+        var attachments = multipart
+            .OfType<MimeKit.MimePart>()
+            .Where(p => p.IsAttachment)
+            .ToList();
+
+        // Assert: exactly 2 attachments
+        attachments.Count.ShouldBe(2, "Invoice email must carry exactly 2 attachments: PDF and ISDOC.");
+
+        // Assert PDF attachment properties
+        var pdf = attachments.FirstOrDefault(a => a.FileName?.EndsWith(".pdf") == true);
+        pdf.ShouldNotBeNull("PDF attachment must be present.");
+        pdf.FileName.ShouldBe("Invoice_INV2025001.pdf");
+        pdf.ContentType.MimeType.ShouldBe("application/pdf");
+
+        // Assert ISDOC attachment properties
+        var isdoc = attachments.FirstOrDefault(a => a.FileName?.EndsWith(".isdoc") == true);
+        isdoc.ShouldNotBeNull("ISDOC attachment must be present.");
+        isdoc.FileName.ShouldBe("Invoice_INV2025001.isdoc");
+        isdoc.ContentType.MimeType.ShouldBe("application/xml");
+    }
+
+    /// <summary>
+    /// Tests that the ISDOC attachment file name follows the pattern
+    /// "&lt;DocumentType&gt;_&lt;DocumentNumber&gt;.isdoc" for invoices and credit notes.
+    ///
+    /// This is important for:
+    ///   - Accounting software that identifies ISDOC files by name convention
+    ///   - Audit trail consistency (same prefix as the PDF attachment)
+    /// </summary>
+    [Fact]
+    public void BuildInvoiceMessage_CreditNote_UsesCorrectPrefix()
+    {
+        // Arrange
+        var pdfBytes = new byte[] { 0x25, 0x50, 0x44, 0x46 };
+        var isdocBytes = System.Text.Encoding.UTF8.GetBytes("<?xml version=\"1.0\"?><Invoice/>");
+
+        // Act — use CreditNote prefix
+        var message = EmailService.BuildInvoiceMessage(
+            senderName: "TestApp",
+            senderEmail: "invoices@test.com",
+            to: "client@example.com",
+            subject: "Credit Note CN2025001",
+            htmlBody: "<p>Credit note.</p>",
+            pdfBytes: pdfBytes,
+            pdfFileName: "CreditNote_CN2025001.pdf",
+            isdocBytes: isdocBytes,
+            isdocFileName: "CreditNote_CN2025001.isdoc");
+
+        var multipart = message.Body as MimeKit.Multipart;
+        multipart.ShouldNotBeNull();
+
+        var attachments = multipart
+            .OfType<MimeKit.MimePart>()
+            .Where(p => p.IsAttachment)
+            .ToList();
+
+        attachments.Count.ShouldBe(2);
+
+        // Both attachments should use the "CreditNote_" prefix
+        attachments.ShouldAllBe(a => a.FileName!.StartsWith("CreditNote_"),
+            "Both attachments must use the CreditNote_ prefix for credit notes.");
+    }
+
+    /// <summary>
+    /// Tests that BuildInvoiceMessage attachments contain the actual byte data passed in.
+    /// This ensures no data corruption happens during message construction.
+    /// Also verifies the ISDOC bytes parse as valid XML — proving the content is intact.
+    /// </summary>
+    [Fact]
+    public void BuildInvoiceMessage_AttachmentsContainCorrectData()
+    {
+        // Arrange — use a well-formed minimal ISDOC XML document
+        var pdfBytes = new byte[] { 0x25, 0x50, 0x44, 0x46, 0x2D, 0x31 }; // "%PDF-1"
+        var isdocXml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Invoice xmlns=\"http://isdoc.cz/namespace/2013\"><DocumentType>1</DocumentType></Invoice>";
+        var isdocBytes = System.Text.Encoding.UTF8.GetBytes(isdocXml);
+
+        // Act
+        var message = EmailService.BuildInvoiceMessage(
+            senderName: "TestApp",
+            senderEmail: "invoices@test.com",
+            to: "client@example.com",
+            subject: "Test",
+            htmlBody: "<p>Test</p>",
+            pdfBytes: pdfBytes,
+            pdfFileName: "Invoice_TEST.pdf",
+            isdocBytes: isdocBytes,
+            isdocFileName: "Invoice_TEST.isdoc");
+
+        var multipart = message.Body as MimeKit.Multipart;
+        multipart.ShouldNotBeNull();
+
+        var isdocPart = multipart
+            .OfType<MimeKit.MimePart>()
+            .FirstOrDefault(p => p.IsAttachment && p.FileName?.EndsWith(".isdoc") == true);
+
+        isdocPart.ShouldNotBeNull();
+
+        // Extract the raw bytes from the MIME part's content stream
+        using var ms = new MemoryStream();
+        isdocPart.Content.DecodeTo(ms);
+        var extractedBytes = ms.ToArray();
+
+        // The extracted bytes must be non-empty
+        extractedBytes.ShouldNotBeEmpty();
+
+        // The extracted content must parse as valid XML — proves the bytes were not corrupted
+        var xmlDoc = new System.Xml.XmlDocument();
+        Should.NotThrow(() => xmlDoc.LoadXml(System.Text.Encoding.UTF8.GetString(extractedBytes)),
+            "ISDOC attachment content must be valid XML.");
+    }
+
+    /// <summary>
+    /// Tests that SendInvoiceEmailAsync propagates exceptions thrown by IIsdocExportService
+    /// immediately — the email send is aborted before reaching SMTP.
+    ///
+    /// This is the "fail-fast" contract: if ISDOC generation fails (e.g. missing template,
+    /// database error), the service must NOT send a PDF-only email silently. The caller
+    /// (controller or background job) must see the exception and can decide to retry or log it.
+    ///
+    /// The production code achieves this because ExportInvoiceAsync is awaited directly
+    /// with no surrounding try/catch — the exception propagates naturally.
+    /// </summary>
+    [Fact]
+    public async Task SendInvoiceEmailAsync_IsdocExportThrows_AbortsEmailSend()
+    {
+        // Arrange — PDF export succeeds but ISDOC export fails
+        _pdfExport
+            .GenerateInvoicePdfAsync(1, Arg.Any<CancellationToken>())
+            .Returns(new byte[] { 0x25, 0x50, 0x44, 0x46 });
+
+        // Simulate a ISDOC generation failure (e.g. template missing, mapper exception)
+        _isdocExport
+            .ExportInvoiceAsync(1, Arg.Any<CancellationToken>())
+            .Returns<byte[]>(_ => throw new InvalidOperationException("ISDOC template not configured"));
+
+        _contentTemplate
+            .GetDefaultByTypeAsync(EContentTemplateType.InvoiceEmail, Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns((Contracts.Dto.ContentTemplate.ContentTemplateDto?)null);
+
+        var service = CreateService();
+
+        // Act & Assert — the exception from IIsdocExportService must propagate to the caller
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => service.SendInvoiceEmailAsync(1, "test@example.com"));
+
+        ex.Message.ShouldContain("ISDOC template not configured");
+
+        // Verify PDF was called (it runs first), but SMTP was never reached
+        // (no SMTP exception means the exception happened before ConnectAsync)
+        await _pdfExport.Received(1)
+            .GenerateInvoicePdfAsync(1, Arg.Any<CancellationToken>());
+
+        await _isdocExport.Received(1)
+            .ExportInvoiceAsync(1, Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Tests that BuildInvoiceMessage correctly sets the From and To headers.
+    /// Ensures sender name / email and recipient appear in the MimeMessage headers —
+    /// a regression guard against accidentally swapping sender/recipient parameters.
+    /// </summary>
+    [Fact]
+    public void BuildInvoiceMessage_SetsCorrectFromAndToHeaders()
+    {
+        // Arrange
+        var pdfBytes = new byte[] { 0x25, 0x50, 0x44, 0x46 };
+        var isdocBytes = System.Text.Encoding.UTF8.GetBytes("<?xml version=\"1.0\"?><Invoice/>");
+
+        // Act
+        var message = EmailService.BuildInvoiceMessage(
+            senderName: "Fakvio App",
+            senderEmail: "invoices@fakvio.cz",
+            to: "klient@example.cz",
+            subject: "Faktura INV2025001",
+            htmlBody: "<p>Faktura v příloze.</p>",
+            pdfBytes: pdfBytes,
+            pdfFileName: "Invoice_INV2025001.pdf",
+            isdocBytes: isdocBytes,
+            isdocFileName: "Invoice_INV2025001.isdoc");
+
+        // Assert — From header
+        message.From.Count.ShouldBe(1);
+        var fromAddress = message.From[0] as MailboxAddress;
+        fromAddress.ShouldNotBeNull();
+        fromAddress.Name.ShouldBe("Fakvio App");
+        fromAddress.Address.ShouldBe("invoices@fakvio.cz");
+
+        // Assert — To header
+        message.To.Count.ShouldBe(1);
+        var toAddress = message.To[0] as MailboxAddress;
+        toAddress.ShouldNotBeNull();
+        toAddress.Address.ShouldBe("klient@example.cz");
+
+        // Assert — Subject
+        message.Subject.ShouldBe("Faktura INV2025001");
     }
 }
