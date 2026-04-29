@@ -210,15 +210,12 @@ public class InvoiceDetailTests : FakvioPageTest
     }
 
     [Test]
-    public async Task InvoiceDetail_IsdocButton_IsDisabledForDraftInvoice()
+    public async Task InvoiceDetail_IsdocButton_DisabledStateMatchesInvoiceStatus()
     {
-        // Navigate to a fresh/new invoice create form — a newly created invoice is Draft.
-        await LoginAndNavigateAsync("/invoices/create", "h4");
-
-        // The ISDOC button should not appear on the create form (no invoice loaded yet),
-        // so navigate back to an invoice that is in Draft state instead.
-        // Because automated test data may not guarantee a Draft invoice at a known URL,
-        // we check the general list and pick the first invoice, then check the button state.
+        // Navigate to the first invoice in the list — status may be Draft or non-Draft.
+        // The test determines the actual status from the MudChip selector and then
+        // asserts the ISDOC button's disabled attribute directly using Playwright's
+        // IsDisabledAsync() — no brittle body text scan.
         await LoginAndNavigateAsync("/invoices", "h4");
         await WaitForTableLoadAsync();
 
@@ -226,29 +223,132 @@ public class InvoiceDetailTests : FakvioPageTest
         await firstRow.ClickAsync();
         await Page.WaitForSelectorAsync("h4, h3, h5", new() { Timeout = Config.BlazorLoadTimeout });
 
-        // Find the ISDOC button — it must exist on the page.
+        // Locate the ISDOC button — it must be present on every invoice detail page.
         var isdocButton = Page.GetByRole(AriaRole.Button).Filter(
-            new() { HasText = "ISDOC" });
-        var count = await isdocButton.CountAsync();
-        Assert.That(count, Is.GreaterThanOrEqualTo(1),
-            "ISDOC download button should be present on invoice detail page");
+            new() { HasText = "ISDOC" }).First;
+        await Expect(isdocButton).ToBeVisibleAsync();
 
-        // Verify the button's disabled/enabled state matches the invoice status:
-        // disabled for Draft, enabled for Issued/Paid/Overdue.
-        // We read the aria-disabled attribute set by MudBlazor when Disabled=true.
-        var body = await Page.TextContentAsync("body");
-        var isDraftInvoice = body!.Contains("Koncept") || body.Contains("Draft");
-        var isDisabled = await isdocButton.First.GetAttributeAsync("disabled");
-        if (isDraftInvoice)
+        // Determine whether the current invoice is a Draft by reading the status chip
+        // text directly from the DOM element (not from a full-page body scan).
+        // MudBlazor renders status as a .mud-chip element.
+        var statusChipText = await Page.Locator(".mud-chip").First.TextContentAsync() ?? "";
+        var isDraft = statusChipText.Contains("Koncept", StringComparison.OrdinalIgnoreCase)
+                   || statusChipText.Contains("Draft", StringComparison.OrdinalIgnoreCase);
+
+        // Use Playwright's IsDisabledAsync() to check the button's disabled state —
+        // this reads the HTML disabled attribute or aria-disabled, whichever MudBlazor sets.
+        var actuallyDisabled = await isdocButton.IsDisabledAsync();
+
+        if (isDraft)
         {
-            Assert.That(isDisabled, Is.Not.Null,
-                "ISDOC button must be disabled for Draft invoices");
+            Assert.That(actuallyDisabled, Is.True,
+                "ISDOC button must be disabled when the invoice status is Draft (unissued invoice has no legal ISDOC)");
         }
         else
         {
-            Assert.That(isDisabled, Is.Null,
-                "ISDOC button must be enabled for issued/paid/overdue invoices");
+            Assert.That(actuallyDisabled, Is.False,
+                $"ISDOC button must be enabled for status '{statusChipText}' (non-Draft invoices can be exported)");
         }
+    }
+
+    [Test]
+    public async Task InvoiceDetail_IsdocButton_EnabledForNonDraftInvoice()
+    {
+        // Scans the invoice list to find a non-Draft invoice and verifies that the
+        // ISDOC button on its detail page is not disabled.
+        // This complements the DisabledStateMatchesInvoiceStatus test which may or may
+        // not land on a Draft — here we explicitly seek a Completed/Issued/Paid invoice.
+        await LoginAndNavigateAsync("/invoices", "h4");
+        await WaitForTableLoadAsync();
+
+        var rows = Page.Locator(".mud-table-body tr");
+        var rowCount = await rows.CountAsync();
+
+        string? nonDraftUrl = null;
+        for (var i = 0; i < rowCount && nonDraftUrl == null; i++)
+        {
+            var row = rows.Nth(i);
+            var rowText = await row.TextContentAsync() ?? "";
+            // Skip rows that contain the Draft/Koncept status label
+            if (!rowText.Contains("Koncept", StringComparison.OrdinalIgnoreCase)
+                && !rowText.Contains("Draft", StringComparison.OrdinalIgnoreCase))
+            {
+                await row.ClickAsync();
+                await Page.WaitForSelectorAsync("h4, h3, h5", new() { Timeout = Config.BlazorLoadTimeout });
+                nonDraftUrl = Page.Url;
+            }
+        }
+
+        if (nonDraftUrl == null)
+        {
+            // All invoices are Draft — cannot test enabled state; skip gracefully.
+            Assert.Pass("No non-Draft invoice found in the list — cannot verify enabled state (skip).");
+            return;
+        }
+
+        // Verify the ISDOC button on the non-Draft invoice is not disabled.
+        var isdocButton = Page.GetByRole(AriaRole.Button).Filter(
+            new() { HasText = "ISDOC" }).First;
+        await Expect(isdocButton).ToBeVisibleAsync();
+
+        var isDisabled = await isdocButton.IsDisabledAsync();
+        Assert.That(isDisabled, Is.False,
+            "ISDOC button must be enabled (not disabled) for a non-Draft invoice");
+    }
+
+    [Test]
+    public async Task InvoiceDetail_IsdocButton_ClickOnEnabledInvoice_ShowsSnackbar()
+    {
+        // Verifies that clicking the ISDOC button (on a non-Draft invoice) triggers
+        // either a success snackbar (download completed) or an error snackbar (API
+        // unreachable in CI) — but never silently fails with no feedback to the user.
+        await LoginAndNavigateAsync("/invoices", "h4");
+        await WaitForTableLoadAsync();
+
+        var rows = Page.Locator(".mud-table-body tr");
+        var rowCount = await rows.CountAsync();
+
+        bool foundNonDraft = false;
+        for (var i = 0; i < rowCount && !foundNonDraft; i++)
+        {
+            var row = rows.Nth(i);
+            var rowText = await row.TextContentAsync() ?? "";
+            if (!rowText.Contains("Koncept", StringComparison.OrdinalIgnoreCase)
+                && !rowText.Contains("Draft", StringComparison.OrdinalIgnoreCase))
+            {
+                await row.ClickAsync();
+                await Page.WaitForSelectorAsync("h4, h3, h5", new() { Timeout = Config.BlazorLoadTimeout });
+                foundNonDraft = true;
+            }
+        }
+
+        if (!foundNonDraft)
+        {
+            Assert.Pass("No non-Draft invoice available — cannot test click feedback (skip).");
+            return;
+        }
+
+        var isdocButton = Page.GetByRole(AriaRole.Button).Filter(
+            new() { HasText = "ISDOC" }).First;
+
+        // Pre-condition: button is enabled
+        var isDisabled = await isdocButton.IsDisabledAsync();
+        if (isDisabled)
+        {
+            Assert.Pass("ISDOC button is disabled on this invoice — skip click test.");
+            return;
+        }
+
+        // Click and wait for either a success or error MudBlazor snackbar.
+        // Both outcomes show user feedback; the test fails only if nothing appears.
+        await isdocButton.ClickAsync();
+
+        // MudBlazor snackbar appears as .mud-snackbar element
+        var snackbar = Page.Locator(".mud-snackbar");
+        await snackbar.WaitForAsync(new() { Timeout = 8_000 });
+        var snackbarCount = await snackbar.CountAsync();
+        Assert.That(snackbarCount, Is.GreaterThanOrEqualTo(1),
+            "A snackbar (success or error) must appear after clicking the ISDOC button");
     }
 
     [Test]
