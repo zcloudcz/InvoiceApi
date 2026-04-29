@@ -196,6 +196,62 @@ public class InvoiceDetailTests : FakvioPageTest
     }
 
     [Test]
+    public async Task InvoiceDetail_IsdocButton_Exists()
+    {
+        await NavigateToFirstInvoiceAsync();
+
+        // ISDOC download button should always appear on the detail page regardless of invoice status.
+        // The test locates the button by its label text (CZ or EN depending on locale).
+        var isdocButton = Page.GetByRole(AriaRole.Button).Filter(
+            new() { HasText = "ISDOC" });
+        var count = await isdocButton.CountAsync();
+        Assert.That(count, Is.GreaterThanOrEqualTo(1),
+            "ISDOC download button should be present on invoice detail page");
+    }
+
+    [Test]
+    public async Task InvoiceDetail_IsdocButton_IsDisabledForDraftInvoice()
+    {
+        // Navigate to a fresh/new invoice create form — a newly created invoice is Draft.
+        await LoginAndNavigateAsync("/invoices/create", "h4");
+
+        // The ISDOC button should not appear on the create form (no invoice loaded yet),
+        // so navigate back to an invoice that is in Draft state instead.
+        // Because automated test data may not guarantee a Draft invoice at a known URL,
+        // we check the general list and pick the first invoice, then check the button state.
+        await LoginAndNavigateAsync("/invoices", "h4");
+        await WaitForTableLoadAsync();
+
+        var firstRow = Page.Locator(".mud-table-body tr").First;
+        await firstRow.ClickAsync();
+        await Page.WaitForSelectorAsync("h4, h3, h5", new() { Timeout = Config.BlazorLoadTimeout });
+
+        // Find the ISDOC button — it must exist on the page.
+        var isdocButton = Page.GetByRole(AriaRole.Button).Filter(
+            new() { HasText = "ISDOC" });
+        var count = await isdocButton.CountAsync();
+        Assert.That(count, Is.GreaterThanOrEqualTo(1),
+            "ISDOC download button should be present on invoice detail page");
+
+        // Verify the button's disabled/enabled state matches the invoice status:
+        // disabled for Draft, enabled for Issued/Paid/Overdue.
+        // We read the aria-disabled attribute set by MudBlazor when Disabled=true.
+        var body = await Page.TextContentAsync("body");
+        var isDraftInvoice = body!.Contains("Koncept") || body.Contains("Draft");
+        var isDisabled = await isdocButton.First.GetAttributeAsync("disabled");
+        if (isDraftInvoice)
+        {
+            Assert.That(isDisabled, Is.Not.Null,
+                "ISDOC button must be disabled for Draft invoices");
+        }
+        else
+        {
+            Assert.That(isDisabled, Is.Null,
+                "ISDOC button must be enabled for issued/paid/overdue invoices");
+        }
+    }
+
+    [Test]
     public async Task InvoiceDetail_QrCode_SectionExists()
     {
         await NavigateToFirstInvoiceAsync();

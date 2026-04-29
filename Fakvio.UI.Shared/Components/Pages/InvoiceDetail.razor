@@ -235,6 +235,11 @@ else
                 </MudMenu>
             }
         </MudButtonGroup>
+        @* ISDOC download — disabled for Draft invoices because an unissued invoice has no legal ISDOC to export *@
+        <MudButton Variant="Variant.Outlined" Color="Color.Secondary"
+                   StartIcon="@Icons.Material.Filled.Download"
+                   Disabled="@(_invoice.Status == EInvoiceStatus.Draft)"
+                   OnClick="DownloadIsdoc">@L["Btn_ExportIsdoc"]</MudButton>
         <MudButton Variant="Variant.Outlined" Color="Color.Tertiary" StartIcon="@Icons.Material.Filled.Email"
                    OnClick="@(() => _showEmailDialog = true)">@L["Btn_SendEmail"]</MudButton>
     </div>
@@ -1437,6 +1442,33 @@ else
             }
         }
         catch (Exception ex) { Snackbar.Add($"Error downloading PDF: {ex.Message}", Severity.Error); }
+    }
+
+    /// <summary>
+    /// Downloads the invoice as an ISDOC 6.0.2 XML file via JS interop.
+    /// ISDOC is the Czech electronic invoice standard (importable in Pohoda, Money S3, Helios, etc.).
+    /// The button is disabled in Draft state so we only export legally issued invoices.
+    /// </summary>
+    private async Task DownloadIsdoc()
+    {
+        if (_invoice == null) return;
+        try
+        {
+            var isdocBytes = await InvoiceService.ExportIsdocAsync(Id);
+            if (isdocBytes != null && isdocBytes.Length > 0)
+            {
+                var base64 = Convert.ToBase64String(isdocBytes);
+                // File name matches the document number so the user can identify the file easily.
+                var fileName = $"{_invoice.DocumentNumber ?? Id.ToString()}.isdoc";
+                await JS.InvokeVoidAsync("downloadFile", fileName, base64, "application/xml");
+                Snackbar.Add(L["Invoice_IsdocDownloaded"].Value, Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add(L["Invoice_IsdocFailed"].Value, Severity.Error);
+            }
+        }
+        catch (Exception ex) { Snackbar.Add($"Error downloading ISDOC: {ex.Message}", Severity.Error); }
     }
 
     /// <summary>
