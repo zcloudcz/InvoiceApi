@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using System.Text;
 using Fakvio.Infrastructure.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -74,7 +75,30 @@ public static class AuthenticationExtensions
                 ValidIssuer = jwtIssuer,
                 ValidAudience = jwtAudience,
                 IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
-                ClockSkew = TimeSpan.Zero // Remove default 5 minute clock skew
+                ClockSkew = TimeSpan.Zero, // Remove default 5 minute clock skew
+
+                // CRITICAL: Tell the JWT validator which claim to use for roles.
+                //
+                // AuthService.GenerateJwtTokenAsync() emits role as:
+                //   new Claim(ClaimTypes.Role, "SysAdmin")
+                //
+                // JwtSecurityTokenHandler serializes ClaimTypes.Role
+                // (http://schemas.microsoft.com/ws/2008/06/identity/claims/role)
+                // to the short JWT claim key "role".
+                //
+                // Without RoleClaimType below, ASP.NET Core's JWT middleware reads
+                // the token back and leaves the claim under the short key "role"
+                // instead of mapping it to ClaimTypes.Role. The result:
+                //   [Authorize(Roles = "SysAdmin")] looks for ClaimTypes.Role → not found → 403
+                //
+                // Fix: explicitly tell TokenValidationParameters which claim is the role claim.
+                // This makes ClaimsPrincipal.IsInRole("SysAdmin") return true and
+                // [Authorize(Roles = "SysAdmin")] pass correctly.
+                RoleClaimType = ClaimTypes.Role,
+
+                // Tell the validator which claim holds the user's name/identifier.
+                // Ensures User.Identity.Name resolves to the expected value.
+                NameClaimType = ClaimTypes.Name
             };
         });
 
