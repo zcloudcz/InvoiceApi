@@ -123,6 +123,52 @@ public class FakvioFactory : WebApplicationFactory<Program>
     }
 
     /// <summary>
+    /// Seeds a regular (non-SysAdmin) user directly into the InMemoryDatabase.
+    /// Used by role-authorization tests that need a User-role account to verify
+    /// that [Authorize(Roles = "SysAdmin")] returns 403 (not 200) for non-admins.
+    ///
+    /// The password hash below is BCrypt for "TestUser123" — same algorithm as
+    /// the seeded SysAdmin, so login via POST /api/auth/login works normally.
+    ///
+    /// Call AFTER InitializeDatabase() (schema must exist first).
+    /// </summary>
+    /// <param name="email">Email to register the user under (must be unique in the test DB)</param>
+    /// <param name="userId">Explicit ID to avoid collisions with seed data (seed admin = 1)</param>
+    /// <returns>The plain-text password to pass to AuthHelper.LoginAsync()</returns>
+    public string SeedRegularUser(string email, long userId = 100)
+    {
+        const string plainTextPassword = "TestUser123";
+        // Use cost factor 4 (minimum) for speed in tests — production uses 12.
+        // Cost factor 4 produces a valid BCrypt hash that AuthService.LoginAsync verifies correctly.
+        var passwordHash = BCrypt.Net.BCrypt.HashPassword(plainTextPassword, workFactor: 4);
+
+        using var scope = Services.CreateScope();
+        var masterDb = scope.ServiceProvider.GetRequiredService<MasterDbContext>();
+
+        // Only add if not already present — tests sharing a factory instance call
+        // InitializeDatabase() multiple times (it's idempotent), so guard here too.
+        if (!masterDb.User.Any(u => u.Email == email))
+        {
+            masterDb.User.Add(new Fakvio.Domain.Entities.User
+            {
+                Id = userId,
+                Email = email,
+                PasswordHash = passwordHash,
+                FirstName = "Regular",
+                LastName = "User",
+                Role = Fakvio.Domain.Enums.EUserRole.User,
+                CompanyId = null,
+                IsActive = true,
+                IsEmailVerified = true,  // pre-verified so login doesn't require email step
+                ExternalProvider = Fakvio.Domain.Enums.EExternalProvider.None
+            });
+            masterDb.SaveChanges();
+        }
+
+        return plainTextPassword;
+    }
+
+    /// <summary>
     /// Removes ALL service registrations related to a DbContext type.
     ///
     /// EF Core's AddDbContext registers multiple services:

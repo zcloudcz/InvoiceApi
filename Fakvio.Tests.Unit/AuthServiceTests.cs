@@ -245,21 +245,31 @@ public class AuthServiceTests : IDisposable
             () => _service.GenerateJwtTokenAsync(999));
     }
 
-    // ─── JWT Role Claim Tests (issue #20 regression guard) ──────────────────
-    // These tests verify the full flow:
-    //   AuthService.GenerateJwtTokenAsync emits role claim
-    //   → JWT is decoded with RoleClaimType = ClaimTypes.Role
-    //   → ClaimsPrincipal.IsInRole("SysAdmin") returns true
-    //   → [Authorize(Roles = "SysAdmin")] works correctly
+    // ─── JWT Role Claim Tests ────────────────────────────────────────────────
+    // These unit tests verify that AuthService.GenerateJwtTokenAsync emits the role
+    // claim in a format that can be decoded correctly by a JWT handler.
     //
-    // Root cause was: without RoleClaimType in TokenValidationParameters, ASP.NET Core
-    // left the role claim under the short key "role" instead of ClaimTypes.Role,
-    // causing IsInRole() to always return false → 403 for SysAdmin users.
+    // LIMITATION: These unit tests use BuildTestValidationParameters() which constructs
+    // its OWN TokenValidationParameters with RoleClaimType = ClaimTypes.Role already set.
+    // They therefore pass regardless of whether AddFakvioAuthentication() has this fix or not.
+    //
+    // They are NOT the regression guard for issue #20. The real regression guard is
+    // in Fakvio.Tests.Integration/SysAdminRoleAuthorizationTests.cs — those tests
+    // go through the REAL JwtBearer middleware registered by AddFakvioAuthentication.
+    //
+    // These unit tests are kept because they:
+    //   a) Verify that AuthService emits a role claim with the correct value ("SysAdmin"/"User")
+    //   b) Verify the token structure at the unit level (fast feedback for AuthService changes)
+    //   c) Serve as documentation of expected token shape
 
     /// <summary>
-    /// Verifies that the generated JWT contains the role claim under ClaimTypes.Role
-    /// when decoded with the same TokenValidationParameters used in AuthenticationExtensions.
-    /// This is the regression test for issue #20: SysAdmin role authorization failure.
+    /// Verifies that GenerateJwtTokenAsync emits the role claim under ClaimTypes.Role
+    /// with the correct value for a SysAdmin user.
+    ///
+    /// NOTE: This test uses a hand-rolled validator (BuildTestValidationParameters), not the
+    /// production AddFakvioAuthentication config. It is a unit test of token content, not
+    /// a regression guard for the middleware configuration. See SysAdminRoleAuthorizationTests
+    /// for the integration-level regression guard.
     /// </summary>
     [Fact]
     public async Task GenerateJwtTokenAsync_SysAdminUser_TokenContainsRoleClaimType()
@@ -267,23 +277,25 @@ public class AuthServiceTests : IDisposable
         // Act — generate token for the seeded SysAdmin user (id=1)
         var token = await _service.GenerateJwtTokenAsync(1);
 
-        // Decode with the SAME parameters as AuthenticationExtensions.AddFakvioAuthentication()
-        // including RoleClaimType = ClaimTypes.Role (the fix for issue #20).
+        // Decode with known-good TokenValidationParameters (not the production config).
+        // This verifies what AuthService puts INTO the token.
         var validationParams = BuildTestValidationParameters();
         var handler = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler();
-        handler.MapInboundClaims = true; // mirrors the JwtBearer default behaviour
+        handler.MapInboundClaims = true;
         var principal = handler.ValidateToken(token, validationParams, out _);
 
-        // The claim must be present under ClaimTypes.Role so that IsInRole() works.
+        // The role claim must be present and correct at the token-content level.
         var roleClaim = principal.FindFirst(System.Security.Claims.ClaimTypes.Role);
         roleClaim.ShouldNotBeNull("Generated JWT must carry a ClaimTypes.Role claim");
         roleClaim!.Value.ShouldBe("SysAdmin");
     }
 
     /// <summary>
-    /// Verifies that ClaimsPrincipal.IsInRole("SysAdmin") returns true for a SysAdmin
-    /// token decoded with the corrected TokenValidationParameters (RoleClaimType set).
-    /// This directly mirrors what ASP.NET Core's [Authorize(Roles = "SysAdmin")] checks.
+    /// Verifies that IsInRole("SysAdmin") returns true when decoded with a
+    /// correctly configured validator (MapInboundClaims = true, RoleClaimType set).
+    ///
+    /// NOTE: Unit-level test of token content. Not a guard against AddFakvioAuthentication
+    /// misconfiguration. See SysAdminRoleAuthorizationTests for the real regression guard.
     /// </summary>
     [Fact]
     public async Task GenerateJwtTokenAsync_SysAdminUser_IsInRoleSysAdmin()
@@ -295,20 +307,17 @@ public class AuthServiceTests : IDisposable
         handler.MapInboundClaims = true;
         var principal = handler.ValidateToken(token, validationParams, out _);
 
-        // This is what [Authorize(Roles = "SysAdmin")] calls internally.
         principal.IsInRole("SysAdmin").ShouldBeTrue(
-            "SysAdmin user's token must satisfy IsInRole(\"SysAdmin\") " +
-            "so that [Authorize(Roles = \"SysAdmin\")] does not return 403");
+            "SysAdmin token must satisfy IsInRole(\"SysAdmin\") with a correctly configured validator");
     }
 
     /// <summary>
-    /// Verifies that a non-SysAdmin user (e.g., regular User role) is NOT in the SysAdmin role,
-    /// so that access control still works correctly after the fix.
+    /// Verifies that a User-role token is NOT in the SysAdmin role — confirming
+    /// AuthService emits the correct role value for non-SysAdmin users.
     /// </summary>
     [Fact]
     public async Task GenerateJwtTokenAsync_RegularUser_IsNotInRoleSysAdmin()
     {
-        // Seed a regular User
         _context.User.Add(new User
         {
             Id = 999,
@@ -329,17 +338,20 @@ public class AuthServiceTests : IDisposable
         handler.MapInboundClaims = true;
         var principal = handler.ValidateToken(token, validationParams, out _);
 
-        // Non-SysAdmin must NOT pass the SysAdmin role check.
         principal.IsInRole("SysAdmin").ShouldBeFalse(
-            "Regular users must not have SysAdmin role access");
+            "Regular users must not have SysAdmin role in their token");
         principal.IsInRole("User").ShouldBeTrue(
-            "Regular user's role claim must be User");
+            "Regular user's token must carry role = User");
     }
 
     /// <summary>
-    /// Builds TokenValidationParameters that match what AuthenticationExtensions
-    /// registers for the JWT Bearer middleware — including the critical RoleClaimType fix.
-    /// Keep this helper in sync with AuthenticationExtensions.cs.
+    /// Builds TokenValidationParameters for unit tests.
+    ///
+    /// IMPORTANT: This helper has RoleClaimType = ClaimTypes.Role and
+    /// MapInboundClaims = true (set at the handler level in the test methods).
+    /// It does NOT use the production AddFakvioAuthentication config, so tests
+    /// using it do NOT guard against misconfiguration in AuthenticationExtensions.cs.
+    /// Keep this helper for fast unit-level token-content tests only.
     /// </summary>
     private Microsoft.IdentityModel.Tokens.TokenValidationParameters BuildTestValidationParameters()
     {
