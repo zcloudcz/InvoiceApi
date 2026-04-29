@@ -63,6 +63,7 @@
   <data name="Btn_View" xml:space="preserve"><value>Zobrazit</value></data>
   <data name="Btn_Back" xml:space="preserve"><value>Zpět</value></data>
   <data name="Btn_ExportPdf" xml:space="preserve"><value>Export PDF</value></data>
+  <data name="Btn_ExportIsdoc" xml:space="preserve"><value>Stáhnout ISDOC</value></data>
   <data name="Btn_SendEmail" xml:space="preserve"><value>Odeslat e-mailem</value></data>
   <data name="Btn_Preview" xml:space="preserve"><value>Náhled</value></data>
   <data name="Btn_CreateFromTemplate" xml:space="preserve"><value>Vytvořit ze šablony</value></data>
@@ -445,6 +446,8 @@
   <data name="FileName_TaxComparison" xml:space="preserve"><value>porovnani-dani</value></data>
   <data name="Invoice_PdfDownloaded" xml:space="preserve"><value>PDF staženo</value></data>
   <data name="Invoice_PdfFailed" xml:space="preserve"><value>Nepodařilo se vygenerovat PDF</value></data>
+  <data name="Invoice_IsdocDownloaded" xml:space="preserve"><value>ISDOC stažen</value></data>
+  <data name="Invoice_IsdocFailed" xml:space="preserve"><value>Nepodařilo se exportovat ISDOC</value></data>
   <data name="Invoice_EmailSentTo" xml:space="preserve"><value>Faktura odeslána na {0}</value></data>
   <data name="Invoice_EmailFailed" xml:space="preserve"><value>Nepodařilo se odeslat email</value></data>
   <data name="Invoice_CreatingTemplate" xml:space="preserve"><value>Vytvářím šablonu...</value></data>
