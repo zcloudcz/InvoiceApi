@@ -29,6 +29,7 @@ public class EmailService : IEmailService
     private readonly TenantDbContext _context;
     private readonly MasterDbContext _masterContext;
     private readonly IPdfExportService _pdfExportService;
+    private readonly IIsdocExportService _isdocExportService;
     private readonly IContentTemplateService _contentTemplateService;
     private readonly ISystemConfigurationService _systemConfigService;
     private readonly ICredentialProtector _credentialProtector;
@@ -54,6 +55,7 @@ public class EmailService : IEmailService
         TenantDbContext context,
         MasterDbContext masterContext,
         IPdfExportService pdfExportService,
+        IIsdocExportService isdocExportService,
         IContentTemplateService contentTemplateService,
         ISystemConfigurationService systemConfigService,
         ICredentialProtector credentialProtector,
@@ -64,6 +66,7 @@ public class EmailService : IEmailService
         _context = context;
         _masterContext = masterContext;
         _pdfExportService = pdfExportService;
+        _isdocExportService = isdocExportService;
         _contentTemplateService = contentTemplateService;
         _systemConfigService = systemConfigService;
         _credentialProtector = credentialProtector;
@@ -86,16 +89,29 @@ public class EmailService : IEmailService
             .FirstOrDefaultAsync(i => i.Id == invoiceId, ct)
             ?? throw new KeyNotFoundException($"Invoice with ID {invoiceId} not found.");
 
-        // Generate the PDF attachment using the PDF export service
-        var pdfBytes = await _pdfExportService.GenerateInvoicePdfAsync(invoiceId, ct);
-        // Use document type prefix for the attachment file name (Invoice vs CreditNote)
+        // Use document type prefix for attachment file names (Invoice vs CreditNote).
+        // This prefix is shared for both PDF and ISDOC file names.
         var prefix = invoice.DocumentType == EDocumentType.CreditNote ? "CreditNote" : "Invoice";
-        var fileName = $"{prefix}_{invoice.DocumentNumber ?? invoiceId.ToString()}.pdf";
+        var docNumber = invoice.DocumentNumber ?? invoiceId.ToString();
+
+        // Generate the PDF attachment using the PDF export service.
+        var pdfBytes = await _pdfExportService.GenerateInvoicePdfAsync(invoiceId, ct);
+        var pdfFileName = $"{prefix}_{docNumber}.pdf";
+
+        // Generate the ISDOC XML attachment.
+        // ISDOC 6.0.2 is the Czech electronic invoice standard read by Pohoda, Money, Helios.
+        // The attachment is always included — per-client opt-out is a separate future feature.
+        var isdocBytes = await _isdocExportService.ExportInvoiceAsync(invoiceId, ct);
+        var isdocFileName = $"{prefix}_{docNumber}.isdoc";
+
+        _logger.LogInformation(
+            "Invoice {InvoiceId} attachments prepared: PDF={PdfFile} ({PdfBytes} B), ISDOC={IsdocFile} ({IsdocBytes} B)",
+            invoiceId, pdfFileName, pdfBytes.Length, isdocFileName, isdocBytes.Length);
 
         // Build placeholders dictionary for template substitution
         var placeholders = new Dictionary<string, string>
         {
-            ["InvoiceNumber"] = invoice.DocumentNumber ?? invoiceId.ToString(),
+            ["InvoiceNumber"] = docNumber,
             ["CompanyName"] = invoice.Issuer?.CompanyName ?? "",
             ["TotalWithVat"] = invoice.TotalWithVat.ToString("N2"),
             ["CurrencyCode"] = invoice.Currency?.Code ?? "",
@@ -116,15 +132,96 @@ public class EmailService : IEmailService
         // Try to render from the default content template for the client's language, fall back to simple HTML
         var (subject, htmlBody) = await RenderFromTemplateOrFallbackAsync(templateType, placeholders, clientLanguage, ct);
 
-        // Send the email with the PDF attachment
-        await SendEmailAsync(recipientEmail, subject, htmlBody, pdfBytes, fileName, ct);
+        // Build and send the email with both attachments (PDF + ISDOC).
+        // We call the internal builder directly instead of SendEmailAsync because
+        // the public SendEmailAsync signature supports only one optional attachment
+        // and we don't want to break that public interface (per issue #16 analysis).
+        await SendInvoiceMessageAsync(
+            recipientEmail, subject, htmlBody,
+            pdfBytes, pdfFileName,
+            isdocBytes, isdocFileName,
+            ct);
 
         // Mark the invoice as sent by email in the database
         invoice.IsSentByEmail = true;
         invoice.LastSentByEmailAt = DateTime.UtcNow;
         await _context.SaveChangesAsync(ct);
 
-        _logger.LogInformation("Invoice {InvoiceId} email sent successfully to {Email}", invoiceId, recipientEmail);
+        _logger.LogInformation(
+            "Invoice {InvoiceId} email sent successfully to {Email} with {AttachmentCount} attachments: {Attachments}",
+            invoiceId, recipientEmail, 2, $"{pdfFileName}, {isdocFileName}");
+    }
+
+    /// <summary>
+    /// Builds and sends a MimeMessage with exactly two attachments: PDF and ISDOC.
+    /// This is an internal helper used only by <see cref="SendInvoiceEmailAsync"/>.
+    /// Keeping it separate avoids changing the public <see cref="SendEmailAsync"/> signature
+    /// which only supports a single optional attachment.
+    /// </summary>
+    /// <param name="to">Recipient email address.</param>
+    /// <param name="subject">Email subject.</param>
+    /// <param name="htmlBody">HTML email body.</param>
+    /// <param name="pdfBytes">Raw PDF bytes to attach.</param>
+    /// <param name="pdfFileName">Filename for the PDF attachment (e.g. "Invoice_2025001.pdf").</param>
+    /// <param name="isdocBytes">Raw ISDOC XML bytes to attach.</param>
+    /// <param name="isdocFileName">Filename for the ISDOC attachment (e.g. "Invoice_2025001.isdoc").</param>
+    /// <param name="ct">Cancellation token.</param>
+    internal async Task SendInvoiceMessageAsync(
+        string to, string subject, string htmlBody,
+        byte[] pdfBytes, string pdfFileName,
+        byte[] isdocBytes, string isdocFileName,
+        CancellationToken ct = default)
+    {
+        // Resolve SMTP settings using the 3-tier priority chain
+        var smtp = await ResolveSmtpSettingsAsync(ct);
+
+        // Build the MimeMessage with HTML body + two attachments
+        var message = BuildInvoiceMessage(
+            smtp.SenderName, smtp.SenderEmail,
+            to, subject, htmlBody,
+            pdfBytes, pdfFileName,
+            isdocBytes, isdocFileName);
+
+        // Connect and send using MailKit
+        await SendViaSMTPAsync(smtp, message, ct);
+    }
+
+    /// <summary>
+    /// Builds a MimeMessage for an invoice email containing both PDF and ISDOC attachments.
+    /// Extracted as a separate static method so unit tests can verify the message structure
+    /// without a real SMTP server — call this directly and inspect the returned MimeMessage.
+    /// </summary>
+    /// <param name="senderName">Display name shown in the "From" header (e.g. "Fakvio").</param>
+    /// <param name="senderEmail">Email address in the "From" header.</param>
+    /// <param name="to">Recipient email address.</param>
+    /// <param name="subject">Email subject line.</param>
+    /// <param name="htmlBody">HTML body of the email.</param>
+    /// <param name="pdfBytes">Raw PDF bytes to attach.</param>
+    /// <param name="pdfFileName">Filename for the PDF (e.g. "Invoice_INV2025001.pdf").</param>
+    /// <param name="isdocBytes">Raw ISDOC XML bytes to attach.</param>
+    /// <param name="isdocFileName">Filename for the ISDOC (e.g. "Invoice_INV2025001.isdoc").</param>
+    internal static MimeMessage BuildInvoiceMessage(
+        string senderName, string senderEmail,
+        string to, string subject, string htmlBody,
+        byte[] pdfBytes, string pdfFileName,
+        byte[] isdocBytes, string isdocFileName)
+    {
+        var message = new MimeMessage();
+        message.From.Add(new MailboxAddress(senderName, senderEmail));
+        message.To.Add(MailboxAddress.Parse(to));
+        message.Subject = subject;
+
+        var bodyBuilder = new BodyBuilder { HtmlBody = htmlBody };
+
+        // PDF invoice — standard document type
+        bodyBuilder.Attachments.Add(pdfFileName, pdfBytes, ContentType.Parse("application/pdf"));
+
+        // ISDOC XML — Czech electronic invoice standard (ISO/IEC 19845 based).
+        // Content type "application/xml" is the MIME type for XML documents (RFC 7303).
+        bodyBuilder.Attachments.Add(isdocFileName, isdocBytes, ContentType.Parse("application/xml"));
+
+        message.Body = bodyBuilder.ToMessageBody();
+        return message;
     }
 
     /// <inheritdoc />
@@ -158,13 +255,23 @@ public class EmailService : IEmailService
 
         message.Body = bodyBuilder.ToMessageBody();
 
-        // Connect to the SMTP server and send the email using MailKit.
-        // Resolve the correct SecureSocketOptions based on port and UseSsl flag:
-        //   - Port 465 → SslOnConnect (implicit TLS, connection is encrypted from the start)
-        //   - Port 587 → StartTls (connect plain, then STARTTLS upgrade — most common for submission)
-        //   - UseSsl=false → None (no encryption, for internal/relay servers only)
-        // Previously this used a bool overload which mapped true→SslOnConnect even on port 587,
-        // causing AuthenticationException because the server expected STARTTLS, not implicit SSL.
+        await SendViaSMTPAsync(smtp, message, ct);
+
+        _logger.LogInformation("Email sent successfully to {To}", to);
+    }
+
+    /// <summary>
+    /// Connects to the SMTP server and sends the given MimeMessage.
+    /// Extracted from SendEmailAsync so it can be reused by SendInvoiceMessageAsync
+    /// without duplicating the TLS / auth / SASL setup code.
+    ///
+    /// Connect logic:
+    ///   - Port 465 → SslOnConnect (implicit TLS, full encryption from byte one)
+    ///   - Port 587 → StartTls (plain connect then STARTTLS upgrade — most common)
+    ///   - UseSsl=false → None (no encryption, for trusted internal relay servers)
+    /// </summary>
+    private async Task SendViaSMTPAsync(SmtpSettings smtp, MimeMessage message, CancellationToken ct)
+    {
         var socketOptions = ResolveSocketOptions(smtp.Port, smtp.UseSsl);
         _logger.LogInformation("Connecting to SMTP {Host}:{Port} with {Options}",
             smtp.Host, smtp.Port, socketOptions);
@@ -256,8 +363,6 @@ public class EmailService : IEmailService
 
         await smtpClient.SendAsync(message, ct);
         await smtpClient.DisconnectAsync(true, ct);
-
-        _logger.LogInformation("Email sent successfully to {To}", to);
     }
 
     /// <inheritdoc />

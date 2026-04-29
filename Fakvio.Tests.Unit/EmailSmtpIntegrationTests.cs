@@ -62,6 +62,8 @@ public class EmailSmtpIntegrationTests
                 .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
 
         var pdfExport = Substitute.For<IPdfExportService>();
+        // ISDOC export is not used by SendEmailAsync (only by SendInvoiceEmailAsync)
+        var isdocExport = Substitute.For<IIsdocExportService>();
         var contentTemplate = Substitute.For<IContentTemplateService>();
         var tenantResolver = Substitute.For<ITenantResolver>();
         var logger = Substitute.For<ILogger<EmailService>>();
@@ -80,7 +82,7 @@ public class EmailSmtpIntegrationTests
             .Returns(new Contracts.Dto.SystemConfiguration.SystemConfigurationDto());
 
         var service = new EmailService(
-            tenantContext, masterContext, pdfExport, contentTemplate,
+            tenantContext, masterContext, pdfExport, isdocExport, contentTemplate,
             systemConfig, credentialProtector, tenantResolver, configuration, logger);
 
         // ── Act — send a real email ─────────────────────────────────────────
