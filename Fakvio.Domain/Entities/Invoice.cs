@@ -81,14 +81,17 @@ public class Invoice : BaseEntity
     public Client Issuer { get; set; } = null!;
 
     /// <summary>
-    /// For credit notes: reference to original invoice being credited
-    /// Null for regular invoices
-    /// When creating credit note, this links to the invoice it corrects/cancels
+    /// Self-referencing FK used by multiple document types:
+    /// - Credit note (CreditNote) → the invoice it corrects/cancels.
+    /// - Tax receipt for advance (TaxReceiptForAdvance) → the originating pro-forma.
+    /// - Final invoice closing a pro-forma → the originating pro-forma (future use).
+    /// Null for standalone invoices and pro-forma documents.
     /// </summary>
     public long? OriginalInvoiceId { get; set; }
 
     /// <summary>
-    /// Navigation property to original invoice (for credit notes)
+    /// Navigation to the parent document referenced by <see cref="OriginalInvoiceId"/>.
+    /// Shared across CreditNote, TaxReceiptForAdvance, and future linked document types.
     /// </summary>
     public Invoice? OriginalInvoice { get; set; }
 
@@ -226,8 +229,11 @@ public class Invoice : BaseEntity
     public ICollection<InvoiceItem> InvoiceItem { get; set; } = new List<InvoiceItem>();
 
     /// <summary>
-    /// Collection of credit notes that reference this invoice
-    /// Only populated if this is an invoice that has been credited
+    /// Inverse navigation for <see cref="OriginalInvoiceId"/>.
+    /// Contains all documents that reference this one as their parent:
+    /// credit notes, tax receipts for advance, and linked final invoices.
+    /// Named "CreditNote" for historical reasons — the collection is shared
+    /// across all document types that carry an OriginalInvoiceId.
     /// </summary>
     public ICollection<Invoice> CreditNote { get; set; } = new List<Invoice>();
 
