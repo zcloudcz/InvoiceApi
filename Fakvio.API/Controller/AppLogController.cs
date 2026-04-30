@@ -8,9 +8,9 @@ using Microsoft.EntityFrameworkCore;
 namespace Fakvio.API.Controller;
 
 /// <summary>
-/// Controller for viewing application logs. SysAdmin only.
-/// Reads from the AppLog table in the master database.
-/// Supports server-side pagination, level filtering, date range, and text search.
+/// Controller for viewing application logs. SysAdmin only for read endpoints;
+/// the client log forwarding endpoint is open to any authenticated user so UI errors
+/// can reach the server-side DatabaseLogger → AppLog table.
 /// </summary>
 [ApiController]
 [Route("api/logs")]
@@ -20,11 +20,16 @@ public class AppLogController : ControllerBase
 {
     private readonly MasterDbContext _context;
     private readonly ILogger<AppLogController> _logger;
+    private readonly ILoggerFactory _loggerFactory;
 
-    public AppLogController(MasterDbContext context, ILogger<AppLogController> logger)
+    public AppLogController(
+        MasterDbContext context,
+        ILogger<AppLogController> logger,
+        ILoggerFactory loggerFactory)
     {
         _context = context;
         _logger = logger;
+        _loggerFactory = loggerFactory;
     }
 
     /// <summary>
@@ -113,5 +118,63 @@ public class AppLogController : ControllerBase
         };
 
         return Ok(summary);
+    }
+
+    /// <summary>
+    /// Forwards a client-side log entry from the WASM UI into the server log pipeline.
+    /// Open to any authenticated user (SysAdmin restriction is overridden) — without this,
+    /// UI errors would only land in the browser console and never make it to the AppLog table.
+    ///
+    /// The entry is re-emitted through ILoggerFactory using the supplied Source as the category,
+    /// so it flows through DatabaseLogger like any other server log (CorrelationId picked up from
+    /// the X-Correlation-Id header set by CorrelationIdHandler).
+    ///
+    /// Defensive: never returns 4xx/5xx for malformed entries — silently coerces to a safe log
+    /// so that error-on-error feedback loops are impossible.
+    /// </summary>
+    [HttpPost("client")]
+    [AllowAnonymous] // UI may need to log a 401 *before* the user is fully authenticated; auth still attempted via JWT if present
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public IActionResult LogFromClient([FromBody] ClientLogDto dto)
+    {
+        if (dto == null || string.IsNullOrWhiteSpace(dto.Message))
+            return NoContent(); // Don't reward bad payloads with errors — just drop them.
+
+        // Use the supplied source as the logger category so AppLog.Source reflects which UI piece reported it.
+        // Fallback prefix "Fakvio.UI" makes filtering easy in the Logs viewer.
+        var category = string.IsNullOrWhiteSpace(dto.Source)
+            ? "Fakvio.UI"
+            : $"Fakvio.UI.{dto.Source}";
+
+        var logger = _loggerFactory.CreateLogger(category);
+
+        // Parse severity defensively — anything we don't recognize becomes Error so it isn't silently swallowed.
+        if (!Enum.TryParse<LogLevel>(dto.Level, ignoreCase: true, out var level))
+            level = LogLevel.Error;
+
+        // Synthesize the message — include URL when present so the SysAdmin can see where it happened.
+        var message = string.IsNullOrWhiteSpace(dto.Url)
+            ? dto.Message
+            : $"{dto.Message} (url: {dto.Url})";
+
+        // Reconstruct a thin Exception-like wrapper when the client supplied a stack/details string.
+        // We never get the original exception object across the wire, so a plain wrapper is enough
+        // to make AppLog.Exception non-null and visible in the Logs UI.
+        Exception? wrappedException = string.IsNullOrWhiteSpace(dto.Exception)
+            ? null
+            : new ClientReportedException(dto.Exception);
+
+        logger.Log(level, wrappedException, "{ClientMessage}", message);
+
+        return NoContent();
+    }
+
+    /// <summary>
+    /// Marker exception type for client-reported errors. Carries the client's stack trace string
+    /// in Message so DatabaseLogger.Exception captures it without losing context.
+    /// </summary>
+    private sealed class ClientReportedException : Exception
+    {
+        public ClientReportedException(string clientStack) : base(clientStack) { }
     }
 }

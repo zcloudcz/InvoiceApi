@@ -123,7 +123,12 @@
 
         <MudMainContent>
             <MudContainer MaxWidth="MaxWidth.ExtraExtraLarge" Class="my-4">
-                @Body
+                @* LoggingErrorBoundary catches unhandled component exceptions and forwards them
+                   to the server-side AppLog table via IClientLogger. The default fallback UI
+                   from the base ErrorBoundary is rendered when an error is caught. *@
+                <LoggingErrorBoundary>
+                    @Body
+                </LoggingErrorBoundary>
             </MudContainer>
         </MudMainContent>
 

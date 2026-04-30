@@ -1,6 +1,7 @@
 using Fakvio.UI.Shared.Services;
 using Blazored.LocalStorage;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using MudBlazor.Services;
 
 namespace Fakvio.UI.Shared;
@@ -51,38 +52,70 @@ public static class ServiceCollectionExtensions
 
         // API services — all inherit ApiClientBase for shared auth, logging, and impersonation.
         // Each service uses IHttpClientFactory to get the named "InvoiceAPI" HttpClient.
-        services.AddScoped<VatRateApiService>();
-        services.AddScoped<ClientApiService>();
-        services.AddScoped<FakvioService>();
-        services.AddScoped<UserApiService>();
-        services.AddScoped<CompanyApiService>();
-        services.AddScoped<DashboardApiService>();
-        services.AddScoped<InvoiceTemplateApiService>();
-        services.AddScoped<ContentTemplateApiService>();
-        services.AddScoped<NumberSequenceApiService>();
-        services.AddScoped<CurrencyApiService>();
+        // AddApiClient<T> wires the IClientLogger into every ApiClientBase-derived service so any
+        // exception caught in the base class is forwarded to the server-side AppLog table.
+        // Without this wrapper, errors would only land in the browser console.
+        services.AddApiClient<VatRateApiService>();
+        services.AddApiClient<ClientApiService>();
+        services.AddApiClient<FakvioService>();
+        services.AddApiClient<UserApiService>();
+        services.AddApiClient<CompanyApiService>();
+        services.AddApiClient<DashboardApiService>();
+        services.AddApiClient<InvoiceTemplateApiService>();
+        services.AddApiClient<ContentTemplateApiService>();
+        services.AddApiClient<NumberSequenceApiService>();
+        services.AddApiClient<CurrencyApiService>();
         services.AddScoped<GridStateService>();
-        services.AddScoped<CompanySettingsApiService>();
-        services.AddScoped<SystemConfigurationApiService>();
-        services.AddScoped<AppLogApiService>();
-        services.AddScoped<TwoFactorApiService>();
-        services.AddScoped<CloudStorageApiService>();
-        services.AddScoped<ChatApiService>();
-        services.AddScoped<ReceivedInvoiceApiService>();
-        services.AddScoped<VatReportApiService>();
-        services.AddScoped<TaxApiService>();
-        services.AddScoped<ImportApiService>();
-        services.AddScoped<EmailAdminApiService>();
-        services.AddScoped<FileAttachmentApiService>();
-        services.AddScoped<ReminderApiService>();
+        services.AddApiClient<CompanySettingsApiService>();
+        services.AddApiClient<SystemConfigurationApiService>();
+        services.AddApiClient<AppLogApiService>();
+        services.AddApiClient<TwoFactorApiService>();
+        services.AddApiClient<CloudStorageApiService>();
+        services.AddApiClient<ChatApiService>();
+        services.AddApiClient<ReceivedInvoiceApiService>();
+        services.AddApiClient<VatReportApiService>();
+        services.AddApiClient<TaxApiService>();
+        services.AddApiClient<ImportApiService>();
+        services.AddApiClient<EmailAdminApiService>();
+        services.AddApiClient<FileAttachmentApiService>();
+        services.AddApiClient<ReminderApiService>();
 
         // Payment matching — tenant user + SysAdmin.
-        services.AddScoped<PaymentMatchingApiService>();
-        services.AddScoped<PaymentMatchingSysAdminApiService>();
+        services.AddApiClient<PaymentMatchingApiService>();
+        services.AddApiClient<PaymentMatchingSysAdminApiService>();
 
         // Shared app state — cross-component notifications (e.g., company list changed → refresh dropdown)
         services.AddScoped<AppStateService>();
 
+        // Forwards UI errors to the server log so they reach the AppLog table.
+        // Without this, anything caught in the WASM client only shows in the browser console.
+        services.AddScoped<IClientLogger, ClientLoggerService>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers an ApiClientBase-derived service and wires the IClientLogger into it after
+    /// construction. Equivalent to <c>services.AddScoped&lt;T&gt;()</c> plus a property-style
+    /// injection of the remote logger via <see cref="ApiClientBase.WithClientLogger"/>.
+    ///
+    /// This avoids editing every existing ApiService constructor — they remain unchanged.
+    /// If the IClientLogger is unregistered (e.g., test host that doesn't add UI services),
+    /// the service still works; logs just stay local.
+    /// </summary>
+    private static IServiceCollection AddApiClient<T>(this IServiceCollection services)
+        where T : ApiClientBase
+    {
+        services.AddScoped<T>(sp =>
+        {
+            var instance = ActivatorUtilities.CreateInstance<T>(sp);
+            var clientLogger = sp.GetService<IClientLogger>();
+            if (clientLogger != null)
+            {
+                instance.WithClientLogger(clientLogger);
+            }
+            return instance;
+        });
         return services;
     }
 }

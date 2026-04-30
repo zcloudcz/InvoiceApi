@@ -26,6 +26,14 @@ public abstract class ApiClientBase
     protected readonly ILogger _logger;
     private readonly AuthenticationStateProvider? _authStateProvider;
 
+    /// <summary>
+    /// Optional remote-log forwarder. When set, all errors caught in this base class are
+    /// also POSTed to /api/logs/client so they reach the server-side AppLog table.
+    /// Set via property injection in <see cref="WithClientLogger"/> to keep existing
+    /// constructors backwards-compatible (subclasses don't need to know about it).
+    /// </summary>
+    private IClientLogger? _clientLogger;
+
     protected ApiClientBase(IHttpClientFactory httpClientFactory, ILogger logger)
     {
         _httpClient = httpClientFactory.CreateClient("InvoiceAPI");
@@ -40,6 +48,30 @@ public abstract class ApiClientBase
         : this(httpClientFactory, logger)
     {
         _authStateProvider = authStateProvider;
+    }
+
+    /// <summary>
+    /// Wires up the remote logger so HTTP failures get forwarded to the server log.
+    /// Called from a DI helper or the consuming page; if not called, behavior is unchanged
+    /// and errors only land in the local logger (browser console).
+    /// </summary>
+    public ApiClientBase WithClientLogger(IClientLogger clientLogger)
+    {
+        _clientLogger = clientLogger;
+        return this;
+    }
+
+    /// <summary>
+    /// Sends an error to the server log (best-effort, never throws).
+    /// Centralized so we don't sprinkle null checks all over the catch blocks.
+    /// </summary>
+    private void ForwardToServerLog(string level, string message, string? exception, string source)
+    {
+        if (_clientLogger == null)
+            return; // Logger not wired — silently degrade to local-only logging.
+
+        // Fire-and-forget: don't await. The IClientLogger contract guarantees no throw.
+        _ = _clientLogger.LogAsync(level, message, source, exception);
     }
 
     /// <summary>
@@ -116,6 +148,17 @@ public abstract class ApiClientBase
         _logger.LogWarning("{HttpMethod} {Endpoint} failed with status {StatusCode}: {Error}",
             httpMethod, endpoint, response.StatusCode, errorContent);
 
+        // Forward to server log so the failure is captured in AppLog even if the source server
+        // didn't (e.g., 4xx originating in a different service, network 502 from a gateway,
+        // or a server-side log that didn't fire because the request never reached it).
+        // 5xx is logged as Error; 4xx as Warning to mirror server-side conventions.
+        var serverLogLevel = (int)response.StatusCode >= 500 ? "Error" : "Warning";
+        ForwardToServerLog(
+            serverLogLevel,
+            $"{httpMethod} {endpoint} failed: HTTP {(int)response.StatusCode} {response.StatusCode}",
+            errorContent,
+            "ApiClientBase");
+
         // 403 gets a fixed message; every other status extracts from the body and falls back
         // to "HTTP {code} {reason}" when the body is empty — which is the common symptom of
         // an unhandled 500 in Production (no ExceptionHandler middleware) or a proxy failure.
@@ -129,6 +172,20 @@ public abstract class ApiClientBase
         }
 
         throw new ApiException(response.StatusCode, message, endpoint);
+    }
+
+    /// <summary>
+    /// Logs a transport-level exception (network failure, deserialization error, timeout, etc.)
+    /// to BOTH the local console logger AND the server-side AppLog (best-effort). Non-throwing.
+    /// </summary>
+    private void LogClientException(Exception ex, string httpMethod, string endpoint)
+    {
+        _logger.LogError(ex, "Error during {HttpMethod} {Endpoint}", httpMethod, endpoint);
+        ForwardToServerLog(
+            "Error",
+            $"Exception during {httpMethod} {endpoint}: {ex.Message}",
+            ex.ToString(),
+            "ApiClientBase");
     }
 
     /// <summary>
@@ -162,7 +219,7 @@ public abstract class ApiClientBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during GET {Endpoint}", endpoint);
+            LogClientException(ex, "GET", endpoint);
             throw;
         }
     }
@@ -193,7 +250,7 @@ public abstract class ApiClientBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during POST {Endpoint}", endpoint);
+            LogClientException(ex, "POST", endpoint);
             throw;
         }
     }
@@ -224,7 +281,7 @@ public abstract class ApiClientBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during PUT {Endpoint}", endpoint);
+            LogClientException(ex, "PUT", endpoint);
             throw;
         }
     }
@@ -255,7 +312,7 @@ public abstract class ApiClientBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during DELETE {Endpoint}", endpoint);
+            LogClientException(ex, "DELETE", endpoint);
             throw;
         }
     }
@@ -286,7 +343,7 @@ public abstract class ApiClientBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during GET (bytes) {Endpoint}", endpoint);
+            LogClientException(ex, "GET (bytes)", endpoint);
             throw;
         }
     }
@@ -317,7 +374,7 @@ public abstract class ApiClientBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during GET (string) {Endpoint}", endpoint);
+            LogClientException(ex, "GET (string)", endpoint);
             throw;
         }
     }
@@ -349,7 +406,7 @@ public abstract class ApiClientBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during POST (no body) {Endpoint}", endpoint);
+            LogClientException(ex, "POST (no body)", endpoint);
             throw;
         }
     }
@@ -381,7 +438,7 @@ public abstract class ApiClientBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during POST (bool) {Endpoint}", endpoint);
+            LogClientException(ex, "POST (bool)", endpoint);
             throw;
         }
     }
@@ -413,7 +470,7 @@ public abstract class ApiClientBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during POST (no body, bool) {Endpoint}", endpoint);
+            LogClientException(ex, "POST (no body, bool)", endpoint);
             throw;
         }
     }
@@ -445,7 +502,7 @@ public abstract class ApiClientBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during PUT (no body, bool) {Endpoint}", endpoint);
+            LogClientException(ex, "PUT (no body, bool)", endpoint);
             throw;
         }
     }
@@ -477,7 +534,7 @@ public abstract class ApiClientBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during PUT (bool) {Endpoint}", endpoint);
+            LogClientException(ex, "PUT (bool)", endpoint);
             throw;
         }
     }
