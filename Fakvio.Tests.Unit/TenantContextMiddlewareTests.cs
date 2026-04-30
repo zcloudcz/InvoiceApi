@@ -162,6 +162,10 @@ public class TenantContextMiddlewareTests : IDisposable
     [InlineData("/api/user/invite")]
     [InlineData("/api/company")]
     [InlineData("/api/company/42")]
+    [InlineData("/api/sysadmin/payment-matching/settings")]
+    [InlineData("/api/sysadmin/payment-matching/run-now")]
+    [InlineData("/api/dashboard/sysadmin")]
+    [InlineData("/api/logs/paged")]
     [InlineData("/swagger")]
     [InlineData("/swagger/v1/swagger.json")]
     [InlineData("/health")]
@@ -248,6 +252,38 @@ public class TenantContextMiddlewareTests : IDisposable
 
         // Assert — master-only paths skip tenant check regardless of role
         nextCalled[0].ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// Regression for issue #34: chat endpoints are tenant-scoped (data lives in
+    /// TenantDbContext.ChatConversation). SysAdmin without a CompanyId claim has no
+    /// tenant to read from, so the middleware must reject these calls with 403 —
+    /// the response carries the "must impersonate" message that the Blazor UI uses
+    /// as the signal to hide the chat panel for unimpersonating SysAdmin.
+    ///
+    /// If this test starts failing, either (a) chat endpoints have moved to a
+    /// master-only path (then the UI guard in MainLayout.razor can be relaxed too),
+    /// or (b) a regression is letting SysAdmin hit tenant-scoped chat data without
+    /// a tenant, which is incorrect.
+    /// </summary>
+    [Theory]
+    [InlineData("/api/chat/conversations")]
+    [InlineData("/api/chat/providers")]
+    public async Task SysAdmin_WithoutCompanyId_ChatEndpoint_Returns403(string path)
+    {
+        // Arrange — SysAdmin without impersonation hitting a chat endpoint.
+        var context = CreateHttpContext(path, role: "SysAdmin");
+        var middleware = CreateMiddleware(out var nextCalled);
+
+        // Act
+        await middleware.InvokeAsync(context);
+
+        // Assert — chat endpoints are NOT in MasterOnlyPaths, so the middleware
+        // returns 403 with the impersonation hint. The UI hides the chat panel
+        // entirely in this case (see Fakvio.UI.Shared/Components/Layout/MainLayout.razor)
+        // so this 403 should never be surfaced to a real user.
+        nextCalled[0].ShouldBeFalse();
+        context.Response.StatusCode.ShouldBe(403);
     }
 
     #endregion
