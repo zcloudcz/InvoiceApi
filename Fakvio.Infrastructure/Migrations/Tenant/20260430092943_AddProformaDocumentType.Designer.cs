@@ -1464,7 +1464,7 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                             IsDefault = true,
                             Name = "Default Proforma Sequence",
                             NumberSequenceFormatId = 1L,
-                            Prefix = "PF",
+                            Prefix = "PF-",
                             RowVersion = 0u
                         },
                         new
@@ -1477,7 +1477,7 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                             IsDefault = true,
                             Name = "Default Tax Receipt for Advance Sequence",
                             NumberSequenceFormatId = 1L,
-                            Prefix = "ZF",
+                            Prefix = "DPP-",
                             RowVersion = 0u
                         });
                 });
