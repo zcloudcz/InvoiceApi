@@ -70,14 +70,19 @@
                 </NotAuthorized>
             </AuthorizeView>
 
-            @* AI Chat toggle button — opens the right drawer. Uses the Fakvio logo as the AI assistant icon. *@
+            @* AI Chat toggle button — opens the right drawer. Uses the Fakvio logo as the AI assistant icon.
+               Hidden for SysAdmin without impersonation: chat data is tenant-scoped, so /api/chat/*
+               returns 403 when no CompanyId claim is present (see issue #34). *@
             <AuthorizeView>
                 <Authorized>
-                    <MudTooltip Text="@L["Chat_Title"].Value">
-                        <MudIconButton OnClick="@ToggleChat" Color="Color.Inherit">
-                            <MudImage Src="@_logoSrc" Alt="@L["Chat_Title"].Value" Width="24" Height="24" />
-                        </MudIconButton>
-                    </MudTooltip>
+                    @if (_hasTenantContext)
+                    {
+                        <MudTooltip Text="@L["Chat_Title"].Value">
+                            <MudIconButton OnClick="@ToggleChat" Color="Color.Inherit">
+                                <MudImage Src="@_logoSrc" Alt="@L["Chat_Title"].Value" Width="24" Height="24" />
+                            </MudIconButton>
+                        </MudTooltip>
+                    }
                 </Authorized>
             </AuthorizeView>
 
@@ -99,14 +104,20 @@
         </Authorized>
     </AuthorizeView>
 
-        @* AI Chat drawer — slides in from the right *@
+        @* AI Chat drawer — slides in from the right.
+           Not rendered when no tenant context (SysAdmin without impersonation), because
+           ChatPanel.OnInitializedAsync would fire /api/chat/providers and /api/chat/conversations
+           which require CompanyId claim and 403 in TenantContextMiddleware. See issue #34. *@
         <AuthorizeView>
             <Authorized>
-                <MudDrawer @bind-Open="_chatOpen" Anchor="Anchor.End"
-                           ClipMode="DrawerClipMode.Always" Elevation="4"
-                           Width="400px" Breakpoint="Breakpoint.Lg">
-                    <ChatPanel OnClose="@ToggleChat" />
-                </MudDrawer>
+                @if (_hasTenantContext)
+                {
+                    <MudDrawer @bind-Open="_chatOpen" Anchor="Anchor.End"
+                               ClipMode="DrawerClipMode.Always" Elevation="4"
+                               Width="400px" Breakpoint="Breakpoint.Lg">
+                        <ChatPanel OnClose="@ToggleChat" />
+                    </MudDrawer>
+                }
             </Authorized>
         </AuthorizeView>
 
@@ -152,6 +163,15 @@
     // Impersonation state — SysAdmin can select a company to "act as"
     private long? _impersonatedCompanyId;
     private List<ClientDto> _availableCompanies = new();
+
+    // Tenant-context flag — true when API calls that require a CompanyId claim
+    // are guaranteed to succeed:
+    //   - regular tenant user (always carries CompanyId in their JWT)
+    //   - SysAdmin who has selected a company to impersonate
+    // False for SysAdmin without an impersonated company. Used to hide the AI chat
+    // (/api/chat/*) which is tenant-scoped and would otherwise produce 403 spam
+    // on every page load. See issue #34.
+    private bool _hasTenantContext;
 
     void DrawerToggle()
     {
@@ -204,11 +224,22 @@
             var customAuth = (CustomAuthenticationStateProvider)AuthStateProvider;
             var session = await customAuth.GetUserSessionAsync();
 
-            // Only load companies for SysAdmin
-            if (session != null && session.Role == 2)
+            if (session != null)
             {
-                _availableCompanies = await CompanyService.GetAllAsync();
-                _impersonatedCompanyId = await customAuth.GetImpersonatedCompanyIdAsync();
+                if (session.Role == 2) // SysAdmin
+                {
+                    _availableCompanies = await CompanyService.GetAllAsync();
+                    _impersonatedCompanyId = await customAuth.GetImpersonatedCompanyIdAsync();
+
+                    // SysAdmin only has tenant context after picking a company to impersonate.
+                    _hasTenantContext = _impersonatedCompanyId != null;
+                }
+                else
+                {
+                    // Regular tenant user — JWT always carries a CompanyId claim, tenant context guaranteed.
+                    _hasTenantContext = true;
+                }
+
                 StateHasChanged();
             }
         }
