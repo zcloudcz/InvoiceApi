@@ -871,7 +871,12 @@ else
     /// Initializes the create DTO by loading a template and pre-filling all fields from it.
     /// This is the "New from Template" flow — no DB record is created until user clicks Save.
     /// The template provides: DocumentType, Issuer, Currency, PaymentMethod, BankAccount,
-    /// VariableSymbol, Notes, InvoiceItems, NumberSequenceId, and DueDateOffsetDays.
+    /// Notes, InvoiceItems, NumberSequenceId, and DueDateOffsetDays.
+    /// VariableSymbol is intentionally NOT pre-filled — it must be unique per invoice
+    /// (Czech banking), so we leave it null and let the backend derive it from the new
+    /// DocumentNumber after save. Pre-filling from the template would inherit the source
+    /// invoice's VS (templates carry it from CreateTemplateFromInvoiceAsync) and trigger
+    /// the duplicate-VS guard.
     /// </summary>
     private async Task InitCreateDtoFromTemplate(long templateId, long? clientId)
     {
@@ -911,7 +916,10 @@ else
                 TaxableSupplyDate = issueDate,
                 CurrencyId = template.CurrencyId,
                 PaymentMethod = template.PaymentMethod ?? EPaymentMethod.BankTransfer,
-                VariableSymbol = template.VariableSymbol,
+                // VariableSymbol left null on purpose — backend derives a unique VS from the
+                // generated DocumentNumber. Carrying template.VariableSymbol over would clash
+                // with the source invoice the template was created from.
+                VariableSymbol = null,
                 // Template bank account takes priority; if template has none, fall back to issuer's default
                 BankAccountNumber = template.BankAccountNumber ?? defaultAccount?.AccountNumber,
                 IBAN = defaultAccount?.IBAN,
