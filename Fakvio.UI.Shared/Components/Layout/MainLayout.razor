@@ -266,11 +266,26 @@
     /// <summary>
     /// Called when SysAdmin selects a company to impersonate.
     /// Stores the selection in session and refreshes the page to update navigation.
+    ///
+    /// Also pre-flips the in-memory tenant-context flag and closes the chat drawer
+    /// before triggering the reload — prevents a small race where the drawer is open
+    /// with an in-flight chat request between clearing the impersonation and the
+    /// browser actually navigating away (issue #34, defense-in-depth).
     /// </summary>
     private async Task OnImpersonatedCompanyChanged(long? companyId)
     {
         _impersonatedCompanyId = companyId;
         var companyName = _availableCompanies.FirstOrDefault(c => c.Id == companyId)?.CompanyName;
+
+        // Update local tenant-context state immediately so any further renders this
+        // tick already hide tenant-scoped UI. The full reload below replaces the WASM
+        // app state, but until the navigation actually fires the in-memory flag is
+        // what gates the chat panel.
+        _hasTenantContext = companyId.HasValue;
+        if (!_hasTenantContext)
+        {
+            _chatOpen = false;
+        }
 
         var customAuth = (CustomAuthenticationStateProvider)AuthStateProvider;
         await customAuth.SetImpersonatedCompanyAsync(companyId, companyName);

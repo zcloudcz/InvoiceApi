@@ -166,6 +166,10 @@ public class TenantContextMiddlewareTests : IDisposable
     [InlineData("/api/sysadmin/payment-matching/run-now")]
     [InlineData("/api/dashboard/sysadmin")]
     [InlineData("/api/logs/paged")]
+    [InlineData("/api/system-configuration")]
+    [InlineData("/api/twofactor/setup")]
+    [InlineData("/api/cloud-storage/connect")]
+    [InlineData("/api/email/send")]
     [InlineData("/swagger")]
     [InlineData("/swagger/v1/swagger.json")]
     [InlineData("/health")]
@@ -257,9 +261,12 @@ public class TenantContextMiddlewareTests : IDisposable
     /// <summary>
     /// Regression for issue #34: chat endpoints are tenant-scoped (data lives in
     /// TenantDbContext.ChatConversation). SysAdmin without a CompanyId claim has no
-    /// tenant to read from, so the middleware must reject these calls with 403 —
-    /// the response carries the "must impersonate" message that the Blazor UI uses
-    /// as the signal to hide the chat panel for unimpersonating SysAdmin.
+    /// tenant to read from, so the middleware must reject these calls with 403.
+    ///
+    /// The Blazor UI hides the chat icon and drawer entirely (via the _hasTenantContext
+    /// flag in MainLayout.razor) when SysAdmin has not impersonated a company, so this
+    /// 403 is a defense-in-depth backstop — it must not be reachable from a real user
+    /// session, but the API still rejects the call if it ever arrives.
     ///
     /// If this test starts failing, either (a) chat endpoints have moved to a
     /// master-only path (then the UI guard in MainLayout.razor can be relaxed too),
@@ -279,20 +286,26 @@ public class TenantContextMiddlewareTests : IDisposable
         await middleware.InvokeAsync(context);
 
         // Assert — chat endpoints are NOT in MasterOnlyPaths, so the middleware
-        // returns 403 with the impersonation hint. The UI hides the chat panel
-        // entirely in this case (see Fakvio.UI.Shared/Components/Layout/MainLayout.razor)
-        // so this 403 should never be surfaced to a real user.
+        // returns 403 with the impersonation hint. The UI guards the chat icon and
+        // drawer behind the _hasTenantContext flag (Fakvio.UI.Shared/Components/Layout/MainLayout.razor),
+        // so this 403 should never be surfaced to a real user — but we pin the
+        // backend behavior so a regression can't silently expose tenant data.
         nextCalled[0].ShouldBeFalse();
         context.Response.StatusCode.ShouldBe(403);
     }
 
     /// <summary>
     /// Parity guard between API and Functions middleware: every API master-only path
-    /// MUST also be a master-only path on the Functions host. When the two lists
-    /// drift, the same endpoint behaves differently on each host — exactly the bug
-    /// from issue #34 where /api/sysadmin/payment-matching/settings worked on the
-    /// API host but returned 403 on Functions because the Functions middleware was
+    /// MUST also be a master-only path on the Functions host, and vice versa. When the
+    /// two lists drift, the same endpoint behaves differently on each host — exactly
+    /// the bug from issue #34 where /api/sysadmin/payment-matching/settings worked on
+    /// the API host but returned 403 on Functions because the Functions middleware was
     /// missing the prefix.
+    ///
+    /// Drift in either direction is dangerous:
+    /// - API has prefix, Functions doesn't → endpoint silently 403s on Azure deploys.
+    /// - Functions has prefix, API doesn't → API treats endpoint as tenant-scoped
+    ///   (good), Functions skips tenant validation → potential auth bypass on Azure.
     ///
     /// Read both private static arrays via reflection so the test follows the source
     /// of truth without duplicating the lists.
@@ -320,6 +333,18 @@ public class TenantContextMiddlewareTests : IDisposable
             "Functions host does not serve) must also be on the Functions middleware's " +
             "MasterOnlyPrefixes list. Drift here causes endpoints to silently 403 on " +
             "Azure deploys while passing on the API host (issue #34).");
+
+        // Reverse direction — a Functions-only prefix would let Azure skip tenant
+        // validation for an endpoint the API host treats as tenant-scoped.
+        var missingFromApi = functionsPaths
+            .Where(p => !apiPaths.Contains(p))
+            .ToList();
+
+        missingFromApi.ShouldBeEmpty(
+            "Every Functions master-only prefix must also be on the API middleware's " +
+            "MasterOnlyPaths list. A Functions-only prefix is an auth-bypass risk: the " +
+            "Azure host would skip tenant validation for an endpoint the API host " +
+            "correctly treats as tenant-scoped.");
     }
 
     private static IReadOnlyList<string> ReadMasterOnlyArray(Type middlewareType, string fieldName)
