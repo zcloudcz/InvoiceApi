@@ -1,38 +1,54 @@
 name: BlazorUI Deploy to GitHub Pages
 
 on:
+  # Allow manual triggering from the Actions tab
   workflow_dispatch:
+
+  # Always build + deploy on every push to master (no path filter — UI.Shared and
+  # Contracts changes must also reach production even if BlazorUI itself didn't change)
   push:
     branches: [ master ]
-    paths:
-      - 'Fakvio.BlazorUI/**'   # spustí se JEN při změnách v BlazorUI projektu
 
-# Potřebná oprávnění pro GitHub Pages deployment
+  # Build-only on PRs targeting master — validates the WASM bundle before merge.
+  # Path filter keeps noisy PRs (docs, scripts, API-only changes) from wasting
+  # runner minutes; only projects that actually affect the WASM output are listed.
+  pull_request:
+    branches: [ master ]
+    paths:
+      - 'Fakvio.BlazorUI/**'
+      - 'Fakvio.UI.Shared/**'
+      - 'Fakvio.Contracts/**'
+      - 'Fakvio.Application/**'
+      - '.github/workflows/blazorui-deploy.yml'
+
+# Permissions required for GitHub Pages deployment
 permissions:
   contents: read
   pages: write
   id-token: write
 
-# Zabrání souběžným deploymentům
+# Prevent simultaneous deployments; let an in-progress deploy finish first
 concurrency:
   group: "pages"
   cancel-in-progress: false
 
 jobs:
-  build-and-deploy:
+  # ─── Job 1: build ────────────────────────────────────────────────────────────
+  # Runs on every trigger (push, pull_request, workflow_dispatch).
+  # Produces the published wwwroot and uploads it as an artifact so the
+  # deploy job (when it runs) can pick it up without re-building.
+  build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup .NET
+      - name: Setup .NET 10
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.x'
+          # Must match the TargetFramework (net10.0) declared in the csproj files
+          dotnet-version: '10.x'
 
       - name: Publish BlazorUI (WASM)
         run: |
@@ -40,19 +56,21 @@ jobs:
             -c Release \
             -o ./publish
 
-      - name: Debug - zobraz strukturu publish výstupu
+      - name: Debug — show publish output structure
         run: find ./publish -type f | head -50
 
-      - name: Připrav složku pro GitHub Pages
+      - name: Prepare GitHub Pages folder
         run: |
           cp -r ./publish/wwwroot ./pages-output
-          
-          # DŮLEŽITÉ: zabrání Jekyll zpracování (_framework, _content atd.)
+
+          # Prevent Jekyll from processing Blazor's _framework / _content folders
           touch ./pages-output/.nojekyll
 
+          # Custom domain — must match GitHub Pages settings for the repo
           echo "app.fakvio.cz" > ./pages-output/CNAME
 
-          # Workaround pro client-side routing – 404 přesměruje na index.html
+          # Client-side routing workaround: GitHub Pages serves 404.html when a
+          # deep link is hit directly; copying index.html makes Blazor Router take over
           cp ./pages-output/index.html ./pages-output/404.html
 
       - name: Setup Pages
@@ -63,6 +81,19 @@ jobs:
         with:
           path: './pages-output'
 
+  # ─── Job 2: deploy ───────────────────────────────────────────────────────────
+  # Runs only when code is actually landing on master (push or manual dispatch).
+  # PRs trigger the build job above for validation but never reach this job.
+  deploy:
+    needs: build
+    # Skip deploy on pull_request events — build is enough for PR validation
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
