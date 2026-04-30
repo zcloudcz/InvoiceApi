@@ -166,6 +166,157 @@ public class ProformaDocumentTypeTests : IDisposable
             d => d.Id == taxReceipt.Id && d.DocumentType == EDocumentType.TaxReceiptForAdvance);
     }
 
+    // ─── Enum completeness / regression guard ─────────────────────────────────
+
+    [Fact]
+    public void EDocumentType_HasExactlyFourValues()
+    {
+        // Guard against accidental additions that skip the integer-pinning rule.
+        // Every new value MUST also get a pinned-integer test above.
+        var values = Enum.GetValues<EDocumentType>();
+        values.Length.ShouldBe(4, "Add a new pinned-integer test when extending EDocumentType");
+    }
+
+    // ─── Seed data tests ──────────────────────────────────────────────────────
+    // EF Core 10 uses a read-optimised runtime model that strips HasData() metadata.
+    // To verify what HasData() seeds, we create a separate in-memory DB, call
+    // EnsureCreated() to apply the seed rows, and query the actual table.
+    // A static unique name is safe here because this helper context is discarded
+    // inside the test method before any other test could race on the same name.
+
+    private static TenantDbContext CreateSeededContext()
+    {
+        var options = new DbContextOptionsBuilder<TenantDbContext>()
+            .UseInMemoryDatabase(databaseName: $"seed-check-{Guid.NewGuid()}")
+            .Options;
+        var ctx = new TenantDbContext(options);
+        // EnsureCreated() applies all HasData() entries (no real migration needed for InMemory).
+        ctx.Database.EnsureCreated();
+        return ctx;
+    }
+
+    [Fact]
+    public void SeedData_ContainsProformaNumberSequence()
+    {
+        // Verify that the HasData() seed for EDocumentType.Proforma is present.
+        // Catches a regression where the seed row is removed without a compensating migration.
+        using var ctx = CreateSeededContext();
+        var seq = ctx.NumberSequence
+            .FirstOrDefault(s => s.DocumentType == EDocumentType.Proforma);
+
+        seq.ShouldNotBeNull("HasData() must seed a NumberSequence for EDocumentType.Proforma");
+    }
+
+    [Fact]
+    public void SeedData_ContainsTaxReceiptForAdvanceNumberSequence()
+    {
+        using var ctx = CreateSeededContext();
+        var seq = ctx.NumberSequence
+            .FirstOrDefault(s => s.DocumentType == EDocumentType.TaxReceiptForAdvance);
+
+        seq.ShouldNotBeNull("HasData() must seed a NumberSequence for EDocumentType.TaxReceiptForAdvance");
+    }
+
+    [Fact]
+    public void SeedData_ProformaSequence_HasPfPrefixAndIsDefault()
+    {
+        // 'PF' prefix matches the business convention for pro-forma numbering (PF2025001).
+        using var ctx = CreateSeededContext();
+        var seq = ctx.NumberSequence
+            .First(s => s.DocumentType == EDocumentType.Proforma);
+
+        seq.Prefix.ShouldBe("PF",
+            "Proforma number sequence must use the 'PF' prefix");
+        seq.IsDefault.ShouldBeTrue(
+            "The seeded Proforma sequence must be marked as default");
+    }
+
+    [Fact]
+    public void SeedData_TaxReceiptSequence_HasZfPrefixAndIsDefault()
+    {
+        // 'ZF' prefix matches the business convention (záloha faktura).
+        using var ctx = CreateSeededContext();
+        var seq = ctx.NumberSequence
+            .First(s => s.DocumentType == EDocumentType.TaxReceiptForAdvance);
+
+        seq.Prefix.ShouldBe("ZF",
+            "TaxReceiptForAdvance number sequence must use the 'ZF' prefix");
+        seq.IsDefault.ShouldBeTrue(
+            "The seeded TaxReceiptForAdvance sequence must be marked as default");
+    }
+
+    // ─── Multi-document link tests ─────────────────────────────────────────────
+
+    [Fact]
+    public void Proforma_CanHaveMultipleTaxReceipts_ViaInverseCollection()
+    {
+        // A single pro-forma can result in partial-payment tax receipts
+        // (multiple advances). Verify that the one-to-many model works.
+        var proforma = BuildInvoice(EDocumentType.Proforma, originalInvoiceId: null);
+        _context.Invoice.Add(proforma);
+        _context.SaveChanges();
+
+        var taxReceipt1 = BuildInvoice(EDocumentType.TaxReceiptForAdvance, originalInvoiceId: proforma.Id);
+        var taxReceipt2 = BuildInvoice(EDocumentType.TaxReceiptForAdvance, originalInvoiceId: proforma.Id);
+        _context.Invoice.AddRange(taxReceipt1, taxReceipt2);
+        _context.SaveChanges();
+
+        // Load the pro-forma with its inverse collection.
+        var loaded = _context.Invoice
+            .Include(i => i.CreditNote)
+            .Single(i => i.Id == proforma.Id);
+
+        loaded.CreditNote.Count.ShouldBe(2,
+            "A pro-forma must be able to reference multiple TaxReceiptForAdvance documents");
+        loaded.CreditNote.ShouldAllBe(d => d.DocumentType == EDocumentType.TaxReceiptForAdvance);
+    }
+
+    [Fact]
+    public void CreditNote_StillLinksToInvoice_RegressionGuard()
+    {
+        // Verify that the existing CreditNote → Invoice link is unaffected by
+        // adding Proforma and TaxReceiptForAdvance to the same FK / collection.
+        var invoice = BuildInvoice(EDocumentType.Invoice, originalInvoiceId: null);
+        _context.Invoice.Add(invoice);
+        _context.SaveChanges();
+
+        var creditNote = BuildInvoice(EDocumentType.CreditNote, originalInvoiceId: invoice.Id);
+        _context.Invoice.Add(creditNote);
+        _context.SaveChanges();
+
+        var loaded = _context.Invoice
+            .Include(i => i.OriginalInvoice)
+            .Single(i => i.Id == creditNote.Id);
+
+        loaded.DocumentType.ShouldBe(EDocumentType.CreditNote);
+        loaded.OriginalInvoiceId.ShouldBe(invoice.Id);
+        loaded.OriginalInvoice!.DocumentType.ShouldBe(EDocumentType.Invoice);
+    }
+
+    [Fact]
+    public void Invoice_InverseCollection_SegregatesByDocumentType()
+    {
+        // When an invoice has both a credit note AND a TaxReceiptForAdvance (via
+        // shared OriginalInvoiceId), the inverse collection contains both, and
+        // calling code can filter by DocumentType.
+        var invoice = BuildInvoice(EDocumentType.Invoice, originalInvoiceId: null);
+        _context.Invoice.Add(invoice);
+        _context.SaveChanges();
+
+        var creditNote = BuildInvoice(EDocumentType.CreditNote, originalInvoiceId: invoice.Id);
+        var taxReceipt = BuildInvoice(EDocumentType.TaxReceiptForAdvance, originalInvoiceId: invoice.Id);
+        _context.Invoice.AddRange(creditNote, taxReceipt);
+        _context.SaveChanges();
+
+        var loaded = _context.Invoice
+            .Include(i => i.CreditNote)
+            .Single(i => i.Id == invoice.Id);
+
+        loaded.CreditNote.Count.ShouldBe(2);
+        loaded.CreditNote.ShouldContain(d => d.DocumentType == EDocumentType.CreditNote);
+        loaded.CreditNote.ShouldContain(d => d.DocumentType == EDocumentType.TaxReceiptForAdvance);
+    }
+
     // ─── Helpers ──────────────────────────────────────────────────────────────
 
     private long _issuerId;
