@@ -322,6 +322,24 @@ public class InvoiceTemplateServiceTests : IDisposable
         invoice.VariableSymbol.ShouldBe("9999999999");
     }
 
+    [Fact]
+    public async Task CreateInvoiceFromTemplateAsync_NoVsOverride_ShouldNotInheritTemplateVs()
+    {
+        // Regression: previously template.VariableSymbol fell through into the new invoice,
+        // which collided with the source invoice's VS (templates created via CreateTemplateFromInvoiceAsync
+        // always carry the source invoice's VS). New invoice must derive its own unique VS from DocumentNumber.
+        var templateDto = CreateValidTemplateDto("VS Inheritance Regression");
+        templateDto.VariableSymbol = "2026005";
+        var template = await _templateService.CreateTemplateAsync(templateDto);
+
+        var fromDto = new CreateInvoiceFromTemplateDto { ClientId = 1 };
+
+        var invoice = await _templateService.CreateInvoiceFromTemplateAsync(template.Id, fromDto);
+
+        invoice.VariableSymbol.ShouldNotBe("2026005");
+        invoice.VariableSymbol.ShouldNotBeNullOrEmpty();
+    }
+
     // =====================================================================
     // CreateTemplateFromInvoiceAsync tests
     // =====================================================================

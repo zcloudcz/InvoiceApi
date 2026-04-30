@@ -255,6 +255,29 @@ public class InvoiceService : IInvoiceService
                 throw new InvalidOperationException("Credit notes can only be created for invoices, not other credit notes");
         }
 
+        // Pre-save VariableSymbol duplicate check.
+        // Caller-supplied VS (e.g., from a template or user override) must be unique BEFORE the
+        // invoice row is persisted — otherwise a throw later would leave an orphaned DRAFT invoice
+        // in the DB. Auto-derived VS (computed from DocumentNumber after save) is checked again
+        // below as a safety net but cannot collide in practice (DocumentNumber is unique per sequence).
+        if (!string.IsNullOrEmpty(createDto.VariableSymbol))
+        {
+            var preDuplicateExists = await _context.Invoice
+                .AsNoTracking()
+                .AnyAsync(i => i.VariableSymbol == createDto.VariableSymbol
+                    && i.Status != EInvoiceStatus.Deleted,
+                    cancellationToken);
+
+            if (preDuplicateExists)
+            {
+                _logger.LogWarning(
+                    "Duplicate VariableSymbol '{VS}' rejected before save", createDto.VariableSymbol);
+                throw new InvalidOperationException(
+                    $"An invoice with Variable Symbol '{createDto.VariableSymbol}' already exists. " +
+                    "Each invoice must have a unique Variable Symbol for payment tracking.");
+            }
+        }
+
         // Create invoice entity
         var invoice = new Invoice
         {

@@ -467,7 +467,10 @@ public class InvoiceTemplateService : IInvoiceTemplateService
             IssueDate = issueDate,
             DueDate = dueDate,
             TaxableSupplyDate = createDto.TaxableSupplyDate ?? issueDate,
-            VariableSymbol = createDto.VariableSymbol ?? template.VariableSymbol,
+            // Don't fall back to template.VariableSymbol — VS must be unique per invoice (Czech banking).
+            // Template's stored VS is just a leftover from CreateTemplateFromInvoiceAsync and would
+            // collide with the source invoice. When null, InvoiceService derives VS from DocumentNumber.
+            VariableSymbol = createDto.VariableSymbol,
             ConstantSymbol = template.ConstantSymbol,
             SpecificSymbol = template.SpecificSymbol,
             BankAccountNumber = template.BankAccountNumber,
