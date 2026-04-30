@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using MimeKit;
+using Npgsql;
 
 namespace Fakvio.Infrastructure.Service;
 
@@ -32,11 +33,16 @@ public class ImapPollService : IImapPollService
     private const long AdvisoryLockKey = 0x46414B56494F5059L; // "FAKVIOPY"
 
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly NpgsqlDataSource _dataSource;
     private readonly ILogger<ImapPollService> _logger;
 
-    public ImapPollService(IServiceScopeFactory scopeFactory, ILogger<ImapPollService> logger)
+    public ImapPollService(
+        IServiceScopeFactory scopeFactory,
+        NpgsqlDataSource dataSource,
+        ILogger<ImapPollService> logger)
     {
         _scopeFactory = scopeFactory;
+        _dataSource = dataSource;
         _logger = logger;
     }
 
@@ -63,9 +69,10 @@ public class ImapPollService : IImapPollService
         }
 
         // Cross-process singleton lock. If another replica is mid-cycle, we exit early.
-        var connectionString = master.Database.GetConnectionString()
-            ?? throw new InvalidOperationException("Master DB connection string unavailable.");
-        await using var lockSession = await AdvisoryLock.TryAcquireAsync(connectionString, AdvisoryLockKey, ct);
+        // Use the DI-registered NpgsqlDataSource so Azure AD / Managed Identity tokens
+        // are honoured (raw NpgsqlConnection from the connection string would fail in
+        // production where the string has no embedded password).
+        await using var lockSession = await AdvisoryLock.TryAcquireAsync(_dataSource, AdvisoryLockKey, ct);
         if (lockSession == null)
         {
             _logger.LogInformation(

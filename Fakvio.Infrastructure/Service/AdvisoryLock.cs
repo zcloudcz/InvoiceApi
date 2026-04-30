@@ -18,6 +18,12 @@ namespace Fakvio.Infrastructure.Service;
 /// Why session-level and not transaction-level? Our workers don't run inside a
 /// single transaction — they do many independent SaveChanges calls during a
 /// cycle — so we need a primitive scoped to the connection, not the tx.
+///
+/// IMPORTANT: This API takes an <see cref="NpgsqlDataSource"/>, NOT a raw connection
+/// string. The DI-registered NpgsqlDataSource handles Azure AD / Managed Identity
+/// token acquisition transparently. Bypassing it with <c>new NpgsqlConnection(...)</c>
+/// fails in Azure with "no password provided" because connection strings under
+/// Entra ID auth have no embedded password — the token is supplied by the data source.
 /// </summary>
 public static class AdvisoryLock
 {
@@ -27,13 +33,14 @@ public static class AdvisoryLock
     /// if the lock is already held by another session.
     /// </summary>
     public static async Task<AdvisoryLockHandle?> TryAcquireAsync(
-        string connectionString, long key, CancellationToken ct = default)
+        NpgsqlDataSource dataSource, long key, CancellationToken ct = default)
     {
-        var conn = new NpgsqlConnection(connectionString);
+        // OpenConnectionAsync uses the configured data source — this picks up
+        // Azure AD tokens / Managed Identity in production hosts where the
+        // connection string has no embedded password.
+        var conn = await dataSource.OpenConnectionAsync(ct);
         try
         {
-            await conn.OpenAsync(ct);
-
             await using var cmd = new NpgsqlCommand("SELECT pg_try_advisory_lock(@k)", conn);
             cmd.Parameters.AddWithValue("k", key);
             var acquired = (bool)(await cmd.ExecuteScalarAsync(ct) ?? false);
