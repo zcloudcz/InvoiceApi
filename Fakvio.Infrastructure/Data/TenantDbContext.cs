@@ -1051,10 +1051,14 @@ public class TenantDbContext : DbContext
             new NumberSequenceFormat { Id = 4, Name = "Continuous format (NNNNNN)", FormatPattern = "NNNNNN", CounterDigits = 6, ResetsYearly = false, ResetsMonthly = false, IsActive = true, CreatedAt = seedDate }
         );
 
-        // Seed default number sequences
+        // Seed default number sequences — one per document type that generates a document number.
+        // Proforma and TaxReceiptForAdvance get their own counters so the numbering series
+        // stays separate from standard invoices and credit notes.
         modelBuilder.Entity<NumberSequence>().HasData(
             new NumberSequence { Id = 1, Name = "Default Invoice Sequence", DocumentType = EDocumentType.Invoice, Prefix = "INV", CurrentNumber = 0, IsDefault = true, NumberSequenceFormatId = 1, IsActive = true, CreatedAt = seedDate },
-            new NumberSequence { Id = 2, Name = "Default Credit Note Sequence", DocumentType = EDocumentType.CreditNote, Prefix = "CN", CurrentNumber = 0, IsDefault = true, NumberSequenceFormatId = 1, IsActive = true, CreatedAt = seedDate }
+            new NumberSequence { Id = 2, Name = "Default Credit Note Sequence", DocumentType = EDocumentType.CreditNote, Prefix = "CN", CurrentNumber = 0, IsDefault = true, NumberSequenceFormatId = 1, IsActive = true, CreatedAt = seedDate },
+            new NumberSequence { Id = 3, Name = "Default Proforma Sequence", DocumentType = EDocumentType.Proforma, Prefix = "PF", CurrentNumber = 0, IsDefault = true, NumberSequenceFormatId = 1, IsActive = true, CreatedAt = seedDate },
+            new NumberSequence { Id = 4, Name = "Default Tax Receipt for Advance Sequence", DocumentType = EDocumentType.TaxReceiptForAdvance, Prefix = "ZF", CurrentNumber = 0, IsDefault = true, NumberSequenceFormatId = 1, IsActive = true, CreatedAt = seedDate }
         );
 
         // Seed VAT rates
