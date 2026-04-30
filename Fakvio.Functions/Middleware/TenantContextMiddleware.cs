@@ -43,7 +43,9 @@ public class TenantContextMiddleware : IFunctionsWorkerMiddleware
 
     /// <summary>
     /// Route prefixes that are master-only — no tenant context needed.
-    /// Must match the API middleware's MasterOnlyPaths.
+    /// Must match the API middleware's MasterOnlyPaths exactly — when the two
+    /// drift, the same endpoint behaves differently on the API host vs the
+    /// Functions host, which is the bug pattern from issues #20 / #34.
     /// </summary>
     private static readonly string[] MasterOnlyPrefixes =
     [
@@ -55,7 +57,8 @@ public class TenantContextMiddleware : IFunctionsWorkerMiddleware
         "/api/logs",
         "/api/twofactor",
         "/api/cloud-storage",
-        "/api/email"                // SysAdmin email — uses system SMTP, no tenant needed
+        "/api/email",                       // SysAdmin email — uses system SMTP, no tenant needed
+        "/api/sysadmin/payment-matching"    // SysAdmin IMAP/poll config — master DB only
     ];
 
     /// <summary>
