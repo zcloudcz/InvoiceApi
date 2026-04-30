@@ -286,6 +286,55 @@ public class TenantContextMiddlewareTests : IDisposable
         context.Response.StatusCode.ShouldBe(403);
     }
 
+    /// <summary>
+    /// Parity guard between API and Functions middleware: every API master-only path
+    /// MUST also be a master-only path on the Functions host. When the two lists
+    /// drift, the same endpoint behaves differently on each host — exactly the bug
+    /// from issue #34 where /api/sysadmin/payment-matching/settings worked on the
+    /// API host but returned 403 on Functions because the Functions middleware was
+    /// missing the prefix.
+    ///
+    /// Read both private static arrays via reflection so the test follows the source
+    /// of truth without duplicating the lists.
+    /// </summary>
+    [Fact]
+    public void MasterOnlyPaths_ApiAndFunctions_AreInSync()
+    {
+        var apiPaths = ReadMasterOnlyArray(
+            typeof(Fakvio.API.Middleware.TenantContextMiddleware),
+            "MasterOnlyPaths");
+        var functionsPaths = ReadMasterOnlyArray(
+            typeof(Fakvio.Functions.Middleware.TenantContextMiddleware),
+            "MasterOnlyPrefixes");
+
+        // Host-only paths that don't apply to the Functions host (no Swagger UI, no
+        // health endpoint served by the Worker). Allowed to be API-only.
+        var apiOnlyAllowList = new HashSet<string> { "/swagger", "/health" };
+
+        var missingFromFunctions = apiPaths
+            .Where(p => !apiOnlyAllowList.Contains(p) && !functionsPaths.Contains(p))
+            .ToList();
+
+        missingFromFunctions.ShouldBeEmpty(
+            "Every API master-only path (except /swagger and /health, which the " +
+            "Functions host does not serve) must also be on the Functions middleware's " +
+            "MasterOnlyPrefixes list. Drift here causes endpoints to silently 403 on " +
+            "Azure deploys while passing on the API host (issue #34).");
+    }
+
+    private static IReadOnlyList<string> ReadMasterOnlyArray(Type middlewareType, string fieldName)
+    {
+        var field = middlewareType.GetField(
+            fieldName,
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        field.ShouldNotBeNull(
+            $"Expected private static field '{fieldName}' on {middlewareType.FullName}. " +
+            "If it was renamed, update this parity test accordingly.");
+        var value = field!.GetValue(null) as string[];
+        value.ShouldNotBeNull($"{middlewareType.FullName}.{fieldName} must be a string[].");
+        return value!;
+    }
+
     #endregion
 
     #region Missing CompanyId Tests
