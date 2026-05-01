@@ -45,6 +45,13 @@ public class InvoiceTemplateServiceTests : IDisposable
                 Arg.Any<CancellationToken>())
             .Returns("INV2026001");
 
+        // Setup named-sequence mock (used when template has NumberSequenceId set)
+        _numberSequence
+            .GenerateNextNumberAsync(
+                Arg.Any<long>(), Arg.Any<DateTime>(),
+                Arg.Any<CancellationToken>())
+            .Returns("SEQ2026001");
+
         _invoiceService = new InvoiceService(_context, _numberSequence, _invoiceLogger);
         _templateService = new InvoiceTemplateService(_context, _invoiceService, _templateLogger);
 
@@ -392,5 +399,66 @@ public class InvoiceTemplateServiceTests : IDisposable
         deleted.ShouldBeTrue();
         var loaded = await _templateService.GetTemplateByIdAsync(template.Id);
         loaded!.IsActive.ShouldBeFalse();
+    }
+
+    // =====================================================================
+    // Integration test: CreateInvoiceFromTemplateAsync + prefix/suffix fix
+    // =====================================================================
+
+    /// <summary>
+    /// Integration test covering the CreateInvoiceFromTemplateAsync code path
+    /// (InvoiceTemplateService → InvoiceService → GenerateDocumentNumberAsync).
+    ///
+    /// Verifies that the two-phase fix (sequence vs prefix/suffix resolution)
+    /// propagates correctly when an invoice is created via the template service,
+    /// not just via the direct InvoiceService.CreateInvoiceAsync path.
+    ///
+    /// Scenario: template has a custom NumberSequenceId AND the client has a
+    /// billing-settings prefix. Both must be honoured simultaneously in the result.
+    /// </summary>
+    [Fact]
+    public async Task CreateInvoiceFromTemplateAsync_TemplateSequence_WithClientPrefix_ShouldApplyBoth()
+    {
+        // Arrange — add BillingSettings with "EU-" prefix to client #1
+        _context.Set<BillingSettings>().Add(new BillingSettings
+        {
+            ClientId = 1,
+            InvoiceNumberPrefix = "EU-"
+        });
+        _context.SaveChanges();
+
+        // Create a number sequence that the template will reference
+        _context.Set<NumberSequence>().Add(new NumberSequence
+        {
+            Id = 50,
+            Name = "EU Export Sequence",
+            DocumentType = EDocumentType.Invoice,
+            CurrentNumber = 1,
+            IsDefault = false,
+            IsActive = true,
+            NumberSequenceFormatId = 0 // Not validated in unit tests
+        });
+        _context.SaveChanges();
+
+        // Configure the named-sequence mock to return a recognisable number
+        _numberSequence
+            .GenerateNextNumberAsync(50L, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .Returns("EXP2026001");
+
+        // Build template with the custom sequence
+        var templateDto = CreateValidTemplateDto("EU Template");
+        templateDto.NumberSequenceId = 50;
+        var template = await _templateService.CreateTemplateAsync(templateDto);
+
+        var fromDto = new CreateInvoiceFromTemplateDto { ClientId = 1 };
+
+        // Act — goes through InvoiceTemplateService → InvoiceService
+        var invoice = await _templateService.CreateInvoiceFromTemplateAsync(template.Id, fromDto);
+
+        // Assert — sequence from template AND prefix from client must both be present
+        invoice.ShouldNotBeNull();
+        invoice.DocumentNumber.ShouldBe("EU-EXP2026001");
+        invoice.DocumentNumber.ShouldStartWith("EU-");
+        invoice.DocumentNumber.ShouldContain("EXP2026001");
     }
 }

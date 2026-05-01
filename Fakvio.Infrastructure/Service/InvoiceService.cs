@@ -1060,35 +1060,61 @@ public class InvoiceService : IInvoiceService
     {
         _logger.LogInformation("Generating document number for {DocumentType} invoice {Id}", invoice.DocumentType, invoice.Id);
 
-        // Load the CLIENT (customer) with billing settings to check for custom sequences.
+        // Load the CLIENT (customer) with billing settings to check for custom sequences
+        // and client-specific prefix/suffix.
         // BillingSettings defines how invoices should be generated FOR this particular client
         // (e.g., "-EU" suffix for EU clients, custom sequence for export invoices).
-        // BUG FIX: Previously loaded Issuer instead of Client, which meant client-specific
-        // prefix/suffix/sequence settings were always ignored.
         var client = await _context.Client
             .Include(c => c.BillingSettings)
             .FirstOrDefaultAsync(c => c.Id == invoice.ClientId, cancellationToken);
 
-        string? customPrefix = null;
-        string? customSuffix = null;
-        long? customSequenceId = null;
+        // ── Phase 1: Sequence resolution ──────────────────────────────────────
+        // Priority (highest wins):
+        //   1) overrideSequenceId from template (explicit template override)
+        //   2) client.BillingSettings.Custom*SequenceId (per-client custom sequence)
+        //   3) default sequence for DocumentType (fallback — no custom sequence set)
+        //
+        // This phase answers: "which counter do we increment?"
+        long? resolvedSequenceId = null;
 
-        // Priority: 1) explicit override (from template), 2) client's billing settings
         if (overrideSequenceId.HasValue)
         {
-            customSequenceId = overrideSequenceId.Value;
+            // Template explicitly specifies a sequence — use it as-is.
+            resolvedSequenceId = overrideSequenceId.Value;
+            _logger.LogInformation("Using template-override sequence {SequenceId} for {DocumentType}",
+                resolvedSequenceId.Value, invoice.DocumentType);
         }
         else if (client?.BillingSettings != null)
         {
+            // No template override — fall back to client's custom sequence (if any).
+            resolvedSequenceId = invoice.DocumentType == EDocumentType.Invoice
+                ? client.BillingSettings.CustomInvoiceNumberSequenceId
+                : invoice.DocumentType == EDocumentType.CreditNote
+                    ? client.BillingSettings.CustomCreditNoteNumberSequenceId
+                    : null;
+
+            if (resolvedSequenceId.HasValue)
+                _logger.LogInformation("Using client-custom sequence {SequenceId} for {DocumentType}",
+                    resolvedSequenceId.Value, invoice.DocumentType);
+        }
+
+        // ── Phase 2: Prefix/suffix resolution ────────────────────────────────
+        // Client prefix/suffix is ALWAYS applied when BillingSettings is present,
+        // regardless of which sequence was chosen in Phase 1.
+        // Rationale: the sequence decides the counter, but the client label
+        // (e.g. "-EU" suffix) is a per-customer concern — orthogonal to the sequence.
+        string? customPrefix = null;
+        string? customSuffix = null;
+
+        if (client?.BillingSettings != null)
+        {
             if (invoice.DocumentType == EDocumentType.Invoice)
             {
-                customSequenceId = client.BillingSettings.CustomInvoiceNumberSequenceId;
                 customPrefix = client.BillingSettings.InvoiceNumberPrefix;
                 customSuffix = client.BillingSettings.InvoiceNumberSuffix;
             }
             else if (invoice.DocumentType == EDocumentType.CreditNote)
             {
-                customSequenceId = client.BillingSettings.CustomCreditNoteNumberSequenceId;
                 customPrefix = client.BillingSettings.CreditNoteNumberPrefix;
                 customSuffix = client.BillingSettings.CreditNoteNumberSuffix;
             }
@@ -1096,37 +1122,45 @@ public class InvoiceService : IInvoiceService
 
         try
         {
-            // Use custom sequence if configured
-            if (customSequenceId.HasValue)
-            {
-                _logger.LogInformation("Using custom sequence {SequenceId} for {DocumentType}",
-                    customSequenceId.Value, invoice.DocumentType);
+            string number;
 
-                var number = await _numberSequenceService.GenerateNextNumberAsync(
-                    customSequenceId.Value,
+            if (resolvedSequenceId.HasValue)
+            {
+                // Generate the bare number from the chosen sequence.
+                // Prefix/suffix from the client (Phase 2) are applied below, outside this branch,
+                // so both "custom sequence" and "default sequence" paths share the same wrapping.
+                number = await _numberSequenceService.GenerateNextNumberAsync(
+                    resolvedSequenceId.Value,
                     invoice.IssueDate ?? DateTime.UtcNow,
                     cancellationToken);
-
-                // Apply custom prefix/suffix if specified
-                if (!string.IsNullOrEmpty(customPrefix))
-                    number = customPrefix + number;
-                if (!string.IsNullOrEmpty(customSuffix))
-                    number = number + customSuffix;
-
-                return number;
             }
             else
             {
-                // Use default sequence for document type
+                // No explicit sequence — use the default sequence for the document type.
+                // Pass prefix/suffix into this call so the sequence service can embed them
+                // in the generated format string (it may include them in the pattern itself).
                 _logger.LogInformation("Using default sequence for {DocumentType}", invoice.DocumentType);
 
-                return await _numberSequenceService.GenerateNextNumberForDocumentTypeAsync(
+                number = await _numberSequenceService.GenerateNextNumberForDocumentTypeAsync(
                     invoice.DocumentType,
                     invoice.IssueDate ?? DateTime.UtcNow,
                     customPrefix,
                     customSuffix,
                     cancellationToken);
+
+                // Prefix/suffix already passed into GenerateNextNumberForDocumentTypeAsync;
+                // skip the manual wrapping below to avoid double-application.
+                return number;
             }
+
+            // Apply client prefix/suffix to the bare number produced by a named sequence
+            // (GenerateNextNumberAsync does not embed prefix/suffix itself).
+            if (!string.IsNullOrEmpty(customPrefix))
+                number = customPrefix + number;
+            if (!string.IsNullOrEmpty(customSuffix))
+                number = number + customSuffix;
+
+            return number;
         }
         catch (InvalidOperationException ex)
         {
