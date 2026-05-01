@@ -1,3 +1,5 @@
+using Fakvio.Domain.Enums;
+
 namespace Fakvio.Contracts.Dto.Invoice;
 
 /// <summary>
@@ -30,6 +32,14 @@ public class InvoiceItemDto
     public decimal TotalWithVat { get; set; }
     public string? ProductCode { get; set; }
     public string? Notes { get; set; }
+
+    /// <summary>
+    /// VAT accounting regime for this line item.
+    /// Standard = normal VAT; ReverseCharge = PDP §92a–92e ZDPH (buyer self-accounts);
+    /// Exempt = no VAT; OutOfScope = outside VAT scope entirely.
+    /// Default is <see cref="EVatRegime.Standard"/>.
+    /// </summary>
+    public EVatRegime VatRegime { get; set; } = EVatRegime.Standard;
 }
 
 /// <summary>
@@ -87,6 +97,13 @@ public class CreateInvoiceItemDto
     public decimal VatRatePercentage { get; set; }
 
     /// <summary>
+    /// VAT accounting regime for this line item.
+    /// Defaults to <see cref="EVatRegime.Standard"/> if not specified.
+    /// Set to <see cref="EVatRegime.ReverseCharge"/> for PDP (přenesená daňová povinnost).
+    /// </summary>
+    public EVatRegime VatRegime { get; set; } = EVatRegime.Standard;
+
+    /// <summary>
     /// Optional product code for linking to product catalog
     /// </summary>
     public string? ProductCode { get; set; }
@@ -118,6 +135,12 @@ public class UpdateInvoiceItemDto
     /// VAT rate percentage
     /// </summary>
     public decimal? VatRatePercentage { get; set; }
+
+    /// <summary>
+    /// VAT accounting regime for this line item.
+    /// When null, the existing value is preserved.
+    /// </summary>
+    public EVatRegime? VatRegime { get; set; }
 
     public string? ProductCode { get; set; }
     public string? Notes { get; set; }
