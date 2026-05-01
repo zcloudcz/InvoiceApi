@@ -218,29 +218,31 @@ public class ProformaDocumentTypeTests : IDisposable
     }
 
     [Fact]
-    public void SeedData_ProformaSequence_HasPfPrefixAndIsDefault()
+    public void SeedData_ProformaSequence_HasPfDashPrefixAndIsDefault()
     {
-        // 'PF' prefix matches the business convention for pro-forma numbering (PF2025001).
+        // Issue #26: prefix corrected from "PF" to "PF-" (standard Czech proforma notation).
+        // A hyphen separator keeps the document number readable: PF-2026001 vs PF2026001.
         using var ctx = CreateSeededContext();
         var seq = ctx.NumberSequence
             .First(s => s.DocumentType == EDocumentType.Proforma);
 
-        seq.Prefix.ShouldBe("PF",
-            "Proforma number sequence must use the 'PF' prefix");
+        seq.Prefix.ShouldBe("PF-",
+            "Proforma number sequence must use the 'PF-' prefix (zálohová faktura)");
         seq.IsDefault.ShouldBeTrue(
             "The seeded Proforma sequence must be marked as default");
     }
 
     [Fact]
-    public void SeedData_TaxReceiptSequence_HasZfPrefixAndIsDefault()
+    public void SeedData_TaxReceiptSequence_HasDppPrefixAndIsDefault()
     {
-        // 'ZF' prefix matches the business convention (záloha faktura).
+        // Issue #26: prefix corrected from "ZF" to "DPP-" (daňový doklad o přijaté platbě).
+        // DPP is the standard Czech abbreviation used on tax documents for advance payments.
         using var ctx = CreateSeededContext();
         var seq = ctx.NumberSequence
             .First(s => s.DocumentType == EDocumentType.TaxReceiptForAdvance);
 
-        seq.Prefix.ShouldBe("ZF",
-            "TaxReceiptForAdvance number sequence must use the 'ZF' prefix");
+        seq.Prefix.ShouldBe("DPP-",
+            "TaxReceiptForAdvance number sequence must use the 'DPP-' prefix (daňový doklad o přijaté platbě)");
         seq.IsDefault.ShouldBeTrue(
             "The seeded TaxReceiptForAdvance sequence must be marked as default");
     }

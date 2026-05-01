@@ -1054,11 +1054,20 @@ public class TenantDbContext : DbContext
         // Seed default number sequences — one per document type that generates a document number.
         // Proforma and TaxReceiptForAdvance get their own counters so the numbering series
         // stays separate from standard invoices and credit notes.
+        //
+        // Prefix conventions used in this seed (Czech standards):
+        //   INV   = faktura-daňový doklad   (historical, no trailing dash — kept for backward compat)
+        //   CN    = dobropis                (historical, no trailing dash — kept for backward compat)
+        //   PF-   = proforma / zálohová faktura
+        //   DPP-  = daňový doklad o přijaté platbě (tax receipt for advance)
+        //
+        // Note: INV/CN without a dash are the original values from InitTenant. Unifying them to
+        // INV-/CN- is tracked as a separate issue and is intentionally out of scope for #26.
         modelBuilder.Entity<NumberSequence>().HasData(
             new NumberSequence { Id = 1, Name = "Default Invoice Sequence", DocumentType = EDocumentType.Invoice, Prefix = "INV", CurrentNumber = 0, IsDefault = true, NumberSequenceFormatId = 1, IsActive = true, CreatedAt = seedDate },
             new NumberSequence { Id = 2, Name = "Default Credit Note Sequence", DocumentType = EDocumentType.CreditNote, Prefix = "CN", CurrentNumber = 0, IsDefault = true, NumberSequenceFormatId = 1, IsActive = true, CreatedAt = seedDate },
-            new NumberSequence { Id = 3, Name = "Default Proforma Sequence", DocumentType = EDocumentType.Proforma, Prefix = "PF", CurrentNumber = 0, IsDefault = true, NumberSequenceFormatId = 1, IsActive = true, CreatedAt = seedDate },
-            new NumberSequence { Id = 4, Name = "Default Tax Receipt for Advance Sequence", DocumentType = EDocumentType.TaxReceiptForAdvance, Prefix = "ZF", CurrentNumber = 0, IsDefault = true, NumberSequenceFormatId = 1, IsActive = true, CreatedAt = seedDate }
+            new NumberSequence { Id = 3, Name = "Default Proforma Sequence", DocumentType = EDocumentType.Proforma, Prefix = "PF-", CurrentNumber = 0, IsDefault = true, NumberSequenceFormatId = 1, IsActive = true, CreatedAt = seedDate },
+            new NumberSequence { Id = 4, Name = "Default Tax Receipt for Advance Sequence", DocumentType = EDocumentType.TaxReceiptForAdvance, Prefix = "DPP-", CurrentNumber = 0, IsDefault = true, NumberSequenceFormatId = 1, IsActive = true, CreatedAt = seedDate }
         );
 
         // Seed VAT rates

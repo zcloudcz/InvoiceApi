@@ -889,8 +889,14 @@ public class TenantProvisioningService : ITenantProvisioningService
     }
 
     /// <summary>
-    /// Creates default number sequences for Invoice and CreditNote in the tenant schema.
+    /// Creates default number sequences for all four document types in the tenant schema.
     /// Uses the first active NumberSequenceFormat as the format template.
+    ///
+    /// Document types and their standard Czech prefixes:
+    ///   Invoice             → "INV-"   (faktura-daňový doklad)
+    ///   CreditNote          → "CN-"    (dobropis)
+    ///   Proforma            → "PF-"    (zálohová faktura / proforma)
+    ///   TaxReceiptForAdvance→ "DPP-"   (daňový doklad o přijaté platbě)
     ///
     /// IDEMPOTENT: Checks if default sequences already exist before inserting.
     /// If CopyCodeTablesAsync already cleared and re-seeded NumberSequence,
@@ -941,6 +947,48 @@ public class TenantProvisioningService : ITenantProvisioningService
                 Name = "Default Credit Note",
                 DocumentType = EDocumentType.CreditNote,
                 Prefix = "CN-",
+                Suffix = null,
+                CurrentNumber = 0,
+                IsDefault = true,
+                IsActive = true,
+                NumberSequenceFormatId = defaultFormat.Id,
+                CreatedAt = DateTime.UtcNow
+            });
+        }
+
+        // Only create default Proforma sequence if one doesn't already exist.
+        // PF- = zálohová faktura / proforma (not a VAT document, precedes advance payment)
+        var hasProformaSeq = await tenantContext.NumberSequence
+            .AnyAsync(s => s.DocumentType == EDocumentType.Proforma && s.IsDefault, cancellationToken);
+
+        if (!hasProformaSeq)
+        {
+            tenantContext.NumberSequence.Add(new NumberSequence
+            {
+                Name = "Default Proforma",
+                DocumentType = EDocumentType.Proforma,
+                Prefix = "PF-",
+                Suffix = null,
+                CurrentNumber = 0,
+                IsDefault = true,
+                IsActive = true,
+                NumberSequenceFormatId = defaultFormat.Id,
+                CreatedAt = DateTime.UtcNow
+            });
+        }
+
+        // Only create default TaxReceiptForAdvance sequence if one doesn't already exist.
+        // DPP- = daňový doklad o přijaté platbě (IS a VAT document, issued after advance payment received)
+        var hasTaxReceiptSeq = await tenantContext.NumberSequence
+            .AnyAsync(s => s.DocumentType == EDocumentType.TaxReceiptForAdvance && s.IsDefault, cancellationToken);
+
+        if (!hasTaxReceiptSeq)
+        {
+            tenantContext.NumberSequence.Add(new NumberSequence
+            {
+                Name = "Default Tax Receipt for Advance",
+                DocumentType = EDocumentType.TaxReceiptForAdvance,
+                Prefix = "DPP-",
                 Suffix = null,
                 CurrentNumber = 0,
                 IsDefault = true,

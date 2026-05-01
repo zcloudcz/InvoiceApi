@@ -442,4 +442,235 @@ public class NumberSequenceServiceTests : IDisposable
         _service.ValidateFormatPattern("").ShouldBeFalse(); // Empty
         _service.ValidateFormatPattern("yyyNNN").ShouldBeFalse(); // 3-digit year not allowed
     }
+
+    // ==================== Proforma + TaxReceiptForAdvance NumberSequence Tests (#26) ====================
+
+    /// <summary>
+    /// Seeds a default Proforma number sequence into the in-memory database.
+    /// Used by tests that need a Proforma sequence to exist.
+    /// </summary>
+    private void SeedProformaSequence()
+    {
+        _context.NumberSequence.Add(new NumberSequence
+        {
+            Id = 3,
+            Name = "Proforma sequence",
+            DocumentType = EDocumentType.Proforma,
+            Prefix = "PF-",
+            Suffix = null,
+            CurrentNumber = 0,
+            IsDefault = true,
+            NumberSequenceFormatId = 1,   // Yearly format from SeedTestData()
+            IsActive = true
+        });
+        _context.SaveChanges();
+    }
+
+    /// <summary>
+    /// Seeds a default TaxReceiptForAdvance number sequence into the in-memory database.
+    /// </summary>
+    private void SeedTaxReceiptSequence()
+    {
+        _context.NumberSequence.Add(new NumberSequence
+        {
+            Id = 4,
+            Name = "Tax receipt for advance sequence",
+            DocumentType = EDocumentType.TaxReceiptForAdvance,
+            Prefix = "DPP-",
+            Suffix = null,
+            CurrentNumber = 0,
+            IsDefault = true,
+            NumberSequenceFormatId = 1,   // Yearly format from SeedTestData()
+            IsActive = true
+        });
+        _context.SaveChanges();
+    }
+
+    [Fact]
+    public async Task GenerateNextNumberForDocumentTypeAsync_Proforma_GeneratesCorrectNumber()
+    {
+        // Arrange
+        SeedProformaSequence();
+        var issueDate = new DateTime(2026, 5, 1);
+
+        // Act — generate first proforma number (counter starts at 0, increments to 1)
+        var number = await _service.GenerateNextNumberForDocumentTypeAsync(EDocumentType.Proforma, issueDate);
+
+        // Assert — format "yyyyNNN" with prefix "PF-" → "PF-2026001"
+        number.ShouldBe("PF-2026001");
+    }
+
+    [Fact]
+    public async Task GenerateNextNumberForDocumentTypeAsync_Proforma_IncrementsCounter()
+    {
+        // Arrange — generate first number, then generate a second
+        SeedProformaSequence();
+        var issueDate = new DateTime(2026, 5, 1);
+
+        // Act
+        var first = await _service.GenerateNextNumberForDocumentTypeAsync(EDocumentType.Proforma, issueDate);
+        var second = await _service.GenerateNextNumberForDocumentTypeAsync(EDocumentType.Proforma, issueDate);
+
+        // Assert — counter increments by 1 on each call
+        first.ShouldBe("PF-2026001");
+        second.ShouldBe("PF-2026002");
+    }
+
+    [Fact]
+    public async Task GenerateNextNumberForDocumentTypeAsync_TaxReceiptForAdvance_GeneratesCorrectNumber()
+    {
+        // Arrange
+        SeedTaxReceiptSequence();
+        var issueDate = new DateTime(2026, 5, 1);
+
+        // Act — generate first DPP number
+        var number = await _service.GenerateNextNumberForDocumentTypeAsync(EDocumentType.TaxReceiptForAdvance, issueDate);
+
+        // Assert — format "yyyyNNN" with prefix "DPP-" → "DPP-2026001"
+        number.ShouldBe("DPP-2026001");
+    }
+
+    [Fact]
+    public async Task GenerateNextNumberForDocumentTypeAsync_TaxReceiptForAdvance_IncrementsCounter()
+    {
+        // Arrange
+        SeedTaxReceiptSequence();
+        var issueDate = new DateTime(2026, 5, 1);
+
+        // Act — two consecutive generations
+        var first = await _service.GenerateNextNumberForDocumentTypeAsync(EDocumentType.TaxReceiptForAdvance, issueDate);
+        var second = await _service.GenerateNextNumberForDocumentTypeAsync(EDocumentType.TaxReceiptForAdvance, issueDate);
+
+        // Assert
+        first.ShouldBe("DPP-2026001");
+        second.ShouldBe("DPP-2026002");
+    }
+
+    [Fact]
+    public async Task GenerateNextNumberForDocumentTypeAsync_ProformaCounterIsIndependentOfInvoice()
+    {
+        // Arrange — generate some invoice numbers first, then check proforma starts at 1
+        SeedProformaSequence();
+        var issueDate = new DateTime(2026, 5, 1);
+
+        // Generate 3 invoice numbers to advance the invoice counter
+        await _service.GenerateNextNumberForDocumentTypeAsync(EDocumentType.Invoice, issueDate);
+        await _service.GenerateNextNumberForDocumentTypeAsync(EDocumentType.Invoice, issueDate);
+        await _service.GenerateNextNumberForDocumentTypeAsync(EDocumentType.Invoice, issueDate);
+
+        // Act — generate proforma number (its counter is separate from invoice)
+        var proformaNumber = await _service.GenerateNextNumberForDocumentTypeAsync(EDocumentType.Proforma, issueDate);
+
+        // Assert — proforma uses its own counter, not the invoice counter
+        proformaNumber.ShouldBe("PF-2026001");
+    }
+
+    [Fact]
+    public async Task GenerateNextNumberForDocumentTypeAsync_MissingProformaDefault_ThrowsWithClearMessage()
+    {
+        // Arrange — no Proforma sequence seeded (only Invoice and CreditNote from SeedTestData)
+
+        // Act & Assert — expect a clear error message
+        var act = () => _service.GenerateNextNumberForDocumentTypeAsync(EDocumentType.Proforma, DateTime.Now);
+        var ex = await Should.ThrowAsync<InvalidOperationException>(act);
+        ex.Message.ShouldContain("Proforma", Case.Insensitive);
+    }
+
+    [Fact]
+    public async Task GenerateNextNumberForDocumentTypeAsync_MissingTaxReceiptDefault_ThrowsWithClearMessage()
+    {
+        // Arrange — no TaxReceiptForAdvance sequence seeded
+
+        // Act & Assert
+        var act = () => _service.GenerateNextNumberForDocumentTypeAsync(EDocumentType.TaxReceiptForAdvance, DateTime.Now);
+        var ex = await Should.ThrowAsync<InvalidOperationException>(act);
+        ex.Message.ShouldContain("TaxReceiptForAdvance", Case.Insensitive);
+    }
+
+    [Fact]
+    public async Task PreviewNextNumberForDocumentTypeAsync_Proforma_ReturnsCorrectPreview()
+    {
+        // Arrange — counter starts at 0; preview simulates next = 1
+        SeedProformaSequence();
+        var issueDate = new DateTime(2026, 5, 1);
+
+        // Act
+        var preview = await _service.PreviewNextNumberForDocumentTypeAsync(EDocumentType.Proforma, issueDate);
+
+        // Assert — preview should not change counter, return "PF-2026001"
+        preview.ShouldNotBeNull();
+        preview.ShouldBe("PF-2026001");
+    }
+
+    [Fact]
+    public async Task PreviewNextNumberForDocumentTypeAsync_TaxReceiptForAdvance_ReturnsCorrectPreview()
+    {
+        // Arrange
+        SeedTaxReceiptSequence();
+        var issueDate = new DateTime(2026, 5, 1);
+
+        // Act
+        var preview = await _service.PreviewNextNumberForDocumentTypeAsync(EDocumentType.TaxReceiptForAdvance, issueDate);
+
+        // Assert
+        preview.ShouldNotBeNull();
+        preview.ShouldBe("DPP-2026001");
+    }
+
+    [Fact]
+    public async Task GetDefaultSequenceAsync_Proforma_ReturnsProformaSequence()
+    {
+        // Arrange
+        SeedProformaSequence();
+
+        // Act
+        var dto = await _service.GetDefaultSequenceAsync(EDocumentType.Proforma);
+
+        // Assert — default Proforma sequence is returned with correct prefix
+        dto.ShouldNotBeNull();
+        dto!.DocumentType.ShouldBe(EDocumentType.Proforma);
+        dto.Prefix.ShouldBe("PF-");
+        dto.IsDefault.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task GetDefaultSequenceAsync_TaxReceiptForAdvance_ReturnsTaxReceiptSequence()
+    {
+        // Arrange
+        SeedTaxReceiptSequence();
+
+        // Act
+        var dto = await _service.GetDefaultSequenceAsync(EDocumentType.TaxReceiptForAdvance);
+
+        // Assert
+        dto.ShouldNotBeNull();
+        dto!.DocumentType.ShouldBe(EDocumentType.TaxReceiptForAdvance);
+        dto.Prefix.ShouldBe("DPP-");
+        dto.IsDefault.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task AllFourDocumentTypes_CanGenerateNumbersIndependently()
+    {
+        // Arrange — seed all four document type sequences
+        SeedProformaSequence();
+        SeedTaxReceiptSequence();
+        var issueDate = new DateTime(2026, 5, 1);
+
+        // Act — generate one number per document type
+        var invoiceNum = await _service.GenerateNextNumberForDocumentTypeAsync(EDocumentType.Invoice, issueDate);
+        var creditNum  = await _service.GenerateNextNumberForDocumentTypeAsync(EDocumentType.CreditNote, issueDate);
+        var proNum     = await _service.GenerateNextNumberForDocumentTypeAsync(EDocumentType.Proforma, issueDate);
+        var dppNum     = await _service.GenerateNextNumberForDocumentTypeAsync(EDocumentType.TaxReceiptForAdvance, issueDate);
+
+        // Assert — each type uses its own prefix and counter, seeded current numbers are:
+        //   Invoice CurrentNumber=5 → next=6, formatted as "INV-2026006"
+        //   CreditNote CurrentNumber=2 → next=3, formatted as "CN-2026003"
+        //   Proforma CurrentNumber=0 → next=1, formatted as "PF-2026001"
+        //   TaxReceiptForAdvance CurrentNumber=0 → next=1, formatted as "DPP-2026001"
+        invoiceNum.ShouldBe("INV-2026006");
+        creditNum.ShouldBe("CN-2026003");
+        proNum.ShouldBe("PF-2026001");
+        dppNum.ShouldBe("DPP-2026001");
+    }
 }
