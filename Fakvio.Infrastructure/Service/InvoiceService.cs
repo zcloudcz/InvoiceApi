@@ -653,10 +653,12 @@ public class InvoiceService : IInvoiceService
 
         invoice.Status = EInvoiceStatus.Paid;
         invoice.PaidAt = effectivePaidAt;
-        // For Proforma, PaidAmount tracks the full amount (same as TotalWithVat) so that
-        // TryIssueDppOnManualPaid can pass the correct amount to IAdvanceTaxReceiptService.
+        // For Proforma, PaidAmount tracks the payment total so that TryIssueDppOnManualPaid
+        // can pass the correct amount to IAdvanceTaxReceiptService.
+        // We take the greater of the existing PaidAmount and TotalWithVat to avoid overwriting
+        // an audit trail created by prior PaymentMatch rows (e.g. partial payment already recorded).
         if (invoice.DocumentType == EDocumentType.Proforma)
-            invoice.PaidAmount = invoice.TotalWithVat;
+            invoice.PaidAmount = Math.Max(invoice.PaidAmount, invoice.TotalWithVat);
 
         await _context.SaveChangesAsync(cancellationToken);
 

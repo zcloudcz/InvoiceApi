@@ -386,6 +386,7 @@ public class ClientFunctions
         if (!req.HttpContext.User.IsInRole("Admin") && !req.HttpContext.User.IsInRole("SysAdmin"))
             return new ForbidResult();
 
+
         // Deserialize request body → SetAdvanceTaxReceiptModeDto
         var dto = await System.Text.Json.JsonSerializer.DeserializeAsync<global::Fakvio.Contracts.Dto.Client.SetAdvanceTaxReceiptModeDto>(req.Body, FunctionResultHelper.JsonOptions, req.HttpContext.RequestAborted);
         var cancellationToken = req.HttpContext.RequestAborted;

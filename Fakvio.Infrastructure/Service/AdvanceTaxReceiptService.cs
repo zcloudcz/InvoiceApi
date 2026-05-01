@@ -16,6 +16,11 @@ namespace Fakvio.Infrastructure.Service;
 ///   - PaymentMatchingService (OnPaymentMatch + OnAnyPayment modes)
 ///   - InvoiceService.MarkAsPaidAsync (OnAnyPayment mode only)
 ///
+/// Logging relies on ILogger&lt;AdvanceTaxReceiptService&gt;. In production the
+/// DatabaseLoggerProvider (registered in DI) forwards structured log entries to
+/// the AppLog table in the tenant database, so all DPP creation events are
+/// visible in the SysAdmin log viewer without extra instrumentation.
+///
 /// See IAdvanceTaxReceiptService for the full contract description.
 /// </summary>
 public class AdvanceTaxReceiptService : IAdvanceTaxReceiptService
