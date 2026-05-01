@@ -596,10 +596,13 @@ public class IssueFinalInvoiceTests : IDisposable
 
         var result = await _service.IssueFinalInvoiceAsync(proforma.Id, dto);
 
-        // The sum of deduction rows (with VAT) must equal exactly -999.
+        // The sum of deduction rows (with VAT) must equal exactly -999 WITHOUT any Math.Round wrapper.
+        // Previously the test used Math.Round(sumDeduction, 2) which masked drift caused by
+        // unrounded VatAmount in CreateInvoiceAsync. Now VatAmount is rounded at the source
+        // (Math.Round(..., 2, MidpointRounding.AwayFromZero)) so the raw sum must be exact.
         var deductionRows = result.InvoiceItem.Where(i => i.TotalBeforeVat < 0).ToList();
         var sumDeduction = deductionRows.Sum(r => r.TotalWithVat);
-        Math.Round(sumDeduction, 2).ShouldBe(-999m,
-            "largest-remainder rounding must ensure deduction rows sum to exactly the requested amount");
+        sumDeduction.ShouldBe(-999m,
+            "largest-remainder rounding + rounded VatAmount must ensure deduction rows sum exactly to the requested amount");
     }
 }

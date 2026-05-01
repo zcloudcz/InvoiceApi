@@ -598,12 +598,18 @@ public class InvoiceFunctions
     /// <summary>
     /// POST api/invoice/{proformaId}/issue-final → InvoiceController.IssueFinalInvoice
     /// Issues a final Invoice from a Proforma with proportional advance deduction rows.
+    /// Route param arrives as string — Azure Functions Isolated Worker cannot bind non-string
+    /// route parameters reliably (FunctionInputConverterException for long/int).
     /// </summary>
     [Function("Invoice_IssueFinalInvoice")]
     public async Task<IActionResult> Invoice_IssueFinalInvoice(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/invoice/{proformaId:long}/issue-final")] HttpRequest req,
-        long proformaId)
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/invoice/{proformaId}/issue-final")] HttpRequest req,
+        string proformaId)
     {
+        // Parse route parameter '{proformaId}' from string to long
+        if (!long.TryParse(proformaId, out var __proformaId_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid route parameter 'proformaId': expected a number." });
+
         // Wire up the controller's HttpContext so it can access User claims, Request, etc.
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
 
@@ -614,25 +620,27 @@ public class InvoiceFunctions
         // Deserialize request body → IssueFinalInvoiceDto
         var dto = await System.Text.Json.JsonSerializer.DeserializeAsync<global::Fakvio.Contracts.Dto.Invoice.IssueFinalInvoiceDto>(
             req.Body, FunctionResultHelper.JsonOptions, req.HttpContext.RequestAborted);
-
-        if (dto == null)
-            return new BadRequestObjectResult(new { message = "Request body is required." });
-
         var cancellationToken = req.HttpContext.RequestAborted;
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.IssueFinalInvoice(proformaId, dto, cancellationToken));
+        return FunctionResultHelper.Normalize(await _controller.IssueFinalInvoice(__proformaId_parsed, dto!, cancellationToken));
     }
 
     /// <summary>
     /// GET api/invoice/{proformaId}/remaining-advance → InvoiceController.GetRemainingAdvance
     /// Returns the remaining advance amount that can still be deducted on future final invoices.
+    /// Route param arrives as string — Azure Functions Isolated Worker cannot bind non-string
+    /// route parameters reliably (FunctionInputConverterException for long/int).
     /// </summary>
     [Function("Invoice_GetRemainingAdvance")]
     public async Task<IActionResult> Invoice_GetRemainingAdvance(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/invoice/{proformaId:long}/remaining-advance")] HttpRequest req,
-        long proformaId)
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/invoice/{proformaId}/remaining-advance")] HttpRequest req,
+        string proformaId)
     {
+        // Parse route parameter '{proformaId}' from string to long
+        if (!long.TryParse(proformaId, out var __proformaId_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid route parameter 'proformaId': expected a number." });
+
         // Wire up the controller's HttpContext so it can access User claims, Request, etc.
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
 
@@ -643,6 +651,6 @@ public class InvoiceFunctions
         var cancellationToken = req.HttpContext.RequestAborted;
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.GetRemainingAdvance(proformaId, cancellationToken));
+        return FunctionResultHelper.Normalize(await _controller.GetRemainingAdvance(__proformaId_parsed, cancellationToken));
     }
 }

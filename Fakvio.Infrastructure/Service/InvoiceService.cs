@@ -356,6 +356,8 @@ public class InvoiceService : IInvoiceService
             }
 
             // Regular billable item — resolve VAT and calculate totals.
+            // Note: VAT payers are guaranteed to have VatRateId set (validated above).
+            // Non-VAT payers may omit VatRateId and use VatRatePercentage = 0 from the DTO instead.
             decimal vatRatePercentage = itemDto.VatRatePercentage;
             if (itemDto.VatRateId.HasValue)
             {
@@ -372,7 +374,12 @@ public class InvoiceService : IInvoiceService
             item.VatRatePercentage = vatRatePercentage;
 
             item.TotalBeforeVat = item.Quantity * item.UnitPrice;
-            item.VatAmount = item.TotalBeforeVat * (item.VatRatePercentage / 100);
+            // Round VatAmount to 2 decimal places (AwayFromZero = standard Czech VAT rounding).
+            // Without this, back-calculated deduction rows accumulate ~0.005 CZK drift per row
+            // because deductionBase = round(deductionWithVat / divisor, 2) loses a fraction
+            // that re-appears when VAT is recomputed from the rounded base.
+            item.VatAmount = Math.Round(item.TotalBeforeVat * (item.VatRatePercentage / 100m),
+                2, MidpointRounding.AwayFromZero);
             item.TotalWithVat = item.TotalBeforeVat + item.VatAmount;
 
             invoice.InvoiceItem.Add(item);
@@ -560,7 +567,11 @@ public class InvoiceService : IInvoiceService
                 item.VatRatePercentage = vatRatePercentage;
 
                 item.TotalBeforeVat = item.Quantity * item.UnitPrice;
-                item.VatAmount = item.TotalBeforeVat * (item.VatRatePercentage / 100);
+                // Round VatAmount consistently (same rule as CreateInvoiceAsync —
+                // AwayFromZero matches standard Czech VAT rounding and eliminates
+                // drift when deduction rows are back-calculated from TotalWithVat).
+                item.VatAmount = Math.Round(item.TotalBeforeVat * (item.VatRatePercentage / 100m),
+                    2, MidpointRounding.AwayFromZero);
                 item.TotalWithVat = item.TotalBeforeVat + item.VatAmount;
 
                 invoice.InvoiceItem.Add(item);
