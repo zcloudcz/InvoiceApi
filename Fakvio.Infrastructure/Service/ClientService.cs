@@ -730,11 +730,12 @@ public class ClientService : IClientService
         client.BillingSettings.DefaultPaymentMethod = settingsDto.DefaultPaymentMethod;
         client.BillingSettings.BankAccountNumber = settingsDto.BankAccountNumber;
         client.BillingSettings.Notes = settingsDto.Notes;
-        // Preserve AdvanceTaxReceiptMode — it is set via the dedicated
-        // PUT /api/client/issuer/advance-tax-receipt-mode endpoint.
-        // The CreateBillingSettingsDto default (OnPaymentMatch) is intentionally
-        // NOT applied here so that an existing choice is never silently reset.
-        client.BillingSettings.AdvanceTaxReceiptMode = settingsDto.AdvanceTaxReceiptMode;
+        // AdvanceTaxReceiptMode is intentionally NOT updated here.
+        // It is owned by the dedicated PUT /api/client/issuer/advance-tax-receipt-mode
+        // endpoint (SetAdvanceTaxReceiptModeAsync). CreateBillingSettingsDto carries a
+        // non-nullable field with a C# default of OnPaymentMatch, so mapping it here
+        // would silently reset any tenant choice (e.g. Disabled) whenever a client is
+        // saved via the standard billing-settings form.
 
         await _context.SaveChangesAsync(cancellationToken);
 

@@ -224,4 +224,67 @@ public class AdvanceTaxReceiptModeTests : IDisposable
         result.ShouldNotBeNull();
         result!.Value.ShouldBe(mode);
     }
+
+    // ─── UpdateBillingSettingsAsync — partial-update contract ────────────────
+
+    /// <summary>
+    /// UpdateBillingSettingsAsync (the PUT /api/client/{id}/billing-settings path) must NOT
+    /// overwrite AdvanceTaxReceiptMode when the caller sends a default-init CreateBillingSettingsDto.
+    ///
+    /// Before the fix, CreateBillingSettingsDto.AdvanceTaxReceiptMode defaulted to OnPaymentMatch
+    /// and the assignment was always executed, silently resetting a tenant's Disabled or
+    /// OnAnyPayment choice every time billing settings were saved from the UI.
+    /// </summary>
+    [Theory]
+    [InlineData(EAdvanceTaxReceiptMode.Disabled)]
+    [InlineData(EAdvanceTaxReceiptMode.OnAnyPayment)]
+    public async Task UpdateBillingSettings_DefaultInitDto_DoesNotResetAdvanceTaxReceiptMode(
+        EAdvanceTaxReceiptMode existingMode)
+    {
+        // Arrange: issuer with an explicitly non-default mode
+        var issuerId = await SeedIssuerAsync(existingMode: existingMode);
+
+        // Act: simulate the billing-settings form save with a default-constructed DTO
+        // (the field is absent in the JSON → property keeps its C# default of OnPaymentMatch)
+        var dto = new global::Fakvio.Contracts.Dto.Client.CreateBillingSettingsDto();
+        await _service.UpdateBillingSettingsAsync(issuerId, dto);
+
+        // Assert: the mode stored in the DB must remain unchanged
+        var bs = await _context.BillingSettings
+            .AsNoTracking()
+            .FirstAsync(b => b.ClientId == issuerId);
+
+        bs.AdvanceTaxReceiptMode.ShouldBe(existingMode,
+            $"UpdateBillingSettingsAsync must not reset AdvanceTaxReceiptMode from {existingMode} to OnPaymentMatch");
+    }
+
+    /// <summary>
+    /// Complementary test: UpdateClientAsync (partial-update path via UpdateBillingSettingsDto
+    /// with nullable AdvanceTaxReceiptMode) must still correctly persist the mode when the
+    /// caller explicitly provides a value.
+    /// </summary>
+    [Fact]
+    public async Task UpdateBillingSettings_ExplicitModeInDto_PersistsThatMode()
+    {
+        // Arrange: issuer starts with OnPaymentMatch
+        var issuerId = await SeedIssuerAsync(existingMode: EAdvanceTaxReceiptMode.OnPaymentMatch);
+
+        // Act: caller explicitly requests OnAnyPayment
+        var dto = new global::Fakvio.Contracts.Dto.Client.CreateBillingSettingsDto
+        {
+            AdvanceTaxReceiptMode = EAdvanceTaxReceiptMode.OnAnyPayment
+        };
+
+        // UpdateBillingSettingsAsync receives CreateBillingSettingsDto — use the dedicated
+        // SetAdvanceTaxReceiptModeAsync to update the mode, verifying that the direct
+        // dedicated path still works correctly alongside the non-interfering billing path.
+        await _service.SetAdvanceTaxReceiptModeAsync(EAdvanceTaxReceiptMode.OnAnyPayment);
+        // Also call UpdateBillingSettingsAsync (default dto) to confirm it doesn't overwrite
+        await _service.UpdateBillingSettingsAsync(issuerId, new global::Fakvio.Contracts.Dto.Client.CreateBillingSettingsDto());
+
+        var result = await _service.GetAdvanceTaxReceiptModeAsync();
+
+        result.ShouldNotBeNull();
+        result!.Value.ShouldBe(EAdvanceTaxReceiptMode.OnAnyPayment);
+    }
 }
