@@ -59,7 +59,7 @@
         typ_ds — typ datové schránky: F=fyzická osoba, P=právnická osoba
     -->
     <VetaP
-        c_ufo="3009"
+        c_ufo="451"
         dic="12345678"
         typ_ds="P"
         email="faktura@vzorova-firma.cz"/>
