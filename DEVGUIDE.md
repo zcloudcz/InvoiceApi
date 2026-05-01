@@ -362,6 +362,21 @@ context.InstanceServices       ← Functions Worker scope (kde žije Function cl
 - Auto-fill z document number: `new string(docNumber.Where(char.IsDigit).Take(10).ToArray())`.
 - Validace: DTO `[StringLength(10)] + [RegularExpression(@"^\d{0,10}$")]`.
 
+**Document number generation — two-phase resolution** (`InvoiceService.GenerateDocumentNumberAsync`):
+
+Generování čísla dokladu je záměrně rozděleno na dvě nezávislé fáze:
+
+1. **Sequence resolution** — která čítací sekvence se použije:
+   - Priority (highest wins): `overrideSequenceId` (z šablony) → `client.BillingSettings.Custom*SequenceId` → default sekvence pro `DocumentType`.
+   - Výsledek: ID sekvence pro `INumberSequenceService.GenerateNextNumberAsync`.
+
+2. **Prefix/suffix resolution** — klientský label se přidá k číslu:
+   - Vždy bere z `client.BillingSettings.InvoiceNumberPrefix/Suffix` (resp. `CreditNote*`), pokud klient má `BillingSettings`.
+   - **Nezávisí** na výsledku fáze 1 — prefix/suffix je per-customer concern (např. `-EU` suffix pro EU klienty), ortogonální k tomu, jaká sekvence se počítá.
+   - Důsledek: i když šablona protlačí vlastní `NumberSequenceId`, klientův prefix/suffix se stále aplikuje.
+
+Toto oddělení opravuje bug z issue #63/#72, kde se `if (overrideSequenceId.HasValue) { ... } else if (client.BillingSettings != null) { ... }` způsobilo, že šablonový override zcela ignoroval klientský prefix/suffix.
+
 ### 4.5 Payment matching (IMAP → invoice mark paid)
 
 `Fakvio.Infrastructure/Service/ImapPollService.cs:50-139`:
