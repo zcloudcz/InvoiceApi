@@ -80,25 +80,67 @@ Draft a decomposition into independent, dev-sized tasks. Rules:
 - Each task should be one PR's worth of work for `agent-dev`.
 - Tasks must be independently mergeable — do not create chains where
   task B cannot be reviewed without task A merged. If sequencing is
-  unavoidable, say so explicitly.
+  unavoidable, say so explicitly via `depends-on:` (see below).
 - Each task gets at least one `area:*` label (existing or new) so that
   cross-cutting concerns are visible. Reuse existing area labels where
   the area already exists; only create a new one if no fit exists.
 - Each task gets a `priority:*` label (`priority:high|medium|low`).
+- Bug-fix tasks additionally get `type:bug`. This label outranks every
+  `priority:*` value at queue time — see "Task priority — bugs jump the
+  queue" in BOARD-OPS.md. Use it only when the task fixes broken
+  behavior, not for new features dressed as fixes.
 - Tasks inherit the story's domain context — quote the relevant lines
   from the story body in each task description so the dev does not have
   to chase the parent.
+
+### Parallelism — `parallel:safe` and `depends-on:`
+
+Decide which sub-issues can be picked up concurrently by `/tick-devs`
+and which must wait for a sibling to merge first.
+
+- A task is **parallel-safe** when it does not require code, data, or
+  schema produced by another open sibling. Mark it with the label
+  `parallel:safe` and no `depends-on:` lines (or `depends-on:` lines
+  that all reference already-`Implemented` tasks).
+- A task **depends on a sibling** when it cannot start (or cannot be
+  finished correctly) until that sibling is merged. Express it in the
+  task body:
+
+      depends-on: #<sibling-issue-number>
+
+  One `depends-on:` line per blocker. `/tick-devs` will not dispatch a
+  task whose `depends-on:` targets are still open. The label
+  `parallel:safe` may still be present — it then means "safe relative
+  to siblings *not* listed".
+- A foundation task (DB schema, shared utility, contract change) that
+  many siblings depend on does NOT get `parallel:safe`. It is sequenced
+  first; the dependent siblings inherit a `depends-on:` line pointing
+  to it and may themselves be `parallel:safe` once the foundation is
+  in.
+- This is your call as analyst — no human gate. Be conservative: if you
+  are unsure whether two tasks touch overlapping code, omit
+  `parallel:safe`. False parallelism causes rework via `needs:rebase`;
+  false sequencing only loses throughput. The cheaper failure wins.
+
+Note: file-level overlap alone does NOT disqualify a parallel pair —
+`agent-ops` and `agent-dev` resolve those reactively via the rebase
+loop. Use `depends-on:` for *semantic* coupling (one task's API change
+breaks the other), not for "they happen to edit the same file".
 
 Post the proposal as a comment on the story:
 
     gh issue comment <S> -b "$(printf '%s\n' \
       '## Proposed decomposition' \
       '' \
-      '1. **<title>** — area:<x>, priority:<y>' \
+      '1. **<title>** — area:<x>, priority:<y> [parallel:safe]' \
       '   <one-line scope>' \
       '2. **<title>** — area:<x>, priority:<y>' \
+      '   depends-on: #1' \
       '   <one-line scope>' \
       '...' \
+      '' \
+      'Tasks marked `parallel:safe` may be dispatched concurrently by /tick-devs.' \
+      'Tasks with `depends-on:` wait for the listed siblings to merge.' \
       '' \
       'If this looks right, add label `analyst:approved`.' \
       'If anything should be split / merged / dropped, comment and I will revise.')"
@@ -134,6 +176,7 @@ For each task in the approved proposal:
          title:  "<task title>"
          body: |
            Parent story: #<S>
+           depends-on: #<sibling>          # zero or more lines, omit if none
 
            ## Context
            <quoted lines from the story>
@@ -144,7 +187,7 @@ For each task in the approved proposal:
            ## Acceptance criteria
            - <criterion>
            - <criterion>
-         labels: ["area:<x>", "priority:<y>"]
+         labels: ["area:<x>", "priority:<y>", "parallel:safe"]   # parallel:safe only when the task has no open depends-on AND is independent of in-flight siblings
 
    Capture `id` (internal, used in step 2) and `number` (used in step 3).
 

@@ -23,7 +23,21 @@ You are **AgentTester**. Your input is a PR number `<PR>`.
    - Rust: `cargo test`
    - Java / Kotlin: `junit`, `kotest`, `spock`
    - Ruby: `rspec`, `minitest`
-4. `gh pr checkout <PR>` — check out the PR branch locally.
+4. Check out the PR branch into an **isolated git worktree** so AgentDev
+   (or another tester on a different PR) can keep working in the main
+   checkout in parallel:
+
+       REPO_NAME=$(basename "$(git rev-parse --show-toplevel)")
+       PR_BRANCH=$(gh pr view "$PR" --json headRefName --jq .headRefName)
+       WT_DIR="C:/TEMP/agentic-worktrees/${REPO_NAME}-pr${PR}"
+       mkdir -p "$(dirname "$WT_DIR")"
+       git fetch origin "$PR_BRANCH"
+       git worktree add -B "$PR_BRANCH" "$WT_DIR" "origin/$PR_BRANCH"
+       cd "$WT_DIR"
+
+   Every subsequent `git`, build, test, push command in this run executes
+   inside `$WT_DIR`. The main checkout is untouched. See BOARD-OPS.md
+   ("Worktree isolation for testers") for details and cleanup contract.
 
 ## Step 1 — Add coverage
 
@@ -77,6 +91,19 @@ If everything is green:
 - Update `MEMORY.md`: Progress append "[x] agent-tester: coverage added,
   CI green", Next step = "agent-ops merges PR #<PR>".
 
+## Step 4 — Cleanup (always)
+
+Before exiting — on success, handoff, or block — remove the worktree so
+it does not pile up in `C:\TEMP`. Push must already have happened:
+
+    cd -                                       # back to original cwd
+    git worktree remove "$WT_DIR" --force      # drops working tree, keeps branch on remote
+    git worktree prune                         # garbage-collect the registry
+
+If the worktree has unpushed local commits, do NOT remove it — comment
+on the PR explaining the state and stop. Otherwise the cleanup is
+mandatory.
+
 ## Hard rules
 
 - You may edit test files and test infrastructure (fixtures, test helpers,
@@ -86,3 +113,6 @@ If everything is green:
 - Never push directly to master or to the integration branch
   (`$AGENTIC_INTEGRATION_BRANCH`, default `develop`). Push only to the
   PR's feature branch.
+- All work happens in the per-PR worktree under `C:\TEMP\agentic-worktrees\`.
+  Never run tests, edits, or pushes from the main checkout — that belongs
+  to AgentDev.

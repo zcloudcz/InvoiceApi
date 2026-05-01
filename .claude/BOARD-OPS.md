@@ -29,15 +29,32 @@ running tick (if any). When the user asks why a card has not advanced,
 or what the last automated tick did, grep this log file for the most
 recent `START` / `END` block.
 
-## Find the oldest item in a given status column
+## Task priority — bugs jump the queue
+
+`type:bug` outranks every other priority signal. Whenever multiple cards
+are eligible for the same action (same status column, same role label,
+same `/tick` priority level), pick the `type:bug` card first regardless
+of `createdAt` or `priority:*`. Within `type:bug` cards, oldest-first;
+within non-bug cards, oldest-first. `priority:high` only breaks ties
+*after* `type:bug` has been applied.
+
+Applies to: `/pickup-task`, `/tick`, `/tick-tests`, `/tick-stories`, and
+any agent that picks "the next" item from a column. A `type:bug` story
+in `StoryNew` is also claimed first by the analyst.
+
+## Find the oldest item in a given status column (bugs first)
 
     gh project item-list "$AGENTIC_PROJECT_NUMBER" \
         --owner "$AGENTIC_PROJECT_OWNER" --format json --limit 200 \
       | jq -r --arg S "Backlog" '
           .items
           | map(select(.status == $S))
-          | sort_by(.createdAt)
+          | sort_by([(.labels | index("type:bug") | not), .createdAt])
           | .[0] // empty'
+
+The compound sort key puts `type:bug` cards (where `index("type:bug")`
+is non-null, so `| not` is `false`) ahead of non-bug cards, then
+`createdAt` ascending within each group.
 
 ## Resolve the IDs needed to move a card
 
@@ -137,6 +154,102 @@ its issue number. The `issue_write` MCP call returns it on `create`.
 Note: if the target GitHub instance has no sub-issues feature at all,
 fall back to a `Parent story: #<S>` line in the body and a checklist on
 the parent — agents should still parse the body for parent linkage.
+
+## Worktree isolation (testers and parallel devs)
+
+`agent-reviewer` and `agent-ops` always work in the main checkout
+(`C:\GIT\ZCLOUD\<repo>`). `agent-tester` and `agent-dev` (when dispatched
+in parallel) run against branches other than the main checkout's HEAD,
+so they need isolation — otherwise they steal the main checkout from
+each other and from the human.
+
+Solution: `git worktree`. Single shared `.git`, one extra working
+directory per active branch. Cheap (no re-fetch of objects), isolated
+(separate index, HEAD, untracked files), and the main checkout stays on
+its current branch.
+
+Convention:
+
+- Location:
+  - Tester: `C:/TEMP/agentic-worktrees/<repo>-pr<N>`
+  - Parallel dev: `C:/TEMP/agentic-worktrees/<repo>-task<N>`
+  (`C:\TEMP\` is explicitly writable per AGENT-RULES §3.)
+- Lifetime:
+  - Tester: one PR test pass. Created in `agent-tester` Step 0, removed
+    in Step 4 — even on handoff or failure.
+  - Parallel dev: one task. Created when dispatched via `/tick-devs`,
+    removed when the PR is opened (handoff to reviewer in main checkout)
+    or on `dev:blocked` escalation. Sequential `agent-dev` (single
+    `/pickup-task`) keeps using the main checkout — no worktree.
+- Branch:
+  - Tester: the PR's `headRefName`.
+  - Dev: the new feature branch `feature/issue-<N>-<slug>`.
+  The worktree owns its branch locally; do not check it out elsewhere.
+- Cleanup:   `git worktree remove <path> --force && git worktree prune`.
+             If unpushed commits exist, do NOT remove — flag on the PR
+             or task issue.
+
+Create (tester pattern):
+
+    REPO_NAME=$(basename "$(git rev-parse --show-toplevel)")
+    PR_BRANCH=$(gh pr view "$PR" --json headRefName --jq .headRefName)
+    WT_DIR="C:/TEMP/agentic-worktrees/${REPO_NAME}-pr${PR}"
+    mkdir -p "$(dirname "$WT_DIR")"
+    git fetch origin "$PR_BRANCH"
+    git worktree add -B "$PR_BRANCH" "$WT_DIR" "origin/$PR_BRANCH"
+    cd "$WT_DIR"
+
+Create (parallel dev pattern):
+
+    REPO_NAME=$(basename "$(git rev-parse --show-toplevel)")
+    INTEGRATION="${AGENTIC_INTEGRATION_BRANCH:-develop}"
+    BRANCH="feature/issue-${N}-${SLUG}"
+    WT_DIR="C:/TEMP/agentic-worktrees/${REPO_NAME}-task${N}"
+    mkdir -p "$(dirname "$WT_DIR")"
+    git fetch origin "$INTEGRATION"
+    git worktree add -b "$BRANCH" "$WT_DIR" "origin/$INTEGRATION"
+    cd "$WT_DIR"
+
+Inspect / repair:
+
+    git worktree list                          # all active worktrees
+    git worktree prune                         # drop registry entries for deleted dirs
+
+Hard rules:
+
+- Worktrees are for testers and parallel devs only. Reviewer and ops
+  stay in the main checkout. Sequential dev (single `/pickup-task`)
+  also stays in the main checkout.
+- Never check out the integration branch or `master` in a worktree.
+- Never delete a worktree that is not yours (different repo, different
+  PR / task).
+- Two devs must never share a worktree. Each parallel dev owns its own
+  `<repo>-task<N>` directory.
+
+## Parallel-dev workflow labels
+
+Used by `agent-analyst`, `agent-dev`, `agent-ops`, and `/tick-devs`.
+
+| Label              | Set by         | Meaning                                                                 |
+|--------------------|----------------|-------------------------------------------------------------------------|
+| `parallel:safe`    | agent-analyst  | Sub-issue is independent of others under the same story; safe to start  |
+|                    |                | concurrently with other `parallel:safe` siblings.                       |
+| `needs:rebase`     | agent-ops      | Merge into integration branch failed due to conflict with another PR.   |
+|                    |                | `agent-dev` must rebase with full context of the competing merged PR.   |
+| `dev:blocked`      | agent-dev      | Rebase / conflict resolution beyond automatic capability (hard         |
+|                    |                | conflict, retry exhausted). Awaits human.                               |
+| `dev:conflict`     | agent-dev      | Reserved — pre-flight conflict signal if a future variant chooses to    |
+|                    |                | block parallel dispatch instead of resolving reactively. Not used by    |
+|                    |                | the default reactive flow.                                              |
+
+Issue-body convention for dependencies (no GitHub-native field):
+
+    depends-on: #<issue>
+
+`agent-analyst` writes one `depends-on:` line per blocking sibling in a
+sub-issue body. `/tick-devs` skips any task whose `depends-on:` targets
+are still open. `parallel:safe` may coexist with `depends-on:` — the
+task is parallel-safe relative to siblings *not* listed.
 
 ## MEMORY.md format
 
@@ -250,6 +363,8 @@ Task flow (sub-issues created from a story, or standalone backlog items):
                                  Implemented cards to Approved
     any         -> Blocked     : agent-dev when it must ask a question, label +blocked:question
     Blocked     -> ToDo        : human after answering (manual)
+    Implemented -> Progress    : agent-ops on merge conflict, +needs:rebase, label -> role:dev
+                                 (parallel-dev rebase loop; PR stays open)
 
 Story flow (a `type:story` issue, before and around its task children):
 
