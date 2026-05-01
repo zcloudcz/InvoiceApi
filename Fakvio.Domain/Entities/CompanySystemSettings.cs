@@ -1,4 +1,5 @@
 using Fakvio.Domain.Common;
+using Fakvio.Domain.Enums;
 
 namespace Fakvio.Domain.Entities;
 
@@ -303,4 +304,29 @@ public class CompanySystemSettings : BaseEntity
     /// an entirely separate storage account.
     /// </summary>
     public string? AzureBlobContainerName { get; set; }
+
+    // ─── Exchange Rate Auto-Update Settings ─────────────────────────────────────
+    // Controls how often the system refreshes CNB (Czech National Bank) exchange rates.
+    // The actual refresh is performed by ExchangeRateRefreshService, which is triggered
+    // by ExchangeRateRefreshWorker (API host) or ExchangeRateFunctions (Azure Functions).
+
+    /// <summary>
+    /// How often to automatically refresh CNB exchange rates.
+    /// Default is Off — no automatic refresh; user can update manually.
+    /// </summary>
+    public EExchangeRateUpdateMode ExchangeRateUpdateMode { get; set; } = EExchangeRateUpdateMode.Off;
+
+    /// <summary>
+    /// For Weekly mode: the day of the week on which to refresh rates.
+    /// Null means Monday (first working day). Ignored for Daily/Monthly/Off modes.
+    /// </summary>
+    public DayOfWeek? ExchangeRateUpdateDayOfWeek { get; set; }
+
+    /// <summary>
+    /// Timestamp of the last successful exchange rate refresh (UTC).
+    /// Used by the refresh cycle to skip early invocations (Functions CRON fires frequently,
+    /// service checks whether the configured interval has elapsed since LastRunAt).
+    /// Null means rates have never been loaded automatically.
+    /// </summary>
+    public DateTime? ExchangeRateLastRunAt { get; set; }
 }

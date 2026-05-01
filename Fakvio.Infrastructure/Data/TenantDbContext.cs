@@ -152,6 +152,13 @@ public class TenantDbContext : DbContext
     public DbSet<ReceivedInvoiceItem> ReceivedInvoiceItem { get; set; }
 
     /// <summary>
+    /// CNB exchange rate records (one per currency per publication date).
+    /// Used by CurrencyService.ConvertToCzkAsync to convert foreign amounts to CZK (e.g., for EPO XML).
+    /// Per-tenant so each company has an independent rate history.
+    /// </summary>
+    public DbSet<ExchangeRate> ExchangeRate { get; set; }
+
+    /// <summary>
     /// Cached ARES lookups (company registry data)
     /// </summary>
     public DbSet<AresCache> AresCache { get; set; }
@@ -243,6 +250,7 @@ public class TenantDbContext : DbContext
         ConfigureAresCache(modelBuilder);
         ConfigureVatRate(modelBuilder);
         ConfigureContentTemplate(modelBuilder);
+        ConfigureExchangeRate(modelBuilder);
         ConfigureReceivedInvoice(modelBuilder);
         ConfigureReceivedInvoiceItem(modelBuilder);
         ConfigureChatConversation(modelBuilder);
@@ -1118,6 +1126,40 @@ public class TenantDbContext : DbContext
         UpdateTimestamps();
         NormalizeDateTimesToUtc();
         return base.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// ExchangeRate table configuration.
+    /// Stores CNB (Czech National Bank) daily FX rates per tenant.
+    /// Unique index on (CurrencyCode, ValidFrom) ensures idempotent imports —
+    /// the same publication date can only appear once per currency.
+    /// </summary>
+    private void ConfigureExchangeRate(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<ExchangeRate>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            // Composite unique index: one rate per currency per publication date.
+            // Prevents double-import when the refresh cycle runs multiple times on the same day.
+            entity.HasIndex(e => new { e.CurrencyCode, e.ValidFrom }).IsUnique();
+
+            // Index for the ConvertToCzkAsync query: WHERE CurrencyCode = ? AND ValidFrom <= ? ORDER BY ValidFrom DESC
+            entity.HasIndex(e => new { e.CurrencyCode, e.ValidFrom });
+
+            entity.Property(e => e.CurrencyCode)
+                .IsRequired()
+                .HasMaxLength(3);
+
+            // Rate stored with 5 decimal places — CNB uses up to 3, but 5 gives headroom.
+            entity.Property(e => e.Rate)
+                .HasPrecision(18, 5);
+
+            entity.Property(e => e.Source)
+                .IsRequired()
+                .HasMaxLength(20)
+                .HasDefaultValue("CNB");
+        });
     }
 
     /// <summary>

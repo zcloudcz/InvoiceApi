@@ -3,9 +3,9 @@ using Fakvio.Contracts.Common.Pagination;
 using Fakvio.Contracts.Dto.Currency;
 using Fakvio.Application.Service;
 using Fakvio.Domain.Entities;
+using Fakvio.Domain.Enums;
 using Fakvio.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.Logging;
 using ZMapper;
 
@@ -13,26 +13,31 @@ namespace Fakvio.Infrastructure.Service;
 
 /// <summary>
 /// Implementation of currency service.
-/// Handles all business logic for currency management.
+/// Handles all business logic for currency management and CZK conversion.
 ///
-/// All operations use MasterDbContext — currencies are global/shared data (CZK, EUR, USD).
-/// There is no need to duplicate currencies per tenant. Tenant DB has a Currency table
-/// only for FK integrity (Invoice → Currency), populated during provisioning.
+/// Currency master data (CZK, EUR, USD, ...) uses MasterDbContext — currencies are
+/// global/shared data. Exchange rate records, however, are per-tenant (stored in the
+/// tenant schema) so that each tenant can have an independent rate history.
 /// </summary>
 public class CurrencyService : ICurrencyService
 {
     private readonly MasterDbContext _masterContext;
+    private readonly TenantDbContext _tenantContext;
+    private readonly ITenantResolver _tenantResolver;
+    private readonly IExchangeRateProvider _cnbProvider;
     private readonly ILogger<CurrencyService> _logger;
 
     public CurrencyService(
         TenantDbContext tenantContext,
         MasterDbContext masterContext,
         ITenantResolver tenantResolver,
+        IExchangeRateProvider cnbProvider,
         ILogger<CurrencyService> logger)
     {
         _masterContext = masterContext;
-        // tenantContext and tenantResolver kept in constructor signature for DI compatibility
-        // but no longer used — currencies are global, all reads/writes go through master context.
+        _tenantContext = tenantContext;
+        _tenantResolver = tenantResolver;
+        _cnbProvider = cnbProvider;
         _logger = logger;
     }
 
@@ -182,19 +187,6 @@ public class CurrencyService : ICurrencyService
     }
 
     /// <summary>
-    /// Maps a Currency entity to CurrencyDto, manually setting inherited BaseEntity
-    /// properties (Id, CreatedAt, UpdatedAt) that ZMapper cannot see.
-    /// </summary>
-    /// <summary>
-    /// Maps a Currency entity to CurrencyDto using ZMapper v1.1.0.
-    /// ZMapper now handles all properties including inherited BaseEntity (Id, CreatedAt, UpdatedAt).
-    /// </summary>
-    private static CurrencyDto MapToDto(Currency entity)
-    {
-        return entity.ToCurrencyDto();
-    }
-
-    /// <summary>
     /// Soft-deletes a currency by setting IsActive = false.
     /// This is safe even when the currency is referenced by invoices or clients,
     /// because the record remains in the database — only hidden from active lists.
@@ -218,4 +210,202 @@ public class CurrencyService : ICurrencyService
         return true;
     }
 
+    /// <inheritdoc />
+    public async Task<decimal> ConvertToCzkAsync(
+        decimal amount,
+        string currencyCode,
+        DateOnly date,
+        CancellationToken cancellationToken = default)
+    {
+        // CZK is always 1:1 — no conversion needed
+        if (string.Equals(currencyCode, "CZK", StringComparison.OrdinalIgnoreCase))
+            return amount;
+
+        var rate = await FindRateOrThrowAsync(currencyCode, date, cancellationToken);
+
+        // CNB formula: amount_in_czk = amount * (Rate / Amount)
+        // Amount is the CNB unit count (e.g., 100 for JPY means Rate covers 100 units)
+        var result = amount * (rate.Rate / rate.Amount);
+
+        return Math.Round(result, 2, MidpointRounding.AwayFromZero);
+    }
+
+    /// <inheritdoc />
+    public async Task<ExchangeRateDto?> GetExchangeRateAsync(
+        string currencyCode,
+        DateOnly date,
+        CancellationToken cancellationToken = default)
+    {
+        // CZK has no stored rate — it is always 1:1
+        if (string.Equals(currencyCode, "CZK", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        var rate = await _tenantContext.ExchangeRate
+            .AsNoTracking()
+            .Where(r => r.CurrencyCode == currencyCode.ToUpperInvariant() && r.ValidFrom <= date)
+            .OrderByDescending(r => r.ValidFrom)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return rate == null ? null : MapExchangeRateToDto(rate);
+    }
+
+    /// <inheritdoc />
+    public async Task<int> RefreshExchangeRatesAsync(CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("CurrencyService: manual exchange rate refresh triggered");
+
+        // Fetch today's rates from CNB
+        var rates = await _cnbProvider.FetchRatesAsync(null, cancellationToken);
+
+        if (rates.Count == 0)
+        {
+            _logger.LogWarning("CurrencyService: CNB returned 0 rates during manual refresh");
+            return 0;
+        }
+
+        // Determine which (code, date) pairs are already stored — skip existing
+        var today = rates.Select(r => r.ValidFrom).Distinct().ToList();
+        var existing = await _tenantContext.ExchangeRate
+            .Where(r => today.Contains(r.ValidFrom))
+            .Select(r => new { r.CurrencyCode, r.ValidFrom })
+            .ToListAsync(cancellationToken);
+
+        var existingSet = existing
+            .Select(e => (e.CurrencyCode, e.ValidFrom))
+            .ToHashSet();
+
+        var newRates = rates
+            .Where(r => !existingSet.Contains((r.CurrencyCode, r.ValidFrom)))
+            .ToList();
+
+        if (newRates.Count == 0)
+        {
+            _logger.LogInformation("CurrencyService: all rates for today already present — nothing to import");
+            return 0;
+        }
+
+        _tenantContext.ExchangeRate.AddRange(newRates);
+        await _tenantContext.SaveChangesAsync(cancellationToken);
+
+        // Also update LastRunAt in master DB for this company (manual refresh counts as a run)
+        var companyId = _tenantResolver.GetCurrentCompanyId();
+        if (companyId.HasValue)
+        {
+            var settings = await _masterContext.CompanySystemSettings
+                .FirstOrDefaultAsync(s => s.CompanyId == companyId.Value, cancellationToken);
+            if (settings != null)
+            {
+                settings.ExchangeRateLastRunAt = DateTime.UtcNow;
+                await _masterContext.SaveChangesAsync(cancellationToken);
+            }
+        }
+
+        _logger.LogInformation("CurrencyService: manual refresh saved {Count} new rate records", newRates.Count);
+        return newRates.Count;
+    }
+
+    /// <inheritdoc />
+    public async Task<ExchangeRateSettingsDto> GetExchangeRateSettingsAsync(CancellationToken cancellationToken = default)
+    {
+        var companyId = _tenantResolver.GetCurrentCompanyId()
+            ?? throw new InvalidOperationException("No tenant context — cannot read exchange rate settings.");
+
+        var settings = await _masterContext.CompanySystemSettings
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.CompanyId == companyId, cancellationToken)
+            ?? throw new InvalidOperationException($"CompanySystemSettings not found for CompanyId {companyId}.");
+
+        return new ExchangeRateSettingsDto
+        {
+            UpdateMode = settings.ExchangeRateUpdateMode,
+            UpdateDayOfWeek = settings.ExchangeRateUpdateDayOfWeek,
+            LastRunAt = settings.ExchangeRateLastRunAt
+        };
+    }
+
+    /// <inheritdoc />
+    public async Task<ExchangeRateSettingsDto> UpdateExchangeRateSettingsAsync(
+        UpdateExchangeRateSettingsDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        var companyId = _tenantResolver.GetCurrentCompanyId()
+            ?? throw new InvalidOperationException("No tenant context — cannot update exchange rate settings.");
+
+        var settings = await _masterContext.CompanySystemSettings
+            .FirstOrDefaultAsync(s => s.CompanyId == companyId, cancellationToken)
+            ?? throw new InvalidOperationException($"CompanySystemSettings not found for CompanyId {companyId}.");
+
+        settings.ExchangeRateUpdateMode = dto.UpdateMode;
+        settings.ExchangeRateUpdateDayOfWeek = dto.UpdateDayOfWeek;
+
+        await _masterContext.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "CurrencyService: exchange rate update mode changed to {Mode} for CompanyId {CompanyId}",
+            dto.UpdateMode, companyId);
+
+        return new ExchangeRateSettingsDto
+        {
+            UpdateMode = settings.ExchangeRateUpdateMode,
+            UpdateDayOfWeek = settings.ExchangeRateUpdateDayOfWeek,
+            LastRunAt = settings.ExchangeRateLastRunAt
+        };
+    }
+
+    // ─── Private helpers ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Finds the most recent exchange rate for <paramref name="currencyCode"/> valid on
+    /// or before <paramref name="date"/>. Throws <see cref="ExchangeRateNotFoundException"/>
+    /// if no rate is found.
+    /// </summary>
+    private async Task<ExchangeRate> FindRateOrThrowAsync(
+        string currencyCode,
+        DateOnly date,
+        CancellationToken cancellationToken)
+    {
+        var normalizedCode = currencyCode.ToUpperInvariant();
+
+        // Most recent rate with ValidFrom <= target date — handles weekends / holidays.
+        var rate = await _tenantContext.ExchangeRate
+            .AsNoTracking()
+            .Where(r => r.CurrencyCode == normalizedCode && r.ValidFrom <= date)
+            .OrderByDescending(r => r.ValidFrom)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (rate == null)
+        {
+            _logger.LogWarning(
+                "No exchange rate found for currency {Code} on or before {Date}",
+                currencyCode, date);
+            throw new ExchangeRateNotFoundException(currencyCode, date);
+        }
+
+        return rate;
+    }
+
+    /// <summary>
+    /// Maps a Currency entity to CurrencyDto using ZMapper v1.2.0.
+    /// </summary>
+    private static CurrencyDto MapToDto(Currency entity)
+    {
+        return entity.ToCurrencyDto();
+    }
+
+    /// <summary>
+    /// Maps an ExchangeRate entity to ExchangeRateDto manually
+    /// (no ZMapper profile needed — straightforward flat mapping).
+    /// </summary>
+    private static ExchangeRateDto MapExchangeRateToDto(ExchangeRate entity)
+    {
+        return new ExchangeRateDto
+        {
+            Id = entity.Id,
+            CurrencyCode = entity.CurrencyCode,
+            ValidFrom = entity.ValidFrom,
+            Rate = entity.Rate,
+            Amount = entity.Amount,
+            Source = entity.Source
+        };
+    }
 }

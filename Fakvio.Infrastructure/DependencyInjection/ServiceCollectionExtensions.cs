@@ -194,6 +194,22 @@ public static class ServiceCollectionExtensions
         // Registered as HostedService so the host lifecycle starts/stops it.
         services.AddHostedService<ImapPollWorker>();
 
+        // ── CNB Exchange Rate Refresh ────────────────────────────────────────
+        // Follows the "API + Functions duplication" pattern (see CLAUDE.md):
+        // - CnbExchangeRateProvider: fetches and parses the CNB daily rate list
+        // - ExchangeRateRefreshService: stateless one-cycle logic (shared by worker + function)
+        // - ExchangeRateRefreshWorker: BackgroundService wrapper for the API host
+        // The Azure Functions TimerTrigger variant lives in Fakvio.Functions (ExchangeRateFunctions).
+        services.AddHttpClient<IExchangeRateProvider, CnbExchangeRateProvider>(client =>
+        {
+            // Set a generous timeout — CNB site can be slow on load
+            client.Timeout = TimeSpan.FromSeconds(30);
+            // Identify ourselves to CNB with a recognizable User-Agent
+            client.DefaultRequestHeaders.Add("User-Agent", "Fakvio/1.0 (CNB FX rate fetcher)");
+        });
+        services.AddScopedWithLogging<IExchangeRateRefreshService, ExchangeRateRefreshService>();
+        services.AddHostedService<ExchangeRateRefreshWorker>();
+
         // ── PDF Text Extraction ──────────────────────────────────────────────
         // Used by the AI chat to extract text from uploaded PDF files.
         services.AddScopedWithLogging<IPdfTextExtractorService, PdfTextExtractorService>();

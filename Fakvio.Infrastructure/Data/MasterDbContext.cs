@@ -568,6 +568,17 @@ public class MasterDbContext : DbContext
             entity.Property(e => e.AzureBlobConnectionString).HasMaxLength(2000);
             entity.Property(e => e.AzureBlobContainerPrefix).HasMaxLength(100);
             entity.Property(e => e.AzureBlobContainerName).HasMaxLength(63);
+
+            // ── Exchange Rate auto-update settings ──────────────────────────
+            // ExchangeRateUpdateMode stored as int — Off = 0, Daily = 1, Weekly = 2, Monthly = 3.
+            // Default Off so existing tenants don't get unexpected HTTP calls after migration.
+            entity.Property(e => e.ExchangeRateUpdateMode)
+                .HasConversion<int>()
+                .HasDefaultValue(EExchangeRateUpdateMode.Off);
+
+            entity.Property(e => e.ExchangeRateUpdateDayOfWeek)
+                .HasConversion<int?>()
+                .IsRequired(false);
         });
     }
 
