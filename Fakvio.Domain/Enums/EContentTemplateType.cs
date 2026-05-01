@@ -28,6 +28,20 @@ public enum EContentTemplateType
     /// </summary>
     ReminderPdf = 3,
 
+    /// <summary>
+    /// HTML template for rendering pro-forma / advance invoice PDFs (zálohová faktura).
+    /// Uses the same layout placeholders as InvoicePdf plus a note that this is NOT a tax document.
+    /// Placeholders: same as InvoicePdf — {{IssuerName}}, {{ClientName}}, {{DocumentNumber}}, etc.
+    /// </summary>
+    AdvanceInvoicePdf = 4,
+
+    /// <summary>
+    /// HTML template for rendering tax-receipt-for-advance PDFs (daňový doklad o přijaté platbě).
+    /// Issued after the advance payment of a pro-forma is received; this IS a VAT tax document.
+    /// Placeholders: same as InvoicePdf plus {{OriginalDocumentNumber}} for the source pro-forma.
+    /// </summary>
+    TaxReceiptForAdvancePdf = 5,
+
     // ========== Document email templates (10-19) ==========
 
     /// <summary>
@@ -41,6 +55,19 @@ public enum EContentTemplateType
     /// Uses the same placeholders as InvoiceEmail.
     /// </summary>
     CreditNoteEmail = 11,
+
+    /// <summary>
+    /// Email body sent when delivering a pro-forma / advance invoice to a client.
+    /// Placeholders: {{InvoiceNumber}}, {{CompanyName}}, {{TotalWithVat}}, {{DueDate}}, etc.
+    /// </summary>
+    AdvanceInvoiceEmail = 12,
+
+    /// <summary>
+    /// Email body sent when delivering a tax receipt for advance payment to a client
+    /// (daňový doklad o přijaté platbě).
+    /// Placeholders: same as AdvanceInvoiceEmail.
+    /// </summary>
+    TaxReceiptForAdvanceEmail = 13,
 
     // ========== System email templates (20-29) ==========
 

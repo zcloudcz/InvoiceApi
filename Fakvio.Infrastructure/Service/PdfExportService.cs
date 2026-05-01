@@ -63,10 +63,10 @@ public class PdfExportService : IPdfExportService
             .FirstOrDefaultAsync(i => i.Id == invoiceId, ct)
             ?? throw new KeyNotFoundException($"Invoice with ID {invoiceId} not found.");
 
-        // Determine the template type based on the invoice's document type
-        var templateType = invoice.DocumentType == EDocumentType.CreditNote
-            ? EContentTemplateType.CreditNotePdf
-            : EContentTemplateType.InvoicePdf;
+        // Determine the PDF template type from the invoice's document type.
+        // All four document types have their own distinct PDF template.
+        // The mapping lives here in one place — no scattered switch statements.
+        var templateType = ResolveTemplateType(invoice.DocumentType);
 
         // Read the client's preferred language for document generation.
         // Falls back to "cs" (Czech) when no client or no language is set.
@@ -107,8 +107,8 @@ public class PdfExportService : IPdfExportService
             }
             else
             {
-                // No template configured at all — use the built-in fallback HTML
-                htmlTemplate = GetDefaultHtmlTemplate();
+                // No template configured at all — use the built-in fallback HTML for the doc type
+                htmlTemplate = GetDefaultHtmlTemplate(invoice.DocumentType);
                 _logger.LogInformation("No content template found for type {Type}, using built-in default for invoice {InvoiceId}",
                     templateType, invoiceId);
             }
@@ -338,6 +338,35 @@ public class PdfExportService : IPdfExportService
     }
 
     /// <summary>
+    /// Maps an invoice's EDocumentType to the corresponding EContentTemplateType for PDF rendering.
+    /// All four document types have their own PDF template type — this is the single authoritative
+    /// mapping; every caller uses this method instead of duplicating the switch.
+    /// </summary>
+    internal static EContentTemplateType ResolveTemplateType(EDocumentType documentType)
+        => documentType switch
+        {
+            EDocumentType.Invoice => EContentTemplateType.InvoicePdf,
+            EDocumentType.CreditNote => EContentTemplateType.CreditNotePdf,
+            EDocumentType.Proforma => EContentTemplateType.AdvanceInvoicePdf,
+            EDocumentType.TaxReceiptForAdvance => EContentTemplateType.TaxReceiptForAdvancePdf,
+            _ => EContentTemplateType.InvoicePdf   // safe fallback for any future types
+        };
+
+    /// <summary>
+    /// Maps an invoice's EDocumentType to the corresponding email EContentTemplateType.
+    /// Used by EmailService to pick the right email template for each document type.
+    /// </summary>
+    internal static EContentTemplateType ResolveEmailTemplateType(EDocumentType documentType)
+        => documentType switch
+        {
+            EDocumentType.Invoice => EContentTemplateType.InvoiceEmail,
+            EDocumentType.CreditNote => EContentTemplateType.CreditNoteEmail,
+            EDocumentType.Proforma => EContentTemplateType.AdvanceInvoiceEmail,
+            EDocumentType.TaxReceiptForAdvance => EContentTemplateType.TaxReceiptForAdvanceEmail,
+            _ => EContentTemplateType.InvoiceEmail  // safe fallback
+        };
+
+    /// <summary>
     /// Converts the EPaymentMethod enum to a localized label for the PDF template.
     /// Returns Czech labels for "cs", English labels for other languages.
     /// </summary>
@@ -370,16 +399,28 @@ public class PdfExportService : IPdfExportService
 
     /// <summary>
     /// Returns a localized document type label for the PDF header.
-    /// Czech: "FAKTURA" / "DOBROPIS", English: "INVOICE" / "CREDIT NOTE".
+    /// Czech / English labels for all four document types.
     /// </summary>
     private static string GetDocumentTypeLabel(EDocumentType documentType, string language)
     {
         if (language == "cs")
         {
-            return documentType == EDocumentType.CreditNote ? "DOBROPIS" : "FAKTURA";
+            return documentType switch
+            {
+                EDocumentType.CreditNote => "DOBROPIS",
+                EDocumentType.Proforma => "ZÁLOHOVÁ FAKTURA",
+                EDocumentType.TaxReceiptForAdvance => "DAŇOVÝ DOKLAD O PŘIJATÉ PLATBĚ",
+                _ => "FAKTURA"
+            };
         }
 
-        return documentType == EDocumentType.CreditNote ? "CREDIT NOTE" : "INVOICE";
+        return documentType switch
+        {
+            EDocumentType.CreditNote => "CREDIT NOTE",
+            EDocumentType.Proforma => "ADVANCE INVOICE",
+            EDocumentType.TaxReceiptForAdvance => "TAX RECEIPT FOR ADVANCE PAYMENT",
+            _ => "INVOICE"
+        };
     }
 
     /// <summary>
@@ -398,12 +439,16 @@ public class PdfExportService : IPdfExportService
     }
 
     /// <summary>
-    /// Returns a default HTML template for invoices/credit notes matching the reference design.
-    /// Layout: Issuer at top → blue header bar with doc type + number → Client + dates → items table
-    /// → VAT breakdown → grand total. Uses table-based layout for iText7 pdfhtml compatibility.
+    /// Returns the built-in fallback HTML template that matches the given document type.
+    /// Used when no ContentTemplate record is found in the database for the document type.
+    /// Each document type has its own distinct default HTML (different colour accent, labels, etc.).
     /// </summary>
-    private static string GetDefaultHtmlTemplate()
-    {
-        return DefaultSeedData.GetDefaultInvoicePdfTemplate();
-    }
+    private static string GetDefaultHtmlTemplate(EDocumentType documentType)
+        => documentType switch
+        {
+            EDocumentType.CreditNote => DefaultSeedData.GetDefaultCreditNotePdfTemplate(),
+            EDocumentType.Proforma => DefaultSeedData.GetDefaultAdvanceInvoicePdfTemplate(),
+            EDocumentType.TaxReceiptForAdvance => DefaultSeedData.GetDefaultTaxReceiptForAdvancePdfTemplate(),
+            _ => DefaultSeedData.GetDefaultInvoicePdfTemplate()
+        };
 }

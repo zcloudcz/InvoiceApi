@@ -550,8 +550,12 @@
   <data name="ContentTemplate_PreviewNoData" xml:space="preserve"><value>No data for preview — create a document of the matching type first</value></data>
   <data name="ContentType_InvoicePdf" xml:space="preserve"><value>Invoice PDF</value></data>
   <data name="ContentType_CreditNotePdf" xml:space="preserve"><value>Credit Note PDF</value></data>
+  <data name="ContentType_AdvanceInvoicePdf" xml:space="preserve"><value>Advance Invoice PDF</value></data>
+  <data name="ContentType_TaxReceiptForAdvancePdf" xml:space="preserve"><value>Tax Receipt for Advance PDF</value></data>
   <data name="ContentType_InvoiceEmail" xml:space="preserve"><value>Invoice Email</value></data>
   <data name="ContentType_CreditNoteEmail" xml:space="preserve"><value>Credit Note Email</value></data>
+  <data name="ContentType_AdvanceInvoiceEmail" xml:space="preserve"><value>Advance Invoice Email</value></data>
+  <data name="ContentType_TaxReceiptForAdvanceEmail" xml:space="preserve"><value>Tax Receipt for Advance Email</value></data>
   <data name="ContentType_InvitationEmail" xml:space="preserve"><value>Invitation</value></data>
   <data name="ContentType_ReminderEmail" xml:space="preserve"><value>Reminder</value></data>
   <data name="ContentType_PasswordResetEmail" xml:space="preserve"><value>Password Reset</value></data>
