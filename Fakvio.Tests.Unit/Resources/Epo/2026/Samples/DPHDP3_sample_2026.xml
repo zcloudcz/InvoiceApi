@@ -4,107 +4,76 @@
   Všechny osobní a firemní údaje jsou FIKTIVNÍ (anonymizovány pro testovací účely).
   Dokument je určen výhradně pro validaci XSD schématu v unit testech projektu Fakvio.
 
-  Zdroj schématu: https://adisspr.mfcr.cz/adistc/adis/idpr_pub/epo2_info/popis_struktury.faces
-  Platné schéma pro rok 2026: epo2_dphdp3_*.xsd
+  Schéma: dphdp3_epo2.xsd (EPO2, Finanční správa ČR)
+  Zdroj: https://adisspr.mfcr.cz/adistc/adis/idpr_pub/epo2_info/popis_struktury.faces
+
+  Struktura DPHDP3 (dle XSD — pořadí prvků je povinné):
+    1. VetaD  — hlavička přiznání + identifikace zdaňovacího období (minOccurs=1)
+    2. VetaP  — identifikace poplatníka / osoby podávající přiznání (minOccurs=1)
+    3. Veta1  — uskutečněná zdanitelná plnění, základní a snížená sazba (minOccurs=0)
+    4. Veta2..Veta6 — ostatní řádky přiznání (v tomto vzorku nevyplněny)
+    5. VetaR  — textová příloha (minOccurs=0); NENÍ daňový řádek
+
+  Poznámka k datovému formátu:
+    EPO2 používá format D.M.RRRR (např. "1.3.2026"), ne ISO 8601.
 -->
 <Pisemnost
     nazev_sw="Fakvio"
     verzeSW="1.0"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
 
-  <DPHDP3
-      Overeni="N"
-      d_poddp="2026-04-25"
-      k_uladis="DPH"
-      shmu="H"
-      rok="2026"
-      zdobd_od="2026-03-01"
-      zdobd_do="2026-03-31"
-      typ_platce="P">
+  <DPHDP3>
 
-    <!-- Identifikace poplatníka -->
+    <!--
+      VetaD — Hlavička daňového přiznání.
+      Povinné atributy (dle dphdp3_epo2.xsd):
+        dapdph_forma — druh přiznání: B=řádné, O=opravné, D=dodatečné, E=dodatečné/opravné
+        dokument     — pevná hodnota "DP3"
+        k_uladis     — pevná hodnota "DPH"
+        rok          — rok zdaňovacího období
+        typ_platce   — P=plátce, I=identifikovaná osoba, S=skupina, N=neplátce
+      Volitelné atributy (ukázka):
+        mesic        — kalendářní měsíc ZO (1–12), používá měsíční plátce
+        d_poddp      — datum podání (D.M.RRRR)
+        zdobd_od/do  — upřesnění ZO v případě podání za část období (D.M.RRRR)
+    -->
     <VetaD
-        c_pracufo="3009"
-        c_ufo="3009"
-        c_ufo_spravce="471"
-        cod_det_seznam="A"
-        cod_det_seznam2="A"
-        d_registrace="2015-01-01"
-        dokument="DP"
-        jmeno="Vzorová"
-        kodstat="CZ"
-        naz_obce="Praha"
-        phk="A"
-        porizeni_det_seznam="A"
-        porizeni_det_seznam2="A"
-        prijmeni="Firma s.r.o."
-        psc="11000"
-        stat="CZ"
-        typ_ds="F"
-        ulice="Testovací 1"
-        zast_dos="N"
-        zast_podp="N"
-        zdph="A"
-        znacka="DP3"/>
+        dapdph_forma="B"
+        dokument="DP3"
+        k_uladis="DPH"
+        rok="2026"
+        mesic="3"
+        typ_platce="P"
+        d_poddp="25.4.2026"
+        zdobd_od="1.3.2026"
+        zdobd_do="31.3.2026"/>
 
-    <!-- Daňové přiznání — řádky -->
-    <VetaR
-        dan1="1050.00"
-        dan2="63.00"
-        r_01="5000.00"
-        r_02="420.00"
-        r_03="0.00"
-        r_04="0.00"
-        r_05="0.00"
-        r_06="0.00"
-        r_07="0.00"
-        r_08="0.00"
-        r_09="0.00"
-        r_10="0.00"
-        r_11="0.00"
-        r_12="0.00"
-        r_13="5000.00"
-        r_14="420.00"
-        r_20="0.00"
-        r_21="0.00"
-        r_22="0.00"
-        r_23="0.00"
-        r_24="0.00"
-        r_25="0.00"
-        r_26="0.00"
-        r_30="1050.00"
-        r_31="63.00"
-        r_32="0.00"
-        r_33="0.00"
-        r_34="0.00"
-        r_40="0.00"
-        r_41="0.00"
-        r_42="0.00"
-        r_43="0.00"
-        r_44="0.00"
-        r_45="0.00"
-        r_46="0.00"
-        r_47="0.00"
-        r_50="1050.00"
-        r_51="63.00"
-        r_52="0.00"
-        r_53="0.00"
-        r_54="0.00"
-        r_55="0.00"
-        r_60="1050.00"
-        r_61="63.00"
-        r_62="0.00"
-        r_63="0.00"
-        r_64="0.00"
-        r_65="0.00"
-        r_66="0.00"
-        r_70="0.00"
-        r_71="0.00"
-        r_72="0.00"
-        r_73="0.00"
-        r_74="0.00"
-        r_75="0.00"
-        r_80="0.00"/>
+    <!--
+      VetaP — Identifikace poplatníka.
+      Povinné atributy (dle dphdp3_epo2.xsd):
+        c_ufo  — číslo finančního úřadu (1–3 cifry)
+        dic    — kmenová část DIČ — pouze číslice, bez předpony "CZ" (vzor [0-9]{1,10})
+        typ_ds — typ datové schránky: F=fyzická osoba, P=právnická osoba
+    -->
+    <VetaP
+        c_ufo="3009"
+        dic="12345678"
+        typ_ds="P"
+        email="faktura@vzorova-firma.cz"/>
+
+    <!--
+      Veta1 — Uskutečněná zdanitelná plnění (řádky 1 a 2 přiznání).
+      Všechny atributy jsou volitelné; uvádí se jen nenulové hodnoty.
+        dan23   — daň ve základní sazbě 23 % (v Kč, celé číslo)
+        obrat23 — základ daně ve základní sazbě (v Kč)
+        dan5    — daň ve snížené sazbě 5 %
+        obrat5  — základ daně ve snížené sazbě
+    -->
+    <Veta1
+        dan23="1050"
+        obrat23="5000"
+        dan5="63"
+        obrat5="525"/>
 
   </DPHDP3>
 </Pisemnost>

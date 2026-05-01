@@ -1,4 +1,3 @@
-using System.Reflection;
 using System.Xml;
 using System.Xml.Linq;
 using System.Xml.Schema;
@@ -12,13 +11,10 @@ namespace Fakvio.Tests.Unit;
 /// Two levels of checks:
 /// 1. Well-formed XML — always runs; ensures the fixture can be parsed.
 /// 2. XSD schema validation — runs only when the XSD files from issue #35
-///    (EpoSchemaProvider) are present in the build output. Until #35 is merged
-///    the XSD files are not deployed, so XSD-level tests skip gracefully with
-///    a clear message rather than failing.
-///
-/// After issue #35 merges and the XSD files land in
-/// Resources/Epo/2026/dphdp3.xsd / dphkh1.xsd, the TODO block below
-/// can be uncommented to get full schema validation.
+///    (EpoSchemaProvider) are present in the build output. The XSD files are
+///    expected at Resources/Epo/2026/dphdp3_epo2.xsd / dphkh1_epo2.xsd
+///    (deployed by Fakvio.Infrastructure via None Include CopyToOutputDirectory
+///    from issue #35). If the files are absent the test skips gracefully.
 /// </summary>
 public class EpoFixtureValidationTests
 {
@@ -27,15 +23,22 @@ public class EpoFixtureValidationTests
     // =========================================================================
 
     /// <summary>
-    /// Base directory for XSD files: bin/…/Resources/Epo/{year}/.
-    /// Populated by EpoSchemaProvider (issue #35) via CopyToOutputDirectory.
+    /// Base directory for XSD files: bin/.../Resources/Epo/{year}/.
+    /// Populated by EpoSchemaProvider (issue #35) via None Include CopyToOutputDirectory.
     /// </summary>
     private static string XsdBasePath(int year) =>
         Path.Combine(AppContext.BaseDirectory, "Resources", "Epo", year.ToString());
 
     /// <summary>
-    /// Base directory for sample fixture XML files: bin/…/Resources/Epo/{year}/Samples/.
-    /// Copied from Fakvio.Tests.Unit/Resources/Epo/{year}/Samples/ via EmbeddedResource.
+    /// Full path to an XSD file: Resources/Epo/{year}/{xsdFileName}.
+    /// File name must follow the _epo2.xsd convention (e.g. dphdp3_epo2.xsd).
+    /// </summary>
+    private static string XsdPath(int year, string xsdFileName) =>
+        Path.Combine(XsdBasePath(year), xsdFileName);
+
+    /// <summary>
+    /// Full path to a sample fixture XML file.
+    /// Copied to output via None Update CopyToOutputDirectory in Fakvio.Tests.Unit.csproj.
     /// </summary>
     private static string SamplePath(int year, string fileName) =>
         Path.Combine(AppContext.BaseDirectory, "Resources", "Epo", year.ToString(), "Samples", fileName);
@@ -106,35 +109,38 @@ public class EpoFixtureValidationTests
     // =========================================================================
 
     [Fact]
-    public void DPHDP3_Sample2026_HasVetaDAndVetaR()
+    public void DPHDP3_Sample2026_HasVetaDAndVeta1()
     {
-        // DPHDP3 form must contain taxpayer identification (VetaD) and
-        // at least one tax-line element (VetaR).
+        // DPHDP3 form must contain:
+        //   VetaD — period header and taxpayer identification (minOccurs=1 in XSD)
+        //   Veta1 — standard-rate supply tax amounts (present in this fixture)
+        // Note: VetaR is a text-attachment element (not a tax-line element); tax amounts
+        // belong in Veta1 through Veta6.
         var path = SamplePath(2026, "DPHDP3_sample_2026.xml");
         var doc = XDocument.Parse(File.ReadAllText(path));
         var dphdp3 = doc.Root!.Element("DPHDP3")!;
 
-        dphdp3.Element("VetaD").ShouldNotBeNull("VetaD (taxpayer identification) is required in DPHDP3");
-        dphdp3.Element("VetaR").ShouldNotBeNull("VetaR (tax lines) is required in DPHDP3");
+        dphdp3.Element("VetaD").ShouldNotBeNull("VetaD (period/taxpayer header) is required in DPHDP3");
+        dphdp3.Element("Veta1").ShouldNotBeNull("Veta1 (standard-rate supply amounts) is required in this fixture");
     }
 
     [Fact]
     public void DPHKH1_Sample2026_ContainsExpectedSections()
     {
-        // DPHKH1 fixture must contain all four used sections:
-        //   A.4 (VetaA4) — received supplies ≤ 10 000 CZK, aggregate
-        //   A.5 (VetaA5) — received supplies > 10 000 CZK, individual
-        //   B.2 (VetaB2) — reverse-charge supplies
-        //   B.3 (VetaB3) — supplies in transfer-of-tax-liability mode (§92a)
-        // Sections A.1 and B.1 are deliberately empty (no elements expected).
+        // DPHKH1 fixture must contain all four populated sections:
+        //   A.4 (VetaA4) — received supplies, at least one record (maxOccurs=unbounded)
+        //   A.5 (VetaA5) — received supplies aggregate, exactly one (maxOccurs=1)
+        //   B.2 (VetaB2) — reverse-charge supplies, at least one record (maxOccurs=unbounded)
+        //   B.3 (VetaB3) — transfer-of-liability aggregate, exactly one (maxOccurs=1)
+        // Sections A.1 and B.1 are deliberately empty in this fixture.
         var path = SamplePath(2026, "DPHKH1_sample_2026.xml");
         var doc = XDocument.Parse(File.ReadAllText(path));
         var dphkh1 = doc.Root!.Element("DPHKH1")!;
 
         dphkh1.Elements("VetaA4").ShouldNotBeEmpty("Section A.4 (VetaA4) should have at least one entry");
-        dphkh1.Elements("VetaA5").ShouldNotBeEmpty("Section A.5 (VetaA5) should have at least one entry");
+        dphkh1.Element("VetaA5").ShouldNotBeNull("Section A.5 aggregate (VetaA5) should be present (maxOccurs=1)");
         dphkh1.Elements("VetaB2").ShouldNotBeEmpty("Section B.2 (VetaB2) should have at least one entry");
-        dphkh1.Elements("VetaB3").ShouldNotBeEmpty("Section B.3 (VetaB3) should have at least one entry");
+        dphkh1.Element("VetaB3").ShouldNotBeNull("Section B.3 aggregate (VetaB3) should be present (maxOccurs=1)");
 
         // A.1 and B.1 intentionally empty in this fixture
         dphkh1.Elements("VetaA1").ShouldBeEmpty("Section A.1 (VetaA1) should be absent in this fixture");
@@ -144,60 +150,69 @@ public class EpoFixtureValidationTests
     [Fact]
     public void DPHDP3_Sample2026_PeriodAttributesAreSet()
     {
-        // Both zdobd_od and zdobd_do must be present and parseable as dates.
+        // Period attributes zdobd_od and zdobd_do must be present on VetaD
+        // and formatted as D.M.RRRR (EPO2 dateInMultiFormat), NOT ISO 8601.
         var path = SamplePath(2026, "DPHDP3_sample_2026.xml");
         var doc = XDocument.Parse(File.ReadAllText(path));
-        var dphdp3 = doc.Root!.Element("DPHDP3")!;
+        var vetaD = doc.Root!.Element("DPHDP3")!.Element("VetaD")!;
 
-        var from = (string?)dphdp3.Attribute("zdobd_od");
-        var to   = (string?)dphdp3.Attribute("zdobd_do");
+        var from = (string?)vetaD.Attribute("zdobd_od");
+        var to   = (string?)vetaD.Attribute("zdobd_do");
 
-        from.ShouldNotBeNullOrEmpty("Attribute zdobd_od (period start) must be set");
-        to.ShouldNotBeNullOrEmpty("Attribute zdobd_do (period end) must be set");
+        from.ShouldNotBeNullOrEmpty("Attribute zdobd_od (period start) must be set on VetaD");
+        to.ShouldNotBeNullOrEmpty("Attribute zdobd_do (period end) must be set on VetaD");
 
-        // Must be valid ISO dates
-        DateOnly.TryParse(from, out _).ShouldBeTrue($"zdobd_od '{from}' is not a valid date");
-        DateOnly.TryParse(to,   out _).ShouldBeTrue($"zdobd_do '{to}' is not a valid date");
+        // EPO2 uses Czech date format D.M.RRRR (e.g. "1.3.2026"), not ISO 8601
+        bool IsCzechDate(string? s) =>
+            s is not null && DateTime.TryParseExact(
+                s,
+                new[] { "d.M.yyyy", "dd.M.yyyy", "d.MM.yyyy", "dd.MM.yyyy" },
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None,
+                out _);
+
+        IsCzechDate(from).ShouldBeTrue($"zdobd_od '{from}' is not a valid D.M.RRRR date (EPO2 format)");
+        IsCzechDate(to).ShouldBeTrue($"zdobd_do '{to}' is not a valid D.M.RRRR date (EPO2 format)");
     }
 
     // =========================================================================
     // XSD schema validation — requires issue #35 (EpoSchemaProvider) to be merged
     // =========================================================================
-    // TODO (#35): After EpoSchemaProvider is merged and XSD files are deployed,
-    //             uncomment the tests below to enable full XSD validation.
-    //
-    // [Fact]
-    // public void DPHDP3_Sample2026_ValidatesAgainstXsd()
-    // {
-    //     var xsdPath = Path.Combine(XsdBasePath(2026), "dphdp3.xsd");
-    //     if (!File.Exists(xsdPath))
-    //     {
-    //         // XSD not yet available (issue #35 not merged) — skip gracefully.
-    //         return;
-    //     }
-    //     var samplePath = SamplePath(2026, "DPHDP3_sample_2026.xml");
-    //     var errors = ValidateXml(samplePath, xsdPath);
-    //     errors.ShouldBeEmpty($"DPHDP3 fixture XSD errors:\n{string.Join("\n", errors)}");
-    // }
-    //
-    // [Fact]
-    // public void DPHKH1_Sample2026_ValidatesAgainstXsd()
-    // {
-    //     var xsdPath = Path.Combine(XsdBasePath(2026), "dphkh1.xsd");
-    //     if (!File.Exists(xsdPath))
-    //         return;
-    //     var samplePath = SamplePath(2026, "DPHKH1_sample_2026.xml");
-    //     var errors = ValidateXml(samplePath, xsdPath);
-    //     errors.ShouldBeEmpty($"DPHKH1 fixture XSD errors:\n{string.Join("\n", errors)}");
-    // }
-    //
-    // private static List<string> ValidateXml(string xmlPath, string xsdPath)
-    // {
-    //     var schemas = new XmlSchemaSet();
-    //     schemas.Add(null, xsdPath);
-    //     var doc = XDocument.Parse(File.ReadAllText(xmlPath));
-    //     var errors = new List<string>();
-    //     doc.Validate(schemas, (_, e) => errors.Add(e.Message));
-    //     return errors;
-    // }
+
+    [Fact]
+    public void DPHDP3_Sample2026_ValidatesAgainstXsd()
+    {
+        // Skips gracefully when XSD is not yet deployed (issue #35 not merged).
+        // XSD filename follows the _epo2.xsd naming convention used by EpoSchemaProvider.
+        var xsdPath = XsdPath(2026, "dphdp3_epo2.xsd");
+        if (!File.Exists(xsdPath))
+            return; // issue #35 not yet merged — skip
+
+        var samplePath = SamplePath(2026, "DPHDP3_sample_2026.xml");
+        var errors = ValidateXml(samplePath, xsdPath);
+        errors.ShouldBeEmpty($"DPHDP3 fixture XSD errors:\n{string.Join("\n", errors)}");
+    }
+
+    [Fact]
+    public void DPHKH1_Sample2026_ValidatesAgainstXsd()
+    {
+        // Skips gracefully when XSD is not yet deployed (issue #35 not merged).
+        var xsdPath = XsdPath(2026, "dphkh1_epo2.xsd");
+        if (!File.Exists(xsdPath))
+            return; // issue #35 not yet merged — skip
+
+        var samplePath = SamplePath(2026, "DPHKH1_sample_2026.xml");
+        var errors = ValidateXml(samplePath, xsdPath);
+        errors.ShouldBeEmpty($"DPHKH1 fixture XSD errors:\n{string.Join("\n", errors)}");
+    }
+
+    private static List<string> ValidateXml(string xmlPath, string xsdPath)
+    {
+        var schemas = new XmlSchemaSet();
+        schemas.Add(null, xsdPath);
+        var doc = XDocument.Parse(File.ReadAllText(xmlPath));
+        var errors = new List<string>();
+        doc.Validate(schemas, (_, e) => errors.Add(e.Message));
+        return errors;
+    }
 }

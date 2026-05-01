@@ -433,12 +433,13 @@ Schémata jsou **copy-to-output** (NE embedded resource) — přidání nového 
 ```
 Fakvio.Infrastructure/Resources/Epo/
 └── 2026/
-    ├── dphdp3.xsd
-    └── dphkh1.xsd
+    ├── dphdp3_epo2.xsd
+    └── dphkh1_epo2.xsd
 ```
 
 `EpoSchemaProvider` sestavuje cestu dynamicky:
 ```csharp
+// fileName = "dphdp3_epo2.xsd" nebo "dphkh1_epo2.xsd"
 Path.Combine(AppContext.BaseDirectory, "Resources", "Epo", year.ToString(), fileName)
 ```
 
@@ -452,7 +453,7 @@ Plný postup viz `Fakvio.Infrastructure/Resources/Epo/EPO-README.md`. Zkráceně
    ```
    https://adisspr.mfcr.cz/adistc/adis/idpr_pub/epo2_info/popis_struktury.faces
    ```
-2. Ulož jako `Fakvio.Infrastructure/Resources/Epo/{rok}/dphdp3.xsd` a `dphkh1.xsd`.
+2. Ulož jako `Fakvio.Infrastructure/Resources/Epo/{rok}/dphdp3_epo2.xsd` a `dphkh1_epo2.xsd`.
 3. Přidej sample fixture do `Fakvio.Tests.Unit/Resources/Epo/{rok}/Samples/` (vzor: rok 2026).
 4. Spusť `dotnet test --filter EpoFixtureValidationTests` — musí projít.
 5. `EpoSchemaProvider` najde nový rok automaticky (žádná změna kódu).

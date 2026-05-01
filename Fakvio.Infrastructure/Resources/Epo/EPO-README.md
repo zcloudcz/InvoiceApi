@@ -10,10 +10,10 @@ bez recompile — jen přidej XSD soubory a restartuj aplikaci.
 
 ```
 Fakvio.Infrastructure/Resources/Epo/
-├── EPO-README.md          ← tento soubor
+├── EPO-README.md                ← tento soubor
 └── 2026/
-    ├── dphdp3.xsd         ← schéma DPHDP3 (přiznání k DPH), rok 2026
-    └── dphkh1.xsd         ← schéma DPHKH1 (kontrolní hlášení), rok 2026
+    ├── dphdp3_epo2.xsd          ← schéma DPHDP3 (přiznání k DPH), rok 2026
+    └── dphkh1_epo2.xsd          ← schéma DPHKH1 (kontrolní hlášení), rok 2026
 
 Fakvio.Tests.Unit/Resources/Epo/
 └── 2026/
@@ -22,7 +22,7 @@ Fakvio.Tests.Unit/Resources/Epo/
         └── DPHKH1_sample_2026.xml   ← syntetický vzorek kontrolního hlášení
 ```
 
-Šablona pro nový rok: `{rok}/dphdp3.xsd` a `{rok}/dphkh1.xsd`.
+Šablona pro nový rok: `{rok}/dphdp3_epo2.xsd` a `{rok}/dphkh1_epo2.xsd`.
 
 ---
 
@@ -39,8 +39,8 @@ https://adisspr.mfcr.cz/adistc/adis/idpr_pub/epo2_info/popis_struktury.faces
 ```
 
 Na stránce vyhledej sekci odpovídající novému roku a stáhni soubory:
-- `epo2_dphdp3_*.xsd` → uložit jako `Fakvio.Infrastructure/Resources/Epo/{rok}/dphdp3.xsd`
-- `epo2_dphkh1_*.xsd` → uložit jako `Fakvio.Infrastructure/Resources/Epo/{rok}/dphkh1.xsd`
+- `epo2_dphdp3_*.xsd` → uložit jako `Fakvio.Infrastructure/Resources/Epo/{rok}/dphdp3_epo2.xsd`
+- `epo2_dphkh1_*.xsd` → uložit jako `Fakvio.Infrastructure/Resources/Epo/{rok}/dphkh1_epo2.xsd`
 
 Alternativní cesta (přímý FTP/HTTP ke zdrojům):
 
@@ -56,7 +56,7 @@ Po stažení ověř, zda se soubor skutečně změnil:
 
 ```powershell
 # Výpočet SHA-256 nového souboru:
-Get-FileHash .\dphdp3.xsd -Algorithm SHA256
+Get-FileHash .\dphdp3_epo2.xsd -Algorithm SHA256
 
 # Porovnej s předchozí verzí (pokud ji máš) nebo s verzí z webu Finanční správy
 # (web někdy zobrazuje hash u ke stažení).
@@ -79,20 +79,13 @@ Fakvio.Infrastructure/
 └── Resources/
     └── Epo/
         └── {rok}/
-            ├── dphdp3.xsd
-            └── dphkh1.xsd
+            ├── dphdp3_epo2.xsd
+            └── dphkh1_epo2.xsd
 ```
 
-Soubory jsou deklarovány jako `CopyToOutputDirectory` v `Fakvio.Infrastructure.csproj`:
-
-```xml
-<ItemGroup>
-  <!-- Wildcard pokrývá všechny roky automaticky — žádná změna v csproj při přidání nového roku -->
-  <None Update="Resources\Epo\**\*.xsd">
-    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-  </None>
-</ItemGroup>
-```
+Soubory jsou deklarovány jako `CopyToOutputDirectory` v `Fakvio.Infrastructure.csproj`
+(přidáno PR#75, issue #35) jako `<None Include="Resources\Epo\**\*.xsd">`.
+Wildcard pokrývá všechny roky automaticky — žádná změna v csproj při přidání nového roku.
 
 ### 4. Jak rozšířit EpoSchemaProvider o nový rok
 
@@ -108,6 +101,7 @@ protože cesta je sestavena dynamicky:
 var xsdPath = Path.Combine(
     AppContext.BaseDirectory,
     "Resources", "Epo", year.ToString(), fileName);
+// fileName = "dphdp3_epo2.xsd" nebo "dphkh1_epo2.xsd"
 ```
 
 Pokud by rok byl hardcoded (starší verze provideru), přidej ho do switch/mapy
@@ -119,9 +113,9 @@ v `EpoSchemaProvider.cs` — viz komentáře přímo v souboru.
 
 | Chyba | Příčina | Řešení |
 |-------|---------|---------|
-| `The element 'VetaR' has invalid child element 'r_XX'` | Nové schéma přidalo nebo odebralo atribut řádku přiznání. | Porovnej atributy `VetaR` v novém XSD s generátorem v `EpoVatReturnMapper`. |
-| `The required attribute 'ic' is missing` | DIČ (IČ) chybí nebo je prázdné. | Ověř, zda `Client.RegistrationNumber` je vyplněno pro všechny strany dokladu. |
-| `Value 'xxx' is not valid for attribute 'rozd'` | Sazba DPH není 21, 12 nebo 0. | EPO akceptuje pouze zákonné sazby — ověř číselník VAT sazeb v DB. |
+| `The element 'Veta1' has invalid child element 'r_XX'` | Nové schéma přidalo nebo odebralo atribut daňového řádku. | Porovnej atributy `Veta1` v novém XSD s generátorem v `EpoVatReturnMapper`. |
+| `The required attribute 'dic' is missing` | DIČ chybí nebo je prázdné. | Ověř, zda je `Client.RegistrationNumber` vyplněno pro všechny strany dokladu. |
+| `The required attribute 'dapdph_forma' is missing` | Chybí povinný atribut záhlaví přiznání na `VetaD`. | Ověř, že generátor nastavuje `dapdph_forma` na `VetaD`. |
 | `The element 'DPHDP3' has invalid attribute 'typ_platce'` | Nové schéma omezilo nebo rozšířilo enum hodnot. | Zkontroluj hodnoty `typ_platce` v novém XSD (atribut SimpleType). |
 | XSD soubor nenalezen (`FileNotFoundException`) | `CopyToOutputDirectory` nefunguje nebo cesta nesedí. | Spusť `dotnet build` a zkontroluj, zda jsou soubory v `bin/Debug/net10.0/Resources/Epo/{rok}/`. |
 | Schema compilation error při startu | XSD má interní chybu (stažen poškozený soubor). | Znovu stáhni XSD a ověř jeho celistvost SHA-256 hashem (viz bod 2 výše). |
@@ -149,6 +143,10 @@ Pokud přidáváš rok `{YYYY}`, přidej také:
 - `Fakvio.Tests.Unit/Resources/Epo/{YYYY}/Samples/DPHKH1_sample_{YYYY}.xml`
 
 Vzor viz soubory pro rok 2026 ve stejné struktuře.
+
+Názvy XSD souborů musí odpovídat konvenci `dphdp3_epo2.xsd` / `dphkh1_epo2.xsd`
+(přípona `_epo2` odpovídá verzi EPO2 z portálu Finanční správy a je rozeznána
+`EpoSchemaProvider` v `Fakvio.Infrastructure`).
 
 ### Smoke testy end-to-end (EpoSandboxSmokeTests — issue #41)
 
