@@ -356,6 +356,8 @@ public class InvoiceService : IInvoiceService
             }
 
             // Regular billable item — resolve VAT and calculate totals.
+            // Note: VAT payers are guaranteed to have VatRateId set (validated above).
+            // Non-VAT payers may omit VatRateId and use VatRatePercentage = 0 from the DTO instead.
             decimal vatRatePercentage = itemDto.VatRatePercentage;
             if (itemDto.VatRateId.HasValue)
             {
@@ -372,7 +374,12 @@ public class InvoiceService : IInvoiceService
             item.VatRatePercentage = vatRatePercentage;
 
             item.TotalBeforeVat = item.Quantity * item.UnitPrice;
-            item.VatAmount = item.TotalBeforeVat * (item.VatRatePercentage / 100);
+            // Round VatAmount to 2 decimal places (AwayFromZero = standard Czech VAT rounding).
+            // Without this, back-calculated deduction rows accumulate ~0.005 CZK drift per row
+            // because deductionBase = round(deductionWithVat / divisor, 2) loses a fraction
+            // that re-appears when VAT is recomputed from the rounded base.
+            item.VatAmount = Math.Round(item.TotalBeforeVat * (item.VatRatePercentage / 100m),
+                2, MidpointRounding.AwayFromZero);
             item.TotalWithVat = item.TotalBeforeVat + item.VatAmount;
 
             invoice.InvoiceItem.Add(item);
@@ -560,7 +567,11 @@ public class InvoiceService : IInvoiceService
                 item.VatRatePercentage = vatRatePercentage;
 
                 item.TotalBeforeVat = item.Quantity * item.UnitPrice;
-                item.VatAmount = item.TotalBeforeVat * (item.VatRatePercentage / 100);
+                // Round VatAmount consistently (same rule as CreateInvoiceAsync —
+                // AwayFromZero matches standard Czech VAT rounding and eliminates
+                // drift when deduction rows are back-calculated from TotalWithVat).
+                item.VatAmount = Math.Round(item.TotalBeforeVat * (item.VatRatePercentage / 100m),
+                    2, MidpointRounding.AwayFromZero);
                 item.TotalWithVat = item.TotalBeforeVat + item.VatAmount;
 
                 invoice.InvoiceItem.Add(item);
@@ -822,6 +833,298 @@ public class InvoiceService : IInvoiceService
             .ToListAsync(cancellationToken);
 
         return creditNotes.Select(i => MapToDto(i)).ToList();
+    }
+
+    // ─── Proforma → Final Invoice ─────────────────────────────────────────────
+
+    /// <inheritdoc />
+    public async Task<InvoiceDto> IssueFinalInvoiceAsync(
+        long proformaId,
+        IssueFinalInvoiceDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        // Load the proforma with all related data we need for validation and VAT breakdown.
+        var proforma = await _context.Invoice
+            .Include(i => i.InvoiceItem)
+            .Include(i => i.Client)
+                .ThenInclude(c => c!.BillingSettings)
+            .Include(i => i.Issuer)
+            .FirstOrDefaultAsync(i => i.Id == proformaId, cancellationToken);
+
+        if (proforma == null)
+            throw new KeyNotFoundException($"Proforma with ID {proformaId} not found");
+
+        // Only Proforma documents can be used as the basis for a final invoice.
+        if (proforma.DocumentType != EDocumentType.Proforma)
+            throw new InvalidOperationException(
+                $"Document {proformaId} is of type {proforma.DocumentType}, not Proforma. " +
+                "Only Proforma documents can be used to issue a final invoice.");
+
+        // The proforma must have a received payment to deduct.
+        if (proforma.PaidAmount <= 0)
+            throw new InvalidOperationException(
+                $"Proforma {proformaId} has no received payment (PaidAmount = {proforma.PaidAmount:F2}). " +
+                "Mark the proforma as paid (or let payment matching do it) before issuing the final invoice.");
+
+        // Calculate how much of the advance is still available to deduct.
+        var alreadyDeducted = await GetAlreadyDeductedAmountAsync(proformaId, cancellationToken);
+        var remainingAdvance = proforma.PaidAmount - alreadyDeducted;
+
+        if (remainingAdvance < 0)
+            remainingAdvance = 0; // safety clamp — should not happen in practice
+
+        // Resolve the requested deduction amount.
+        // When the caller does not specify one, deduct the full remaining advance.
+        var requestedDeduction = dto.DeductionAmount ?? remainingAdvance;
+
+        // Validate that the requested deduction does not exceed the remaining advance.
+        if (requestedDeduction <= 0)
+            throw new InvalidOperationException(
+                $"No advance balance remaining on proforma {proformaId}. " +
+                $"Already deducted: {alreadyDeducted:F2}, paid: {proforma.PaidAmount:F2}.");
+
+        if (requestedDeduction > remainingAdvance)
+            throw new InvalidOperationException(
+                $"Requested deduction {requestedDeduction:F2} exceeds remaining advance " +
+                $"{remainingAdvance:F2} on proforma {proformaId}.");
+
+        _logger.LogInformation(
+            "Issuing final invoice from proforma {ProformaId}: deduction {Deduction:F2}, remaining was {Remaining:F2}",
+            proformaId, requestedDeduction, remainingAdvance);
+
+        // Build the deduction rows by splitting the deduction amount proportionally
+        // across the VAT rates present on the proforma items.
+        var deductionItems = BuildDeductionItems(proforma.InvoiceItem, requestedDeduction);
+
+        // Combine the caller-supplied "real" items with the auto-generated deduction rows.
+        // Deduction rows are appended after the real items with OrderIndex starting after them.
+        var allItems = new List<CreateInvoiceItemDto>(dto.InvoiceItem);
+        var nextOrderIndex = allItems.Count > 0
+            ? allItems.Max(i => i.OrderIndex) + 1
+            : 1;
+
+        foreach (var deductionItem in deductionItems)
+        {
+            deductionItem.OrderIndex = nextOrderIndex++;
+            allItems.Add(deductionItem);
+        }
+
+        // Build the CreateInvoiceDto that re-uses the existing creation pipeline.
+        // All header fields (client, issuer, currency, bank account…) are copied from the proforma
+        // so the final invoice is consistent with it. The caller may override dates and notes.
+        var createDto = new CreateInvoiceDto
+        {
+            DocumentType = EDocumentType.Invoice,
+            ClientId = proforma.ClientId ?? throw new InvalidOperationException("Proforma has no ClientId"),
+            IssuerId = proforma.IssuerId,
+            IssueDate = dto.IssueDate,
+            DueDate = dto.DueDate,
+            TaxableSupplyDate = dto.TaxableSupplyDate,
+            OriginalInvoiceId = proformaId,           // 1:N link — final invoice → proforma
+            VariableSymbol = null,                    // auto-generated from document number
+            ConstantSymbol = proforma.ConstantSymbol,
+            SpecificSymbol = proforma.SpecificSymbol,
+            BankAccountNumber = proforma.BankAccountNumber,
+            IBAN = proforma.IBAN,
+            SWIFT = proforma.SWIFT,
+            PaymentMethod = proforma.PaymentMethod,
+            CurrencyId = proforma.CurrencyId,
+            Notes = dto.Notes,
+            NumberSequenceId = dto.NumberSequenceId,
+            InvoiceItem = allItems
+        };
+
+        // Re-use the standard invoice creation pipeline (document number, VS, totals, …).
+        var finalInvoice = await CreateInvoiceAsync(createDto, cancellationToken);
+
+        _logger.LogInformation(
+            "Final invoice {FinalId} ({DocNum}) issued from proforma {ProformaId}. " +
+            "Deduction: {Deduction:F2}, Total with VAT: {Total:F2}",
+            finalInvoice.Id, finalInvoice.DocumentNumber,
+            proformaId, requestedDeduction, finalInvoice.TotalWithVat);
+
+        return finalInvoice;
+    }
+
+    /// <inheritdoc />
+    public async Task<decimal> GetRemainingAdvanceAsync(long proformaId, CancellationToken cancellationToken = default)
+    {
+        var proforma = await _context.Invoice
+            .AsNoTracking()
+            .FirstOrDefaultAsync(i => i.Id == proformaId && i.DocumentType == EDocumentType.Proforma, cancellationToken);
+
+        if (proforma == null)
+            return 0;
+
+        var alreadyDeducted = await GetAlreadyDeductedAmountAsync(proformaId, cancellationToken);
+        var remaining = proforma.PaidAmount - alreadyDeducted;
+        return remaining < 0 ? 0 : remaining;
+    }
+
+    // ─── Deduction Helpers ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Calculates the sum of advance deductions already issued against the given proforma.
+    ///
+    /// A deduction row is identified by:
+    ///  - Being on a final Invoice linked to this proforma (OriginalInvoiceId = proformaId, DocumentType = Invoice)
+    ///  - Having a negative TotalBeforeVat (the deduction is always negative)
+    ///  - Not being on a Deleted invoice
+    ///
+    /// We sum the negative TotalWithVat values (which include VAT) to get the total amount
+    /// already deducted so far, then negate (make positive) for comparison with PaidAmount.
+    /// </summary>
+    private async Task<decimal> GetAlreadyDeductedAmountAsync(long proformaId, CancellationToken ct)
+    {
+        // Sum the TotalWithVat of all negative (deduction) items on linked final invoices.
+        // TotalWithVat is negative for deduction rows, so summing gives a negative number.
+        // We negate it to get the positive "amount already deducted".
+        var negativeSum = await _context.InvoiceItem
+            .AsNoTracking()
+            .Where(item =>
+                item.Invoice != null
+                && item.Invoice.OriginalInvoiceId == proformaId
+                && item.Invoice.DocumentType == EDocumentType.Invoice
+                && item.Invoice.Status != EInvoiceStatus.Deleted
+                && item.TotalBeforeVat < 0)
+            .SumAsync(item => (decimal?)item.TotalWithVat, ct) ?? 0m;
+
+        // negativeSum is ≤ 0; negate to get the positive deducted amount.
+        return -negativeSum;
+    }
+
+    /// <summary>
+    /// Splits <paramref name="totalDeductionWithVat"/> into one deduction row per VAT rate
+    /// found on the proforma items, proportional to each rate's share of the total proforma
+    /// amount (TotalWithVat-based weights).
+    ///
+    /// WHY this approach:
+    /// Czech VAT law (§ 28/5 ZDPH) requires that the deduction row carries the same VAT rate
+    /// as the original advance. Splitting proportionally by TotalWithVat weight ensures that
+    /// each rate's share of the advance is correctly deducted, keeping total Output VAT neutral.
+    ///
+    /// Rounding strategy — "largest remainder":
+    /// After distributing amounts (rounded to 2 decimal places), any rounding residual
+    /// (caused by integer division of the total) is assigned to the row with the largest
+    /// fractional part. This keeps the sum of deduction rows exactly equal to the requested
+    /// deduction, with at most 1-cent deviation per row.
+    /// </summary>
+    private static List<CreateInvoiceItemDto> BuildDeductionItems(
+        ICollection<InvoiceItem> proformaItems,
+        decimal totalDeductionWithVat)
+    {
+        // Collect the non-text, non-zero items from the proforma, grouped by VAT rate.
+        // We use TotalWithVat (the actual amount the client paid) as the weight basis
+        // because the paid amount (PaidAmount) is also TotalWithVat-based.
+        var vatGroups = proformaItems
+            .Where(i => !i.IsTextRow && i.TotalWithVat != 0)
+            .GroupBy(i => i.VatRatePercentage)
+            .Select(g => new
+            {
+                VatRatePercentage = g.Key,
+                VatRateId = g.First().VatRateId,
+                TotalWithVat = g.Sum(i => i.TotalWithVat)
+            })
+            .ToList();
+
+        // If there are no billable proforma items at all, fall back to a single 0% row
+        // so we still produce a deduction row (better than silently omitting it).
+        if (vatGroups.Count == 0)
+        {
+            return new List<CreateInvoiceItemDto>
+            {
+                new()
+                {
+                    Description = "Odečet přijaté zálohy / Advance payment deduction",
+                    Quantity = 1,
+                    Unit = "pcs",
+                    UnitPrice = -totalDeductionWithVat,
+                    VatRatePercentage = 0,
+                    VatRateId = null
+                }
+            };
+        }
+
+        // Total proforma TotalWithVat across all billable items — used as the denominator.
+        var proformaTotalWithVat = vatGroups.Sum(g => g.TotalWithVat);
+
+        if (proformaTotalWithVat == 0)
+        {
+            // Proforma has items but they net to zero — edge case, single 0% row.
+            return new List<CreateInvoiceItemDto>
+            {
+                new()
+                {
+                    Description = "Odečet přijaté zálohy / Advance payment deduction",
+                    Quantity = 1,
+                    Unit = "pcs",
+                    UnitPrice = -totalDeductionWithVat,
+                    VatRatePercentage = 0,
+                    VatRateId = null
+                }
+            };
+        }
+
+        // ── Proportional split with "largest remainder" rounding ──────────────
+        // Step 1: compute the exact (unrounded) share for each VAT group.
+        // Step 2: floor to 2 decimal places and collect the fractional remainder.
+        // Step 3: distribute rounding cents (if any) to groups with largest remainder.
+
+        var shares = vatGroups.Select(g => new
+        {
+            g.VatRatePercentage,
+            g.VatRateId,
+            ExactShare = totalDeductionWithVat * (g.TotalWithVat / proformaTotalWithVat)
+        }).ToList();
+
+        var floored = shares.Select(s => Math.Round(s.ExactShare, 2, MidpointRounding.ToZero)).ToList();
+        var sumFloored = floored.Sum();
+        var residual = Math.Round(totalDeductionWithVat - sumFloored, 2);
+
+        // Each residual cent is +0.01; distribute to the groups with the largest fractional part.
+        var remainders = shares
+            .Select((s, idx) => (Idx: idx, Frac: s.ExactShare - floored[idx]))
+            .OrderByDescending(x => x.Frac)
+            .ToList();
+
+        var centsToDistribute = (int)Math.Round(residual / 0.01m);
+        for (var i = 0; i < centsToDistribute && i < remainders.Count; i++)
+        {
+            floored[remainders[i].Idx] += 0.01m;
+        }
+
+        // ── Build deduction CreateInvoiceItemDto rows ─────────────────────────
+        // Each row uses UnitPrice = -(base before VAT) and VatRatePercentage = rate.
+        // The standard item calculation pipeline (Quantity * UnitPrice, + VAT) then
+        // produces the correct negative TotalWithVat.
+        var result = new List<CreateInvoiceItemDto>();
+
+        for (var i = 0; i < shares.Count; i++)
+        {
+            var rate = shares[i].VatRatePercentage;
+            var deductionWithVat = floored[i];
+
+            if (deductionWithVat == 0)
+                continue; // skip zero-amount rows (can happen with rounding on tiny amounts)
+
+            // Back-calculate the base (before VAT) from the TotalWithVat deduction.
+            // TotalWithVat = TotalBeforeVat * (1 + rate/100)
+            // → TotalBeforeVat = TotalWithVat / (1 + rate/100)
+            var divisor = 1m + rate / 100m;
+            var deductionBase = Math.Round(deductionWithVat / divisor, 2, MidpointRounding.AwayFromZero);
+
+            result.Add(new CreateInvoiceItemDto
+            {
+                Description = "Odečet přijaté zálohy / Advance payment deduction",
+                Quantity = 1,
+                Unit = "pcs",
+                UnitPrice = -deductionBase,          // negative — this is a deduction
+                VatRatePercentage = rate,
+                VatRateId = shares[i].VatRateId
+            });
+        }
+
+        return result;
     }
 
     // ─── Bulk Operations ─────────────────────────────────────────────────────

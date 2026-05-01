@@ -160,4 +160,41 @@ public interface IInvoiceService
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Result with success/failure counts and error details</returns>
     Task<BulkOperationResult> BulkDeleteAsync(List<long> invoiceIds, CancellationToken cancellationToken = default);
+
+    // ─── Proforma → Final Invoice ─────────────────────────────────────────────
+
+    /// <summary>
+    /// Issues a final Invoice from a Proforma (advance invoice).
+    /// The final invoice contains the caller-supplied line items PLUS automatically
+    /// generated deduction rows ("Odečet přijaté zálohy") — one negative row per VAT
+    /// rate found on the proforma, proportional to the requested deduction amount.
+    ///
+    /// Supports 1:N: one proforma can have multiple final invoices, each deducting
+    /// a portion of the advance. The sum of all deductions must not exceed the
+    /// proforma's PaidAmount.
+    ///
+    /// The proforma lifecycle is NOT changed by this call (it stays Paid).
+    /// </summary>
+    /// <param name="proformaId">ID of the Proforma invoice to issue against</param>
+    /// <param name="dto">New invoice items + optional partial deduction amount</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Newly created Invoice DTO with deduction rows already appended</returns>
+    /// <exception cref="KeyNotFoundException">Proforma not found</exception>
+    /// <exception cref="InvalidOperationException">
+    ///   proformaId references a non-Proforma document, or deduction exceeds remaining advance
+    /// </exception>
+    Task<InvoiceDto> IssueFinalInvoiceAsync(
+        long proformaId,
+        IssueFinalInvoiceDto dto,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns the remaining advance amount for a proforma:
+    /// proforma.PaidAmount minus the sum of deduction rows already issued
+    /// on all linked final invoices.
+    /// Returns 0 if the proforma has no PaidAmount or all has been deducted.
+    /// </summary>
+    /// <param name="proformaId">Proforma ID</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    Task<decimal> GetRemainingAdvanceAsync(long proformaId, CancellationToken cancellationToken = default);
 }
