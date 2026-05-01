@@ -180,6 +180,14 @@ public class TenantDbContext : DbContext
     /// </summary>
     public DbSet<Reminder> Reminder { get; set; }
 
+    /// <summary>
+    /// Recurring invoice schedules — define automatic invoice generation from a template
+    /// at a configurable cadence (Weekly/Monthly/Quarterly/Yearly).
+    /// The Application-layer IRecurringInvoiceService fires all active schedules
+    /// whose NextRunAt &lt;= UtcNow and advances the timestamp by one period.
+    /// </summary>
+    public DbSet<RecurringInvoiceSchedule> RecurringInvoiceSchedule { get; set; }
+
     // ─── Payment Matching (see PLATBY-ZADANI.md) ────────────────────────────
 
     /// <summary>
@@ -251,6 +259,8 @@ public class TenantDbContext : DbContext
         ConfigureReminderSettings(modelBuilder);
         ConfigureReminderLevel(modelBuilder);
         ConfigureReminder(modelBuilder);
+
+        ConfigureRecurringInvoiceSchedule(modelBuilder);
 
         ConfigureBankAccountMailbox(modelBuilder);
         ConfigureInboundEmail(modelBuilder);
@@ -859,6 +869,77 @@ public class TenantDbContext : DbContext
                 .OnDelete(DeleteBehavior.Restrict);
 
             // FK to Client — restrict delete (can't delete client with reminders).
+            entity.HasOne(e => e.Client)
+                .WithMany()
+                .HasForeignKey(e => e.ClientId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+    }
+
+    // ─── Recurring Invoices ───────────────────────────────────────────────────
+
+    /// <summary>
+    /// RecurringInvoiceSchedule — one row per active or paused schedule.
+    ///
+    /// Key design decisions:
+    /// - FK to InvoiceTemplate (Restrict): you cannot delete a template that has an active schedule.
+    ///   Deactivate the schedule first, then optionally archive the template.
+    /// - FK to Client (Restrict): same reasoning — do not lose scheduling state when a client
+    ///   is being reorganised. Deactivate the schedule first.
+    /// - RowVersion uses the xmin concurrency pattern (Npgsql 10.x convention):
+    ///   IsConcurrencyToken() + ValueGeneratedOnAddOrUpdate() maps to the xmin system column.
+    /// - DayOfWeek is stored as int (PostgreSQL integer) to avoid enum name mismatch across
+    ///   DB versions. The application enum System.DayOfWeek already starts at 0 (Sunday).
+    /// - Frequency is stored as int for forward-compatibility (adding new values is additive).
+    /// - NextRunAt / LastRunAt / EndDate use DateTimeOffset to preserve UTC everywhere.
+    /// </summary>
+    private void ConfigureRecurringInvoiceSchedule(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<RecurringInvoiceSchedule>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            // Index for the job query: SELECT * WHERE IsActive = true AND NextRunAt <= @now
+            // This is the hot path — runs every timer tick.
+            entity.HasIndex(e => new { e.IsActive, e.NextRunAt });
+
+            // Support listing schedules per template or per client in the UI.
+            entity.HasIndex(e => e.TemplateId);
+            entity.HasIndex(e => e.ClientId);
+
+            // Frequency stored as int — forwards-compatible, avoids enum/string mismatch.
+            entity.Property(e => e.Frequency).HasConversion<int>();
+
+            // DayOfWeek stored as int — System.DayOfWeek values (0=Sunday..6=Saturday).
+            // Nullable because it is only relevant when Frequency = Weekly.
+            entity.Property(e => e.DayOfWeek).HasConversion<int?>();
+
+            // Default values mirrored from the entity property defaults so that
+            // explicit HasDefaultValue here is only needed where EF Core cannot infer it
+            // from a CLR-default initialiser on the entity (i.e., non-zero / non-false).
+            entity.Property(e => e.IntervalCount).HasDefaultValue(1);
+            entity.Property(e => e.OccurrenceCount).HasDefaultValue(0);
+            entity.Property(e => e.IsActive).HasDefaultValue(true);
+            entity.Property(e => e.AutoSend).HasDefaultValue(false);
+
+            // LastError: free-form text, capped at 2000 chars (matches Reminder.ErrorMessage).
+            entity.Property(e => e.LastError).HasMaxLength(2000);
+
+            // Optimistic concurrency via PostgreSQL xmin system column.
+            // Npgsql 10.x convention: uint property + IsConcurrencyToken() + ValueGeneratedOnAddOrUpdate()
+            // maps automatically to xmin. EF Core checks this on every UPDATE.
+            entity.Property(e => e.RowVersion)
+                .IsConcurrencyToken()
+                .ValueGeneratedOnAddOrUpdate();
+
+            // FK to InvoiceTemplate — Restrict: cannot delete a template in use by a schedule.
+            // InvoiceTemplate is a TPH row in the Invoice table; FK targets the Invoice PK.
+            entity.HasOne(e => e.Template)
+                .WithMany()
+                .HasForeignKey(e => e.TemplateId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // FK to Client — Restrict: cannot delete a client in use by a schedule.
             entity.HasOne(e => e.Client)
                 .WithMany()
                 .HasForeignKey(e => e.ClientId)
