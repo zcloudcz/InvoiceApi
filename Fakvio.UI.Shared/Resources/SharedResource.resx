@@ -550,8 +550,12 @@
   <data name="ContentTemplate_PreviewNoData" xml:space="preserve"><value>Žádná data pro náhled — vytvořte nejprve dokument odpovídajícího typu</value></data>
   <data name="ContentType_InvoicePdf" xml:space="preserve"><value>PDF faktury</value></data>
   <data name="ContentType_CreditNotePdf" xml:space="preserve"><value>PDF dobropisu</value></data>
+  <data name="ContentType_AdvanceInvoicePdf" xml:space="preserve"><value>PDF zálohové faktury</value></data>
+  <data name="ContentType_TaxReceiptForAdvancePdf" xml:space="preserve"><value>PDF daňového dokladu o přijaté platbě</value></data>
   <data name="ContentType_InvoiceEmail" xml:space="preserve"><value>Email faktury</value></data>
   <data name="ContentType_CreditNoteEmail" xml:space="preserve"><value>Email dobropisu</value></data>
+  <data name="ContentType_AdvanceInvoiceEmail" xml:space="preserve"><value>Email zálohové faktury</value></data>
+  <data name="ContentType_TaxReceiptForAdvanceEmail" xml:space="preserve"><value>Email daňového dokladu o přijaté platbě</value></data>
   <data name="ContentType_InvitationEmail" xml:space="preserve"><value>Pozvánka</value></data>
   <data name="ContentType_ReminderEmail" xml:space="preserve"><value>Upomínka</value></data>
   <data name="ContentType_PasswordResetEmail" xml:space="preserve"><value>Obnova hesla</value></data>

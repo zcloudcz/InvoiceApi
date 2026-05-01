@@ -89,9 +89,16 @@ public class EmailService : IEmailService
             .FirstOrDefaultAsync(i => i.Id == invoiceId, ct)
             ?? throw new KeyNotFoundException($"Invoice with ID {invoiceId} not found.");
 
-        // Use document type prefix for attachment file names (Invoice vs CreditNote).
-        // This prefix is shared for both PDF and ISDOC file names.
-        var prefix = invoice.DocumentType == EDocumentType.CreditNote ? "CreditNote" : "Invoice";
+        // Build a safe file-name prefix from the document type.
+        // Each type gets its own recognisable prefix so the attachment name in the inbox
+        // immediately tells the recipient what they received.
+        var prefix = invoice.DocumentType switch
+        {
+            EDocumentType.CreditNote => "CreditNote",
+            EDocumentType.Proforma => "Proforma",
+            EDocumentType.TaxReceiptForAdvance => "TaxReceipt",
+            _ => "Invoice"
+        };
         var docNumber = invoice.DocumentNumber ?? invoiceId.ToString();
 
         // Generate the PDF attachment using the PDF export service.
@@ -120,10 +127,10 @@ public class EmailService : IEmailService
             ["AppName"] = await ResolveAppNameAsync(ct)
         };
 
-        // Determine email template type based on document type (invoice vs credit note)
-        var templateType = invoice.DocumentType == EDocumentType.CreditNote
-            ? EContentTemplateType.CreditNoteEmail
-            : EContentTemplateType.InvoiceEmail;
+        // Determine email template type based on document type.
+        // The mapping is centralised in PdfExportService so it is always consistent
+        // between PDF and email template resolution.
+        var templateType = PdfExportService.ResolveEmailTemplateType(invoice.DocumentType);
 
         // Read client's preferred language for template resolution.
         // Falls back to "cs" (Czech) when client or language is not set.
@@ -559,6 +566,28 @@ public class EmailService : IEmailService
                     <p><strong>Due date:</strong> {get("DueDate")}</p>
                     <br/>
                     <p>Thank you for your business.</p>
+                    """
+            ),
+            EContentTemplateType.AdvanceInvoiceEmail => (
+                Subject: $"Advance invoice {get("InvoiceNumber")} from {get("CompanyName")}",
+                HtmlBody: $"""
+                    <h2>Advance Invoice {get("InvoiceNumber")}</h2>
+                    <p>Please find the attached advance invoice (pro-forma).</p>
+                    <p><strong>Amount due:</strong> {get("TotalWithVat")} {get("CurrencyCode")}</p>
+                    <p><strong>Due date:</strong> {get("DueDate")}</p>
+                    <br/>
+                    <p>Please note: this is not a tax document. A tax receipt will be issued upon receipt of payment.</p>
+                    <p>Thank you for your business.</p>
+                    """
+            ),
+            EContentTemplateType.TaxReceiptForAdvanceEmail => (
+                Subject: $"Tax receipt for advance {get("InvoiceNumber")} from {get("CompanyName")}",
+                HtmlBody: $"""
+                    <h2>Tax Receipt for Advance Payment {get("InvoiceNumber")}</h2>
+                    <p>Please find the attached tax receipt for the advance payment we have received.</p>
+                    <p><strong>Total:</strong> {get("TotalWithVat")} {get("CurrencyCode")}</p>
+                    <br/>
+                    <p>Thank you for your payment.</p>
                     """
             ),
             EContentTemplateType.InvitationEmail => (

@@ -307,16 +307,37 @@ context.InstanceServices       ← Functions Worker scope (kde žije Function cl
 | Render | `RenderTemplateAsync(templateId, dict)` → `ReplacePlaceholders(html, dict)` (řádky 235-269). Trim klíče, neznámý placeholder = ponechán beze změny. |
 
 **Typy** (`EContentTemplateType`):
-- `InvoicePdf=1`, `CreditNotePdf=2`
-- `InvoiceEmail=10`, `CreditNoteEmail=11`
-- `InvitationEmail=20`, `ReminderEmail=21`, `PasswordResetEmail=22`
+
+| Hodnota | Enum | Popis | Seed ID (Master/Tenant) |
+|---------|------|-------|-------------------------|
+| `1` | `InvoicePdf` | PDF běžné faktury (modrý accent) | 1 |
+| `2` | `CreditNotePdf` | PDF dobropisu (červený accent) | 2 |
+| `3` | `ReminderPdf` | PDF upomínky (dunning) | – |
+| `4` | `AdvanceInvoicePdf` | PDF zálohové faktury — není daňový doklad (zelený accent `#3D7A4A`). Obsahuje banner „ZÁLOHOVKA NENÍ DAŇOVÝ DOKLAD". | 8 |
+| `5` | `TaxReceiptForAdvancePdf` | PDF daňového dokladu o přijaté platbě (fialový accent `#6A3D9A`). Daňový doklad — zakládá VAT povinnost. | 9 |
+| `10` | `InvoiceEmail` | Email faktury | 3 |
+| `11` | `CreditNoteEmail` | Email dobropisu | 4 |
+| `12` | `AdvanceInvoiceEmail` | Email zálohové faktury (CZ: upozornění, že zálohovka není daňový doklad) | 10 |
+| `13` | `TaxReceiptForAdvanceEmail` | Email daňového dokladu o přijaté platbě | 11 |
+| `20` | `InvitationEmail` | Pozvánka nového uživatele | 5 |
+| `21` | `ReminderEmail` | Upomínka po splatnosti | 6 |
+| `22` | `PasswordResetEmail` | Reset hesla | – |
+| `23` | `TwoFactorEmail` | 2FA OTP kód | 7 |
+
+**Mapping `EDocumentType → EContentTemplateType`** — jediné místo: `PdfExportService.ResolveTemplateType()` (PDF) a `PdfExportService.ResolveEmailTemplateType()` (email). Obě metody jsou `internal static` — EmailService volá `ResolveEmailTemplateType` přímo, žádné duplicitní switche.
 
 **Default chain** (`ContentTemplateService.cs:111-143`):
 1. Exact (Type + Language + IsDefault + IsActive).
 2. Any-language default (Type + IsDefault + IsActive).
-3. Built-in inline HTML (EmailService řádky 545-591).
+3. Built-in fallback HTML: pro PDF `PdfExportService.GetDefaultHtmlTemplate(documentType)` (volá `DefaultSeedData`), pro email `EmailService.BuildFallbackEmail()`.
 
-**Pokud přidáváš nový typ šablony**: 1) přidej hodnotu do `EContentTemplateType`, 2) přidej seed default template do migrace + provisioning copy step (`TenantProvisioningService` krok 5), 3) zaznamenej zde do tabulky.
+**Vestavěné PDF šablony** (embedded resources `Fakvio.Infrastructure/Templates/*.html`, wildcard `Templates\*.html` v csproj):
+- `InvoicePdfTemplate.html` → modrý `#5B7D9D`
+- `CreditNotePdfTemplate.html` → červený `#A05050`
+- `AdvanceInvoicePdfTemplate.html` → zelený `#3D7A4A` + „ZÁLOHOVÁ FAKTURA — NENÍ DAŇOVÝ DOKLAD" banner
+- `TaxReceiptForAdvancePdfTemplate.html` → fialový `#6A3D9A`, titulek „DAŇOVÝ DOKLAD O PŘIJATÉ PLATBĚ"
+
+**Pokud přidáváš nový typ šablony**: 1) přidej hodnotu do `EContentTemplateType` (zachovat číselnou stabilitu), 2) přidej embedded `.html` soubor do `Templates/` (wildcard ho zahrne automaticky), 3) přidej getter do `DefaultSeedData`, 4) přidej seed záznamy s unikátním Id do `MasterDbContext` + `TenantDbContext`, 5) rozšiř switche v `ResolveTemplateType` / `ResolveEmailTemplateType` / `GetDefaultHtmlTemplate` / `BuildFallbackEmail`, 6) přidej lokalizační klíče `ContentType_XYZ` do obou resx, 7) rozšiř switche `GetTemplateTypeColor` + `GetTemplateTypeLabel` v `ContentTemplates.razor`, 8) zaznamenej zde do tabulky.
 
 ### 4.4 Invoice lifecycle
 

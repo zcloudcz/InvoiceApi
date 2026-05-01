@@ -35,6 +35,14 @@ public static class DefaultSeedData
         () => ReadEmbeddedResource("Fakvio.Infrastructure.Templates.CreditNotePdfTemplate.html"),
         LazyThreadSafetyMode.ExecutionAndPublication);
 
+    private static readonly Lazy<string> AdvanceInvoicePdfTemplateHtml = new(
+        () => ReadEmbeddedResource("Fakvio.Infrastructure.Templates.AdvanceInvoicePdfTemplate.html"),
+        LazyThreadSafetyMode.ExecutionAndPublication);
+
+    private static readonly Lazy<string> TaxReceiptForAdvancePdfTemplateHtml = new(
+        () => ReadEmbeddedResource("Fakvio.Infrastructure.Templates.TaxReceiptForAdvancePdfTemplate.html"),
+        LazyThreadSafetyMode.ExecutionAndPublication);
+
     /// <summary>
     /// Returns the default invoice PDF HTML template for seed data.
     /// Uses Handlebars-style {{placeholders}} that are replaced at runtime
@@ -58,6 +66,26 @@ public static class DefaultSeedData
     public static string GetDefaultCreditNotePdfTemplate()
     {
         return CreditNotePdfTemplateHtml.Value;
+    }
+
+    /// <summary>
+    /// Returns the default advance invoice (pro-forma) PDF HTML template.
+    /// Uses a green (#3D7A4A) accent and includes a banner that explicitly
+    /// states this is NOT a tax document (zálohová faktura — není daňový doklad).
+    /// </summary>
+    public static string GetDefaultAdvanceInvoicePdfTemplate()
+    {
+        return AdvanceInvoicePdfTemplateHtml.Value;
+    }
+
+    /// <summary>
+    /// Returns the default tax receipt for advance payment PDF HTML template.
+    /// Uses a purple (#6A3D9A) accent to distinguish it from regular invoices.
+    /// This IS a VAT tax document — issued after the advance payment is received.
+    /// </summary>
+    public static string GetDefaultTaxReceiptForAdvancePdfTemplate()
+    {
+        return TaxReceiptForAdvancePdfTemplateHtml.Value;
     }
 
     /// <summary>

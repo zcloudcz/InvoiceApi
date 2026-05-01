@@ -389,8 +389,14 @@
     {
         EContentTemplateType.InvoicePdf => Color.Info,
         EContentTemplateType.CreditNotePdf => Color.Info,
+        // Advance invoice (pro-forma) — green to match its PDF accent colour
+        EContentTemplateType.AdvanceInvoicePdf => Color.Success,
+        // Tax receipt for advance — uses a tertiary/purple colour; fall back to Info
+        EContentTemplateType.TaxReceiptForAdvancePdf => Color.Tertiary,
         EContentTemplateType.InvoiceEmail => Color.Primary,
         EContentTemplateType.CreditNoteEmail => Color.Primary,
+        EContentTemplateType.AdvanceInvoiceEmail => Color.Success,
+        EContentTemplateType.TaxReceiptForAdvanceEmail => Color.Tertiary,
         EContentTemplateType.InvitationEmail => Color.Warning,
         EContentTemplateType.ReminderEmail => Color.Error,
         EContentTemplateType.PasswordResetEmail => Color.Warning,
@@ -404,8 +410,12 @@
     {
         EContentTemplateType.InvoicePdf => L["ContentType_InvoicePdf"].Value,
         EContentTemplateType.CreditNotePdf => L["ContentType_CreditNotePdf"].Value,
+        EContentTemplateType.AdvanceInvoicePdf => L["ContentType_AdvanceInvoicePdf"].Value,
+        EContentTemplateType.TaxReceiptForAdvancePdf => L["ContentType_TaxReceiptForAdvancePdf"].Value,
         EContentTemplateType.InvoiceEmail => L["ContentType_InvoiceEmail"].Value,
         EContentTemplateType.CreditNoteEmail => L["ContentType_CreditNoteEmail"].Value,
+        EContentTemplateType.AdvanceInvoiceEmail => L["ContentType_AdvanceInvoiceEmail"].Value,
+        EContentTemplateType.TaxReceiptForAdvanceEmail => L["ContentType_TaxReceiptForAdvanceEmail"].Value,
         EContentTemplateType.InvitationEmail => L["ContentType_InvitationEmail"].Value,
         EContentTemplateType.ReminderEmail => L["ContentType_ReminderEmail"].Value,
         EContentTemplateType.PasswordResetEmail => L["ContentType_PasswordResetEmail"].Value,
