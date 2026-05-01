@@ -68,6 +68,18 @@
     <EmbeddedResource Include="Resources\Isdoc\isdoc-6.0.2.xsd" />
   </ItemGroup>
 
+  <!--
+    EPO XSD schemas — copied to output as plain files so new tax-year schemas can be
+    added without recompiling the assembly. EpoSchemaProvider reads them at runtime
+    from AppContext.BaseDirectory/Resources/Epo/{year}/.
+    Use PreserveNewest so unchanged files are not re-copied on every build.
+  -->
+  <ItemGroup>
+    <None Include="Resources\Epo\**\*.xsd">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
   <!-- Global using for ZMapper so the source generator's output can resolve MapperConfiguration -->
   <ItemGroup>
     <Using Include="ZMapper" />
