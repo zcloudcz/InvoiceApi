@@ -329,4 +329,87 @@ public class GenerateDocumentNumberTests : IDisposable
         // Assert — bare number used, no wrapping
         result.DocumentNumber.ShouldBe("INV2026999");
     }
+
+    /// <summary>
+    /// Edge case: both prefix AND suffix are configured when a template sequence override
+    /// is in effect. Both must be applied exactly once (no double-application).
+    ///
+    /// The implementation has a code comment warning that GenerateNextNumberForDocumentTypeAsync
+    /// (default-sequence path) already embeds prefix/suffix and returns early to avoid this
+    /// double-application. The named-sequence path applies them manually after the call.
+    /// This test verifies the named-sequence path wraps correctly.
+    /// </summary>
+    [Fact]
+    public async Task GenerateDocumentNumber_FromTemplate_ShouldApplyBothPrefixAndSuffix()
+    {
+        // Arrange — client has prefix and suffix; template forces a specific sequence
+        AddBillingSettings(invoicePrefix: "EU-", invoiceSuffix: "-CZ");
+
+        _numberSequence
+            .GenerateNextNumberAsync(TemplateSequenceId, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .Returns("INV2026042");
+
+        var dto = MakeInvoiceDto(numberSequenceId: TemplateSequenceId);
+
+        // Act
+        var result = await _service.CreateInvoiceAsync(dto);
+
+        // Assert — bare number wrapped with both prefix and suffix, applied once
+        result.DocumentNumber.ShouldBe("EU-INV2026042-CZ");
+        result.DocumentNumber.ShouldStartWith("EU-");
+        result.DocumentNumber.ShouldEndWith("-CZ");
+        // Guard against double-application: "EU-EU-..." or "...-CZ-CZ" would fail
+        result.DocumentNumber.ShouldNotContain("EU-EU-");
+        result.DocumentNumber.ShouldNotContain("-CZ-CZ");
+    }
+
+    /// <summary>
+    /// Edge case: client has a custom sequence in BillingSettings (Phase 1 uses client
+    /// custom sequence, not template override) AND an invoice prefix (Phase 2).
+    /// Both phases must operate independently — prefix from Phase 2 must still be applied
+    /// even when Phase 1 resolves to the client's own custom sequence (not template override).
+    /// </summary>
+    [Fact]
+    public async Task GenerateDocumentNumber_ClientCustomSequence_ShouldApplyClientPrefix()
+    {
+        // Arrange — client has a custom sequence AND a "VIP-" prefix; no template override
+        AddBillingSettings(invoicePrefix: "VIP-", customInvoiceSequenceId: ClientCustomSequenceId);
+
+        _numberSequence
+            .GenerateNextNumberAsync(ClientCustomSequenceId, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .Returns("VIP2026001");
+
+        var dto = MakeInvoiceDto(); // no template NumberSequenceId → client custom sequence used
+
+        // Act
+        var result = await _service.CreateInvoiceAsync(dto);
+
+        // Assert — client sequence was used (VIP2026001) AND prefix applied
+        result.DocumentNumber.ShouldBe("VIP-VIP2026001");
+        result.DocumentNumber.ShouldStartWith("VIP-");
+    }
+
+    /// <summary>
+    /// Boundary: prefix/suffix are empty strings (not null). Empty strings must NOT
+    /// be applied (the implementation guards with IsNullOrEmpty). This test ensures
+    /// the guard works so the document number stays clean.
+    /// </summary>
+    [Fact]
+    public async Task GenerateDocumentNumber_EmptyPrefixSuffix_ShouldNotWrapNumber()
+    {
+        // Arrange — BillingSettings present but prefix/suffix are empty strings
+        AddBillingSettings(invoicePrefix: "", invoiceSuffix: "");
+
+        _numberSequence
+            .GenerateNextNumberAsync(TemplateSequenceId, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .Returns("INV2026001");
+
+        var dto = MakeInvoiceDto(numberSequenceId: TemplateSequenceId);
+
+        // Act
+        var result = await _service.CreateInvoiceAsync(dto);
+
+        // Assert — number stays as-is (IsNullOrEmpty guard prevents wrapping with "")
+        result.DocumentNumber.ShouldBe("INV2026001");
+    }
 }
