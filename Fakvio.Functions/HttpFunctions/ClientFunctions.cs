@@ -378,9 +378,13 @@ public class ClientFunctions
         // Wire up the controller's HttpContext so it can access User claims, Request, etc.
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
 
-        // Authorization check: [Authorize] (role check is delegated to the controller)
+        // Authorization check: [Authorize(Roles = "Admin,SysAdmin")]
         if (req.HttpContext.User.Identity?.IsAuthenticated != true)
             return new UnauthorizedResult();
+
+        // Role check: user must be in one of [Admin, SysAdmin]
+        if (!req.HttpContext.User.IsInRole("Admin") && !req.HttpContext.User.IsInRole("SysAdmin"))
+            return new ForbidResult();
 
         // Deserialize request body → SetAdvanceTaxReceiptModeDto
         var dto = await System.Text.Json.JsonSerializer.DeserializeAsync<global::Fakvio.Contracts.Dto.Client.SetAdvanceTaxReceiptModeDto>(req.Body, FunctionResultHelper.JsonOptions, req.HttpContext.RequestAborted);
