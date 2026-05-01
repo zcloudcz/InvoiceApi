@@ -459,6 +459,85 @@ public class InvoiceController : ControllerBase
         }
     }
 
+    // ─── Proforma → Final Invoice ─────────────────────────────────────────────
+
+    /// <summary>
+    /// Issues a final Invoice from a Proforma (advance invoice).
+    /// The returned invoice contains the caller-supplied line items PLUS automatically
+    /// generated "Odečet přijaté zálohy" (advance deduction) rows — one negative row per
+    /// VAT rate found on the proforma, split proportionally by TotalWithVat weight.
+    ///
+    /// Supports 1:N: one proforma can have multiple final invoices, each deducting a portion
+    /// of the advance. The sum of all deductions cannot exceed the proforma's PaidAmount.
+    ///
+    /// The proforma lifecycle is NOT changed by this call — it stays Paid.
+    /// </summary>
+    /// <param name="proformaId">ID of the Proforma to issue against</param>
+    /// <param name="dto">Line items for the new invoice + optional partial deduction amount</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Newly created Invoice with deduction rows</returns>
+    /// <response code="201">Final invoice created successfully</response>
+    /// <response code="400">Validation error (wrong document type, deduction exceeds advance, etc.)</response>
+    /// <response code="404">Proforma not found</response>
+    [HttpPost("{proformaId:long}/issue-final")]
+    [ProducesResponseType(typeof(InvoiceDto), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<InvoiceDto>> IssueFinalInvoice(
+        long proformaId,
+        [FromBody] IssueFinalInvoiceDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("POST /api/invoice/{ProformaId}/issue-final", proformaId);
+
+        try
+        {
+            var finalInvoice = await _invoiceService.IssueFinalInvoiceAsync(proformaId, dto, cancellationToken);
+
+            _logger.LogInformation(
+                "Final invoice {Id} ({DocNum}) issued from proforma {ProformaId}",
+                finalInvoice.Id, finalInvoice.DocumentNumber, proformaId);
+
+            return CreatedAtAction(
+                nameof(GetInvoiceById),
+                new { id = finalInvoice.Id },
+                finalInvoice);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            _logger.LogWarning("Proforma {ProformaId} not found: {Message}", proformaId, ex.Message);
+            return NotFound(new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning("Cannot issue final invoice from proforma {ProformaId}: {Message}", proformaId, ex.Message);
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Returns the remaining advance amount for a proforma:
+    /// proforma.PaidAmount minus the sum of advance deductions already issued
+    /// on all linked final invoices.
+    /// Useful for the UI to pre-fill the deduction amount field.
+    /// </summary>
+    /// <param name="proformaId">Proforma ID</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <response code="200">Remaining advance amount (decimal)</response>
+    /// <response code="404">Proforma not found</response>
+    [HttpGet("{proformaId:long}/remaining-advance")]
+    [ProducesResponseType(typeof(decimal), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<decimal>> GetRemainingAdvance(
+        long proformaId,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("GET /api/invoice/{ProformaId}/remaining-advance", proformaId);
+
+        var remaining = await _invoiceService.GetRemainingAdvanceAsync(proformaId, cancellationToken);
+        return Ok(remaining);
+    }
+
     /// <summary>
     /// Creates a credit note for an existing invoice
     /// Automatically marks the original invoice as creditnoted
