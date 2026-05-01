@@ -68,6 +68,17 @@
     <EmbeddedResource Include="Resources\Isdoc\isdoc-6.0.2.xsd" />
   </ItemGroup>
 
+  <!--
+    EPO XSD schemas — copy-to-output (NOT embedded resource) so a new year's XSD
+    can be added without recompile. EpoSchemaProvider (issue #35) loads them at runtime
+    via AppContext.BaseDirectory. Wildcard covers all years automatically.
+  -->
+  <ItemGroup>
+    <None Update="Resources\Epo\**\*.xsd">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
   <!-- Global using for ZMapper so the source generator's output can resolve MapperConfiguration -->
   <ItemGroup>
     <Using Include="ZMapper" />

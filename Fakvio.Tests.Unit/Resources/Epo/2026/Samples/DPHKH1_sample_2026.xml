@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SYNTHETIC SAMPLE — EPO DPH Kontrolní hlášení (DPHKH1) — zdaňovací období 3/2026.
+  Všechny osobní a firemní údaje jsou FIKTIVNÍ (anonymizovány pro testovací účely).
+  Dokument je určen výhradně pro validaci XSD schématu v unit testech projektu Fakvio.
+
+  Sekce:
+    A.4 — přijatá zdanitelná plnění od plátců, u nichž příjemce uplatňuje nárok na odpočet
+          (faktury do 10 000 Kč včetně DPH — souhrnné; v tomto vzorku 2 záznamy)
+    A.5 — přijatá zdanitelná plnění od plátců, u nichž příjemce uplatňuje nárok na odpočet
+          (faktury nad 10 000 Kč včetně DPH — individuální; v tomto vzorku 1 záznam)
+    B.2 — přijatá zdanitelná plnění, u nichž je příjemce povinen přiznat daň
+          (reverse-charge; v tomto vzorku 1 záznam)
+    B.3 — přijatá zdanitelná plnění v režimu přenesení daňové povinnosti
+          (v tomto vzorku 1 záznam)
+    A.1 — uskutečněná zdanitelná plnění s povinností vystavit daňový doklad
+          (prázdné — v tomto vzorku žádné)
+    B.1 — obchody, u nichž je příjemce povinen přiznat daň a u nichž plátce neuplatní
+          nárok na odpočet (prázdné — v tomto vzorku žádné)
+
+  Zdroj schématu: https://adisspr.mfcr.cz/adistc/adis/idpr_pub/epo2_info/popis_struktury.faces
+  Platné schéma pro rok 2026: epo2_dphkh1_*.xsd
+-->
+<Pisemnost
+    nazev_sw="Fakvio"
+    verzeSW="1.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+
+  <DPHKH1
+      Overeni="N"
+      d_poddp="2026-04-25"
+      k_uladis="KH"
+      shmu="H"
+      rok="2026"
+      zdobd_do="2026-03-31"
+      zdobd_od="2026-03-01"
+      typ_platce="P">
+
+    <!-- Identifikace poplatníka -->
+    <VetaD
+        c_pracufo="3009"
+        c_ufo="3009"
+        c_ufo_spravce="471"
+        d_registrace="2015-01-01"
+        dokument="KH"
+        ic="12345678"
+        jmeno="Vzorová"
+        kodstat="CZ"
+        naz_obce="Praha"
+        phk="A"
+        prijmeni="Firma s.r.o."
+        psc="11000"
+        stat="CZ"
+        typ_ds="F"
+        ulice="Testovací 1"
+        zast_dos="N"
+        zast_podp="N"
+        zdph="A"
+        znacka="KH1"/>
+
+    <!--
+      Sekce A.4 — přijatá zdanitelná plnění (faktury do 10 000 Kč vč. DPH), souhrnně.
+      Každý VetaA4 reprezentuje jedno DIČ dodavatele.
+    -->
+    <VetaA4
+        c_evid_dd="2026-03-001"
+        d_uzp="2026-03-15"
+        dan="210.00"
+        ic_dod="87654321"
+        obrat="1000.00"
+        rozd="21"/>
+
+    <VetaA4
+        c_evid_dd="2026-03-002"
+        d_uzp="2026-03-20"
+        dan="126.00"
+        ic_dod="11223344"
+        obrat="600.00"
+        rozd="21"/>
+
+    <!--
+      Sekce A.5 — přijatá zdanitelná plnění (faktury nad 10 000 Kč vč. DPH), individuálně.
+      Každý VetaA5 je jeden doklad.
+    -->
+    <VetaA5
+        c_evid_dd="FV2026-0042"
+        d_uzp="2026-03-10"
+        dan1="2100.00"
+        dan2="0.00"
+        ic_dod="98765432"
+        obrat1="10000.00"
+        obrat2="0.00"
+        pomer="N"/>
+
+    <!--
+      Sekce B.2 — přijatá zdanitelná plnění, u nichž je příjemce povinen přiznat daň
+      (reverse-charge na plnění z EU nebo jiný §).
+    -->
+    <VetaB2
+        c_evid_dd="EU2026-001"
+        d_uzp="2026-03-08"
+        dan="630.00"
+        kodzboz="4"
+        obrat="3000.00"
+        rezim="0"/>
+
+    <!--
+      Sekce B.3 — přijatá plnění v režimu přenesení daňové povinnosti (§92a ZDPH).
+    -->
+    <VetaB3
+        c_evid_dd="PDP2026-001"
+        d_uzp="2026-03-12"
+        dan="420.00"
+        ic_dod="55667788"
+        kodzboz="1"
+        obrat="2000.00"/>
+
+  </DPHKH1>
+</Pisemnost>

@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SYNTHETIC SAMPLE — EPO DPH Přiznání (DPHDP3) — zdaňovací období 3/2026.
+  Všechny osobní a firemní údaje jsou FIKTIVNÍ (anonymizovány pro testovací účely).
+  Dokument je určen výhradně pro validaci XSD schématu v unit testech projektu Fakvio.
+
+  Zdroj schématu: https://adisspr.mfcr.cz/adistc/adis/idpr_pub/epo2_info/popis_struktury.faces
+  Platné schéma pro rok 2026: epo2_dphdp3_*.xsd
+-->
+<Pisemnost
+    nazev_sw="Fakvio"
+    verzeSW="1.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+
+  <DPHDP3
+      Overeni="N"
+      d_poddp="2026-04-25"
+      k_uladis="DPH"
+      shmu="H"
+      rok="2026"
+      zdobd_od="2026-03-01"
+      zdobd_do="2026-03-31"
+      typ_platce="P">
+
+    <!-- Identifikace poplatníka -->
+    <VetaD
+        c_pracufo="3009"
+        c_ufo="3009"
+        c_ufo_spravce="471"
+        cod_det_seznam="A"
+        cod_det_seznam2="A"
+        d_registrace="2015-01-01"
+        dokument="DP"
+        jmeno="Vzorová"
+        kodstat="CZ"
+        naz_obce="Praha"
+        phk="A"
+        porizeni_det_seznam="A"
+        porizeni_det_seznam2="A"
+        prijmeni="Firma s.r.o."
+        psc="11000"
+        stat="CZ"
+        typ_ds="F"
+        ulice="Testovací 1"
+        zast_dos="N"
+        zast_podp="N"
+        zdph="A"
+        znacka="DP3"/>
+
+    <!-- Daňové přiznání — řádky -->
+    <VetaR
+        dan1="1050.00"
+        dan2="63.00"
+        r_01="5000.00"
+        r_02="420.00"
+        r_03="0.00"
+        r_04="0.00"
+        r_05="0.00"
+        r_06="0.00"
+        r_07="0.00"
+        r_08="0.00"
+        r_09="0.00"
+        r_10="0.00"
+        r_11="0.00"
+        r_12="0.00"
+        r_13="5000.00"
+        r_14="420.00"
+        r_20="0.00"
+        r_21="0.00"
+        r_22="0.00"
+        r_23="0.00"
+        r_24="0.00"
+        r_25="0.00"
+        r_26="0.00"
+        r_30="1050.00"
+        r_31="63.00"
+        r_32="0.00"
+        r_33="0.00"
+        r_34="0.00"
+        r_40="0.00"
+        r_41="0.00"
+        r_42="0.00"
+        r_43="0.00"
+        r_44="0.00"
+        r_45="0.00"
+        r_46="0.00"
+        r_47="0.00"
+        r_50="1050.00"
+        r_51="63.00"
+        r_52="0.00"
+        r_53="0.00"
+        r_54="0.00"
+        r_55="0.00"
+        r_60="1050.00"
+        r_61="63.00"
+        r_62="0.00"
+        r_63="0.00"
+        r_64="0.00"
+        r_65="0.00"
+        r_66="0.00"
+        r_70="0.00"
+        r_71="0.00"
+        r_72="0.00"
+        r_73="0.00"
+        r_74="0.00"
+        r_75="0.00"
+        r_80="0.00"/>
+
+  </DPHDP3>
+</Pisemnost>

@@ -410,6 +410,74 @@ context.InstanceServices       ← Functions Worker scope (kde žije Function cl
 - 21 tools: 8 invoice + 6 client + 3 template + 4 reporting.
 - Konfigurace v Claude Desktop / Claude Code: spustí `fakvio-mcp-server` jako subprocess se stdio piping.
 
+### 4.9 EPO XML export (DPH přiznání + kontrolní hlášení)
+
+EPO = Elektronické podání pro Finanční správu (adisspr.mfcr.cz). Formuláře jsou:
+- **DPHDP3** — přiznání k DPH (měsíční / čtvrtletní)
+- **DPHKH1** — kontrolní hlášení (sekce A.1–A.5, B.1–B.3)
+
+#### Architektura (story #3)
+
+| Vrstva | Třída | Zodpovědnost |
+|--------|-------|--------------|
+| Application | `IEpoSchemaProvider` | Kontrakt — vrátí `XmlSchemaSet` pro zadaný formulář a rok |
+| Infrastructure | `EpoSchemaProvider` | Načte XSD ze souborového systému, cachuje per (typ, rok) |
+| Infrastructure | `EpoVatReturnMapper` | Sestaví DPHDP3 `XDocument` z `VatReportResult` |
+| Infrastructure | `EpoControlStatementMapper` | Sestaví DPHKH1 `XDocument` včetně rozdělení A.1–A.5, B.1–B.3 |
+| Application | `IVatReportService` | Rozšíří o `ExportEpoVatReturnAsync` + `ExportEpoControlStatementAsync` |
+
+#### XSD schémata — umístění a načítání
+
+Schémata jsou **copy-to-output** (NE embedded resource) — přidání nového roku nevyžaduje recompile:
+
+```
+Fakvio.Infrastructure/Resources/Epo/
+└── 2026/
+    ├── dphdp3.xsd
+    └── dphkh1.xsd
+```
+
+`EpoSchemaProvider` sestavuje cestu dynamicky:
+```csharp
+Path.Combine(AppContext.BaseDirectory, "Resources", "Epo", year.ToString(), fileName)
+```
+
+Pokud rok nebo formulář neexistuje, vyhodí `NotSupportedException` se zprávou obsahující rok i typ.
+
+#### Roční update XSD — stručný postup
+
+Plný postup viz `Fakvio.Infrastructure/Resources/Epo/EPO-README.md`. Zkráceně:
+
+1. Stáhni `epo2_dphdp3_YYYY*.xsd` + `epo2_dphkh1_YYYY*.xsd` z:
+   ```
+   https://adisspr.mfcr.cz/adistc/adis/idpr_pub/epo2_info/popis_struktury.faces
+   ```
+2. Ulož jako `Fakvio.Infrastructure/Resources/Epo/{rok}/dphdp3.xsd` a `dphkh1.xsd`.
+3. Přidej sample fixture do `Fakvio.Tests.Unit/Resources/Epo/{rok}/Samples/` (vzor: rok 2026).
+4. Spusť `dotnet test --filter EpoFixtureValidationTests` — musí projít.
+5. `EpoSchemaProvider` najde nový rok automaticky (žádná změna kódu).
+
+#### Struktura DPHKH1 — sekce
+
+| Sekce | XML element | Podmínka | Popis |
+|-------|-------------|----------|-------|
+| A.1 | `VetaA1` | Uskutečněná zdanitelná plnění s povinností vystavit doklad (nad 10k Kč) | B2B výstupy individuálně |
+| A.4 | `VetaA4` | Přijatá plnění ≤ 10 000 Kč vč. DPH | Souhrnně per DIČ dodavatele |
+| A.5 | `VetaA5` | Přijatá plnění > 10 000 Kč vč. DPH | Individuálně per doklad |
+| B.2 | `VetaB2` | Reverse-charge (§ 108 odst. 1 písm. b, c) | Příjemce přiznává DPH |
+| B.3 | `VetaB3` | Přenesení daňové povinnosti (§ 92a ZDPH) | Stavebnictví, kovový šrot, … |
+
+Prázdné sekce se do XML nevkládají (žádné prázdné elementy).
+
+#### Sample fixtures (issue #42)
+
+Syntetické anonymizované vzorky v `Fakvio.Tests.Unit/Resources/Epo/2026/Samples/`:
+- `DPHDP3_sample_2026.xml` — přiznání za 3/2026, fiktivní firma „Vzorová Firma s.r.o."
+- `DPHKH1_sample_2026.xml` — kontrolní hlášení za 3/2026, sekce A.4, A.5, B.2, B.3 naplněné; A.1, B.1 prázdné
+
+Unit testy: `EpoFixtureValidationTests` — ověří well-formed XML, kořenové elementy, přítomnost sekcí.
+XSD validace testů je připravena (zakomentovaná), odblokuje se po merge issue #35.
+
 ---
 
 ## 5. Datová vrstva
