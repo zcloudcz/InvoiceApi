@@ -1,5 +1,6 @@
 using Fakvio.Contracts.Common.Pagination;
 using Fakvio.Contracts.Dto.Client;
+using Fakvio.Domain.Enums;
 
 namespace Fakvio.Application.Service;
 
@@ -122,4 +123,21 @@ public interface IClientService
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Updated client or null if not found</returns>
     Task<ClientDto?> AddBankAccountAsync(long clientId, CreateBankAccountDto bankAccountDto, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the advance tax receipt mode from the issuer's BillingSettings.
+    /// Returns the default (OnPaymentMatch) when BillingSettings are not yet configured.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Current mode, or null when the issuer is not found</returns>
+    Task<EAdvanceTaxReceiptMode?> GetAdvanceTaxReceiptModeAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Persists the advance tax receipt mode on the issuer's BillingSettings.
+    /// Creates BillingSettings when the issuer does not have one yet.
+    /// </summary>
+    /// <param name="mode">The new mode value</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>True on success, false when the issuer is not found</returns>
+    Task<bool> SetAdvanceTaxReceiptModeAsync(EAdvanceTaxReceiptMode mode, CancellationToken cancellationToken = default);
 }

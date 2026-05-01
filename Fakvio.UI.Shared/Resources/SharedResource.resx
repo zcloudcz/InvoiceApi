@@ -1017,6 +1017,11 @@
   <data name="Billing_BankAccount" xml:space="preserve"><value>Bankovní účet</value></data>
   <data name="Billing_Notes" xml:space="preserve"><value>Poznámky</value></data>
   <data name="Billing_NotConfigured" xml:space="preserve"><value>Fakturační nastavení není nakonfigurováno</value></data>
+  <data name="Billing_AdvanceTaxReceiptMode" xml:space="preserve"><value>Auto-překlop zálohy na daňový doklad</value></data>
+  <!-- EAdvanceTaxReceiptMode enum values — convention: {EnumTypeName}_{EnumValue} -->
+  <data name="EAdvanceTaxReceiptMode_Disabled" xml:space="preserve"><value>Vypnuto (ruční překlop)</value></data>
+  <data name="EAdvanceTaxReceiptMode_OnPaymentMatch" xml:space="preserve"><value>Při automatickém spárování platby</value></data>
+  <data name="EAdvanceTaxReceiptMode_OnAnyPayment" xml:space="preserve"><value>Při jakékoliv přijaté platbě</value></data>
 
   <!-- AI Chat -->
   <data name="Chat_Title" xml:space="preserve"><value>AI Asistent</value></data>

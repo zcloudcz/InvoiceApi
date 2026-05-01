@@ -4,6 +4,7 @@ using Fakvio.Contracts.Common.Pagination;
 using Fakvio.Contracts.Dto.Client;
 using Fakvio.Application.Service;
 using Fakvio.Domain.Entities;
+using Fakvio.Domain.Enums;
 using Fakvio.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -507,6 +508,9 @@ public class ClientService : IClientService
                 client.BillingSettings.BankAccountNumber = bs.BankAccountNumber;
             if (bs.Notes != null)
                 client.BillingSettings.Notes = bs.Notes;
+            // Null means "keep existing" (partial update pattern) — only update when a value is provided
+            if (bs.AdvanceTaxReceiptMode.HasValue)
+                client.BillingSettings.AdvanceTaxReceiptMode = bs.AdvanceTaxReceiptMode.Value;
         }
 
         await _context.SaveChangesAsync(cancellationToken);
@@ -726,10 +730,72 @@ public class ClientService : IClientService
         client.BillingSettings.DefaultPaymentMethod = settingsDto.DefaultPaymentMethod;
         client.BillingSettings.BankAccountNumber = settingsDto.BankAccountNumber;
         client.BillingSettings.Notes = settingsDto.Notes;
+        // Preserve AdvanceTaxReceiptMode — it is set via the dedicated
+        // PUT /api/client/issuer/advance-tax-receipt-mode endpoint.
+        // The CreateBillingSettingsDto default (OnPaymentMatch) is intentionally
+        // NOT applied here so that an existing choice is never silently reset.
+        client.BillingSettings.AdvanceTaxReceiptMode = settingsDto.AdvanceTaxReceiptMode;
 
         await _context.SaveChangesAsync(cancellationToken);
 
         return await GetClientByIdAsync(clientId, cancellationToken);
+    }
+
+    // ─── Advance Tax Receipt Mode ──────────────────────────────────────────────
+
+    /// <summary>
+    /// Reads the advance-tax-receipt auto-conversion mode from the issuer's BillingSettings.
+    /// When BillingSettings do not exist yet, returns the default (OnPaymentMatch) so callers
+    /// always get a valid value without having to handle null.
+    /// Returns null only when the issuer itself is not found (tenant not fully provisioned).
+    /// </summary>
+    public async Task<EAdvanceTaxReceiptMode?> GetAdvanceTaxReceiptModeAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var issuer = await _context.Client
+            .AsNoTracking()
+            .Include(c => c.BillingSettings)
+            .FirstOrDefaultAsync(c => c.IsIssuer, cancellationToken);
+
+        if (issuer == null)
+            return null;
+
+        // BillingSettings are optional — fall back to the default when not yet configured
+        return issuer.BillingSettings?.AdvanceTaxReceiptMode
+               ?? EAdvanceTaxReceiptMode.OnPaymentMatch;
+    }
+
+    /// <summary>
+    /// Saves the advance-tax-receipt mode on the issuer's BillingSettings.
+    /// Creates BillingSettings with sensible defaults when the issuer does not have them yet,
+    /// then sets the requested mode. Returns false only when the issuer itself is missing.
+    /// </summary>
+    public async Task<bool> SetAdvanceTaxReceiptModeAsync(
+        EAdvanceTaxReceiptMode mode,
+        CancellationToken cancellationToken = default)
+    {
+        var issuer = await _context.Client
+            .Include(c => c.BillingSettings)
+            .FirstOrDefaultAsync(c => c.IsIssuer, cancellationToken);
+
+        if (issuer == null)
+            return false;
+
+        if (issuer.BillingSettings == null)
+        {
+            // First time setting billing — create with sensible defaults so we
+            // don't leave the record in a half-initialised state.
+            issuer.BillingSettings = new BillingSettings
+            {
+                ClientId = issuer.Id,
+                DueDateCalculationType = Domain.Enums.EDueDateCalculationType.DaysFromIssue,
+                DueDays = 14
+            };
+        }
+
+        issuer.BillingSettings.AdvanceTaxReceiptMode = mode;
+        await _context.SaveChangesAsync(cancellationToken);
+        return true;
     }
 
 }
