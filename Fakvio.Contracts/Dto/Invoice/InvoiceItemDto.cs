@@ -3,7 +3,7 @@ using Fakvio.Domain.Enums;
 namespace Fakvio.Contracts.Dto.Invoice;
 
 /// <summary>
-/// DTO for invoice item (line item)
+/// DTO for invoice item (line item) — returned by GET endpoints.
 /// </summary>
 public class InvoiceItemDto
 {
@@ -34,16 +34,20 @@ public class InvoiceItemDto
     public string? Notes { get; set; }
 
     /// <summary>
-    /// VAT accounting regime for this line item.
+    /// VAT accounting regime for this line item (read-only from server).
     /// Standard = normal VAT; ReverseCharge = PDP §92a–92e ZDPH (buyer self-accounts);
     /// Exempt = no VAT; OutOfScope = outside VAT scope entirely.
     /// Default is <see cref="EVatRegime.Standard"/>.
+    /// Write-through will be introduced in issue #45 with ReverseChargeCodeId validation.
     /// </summary>
     public EVatRegime VatRegime { get; set; } = EVatRegime.Standard;
 }
 
 /// <summary>
-/// DTO for creating an invoice item
+/// DTO for creating an invoice item.
+/// NOTE: VatRegime is intentionally omitted — write-through will be introduced
+/// in issue #45 together with ReverseChargeCodeId validation
+/// (a PDP line without a commodity code is legally invalid per §92a–92e ZDPH).
 /// </summary>
 public class CreateInvoiceItemDto
 {
@@ -97,13 +101,6 @@ public class CreateInvoiceItemDto
     public decimal VatRatePercentage { get; set; }
 
     /// <summary>
-    /// VAT accounting regime for this line item.
-    /// Defaults to <see cref="EVatRegime.Standard"/> if not specified.
-    /// Set to <see cref="EVatRegime.ReverseCharge"/> for PDP (přenesená daňová povinnost).
-    /// </summary>
-    public EVatRegime VatRegime { get; set; } = EVatRegime.Standard;
-
-    /// <summary>
     /// Optional product code for linking to product catalog
     /// </summary>
     public string? ProductCode { get; set; }
@@ -115,7 +112,10 @@ public class CreateInvoiceItemDto
 }
 
 /// <summary>
-/// DTO for updating an invoice item
+/// DTO for updating an invoice item.
+/// NOTE: VatRegime is intentionally omitted — write-through will be introduced
+/// in issue #45 together with ReverseChargeCodeId validation
+/// (a PDP line without a commodity code is legally invalid per §92a–92e ZDPH).
 /// </summary>
 public class UpdateInvoiceItemDto
 {
@@ -136,11 +136,8 @@ public class UpdateInvoiceItemDto
     /// </summary>
     public decimal? VatRatePercentage { get; set; }
 
-    /// <summary>
-    /// VAT accounting regime for this line item.
-    /// When null, the existing value is preserved.
-    /// </summary>
-    public EVatRegime? VatRegime { get; set; }
+    // NOTE: VatRegime intentionally omitted — write-through arrives in issue #45
+    // with ReverseChargeCodeId validation (a PDP line without a code is legally invalid).
 
     public string? ProductCode { get; set; }
     public string? Notes { get; set; }

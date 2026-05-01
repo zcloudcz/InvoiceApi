@@ -15,7 +15,11 @@ namespace Fakvio.Tests.Unit;
 ///   - Enum values have correct integers (never accidentally change stored DB values).
 ///   - Newly created InvoiceItem defaults to Standard (backward-compatible).
 ///   - VatRegime is persisted and retrieved correctly from InMemory DB.
-///   - ZMapper maps VatRegime from InvoiceItem to InvoiceItemDto.
+///   - ZMapper maps VatRegime from InvoiceItem to InvoiceItemDto (read DTO).
+///
+/// VatRegime is intentionally absent from CreateInvoiceItemDto and UpdateInvoiceItemDto.
+/// Write-through will be introduced in issue #45 with ReverseChargeCodeId validation
+/// (a PDP line without a commodity code is legally invalid per §92a–92e ZDPH).
 /// </summary>
 public class EVatRegimeTests : IDisposable
 {
@@ -177,22 +181,12 @@ public class EVatRegimeTests : IDisposable
         dto.VatRegime.ShouldBe(EVatRegime.Standard);
     }
 
-    // ─── DTO default value test ───────────────────────────────────────────────
-
-    [Fact]
-    public void CreateInvoiceItemDto_VatRegime_DefaultsToStandard()
-    {
-        // Client-side: CreateInvoiceItemDto must default to Standard
-        // so that existing callers that don't set VatRegime get the correct value.
-        var dto = new CreateInvoiceItemDto();
-
-        dto.VatRegime.ShouldBe(EVatRegime.Standard);
-    }
+    // ─── DTO read default test ────────────────────────────────────────────────
 
     [Fact]
     public void InvoiceItemDto_VatRegime_DefaultsToStandard()
     {
-        // Response DTO must also default to Standard (for safe deserialization of older payloads).
+        // Response DTO must default to Standard (for safe deserialization of older payloads).
         var dto = new InvoiceItemDto();
 
         dto.VatRegime.ShouldBe(EVatRegime.Standard);
