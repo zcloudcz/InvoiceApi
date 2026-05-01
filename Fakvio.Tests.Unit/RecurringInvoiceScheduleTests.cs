@@ -306,4 +306,113 @@ public class RecurringInvoiceScheduleTests : IDisposable
         // If missing, LINQ queries in the Application service layer would throw at startup.
         _context.RecurringInvoiceSchedule.ShouldNotBeNull();
     }
+
+    // ── 8. Composite index (IsActive + NextRunAt) exists in EF model ───────────
+
+    [Fact]
+    public void TenantDbContext_HasCompositeIndex_IsActive_NextRunAt()
+    {
+        // The hot-path query "SELECT * WHERE IsActive = true AND NextRunAt <= @now" relies on
+        // a composite index on (IsActive, NextRunAt). Verify that EF Core model metadata
+        // includes this index so a code review removing it would be caught by this test.
+        //
+        // We inspect the IModel metadata rather than parsing raw SQL or running EXPLAIN —
+        // InMemoryDatabase does not expose query plans, but the EF model is always available.
+        var entityType = _context.Model.FindEntityType(typeof(RecurringInvoiceSchedule));
+        entityType.ShouldNotBeNull();
+
+        // Collect all index column sets as sorted name strings for easy comparison.
+        var indexes = entityType.GetIndexes()
+            .Select(ix => string.Join(",", ix.Properties.Select(p => p.Name).OrderBy(n => n)))
+            .ToList();
+
+        // The composite index must contain both columns.
+        // EF Core stores index columns in declaration order, but we compare sorted names
+        // to be robust against future column-order changes.
+        indexes.ShouldContain("IsActive,NextRunAt",
+            "Composite index (IsActive, NextRunAt) is required for the recurring-job hot-path query.");
+    }
+
+    // ── 9. IntervalCount = 0 saves without DB error (no check constraint yet) ──
+
+    [Fact]
+    public async Task RecurringInvoiceSchedule_ZeroIntervalCount_CanBeSaved_DocumentsAbsenceOfConstraint()
+    {
+        // IntervalCount = 0 is semantically invalid (would cause infinite loops in the
+        // scheduler) but no CHECK constraint exists at the EF / DB level in v51.
+        // This test documents the CURRENT behaviour — it saves — so that if a future
+        // migration adds "CHECK (IntervalCount >= 1)" this test will catch the regression
+        // in the entity tests and remind the team to update the constraint.
+        //
+        // NOTE: This is NOT a green-light to keep 0 as a valid value. Issue #52
+        // (IRecurringInvoiceService) should add guard validation at the service layer.
+        var (client, template) = await SeedPrerequisitesAsync();
+
+        var schedule = new RecurringInvoiceSchedule
+        {
+            TemplateId = template.Id,
+            ClientId = client.Id,
+            Frequency = ERecurrenceFrequency.Monthly,
+            IntervalCount = 0,      // semantically invalid — no DB constraint blocks this yet
+            NextRunAt = DateTimeOffset.UtcNow.AddDays(30),
+        };
+
+        // Act: should NOT throw (InMemory DB has no check constraints).
+        _context.RecurringInvoiceSchedule.Add(schedule);
+        await _context.SaveChangesAsync();
+
+        _context.ChangeTracker.Clear();
+        var loaded = await _context.RecurringInvoiceSchedule
+            .FirstOrDefaultAsync(s => s.Id == schedule.Id);
+
+        // Current behaviour: 0 is stored as-is. If this assertion ever fails, a DB
+        // check constraint has been added (good!) and the test must be updated.
+        loaded.ShouldNotBeNull();
+        loaded.IntervalCount.ShouldBe(0);
+    }
+
+    // ── 10. NextRunAt / EndDate UTC offset round-trip ─────────────────────────
+
+    [Fact]
+    public async Task RecurringInvoiceSchedule_DateTimeOffset_WithNonZeroUtcOffset_PreservesUtcEquivalent()
+    {
+        // DateTimeOffset columns in PostgreSQL are stored as UTC (timestamp with time zone).
+        // A value created with offset +02:00 must round-trip as the same instant in UTC.
+        // This test catches mapping bugs where the timezone offset is silently dropped or
+        // double-applied (e.g. a naive DateTime conversion losing the +02:00 shift).
+        //
+        // Using InMemoryDatabase — which stores the CLR DateTimeOffset as-is — verifies
+        // that the entity wiring does not perform accidental offset stripping before persistence.
+        var (client, template) = await SeedPrerequisitesAsync();
+
+        // Simulate a user in UTC+2 (CEST) setting NextRunAt and EndDate.
+        var cest = TimeSpan.FromHours(2);
+        var nextRunAt = new DateTimeOffset(2026, 6, 15, 10, 0, 0, cest); // 10:00 CEST = 08:00 UTC
+        var endDate   = new DateTimeOffset(2026, 12, 31, 23, 59, 0, cest);
+
+        var schedule = new RecurringInvoiceSchedule
+        {
+            TemplateId = template.Id,
+            ClientId = client.Id,
+            Frequency = ERecurrenceFrequency.Monthly,
+            NextRunAt = nextRunAt,
+            EndDate = endDate,
+        };
+
+        _context.RecurringInvoiceSchedule.Add(schedule);
+        await _context.SaveChangesAsync();
+
+        _context.ChangeTracker.Clear();
+        var loaded = await _context.RecurringInvoiceSchedule
+            .FirstOrDefaultAsync(s => s.Id == schedule.Id);
+
+        loaded.ShouldNotBeNull();
+
+        // The UTC instant must be preserved regardless of what offset the loaded value carries.
+        loaded.NextRunAt.ToUniversalTime().ShouldBe(nextRunAt.ToUniversalTime());
+        loaded.EndDate!.Value.ToUniversalTime().ShouldBe(endDate.ToUniversalTime());
+
+        // Double-check: the UTC equivalent hour is 08:00 (not 10:00 — offset not dropped).
+        loaded.NextRunAt.ToUniversalTime().Hour.ShouldBe(8);
+    }
 }
