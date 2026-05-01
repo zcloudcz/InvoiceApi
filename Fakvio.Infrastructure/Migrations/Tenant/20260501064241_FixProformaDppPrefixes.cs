@@ -17,6 +17,10 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
     ///
     /// UPDATE is guarded with a WHERE clause so re-running is safe (idempotent).
     /// The Down() restores the original values in case a rollback is needed.
+    ///
+    /// Note: AddProformaDocumentType was also edited to seed the correct prefixes
+    /// for fresh tenant DBs. This fix-up migration handles DBs that already ran
+    /// AddProformaDocumentType with the old prefix values.
     /// </summary>
     public partial class FixProformaDppPrefixes : Migration
     {
