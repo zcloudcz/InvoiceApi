@@ -139,6 +139,11 @@ public static class ServiceCollectionExtensions
         // Tax estimation — calculates income tax, social/health insurance for CZ/SK self-employed.
         services.AddScopedWithLogging<ITaxEstimationService, TaxEstimationService>();
 
+        // EPO schema provider — singleton because XmlSchemaSet compilation is expensive
+        // and the result is immutable (read-only after Compile()). The provider caches
+        // per (formType, year) so each XSD is compiled once per process lifetime.
+        services.AddSingleton<IEpoSchemaProvider, EpoSchemaProvider>();
+
         // Tenant provisioning — creates, migrates, activates/deactivates tenant schemas.
         // SysAdmin uses this through CompanyController to manage tenant lifecycle.
         services.AddScopedWithLogging<ITenantProvisioningService, TenantProvisioningService>();
