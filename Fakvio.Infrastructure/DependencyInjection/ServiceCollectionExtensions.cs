@@ -130,6 +130,12 @@ public static class ServiceCollectionExtensions
         services.AddScopedWithLogging<IDashboardService, DashboardService>();
         services.AddScopedWithLogging<IReceivedInvoiceService, ReceivedInvoiceService>();
         services.AddScopedWithLogging<IVatReportService, VatReportService>();
+
+        // ── Advance Tax Receipt (DPP) ──────────────────────────────────────────
+        // Issues a TaxReceiptForAdvance (daňový doklad o přijaté platbě) when a
+        // pro-forma is paid. Called by PaymentMatchingService and InvoiceService
+        // depending on the tenant's EAdvanceTaxReceiptMode setting.
+        services.AddScopedWithLogging<IAdvanceTaxReceiptService, AdvanceTaxReceiptService>();
         services.AddScopedWithLogging<ISystemConfigurationService, SystemConfigurationService>();
 
         // Payment reminders (dunning) — settings CRUD, dunning job, manual send/cancel.

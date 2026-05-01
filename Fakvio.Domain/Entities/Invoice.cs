@@ -242,4 +242,16 @@ public class Invoice : BaseEntity
     /// Used by the Payments panel on InvoiceDetail to show paid/remaining split.
     /// </summary>
     public ICollection<PaymentMatch> PaymentMatch { get; set; } = new List<PaymentMatch>();
+
+    /// <summary>
+    /// Signals that this document requires manual review or attention.
+    ///
+    /// Currently set to true by AdvanceTaxReceiptService when:
+    ///   - A tax receipt for advance (DPP) was issued for an OVERPAYMENT amount
+    ///     (paidAmount exceeded the pro-forma total). The accountant must verify
+    ///     whether the overpayment should be returned, credited, or handled otherwise.
+    ///
+    /// Future: issue #8 will expose this flag in the UI grid and Dashboard "Alerts" tile.
+    /// </summary>
+    public bool HasAlert { get; set; } = false;
 }

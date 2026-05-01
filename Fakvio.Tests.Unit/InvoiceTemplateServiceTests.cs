@@ -45,7 +45,11 @@ public class InvoiceTemplateServiceTests : IDisposable
                 Arg.Any<CancellationToken>())
             .Returns("INV2026001");
 
-        _invoiceService = new InvoiceService(_context, _numberSequence, _invoiceLogger);
+        _invoiceService = new InvoiceService(
+            _context,
+            _numberSequence,
+            Substitute.For<IAdvanceTaxReceiptService>(),
+            _invoiceLogger);
         _templateService = new InvoiceTemplateService(_context, _invoiceService, _templateLogger);
 
         SeedTestData();

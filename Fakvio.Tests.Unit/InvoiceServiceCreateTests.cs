@@ -41,7 +41,11 @@ public class InvoiceServiceCreateTests : IDisposable
                 Arg.Any<CancellationToken>())
             .Returns("INV-2026-042");
 
-        _service = new InvoiceService(_context, _numberSequence, _logger);
+        // IAdvanceTaxReceiptService is stubbed — create tests cover invoice creation,
+        // not the DPP creation triggered by MarkAsPaid on pro-forma invoices.
+        var advanceTaxReceiptService = Substitute.For<IAdvanceTaxReceiptService>();
+
+        _service = new InvoiceService(_context, _numberSequence, advanceTaxReceiptService, _logger);
 
         SeedTestData();
     }

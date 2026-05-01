@@ -193,6 +193,7 @@ public class ImapPollService : IImapPollService
         var parser = tenantScope.ServiceProvider.GetRequiredService<IBankEmailParser>();
         var matcher = new PaymentMatchingService(
             tenantCtx,
+            tenantScope.ServiceProvider.GetRequiredService<IAdvanceTaxReceiptService>(),
             tenantScope.ServiceProvider.GetRequiredService<ILogger<PaymentMatchingService>>());
         var processor = new InboundEmailProcessor(
             tenantCtx,
