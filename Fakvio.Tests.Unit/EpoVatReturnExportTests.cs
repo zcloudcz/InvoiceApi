@@ -259,6 +259,47 @@ public class EpoVatReturnExportTests : IDisposable
         await Should.NotThrowAsync(() => _service.ExportEpoVatReturnAsync(2026, 4, EVatPeriodType.Quarterly));
     }
 
+    [Fact]
+    public async Task ExportEpoVatReturnAsync_IssuerHasNoEpoTaxOfficeCode_ThrowsInvalidOperation()
+    {
+        // VetaP/@c_ufo is required by the EPO XSD. When Client.EpoTaxOfficeCode is null the
+        // service must fail fast with an actionable error rather than generating invalid XML.
+        var options = new DbContextOptionsBuilder<TenantDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+
+        await using var context = new TenantDbContext(options);
+
+        context.Currency.Add(new Currency
+        {
+            Id = 1, Code = "CZK", Name = "Czech Koruna", Symbol = "Kč",
+            DecimalPlaces = 2, SortOrder = 1, IsActive = true
+        });
+
+        // Issuer deliberately missing EpoTaxOfficeCode (null).
+        context.Client.Add(new Client
+        {
+            Id = 1,
+            CompanyName = "Unconfigured Firma s.r.o.",
+            RegistrationNumber = "99999999",
+            TaxNumber = "CZ99999999",
+            IsIssuer = true,
+            IsActive = true,
+            EpoTaxOfficeCode = null      // the gap under test
+        });
+
+        await context.SaveChangesAsync();
+
+        var logger = Substitute.For<ILogger<VatReportService>>();
+        var service = new VatReportService(context, _schemaProvider, _currencyService, logger);
+
+        var ex = await Should.ThrowAsync<InvalidOperationException>(
+            () => service.ExportEpoVatReturnAsync(2026, 3, EVatPeriodType.Monthly));
+
+        // The message must name the missing field so the operator knows what to configure.
+        ex.Message.ShouldContain("EpoTaxOfficeCode");
+    }
+
     // =========================================================================
     // 2. XSD validity — generated XML must validate against 2026 DPHDP3 schema
     // =========================================================================
