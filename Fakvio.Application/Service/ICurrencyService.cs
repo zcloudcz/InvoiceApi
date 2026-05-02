@@ -56,4 +56,25 @@ public interface ICurrencyService
     /// Cannot delete currency that is used in invoices or as client preferred currency
     /// </summary>
     Task<bool> DeleteCurrencyAsync(long currencyId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Converts an amount in the given foreign currency to CZK using the ČNB exchange rate
+    /// for the specified date (DUZP — date of taxable supply).
+    ///
+    /// If <paramref name="currencyCode"/> is already "CZK", returns <paramref name="amount"/> unchanged.
+    /// If no rate is available for the given date, falls back to the most recent available rate.
+    ///
+    /// Used by the EPO DPHDP3 generator to normalise non-CZK invoice amounts before
+    /// mapping them to the XML rows (all EPO amounts are reported in whole CZK).
+    /// </summary>
+    /// <param name="amount">Amount in <paramref name="currencyCode"/>.</param>
+    /// <param name="currencyCode">ISO 4217 code, e.g. "EUR", "USD".</param>
+    /// <param name="date">Date of taxable supply (DUZP) for which to look up the ČNB rate.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Equivalent amount in CZK, rounded to 2 decimal places.</returns>
+    Task<decimal> ConvertToCzkAsync(
+        decimal amount,
+        string currencyCode,
+        DateOnly date,
+        CancellationToken cancellationToken = default);
 }
