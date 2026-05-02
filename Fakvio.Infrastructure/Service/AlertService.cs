@@ -79,12 +79,14 @@ public class AlertService : IAlertService
         if (unresolvedOnly)
             query = query.Where(a => a.ResolvedAt == null);
 
-        var alerts = await query
+        // Materialize the entity list first, then map to DTO in memory.
+        // EF Core cannot translate a static C# method (MapToDto) to SQL,
+        // so we must not call it inside an IQueryable projection.
+        var entities = await query
             .OrderByDescending(a => a.CreatedAt)
-            .Select(a => MapToDto(a))
             .ToListAsync(ct);
 
-        return alerts;
+        return entities.Select(MapToDto).ToList();
     }
 
     /// <inheritdoc />
@@ -96,13 +98,16 @@ public class AlertService : IAlertService
             .CountAsync(a => a.ResolvedAt == null, ct);
 
         // Retrieve up to 5 most recent open alerts for the tile list.
-        var recent = await _context.Alert
+        // Materialize entities before mapping — EF Core cannot translate
+        // a static C# method (MapToDto) into SQL.
+        var recentEntities = await _context.Alert
             .AsNoTracking()
             .Where(a => a.ResolvedAt == null)
             .OrderByDescending(a => a.CreatedAt)
             .Take(5)
-            .Select(a => MapToDto(a))
             .ToListAsync(ct);
+
+        var recent = recentEntities.Select(MapToDto).ToList();
 
         return new AlertDashboardDto
         {
