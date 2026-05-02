@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SYNTHETIC SAMPLE — EPO DPH Kontrolní hlášení (DPHKH1) — zdaňovací období 3/2026.
+  Všechny osobní a firemní údaje jsou FIKTIVNÍ (anonymizovány pro testovací účely).
+  Dokument je určen výhradně pro validaci XSD schématu v unit testech projektu Fakvio.
+
+  Schéma: dphkh1_epo2.xsd (EPO2, Finanční správa ČR)
+  Zdroj: https://adisspr.mfcr.cz/adistc/adis/idpr_pub/epo2_info/popis_struktury.faces
+
+  Obsažené sekce (dle XSD — pořadí prvků je povinné):
+    1. VetaD  — hlavička hlášení + identifikace ZO (minOccurs=1)
+    2. VetaP  — identifikace poplatníka (minOccurs=1)
+    3. VetaA4 — přijatá zdanitelná plnění do 10 000 Kč vč. DPH, souhrnně (maxOccurs=unbounded)
+    4. VetaA5 — přijatá zdanitelná plnění nad 10 000 Kč vč. DPH, agregát (maxOccurs=1)
+    5. VetaB2 — přijatá plnění s povinností přiznat daň (reverse-charge), (maxOccurs=unbounded)
+    6. VetaB3 — přijatá plnění v režimu PDP §92a, agregát (maxOccurs=1)
+
+  Prázdné sekce (v tomto vzorku):
+    VetaA1 — uskutečněná zdanitelná plnění s povinností vystavit DD (žádné záznamy)
+    VetaB1 — obchody bez nároku na odpočet (žádné záznamy)
+
+  Poznámka k datovému formátu:
+    EPO2 používá format D.M.RRRR (např. "15.3.2026"), ne ISO 8601.
+-->
+<Pisemnost
+    nazev_sw="Fakvio"
+    verzeSW="1.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+
+  <DPHKH1>
+
+    <!--
+      VetaD — Hlavička kontrolního hlášení.
+      Povinné atributy (dle dphkh1_epo2.xsd):
+        dokument    — pevná hodnota "KH1"
+        k_uladis    — pevná hodnota "DPH"
+        rok         — rok zdaňovacího období
+        khdph_forma — druh KH: B=řádné, O=řádné/opravné, N=následné, E=následné/opravné
+      Volitelné atributy (ukázka):
+        mesic       — kalendářní měsíc ZO
+        d_poddp     — datum podání (D.M.RRRR)
+        zdobd_od/do — upřesnění ZO (D.M.RRRR)
+    -->
+    <VetaD
+        dokument="KH1"
+        k_uladis="DPH"
+        rok="2026"
+        khdph_forma="B"
+        mesic="3"
+        d_poddp="25.4.2026"
+        zdobd_od="1.3.2026"
+        zdobd_do="31.3.2026"/>
+
+    <!--
+      VetaP — Identifikace poplatníka.
+      Povinné atributy (dle dphkh1_epo2.xsd):
+        c_ufo  — číslo finančního úřadu (1–3 cifry)
+        dic    — kmenová část DIČ — pouze číslice, bez předpony "CZ" (vzor [0-9]{1,10})
+        typ_ds — typ datové schránky: F=fyzická osoba, P=právnická osoba
+    -->
+    <VetaP
+        c_ufo="451"
+        dic="12345678"
+        typ_ds="P"
+        email="faktura@vzorova-firma.cz"/>
+
+    <!--
+      Sekce A.4 — Přijatá zdanitelná plnění do 10 000 Kč vč. DPH, souhrnně per dodavatel.
+      Povinné atributy (dle dphkh1_epo2.xsd):
+        dic_odb      — DIČ odběratele — pouze číslice (vzor [0-9]{1,10})
+        c_evid_dd    — číslo evidenčního dokladu (max 60 znaků)
+        dppd         — datum povinnosti přiznat daň (D.M.RRRR)
+        kod_rezim_pl — kód režimu plnění (0 = standardní tuzemský)
+        zdph_44      — příznak §44 (A/N)
+      Volitelné (ukázka):
+        zakl_dane1, dan1 — základ a daň v základní sazbě
+    -->
+    <VetaA4
+        dic_odb="87654321"
+        c_evid_dd="2026-03-001"
+        dppd="15.3.2026"
+        kod_rezim_pl="0"
+        zdph_44="N"
+        zakl_dane1="1000.00"
+        dan1="210.00"/>
+
+    <VetaA4
+        dic_odb="11223344"
+        c_evid_dd="2026-03-002"
+        dppd="20.3.2026"
+        kod_rezim_pl="0"
+        zdph_44="N"
+        zakl_dane1="600.00"
+        dan1="126.00"/>
+
+    <!--
+      VetaA5 — Agregát sekce A.4 (celkové součty za celou sekci A.4).
+      Žádné povinné atributy — element je volitelný souhrnný řádek (maxOccurs=1).
+    -->
+    <VetaA5
+        zakl_dane1="1600.00"
+        dan1="336.00"/>
+
+    <!--
+      Sekce B.2 — Přijatá zdanitelná plnění s povinností přiznat daň (reverse-charge).
+      Povinné atributy (dle dphkh1_epo2.xsd):
+        dic_dod   — DIČ dodavatele — pouze číslice (vzor [0-9]{1,10})
+        c_evid_dd — číslo evidenčního dokladu
+        dppd      — datum povinnosti přiznat daň (D.M.RRRR)
+        pomer     — uplatnění poměrného odpočtu: A=ano, N=ne
+        zdph_44   — příznak §44 (A/N)
+      Volitelné (ukázka):
+        zakl_dane1, dan1 — základ a daň v základní sazbě
+    -->
+    <VetaB2
+        dic_dod="98765432"
+        c_evid_dd="EU2026-001"
+        dppd="8.3.2026"
+        pomer="N"
+        zdph_44="N"
+        zakl_dane1="3000.00"
+        dan1="630.00"/>
+
+    <!--
+      VetaB3 — Agregát sekce B.2 (celkové součty za celou sekci B.2).
+      Žádné povinné atributy — element je volitelný souhrnný řádek (maxOccurs=1).
+    -->
+    <VetaB3
+        zakl_dane1="3000.00"
+        dan1="630.00"/>
+
+  </DPHKH1>
+</Pisemnost>

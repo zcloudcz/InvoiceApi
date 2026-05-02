@@ -31,6 +31,13 @@
     </None>
   </ItemGroup>
 
+  <!-- Copy EPO sample XML fixtures to output directory so EpoFixtureValidationTests can read them -->
+  <ItemGroup>
+    <None Update="Resources\Epo\**\*.xml">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\Fakvio.Domain\Fakvio.Domain.csproj" />
     <ProjectReference Include="..\Fakvio.Application\Fakvio.Application.csproj" />
