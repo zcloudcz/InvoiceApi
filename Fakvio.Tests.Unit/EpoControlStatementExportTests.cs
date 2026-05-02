@@ -716,4 +716,243 @@ public class EpoControlStatementExportTests : IDisposable
         vetaP.Attribute("c_ufo")!.Value.ShouldBe("451");
         vetaP.Attribute("typ_ds")!.Value.ShouldBe("P");
     }
+
+    // =========================================================================
+    // 10. Quarterly VetaD header
+    // =========================================================================
+
+    [Fact]
+    public async Task ExportEpoControlStatementAsync_QuarterlyVetaD_HasCtvrtNotMesic()
+    {
+        // Quarterly period 2 (Q2 = Apr–Jun) → VetaD must carry @ctvrt="2" and NO @mesic.
+        var bytes = await _service.ExportEpoControlStatementAsync(2026, 2, EVatPeriodType.Quarterly);
+        var (doc, errors) = ParseAndValidate(bytes);
+
+        errors.ShouldBeEmpty();
+        var vetaD = doc.Descendants("VetaD").Single();
+        vetaD.Attribute("ctvrt")!.Value.ShouldBe("2");
+        vetaD.Attribute("mesic").ShouldBeNull("Quarterly filing must not have @mesic.");
+    }
+
+    // =========================================================================
+    // 11. Multiple A.4 rows in same period
+    // =========================================================================
+
+    [Fact]
+    public async Task ExportEpoControlStatementAsync_TwoHighValueCzInvoices_GeneratesTwoA4Rows()
+    {
+        // Two qualifying invoices must each produce their own VetaA4 element.
+        var duzp = new DateTime(2026, 3, 10, 0, 0, 0, DateTimeKind.Utc);
+        SeedIssuedInvoice(duzp, EInvoiceStatus.Completed, 12_100m, 21m, CustomerCzId, documentNumber: "INV-A4-1");
+        SeedIssuedInvoice(duzp, EInvoiceStatus.Completed, 24_200m, 21m, CustomerCzId, documentNumber: "INV-A4-2");
+
+        var bytes = await _service.ExportEpoControlStatementAsync(2026, 3, EVatPeriodType.Monthly);
+        var (doc, errors) = ParseAndValidate(bytes);
+
+        errors.ShouldBeEmpty();
+        var a4Rows = doc.Descendants("VetaA4").ToList();
+        a4Rows.Count.ShouldBe(2, "Two qualifying invoices must generate two separate A.4 rows.");
+        a4Rows.Select(e => e.Attribute("c_evid_dd")!.Value)
+              .ShouldBe(new[] { "INV-A4-1", "INV-A4-2" }, ignoreOrder: true);
+    }
+
+    // =========================================================================
+    // 12. A.5 is only the aggregate for sub-threshold invoices (not the A.4 ones)
+    // =========================================================================
+
+    [Fact]
+    public async Task ExportEpoControlStatementAsync_MixedInvoices_A5ExcludesA4Amounts()
+    {
+        // A.4 invoice: 12 100 CZK at 21 % → base=10 000, vat=2 100.
+        // A.5 invoice: 1 210 CZK at 21 % → base=1 000, vat=210.
+        // A.5 aggregate zakl_dane1 must equal 1 000 (the sub-threshold base only).
+        var duzp = new DateTime(2026, 3, 10, 0, 0, 0, DateTimeKind.Utc);
+        SeedIssuedInvoice(duzp, EInvoiceStatus.Completed, 12_100m, 21m, CustomerCzId, documentNumber: "INV-A4");
+        SeedIssuedInvoice(duzp, EInvoiceStatus.Completed,  1_210m, 21m, CustomerCzId, documentNumber: "INV-A5");
+
+        var bytes = await _service.ExportEpoControlStatementAsync(2026, 3, EVatPeriodType.Monthly);
+        var (doc, errors) = ParseAndValidate(bytes);
+
+        errors.ShouldBeEmpty();
+        doc.Descendants("VetaA4").Count().ShouldBe(1);
+
+        var a5 = doc.Descendants("VetaA5").Single();
+        var a5Base = decimal.Parse(a5.Attribute("zakl_dane1")!.Value, System.Globalization.CultureInfo.InvariantCulture);
+        // 1 210 / 1.21 ≈ 1 000; tolerance for rounding.
+        a5Base.ShouldBeLessThan(1_001m, "A.5 base must NOT include the A.4 invoice amounts.");
+        a5Base.ShouldBeGreaterThan(999m);
+    }
+
+    // =========================================================================
+    // 13. B.2 amounts are correct (base + VAT)
+    // =========================================================================
+
+    [Fact]
+    public async Task ExportEpoControlStatementAsync_B2Row_HasCorrectAmounts()
+    {
+        // Received invoice: 11 000 CZK total incl. VAT at 21 %.
+        // → base ≈ 9 090.91, vat ≈ 1 909.09
+        var duzp = new DateTime(2026, 3, 15, 0, 0, 0, DateTimeKind.Utc);
+        SeedReceivedInvoice(duzp, EReceivedInvoiceStatus.Approved, 11_000m, 21m, CustomerCzId, documentNumber: "REC-AMT");
+
+        var bytes = await _service.ExportEpoControlStatementAsync(2026, 3, EVatPeriodType.Monthly);
+        var (doc, errors) = ParseAndValidate(bytes);
+
+        errors.ShouldBeEmpty();
+        var b2 = doc.Descendants("VetaB2").Single();
+        var zakl = decimal.Parse(b2.Attribute("zakl_dane1")!.Value, System.Globalization.CultureInfo.InvariantCulture);
+        var dan  = decimal.Parse(b2.Attribute("dan1")!.Value, System.Globalization.CultureInfo.InvariantCulture);
+        (zakl + dan).ShouldBe(11_000m, tolerance: 0.02m, "Base + VAT must equal total incl. VAT.");
+    }
+
+    // =========================================================================
+    // 14. Out-of-period invoices are excluded
+    // =========================================================================
+
+    [Fact]
+    public async Task ExportEpoControlStatementAsync_InvoiceOutsidePeriod_IsExcluded()
+    {
+        // Invoice in February — should NOT appear in March export.
+        var februaryDate = new DateTime(2026, 2, 15, 0, 0, 0, DateTimeKind.Utc);
+        SeedIssuedInvoice(februaryDate, EInvoiceStatus.Completed, 50_000m, 21m, CustomerCzId, documentNumber: "INV-FEB");
+
+        var bytes = await _service.ExportEpoControlStatementAsync(2026, 3, EVatPeriodType.Monthly);
+        var (doc, errors) = ParseAndValidate(bytes);
+
+        errors.ShouldBeEmpty();
+        doc.Descendants("VetaA4").ShouldBeEmpty("February invoice must not appear in March export.");
+        doc.Descendants("VetaA5").ShouldBeEmpty("February invoice must not appear in March export.");
+    }
+
+    // =========================================================================
+    // 15. Rejected received invoices are excluded
+    // =========================================================================
+
+    [Fact]
+    public async Task ExportEpoControlStatementAsync_RejectedReceivedInvoice_IsExcluded()
+    {
+        var duzp = new DateTime(2026, 3, 10, 0, 0, 0, DateTimeKind.Utc);
+        // Rejected invoice should be excluded; Approved one stays.
+        SeedReceivedInvoice(duzp, EReceivedInvoiceStatus.Rejected, 50_000m, 21m, CustomerCzId, documentNumber: "REC-REJ");
+        SeedReceivedInvoice(duzp, EReceivedInvoiceStatus.Approved,  5_000m, 21m, CustomerCzId, documentNumber: "REC-OK");
+
+        var bytes = await _service.ExportEpoControlStatementAsync(2026, 3, EVatPeriodType.Monthly);
+        var (doc, errors) = ParseAndValidate(bytes);
+
+        errors.ShouldBeEmpty();
+        doc.Descendants("VetaB2").ShouldBeEmpty("Rejected invoice must be excluded; Approved one is below threshold.");
+        doc.Descendants("VetaB3").ShouldNotBeEmpty("Approved invoice must appear in B.3.");
+        doc.Descendants("VetaB3").Count().ShouldBe(1);
+    }
+
+    // =========================================================================
+    // 16. No issuer configured throws InvalidOperationException
+    // =========================================================================
+
+    [Fact]
+    public async Task ExportEpoControlStatementAsync_NoIssuerConfigured_ThrowsInvalidOperationException()
+    {
+        // Remove the issuer from the DB so that the service cannot find it.
+        var issuer = await _context.Client.FindAsync((long)IssuerId);
+        _context.Client.Remove(issuer!);
+        await _context.SaveChangesAsync();
+
+        await Should.ThrowAsync<InvalidOperationException>(
+            () => _service.ExportEpoControlStatementAsync(2026, 3, EVatPeriodType.Monthly));
+    }
+
+    // =========================================================================
+    // 17. A.4 row with mixed standard + reduced rate items
+    // =========================================================================
+
+    [Fact]
+    public async Task ExportEpoControlStatementAsync_A4Row_WithReducedRateItem_HasBothRateAttributes()
+    {
+        // Seed an invoice with two items: one at 21 % (standard) and one at 12 % (reduced),
+        // ensuring the total exceeds 10 000 CZK so it classifies as A.4.
+        var duzp = new DateTime(2026, 3, 10, 0, 0, 0, DateTimeKind.Utc);
+
+        // Manual seed to control two line items at different rates.
+        var stdBase = 8_000m;
+        var stdVat  = stdBase * 0.21m;         // 1 680
+        var redBase = 2_000m;
+        var redVat  = redBase * 0.12m;         // 240
+        var total   = stdBase + stdVat + redBase + redVat; // 11 920
+
+        var invoice = new Invoice
+        {
+            DocumentType    = EDocumentType.Invoice,
+            Status          = EInvoiceStatus.Completed,
+            DocumentNumber  = "INV-MIXED",
+            IssueDate       = duzp,
+            TaxableSupplyDate = duzp,
+            DueDate         = duzp.AddDays(14),
+            ClientId        = CustomerCzId,
+            IssuerId        = IssuerId,
+            Issuer          = _context.Client.Find((long)IssuerId)!,
+            CurrencyId      = CzkCurrencyId,
+            TotalBeforeVat  = stdBase + redBase,
+            TotalVat        = stdVat + redVat,
+            TotalWithVat    = total,
+            InvoiceItem     = new List<InvoiceItem>
+            {
+                new InvoiceItem
+                {
+                    OrderIndex = 1, Description = "Standard-rate service", Quantity = 1,
+                    UnitPrice = stdBase, VatRatePercentage = 21m,
+                    TotalBeforeVat = stdBase, VatAmount = stdVat, TotalWithVat = stdBase + stdVat
+                },
+                new InvoiceItem
+                {
+                    OrderIndex = 2, Description = "Reduced-rate goods", Quantity = 1,
+                    UnitPrice = redBase, VatRatePercentage = 12m,
+                    TotalBeforeVat = redBase, VatAmount = redVat, TotalWithVat = redBase + redVat
+                }
+            }
+        };
+        _context.Invoice.Add(invoice);
+        _context.SaveChanges();
+
+        var bytes = await _service.ExportEpoControlStatementAsync(2026, 3, EVatPeriodType.Monthly);
+        var (doc, errors) = ParseAndValidate(bytes);
+
+        errors.ShouldBeEmpty();
+        var a4 = doc.Descendants("VetaA4").Single();
+        // Both rate slots must be present.
+        a4.Attribute("zakl_dane1").ShouldNotBeNull("Standard-rate base must be present.");
+        a4.Attribute("dan1").ShouldNotBeNull("Standard-rate VAT must be present.");
+        a4.Attribute("zakl_dane2").ShouldNotBeNull("Reduced-rate base must be present.");
+        a4.Attribute("dan2").ShouldNotBeNull("Reduced-rate VAT must be present.");
+
+        decimal.Parse(a4.Attribute("zakl_dane1")!.Value, System.Globalization.CultureInfo.InvariantCulture)
+               .ShouldBe(stdBase, tolerance: 0.01m);
+        decimal.Parse(a4.Attribute("dan1")!.Value, System.Globalization.CultureInfo.InvariantCulture)
+               .ShouldBe(stdVat, tolerance: 0.01m);
+        decimal.Parse(a4.Attribute("zakl_dane2")!.Value, System.Globalization.CultureInfo.InvariantCulture)
+               .ShouldBe(redBase, tolerance: 0.01m);
+        decimal.Parse(a4.Attribute("dan2")!.Value, System.Globalization.CultureInfo.InvariantCulture)
+               .ShouldBe(redVat, tolerance: 0.01m);
+    }
+
+    // =========================================================================
+    // 18. Zero-VAT-only invoice does not pollute A.5 / B.3
+    // =========================================================================
+
+    [Fact]
+    public async Task ExportEpoControlStatementAsync_ZeroVatInvoice_DoesNotAppearInA5()
+    {
+        // An invoice whose items all carry 0 % VAT contributes nothing to A.5
+        // because the classification skips 0 % items (same rule as DPHDP3).
+        var duzp = new DateTime(2026, 3, 10, 0, 0, 0, DateTimeKind.Utc);
+        SeedIssuedInvoice(duzp, EInvoiceStatus.Completed, 5_000m, 0m, CustomerCzId, documentNumber: "INV-ZEROVAT");
+
+        var bytes = await _service.ExportEpoControlStatementAsync(2026, 3, EVatPeriodType.Monthly);
+        var (doc, errors) = ParseAndValidate(bytes);
+
+        errors.ShouldBeEmpty();
+        // No A.4 (below threshold or zero VAT — classification passes no items).
+        // No A.5 — zero-VAT items are explicitly excluded from both A.4 and A.5.
+        doc.Descendants("VetaA4").ShouldBeEmpty("Zero-VAT invoice must not appear in A.4.");
+        doc.Descendants("VetaA5").ShouldBeEmpty("Zero-VAT invoice must not appear in A.5 — 0 % items are excluded.");
+    }
 }
