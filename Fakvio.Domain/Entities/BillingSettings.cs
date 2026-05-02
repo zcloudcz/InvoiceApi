@@ -107,4 +107,16 @@ public class BillingSettings : BaseEntity
     /// Example: "Always send invoice copy to accountant", "Requires PO number"
     /// </summary>
     public string? Notes { get; set; }
+
+    /// <summary>
+    /// Controls when an advance invoice (proforma) is automatically converted into a
+    /// tax receipt for advance payment (daňový doklad k přijaté platbě).
+    ///
+    /// Only relevant for the ISSUER's BillingSettings (IsIssuer = true).
+    /// Customer BillingSettings ignore this field.
+    ///
+    /// Default: OnPaymentMatch — auto-convert when the IMAP payment-matching pipeline
+    /// finds a matching bank transaction. Matches the historical implicit behaviour.
+    /// </summary>
+    public EAdvanceTaxReceiptMode AdvanceTaxReceiptMode { get; set; } = EAdvanceTaxReceiptMode.OnPaymentMatch;
 }

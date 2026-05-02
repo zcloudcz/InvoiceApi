@@ -346,4 +346,51 @@ public class ClientFunctions
         // Call the controller action and normalize the response
         return FunctionResultHelper.Normalize(await _controller.UpdateBillingSettings(__id_parsed, settingsDto!, cancellationToken));
     }
+
+    /// <summary>
+    /// GET api/client/issuer/advance-tax-receipt-mode → ClientController.GetAdvanceTaxReceiptMode
+    /// </summary>
+    [Function("Client_GetAdvanceTaxReceiptMode")]
+    public async Task<IActionResult> Client_GetAdvanceTaxReceiptMode(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/client/issuer/advance-tax-receipt-mode")] HttpRequest req)
+    {
+        // Wire up the controller's HttpContext so it can access User claims, Request, etc.
+        _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
+
+        // Authorization check: [Authorize]
+        if (req.HttpContext.User.Identity?.IsAuthenticated != true)
+            return new UnauthorizedResult();
+
+        var cancellationToken = req.HttpContext.RequestAborted;
+
+        // Call the controller action and normalize the response
+        return FunctionResultHelper.Normalize(await _controller.GetAdvanceTaxReceiptMode(cancellationToken));
+    }
+
+    /// <summary>
+    /// PUT api/client/issuer/advance-tax-receipt-mode → ClientController.SetAdvanceTaxReceiptMode
+    /// Only Admin and SysAdmin are authorised — enforced by [Authorize(Roles="Admin,SysAdmin")] in the controller.
+    /// </summary>
+    [Function("Client_SetAdvanceTaxReceiptMode")]
+    public async Task<IActionResult> Client_SetAdvanceTaxReceiptMode(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "api/client/issuer/advance-tax-receipt-mode")] HttpRequest req)
+    {
+        // Wire up the controller's HttpContext so it can access User claims, Request, etc.
+        _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
+
+        // Authorization check: [Authorize(Roles = "Admin,SysAdmin")]
+        if (req.HttpContext.User.Identity?.IsAuthenticated != true)
+            return new UnauthorizedResult();
+
+        // Role check: user must be in one of [Admin, SysAdmin]
+        if (!req.HttpContext.User.IsInRole("Admin") && !req.HttpContext.User.IsInRole("SysAdmin"))
+            return new ForbidResult();
+
+        // Deserialize request body → SetAdvanceTaxReceiptModeDto
+        var dto = await System.Text.Json.JsonSerializer.DeserializeAsync<global::Fakvio.Contracts.Dto.Client.SetAdvanceTaxReceiptModeDto>(req.Body, FunctionResultHelper.JsonOptions, req.HttpContext.RequestAborted);
+        var cancellationToken = req.HttpContext.RequestAborted;
+
+        // Call the controller action and normalize the response
+        return FunctionResultHelper.Normalize(await _controller.SetAdvanceTaxReceiptMode(dto!, cancellationToken));
+    }
 }

@@ -210,6 +210,12 @@ else
                                     Value="_billingSettings.DueDateCalculationType"
                                     ValueChanged="@(v => _billingSettings.DueDateCalculationType = v)"
                                     Label="@L["Billing_DueDateCalcType"].Value" />
+                        @* Auto-conversion mode: advance invoice → tax receipt for advance payment *@
+                        <EnumSelect TEnum="EAdvanceTaxReceiptMode"
+                                    Value="_billingSettings.AdvanceTaxReceiptMode"
+                                    ValueChanged="@(v => _billingSettings.AdvanceTaxReceiptMode = v)"
+                                    Label="@L["Billing_AdvanceTaxReceiptMode"].Value"
+                                    Class="mt-3" />
                     }
                     else if (_company.BillingSettings != null)
                     {
@@ -222,6 +228,10 @@ else
                             }
                             <MudListItem T="string">
                                 <strong>@L["Billing_DueDays"]:</strong> @_company.BillingSettings.DueDays
+                            </MudListItem>
+                            <MudListItem T="string">
+                                <strong>@L["Billing_AdvanceTaxReceiptMode"]:</strong>
+                                @(GetLocalizedEnum("EAdvanceTaxReceiptMode", _company.BillingSettings.AdvanceTaxReceiptMode.ToString()))
                             </MudListItem>
                         </MudList>
                     }
@@ -773,7 +783,9 @@ else
                 CreditNoteNumberSuffix = _company.BillingSettings.CreditNoteNumberSuffix,
                 DefaultPaymentMethod = _company.BillingSettings.DefaultPaymentMethod,
                 BankAccountNumber = _company.BillingSettings.BankAccountNumber,
-                Notes = _company.BillingSettings.Notes
+                Notes = _company.BillingSettings.Notes,
+                // Preserve the stored mode so the dropdown shows the current value on enter-edit
+                AdvanceTaxReceiptMode = _company.BillingSettings.AdvanceTaxReceiptMode
             };
         }
         else
@@ -781,7 +793,8 @@ else
             _billingSettings = new CreateBillingSettingsDto
             {
                 DueDays = 14,
-                DueDateCalculationType = EDueDateCalculationType.DaysFromIssue
+                DueDateCalculationType = EDueDateCalculationType.DaysFromIssue,
+                AdvanceTaxReceiptMode = EAdvanceTaxReceiptMode.OnPaymentMatch
             };
         }
 
@@ -867,7 +880,8 @@ else
                     CreditNoteNumberSuffix = _billingSettings.CreditNoteNumberSuffix,
                     DefaultPaymentMethod = _billingSettings.DefaultPaymentMethod,
                     BankAccountNumber = _billingSettings.BankAccountNumber,
-                    Notes = _billingSettings.Notes
+                    Notes = _billingSettings.Notes,
+                    AdvanceTaxReceiptMode = _billingSettings.AdvanceTaxReceiptMode
                 }
             };
 

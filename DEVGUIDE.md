@@ -395,7 +395,35 @@ context.InstanceServices       ← Functions Worker scope (kde žije Function cl
 
 **ReminderSettings** (per company nebo per client) + **ReminderLevel** array (Level 1/2/3 s `DaysAfterPrevious`, `FixedFeeCzk`, template ID).
 
-### 4.7 AI Chat (Claude/OpenAI/Gemini/Ollama)
+### 4.7 Advance invoice → tax receipt auto-conversion (`EAdvanceTaxReceiptMode`)
+
+Tenant-level setting that controls **when** an advance invoice (zálohová faktura) is automatically
+converted into a tax receipt for advance payment (daňový doklad k přijaté platbě).
+
+**Enum** (`Fakvio.Domain/Enums/EAdvanceTaxReceiptMode.cs`):
+
+| Hodnota | Int | Popis |
+|---------|-----|-------|
+| `Disabled` | 0 | Auto-překlop vypnut. Uživatel musí ručně vystavit daňový doklad. |
+| `OnPaymentMatch` | 1 | Překlop při automatickém spárování platby (IMAP pipeline). **Default pro existující tenanty** — zachovává historické chování. |
+| `OnAnyPayment` | 2 | Překlop při jakékoliv přijaté platbě (spárované i ručně zadané). |
+
+**Persistence**: uloženo na `BillingSettings.AdvanceTaxReceiptMode` (issuer client, tenant DB).
+`BillingSettings` je 1:1 s `Client` — BillingSettings řádek se vytvoří při prvním nastavení
+(lazy create s `DueDays=14`, `DaysFromIssue`).
+
+**Migrace**: `20260501091151_AddAdvanceTaxReceiptMode` (tenant DB), `defaultValue: 1` (OnPaymentMatch).
+
+**API endpoints** (`ClientController.cs`):
+- `GET /api/client/issuer/advance-tax-receipt-mode` → aktuální hodnota, vrací default `OnPaymentMatch` i bez BillingSettings.
+- `PUT /api/client/issuer/advance-tax-receipt-mode` (body: `{ mode: 0|1|2 }`) → `[Authorize(Roles="Admin,SysAdmin")]`.
+
+**UI**: `MyCompany.razor` karta "Fakturační nastavení" — `<EnumSelect TEnum="EAdvanceTaxReceiptMode" />`.
+Nastavení se ukládá spolu s ostatními billing settings přes standardní `PUT /api/client/{id}`.
+
+**Lokalizace** (prefix `EAdvanceTaxReceiptMode_`): klíče v `SharedResource.resx` + `.en.resx`.
+
+### 4.8 AI Chat (Claude/OpenAI/Gemini/Ollama)
 
 - Provider abstrakce: `IAiProvider` (`Fakvio.Application/Service/IAiProvider.cs`).
 - Implementace: `Fakvio.Infrastructure/AiProviders/` (Anthropic, OpenAI, Gemini, Ollama).
