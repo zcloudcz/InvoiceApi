@@ -598,6 +598,42 @@ public class InvoiceController : ControllerBase
     }
 
     /// <summary>
+    /// Returns all final Invoices issued from the given proforma (OriginalInvoiceId = proformaId, DocumentType = Invoice).
+    /// Used to build the cross-link section on the proforma detail page in the UI.
+    /// </summary>
+    /// <param name="proformaId">Proforma invoice ID</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>List of linked final invoices (may be empty)</returns>
+    [HttpGet("{proformaId:long}/final-invoices")]
+    [ProducesResponseType(typeof(List<InvoiceDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<List<InvoiceDto>>> GetFinalInvoicesForProforma(
+        long proformaId,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("GET /api/invoice/{ProformaId}/final-invoices", proformaId);
+        var invoices = await _invoiceService.GetFinalInvoicesForProformaAsync(proformaId, cancellationToken);
+        return Ok(invoices);
+    }
+
+    /// <summary>
+    /// Returns all TaxReceiptForAdvance documents linked to the given proforma.
+    /// Used on the proforma detail page to show the DPP cross-link section.
+    /// </summary>
+    /// <param name="proformaId">Proforma invoice ID</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>List of linked tax receipts (may be empty)</returns>
+    [HttpGet("{proformaId:long}/tax-receipts")]
+    [ProducesResponseType(typeof(List<InvoiceDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<List<InvoiceDto>>> GetTaxReceiptsForProforma(
+        long proformaId,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("GET /api/invoice/{ProformaId}/tax-receipts", proformaId);
+        var receipts = await _invoiceService.GetTaxReceiptsForProformaAsync(proformaId, cancellationToken);
+        return Ok(receipts);
+    }
+
+    /// <summary>
     /// Generates a PDF document for the specified invoice.
     /// Uses the invoice's HTML template (from DB) or falls back to a default template.
     /// Optionally accepts a templateId query parameter to use a specific content template

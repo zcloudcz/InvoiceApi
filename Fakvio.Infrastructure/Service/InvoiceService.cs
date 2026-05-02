@@ -835,6 +835,52 @@ public class InvoiceService : IInvoiceService
         return creditNotes.Select(i => MapToDto(i)).ToList();
     }
 
+    // ─── Proforma cross-link queries ──────────────────────────────────────────
+
+    /// <inheritdoc />
+    public async Task<List<InvoiceDto>> GetFinalInvoicesForProformaAsync(
+        long proformaId, CancellationToken cancellationToken = default)
+    {
+        // Return all standard Invoices whose OriginalInvoiceId points to this proforma.
+        // These are the final invoices issued against the advance payment.
+        var items = await _context.Invoice
+            .AsNoTracking()
+            .Include(i => i.Client)
+            .Include(i => i.Issuer)
+            .Include(i => i.Currency)
+            .Include(i => i.InvoiceItem.OrderBy(item => item.OrderIndex))
+            .Include(i => i.OriginalInvoice)
+            .Where(i => i.OriginalInvoiceId == proformaId
+                     && i.DocumentType == EDocumentType.Invoice
+                     && i.Status != EInvoiceStatus.Deleted)
+            .OrderByDescending(i => i.IssueDate ?? DateTime.MinValue)
+            .ToListAsync(cancellationToken);
+
+        return items.Select(MapToDto).ToList();
+    }
+
+    /// <inheritdoc />
+    public async Task<List<InvoiceDto>> GetTaxReceiptsForProformaAsync(
+        long proformaId, CancellationToken cancellationToken = default)
+    {
+        // Return all TaxReceiptForAdvance documents whose OriginalInvoiceId points to this proforma.
+        // These are auto-issued (or manually issued) DPP documents.
+        var items = await _context.Invoice
+            .AsNoTracking()
+            .Include(i => i.Client)
+            .Include(i => i.Issuer)
+            .Include(i => i.Currency)
+            .Include(i => i.InvoiceItem.OrderBy(item => item.OrderIndex))
+            .Include(i => i.OriginalInvoice)
+            .Where(i => i.OriginalInvoiceId == proformaId
+                     && i.DocumentType == EDocumentType.TaxReceiptForAdvance
+                     && i.Status != EInvoiceStatus.Deleted)
+            .OrderByDescending(i => i.IssueDate ?? DateTime.MinValue)
+            .ToListAsync(cancellationToken);
+
+        return items.Select(MapToDto).ToList();
+    }
+
     // ─── Proforma → Final Invoice ─────────────────────────────────────────────
 
     /// <inheritdoc />

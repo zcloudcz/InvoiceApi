@@ -1458,4 +1458,38 @@
   <data name="Alert_OverpaidBanner" xml:space="preserve"><value>Upozornění: přeplatek na této proformě</value></data>
   <data name="Alert_Tooltip" xml:space="preserve"><value>Tato faktura má otevřené upozornění</value></data>
   <data name="EAlertType_OverpaidProforma" xml:space="preserve"><value>Přeplatek na proformě</value></data>
+
+  <!-- ── Proforma UI (issue #33) ─────────────────────────────────────────── -->
+  <data name="Nav_Proformas" xml:space="preserve"><value>Zálohové faktury</value></data>
+  <data name="Proforma_Title" xml:space="preserve"><value>Zálohové faktury</value></data>
+  <data name="Proforma_Subtitle" xml:space="preserve"><value>Přehled proform (zálohových faktur)</value></data>
+  <data name="Proforma_New" xml:space="preserve"><value>Nová proforma</value></data>
+  <data name="Proforma_Detail" xml:space="preserve"><value>Detail proformy</value></data>
+  <data name="TaxReceiptForAdvance_Title" xml:space="preserve"><value>Daňové doklady o přijaté platbě</value></data>
+  <data name="TaxReceiptForAdvance_Subtitle" xml:space="preserve"><value>Přehled daňových dokladů o přijaté platbě</value></data>
+  <data name="TaxReceiptForAdvance_New" xml:space="preserve"><value>Nový daňový doklad</value></data>
+  <data name="TaxReceiptForAdvance_Detail" xml:space="preserve"><value>Daňový doklad o přijaté platbě</value></data>
+  <data name="Template_DocumentTypeProforma" xml:space="preserve"><value>Zálohová faktura (proforma)</value></data>
+  <data name="Template_DocumentTypeTaxReceiptForAdvance" xml:space="preserve"><value>Daňový doklad o přijaté platbě</value></data>
+  <data name="FileName_Proforma" xml:space="preserve"><value>Proforma</value></data>
+  <data name="FileName_TaxReceiptForAdvance" xml:space="preserve"><value>Danovy_doklad</value></data>
+  <data name="Proforma_IssueFinalInvoice" xml:space="preserve"><value>Vystavit finální fakturu</value></data>
+  <data name="Proforma_FinalInvoices" xml:space="preserve"><value>Navázané finální faktury</value></data>
+  <data name="Proforma_NoFinalInvoices" xml:space="preserve"><value>Žádné finální faktury zatím nevystaveny.</value></data>
+  <data name="Proforma_NoTaxReceipts" xml:space="preserve"><value>Zatím nebyly vystaveny žádné daňové doklady.</value></data>
+  <data name="Proforma_RemainingAdvance" xml:space="preserve"><value>Zbývá záloha</value></data>
+  <data name="Proforma_FullyDeducted" xml:space="preserve"><value>Záloha byla plně odečtena.</value></data>
+  <data name="Proforma_TaxReceiptSection" xml:space="preserve"><value>Daňový doklad o přijaté platbě</value></data>
+  <data name="Proforma_IssueTaxReceiptManual" xml:space="preserve"><value>Vystavit daňový doklad ručně</value></data>
+  <data name="Proforma_IssueFinalSuccess" xml:space="preserve"><value>Finální faktura byla úspěšně vystavena.</value></data>
+  <data name="Proforma_IssueFinalFailed" xml:space="preserve"><value>Nepodařilo se vystavit finální fakturu.</value></data>
+  <data name="TaxReceipt_SourceProforma" xml:space="preserve"><value>Zdrojová proforma</value></data>
+  <data name="Invoice_SourceProforma" xml:space="preserve"><value>Zdrojová proforma</value></data>
+  <data name="IssueFinalInvoice_DialogTitle" xml:space="preserve"><value>Vystavit finální fakturu</value></data>
+  <data name="IssueFinalInvoice_DeductionAmount" xml:space="preserve"><value>Částka odečtu zálohy (prázdné = celá zbývající)</value></data>
+  <data name="IssueFinalInvoice_Notes" xml:space="preserve"><value>Poznámky k finální faktuře</value></data>
+  <data name="IssueFinalInvoice_IssueDate" xml:space="preserve"><value>Datum vystavení</value></data>
+  <data name="IssueFinalInvoice_DueDate" xml:space="preserve"><value>Datum splatnosti</value></data>
+  <data name="IssueFinalInvoice_AddItems" xml:space="preserve"><value>Položky finální faktury</value></data>
+  <data name="IssueFinalInvoice_AddAtLeastOneItem" xml:space="preserve"><value>Přidejte alespoň jednu položku faktury.</value></data>
 </root>

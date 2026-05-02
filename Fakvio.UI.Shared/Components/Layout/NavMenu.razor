@@ -14,12 +14,14 @@
             {
                 <MudNavGroup Title="@L["Nav_Invoicing"].Value" Icon="@Icons.Material.Filled.Receipt" Expanded="true">
                     <MudNavLink Href="/invoices" Icon="@Icons.Material.Filled.Description">@L["Nav_Invoices"]</MudNavLink>
-                    @* Credit Notes removed from nav — accessible via filter on Invoices page *@
+                    @* Proformas (advance invoices) — separate list page via type filter *@
+                    <MudNavLink Href="/invoices?type=Proforma" Icon="@Icons.Material.Filled.RequestQuote">@L["Nav_Proformas"]</MudNavLink>
+                    @* Credit Notes — accessible via filter on Invoices page *@
+                    <MudNavLink Href="/invoices?type=CreditNote" Icon="@Icons.Material.Filled.CreditCard">@L["Nav_CreditNotes"]</MudNavLink>
                     <MudNavLink Href="/invoice-templates" Icon="@Icons.Material.Filled.ContentCopy">@L["Nav_InvoiceTemplates"]</MudNavLink>
                     <MudNavLink Href="/content-templates" Icon="@Icons.Material.Filled.Article">@L["Nav_ContentTemplates"]</MudNavLink>
                     <MudNavLink Href="/clients" Icon="@Icons.Material.Filled.People">@L["Nav_Clients"]</MudNavLink>
                     <MudNavLink Href="/received-invoices" Icon="@Icons.Material.Filled.CallReceived">@L["Nav_ReceivedInvoices"]</MudNavLink>
-                    <MudNavLink Href="/invoices?type=CreditNote" Icon="@Icons.Material.Filled.CreditCard">@L["Nav_CreditNotes"]</MudNavLink>
                     <MudNavLink Href="/reminders" Icon="@Icons.Material.Filled.NotificationsActive">@L["Nav_Reminders"]</MudNavLink>
                     @* Payment matching — entry point for the auto-match feature.
                        Badge with unmatched count is wired in MainLayout via PaymentMatchingApiService. *@

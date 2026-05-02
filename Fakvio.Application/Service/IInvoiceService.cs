@@ -197,4 +197,22 @@ public interface IInvoiceService
     /// <param name="proformaId">Proforma ID</param>
     /// <param name="cancellationToken">Cancellation token</param>
     Task<decimal> GetRemainingAdvanceAsync(long proformaId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns all final Invoices (DocumentType=Invoice) that were issued from the given proforma.
+    /// Identified by OriginalInvoiceId = proformaId and DocumentType = Invoice.
+    /// Excludes Deleted documents.
+    /// </summary>
+    /// <param name="proformaId">Proforma ID</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    Task<List<InvoiceDto>> GetFinalInvoicesForProformaAsync(long proformaId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns all TaxReceiptForAdvance documents linked to the given proforma.
+    /// Identified by OriginalInvoiceId = proformaId and DocumentType = TaxReceiptForAdvance.
+    /// Excludes Deleted documents.
+    /// </summary>
+    /// <param name="proformaId">Proforma ID</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    Task<List<InvoiceDto>> GetTaxReceiptsForProformaAsync(long proformaId, CancellationToken cancellationToken = default);
 }
