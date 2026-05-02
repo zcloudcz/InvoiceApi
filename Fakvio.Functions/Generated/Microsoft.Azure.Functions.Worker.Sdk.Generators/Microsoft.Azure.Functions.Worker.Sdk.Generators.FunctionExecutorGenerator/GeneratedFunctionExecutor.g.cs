@@ -16,6 +16,7 @@ namespace Fakvio.Functions
         private readonly global::Microsoft.Azure.Functions.Worker.IFunctionActivator _functionActivator;
         private readonly Dictionary<string, Type> types = new Dictionary<string, Type>()
         {
+            { "Fakvio.Functions.ExchangeRateFunctions", Type.GetType("Fakvio.Functions.ExchangeRateFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "Fakvio.Functions.Generated.AppLogFunctions", Type.GetType("Fakvio.Functions.Generated.AppLogFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "Fakvio.Functions.Generated.AuthFunctions", Type.GetType("Fakvio.Functions.Generated.AuthFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "Fakvio.Functions.Generated.ChatFunctions", Type.GetType("Fakvio.Functions.Generated.ChatFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
@@ -58,6 +59,13 @@ namespace Fakvio.Functions
             var inputBindingResult = await inputBindingFeature.BindFunctionInputAsync(context);
             var inputArguments = inputBindingResult.Values;
 
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.ExchangeRateFunctions.RefreshRates", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.ExchangeRateFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.ExchangeRateFunctions;
+                await i.RefreshRates((global::Microsoft.Azure.Functions.Worker.TimerInfo)inputArguments[0], (global::System.Threading.CancellationToken)inputArguments[1]);
+                return;
+            }
             if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.AppLogFunctions.AppLog_GetPaged", StringComparison.Ordinal))
             {
                 var instanceType = types["Fakvio.Functions.Generated.AppLogFunctions"];
@@ -506,6 +514,34 @@ namespace Fakvio.Functions
                 context.GetInvocationResult().Value = await i.Currency_UpdateCurrency((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0], (string)inputArguments[1]);
                 return;
             }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.CurrencyFunctions.Currency_GetExchangeRate", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.CurrencyFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.CurrencyFunctions;
+                context.GetInvocationResult().Value = await i.Currency_GetExchangeRate((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0], (string)inputArguments[1]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.CurrencyFunctions.Currency_RefreshExchangeRates", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.CurrencyFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.CurrencyFunctions;
+                context.GetInvocationResult().Value = await i.Currency_RefreshExchangeRates((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.CurrencyFunctions.Currency_GetExchangeRateSettings", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.CurrencyFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.CurrencyFunctions;
+                context.GetInvocationResult().Value = await i.Currency_GetExchangeRateSettings((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.CurrencyFunctions.Currency_UpdateExchangeRateSettings", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.CurrencyFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.CurrencyFunctions;
+                context.GetInvocationResult().Value = await i.Currency_UpdateExchangeRateSettings((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
+                return;
+            }
             if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.CurrencyFunctions.Currency_DeleteCurrency", StringComparison.Ordinal))
             {
                 var instanceType = types["Fakvio.Functions.Generated.CurrencyFunctions"];
@@ -630,6 +666,13 @@ namespace Fakvio.Functions
                 var instanceType = types["Fakvio.Functions.Generated.InvoiceFunctions"];
                 var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.InvoiceFunctions;
                 context.GetInvocationResult().Value = await i.Invoice_GetCreditNotesForInvoice((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0], (string)inputArguments[1]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.InvoiceFunctions.Invoice_ExportIsdoc", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.InvoiceFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.InvoiceFunctions;
+                context.GetInvocationResult().Value = await i.Invoice_ExportIsdoc((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0], (string)inputArguments[1]);
                 return;
             }
             if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.InvoiceFunctions.Invoice_ExportToPdf", StringComparison.Ordinal))

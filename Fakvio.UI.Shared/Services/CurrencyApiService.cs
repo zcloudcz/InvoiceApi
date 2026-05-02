@@ -99,4 +99,29 @@ public class CurrencyApiService : ApiClientBase
     {
         return await DeleteAsync($"/api/currency/{id}");
     }
+
+    /// <summary>
+    /// Triggers an immediate CNB exchange rate refresh for the current tenant.
+    /// </summary>
+    public async Task<int> RefreshExchangeRatesAsync()
+    {
+        var result = await PostAsync<object, Dictionary<string, int>>("/api/currency/exchange-rates/refresh", new { });
+        return result?.GetValueOrDefault("savedCount") ?? 0;
+    }
+
+    /// <summary>
+    /// Gets the exchange rate auto-update settings for the current company.
+    /// </summary>
+    public async Task<ExchangeRateSettingsDto?> GetExchangeRateSettingsAsync()
+    {
+        return await GetAsync<ExchangeRateSettingsDto>("/api/currency/exchange-rates/settings");
+    }
+
+    /// <summary>
+    /// Updates the exchange rate auto-update settings.
+    /// </summary>
+    public async Task<ExchangeRateSettingsDto?> UpdateExchangeRateSettingsAsync(UpdateExchangeRateSettingsDto dto)
+    {
+        return await PutAsync<UpdateExchangeRateSettingsDto, ExchangeRateSettingsDto>("/api/currency/exchange-rates/settings", dto);
+    }
 }

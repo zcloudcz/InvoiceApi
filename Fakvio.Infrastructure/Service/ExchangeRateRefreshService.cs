@@ -5,6 +5,7 @@ using Fakvio.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Npgsql;
 
 namespace Fakvio.Infrastructure.Service;
 
@@ -26,6 +27,7 @@ public class ExchangeRateRefreshService : IExchangeRateRefreshService
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IExchangeRateProvider _cnbProvider;
+    private readonly NpgsqlDataSource _dataSource;
     private readonly ILogger<ExchangeRateRefreshService> _logger;
 
     // Advisory lock key — unique per application to avoid collisions with other advisory locks
@@ -34,10 +36,12 @@ public class ExchangeRateRefreshService : IExchangeRateRefreshService
     public ExchangeRateRefreshService(
         IServiceScopeFactory scopeFactory,
         IExchangeRateProvider cnbProvider,
+        NpgsqlDataSource dataSource,
         ILogger<ExchangeRateRefreshService> logger)
     {
         _scopeFactory = scopeFactory;
         _cnbProvider = cnbProvider;
+        _dataSource = dataSource;
         _logger = logger;
     }
 
@@ -45,6 +49,16 @@ public class ExchangeRateRefreshService : IExchangeRateRefreshService
     public async Task<ExchangeRateRefreshResult> RunCycleAsync(CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("ExchangeRateRefreshService: starting cycle");
+
+        // Cross-process singleton lock prevents concurrent invocations (API worker + Functions timer).
+        await using var lockSession = await AdvisoryLock.TryAcquireAsync(_dataSource, AdvisoryLockKey, cancellationToken);
+        if (lockSession == null)
+        {
+            _logger.LogInformation(
+                "ExchangeRateRefreshService: cycle skipped — another instance holds the advisory lock (key={Key:X})",
+                AdvisoryLockKey);
+            return new ExchangeRateRefreshResult(Skipped: true, SkipReason: "lock held by other instance", SavedCount: 0);
+        }
 
         // We need a scoped context for the master DB to list provisioned tenants.
         using var scope = _scopeFactory.CreateScope();
