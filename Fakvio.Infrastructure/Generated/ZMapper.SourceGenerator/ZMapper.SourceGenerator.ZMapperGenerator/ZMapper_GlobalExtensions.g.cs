@@ -213,6 +213,7 @@ public static class Mapper_Extensions
         destination.TotalWithVat = source.TotalWithVat;
         destination.ProductCode = source.ProductCode;
         destination.Notes = source.Notes;
+        destination.VatRegime = source.VatRegime;
         return destination;
     }
 

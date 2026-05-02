@@ -1,4 +1,5 @@
 using Fakvio.Domain.Common;
+using Fakvio.Domain.Enums;
 
 namespace Fakvio.Domain.Entities;
 
@@ -106,6 +107,15 @@ public class InvoiceItem : BaseEntity
     /// Only Description is used.
     /// </summary>
     public bool IsTextRow { get; set; }
+
+    /// <summary>
+    /// VAT accounting regime for this line item.
+    /// Controls how VAT is treated: standard charge, reverse charge (PDP §92a–92e ZDPH),
+    /// exempt, or out-of-scope.
+    /// Default is <see cref="EVatRegime.Standard"/> — backward-compatible with all existing items.
+    /// Stored as NOT NULL integer in the database (default 0 = Standard).
+    /// </summary>
+    public EVatRegime VatRegime { get; set; } = EVatRegime.Standard;
 
     /// <summary>
     /// Optional product/service code

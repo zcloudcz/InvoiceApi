@@ -501,6 +501,15 @@ public class TenantDbContext : DbContext
             entity.Property(e => e.ProductCode).HasMaxLength(100);
             entity.Property(e => e.Notes).HasMaxLength(1000);
 
+            // Store EVatRegime as integer (NOT NULL, default 0 = Standard).
+            // HasConversion<int>() makes EF save/load the enum as its integer value.
+            // HasDefaultValue uses the typed enum value (not int) when a converter is in use.
+            // The database column default 0 (Standard) ensures existing rows are unaffected.
+            entity.Property(e => e.VatRegime)
+                .HasConversion<int>()
+                .HasDefaultValue(EVatRegime.Standard)
+                .IsRequired();
+
             entity.HasOne(e => e.VatRate).WithMany(v => v.InvoiceItems).HasForeignKey(e => e.VatRateId).OnDelete(DeleteBehavior.Restrict);
         });
     }
