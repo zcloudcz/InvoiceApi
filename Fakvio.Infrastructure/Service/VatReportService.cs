@@ -392,6 +392,242 @@ public class VatReportService : IVatReportService
     }
 
     // =========================================================================
+    // ExportEpoControlStatementAsync
+    // =========================================================================
+
+    /// <inheritdoc />
+    public async Task<byte[]> ExportEpoControlStatementAsync(
+        int year,
+        int period,
+        EVatPeriodType type,
+        CancellationToken ct = default)
+    {
+        // ── 1. Input validation ──────────────────────────────────────────────
+        ValidatePeriodArgs(year, period, type);
+
+        // ── 2. Resolve date range for the requested period ───────────────────
+        var (periodFrom, periodTo) = ResolvePeriodDates(year, period, type);
+        var fromUtc = DateTime.SpecifyKind(periodFrom, DateTimeKind.Utc);
+        var toUtc   = DateTime.SpecifyKind(periodTo.AddDays(1).AddTicks(-1), DateTimeKind.Utc);
+
+        _logger.LogInformation(
+            "Generating EPO DPHKH1 for year={Year}, period={Period}, type={Type} ({From:yyyy-MM-dd}..{To:yyyy-MM-dd})",
+            year, period, type, periodFrom, periodTo);
+
+        // ── 3. Load the issuer (our company) for VetaP ───────────────────────
+        var issuer = await _context.Client
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.IsIssuer && c.IsActive, ct)
+            ?? throw new InvalidOperationException(
+                "No active issuer (IsIssuer=true) found in the tenant database. " +
+                "Set up your company data before generating EPO exports.");
+
+        // ── 4. Load issued invoices with client navigation ───────────────────
+        // Client.TaxNumber is needed for the A.4/A.5 split, and
+        // Client navigation is needed to get TaxNumber from the relation.
+        var issuedInvoices = await _context.Invoice
+            .AsNoTracking()
+            .Include(i => i.Currency)
+            .Include(i => i.InvoiceItem)
+            .Include(i => i.Client) // needed for TaxNumber (CZ DIČ check)
+            .Where(i => !(i is InvoiceTemplate)
+                && i.TaxableSupplyDate >= fromUtc
+                && i.TaxableSupplyDate <= toUtc
+                && i.Status != EInvoiceStatus.Draft
+                && i.Status != EInvoiceStatus.Deleted
+                && i.DocumentType == EDocumentType.Invoice)
+            .ToListAsync(ct);
+
+        // ── 5. Load received invoices with supplier navigation ───────────────
+        var receivedInvoices = await _context.ReceivedInvoice
+            .AsNoTracking()
+            .Include(r => r.Currency)
+            .Include(r => r.Items)
+            .Include(r => r.Supplier) // needed for TaxNumber (CZ DIČ check)
+            .Where(r => r.TaxableSupplyDate >= fromUtc
+                && r.TaxableSupplyDate <= toUtc
+                && r.Status != EReceivedInvoiceStatus.Received
+                && r.Status != EReceivedInvoiceStatus.Rejected
+                && r.Status != EReceivedInvoiceStatus.Deleted)
+            .ToListAsync(ct);
+
+        // ── 6. Classify and aggregate issued invoices (A.4 / A.5) ────────────
+        // A.4: total incl. VAT >= 10 000 CZK AND client has CZ VAT number → per-invoice row.
+        // A.5: everything else → one aggregated summary row for the period.
+        // DPHKH1 amounts use 2 decimal places (fractionDigits=2) unlike DPHDP3.
+
+        var a4Rows = new List<KhRow>();  // individual rows for A.4
+        // A.5 accumulators split by rate (standard = >= 20%, reduced = < 20%)
+        var a5StdBase = 0m;
+        var a5StdVat  = 0m;
+        var a5RedBase = 0m;
+        var a5RedVat  = 0m;
+
+        foreach (var inv in issuedInvoices)
+        {
+            var currencyCode = inv.Currency?.Code ?? "CZK";
+            var duzp = DateOnly.FromDateTime(inv.TaxableSupplyDate.GetValueOrDefault(DateTime.UtcNow));
+
+            // Convert all invoice items to CZK to determine total incl. VAT.
+            var totalWithVatCzk = 0m;
+            var perItemCzk = new List<(decimal baseCzk, decimal vatCzk, decimal vatPct)>();
+
+            foreach (var item in inv.InvoiceItem)
+            {
+                var baseCzk = await _currencyService.ConvertToCzkAsync(
+                    item.TotalBeforeVat, currencyCode, duzp, ct);
+                var vatCzk = await _currencyService.ConvertToCzkAsync(
+                    item.VatAmount, currencyCode, duzp, ct);
+                perItemCzk.Add((baseCzk, vatCzk, item.VatRatePercentage));
+                totalWithVatCzk += baseCzk + vatCzk;
+            }
+
+            // Determine classification: A.4 requires CZ VAT number AND total >= 10 000 CZK.
+            var clientTaxNumber = inv.Client?.TaxNumber;
+            if (IsCzVatNumber(clientTaxNumber) && totalWithVatCzk >= 10_000m)
+            {
+                // A.4 — individual row. Use numeric part of DIČ (strip "CZ" prefix).
+                var dicOdb = StripCzPrefix(clientTaxNumber!);
+                var dppd   = inv.TaxableSupplyDate!.Value.ToString(EpoDateFormat);
+                var docNum = inv.DocumentNumber ?? string.Empty;
+
+                // Sum the per-item CZK amounts by rate.
+                var rowStdBase = perItemCzk.Where(x => x.vatPct >= 20m).Sum(x => x.baseCzk);
+                var rowStdVat  = perItemCzk.Where(x => x.vatPct >= 20m).Sum(x => x.vatCzk);
+                var rowRedBase = perItemCzk.Where(x => x.vatPct is > 0m and < 20m).Sum(x => x.baseCzk);
+                var rowRedVat  = perItemCzk.Where(x => x.vatPct is > 0m and < 20m).Sum(x => x.vatCzk);
+
+                a4Rows.Add(new KhRow(dicOdb, docNum, dppd, rowStdBase, rowStdVat, rowRedBase, rowRedVat));
+            }
+            else
+            {
+                // A.5 — aggregate into summary totals.
+                foreach (var (baseCzk, vatCzk, vatPct) in perItemCzk)
+                {
+                    if (vatPct >= 20m)
+                    {
+                        a5StdBase += baseCzk;
+                        a5StdVat  += vatCzk;
+                    }
+                    else if (vatPct > 0m)
+                    {
+                        a5RedBase += baseCzk;
+                        a5RedVat  += vatCzk;
+                    }
+                }
+            }
+        }
+
+        // ── 7. Classify and aggregate received invoices (B.2 / B.3) ──────────
+        var b2Rows = new List<KhRow>();  // individual rows for B.2
+        var b3StdBase = 0m;
+        var b3StdVat  = 0m;
+        var b3RedBase = 0m;
+        var b3RedVat  = 0m;
+
+        foreach (var rec in receivedInvoices)
+        {
+            var currencyCode = rec.Currency?.Code ?? "CZK";
+            var duzp = DateOnly.FromDateTime(rec.TaxableSupplyDate.GetValueOrDefault(DateTime.UtcNow));
+
+            var totalWithVatCzk = 0m;
+            var perItemCzk = new List<(decimal baseCzk, decimal vatCzk, decimal vatPct)>();
+
+            foreach (var item in rec.Items)
+            {
+                var baseCzk = await _currencyService.ConvertToCzkAsync(
+                    item.TotalBeforeVat, currencyCode, duzp, ct);
+                var vatCzk = await _currencyService.ConvertToCzkAsync(
+                    item.VatAmount, currencyCode, duzp, ct);
+                perItemCzk.Add((baseCzk, vatCzk, item.VatRatePercentage));
+                totalWithVatCzk += baseCzk + vatCzk;
+            }
+
+            var supplierTaxNumber = rec.Supplier?.TaxNumber;
+            if (IsCzVatNumber(supplierTaxNumber) && totalWithVatCzk >= 10_000m)
+            {
+                // B.2 — individual row. dic_dod = numeric part of supplier's CZ DIČ.
+                var dicDod = StripCzPrefix(supplierTaxNumber!);
+                var dppd   = rec.TaxableSupplyDate!.Value.ToString(EpoDateFormat);
+                var docNum = rec.DocumentNumber ?? string.Empty;
+
+                var rowStdBase = perItemCzk.Where(x => x.vatPct >= 20m).Sum(x => x.baseCzk);
+                var rowStdVat  = perItemCzk.Where(x => x.vatPct >= 20m).Sum(x => x.vatCzk);
+                var rowRedBase = perItemCzk.Where(x => x.vatPct is > 0m and < 20m).Sum(x => x.baseCzk);
+                var rowRedVat  = perItemCzk.Where(x => x.vatPct is > 0m and < 20m).Sum(x => x.vatCzk);
+
+                b2Rows.Add(new KhRow(dicDod, docNum, dppd, rowStdBase, rowStdVat, rowRedBase, rowRedVat));
+            }
+            else
+            {
+                foreach (var (baseCzk, vatCzk, vatPct) in perItemCzk)
+                {
+                    if (vatPct >= 20m)
+                    {
+                        b3StdBase += baseCzk;
+                        b3StdVat  += vatCzk;
+                    }
+                    else if (vatPct > 0m)
+                    {
+                        b3RedBase += baseCzk;
+                        b3RedVat  += vatCzk;
+                    }
+                }
+            }
+        }
+
+        // ── 8. Build the XML document ─────────────────────────────────────────
+        var doc = BuildDphkh1Xml(
+            year, period, type,
+            periodFrom, periodTo,
+            issuer,
+            a4Rows,
+            a5StdBase, a5StdVat, a5RedBase, a5RedVat,
+            b2Rows,
+            b3StdBase, b3StdVat, b3RedBase, b3RedVat);
+
+        // ── 9. XSD validation ─────────────────────────────────────────────────
+        var schemaSet = _schemaProvider.GetSchemaSet(EEpoFormType.ControlStatement, year);
+        var xsdErrors = new List<string>();
+        doc.Validate(schemaSet, (_, e) => xsdErrors.Add(e.Message));
+
+        if (xsdErrors.Count > 0)
+        {
+            _logger.LogError(
+                "Generated DPHKH1 XML failed XSD validation ({Count} error(s)): {Errors}",
+                xsdErrors.Count, string.Join("; ", xsdErrors.Take(5)));
+
+            throw new EpoValidationException("DPHKH1", xsdErrors);
+        }
+
+        // ── 10. Serialise to UTF-8 (no BOM) ──────────────────────────────────
+        using var ms = new MemoryStream();
+        var xmlSettings = new XmlWriterSettings
+        {
+            Encoding    = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+            Indent      = true,
+            IndentChars = "  "
+        };
+
+        using (var writer = XmlWriter.Create(ms, xmlSettings))
+        {
+            doc.WriteTo(writer);
+        }
+
+        var bytes = ms.ToArray();
+
+        _logger.LogInformation(
+            "DPHKH1 generated: year={Year}, period={Period}, {Bytes} bytes, " +
+            "A4rows={A4}, A5std={A5StdBase}/{A5StdVat}, A5red={A5RedBase}/{A5RedVat}, " +
+            "B2rows={B2}, B3std={B3StdBase}/{B3StdVat}, B3red={B3RedBase}/{B3RedVat}",
+            year, period, bytes.Length,
+            a4Rows.Count, a5StdBase, a5StdVat, a5RedBase, a5RedVat,
+            b2Rows.Count, b3StdBase, b3StdVat, b3RedBase, b3RedVat);
+
+        return bytes;
+    }
+
+    // =========================================================================
     // Private helpers
     // =========================================================================
 
@@ -572,5 +808,235 @@ public class VatReportService : IVatReportService
         return new XDocument(
             new XDeclaration("1.0", "utf-8", null),
             new XElement("Pisemnost", dphdp3));
+    }
+
+    /// <summary>
+    /// Returns true when <paramref name="taxNumber"/> looks like a Czech VAT ID,
+    /// i.e. starts with the two-letter prefix "CZ" (case-insensitive) followed
+    /// by at least one digit.
+    ///
+    /// This is the gate for A.4 / B.2: a foreign VAT number or a missing number
+    /// must fall through to the A.5 / B.3 aggregate row.
+    /// </summary>
+    private static bool IsCzVatNumber(string? taxNumber)
+        => !string.IsNullOrWhiteSpace(taxNumber)
+            && taxNumber.StartsWith("CZ", StringComparison.OrdinalIgnoreCase)
+            && taxNumber.Length > 2;
+
+    /// <summary>
+    /// Strips the "CZ" country prefix from a Czech VAT number and returns
+    /// the numeric part only — the format required by the DPHKH1 XSD
+    /// (<c>dic_odb</c> / <c>dic_dod</c> pattern: <c>[0-9]{1,10}</c>).
+    ///
+    /// Example: "CZ12345678" → "12345678".
+    /// </summary>
+    private static string StripCzPrefix(string taxNumber)
+        => taxNumber.StartsWith("CZ", StringComparison.OrdinalIgnoreCase)
+            ? taxNumber[2..]
+            : taxNumber;
+
+    /// <summary>
+    /// Formats a decimal amount for DPHKH1 XML attributes.
+    /// DPHKH1 XSD allows fractionDigits=2 (unlike DPHDP3 which uses integers),
+    /// so we format with exactly 2 decimal places using invariant culture
+    /// (EPO portal expects "." as the decimal separator, not ",").
+    /// </summary>
+    private static string FormatKhAmount(decimal amount)
+        => amount.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// Lightweight value record to carry per-invoice data for A.4 and B.2 rows.
+    /// </summary>
+    /// <param name="DicCounterparty">Numeric part of the counterparty's CZ DIČ (no "CZ" prefix).</param>
+    /// <param name="DocumentNumber">Invoice document number used as c_evid_dd.</param>
+    /// <param name="Dppd">Date of tax liability in EPO format "D.M.RRRR".</param>
+    /// <param name="StdBase">Tax base at standard rate (≥ 20 %) in CZK.</param>
+    /// <param name="StdVat">VAT amount at standard rate in CZK.</param>
+    /// <param name="RedBase">Tax base at reduced rate (< 20 %) in CZK.</param>
+    /// <param name="RedVat">VAT amount at reduced rate in CZK.</param>
+    private sealed record KhRow(
+        string DicCounterparty,
+        string DocumentNumber,
+        string Dppd,
+        decimal StdBase,
+        decimal StdVat,
+        decimal RedBase,
+        decimal RedVat);
+
+    /// <summary>
+    /// Builds the complete DPHKH1 XDocument according to the EPO schema.
+    ///
+    /// Structure:
+    ///   Pisemnost
+    ///     DPHKH1
+    ///       VetaD   — period metadata (rok, mesic/ctvrt, khdph_forma, dokument, k_uladis)
+    ///       VetaP   — taxpayer identification (dic, c_ufo, typ_ds, zkrobchjm)
+    ///       VetaA1* — PDP outputs — intentionally EMPTY (TODO #4)
+    ///       VetaA4* — output invoices ≥ 10 000 CZK incl. VAT with CZ DIČ, one row per invoice
+    ///       VetaA5? — aggregate of all other output invoices
+    ///       VetaB1* — PDP inputs — intentionally EMPTY (TODO #4)
+    ///       VetaB2* — input invoices ≥ 10 000 CZK incl. VAT with CZ DIČ, one row per invoice
+    ///       VetaB3? — aggregate of all other input invoices
+    ///
+    /// DPHKH1 uses decimal amounts with 2 fraction digits (vs. integer in DPHDP3).
+    /// Standard rate (≥ 20 %) maps to @zakl_dane1 / @dan1.
+    /// Reduced rate (< 20 %) maps to @zakl_dane2 / @dan2.
+    /// </summary>
+    private static XDocument BuildDphkh1Xml(
+        int year, int period, EVatPeriodType type,
+        DateTime periodFrom, DateTime periodTo,
+        Client issuer,
+        IReadOnlyList<KhRow> a4Rows,
+        decimal a5StdBase, decimal a5StdVat,
+        decimal a5RedBase, decimal a5RedVat,
+        IReadOnlyList<KhRow> b2Rows,
+        decimal b3StdBase, decimal b3StdVat,
+        decimal b3RedBase, decimal b3RedVat)
+    {
+        var today = DateTime.Today.ToString(EpoDateFormat);
+
+        // Build VetaD — period descriptor for DPHKH1.
+        // Key differences from DPHDP3:
+        //   dokument = "KH1" (fixed per XSD)
+        //   khdph_forma = "B" (řádné kontrolní hlášení)
+        //   No dapdph_forma / typ_platce here.
+        var vetaD = new XElement("VetaD",
+            new XAttribute("dokument",   "KH1"), // fixed per XSD
+            new XAttribute("k_uladis",   "DPH"), // fixed per XSD
+            new XAttribute("rok",        year.ToString()),
+            new XAttribute("khdph_forma","B"),   // "B" = řádné (ordinary filing)
+            new XAttribute("d_poddp",    today));
+
+        // Monthly → @mesic; Quarterly → @ctvrt. Never both.
+        if (type == EVatPeriodType.Monthly)
+            vetaD.Add(new XAttribute("mesic", period.ToString()));
+        else
+            vetaD.Add(new XAttribute("ctvrt", period.ToString()));
+
+        // Build VetaP — taxpayer identification (same pattern as DPHDP3).
+        var rawDic = issuer.TaxNumber ?? issuer.RegistrationNumber ?? string.Empty;
+        var dic = rawDic.StartsWith("CZ", StringComparison.OrdinalIgnoreCase)
+            ? rawDic[2..]
+            : rawDic;
+
+        if (!issuer.EpoTaxOfficeCode.HasValue)
+            throw new InvalidOperationException(
+                $"Issuer '{issuer.CompanyName}' (ID={issuer.Id}) has no EpoTaxOfficeCode configured. " +
+                "Set the tax office code (c_ufo) in Company Settings before generating EPO exports.");
+
+        var vetaP = new XElement("VetaP",
+            new XAttribute("c_ufo",  issuer.EpoTaxOfficeCode.Value.ToString()),
+            new XAttribute("dic",    dic),
+            new XAttribute("typ_ds", "P")); // "P" = právnická osoba
+
+        if (!string.IsNullOrWhiteSpace(issuer.CompanyName))
+            vetaP.Add(new XAttribute("zkrobchjm",
+                issuer.CompanyName.Length > 255
+                    ? issuer.CompanyName[..255]
+                    : issuer.CompanyName));
+
+        // Build DPHKH1 element — element order per XSD:
+        // VetaD, VetaP, VetaA1*, VetaA2*, VetaA3*, VetaA4*, VetaA5?, VetaB1*, VetaB2*, VetaB3?, VetaC?
+        var dphkh1 = new XElement("DPHKH1", vetaD, vetaP);
+
+        // TODO #4 PDP — A.1/B.1 will be filled when EVatRegime is introduced.
+        // For now, we emit no VetaA1 / VetaB1 elements (minOccurs=0, so omitting is valid).
+
+        // VetaA4 — one element per qualifying output invoice.
+        foreach (var row in a4Rows)
+        {
+            var vetaA4 = new XElement("VetaA4",
+                new XAttribute("dic_odb",     row.DicCounterparty),
+                new XAttribute("c_evid_dd",   row.DocumentNumber),
+                new XAttribute("dppd",        row.Dppd),
+                new XAttribute("kod_rezim_pl","0"),  // "0" = běžné plnění (ordinary supply)
+                new XAttribute("zdph_44",     "N")); // "N" = not a bad-debt correction
+
+            // Standard-rate amounts (optional in XSD — omit when zero).
+            if (row.StdBase != 0m || row.StdVat != 0m)
+            {
+                vetaA4.Add(new XAttribute("zakl_dane1", FormatKhAmount(row.StdBase)));
+                vetaA4.Add(new XAttribute("dan1",       FormatKhAmount(row.StdVat)));
+            }
+
+            // Reduced-rate amounts.
+            if (row.RedBase != 0m || row.RedVat != 0m)
+            {
+                vetaA4.Add(new XAttribute("zakl_dane2", FormatKhAmount(row.RedBase)));
+                vetaA4.Add(new XAttribute("dan2",       FormatKhAmount(row.RedVat)));
+            }
+
+            dphkh1.Add(vetaA4);
+        }
+
+        // VetaA5 — aggregate row for all other output invoices (minOccurs=0 in XSD).
+        // Emit only when at least one amount is non-zero.
+        if (a5StdBase != 0m || a5StdVat != 0m || a5RedBase != 0m || a5RedVat != 0m)
+        {
+            var vetaA5 = new XElement("VetaA5");
+
+            if (a5StdBase != 0m || a5StdVat != 0m)
+            {
+                vetaA5.Add(new XAttribute("zakl_dane1", FormatKhAmount(a5StdBase)));
+                vetaA5.Add(new XAttribute("dan1",       FormatKhAmount(a5StdVat)));
+            }
+
+            if (a5RedBase != 0m || a5RedVat != 0m)
+            {
+                vetaA5.Add(new XAttribute("zakl_dane2", FormatKhAmount(a5RedBase)));
+                vetaA5.Add(new XAttribute("dan2",       FormatKhAmount(a5RedVat)));
+            }
+
+            dphkh1.Add(vetaA5);
+        }
+
+        // VetaB2 — one element per qualifying input invoice.
+        foreach (var row in b2Rows)
+        {
+            var vetaB2 = new XElement("VetaB2",
+                new XAttribute("dic_dod",  row.DicCounterparty),
+                new XAttribute("c_evid_dd",row.DocumentNumber),
+                new XAttribute("dppd",     row.Dppd),
+                new XAttribute("pomer",    "N"), // "N" = no proportional deduction (§ 75)
+                new XAttribute("zdph_44",  "N")); // "N" = not a bad-debt correction
+
+            if (row.StdBase != 0m || row.StdVat != 0m)
+            {
+                vetaB2.Add(new XAttribute("zakl_dane1", FormatKhAmount(row.StdBase)));
+                vetaB2.Add(new XAttribute("dan1",       FormatKhAmount(row.StdVat)));
+            }
+
+            if (row.RedBase != 0m || row.RedVat != 0m)
+            {
+                vetaB2.Add(new XAttribute("zakl_dane2", FormatKhAmount(row.RedBase)));
+                vetaB2.Add(new XAttribute("dan2",       FormatKhAmount(row.RedVat)));
+            }
+
+            dphkh1.Add(vetaB2);
+        }
+
+        // VetaB3 — aggregate row for all other input invoices.
+        if (b3StdBase != 0m || b3StdVat != 0m || b3RedBase != 0m || b3RedVat != 0m)
+        {
+            var vetaB3 = new XElement("VetaB3");
+
+            if (b3StdBase != 0m || b3StdVat != 0m)
+            {
+                vetaB3.Add(new XAttribute("zakl_dane1", FormatKhAmount(b3StdBase)));
+                vetaB3.Add(new XAttribute("dan1",       FormatKhAmount(b3StdVat)));
+            }
+
+            if (b3RedBase != 0m || b3RedVat != 0m)
+            {
+                vetaB3.Add(new XAttribute("zakl_dane2", FormatKhAmount(b3RedBase)));
+                vetaB3.Add(new XAttribute("dan2",       FormatKhAmount(b3RedVat)));
+            }
+
+            dphkh1.Add(vetaB3);
+        }
+
+        return new XDocument(
+            new XDeclaration("1.0", "utf-8", null),
+            new XElement("Pisemnost", dphkh1));
     }
 }
