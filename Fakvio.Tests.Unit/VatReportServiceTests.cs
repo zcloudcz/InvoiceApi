@@ -1,3 +1,4 @@
+using Fakvio.Application.Service;
 using Fakvio.Domain.Entities;
 using Fakvio.Domain.Enums;
 using Fakvio.Infrastructure.Data;
@@ -30,8 +31,16 @@ public class VatReportServiceTests : IDisposable
             .Options;
 
         _context = new TenantDbContext(options);
+
+        // Stub IEpoSchemaProvider and ICurrencyService — not exercised in GetReportAsync tests.
+        var schemaProvider  = Substitute.For<IEpoSchemaProvider>();
+        var currencyService = Substitute.For<ICurrencyService>();
+        currencyService
+            .ConvertToCzkAsync(Arg.Any<decimal>(), Arg.Any<string>(), Arg.Any<DateOnly>(), Arg.Any<CancellationToken>())
+            .Returns(call => Task.FromResult(call.ArgAt<decimal>(0)));
+
         var logger = Substitute.For<ILogger<VatReportService>>();
-        _service = new VatReportService(_context, logger);
+        _service = new VatReportService(_context, schemaProvider, currencyService, logger);
 
         SeedBaseData();
     }

@@ -195,6 +195,37 @@ public class CurrencyService : ICurrencyService
     }
 
     /// <summary>
+    /// Converts an amount in <paramref name="currencyCode"/> to CZK.
+    ///
+    /// Current implementation: returns <paramref name="amount"/> unchanged for CZK;
+    /// for foreign currencies it logs a warning and returns the amount as-is until
+    /// issue #36 (ČNB exchange-rate integration) provides a persisted rate table.
+    ///
+    /// Once #36 is merged, this method should look up the ČNB rate for <paramref name="date"/>
+    /// from the ExchangeRate table and multiply accordingly.
+    /// </summary>
+    public Task<decimal> ConvertToCzkAsync(
+        decimal amount,
+        string currencyCode,
+        DateOnly date,
+        CancellationToken cancellationToken = default)
+    {
+        // CZK → no conversion needed.
+        if (string.Equals(currencyCode, "CZK", StringComparison.OrdinalIgnoreCase))
+            return Task.FromResult(amount);
+
+        // Non-CZK: #36 (ČNB rate table) is not yet merged.
+        // Return the amount unchanged and warn so the gap is visible in logs.
+        _logger.LogWarning(
+            "ConvertToCzkAsync: no ČNB rate table available yet (issue #36). " +
+            "Returning {Amount} {Currency} as-is. " +
+            "EPO amounts for non-CZK invoices will be incorrect until #36 is integrated.",
+            amount, currencyCode);
+
+        return Task.FromResult(amount);
+    }
+
+    /// <summary>
     /// Soft-deletes a currency by setting IsActive = false.
     /// This is safe even when the currency is referenced by invoices or clients,
     /// because the record remains in the database — only hidden from active lists.

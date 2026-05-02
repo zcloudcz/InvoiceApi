@@ -347,6 +347,9 @@ namespace Fakvio.Infrastructure.Migrations.Master
                         .HasMaxLength(9)
                         .HasColumnType("character varying(9)");
 
+                    b.Property<int?>("EpoTaxOfficeCode")
+                        .HasColumnType("integer");
+
                     b.Property<string>("CompanyName")
                         .IsRequired()
                         .HasMaxLength(500)

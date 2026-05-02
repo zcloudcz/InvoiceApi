@@ -150,4 +150,16 @@ public class Client : BaseEntity
     /// Can be null if using default settings
     /// </summary>
     public BillingSettings? BillingSettings { get; set; }
+
+    // ─── EPO / Tax authority ──────────────────────────────────────────────
+
+    /// <summary>
+    /// Czech Financial Administration tax office code (c_ufo) — číselník Územní finanční orgány.
+    /// Required for EPO DPHDP3 / DPHKH1 submissions; only relevant when IsIssuer = true.
+    /// Null = not yet configured by the user; EPO export will raise EpoValidationException
+    /// until the code is set in Company Settings.
+    /// Valid range: 1–999 (3-digit code per MFČR číselník UFO).
+    /// Example: 451 = Finanční úřad pro hl. m. Prahu.
+    /// </summary>
+    public int? EpoTaxOfficeCode { get; set; }
 }
