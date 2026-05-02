@@ -394,6 +394,27 @@ Toto oddělení opravuje bug z issue #63/#72, kde se `if (overrideSequenceId.Has
 
 **SysAdmin "Run now"**: `POST /api/sysadmin/payment-matching/run-now` (`PaymentMatchingSysAdminController.cs`) — volá tutéž `IImapPollService.RunCycleAsync()`.
 
+### 4.5.1 PaymentMatch lookup — proforma ↔ DPP cross-link (#31)
+
+`IPaymentMatchingService.GetPaymentsForInvoiceAsync(long invoiceId)` vrací unified seznam plateb pro danou fakturu:
+
+- **Přímé platby**: `PaymentMatch.InvoiceId == invoiceId`.
+- **Cross-link** (Proforma ↔ DPP):
+  - Pro `Proforma`: zahrne i `PaymentMatch` na všech DPP (`TaxReceiptForAdvance`) spojených přes `OriginalInvoiceId`.
+  - Pro `TaxReceiptForAdvance`: zahrne i `PaymentMatch` na originating Proformě a všech jejích DPP.
+  - Výsledkem je, že Proforma panel a DPP panel zobrazují **totožnou množinu plateb**.
+
+**Proč OriginalInvoiceId a ne VariableSymbol?**
+VariableSymbol je lidský string — může se duplikovat. `OriginalInvoiceId` je DB FK s garantovanou cardinalitou (1 DPP → 1 Proforma).
+
+**Scénář 1**: Platba uložena na Proformě (starý stav před #29), ale DPP existuje → DPP panel vidí tu platbu.
+
+**Scénář 2**: Platba uložena na DPP (nový stav po #29) → Proforma panel vidí tu platbu.
+
+**Scénář 3**: Dvě DPP na jednu Proformu (dvě zálohy) → každý DPP panel vidí obě platby (přes společnou proformu).
+
+Implementace: `PaymentMatchingService.cs` (metoda `GetPaymentsForInvoiceAsync`).
+
 ### 4.6 Reminders (dunning) — daily 6 AM UTC
 
 `Fakvio.Infrastructure/Service/ReminderService.cs:449-484` `ProcessOverdueInvoicesAsync`:

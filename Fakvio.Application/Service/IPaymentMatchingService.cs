@@ -43,6 +43,32 @@ public interface IPaymentMatchingService
     /// Marks a transaction as not-belonging-to-us (e.g., ATM withdrawal, personal transfer).
     /// </summary>
     Task IgnoreAsync(long bankTransactionId, long? userId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns all payments visible from a given invoice — combining two sets:
+    ///
+    ///   1. Direct PaymentMatch rows where PaymentMatch.InvoiceId == invoiceId.
+    ///
+    ///   2. Cross-linked payments via VariableSymbol:
+    ///      - For a Proforma: also returns PaymentMatches stored on any
+    ///        TaxReceiptForAdvance (DPP) that references this proforma via
+    ///        OriginalInvoiceId (the DPP inherits the same VariableSymbol on
+    ///        issue — guaranteed by IssueFromPaidProformaAsync in #5).
+    ///      - For a TaxReceiptForAdvance: also returns PaymentMatches stored on
+    ///        the originating Proforma (OriginalInvoiceId → proforma).
+    ///
+    /// This ensures that the Payments panel on both the Proforma detail page and
+    /// the DPP detail page shows the same unified set of transactions (#31 AC).
+    ///
+    /// Duplicate PaymentMatch ids (same row reachable via both paths) are
+    /// deduplicated — the caller always gets a distinct list.
+    /// </summary>
+    /// <param name="invoiceId">Primary key of the invoice to query.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Distinct list of PaymentMatchDto, ordered by MatchedAt ascending.</returns>
+    Task<IReadOnlyList<PaymentMatchDto>> GetPaymentsForInvoiceAsync(
+        long invoiceId,
+        CancellationToken ct = default);
 }
 
 /// <summary>Outcome of a manual match operation.</summary>

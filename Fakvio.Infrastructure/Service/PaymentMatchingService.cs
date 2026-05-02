@@ -168,6 +168,92 @@ public class PaymentMatchingService : IPaymentMatchingService
         _logger.LogInformation("Ignored: Tx={TxId} User={UserId}", tx.Id, userId);
     }
 
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<PaymentMatchDto>> GetPaymentsForInvoiceAsync(
+        long invoiceId,
+        CancellationToken ct = default)
+    {
+        // Load the requested invoice so we know its type and OriginalInvoiceId.
+        var invoice = await _context.Invoice
+            .AsNoTracking()
+            .FirstOrDefaultAsync(i => i.Id == invoiceId, ct);
+
+        if (invoice == null)
+        {
+            _logger.LogWarning(
+                "GetPaymentsForInvoiceAsync: Invoice {Id} not found", invoiceId);
+            return Array.Empty<PaymentMatchDto>();
+        }
+
+        // Collect the ids of all invoices whose PaymentMatch rows we want to include.
+        // Always starts with the invoiceId itself (direct matches).
+        var relatedInvoiceIds = new HashSet<long> { invoiceId };
+
+        // Cross-link via OriginalInvoiceId for Proforma and TaxReceiptForAdvance.
+        //
+        // The full "family" of related invoices for any proforma or DPP is:
+        //   { proforma } ∪ { all DPPs that have OriginalInvoiceId == proforma.Id }
+        //
+        // OriginalInvoiceId is the canonical link — DPPs inherit the same VariableSymbol
+        // from the proforma on issue (guaranteed by IssueFromPaidProformaAsync in #5).
+        // We expand the set to the full family so that querying any member (proforma OR
+        // any of its DPPs) returns the same unified list of payments.
+        long? proformaId = null;
+
+        if (invoice.DocumentType == EDocumentType.Proforma)
+        {
+            proformaId = invoiceId;
+        }
+        else if (invoice.DocumentType == EDocumentType.TaxReceiptForAdvance
+                 && invoice.OriginalInvoiceId.HasValue)
+        {
+            proformaId = invoice.OriginalInvoiceId.Value;
+            // Also include the originating proforma.
+            relatedInvoiceIds.Add(proformaId.Value);
+        }
+
+        if (proformaId.HasValue)
+        {
+            // Find all tax receipts for advance (DPPs) linked to this proforma — covers
+            // partial-payment scenarios where multiple DPPs exist for one proforma.
+            var dppIds = await _context.Invoice
+                .AsNoTracking()
+                .Where(i =>
+                    i.OriginalInvoiceId == proformaId.Value
+                    && i.DocumentType == EDocumentType.TaxReceiptForAdvance)
+                .Select(i => i.Id)
+                .ToListAsync(ct);
+
+            foreach (var id in dppIds)
+                relatedInvoiceIds.Add(id);
+        }
+
+        // Fetch all PaymentMatch rows for the collected invoice ids in one query.
+        var matches = await _context.PaymentMatch
+            .AsNoTracking()
+            .Include(m => m.BankTransaction)
+            .Where(m => m.InvoiceId != null && relatedInvoiceIds.Contains(m.InvoiceId.Value))
+            .OrderBy(m => m.MatchedAt)
+            .ToListAsync(ct);
+
+        // Project to DTO. The same PaymentMatch row cannot appear twice (the WHERE clause
+        // uses a set of distinct invoice ids), so no extra deduplication is needed.
+        return matches
+            .Select(m => new PaymentMatchDto
+            {
+                Id = m.Id,
+                BankTransactionId = m.BankTransactionId,
+                TransactionDate = m.BankTransaction.TransactionDate,
+                MatchedAmount = m.MatchedAmount,
+                CurrencyCode = m.BankTransaction.CurrencyCode,
+                MatchedBy = m.MatchedBy,
+                MatchedAt = m.MatchedAt,
+                Note = m.Note,
+                MatchedInvoiceId = m.InvoiceId!.Value,
+            })
+            .ToList();
+    }
+
     // ─── Matching logic ─────────────────────────────────────────────────────
 
     /// <summary>Tries to match an incoming transaction against outstanding invoices.</summary>
