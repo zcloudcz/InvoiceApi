@@ -464,7 +464,8 @@ public class ClientFunctionsAdvanceTaxReceiptModeTests
 
     private static HttpRequest BuildRequest(
         bool authenticated,
-        string? jsonBody = null)
+        string? jsonBody = null,
+        string[]? roles = null)
     {
         var ctx = new DefaultHttpContext();
 
@@ -475,6 +476,11 @@ public class ClientFunctionsAdvanceTaxReceiptModeTests
                 new("UserId", "42"),
                 new(ClaimTypes.NameIdentifier, "42"),
             };
+            if (roles != null)
+            {
+                foreach (var role in roles)
+                    claims.Add(new Claim(ClaimTypes.Role, role));
+            }
             ctx.User = new ClaimsPrincipal(new ClaimsIdentity(claims, "TestAuth"));
         }
 
@@ -555,6 +561,19 @@ public class ClientFunctionsAdvanceTaxReceiptModeTests
     }
 
     [Fact]
+    public async Task SetAdvanceTaxReceiptMode_NonAdmin_Returns403()
+    {
+        var sut = BuildSut();
+        var req = BuildRequest(authenticated: true,
+            jsonBody: JsonSerializer.Serialize(new SetAdvanceTaxReceiptModeDto { Mode = EAdvanceTaxReceiptMode.Disabled }));
+
+        var result = await sut.Client_SetAdvanceTaxReceiptMode(req);
+
+        result.ShouldBeOfType<ForbidResult>();
+        await _clientService.DidNotReceiveWithAnyArgs().SetAdvanceTaxReceiptModeAsync(default);
+    }
+
+    [Fact]
     public async Task SetAdvanceTaxReceiptMode_ValidBody_EmptyMode_DelegatesToServiceWithDefaultEnumValue()
     {
         // Arrange — valid JSON body but Mode property missing → defaults to enum value 0
@@ -565,7 +584,7 @@ public class ClientFunctionsAdvanceTaxReceiptModeTests
 
         var sut = BuildSut();
         // "{ }" → Mode not specified → defaults to 0 (Disabled)
-        var req = BuildRequest(authenticated: true, jsonBody: "{}");
+        var req = BuildRequest(authenticated: true, jsonBody: "{}", roles: new[] { "Admin" });
 
         // Act
         var result = await sut.Client_SetAdvanceTaxReceiptMode(req);
@@ -590,7 +609,7 @@ public class ClientFunctionsAdvanceTaxReceiptModeTests
         {
             Mode = EAdvanceTaxReceiptMode.Disabled
         });
-        var req = BuildRequest(authenticated: true, jsonBody: json);
+        var req = BuildRequest(authenticated: true, jsonBody: json, roles: new[] { "Admin" });
 
         // Act
         var result = await sut.Client_SetAdvanceTaxReceiptMode(req);
@@ -616,7 +635,7 @@ public class ClientFunctionsAdvanceTaxReceiptModeTests
         {
             Mode = EAdvanceTaxReceiptMode.OnAnyPayment
         });
-        var req = BuildRequest(authenticated: true, jsonBody: json);
+        var req = BuildRequest(authenticated: true, jsonBody: json, roles: new[] { "Admin" });
 
         // Act
         var result = await sut.Client_SetAdvanceTaxReceiptMode(req);
@@ -638,7 +657,7 @@ public class ClientFunctionsAdvanceTaxReceiptModeTests
 
         var sut = BuildSut();
         var json = JsonSerializer.Serialize(new SetAdvanceTaxReceiptModeDto { Mode = mode });
-        var req = BuildRequest(authenticated: true, jsonBody: json);
+        var req = BuildRequest(authenticated: true, jsonBody: json, roles: new[] { "Admin" });
 
         // Act
         var result = await sut.Client_SetAdvanceTaxReceiptMode(req);
