@@ -231,6 +231,15 @@ public class TenantDbContextFactory : ITenantDbContextFactory
         return context;
     }
 
+    /// <inheritdoc />
+    /// <summary>
+    /// Creates a lightweight TenantDbContext (returned as DbContext) for a known schema WITHOUT
+    /// performing any migration checks. Used by background services (e.g., ExchangeRateRefreshService)
+    /// that iterate all tenant schemas and need a disposable context per tenant.
+    /// The caller can safely cast the result to TenantDbContext when needed.
+    /// </summary>
+    public DbContext CreateForSchema(string schemaName) => CreateTenantContext(schemaName);
+
     /// <summary>
     /// Gets the shared PostgreSQL connection string from configuration.
     /// In multi-schema architecture, all tenants share the same database connection.

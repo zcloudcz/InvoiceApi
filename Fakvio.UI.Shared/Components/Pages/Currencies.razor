@@ -1,5 +1,6 @@
 @page "/currencies"
 @using Fakvio.Contracts.Dto.Currency
+@using Fakvio.Domain.Enums
 @using Fakvio.UI.Shared.Services
 @using Microsoft.AspNetCore.Authorization
 @* Use CurrencyApiService instead of raw HttpClient — handles BaseAddress, auth, logging *@
@@ -12,6 +13,56 @@
 <PageTitle>@L["Currency_Title"]</PageTitle>
 
 <MudText Typo="Typo.h4" Class="mb-4">@L["Currency_Title"]</MudText>
+
+@* Exchange rate settings — CNB auto-update mode + manual refresh button *@
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h6" Class="mb-3">@L["Currency_ExchangeRates"]</MudText>
+    <MudGrid>
+        <MudItem xs="12" sm="4" md="3">
+            <MudSelect T="EExchangeRateUpdateMode" Value="_exchangeRateUpdateMode"
+                       ValueChanged="OnUpdateModeChanged"
+                       Label="@L["Currency_UpdateMode"]" Variant="Variant.Outlined">
+                <MudSelectItem Value="EExchangeRateUpdateMode.Off">@L["Currency_UpdateMode_Off"]</MudSelectItem>
+                <MudSelectItem Value="EExchangeRateUpdateMode.Daily">@L["Currency_UpdateMode_Daily"]</MudSelectItem>
+                <MudSelectItem Value="EExchangeRateUpdateMode.Weekly">@L["Currency_UpdateMode_Weekly"]</MudSelectItem>
+                <MudSelectItem Value="EExchangeRateUpdateMode.Monthly">@L["Currency_UpdateMode_Monthly"]</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        @if (_exchangeRateUpdateMode == EExchangeRateUpdateMode.Weekly)
+        {
+            <MudItem xs="12" sm="4" md="3">
+                <MudSelect T="DayOfWeek?" Value="_exchangeRateUpdateDay"
+                           ValueChanged="OnUpdateDayChanged"
+                           Label="@L["Currency_UpdateDay"]" Variant="Variant.Outlined">
+                    <MudSelectItem Value="@((DayOfWeek?)DayOfWeek.Monday)">@L["DayOfWeek_Monday"]</MudSelectItem>
+                    <MudSelectItem Value="@((DayOfWeek?)DayOfWeek.Tuesday)">@L["DayOfWeek_Tuesday"]</MudSelectItem>
+                    <MudSelectItem Value="@((DayOfWeek?)DayOfWeek.Wednesday)">@L["DayOfWeek_Wednesday"]</MudSelectItem>
+                    <MudSelectItem Value="@((DayOfWeek?)DayOfWeek.Thursday)">@L["DayOfWeek_Thursday"]</MudSelectItem>
+                    <MudSelectItem Value="@((DayOfWeek?)DayOfWeek.Friday)">@L["DayOfWeek_Friday"]</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+        }
+        <MudItem xs="12" sm="4" md="3" Class="d-flex align-end">
+            <MudButton Variant="Variant.Filled" Color="Color.Secondary"
+                       OnClick="RefreshExchangeRates" Disabled="_refreshing"
+                       StartIcon="@Icons.Material.Filled.Refresh">
+                @if (_refreshing)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                }
+                @L["Currency_RefreshFromCnb"]
+            </MudButton>
+        </MudItem>
+        <MudItem xs="12" sm="4" md="3" Class="d-flex align-end">
+            @if (_exchangeRateLastRun != null)
+            {
+                <MudText Typo="Typo.caption" Color="Color.Dark">
+                    @L["Currency_LastRefresh"]: @_exchangeRateLastRun.Value.ToLocalTime().ToString("g")
+                </MudText>
+            }
+        </MudItem>
+    </MudGrid>
+</MudPaper>
 
 @* Search and filter bar outside the grid — provides consistent layout across all pages *@
 <MudPaper Class="pa-4 mb-4">
@@ -145,12 +196,96 @@
 
     private CurrencyEditModel _currentCurrency = new();
 
+    // Exchange rate settings state
+    private EExchangeRateUpdateMode _exchangeRateUpdateMode = EExchangeRateUpdateMode.Off;
+    private DayOfWeek? _exchangeRateUpdateDay;
+    private DateTime? _exchangeRateLastRun;
+    private bool _refreshing = false;
+
     private DialogOptions _dialogOptions = new()
     {
         MaxWidth = MaxWidth.Small,
         FullWidth = true,
         CloseButton = true
     };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadExchangeRateSettings();
+    }
+
+    private async Task LoadExchangeRateSettings()
+    {
+        try
+        {
+            var settings = await CurrencyService.GetExchangeRateSettingsAsync();
+            if (settings != null)
+            {
+                _exchangeRateUpdateMode = settings.UpdateMode;
+                _exchangeRateUpdateDay = settings.UpdateDayOfWeek;
+                _exchangeRateLastRun = settings.LastRunAt;
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task OnUpdateModeChanged(EExchangeRateUpdateMode mode)
+    {
+        _exchangeRateUpdateMode = mode;
+        await SaveExchangeRateSettings();
+    }
+
+    private async Task OnUpdateDayChanged(DayOfWeek? day)
+    {
+        _exchangeRateUpdateDay = day;
+        await SaveExchangeRateSettings();
+    }
+
+    private async Task SaveExchangeRateSettings()
+    {
+        try
+        {
+            var dto = new UpdateExchangeRateSettingsDto
+            {
+                UpdateMode = _exchangeRateUpdateMode,
+                UpdateDayOfWeek = _exchangeRateUpdateDay
+            };
+            var result = await CurrencyService.UpdateExchangeRateSettingsAsync(dto);
+            if (result != null)
+            {
+                _exchangeRateLastRun = result.LastRunAt;
+                Snackbar.Add(L["Currency_SettingsSaved"].Value, Severity.Success);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task RefreshExchangeRates()
+    {
+        _refreshing = true;
+        StateHasChanged();
+        try
+        {
+            var count = await CurrencyService.RefreshExchangeRatesAsync();
+            Snackbar.Add(string.Format(L["Currency_RefreshResult"].Value, count), Severity.Success);
+            await LoadExchangeRateSettings();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _refreshing = false;
+            StateHasChanged();
+        }
+    }
 
     /// <summary>
     /// Loads paged currency data via CurrencyApiService.

@@ -35,16 +35,20 @@ public class TenantProvisioningService : ITenantProvisioningService
     /// All raw NpgsqlConnection instances MUST come from _dataSource.OpenConnectionAsync()
     /// — never from "new NpgsqlConnection(connectionString)" — to ensure Azure AD tokens are used.
     /// </summary>
+    private readonly IExchangeRateProvider? _exchangeRateProvider;
+
     public TenantProvisioningService(
         MasterDbContext masterContext,
         IConfiguration configuration,
         NpgsqlDataSource dataSource,
-        ILogger<TenantProvisioningService> logger)
+        ILogger<TenantProvisioningService> logger,
+        IExchangeRateProvider? exchangeRateProvider = null)
     {
         _masterContext = masterContext;
         _configuration = configuration;
         _dataSource = dataSource;
         _logger = logger;
+        _exchangeRateProvider = exchangeRateProvider;
     }
 
     /// <inheritdoc />
@@ -125,8 +129,14 @@ public class TenantProvisioningService : ITenantProvisioningService
 
             await CreateDefaultNumberSequencesAsync(tenantContext, cancellationToken);
 
-            // ── Step 8: Mark as provisioned in master DB ────────────────────
-            currentStep = "Step 8: Mark as provisioned in master DB";
+            // ── Step 8: Seed initial CNB exchange rates ──────────────────────
+            currentStep = $"Step 8: Seed CNB exchange rates in schema '{settings.SchemaName}'";
+            _logger.LogInformation("[Provision:{CompanyId}] {Step}", companyId, currentStep);
+
+            await SeedExchangeRatesAsync(tenantContext, cancellationToken);
+
+            // ── Step 9: Mark as provisioned in master DB ────────────────────
+            currentStep = "Step 9: Mark as provisioned in master DB";
             _logger.LogInformation("[Provision:{CompanyId}] {Step}", companyId, currentStep);
 
             settings.IsProvisioned = true;
@@ -899,6 +909,38 @@ public class TenantProvisioningService : ITenantProvisioningService
     ///   TaxReceiptForAdvance→ "DPP-"   (daňový doklad o přijaté platbě)
     ///
     /// IDEMPOTENT: Checks if default sequences already exist before inserting.
+    /// Fetches today's CNB exchange rates and seeds them into the tenant's ExchangeRate table.
+    /// Non-fatal: if CNB is unreachable during provisioning, the tenant starts with no rates
+    /// and the background refresh will fill them in later.
+    /// </summary>
+    private async Task SeedExchangeRatesAsync(TenantDbContext tenantContext, CancellationToken cancellationToken)
+    {
+        if (_exchangeRateProvider == null)
+        {
+            _logger.LogWarning("IExchangeRateProvider not available — skipping exchange rate seed");
+            return;
+        }
+
+        try
+        {
+            var rates = await _exchangeRateProvider.FetchRatesAsync(null, cancellationToken);
+            if (rates.Count == 0)
+            {
+                _logger.LogWarning("CNB returned 0 rates during provisioning seed — skipping");
+                return;
+            }
+
+            tenantContext.ExchangeRate.AddRange(rates);
+            await tenantContext.SaveChangesAsync(cancellationToken);
+            _logger.LogInformation("Seeded {Count} CNB exchange rates into tenant schema", rates.Count);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "Failed to seed CNB exchange rates — tenant starts with no rates (background refresh will fill them)");
+        }
+    }
+
+    /// <summary>
     /// If CopyCodeTablesAsync already cleared and re-seeded NumberSequence,
     /// this method safely adds only missing defaults.
     /// </summary>

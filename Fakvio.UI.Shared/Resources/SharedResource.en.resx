@@ -371,6 +371,22 @@
   <data name="Currency_DisplayFormatHelper" xml:space="preserve"><value>E.g. '{0:N2} Kč' or '€{0:N2}'</value></data>
   <data name="Currency_NameLabel" xml:space="preserve"><value>Currency name</value></data>
   <data name="Currency_CodeLabel" xml:space="preserve"><value>Currency code (ISO 4217)</value></data>
+  <data name="Currency_ExchangeRates" xml:space="preserve"><value>CNB Exchange Rates</value></data>
+  <data name="Currency_UpdateMode" xml:space="preserve"><value>Auto-update</value></data>
+  <data name="Currency_UpdateMode_Off" xml:space="preserve"><value>Off</value></data>
+  <data name="Currency_UpdateMode_Daily" xml:space="preserve"><value>Daily</value></data>
+  <data name="Currency_UpdateMode_Weekly" xml:space="preserve"><value>Weekly</value></data>
+  <data name="Currency_UpdateMode_Monthly" xml:space="preserve"><value>Monthly</value></data>
+  <data name="Currency_UpdateDay" xml:space="preserve"><value>Update day</value></data>
+  <data name="Currency_RefreshFromCnb" xml:space="preserve"><value>Update from CNB</value></data>
+  <data name="Currency_LastRefresh" xml:space="preserve"><value>Last refresh</value></data>
+  <data name="Currency_SettingsSaved" xml:space="preserve"><value>Exchange rate settings saved</value></data>
+  <data name="Currency_RefreshResult" xml:space="preserve"><value>Loaded {0} new rates from CNB</value></data>
+  <data name="DayOfWeek_Monday" xml:space="preserve"><value>Monday</value></data>
+  <data name="DayOfWeek_Tuesday" xml:space="preserve"><value>Tuesday</value></data>
+  <data name="DayOfWeek_Wednesday" xml:space="preserve"><value>Wednesday</value></data>
+  <data name="DayOfWeek_Thursday" xml:space="preserve"><value>Thursday</value></data>
+  <data name="DayOfWeek_Friday" xml:space="preserve"><value>Friday</value></data>
   <data name="Template_Subtitle" xml:space="preserve"><value>Invoice Templates</value></data>
   <data name="Template_NoRecords" xml:space="preserve"><value>No templates found</value></data>
   <data name="Template_DocumentType" xml:space="preserve"><value>Document type</value></data>

@@ -482,6 +482,17 @@ namespace Fakvio.Infrastructure.Migrations.Master
                     b.Property<long?>("CreatedByUserId")
                         .HasColumnType("bigint");
 
+                    b.Property<DateTime?>("ExchangeRateLastRunAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("ExchangeRateUpdateDayOfWeek")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ExchangeRateUpdateMode")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
+
                     b.Property<string>("GoogleDriveAccessToken")
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");

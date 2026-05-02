@@ -41,8 +41,11 @@ public class CurrencyServiceTests : IDisposable
         var tenantResolver = Substitute.For<ITenantResolver>();
         tenantResolver.GetCurrentCompanyId().Returns(1L);
 
+        // Mock IExchangeRateProvider — not used in existing CRUD tests, but required by new constructor
+        var cnbProvider = Substitute.For<IExchangeRateProvider>();
+
         _logger = Substitute.For<ILogger<CurrencyService>>();
-        _service = new CurrencyService(_context, _masterContext, tenantResolver, _logger);
+        _service = new CurrencyService(_context, _masterContext, tenantResolver, cnbProvider, _logger);
 
         SeedTestData();
     }

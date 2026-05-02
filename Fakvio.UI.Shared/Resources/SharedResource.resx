@@ -371,6 +371,22 @@
   <data name="Currency_DisplayFormatHelper" xml:space="preserve"><value>Např. '{0:N2} Kč' nebo '€{0:N2}'</value></data>
   <data name="Currency_NameLabel" xml:space="preserve"><value>Název měny</value></data>
   <data name="Currency_CodeLabel" xml:space="preserve"><value>Kód měny (ISO 4217)</value></data>
+  <data name="Currency_ExchangeRates" xml:space="preserve"><value>Směnné kurzy ČNB</value></data>
+  <data name="Currency_UpdateMode" xml:space="preserve"><value>Automatická aktualizace</value></data>
+  <data name="Currency_UpdateMode_Off" xml:space="preserve"><value>Vypnuto</value></data>
+  <data name="Currency_UpdateMode_Daily" xml:space="preserve"><value>Denně</value></data>
+  <data name="Currency_UpdateMode_Weekly" xml:space="preserve"><value>Týdně</value></data>
+  <data name="Currency_UpdateMode_Monthly" xml:space="preserve"><value>Měsíčně</value></data>
+  <data name="Currency_UpdateDay" xml:space="preserve"><value>Den aktualizace</value></data>
+  <data name="Currency_RefreshFromCnb" xml:space="preserve"><value>Aktualizovat z ČNB</value></data>
+  <data name="Currency_LastRefresh" xml:space="preserve"><value>Poslední aktualizace</value></data>
+  <data name="Currency_SettingsSaved" xml:space="preserve"><value>Nastavení kurzů uloženo</value></data>
+  <data name="Currency_RefreshResult" xml:space="preserve"><value>Načteno {0} nových kurzů z ČNB</value></data>
+  <data name="DayOfWeek_Monday" xml:space="preserve"><value>Pondělí</value></data>
+  <data name="DayOfWeek_Tuesday" xml:space="preserve"><value>Úterý</value></data>
+  <data name="DayOfWeek_Wednesday" xml:space="preserve"><value>Středa</value></data>
+  <data name="DayOfWeek_Thursday" xml:space="preserve"><value>Čtvrtek</value></data>
+  <data name="DayOfWeek_Friday" xml:space="preserve"><value>Pátek</value></data>
   <data name="Template_Subtitle" xml:space="preserve"><value>Šablony faktur</value></data>
   <data name="Template_NoRecords" xml:space="preserve"><value>Žádné šablony nenalezeny</value></data>
   <data name="Template_DocumentType" xml:space="preserve"><value>Typ dokumentu</value></data>

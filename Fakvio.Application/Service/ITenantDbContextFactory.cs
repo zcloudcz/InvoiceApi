@@ -78,4 +78,15 @@ public interface ITenantDbContextFactory
     /// Returns null if CompanySystemSettings not found.
     /// </summary>
     Task<string?> GetConnectionStringAsync(long companyId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Creates a <see cref="DbContext"/> (TenantDbContext cast) for a known schema name
+    /// WITHOUT performing any migration checks.
+    /// Used by background services (ExchangeRateRefreshService) that iterate all tenant schemas
+    /// from the master DB and need a lightweight, disposable context per schema.
+    ///
+    /// The caller is responsible for disposing the returned context.
+    /// Migrations must have been applied to the schema before calling this method.
+    /// </summary>
+    DbContext CreateForSchema(string schemaName);
 }

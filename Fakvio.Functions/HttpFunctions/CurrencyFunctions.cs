@@ -170,6 +170,77 @@ public class CurrencyFunctions
     }
 
     /// <summary>
+    /// GET api/currency/{code}/rate → CurrencyController.GetExchangeRate
+    /// </summary>
+    [Function("Currency_GetExchangeRate")]
+    public async Task<IActionResult> Currency_GetExchangeRate(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/currency/{code}/rate")] HttpRequest req,
+        string code)
+    {
+        _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
+
+        if (req.HttpContext.User.Identity?.IsAuthenticated != true)
+            return new UnauthorizedResult();
+
+        DateOnly? date = DateOnly.TryParse(req.Query["date"], out var dateParsed) ? dateParsed : null;
+        var cancellationToken = req.HttpContext.RequestAborted;
+
+        return FunctionResultHelper.Normalize(await _controller.GetExchangeRate(code, date, cancellationToken));
+    }
+
+    /// <summary>
+    /// POST api/currency/exchange-rates/refresh → CurrencyController.RefreshExchangeRates
+    /// </summary>
+    [Function("Currency_RefreshExchangeRates")]
+    public async Task<IActionResult> Currency_RefreshExchangeRates(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/currency/exchange-rates/refresh")] HttpRequest req)
+    {
+        _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
+
+        if (req.HttpContext.User.Identity?.IsAuthenticated != true)
+            return new UnauthorizedResult();
+
+        var cancellationToken = req.HttpContext.RequestAborted;
+
+        return FunctionResultHelper.Normalize(await _controller.RefreshExchangeRates(cancellationToken));
+    }
+
+    /// <summary>
+    /// GET api/currency/exchange-rates/settings → CurrencyController.GetExchangeRateSettings
+    /// </summary>
+    [Function("Currency_GetExchangeRateSettings")]
+    public async Task<IActionResult> Currency_GetExchangeRateSettings(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/currency/exchange-rates/settings")] HttpRequest req)
+    {
+        _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
+
+        if (req.HttpContext.User.Identity?.IsAuthenticated != true)
+            return new UnauthorizedResult();
+
+        var cancellationToken = req.HttpContext.RequestAborted;
+
+        return FunctionResultHelper.Normalize(await _controller.GetExchangeRateSettings(cancellationToken));
+    }
+
+    /// <summary>
+    /// PUT api/currency/exchange-rates/settings → CurrencyController.UpdateExchangeRateSettings
+    /// </summary>
+    [Function("Currency_UpdateExchangeRateSettings")]
+    public async Task<IActionResult> Currency_UpdateExchangeRateSettings(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "api/currency/exchange-rates/settings")] HttpRequest req)
+    {
+        _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
+
+        if (req.HttpContext.User.Identity?.IsAuthenticated != true)
+            return new UnauthorizedResult();
+
+        var dto = await System.Text.Json.JsonSerializer.DeserializeAsync<global::Fakvio.Contracts.Dto.Currency.UpdateExchangeRateSettingsDto>(req.Body, FunctionResultHelper.JsonOptions, req.HttpContext.RequestAborted);
+        var cancellationToken = req.HttpContext.RequestAborted;
+
+        return FunctionResultHelper.Normalize(await _controller.UpdateExchangeRateSettings(dto!, cancellationToken));
+    }
+
+    /// <summary>
     /// DELETE api/currency/{id} → CurrencyController.DeleteCurrency
     /// </summary>
     [Function("Currency_DeleteCurrency")]
