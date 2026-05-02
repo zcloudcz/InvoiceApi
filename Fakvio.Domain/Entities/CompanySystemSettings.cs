@@ -1,4 +1,5 @@
 using Fakvio.Domain.Common;
+using Fakvio.Domain.Enums;
 
 namespace Fakvio.Domain.Entities;
 
@@ -303,4 +304,57 @@ public class CompanySystemSettings : BaseEntity
     /// an entirely separate storage account.
     /// </summary>
     public string? AzureBlobContainerName { get; set; }
+
+    // ─── EPO (Electronic Tax Filing) Header Settings ──────────────────────
+    // Fields required by the Czech Financial Administration EPO portal when generating
+    // DPHDP3 (VAT return) and DPHKH1 (VAT control statement) XML submissions.
+    // All fields are nullable — null means "not yet configured".
+    // Missing required fields cause the EPO export to fail with EPO_HEADER_INCOMPLETE.
+
+    /// <summary>
+    /// Czech Financial Administration tax office code (c_ufo — kód finančního úřadu).
+    /// Required for EPO DPHDP3 / DPHKH1 submissions.
+    /// Valid range: 1–999 (3-digit code per MFČR číselník UFO).
+    /// Example: 451 = Finanční úřad pro hl. m. Prahu.
+    /// Null = not yet configured; EPO export will fail until this is set.
+    /// </summary>
+    public int? EpoTaxOfficeCode { get; set; }
+
+    /// <summary>
+    /// Czech Financial Administration territorial branch code (c_pracufo — kód územního pracoviště).
+    /// Required for EPO DPHDP3 / DPHKH1 submissions.
+    /// Example: 2017 = Finanční úřad pro hl. m. Prahu — Územní pracoviště Praha 1.
+    /// Null = not yet configured.
+    /// </summary>
+    public int? EpoTaxOfficeBranchCode { get; set; }
+
+    /// <summary>
+    /// Phone number of the person filling in the EPO form.
+    /// Stored for inclusion in EPO XML header metadata.
+    /// Example: "+420 123 456 789".
+    /// Null = not yet configured.
+    /// </summary>
+    public string? EpoContactPhone { get; set; }
+
+    /// <summary>
+    /// Email address of the person filling in the EPO form.
+    /// Stored for inclusion in EPO XML header metadata.
+    /// Null = not yet configured.
+    /// </summary>
+    public string? EpoContactEmail { get; set; }
+
+    /// <summary>
+    /// Full name of the authorized person for EPO document signing.
+    /// Included in the EPO XML header as the authorized signatory.
+    /// Example: "Ing. Jan Novák".
+    /// Null = not yet configured.
+    /// </summary>
+    public string? EpoAuthorizedPersonName { get; set; }
+
+    /// <summary>
+    /// Default VAT reporting period type for this company (Monthly or Quarterly).
+    /// Pre-fills the period type selector in the UI when generating EPO exports.
+    /// Null = not yet configured; UI will require the user to select each time.
+    /// </summary>
+    public EVatPeriodType? EpoDefaultPeriodType { get; set; }
 }

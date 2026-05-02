@@ -1,3 +1,5 @@
+using Fakvio.Domain.Enums;
+
 namespace Fakvio.Contracts.Dto.CompanySettings;
 
 /// <summary>
@@ -144,6 +146,46 @@ public class CompanySystemSettingsDto
     /// Ollama model identifier. Null means "use system default model".
     /// </summary>
     public string? AiOllamaModel { get; set; }
+
+    // ─── EPO Header Settings (read-only view) ─────────────────────────────────
+
+    /// <summary>
+    /// Czech Financial Administration tax office code (c_ufo).
+    /// Required for EPO DPHDP3 / DPHKH1 submissions.
+    /// Null = not yet configured.
+    /// </summary>
+    public int? EpoTaxOfficeCode { get; set; }
+
+    /// <summary>
+    /// Czech Financial Administration territorial branch code (c_pracufo).
+    /// Required for EPO DPHDP3 / DPHKH1 submissions.
+    /// Null = not yet configured.
+    /// </summary>
+    public int? EpoTaxOfficeBranchCode { get; set; }
+
+    /// <summary>
+    /// Phone number of the person filling in the EPO form.
+    /// Null = not yet configured.
+    /// </summary>
+    public string? EpoContactPhone { get; set; }
+
+    /// <summary>
+    /// Email address of the person filling in the EPO form.
+    /// Null = not yet configured.
+    /// </summary>
+    public string? EpoContactEmail { get; set; }
+
+    /// <summary>
+    /// Full name of the authorized person for EPO document signing.
+    /// Null = not yet configured.
+    /// </summary>
+    public string? EpoAuthorizedPersonName { get; set; }
+
+    /// <summary>
+    /// Default VAT reporting period type (Monthly or Quarterly).
+    /// Null = not yet configured.
+    /// </summary>
+    public EVatPeriodType? EpoDefaultPeriodType { get; set; }
 
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }

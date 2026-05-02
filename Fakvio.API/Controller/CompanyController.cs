@@ -806,6 +806,15 @@ public class CompanyController : ControllerBase
             if (dto.AiOllamaBaseUrl != null) settings.AiOllamaBaseUrl = dto.AiOllamaBaseUrl;
             if (dto.AiOllamaModel != null) settings.AiOllamaModel = dto.AiOllamaModel;
 
+            // Update EPO header settings — each field is individually nullable (partial update).
+            // null = keep existing value; non-null = update.
+            if (dto.EpoTaxOfficeCode.HasValue)      settings.EpoTaxOfficeCode = dto.EpoTaxOfficeCode;
+            if (dto.EpoTaxOfficeBranchCode.HasValue) settings.EpoTaxOfficeBranchCode = dto.EpoTaxOfficeBranchCode;
+            if (dto.EpoContactPhone != null)         settings.EpoContactPhone = dto.EpoContactPhone;
+            if (dto.EpoContactEmail != null)         settings.EpoContactEmail = dto.EpoContactEmail;
+            if (dto.EpoAuthorizedPersonName != null) settings.EpoAuthorizedPersonName = dto.EpoAuthorizedPersonName;
+            if (dto.EpoDefaultPeriodType.HasValue)   settings.EpoDefaultPeriodType = dto.EpoDefaultPeriodType;
+
             settings.UpdatedAt = DateTime.UtcNow;
 
             await _masterContext.SaveChangesAsync(cancellationToken);
@@ -1098,6 +1107,13 @@ public class CompanyController : ControllerBase
             HasAiGeminiApiKey = !string.IsNullOrEmpty(settings.AiGeminiApiKey),
             AiOllamaBaseUrl = settings.AiOllamaBaseUrl,
             AiOllamaModel = settings.AiOllamaModel,
+            // EPO header settings (all plain values — no encryption needed)
+            EpoTaxOfficeCode         = settings.EpoTaxOfficeCode,
+            EpoTaxOfficeBranchCode   = settings.EpoTaxOfficeBranchCode,
+            EpoContactPhone          = settings.EpoContactPhone,
+            EpoContactEmail          = settings.EpoContactEmail,
+            EpoAuthorizedPersonName  = settings.EpoAuthorizedPersonName,
+            EpoDefaultPeriodType     = settings.EpoDefaultPeriodType,
             CreatedAt = settings.CreatedAt,
             UpdatedAt = settings.UpdatedAt
         };

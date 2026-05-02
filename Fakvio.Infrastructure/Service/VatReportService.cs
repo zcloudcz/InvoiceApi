@@ -19,12 +19,20 @@ namespace Fakvio.Infrastructure.Service;
 /// Uses TaxableSupplyDate (DUZP) as the date criterion because
 /// Czech VAT law requires reporting by DUZP, not by issue or payment date.
 ///
-/// Also generates EPO DPHDP3 XML exports (VAT return — "Přiznání k DPH").
+/// Also generates EPO DPHDP3 XML exports (VAT return — "Přiznání k DPH") and
+/// DPHKH1 exports (VAT control statement).
 /// The generated XML is validated against the official MFČR XSD before returning.
+///
+/// EPO header fields (c_ufo, c_pracufo, contact info, authorized person) are read
+/// from <see cref="CompanySystemSettings"/> in the master database.
+/// If any required field is missing, <see cref="EpoHeaderIncompleteException"/> is thrown
+/// and the controller converts it to HTTP 400 with code EPO_HEADER_INCOMPLETE.
 /// </summary>
 public class VatReportService : IVatReportService
 {
     private readonly TenantDbContext _context;
+    private readonly MasterDbContext _masterContext;
+    private readonly ITenantResolver _tenantResolver;
     private readonly IEpoSchemaProvider _schemaProvider;
     private readonly ICurrencyService _currencyService;
     private readonly ILogger<VatReportService> _logger;
@@ -35,11 +43,15 @@ public class VatReportService : IVatReportService
 
     public VatReportService(
         TenantDbContext context,
+        MasterDbContext masterContext,
+        ITenantResolver tenantResolver,
         IEpoSchemaProvider schemaProvider,
         ICurrencyService currencyService,
         ILogger<VatReportService> logger)
     {
         _context = context;
+        _masterContext = masterContext;
+        _tenantResolver = tenantResolver;
         _schemaProvider = schemaProvider;
         _currencyService = currencyService;
         _logger = logger;
@@ -210,7 +222,11 @@ public class VatReportService : IVatReportService
             "Generating EPO DPHDP3 for year={Year}, period={Period}, type={Type} ({From:yyyy-MM-dd}..{To:yyyy-MM-dd})",
             year, period, type, periodFrom, periodTo);
 
-        // ── 3. Load the issuer (our company) for VetaP ───────────────────────
+        // ── 3a. Load and validate EPO header settings (master DB) ────────────
+        // Throws EpoHeaderIncompleteException when required fields (c_ufo, c_pracufo) are missing.
+        var epoSettings = await LoadAndValidateEpoSettingsAsync(ct);
+
+        // ── 3b. Load the issuer (our company) for VetaP ──────────────────────
         var issuer = await _context.Client
             .AsNoTracking()
             .FirstOrDefaultAsync(c => c.IsIssuer && c.IsActive, ct)
@@ -338,6 +354,7 @@ public class VatReportService : IVatReportService
             year, period, type,
             periodFrom, periodTo,
             issuer,
+            epoSettings,
             hasOutputVat: outStdBaseI != 0 || outRedBaseI != 0,
             outStdBaseI, outStdVatI,
             outRedBaseI, outRedVatI,
@@ -414,7 +431,11 @@ public class VatReportService : IVatReportService
             "Generating EPO DPHKH1 for year={Year}, period={Period}, type={Type} ({From:yyyy-MM-dd}..{To:yyyy-MM-dd})",
             year, period, type, periodFrom, periodTo);
 
-        // ── 3. Load the issuer (our company) for VetaP ───────────────────────
+        // ── 3a. Load and validate EPO header settings (master DB) ────────────
+        // Throws EpoHeaderIncompleteException when required fields (c_ufo, c_pracufo) are missing.
+        var epoSettings = await LoadAndValidateEpoSettingsAsync(ct);
+
+        // ── 3b. Load the issuer (our company) for VetaP ──────────────────────
         var issuer = await _context.Client
             .AsNoTracking()
             .FirstOrDefaultAsync(c => c.IsIssuer && c.IsActive, ct)
@@ -581,6 +602,7 @@ public class VatReportService : IVatReportService
             year, period, type,
             periodFrom, periodTo,
             issuer,
+            epoSettings,
             a4Rows,
             a5StdBase, a5StdVat, a5RedBase, a5RedVat,
             b2Rows,
@@ -700,6 +722,7 @@ public class VatReportService : IVatReportService
         int year, int period, EVatPeriodType type,
         DateTime periodFrom, DateTime periodTo,
         Client issuer,
+        EpoSettings epo,
         bool hasOutputVat,
         long outStdBase, long outStdVat,
         long outRedBase, long outRedVat,
@@ -737,16 +760,12 @@ public class VatReportService : IVatReportService
             ? rawDic[2..]
             : rawDic;
 
-        // c_ufo is required — throw a clear error if not configured.
-        if (!issuer.EpoTaxOfficeCode.HasValue)
-            throw new InvalidOperationException(
-                $"Issuer '{issuer.CompanyName}' (ID={issuer.Id}) has no EpoTaxOfficeCode configured. " +
-                "Set the tax office code (c_ufo) in Company Settings before generating EPO exports.");
-
+        // c_ufo and c_pracufo come from CompanySystemSettings (validated by LoadAndValidateEpoSettingsAsync).
         var vetaP = new XElement("VetaP",
-            new XAttribute("c_ufo",  issuer.EpoTaxOfficeCode.Value.ToString()),
-            new XAttribute("dic",    dic),
-            new XAttribute("typ_ds", "P")); // "P" = právnická osoba (legal entity)
+            new XAttribute("c_ufo",     epo.TaxOfficeCode.ToString()),
+            new XAttribute("c_pracufo", epo.TaxOfficeBranchCode.ToString()),
+            new XAttribute("dic",       dic),
+            new XAttribute("typ_ds",    "P")); // "P" = právnická osoba (legal entity)
 
         // Optionally add company name (zkrobchjm ≤ 255 chars).
         if (!string.IsNullOrWhiteSpace(issuer.CompanyName))
@@ -754,6 +773,34 @@ public class VatReportService : IVatReportService
                 issuer.CompanyName.Length > 255
                     ? issuer.CompanyName[..255]
                     : issuer.CompanyName));
+
+        // Optional contact details from CompanySystemSettings.
+        // c_telef: XSD maxLength=14; strip spaces to fit the Czech phone format constraint.
+        if (!string.IsNullOrWhiteSpace(epo.ContactPhone))
+        {
+            var phone = epo.ContactPhone.Replace(" ", "");
+            vetaP.Add(new XAttribute("c_telef", phone.Length > 14 ? phone[..14] : phone));
+        }
+        if (!string.IsNullOrWhiteSpace(epo.ContactEmail))
+            vetaP.Add(new XAttribute("email", epo.ContactEmail));
+        // XSD uses opr_jmeno (first name, max 20) + opr_prijmeni (last name, max 36).
+        // EpoAuthorizedPersonName stores the full name; split on last space.
+        if (!string.IsNullOrWhiteSpace(epo.AuthorizedPersonName))
+        {
+            var fullName = epo.AuthorizedPersonName.Trim();
+            var lastSpace = fullName.LastIndexOf(' ');
+            if (lastSpace > 0)
+            {
+                var firstName = fullName[..lastSpace];
+                var lastName  = fullName[(lastSpace + 1)..];
+                vetaP.Add(new XAttribute("opr_jmeno",    firstName.Length > 20 ? firstName[..20] : firstName));
+                vetaP.Add(new XAttribute("opr_prijmeni", lastName.Length  > 36 ? lastName[..36]  : lastName));
+            }
+            else
+            {
+                vetaP.Add(new XAttribute("opr_jmeno", fullName.Length > 20 ? fullName[..20] : fullName));
+            }
+        }
 
         // Build DPHDP3 element — sequence order per XSD: VetaD, VetaP, Veta1?, Veta4?
         var dphdp3 = new XElement("DPHDP3", vetaD, vetaP);
@@ -844,6 +891,67 @@ public class VatReportService : IVatReportService
     private static string FormatKhAmount(decimal amount)
         => amount.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
 
+    // =========================================================================
+    // Private helpers — EPO settings
+    // =========================================================================
+
+    /// <summary>
+    /// Carries validated EPO header fields loaded from <see cref="CompanySystemSettings"/>.
+    /// All properties are guaranteed non-null after construction (missing fields cause
+    /// <see cref="EpoHeaderIncompleteException"/> before this record is created).
+    /// </summary>
+    /// <param name="TaxOfficeCode">c_ufo — Czech Financial Administration tax office code (1–999).</param>
+    /// <param name="TaxOfficeBranchCode">c_pracufo — territorial branch code.</param>
+    /// <param name="ContactPhone">Phone number of the filing person (optional — null is allowed).</param>
+    /// <param name="ContactEmail">Email of the filing person (optional — null is allowed).</param>
+    /// <param name="AuthorizedPersonName">Full name of the authorized signatory (optional).</param>
+    private sealed record EpoSettings(
+        int TaxOfficeCode,
+        int TaxOfficeBranchCode,
+        string? ContactPhone,
+        string? ContactEmail,
+        string? AuthorizedPersonName);
+
+    /// <summary>
+    /// Loads EPO header settings from <see cref="CompanySystemSettings"/> in the master database
+    /// for the current tenant and validates that all required fields are present.
+    ///
+    /// Required fields: <c>EpoTaxOfficeCode</c>, <c>EpoTaxOfficeBranchCode</c>.
+    /// Optional fields: <c>EpoContactPhone</c>, <c>EpoContactEmail</c>, <c>EpoAuthorizedPersonName</c>.
+    ///
+    /// Throws <see cref="EpoHeaderIncompleteException"/> if any required field is missing,
+    /// or <see cref="InvalidOperationException"/> if the company has no settings record.
+    /// </summary>
+    private async Task<EpoSettings> LoadAndValidateEpoSettingsAsync(CancellationToken ct)
+    {
+        var companyId = _tenantResolver.GetCurrentCompanyId()
+            ?? throw new InvalidOperationException(
+                "No CompanyId is available for the current request. " +
+                "Ensure the user is authenticated and assigned to a company.");
+
+        var settings = await _masterContext.CompanySystemSettings
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.CompanyId == companyId, ct)
+            ?? throw new InvalidOperationException(
+                $"No CompanySystemSettings found for company {companyId}. " +
+                "Contact SysAdmin to set up company settings before generating EPO exports.");
+
+        // Collect all missing required fields so the UI can show them all at once.
+        var missing = new List<string>();
+        if (!settings.EpoTaxOfficeCode.HasValue)    missing.Add(nameof(settings.EpoTaxOfficeCode));
+        if (!settings.EpoTaxOfficeBranchCode.HasValue) missing.Add(nameof(settings.EpoTaxOfficeBranchCode));
+
+        if (missing.Count > 0)
+            throw new EpoHeaderIncompleteException(missing);
+
+        return new EpoSettings(
+            TaxOfficeCode:        settings.EpoTaxOfficeCode!.Value,
+            TaxOfficeBranchCode:  settings.EpoTaxOfficeBranchCode!.Value,
+            ContactPhone:         settings.EpoContactPhone,
+            ContactEmail:         settings.EpoContactEmail,
+            AuthorizedPersonName: settings.EpoAuthorizedPersonName);
+    }
+
     /// <summary>
     /// Lightweight value record to carry per-invoice data for A.4 and B.2 rows.
     /// </summary>
@@ -886,6 +994,7 @@ public class VatReportService : IVatReportService
         int year, int period, EVatPeriodType type,
         DateTime periodFrom, DateTime periodTo,
         Client issuer,
+        EpoSettings epo,
         IReadOnlyList<KhRow> a4Rows,
         decimal a5StdBase, decimal a5StdVat,
         decimal a5RedBase, decimal a5RedVat,
@@ -919,21 +1028,46 @@ public class VatReportService : IVatReportService
             ? rawDic[2..]
             : rawDic;
 
-        if (!issuer.EpoTaxOfficeCode.HasValue)
-            throw new InvalidOperationException(
-                $"Issuer '{issuer.CompanyName}' (ID={issuer.Id}) has no EpoTaxOfficeCode configured. " +
-                "Set the tax office code (c_ufo) in Company Settings before generating EPO exports.");
-
+        // c_ufo and c_pracufo come from CompanySystemSettings (validated by LoadAndValidateEpoSettingsAsync).
         var vetaP = new XElement("VetaP",
-            new XAttribute("c_ufo",  issuer.EpoTaxOfficeCode.Value.ToString()),
-            new XAttribute("dic",    dic),
-            new XAttribute("typ_ds", "P")); // "P" = právnická osoba
+            new XAttribute("c_ufo",     epo.TaxOfficeCode.ToString()),
+            new XAttribute("c_pracufo", epo.TaxOfficeBranchCode.ToString()),
+            new XAttribute("dic",       dic),
+            new XAttribute("typ_ds",    "P")); // "P" = právnická osoba
 
         if (!string.IsNullOrWhiteSpace(issuer.CompanyName))
             vetaP.Add(new XAttribute("zkrobchjm",
                 issuer.CompanyName.Length > 255
                     ? issuer.CompanyName[..255]
                     : issuer.CompanyName));
+
+        // Optional contact details from CompanySystemSettings.
+        // c_telef: XSD maxLength=14; strip spaces to fit the Czech phone format constraint.
+        if (!string.IsNullOrWhiteSpace(epo.ContactPhone))
+        {
+            var phone = epo.ContactPhone.Replace(" ", "");
+            vetaP.Add(new XAttribute("c_telef", phone.Length > 14 ? phone[..14] : phone));
+        }
+        if (!string.IsNullOrWhiteSpace(epo.ContactEmail))
+            vetaP.Add(new XAttribute("email", epo.ContactEmail));
+        // XSD uses opr_jmeno (first name, max 20) + opr_prijmeni (last name, max 36).
+        // EpoAuthorizedPersonName stores the full name; split on last space.
+        if (!string.IsNullOrWhiteSpace(epo.AuthorizedPersonName))
+        {
+            var fullName = epo.AuthorizedPersonName.Trim();
+            var lastSpace = fullName.LastIndexOf(' ');
+            if (lastSpace > 0)
+            {
+                var firstName = fullName[..lastSpace];
+                var lastName  = fullName[(lastSpace + 1)..];
+                vetaP.Add(new XAttribute("opr_jmeno",    firstName.Length > 20 ? firstName[..20] : firstName));
+                vetaP.Add(new XAttribute("opr_prijmeni", lastName.Length  > 36 ? lastName[..36]  : lastName));
+            }
+            else
+            {
+                vetaP.Add(new XAttribute("opr_jmeno", fullName.Length > 20 ? fullName[..20] : fullName));
+            }
+        }
 
         // Build DPHKH1 element — element order per XSD:
         // VetaD, VetaP, VetaA1*, VetaA2*, VetaA3*, VetaA4*, VetaA5?, VetaB1*, VetaB2*, VetaB3?, VetaC?

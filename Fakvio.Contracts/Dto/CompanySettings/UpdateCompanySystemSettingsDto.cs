@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Fakvio.Domain.Enums;
 
 namespace Fakvio.Contracts.Dto.CompanySettings;
 
@@ -133,4 +134,47 @@ public class UpdateCompanySystemSettingsDto
     /// </summary>
     [StringLength(100)]
     public string? AiOllamaModel { get; set; }
+
+    // ─── EPO Header Settings ──────────────────────────────────────────────────
+    // Required for generating DPHDP3 (VAT return) and DPHKH1 (control statement) XML.
+    // All optional in the DTO — null means "keep existing value".
+
+    /// <summary>
+    /// Czech Financial Administration tax office code (c_ufo — kód finančního úřadu).
+    /// Range: 1–999. Example: 451 = Finanční úřad pro hl. m. Prahu.
+    /// </summary>
+    [Range(1, 999)]
+    public int? EpoTaxOfficeCode { get; set; }
+
+    /// <summary>
+    /// Czech Financial Administration territorial branch code (c_pracufo — kód územního pracoviště).
+    /// Example: 2017 = Praha 1.
+    /// </summary>
+    [Range(1, 99999)]
+    public int? EpoTaxOfficeBranchCode { get; set; }
+
+    /// <summary>
+    /// Phone number of the person filling in the EPO form.
+    /// </summary>
+    [StringLength(50)]
+    public string? EpoContactPhone { get; set; }
+
+    /// <summary>
+    /// Email address of the person filling in the EPO form.
+    /// </summary>
+    [StringLength(256)]
+    [EmailAddress]
+    public string? EpoContactEmail { get; set; }
+
+    /// <summary>
+    /// Full name of the authorized person for EPO document signing.
+    /// </summary>
+    [StringLength(200)]
+    public string? EpoAuthorizedPersonName { get; set; }
+
+    /// <summary>
+    /// Default VAT reporting period type (Monthly or Quarterly).
+    /// Pre-fills the period type selector in the UI.
+    /// </summary>
+    public EVatPeriodType? EpoDefaultPeriodType { get; set; }
 }

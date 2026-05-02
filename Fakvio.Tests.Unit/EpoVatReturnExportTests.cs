@@ -26,10 +26,12 @@ namespace Fakvio.Tests.Unit;
 ///   6. EUR → CZK FX conversion via ICurrencyService.
 ///   7. Number format — integer amounts, EPO date format "D.M.RRRR".
 ///   8. Consistency — sum of row 51 equals GetReportAsync total input VAT.
+///   9. EPO header — c_ufo/c_pracufo come from CompanySystemSettings (issue #39).
 /// </summary>
 public class EpoVatReturnExportTests : IDisposable
 {
     private readonly TenantDbContext _context;
+    private readonly MasterDbContext _masterContext;
     private readonly VatReportService _service;
     private readonly IEpoSchemaProvider _schemaProvider;
     private readonly ICurrencyService _currencyService;
@@ -39,13 +41,21 @@ public class EpoVatReturnExportTests : IDisposable
     // EUR currency ID for FX tests.
     private const long EurCurrencyId = 2;
 
+    // CompanyId used in both master CompanySystemSettings and tenant issuer.
+    // VatReportService resolves EPO settings by this ID via ITenantResolver.
+    private const long CompanyId = 2L;
+
     public EpoVatReturnExportTests()
     {
-        var options = new DbContextOptionsBuilder<TenantDbContext>()
+        var tenantOptions = new DbContextOptionsBuilder<TenantDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
+        _context = new TenantDbContext(tenantOptions);
 
-        _context = new TenantDbContext(options);
+        var masterOptions = new DbContextOptionsBuilder<MasterDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        _masterContext = new MasterDbContext(masterOptions);
 
         // Real XSD provider — validates against the actual 2026 DPHDP3 schema.
         _schemaProvider = new EpoSchemaProvider(AppContext.BaseDirectory);
@@ -58,8 +68,15 @@ public class EpoVatReturnExportTests : IDisposable
                 Arg.Any<DateOnly>(), Arg.Any<CancellationToken>())
             .Returns(call => Task.FromResult(call.ArgAt<decimal>(0)));
 
+        // ITenantResolver stub: returns CompanyId so LoadAndValidateEpoSettingsAsync
+        // can look up CompanySystemSettings in the master DB.
+        var tenantResolver = Substitute.For<ITenantResolver>();
+        tenantResolver.GetCurrentCompanyId().Returns(CompanyId);
+
         var logger = Substitute.For<ILogger<VatReportService>>();
-        _service = new VatReportService(_context, _schemaProvider, _currencyService, logger);
+        _service = new VatReportService(
+            _context, _masterContext, tenantResolver,
+            _schemaProvider, _currencyService, logger);
 
         SeedBaseData();
     }
@@ -68,13 +85,24 @@ public class EpoVatReturnExportTests : IDisposable
     {
         _context.Database.EnsureDeleted();
         _context.Dispose();
+        _masterContext.Database.EnsureDeleted();
+        _masterContext.Dispose();
     }
 
     // =========================================================================
     // Helpers
     // =========================================================================
 
-    /// <summary>Seeds minimal master data (currencies, issuer, customer).</summary>
+    /// <summary>
+    /// Seeds minimal data:
+    ///  - CZK and EUR currencies in the tenant DB.
+    ///  - Customer (IsIssuer=false) and Issuer (IsIssuer=true) in the tenant DB.
+    ///  - CompanySystemSettings with EPO header fields in the master DB.
+    ///
+    /// EPO header values:
+    ///   EpoTaxOfficeCode = 451  → VetaP/@c_ufo = "451"
+    ///   EpoTaxOfficeBranchCode = 2017 → VetaP/@c_pracufo = "2017"
+    /// </summary>
     private void SeedBaseData()
     {
         _context.Currency.AddRange(
@@ -100,18 +128,30 @@ public class EpoVatReturnExportTests : IDisposable
 
         // Issuer — our company (IsIssuer = true).
         // TaxNumber "CZ12345678" → EPO dic = "12345678" (strip "CZ").
-        // EpoTaxOfficeCode = 451 → EPO c_ufo = "451".
         _context.Client.Add(new Client
         {
-            Id = 2,
+            Id = CompanyId,
             CompanyName = "Vzorová Firma s.r.o.",
             RegistrationNumber = "12345678",
             TaxNumber = "CZ12345678",
             IsIssuer = true,
-            IsActive = true,
-            EpoTaxOfficeCode = 451
+            IsActive = true
         });
         _context.SaveChanges();
+
+        // CompanySystemSettings in master DB — contains EPO header fields (issue #39).
+        // VatReportService reads these via ITenantResolver.GetCurrentCompanyId().
+        _masterContext.CompanySystemSettings.Add(new CompanySystemSettings
+        {
+            Id = 1,
+            CompanyId = CompanyId,
+            SchemaName = "tenant_2",
+            IsProvisioned = true,
+            IsActive = true,
+            EpoTaxOfficeCode = 451,       // c_ufo
+            EpoTaxOfficeBranchCode = 2017 // c_pracufo
+        });
+        _masterContext.SaveChanges();
     }
 
     /// <summary>Seeds a CZK issued invoice with one line item.</summary>
@@ -131,8 +171,8 @@ public class EpoVatReturnExportTests : IDisposable
             TaxableSupplyDate = duzp,
             DueDate = duzp.AddDays(14),
             ClientId = 1,
-            IssuerId = 2,
-            Issuer = _context.Client.Find(2L)!,
+            IssuerId = CompanyId,
+            Issuer = _context.Client.Find(CompanyId)!,
             CurrencyId = currencyId,
             TotalBeforeVat = baseAmount,
             TotalVat = baseAmount * (vatPct / 100m),
@@ -259,45 +299,111 @@ public class EpoVatReturnExportTests : IDisposable
         await Should.NotThrowAsync(() => _service.ExportEpoVatReturnAsync(2026, 4, EVatPeriodType.Quarterly));
     }
 
+    // =========================================================================
+    // 9. EPO header — c_ufo / c_pracufo from CompanySystemSettings (#39)
+    // =========================================================================
+
     [Fact]
-    public async Task ExportEpoVatReturnAsync_IssuerHasNoEpoTaxOfficeCode_ThrowsInvalidOperation()
+    public async Task ExportEpoVatReturnAsync_MissingEpoTaxOfficeCode_ThrowsEpoHeaderIncomplete()
     {
-        // VetaP/@c_ufo is required by the EPO XSD. When Client.EpoTaxOfficeCode is null the
-        // service must fail fast with an actionable error rather than generating invalid XML.
-        var options = new DbContextOptionsBuilder<TenantDbContext>()
+        // When CompanySystemSettings.EpoTaxOfficeCode is null the service must throw
+        // EpoHeaderIncompleteException (not InvalidOperationException) so the controller
+        // can return HTTP 400 with code EPO_HEADER_INCOMPLETE.
+        var masterOptions = new DbContextOptionsBuilder<MasterDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
+        await using var masterCtx = new MasterDbContext(masterOptions);
 
-        await using var context = new TenantDbContext(options);
-
-        context.Currency.Add(new Currency
+        // Settings with EpoTaxOfficeCode missing but EpoTaxOfficeBranchCode set.
+        masterCtx.CompanySystemSettings.Add(new CompanySystemSettings
         {
-            Id = 1, Code = "CZK", Name = "Czech Koruna", Symbol = "Kč",
-            DecimalPlaces = 2, SortOrder = 1, IsActive = true
+            Id = 99, CompanyId = CompanyId, SchemaName = "tenant_2",
+            IsProvisioned = true, IsActive = true,
+            EpoTaxOfficeCode = null,   // missing → must appear in MissingFields
+            EpoTaxOfficeBranchCode = 2017
         });
+        await masterCtx.SaveChangesAsync();
 
-        // Issuer deliberately missing EpoTaxOfficeCode (null).
-        context.Client.Add(new Client
-        {
-            Id = 1,
-            CompanyName = "Unconfigured Firma s.r.o.",
-            RegistrationNumber = "99999999",
-            TaxNumber = "CZ99999999",
-            IsIssuer = true,
-            IsActive = true,
-            EpoTaxOfficeCode = null      // the gap under test
-        });
-
-        await context.SaveChangesAsync();
+        var tenantResolver = Substitute.For<ITenantResolver>();
+        tenantResolver.GetCurrentCompanyId().Returns(CompanyId);
 
         var logger = Substitute.For<ILogger<VatReportService>>();
-        var service = new VatReportService(context, _schemaProvider, _currencyService, logger);
+        var service = new VatReportService(
+            _context, masterCtx, tenantResolver,
+            _schemaProvider, _currencyService, logger);
 
-        var ex = await Should.ThrowAsync<InvalidOperationException>(
+        var ex = await Should.ThrowAsync<EpoHeaderIncompleteException>(
             () => service.ExportEpoVatReturnAsync(2026, 3, EVatPeriodType.Monthly));
 
-        // The message must name the missing field so the operator knows what to configure.
-        ex.Message.ShouldContain("EpoTaxOfficeCode");
+        ex.MissingFields.ShouldContain("EpoTaxOfficeCode");
+    }
+
+    [Fact]
+    public async Task ExportEpoVatReturnAsync_MissingEpoTaxOfficeBranchCode_ThrowsEpoHeaderIncomplete()
+    {
+        // When EpoTaxOfficeBranchCode (c_pracufo) is null the service must throw
+        // EpoHeaderIncompleteException with that field name.
+        var masterOptions = new DbContextOptionsBuilder<MasterDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        await using var masterCtx = new MasterDbContext(masterOptions);
+
+        masterCtx.CompanySystemSettings.Add(new CompanySystemSettings
+        {
+            Id = 99, CompanyId = CompanyId, SchemaName = "tenant_2",
+            IsProvisioned = true, IsActive = true,
+            EpoTaxOfficeCode = 451,
+            EpoTaxOfficeBranchCode = null  // missing → must appear in MissingFields
+        });
+        await masterCtx.SaveChangesAsync();
+
+        var tenantResolver = Substitute.For<ITenantResolver>();
+        tenantResolver.GetCurrentCompanyId().Returns(CompanyId);
+
+        var logger = Substitute.For<ILogger<VatReportService>>();
+        var service = new VatReportService(
+            _context, masterCtx, tenantResolver,
+            _schemaProvider, _currencyService, logger);
+
+        var ex = await Should.ThrowAsync<EpoHeaderIncompleteException>(
+            () => service.ExportEpoVatReturnAsync(2026, 3, EVatPeriodType.Monthly));
+
+        ex.MissingFields.ShouldContain("EpoTaxOfficeBranchCode");
+    }
+
+    [Fact]
+    public async Task ExportEpoVatReturnAsync_BothRequiredFieldsMissing_ListsBothInException()
+    {
+        // When both required fields are missing, the exception must report both
+        // so the UI can show the user all missing fields at once.
+        var masterOptions = new DbContextOptionsBuilder<MasterDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        await using var masterCtx = new MasterDbContext(masterOptions);
+
+        masterCtx.CompanySystemSettings.Add(new CompanySystemSettings
+        {
+            Id = 99, CompanyId = CompanyId, SchemaName = "tenant_2",
+            IsProvisioned = true, IsActive = true,
+            EpoTaxOfficeCode = null,
+            EpoTaxOfficeBranchCode = null
+        });
+        await masterCtx.SaveChangesAsync();
+
+        var tenantResolver = Substitute.For<ITenantResolver>();
+        tenantResolver.GetCurrentCompanyId().Returns(CompanyId);
+
+        var logger = Substitute.For<ILogger<VatReportService>>();
+        var service = new VatReportService(
+            _context, masterCtx, tenantResolver,
+            _schemaProvider, _currencyService, logger);
+
+        var ex = await Should.ThrowAsync<EpoHeaderIncompleteException>(
+            () => service.ExportEpoVatReturnAsync(2026, 3, EVatPeriodType.Monthly));
+
+        ex.MissingFields.ShouldContain("EpoTaxOfficeCode");
+        ex.MissingFields.ShouldContain("EpoTaxOfficeBranchCode");
+        ex.MissingFields.Count.ShouldBe(2);
     }
 
     // =========================================================================
@@ -615,14 +721,16 @@ public class EpoVatReturnExportTests : IDisposable
     }
 
     [Fact]
-    public async Task ExportEpoVatReturnAsync_VetaP_HasCorrectCUfo()
+    public async Task ExportEpoVatReturnAsync_VetaP_HasCorrectCUfoAndCPracufo()
     {
-        // VetaP/@c_ufo must come from Client.EpoTaxOfficeCode (seeded as 451).
+        // VetaP/@c_ufo and @c_pracufo must come from CompanySystemSettings (issue #39).
+        // Seeded values: EpoTaxOfficeCode=451, EpoTaxOfficeBranchCode=2017.
         var bytes = await _service.ExportEpoVatReturnAsync(2026, 3, EVatPeriodType.Monthly);
         var (doc, _) = ParseAndValidate(bytes);
 
         var vetaP = doc.Descendants("VetaP").Single();
         vetaP.Attribute("c_ufo")!.Value.ShouldBe("451");
+        vetaP.Attribute("c_pracufo")!.Value.ShouldBe("2017");
     }
 
     // =========================================================================
