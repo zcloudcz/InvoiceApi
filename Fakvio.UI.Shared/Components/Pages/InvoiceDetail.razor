@@ -1,6 +1,7 @@
 @page "/invoices/create"
 @page "/invoices/{Id:long}"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@using Fakvio.Contracts.Dto.Alert
 @using Fakvio.Contracts.Dto.Invoice
 @using Fakvio.Contracts.Dto.Client
 @using Fakvio.Contracts.Dto.Currency
@@ -8,6 +9,7 @@
 @using Fakvio.Contracts.Common
 @using Fakvio.Contracts.Dto.ContentTemplate
 @using Fakvio.Domain.Enums
+@inject AlertApiService AlertService
 @inject FakvioService InvoiceService
 @inject ClientApiService ClientService
 @inject CurrencyApiService CurrencyService
@@ -243,6 +245,34 @@ else
         <MudButton Variant="Variant.Outlined" Color="Color.Tertiary" StartIcon="@Icons.Material.Filled.Email"
                    OnClick="@(() => _showEmailDialog = true)">@L["Btn_SendEmail"]</MudButton>
     </div>
+
+    @* ── Alert banner — shown for proformas with an open OverpaidProforma alert ─────────
+       The banner persists until the user resolves the alert via the "Vyřešit přeplatek"
+       button, which calls POST /api/alert/{id}/resolve and refreshes the page state.
+       Shown only when _overpaidAlert != null (i.e., the invoice has an unresolved alert). *@
+    @if (_overpaidAlert != null)
+    {
+        <MudAlert Severity="Severity.Warning" Class="mb-4"
+                  Icon="@Icons.Material.Filled.Warning"
+                  ContentAlignment="HorizontalAlignment.Left">
+            <div class="d-flex flex-wrap align-center gap-2">
+                <MudText>
+                    <strong>@L["Alert_OverpaidBanner"]:</strong> @_overpaidAlert.Message
+                </MudText>
+                <MudSpacer />
+                <MudButton Variant="Variant.Filled" Color="Color.Warning" Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.CheckCircle"
+                           OnClick="ResolveOverpaidAlert"
+                           Disabled="_resolvingAlert">
+                    @if (_resolvingAlert)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-1" />
+                    }
+                    @L["Alert_ResolveBtn"]
+                </MudButton>
+            </div>
+        </MudAlert>
+    }
 
     @* Main content: responsive grid with info cards + items *@
     @if (_isEditing)
@@ -678,6 +708,10 @@ else
     private DateTime? _editDueDate;
     private DateTime? _editTaxableSupplyDate;
 
+    // Alert state — null = no open OverpaidProforma alert for this invoice
+    private AlertDto? _overpaidAlert;
+    private bool _resolvingAlert = false;
+
     // Email dialog state
     private bool _showEmailDialog = false;
     private bool _sendingEmail = false;
@@ -995,6 +1029,13 @@ else
             {
                 _ = LoadQrCodeAsync();
             }
+
+            // Load open OverpaidProforma alert for this invoice (non-blocking).
+            // The banner is shown only when an open alert exists — no noise for normal invoices.
+            if (_invoice != null)
+            {
+                _ = LoadOverpaidAlertAsync();
+            }
         }
         catch (Exception ex)
         {
@@ -1006,6 +1047,54 @@ else
         finally
         {
             _loading = false;
+        }
+    }
+
+    /// <summary>
+    /// Loads the first unresolved OverpaidProforma alert for the current invoice.
+    /// Runs in the background and triggers a re-render when done.
+    /// </summary>
+    private async Task LoadOverpaidAlertAsync()
+    {
+        try
+        {
+            var alerts = await AlertService.GetAlertsAsync(unresolvedOnly: true);
+            _overpaidAlert = alerts.FirstOrDefault(
+                a => a.RelatedEntityType == "Invoice" && a.RelatedEntityId == Id);
+        }
+        catch
+        {
+            // Non-critical — banner simply won't show if the call fails.
+            _overpaidAlert = null;
+        }
+        finally
+        {
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>
+    /// Resolves the current overpaid alert by calling POST /api/alert/{id}/resolve.
+    /// Shows snackbar feedback and clears the banner on success.
+    /// </summary>
+    private async Task ResolveOverpaidAlert()
+    {
+        if (_overpaidAlert == null) return;
+
+        _resolvingAlert = true;
+        try
+        {
+            await AlertService.ResolveAsync(_overpaidAlert.Id);
+            _overpaidAlert = null;
+            Snackbar.Add(L["Alert_Resolved"].Value, Severity.Success);
+        }
+        catch
+        {
+            Snackbar.Add(L["Alert_ResolveFailed"].Value, Severity.Error);
+        }
+        finally
+        {
+            _resolvingAlert = false;
         }
     }
 

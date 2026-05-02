@@ -132,6 +132,9 @@ public static class ServiceCollectionExtensions
         services.AddScopedWithLogging<IVatReportService, VatReportService>();
         services.AddScopedWithLogging<ISystemConfigurationService, SystemConfigurationService>();
 
+        // Alerts — generic business alerts (e.g., overpaid proforma) displayed on the dashboard.
+        services.AddScopedWithLogging<IAlertService, AlertService>();
+
         // Payment reminders (dunning) — settings CRUD, dunning job, manual send/cancel.
         services.AddScopedWithLogging<IReminderService, ReminderService>();
         services.AddSingleton<IInterestCalculator, InterestCalculator>();

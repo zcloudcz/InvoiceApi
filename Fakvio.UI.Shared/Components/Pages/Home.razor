@@ -1,5 +1,6 @@
 @page "/"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@using Fakvio.Contracts.Dto.Alert
 @using Fakvio.Contracts.Dto.AppLog
 @using Fakvio.Contracts.Dto.Dashboard
 @using Fakvio.Contracts.Dto.Invoice
@@ -11,6 +12,7 @@
 @inject TaxApiService TaxService
 @inject ReminderApiService ReminderService
 @inject PaymentMatchingApiService PaymentApi
+@inject AlertApiService AlertService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
@@ -241,7 +243,82 @@ else
                 </MudCard>
             </MudItem>
         }
+
+        @* ── Alerts tile — "Upozornění" (issue #32) ───────────────────────────
+           Always visible once loaded; shows count + warning colour when > 0.
+           Hidden when count is zero (no noise for healthy tenants). *@
+        @if (_alertDashboard != null && _alertDashboard.TotalOpenCount > 0)
+        {
+            <MudItem xs="12" sm="6" md="4">
+                <MudCard Elevation="2" Class="rounded-lg cursor-pointer"
+                         @onclick="@(() => _showAlertPanel = !_showAlertPanel)"
+                         Style="border-left: 4px solid var(--mud-palette-warning);">
+                    <MudCardContent>
+                        <div class="d-flex justify-space-between align-center mb-4">
+                            <MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Warning" Size="Size.Large" />
+                            <MudChip T="string" Color="Color.Warning" Size="Size.Small">@_alertDashboard.TotalOpenCount</MudChip>
+                        </div>
+                        <MudText Typo="Typo.h5" GutterBottom="true">@_alertDashboard.TotalOpenCount</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">@L["Dashboard_Alerts_OpenCount"]</MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        }
     </MudGrid>
+
+    @* ─── Alerts panel — "Upozornění" (issue #32) ────────────────────────────
+       Shows when the tile is clicked (toggle) OR when alerts exist.
+       Lists up to 5 recent open alerts; each row links to the entity detail. *@
+    @if (_showAlertPanel && _alertDashboard != null)
+    {
+        <MudCard Elevation="2" Class="mt-4 mb-2">
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h6">
+                        <MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Warning" Class="mr-1" Size="Size.Small" />
+                        @L["Dashboard_Alerts"]
+                    </MudText>
+                </CardHeaderContent>
+                <CardHeaderActions>
+                    <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small"
+                                   OnClick="@(() => _showAlertPanel = false)"
+                                   Title="@L["Btn_Close"].Value" />
+                </CardHeaderActions>
+            </MudCardHeader>
+            <MudCardContent>
+                @if (_alertDashboard.RecentAlerts.Count == 0)
+                {
+                    <MudText Color="Color.Secondary">@L["Dashboard_Alerts_Empty"]</MudText>
+                }
+                else
+                {
+                    @* One row per alert: icon + message + link to entity detail *@
+                    <MudList T="string" Dense="true">
+                        @foreach (var alert in _alertDashboard.RecentAlerts)
+                        {
+                            <MudListItem>
+                                <div class="d-flex align-center gap-2">
+                                    <MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Warning" Size="Size.Small" />
+                                    <MudText Typo="Typo.body2" Class="flex-grow-1">@alert.Message</MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                        @alert.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy")
+                                    </MudText>
+                                    @* Navigate to the related entity detail page *@
+                                    @if (alert.RelatedEntityType == "Invoice")
+                                    {
+                                        <MudIconButton Icon="@Icons.Material.Filled.OpenInNew"
+                                                       Size="Size.Small"
+                                                       OnClick="@(() => Navigation.NavigateTo($"/invoices/{alert.RelatedEntityId}"))"
+                                                       Title="@L["Btn_View"].Value" />
+                                    }
+                                </div>
+                            </MudListItem>
+                        }
+                    </MudList>
+                }
+            </MudCardContent>
+        </MudCard>
+    }
 
     @* ─── Tax Estimate & Insurance Advance Cards ─────────────────────────────
        Two cards side-by-side: (1) next payment date with days-until countdown,
@@ -576,6 +653,12 @@ else
     // Count of bank transactions awaiting attention. Hidden tile when zero.
     private int _unmatchedPaymentsCount;
 
+    // Alert dashboard data — null while loading or when the API returns an error.
+    private AlertDashboardDto? _alertDashboard;
+
+    // Controls whether the alerts detail panel below the tile is expanded.
+    private bool _showAlertPanel;
+
     // Chart options — shared config for all donut charts on the dashboard
     private ChartOptions _chartOptions = new()
     {
@@ -643,6 +726,16 @@ else
                 catch
                 {
                     // Ignore — payment matching may not be configured yet.
+                }
+
+                // Alert dashboard data (non-blocking — tile is hidden when null).
+                try
+                {
+                    _alertDashboard = await AlertService.GetDashboardAsync();
+                }
+                catch
+                {
+                    // Ignore — alerts feature may not be provisioned yet.
                 }
             }
         }

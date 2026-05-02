@@ -188,6 +188,14 @@ public class TenantDbContext : DbContext
     /// </summary>
     public DbSet<RecurringInvoiceSchedule> RecurringInvoiceSchedule { get; set; }
 
+    // ─── Alerts ───────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Business alerts requiring user attention (e.g., overpaid proforma).
+    /// Generic container — new alert types are added via EAlertType without schema changes.
+    /// </summary>
+    public DbSet<Alert> Alert { get; set; }
+
     // ─── Payment Matching (see PLATBY-ZADANI.md) ────────────────────────────
 
     /// <summary>
@@ -261,6 +269,8 @@ public class TenantDbContext : DbContext
         ConfigureReminder(modelBuilder);
 
         ConfigureRecurringInvoiceSchedule(modelBuilder);
+
+        ConfigureAlert(modelBuilder);
 
         ConfigureBankAccountMailbox(modelBuilder);
         ConfigureInboundEmail(modelBuilder);
@@ -944,6 +954,35 @@ public class TenantDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(e => e.ClientId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+    }
+
+    // ─── Alert configuration ──────────────────────────────────────────────────
+
+    /// <summary>
+    /// Alert table configuration.
+    /// Indexes support the two main query patterns:
+    ///   1. Dashboard: "all unresolved alerts for this tenant, newest first"
+    ///   2. Idempotency check: "open alert of type X for entity Y"
+    /// Type is stored as int for forward-compatibility (adding new values is additive).
+    /// </summary>
+    private void ConfigureAlert(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<Alert>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            // Dashboard query: open alerts sorted by creation date.
+            entity.HasIndex(e => e.ResolvedAt);
+
+            // Idempotency check: one open alert per (type, entity) combination.
+            entity.HasIndex(e => new { e.Type, e.RelatedEntityId, e.RelatedEntityType });
+
+            // Type stored as int — forwards-compatible (adding new EAlertType values is additive).
+            entity.Property(e => e.Type).HasConversion<int>();
+
+            entity.Property(e => e.RelatedEntityType).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.Message).IsRequired().HasMaxLength(2000);
         });
     }
 

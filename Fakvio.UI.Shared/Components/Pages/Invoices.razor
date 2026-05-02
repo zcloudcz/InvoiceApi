@@ -5,12 +5,14 @@
 @using Fakvio.Contracts.Dto.InvoiceTemplate
 @using Fakvio.Contracts.Common.Pagination
 @using Fakvio.Contracts.Dto.ContentTemplate
+@using Fakvio.Contracts.Dto.Alert
 @using Fakvio.Domain.Enums
 @using Fakvio.UI.Shared.Models
 @inject FakvioService InvoiceService
 @inject ClientApiService ClientService
 @inject InvoiceTemplateApiService TemplateService
 @inject ContentTemplateApiService ContentTemplateService
+@inject AlertApiService AlertService
 @inject IJSRuntime JS
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
@@ -159,6 +161,18 @@
                 </MudChip>
             </CellTemplate>
         </PropertyColumn>
+
+        @* Alert indicator — shown when the invoice has an open (unresolved) alert *@
+        <TemplateColumn T="InvoiceDto" Title="" Sortable="false" Filterable="false" HeaderStyle="width:32px;">
+            <CellTemplate>
+                @if (_alertedInvoiceIds.Contains(context.Item.Id))
+                {
+                    <MudTooltip Text="@L["Alert_Tooltip"].Value">
+                        <MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Warning" Size="Size.Small" />
+                    </MudTooltip>
+                }
+            </CellTemplate>
+        </TemplateColumn>
 
         @* Email sent indicator *@
         <TemplateColumn T="InvoiceDto" Title="@L["Invoice_EmailColumn"].Value" Sortable="false" Filterable="false">
@@ -379,6 +393,10 @@
     private DialogOptions _templateDialogOptions = new() { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true };
     private DialogOptions _fromTemplateDialogOptions = new() { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true };
 
+    // IDs of invoices that have at least one open alert — used to show the warning icon in the grid.
+    // Loaded once on init; refreshes if the user resolves an alert from InvoiceDetail.
+    private HashSet<long> _alertedInvoiceIds = [];
+
     protected override async Task OnInitializedAsync()
     {
         // Pre-set document type filter from query parameter (e.g., ?type=CreditNote from nav link)
@@ -387,8 +405,30 @@
             _filterDocumentType = EDocumentType.CreditNote;
         }
 
-        // Load clients, templates, PDF templates, and issuer info in parallel
-        await Task.WhenAll(LoadClients(), LoadTemplates(), LoadPdfTemplates(), LoadIssuerAsync());
+        // Load clients, templates, PDF templates, issuer info, and alert IDs in parallel
+        await Task.WhenAll(
+            LoadClients(), LoadTemplates(), LoadPdfTemplates(), LoadIssuerAsync(), LoadAlertedIdsAsync());
+    }
+
+    /// <summary>
+    /// Loads the set of invoice IDs that have at least one unresolved alert.
+    /// Used to show a warning icon on the corresponding grid rows.
+    /// Non-blocking — an empty set means no icons are shown.
+    /// </summary>
+    private async Task LoadAlertedIdsAsync()
+    {
+        try
+        {
+            var alerts = await AlertService.GetAlertsAsync(unresolvedOnly: true);
+            _alertedInvoiceIds = alerts
+                .Where(a => a.RelatedEntityType == "Invoice")
+                .Select(a => a.RelatedEntityId)
+                .ToHashSet();
+        }
+        catch
+        {
+            // Non-critical — icons just won't show if the call fails.
+        }
     }
 
     private async Task LoadClients()

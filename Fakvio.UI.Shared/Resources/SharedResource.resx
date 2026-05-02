@@ -1447,4 +1447,15 @@
   <data name="PaymentDetail_Source" xml:space="preserve"><value>Zdroj importu</value></data>
   <data name="PaymentDetail_AiConfidence" xml:space="preserve"><value>Důvěra AI</value></data>
   <data name="PaymentDetail_MatchedInvoices" xml:space="preserve"><value>Spárované faktury</value></data>
+
+  <!-- ── Alerts (issue #32) ─────────────────────────────────────────────── -->
+  <data name="Dashboard_Alerts" xml:space="preserve"><value>Upozornění</value></data>
+  <data name="Dashboard_Alerts_OpenCount" xml:space="preserve"><value>Otevřených upozornění</value></data>
+  <data name="Dashboard_Alerts_Empty" xml:space="preserve"><value>Žádná otevřená upozornění.</value></data>
+  <data name="Alert_ResolveBtn" xml:space="preserve"><value>Vyřešit přeplatek</value></data>
+  <data name="Alert_Resolved" xml:space="preserve"><value>Upozornění bylo vyřešeno.</value></data>
+  <data name="Alert_ResolveFailed" xml:space="preserve"><value>Nepodařilo se vyřešit upozornění.</value></data>
+  <data name="Alert_OverpaidBanner" xml:space="preserve"><value>Upozornění: přeplatek na této proformě</value></data>
+  <data name="Alert_Tooltip" xml:space="preserve"><value>Tato faktura má otevřené upozornění</value></data>
+  <data name="EAlertType_OverpaidProforma" xml:space="preserve"><value>Přeplatek na proformě</value></data>
 </root>

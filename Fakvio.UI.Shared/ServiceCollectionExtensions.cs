@@ -84,6 +84,9 @@ public static class ServiceCollectionExtensions
         services.AddApiClient<PaymentMatchingApiService>();
         services.AddApiClient<PaymentMatchingSysAdminApiService>();
 
+        // Alerts — "Upozornění" tile and per-invoice resolve action.
+        services.AddApiClient<AlertApiService>();
+
         // Shared app state — cross-component notifications (e.g., company list changed → refresh dropdown)
         services.AddScoped<AppStateService>();
 
