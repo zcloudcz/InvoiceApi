@@ -465,6 +465,10 @@ public class TenantDbContext : DbContext
             entity.Property(e => e.PaymentMethod).HasConversion<int?>();
             entity.Property(e => e.Notes).HasMaxLength(5000);
 
+            // HasAlert: requires-attention flag — set by AdvanceTaxReceiptService on overpayment DPPs.
+            // Future: issue #8 will use this flag to show an "Alerts" tile on the Dashboard.
+            entity.Property(e => e.HasAlert).HasDefaultValue(false);
+
             entity.HasOne(e => e.Client).WithMany().HasForeignKey(e => e.ClientId).OnDelete(DeleteBehavior.Restrict).IsRequired(false);
             entity.HasOne(e => e.Issuer).WithMany().HasForeignKey(e => e.IssuerId).OnDelete(DeleteBehavior.Restrict).IsRequired(true);
             entity.HasOne(e => e.OriginalInvoice).WithMany(i => i.CreditNote).HasForeignKey(e => e.OriginalInvoiceId).OnDelete(DeleteBehavior.Restrict);

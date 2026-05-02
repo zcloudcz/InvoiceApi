@@ -101,8 +101,12 @@ public class InvoiceServiceBulkTests : IDisposable
                 Arg.Any<CancellationToken>())
             .Returns("TEST001");
 
+        // IAdvanceTaxReceiptService is stubbed — bulk tests cover only the batch
+        // completion/payment/deletion logic, not the DPP creation triggered by MarkAsPaid.
+        var advanceTaxReceiptService = Substitute.For<IAdvanceTaxReceiptService>();
+
         // Instantiate the service under test with all dependencies.
-        _service = new InvoiceService(_context, _numberSequence, _logger);
+        _service = new InvoiceService(_context, _numberSequence, advanceTaxReceiptService, _logger);
 
         // Seed reference entities that every test needs.
         SeedReferenceData();

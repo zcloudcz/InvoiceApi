@@ -1,3 +1,4 @@
+using Fakvio.Application.Service;
 using Fakvio.Domain.Entities;
 using Fakvio.Domain.Enums;
 using Fakvio.Infrastructure.Data;
@@ -32,7 +33,13 @@ public class PaymentMatchingServiceTests : IDisposable
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
         _context = new TenantDbContext(options);
-        _sut = new PaymentMatchingService(_context, Substitute.For<ILogger<PaymentMatchingService>>());
+        // IAdvanceTaxReceiptService is stubbed here — PaymentMatchingServiceTests cover
+        // only the matching algorithm, not the DPP creation. DPP integration is covered
+        // by dedicated AdvanceTaxReceiptServiceTests and InvoiceMarkPaidDppTests.
+        _sut = new PaymentMatchingService(
+            _context,
+            Substitute.For<IAdvanceTaxReceiptService>(),
+            Substitute.For<ILogger<PaymentMatchingService>>());
 
         Seed();
     }

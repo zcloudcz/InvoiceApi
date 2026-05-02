@@ -64,6 +64,13 @@ public class InvoiceDto
     /// </summary>
     public decimal PaidAmount { get; set; }
 
+    /// <summary>
+    /// True when this document requires manual review.
+    /// Set by AdvanceTaxReceiptService when a DPP is issued for an overpayment amount.
+    /// Future: issue #8 will show a visual indicator in the UI for alerted documents.
+    /// </summary>
+    public bool HasAlert { get; set; }
+
     public List<InvoiceItemDto> InvoiceItem { get; set; } = new();
 
     public DateTime CreatedAt { get; set; }

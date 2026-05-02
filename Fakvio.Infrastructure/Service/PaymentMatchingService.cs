@@ -25,18 +25,28 @@ namespace Fakvio.Infrastructure.Service;
 ///
 /// Outgoing payments are out of scope for the MVP (see PLATBY-ZADANI.md Open Q #9).
 /// They currently land as Unmatched until a follow-up ticket wires them to ReceivedInvoice.
+///
+/// Auto-DPP integration (issue #29):
+/// After every successful full payment of a Proforma invoice, this service checks the
+/// tenant's EAdvanceTaxReceiptMode and — when set to OnPaymentMatch or OnAnyPayment —
+/// calls IAdvanceTaxReceiptService to issue the tax receipt for advance payment (DPP).
 /// </summary>
 public class PaymentMatchingService : IPaymentMatchingService
 {
     private readonly TenantDbContext _context;
+    private readonly IAdvanceTaxReceiptService _advanceTaxReceiptService;
     private readonly ILogger<PaymentMatchingService> _logger;
 
     /// <summary>How many days before/after the due date we accept for account-based fallback.</summary>
     private const int AccountMatchWindowDays = 7;
 
-    public PaymentMatchingService(TenantDbContext context, ILogger<PaymentMatchingService> logger)
+    public PaymentMatchingService(
+        TenantDbContext context,
+        IAdvanceTaxReceiptService advanceTaxReceiptService,
+        ILogger<PaymentMatchingService> logger)
     {
         _context = context;
+        _advanceTaxReceiptService = advanceTaxReceiptService;
         _logger = logger;
     }
 
@@ -72,6 +82,12 @@ public class PaymentMatchingService : IPaymentMatchingService
         }
 
         await _context.SaveChangesAsync(ct);
+
+        // After saving the match, check whether a DPP needs to be issued for a
+        // newly-fully-paid pro-forma (EAdvanceTaxReceiptMode.OnPaymentMatch or OnAnyPayment).
+        // We must reload the matched invoices AFTER SaveChanges because RecalculateInvoice
+        // updates Status in-memory but we need the persisted state for the mode check.
+        await TryIssueDppAfterMatchAsync(tx, ct);
     }
 
     /// <inheritdoc />
@@ -122,6 +138,21 @@ public class PaymentMatchingService : IPaymentMatchingService
         _logger.LogInformation(
             "Manual match: Tx={TxId} → Invoice={InvoiceId} Amount={Amount} User={UserId}",
             tx.Id, invoice.Id, matchedAmount, userId);
+
+        // After a manual match that fully pays a pro-forma, issue DPP when mode is
+        // OnPaymentMatch or OnAnyPayment. Manual match is also an "auto" event in the
+        // payment-matching pipeline (user chose the invoice but the system matched it),
+        // so both modes apply — unlike the manual MarkPaid flow which only triggers OnAnyPayment.
+        if (invoice.Status == EInvoiceStatus.Paid
+            && invoice.DocumentType == EDocumentType.Proforma)
+        {
+            await TryIssueDppForProformaAsync(
+                invoice,
+                matchedAmount: invoice.PaidAmount,
+                paymentDate: tx.TransactionDate,
+                requireMode: null,   // both OnPaymentMatch and OnAnyPayment trigger here
+                ct);
+        }
 
         return new ManualMatchResult(match.Id, invoice.PaidAmount, invoice.TotalWithVat - invoice.PaidAmount);
     }
@@ -314,5 +345,99 @@ public class PaymentMatchingService : IPaymentMatchingService
     {
         return new string(account.Where(c => !char.IsWhiteSpace(c) && c != '-').ToArray())
             .ToUpperInvariant();
+    }
+
+    // ─── DPP (advance tax receipt) integration ───────────────────────────────
+
+    /// <summary>
+    /// After a successful auto-match save, finds any pro-forma invoices in the transaction's
+    /// matched set that just reached Paid status and issues a DPP for them when the mode
+    /// allows it (OnPaymentMatch or OnAnyPayment).
+    ///
+    /// This method runs AFTER SaveChangesAsync so the Status column is committed.
+    /// It loads only the PaymentMatch rows for this transaction to avoid a broad query.
+    /// </summary>
+    private async Task TryIssueDppAfterMatchAsync(BankTransaction tx, CancellationToken ct)
+    {
+        // Find invoices linked to this transaction that are now fully paid pro-formas.
+        var paidProformas = await _context.PaymentMatch
+            .Include(m => m.Invoice)
+            .Where(m => m.BankTransactionId == tx.Id
+                     && m.Invoice != null
+                     && m.Invoice.DocumentType == EDocumentType.Proforma
+                     && m.Invoice.Status == EInvoiceStatus.Paid)
+            .Select(m => m.Invoice!)
+            .Distinct()
+            .ToListAsync(ct);
+
+        foreach (var proforma in paidProformas)
+        {
+            // For auto-matches, both OnPaymentMatch and OnAnyPayment modes trigger DPP.
+            // The null requireMode means "accept any enabled mode".
+            await TryIssueDppForProformaAsync(
+                proforma,
+                matchedAmount: proforma.PaidAmount,
+                paymentDate: tx.TransactionDate,
+                requireMode: null,
+                ct);
+        }
+    }
+
+    /// <summary>
+    /// Resolves the tenant's EAdvanceTaxReceiptMode from the issuer's BillingSettings,
+    /// then calls IAdvanceTaxReceiptService when the mode permits DPP issuance.
+    ///
+    /// <paramref name="requireMode"/>:
+    ///   null  = trigger when mode is OnPaymentMatch OR OnAnyPayment (both auto-match paths)
+    ///   OnAnyPayment = trigger ONLY when mode is exactly OnAnyPayment (manual MarkPaid path)
+    ///
+    /// Disabled mode → never triggers.
+    /// </summary>
+    private async Task TryIssueDppForProformaAsync(
+        Invoice proforma,
+        decimal matchedAmount,
+        DateTime paymentDate,
+        EAdvanceTaxReceiptMode? requireMode,
+        CancellationToken ct)
+    {
+        // Read the mode from the issuer's BillingSettings.
+        // Direct DB query is intentional — avoids circular DI and keeps this service stateless.
+        var mode = await _context.Client
+            .AsNoTracking()
+            .Include(c => c.BillingSettings)
+            .Where(c => c.Id == proforma.IssuerId)
+            .Select(c => c.BillingSettings != null
+                ? c.BillingSettings.AdvanceTaxReceiptMode
+                : EAdvanceTaxReceiptMode.OnPaymentMatch)
+            .FirstOrDefaultAsync(ct);
+
+        // Disabled → never issue DPP automatically.
+        if (mode == EAdvanceTaxReceiptMode.Disabled)
+        {
+            _logger.LogDebug(
+                "PaymentMatchingService: DPP skipped for pro-forma {ProformaId} — mode is Disabled",
+                proforma.Id);
+            return;
+        }
+
+        // When a specific mode is required (e.g., the MarkPaid path only fires for OnAnyPayment),
+        // check that the configured mode matches.
+        if (requireMode.HasValue && mode != requireMode.Value)
+        {
+            _logger.LogDebug(
+                "PaymentMatchingService: DPP skipped for pro-forma {ProformaId} — mode is {Mode}, required {RequiredMode}",
+                proforma.Id, mode, requireMode.Value);
+            return;
+        }
+
+        _logger.LogInformation(
+            "PaymentMatchingService: issuing DPP for pro-forma {ProformaId} (mode={Mode})",
+            proforma.Id, mode);
+
+        await _advanceTaxReceiptService.IssueFromPaidProformaAsync(
+            proforma.Id,
+            matchedAmount,
+            paymentDate,
+            ct);
     }
 }

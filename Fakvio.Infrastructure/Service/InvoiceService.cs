@@ -20,15 +20,18 @@ public class InvoiceService : IInvoiceService
 {
     private readonly TenantDbContext _context;
     private readonly INumberSequenceService _numberSequenceService;
+    private readonly IAdvanceTaxReceiptService _advanceTaxReceiptService;
     private readonly ILogger<InvoiceService> _logger;
 
     public InvoiceService(
         TenantDbContext context,
         INumberSequenceService numberSequenceService,
+        IAdvanceTaxReceiptService advanceTaxReceiptService,
         ILogger<InvoiceService> logger)
     {
         _context = context;
         _numberSequenceService = numberSequenceService;
+        _advanceTaxReceiptService = advanceTaxReceiptService;
         _logger = logger;
     }
 
@@ -646,12 +649,76 @@ public class InvoiceService : IInvoiceService
 
         _logger.LogInformation("Marking {DocumentType} {Id} as paid", invoice.DocumentType, invoice.Id);
 
+        var effectivePaidAt = paidAt ?? DateTime.UtcNow;
+
         invoice.Status = EInvoiceStatus.Paid;
-        invoice.PaidAt = paidAt ?? DateTime.UtcNow;
+        invoice.PaidAt = effectivePaidAt;
+        // For Proforma, PaidAmount tracks the payment total so that TryIssueDppOnManualPaid
+        // can pass the correct amount to IAdvanceTaxReceiptService.
+        // We take the greater of the existing PaidAmount and TotalWithVat to avoid overwriting
+        // an audit trail created by prior PaymentMatch rows (e.g. partial payment already recorded).
+        if (invoice.DocumentType == EDocumentType.Proforma)
+            invoice.PaidAmount = Math.Max(invoice.PaidAmount, invoice.TotalWithVat);
 
         await _context.SaveChangesAsync(cancellationToken);
 
+        // ── Auto-DPP for manual MarkPaid (issue #29) ─────────────────────────
+        // When the user manually marks a Proforma as paid and the tenant has
+        // EAdvanceTaxReceiptMode = OnAnyPayment, we issue the DPP automatically.
+        //
+        // OnPaymentMatch: only triggered by the IMAP payment-matching pipeline (PaymentMatchingService).
+        //   Manual MarkPaid does NOT trigger DPP for OnPaymentMatch — the user must issue it manually.
+        //
+        // Disabled: never trigger.
+        if (invoice.DocumentType == EDocumentType.Proforma)
+        {
+            await TryIssueDppOnManualPaidAsync(invoice, effectivePaidAt, cancellationToken);
+        }
+
         return await GetInvoiceByIdAsync(invoice.Id, cancellationToken);
+    }
+
+    /// <summary>
+    /// Issues a DPP (TaxReceiptForAdvance) when the tenant's EAdvanceTaxReceiptMode
+    /// is set to OnAnyPayment and a Proforma invoice is manually marked as paid.
+    ///
+    /// Reads the mode directly from DB to avoid a circular IClientService dependency.
+    /// The paidAt date is used as the DPP's IssueDate / DUZP.
+    /// </summary>
+    private async Task TryIssueDppOnManualPaidAsync(
+        Invoice invoice,
+        DateTime paidAt,
+        CancellationToken ct)
+    {
+        // Read mode from the issuer's BillingSettings (direct query — no circular DI).
+        var mode = await _context.Client
+            .AsNoTracking()
+            .Include(c => c.BillingSettings)
+            .Where(c => c.Id == invoice.IssuerId)
+            .Select(c => c.BillingSettings != null
+                ? c.BillingSettings.AdvanceTaxReceiptMode
+                : EAdvanceTaxReceiptMode.OnPaymentMatch)
+            .FirstOrDefaultAsync(ct);
+
+        // Manual MarkPaid only issues DPP when mode is OnAnyPayment.
+        // OnPaymentMatch is reserved for the bank-matching pipeline.
+        if (mode != EAdvanceTaxReceiptMode.OnAnyPayment)
+        {
+            _logger.LogDebug(
+                "InvoiceService.MarkAsPaidAsync: DPP skipped for pro-forma {InvoiceId} — mode is {Mode} (requires OnAnyPayment)",
+                invoice.Id, mode);
+            return;
+        }
+
+        _logger.LogInformation(
+            "InvoiceService.MarkAsPaidAsync: issuing DPP for pro-forma {InvoiceId} (mode=OnAnyPayment)",
+            invoice.Id);
+
+        await _advanceTaxReceiptService.IssueFromPaidProformaAsync(
+            invoice.Id,
+            paidAmount: invoice.TotalWithVat,
+            paymentDate: paidAt,
+            ct);
     }
 
     public async Task<bool> DeleteInvoiceAsync(long invoiceId, CancellationToken cancellationToken = default)
