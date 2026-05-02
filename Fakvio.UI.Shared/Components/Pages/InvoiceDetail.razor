@@ -521,7 +521,7 @@ else
                             else if (_taxReceipts.Count == 0)
                             {
                                 @* No DPP yet — offer manual issue button *@
-                                <MudText Color="Color.Secondary" Class="mb-2">@L["Proforma_NoFinalInvoices"]</MudText>
+                                <MudText Color="Color.Secondary" Class="mb-2">@L["Proforma_NoTaxReceipts"]</MudText>
                                 @* Manual issue available when proforma is Paid *@
                                 @if (_invoice.Status == EInvoiceStatus.Paid)
                                 {

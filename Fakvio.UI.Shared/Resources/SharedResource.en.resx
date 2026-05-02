@@ -1461,7 +1461,6 @@
 
   <!-- ── Proforma UI (issue #33) ─────────────────────────────────────────── -->
   <data name="Nav_Proformas" xml:space="preserve"><value>Advance Invoices</value></data>
-  <data name="Nav_TaxReceiptsForAdvance" xml:space="preserve"><value>Tax Receipts for Advance</value></data>
   <data name="Proforma_Title" xml:space="preserve"><value>Advance Invoices</value></data>
   <data name="Proforma_Subtitle" xml:space="preserve"><value>List of pro-forma / advance invoices</value></data>
   <data name="Proforma_New" xml:space="preserve"><value>New Proforma</value></data>
@@ -1475,18 +1474,16 @@
   <data name="FileName_Proforma" xml:space="preserve"><value>Proforma</value></data>
   <data name="FileName_TaxReceiptForAdvance" xml:space="preserve"><value>TaxReceipt</value></data>
   <data name="Proforma_IssueFinalInvoice" xml:space="preserve"><value>Issue Final Invoice</value></data>
-  <data name="Proforma_IssueFinalInvoiceConfirm" xml:space="preserve"><value>Do you want to issue a final invoice from this proforma?</value></data>
   <data name="Proforma_FinalInvoices" xml:space="preserve"><value>Linked Final Invoices</value></data>
   <data name="Proforma_NoFinalInvoices" xml:space="preserve"><value>No final invoices issued yet.</value></data>
+  <data name="Proforma_NoTaxReceipts" xml:space="preserve"><value>No tax receipts issued yet.</value></data>
   <data name="Proforma_RemainingAdvance" xml:space="preserve"><value>Remaining advance</value></data>
   <data name="Proforma_FullyDeducted" xml:space="preserve"><value>Advance fully deducted.</value></data>
   <data name="Proforma_TaxReceiptSection" xml:space="preserve"><value>Tax Receipt for Advance Payment</value></data>
-  <data name="Proforma_TaxReceiptExists" xml:space="preserve"><value>Tax Receipt</value></data>
   <data name="Proforma_IssueTaxReceiptManual" xml:space="preserve"><value>Issue Tax Receipt Manually</value></data>
   <data name="Proforma_IssueFinalSuccess" xml:space="preserve"><value>Final invoice issued successfully.</value></data>
   <data name="Proforma_IssueFinalFailed" xml:space="preserve"><value>Failed to issue final invoice.</value></data>
   <data name="TaxReceipt_SourceProforma" xml:space="preserve"><value>Source Proforma</value></data>
-  <data name="TaxReceipt_AutoIssuedInfo" xml:space="preserve"><value>Auto-issued on payment</value></data>
   <data name="Invoice_SourceProforma" xml:space="preserve"><value>Source Proforma</value></data>
   <data name="IssueFinalInvoice_DialogTitle" xml:space="preserve"><value>Issue Final Invoice</value></data>
   <data name="IssueFinalInvoice_DeductionAmount" xml:space="preserve"><value>Deduction amount (empty = full remaining)</value></data>

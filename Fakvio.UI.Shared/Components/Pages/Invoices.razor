@@ -348,11 +348,6 @@
     private MudDataGrid<InvoiceDto>? _dataGrid;
     private bool _loading = false;
 
-    // Computed view helpers — read-only, driven purely by the URL query param
-    private bool _isCreditNoteView => TypeFilter == "CreditNote";
-    private bool _isProformaView => TypeFilter == "Proforma";
-    private bool _isTaxReceiptView => TypeFilter == "TaxReceiptForAdvance";
-
     // Computed page labels — resolved from localization based on the current document type filter
     private string PageHeading => TypeFilter switch
     {
