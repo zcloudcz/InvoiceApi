@@ -21,10 +21,8 @@
 @inject ISnackbar Snackbar
 @inject IStringLocalizer<SharedResource> L
 
-@* Dynamic page title: "New Credit Note" or "New Invoice" in create mode, "Credit Note Detail" or "Invoice Detail" in view mode *@
-<PageTitle>@(_isCreateMode
-    ? (_createDto.DocumentType == EDocumentType.CreditNote ? L["CreditNote_New"] : L["Invoice_New"])
-    : (_invoice?.DocumentType == EDocumentType.CreditNote ? L["CreditNote_Detail"] : L["Invoice_Detail"]))</PageTitle>
+@* Dynamic page title — adapts to document type in both create and view mode *@
+<PageTitle>@GetPageTitle()</PageTitle>
 
 @* Warn user before navigating away from dirty forms (create or edit mode) *@
 <UnsavedChangesLock IsDirty="_isDirty" />
@@ -44,7 +42,7 @@ else if (_isCreateMode)
     <div class="d-flex flex-wrap align-center gap-2 mb-4">
         <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" OnClick="GoBack" Title="@L["Btn_Back"].Value" />
         <MudText Typo="Typo.h4" Class="mr-2">
-            @(_createDto.DocumentType == EDocumentType.CreditNote ? L["CreditNote_New"] : L["Invoice_New"])
+            @GetCreateModeTitle()
         </MudText>
         <MudSpacer />
         <MudButton Variant="Variant.Text" OnClick="GoBack">@L["Btn_Cancel"]</MudButton>
@@ -72,10 +70,12 @@ else if (_isCreateMode)
                             <MudSelectItem Value="@client.Id">@client.CompanyName</MudSelectItem>
                         }
                     </MudSelect>
-                    @* Document type selector *@
+                    @* Document type selector — all supported types *@
                     <MudSelect @bind-Value="_createDto.DocumentType" Label="@L["Template_DocumentType"].Value" Class="mb-3">
                         <MudSelectItem Value="@EDocumentType.Invoice">@L["Template_DocumentTypeInvoice"]</MudSelectItem>
                         <MudSelectItem Value="@EDocumentType.CreditNote">@L["Template_DocumentTypeCreditNote"]</MudSelectItem>
+                        <MudSelectItem Value="@EDocumentType.Proforma">@L["Template_DocumentTypeProforma"]</MudSelectItem>
+                        <MudSelectItem Value="@EDocumentType.TaxReceiptForAdvance">@L["Template_DocumentTypeTaxReceiptForAdvance"]</MudSelectItem>
                     </MudSelect>
                     @* Original invoice selector — only shown for credit notes *@
                     @if (_createDto.DocumentType == EDocumentType.CreditNote)
@@ -293,9 +293,8 @@ else
                         @* Client and issuer — readonly after creation *@
                         <MudTextField Value="@_invoice.ClientName" Label="@L["Invoice_Client"].Value" ReadOnly="true" Class="mb-3" />
                         <MudTextField Value="@_invoice.IssuerName" Label="@L["Invoice_Issuer"].Value" ReadOnly="true" Class="mb-3" />
-                        @* Document type — readonly *@
-                        <MudTextField Value="@(_invoice.DocumentType == EDocumentType.CreditNote
-                            ? L["Template_DocumentTypeCreditNote"].Value : L["Template_DocumentTypeInvoice"].Value)"
+                        @* Document type — readonly (all types) *@
+                        <MudTextField Value="@GetDocumentTypeLabel(_invoice.DocumentType)"
                                       Label="@L["Template_DocumentType"].Value" ReadOnly="true" Class="mb-3" />
                         @* Currency — readonly (changing currency on existing invoice is risky) *@
                         <MudTextField Value="@($"{_invoice.CurrencyCode} ({_invoice.CurrencySymbol})")"
@@ -394,11 +393,11 @@ else
                                     <strong>@L["Invoice_TaxableSupplyDate"]:</strong> @_invoice.TaxableSupplyDate.Value.ToShortDateString()
                                 </MudListItem>
                             }
-                            @* Show original invoice reference for credit notes *@
+                            @* Show original invoice reference — label varies by document type *@
                             @if (_invoice.OriginalInvoiceId.HasValue)
                             {
                                 <MudListItem T="string" Icon="@Icons.Material.Filled.Link">
-                                    <strong>@L["CreditNote_OriginalInvoice"]:</strong>
+                                    <strong>@GetOriginalInvoiceLabel(_invoice.DocumentType):</strong>
                                     <MudLink Href="@($"/invoices/{_invoice.OriginalInvoiceId}")">
                                         @(_invoice.OriginalInvoiceNumber ?? _invoice.OriginalInvoiceId.ToString())
                                     </MudLink>
@@ -499,6 +498,121 @@ else
                     <InvoicePaymentsPanel Invoice="_invoice"
                                           RefreshTrigger="_paymentsRefreshTrigger"
                                           OnChanged="OnPaymentsChanged" />
+                </MudItem>
+            }
+
+            @* ─── Proforma cross-link sections ──────────────────────────────────── *@
+            @* Shown only when viewing a Proforma document *@
+            @if (_invoice.DocumentType == EDocumentType.Proforma)
+            {
+                @* Tax Receipt for Advance section — DPP auto-issued or manually issued *@
+                <MudItem xs="12" md="6">
+                    <MudCard Elevation="2" Class="mb-4">
+                        <MudCardHeader>
+                            <CardHeaderContent>
+                                <MudText Typo="Typo.h6">@L["Proforma_TaxReceiptSection"]</MudText>
+                            </CardHeaderContent>
+                        </MudCardHeader>
+                        <MudCardContent>
+                            @if (_loadingProformaLinks)
+                            {
+                                <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+                            }
+                            else if (_taxReceipts.Count == 0)
+                            {
+                                @* No DPP yet — offer manual issue button *@
+                                <MudText Color="Color.Secondary" Class="mb-2">@L["Proforma_NoFinalInvoices"]</MudText>
+                                @* Manual issue available when proforma is Paid *@
+                                @if (_invoice.Status == EInvoiceStatus.Paid)
+                                {
+                                    <MudButton Variant="Variant.Outlined" Color="Color.Primary"
+                                               StartIcon="@Icons.Material.Filled.Receipt"
+                                               OnClick="IssueTaxReceiptManual">
+                                        @L["Proforma_IssueTaxReceiptManual"]
+                                    </MudButton>
+                                }
+                            }
+                            else
+                            {
+                                @* List of linked DPP documents *@
+                                <MudList T="string" Dense="true">
+                                    @foreach (var dpp in _taxReceipts)
+                                    {
+                                        <MudListItem T="string" Icon="@Icons.Material.Filled.Receipt">
+                                            <MudLink Href="@($"/invoices/{dpp.Id}")">
+                                                @(dpp.DocumentNumber ?? $"#{dpp.Id}")
+                                            </MudLink>
+                                            <MudText Typo="Typo.caption" Class="ml-2">
+                                                @dpp.IssueDate?.ToShortDateString() — @dpp.TotalWithVat.ToString("N2") @dpp.CurrencyCode
+                                            </MudText>
+                                        </MudListItem>
+                                    }
+                                </MudList>
+                            }
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+
+                @* Final invoices section — standard Invoices issued from this proforma *@
+                <MudItem xs="12" md="6">
+                    <MudCard Elevation="2" Class="mb-4">
+                        <MudCardHeader>
+                            <CardHeaderContent>
+                                <div class="d-flex align-center gap-2">
+                                    <MudText Typo="Typo.h6">@L["Proforma_FinalInvoices"]</MudText>
+                                    @if (_remainingAdvance.HasValue && _remainingAdvance.Value > 0)
+                                    {
+                                        <MudChip T="string" Color="Color.Info" Size="Size.Small">
+                                            @L["Proforma_RemainingAdvance"]: @_remainingAdvance.Value.ToString("N2")
+                                        </MudChip>
+                                    }
+                                </div>
+                            </CardHeaderContent>
+                        </MudCardHeader>
+                        <MudCardContent>
+                            @if (_loadingProformaLinks)
+                            {
+                                <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+                            }
+                            else if (_finalInvoices.Count == 0)
+                            {
+                                <MudText Color="Color.Secondary" Class="mb-2">@L["Proforma_NoFinalInvoices"]</MudText>
+                            }
+                            else
+                            {
+                                @if (_remainingAdvance == 0)
+                                {
+                                    <MudAlert Severity="Severity.Success" Dense="true" Class="mb-2">
+                                        @L["Proforma_FullyDeducted"]
+                                    </MudAlert>
+                                }
+                                <MudList T="string" Dense="true">
+                                    @foreach (var fi in _finalInvoices)
+                                    {
+                                        <MudListItem T="string" Icon="@Icons.Material.Filled.Description">
+                                            <MudLink Href="@($"/invoices/{fi.Id}")">
+                                                @(fi.DocumentNumber ?? $"#{fi.Id}")
+                                            </MudLink>
+                                            <MudText Typo="Typo.caption" Class="ml-2">
+                                                @fi.IssueDate?.ToShortDateString() — @fi.TotalWithVat.ToString("N2") @fi.CurrencyCode
+                                            </MudText>
+                                        </MudListItem>
+                                    }
+                                </MudList>
+                            }
+                            @* Issue Final Invoice button — only when proforma is Paid and advance not fully deducted *@
+                            @if (_invoice.Status == EInvoiceStatus.Paid
+                                 && (_remainingAdvance == null || _remainingAdvance > 0))
+                            {
+                                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                           StartIcon="@Icons.Material.Filled.ArrowForward"
+                                           OnClick="@(() => _showIssueFinalDialog = true)"
+                                           Class="mt-2">
+                                    @L["Proforma_IssueFinalInvoice"]
+                                </MudButton>
+                            }
+                        </MudCardContent>
+                    </MudCard>
                 </MudItem>
             }
 
@@ -611,6 +725,58 @@ else
             </MudButton>
         </DialogActions>
     </MudDialog>
+
+    @* ── "Issue Final Invoice" dialog — shown from the proforma detail page ── *@
+    @* The user provides line items for the final invoice; advance deduction rows
+       are appended automatically by the backend (proportional per VAT rate). *@
+    <MudDialog @bind-Visible="_showIssueFinalDialog" Options="@(new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true, CloseButton = true })">
+        <TitleContent>
+            <MudText Typo="Typo.h6">@L["IssueFinalInvoice_DialogTitle"]</MudText>
+        </TitleContent>
+        <DialogContent>
+            <MudGrid>
+                @* Dates row *@
+                <MudItem xs="12" md="6">
+                    <MudDatePicker @bind-Date="_issueFinalIssueDate" Label="@L["IssueFinalInvoice_IssueDate"].Value" Class="mb-3" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudDatePicker @bind-Date="_issueFinalDueDate" Label="@L["IssueFinalInvoice_DueDate"].Value" Class="mb-3" />
+                </MudItem>
+                @* Optional partial deduction amount *@
+                <MudItem xs="12" md="6">
+                    <MudNumericField T="decimal?" @bind-Value="_issueFinalDto.DeductionAmount"
+                                     Label="@L["IssueFinalInvoice_DeductionAmount"].Value"
+                                     Min="0" Format="N2" Class="mb-3"
+                                     HelperText="@(_remainingAdvance.HasValue
+                                         ? $"{L["Proforma_RemainingAdvance"].Value}: {_remainingAdvance.Value:N2}"
+                                         : "")" />
+                </MudItem>
+                @* Notes *@
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="_issueFinalDto.Notes" Label="@L["IssueFinalInvoice_Notes"].Value" Lines="2" Class="mb-3" />
+                </MudItem>
+                @* Invoice items *@
+                <MudItem xs="12">
+                    <MudText Typo="Typo.subtitle1" Class="mb-2">@L["IssueFinalInvoice_AddItems"]</MudText>
+                    <InvoiceItemEditor Items="_issueFinalItems"
+                                       ItemsChanged="@(items => _issueFinalItems = items)" />
+                </MudItem>
+            </MudGrid>
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _showIssueFinalDialog = false)">@L["Btn_Cancel"]</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.ArrowForward"
+                       OnClick="IssueFinalInvoice"
+                       Disabled="@(_issuingFinalInvoice || _issueFinalItems.Count == 0)">
+                @if (_issuingFinalInvoice)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-1" />
+                }
+                @L["Proforma_IssueFinalInvoice"]
+            </MudButton>
+        </DialogActions>
+    </MudDialog>
 }
 
 @code {
@@ -646,6 +812,14 @@ else
     /// </summary>
     [SupplyParameterFromQuery(Name = "clientId")]
     public long? TemplateClientId { get; set; }
+
+    /// <summary>
+    /// Query parameter — original invoice ID (proforma) to pre-set when creating
+    /// a TaxReceiptForAdvance manually from the proforma detail page.
+    /// Sets OriginalInvoiceId on the create DTO.
+    /// </summary>
+    [SupplyParameterFromQuery(Name = "originalId")]
+    public long? OriginalId { get; set; }
 
     private InvoiceDto? _invoice;
     private bool _loading = true;
@@ -716,6 +890,20 @@ else
     private bool _showEmailDialog = false;
     private bool _sendingEmail = false;
     private string _emailRecipient = "";
+
+    // Proforma cross-link state (only loaded when viewing a Proforma)
+    private List<InvoiceDto> _finalInvoices = [];    // final invoices issued from this proforma
+    private List<InvoiceDto> _taxReceipts = [];      // DPP documents linked to this proforma
+    private decimal? _remainingAdvance;              // remaining advance amount (null = not yet loaded)
+    private bool _loadingProformaLinks = false;
+
+    // "Issue Final Invoice" dialog state
+    private bool _showIssueFinalDialog = false;
+    private bool _issuingFinalInvoice = false;
+    private IssueFinalInvoiceDto _issueFinalDto = new();
+    private List<CreateInvoiceItemDto> _issueFinalItems = [];
+    private DateTime? _issueFinalIssueDate = DateTime.UtcNow.Date;
+    private DateTime? _issueFinalDueDate = DateTime.UtcNow.Date.AddDays(14);
 
     /// <summary>
     /// Called every time a [Parameter] value changes.
@@ -874,12 +1062,18 @@ else
 
     /// <summary>
     /// Initializes the create DTO with default values after reference data is loaded.
-    /// If ?type=CreditNote query param is present, sets DocumentType to CreditNote.
+    /// Supports all document types via the ?type= query parameter.
     /// </summary>
     private void InitCreateDto()
     {
-        // Determine document type from query parameter (e.g., ?type=CreditNote from nav link)
-        var docType = TypeParam == "CreditNote" ? EDocumentType.CreditNote : EDocumentType.Invoice;
+        // Map the ?type= query param to EDocumentType; default = Invoice
+        var docType = TypeParam switch
+        {
+            "CreditNote"           => EDocumentType.CreditNote,
+            "Proforma"             => EDocumentType.Proforma,
+            "TaxReceiptForAdvance" => EDocumentType.TaxReceiptForAdvance,
+            _                      => EDocumentType.Invoice
+        };
 
         // Auto-select the default bank account from the issuer's 1:N BankAccount collection
         var defaultAccount = _issuerBankAccounts.FirstOrDefault(a => a.IsDefault)
@@ -896,7 +1090,9 @@ else
             BankAccountNumber = defaultAccount?.AccountNumber,
             IBAN = defaultAccount?.IBAN,
             SWIFT = defaultAccount?.SWIFT,
-            InvoiceItem = new List<CreateInvoiceItemDto>()
+            InvoiceItem = new List<CreateInvoiceItemDto>(),
+            // Pre-link to source proforma when creating TaxReceiptForAdvance manually
+            OriginalInvoiceId = OriginalId.HasValue && OriginalId.Value > 0 ? OriginalId : null
         };
         _loading = false;
     }
@@ -1035,6 +1231,13 @@ else
             if (_invoice != null)
             {
                 _ = LoadOverpaidAlertAsync();
+            }
+
+            // Load proforma cross-links (tax receipts + final invoices) — non-blocking.
+            // Only done for Proforma documents to avoid unnecessary API calls on other types.
+            if (_invoice?.DocumentType == EDocumentType.Proforma)
+            {
+                _ = LoadProformaLinksAsync();
             }
         }
         catch (Exception ex)
@@ -1526,9 +1729,7 @@ else
             if (pdfBytes != null && pdfBytes.Length > 0)
             {
                 var base64 = Convert.ToBase64String(pdfBytes);
-                // Use localized file name prefix based on document type (Invoice vs CreditNote)
-                var prefix = _invoice.DocumentType == EDocumentType.CreditNote
-                    ? L["FileName_CreditNote"].Value : L["FileName_Invoice"].Value;
+                var prefix = GetPdfFileNamePrefix(_invoice.DocumentType);
                 var fileName = $"{prefix}_{_invoice.DocumentNumber ?? Id.ToString()}.pdf";
                 await JS.InvokeVoidAsync("downloadFile", fileName, base64, "application/pdf");
                 Snackbar.Add(L["Invoice_PdfDownloaded"].Value, Severity.Success);
@@ -1603,9 +1804,13 @@ else
     {
         try
         {
-            var templateType = _invoice?.DocumentType == EDocumentType.CreditNote
-                ? EContentTemplateType.CreditNotePdf
-                : EContentTemplateType.InvoicePdf;
+            var templateType = _invoice?.DocumentType switch
+            {
+                EDocumentType.CreditNote           => EContentTemplateType.CreditNotePdf,
+                EDocumentType.Proforma             => EContentTemplateType.AdvanceInvoicePdf,
+                EDocumentType.TaxReceiptForAdvance => EContentTemplateType.TaxReceiptForAdvancePdf,
+                _                                  => EContentTemplateType.InvoicePdf
+            };
             _pdfTemplates = await ContentTemplateService.GetAllAsync(templateType, includeInactive: false);
             StateHasChanged();
         }
@@ -1629,9 +1834,7 @@ else
             if (pdfBytes != null && pdfBytes.Length > 0)
             {
                 var base64 = Convert.ToBase64String(pdfBytes);
-                // Use localized file name prefix based on document type (Invoice vs CreditNote)
-                var prefix = _invoice.DocumentType == EDocumentType.CreditNote
-                    ? L["FileName_CreditNote"].Value : L["FileName_Invoice"].Value;
+                var prefix = GetPdfFileNamePrefix(_invoice.DocumentType);
                 var fileName = $"{prefix}_{_invoice.DocumentNumber ?? Id.ToString()}.pdf";
                 await JS.InvokeVoidAsync("downloadFile", fileName, base64, "application/pdf");
                 Snackbar.Add(L["Invoice_PdfDownloaded"].Value, Severity.Success);
@@ -1644,7 +1847,34 @@ else
         catch (Exception ex) { Snackbar.Add($"Error downloading PDF: {ex.Message}", Severity.Error); }
     }
 
-    private void GoBack() => Navigation.NavigateTo("/invoices");
+    /// <summary>
+    /// Returns the localized file name prefix for PDF download, based on document type.
+    /// </summary>
+    private string GetPdfFileNamePrefix(EDocumentType docType) => docType switch
+    {
+        EDocumentType.CreditNote           => L["FileName_CreditNote"].Value,
+        EDocumentType.Proforma             => L["FileName_Proforma"].Value,
+        EDocumentType.TaxReceiptForAdvance => L["FileName_TaxReceiptForAdvance"].Value,
+        _                                  => L["FileName_Invoice"].Value
+    };
+
+    /// <summary>
+    /// Navigates back to the appropriate list page based on the document type.
+    /// Proformas go to /invoices?type=Proforma, DPPs to /invoices?type=TaxReceiptForAdvance,
+    /// CreditNotes to /invoices?type=CreditNote, everything else to /invoices.
+    /// </summary>
+    private void GoBack()
+    {
+        var docType = _isCreateMode ? _createDto.DocumentType : _invoice?.DocumentType;
+        var url = docType switch
+        {
+            EDocumentType.CreditNote           => "/invoices?type=CreditNote",
+            EDocumentType.Proforma             => "/invoices?type=Proforma",
+            EDocumentType.TaxReceiptForAdvance => "/invoices?type=TaxReceiptForAdvance",
+            _                                  => "/invoices"
+        };
+        Navigation.NavigateTo(url);
+    }
 
     // --- Validation helpers ---
 
@@ -1659,6 +1889,153 @@ else
         if (!value.All(char.IsDigit)) return L["Invoice_VSDigitsOnly"].Value;
         return null;
     }
+
+    // ── Proforma cross-link loading ─────────────────────────────────────────
+
+    /// <summary>
+    /// Loads both tax receipts and final invoices linked to the current proforma.
+    /// Also loads the remaining advance amount. Runs non-blocking in the background.
+    /// </summary>
+    private async Task LoadProformaLinksAsync()
+    {
+        _loadingProformaLinks = true;
+        StateHasChanged();
+        try
+        {
+            // Run all three calls in parallel to keep load time low
+            var taxReceiptsTask = InvoiceService.GetTaxReceiptsForProformaAsync(Id);
+            var finalInvoicesTask = InvoiceService.GetFinalInvoicesForProformaAsync(Id);
+            var remainingTask = InvoiceService.GetRemainingAdvanceAsync(Id);
+
+            await Task.WhenAll(taxReceiptsTask, finalInvoicesTask, remainingTask);
+
+            _taxReceipts = taxReceiptsTask.Result;
+            _finalInvoices = finalInvoicesTask.Result;
+            _remainingAdvance = remainingTask.Result;
+        }
+        catch
+        {
+            // Non-critical — cross-link sections simply show empty state on failure.
+            _taxReceipts = [];
+            _finalInvoices = [];
+            _remainingAdvance = null;
+        }
+        finally
+        {
+            _loadingProformaLinks = false;
+            StateHasChanged();
+        }
+    }
+
+    // ── Proforma actions ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Issues a final Invoice from the current proforma.
+    /// Calls POST /api/invoice/{proformaId}/issue-final, then navigates to the new invoice.
+    /// </summary>
+    private async Task IssueFinalInvoice()
+    {
+        if (_issueFinalItems.Count == 0)
+        {
+            Snackbar.Add(L["IssueFinalInvoice_AddAtLeastOneItem"].Value, Severity.Warning);
+            return;
+        }
+
+        _issuingFinalInvoice = true;
+        try
+        {
+            _issueFinalDto.IssueDate = _issueFinalIssueDate;
+            _issueFinalDto.DueDate = _issueFinalDueDate;
+            _issueFinalDto.InvoiceItem = _issueFinalItems;
+
+            var result = await InvoiceService.IssueFinalInvoiceAsync(Id, _issueFinalDto);
+            if (result != null)
+            {
+                Snackbar.Add(L["Proforma_IssueFinalSuccess"].Value, Severity.Success);
+                _showIssueFinalDialog = false;
+                // Navigate to the new final invoice so the user can review and edit it
+                Navigation.NavigateTo($"/invoices/{result.Id}?edit=true");
+            }
+            else
+            {
+                Snackbar.Add(L["Proforma_IssueFinalFailed"].Value, Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _issuingFinalInvoice = false;
+        }
+    }
+
+    /// <summary>
+    /// Opens the "Issue Final Invoice" dialog pre-initialised with empty items and today's dates.
+    /// The dialog is only opened (not closed) here — closing is done via Cancel button or dialog backdrop.
+    /// </summary>
+    private void IssueTaxReceiptManual()
+    {
+        // Manual DPP issue flows through the standard invoice create page with type=TaxReceiptForAdvance
+        // and the proforma as the OriginalInvoiceId, exactly like the credit-note flow.
+        // We navigate there instead of opening a separate dialog — consistent UX.
+        Navigation.NavigateTo($"/invoices/create?type=TaxReceiptForAdvance&originalId={Id}");
+    }
+
+    // ── Page title / label helpers ──────────────────────────────────────────
+
+    /// <summary>
+    /// Returns the page title string for the &lt;PageTitle&gt; element.
+    /// Covers all four document types in both create and view mode.
+    /// </summary>
+    private string GetPageTitle()
+    {
+        if (_isCreateMode)
+            return GetCreateModeTitle();
+
+        return _invoice?.DocumentType switch
+        {
+            EDocumentType.CreditNote           => L["CreditNote_Detail"].Value,
+            EDocumentType.Proforma             => L["Proforma_Detail"].Value,
+            EDocumentType.TaxReceiptForAdvance => L["TaxReceiptForAdvance_Detail"].Value,
+            _                                  => L["Invoice_Detail"].Value
+        };
+    }
+
+    /// <summary>
+    /// Returns the heading text shown in the create-mode header bar.
+    /// </summary>
+    private string GetCreateModeTitle() => _createDto.DocumentType switch
+    {
+        EDocumentType.CreditNote           => L["CreditNote_New"].Value,
+        EDocumentType.Proforma             => L["Proforma_New"].Value,
+        EDocumentType.TaxReceiptForAdvance => L["TaxReceiptForAdvance_New"].Value,
+        _                                  => L["Invoice_New"].Value
+    };
+
+    /// <summary>
+    /// Returns the localized document type label for the readonly DocumentType field.
+    /// </summary>
+    private string GetDocumentTypeLabel(EDocumentType docType) => docType switch
+    {
+        EDocumentType.CreditNote           => L["Template_DocumentTypeCreditNote"].Value,
+        EDocumentType.Proforma             => L["Template_DocumentTypeProforma"].Value,
+        EDocumentType.TaxReceiptForAdvance => L["Template_DocumentTypeTaxReceiptForAdvance"].Value,
+        _                                  => L["Template_DocumentTypeInvoice"].Value
+    };
+
+    /// <summary>
+    /// Returns the localized label for the "Original invoice" list item,
+    /// which varies by document type (e.g. "Zdrojová proforma" vs "Původní faktura").
+    /// </summary>
+    private string GetOriginalInvoiceLabel(EDocumentType docType) => docType switch
+    {
+        EDocumentType.CreditNote           => L["CreditNote_OriginalInvoice"].Value,
+        EDocumentType.TaxReceiptForAdvance => L["TaxReceipt_SourceProforma"].Value,
+        EDocumentType.Invoice              => L["Invoice_SourceProforma"].Value,
+        _                                  => L["CreditNote_OriginalInvoice"].Value
+    };
 
     // --- Helpers ---
 

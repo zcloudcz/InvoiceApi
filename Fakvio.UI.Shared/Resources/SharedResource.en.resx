@@ -1458,4 +1458,41 @@
   <data name="Alert_OverpaidBanner" xml:space="preserve"><value>Alert: overpayment on this proforma</value></data>
   <data name="Alert_Tooltip" xml:space="preserve"><value>This invoice has an open alert</value></data>
   <data name="EAlertType_OverpaidProforma" xml:space="preserve"><value>Overpaid proforma</value></data>
+
+  <!-- ── Proforma UI (issue #33) ─────────────────────────────────────────── -->
+  <data name="Nav_Proformas" xml:space="preserve"><value>Advance Invoices</value></data>
+  <data name="Nav_TaxReceiptsForAdvance" xml:space="preserve"><value>Tax Receipts for Advance</value></data>
+  <data name="Proforma_Title" xml:space="preserve"><value>Advance Invoices</value></data>
+  <data name="Proforma_Subtitle" xml:space="preserve"><value>List of pro-forma / advance invoices</value></data>
+  <data name="Proforma_New" xml:space="preserve"><value>New Proforma</value></data>
+  <data name="Proforma_Detail" xml:space="preserve"><value>Proforma Detail</value></data>
+  <data name="TaxReceiptForAdvance_Title" xml:space="preserve"><value>Tax Receipts for Advance Payment</value></data>
+  <data name="TaxReceiptForAdvance_Subtitle" xml:space="preserve"><value>List of tax receipts for advance payments</value></data>
+  <data name="TaxReceiptForAdvance_New" xml:space="preserve"><value>New Tax Receipt</value></data>
+  <data name="TaxReceiptForAdvance_Detail" xml:space="preserve"><value>Tax Receipt for Advance Payment</value></data>
+  <data name="Template_DocumentTypeProforma" xml:space="preserve"><value>Advance Invoice (Proforma)</value></data>
+  <data name="Template_DocumentTypeTaxReceiptForAdvance" xml:space="preserve"><value>Tax Receipt for Advance Payment</value></data>
+  <data name="FileName_Proforma" xml:space="preserve"><value>Proforma</value></data>
+  <data name="FileName_TaxReceiptForAdvance" xml:space="preserve"><value>TaxReceipt</value></data>
+  <data name="Proforma_IssueFinalInvoice" xml:space="preserve"><value>Issue Final Invoice</value></data>
+  <data name="Proforma_IssueFinalInvoiceConfirm" xml:space="preserve"><value>Do you want to issue a final invoice from this proforma?</value></data>
+  <data name="Proforma_FinalInvoices" xml:space="preserve"><value>Linked Final Invoices</value></data>
+  <data name="Proforma_NoFinalInvoices" xml:space="preserve"><value>No final invoices issued yet.</value></data>
+  <data name="Proforma_RemainingAdvance" xml:space="preserve"><value>Remaining advance</value></data>
+  <data name="Proforma_FullyDeducted" xml:space="preserve"><value>Advance fully deducted.</value></data>
+  <data name="Proforma_TaxReceiptSection" xml:space="preserve"><value>Tax Receipt for Advance Payment</value></data>
+  <data name="Proforma_TaxReceiptExists" xml:space="preserve"><value>Tax Receipt</value></data>
+  <data name="Proforma_IssueTaxReceiptManual" xml:space="preserve"><value>Issue Tax Receipt Manually</value></data>
+  <data name="Proforma_IssueFinalSuccess" xml:space="preserve"><value>Final invoice issued successfully.</value></data>
+  <data name="Proforma_IssueFinalFailed" xml:space="preserve"><value>Failed to issue final invoice.</value></data>
+  <data name="TaxReceipt_SourceProforma" xml:space="preserve"><value>Source Proforma</value></data>
+  <data name="TaxReceipt_AutoIssuedInfo" xml:space="preserve"><value>Auto-issued on payment</value></data>
+  <data name="Invoice_SourceProforma" xml:space="preserve"><value>Source Proforma</value></data>
+  <data name="IssueFinalInvoice_DialogTitle" xml:space="preserve"><value>Issue Final Invoice</value></data>
+  <data name="IssueFinalInvoice_DeductionAmount" xml:space="preserve"><value>Deduction amount (empty = full remaining)</value></data>
+  <data name="IssueFinalInvoice_Notes" xml:space="preserve"><value>Notes for final invoice</value></data>
+  <data name="IssueFinalInvoice_IssueDate" xml:space="preserve"><value>Issue date</value></data>
+  <data name="IssueFinalInvoice_DueDate" xml:space="preserve"><value>Due date</value></data>
+  <data name="IssueFinalInvoice_AddItems" xml:space="preserve"><value>Final invoice items</value></data>
+  <data name="IssueFinalInvoice_AddAtLeastOneItem" xml:space="preserve"><value>Please add at least one invoice item.</value></data>
 </root>

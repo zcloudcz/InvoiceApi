@@ -19,11 +19,11 @@
 @inject IDialogService DialogService
 @inject IStringLocalizer<SharedResource> L
 
-@* Page title adapts based on document type filter — "Invoices" or "Credit Notes" *@
-<PageTitle>@(_isCreditNoteView ? L["Nav_CreditNotes"] : L["Invoice_Title"])</PageTitle>
+@* Page title adapts based on document type filter *@
+<PageTitle>@PageHeading</PageTitle>
 
-<MudText Typo="Typo.h4" GutterBottom="true">@(_isCreditNoteView ? L["Nav_CreditNotes"] : L["Invoice_Title"])</MudText>
-<MudText Class="mb-4">@(_isCreditNoteView ? L["CreditNote_Subtitle"] : L["Invoice_Subtitle"])</MudText>
+<MudText Typo="Typo.h4" GutterBottom="true">@PageHeading</MudText>
+<MudText Class="mb-4">@PageSubtitle</MudText>
 
 @* Bulk operations toolbar — visible only when multi-select has items checked *@
 @if (_selectedInvoices.Count > 0)
@@ -80,14 +80,12 @@
                       IconSize="Size.Medium" Class="mt-0" Immediate="true"
                       DebounceInterval="300" OnDebounceIntervalElapsed="SearchInvoices" />
         <MudSpacer />
-        @* Split button: Primary click = new invoice/credit note, dropdown arrow = from template/import *@
+        @* Split button: Primary click = new document, dropdown = from template/import *@
         <MudButtonGroup OverrideStyles="false">
             <MudButton Variant="Variant.Filled" Color="Color.Primary"
                        StartIcon="@Icons.Material.Filled.Add"
-                       OnClick="@(() => Navigation.NavigateTo(_isCreditNoteView
-                           ? "/invoices/create?type=CreditNote"
-                           : "/invoices/create"))">
-                @(_isCreditNoteView ? L["CreditNote_New"] : L["Invoice_New"])
+                       OnClick="@NavigateToCreate">
+                @NewButtonLabel
             </MudButton>
             <MudMenu Icon="@Icons.Material.Filled.ArrowDropDown"
                      Variant="Variant.Filled" Color="Color.Primary">
@@ -338,8 +336,11 @@
 
 @code {
     /// <summary>
-    /// Query parameter — when ?type=CreditNote, pre-filters the list to credit notes only.
-    /// Used by the "Credit Notes" nav link for a dedicated view without a separate page.
+    /// Query parameter — controls which document type is shown:
+    ///   ?type=CreditNote           → Dobropisy
+    ///   ?type=Proforma             → Zálohové faktury (proformy)
+    ///   ?type=TaxReceiptForAdvance → Daňové doklady o přijaté platbě
+    ///   (no param)                 → Standardní faktury (Invoice)
     /// </summary>
     [SupplyParameterFromQuery(Name = "type")]
     public string? TypeFilter { get; set; }
@@ -347,15 +348,58 @@
     private MudDataGrid<InvoiceDto>? _dataGrid;
     private bool _loading = false;
 
-    // Computed: true when navigated from "Credit Notes" nav link
+    // Computed view helpers — read-only, driven purely by the URL query param
     private bool _isCreditNoteView => TypeFilter == "CreditNote";
+    private bool _isProformaView => TypeFilter == "Proforma";
+    private bool _isTaxReceiptView => TypeFilter == "TaxReceiptForAdvance";
+
+    // Computed page labels — resolved from localization based on the current document type filter
+    private string PageHeading => TypeFilter switch
+    {
+        "CreditNote"           => L["Nav_CreditNotes"].Value,
+        "Proforma"             => L["Proforma_Title"].Value,
+        "TaxReceiptForAdvance" => L["TaxReceiptForAdvance_Title"].Value,
+        _                      => L["Invoice_Title"].Value
+    };
+
+    private string PageSubtitle => TypeFilter switch
+    {
+        "CreditNote"           => L["CreditNote_Subtitle"].Value,
+        "Proforma"             => L["Proforma_Subtitle"].Value,
+        "TaxReceiptForAdvance" => L["TaxReceiptForAdvance_Subtitle"].Value,
+        _                      => L["Invoice_Subtitle"].Value
+    };
+
+    private string NewButtonLabel => TypeFilter switch
+    {
+        "CreditNote"           => L["CreditNote_New"].Value,
+        "Proforma"             => L["Proforma_New"].Value,
+        "TaxReceiptForAdvance" => L["TaxReceiptForAdvance_New"].Value,
+        _                      => L["Invoice_New"].Value
+    };
+
+    /// <summary>
+    /// Navigates to the create page with the current document type pre-set via query param.
+    /// Standard Invoice has no param (keeps backward compat with existing links/bookmarks).
+    /// </summary>
+    private void NavigateToCreate()
+    {
+        var url = TypeFilter switch
+        {
+            "CreditNote"           => "/invoices/create?type=CreditNote",
+            "Proforma"             => "/invoices/create?type=Proforma",
+            "TaxReceiptForAdvance" => "/invoices/create?type=TaxReceiptForAdvance",
+            _                      => "/invoices/create"
+        };
+        Navigation.NavigateTo(url);
+    }
 
     // Whether the issuer (logged-in company) is a VAT payer — controls DUZP column visibility
     private bool _issuerIsVatPayer = false;
 
     // Filter state — only global search remains, column filters are handled by MudDataGrid client-side
     private string _searchString = "";
-    // Document type is set automatically from URL query param (?type=CreditNote) — not user-selectable
+    // Document type is set automatically from URL query param — not user-selectable
     private EDocumentType? _filterDocumentType = null;
 
     // Reference data — clients used for "Create from template" dialog
@@ -399,11 +443,16 @@
 
     protected override async Task OnInitializedAsync()
     {
-        // Pre-set document type filter from query parameter (e.g., ?type=CreditNote from nav link)
-        if (_isCreditNoteView)
+        // Map URL type param to the EDocumentType filter sent to the API.
+        // Standard Invoice view (no param) intentionally shows only Invoice type
+        // so proformas and credit notes are excluded from the default grid.
+        _filterDocumentType = TypeFilter switch
         {
-            _filterDocumentType = EDocumentType.CreditNote;
-        }
+            "CreditNote"           => EDocumentType.CreditNote,
+            "Proforma"             => EDocumentType.Proforma,
+            "TaxReceiptForAdvance" => EDocumentType.TaxReceiptForAdvance,
+            _                      => EDocumentType.Invoice   // default: standard invoices only
+        };
 
         // Load clients, templates, PDF templates, issuer info, and alert IDs in parallel
         await Task.WhenAll(
@@ -462,15 +511,19 @@
 
     /// <summary>
     /// Loads active PDF content templates for the PDF template picker menu.
-    /// Filters by InvoicePdf or CreditNotePdf depending on the current view.
+    /// Filters by the appropriate template type for the current document type view.
     /// </summary>
     private async Task LoadPdfTemplates()
     {
         try
         {
-            var templateType = _isCreditNoteView
-                ? EContentTemplateType.CreditNotePdf
-                : EContentTemplateType.InvoicePdf;
+            var templateType = TypeFilter switch
+            {
+                "CreditNote"           => EContentTemplateType.CreditNotePdf,
+                "Proforma"             => EContentTemplateType.AdvanceInvoicePdf,
+                "TaxReceiptForAdvance" => EContentTemplateType.TaxReceiptForAdvancePdf,
+                _                      => EContentTemplateType.InvoicePdf
+            };
             _pdfTemplates = await ContentTemplateService.GetAllAsync(templateType, includeInactive: false);
         }
         catch (Exception ex) { Snackbar.Add($"Error loading PDF templates: {ex.Message}", Severity.Error); }
@@ -630,9 +683,7 @@
             if (pdfBytes != null && pdfBytes.Length > 0)
             {
                 var base64 = Convert.ToBase64String(pdfBytes);
-                // Use localized file name prefix based on document type (Invoice vs CreditNote)
-                var prefix = invoice.DocumentType == EDocumentType.CreditNote
-                    ? L["FileName_CreditNote"].Value : L["FileName_Invoice"].Value;
+                var prefix = GetFileNamePrefix(invoice.DocumentType);
                 var fileName = $"{prefix}_{invoice.DocumentNumber ?? invoice.Id.ToString()}.pdf";
                 await JS.InvokeVoidAsync("downloadFile", fileName, base64, "application/pdf");
                 Snackbar.Add(L["Invoice_PdfDownloaded"].Value, Severity.Success);
@@ -788,9 +839,7 @@
             if (pdfBytes != null && pdfBytes.Length > 0)
             {
                 var base64 = Convert.ToBase64String(pdfBytes);
-                // Use localized file name prefix based on document type (Invoice vs CreditNote)
-                var prefix = invoice.DocumentType == EDocumentType.CreditNote
-                    ? L["FileName_CreditNote"].Value : L["FileName_Invoice"].Value;
+                var prefix = GetFileNamePrefix(invoice.DocumentType);
                 var fileName = $"{prefix}_{invoice.DocumentNumber ?? invoice.Id.ToString()}.pdf";
                 await JS.InvokeVoidAsync("downloadFile", fileName, base64, "application/pdf");
                 Snackbar.Add(L["Invoice_PdfDownloaded"].Value, Severity.Success);
@@ -950,9 +999,14 @@
             if (zipBytes != null && zipBytes.Length > 0)
             {
                 var base64 = Convert.ToBase64String(zipBytes);
-                // Use localized ZIP name based on current view (Invoices vs CreditNotes)
-                var zipPrefix = _isCreditNoteView
-                    ? L["FileName_CreditNotes"].Value : L["FileName_Invoices"].Value;
+                // Use localized ZIP name based on current document type view
+                var zipPrefix = TypeFilter switch
+                {
+                    "CreditNote"           => L["FileName_CreditNotes"].Value,
+                    "Proforma"             => L["Proforma_Title"].Value,
+                    "TaxReceiptForAdvance" => L["TaxReceiptForAdvance_Title"].Value,
+                    _                      => L["FileName_Invoices"].Value
+                };
                 var fileName = $"{zipPrefix}_{DateTime.Now:yyyyMMdd}.zip";
                 await JS.InvokeVoidAsync("downloadFile", fileName, base64, "application/zip");
                 Snackbar.Add(L["Bulk_Success"].Value, Severity.Success);
@@ -1049,4 +1103,16 @@
         var b = Convert.ToInt32(hex[4..6], 16);
         return $"rgba({r},{g},{b},{opacity})";
     }
+
+    /// <summary>
+    /// Returns the localized file name prefix for a given document type.
+    /// Used when building PDF download file names in grid row actions.
+    /// </summary>
+    private string GetFileNamePrefix(EDocumentType docType) => docType switch
+    {
+        EDocumentType.CreditNote           => L["FileName_CreditNote"].Value,
+        EDocumentType.Proforma             => L["FileName_Proforma"].Value,
+        EDocumentType.TaxReceiptForAdvance => L["FileName_TaxReceiptForAdvance"].Value,
+        _                                  => L["FileName_Invoice"].Value
+    };
 }

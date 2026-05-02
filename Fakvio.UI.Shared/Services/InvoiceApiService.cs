@@ -308,4 +308,57 @@ public class FakvioService : ApiClientBase
         var idsParam = string.Join(",", invoiceIds);
         return await GetBytesAsync($"/api/invoice/bulk/pdf?ids={idsParam}");
     }
+
+    // ─── Proforma → Final Invoice (issue #33) ────────────────────────────────
+
+    /// <summary>
+    /// Issues a final Invoice from a Proforma via POST /api/invoice/{proformaId}/issue-final.
+    /// Appends proportional advance deduction rows automatically.
+    /// </summary>
+    public async Task<InvoiceDto?> IssueFinalInvoiceAsync(long proformaId, IssueFinalInvoiceDto dto)
+    {
+        return await PostAsync<IssueFinalInvoiceDto, InvoiceDto>(
+            $"/api/invoice/{proformaId}/issue-final", dto);
+    }
+
+    /// <summary>
+    /// Returns remaining advance (PaidAmount minus already deducted) for a proforma.
+    /// Calls GET /api/invoice/{proformaId}/remaining-advance.
+    /// </summary>
+    public async Task<decimal?> GetRemainingAdvanceAsync(long proformaId)
+    {
+        return await GetAsync<decimal>($"/api/invoice/{proformaId}/remaining-advance");
+    }
+
+    /// <summary>
+    /// Returns all final Invoices issued from the given proforma.
+    /// Calls GET /api/invoice/{proformaId}/final-invoices.
+    /// </summary>
+    public async Task<List<InvoiceDto>> GetFinalInvoicesForProformaAsync(long proformaId)
+    {
+        try
+        {
+            return await GetAsync<List<InvoiceDto>>($"/api/invoice/{proformaId}/final-invoices") ?? [];
+        }
+        catch (ApiException)
+        {
+            return [];
+        }
+    }
+
+    /// <summary>
+    /// Returns all TaxReceiptForAdvance documents linked to the given proforma.
+    /// Calls GET /api/invoice/{proformaId}/tax-receipts.
+    /// </summary>
+    public async Task<List<InvoiceDto>> GetTaxReceiptsForProformaAsync(long proformaId)
+    {
+        try
+        {
+            return await GetAsync<List<InvoiceDto>>($"/api/invoice/{proformaId}/tax-receipts") ?? [];
+        }
+        catch (ApiException)
+        {
+            return [];
+        }
+    }
 }
