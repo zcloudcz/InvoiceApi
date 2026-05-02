@@ -1447,4 +1447,15 @@
   <data name="PaymentDetail_Source" xml:space="preserve"><value>Import source</value></data>
   <data name="PaymentDetail_AiConfidence" xml:space="preserve"><value>AI confidence</value></data>
   <data name="PaymentDetail_MatchedInvoices" xml:space="preserve"><value>Matched invoices</value></data>
+
+  <!-- ── Alerts (issue #32) ─────────────────────────────────────────────── -->
+  <data name="Dashboard_Alerts" xml:space="preserve"><value>Alerts</value></data>
+  <data name="Dashboard_Alerts_OpenCount" xml:space="preserve"><value>Open alerts</value></data>
+  <data name="Dashboard_Alerts_Empty" xml:space="preserve"><value>No open alerts.</value></data>
+  <data name="Alert_ResolveBtn" xml:space="preserve"><value>Resolve overpayment</value></data>
+  <data name="Alert_Resolved" xml:space="preserve"><value>Alert resolved.</value></data>
+  <data name="Alert_ResolveFailed" xml:space="preserve"><value>Could not resolve alert.</value></data>
+  <data name="Alert_OverpaidBanner" xml:space="preserve"><value>Alert: overpayment on this proforma</value></data>
+  <data name="Alert_Tooltip" xml:space="preserve"><value>This invoice has an open alert</value></data>
+  <data name="EAlertType_OverpaidProforma" xml:space="preserve"><value>Overpaid proforma</value></data>
 </root>
