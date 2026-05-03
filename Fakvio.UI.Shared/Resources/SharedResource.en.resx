@@ -1492,4 +1492,19 @@
   <data name="IssueFinalInvoice_DueDate" xml:space="preserve"><value>Due date</value></data>
   <data name="IssueFinalInvoice_AddItems" xml:space="preserve"><value>Final invoice items</value></data>
   <data name="IssueFinalInvoice_AddAtLeastOneItem" xml:space="preserve"><value>Please add at least one invoice item.</value></data>
+
+  <!-- ── EPO export section on VatReport page (issue #40) ─────────────────── -->
+  <data name="EpoExportSection" xml:space="preserve"><value>EPO Export</value></data>
+  <data name="EpoYear" xml:space="preserve"><value>Year</value></data>
+  <data name="EpoPeriodType" xml:space="preserve"><value>Period type</value></data>
+  <data name="EpoMonthly" xml:space="preserve"><value>Monthly</value></data>
+  <data name="EpoQuarterly" xml:space="preserve"><value>Quarterly</value></data>
+  <data name="EpoMonth" xml:space="preserve"><value>Month</value></data>
+  <data name="EpoQuarter" xml:space="preserve"><value>Quarter</value></data>
+  <data name="EpoDownloadVatReturn" xml:space="preserve"><value>Download EPO – VAT return</value></data>
+  <data name="EpoDownloadControlStatement" xml:space="preserve"><value>Download EPO – control statement</value></data>
+  <data name="EpoHeaderIncomplete" xml:space="preserve"><value>EPO settings are incomplete. Fill in the missing fields in Company Settings: {0}</value></data>
+  <data name="EpoNotVatPayer" xml:space="preserve"><value>This feature is available for VAT payers only.</value></data>
+  <data name="EpoDownloadError" xml:space="preserve"><value>Error generating EPO: {0}</value></data>
+  <data name="EpoGoToSettings" xml:space="preserve"><value>Go to company settings</value></data>
 </root>
