@@ -305,6 +305,48 @@ public class EpoVatReturnExportTests : IDisposable
     // =========================================================================
 
     [Fact]
+    public async Task ExportEpoVatReturnAsync_IssuerIsNotVatPayer_ThrowsVatPayerRequiredException()
+    {
+        // When the issuer has IsVatPayer = false, ExportEpoVatReturnAsync must throw
+        // VatPayerRequiredException so the controller can return HTTP 403 VAT_PAYER_REQUIRED.
+        // This test uses a fresh in-memory DB where the issuer has IsVatPayer = false.
+        var tenantOptions = new DbContextOptionsBuilder<TenantDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        await using var tenantCtx = new TenantDbContext(tenantOptions);
+
+        // Seed currency, customer, and non-VAT-payer issuer.
+        tenantCtx.Currency.Add(new Currency
+        {
+            Id = CzkCurrencyId, Code = "CZK", Name = "Czech Koruna", Symbol = "Kč",
+            DecimalPlaces = 2, SortOrder = 1, IsActive = true
+        });
+        tenantCtx.Client.Add(new Client
+        {
+            Id = 1, CompanyName = "Customer", RegistrationNumber = "11111111",
+            IsIssuer = false, IsActive = true
+        });
+        // Issuer with IsVatPayer = false — the flag under test.
+        tenantCtx.Client.Add(new Client
+        {
+            Id = CompanyId, CompanyName = "Non-VAT Issuer", RegistrationNumber = "22222222",
+            IsIssuer = true, IsActive = true, IsVatPayer = false
+        });
+        await tenantCtx.SaveChangesAsync();
+
+        var tenantResolver = Substitute.For<ITenantResolver>();
+        tenantResolver.GetCurrentCompanyId().Returns(CompanyId);
+
+        var logger = Substitute.For<ILogger<VatReportService>>();
+        var service = new VatReportService(
+            tenantCtx, _masterContext, tenantResolver,
+            _schemaProvider, _currencyService, logger);
+
+        await Should.ThrowAsync<VatPayerRequiredException>(
+            () => service.ExportEpoVatReturnAsync(2026, 3, EVatPeriodType.Monthly));
+    }
+
+    [Fact]
     public async Task ExportEpoVatReturnAsync_MissingEpoTaxOfficeCode_ThrowsEpoHeaderIncomplete()
     {
         // When CompanySystemSettings.EpoTaxOfficeCode is null the service must throw

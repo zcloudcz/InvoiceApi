@@ -32,10 +32,10 @@ public class EpoApiEndpointTests : IClassFixture<FakvioFactory>
     // Tests that need EPO settings ABSENT use CompanyId 43 to avoid cross-test pollution:
     // the factory is shared (IClassFixture), so the InMemoryDB persists across all tests
     // in this class — separate IDs guarantee isolation.
-    // Tests that check the non-VAT-payer 403 response use CompanyId 44.
-    private const long TestCompanyId           = 42L;
-    private const long TestCompanyIdNoEpo      = 43L;
-    private const long TestCompanyIdNonVatPayer = 44L;
+    // Non-VAT-payer 403 tests live in EpoNonVatPayerTests (own factory instance)
+    // because the shared TenantDbContext can only have one "first active issuer."
+    private const long TestCompanyId      = 42L;
+    private const long TestCompanyIdNoEpo = 43L;
 
     public EpoApiEndpointTests(FakvioFactory factory)
     {
@@ -108,63 +108,6 @@ public class EpoApiEndpointTests : IClassFixture<FakvioFactory>
                 IsIssuer = true,
                 IsActive = true,
                 IsVatPayer = true
-            });
-            tenantDb.SaveChanges();
-        }
-    }
-
-    /// <summary>
-    /// Seeds a company whose issuer has <c>IsVatPayer = false</c>.
-    /// EPO settings are filled so the check does not fail earlier on missing headers.
-    /// Used exclusively by the 403 VAT_PAYER_REQUIRED tests (company ID 44).
-    /// </summary>
-    private void SeedNonVatPayerTenant(long companyId)
-    {
-        using var scope = _factory.Services.CreateScope();
-        var masterDb = scope.ServiceProvider.GetRequiredService<MasterDbContext>();
-        var tenantDb = scope.ServiceProvider.GetRequiredService<TenantDbContext>();
-
-        if (!masterDb.Client.Any(c => c.Id == companyId))
-        {
-            masterDb.Client.Add(new Client
-            {
-                Id = companyId,
-                CompanyName = $"Non-VAT Company {companyId}",
-                RegistrationNumber = $"N{companyId:D7}",
-                TaxNumber = null, // non-payer has no DIČ
-                IsIssuer = true,
-                IsActive = true
-            });
-        }
-
-        if (!masterDb.CompanySystemSettings.Any(s => s.CompanyId == companyId))
-        {
-            masterDb.CompanySystemSettings.Add(new CompanySystemSettings
-            {
-                CompanyId    = companyId,
-                SchemaName   = $"tenant_{companyId}",
-                IsProvisioned = true,
-                IsActive     = true,
-                // EPO header fields are present so the check doesn't fail on HEADER_INCOMPLETE first.
-                EpoTaxOfficeCode       = 451,
-                EpoTaxOfficeBranchCode = 2017
-            });
-        }
-
-        masterDb.SaveChanges();
-
-        // Issuer in tenant DB with IsVatPayer = false — the critical flag being tested.
-        if (!tenantDb.Client.Any(c => c.IsIssuer && c.Id == companyId))
-        {
-            tenantDb.Client.Add(new Client
-            {
-                Id = companyId,
-                CompanyName = $"Non-VAT Company {companyId}",
-                RegistrationNumber = $"N{companyId:D7}",
-                TaxNumber = null,
-                IsIssuer   = true,
-                IsActive   = true,
-                IsVatPayer = false // the issuer is NOT a VAT payer
             });
             tenantDb.SaveChanges();
         }
@@ -413,51 +356,8 @@ public class EpoApiEndpointTests : IClassFixture<FakvioFactory>
         doc.RootElement.GetProperty("code").GetString().ShouldBe("INVALID_ARGUMENT");
     }
 
-    // =========================================================================
-    // 7. Non-VAT payer → 403 VAT_PAYER_REQUIRED
-    // =========================================================================
-
-    [Fact]
-    public async Task EpoReturn_NonVatPayer_Returns403WithCode_VatPayerRequired()
-    {
-        // Seed a company whose issuer has IsVatPayer = false (company ID 44).
-        SeedNonVatPayerTenant(TestCompanyIdNonVatPayer);
-
-        var client = _factory.CreateClient();
-        var loginResponse = await AuthHelper.LoginAsSysAdminAsync(client);
-        AuthHelper.SetAuthToken(client, loginResponse.Token);
-        AuthHelper.SetImpersonation(client, TestCompanyIdNonVatPayer);
-
-        var response = await client.GetAsync("/api/vat-report/epo/return?year=2026&period=3&type=Monthly");
-
-        response.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
-
-        var body = await response.Content.ReadAsStringAsync();
-        using var doc = JsonDocument.Parse(body);
-        doc.RootElement.GetProperty("code").GetString()
-            .ShouldBe("VAT_PAYER_REQUIRED",
-                "Response body must contain machine-readable code VAT_PAYER_REQUIRED.");
-    }
-
-    [Fact]
-    public async Task EpoControlStatement_NonVatPayer_Returns403WithCode_VatPayerRequired()
-    {
-        // Same isolation strategy: use company ID 44 (non-VAT payer).
-        SeedNonVatPayerTenant(TestCompanyIdNonVatPayer);
-
-        var client = _factory.CreateClient();
-        var loginResponse = await AuthHelper.LoginAsSysAdminAsync(client);
-        AuthHelper.SetAuthToken(client, loginResponse.Token);
-        AuthHelper.SetImpersonation(client, TestCompanyIdNonVatPayer);
-
-        var response = await client.GetAsync("/api/vat-report/epo/control-statement?year=2026&period=3&type=Monthly");
-
-        response.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
-
-        var body = await response.Content.ReadAsStringAsync();
-        using var doc = JsonDocument.Parse(body);
-        doc.RootElement.GetProperty("code").GetString()
-            .ShouldBe("VAT_PAYER_REQUIRED",
-                "Response body must contain machine-readable code VAT_PAYER_REQUIRED.");
-    }
+    // Note: non-VAT payer 403 VAT_PAYER_REQUIRED tests are in EpoNonVatPayerTests.cs
+    // (own FakvioFactory instance) because this shared factory's TenantDbContext can
+    // only have one "first active issuer" — a requirement at odds with testing IsVatPayer=false
+    // while other tests in this class need IsVatPayer=true.
 }

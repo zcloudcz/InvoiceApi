@@ -975,7 +975,53 @@ public class EpoControlStatementExportTests : IDisposable
     }
 
     // =========================================================================
-    // 18. Zero-VAT-only invoice does not pollute A.5 / B.3
+    // 18. Non-VAT payer throws VatPayerRequiredException
+    // =========================================================================
+
+    [Fact]
+    public async Task ExportEpoControlStatementAsync_IssuerIsNotVatPayer_ThrowsVatPayerRequiredException()
+    {
+        // When the issuer has IsVatPayer = false, the service must throw
+        // VatPayerRequiredException so the controller returns HTTP 403 VAT_PAYER_REQUIRED.
+        // Uses a fresh in-memory DB so the issuer flag change does not affect other tests.
+        var tenantOptions = new DbContextOptionsBuilder<TenantDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        await using var tenantCtx = new TenantDbContext(tenantOptions);
+
+        // Seed currency, customer, and non-VAT-payer issuer.
+        tenantCtx.Currency.Add(new Currency
+        {
+            Id = CzkCurrencyId, Code = "CZK", Name = "Czech Koruna", Symbol = "Kč",
+            DecimalPlaces = 2, SortOrder = 1, IsActive = true
+        });
+        tenantCtx.Client.Add(new Client
+        {
+            Id = 1, CompanyName = "Customer", RegistrationNumber = "11111111",
+            IsIssuer = false, IsActive = true
+        });
+        // Issuer with IsVatPayer = false — the flag under test.
+        tenantCtx.Client.Add(new Client
+        {
+            Id = IssuerId, CompanyName = "Non-VAT Issuer", RegistrationNumber = "22222222",
+            IsIssuer = true, IsActive = true, IsVatPayer = false
+        });
+        await tenantCtx.SaveChangesAsync();
+
+        var tenantResolver = Substitute.For<ITenantResolver>();
+        tenantResolver.GetCurrentCompanyId().Returns((long?)IssuerId);
+
+        var logger = Substitute.For<ILogger<VatReportService>>();
+        var service = new VatReportService(
+            tenantCtx, _masterContext, tenantResolver,
+            _schemaProvider, _currencyService, logger);
+
+        await Should.ThrowAsync<VatPayerRequiredException>(
+            () => service.ExportEpoControlStatementAsync(2026, 3, EVatPeriodType.Monthly));
+    }
+
+    // =========================================================================
+    // 19. Zero-VAT-only invoice does not pollute A.5 / B.3
     // =========================================================================
 
     [Fact]

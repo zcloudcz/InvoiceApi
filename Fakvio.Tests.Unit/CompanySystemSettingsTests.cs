@@ -1,5 +1,6 @@
 using Shouldly;
 using Fakvio.Domain.Entities;
+using Fakvio.Domain.Enums;
 using Fakvio.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -163,6 +164,71 @@ public class CompanySystemSettingsTests : IDisposable
         fks.ShouldContain(fk =>
             fk.Properties.Any(p => p.Name == "CompanyId") &&
             fk.PrincipalEntityType.ClrType == typeof(Client));
+    }
+
+    [Fact]
+    public async Task CompanySystemSettings_EpoFields_CanBePersisted()
+    {
+        // Verifies that all six EPO fields introduced in issue #39 can be written and
+        // read back correctly, ensuring the EF Core mapping is complete.
+        await SeedCompanyAsync(10);
+
+        var settings = new CompanySystemSettings
+        {
+            CompanyId = 10,
+            SchemaName = "tenant_10",
+            IsProvisioned = true,
+            IsActive = true,
+            // Six EPO header fields from issue #39.
+            EpoTaxOfficeCode        = 451,
+            EpoTaxOfficeBranchCode  = 2017,
+            EpoContactPhone         = "+420123456789",
+            EpoContactEmail         = "tax@example.cz",
+            EpoAuthorizedPersonName = "Ing. Jana Nováková",
+            EpoDefaultPeriodType    = EVatPeriodType.Monthly
+        };
+
+        _context.CompanySystemSettings.Add(settings);
+        await _context.SaveChangesAsync();
+
+        var saved = await _context.CompanySystemSettings
+            .FirstOrDefaultAsync(s => s.CompanyId == 10);
+
+        saved.ShouldNotBeNull();
+        saved!.EpoTaxOfficeCode.ShouldBe(451);
+        saved.EpoTaxOfficeBranchCode.ShouldBe(2017);
+        saved.EpoContactPhone.ShouldBe("+420123456789");
+        saved.EpoContactEmail.ShouldBe("tax@example.cz");
+        saved.EpoAuthorizedPersonName.ShouldBe("Ing. Jana Nováková");
+        saved.EpoDefaultPeriodType.ShouldBe(EVatPeriodType.Monthly);
+    }
+
+    [Fact]
+    public async Task CompanySystemSettings_EpoFields_DefaultToNull()
+    {
+        // When no EPO fields are set, they must default to null (not throw or default to 0).
+        // The service uses null checks to detect missing configuration.
+        await SeedCompanyAsync(11);
+
+        var settings = new CompanySystemSettings
+        {
+            CompanyId = 11,
+            SchemaName = "tenant_11"
+        };
+
+        _context.CompanySystemSettings.Add(settings);
+        await _context.SaveChangesAsync();
+
+        var saved = await _context.CompanySystemSettings
+            .FirstOrDefaultAsync(s => s.CompanyId == 11);
+
+        saved.ShouldNotBeNull();
+        saved!.EpoTaxOfficeCode.ShouldBeNull("EpoTaxOfficeCode must default to null");
+        saved.EpoTaxOfficeBranchCode.ShouldBeNull("EpoTaxOfficeBranchCode must default to null");
+        saved.EpoContactPhone.ShouldBeNull();
+        saved.EpoContactEmail.ShouldBeNull();
+        saved.EpoAuthorizedPersonName.ShouldBeNull();
+        saved.EpoDefaultPeriodType.ShouldBeNull();
     }
 
     public void Dispose()
