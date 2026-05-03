@@ -39,8 +39,17 @@ public class VatReportServiceTests : IDisposable
             .ConvertToCzkAsync(Arg.Any<decimal>(), Arg.Any<string>(), Arg.Any<DateOnly>(), Arg.Any<CancellationToken>())
             .Returns(call => Task.FromResult(call.ArgAt<decimal>(0)));
 
+        // MasterDbContext and ITenantResolver are required by VatReportService (issue #39).
+        // GetReportAsync does not use them, so we provide lightweight stubs.
+        var masterOptions = new DbContextOptionsBuilder<MasterDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        var masterContext  = new MasterDbContext(masterOptions);
+        var tenantResolver = Substitute.For<ITenantResolver>();
+        tenantResolver.GetCurrentCompanyId().Returns((long?)null); // not needed for GetReportAsync
+
         var logger = Substitute.For<ILogger<VatReportService>>();
-        _service = new VatReportService(_context, schemaProvider, currencyService, logger);
+        _service = new VatReportService(_context, masterContext, tenantResolver, schemaProvider, currencyService, logger);
 
         SeedBaseData();
     }

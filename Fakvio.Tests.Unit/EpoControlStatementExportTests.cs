@@ -31,6 +31,7 @@ namespace Fakvio.Tests.Unit;
 public class EpoControlStatementExportTests : IDisposable
 {
     private readonly TenantDbContext _context;
+    private readonly MasterDbContext _masterContext;
     private readonly VatReportService _service;
     private readonly IEpoSchemaProvider _schemaProvider;
     private readonly ICurrencyService _currencyService;
@@ -39,6 +40,7 @@ public class EpoControlStatementExportTests : IDisposable
     private const long EurCurrencyId = 2;
 
     // Issuer seeded with ID=2 (same pattern as EpoVatReturnExportTests).
+    // Also used as CompanyId in CompanySystemSettings (issue #39).
     private const long IssuerId = 2;
     // Regular customer with CZ VAT number — eligible for A.4.
     private const long CustomerCzId = 1;
@@ -47,11 +49,15 @@ public class EpoControlStatementExportTests : IDisposable
 
     public EpoControlStatementExportTests()
     {
-        var options = new DbContextOptionsBuilder<TenantDbContext>()
+        var tenantOptions = new DbContextOptionsBuilder<TenantDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
+        _context = new TenantDbContext(tenantOptions);
 
-        _context = new TenantDbContext(options);
+        var masterOptions = new DbContextOptionsBuilder<MasterDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        _masterContext = new MasterDbContext(masterOptions);
 
         _schemaProvider = new EpoSchemaProvider(AppContext.BaseDirectory);
 
@@ -63,8 +69,15 @@ public class EpoControlStatementExportTests : IDisposable
                 Arg.Any<DateOnly>(), Arg.Any<CancellationToken>())
             .Returns(call => Task.FromResult(call.ArgAt<decimal>(0)));
 
+        // ITenantResolver stub: returns IssuerId so the service resolves CompanySystemSettings
+        // from the master DB for EPO header fields (issue #39).
+        var tenantResolver = Substitute.For<ITenantResolver>();
+        tenantResolver.GetCurrentCompanyId().Returns((long?)IssuerId);
+
         var logger = Substitute.For<ILogger<VatReportService>>();
-        _service = new VatReportService(_context, _schemaProvider, _currencyService, logger);
+        _service = new VatReportService(
+            _context, _masterContext, tenantResolver,
+            _schemaProvider, _currencyService, logger);
 
         SeedBaseData();
     }
@@ -73,13 +86,21 @@ public class EpoControlStatementExportTests : IDisposable
     {
         _context.Database.EnsureDeleted();
         _context.Dispose();
+        _masterContext.Database.EnsureDeleted();
+        _masterContext.Dispose();
     }
 
     // =========================================================================
     // Helpers
     // =========================================================================
 
-    /// <summary>Seeds currencies, issuer, and two customers.</summary>
+    /// <summary>
+    /// Seeds currencies, issuer, two customers (tenant DB) and CompanySystemSettings (master DB).
+    ///
+    /// EPO header values in CompanySystemSettings (issue #39):
+    ///   EpoTaxOfficeCode = 451  → VetaP/@c_ufo = "451"
+    ///   EpoTaxOfficeBranchCode = 2017 → VetaP/@c_pracufo = "2017"
+    /// </summary>
     private void SeedBaseData()
     {
         _context.Currency.AddRange(
@@ -116,7 +137,7 @@ public class EpoControlStatementExportTests : IDisposable
             TaxNumber = "CZ12345678",
             IsIssuer = true,
             IsActive = true,
-            EpoTaxOfficeCode = 451
+            IsVatPayer = true
         });
         _context.SaveChanges();
 
@@ -131,6 +152,20 @@ public class EpoControlStatementExportTests : IDisposable
             IsActive = true
         });
         _context.SaveChanges();
+
+        // CompanySystemSettings in master DB — EPO header fields (issue #39).
+        // VatReportService reads these via ITenantResolver.GetCurrentCompanyId() = IssuerId.
+        _masterContext.CompanySystemSettings.Add(new CompanySystemSettings
+        {
+            Id = 1,
+            CompanyId = IssuerId,
+            SchemaName = "tenant_2",
+            IsProvisioned = true,
+            IsActive = true,
+            EpoTaxOfficeCode = 451,       // c_ufo
+            EpoTaxOfficeBranchCode = 2017 // c_pracufo
+        });
+        _masterContext.SaveChanges();
     }
 
     /// <summary>Seeds an issued invoice with a single line item.</summary>
@@ -706,14 +741,19 @@ public class EpoControlStatementExportTests : IDisposable
     }
 
     [Fact]
-    public async Task ExportEpoControlStatementAsync_VetaP_HasCorrectDicAndCUfo()
+    public async Task ExportEpoControlStatementAsync_VetaP_HasCorrectDicAndEpoHeaderCodes()
     {
+        // VetaP attributes come from:
+        //   @dic      — Client.TaxNumber (stripped of "CZ" prefix)
+        //   @c_ufo    — CompanySystemSettings.EpoTaxOfficeCode (issue #39)
+        //   @c_pracufo — CompanySystemSettings.EpoTaxOfficeBranchCode (issue #39)
         var bytes = await _service.ExportEpoControlStatementAsync(2026, 3, EVatPeriodType.Monthly);
         var (doc, _) = ParseAndValidate(bytes);
 
         var vetaP = doc.Descendants("VetaP").Single();
         vetaP.Attribute("dic")!.Value.ShouldBe("12345678");  // stripped from "CZ12345678"
         vetaP.Attribute("c_ufo")!.Value.ShouldBe("451");
+        vetaP.Attribute("c_pracufo")!.Value.ShouldBe("2017");
         vetaP.Attribute("typ_ds")!.Value.ShouldBe("P");
     }
 
@@ -935,7 +975,53 @@ public class EpoControlStatementExportTests : IDisposable
     }
 
     // =========================================================================
-    // 18. Zero-VAT-only invoice does not pollute A.5 / B.3
+    // 18. Non-VAT payer throws VatPayerRequiredException
+    // =========================================================================
+
+    [Fact]
+    public async Task ExportEpoControlStatementAsync_IssuerIsNotVatPayer_ThrowsVatPayerRequiredException()
+    {
+        // When the issuer has IsVatPayer = false, the service must throw
+        // VatPayerRequiredException so the controller returns HTTP 403 VAT_PAYER_REQUIRED.
+        // Uses a fresh in-memory DB so the issuer flag change does not affect other tests.
+        var tenantOptions = new DbContextOptionsBuilder<TenantDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        await using var tenantCtx = new TenantDbContext(tenantOptions);
+
+        // Seed currency, customer, and non-VAT-payer issuer.
+        tenantCtx.Currency.Add(new Currency
+        {
+            Id = CzkCurrencyId, Code = "CZK", Name = "Czech Koruna", Symbol = "Kč",
+            DecimalPlaces = 2, SortOrder = 1, IsActive = true
+        });
+        tenantCtx.Client.Add(new Client
+        {
+            Id = 1, CompanyName = "Customer", RegistrationNumber = "11111111",
+            IsIssuer = false, IsActive = true
+        });
+        // Issuer with IsVatPayer = false — the flag under test.
+        tenantCtx.Client.Add(new Client
+        {
+            Id = IssuerId, CompanyName = "Non-VAT Issuer", RegistrationNumber = "22222222",
+            IsIssuer = true, IsActive = true, IsVatPayer = false
+        });
+        await tenantCtx.SaveChangesAsync();
+
+        var tenantResolver = Substitute.For<ITenantResolver>();
+        tenantResolver.GetCurrentCompanyId().Returns((long?)IssuerId);
+
+        var logger = Substitute.For<ILogger<VatReportService>>();
+        var service = new VatReportService(
+            tenantCtx, _masterContext, tenantResolver,
+            _schemaProvider, _currencyService, logger);
+
+        await Should.ThrowAsync<VatPayerRequiredException>(
+            () => service.ExportEpoControlStatementAsync(2026, 3, EVatPeriodType.Monthly));
+    }
+
+    // =========================================================================
+    // 19. Zero-VAT-only invoice does not pollute A.5 / B.3
     // =========================================================================
 
     [Fact]
