@@ -446,6 +446,58 @@ Implementace: `PaymentMatchingService.cs` (metoda `GetPaymentsForInvoiceAsync`).
 - 21 tools: 8 invoice + 6 client + 3 template + 4 reporting.
 - Konfigurace v Claude Desktop / Claude Code: spustí `fakvio-mcp-server` jako subprocess se stdio piping.
 
+### 4.9 EPO XML export (DPHDP3 + DPHKH1)
+
+Česká daňová přiznání ve formátu EPO Finanční správy ČR.
+
+**Architektura:**
+
+| Vrstva | Kde | Co dělá |
+|--------|-----|---------|
+| Interface | `Fakvio.Application/Service/IVatReportService.cs` | `ExportEpoVatReturnAsync` + `ExportEpoControlStatementAsync` |
+| Implementace | `Fakvio.Infrastructure/Service/VatReportService.cs` | Agregace dokladů, DPHDP3 / DPHKH1 XML stavba, XSD validace |
+| XSD schémata | `Fakvio.Infrastructure/Resources/Epo/{rok}/` | `dphdp3_epo2.xsd` a `dphkh1_epo2.xsd` — copy-to-output |
+| API endpoint | `Fakvio.API/Controller/VatReportController.cs` | `GET /api/vat-report/epo/return` a `epo/control-statement` |
+| EPO README | `Fakvio.Infrastructure/Resources/Epo/EPO-README.md` | Roční update postup, sandbox doc |
+
+**DPHDP3 struktura:**
+```
+Pisemnost
+  DPHDP3
+    VetaD   — period metadata (rok, mesic/ctvrt, dapdph_forma)
+    VetaP   — taxpayer (dic, c_ufo, c_pracufo, typ_ds)
+    Veta1?  — output VAT rows (standard + reduced)
+    Veta4?  — input VAT rows + row 51 total
+```
+
+**DPHKH1 struktura:**
+```
+Pisemnost
+  DPHKH1
+    VetaD   — period metadata (rok, mesic/ctvrt, khdph_forma)
+    VetaP   — taxpayer
+    VetaA4* — output invoices ≥ 10 000 CZK incl. VAT with CZ DIČ
+    VetaA5? — aggregate of all other output invoices
+    VetaB2* — input invoices ≥ 10 000 CZK incl. VAT with CZ DIČ
+    VetaB3? — aggregate of all other input invoices
+```
+
+**EPO header settings:**
+Načítány z `CompanySystemSettings` (master DB): `EpoTaxOfficeCode` (c_ufo), `EpoTaxOfficeBranchCode` (c_pracufo), `EpoContactPhone`, `EpoContactEmail`, `EpoAuthorizedPersonName`.
+Chybí-li c_ufo nebo c_pracufo → `EpoHeaderIncompleteException` → HTTP 400 `EPO_HEADER_INCOMPLETE`.
+
+**Roční update XSD:**
+Viz `Fakvio.Infrastructure/Resources/Epo/EPO-README.md` — stažení z `adisspr.mfcr.cz`, pojmenování, verifikace.
+
+**Sandbox smoke test (issue #41):**
+`EpoSandboxSmokeTests` v `Fakvio.Tests.Integration` — viz EPO-README.md.
+Spuštění:
+```powershell
+$env:RUN_EPO_SANDBOX_TESTS = "true"
+dotnet test Fakvio.Tests.Integration --filter "FullyQualifiedName~EpoSandboxSmokeTests"
+```
+Gate: env `RUN_EPO_SANDBOX_TESTS=true`. Sandbox: `https://adisepo.mfcr.cz/adis/jepo/epo/ePodani/podani.faces`.
+
 ---
 
 ## 5. Datová vrstva
