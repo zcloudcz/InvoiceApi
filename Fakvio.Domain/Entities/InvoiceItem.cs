@@ -140,8 +140,8 @@ public class InvoiceItem : BaseEntity
     /// but Czech law (§92a ZDPH) requires the rate and calculated VAT to appear on the document
     /// so the buyer can self-assess. This property stores that informational value.
     /// For all other regimes this is always 0 — the actual billed amount is in VatAmount.
-    /// Not persisted — calculated on the fly by InvoiceService; stored here for convenience
-    /// when building PDF/ISDOC exports without re-running the full calculation.
+    /// Persisted to the database (EF column with HasPrecision). InvoiceService sets it
+    /// during Create/Update so PDF/ISDOC exports can read it without re-running the full calculation.
     /// </summary>
     public decimal InformationalVatAmount { get; set; }
 

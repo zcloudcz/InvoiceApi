@@ -578,7 +578,6 @@ public class InvoiceService : IInvoiceService
                 item.VatRatePercentage = vatRatePercentage;
                 item.VatRegime = itemDto.VatRegime;
                 item.ReverseChargeCodeId = itemDto.ReverseChargeCodeId;
-                item.ReverseChargeCodeId = itemDto.ReverseChargeCodeId;
 
                 item.TotalBeforeVat = item.Quantity * item.UnitPrice;
                 // Round VatAmount consistently (same rule as CreateInvoiceAsync —
@@ -1369,6 +1368,10 @@ public class InvoiceService : IInvoiceService
                 item.TotalWithVat = item.TotalBeforeVat;
                 item.InformationalVatAmount = 0;
                 break;
+
+            default:
+                throw new ArgumentOutOfRangeException(nameof(item.VatRegime),
+                    item.VatRegime, "Unhandled VatRegime value in CalculateItemVat.");
         }
     }
 
