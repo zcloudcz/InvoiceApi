@@ -234,7 +234,199 @@ public class VatReportApiServiceTests
         result.MissingFields.ShouldBeEmpty();
     }
 
-    // ── Stub helper ───────────────────────────────────────────────────────────
+    // ── Tests — error edge cases ──────────────────────────────────────────────
+
+    [Fact]
+    public async Task DownloadEpoVatReturnAsync_NonJsonErrorBody_ReturnsRawBodyAsMessage()
+    {
+        // Arrange — server returns 500 with plain-text HTML (no JSON).
+        var htmlBody = "<html><body>Internal Server Error</body></html>";
+        var response = new HttpResponseMessage(HttpStatusCode.InternalServerError)
+        {
+            Content = new StringContent(htmlBody, Encoding.UTF8, "text/html")
+        };
+        var svc = CreateService(response);
+
+        // Act
+        var result = await svc.DownloadEpoVatReturnAsync(2026, 3, EVatPeriodType.Monthly);
+
+        // Assert — non-JSON body is surfaced as the error message, not thrown.
+        result.IsSuccess.ShouldBeFalse();
+        result.ErrorMessage.ShouldBe(htmlBody);
+    }
+
+    [Fact]
+    public async Task DownloadEpoVatReturnAsync_EmptyBody400_ReturnsUnknownErrorCode()
+    {
+        // Arrange — 400 with no body at all.
+        var response = new HttpResponseMessage(HttpStatusCode.BadRequest)
+        {
+            Content = new StringContent(string.Empty, Encoding.UTF8, "application/json")
+        };
+        var svc = CreateService(response);
+
+        // Act
+        var result = await svc.DownloadEpoVatReturnAsync(2026, 3, EVatPeriodType.Monthly);
+
+        // Assert — empty body falls through to default UNKNOWN_ERROR code.
+        result.IsSuccess.ShouldBeFalse();
+        result.ErrorCode.ShouldBe("UNKNOWN_ERROR");
+    }
+
+    [Fact]
+    public async Task DownloadEpoVatReturnAsync_400WithoutCodeKey_ReturnsUnknownErrorCode()
+    {
+        // Arrange — valid JSON but without a "code" property.
+        var body = """{"detail":"something went wrong"}""";
+        var response = new HttpResponseMessage(HttpStatusCode.BadRequest)
+        {
+            Content = new StringContent(body, Encoding.UTF8, "application/json")
+        };
+        var svc = CreateService(response);
+
+        // Act
+        var result = await svc.DownloadEpoVatReturnAsync(2026, 3, EVatPeriodType.Monthly);
+
+        // Assert — no "code" key → default falls back to UNKNOWN_ERROR.
+        result.IsSuccess.ShouldBeFalse();
+        result.ErrorCode.ShouldBe("UNKNOWN_ERROR");
+    }
+
+    [Fact]
+    public async Task DownloadEpoVatReturnAsync_NetworkException_ReturnsUnexpectedError()
+    {
+        // Arrange — handler throws to simulate a network failure.
+        var handler = new ThrowingHttpMessageHandler(new HttpRequestException("Connection refused"));
+        var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://test.local") };
+        var factory = Substitute.For<IHttpClientFactory>();
+        factory.CreateClient("InvoiceAPI").Returns(httpClient);
+        var svc = new VatReportApiService(factory, NullLogger<VatReportApiService>.Instance,
+            Substitute.For<AuthenticationStateProvider>());
+
+        // Act
+        var result = await svc.DownloadEpoVatReturnAsync(2026, 3, EVatPeriodType.Monthly);
+
+        // Assert — exception is caught and mapped to UNEXPECTED_ERROR, not re-thrown.
+        result.IsSuccess.ShouldBeFalse();
+        result.ErrorCode.ShouldBe("UNEXPECTED_ERROR");
+        result.ErrorMessage.ShouldNotBeNullOrEmpty();
+    }
+
+    // ── Tests — filename edge cases ───────────────────────────────────────────
+
+    [Fact]
+    public async Task DownloadEpoVatReturnAsync_QuotedContentDispositionFilename_StripsQuotes()
+    {
+        // Arrange — some proxies send the filename surrounded by double quotes.
+        var response = new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new ByteArrayContent("<xml/>"u8.ToArray())
+        };
+        // Set filename with surrounding quotes to exercise the Trim('"') path.
+        response.Content.Headers.ContentDisposition =
+            new System.Net.Http.Headers.ContentDispositionHeaderValue("attachment")
+            {
+                FileName = "\"DPHDP3_2026_M03.xml\""
+            };
+        var svc = CreateService(response);
+
+        // Act
+        var result = await svc.DownloadEpoVatReturnAsync(2026, 3, EVatPeriodType.Monthly);
+
+        // Assert — surrounding quotes are stripped from the filename.
+        result.IsSuccess.ShouldBeTrue();
+        result.FileName.ShouldBe("DPHDP3_2026_M03.xml");
+    }
+
+    [Fact]
+    public async Task DownloadEpoVatReturnAsync_FallbackFilename_SingleDigitMonth_HasLeadingZero()
+    {
+        // Arrange — month 1 should produce M01 (D2 zero-padding), not M1.
+        var svc = CreateService(OkXmlResponse("<xml/>"u8.ToArray(), null));
+
+        // Act
+        var result = await svc.DownloadEpoVatReturnAsync(2026, 1, EVatPeriodType.Monthly);
+
+        // Assert
+        result.IsSuccess.ShouldBeTrue();
+        result.FileName.ShouldBe("DPHDP3_2026_M01.xml");
+    }
+
+    [Fact]
+    public async Task DownloadEpoControlStatementAsync_FallbackFilename_QuarterFour()
+    {
+        // Arrange — Q4 is the boundary quarter.
+        var svc = CreateService(OkXmlResponse("<xml/>"u8.ToArray(), null));
+
+        // Act
+        var result = await svc.DownloadEpoControlStatementAsync(2026, 4, EVatPeriodType.Quarterly);
+
+        // Assert
+        result.IsSuccess.ShouldBeTrue();
+        result.FileName.ShouldBe("DPHKH1_2026_Q4.xml");
+    }
+
+    // ── Tests — URL construction (query-string parameters) ────────────────────
+
+    [Fact]
+    public async Task DownloadEpoVatReturnAsync_BuildsCorrectUrl_WithTypeAsInteger()
+    {
+        // Arrange — capture the outgoing request URL.
+        var capturingHandler = new CapturingHttpMessageHandler(
+            OkXmlResponse("<xml/>"u8.ToArray()));
+        var httpClient = new HttpClient(capturingHandler) { BaseAddress = new Uri("https://test.local") };
+        var factory = Substitute.For<IHttpClientFactory>();
+        factory.CreateClient("InvoiceAPI").Returns(httpClient);
+        var svc = new VatReportApiService(factory, NullLogger<VatReportApiService>.Instance,
+            Substitute.For<AuthenticationStateProvider>());
+
+        // Act
+        await svc.DownloadEpoVatReturnAsync(2026, 4, EVatPeriodType.Monthly);
+
+        // Assert — URL must contain year, period, and type as its integer value (0 for Monthly).
+        capturingHandler.LastRequestUri.ShouldNotBeNull();
+        var query = capturingHandler.LastRequestUri!.Query;
+        query.ShouldContain("year=2026");
+        query.ShouldContain("period=4");
+        query.ShouldContain($"type={(int)EVatPeriodType.Monthly}");
+    }
+
+    [Fact]
+    public async Task DownloadEpoControlStatementAsync_BuildsCorrectUrl_WithTypeAsInteger()
+    {
+        // Arrange
+        var capturingHandler = new CapturingHttpMessageHandler(
+            OkXmlResponse("<xml/>"u8.ToArray()));
+        var httpClient = new HttpClient(capturingHandler) { BaseAddress = new Uri("https://test.local") };
+        var factory = Substitute.For<IHttpClientFactory>();
+        factory.CreateClient("InvoiceAPI").Returns(httpClient);
+        var svc = new VatReportApiService(factory, NullLogger<VatReportApiService>.Instance,
+            Substitute.For<AuthenticationStateProvider>());
+
+        // Act
+        await svc.DownloadEpoControlStatementAsync(2025, 2, EVatPeriodType.Quarterly);
+
+        // Assert
+        capturingHandler.LastRequestUri.ShouldNotBeNull();
+        var query = capturingHandler.LastRequestUri!.Query;
+        query.ShouldContain("year=2025");
+        query.ShouldContain("period=2");
+        query.ShouldContain($"type={(int)EVatPeriodType.Quarterly}");
+    }
+
+    // ── Tests — EpoDownloadResult additional invariants ───────────────────────
+
+    [Fact]
+    public void EpoDownloadResult_Success_HasNullErrorMessage()
+    {
+        // Success result must not carry error fields.
+        var result = EpoDownloadResult.Success([1, 2, 3], "file.xml");
+
+        result.ErrorMessage.ShouldBeNull();
+        result.ErrorCode.ShouldBeNull();
+    }
+
+    // ── Stub helpers ──────────────────────────────────────────────────────────
 
     /// <summary>
     /// HttpMessageHandler stub that returns a fixed response for any request.
@@ -245,5 +437,32 @@ public class VatReportApiServiceTests
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
             => Task.FromResult(response);
+    }
+
+    /// <summary>
+    /// HttpMessageHandler stub that throws an exception on every request.
+    /// Used to test the network-failure path in DownloadEpoFileAsync.
+    /// </summary>
+    private sealed class ThrowingHttpMessageHandler(Exception exception) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+            => throw exception;
+    }
+
+    /// <summary>
+    /// HttpMessageHandler stub that captures the outgoing request URI
+    /// while returning a fixed response. Used to verify URL construction.
+    /// </summary>
+    private sealed class CapturingHttpMessageHandler(HttpResponseMessage response) : HttpMessageHandler
+    {
+        public Uri? LastRequestUri { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            LastRequestUri = request.RequestUri;
+            return Task.FromResult(response);
+        }
     }
 }
