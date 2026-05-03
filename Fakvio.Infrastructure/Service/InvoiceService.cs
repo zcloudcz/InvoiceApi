@@ -9,6 +9,7 @@ using Fakvio.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using ZMapper;
+using Fakvio.Contracts.Dto.ReverseChargeCode;
 
 namespace Fakvio.Infrastructure.Service;
 
@@ -34,8 +35,12 @@ public class InvoiceService : IInvoiceService
 
     /// <summary>
     /// Maps an Invoice entity to InvoiceDto using ZMapper v1.1.0.
-    /// ZMapper now handles BaseEntity (Id, CreatedAt, UpdatedAt) and nested collection Ids automatically.
-    /// Only navigation-derived properties (flattened from related entities) must be set manually.
+    /// ZMapper handles BaseEntity (Id, CreatedAt, UpdatedAt) and scalar properties automatically.
+    /// Navigation-derived properties (flattened from related entities) and nested navigation
+    /// objects (ReverseChargeCode on items) must be set manually after ZMapper runs.
+    ///
+    /// Prerequisite: the caller must have eagerly loaded InvoiceItem.ReverseChargeCode via
+    /// ThenInclude so that the navigation property is populated before this mapper runs.
     /// </summary>
     private static InvoiceDto MapToDto(Invoice entity)
     {
@@ -49,6 +54,21 @@ public class InvoiceService : IInvoiceService
         dto.CurrencyCode = entity.Currency?.Code ?? string.Empty;
         dto.CurrencySymbol = entity.Currency?.Symbol ?? string.Empty;
         dto.OriginalInvoiceNumber = entity.OriginalInvoice?.DocumentNumber;
+
+        // Populate nested ReverseChargeCode on each item — ZMapper skips navigation properties,
+        // so we manually map from the eagerly-loaded entity navigation to the DTO.
+        if (dto.InvoiceItem != null && entity.InvoiceItem != null)
+        {
+            var entityItems = entity.InvoiceItem.ToList();
+            for (var i = 0; i < dto.InvoiceItem.Count; i++)
+            {
+                var entityItem = entityItems.ElementAtOrDefault(i);
+                if (entityItem?.ReverseChargeCode != null)
+                {
+                    dto.InvoiceItem[i].ReverseChargeCode = entityItem.ReverseChargeCode.ToReverseChargeCodeDto();
+                }
+            }
+        }
 
         return dto;
     }
