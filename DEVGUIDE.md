@@ -377,6 +377,35 @@ Generování čísla dokladu je záměrně rozděleno na dvě nezávislé fáze:
 
 Toto oddělení opravuje bug z issue #63/#72, kde se `if (overrideSequenceId.HasValue) { ... } else if (client.BillingSettings != null) { ... }` způsobilo, že šablonový override zcela ignoroval klientský prefix/suffix.
 
+### 4.4.1 VAT regime per line item (EVatRegime + PDP, issue #43/#45)
+
+Each `InvoiceItem` carries `VatRegime : EVatRegime` (integer column, default 0 = Standard) and
+optionally `ReverseChargeCodeId` (FK to `ReverseChargeCode` lookup, nullable).
+
+| EVatRegime | VatAmount | TotalWithVat | InformationalVatAmount | ReverseChargeCodeId |
+|------------|-----------|--------------|------------------------|---------------------|
+| `Standard` | `Base × Rate / 100` | `Base + VAT` | 0 | must be **null** |
+| `ReverseCharge` | **0** | `Base` (no VAT billed) | `Base × Rate / 100` (shown on PDF/ISDOC for buyer self-assessment §92a ZDPH) | **required** |
+| `Exempt` | 0 | `Base` | 0 | must be null |
+| `OutOfScope` | 0 | `Base` | 0 | must be null |
+
+**Invoice totals** (`InvoiceService.CreateInvoiceAsync` / `UpdateInvoiceAsync`):
+- `Invoice.TotalVat` = sum of **Standard** items only — PDP does not add to the billed amount.
+- `Invoice.TotalWithVat` = `TotalBeforeVat + TotalVat` (PDP items not counted in payment).
+
+**InformationalVatAmount** is persisted in `InvoiceItem` (column `InformationalVatAmount numeric(18,2) DEFAULT 0`) but can also be computed on-the-fly from `TotalBeforeVat × VatRatePercentage / 100` during PDF/ISDOC export. It is never added to any total.
+
+**Validation rules** (enforced in `InvoiceService.ValidateReverseChargeCodes`):
+1. `VatRegime == ReverseCharge` → `ReverseChargeCodeId` must not be null.
+2. `VatRegime != ReverseCharge` → `ReverseChargeCodeId` must be null.
+
+**EPO reporting** (A.1 / B.1 in DPHKH1):
+- PDP section is **TODO** — will be filled when VatReport populates A.1/B.1 from ReverseCharge items.
+- `VatRegime` and `ReverseChargeCodeId` on `InvoiceItem` are the data source for that future work.
+
+**Calculation helper**: `InvoiceService.CalculateItemVat(InvoiceItem item)` — called from both
+`CreateInvoiceAsync` and `UpdateInvoiceAsync` for DRY calculation (issue #45, §9 KISS/DRY rule).
+
 ### 4.5 Payment matching (IMAP → invoice mark paid)
 
 `Fakvio.Infrastructure/Service/ImapPollService.cs:50-139`:
