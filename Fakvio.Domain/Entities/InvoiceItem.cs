@@ -1,4 +1,5 @@
 using Fakvio.Domain.Common;
+using Fakvio.Domain.Enums;
 
 namespace Fakvio.Domain.Entities;
 
@@ -106,6 +107,43 @@ public class InvoiceItem : BaseEntity
     /// Only Description is used.
     /// </summary>
     public bool IsTextRow { get; set; }
+
+    /// <summary>
+    /// VAT accounting regime for this line item.
+    /// Controls how VAT is treated: standard charge, reverse charge (PDP §92a–92e ZDPH),
+    /// exempt, or out-of-scope.
+    /// Default is <see cref="EVatRegime.Standard"/> — backward-compatible with all existing items.
+    /// Stored as NOT NULL integer in the database (default 0 = Standard).
+    /// </summary>
+    public EVatRegime VatRegime { get; set; } = EVatRegime.Standard;
+
+    /// <summary>
+    /// Foreign key to ReverseChargeCode lookup table.
+    /// Required when VatRegime == ReverseCharge; must be null for all other regimes.
+    /// The code identifies the type of supply (predmět plnění) as defined by MFČR
+    /// and is used in the VAT control statement (kontrolní hlášení / EPO XML).
+    /// Nullable because Standard/Exempt/OutOfScope items do not have a reverse charge code.
+    /// </summary>
+    public long? ReverseChargeCodeId { get; set; }
+
+    /// <summary>
+    /// Navigation property to ReverseChargeCode lookup.
+    /// Loaded when the FK is set (VatRegime == ReverseCharge items).
+    /// Delete behaviour is Restrict — the lookup is a reference data table; deleting
+    /// a code while invoices reference it would corrupt historical data.
+    /// </summary>
+    public ReverseChargeCode? ReverseChargeCode { get; set; }
+
+    /// <summary>
+    /// Informational VAT amount for Reverse Charge items.
+    /// For ReverseCharge regime: the invoice does NOT bill VAT (TotalWithVat = TotalBeforeVat),
+    /// but Czech law (§92a ZDPH) requires the rate and calculated VAT to appear on the document
+    /// so the buyer can self-assess. This property stores that informational value.
+    /// For all other regimes this is always 0 — the actual billed amount is in VatAmount.
+    /// Not persisted — calculated on the fly by InvoiceService; stored here for convenience
+    /// when building PDF/ISDOC exports without re-running the full calculation.
+    /// </summary>
+    public decimal InformationalVatAmount { get; set; }
 
     /// <summary>
     /// Optional product/service code

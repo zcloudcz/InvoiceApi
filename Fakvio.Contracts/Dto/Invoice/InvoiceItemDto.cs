@@ -1,3 +1,5 @@
+using Fakvio.Domain.Enums;
+
 namespace Fakvio.Contracts.Dto.Invoice;
 
 /// <summary>
@@ -28,6 +30,26 @@ public class InvoiceItemDto
     public decimal TotalBeforeVat { get; set; }
     public decimal VatAmount { get; set; }
     public decimal TotalWithVat { get; set; }
+
+    /// <summary>
+    /// VAT accounting regime for this line item.
+    /// Default is Standard — backward-compatible with all existing items.
+    /// </summary>
+    public EVatRegime VatRegime { get; set; } = EVatRegime.Standard;
+
+    /// <summary>
+    /// FK to ReverseChargeCode lookup. Set when VatRegime == ReverseCharge.
+    /// </summary>
+    public long? ReverseChargeCodeId { get; set; }
+
+    /// <summary>
+    /// Informational VAT amount for Reverse Charge items.
+    /// Billed VAT is 0 for PDP, but this value is shown on the document so the buyer
+    /// knows the VAT they must self-assess (§92a ZDPH).
+    /// Always 0 for Standard/Exempt/OutOfScope items.
+    /// </summary>
+    public decimal InformationalVatAmount { get; set; }
+
     public string? ProductCode { get; set; }
     public string? Notes { get; set; }
 }
@@ -87,6 +109,19 @@ public class CreateInvoiceItemDto
     public decimal VatRatePercentage { get; set; }
 
     /// <summary>
+    /// VAT accounting regime for this line item.
+    /// Default is Standard — backward-compatible with all existing invoice creation flows.
+    /// Set to ReverseCharge for PDP items; must also set ReverseChargeCodeId in that case.
+    /// </summary>
+    public EVatRegime VatRegime { get; set; } = EVatRegime.Standard;
+
+    /// <summary>
+    /// FK to ReverseChargeCode lookup. Required when VatRegime == ReverseCharge.
+    /// Must be null for Standard/Exempt/OutOfScope items.
+    /// </summary>
+    public long? ReverseChargeCodeId { get; set; }
+
+    /// <summary>
     /// Optional product code for linking to product catalog
     /// </summary>
     public string? ProductCode { get; set; }
@@ -118,6 +153,17 @@ public class UpdateInvoiceItemDto
     /// VAT rate percentage
     /// </summary>
     public decimal? VatRatePercentage { get; set; }
+
+    /// <summary>
+    /// VAT accounting regime. Null = keep existing value (backward-compatible).
+    /// </summary>
+    public EVatRegime? VatRegime { get; set; }
+
+    /// <summary>
+    /// FK to ReverseChargeCode lookup. Null = keep existing value.
+    /// To clear the code, set VatRegime to a non-ReverseCharge value.
+    /// </summary>
+    public long? ReverseChargeCodeId { get; set; }
 
     public string? ProductCode { get; set; }
     public string? Notes { get; set; }

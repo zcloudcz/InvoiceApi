@@ -710,6 +710,9 @@ public sealed class Mapper : IMapper
             destination.TotalBeforeVat = source.TotalBeforeVat;
             destination.VatAmount = source.VatAmount;
             destination.TotalWithVat = source.TotalWithVat;
+            destination.VatRegime = source.VatRegime;
+            destination.ReverseChargeCodeId = source.ReverseChargeCodeId;
+            destination.InformationalVatAmount = source.InformationalVatAmount;
             destination.ProductCode = source.ProductCode;
             destination.Notes = source.Notes;
             return destination;
@@ -729,6 +732,9 @@ public sealed class Mapper : IMapper
             destination.TotalBeforeVat = source.TotalBeforeVat;
             destination.VatAmount = source.VatAmount;
             destination.TotalWithVat = source.TotalWithVat;
+            destination.VatRegime = source.VatRegime;
+            destination.ReverseChargeCodeId = source.ReverseChargeCodeId;
+            destination.InformationalVatAmount = source.InformationalVatAmount;
             destination.ProductCode = source.ProductCode;
             destination.Notes = source.Notes;
             return destination;

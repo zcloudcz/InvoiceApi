@@ -330,6 +330,11 @@ public class InvoiceService : IInvoiceService
             }
         }
 
+        // Validate Reverse Charge rules:
+        // - ReverseCharge items MUST have ReverseChargeCodeId (identifies the type of supply for EPO).
+        // - Non-ReverseCharge items MUST NOT have ReverseChargeCodeId (cannot mix regimes on one item).
+        ValidateReverseChargeCodes(createDto.InvoiceItem);
+
         // Add invoice items and calculate totals
         decimal totalBeforeVat = 0;
         decimal totalVat = 0;
@@ -372,19 +377,22 @@ public class InvoiceService : IInvoiceService
             item.UnitPrice = itemDto.UnitPrice;
             item.VatRateId = itemDto.VatRateId;
             item.VatRatePercentage = vatRatePercentage;
+            item.VatRegime = itemDto.VatRegime;
+            item.ReverseChargeCodeId = itemDto.ReverseChargeCodeId;
 
             item.TotalBeforeVat = item.Quantity * item.UnitPrice;
             // Round VatAmount to 2 decimal places (AwayFromZero = standard Czech VAT rounding).
             // Without this, back-calculated deduction rows accumulate ~0.005 CZK drift per row
             // because deductionBase = round(deductionWithVat / divisor, 2) loses a fraction
             // that re-appears when VAT is recomputed from the rounded base.
-            item.VatAmount = Math.Round(item.TotalBeforeVat * (item.VatRatePercentage / 100m),
-                2, MidpointRounding.AwayFromZero);
-            item.TotalWithVat = item.TotalBeforeVat + item.VatAmount;
+            CalculateItemVat(item);
 
             invoice.InvoiceItem.Add(item);
 
             totalBeforeVat += item.TotalBeforeVat;
+            // Only Standard regime items contribute to billed VAT.
+            // ReverseCharge VAT is self-assessed by the buyer and never appears in the invoice total.
+            // Exempt and OutOfScope have no VAT at all.
             totalVat += item.VatAmount;
         }
 
@@ -524,6 +532,9 @@ public class InvoiceService : IInvoiceService
                 }
             }
 
+            // Validate Reverse Charge rules (same as in CreateInvoiceAsync).
+            ValidateReverseChargeCodes(updateDto.InvoiceItem);
+
             // Remove old items
             _context.InvoiceItem.RemoveRange(invoice.InvoiceItem);
 
@@ -565,18 +576,20 @@ public class InvoiceService : IInvoiceService
                 item.UnitPrice = itemDto.UnitPrice;
                 item.VatRateId = itemDto.VatRateId;
                 item.VatRatePercentage = vatRatePercentage;
+                item.VatRegime = itemDto.VatRegime;
+                item.ReverseChargeCodeId = itemDto.ReverseChargeCodeId;
+                item.ReverseChargeCodeId = itemDto.ReverseChargeCodeId;
 
                 item.TotalBeforeVat = item.Quantity * item.UnitPrice;
                 // Round VatAmount consistently (same rule as CreateInvoiceAsync —
                 // AwayFromZero matches standard Czech VAT rounding and eliminates
                 // drift when deduction rows are back-calculated from TotalWithVat).
-                item.VatAmount = Math.Round(item.TotalBeforeVat * (item.VatRatePercentage / 100m),
-                    2, MidpointRounding.AwayFromZero);
-                item.TotalWithVat = item.TotalBeforeVat + item.VatAmount;
+                CalculateItemVat(item);
 
                 invoice.InvoiceItem.Add(item);
 
                 totalBeforeVat += item.TotalBeforeVat;
+                // Only Standard regime items contribute to billed VAT (same rule as Create).
                 totalVat += item.VatAmount;
             }
 
@@ -1281,6 +1294,83 @@ public class InvoiceService : IInvoiceService
     }
 
     // ─── Private Helpers ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Validates Reverse Charge code consistency for a list of item DTOs.
+    ///
+    /// Rules (from AC of issue #45 and §92a ZDPH):
+    /// 1. If VatRegime == ReverseCharge, ReverseChargeCodeId MUST be set (not null).
+    ///    The code is mandatory for EPO XML (A.1/B.1 sections) and PDF/ISDOC display.
+    /// 2. If VatRegime != ReverseCharge, ReverseChargeCodeId MUST be null.
+    ///    Mixing regime and code would be confusing and lead to wrong EPO reporting.
+    ///
+    /// Text rows are excluded — they have no financial data.
+    /// </summary>
+    private static void ValidateReverseChargeCodes(IEnumerable<CreateInvoiceItemDto> items)
+    {
+        foreach (var item in items.Where(i => !i.IsTextRow))
+        {
+            if (item.VatRegime == EVatRegime.ReverseCharge && !item.ReverseChargeCodeId.HasValue)
+                throw new InvalidOperationException(
+                    $"Invoice item '{item.Description}' has VatRegime=ReverseCharge but no ReverseChargeCodeId. " +
+                    "A reverse charge code (kód předmětu plnění) is required for PDP items.");
+
+            if (item.VatRegime != EVatRegime.ReverseCharge && item.ReverseChargeCodeId.HasValue)
+                throw new InvalidOperationException(
+                    $"Invoice item '{item.Description}' has ReverseChargeCodeId set but VatRegime={item.VatRegime}. " +
+                    "ReverseChargeCodeId must only be set for ReverseCharge items.");
+        }
+    }
+
+    /// <summary>
+    /// Calculates VatAmount, InformationalVatAmount, and TotalWithVat for an invoice item,
+    /// applying the correct logic per the item's VatRegime.
+    ///
+    /// Regime rules:
+    /// - Standard:       VatAmount = TotalBeforeVat * Rate / 100 (rounded AwayFromZero).
+    ///                   TotalWithVat = TotalBeforeVat + VatAmount.
+    ///                   InformationalVatAmount = 0.
+    /// - ReverseCharge:  VatAmount = 0 (not billed — buyer self-assesses).
+    ///                   TotalWithVat = TotalBeforeVat (no VAT added to invoice).
+    ///                   InformationalVatAmount = TotalBeforeVat * Rate / 100 (shown on PDF/ISDOC
+    ///                   so buyer knows what to self-assess, per §92a ZDPH).
+    /// - Exempt / OutOfScope: VatAmount = 0, TotalWithVat = TotalBeforeVat,
+    ///                        InformationalVatAmount = 0.
+    ///
+    /// TotalBeforeVat must be set on the item before calling this method.
+    /// </summary>
+    private static void CalculateItemVat(InvoiceItem item)
+    {
+        switch (item.VatRegime)
+        {
+            case EVatRegime.Standard:
+                // Normal VAT: supplier charges and remits VAT.
+                item.VatAmount = Math.Round(
+                    item.TotalBeforeVat * (item.VatRatePercentage / 100m),
+                    2, MidpointRounding.AwayFromZero);
+                item.TotalWithVat = item.TotalBeforeVat + item.VatAmount;
+                item.InformationalVatAmount = 0;
+                break;
+
+            case EVatRegime.ReverseCharge:
+                // PDP: buyer self-assesses VAT — supplier bills 0 VAT.
+                // The rate and the "would-be" VAT amount are displayed informatively on the document.
+                item.VatAmount = 0;
+                item.TotalWithVat = item.TotalBeforeVat;
+                item.InformationalVatAmount = Math.Round(
+                    item.TotalBeforeVat * (item.VatRatePercentage / 100m),
+                    2, MidpointRounding.AwayFromZero);
+                break;
+
+            case EVatRegime.Exempt:
+            case EVatRegime.OutOfScope:
+                // No VAT charged, no informational amount.
+                item.VatAmount = 0;
+                item.TotalWithVat = item.TotalBeforeVat;
+                item.InformationalVatAmount = 0;
+                break;
+        }
+    }
 
     /// <summary>
     /// Calculates due date based on client's billing settings, respecting EDueDateCalculationType.

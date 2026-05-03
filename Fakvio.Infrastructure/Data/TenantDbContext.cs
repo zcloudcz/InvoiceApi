@@ -528,10 +528,28 @@ public class TenantDbContext : DbContext
             entity.Property(e => e.TotalBeforeVat).HasPrecision(18, 2);
             entity.Property(e => e.VatAmount).HasPrecision(18, 2);
             entity.Property(e => e.TotalWithVat).HasPrecision(18, 2);
+            entity.Property(e => e.InformationalVatAmount).HasPrecision(18, 2);
             entity.Property(e => e.ProductCode).HasMaxLength(100);
             entity.Property(e => e.Notes).HasMaxLength(1000);
 
+            // VatRegime: stored as integer, NOT NULL, default 0 (Standard).
+            // HasConversion<int>() tells EF Core to map the enum to its underlying integer value.
+            // HasDefaultValue ensures existing rows (before migration) default to Standard without
+            // requiring a value in the UPDATE statement — no data migration needed.
+            entity.Property(e => e.VatRegime)
+                .HasConversion<int>()
+                .HasDefaultValue(EVatRegime.Standard)
+                .IsRequired();
+
             entity.HasOne(e => e.VatRate).WithMany(v => v.InvoiceItems).HasForeignKey(e => e.VatRateId).OnDelete(DeleteBehavior.Restrict);
+
+            // ReverseChargeCode is a reference data lookup (číselník).
+            // On delete: Restrict — we must not let MFČR code rows be deleted if any invoice
+            // item references them. Historical invoices must remain intact.
+            entity.HasOne(e => e.ReverseChargeCode)
+                .WithMany()
+                .HasForeignKey(e => e.ReverseChargeCodeId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
     }
 
