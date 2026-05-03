@@ -70,7 +70,7 @@ public class VatReportController : ControllerBase
     /// required EPO fields (c_ufo, c_pracufo). The response body lists the missing fields
     /// so the UI can navigate the user to the settings screen (issue #6).
     ///
-    /// Returns 400 with code VAT_PAYER_REQUIRED when the current company is not a VAT payer.
+    /// Returns 403 with code VAT_PAYER_REQUIRED when the current company is not a VAT payer.
     /// </summary>
     /// <param name="year">Tax year (e.g. 2026). Must be in [2024, currentYear+1].</param>
     /// <param name="period">
@@ -101,6 +101,16 @@ public class VatReportController : ControllerBase
                 year, period, type, filename, bytes.Length);
 
             return File(bytes, "application/xml", filename);
+        }
+        catch (VatPayerRequiredException ex)
+        {
+            // The issuer is not a VAT payer — EPO filings are not applicable.
+            _logger.LogWarning("EPO DPHDP3 export blocked: {Message}", ex.Message);
+            return StatusCode(StatusCodes.Status403Forbidden, new
+            {
+                code    = "VAT_PAYER_REQUIRED",
+                message = ex.Message
+            });
         }
         catch (EpoHeaderIncompleteException ex)
         {
@@ -167,6 +177,16 @@ public class VatReportController : ControllerBase
                 year, period, type, filename, bytes.Length);
 
             return File(bytes, "application/xml", filename);
+        }
+        catch (VatPayerRequiredException ex)
+        {
+            // The issuer is not a VAT payer — EPO filings are not applicable.
+            _logger.LogWarning("EPO DPHKH1 export blocked: {Message}", ex.Message);
+            return StatusCode(StatusCodes.Status403Forbidden, new
+            {
+                code    = "VAT_PAYER_REQUIRED",
+                message = ex.Message
+            });
         }
         catch (EpoHeaderIncompleteException ex)
         {

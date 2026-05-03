@@ -135,7 +135,8 @@ public class EpoVatReturnExportTests : IDisposable
             RegistrationNumber = "12345678",
             TaxNumber = "CZ12345678",
             IsIssuer = true,
-            IsActive = true
+            IsActive = true,
+            IsVatPayer = true
         });
         _context.SaveChanges();
 

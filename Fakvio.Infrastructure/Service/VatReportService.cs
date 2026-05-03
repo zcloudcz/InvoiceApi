@@ -234,6 +234,11 @@ public class VatReportService : IVatReportService
                 "No active issuer (IsIssuer=true) found in the tenant database. " +
                 "Set up your company data before generating EPO exports.");
 
+        // EPO filings are only valid for VAT payers — block early to avoid
+        // generating a file the tax portal would reject.
+        if (!issuer.IsVatPayer)
+            throw new VatPayerRequiredException();
+
         // ── 4. Load issued invoices for the period ───────────────────────────
         // Same filter as GetReportAsync: exclude Draft, Deleted.
         // We need CurrencyCode for FX conversion, so include Currency navigation.
@@ -442,6 +447,11 @@ public class VatReportService : IVatReportService
             ?? throw new InvalidOperationException(
                 "No active issuer (IsIssuer=true) found in the tenant database. " +
                 "Set up your company data before generating EPO exports.");
+
+        // EPO filings are only valid for VAT payers — block early to avoid
+        // generating a file the tax portal would reject.
+        if (!issuer.IsVatPayer)
+            throw new VatPayerRequiredException();
 
         // ── 4. Load issued invoices with client navigation ───────────────────
         // Client.TaxNumber is needed for the A.4/A.5 split, and
@@ -753,54 +763,8 @@ public class VatReportService : IVatReportService
         else
             vetaD.Add(new XAttribute("ctvrt", period.ToString()));
 
-        // Build VetaP — taxpayer identification.
-        // dic: numeric part of DIČ only (strip "CZ" prefix required by EPO XSD pattern [0-9]{1,10}).
-        var rawDic = issuer.TaxNumber ?? issuer.RegistrationNumber ?? string.Empty;
-        var dic = rawDic.StartsWith("CZ", StringComparison.OrdinalIgnoreCase)
-            ? rawDic[2..]
-            : rawDic;
-
-        // c_ufo and c_pracufo come from CompanySystemSettings (validated by LoadAndValidateEpoSettingsAsync).
-        var vetaP = new XElement("VetaP",
-            new XAttribute("c_ufo",     epo.TaxOfficeCode.ToString()),
-            new XAttribute("c_pracufo", epo.TaxOfficeBranchCode.ToString()),
-            new XAttribute("dic",       dic),
-            new XAttribute("typ_ds",    "P")); // "P" = právnická osoba (legal entity)
-
-        // Optionally add company name (zkrobchjm ≤ 255 chars).
-        if (!string.IsNullOrWhiteSpace(issuer.CompanyName))
-            vetaP.Add(new XAttribute("zkrobchjm",
-                issuer.CompanyName.Length > 255
-                    ? issuer.CompanyName[..255]
-                    : issuer.CompanyName));
-
-        // Optional contact details from CompanySystemSettings.
-        // c_telef: XSD maxLength=14; strip spaces to fit the Czech phone format constraint.
-        if (!string.IsNullOrWhiteSpace(epo.ContactPhone))
-        {
-            var phone = epo.ContactPhone.Replace(" ", "");
-            vetaP.Add(new XAttribute("c_telef", phone.Length > 14 ? phone[..14] : phone));
-        }
-        if (!string.IsNullOrWhiteSpace(epo.ContactEmail))
-            vetaP.Add(new XAttribute("email", epo.ContactEmail));
-        // XSD uses opr_jmeno (first name, max 20) + opr_prijmeni (last name, max 36).
-        // EpoAuthorizedPersonName stores the full name; split on last space.
-        if (!string.IsNullOrWhiteSpace(epo.AuthorizedPersonName))
-        {
-            var fullName = epo.AuthorizedPersonName.Trim();
-            var lastSpace = fullName.LastIndexOf(' ');
-            if (lastSpace > 0)
-            {
-                var firstName = fullName[..lastSpace];
-                var lastName  = fullName[(lastSpace + 1)..];
-                vetaP.Add(new XAttribute("opr_jmeno",    firstName.Length > 20 ? firstName[..20] : firstName));
-                vetaP.Add(new XAttribute("opr_prijmeni", lastName.Length  > 36 ? lastName[..36]  : lastName));
-            }
-            else
-            {
-                vetaP.Add(new XAttribute("opr_jmeno", fullName.Length > 20 ? fullName[..20] : fullName));
-            }
-        }
+        // Build VetaP — taxpayer identification (shared logic with DPHKH1).
+        var vetaP = BuildVetaP(issuer, epo);
 
         // Build DPHDP3 element — sequence order per XSD: VetaD, VetaP, Veta1?, Veta4?
         var dphdp3 = new XElement("DPHDP3", vetaD, vetaP);
@@ -855,6 +819,72 @@ public class VatReportService : IVatReportService
         return new XDocument(
             new XDeclaration("1.0", "utf-8", null),
             new XElement("Pisemnost", dphdp3));
+    }
+
+    /// <summary>
+    /// Builds the EPO <c>VetaP</c> element — taxpayer identification section shared
+    /// by both DPHDP3 and DPHKH1 forms.
+    ///
+    /// Required attributes: <c>c_ufo</c>, <c>c_pracufo</c>, <c>dic</c>, <c>typ_ds</c>.
+    /// Optional attributes added when not null/empty: <c>zkrobchjm</c>, <c>c_telef</c>,
+    /// <c>email</c>, <c>opr_jmeno</c>, <c>opr_prijmeni</c>.
+    /// </summary>
+    /// <param name="issuer">Issuer entity (our company) from the tenant DB.</param>
+    /// <param name="epo">Validated EPO settings from CompanySystemSettings.</param>
+    private static XElement BuildVetaP(Client issuer, EpoSettings epo)
+    {
+        // dic: EPO XSD requires the numeric part of DIČ only (strip "CZ" prefix).
+        // Pattern: [0-9]{1,10}
+        var rawDic = issuer.TaxNumber ?? issuer.RegistrationNumber ?? string.Empty;
+        var dic = rawDic.StartsWith("CZ", StringComparison.OrdinalIgnoreCase)
+            ? rawDic[2..]
+            : rawDic;
+
+        // c_ufo and c_pracufo come from CompanySystemSettings (validated by LoadAndValidateEpoSettingsAsync).
+        var vetaP = new XElement("VetaP",
+            new XAttribute("c_ufo",     epo.TaxOfficeCode.ToString()),
+            new XAttribute("c_pracufo", epo.TaxOfficeBranchCode.ToString()),
+            new XAttribute("dic",       dic),
+            new XAttribute("typ_ds",    "P")); // "P" = právnická osoba (legal entity)
+
+        // zkrobchjm — company name abbreviation (≤ 255 chars).
+        if (!string.IsNullOrWhiteSpace(issuer.CompanyName))
+            vetaP.Add(new XAttribute("zkrobchjm",
+                issuer.CompanyName.Length > 255
+                    ? issuer.CompanyName[..255]
+                    : issuer.CompanyName));
+
+        // c_telef — XSD maxLength=14; strip spaces (Czech phone "+420 123 456" → "+420123456").
+        if (!string.IsNullOrWhiteSpace(epo.ContactPhone))
+        {
+            var phone = epo.ContactPhone.Replace(" ", "");
+            vetaP.Add(new XAttribute("c_telef", phone.Length > 14 ? phone[..14] : phone));
+        }
+
+        if (!string.IsNullOrWhiteSpace(epo.ContactEmail))
+            vetaP.Add(new XAttribute("email", epo.ContactEmail));
+
+        // XSD uses opr_jmeno (first name, max 20) + opr_prijmeni (last name, max 36).
+        // EpoAuthorizedPersonName stores the full name "Jan Novák"; split on last space.
+        if (!string.IsNullOrWhiteSpace(epo.AuthorizedPersonName))
+        {
+            var fullName  = epo.AuthorizedPersonName.Trim();
+            var lastSpace = fullName.LastIndexOf(' ');
+            if (lastSpace > 0)
+            {
+                var firstName = fullName[..lastSpace];
+                var lastName  = fullName[(lastSpace + 1)..];
+                vetaP.Add(new XAttribute("opr_jmeno",    firstName.Length > 20 ? firstName[..20] : firstName));
+                vetaP.Add(new XAttribute("opr_prijmeni", lastName.Length  > 36 ? lastName[..36]  : lastName));
+            }
+            else
+            {
+                // Single-word name — put it all in opr_jmeno.
+                vetaP.Add(new XAttribute("opr_jmeno", fullName.Length > 20 ? fullName[..20] : fullName));
+            }
+        }
+
+        return vetaP;
     }
 
     /// <summary>
@@ -1022,52 +1052,8 @@ public class VatReportService : IVatReportService
         else
             vetaD.Add(new XAttribute("ctvrt", period.ToString()));
 
-        // Build VetaP — taxpayer identification (same pattern as DPHDP3).
-        var rawDic = issuer.TaxNumber ?? issuer.RegistrationNumber ?? string.Empty;
-        var dic = rawDic.StartsWith("CZ", StringComparison.OrdinalIgnoreCase)
-            ? rawDic[2..]
-            : rawDic;
-
-        // c_ufo and c_pracufo come from CompanySystemSettings (validated by LoadAndValidateEpoSettingsAsync).
-        var vetaP = new XElement("VetaP",
-            new XAttribute("c_ufo",     epo.TaxOfficeCode.ToString()),
-            new XAttribute("c_pracufo", epo.TaxOfficeBranchCode.ToString()),
-            new XAttribute("dic",       dic),
-            new XAttribute("typ_ds",    "P")); // "P" = právnická osoba
-
-        if (!string.IsNullOrWhiteSpace(issuer.CompanyName))
-            vetaP.Add(new XAttribute("zkrobchjm",
-                issuer.CompanyName.Length > 255
-                    ? issuer.CompanyName[..255]
-                    : issuer.CompanyName));
-
-        // Optional contact details from CompanySystemSettings.
-        // c_telef: XSD maxLength=14; strip spaces to fit the Czech phone format constraint.
-        if (!string.IsNullOrWhiteSpace(epo.ContactPhone))
-        {
-            var phone = epo.ContactPhone.Replace(" ", "");
-            vetaP.Add(new XAttribute("c_telef", phone.Length > 14 ? phone[..14] : phone));
-        }
-        if (!string.IsNullOrWhiteSpace(epo.ContactEmail))
-            vetaP.Add(new XAttribute("email", epo.ContactEmail));
-        // XSD uses opr_jmeno (first name, max 20) + opr_prijmeni (last name, max 36).
-        // EpoAuthorizedPersonName stores the full name; split on last space.
-        if (!string.IsNullOrWhiteSpace(epo.AuthorizedPersonName))
-        {
-            var fullName = epo.AuthorizedPersonName.Trim();
-            var lastSpace = fullName.LastIndexOf(' ');
-            if (lastSpace > 0)
-            {
-                var firstName = fullName[..lastSpace];
-                var lastName  = fullName[(lastSpace + 1)..];
-                vetaP.Add(new XAttribute("opr_jmeno",    firstName.Length > 20 ? firstName[..20] : firstName));
-                vetaP.Add(new XAttribute("opr_prijmeni", lastName.Length  > 36 ? lastName[..36]  : lastName));
-            }
-            else
-            {
-                vetaP.Add(new XAttribute("opr_jmeno", fullName.Length > 20 ? fullName[..20] : fullName));
-            }
-        }
+        // Build VetaP — taxpayer identification (shared logic with DPHDP3).
+        var vetaP = BuildVetaP(issuer, epo);
 
         // Build DPHKH1 element — element order per XSD:
         // VetaD, VetaP, VetaA1*, VetaA2*, VetaA3*, VetaA4*, VetaA5?, VetaB1*, VetaB2*, VetaB3?, VetaC?
