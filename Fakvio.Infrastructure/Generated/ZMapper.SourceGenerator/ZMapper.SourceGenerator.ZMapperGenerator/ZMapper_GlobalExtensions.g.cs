@@ -414,6 +414,23 @@ public static class Mapper_Extensions
     }
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    public static Fakvio.Contracts.Dto.ReverseChargeCode.ReverseChargeCodeDto ToReverseChargeCodeDto(this Fakvio.Domain.Entities.ReverseChargeCode source)
+    {
+        var destination = new Fakvio.Contracts.Dto.ReverseChargeCode.ReverseChargeCodeDto();
+        destination.Id = source.Id;
+        destination.Code = source.Code;
+        destination.NameCs = source.NameCs;
+        destination.NameEn = source.NameEn;
+        destination.ParagraphRef = source.ParagraphRef;
+        destination.ValidFrom = source.ValidFrom;
+        destination.ValidTo = source.ValidTo;
+        destination.IsActive = source.IsActive;
+        destination.CreatedAt = source.CreatedAt;
+        destination.UpdatedAt = source.UpdatedAt;
+        return destination;
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     public static Fakvio.Contracts.Dto.User.UserDto ToUserDto(this Fakvio.Domain.Entities.User source)
     {
         var destination = new Fakvio.Contracts.Dto.User.UserDto();

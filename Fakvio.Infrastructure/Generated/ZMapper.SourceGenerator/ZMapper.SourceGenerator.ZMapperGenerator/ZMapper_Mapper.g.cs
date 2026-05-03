@@ -1383,6 +1383,68 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
+        public Fakvio.Contracts.Dto.ReverseChargeCode.ReverseChargeCodeDto Map_ReverseChargeCode_To_ReverseChargeCodeDto(Fakvio.Domain.Entities.ReverseChargeCode source)
+        {
+            var destination = new Fakvio.Contracts.Dto.ReverseChargeCode.ReverseChargeCodeDto();
+            destination.Id = source.Id;
+            destination.Code = source.Code;
+            destination.NameCs = source.NameCs;
+            destination.NameEn = source.NameEn;
+            destination.ParagraphRef = source.ParagraphRef;
+            destination.ValidFrom = source.ValidFrom;
+            destination.ValidTo = source.ValidTo;
+            destination.IsActive = source.IsActive;
+            destination.CreatedAt = source.CreatedAt;
+            destination.UpdatedAt = source.UpdatedAt;
+            return destination;
+        }
+
+        public Fakvio.Contracts.Dto.ReverseChargeCode.ReverseChargeCodeDto Map_ReverseChargeCode_To_ReverseChargeCodeDto(Fakvio.Domain.Entities.ReverseChargeCode source, Fakvio.Contracts.Dto.ReverseChargeCode.ReverseChargeCodeDto destination)
+        {
+            destination.Id = source.Id;
+            destination.Code = source.Code;
+            destination.NameCs = source.NameCs;
+            destination.NameEn = source.NameEn;
+            destination.ParagraphRef = source.ParagraphRef;
+            destination.ValidFrom = source.ValidFrom;
+            destination.ValidTo = source.ValidTo;
+            destination.IsActive = source.IsActive;
+            destination.CreatedAt = source.CreatedAt;
+            destination.UpdatedAt = source.UpdatedAt;
+            return destination;
+        }
+
+        public Fakvio.Contracts.Dto.ReverseChargeCode.ReverseChargeCodeDto[] MapArray_ReverseChargeCode_To_ReverseChargeCodeDto(System.ReadOnlySpan<Fakvio.Domain.Entities.ReverseChargeCode> source)
+        {
+            var destination = new Fakvio.Contracts.Dto.ReverseChargeCode.ReverseChargeCodeDto[source.Length];
+            for (int i = 0; i < source.Length; i++)
+            {
+                destination[i] = source[i].ToReverseChargeCodeDto();
+            }
+
+            return destination;
+        }
+
+        public List<Fakvio.Contracts.Dto.ReverseChargeCode.ReverseChargeCodeDto> MapList_ReverseChargeCode_To_ReverseChargeCodeDto(System.Collections.Generic.IReadOnlyList<Fakvio.Domain.Entities.ReverseChargeCode> source)
+        {
+            var destination = new List<Fakvio.Contracts.Dto.ReverseChargeCode.ReverseChargeCodeDto>(source.Count);
+            for (int i = 0; i < source.Count; i++)
+            {
+                destination.Add(source[i].ToReverseChargeCodeDto());
+            }
+            return destination;
+        }
+
+        public List<Fakvio.Contracts.Dto.ReverseChargeCode.ReverseChargeCodeDto> MapList_ReverseChargeCode_To_ReverseChargeCodeDto_Enumerable(System.Collections.Generic.IEnumerable<Fakvio.Domain.Entities.ReverseChargeCode> source)
+        {
+            var destination = new List<Fakvio.Contracts.Dto.ReverseChargeCode.ReverseChargeCodeDto>();
+            foreach (var item in source)
+            {
+                destination.Add(item.ToReverseChargeCodeDto());
+            }
+            return destination;
+        }
+
         public Fakvio.Contracts.Dto.User.UserDto Map_User_To_UserDto(Fakvio.Domain.Entities.User source)
         {
             var destination = new Fakvio.Contracts.Dto.User.UserDto();
@@ -1561,6 +1623,8 @@ public sealed class Mapper : IMapper
                 return (TDestination)(object)((Fakvio.Domain.Entities.ReminderLevel)(object)source!).ToReminderLevelDto();
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.Reminder) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.Reminder.ReminderDto))
                 return (TDestination)(object)((Fakvio.Domain.Entities.Reminder)(object)source!).ToReminderDto();
+            if (typeof(TSource) == typeof(Fakvio.Domain.Entities.ReverseChargeCode) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.ReverseChargeCode.ReverseChargeCodeDto))
+                return (TDestination)(object)((Fakvio.Domain.Entities.ReverseChargeCode)(object)source!).ToReverseChargeCodeDto();
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.User) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.User.UserDto))
                 return (TDestination)(object)((Fakvio.Domain.Entities.User)(object)source!).ToUserDto();
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.VatRate) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.VatRate.VatRateDto))
@@ -1610,6 +1674,8 @@ public sealed class Mapper : IMapper
                 return (TDestination)(object)Map_ReminderLevel_To_ReminderLevelDto((Fakvio.Domain.Entities.ReminderLevel)(object)source!, (Fakvio.Contracts.Dto.Reminder.ReminderLevelDto)(object)destination!);
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.Reminder) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.Reminder.ReminderDto))
                 return (TDestination)(object)Map_Reminder_To_ReminderDto((Fakvio.Domain.Entities.Reminder)(object)source!, (Fakvio.Contracts.Dto.Reminder.ReminderDto)(object)destination!);
+            if (typeof(TSource) == typeof(Fakvio.Domain.Entities.ReverseChargeCode) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.ReverseChargeCode.ReverseChargeCodeDto))
+                return (TDestination)(object)Map_ReverseChargeCode_To_ReverseChargeCodeDto((Fakvio.Domain.Entities.ReverseChargeCode)(object)source!, (Fakvio.Contracts.Dto.ReverseChargeCode.ReverseChargeCodeDto)(object)destination!);
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.User) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.User.UserDto))
                 return (TDestination)(object)Map_User_To_UserDto((Fakvio.Domain.Entities.User)(object)source!, (Fakvio.Contracts.Dto.User.UserDto)(object)destination!);
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.VatRate) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.VatRate.VatRateDto))
@@ -1719,6 +1785,11 @@ public sealed class Mapper : IMapper
                 var typedSource = System.Runtime.CompilerServices.Unsafe.As<System.ReadOnlySpan<TSource>, System.ReadOnlySpan<Fakvio.Domain.Entities.Reminder>>(ref source);
                 return (TDestination[])(object)MapArray_Reminder_To_ReminderDto(typedSource);
             }
+            else if (typeof(TSource) == typeof(Fakvio.Domain.Entities.ReverseChargeCode) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.ReverseChargeCode.ReverseChargeCodeDto))
+            {
+                var typedSource = System.Runtime.CompilerServices.Unsafe.As<System.ReadOnlySpan<TSource>, System.ReadOnlySpan<Fakvio.Domain.Entities.ReverseChargeCode>>(ref source);
+                return (TDestination[])(object)MapArray_ReverseChargeCode_To_ReverseChargeCodeDto(typedSource);
+            }
             else if (typeof(TSource) == typeof(Fakvio.Domain.Entities.User) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.User.UserDto))
             {
                 var typedSource = System.Runtime.CompilerServices.Unsafe.As<System.ReadOnlySpan<TSource>, System.ReadOnlySpan<Fakvio.Domain.Entities.User>>(ref source);
@@ -1774,6 +1845,8 @@ public sealed class Mapper : IMapper
                 return (List<TDestination>)(object)MapList_ReminderLevel_To_ReminderLevelDto((System.Collections.Generic.IReadOnlyList<Fakvio.Domain.Entities.ReminderLevel>)(object)source);
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.Reminder) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.Reminder.ReminderDto))
                 return (List<TDestination>)(object)MapList_Reminder_To_ReminderDto((System.Collections.Generic.IReadOnlyList<Fakvio.Domain.Entities.Reminder>)(object)source);
+            if (typeof(TSource) == typeof(Fakvio.Domain.Entities.ReverseChargeCode) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.ReverseChargeCode.ReverseChargeCodeDto))
+                return (List<TDestination>)(object)MapList_ReverseChargeCode_To_ReverseChargeCodeDto((System.Collections.Generic.IReadOnlyList<Fakvio.Domain.Entities.ReverseChargeCode>)(object)source);
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.User) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.User.UserDto))
                 return (List<TDestination>)(object)MapList_User_To_UserDto((System.Collections.Generic.IReadOnlyList<Fakvio.Domain.Entities.User>)(object)source);
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.VatRate) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.VatRate.VatRateDto))
@@ -1823,6 +1896,8 @@ public sealed class Mapper : IMapper
                 return (List<TDestination>)(object)MapList_ReminderLevel_To_ReminderLevelDto_Enumerable((System.Collections.Generic.IEnumerable<Fakvio.Domain.Entities.ReminderLevel>)(object)source);
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.Reminder) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.Reminder.ReminderDto))
                 return (List<TDestination>)(object)MapList_Reminder_To_ReminderDto_Enumerable((System.Collections.Generic.IEnumerable<Fakvio.Domain.Entities.Reminder>)(object)source);
+            if (typeof(TSource) == typeof(Fakvio.Domain.Entities.ReverseChargeCode) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.ReverseChargeCode.ReverseChargeCodeDto))
+                return (List<TDestination>)(object)MapList_ReverseChargeCode_To_ReverseChargeCodeDto_Enumerable((System.Collections.Generic.IEnumerable<Fakvio.Domain.Entities.ReverseChargeCode>)(object)source);
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.User) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.User.UserDto))
                 return (List<TDestination>)(object)MapList_User_To_UserDto_Enumerable((System.Collections.Generic.IEnumerable<Fakvio.Domain.Entities.User>)(object)source);
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.VatRate) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.VatRate.VatRateDto))

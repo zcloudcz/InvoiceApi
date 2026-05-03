@@ -142,6 +142,9 @@ public static class ServiceCollectionExtensions
         // Tax estimation — calculates income tax, social/health insurance for CZ/SK self-employed.
         services.AddScopedWithLogging<ITaxEstimationService, TaxEstimationService>();
 
+        // Reverse charge codes — MFČR číselník for VAT control statement (PDP / kontrolní hlášení).
+        services.AddScopedWithLogging<IReverseChargeCodeService, ReverseChargeCodeService>();
+
         // EPO schema provider — singleton because XmlSchemaSet compilation is expensive
         // and the result is immutable (read-only after Compile()). The provider caches
         // per (formType, year) so each XSD is compiled once per process lifetime.

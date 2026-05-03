@@ -196,6 +196,14 @@ public class TenantDbContext : DbContext
     /// </summary>
     public DbSet<Alert> Alert { get; set; }
 
+    /// <summary>
+    /// Reverse charge codes from MFČR číselník (kódy předmětu plnění PDP).
+    /// Used in VAT control statement (kontrolní hlášení / EPO XML) sections A.1 and B.1.
+    /// Each tenant has its own copy (seeded at provisioning) — allows per-tenant customisation
+    /// if MFČR publishes an update before the application is patched.
+    /// </summary>
+    public DbSet<ReverseChargeCode> ReverseChargeCode { get; set; }
+
     // ─── Payment Matching (see PLATBY-ZADANI.md) ────────────────────────────
 
     /// <summary>
@@ -276,6 +284,8 @@ public class TenantDbContext : DbContext
         ConfigureInboundEmail(modelBuilder);
         ConfigureBankTransaction(modelBuilder);
         ConfigurePaymentMatch(modelBuilder);
+
+        ConfigureReverseChargeCode(modelBuilder);
 
         SeedData(modelBuilder);
     }
@@ -1153,6 +1163,34 @@ public class TenantDbContext : DbContext
     }
 
     /// <summary>
+    /// Configures the ReverseChargeCode entity.
+    ///
+    /// Key design decisions:
+    /// - Unique index on Code: MFČR codes are unique strings ("1", "1a", "3", etc.)
+    /// - Index on IsActive: supports the GetAllActiveAsync hot path (WHERE IsActive = true)
+    /// - ValidFrom/ValidTo are DateOnly — legislative validity is date-only, no time component
+    /// - No FK relationships: code table is standalone reference data
+    /// </summary>
+    private void ConfigureReverseChargeCode(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<ReverseChargeCode>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            // Unique constraint: each MFČR code string must appear at most once.
+            entity.HasIndex(e => e.Code).IsUnique();
+
+            // Index for the GetAllActiveAsync query (WHERE IsActive = true AND ValidFrom <= today ...).
+            entity.HasIndex(e => e.IsActive);
+
+            entity.Property(e => e.Code).IsRequired().HasMaxLength(8);
+            entity.Property(e => e.NameCs).IsRequired().HasMaxLength(500);
+            entity.Property(e => e.NameEn).HasMaxLength(500);
+            entity.Property(e => e.ParagraphRef).IsRequired().HasMaxLength(10);
+        });
+    }
+
+    /// <summary>
     /// Seeds default data for new tenant databases.
     /// Code tables (VatRate, Currency, NumberSequenceFormat, ContentTemplate)
     /// are seeded here as fallback — the TenantProvisioningService copies
@@ -1207,6 +1245,45 @@ public class TenantDbContext : DbContext
             new Currency { Id = 6, Code = "CHF", Name = "Swiss Franc", Symbol = "CHF", DecimalPlaces = 2, IsActive = true, SortOrder = 6, DisplayFormat = "CHF {0:N2}", CreatedAt = seedDate },
             new Currency { Id = 7, Code = "HUF", Name = "Hungarian Forint", Symbol = "Ft", DecimalPlaces = 0, IsActive = true, SortOrder = 7, DisplayFormat = "{0:N0} Ft", CreatedAt = seedDate },
             new Currency { Id = 8, Code = "RON", Name = "Romanian Leu", Symbol = "lei", DecimalPlaces = 2, IsActive = true, SortOrder = 8, DisplayFormat = "{0:N2} lei", CreatedAt = seedDate }
+        );
+
+        // Seed reverse charge codes (kódy předmětu plnění PDP) from MFČR číselník.
+        //
+        // Source: Příloha č. 6 zákona č. 235/2004 Sb. o dani z přidané hodnoty (ZDPH)
+        //         and GFŘ guidance D-59.
+        // URL:    https://www.financnisprava.cz/cs/dane/dane/dan-z-pridane-hodnoty/kontrolni-hlaseni
+        //
+        // Mapping of codes to paragraphs (as of 2025):
+        //   §92b — gold (zlato)                                               codes: 1, 1a
+        //   §92c — waste/scrap, mobile devices, emission allowances, etc.     codes: 3, 3a, 4, 5, 6, 7
+        //   §92d — construction and assembly work                              code:  11
+        //   §92e — transfer of greenhouse gas emission allowances              codes: 12, 13, 14, 21, 25
+        //
+        // ValidFrom for all seed rows: 2016-01-01 (date §92e and the current číselník took effect).
+        // ValidTo = null for all rows: codes remain valid until MFČR publishes a new revision.
+        var rccSeedDate = new DateOnly(2016, 1, 1);
+        modelBuilder.Entity<ReverseChargeCode>().HasData(
+            // §92b — gold
+            new ReverseChargeCode { Id = 1, Code = "1",  NameCs = "Zlato",                                                                      NameEn = "Gold",                                                     ParagraphRef = "§92b", ValidFrom = rccSeedDate, ValidTo = null, IsActive = true, CreatedAt = seedDate },
+            new ReverseChargeCode { Id = 2, Code = "1a", NameCs = "Investiční zlato",                                                           NameEn = "Investment gold",                                          ParagraphRef = "§92b", ValidFrom = rccSeedDate, ValidTo = null, IsActive = true, CreatedAt = seedDate },
+
+            // §92c — waste, scrap, mobile devices, CPUs, emission allowances
+            new ReverseChargeCode { Id = 3, Code = "3",  NameCs = "Odpady a šrot",                                                              NameEn = "Waste and scrap",                                          ParagraphRef = "§92c", ValidFrom = rccSeedDate, ValidTo = null, IsActive = true, CreatedAt = seedDate },
+            new ReverseChargeCode { Id = 4, Code = "3a", NameCs = "Emisní povolenky",                                                           NameEn = "Greenhouse gas emission allowances",                       ParagraphRef = "§92c", ValidFrom = rccSeedDate, ValidTo = null, IsActive = true, CreatedAt = seedDate },
+            new ReverseChargeCode { Id = 5, Code = "4",  NameCs = "Obiloviny a technické plodiny",                                              NameEn = "Cereals and industrial crops",                             ParagraphRef = "§92c", ValidFrom = rccSeedDate, ValidTo = null, IsActive = true, CreatedAt = seedDate },
+            new ReverseChargeCode { Id = 6, Code = "5",  NameCs = "Mobilní telefony",                                                           NameEn = "Mobile phones",                                            ParagraphRef = "§92c", ValidFrom = rccSeedDate, ValidTo = null, IsActive = true, CreatedAt = seedDate },
+            new ReverseChargeCode { Id = 7, Code = "6",  NameCs = "Integrované obvody a desky plošných spojů",                                  NameEn = "Integrated circuits and printed circuit boards",           ParagraphRef = "§92c", ValidFrom = rccSeedDate, ValidTo = null, IsActive = true, CreatedAt = seedDate },
+            new ReverseChargeCode { Id = 8, Code = "7",  NameCs = "Přenosná zařízení pro automatické zpracování dat (laptopy, tablety apod.)",  NameEn = "Portable automatic data-processing devices (laptops etc.)",ParagraphRef = "§92c", ValidFrom = rccSeedDate, ValidTo = null, IsActive = true, CreatedAt = seedDate },
+
+            // §92d — construction and assembly work
+            new ReverseChargeCode { Id = 9,  Code = "11", NameCs = "Stavební nebo montážní práce",                                             NameEn = "Construction or assembly work",                            ParagraphRef = "§92d", ValidFrom = rccSeedDate, ValidTo = null, IsActive = true, CreatedAt = seedDate },
+
+            // §92e — transfer of emission allowances + other special supplies
+            new ReverseChargeCode { Id = 10, Code = "12", NameCs = "Převod povolenek na emise skleníkových plynů",                             NameEn = "Transfer of greenhouse gas emission allowances",           ParagraphRef = "§92e", ValidFrom = rccSeedDate, ValidTo = null, IsActive = true, CreatedAt = seedDate },
+            new ReverseChargeCode { Id = 11, Code = "13", NameCs = "Dodání elektřiny obchodníkovi",                                            NameEn = "Supply of electricity to a trader",                        ParagraphRef = "§92e", ValidFrom = rccSeedDate, ValidTo = null, IsActive = true, CreatedAt = seedDate },
+            new ReverseChargeCode { Id = 12, Code = "14", NameCs = "Dodání plynu obchodníkovi",                                                NameEn = "Supply of gas to a trader",                                ParagraphRef = "§92e", ValidFrom = rccSeedDate, ValidTo = null, IsActive = true, CreatedAt = seedDate },
+            new ReverseChargeCode { Id = 13, Code = "21", NameCs = "Poskytnutí pracovní síly v oblasti stavebnictví",                          NameEn = "Provision of labour in construction",                      ParagraphRef = "§92e", ValidFrom = rccSeedDate, ValidTo = null, IsActive = true, CreatedAt = seedDate },
+            new ReverseChargeCode { Id = 14, Code = "25", NameCs = "Dodání nemovité věci, pokud se plátce rozhodl uplatnit daň",               NameEn = "Supply of immovable property where the taxable person opted to tax", ParagraphRef = "§92e", ValidFrom = rccSeedDate, ValidTo = null, IsActive = true, CreatedAt = seedDate }
         );
 
         // Seed content templates — all defaults are in Czech ("cs") language.
