@@ -585,6 +585,41 @@ Krok-za-krokem:
 
 **Pokud chybí Functions varianta** → Azure deploy úlohu prostě neběží a ticha. **Pokud chybí worker** → lokální dev v `dotnet run` nikdy cyklus nevidí běžet.
 
+### 6.5 IMAP routing — header fallback chain (issue #67)
+
+#### Proč fallback chain?
+
+Bankovní notifikace mohou přicházet přes catch-all mailboxy, Postfix forwardy, nebo přes více MTA relay hopů. V takových případech alias v `To:` headeru neodpovídá skutečnému příjemci — skutečná adresa je v sekundárních headerech.
+
+#### Kde žije resolver
+
+`Fakvio.Infrastructure/Service/InboundAliasRouter.cs` — **jediný bod pravdy** pro routing logiku.
+
+- Volán z `ImapPollService.HandleMessageAsync` (API host `ImapPollWorker`)
+- Volán z `PaymentMatchingFunctions.RunImapPoll` (Azure Functions host)
+- Stateless — žádný stav, DI lifetime = Singleton-equivalent (jedna instance per `ImapPollService`)
+
+#### Pořadí headerů (first-active-match-wins)
+
+| Pořadí | Header | Poznámka |
+|--------|--------|----------|
+| 1 | `Delivered-To` | Může se opakovat (iteruj všechny výskyty) |
+| 2 | `X-Original-To` | Postfix catch-all: původní RCPT TO |
+| 3 | `Envelope-To` / `X-Envelope-To` | Exim, někteří cloud sendři |
+| 4 | `Received: … for <addr>` | Poslední Received: s "for" klíčovým slovem = nejstarší inbound hop |
+| 5 | `To:` mailboxes | Všechny (ne jen první) |
+| 6 | `Cc:` mailboxes | Jako poslední záchrana |
+
+#### Chování retired aliasů
+
+Retired alias (`MasterMailboxIndex.IsAliasRetired = true`) **nezastaví** chain — resolver pokračuje dalším kandidátem. Do `Unrouted` se jde až když **žádný** kandidát nenamatchuje aktivní alias.
+
+#### Návratová hodnota
+
+`AliasResolution` record: `MatchedAlias` (local-part), `MatchedHeader` (pro audit), `MasterIndexEntry` (pro tenant scope).
+
+Při `null` výsledku resolver zaloguje všechny prošlé kandidátní adresy na úrovni `Information`.
+
 ---
 
 ## 7. UI patterns (Blazor + MudBlazor)
@@ -629,6 +664,7 @@ Krok-za-krokem:
 | OnRowClick | Vyžaduje explicitní `T` parametr na MudTable kvůli method group resolution. |
 | Dialog sizing | `DialogOptions.BackgroundClass` (NE `ClassBackground`) + `MaxWidth.False` + custom CSS `.dialog-large .mud-dialog { width: 85vw; }`. |
 | Split button | `MudButtonGroup OverrideStyles="false"` + `MudButton` (primární) + `MudMenu` (šipka). |
+| Row secondary actions | Použij `MudMenu Icon="@Icons.Material.Filled.MoreVert"` jako three-dot menu v posledním sloupci gridu pro sekundární akce (např. "Vytvořit šablonu"). Primární akce zůstávají jako `MudIconButton`. |
 
 ### 7.4 Generic komponenty s `@typeparam`
 
