@@ -22,6 +22,10 @@ namespace Fakvio.Infrastructure.Service;
 /// Concurrency: <see cref="AdvisoryLock"/> guarantees that only ONE cycle runs at a
 /// time across the entire deployment (multi-replica, multi-host). Callers that lose
 /// the lock get back <c>Skipped=true</c> and a benign reason, never an exception.
+///
+/// Alias routing is delegated to <see cref="InboundAliasRouter"/> which walks a
+/// multi-header fallback chain (Delivered-To → X-Original-To → Envelope-To →
+/// Received-for → To → Cc) to handle catch-all / forwarded / relayed mail correctly.
 /// </summary>
 public class ImapPollService : IImapPollService
 {
@@ -36,14 +40,19 @@ public class ImapPollService : IImapPollService
     private readonly NpgsqlDataSource _dataSource;
     private readonly ILogger<ImapPollService> _logger;
 
+    // InboundAliasRouter is stateless — one instance per ImapPollService is fine.
+    private readonly InboundAliasRouter _aliasRouter;
+
     public ImapPollService(
         IServiceScopeFactory scopeFactory,
         NpgsqlDataSource dataSource,
-        ILogger<ImapPollService> logger)
+        ILogger<ImapPollService> logger,
+        ILogger<InboundAliasRouter> aliasRouterLogger)
     {
         _scopeFactory = scopeFactory;
         _dataSource = dataSource;
         _logger = logger;
+        _aliasRouter = new InboundAliasRouter(aliasRouterLogger);
     }
 
     /// <inheritdoc />
@@ -162,28 +171,24 @@ public class ImapPollService : IImapPollService
         var master = outerScope.ServiceProvider.GetRequiredService<MasterDbContext>();
         var tenantFactory = outerScope.ServiceProvider.GetRequiredService<ITenantDbContextFactory>();
 
-        // Pick the alias from the To: / Delivered-To headers.
-        var toAddress = message.To.Mailboxes.FirstOrDefault()?.Address
-            ?? message.Headers["Delivered-To"];
-        var alias = ExtractLocalPart(toAddress);
+        // Load InboundDomain from settings for the optional domain-part check.
+        var settings = await master.PaymentMatchingSystemSettings.AsNoTracking().FirstOrDefaultAsync(ct);
+        var inboundDomain = settings?.InboundDomain;
 
-        if (string.IsNullOrWhiteSpace(alias))
+        // Delegate alias resolution to InboundAliasRouter — walks the multi-header
+        // fallback chain (Delivered-To → X-Original-To → Envelope-To → Received-for
+        // → To → Cc) so catch-all / forwarded / relayed mail is correctly routed.
+        var resolution = await _aliasRouter.ResolveAsync(message, master, inboundDomain, ct);
+
+        if (resolution is null)
         {
-            _logger.LogInformation("Message UID {Uid} has no routable To: header — moving to unrouted", uid);
+            _logger.LogInformation(
+                "Message UID {Uid} could not be routed to any active alias — moving to unrouted", uid);
             await inbox.MoveToAsync(uid, unroutedFolder, ct);
             return HandleOutcome.Unrouted;
         }
 
-        var index = await master.MasterMailboxIndex
-            .AsNoTracking()
-            .FirstOrDefaultAsync(i => i.InboundAlias == alias && !i.IsAliasRetired, ct);
-
-        if (index == null)
-        {
-            _logger.LogInformation("Unknown or retired alias '{Alias}' — moving UID {Uid} to unrouted", alias, uid);
-            await inbox.MoveToAsync(uid, unroutedFolder, ct);
-            return HandleOutcome.Unrouted;
-        }
+        var index = resolution.MasterIndexEntry;
 
         // Resolve the tenant's schema and create a tenant-scoped DbContext.
         using var tenantScope = outerScope.ServiceProvider.CreateScope();
@@ -200,6 +205,12 @@ public class ImapPollService : IImapPollService
             matcher,
             tenantScope.ServiceProvider.GetRequiredService<ILogger<InboundEmailProcessor>>());
 
+        // Use the matched alias as the canonical ToAddress so the archive record
+        // reflects the actual routing address, not whatever was in the To: header
+        // (which may differ for catch-all / forwarded messages).
+        var toAddress = message.To.Mailboxes.FirstOrDefault()?.Address
+            ?? $"{resolution.MatchedAlias}@{inboundDomain ?? "fakvio.cz"}";
+
         var payload = new InboundEmailPayload(
             BankAccountMailboxId: index.TenantBankAccountMailboxId,
             MessageId: message.MessageId ?? string.Empty,
@@ -207,7 +218,7 @@ public class ImapPollService : IImapPollService
             ServerReceivedAt: DateTime.UtcNow,
             FromAddress: message.From.Mailboxes.FirstOrDefault()?.Address ?? string.Empty,
             FromDisplayName: message.From.Mailboxes.FirstOrDefault()?.Name,
-            ToAddress: toAddress ?? string.Empty,
+            ToAddress: toAddress,
             Subject: message.Subject,
             EmailDate: message.Date != default ? message.Date.UtcDateTime : null,
             TextBody: message.TextBody,
@@ -239,14 +250,6 @@ public class ImapPollService : IImapPollService
         {
             return await personal.CreateAsync(name, isMessageFolder: true, ct);
         }
-    }
-
-    /// <summary>Extracts "alias" from "alias@domain" (case-insensitive). Returns empty on malformed input.</summary>
-    internal static string ExtractLocalPart(string? address)
-    {
-        if (string.IsNullOrWhiteSpace(address)) return string.Empty;
-        var at = address.IndexOf('@');
-        return at <= 0 ? string.Empty : address[..at].ToLowerInvariant();
     }
 
     /// <summary>
