@@ -1505,7 +1505,6 @@
   <data name="EpoDownloadControlStatement" xml:space="preserve"><value>Stáhnout EPO – kontrolní hlášení</value></data>
   <data name="EpoHeaderIncomplete" xml:space="preserve"><value>Nastavení EPO jsou neúplná. Vyplňte chybějící pole v Nastavení firmy: {0}</value></data>
   <data name="EpoNotVatPayer" xml:space="preserve"><value>Tato funkce je dostupná pouze pro plátce DPH.</value></data>
-  <data name="EpoDownloading" xml:space="preserve"><value>Generuji EPO soubor...</value></data>
   <data name="EpoDownloadError" xml:space="preserve"><value>Chyba při generování EPO: {0}</value></data>
   <data name="EpoGoToSettings" xml:space="preserve"><value>Přejít do nastavení firmy</value></data>
 </root>

@@ -211,7 +211,7 @@
                 @* Period type radio — Monthly vs Quarterly. *@
                 <MudItem xs="12" sm="3">
                     <MudText Typo="Typo.caption" Class="mb-1">@L["EpoPeriodType"]</MudText>
-                    <MudRadioGroup T="EVatPeriodType" @bind-Value="_epoPeriodType">
+                    <MudRadioGroup T="EVatPeriodType" Value="_epoPeriodType" ValueChanged="OnPeriodTypeChanged">
                         <MudRadio T="EVatPeriodType" Value="EVatPeriodType.Monthly">@L["EpoMonthly"]</MudRadio>
                         <MudRadio T="EVatPeriodType" Value="EVatPeriodType.Quarterly">@L["EpoQuarterly"]</MudRadio>
                     </MudRadioGroup>
@@ -457,5 +457,23 @@
     private void GoToCompanySettings()
     {
         Navigation.NavigateTo("/my-company");
+    }
+
+    /// <summary>
+    /// Called when the user toggles between Monthly and Quarterly.
+    /// Clamps _epoPeriod to keep it valid for the new period type so that
+    /// the MudSelect always has a matching item and the download request is correct.
+    ///   Monthly  → quarters 1-4 map to months 1/4/7/10; any existing month is kept if valid (1-12).
+    ///   Quarterly → month N maps to its quarter: Math.Clamp((month+2)/3, 1, 4).
+    /// </summary>
+    private void OnPeriodTypeChanged(EVatPeriodType newType)
+    {
+        _epoPeriodType = newType;
+
+        _epoPeriod = newType == EVatPeriodType.Quarterly
+            // Convert current month to its quarter (month 8 → Q3, month 13+ clamped to Q4).
+            ? Math.Clamp((_epoPeriod + 2) / 3, 1, 4)
+            // Ensure month is in 1-12 range (quarterly value 1-4 already satisfies this).
+            : Math.Clamp(_epoPeriod, 1, 12);
     }
 }

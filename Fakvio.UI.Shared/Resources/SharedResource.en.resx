@@ -1505,7 +1505,6 @@
   <data name="EpoDownloadControlStatement" xml:space="preserve"><value>Download EPO – control statement</value></data>
   <data name="EpoHeaderIncomplete" xml:space="preserve"><value>EPO settings are incomplete. Fill in the missing fields in Company Settings: {0}</value></data>
   <data name="EpoNotVatPayer" xml:space="preserve"><value>This feature is available for VAT payers only.</value></data>
-  <data name="EpoDownloading" xml:space="preserve"><value>Generating EPO file...</value></data>
   <data name="EpoDownloadError" xml:space="preserve"><value>Error generating EPO: {0}</value></data>
   <data name="EpoGoToSettings" xml:space="preserve"><value>Go to company settings</value></data>
 </root>
