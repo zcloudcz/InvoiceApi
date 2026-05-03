@@ -2,12 +2,17 @@
 @attribute [Authorize]
 
 @using Fakvio.Contracts.Dto.VatReport
+@using Fakvio.Domain.Enums
 @using Fakvio.UI.Shared.Services
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.Extensions.Localization
 
 @inject VatReportApiService VatReportService
+@inject ClientApiService ClientService
 @inject IStringLocalizer<SharedResource> L
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
 
 <PageTitle>@L["VatReport_Title"]</PageTitle>
 
@@ -154,17 +159,189 @@
     </MudTable>
 }
 
+@* ── EPO Export Section ─────────────────────────────────────────────── *@
+@if (_issuerLoaded)
+{
+    @if (!_isVatPayer)
+    {
+        @* Non-VAT payer: show informational alert and hide all EPO controls. *@
+        <MudAlert Severity="Severity.Info" Class="mt-4">
+            @L["EpoNotVatPayer"]
+        </MudAlert>
+    }
+    else
+    {
+        <MudPaper Class="pa-4 mt-6" Elevation="1">
+            <MudText Typo="Typo.h6" Class="mb-4">
+                <MudIcon Icon="@Icons.Material.Filled.FileDownload" Class="mr-2" />
+                @L["EpoExportSection"]
+            </MudText>
+
+            @* EPO_HEADER_INCOMPLETE error alert with missing fields list and settings link. *@
+            @if (_epoHeaderIncomplete)
+            {
+                <MudAlert Severity="Severity.Warning" Class="mb-3">
+                    @string.Format(L["EpoHeaderIncomplete"].Value, string.Join(", ", _epoMissingFields))
+                    <MudButton Variant="Variant.Text" Size="Size.Small"
+                               OnClick="GoToCompanySettings" Class="ml-2">
+                        @L["EpoGoToSettings"]
+                    </MudButton>
+                </MudAlert>
+            }
+
+            @* Generic EPO error alert (non-HEADER_INCOMPLETE failures). *@
+            @if (_epoGenericError is not null)
+            {
+                <MudAlert Severity="Severity.Error" Class="mb-3">
+                    @string.Format(L["EpoDownloadError"].Value, _epoGenericError)
+                </MudAlert>
+            }
+
+            <MudGrid>
+                @* Year selector — current year is default. *@
+                <MudItem xs="12" sm="3">
+                    <MudSelect T="int" Label="@L["EpoYear"]" @bind-Value="_epoYear">
+                        @foreach (var y in _epoYears)
+                        {
+                            <MudSelectItem Value="y">@y</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+
+                @* Period type radio — Monthly vs Quarterly. *@
+                <MudItem xs="12" sm="3">
+                    <MudText Typo="Typo.caption" Class="mb-1">@L["EpoPeriodType"]</MudText>
+                    <MudRadioGroup T="EVatPeriodType" @bind-Value="_epoPeriodType">
+                        <MudRadio T="EVatPeriodType" Value="EVatPeriodType.Monthly">@L["EpoMonthly"]</MudRadio>
+                        <MudRadio T="EVatPeriodType" Value="EVatPeriodType.Quarterly">@L["EpoQuarterly"]</MudRadio>
+                    </MudRadioGroup>
+                </MudItem>
+
+                @* Period number — month list (Monthly) or quarter list (Quarterly). *@
+                <MudItem xs="12" sm="3">
+                    @if (_epoPeriodType == EVatPeriodType.Monthly)
+                    {
+                        <MudSelect T="int" Label="@L["EpoMonth"]" @bind-Value="_epoPeriod">
+                            @foreach (var m in Enumerable.Range(1, 12))
+                            {
+                                <MudSelectItem Value="m">@m</MudSelectItem>
+                            }
+                        </MudSelect>
+                    }
+                    else
+                    {
+                        <MudSelect T="int" Label="@L["EpoQuarter"]" @bind-Value="_epoPeriod">
+                            @foreach (var q in Enumerable.Range(1, 4))
+                            {
+                                <MudSelectItem Value="q">Q@q</MudSelectItem>
+                            }
+                        </MudSelect>
+                    }
+                </MudItem>
+
+                @* Download buttons — side by side on wider screens. *@
+                <MudItem xs="12" sm="9" Class="d-flex align-end flex-wrap gap-2">
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.FileDownload"
+                               OnClick="DownloadVatReturn"
+                               Disabled="_epoDownloading">
+                        @if (_epoDownloading && _epoActiveButton == "return")
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                        }
+                        @L["EpoDownloadVatReturn"]
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined"
+                               Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.FileDownload"
+                               OnClick="DownloadControlStatement"
+                               Disabled="_epoDownloading">
+                        @if (_epoDownloading && _epoActiveButton == "control")
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                        }
+                        @L["EpoDownloadControlStatement"]
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+    }
+}
+
 @code {
+    // ── VAT report state ──────────────────────────────────────────────────────
     private VatReportDto? _report;
     private bool _loading;
     private DateTime? _periodFrom;
     private DateTime? _periodTo;
 
-    protected override void OnInitialized()
+    // ── Issuer state (needed to check IsVatPayer) ─────────────────────────────
+    private bool _isVatPayer;
+    private bool _issuerLoaded;
+
+    // ── EPO export state ──────────────────────────────────────────────────────
+    private int _epoYear;
+    private EVatPeriodType _epoPeriodType = EVatPeriodType.Monthly;
+    private int _epoPeriod;
+
+    // Year choices: 3 years back through current year + 1 ahead (safe for pre-filing).
+    private List<int> _epoYears = [];
+
+    private bool _epoDownloading;
+    // Tracks which button is active to show spinner on the right button only.
+    private string? _epoActiveButton;
+
+    // Error state
+    private bool _epoHeaderIncomplete;
+    private List<string> _epoMissingFields = [];
+    private string? _epoGenericError;
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
+
+    protected override async Task OnInitializedAsync()
     {
-        // Default to current month
+        // Default to current month for the VAT report period filter.
         SetCurrentMonth();
+
+        // Build year choices: 3 years back through next year.
+        var now = DateTime.Today;
+        _epoYear = now.Year;
+        _epoYears = Enumerable.Range(now.Year - 3, 5).ToList(); // e.g. 2023–2027
+
+        // Default period to current month (or Q1 if quarterly is preselected later).
+        _epoPeriod = now.Month;
+
+        // Load issuer to check IsVatPayer — drives EPO section visibility.
+        await LoadIssuerAsync();
     }
+
+    // ── Issuer loading ────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Loads the current company's issuer record to read IsVatPayer.
+    /// The EPO section is hidden entirely for non-VAT payers.
+    /// </summary>
+    private async Task LoadIssuerAsync()
+    {
+        try
+        {
+            var issuer = await ClientService.GetIssuerAsync();
+            _isVatPayer = issuer?.IsVatPayer ?? false;
+        }
+        catch
+        {
+            // If the issuer cannot be loaded, default to showing the EPO section
+            // so VAT payers are not locked out due to a transient error.
+            _isVatPayer = true;
+        }
+        finally
+        {
+            _issuerLoaded = true;
+        }
+    }
+
+    // ── VAT report ────────────────────────────────────────────────────────────
 
     private async Task LoadReport()
     {
@@ -205,5 +382,80 @@
         var firstOfCurrentQuarter = new DateTime(now.Year, quarterMonth, 1);
         _periodFrom = firstOfCurrentQuarter.AddMonths(-3);
         _periodTo = firstOfCurrentQuarter.AddDays(-1);
+    }
+
+    // ── EPO download ──────────────────────────────────────────────────────────
+
+    private Task DownloadVatReturn()
+        => DownloadEpoAsync("return", () =>
+            VatReportService.DownloadEpoVatReturnAsync(_epoYear, _epoPeriod, _epoPeriodType));
+
+    private Task DownloadControlStatement()
+        => DownloadEpoAsync("control", () =>
+            VatReportService.DownloadEpoControlStatementAsync(_epoYear, _epoPeriod, _epoPeriodType));
+
+    /// <summary>
+    /// Shared logic for both EPO download buttons.
+    /// On success: triggers a browser download via the downloadFile JS function.
+    /// On EPO_HEADER_INCOMPLETE: shows the incomplete-settings alert with missing fields.
+    /// On VAT_PAYER_REQUIRED: shows a snackbar (should not normally appear since we already
+    ///   hide the section for non-VAT payers, but guards against race conditions).
+    /// On any other error: shows the generic error alert.
+    /// </summary>
+    private async Task DownloadEpoAsync(string buttonKey, Func<Task<Models.EpoDownloadResult>> download)
+    {
+        // Reset previous error state before each attempt.
+        _epoHeaderIncomplete = false;
+        _epoMissingFields = [];
+        _epoGenericError = null;
+
+        _epoDownloading = true;
+        _epoActiveButton = buttonKey;
+
+        try
+        {
+            var result = await download();
+
+            if (result.IsSuccess && result.FileBytes is not null && result.FileName is not null)
+            {
+                // Trigger browser download using the same JS helper as ISDOC/PDF downloads.
+                var base64 = Convert.ToBase64String(result.FileBytes);
+                await JS.InvokeVoidAsync("downloadFile", result.FileName, base64, "application/xml");
+                return;
+            }
+
+            // Handle known error codes.
+            switch (result.ErrorCode)
+            {
+                case "EPO_HEADER_INCOMPLETE":
+                    _epoHeaderIncomplete = true;
+                    _epoMissingFields = result.MissingFields;
+                    break;
+
+                case "VAT_PAYER_REQUIRED":
+                    // Refresh issuer state in case it changed and re-render.
+                    _isVatPayer = false;
+                    Snackbar.Add(L["EpoNotVatPayer"].Value, Severity.Warning);
+                    break;
+
+                default:
+                    _epoGenericError = result.ErrorMessage ?? result.ErrorCode ?? "Unknown error";
+                    break;
+            }
+        }
+        finally
+        {
+            _epoDownloading = false;
+            _epoActiveButton = null;
+        }
+    }
+
+    /// <summary>
+    /// Navigates to company settings (/my-company) where the user can fill in
+    /// the missing EPO header fields (EpoTaxOfficeCode, EpoContactEmail, etc.).
+    /// </summary>
+    private void GoToCompanySettings()
+    {
+        Navigation.NavigateTo("/my-company");
     }
 }
