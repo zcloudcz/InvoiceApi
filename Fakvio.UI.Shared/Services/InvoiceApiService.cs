@@ -361,4 +361,15 @@ public class FakvioService : ApiClientBase
             return [];
         }
     }
+
+    /// <summary>
+    /// Creates a full copy of an invoice as a new Draft document.
+    /// Calls POST /api/invoice/{id}/copy on the backend.
+    /// Returns the newly created invoice DTO (with the new DocumentNumber),
+    /// or null if the copy failed.
+    /// </summary>
+    public async Task<InvoiceDto?> CopyAsync(long id)
+    {
+        return await PostWithoutBodyAsync<InvoiceDto>($"/api/invoice/{id}/copy");
+    }
 }
