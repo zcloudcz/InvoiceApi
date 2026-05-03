@@ -221,4 +221,120 @@ public class ReverseChargeCodeServiceTests : IDisposable
 
         result.ShouldBeNull();
     }
+
+    // ── Boundary: ValidTo == today (inclusive) ────────────────────────────────
+
+    [Fact]
+    public async Task GetAllActiveAsync_IncludesRecord_WhenValidToEqualsToday()
+    {
+        // A code expiring exactly today must still be returned (ValidTo is inclusive).
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        _context.ReverseChargeCode.Add(new ReverseChargeCode
+        {
+            Id = 100, Code = "boundary-to", NameCs = "Boundary ValidTo",
+            NameEn = null, ParagraphRef = "§92b",
+            ValidFrom = new DateOnly(2016, 1, 1), ValidTo = today,
+            IsActive = true, CreatedAt = SeedCreatedAt
+        });
+        await _context.SaveChangesAsync();
+
+        var result = await _service.GetAllActiveAsync();
+
+        result.ShouldContain(r => r.Code == "boundary-to");
+    }
+
+    // ── Boundary: ValidFrom == today (inclusive) ──────────────────────────────
+
+    [Fact]
+    public async Task GetAllActiveAsync_IncludesRecord_WhenValidFromEqualsToday()
+    {
+        // A code starting exactly today must be returned (ValidFrom is inclusive).
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        _context.ReverseChargeCode.Add(new ReverseChargeCode
+        {
+            Id = 101, Code = "boundary-from", NameCs = "Boundary ValidFrom",
+            NameEn = null, ParagraphRef = "§92b",
+            ValidFrom = today, ValidTo = null,
+            IsActive = true, CreatedAt = SeedCreatedAt
+        });
+        await _context.SaveChangesAsync();
+
+        var result = await _service.GetAllActiveAsync();
+
+        result.ShouldContain(r => r.Code == "boundary-from");
+    }
+
+    // ── Empty database edge case ──────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetAllActiveAsync_ReturnsEmptyList_WhenNoRecordsExist()
+    {
+        // Arrange: create a fresh context with no seed data
+        var options = new DbContextOptionsBuilder<TenantDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        using var emptyContext = new TenantDbContext(options);
+        var logger = NSubstitute.Substitute.For<Microsoft.Extensions.Logging.ILogger<ReverseChargeCodeService>>();
+        var emptyService = new ReverseChargeCodeService(emptyContext, logger);
+
+        var result = await emptyService.GetAllActiveAsync();
+
+        result.ShouldNotBeNull();
+        result.ShouldBeEmpty();
+    }
+
+    // ── Alphanumeric code lookup ───────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetByCodeAsync_ReturnsRecord_ForAlphanumericCode()
+    {
+        // Codes "1a" and "3a" exist in the MFČR číselník — service must handle them.
+        _context.ReverseChargeCode.Add(new ReverseChargeCode
+        {
+            Id = 102, Code = "1a", NameCs = "Investiční zlato", NameEn = "Investment gold",
+            ParagraphRef = "§92b",
+            ValidFrom = new DateOnly(2016, 1, 1), ValidTo = null,
+            IsActive = true, CreatedAt = SeedCreatedAt
+        });
+        await _context.SaveChangesAsync();
+
+        var result = await _service.GetByCodeAsync("1a");
+
+        result.ShouldNotBeNull();
+        result.Code.ShouldBe("1a");
+        result.NameCs.ShouldBe("Investiční zlato");
+        result.ParagraphRef.ShouldBe("§92b");
+    }
+
+    // ── DTO field mapping completeness ────────────────────────────────────────
+
+    [Fact]
+    public async Task GetByIdAsync_MapsAllDtoFields_Correctly()
+    {
+        // Verifies that ZMapper maps every field of ReverseChargeCode → ReverseChargeCodeDto.
+        // Note: CreatedAt is overwritten to DateTime.UtcNow by TenantDbContext.SaveChanges(),
+        //       so we only assert it is not the default DateTime value.
+        var result = await _service.GetByIdAsync(2);
+
+        result.ShouldNotBeNull();
+        result.Id.ShouldBe(2L);
+        result.Code.ShouldBe("5");
+        result.NameCs.ShouldBe("Mobilní telefony");
+        result.NameEn.ShouldBe("Mobile phones");
+        result.ParagraphRef.ShouldBe("§92c");
+        result.ValidFrom.ShouldBe(new DateOnly(2016, 1, 1));
+        result.ValidTo.ShouldBeNull();
+        result.IsActive.ShouldBeTrue();
+        result.CreatedAt.ShouldNotBe(default);
+    }
+
+    [Fact]
+    public async Task GetByCodeAsync_MapsNullNameEn_AsNullInDto()
+    {
+        // NameEn is optional — when null on the entity it must be null on the DTO.
+        var result = await _service.GetByCodeAsync("99");
+
+        result.ShouldNotBeNull();
+        result.NameEn.ShouldBeNull();
+    }
 }
