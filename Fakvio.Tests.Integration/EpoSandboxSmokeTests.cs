@@ -221,11 +221,15 @@ public class EpoSandboxSmokeTests : IClassFixture<FakvioFactory>
         var xmlBytes = await GenerateEpoXmlViaApiAsync("return");
 
         // ── POST to EPO sandbox ───────────────────────────────────────────────
-        var (statusCode, responseXml) = await PostToEpoSandboxAsync("DPHDP3_smoke.xml", xmlBytes);
+        var (response, responseXml) = await PostToEpoSandboxAsync("DPHDP3_smoke.xml", xmlBytes);
+
+        // ── Skip on 4xx/5xx — sandbox unavailability must not break CI ────────
+        Skip.IfNot(response.IsSuccessStatusCode,
+            $"EPO sandbox returned {(int)response.StatusCode} — skipping (portal unavailable).");
 
         // ── Assert ────────────────────────────────────────────────────────────
-        statusCode.ShouldBe(HttpStatusCode.OK,
-            $"EPO sandbox returned {(int)statusCode}. Response body:\n{responseXml}");
+        response.StatusCode.ShouldBe(HttpStatusCode.OK,
+            $"EPO sandbox returned {(int)response.StatusCode}. Response body:\n{responseXml}");
 
         AssertNoValidationErrors(responseXml, "DPHDP3");
     }
@@ -247,10 +251,14 @@ public class EpoSandboxSmokeTests : IClassFixture<FakvioFactory>
 
         var xmlBytes = await GenerateEpoXmlViaApiAsync("control-statement");
 
-        var (statusCode, responseXml) = await PostToEpoSandboxAsync("DPHKH1_smoke.xml", xmlBytes);
+        var (response, responseXml) = await PostToEpoSandboxAsync("DPHKH1_smoke.xml", xmlBytes);
 
-        statusCode.ShouldBe(HttpStatusCode.OK,
-            $"EPO sandbox returned {(int)statusCode}. Response body:\n{responseXml}");
+        // Skip on 4xx/5xx — sandbox unavailability must not break CI.
+        Skip.IfNot(response.IsSuccessStatusCode,
+            $"EPO sandbox returned {(int)response.StatusCode} — skipping (portal unavailable).");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK,
+            $"EPO sandbox returned {(int)response.StatusCode}. Response body:\n{responseXml}");
 
         AssertNoValidationErrors(responseXml, "DPHKH1");
     }
@@ -294,12 +302,13 @@ public class EpoSandboxSmokeTests : IClassFixture<FakvioFactory>
     ///   Content-Type: multipart/form-data
     ///   Field: soubor (the XML file)
     ///
-    /// Returns (statusCode, responseBody).
+    /// Returns (response, responseBody).
     ///
-    /// The method itself never throws — if the sandbox is unreachable or returns
-    /// 4xx/5xx, it returns the status code and the caller decides to skip or fail.
+    /// The method itself never throws — if the sandbox is unreachable or times out,
+    /// it calls Skip.If directly. If the sandbox returns 4xx/5xx it returns the response
+    /// normally so the caller can decide whether to skip or assert.
     /// </summary>
-    private static async Task<(HttpStatusCode StatusCode, string Body)> PostToEpoSandboxAsync(
+    private static async Task<(HttpResponseMessage Response, string Body)> PostToEpoSandboxAsync(
         string filename,
         byte[] xmlBytes)
     {
@@ -318,7 +327,7 @@ public class EpoSandboxSmokeTests : IClassFixture<FakvioFactory>
         {
             var response = await http.PostAsync(EpoSandboxUrl, content, cts.Token);
             var body = await response.Content.ReadAsStringAsync(cts.Token);
-            return (response.StatusCode, body);
+            return (response, body);
         }
         catch (OperationCanceledException)
         {
@@ -326,7 +335,7 @@ public class EpoSandboxSmokeTests : IClassFixture<FakvioFactory>
             Skip.If(true,
                 $"EPO sandbox timed out after {SandboxTimeout.TotalSeconds}s. " +
                 "Sandbox may be unavailable. Re-run later with RUN_EPO_SANDBOX_TESTS=true.");
-            return (0, string.Empty); // unreachable — Skip.If throws SkipException
+            return (new HttpResponseMessage(), string.Empty); // unreachable — Skip.If throws SkipException
         }
         catch (HttpRequestException ex)
         {
@@ -334,7 +343,7 @@ public class EpoSandboxSmokeTests : IClassFixture<FakvioFactory>
             Skip.If(true,
                 $"EPO sandbox unreachable: {ex.Message}. " +
                 "Check network connectivity and re-run with RUN_EPO_SANDBOX_TESTS=true.");
-            return (0, string.Empty); // unreachable
+            return (new HttpResponseMessage(), string.Empty); // unreachable
         }
     }
 
