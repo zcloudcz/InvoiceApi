@@ -339,4 +339,209 @@ public class InboundAliasRouterTests : IDisposable
     [Fact]
     public void ExtractLocalPart_ReturnsEmptyWhenNoAtSign() =>
         InboundAliasRouter.ExtractLocalPart("noemail").ShouldBe(string.Empty);
+
+    // ─── X-Envelope-To header ─────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Resolve_MatchesByXEnvelopeTo_WhenEnvelopeToAbsent()
+    {
+        // X-Envelope-To is the variant used by some sending providers when
+        // Envelope-To is not present.
+        var msg = BuildMessage($"forward@{InboundDomain}");
+        AddHeader(msg, "X-Envelope-To", $"{ActiveAlias}@{InboundDomain}");
+
+        var result = await _sut.ResolveAsync(msg, _master, InboundDomain);
+
+        result.ShouldNotBeNull();
+        result.MatchedAlias.ShouldBe(ActiveAlias);
+        result.MatchedHeader.ShouldBe("X-Envelope-To");
+    }
+
+    // ─── Cc: header match ─────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Resolve_MatchesByCc_WhenNoOtherHeaderMatches()
+    {
+        // Cc: is the last-resort header. All earlier candidates are unknown.
+        var msg = new MimeMessage();
+        msg.Cc.Add(MailboxAddress.Parse($"{ActiveAlias}@{InboundDomain}"));
+
+        var result = await _sut.ResolveAsync(msg, _master, InboundDomain);
+
+        result.ShouldNotBeNull();
+        result.MatchedAlias.ShouldBe(ActiveAlias);
+        result.MatchedHeader.ShouldBe("Cc");
+    }
+
+    // ─── Multiple Delivered-To values ────────────────────────────────────────
+
+    [Fact]
+    public async Task Resolve_MultipleDeliveredTo_PicksFirstActiveAlias()
+    {
+        // When multiple Delivered-To headers are present the resolver should
+        // return the first one that maps to an active alias.
+        var msg = BuildMessage($"unknown@{InboundDomain}");
+        AddHeader(msg, "Delivered-To", $"not-found@{InboundDomain}");          // unknown
+        AddHeader(msg, "Delivered-To", $"{ActiveAlias}@{InboundDomain}");       // active
+        AddHeader(msg, "Delivered-To", $"{AnotherActiveAlias}@{InboundDomain}"); // also active, but second
+
+        var result = await _sut.ResolveAsync(msg, _master, InboundDomain);
+
+        // The first active alias encountered wins.
+        result.ShouldNotBeNull();
+        result.MatchedAlias.ShouldBe(ActiveAlias);
+        result.MatchedHeader.ShouldBe("Delivered-To");
+    }
+
+    // ─── Domain filter ────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Resolve_SkipsCandidateWithWrongDomain_WhenInboundDomainSet()
+    {
+        // The active alias exists in the DB but the address in the header has
+        // a different domain. With inboundDomain set the resolver must ignore it.
+        var msg = BuildMessage($"{ActiveAlias}@other-domain.example.com");
+
+        var result = await _sut.ResolveAsync(msg, _master, inboundDomain: InboundDomain);
+
+        result.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task Resolve_DomainCheckIsCaseInsensitive()
+    {
+        // Domain comparison must be case-insensitive.
+        var msg = BuildMessage($"{ActiveAlias}@FAKVIO.CZ");
+
+        var result = await _sut.ResolveAsync(msg, _master, inboundDomain: "fakvio.cz");
+
+        result.ShouldNotBeNull();
+        result.MatchedAlias.ShouldBe(ActiveAlias);
+    }
+
+    // ─── Empty message ────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Resolve_ReturnsNull_WhenMessageHasNoRoutingHeaders()
+    {
+        // A completely bare message (no To, no Cc, no special headers) must not
+        // throw — it should simply return null.
+        var msg = new MimeMessage();
+
+        var result = await _sut.ResolveAsync(msg, _master, InboundDomain);
+
+        result.ShouldBeNull();
+    }
+
+    // ─── AliasResolution record integrity ────────────────────────────────────
+
+    [Fact]
+    public async Task Resolve_AliasResolution_ContainsCorrectMailboxId()
+    {
+        // MasterIndexEntry.TenantBankAccountMailboxId must be the seeded value
+        // (10) so downstream code can open the correct tenant scope.
+        var msg = BuildMessage($"{ActiveAlias}@{InboundDomain}");
+
+        var result = await _sut.ResolveAsync(msg, _master, InboundDomain);
+
+        result.ShouldNotBeNull();
+        result.MasterIndexEntry.TenantBankAccountMailboxId.ShouldBe(10);
+        result.MasterIndexEntry.TenantSchema.ShouldBe("tenant_1");
+    }
+
+    // ─── ParseReceivedFor — additional edge cases ─────────────────────────────
+
+    [Theory]
+    [InlineData("from smtp.bank.cz by mx.fakvio.cz FOR pay-abc@fakvio.cz; date",
+        "pay-abc@fakvio.cz")]
+    [InlineData("from smtp.bank.cz by mx.fakvio.cz For pay-abc@fakvio.cz; date",
+        "pay-abc@fakvio.cz")]
+    public void ParseReceivedFor_IsCaseInsensitiveOnForKeyword(string header, string expected)
+    {
+        // "FOR" and "For" must match the same as "for".
+        InboundAliasRouter.ParseReceivedFor(header).ShouldBe(expected);
+    }
+
+    [Theory]
+    [InlineData("from beforehand.example.com by mx.fakvio.cz; date")]  // "for" inside hostname
+    [InlineData("from enforce.example.com by mx.fakvio.cz; date")]       // "for" inside word
+    public void ParseReceivedFor_DoesNotMatchForInsideWord(string header)
+    {
+        // "for" that is a substring of a hostname or word must not trigger a match.
+        InboundAliasRouter.ParseReceivedFor(header).ShouldBeNull();
+    }
+
+    // ─── CollectCandidates order and completeness ─────────────────────────────
+
+    [Fact]
+    public void CollectCandidates_ReturnsHeadersInSpecifiedFallbackOrder()
+    {
+        // Verify that the list comes back with Delivered-To before X-Original-To,
+        // before Envelope-To, before To, before Cc — the fallback precedence
+        // from issue #67 spec.
+        var msg = new MimeMessage();
+        msg.To.Add(MailboxAddress.Parse($"to@{InboundDomain}"));
+        msg.Cc.Add(MailboxAddress.Parse($"cc@{InboundDomain}"));
+        AddHeader(msg, "Delivered-To", $"delivered@{InboundDomain}");
+        AddHeader(msg, "X-Original-To", $"xoriginal@{InboundDomain}");
+        AddHeader(msg, "Envelope-To", $"envelope@{InboundDomain}");
+        AddHeader(msg, "X-Envelope-To", $"xenvelope@{InboundDomain}");
+        AddHeader(msg, "Received",
+            $"from smtp.bank.cz by mx.fakvio.cz for received@{InboundDomain}; Fri, 1 Jan 2026");
+
+        var candidates = InboundAliasRouter.CollectCandidates(msg);
+
+        // Extract just the header labels in order.
+        var headers = candidates.Select(c => c.Header).ToList();
+
+        // Delivered-To must appear before X-Original-To
+        headers.IndexOf("Delivered-To").ShouldBeLessThan(headers.IndexOf("X-Original-To"));
+        // X-Original-To before Envelope-To
+        headers.IndexOf("X-Original-To").ShouldBeLessThan(headers.IndexOf("Envelope-To"));
+        // Envelope-To before X-Envelope-To
+        headers.IndexOf("Envelope-To").ShouldBeLessThan(headers.IndexOf("X-Envelope-To"));
+        // X-Envelope-To before Received-for
+        headers.IndexOf("X-Envelope-To").ShouldBeLessThan(headers.IndexOf("Received-for"));
+        // Received-for before To
+        headers.IndexOf("Received-for").ShouldBeLessThan(headers.IndexOf("To"));
+        // To before Cc
+        headers.IndexOf("To").ShouldBeLessThan(headers.IndexOf("Cc"));
+    }
+
+    // ─── ExtractLastReceivedFor — direct unit tests ───────────────────────────
+
+    [Fact]
+    public void ExtractLastReceivedFor_ReturnsNull_WhenNoReceivedHeader()
+    {
+        var msg = BuildMessage($"any@{InboundDomain}");
+        InboundAliasRouter.ExtractLastReceivedFor(msg).ShouldBeNull();
+    }
+
+    [Fact]
+    public void ExtractLastReceivedFor_ReturnsLastMatchingValue_WhenMultipleReceived()
+    {
+        var msg = new MimeMessage();
+        // First Received (most recent hop added last to list) — no "for"
+        AddHeader(msg, "Received", "from mx1 by mx2; date");
+        // Second Received — has a "for" clause
+        AddHeader(msg, "Received",
+            $"from smtp.bank.cz by mx1 for first@{InboundDomain}; date");
+        // Third Received — also has a "for" clause (should override second)
+        AddHeader(msg, "Received",
+            $"from smtp2.bank.cz by mx1 for last@{InboundDomain}; date");
+
+        var result = InboundAliasRouter.ExtractLastReceivedFor(msg);
+
+        // The last Received: with a "for" clause wins.
+        result.ShouldBe($"last@{InboundDomain}");
+    }
+
+    [Fact]
+    public void ExtractLastReceivedFor_ReturnsNull_WhenReceivedHasNoForClause()
+    {
+        var msg = BuildMessage($"any@{InboundDomain}");
+        AddHeader(msg, "Received", "from smtp.example.com by mx.fakvio.cz; Fri, 1 Jan 2026");
+
+        InboundAliasRouter.ExtractLastReceivedFor(msg).ShouldBeNull();
+    }
 }
