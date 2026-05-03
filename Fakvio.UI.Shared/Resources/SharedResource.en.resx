@@ -439,6 +439,9 @@
   <data name="Invoice_Restored" xml:space="preserve"><value>Invoice restored</value></data>
   <data name="Invoice_Issued" xml:space="preserve"><value>Invoice issued</value></data>
   <data name="Invoice_MarkedAsPaid" xml:space="preserve"><value>Invoice marked as paid</value></data>
+  <data name="Invoice_Copy" xml:space="preserve"><value>Copy invoice</value></data>
+  <data name="Invoice_CopySuccess" xml:space="preserve"><value>Invoice copied as #{0}</value></data>
+  <data name="Invoice_CopyError" xml:space="preserve"><value>Failed to copy invoice</value></data>
   <data name="FileName_Invoice" xml:space="preserve"><value>Invoice</value></data>
   <data name="FileName_CreditNote" xml:space="preserve"><value>CreditNote</value></data>
   <data name="FileName_Invoices" xml:space="preserve"><value>Invoices</value></data>

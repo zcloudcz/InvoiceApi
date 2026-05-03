@@ -709,6 +709,29 @@ Při `null` výsledku resolver zaloguje všechny prošlé kandidátní adresy na
 - `Value` + `ValueChanged` (NE `@bind-Value`) — trigger parent notify on each change.
 - Jednodušší než `MudDataGrid EditMode` pro custom layouty.
 
+### 7.9 Grid row actions — primary vs. secondary
+
+`TemplateColumn` actions column pattern in `MudDataGrid`:
+
+- **Primary actions** (1–5 icons): `MudIconButton` or `MudTooltip` + `MudIconButton` inline.
+  Visibility is controlled by `@if` guards on Status/DocumentType.
+- **Secondary / overflow actions**: `MudMenu` with `Icon="@Icons.Material.Filled.MoreVert"` (three-dot button) placed last in the cell.
+  Use this when an action is infrequent or would clutter the primary row.
+
+Example — "Create from template" moved to the three-dot overflow menu in `Invoices.razor`:
+```razor
+<MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" Color="Color.Default"
+         title="@L["Label_Actions"].Value" Dense="true">
+    <MudMenuItem OnClick="@(() => OpenCreateTemplateDialog(context.Item))"
+                 Icon="@Icons.Material.Filled.BookmarkAdd">
+        @L["Invoice_CreateFromTemplate"]
+    </MudMenuItem>
+</MudMenu>
+```
+
+- Copy / duplicate actions: wrap `MudIconButton` in `MudTooltip` for discoverability.
+- After a mutating action (copy, restore, delete): call `await SearchInvoices()` to refresh the grid — no navigation.
+
 ---
 
 ## 8. Tests

@@ -221,10 +221,26 @@
                 </MudMenu>
                 <MudIconButton Icon="@Icons.Material.Filled.Email" Size="Size.Small" Color="Color.Tertiary"
                                OnClick="@(() => OpenEmailDialog(context.Item))" title="@L["Invoice_SendByEmail"].Value" />
-                <MudTooltip Text="@L["Invoice_CreateFromTemplate"].Value">
-                    <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small" Color="Color.Primary"
-                                   OnClick="@(() => OpenCreateTemplateDialog(context.Item))" Title="@L["Invoice_CreateFromTemplate"].Value" />
-                </MudTooltip>
+                @* Copy icon — duplicates the invoice as a new Draft.
+                   Hidden for CreditNotes (copy semantics don't apply)
+                   and for Deleted invoices (must be restored first). *@
+                @if (context.Item.DocumentType != EDocumentType.CreditNote
+                     && context.Item.Status != EInvoiceStatus.Deleted)
+                {
+                    <MudTooltip Text="@L["Invoice_Copy"].Value">
+                        <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small" Color="Color.Primary"
+                                       OnClick="@(() => CopyInvoice(context.Item.Id))" />
+                    </MudTooltip>
+                }
+                @* Three-dot menu for secondary actions — currently holds "Create from template"
+                   so it is discoverable but does not clutter the primary action row. *@
+                <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" Color="Color.Default"
+                         title="@L["Label_Actions"].Value" Dense="true">
+                    <MudMenuItem OnClick="@(() => OpenCreateTemplateDialog(context.Item))"
+                                 Icon="@Icons.Material.Filled.BookmarkAdd">
+                        @L["Invoice_CreateFromTemplate"]
+                    </MudMenuItem>
+                </MudMenu>
             </CellTemplate>
         </TemplateColumn>
     </Columns>
@@ -665,6 +681,29 @@
             }
         }
         catch (Exception ex) { Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error); }
+    }
+
+    /// <summary>
+    /// Copies the specified invoice as a new Draft document.
+    /// On success shows a toast with the new document number and refreshes the grid.
+    /// On failure shows an error toast — no grid refresh is needed.
+    /// </summary>
+    private async Task CopyInvoice(long id)
+    {
+        try
+        {
+            var copy = await InvoiceService.CopyAsync(id);
+            if (copy != null)
+            {
+                Snackbar.Add(string.Format(L["Invoice_CopySuccess"].Value, copy.DocumentNumber), Severity.Success);
+                await SearchInvoices();
+            }
+            else
+            {
+                Snackbar.Add(L["Invoice_CopyError"].Value, Severity.Error);
+            }
+        }
+        catch (Exception ex) { Snackbar.Add($"{L["Invoice_CopyError"].Value}: {ex.Message}", Severity.Error); }
     }
 
     /// <summary>
