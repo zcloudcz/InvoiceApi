@@ -263,4 +263,63 @@ public class GlobalExceptionMiddlewareTests : IDisposable
             thrownEx,
             Arg.Any<Func<object, Exception?, string>>());
     }
+
+    /// <summary>
+    /// Truly exercises the HasStarted=true guard branch using a mocked HttpResponse.
+    ///
+    /// DefaultHttpContext with MemoryStream always has HasStarted=false, so the
+    /// existing test above never reaches the guard. This test uses NSubstitute to
+    /// return HasStarted=true and verifies that:
+    /// 1. The exception is still logged (logging happens before the guard check).
+    /// 2. The middleware does NOT attempt to write a 500 body (WriteAsync is never called).
+    /// 3. The middleware does not re-throw.
+    /// </summary>
+    [Fact]
+    public async Task ResponseAlreadyStarted_HasStartedTrue_SkipsResponseWrite_AndStillLogs()
+    {
+        // Arrange — build a mock HttpContext where Response.HasStarted == true.
+        // NSubstitute can mock abstract classes, including HttpResponse and HttpContext.
+        var mockResponse = Substitute.For<HttpResponse>();
+        mockResponse.HasStarted.Returns(true);
+
+        // HttpContext.Items is used by the middleware to read the CorrelationId.
+        // We need a real dictionary so the cast to string? works correctly.
+        var items = new Dictionary<object, object?> { ["CorrelationId"] = "corr-has-started" };
+
+        var mockContext = Substitute.For<HttpContext>();
+        mockContext.Response.Returns(mockResponse);
+        mockContext.Items.Returns(items);
+
+        // HttpContext.Request is accessed for Method and Path in the log message.
+        var mockRequest = Substitute.For<HttpRequest>();
+        mockRequest.Method.Returns("GET");
+        mockRequest.Path.Returns(new PathString("/api/test"));
+        mockContext.Request.Returns(mockRequest);
+
+        var env = CreateEnv("Production");
+        var thrownEx = new InvalidOperationException("Streaming already started");
+
+        var middleware = new GlobalExceptionMiddleware(
+            _ => throw thrownEx,
+            _logger,
+            env);
+
+        // Act — must not re-throw even though the response was already started
+        await Should.NotThrowAsync(() => middleware.InvokeAsync(mockContext));
+
+        // Assert 1: exception is logged (logging runs BEFORE the HasStarted guard)
+        _logger.Received(1).Log(
+            LogLevel.Error,
+            Arg.Any<EventId>(),
+            Arg.Any<object>(),
+            thrownEx,
+            Arg.Any<Func<object, Exception?, string>>());
+
+        // Assert 2: StatusCode was never set — the guard prevented the middleware from
+        // touching the response at all (headers are already flushed to the client).
+        // WriteAsync is an extension method so NSubstitute cannot track it directly, but
+        // StatusCode is a virtual property and must remain at its default (0) if the
+        // guard branch was taken.
+        mockResponse.DidNotReceive().StatusCode = Arg.Any<int>();
+    }
 }
