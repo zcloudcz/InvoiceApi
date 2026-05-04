@@ -47,6 +47,14 @@ public class CreateInvoiceFromTemplateDto
     public string? Notes { get; set; }
 
     /// <summary>
+    /// Required when creating a CreditNote from a CreditNote template.
+    /// Identifies the original Invoice that this credit note cancels or partially refunds.
+    /// Czech accounting: credit note (dobropis) must reference the original invoice.
+    /// Null for regular Invoice templates.
+    /// </summary>
+    public long? OriginalInvoiceId { get; set; }
+
+    /// <summary>
     /// Should the invoice be automatically completed (not Draft)?
     /// If false, invoice is created in Draft status
     /// If true, invoice is created and immediately completed (assigned document number)

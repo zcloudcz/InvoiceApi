@@ -1524,7 +1524,18 @@ public class InvoiceService : IInvoiceService
         // and client-specific prefix/suffix.
         // BillingSettings defines how invoices should be generated FOR this particular client
         // (e.g., "-EU" suffix for EU clients, custom sequence for export invoices).
+        //
+        // AsNoTracking() is REQUIRED here — without it, EF Core identity resolution returns the
+        // already-tracked Client instance from the current DbContext scope. If that instance was
+        // loaded earlier (e.g., via FindAsync in CreateInvoiceAsync or
+        // InvoiceTemplateService.CreateInvoiceFromTemplateAsync) without the BillingSettings
+        // Include, the navigation property stays null on the cached entity even after this
+        // Include() call — because EF InMemory performs eager fixup while PostgreSQL does not
+        // populate navigation properties on already-tracked entities that were fetched without
+        // the relevant Include. AsNoTracking() forces a fresh SQL query that always returns the
+        // BillingSettings row regardless of what is in the identity map.
         var client = await _context.Client
+            .AsNoTracking()
             .Include(c => c.BillingSettings)
             .FirstOrDefaultAsync(c => c.Id == invoice.ClientId, cancellationToken);
 
