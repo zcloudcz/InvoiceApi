@@ -461,4 +461,229 @@ public class InvoiceTemplateServiceTests : IDisposable
         invoice.DocumentNumber.ShouldStartWith("EU-");
         invoice.DocumentNumber.ShouldContain("EXP2026001");
     }
+
+    /// <summary>
+    /// Issue #104 regression: template with NumberSequenceId + client with suffix.
+    /// The suffix must be appended to the document number even when the sequence comes
+    /// from the template (named sequence path in GenerateDocumentNumberAsync).
+    /// </summary>
+    [Fact]
+    public async Task CreateInvoiceFromTemplateAsync_TemplateSequence_WithClientSuffix_ShouldApplySuffix()
+    {
+        // Arrange — client has "-EXPORT" suffix in BillingSettings
+        _context.Set<BillingSettings>().Add(new BillingSettings
+        {
+            ClientId = 1,
+            InvoiceNumberSuffix = "-EXPORT"
+        });
+        _context.SaveChanges();
+
+        _context.Set<NumberSequence>().Add(new NumberSequence
+        {
+            Id = 51,
+            Name = "Export Sequence",
+            DocumentType = EDocumentType.Invoice,
+            CurrentNumber = 1,
+            IsDefault = false,
+            IsActive = true,
+            NumberSequenceFormatId = 0
+        });
+        _context.SaveChanges();
+
+        _numberSequence
+            .GenerateNextNumberAsync(51L, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .Returns("INV2026100");
+
+        var templateDto = CreateValidTemplateDto("Suffix Template");
+        templateDto.NumberSequenceId = 51;
+        var template = await _templateService.CreateTemplateAsync(templateDto);
+
+        var fromDto = new CreateInvoiceFromTemplateDto { ClientId = 1 };
+
+        // Act
+        var invoice = await _templateService.CreateInvoiceFromTemplateAsync(template.Id, fromDto);
+
+        // Assert — bare number wrapped with client suffix
+        invoice.DocumentNumber.ShouldBe("INV2026100-EXPORT");
+        invoice.DocumentNumber.ShouldEndWith("-EXPORT");
+    }
+
+    /// <summary>
+    /// Issue #104 regression: client with NO BillingSettings — template's own NumberSequenceId
+    /// must be used as-is, without any prefix or suffix.
+    /// </summary>
+    [Fact]
+    public async Task CreateInvoiceFromTemplateAsync_NoBillingSettings_UsesTemplateSequenceAsIs()
+    {
+        // Arrange — client #1 has NO BillingSettings (nothing added)
+        _context.Set<NumberSequence>().Add(new NumberSequence
+        {
+            Id = 52,
+            Name = "Plain Sequence",
+            DocumentType = EDocumentType.Invoice,
+            CurrentNumber = 1,
+            IsDefault = false,
+            IsActive = true,
+            NumberSequenceFormatId = 0
+        });
+        _context.SaveChanges();
+
+        _numberSequence
+            .GenerateNextNumberAsync(52L, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .Returns("INV2026999");
+
+        var templateDto = CreateValidTemplateDto("Plain Template");
+        templateDto.NumberSequenceId = 52;
+        var template = await _templateService.CreateTemplateAsync(templateDto);
+
+        var fromDto = new CreateInvoiceFromTemplateDto { ClientId = 1 };
+
+        // Act
+        var invoice = await _templateService.CreateInvoiceFromTemplateAsync(template.Id, fromDto);
+
+        // Assert — bare sequence number, no wrapping
+        invoice.DocumentNumber.ShouldBe("INV2026999");
+    }
+
+    /// <summary>
+    /// Issue #104 regression: CreditNote created from template, client has CreditNoteNumberPrefix.
+    /// The prefix must appear in the credit note's document number.
+    /// </summary>
+    [Fact]
+    public async Task CreateInvoiceFromTemplateAsync_CreditNoteTemplate_WithClientCreditNotePrefix_ShouldApplyPrefix()
+    {
+        // Arrange — seed a completed invoice to serve as the OriginalInvoice for the credit note
+        var originalInvoice = new Invoice
+        {
+            DocumentType = EDocumentType.Invoice,
+            Status = EInvoiceStatus.Completed,
+            ClientId = 1,
+            IssuerId = 2,
+            CurrencyId = 1,
+            DocumentNumber = "ORIG-INV-001",
+            VariableSymbol = "1000000001",
+            IssueDate = DateTime.UtcNow.Date,
+            TaxableSupplyDate = DateTime.UtcNow.Date,
+            DueDate = DateTime.UtcNow.Date.AddDays(14),
+            InvoiceItem = new List<InvoiceItem>()
+        };
+        _context.Invoice.Add(originalInvoice);
+        await _context.SaveChangesAsync();
+
+        // Client has a CreditNoteNumberPrefix "RET-"
+        _context.Set<BillingSettings>().Add(new BillingSettings
+        {
+            ClientId = 1,
+            CreditNoteNumberPrefix = "RET-"
+        });
+        _context.SaveChanges();
+
+        _context.Set<NumberSequence>().Add(new NumberSequence
+        {
+            Id = 53,
+            Name = "CreditNote Sequence",
+            DocumentType = EDocumentType.CreditNote,
+            CurrentNumber = 1,
+            IsDefault = false,
+            IsActive = true,
+            NumberSequenceFormatId = 0
+        });
+        _context.SaveChanges();
+
+        // Credit-note sequence returns a number whose digits are unique in this DB
+        _numberSequence
+            .GenerateNextNumberAsync(53L, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .Returns("CN20260077");
+
+        // CreditNote template must reference the original invoice
+        var templateDto = new CreateInvoiceTemplateDto
+        {
+            Name = "Credit Note Template",
+            DocumentType = EDocumentType.CreditNote,
+            IssuerId = 2,
+            CurrencyId = 1,
+            DueDateOffsetDays = 0,
+            PaymentMethod = EPaymentMethod.BankTransfer,
+            NumberSequenceId = 53,
+            InvoiceItem = new List<CreateInvoiceItemDto>
+            {
+                new()
+                {
+                    OrderIndex = 1,
+                    Description = "Refund item",
+                    Quantity = 1,
+                    Unit = "pcs",
+                    UnitPrice = 500
+                }
+            }
+        };
+        var template = await _templateService.CreateTemplateAsync(templateDto);
+
+        var fromDto = new CreateInvoiceFromTemplateDto
+        {
+            ClientId = 1,
+            // CreditNote requires OriginalInvoiceId
+            OriginalInvoiceId = originalInvoice.Id
+        };
+
+        // Act
+        var invoice = await _templateService.CreateInvoiceFromTemplateAsync(template.Id, fromDto);
+
+        // Assert — credit note must have the RET- prefix from client's BillingSettings
+        invoice.DocumentNumber.ShouldBe("RET-CN20260077");
+        invoice.DocumentNumber.ShouldStartWith("RET-");
+    }
+
+    /// <summary>
+    /// Issue #104 regression (direct creation, not from template): client with prefix
+    /// in BillingSettings, invoice created directly via InvoiceService — prefix must apply.
+    /// This guards the non-template path against future regressions.
+    /// </summary>
+    [Fact]
+    public async Task DirectInvoiceCreation_ClientWithPrefix_ShouldApplyPrefix()
+    {
+        // Arrange — client #1 has "VIP-" prefix
+        _context.Set<BillingSettings>().Add(new BillingSettings
+        {
+            ClientId = 1,
+            InvoiceNumberPrefix = "VIP-"
+        });
+        _context.SaveChanges();
+
+        _context.Set<NumberSequence>().Add(new NumberSequence
+        {
+            Id = 54,
+            Name = "VIP Sequence",
+            DocumentType = EDocumentType.Invoice,
+            CurrentNumber = 1,
+            IsDefault = false,
+            IsActive = true,
+            NumberSequenceFormatId = 0
+        });
+        _context.SaveChanges();
+
+        _numberSequence
+            .GenerateNextNumberAsync(54L, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .Returns("INV2026055");
+
+        var invoiceDto = new CreateInvoiceDto
+        {
+            DocumentType = EDocumentType.Invoice,
+            ClientId = 1,
+            IssuerId = 2,
+            CurrencyId = 1,
+            NumberSequenceId = 54,
+            InvoiceItem = new List<CreateInvoiceItemDto>
+            {
+                new() { OrderIndex = 1, Description = "VIP service", Quantity = 1, Unit = "pcs", UnitPrice = 5000 }
+            }
+        };
+
+        // Act — direct creation via InvoiceService (not via template)
+        var invoice = await _invoiceService.CreateInvoiceAsync(invoiceDto);
+
+        // Assert — prefix must be applied on the non-template path too
+        invoice.DocumentNumber.ShouldBe("VIP-INV2026055");
+        invoice.DocumentNumber.ShouldStartWith("VIP-");
+    }
 }

@@ -471,6 +471,9 @@ public class InvoiceTemplateService : IInvoiceTemplateService
             // Template's stored VS is just a leftover from CreateTemplateFromInvoiceAsync and would
             // collide with the source invoice. When null, InvoiceService derives VS from DocumentNumber.
             VariableSymbol = createDto.VariableSymbol,
+            // Pass OriginalInvoiceId for CreditNote templates — required by InvoiceService validation.
+            // For Invoice templates this stays null.
+            OriginalInvoiceId = createDto.OriginalInvoiceId,
             ConstantSymbol = template.ConstantSymbol,
             SpecificSymbol = template.SpecificSymbol,
             BankAccountNumber = template.BankAccountNumber,
