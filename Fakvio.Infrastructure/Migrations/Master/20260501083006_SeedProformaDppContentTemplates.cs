@@ -13,6 +13,10 @@ namespace Fakvio.Infrastructure.Migrations.Master
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            // Idempotency: remove seed rows that will be re-inserted below.
+            // Startup master migration may encounter rows already seeded by a prior run.
+            migrationBuilder.Sql(@"DELETE FROM ""ContentTemplate"" WHERE ""Id"" IN (8, 9, 10, 11);");
+
             migrationBuilder.InsertData(
                 table: "ContentTemplate",
                 columns: new[] { "Id", "CreatedAt", "CreatedByUserId", "Description", "HtmlBody", "IsActive", "IsDefault", "Language", "Name", "Subject", "TemplateType", "UpdatedAt", "UpdatedByUserId" },
