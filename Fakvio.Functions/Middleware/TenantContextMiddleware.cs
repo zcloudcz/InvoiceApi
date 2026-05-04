@@ -194,7 +194,12 @@ public class TenantContextMiddleware : IFunctionsWorkerMiddleware
             await httpContext.Response.WriteAsJsonAsync(new
             {
                 message = "Tenant database is not ready. Schema migration failed. " +
-                          "Please retry in a moment or contact your administrator if the problem persists."
+                          "Please retry in a moment or contact your administrator if the problem persists.",
+                error = ex.GetType().Name,
+                detail = ex.Message,
+                innerError = ex.InnerException?.Message,
+                schema = schemaName,
+                companyId = companyId
             });
             return;
         }
