@@ -177,7 +177,27 @@ public class TenantContextMiddleware : IFunctionsWorkerMiddleware
         tenantContextFromWorker.Schema = schemaName;
 
         // Lazily ensure migrations are applied (cached — only runs once per schema per process).
-        await factory.EnsureMigratedAsync(companyId);
+        // TenantDbContextFactory.EnsureMigratedAsync re-throws on migration failure, so we
+        // catch it here and return HTTP 503 instead of proceeding with an unmigrated schema.
+        try
+        {
+            await factory.EnsureMigratedAsync(companyId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Tenant schema migration failed for company {CompanyId} (schema '{SchemaName}'). " +
+                "Blocking request — schema is not ready for queries.",
+                companyId, schemaName);
+
+            httpContext.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+            await httpContext.Response.WriteAsJsonAsync(new
+            {
+                message = "Tenant database is not ready. Schema migration failed. " +
+                          "Please retry in a moment or contact your administrator if the problem persists."
+            });
+            return;
+        }
 
         _logger.LogDebug("Tenant resolved: CompanyId {CompanyId} → schema '{Schema}'",
             companyId, schemaName);
