@@ -147,9 +147,23 @@ public class TenantDbContextFactory : ITenantDbContextFactory
         }
         catch (Exception ex)
         {
-            // Log but don't crash — the tenant may already be up-to-date,
-            // or the error may be transient. Let the actual query reveal real issues.
-            _logger.LogError(ex, "Failed to migrate tenant schema '{SchemaName}'", schemaName);
+            // Log the failure with full details so it is diagnosable from logs.
+            // Re-throw so the caller (TenantContextMiddleware) can return a structured
+            // error response instead of proceeding with an unmigrated schema.
+            //
+            // Why re-throw?
+            // Before this fix the exception was swallowed and the request proceeded.
+            // EF Core then tried to SELECT columns that don't yet exist in the tenant schema
+            // (VatRegime, ReverseChargeCodeId, InformationalVatAmount added by
+            // Add_ReverseChargeFk_v45), causing a PostgresException inside the service
+            // layer — resulting in a confusing HTTP 500 with no clear root cause.
+            //
+            // With re-throw, TenantContextMiddleware catches the exception and returns
+            // HTTP 503 (tenant schema not ready) so the client gets an actionable message
+            // and the stack trace is visible in logs.
+            _logger.LogError(ex, "Failed to migrate tenant schema '{SchemaName}' — blocking request to prevent query against unmigrated schema",
+                schemaName);
+            throw;
         }
         finally
         {

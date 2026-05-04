@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 
 namespace Fakvio.Tests.Unit;
 
@@ -24,6 +25,8 @@ namespace Fakvio.Tests.Unit;
 /// - No CompanySystemSettings record → throws InvalidOperationException
 /// - No CompanyId in request → throws InvalidOperationException
 /// - GetConnectionString → returns shared connection string
+/// - EnsureMigratedAsync migration failure → re-throws (does NOT swallow)
+/// - EnsureMigratedAsync success → marks schema as migrated (idempotent on retry)
 /// </summary>
 public class TenantDbContextFactoryTests : IDisposable
 {
@@ -219,6 +222,120 @@ public class TenantDbContextFactoryTests : IDisposable
         context.ShouldNotBeNull();
         context.Schema.ShouldBe("tenant_99");
         context.Dispose();
+    }
+
+    // ─── EnsureMigratedAsync tests (issue #99 root-cause fix) ────────────────
+
+    /// <summary>
+    /// When MigrateTenantAsync throws (e.g., PostgreSQL permission error, column already exists),
+    /// EnsureMigratedAsync must re-throw the exception instead of swallowing it.
+    ///
+    /// Before the fix: the exception was caught and logged, then the request proceeded
+    /// against an unmigrated schema. EF Core then tried to SELECT non-existent columns
+    /// (VatRegime, ReverseChargeCodeId, InformationalVatAmount) and crashed inside the
+    /// service layer with a confusing PostgresException / HTTP 500.
+    ///
+    /// After the fix: the exception propagates to TenantContextMiddleware, which returns
+    /// HTTP 503 with a clear "schema not ready" message. The tenant's data is safe and
+    /// the endpoint is retryable once the migration succeeds.
+    /// </summary>
+    [Fact]
+    public async Task EnsureMigratedAsync_MigrationThrows_RethrowsException()
+    {
+        // Arrange — provisioned and active tenant so the migration path is entered
+        await SeedCompanyAsync(companyId: 100, schemaName: "tenant_100");
+
+        // MigrateTenantAsync simulates a PostgreSQL error (e.g., permission denied,
+        // or column already exists from a partially-applied migration)
+        _provisioningService
+            .MigrateTenantAsync(Arg.Any<long>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("42501: permission denied for schema tenant_100"));
+
+        var factory = CreateFactory();
+
+        // Act & Assert — exception must propagate, not be swallowed
+        var act = () => factory.EnsureMigratedAsync(100);
+        await Should.ThrowAsync<InvalidOperationException>(act);
+    }
+
+    /// <summary>
+    /// When migration fails, the schema must NOT be added to the in-process cache.
+    /// This ensures the next request retries the migration (transient errors are recoverable).
+    ///
+    /// If we cached a failed migration, a transient error (network glitch, lock timeout)
+    /// would permanently block the tenant until the process restarts.
+    /// </summary>
+    [Fact]
+    public async Task EnsureMigratedAsync_MigrationThrows_SchemaNotMarkedAsMigrated()
+    {
+        // Arrange
+        await SeedCompanyAsync(companyId: 101, schemaName: "tenant_101");
+
+        _provisioningService
+            .MigrateTenantAsync(Arg.Any<long>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("Simulated migration failure"));
+
+        var factory = CreateFactory();
+
+        // First call — migration fails
+        try { await factory.EnsureMigratedAsync(101); } catch { /* expected */ }
+
+        // Reset mock to succeed on retry
+        _provisioningService
+            .MigrateTenantAsync(Arg.Any<long>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(true));
+
+        // Second call must attempt migration again (schema was not cached on failure).
+        // If it doesn't throw, migration ran again — which is the correct behaviour.
+        await Should.NotThrowAsync(() => factory.EnsureMigratedAsync(101));
+
+        // Migration service was called twice: once for the failing attempt, once for retry.
+        await _provisioningService.Received(2).MigrateTenantAsync(101, Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// When migration succeeds, subsequent calls must skip it (cached by schema name).
+    /// This is the normal hot path — only the first request after process start triggers migration.
+    /// </summary>
+    [Fact]
+    public async Task EnsureMigratedAsync_MigrationSucceeds_SubsequentCallsSkipMigration()
+    {
+        // Arrange — use a unique company ID to avoid interference from the static cache
+        // populated by other tests in this class. Each test run gets a fresh schema name.
+        var uniqueId = 200 + Random.Shared.Next(100, 999);
+        var uniqueSchema = $"tenant_{uniqueId}_cache_test";
+        await SeedCompanyAsync(companyId: uniqueId, schemaName: uniqueSchema);
+
+        _provisioningService
+            .MigrateTenantAsync(Arg.Any<long>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(true));
+
+        var factory = CreateFactory();
+
+        // Act — call twice
+        await factory.EnsureMigratedAsync(uniqueId);
+        await factory.EnsureMigratedAsync(uniqueId);
+
+        // Assert — MigrateTenantAsync was called exactly once (cached after success)
+        await _provisioningService.Received(1).MigrateTenantAsync(uniqueId, Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// When the tenant is not provisioned, EnsureMigratedAsync must return silently
+    /// (no migration attempt) — nothing to migrate for an unprovisioned tenant.
+    /// </summary>
+    [Fact]
+    public async Task EnsureMigratedAsync_NotProvisioned_DoesNotCallMigration()
+    {
+        // Arrange — unprovisioned tenant
+        await SeedCompanyAsync(companyId: 102, schemaName: "tenant_102", isProvisioned: false);
+        var factory = CreateFactory();
+
+        // Act — should return without calling MigrateTenantAsync
+        await factory.EnsureMigratedAsync(102);
+
+        // Assert — no migration attempted
+        await _provisioningService.DidNotReceive().MigrateTenantAsync(Arg.Any<long>(), Arg.Any<CancellationToken>());
     }
 
     public void Dispose()
