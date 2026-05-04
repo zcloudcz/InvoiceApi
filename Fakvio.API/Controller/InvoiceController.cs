@@ -70,8 +70,10 @@ public class InvoiceController : ControllerBase
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>List of invoices/credit notes</returns>
     /// <response code="200">Returns list of invoices</response>
+    /// <response code="500">Internal server error — check logs for details</response>
     [HttpGet]
     [ProducesResponseType(typeof(List<InvoiceDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<List<InvoiceDto>>> GetAllInvoices(
         [FromQuery] EDocumentType? documentType = null,
         [FromQuery] EInvoiceStatus? status = null,
@@ -90,8 +92,18 @@ public class InvoiceController : ControllerBase
         _logger.LogInformation("GET /api/invoice - documentType: {DocumentType}, status: {Status}, clientId: {ClientId}, issuerId: {IssuerId}",
             documentType, status, clientId, issuerId);
 
-        var invoices = await _invoiceService.GetAllInvoicesAsync(documentType, status, clientId, issuerId, cancellationToken);
-        return Ok(invoices);
+        try
+        {
+            var invoices = await _invoiceService.GetAllInvoicesAsync(documentType, status, clientId, issuerId, cancellationToken);
+            return Ok(invoices);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "GET /api/invoice failed — documentType: {DocumentType}, status: {Status}, clientId: {ClientId}, issuerId: {IssuerId}",
+                documentType, status, clientId, issuerId);
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { message = "Failed to retrieve invoices. Please try again or contact support." });
+        }
     }
 
     /// <summary>
@@ -102,8 +114,10 @@ public class InvoiceController : ControllerBase
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Paged result of invoices</returns>
     /// <response code="200">Returns paged list of invoices</response>
+    /// <response code="500">Internal server error — check logs for details</response>
     [HttpGet("paged")]
     [ProducesResponseType(typeof(PagedResult<InvoiceDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<PagedResult<InvoiceDto>>> GetInvoicesPaged(
         [FromQuery] InvoiceFilterDto filter,
         CancellationToken cancellationToken = default)
@@ -118,9 +132,18 @@ public class InvoiceController : ControllerBase
         _logger.LogInformation("GET /api/invoice/paged - Page: {Page}, PageSize: {PageSize}, Search: {Search}, IssuerId: {IssuerId}",
             filter.Page, filter.PageSize, filter.Search, filter.IssuerId);
 
-        var result = await _invoiceService.GetInvoicesPagedAsync(filter, cancellationToken);
-
-        return Ok(result);
+        try
+        {
+            var result = await _invoiceService.GetInvoicesPagedAsync(filter, cancellationToken);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "GET /api/invoice/paged failed — Page: {Page}, PageSize: {PageSize}, Search: {Search}, IssuerId: {IssuerId}",
+                filter.Page, filter.PageSize, filter.Search, filter.IssuerId);
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { message = "Failed to retrieve invoices. Please try again or contact support." });
+        }
     }
 
     /// <summary>
@@ -131,24 +154,35 @@ public class InvoiceController : ControllerBase
     /// <returns>Invoice data</returns>
     /// <response code="200">Returns the invoice</response>
     /// <response code="404">Invoice not found</response>
+    /// <response code="500">Internal server error — check logs for details</response>
     [HttpGet("{id}")]
     [ProducesResponseType(typeof(InvoiceDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<InvoiceDto>> GetInvoiceById(
         long id,
         CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("GET /api/invoice/{Id}", id);
 
-        var invoice = await _invoiceService.GetInvoiceByIdAsync(id, cancellationToken);
-
-        if (invoice == null)
+        try
         {
-            _logger.LogWarning("Invoice {Id} not found", id);
-            return NotFound(new { message = $"Invoice with ID {id} not found" });
-        }
+            var invoice = await _invoiceService.GetInvoiceByIdAsync(id, cancellationToken);
 
-        return Ok(invoice);
+            if (invoice == null)
+            {
+                _logger.LogWarning("Invoice {Id} not found", id);
+                return NotFound(new { message = $"Invoice with ID {id} not found" });
+            }
+
+            return Ok(invoice);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "GET /api/invoice/{Id} failed", id);
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { message = $"Failed to retrieve invoice {id}. Please try again or contact support." });
+        }
     }
 
     /// <summary>
@@ -159,24 +193,35 @@ public class InvoiceController : ControllerBase
     /// <returns>Invoice data</returns>
     /// <response code="200">Returns the invoice</response>
     /// <response code="404">Invoice not found</response>
+    /// <response code="500">Internal server error — check logs for details</response>
     [HttpGet("by-number/{documentNumber}")]
     [ProducesResponseType(typeof(InvoiceDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<InvoiceDto>> GetInvoiceByDocumentNumber(
         string documentNumber,
         CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("GET /api/invoice/by-number/{DocumentNumber}", documentNumber);
 
-        var invoice = await _invoiceService.GetInvoiceByDocumentNumberAsync(documentNumber, cancellationToken);
-
-        if (invoice == null)
+        try
         {
-            _logger.LogWarning("Invoice with document number {DocumentNumber} not found", documentNumber);
-            return NotFound(new { message = $"Invoice with document number {documentNumber} not found" });
-        }
+            var invoice = await _invoiceService.GetInvoiceByDocumentNumberAsync(documentNumber, cancellationToken);
 
-        return Ok(invoice);
+            if (invoice == null)
+            {
+                _logger.LogWarning("Invoice with document number {DocumentNumber} not found", documentNumber);
+                return NotFound(new { message = $"Invoice with document number {documentNumber} not found" });
+            }
+
+            return Ok(invoice);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "GET /api/invoice/by-number/{DocumentNumber} failed", documentNumber);
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { message = $"Failed to retrieve invoice {documentNumber}. Please try again or contact support." });
+        }
     }
 
     /// <summary>
@@ -525,17 +570,28 @@ public class InvoiceController : ControllerBase
     /// <param name="cancellationToken">Cancellation token</param>
     /// <response code="200">Remaining advance amount (decimal)</response>
     /// <response code="404">Proforma not found</response>
+    /// <response code="500">Internal server error — check logs for details</response>
     [HttpGet("{proformaId:long}/remaining-advance")]
     [ProducesResponseType(typeof(decimal), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<decimal>> GetRemainingAdvance(
         long proformaId,
         CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("GET /api/invoice/{ProformaId}/remaining-advance", proformaId);
 
-        var remaining = await _invoiceService.GetRemainingAdvanceAsync(proformaId, cancellationToken);
-        return Ok(remaining);
+        try
+        {
+            var remaining = await _invoiceService.GetRemainingAdvanceAsync(proformaId, cancellationToken);
+            return Ok(remaining);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "GET /api/invoice/{ProformaId}/remaining-advance failed", proformaId);
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { message = $"Failed to retrieve remaining advance for proforma {proformaId}. Please try again or contact support." });
+        }
     }
 
     /// <summary>
@@ -585,16 +641,27 @@ public class InvoiceController : ControllerBase
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>List of credit notes</returns>
     /// <response code="200">Returns list of credit notes</response>
+    /// <response code="500">Internal server error — check logs for details</response>
     [HttpGet("{invoiceId}/credit-notes")]
     [ProducesResponseType(typeof(List<InvoiceDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<List<InvoiceDto>>> GetCreditNotesForInvoice(
         long invoiceId,
         CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("GET /api/invoice/{InvoiceId}/credit-notes", invoiceId);
 
-        var creditNotes = await _invoiceService.GetCreditNotesForInvoiceAsync(invoiceId, cancellationToken);
-        return Ok(creditNotes);
+        try
+        {
+            var creditNotes = await _invoiceService.GetCreditNotesForInvoiceAsync(invoiceId, cancellationToken);
+            return Ok(creditNotes);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "GET /api/invoice/{InvoiceId}/credit-notes failed", invoiceId);
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { message = $"Failed to retrieve credit notes for invoice {invoiceId}. Please try again or contact support." });
+        }
     }
 
     /// <summary>
@@ -604,15 +671,27 @@ public class InvoiceController : ControllerBase
     /// <param name="proformaId">Proforma invoice ID</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>List of linked final invoices (may be empty)</returns>
+    /// <response code="500">Internal server error — check logs for details</response>
     [HttpGet("{proformaId:long}/final-invoices")]
     [ProducesResponseType(typeof(List<InvoiceDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<List<InvoiceDto>>> GetFinalInvoicesForProforma(
         long proformaId,
         CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("GET /api/invoice/{ProformaId}/final-invoices", proformaId);
-        var invoices = await _invoiceService.GetFinalInvoicesForProformaAsync(proformaId, cancellationToken);
-        return Ok(invoices);
+
+        try
+        {
+            var invoices = await _invoiceService.GetFinalInvoicesForProformaAsync(proformaId, cancellationToken);
+            return Ok(invoices);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "GET /api/invoice/{ProformaId}/final-invoices failed", proformaId);
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { message = $"Failed to retrieve final invoices for proforma {proformaId}. Please try again or contact support." });
+        }
     }
 
     /// <summary>
@@ -622,15 +701,27 @@ public class InvoiceController : ControllerBase
     /// <param name="proformaId">Proforma invoice ID</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>List of linked tax receipts (may be empty)</returns>
+    /// <response code="500">Internal server error — check logs for details</response>
     [HttpGet("{proformaId:long}/tax-receipts")]
     [ProducesResponseType(typeof(List<InvoiceDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<List<InvoiceDto>>> GetTaxReceiptsForProforma(
         long proformaId,
         CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("GET /api/invoice/{ProformaId}/tax-receipts", proformaId);
-        var receipts = await _invoiceService.GetTaxReceiptsForProformaAsync(proformaId, cancellationToken);
-        return Ok(receipts);
+
+        try
+        {
+            var receipts = await _invoiceService.GetTaxReceiptsForProformaAsync(proformaId, cancellationToken);
+            return Ok(receipts);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "GET /api/invoice/{ProformaId}/tax-receipts failed", proformaId);
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { message = $"Failed to retrieve tax receipts for proforma {proformaId}. Please try again or contact support." });
+        }
     }
 
     /// <summary>
