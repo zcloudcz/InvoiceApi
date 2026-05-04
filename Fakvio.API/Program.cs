@@ -145,6 +145,11 @@ if (!app.Environment.IsEnvironment("Testing"))
 // This ensures every log entry (including CORS errors and auth failures) has a CorrelationId.
 app.UseCorrelationId();
 
+// GlobalExceptionHandler is the SECOND middleware — right after CorrelationId so that
+// the CorrelationId is already set in HttpContext.Items when an exception is caught,
+// and so it wraps the entire remaining pipeline (Swagger, CORS, Auth, controllers, etc.).
+app.UseGlobalExceptionHandler();
+
 //if (app.Environment.IsDevelopment())
 //{
     app.UseSwagger();
