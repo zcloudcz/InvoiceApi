@@ -13,14 +13,21 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.InsertData(
-                table: "NumberSequence",
-                columns: new[] { "Id", "CreatedAt", "CreatedByUserId", "CurrentMonth", "CurrentNumber", "CurrentYear", "DocumentType", "IsActive", "IsDefault", "Name", "NumberSequenceFormatId", "Prefix", "Suffix", "UpdatedAt", "UpdatedByUserId" },
-                values: new object[,]
-                {
-                    { 3L, new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc), null, null, 0, null, 3, true, true, "Default Proforma Sequence", 1L, "PF-", null, null, null },
-                    { 4L, new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc), null, null, 0, null, 4, true, true, "Default Tax Receipt for Advance Sequence", 1L, "DPP-", null, null, null }
-                });
+            // Use ON CONFLICT DO NOTHING — tenant may already have these rows
+            // (e.g., inserted by TenantProvisioningService during initial setup).
+            // Original InsertData with hardcoded Ids caused PK_NumberSequence violation.
+            migrationBuilder.Sql(@"
+                INSERT INTO ""NumberSequence""
+                    (""Id"", ""CreatedAt"", ""CreatedByUserId"", ""CurrentMonth"", ""CurrentNumber"",
+                     ""CurrentYear"", ""DocumentType"", ""IsActive"", ""IsDefault"", ""Name"",
+                     ""NumberSequenceFormatId"", ""Prefix"", ""Suffix"", ""UpdatedAt"", ""UpdatedByUserId"")
+                VALUES
+                    (3, '2025-01-01T00:00:00Z', NULL, NULL, 0, NULL, 3, TRUE, TRUE,
+                     'Default Proforma Sequence', 1, 'PF-', NULL, NULL, NULL),
+                    (4, '2025-01-01T00:00:00Z', NULL, NULL, 0, NULL, 4, TRUE, TRUE,
+                     'Default Tax Receipt for Advance Sequence', 1, 'DPP-', NULL, NULL, NULL)
+                ON CONFLICT (""Id"") DO NOTHING;
+            ");
         }
 
         /// <inheritdoc />
