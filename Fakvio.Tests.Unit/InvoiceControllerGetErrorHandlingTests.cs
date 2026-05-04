@@ -309,4 +309,89 @@ public class InvoiceControllerGetErrorHandlingTests
         var message = objectResult.Value!.GetType().GetProperty("message")?.GetValue(objectResult.Value) as string;
         message.ShouldNotBeNullOrEmpty();
     }
+
+    // ─── GetInvoiceById — 404 path ───────────────────────────────────────────
+
+    /// <summary>
+    /// When GetInvoiceByIdAsync returns null (invoice not found), GetInvoiceById
+    /// must return HTTP 404 with a structured "Invoice with ID {id} not found" message.
+    ///
+    /// This verifies the 404 path is preserved inside the try-catch block —
+    /// the refactoring moved the null-check inside the try, so we confirm
+    /// NotFound still fires correctly.
+    /// </summary>
+    [Fact]
+    public async Task GetInvoiceById_ServiceReturnsNull_Returns404WithMessage()
+    {
+        // Arrange — service returns null (invoice does not exist for this tenant)
+        _invoiceService
+            .GetInvoiceByIdAsync(Arg.Any<long>(), Arg.Any<CancellationToken>())
+            .Returns((InvoiceDto?)null);
+
+        var controller = BuildController();
+
+        // Act
+        var result = await controller.GetInvoiceById(id: 9999, CancellationToken.None);
+
+        // Assert — 404 with structured body containing the ID
+        var notFoundResult = result.Result.ShouldBeOfType<NotFoundObjectResult>();
+        notFoundResult.StatusCode.ShouldBe(404);
+        var message = notFoundResult.Value!.GetType().GetProperty("message")?.GetValue(notFoundResult.Value) as string;
+        message.ShouldNotBeNullOrEmpty();
+        // 404 message should include the requested invoice ID so the client knows which resource was missing
+        message.ShouldContain("9999");
+    }
+
+    /// <summary>
+    /// When GetInvoiceByIdAsync returns a valid invoice, GetInvoiceById must return
+    /// HTTP 200 with the invoice DTO — the try-catch must not interfere with happy path.
+    /// </summary>
+    [Fact]
+    public async Task GetInvoiceById_ServiceReturnsInvoice_Returns200()
+    {
+        // Arrange
+        var invoiceDto = new InvoiceDto { Id = 42, DocumentNumber = "INV-2026-001" };
+        _invoiceService
+            .GetInvoiceByIdAsync(Arg.Any<long>(), Arg.Any<CancellationToken>())
+            .Returns(invoiceDto);
+
+        var controller = BuildController();
+
+        // Act
+        var result = await controller.GetInvoiceById(id: 42, CancellationToken.None);
+
+        // Assert
+        var okResult = result.Result.ShouldBeOfType<OkObjectResult>();
+        okResult.StatusCode.ShouldBe(200);
+        okResult.Value.ShouldBe(invoiceDto);
+    }
+
+    // ─── GetInvoiceByDocumentNumber — 404 path ───────────────────────────────
+
+    /// <summary>
+    /// When GetInvoiceByDocumentNumberAsync returns null (document number not found),
+    /// GetInvoiceByDocumentNumber must return HTTP 404 with a structured message
+    /// containing the document number.
+    /// </summary>
+    [Fact]
+    public async Task GetInvoiceByDocumentNumber_ServiceReturnsNull_Returns404WithMessage()
+    {
+        // Arrange
+        _invoiceService
+            .GetInvoiceByDocumentNumberAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns((InvoiceDto?)null);
+
+        var controller = BuildController();
+
+        // Act
+        var result = await controller.GetInvoiceByDocumentNumber("INV-MISSING-001", CancellationToken.None);
+
+        // Assert — 404 with the document number in the message
+        var notFoundResult = result.Result.ShouldBeOfType<NotFoundObjectResult>();
+        notFoundResult.StatusCode.ShouldBe(404);
+        var message = notFoundResult.Value!.GetType().GetProperty("message")?.GetValue(notFoundResult.Value) as string;
+        message.ShouldNotBeNullOrEmpty();
+        // 404 message should echo the document number so the caller knows which document was missing
+        message.ShouldContain("INV-MISSING-001");
+    }
 }

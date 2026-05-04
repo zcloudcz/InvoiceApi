@@ -10,6 +10,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using Shouldly;
 
 namespace Fakvio.Tests.Unit;
@@ -490,6 +491,154 @@ public class TenantContextMiddlewareTests : IDisposable
         // Assert — even SysAdmin is blocked when impersonating an inactive tenant
         nextCalled[0].ShouldBeFalse();
         context.Response.StatusCode.ShouldBe(403);
+    }
+
+    #endregion
+
+    #region Migration Failure (HTTP 503) Tests
+
+    /// <summary>
+    /// Creates an HttpContext where ITenantDbContextFactory is a mock — allowing us
+    /// to control exactly what ResolveSchemaAsync and EnsureMigratedAsync return/throw.
+    ///
+    /// Used for the 503 migration-failure tests: the real TenantDbContextFactory delegates
+    /// to ITenantProvisioningService internally, which makes it hard to inject a failure
+    /// purely via DI. Using a mock factory isolates the middleware behaviour from the
+    /// factory internals.
+    /// </summary>
+    private HttpContext CreateHttpContextWithMockFactory(
+        string path,
+        string? role,
+        string companyId,
+        ITenantDbContextFactory mockFactory)
+    {
+        var context = new DefaultHttpContext();
+        context.Request.Path = path;
+
+        var claims = new List<Claim>
+        {
+            new(ClaimTypes.Name, "TestUser"),
+            new(ClaimTypes.Email, "test@example.com"),
+            new(ClaimTypes.Role, role ?? "User"),
+            new("CompanyId", companyId)
+        };
+        var identity = new ClaimsIdentity(claims, "TestAuth");
+        context.User = new ClaimsPrincipal(identity);
+
+        var tenantOptions = new DbContextOptionsBuilder<TenantDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+
+        var services = new ServiceCollection();
+        services.AddScoped(_ => new TenantDbContext(tenantOptions));
+        // Use the caller-supplied mock factory so we can control its behaviour
+        services.AddSingleton(mockFactory);
+        context.RequestServices = services.BuildServiceProvider();
+
+        context.Response.Body = new MemoryStream();
+
+        return context;
+    }
+
+    /// <summary>
+    /// When EnsureMigratedAsync throws (migration failure — e.g., PostgreSQL permission
+    /// error, column already exists from a partially-applied migration), the middleware
+    /// must return HTTP 503 "schema not ready" and NOT call _next.
+    ///
+    /// This is the primary new behaviour introduced by issue #99: before the fix, the
+    /// exception was swallowed inside EnsureMigratedAsync, the request proceeded with an
+    /// unmigrated schema, and EF Core crashed later with a confusing PostgresException.
+    /// After the fix, the middleware intercepts the re-thrown exception and returns 503
+    /// so the client gets an actionable message and the call is retryable.
+    /// </summary>
+    [Fact]
+    public async Task MigrationFailure_Returns503_AndDoesNotCallNext()
+    {
+        // Arrange — mock factory whose ResolveSchemaAsync succeeds but EnsureMigratedAsync throws
+        var mockFactory = Substitute.For<ITenantDbContextFactory>();
+        mockFactory.ResolveSchemaAsync(Arg.Any<long>(), Arg.Any<CancellationToken>())
+            .Returns("tenant_42");
+        mockFactory.EnsureMigratedAsync(Arg.Any<long>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException(
+                "42703: column \"VatRegime\" of relation \"InvoiceItem\" does not exist"));
+
+        var context = CreateHttpContextWithMockFactory(
+            path: "/api/invoice/paged",
+            role: "User",
+            companyId: "42",
+            mockFactory: mockFactory);
+
+        var middleware = CreateMiddleware(out var nextCalled);
+
+        // Act
+        await middleware.InvokeAsync(context);
+
+        // Assert — 503 returned, pipeline halted
+        nextCalled[0].ShouldBeFalse();
+        context.Response.StatusCode.ShouldBe(StatusCodes.Status503ServiceUnavailable);
+    }
+
+    /// <summary>
+    /// HTTP 503 response body must contain a "message" field so the client
+    /// gets an actionable explanation rather than an empty 503.
+    /// </summary>
+    [Fact]
+    public async Task MigrationFailure_Response503_ContainsMessage()
+    {
+        // Arrange
+        var mockFactory = Substitute.For<ITenantDbContextFactory>();
+        mockFactory.ResolveSchemaAsync(Arg.Any<long>(), Arg.Any<CancellationToken>())
+            .Returns("tenant_42");
+        mockFactory.EnsureMigratedAsync(Arg.Any<long>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("Simulated migration failure"));
+
+        var context = CreateHttpContextWithMockFactory(
+            path: "/api/invoice",
+            role: "Admin",
+            companyId: "42",
+            mockFactory: mockFactory);
+
+        var middleware = CreateMiddleware(out _);
+
+        // Act
+        await middleware.InvokeAsync(context);
+
+        // Assert — response body contains JSON with a "message" key
+        context.Response.Body.Seek(0, SeekOrigin.Begin);
+        var body = await new StreamReader(context.Response.Body).ReadToEndAsync();
+        body.ShouldContain("message");
+        // Body should mention "migration" so the admin knows what happened (503 must be diagnosable)
+        body.ShouldContain("migration");
+    }
+
+    /// <summary>
+    /// When EnsureMigratedAsync succeeds (normal hot path), the middleware must still
+    /// call _next — the 503 guard must not interfere with happy-path requests.
+    /// </summary>
+    [Fact]
+    public async Task MigrationSuccess_CallsNext_Returns200()
+    {
+        // Arrange — factory where both ResolveSchemaAsync and EnsureMigratedAsync succeed
+        var mockFactory = Substitute.For<ITenantDbContextFactory>();
+        mockFactory.ResolveSchemaAsync(Arg.Any<long>(), Arg.Any<CancellationToken>())
+            .Returns("tenant_42");
+        mockFactory.EnsureMigratedAsync(Arg.Any<long>(), Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+
+        var context = CreateHttpContextWithMockFactory(
+            path: "/api/invoice/paged",
+            role: "User",
+            companyId: "42",
+            mockFactory: mockFactory);
+
+        var middleware = CreateMiddleware(out var nextCalled);
+
+        // Act
+        await middleware.InvokeAsync(context);
+
+        // Assert — _next was called; 200 is the default when _next doesn't set a code
+        nextCalled[0].ShouldBeTrue();
+        context.Response.StatusCode.ShouldBe(StatusCodes.Status200OK);
     }
 
     #endregion
