@@ -141,7 +141,32 @@ public class TenantContextMiddleware
         tenantContext.Schema = schemaName;
 
         // Lazily ensure migrations are applied (cached — only runs once per schema per process).
-        await factory.EnsureMigratedAsync(companyId, context.RequestAborted);
+        // If migration fails, the exception is now re-thrown by EnsureMigratedAsync so we
+        // catch it here and return HTTP 503 instead of proceeding with an unmigrated schema.
+        //
+        // Without this guard, a failed migration (e.g., Add_ReverseChargeFk_v45 couldn't add
+        // VatRegime/ReverseChargeCodeId/InformationalVatAmount columns) would let the request
+        // through to InvoiceService, where EF Core generates SQL referencing the missing columns
+        // and gets a PostgresException — surfacing as a confusing HTTP 500 with no clear cause.
+        try
+        {
+            await factory.EnsureMigratedAsync(companyId, context.RequestAborted);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Tenant schema migration failed for company {CompanyId} (schema '{SchemaName}'). " +
+                "Blocking request — schema is not ready for queries.",
+                companyId, schemaName);
+
+            context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+            await context.Response.WriteAsJsonAsync(new
+            {
+                message = "Tenant database is not ready. Schema migration failed. " +
+                          "Please retry in a moment or contact your administrator if the problem persists."
+            });
+            return;
+        }
 
         await _next(context);
     }

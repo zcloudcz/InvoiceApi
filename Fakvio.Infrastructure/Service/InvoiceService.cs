@@ -67,6 +67,11 @@ public class InvoiceService : IInvoiceService
             .Include(i => i.Issuer)
             .Include(i => i.Currency)
             .Include(i => i.InvoiceItem.OrderBy(item => item.OrderIndex))
+                // Eagerly load ReverseChargeCode so items with VatRegime == ReverseCharge
+                // have their navigation property populated. The FK is nullable, so EF Core
+                // generates a LEFT JOIN — rows without a code (Standard/Exempt) get null here
+                // and are returned normally without crashing.
+                .ThenInclude(item => item.ReverseChargeCode)
             .Include(i => i.OriginalInvoice)
             .Where(i => i.Status != EInvoiceStatus.Deleted)
             .AsQueryable();
@@ -106,6 +111,10 @@ public class InvoiceService : IInvoiceService
             .Include(i => i.Issuer)
             .Include(i => i.Currency)
             .Include(i => i.InvoiceItem.OrderBy(item => item.OrderIndex))
+                // Eagerly load ReverseChargeCode so items with VatRegime == ReverseCharge
+                // have their navigation property populated. FK is nullable → LEFT JOIN, so
+                // Standard/Exempt/OutOfScope items (ReverseChargeCodeId = null) are returned normally.
+                .ThenInclude(item => item.ReverseChargeCode)
             .Include(i => i.OriginalInvoice)
             .AsQueryable();
 
@@ -203,6 +212,9 @@ public class InvoiceService : IInvoiceService
             .Include(i => i.Issuer)
             .Include(i => i.Currency)
             .Include(i => i.InvoiceItem.OrderBy(item => item.OrderIndex))
+                // Eagerly load ReverseChargeCode so PDP items have their nav prop populated.
+                // FK is nullable → LEFT JOIN → Standard items return null here without crashing.
+                .ThenInclude(item => item.ReverseChargeCode)
             .Include(i => i.OriginalInvoice)
             // Allow loading deleted invoices so users can view details and restore them.
             // List endpoints (GetAll, GetPaged) still hide deleted invoices by default.
@@ -220,6 +232,9 @@ public class InvoiceService : IInvoiceService
             .Include(i => i.Issuer)
             .Include(i => i.Currency)
             .Include(i => i.InvoiceItem.OrderBy(item => item.OrderIndex))
+                // Eagerly load ReverseChargeCode so PDP items have their nav prop populated.
+                // FK is nullable → LEFT JOIN → Standard items return null here without crashing.
+                .ThenInclude(item => item.ReverseChargeCode)
             .Include(i => i.OriginalInvoice)
             // Allow loading deleted invoices so users can view details and restore them.
             // List endpoints (GetAll, GetPaged) still hide deleted invoices by default.
@@ -839,6 +854,7 @@ public class InvoiceService : IInvoiceService
             .Include(i => i.Issuer)
             .Include(i => i.Currency)
             .Include(i => i.InvoiceItem.OrderBy(item => item.OrderIndex))
+                .ThenInclude(item => item.ReverseChargeCode)
             .Include(i => i.OriginalInvoice)
             .Where(i => i.OriginalInvoiceId == invoiceId && i.DocumentType == EDocumentType.CreditNote && i.Status != EInvoiceStatus.Deleted)
             .OrderByDescending(i => i.IssueDate ?? DateTime.MinValue)
@@ -861,6 +877,7 @@ public class InvoiceService : IInvoiceService
             .Include(i => i.Issuer)
             .Include(i => i.Currency)
             .Include(i => i.InvoiceItem.OrderBy(item => item.OrderIndex))
+                .ThenInclude(item => item.ReverseChargeCode)
             .Include(i => i.OriginalInvoice)
             .Where(i => i.OriginalInvoiceId == proformaId
                      && i.DocumentType == EDocumentType.Invoice
@@ -883,6 +900,7 @@ public class InvoiceService : IInvoiceService
             .Include(i => i.Issuer)
             .Include(i => i.Currency)
             .Include(i => i.InvoiceItem.OrderBy(item => item.OrderIndex))
+                .ThenInclude(item => item.ReverseChargeCode)
             .Include(i => i.OriginalInvoice)
             .Where(i => i.OriginalInvoiceId == proformaId
                      && i.DocumentType == EDocumentType.TaxReceiptForAdvance
