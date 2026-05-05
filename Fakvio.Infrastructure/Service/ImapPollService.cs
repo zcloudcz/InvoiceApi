@@ -90,6 +90,10 @@ public class ImapPollService : IImapPollService
             return new ImapPollCycleResult(true, "lock held by other instance", 0, settings.PollIntervalMinutes);
         }
 
+        // Reconcile: ensure every active BankAccountMailbox has a MasterMailboxIndex entry.
+        // Fixes missing entries from pre-migration activations or failed RegisterInMasterIndexAsync calls.
+        await ReconcileMasterMailboxIndexAsync(master, scope, ct);
+
         var processedCount = 0;
         var runStatus = "Success";
 
@@ -286,5 +290,71 @@ public class ImapPollService : IImapPollService
             .FirstOrDefaultAsync(c => c.SchemaName == schema, ct)
             ?? throw new InvalidOperationException($"No CompanySystemSettings for schema '{schema}'.");
         return row.CompanyId;
+    }
+
+    /// <summary>
+    /// Scans all active tenants for BankAccountMailbox rows that are missing
+    /// a corresponding MasterMailboxIndex entry and creates them.
+    /// Runs once per IMAP poll cycle — cheap (few tenants, few mailboxes).
+    /// </summary>
+    private async Task ReconcileMasterMailboxIndexAsync(
+        MasterDbContext master,
+        IServiceScope scope,
+        CancellationToken ct)
+    {
+        var tenants = await master.CompanySystemSettings
+            .AsNoTracking()
+            .Where(s => s.IsProvisioned && s.IsActive)
+            .ToListAsync(ct);
+
+        var tenantFactory = scope.ServiceProvider.GetRequiredService<ITenantDbContextFactory>();
+        var reconciled = 0;
+
+        foreach (var tenant in tenants)
+        {
+            try
+            {
+                var tenantCtx = (TenantDbContext)await tenantFactory.CreateContextForCompanyAsync(tenant.CompanyId, ct);
+
+                var activeMailboxes = await tenantCtx.BankAccountMailbox
+                    .AsNoTracking()
+                    .Where(m => m.IsActive)
+                    .ToListAsync(ct);
+
+                foreach (var mbx in activeMailboxes)
+                {
+                    var exists = await master.MasterMailboxIndex
+                        .AnyAsync(i => i.InboundAlias == mbx.InboundAlias && !i.IsAliasRetired, ct);
+
+                    if (!exists)
+                    {
+                        master.MasterMailboxIndex.Add(new MasterMailboxIndex
+                        {
+                            InboundAlias = mbx.InboundAlias,
+                            TenantSchema = tenant.SchemaName,
+                            TenantBankAccountMailboxId = mbx.Id,
+                            IsAliasRetired = false,
+                        });
+                        reconciled++;
+
+                        _logger.LogWarning(
+                            "Reconciled missing MasterMailboxIndex: alias='{Alias}' schema='{Schema}' mbxId={MbxId}",
+                            mbx.InboundAlias, tenant.SchemaName, mbx.Id);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "Failed to reconcile mailboxes for tenant '{Schema}' — skipping",
+                    tenant.SchemaName);
+            }
+        }
+
+        if (reconciled > 0)
+        {
+            await master.SaveChangesAsync(ct);
+            _logger.LogInformation("MasterMailboxIndex reconciliation: {Count} entries added", reconciled);
+        }
     }
 }
