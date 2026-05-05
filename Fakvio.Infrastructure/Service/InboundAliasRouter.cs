@@ -95,7 +95,12 @@ public class InboundAliasRouter
                 var domain = ExtractDomain(rawAddress);
                 if (!string.IsNullOrEmpty(domain) &&
                     !string.Equals(domain, inboundDomain, StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogWarning(
+                        "IMAP DIAG — skipping candidate [{Header}] {Address}: domain '{Domain}' != inboundDomain '{InboundDomain}'",
+                        headerLabel, rawAddress, domain, inboundDomain);
                     continue;
+                }
             }
 
             // Query master DB for a matching, non-retired alias.
@@ -103,6 +108,18 @@ public class InboundAliasRouter
                 .AsNoTracking()
                 .FirstOrDefaultAsync(i =>
                     i.InboundAlias == alias && !i.IsAliasRetired, ct);
+
+            // TEMP DIAGNOSTIC: log DB lookup result
+            var allIndexRows = await master.MasterMailboxIndex
+                .AsNoTracking()
+                .Where(i => i.InboundAlias == alias)
+                .Select(i => new { i.InboundAlias, i.TenantSchema, i.IsAliasRetired, i.TenantBankAccountMailboxId })
+                .ToListAsync(ct);
+            _logger.LogWarning(
+                "IMAP DIAG — alias='{Alias}' from [{Header}] {Address}: activeMatch={HasMatch}, " +
+                "dbRows={DbRows}",
+                alias, headerLabel, rawAddress, entry is not null,
+                string.Join("; ", allIndexRows.Select(r => $"alias={r.InboundAlias} schema={r.TenantSchema} retired={r.IsAliasRetired} mbxId={r.TenantBankAccountMailboxId}")));
 
             if (entry is not null)
             {
