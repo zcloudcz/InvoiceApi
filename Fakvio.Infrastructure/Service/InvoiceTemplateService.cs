@@ -470,7 +470,14 @@ public class InvoiceTemplateService : IInvoiceTemplateService
             // Don't fall back to template.VariableSymbol — VS must be unique per invoice (Czech banking).
             // Template's stored VS is just a leftover from CreateTemplateFromInvoiceAsync and would
             // collide with the source invoice. When null, InvoiceService derives VS from DocumentNumber.
+            //
+            // VariableSymbolIsManualOverride = true only when the caller explicitly supplied a VS in
+            // CreateInvoiceFromTemplateDto.VariableSymbol. In that case the caller has a deliberate
+            // reason to use a specific value (e.g. matching a PO number) and InvoiceService must not
+            // overwrite it. When null (normal template flow), InvoiceService re-derives VS from the
+            // generated DocumentNumber with the correct client prefix/suffix (issue #107 guard).
             VariableSymbol = createDto.VariableSymbol,
+            VariableSymbolIsManualOverride = !string.IsNullOrEmpty(createDto.VariableSymbol),
             // Pass OriginalInvoiceId for CreditNote templates — required by InvoiceService validation.
             // For Invoice templates this stays null.
             OriginalInvoiceId = createDto.OriginalInvoiceId,
