@@ -295,7 +295,8 @@ public class ImapPollService : IImapPollService
     /// <summary>
     /// Scans all active tenants for BankAccountMailbox rows that are missing
     /// a corresponding MasterMailboxIndex entry and creates them.
-    /// Runs once per IMAP poll cycle — cheap (few tenants, few mailboxes).
+    /// Uses raw SQL via the shared NpgsqlDataSource (Azure AD token-aware)
+    /// to avoid creating per-tenant DbContexts that lack token auth.
     /// </summary>
     private async Task ReconcileMasterMailboxIndexAsync(
         MasterDbContext master,
@@ -307,39 +308,42 @@ public class ImapPollService : IImapPollService
             .Where(s => s.IsProvisioned && s.IsActive)
             .ToListAsync(ct);
 
-        var tenantFactory = scope.ServiceProvider.GetRequiredService<ITenantDbContextFactory>();
         var reconciled = 0;
 
         foreach (var tenant in tenants)
         {
             try
             {
-                var tenantCtx = (TenantDbContext)await tenantFactory.CreateContextForCompanyAsync(tenant.CompanyId, ct);
+                await using var conn = await _dataSource.OpenConnectionAsync(ct);
+                await using var cmd = conn.CreateCommand();
+                cmd.CommandText = $@"
+                    SELECT ""Id"", ""InboundAlias""
+                    FROM ""{tenant.SchemaName}"".""BankAccountMailbox""
+                    WHERE ""IsActive"" = true";
 
-                var activeMailboxes = await tenantCtx.BankAccountMailbox
-                    .AsNoTracking()
-                    .Where(m => m.IsActive)
-                    .ToListAsync(ct);
-
-                foreach (var mbx in activeMailboxes)
+                await using var reader = await cmd.ExecuteReaderAsync(ct);
+                while (await reader.ReadAsync(ct))
                 {
+                    var mbxId = reader.GetInt64(0);
+                    var alias = reader.GetString(1);
+
                     var exists = await master.MasterMailboxIndex
-                        .AnyAsync(i => i.InboundAlias == mbx.InboundAlias && !i.IsAliasRetired, ct);
+                        .AnyAsync(i => i.InboundAlias == alias && !i.IsAliasRetired, ct);
 
                     if (!exists)
                     {
                         master.MasterMailboxIndex.Add(new MasterMailboxIndex
                         {
-                            InboundAlias = mbx.InboundAlias,
+                            InboundAlias = alias,
                             TenantSchema = tenant.SchemaName,
-                            TenantBankAccountMailboxId = mbx.Id,
+                            TenantBankAccountMailboxId = mbxId,
                             IsAliasRetired = false,
                         });
                         reconciled++;
 
                         _logger.LogWarning(
                             "Reconciled missing MasterMailboxIndex: alias='{Alias}' schema='{Schema}' mbxId={MbxId}",
-                            mbx.InboundAlias, tenant.SchemaName, mbx.Id);
+                            alias, tenant.SchemaName, mbxId);
                     }
                 }
             }
