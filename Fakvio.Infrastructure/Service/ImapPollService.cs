@@ -97,6 +97,11 @@ public class ImapPollService : IImapPollService
         {
             using var client = new ImapClient();
             var ssl = settings.ImapUseSsl ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTlsWhenAvailable;
+
+            _logger.LogDebug(
+                "ImapPoll connecting to {Host}:{Port} SSL={Ssl} as {User}",
+                settings.ImapHost, settings.ImapPort, settings.ImapUseSsl, settings.ImapUsername);
+
             await client.ConnectAsync(settings.ImapHost, settings.ImapPort, ssl, ct);
             await client.AuthenticateAsync(settings.ImapUsername, password, ct);
 
@@ -131,10 +136,28 @@ public class ImapPollService : IImapPollService
 
             await client.DisconnectAsync(true, ct);
         }
+        catch (MailKit.Security.AuthenticationException ex)
+        {
+            // Log host/port/username to make credential mismatches easy to diagnose without
+            // exposing the password. Common causes:
+            //   1. Data Protection key ring was regenerated (app restart without persistent keys)
+            //      → CredentialProtector.Decrypt returned raw ciphertext instead of the password.
+            //   2. Wrong username / password set in SysAdmin settings.
+            //   3. Provider requires an App Password (Google, Microsoft) but regular password used.
+            runStatus = $"Failed: {ex.Message}";
+            _logger.LogError(ex,
+                "ImapPoll authentication failed — host={Host} port={Port} ssl={Ssl} user={User}. " +
+                "If credentials are correct, check that Data Protection keys are persisted to the database " +
+                "(PersistKeysToDbContext). A restart without persistent keys causes the stored password " +
+                "to become unreadable.",
+                settings.ImapHost, settings.ImapPort, settings.ImapUseSsl, settings.ImapUsername);
+        }
         catch (Exception ex)
         {
             runStatus = $"Failed: {ex.Message}";
-            _logger.LogError(ex, "ImapPoll cycle failed");
+            _logger.LogError(ex,
+                "ImapPoll cycle failed — host={Host} port={Port} user={User}",
+                settings.ImapHost, settings.ImapPort, settings.ImapUsername);
         }
 
         // Persist worker status so the SysAdmin UI shows it.

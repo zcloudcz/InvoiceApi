@@ -1,6 +1,7 @@
 using Fakvio.Application.Service;
 using Fakvio.Domain.Entities;
 using Fakvio.Domain.Enums;
+using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
 namespace Fakvio.Infrastructure.Data;
@@ -21,6 +22,12 @@ namespace Fakvio.Infrastructure.Data;
 /// The master schema does NOT store business data (invoices, invoice items, etc.)
 /// — that lives in per-tenant schemas managed by TenantDbContext.
 ///
+/// Implements IDataProtectionKeyContext so that ASP.NET Core Data Protection stores its
+/// encryption key ring in PostgreSQL rather than in the ephemeral file system.
+/// Without this, every app restart on Azure App Service or Azure Functions generates a
+/// new key ring and can no longer decrypt credentials (IMAP passwords, OAuth tokens, etc.)
+/// that were encrypted with the previous key ring.
+///
 /// Lifecycle:
 /// 1. SysAdmin creates a company (Client with IsIssuer = true)
 /// 2. CompanySystemSettings record added with SchemaName
@@ -28,7 +35,7 @@ namespace Fakvio.Infrastructure.Data;
 /// 4. Users are added to master schema with CompanyId pointing to the company
 /// 5. On login, AuthService checks tenant status (provisioned + active) before issuing JWT
 /// </summary>
-public class MasterDbContext : DbContext
+public class MasterDbContext : DbContext, IDataProtectionKeyContext
 {
     /// <summary>
     /// Service that provides the currently authenticated user's ID.
@@ -137,6 +144,23 @@ public class MasterDbContext : DbContext
     /// Stored in master DB (shared across all tenants).
     /// </summary>
     public DbSet<TaxYearConfig> TaxYearConfig { get; set; }
+
+    // ─── ASP.NET Core Data Protection key ring ────────────────────────────────
+
+    /// <summary>
+    /// Stores ASP.NET Core Data Protection encryption keys in PostgreSQL so they
+    /// survive application restarts, deployments, and Azure scale-out events.
+    ///
+    /// Without persistence: every restart generates a new key ring → all credentials
+    /// encrypted with the old key ring (IMAP passwords, OAuth tokens, TOTP secrets)
+    /// become unreadable → CredentialProtector.Decrypt catches CryptographicException
+    /// and returns the raw ciphertext as "legacy plaintext" → MailKit receives garbage
+    /// instead of the real password → AuthenticationException "Incorrect authentication data".
+    ///
+    /// Populated automatically by PersistKeysToDbContext<MasterDbContext>() in DI setup.
+    /// The table is created via a dedicated master migration (AddDataProtectionKeys_v109).
+    /// </summary>
+    public DbSet<DataProtectionKey> DataProtectionKeys { get; set; }
 
     // ─── Payment Matching (see PLATBY-ZADANI.md) ──────────────────────────────
 
