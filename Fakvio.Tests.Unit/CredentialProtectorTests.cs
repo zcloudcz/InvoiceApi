@@ -135,4 +135,76 @@ public class CredentialProtectorTests
         // But the encrypted values should be different (random IV)
         encrypted1.ShouldNotBe(encrypted2);
     }
+
+    /// <summary>
+    /// Simulates the key-ring rotation bug: a value encrypted with one DataProtection key ring
+    /// cannot be decrypted by a DIFFERENT key ring (different app name / ephemeral keys).
+    ///
+    /// This is exactly what happens in production when Data Protection keys are NOT persisted
+    /// to the database: after a restart the app generates a new key ring and can no longer
+    /// decrypt the IMAP password stored by the previous instance.
+    ///
+    /// The "recovery" behaviour — returning the raw ciphertext — must NOT silently succeed:
+    /// the test verifies that Decrypt() returns the ciphertext unchanged (not the plaintext),
+    /// so callers are aware they received garbage and the bug is detectable in logs.
+    /// </summary>
+    [Fact]
+    public void Decrypt_WithDifferentKeyRing_ReturnsRawCiphertext_NotPlaintext()
+    {
+        // Arrange — encrypt with instance1 (simulates first app start)
+        var instance1Provider = DataProtectionProvider.Create("Fakvio");
+        var instance1Logger = Substitute.For<ILogger<CredentialProtector>>();
+        var instance1 = new CredentialProtector(instance1Provider, instance1Logger);
+
+        const string plaintext = "secret-imap-password";
+        var ciphertext = instance1.Encrypt(plaintext)!;
+
+        // Act — try to decrypt with a DIFFERENT key ring (simulates restart without key persistence)
+        var instance2Provider = DataProtectionProvider.Create("AnotherApp"); // different purpose → different keys
+        var instance2Logger = Substitute.For<ILogger<CredentialProtector>>();
+        var instance2 = new CredentialProtector(instance2Provider, instance2Logger);
+
+        var result = instance2.Decrypt(ciphertext);
+
+        // Assert — must NOT be the original plaintext
+        // (CredentialProtector falls back to returning the raw ciphertext after CryptographicException)
+        result.ShouldNotBe(plaintext,
+            "Decrypt with a different key ring must not accidentally return the original password. " +
+            "This test confirms that the key-ring isolation works correctly.");
+
+        // The returned value is the original ciphertext (legacy-plaintext fallback path)
+        result.ShouldBe(ciphertext,
+            "Migration-safety fallback returns the raw ciphertext unchanged when decryption fails.");
+    }
+
+    /// <summary>
+    /// Verifies that two CredentialProtector instances sharing the same ApplicationName
+    /// CAN decrypt each other's values — as they will after PersistKeysToDbContext is added.
+    ///
+    /// When Data Protection keys are persisted to the database (PersistKeysToDbContext<MasterDbContext>),
+    /// all application instances (API + Functions, multi-replica) share the same key ring.
+    /// This test confirms that matching application names is the necessary prerequisite.
+    /// </summary>
+    [Fact]
+    public void Decrypt_SameApplicationName_CanDecryptAcrossInstances()
+    {
+        // Arrange — two separate instances with the SAME application name (shared key ring path)
+        var provider1 = DataProtectionProvider.Create("Fakvio");
+        var provider2 = DataProtectionProvider.Create("Fakvio");
+        var logger = Substitute.For<ILogger<CredentialProtector>>();
+
+        var instance1 = new CredentialProtector(provider1, logger);
+        var instance2 = new CredentialProtector(provider2, logger);
+
+        const string plaintext = "shared-secret";
+        var ciphertext = instance1.Encrypt(plaintext)!;
+
+        // Act
+        var result = instance2.Decrypt(ciphertext);
+
+        // Assert — same app name → same key derivation → cross-instance decrypt succeeds
+        result.ShouldBe(plaintext,
+            "Instances sharing the same ApplicationName must be able to decrypt each other's values. " +
+            "This mirrors the production setup where PersistKeysToDbContext shares one key ring.");
+    }
 }

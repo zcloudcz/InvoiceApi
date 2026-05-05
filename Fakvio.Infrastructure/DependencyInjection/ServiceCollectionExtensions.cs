@@ -7,6 +7,7 @@ using Fakvio.Infrastructure.Logging;
 using Fakvio.Infrastructure.Repository;
 using Fakvio.Infrastructure.Service;
 using Fakvio.Infrastructure.Service.ChatTools;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -101,7 +102,23 @@ public static class ServiceCollectionExtensions
 
         // Data Protection — used by TwoFactorService for encrypting TOTP secrets and session tokens,
         // and by CredentialProtector for encrypting SMTP passwords, AI API keys, and OAuth tokens at rest.
-        services.AddDataProtection();
+        //
+        // IMPORTANT: PersistKeysToDbContext stores the key ring in the PostgreSQL master database.
+        // Without this, every application restart (Azure App Service recycle, Functions cold start,
+        // deployment) generates a new key ring and makes ALL previously encrypted credentials
+        // (IMAP password, SMTP password, OAuth tokens, TOTP secrets) permanently unreadable.
+        // The symptom is AuthenticationException "Incorrect authentication data" on IMAP connect,
+        // or login failures for users with 2FA configured — because CredentialProtector.Decrypt()
+        // catches CryptographicException and falls back to returning the raw ciphertext as if it
+        // were a plain-text legacy value, then passes that garbage to MailKit / SMTP.
+        //
+        // SetApplicationName ties the key ring to "Fakvio" so that multiple instances (API + Functions)
+        // share the same key ring even though they run as separate processes / app service plans.
+        // Without this, each app type generates its own independent key ring (the default isolation
+        // uses the application's content root path as the discriminator).
+        services.AddDataProtection()
+            .PersistKeysToDbContext<MasterDbContext>()
+            .SetApplicationName("Fakvio");
 
         // Credential encryption — encrypts sensitive fields (passwords, API keys, OAuth tokens)
         // before storing them in the database, and decrypts on read. Singleton because

@@ -175,6 +175,25 @@ Co chrání: SMTP hesla, OAuth secrets, AI provider API keys uložené v `Compan
 
 **Zero-downtime migrace plaintext → encrypted**: Decrypt catchne `CryptographicException` a vrátí původní hodnotu (legacy plaintext). Při dalším save se hodnota uloží už zašifrovaně.
 
+### 2.7 Data Protection key persistence (KRITICKÉ — issue #109)
+
+**Data Protection klíče MUSÍ být persistované do DB**, jinak po každém restartu procesu (Azure cold start, deploy, recycle) vygeneruje nový key ring a všechna dříve zašifrovaná hesla jsou **nedešifrovatelná**.
+
+| Co | Kde |
+|----|-----|
+| Registrace | `ServiceCollectionExtensions.cs` — `AddDataProtection().PersistKeysToDbContext<MasterDbContext>().SetApplicationName("Fakvio")` |
+| DB tabulka | `DataProtectionKeys` v master schema (migrace `AddDataProtectionKeys_v109`) |
+| MasterDbContext | Implementuje `IDataProtectionKeyContext`, `DbSet<DataProtectionKey> DataProtectionKeys` |
+| NuGet | `Microsoft.AspNetCore.DataProtection.EntityFrameworkCore` |
+
+**`SetApplicationName("Fakvio")`** je povinný — bez něj API host a Functions host mají **různé** application discriminator → generují různé klíče → navzájem nedešifrují.
+
+**Symptom při chybějící persistenci**: `CredentialProtector.Decrypt()` zachytí `CryptographicException` a vrátí raw ciphertext jako "legacy plaintext" → služby (IMAP, SMTP) dostanou garbage místo hesla → `AuthenticationException: Incorrect authentication data`.
+
+**Po opravě** (deploy s persistencí): existující hesla zašifrovaná ephemeral klíčem jsou ztracena. Uživatel musí **znovu uložit** všechna hesla (SMTP, IMAP, AI keys) v SysAdmin panelu.
+
+**Pravidlo**: NIKDY neodstraňuj `PersistKeysToDbContext` ani neměň `ApplicationName`. Pokud musíš změnit ApplicationName, je to ekvivalent ztráty všech zašifrovaných dat — plánuj migrační okno.
+
 ---
 
 ## 3. Multi-tenant — jak data oddělujeme
@@ -956,6 +975,17 @@ await sub.Received(1).MethodAsync(Arg.Any<T>());  // received check vyžaduje aw
 
 ## 12. Známé gotchas (rychlý lookup)
 
+### Data Protection
+- **Key persistence je POVINNÁ** — `PersistKeysToDbContext<MasterDbContext>()`. Bez ní každý restart = nový key ring = všechna zašifrovaná hesla ztracena (issue #109). Viz §2.7.
+- `SetApplicationName("Fakvio")` — API i Functions MUSÍ sdílet stejný název, jinak navzájem nedešifrují.
+- Po ztrátě key ringu uživatel musí znovu uložit VŠECHNA hesla (SMTP, IMAP, AI keys).
+
+### EF Core Identity Map caching
+- `FindAsync` bez `Include` cachuje entitu v identity mapu. Pozdější query s `Include` vrátí cached instanci s `null` navigation properties (issue #104). Fix: `AsNoTracking()` na read-only queries, nebo explicitní `Include` na `FindAsync`.
+
+### Non-idempotent seed migrace
+- `migrationBuilder.InsertData` s hardcoded `Id` selže na `PK duplicate` pokud data už existují (issue #97/#109). Vždy použít raw SQL `INSERT ... ON CONFLICT (Id) DO NOTHING` nebo `DELETE + InsertData` guard.
+
 ### .NET 10 / NuGet
 - `Microsoft.Extensions.Configuration.Memory` package neexistuje samostatně — `AddInMemoryCollection` je v hlavním `Microsoft.Extensions.Configuration`.
 - EF Core 10.0.1 + Npgsql 10.0.0 — MSB3277 warn (Relational version mismatch), funguje.
@@ -1001,6 +1031,8 @@ await sub.Received(1).MethodAsync(Arg.Any<T>());  // received check vyžaduje aw
 | Nový email/PDF placeholder | §4.3 (typy) |
 | Nový hostovací model (např. native API workflow) | §1.2 + §9.1 |
 | Změna config zdroje (Key Vault, App Configuration) | §9.2 |
+| Změna Data Protection persistence / ApplicationName | §2.7 |
+| Nová seed migrace s hardcoded Id | §12 (non-idempotent seed) |
 | Nový code-table pattern (master / tenant / dual-context) | §11.2 |
 | Nový background lock klíč | §6.3 (tabulka klíčů) |
 | Změna observability stacku (App Insights → jiný) | §10 |
