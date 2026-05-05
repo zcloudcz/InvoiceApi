@@ -6,6 +6,7 @@ using Fakvio.Infrastructure.Service;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Npgsql;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 
@@ -34,6 +35,7 @@ public class TenantDbContextFactoryTests : IDisposable
     private readonly ITenantResolver _tenantResolver;
     private readonly ITenantProvisioningService _provisioningService;
     private readonly IConfiguration _configuration;
+    private readonly NpgsqlDataSource _dataSource;
     private readonly ILogger<TenantDbContextFactory> _logger;
 
     public TenantDbContextFactoryTests()
@@ -50,13 +52,19 @@ public class TenantDbContextFactoryTests : IDisposable
         _logger = Substitute.For<ILogger<TenantDbContextFactory>>();
 
         // Configuration with a PostgreSQL connection string (shared database for all schemas)
+        var connectionString = "Host=localhost;Database=fakvio;Username=fakvio;Password=YourStrong!Passw0rd";
         var configData = new Dictionary<string, string?>
         {
-            ["ConnectionStrings:DefaultConnection"] = "Host=localhost;Database=fakvio;Username=fakvio;Password=YourStrong!Passw0rd"
+            ["ConnectionStrings:DefaultConnection"] = connectionString
         };
         _configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(configData)
             .Build();
+
+        // Build a real NpgsqlDataSource from the test connection string.
+        // NpgsqlDataSource is sealed, so we cannot mock it — but we only need its
+        // ConnectionString property for the factory to derive per-tenant data sources.
+        _dataSource = new NpgsqlDataSourceBuilder(connectionString).Build();
     }
 
     /// <summary>
@@ -106,6 +114,7 @@ public class TenantDbContextFactoryTests : IDisposable
             _masterDb,
             _provisioningService,
             _configuration,
+            _dataSource,
             _logger);
     }
 
@@ -341,5 +350,6 @@ public class TenantDbContextFactoryTests : IDisposable
     public void Dispose()
     {
         _masterDb.Dispose();
+        _dataSource.Dispose();
     }
 }

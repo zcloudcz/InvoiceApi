@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Npgsql;
 
 namespace Fakvio.Infrastructure.Service;
 
@@ -30,6 +31,7 @@ public class TenantDbContextFactory : ITenantDbContextFactory
     private readonly MasterDbContext _masterDb;
     private readonly ITenantProvisioningService _provisioningService;
     private readonly IConfiguration _configuration;
+    private readonly NpgsqlDataSource _dataSource;
     private readonly ICurrentUserService? _currentUserService;
     private readonly ILogger<TenantDbContextFactory> _logger;
 
@@ -57,11 +59,18 @@ public class TenantDbContextFactory : ITenantDbContextFactory
     /// </summary>
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> _migrationLocks = new();
 
+    /// <summary>
+    /// Constructor with dependency injection.
+    /// NpgsqlDataSource is the shared singleton connection factory that handles both
+    /// Azure AD token auth and password auth transparently.
+    /// We need it to derive per-tenant data sources that inherit the same auth mode.
+    /// </summary>
     public TenantDbContextFactory(
         ITenantResolver tenantResolver,
         MasterDbContext masterDb,
         ITenantProvisioningService provisioningService,
         IConfiguration configuration,
+        NpgsqlDataSource dataSource,
         ILogger<TenantDbContextFactory> logger,
         ICurrentUserService? currentUserService = null)
     {
@@ -69,6 +78,7 @@ public class TenantDbContextFactory : ITenantDbContextFactory
         _masterDb = masterDb;
         _provisioningService = provisioningService;
         _configuration = configuration;
+        _dataSource = dataSource;
         _logger = logger;
         _currentUserService = currentUserService;
     }
@@ -210,22 +220,32 @@ public class TenantDbContextFactory : ITenantDbContextFactory
             .AsNoTracking()
             .FirstOrDefaultAsync(s => s.CompanyId == companyId, cancellationToken);
 
-        return settings == null ? null : GetConnectionString();
+        return settings == null ? null : _dataSource.ConnectionString;
     }
 
     /// <summary>
     /// Creates a TenantDbContext instance configured for a specific schema.
     ///
-    /// The context uses the shared PostgreSQL connection string and sets the Schema
-    /// property so that HasDefaultSchema() in OnModelCreating routes all tables
-    /// to the correct tenant schema.
+    /// Uses the shared singleton NpgsqlDataSource directly — this inherits Azure AD
+    /// token auth (UsePeriodicPasswordProvider) transparently. No per-tenant data source
+    /// is needed because EF Core uses the Schema property + HasDefaultSchema() in
+    /// OnModelCreating to emit fully-qualified SQL (e.g., "tenant_42"."Invoice").
+    ///
+    /// search_path override on the data source is only needed for MIGRATIONS (where
+    /// migration SQL uses unqualified table names). That path is handled by
+    /// TenantProvisioningService.CreateTenantContext, not here.
+    ///
+    /// IMPORTANT: Before this fix, this method used UseNpgsql(connectionString) which
+    /// created an INTERNAL NpgsqlDataSource WITHOUT the Azure AD token provider.
+    /// On Azure (Managed Identity, no password in connection string), every tenant
+    /// query failed with "No password has been provided but the backend requires one".
+    /// Now we pass the singleton _dataSource which already has the token provider
+    /// configured — no leak, no duplication, no config divergence.
     /// </summary>
     public TenantDbContext CreateTenantContext(string schemaName)
     {
-        var connectionString = GetConnectionString();
-
         var optionsBuilder = new DbContextOptionsBuilder<TenantDbContext>();
-        optionsBuilder.UseNpgsql(connectionString, b =>
+        optionsBuilder.UseNpgsql(_dataSource, b =>
         {
             b.MigrationsAssembly("Fakvio.Infrastructure");
             b.EnableRetryOnFailure(
@@ -243,17 +263,5 @@ public class TenantDbContextFactory : ITenantDbContextFactory
 
         context.Schema = schemaName;
         return context;
-    }
-
-    /// <summary>
-    /// Gets the shared PostgreSQL connection string from configuration.
-    /// In multi-schema architecture, all tenants share the same database connection.
-    /// </summary>
-    private string GetConnectionString()
-    {
-        return _configuration.GetConnectionString("DefaultConnection")
-            ?? throw new InvalidOperationException(
-                "DefaultConnection not found in configuration. " +
-                "Cannot create tenant context.");
     }
 }

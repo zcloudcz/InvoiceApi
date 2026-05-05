@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Npgsql;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using Shouldly;
@@ -93,12 +94,18 @@ public class TenantContextMiddlewareTests : IDisposable
         };
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(configData).Build();
 
+        // Build a real NpgsqlDataSource for DI — TenantDbContextFactory needs it
+        // to derive per-tenant data sources. Sealed class, cannot be mocked.
+        var testDataSource = new NpgsqlDataSourceBuilder(
+            "Host=localhost;Database=test;Username=test;Password=test").Build();
+
         var services = new ServiceCollection();
         services.AddSingleton(_masterContext);
         services.AddScoped(_ => new TenantDbContext(tenantOptions));
         services.AddSingleton<ITenantResolver>(Substitute.For<ITenantResolver>());
         services.AddSingleton<ITenantProvisioningService>(Substitute.For<ITenantProvisioningService>());
         services.AddSingleton<IConfiguration>(configuration);
+        services.AddSingleton(testDataSource);
         services.AddSingleton(Substitute.For<ILogger<TenantDbContextFactory>>());
         services.AddScoped<ITenantDbContextFactory, TenantDbContextFactory>();
         context.RequestServices = services.BuildServiceProvider();
