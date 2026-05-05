@@ -271,11 +271,14 @@ public class InvoiceService : IInvoiceService
         }
 
         // Pre-save VariableSymbol duplicate check.
-        // Caller-supplied VS (e.g., from a template or user override) must be unique BEFORE the
-        // invoice row is persisted — otherwise a throw later would leave an orphaned DRAFT invoice
-        // in the DB. Auto-derived VS (computed from DocumentNumber after save) is checked again
-        // below as a safety net but cannot collide in practice (DocumentNumber is unique per sequence).
-        if (!string.IsNullOrEmpty(createDto.VariableSymbol))
+        // Only runs when the caller has explicitly opted in to a manual VS override
+        // (VariableSymbolIsManualOverride = true). When the flag is false the VS
+        // will be re-derived from the generated DocumentNumber below, so checking the
+        // stale preview value sent by the UI would either produce a false positive
+        // (flagging a preview digit string that is about to be discarded) or silently
+        // skip a real collision — neither is correct. The post-generation duplicate
+        // check further down handles the auto-derived value correctly.
+        if (createDto.VariableSymbolIsManualOverride && !string.IsNullOrEmpty(createDto.VariableSymbol))
         {
             var preDuplicateExists = await _context.Invoice
                 .AsNoTracking()
@@ -427,11 +430,28 @@ public class InvoiceService : IInvoiceService
                 invoice, cancellationToken, createDto.NumberSequenceId);
         }
 
-        // Pre-fill VariableSymbol from digits in the document number.
-        // Czech banking requires variable symbol = max 10 digits only.
-        // Runs regardless of whether document number was auto-generated or custom-provided.
-        if (string.IsNullOrEmpty(invoice.VariableSymbol) && !string.IsNullOrEmpty(invoice.DocumentNumber))
+        // Derive VariableSymbol from the (now fully resolved) document number.
+        // Czech banking: VS must be digits only, max 10 characters.
+        //
+        // Two cases:
+        //   1) VariableSymbolIsManualOverride = true  → user deliberately typed a custom VS
+        //      (e.g. to match a PO number). We keep whatever arrived in the DTO and only
+        //      apply the auto-fill below when it is still empty.
+        //   2) VariableSymbolIsManualOverride = false (default, covers all UI flows) →
+        //      always re-derive from DocumentNumber. This is the key guard for issue #107:
+        //      the UI preview sends VS = digits(preview-without-prefix), but after
+        //      GenerateDocumentNumberAsync applies the client prefix the DocumentNumber is
+        //      e.g. "EU-2026001". Re-deriving here gives VS = "2026001" (correct digits from
+        //      the prefixed number) instead of persisting the stale preview value.
+        if (!createDto.VariableSymbolIsManualOverride && !string.IsNullOrEmpty(invoice.DocumentNumber))
         {
+            // Always overwrite — discard any UI-supplied preview VS so it matches the real DocumentNumber.
+            invoice.VariableSymbol = new string(invoice.DocumentNumber
+                .Where(char.IsDigit).Take(10).ToArray());
+        }
+        else if (string.IsNullOrEmpty(invoice.VariableSymbol) && !string.IsNullOrEmpty(invoice.DocumentNumber))
+        {
+            // Manual-override path: VS was empty anyway → derive from DocumentNumber as fallback.
             invoice.VariableSymbol = new string(invoice.DocumentNumber
                 .Where(char.IsDigit).Take(10).ToArray());
         }

@@ -61,6 +61,19 @@ public class CreateInvoiceDto
     public string? VariableSymbol { get; set; }
 
     /// <summary>
+    /// When false (default), the backend always re-derives VariableSymbol from the
+    /// generated DocumentNumber (digits only, max 10). This ensures VS stays in sync
+    /// with the DocumentNumber even when the UI sent a preview value without prefix/suffix.
+    ///
+    /// Set to true only when the user has deliberately typed a custom VS that differs
+    /// from the DocumentNumber — e.g. to match a purchase order number.
+    ///
+    /// UI note: the create-from-template and standard create flows always leave this
+    /// false so the backend guard applies. The user must explicitly opt-in to override.
+    /// </summary>
+    public bool VariableSymbolIsManualOverride { get; set; } = false;
+
+    /// <summary>
     /// Constant symbol for payment
     /// </summary>
     [StringLength(50)]
