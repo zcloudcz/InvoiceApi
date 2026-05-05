@@ -68,6 +68,20 @@ public class InboundAliasRouter
         // Each entry is (rawAddress, headerName) — we resolve aliases lazily.
         var candidates = CollectCandidates(message);
 
+        // TEMP DIAGNOSTIC: dump all raw headers + extracted candidates so SysAdmin
+        // can see exactly what the app receives. Remove once routing is stable.
+        var allHeaders = string.Join(" | ", message.Headers.Select(h => $"{h.Field}: {h.Value?.Substring(0, Math.Min(h.Value?.Length ?? 0, 200))}"));
+        var candidateSummary = string.Join(", ", candidates.Select(c => $"[{c.Header}] {c.Address}"));
+        _logger.LogWarning(
+            "IMAP DIAG — MessageId={MessageId} Subject={Subject} From={From} Date={Date} " +
+            "Candidates=({Candidates}) AllHeaders=({AllHeaders})",
+            message.MessageId ?? "(none)",
+            message.Subject ?? "(none)",
+            message.From?.ToString() ?? "(none)",
+            message.Date,
+            candidateSummary,
+            allHeaders);
+
         foreach (var (rawAddress, headerLabel) in candidates)
         {
             var alias = ExtractLocalPart(rawAddress);
