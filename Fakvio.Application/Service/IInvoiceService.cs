@@ -215,4 +215,32 @@ public interface IInvoiceService
     /// <param name="proformaId">Proforma ID</param>
     /// <param name="cancellationToken">Cancellation token</param>
     Task<List<InvoiceDto>> GetTaxReceiptsForProformaAsync(long proformaId, CancellationToken cancellationToken = default);
+
+    // ─── Copy ─────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Creates a new Draft invoice as an exact copy of the source document.
+    ///
+    /// What is copied: client, issuer, items (deep copy — new InvoiceItem without Id/InvoiceId),
+    /// currency, payment method, bank account details, notes, number sequence.
+    ///
+    /// What is reset (same as a brand-new invoice):
+    ///   - Status = Draft
+    ///   - DocumentNumber — fresh number from number sequence pipeline
+    ///   - VariableSymbol — derived from the new DocumentNumber (digits only, max 10)
+    ///   - IssueDate = today (UTC)
+    ///   - DueDate = recalculated from client BillingSettings
+    ///   - PaidAt = null, PaidAmount = 0
+    ///   - IsSentByEmail = false, LastSentByEmailAt = null
+    ///   - OriginalInvoiceId = null (copy is NOT a credit note or linked document)
+    ///
+    /// Supported source types: Invoice, Proforma, TaxReceiptForAdvance.
+    /// CreditNote sources are rejected with <see cref="InvalidOperationException"/>.
+    /// </summary>
+    /// <param name="sourceId">ID of the invoice to copy from</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Newly created Draft invoice DTO</returns>
+    /// <exception cref="KeyNotFoundException">Source invoice not found</exception>
+    /// <exception cref="InvalidOperationException">Source is a CreditNote — copying is not allowed</exception>
+    Task<InvoiceDto> CopyInvoiceAsync(long sourceId, CancellationToken cancellationToken = default);
 }

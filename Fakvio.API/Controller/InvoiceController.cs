@@ -479,6 +479,67 @@ public class InvoiceController : ControllerBase
     }
 
     /// <summary>
+    /// Creates a new Draft invoice as an exact copy of the source.
+    ///
+    /// What is copied: client, issuer, line items (deep copy), currency, payment method,
+    /// bank account, notes. What is reset: Status = Draft, fresh DocumentNumber (number
+    /// sequence pipeline), fresh VariableSymbol (derived from new DocumentNumber),
+    /// IssueDate = today, DueDate recalculated from client BillingSettings,
+    /// PaidAt = null, IsSentByEmail = false, OriginalInvoiceId = null.
+    ///
+    /// Supported source types: Invoice, Proforma, TaxReceiptForAdvance.
+    /// CreditNote sources → 400 Bad Request.
+    /// </summary>
+    /// <param name="id">Source invoice ID to copy from</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>The newly created Draft invoice</returns>
+    /// <response code="201">Copy created successfully</response>
+    /// <response code="400">Source is a CreditNote or other validation error</response>
+    /// <response code="404">Source invoice not found</response>
+    /// <response code="500">Internal server error — check logs for details</response>
+    [HttpPost("{id}/copy")]
+    [ProducesResponseType(typeof(InvoiceDto), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<InvoiceDto>> CopyInvoice(
+        long id,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("POST /api/invoice/{Id}/copy", id);
+
+        try
+        {
+            var copy = await _invoiceService.CopyInvoiceAsync(id, cancellationToken);
+
+            _logger.LogInformation(
+                "Invoice {SourceId} copied → new invoice {CopyId} ({DocNum})",
+                id, copy.Id, copy.DocumentNumber);
+
+            return CreatedAtAction(
+                nameof(GetInvoiceById),
+                new { id = copy.Id },
+                copy);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            _logger.LogWarning("Source invoice {Id} not found for copy: {Message}", id, ex.Message);
+            return NotFound(new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning("Cannot copy invoice {Id}: {Message}", id, ex.Message);
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "POST /api/invoice/{Id}/copy failed", id);
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { message = $"Failed to copy invoice {id}. Please try again or contact support." });
+        }
+    }
+
+    /// <summary>
     /// Reverts a Completed invoice back to Draft so it can be fully edited.
     /// Only Completed invoices can be reverted — Paid/Creditnoted return 400.
     /// </summary>
