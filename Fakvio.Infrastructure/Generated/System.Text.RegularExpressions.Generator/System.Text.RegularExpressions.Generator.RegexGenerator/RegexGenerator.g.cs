@@ -242,6 +242,247 @@ namespace Fakvio.Infrastructure.Service.ChatTools
     {
         /// <remarks>
         /// Pattern:<br/>
+        /// <code>\\b(přijat[áaéeou]|prijat[áaéeou]|přijat[íi]|prijat[íi]|výdaj[oová]?|vydaj[oová]?|dodavatel[sš]k[áaé]?|dodavatel[eů]?|received invoice|incoming invoice|supplier invoice|expense invoice|přijatou fakturu|prijatou fakturu|přijaté faktury|prijaté faktury)\\b|\\b(faktura|fakturu|faktury|invoice)\\b.{0,30}\\b\\d{5,15}\\b</code><br/>
+        /// Options:<br/>
+        /// <code>RegexOptions.IgnoreCase | RegexOptions.Compiled</code><br/>
+        /// Explanation:<br/>
+        /// <code>
+        /// ○ Match if at a word boundary.<br/>
+        /// ○ Match with 2 alternative expressions, atomically.<br/>
+        ///     ○ Match a sequence of expressions.<br/>
+        ///         ○ 1st capture group.<br/>
+        ///             ○ Match with 8 alternative expressions.<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Pp].<br/>
+        ///                     ○ Match with 4 alternative expressions.<br/>
+        ///                         ○ Match a sequence of expressions.<br/>
+        ///                             ○ Match a character in the set [\u0158\u0159].<br/>
+        ///                             ○ Match a character in the set [Ii].<br/>
+        ///                             ○ Match a character in the set [Jj].<br/>
+        ///                             ○ Match a character in the set [Aa].<br/>
+        ///                             ○ Match a character in the set [Tt].<br/>
+        ///                             ○ Match a character in the set [AEOUaeou\u00C1\u00C9\u00E1\u00E9].<br/>
+        ///                         ○ Match a sequence of expressions.<br/>
+        ///                             ○ Match a character in the set [Rr].<br/>
+        ///                             ○ Match a character in the set [Ii].<br/>
+        ///                             ○ Match a character in the set [Jj].<br/>
+        ///                             ○ Match a character in the set [Aa].<br/>
+        ///                             ○ Match a character in the set [Tt].<br/>
+        ///                             ○ Match a character in the set [AEOUaeou\u00C1\u00C9\u00E1\u00E9].<br/>
+        ///                         ○ Match a sequence of expressions.<br/>
+        ///                             ○ Match a character in the set [\u0158\u0159].<br/>
+        ///                             ○ Match a character in the set [Ii].<br/>
+        ///                             ○ Match a character in the set [Jj].<br/>
+        ///                             ○ Match a character in the set [Aa].<br/>
+        ///                             ○ Match a character in the set [Tt].<br/>
+        ///                             ○ Match a character in the set [Ii\u00CD\u00ED].<br/>
+        ///                         ○ Match a sequence of expressions.<br/>
+        ///                             ○ Match a character in the set [Rr].<br/>
+        ///                             ○ Match a character in the set [Ii].<br/>
+        ///                             ○ Match a character in the set [Jj].<br/>
+        ///                             ○ Match a character in the set [Aa].<br/>
+        ///                             ○ Match a character in the set [Tt].<br/>
+        ///                             ○ Match a character in the set [Ii\u00CD\u00ED].<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Vv].<br/>
+        ///                     ○ Match with 2 alternative expressions.<br/>
+        ///                         ○ Match a sequence of expressions.<br/>
+        ///                             ○ Match a character in the set [\u00DD\u00FD].<br/>
+        ///                             ○ Match a character in the set [Dd].<br/>
+        ///                             ○ Match a character in the set [Aa].<br/>
+        ///                             ○ Match a character in the set [Jj].<br/>
+        ///                             ○ Match a character in the set [OVov\u00C1\u00E1] greedily, optionally.<br/>
+        ///                         ○ Match a sequence of expressions.<br/>
+        ///                             ○ Match a character in the set [Yy].<br/>
+        ///                             ○ Match a character in the set [Dd].<br/>
+        ///                             ○ Match a character in the set [Aa].<br/>
+        ///                             ○ Match a character in the set [Jj].<br/>
+        ///                             ○ Match a character in the set [OVov\u00C1\u00E1] greedily, optionally.<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Dd].<br/>
+        ///                     ○ Match a character in the set [Oo].<br/>
+        ///                     ○ Match a character in the set [Dd].<br/>
+        ///                     ○ Match a character in the set [Aa].<br/>
+        ///                     ○ Match a character in the set [Vv].<br/>
+        ///                     ○ Match a character in the set [Aa].<br/>
+        ///                     ○ Match a character in the set [Tt].<br/>
+        ///                     ○ Match a character in the set [Ee].<br/>
+        ///                     ○ Match a character in the set [Ll].<br/>
+        ///                     ○ Match with 2 alternative expressions.<br/>
+        ///                         ○ Match a sequence of expressions.<br/>
+        ///                             ○ Match a character in the set [Ss\u0160\u0161].<br/>
+        ///                             ○ Match a character in the set [Kk\u212A].<br/>
+        ///                             ○ Match a character in the set [Aa\u00C1\u00C9\u00E1\u00E9] greedily, optionally.<br/>
+        ///                         ○ Match a character in the set [Ee\u016E\u016F] greedily, optionally.<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Rr].<br/>
+        ///                     ○ Match a character in the set [Ee].<br/>
+        ///                     ○ Match a character in the set [Cc].<br/>
+        ///                     ○ Match a character in the set [Ee].<br/>
+        ///                     ○ Match a character in the set [Ii].<br/>
+        ///                     ○ Match a character in the set [Vv].<br/>
+        ///                     ○ Match a character in the set [Ee].<br/>
+        ///                     ○ Match a character in the set [Dd].<br/>
+        ///                     ○ Match ' '.<br/>
+        ///                     ○ Match a character in the set [Ii].<br/>
+        ///                     ○ Match a character in the set [Nn].<br/>
+        ///                     ○ Match a character in the set [Vv].<br/>
+        ///                     ○ Match a character in the set [Oo].<br/>
+        ///                     ○ Match a character in the set [Ii].<br/>
+        ///                     ○ Match a character in the set [Cc].<br/>
+        ///                     ○ Match a character in the set [Ee].<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Ii].<br/>
+        ///                     ○ Match a character in the set [Nn].<br/>
+        ///                     ○ Match a character in the set [Cc].<br/>
+        ///                     ○ Match a character in the set [Oo].<br/>
+        ///                     ○ Match a character in the set [Mm].<br/>
+        ///                     ○ Match a character in the set [Ii].<br/>
+        ///                     ○ Match a character in the set [Nn].<br/>
+        ///                     ○ Match a character in the set [Gg].<br/>
+        ///                     ○ Match ' '.<br/>
+        ///                     ○ Match a character in the set [Ii].<br/>
+        ///                     ○ Match a character in the set [Nn].<br/>
+        ///                     ○ Match a character in the set [Vv].<br/>
+        ///                     ○ Match a character in the set [Oo].<br/>
+        ///                     ○ Match a character in the set [Ii].<br/>
+        ///                     ○ Match a character in the set [Cc].<br/>
+        ///                     ○ Match a character in the set [Ee].<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Ss].<br/>
+        ///                     ○ Match a character in the set [Uu].<br/>
+        ///                     ○ Match a character in the set [Pp] exactly 2 times.<br/>
+        ///                     ○ Match a character in the set [Ll].<br/>
+        ///                     ○ Match a character in the set [Ii].<br/>
+        ///                     ○ Match a character in the set [Ee].<br/>
+        ///                     ○ Match a character in the set [Rr].<br/>
+        ///                     ○ Match ' '.<br/>
+        ///                     ○ Match a character in the set [Ii].<br/>
+        ///                     ○ Match a character in the set [Nn].<br/>
+        ///                     ○ Match a character in the set [Vv].<br/>
+        ///                     ○ Match a character in the set [Oo].<br/>
+        ///                     ○ Match a character in the set [Ii].<br/>
+        ///                     ○ Match a character in the set [Cc].<br/>
+        ///                     ○ Match a character in the set [Ee].<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Ee].<br/>
+        ///                     ○ Match a character in the set [Xx].<br/>
+        ///                     ○ Match a character in the set [Pp].<br/>
+        ///                     ○ Match a character in the set [Ee].<br/>
+        ///                     ○ Match a character in the set [Nn].<br/>
+        ///                     ○ Match a character in the set [Ss].<br/>
+        ///                     ○ Match a character in the set [Ee].<br/>
+        ///                     ○ Match ' '.<br/>
+        ///                     ○ Match a character in the set [Ii].<br/>
+        ///                     ○ Match a character in the set [Nn].<br/>
+        ///                     ○ Match a character in the set [Vv].<br/>
+        ///                     ○ Match a character in the set [Oo].<br/>
+        ///                     ○ Match a character in the set [Ii].<br/>
+        ///                     ○ Match a character in the set [Cc].<br/>
+        ///                     ○ Match a character in the set [Ee].<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Pp].<br/>
+        ///                     ○ Match with 4 alternative expressions.<br/>
+        ///                         ○ Match a sequence of expressions.<br/>
+        ///                             ○ Match a character in the set [\u0158\u0159].<br/>
+        ///                             ○ Match a character in the set [Ii].<br/>
+        ///                             ○ Match a character in the set [Jj].<br/>
+        ///                             ○ Match a character in the set [Aa].<br/>
+        ///                             ○ Match a character in the set [Tt].<br/>
+        ///                             ○ Match a character in the set [Oo].<br/>
+        ///                             ○ Match a character in the set [Uu].<br/>
+        ///                             ○ Match ' '.<br/>
+        ///                             ○ Match a character in the set [Ff].<br/>
+        ///                             ○ Match a character in the set [Aa].<br/>
+        ///                             ○ Match a character in the set [Kk\u212A].<br/>
+        ///                             ○ Match a character in the set [Tt].<br/>
+        ///                             ○ Match a character in the set [Uu].<br/>
+        ///                             ○ Match a character in the set [Rr].<br/>
+        ///                             ○ Match a character in the set [Uu].<br/>
+        ///                         ○ Match a sequence of expressions.<br/>
+        ///                             ○ Match a character in the set [Rr].<br/>
+        ///                             ○ Match a character in the set [Ii].<br/>
+        ///                             ○ Match a character in the set [Jj].<br/>
+        ///                             ○ Match a character in the set [Aa].<br/>
+        ///                             ○ Match a character in the set [Tt].<br/>
+        ///                             ○ Match a character in the set [Oo].<br/>
+        ///                             ○ Match a character in the set [Uu].<br/>
+        ///                             ○ Match ' '.<br/>
+        ///                             ○ Match a character in the set [Ff].<br/>
+        ///                             ○ Match a character in the set [Aa].<br/>
+        ///                             ○ Match a character in the set [Kk\u212A].<br/>
+        ///                             ○ Match a character in the set [Tt].<br/>
+        ///                             ○ Match a character in the set [Uu].<br/>
+        ///                             ○ Match a character in the set [Rr].<br/>
+        ///                             ○ Match a character in the set [Uu].<br/>
+        ///                         ○ Match a sequence of expressions.<br/>
+        ///                             ○ Match a character in the set [\u0158\u0159].<br/>
+        ///                             ○ Match a character in the set [Ii].<br/>
+        ///                             ○ Match a character in the set [Jj].<br/>
+        ///                             ○ Match a character in the set [Aa].<br/>
+        ///                             ○ Match a character in the set [Tt].<br/>
+        ///                             ○ Match a character in the set [\u00C9\u00E9].<br/>
+        ///                             ○ Match ' '.<br/>
+        ///                             ○ Match a character in the set [Ff].<br/>
+        ///                             ○ Match a character in the set [Aa].<br/>
+        ///                             ○ Match a character in the set [Kk\u212A].<br/>
+        ///                             ○ Match a character in the set [Tt].<br/>
+        ///                             ○ Match a character in the set [Uu].<br/>
+        ///                             ○ Match a character in the set [Rr].<br/>
+        ///                             ○ Match a character in the set [Yy].<br/>
+        ///                         ○ Match a sequence of expressions.<br/>
+        ///                             ○ Match a character in the set [Rr].<br/>
+        ///                             ○ Match a character in the set [Ii].<br/>
+        ///                             ○ Match a character in the set [Jj].<br/>
+        ///                             ○ Match a character in the set [Aa].<br/>
+        ///                             ○ Match a character in the set [Tt].<br/>
+        ///                             ○ Match a character in the set [\u00C9\u00E9].<br/>
+        ///                             ○ Match ' '.<br/>
+        ///                             ○ Match a character in the set [Ff].<br/>
+        ///                             ○ Match a character in the set [Aa].<br/>
+        ///                             ○ Match a character in the set [Kk\u212A].<br/>
+        ///                             ○ Match a character in the set [Tt].<br/>
+        ///                             ○ Match a character in the set [Uu].<br/>
+        ///                             ○ Match a character in the set [Rr].<br/>
+        ///                             ○ Match a character in the set [Yy].<br/>
+        ///         ○ Match if at a word boundary.<br/>
+        ///     ○ Match a sequence of expressions.<br/>
+        ///         ○ 2nd capture group.<br/>
+        ///             ○ Match with 2 alternative expressions.<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Ff].<br/>
+        ///                     ○ Match a character in the set [Aa].<br/>
+        ///                     ○ Match a character in the set [Kk\u212A].<br/>
+        ///                     ○ Match a character in the set [Tt].<br/>
+        ///                     ○ Match a character in the set [Uu].<br/>
+        ///                     ○ Match a character in the set [Rr].<br/>
+        ///                     ○ Match a character in the set [AUYauy].<br/>
+        ///                 ○ Match a sequence of expressions.<br/>
+        ///                     ○ Match a character in the set [Ii].<br/>
+        ///                     ○ Match a character in the set [Nn].<br/>
+        ///                     ○ Match a character in the set [Vv].<br/>
+        ///                     ○ Match a character in the set [Oo].<br/>
+        ///                     ○ Match a character in the set [Ii].<br/>
+        ///                     ○ Match a character in the set [Cc].<br/>
+        ///                     ○ Match a character in the set [Ee].<br/>
+        ///         ○ Match if at a word boundary.<br/>
+        ///         ○ Match a character other than '\n' greedily at most 30 times.<br/>
+        ///         ○ Match if at a word boundary.<br/>
+        ///         ○ Match a Unicode digit atomically at least 5 and at most 15 times.<br/>
+        ///         ○ Match if at a word boundary.<br/>
+        /// </code>
+        /// </remarks>
+        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.21808")]
+        private static partial global::System.Text.RegularExpressions.Regex ReceivedInvoiceKeywordPattern() => global::System.Text.RegularExpressions.Generated.ReceivedInvoiceKeywordPattern_2.Instance;
+    }
+}
+
+namespace Fakvio.Infrastructure.Service.ChatTools
+{
+    partial class ChatToolExecutor
+    {
+        /// <remarks>
+        /// Pattern:<br/>
         /// <code>\\b(otevři|otevri|otevřít|otevrit|ukaž|ukaz|ukázat|ukazat|přejdi|prejdi|přejít|prejit|naviguj|navigovat|zobraz|zobrazit|jdi na|jdi do|chci|potřebuju|potrebuju|nová faktura|nova faktura|novou fakturu|nový klient|novy klient|nového klienta|noveho klienta|nový dobropis|novy dobropis|seznam faktur|seznam klientů|seznam klientu|přehled faktur|prehled faktur|open|show|go to|navigate|display|new invoice|new client|new credit note|invoice list|client list)\\b</code><br/>
         /// Options:<br/>
         /// <code>RegexOptions.IgnoreCase | RegexOptions.Compiled</code><br/>
@@ -628,7 +869,7 @@ namespace Fakvio.Infrastructure.Service.ChatTools
         /// </code>
         /// </remarks>
         [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.21808")]
-        private static partial global::System.Text.RegularExpressions.Regex NavigationKeywordPattern() => global::System.Text.RegularExpressions.Generated.NavigationKeywordPattern_2.Instance;
+        private static partial global::System.Text.RegularExpressions.Regex NavigationKeywordPattern() => global::System.Text.RegularExpressions.Generated.NavigationKeywordPattern_3.Instance;
     }
 }
 
@@ -832,7 +1073,7 @@ namespace Fakvio.Infrastructure.Service.ChatTools
         /// </code>
         /// </remarks>
         [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.21808")]
-        private static partial global::System.Text.RegularExpressions.Regex InvoiceCreationPattern() => global::System.Text.RegularExpressions.Generated.InvoiceCreationPattern_3.Instance;
+        private static partial global::System.Text.RegularExpressions.Regex InvoiceCreationPattern() => global::System.Text.RegularExpressions.Generated.InvoiceCreationPattern_4.Instance;
     }
 }
 
@@ -931,7 +1172,7 @@ namespace Fakvio.Infrastructure.Service.ChatTools
         /// </code>
         /// </remarks>
         [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.21808")]
-        private static partial global::System.Text.RegularExpressions.Regex ImportKeywordPattern() => global::System.Text.RegularExpressions.Generated.ImportKeywordPattern_4.Instance;
+        private static partial global::System.Text.RegularExpressions.Regex ImportKeywordPattern() => global::System.Text.RegularExpressions.Generated.ImportKeywordPattern_5.Instance;
     }
 }
 
@@ -1321,7 +1562,7 @@ namespace Fakvio.Infrastructure.Service.ChatTools
         /// </code>
         /// </remarks>
         [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.21808")]
-        private static partial global::System.Text.RegularExpressions.Regex ExportKeywordPattern() => global::System.Text.RegularExpressions.Generated.ExportKeywordPattern_5.Instance;
+        private static partial global::System.Text.RegularExpressions.Regex ExportKeywordPattern() => global::System.Text.RegularExpressions.Generated.ExportKeywordPattern_6.Instance;
     }
 }
 
@@ -1341,7 +1582,7 @@ namespace Fakvio.Infrastructure.Service
         /// </code>
         /// </remarks>
         [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.21808")]
-        private static partial global::System.Text.RegularExpressions.Regex PlaceholderRegex() => global::System.Text.RegularExpressions.Generated.PlaceholderRegex_6.Instance;
+        private static partial global::System.Text.RegularExpressions.Regex PlaceholderRegex() => global::System.Text.RegularExpressions.Generated.PlaceholderRegex_7.Instance;
     }
 }
 
@@ -1411,7 +1652,7 @@ namespace Fakvio.Infrastructure.Service
         /// </code>
         /// </remarks>
         [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.21808")]
-        private static partial global::System.Text.RegularExpressions.Regex DocumentNumberRegex() => global::System.Text.RegularExpressions.Generated.DocumentNumberRegex_7.Instance;
+        private static partial global::System.Text.RegularExpressions.Regex DocumentNumberRegex() => global::System.Text.RegularExpressions.Generated.DocumentNumberRegex_8.Instance;
     }
 }
 
@@ -1487,7 +1728,7 @@ namespace Fakvio.Infrastructure.Service
         /// </code>
         /// </remarks>
         [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.21808")]
-        private static partial global::System.Text.RegularExpressions.Regex IssueDateRegex() => global::System.Text.RegularExpressions.Generated.IssueDateRegex_8.Instance;
+        private static partial global::System.Text.RegularExpressions.Regex IssueDateRegex() => global::System.Text.RegularExpressions.Generated.IssueDateRegex_9.Instance;
     }
 }
 
@@ -1562,7 +1803,7 @@ namespace Fakvio.Infrastructure.Service
         /// </code>
         /// </remarks>
         [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.21808")]
-        private static partial global::System.Text.RegularExpressions.Regex DueDateRegex() => global::System.Text.RegularExpressions.Generated.DueDateRegex_9.Instance;
+        private static partial global::System.Text.RegularExpressions.Regex DueDateRegex() => global::System.Text.RegularExpressions.Generated.DueDateRegex_10.Instance;
     }
 }
 
@@ -1644,7 +1885,7 @@ namespace Fakvio.Infrastructure.Service
         /// </code>
         /// </remarks>
         [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.21808")]
-        private static partial global::System.Text.RegularExpressions.Regex DuzpRegex() => global::System.Text.RegularExpressions.Generated.DuzpRegex_10.Instance;
+        private static partial global::System.Text.RegularExpressions.Regex DuzpRegex() => global::System.Text.RegularExpressions.Generated.DuzpRegex_11.Instance;
     }
 }
 
@@ -1743,7 +1984,7 @@ namespace Fakvio.Infrastructure.Service
         /// </code>
         /// </remarks>
         [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.21808")]
-        private static partial global::System.Text.RegularExpressions.Regex TotalAmountRegex() => global::System.Text.RegularExpressions.Generated.TotalAmountRegex_11.Instance;
+        private static partial global::System.Text.RegularExpressions.Regex TotalAmountRegex() => global::System.Text.RegularExpressions.Generated.TotalAmountRegex_12.Instance;
     }
 }
 
@@ -1813,7 +2054,7 @@ namespace Fakvio.Infrastructure.Service
         /// </code>
         /// </remarks>
         [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.21808")]
-        private static partial global::System.Text.RegularExpressions.Regex TotalBeforeVatRegex() => global::System.Text.RegularExpressions.Generated.TotalBeforeVatRegex_12.Instance;
+        private static partial global::System.Text.RegularExpressions.Regex TotalBeforeVatRegex() => global::System.Text.RegularExpressions.Generated.TotalBeforeVatRegex_13.Instance;
     }
 }
 
@@ -1872,7 +2113,7 @@ namespace Fakvio.Infrastructure.Service
         /// </code>
         /// </remarks>
         [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.21808")]
-        private static partial global::System.Text.RegularExpressions.Regex TotalVatRegex() => global::System.Text.RegularExpressions.Generated.TotalVatRegex_13.Instance;
+        private static partial global::System.Text.RegularExpressions.Regex TotalVatRegex() => global::System.Text.RegularExpressions.Generated.TotalVatRegex_14.Instance;
     }
 }
 
@@ -1915,7 +2156,7 @@ namespace Fakvio.Infrastructure.Service
         /// </code>
         /// </remarks>
         [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.21808")]
-        private static partial global::System.Text.RegularExpressions.Regex VariableSymbolRegex() => global::System.Text.RegularExpressions.Generated.VariableSymbolRegex_14.Instance;
+        private static partial global::System.Text.RegularExpressions.Regex VariableSymbolRegex() => global::System.Text.RegularExpressions.Generated.VariableSymbolRegex_15.Instance;
     }
 }
 
@@ -1946,7 +2187,7 @@ namespace Fakvio.Infrastructure.Service
         /// </code>
         /// </remarks>
         [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.21808")]
-        private static partial global::System.Text.RegularExpressions.Regex IbanRegex() => global::System.Text.RegularExpressions.Generated.IbanRegex_15.Instance;
+        private static partial global::System.Text.RegularExpressions.Regex IbanRegex() => global::System.Text.RegularExpressions.Generated.IbanRegex_16.Instance;
     }
 }
 
@@ -1969,7 +2210,7 @@ namespace Fakvio.Infrastructure.Service
         /// </code>
         /// </remarks>
         [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.21808")]
-        private static partial global::System.Text.RegularExpressions.Regex CzechBankAccountRegex() => global::System.Text.RegularExpressions.Generated.CzechBankAccountRegex_16.Instance;
+        private static partial global::System.Text.RegularExpressions.Regex CzechBankAccountRegex() => global::System.Text.RegularExpressions.Generated.CzechBankAccountRegex_17.Instance;
     }
 }
 
@@ -2009,7 +2250,7 @@ namespace Fakvio.Infrastructure.Service
         /// </code>
         /// </remarks>
         [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.21808")]
-        private static partial global::System.Text.RegularExpressions.Regex RegistrationNumberRegex() => global::System.Text.RegularExpressions.Generated.RegistrationNumberRegex_17.Instance;
+        private static partial global::System.Text.RegularExpressions.Regex RegistrationNumberRegex() => global::System.Text.RegularExpressions.Generated.RegistrationNumberRegex_18.Instance;
     }
 }
 
@@ -2052,7 +2293,7 @@ namespace Fakvio.Infrastructure.Service
         /// </code>
         /// </remarks>
         [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.21808")]
-        private static partial global::System.Text.RegularExpressions.Regex TaxNumberRegex() => global::System.Text.RegularExpressions.Generated.TaxNumberRegex_18.Instance;
+        private static partial global::System.Text.RegularExpressions.Regex TaxNumberRegex() => global::System.Text.RegularExpressions.Generated.TaxNumberRegex_19.Instance;
     }
 }
 
@@ -2090,7 +2331,7 @@ namespace Fakvio.Infrastructure.Service
         /// </code>
         /// </remarks>
         [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.21808")]
-        private static partial global::System.Text.RegularExpressions.Regex CurrencyRegex() => global::System.Text.RegularExpressions.Generated.CurrencyRegex_19.Instance;
+        private static partial global::System.Text.RegularExpressions.Regex CurrencyRegex() => global::System.Text.RegularExpressions.Generated.CurrencyRegex_20.Instance;
     }
 }
 
@@ -3392,15 +3633,965 @@ namespace System.Text.RegularExpressions.Generated
 
     }
     
-    /// <summary>Custom <see cref="Regex"/>-derived type for the NavigationKeywordPattern method.</summary>
+    /// <summary>Custom <see cref="Regex"/>-derived type for the ReceivedInvoiceKeywordPattern method.</summary>
     [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.21808")]
-    file sealed class NavigationKeywordPattern_2 : Regex
+    file sealed class ReceivedInvoiceKeywordPattern_2 : Regex
     {
         /// <summary>Cached, thread-safe singleton instance.</summary>
-        internal static readonly NavigationKeywordPattern_2 Instance = new();
+        internal static readonly ReceivedInvoiceKeywordPattern_2 Instance = new();
     
         /// <summary>Initializes the instance.</summary>
-        private NavigationKeywordPattern_2()
+        private ReceivedInvoiceKeywordPattern_2()
+        {
+            base.pattern = "\\b(přijat[áaéeou]|prijat[áaéeou]|přijat[íi]|prijat[íi]|výdaj[oová]?|vydaj[oová]?|dodavatel[sš]k[áaé]?|dodavatel[eů]?|received invoice|incoming invoice|supplier invoice|expense invoice|přijatou fakturu|prijatou fakturu|přijaté faktury|prijaté faktury)\\b|\\b(faktura|fakturu|faktury|invoice)\\b.{0,30}\\b\\d{5,15}\\b";
+            base.roptions = RegexOptions.IgnoreCase | RegexOptions.Compiled;
+            ValidateMatchTimeout(Utilities.s_defaultTimeout);
+            base.internalMatchTimeout = Utilities.s_defaultTimeout;
+            base.factory = new RunnerFactory();
+            base.capsize = 3;
+        }
+            
+        /// <summary>Provides a factory for creating <see cref="RegexRunner"/> instances to be used by methods on <see cref="Regex"/>.</summary>
+        private sealed class RunnerFactory : RegexRunnerFactory
+        {
+            /// <summary>Creates an instance of a <see cref="RegexRunner"/> used by methods on <see cref="Regex"/>.</summary>
+            protected override RegexRunner CreateInstance() => new Runner();
+        
+            /// <summary>Provides the runner that contains the custom logic implementing the specified regular expression.</summary>
+            private sealed class Runner : RegexRunner
+            {
+                /// <summary>Scan the <paramref name="inputSpan"/> starting from base.runtextstart for the next match.</summary>
+                /// <param name="inputSpan">The text being scanned by the regular expression.</param>
+                protected override void Scan(ReadOnlySpan<char> inputSpan)
+                {
+                    // Search until we can't find a valid starting position, we find a match, or we reach the end of the input.
+                    while (TryFindNextPossibleStartingPosition(inputSpan) &&
+                           !TryMatchAtCurrentPosition(inputSpan) &&
+                           base.runtextpos != inputSpan.Length)
+                    {
+                        base.runtextpos++;
+                        if (Utilities.s_hasTimeout)
+                        {
+                            base.CheckTimeout();
+                        }
+                    }
+                }
+        
+                /// <summary>Search <paramref name="inputSpan"/> starting from base.runtextpos for the next location a match could possibly start.</summary>
+                /// <param name="inputSpan">The text being scanned by the regular expression.</param>
+                /// <returns>true if a possible match was found; false if no more matches are possible.</returns>
+                private bool TryFindNextPossibleStartingPosition(ReadOnlySpan<char> inputSpan)
+                {
+                    int pos = base.runtextpos;
+                    ulong charMinusLowUInt64;
+                    
+                    // Any possible match is at least 5 characters.
+                    if (pos <= inputSpan.Length - 5)
+                    {
+                        // The pattern matches a character in the set [CDIKPVcdikpv\u212A] at index 2.
+                        // Find the next occurrence. If it can't be found, there's no match.
+                        ReadOnlySpan<char> span = inputSpan.Slice(pos);
+                        for (int i = 0; i < span.Length - 4; i++)
+                        {
+                            int indexOfPos = span.Slice(i + 2).IndexOfAny(Utilities.s_nonAscii_5DBE7C79F9C32B241B7C44DC7996B8A1EE87DFE9E75FFFB407675D56933454FD);
+                            if (indexOfPos < 0)
+                            {
+                                goto NoMatchFound;
+                            }
+                            i += indexOfPos;
+                            
+                            // The primary set being searched for was found. 2 more sets will be checked so as
+                            // to minimize the number of places TryMatchAtCurrentPosition is run unnecessarily.
+                            // Make sure they fit in the remainder of the input.
+                            if ((uint)(i + 4) >= (uint)span.Length)
+                            {
+                                goto NoMatchFound;
+                            }
+                            
+                            if (((long)((0x80DC0C0080DC0C00UL << (int)(charMinusLowUInt64 = (uint)span[i + 4] - 'A')) & (charMinusLowUInt64 - 64)) < 0) &&
+                                ((long)((0x8843100088431000UL << (int)(charMinusLowUInt64 = (uint)span[i + 3] - 'A')) & (charMinusLowUInt64 - 64)) < 0))
+                            {
+                                base.runtextpos = pos + i;
+                                return true;
+                            }
+                        }
+                    }
+                    
+                    // No match found.
+                    NoMatchFound:
+                    base.runtextpos = inputSpan.Length;
+                    return false;
+                }
+        
+                /// <summary>Determine whether <paramref name="inputSpan"/> at base.runtextpos is a match for the regular expression.</summary>
+                /// <param name="inputSpan">The text being scanned by the regular expression.</param>
+                /// <returns>true if the regular expression matches at the current position; otherwise, false.</returns>
+                private bool TryMatchAtCurrentPosition(ReadOnlySpan<char> inputSpan)
+                {
+                    int pos = base.runtextpos;
+                    int matchStart = pos;
+                    char ch;
+                    int alternation_branch = 0;
+                    int alternation_branch1 = 0;
+                    int alternation_branch2 = 0;
+                    int alternation_branch3 = 0;
+                    int alternation_branch4 = 0;
+                    int alternation_starting_capturepos1 = 0;
+                    int alternation_starting_capturepos2 = 0;
+                    int alternation_starting_capturepos3 = 0;
+                    int alternation_starting_capturepos4 = 0;
+                    int alternation_starting_capturepos5 = 0;
+                    int alternation_starting_pos1 = 0;
+                    int alternation_starting_pos2 = 0;
+                    int alternation_starting_pos3 = 0;
+                    int alternation_starting_pos4 = 0;
+                    int alternation_starting_pos5 = 0;
+                    int capture_starting_pos = 0;
+                    int capture_starting_pos1 = 0;
+                    int charloop_capture_pos = 0;
+                    int charloop_capture_pos1 = 0;
+                    int charloop_capture_pos2 = 0;
+                    int charloop_capture_pos3 = 0;
+                    int charloop_capture_pos4 = 0;
+                    int charloop_starting_pos = 0, charloop_ending_pos = 0;
+                    int charloop_starting_pos1 = 0, charloop_ending_pos1 = 0;
+                    int charloop_starting_pos2 = 0, charloop_ending_pos2 = 0;
+                    int charloop_starting_pos3 = 0, charloop_ending_pos3 = 0;
+                    int charloop_starting_pos4 = 0, charloop_ending_pos4 = 0;
+                    int stackpos = 0;
+                    ulong charMinusLowUInt64;
+                    ReadOnlySpan<char> slice = inputSpan.Slice(pos);
+                    
+                    // Match if at a word boundary.
+                    if (!Utilities.IsPreWordCharBoundary(inputSpan, pos))
+                    {
+                        UncaptureUntil(0);
+                        return false; // The input didn't match.
+                    }
+                    
+                    // Atomic group.
+                    {
+                        int atomic_stackpos = stackpos;
+                        
+                        // Match with 2 alternative expressions, atomically.
+                        //{
+                            int alternation_starting_pos = pos;
+                            int alternation_starting_capturepos = base.Crawlpos();
+                            
+                            // Branch 0
+                            {
+                                // 1st capture group.
+                                //{
+                                    capture_starting_pos = pos;
+                                    
+                                    // Match with 8 alternative expressions.
+                                    //{
+                                        alternation_starting_pos1 = pos;
+                                        alternation_starting_capturepos1 = base.Crawlpos();
+                                        
+                                        // Branch 0
+                                        //{
+                                            // Match a character in the set [Pp].
+                                            if (slice.IsEmpty || ((slice[0] | 0x20) != 'p'))
+                                            {
+                                                goto AlternationBranch1;
+                                            }
+                                            
+                                            // Match with 4 alternative expressions.
+                                            //{
+                                                alternation_starting_pos2 = pos;
+                                                alternation_starting_capturepos2 = base.Crawlpos();
+                                                
+                                                // Branch 0
+                                                //{
+                                                    if ((uint)slice.Length < 7 ||
+                                                        ((slice[1] | 0x1) != 'ř') || // Match a character in the set [\u0158\u0159].
+                                                        !slice.Slice(2).StartsWith("ijat", StringComparison.OrdinalIgnoreCase) || // Match the string "ijat" (ordinal case-insensitive)
+                                                        ((ch = slice[6]) < 128 ? ("\0\0\0\0耢 耢 "[ch >> 4] & (1 << (ch & 0xF))) == 0 : !RegexRunner.CharInClass((char)ch, "\0\u0018\0ABEFOPUVabefopuvÁÂÉÊáâéê"))) // Match a character in the set [AEOUaeou\u00C1\u00C9\u00E1\u00E9].
+                                                    {
+                                                        goto AlternationBranch2;
+                                                    }
+                                                    
+                                                    alternation_branch1 = 0;
+                                                    pos += 7;
+                                                    slice = inputSpan.Slice(pos);
+                                                    goto AlternationMatch2;
+                                                    
+                                                    AlternationBranch2:
+                                                    pos = alternation_starting_pos2;
+                                                    slice = inputSpan.Slice(pos);
+                                                    UncaptureUntil(alternation_starting_capturepos2);
+                                                //}
+                                                
+                                                // Branch 1
+                                                //{
+                                                    if ((uint)slice.Length < 7 ||
+                                                        !slice.Slice(1).StartsWith("rijat", StringComparison.OrdinalIgnoreCase) || // Match the string "rijat" (ordinal case-insensitive)
+                                                        ((ch = slice[6]) < 128 ? ("\0\0\0\0耢 耢 "[ch >> 4] & (1 << (ch & 0xF))) == 0 : !RegexRunner.CharInClass((char)ch, "\0\u0018\0ABEFOPUVabefopuvÁÂÉÊáâéê"))) // Match a character in the set [AEOUaeou\u00C1\u00C9\u00E1\u00E9].
+                                                    {
+                                                        goto AlternationBranch3;
+                                                    }
+                                                    
+                                                    alternation_branch1 = 1;
+                                                    pos += 7;
+                                                    slice = inputSpan.Slice(pos);
+                                                    goto AlternationMatch2;
+                                                    
+                                                    AlternationBranch3:
+                                                    pos = alternation_starting_pos2;
+                                                    slice = inputSpan.Slice(pos);
+                                                    UncaptureUntil(alternation_starting_capturepos2);
+                                                //}
+                                                
+                                                // Branch 2
+                                                //{
+                                                    if ((uint)slice.Length < 7 ||
+                                                        ((slice[1] | 0x1) != 'ř') || // Match a character in the set [\u0158\u0159].
+                                                        !slice.Slice(2).StartsWith("ijat", StringComparison.OrdinalIgnoreCase) || // Match the string "ijat" (ordinal case-insensitive)
+                                                        ((ch = slice[6]) < 128 ? ("\0\0\0\0Ȁ\0Ȁ\0"[ch >> 4] & (1 << (ch & 0xF))) == 0 : !RegexRunner.CharInClass((char)ch, "\0\b\0IJijÍÎíî"))) // Match a character in the set [Ii\u00CD\u00ED].
+                                                    {
+                                                        goto AlternationBranch4;
+                                                    }
+                                                    
+                                                    alternation_branch1 = 2;
+                                                    pos += 7;
+                                                    slice = inputSpan.Slice(pos);
+                                                    goto AlternationMatch2;
+                                                    
+                                                    AlternationBranch4:
+                                                    pos = alternation_starting_pos2;
+                                                    slice = inputSpan.Slice(pos);
+                                                    UncaptureUntil(alternation_starting_capturepos2);
+                                                //}
+                                                
+                                                // Branch 3
+                                                //{
+                                                    if ((uint)slice.Length < 7 ||
+                                                        !slice.Slice(1).StartsWith("rijat", StringComparison.OrdinalIgnoreCase) || // Match the string "rijat" (ordinal case-insensitive)
+                                                        ((ch = slice[6]) < 128 ? ("\0\0\0\0Ȁ\0Ȁ\0"[ch >> 4] & (1 << (ch & 0xF))) == 0 : !RegexRunner.CharInClass((char)ch, "\0\b\0IJijÍÎíî"))) // Match a character in the set [Ii\u00CD\u00ED].
+                                                    {
+                                                        goto AlternationBranch1;
+                                                    }
+                                                    
+                                                    alternation_branch1 = 3;
+                                                    pos += 7;
+                                                    slice = inputSpan.Slice(pos);
+                                                    goto AlternationMatch2;
+                                                //}
+                                                
+                                                AlternationBacktrack2:
+                                                if (Utilities.s_hasTimeout)
+                                                {
+                                                    base.CheckTimeout();
+                                                }
+                                                
+                                                switch (alternation_branch1)
+                                                {
+                                                    case 0:
+                                                        goto AlternationBranch2;
+                                                    case 1:
+                                                        goto AlternationBranch3;
+                                                    case 2:
+                                                        goto AlternationBranch4;
+                                                    case 3:
+                                                        goto AlternationBranch1;
+                                                }
+                                                
+                                                AlternationMatch2:;
+                                            //}
+                                            
+                                            alternation_branch = 0;
+                                            goto AlternationMatch1;
+                                            
+                                            AlternationBranch1:
+                                            pos = alternation_starting_pos1;
+                                            slice = inputSpan.Slice(pos);
+                                            UncaptureUntil(alternation_starting_capturepos1);
+                                        //}
+                                        
+                                        // Branch 1
+                                        //{
+                                            // Match a character in the set [Vv].
+                                            if (slice.IsEmpty || ((slice[0] | 0x20) != 'v'))
+                                            {
+                                                goto AlternationBranch5;
+                                            }
+                                            
+                                            // Match with 2 alternative expressions.
+                                            //{
+                                                alternation_starting_pos3 = pos;
+                                                alternation_starting_capturepos3 = base.Crawlpos();
+                                                
+                                                // Branch 0
+                                                //{
+                                                    if ((uint)slice.Length < 5 ||
+                                                        ((slice[1] | 0x20) != 'ý') || // Match a character in the set [\u00DD\u00FD].
+                                                        !slice.Slice(2).StartsWith("daj", StringComparison.OrdinalIgnoreCase)) // Match the string "daj" (ordinal case-insensitive)
+                                                    {
+                                                        goto AlternationBranch6;
+                                                    }
+                                                    
+                                                    // Match a character in the set [OVov\u00C1\u00E1] greedily, optionally.
+                                                    //{
+                                                        pos += 5;
+                                                        slice = inputSpan.Slice(pos);
+                                                        charloop_starting_pos = pos;
+                                                        
+                                                        if (!slice.IsEmpty && ((ch = slice[0]) < 128 ? ("\0\0\0\0耀@耀@"[ch >> 4] & (1 << (ch & 0xF))) != 0 : RegexRunner.CharInClass((char)ch, "\0\f\0OPVWopvwÁÂáâ")))
+                                                        {
+                                                            slice = slice.Slice(1);
+                                                            pos++;
+                                                        }
+                                                        
+                                                        charloop_ending_pos = pos;
+                                                        goto CharLoopEnd;
+                                                        
+                                                        CharLoopBacktrack:
+                                                        UncaptureUntil(charloop_capture_pos);
+                                                        
+                                                        if (Utilities.s_hasTimeout)
+                                                        {
+                                                            base.CheckTimeout();
+                                                        }
+                                                        
+                                                        if (charloop_starting_pos >= charloop_ending_pos)
+                                                        {
+                                                            goto AlternationBranch6;
+                                                        }
+                                                        pos = --charloop_ending_pos;
+                                                        slice = inputSpan.Slice(pos);
+                                                        
+                                                        CharLoopEnd:
+                                                        charloop_capture_pos = base.Crawlpos();
+                                                    //}
+                                                    
+                                                    alternation_branch2 = 0;
+                                                    goto AlternationMatch3;
+                                                    
+                                                    AlternationBranch6:
+                                                    pos = alternation_starting_pos3;
+                                                    slice = inputSpan.Slice(pos);
+                                                    UncaptureUntil(alternation_starting_capturepos3);
+                                                //}
+                                                
+                                                // Branch 1
+                                                //{
+                                                    if ((uint)slice.Length < 5 ||
+                                                        !slice.Slice(1).StartsWith("ydaj", StringComparison.OrdinalIgnoreCase)) // Match the string "ydaj" (ordinal case-insensitive)
+                                                    {
+                                                        goto AlternationBranch5;
+                                                    }
+                                                    
+                                                    // Match a character in the set [OVov\u00C1\u00E1] greedily, optionally.
+                                                    //{
+                                                        pos += 5;
+                                                        slice = inputSpan.Slice(pos);
+                                                        charloop_starting_pos1 = pos;
+                                                        
+                                                        if (!slice.IsEmpty && ((ch = slice[0]) < 128 ? ("\0\0\0\0耀@耀@"[ch >> 4] & (1 << (ch & 0xF))) != 0 : RegexRunner.CharInClass((char)ch, "\0\f\0OPVWopvwÁÂáâ")))
+                                                        {
+                                                            slice = slice.Slice(1);
+                                                            pos++;
+                                                        }
+                                                        
+                                                        charloop_ending_pos1 = pos;
+                                                        goto CharLoopEnd1;
+                                                        
+                                                        CharLoopBacktrack1:
+                                                        UncaptureUntil(charloop_capture_pos1);
+                                                        
+                                                        if (Utilities.s_hasTimeout)
+                                                        {
+                                                            base.CheckTimeout();
+                                                        }
+                                                        
+                                                        if (charloop_starting_pos1 >= charloop_ending_pos1)
+                                                        {
+                                                            goto AlternationBranch5;
+                                                        }
+                                                        pos = --charloop_ending_pos1;
+                                                        slice = inputSpan.Slice(pos);
+                                                        
+                                                        CharLoopEnd1:
+                                                        charloop_capture_pos1 = base.Crawlpos();
+                                                    //}
+                                                    
+                                                    alternation_branch2 = 1;
+                                                    goto AlternationMatch3;
+                                                //}
+                                                
+                                                AlternationBacktrack3:
+                                                if (Utilities.s_hasTimeout)
+                                                {
+                                                    base.CheckTimeout();
+                                                }
+                                                
+                                                switch (alternation_branch2)
+                                                {
+                                                    case 0:
+                                                        goto CharLoopBacktrack;
+                                                    case 1:
+                                                        goto CharLoopBacktrack1;
+                                                }
+                                                
+                                                AlternationMatch3:;
+                                            //}
+                                            
+                                            alternation_branch = 1;
+                                            goto AlternationMatch1;
+                                            
+                                            AlternationBranch5:
+                                            pos = alternation_starting_pos1;
+                                            slice = inputSpan.Slice(pos);
+                                            UncaptureUntil(alternation_starting_capturepos1);
+                                        //}
+                                        
+                                        // Branch 2
+                                        //{
+                                            if ((uint)slice.Length < 9 ||
+                                                !slice.StartsWith("dodavatel", StringComparison.OrdinalIgnoreCase)) // Match the string "dodavatel" (ordinal case-insensitive)
+                                            {
+                                                goto AlternationBranch7;
+                                            }
+                                            
+                                            // Match with 2 alternative expressions.
+                                            //{
+                                                alternation_starting_pos4 = pos;
+                                                alternation_starting_capturepos4 = base.Crawlpos();
+                                                
+                                                // Branch 0
+                                                //{
+                                                    if ((uint)slice.Length < 11 ||
+                                                        ((ch = slice[9]) < 128 ? ("\0\0\0\0\0\b\0\b"[ch >> 4] & (1 << (ch & 0xF))) == 0 : !RegexRunner.CharInClass((char)ch, "\0\u0006\0STstŠŢ")) || // Match a character in the set [Ss\u0160\u0161].
+                                                        ((((ch = slice[10]) | 0x20) != 'k') & (ch != 'K'))) // Match a character in the set [Kk\u212A].
+                                                    {
+                                                        goto AlternationBranch8;
+                                                    }
+                                                    
+                                                    // Match a character in the set [Aa\u00C1\u00C9\u00E1\u00E9] greedily, optionally.
+                                                    //{
+                                                        pos += 11;
+                                                        slice = inputSpan.Slice(pos);
+                                                        charloop_starting_pos2 = pos;
+                                                        
+                                                        if (!slice.IsEmpty && ((ch = slice[0]) < 128 ? ("\0\0\0\0\u0002\0\u0002\0"[ch >> 4] & (1 << (ch & 0xF))) != 0 : RegexRunner.CharInClass((char)ch, "\0\f\0ABabÁÂÉÊáâéê")))
+                                                        {
+                                                            slice = slice.Slice(1);
+                                                            pos++;
+                                                        }
+                                                        
+                                                        charloop_ending_pos2 = pos;
+                                                        goto CharLoopEnd2;
+                                                        
+                                                        CharLoopBacktrack2:
+                                                        UncaptureUntil(charloop_capture_pos2);
+                                                        
+                                                        if (Utilities.s_hasTimeout)
+                                                        {
+                                                            base.CheckTimeout();
+                                                        }
+                                                        
+                                                        if (charloop_starting_pos2 >= charloop_ending_pos2)
+                                                        {
+                                                            goto AlternationBranch8;
+                                                        }
+                                                        pos = --charloop_ending_pos2;
+                                                        slice = inputSpan.Slice(pos);
+                                                        
+                                                        CharLoopEnd2:
+                                                        charloop_capture_pos2 = base.Crawlpos();
+                                                    //}
+                                                    
+                                                    alternation_branch3 = 0;
+                                                    goto AlternationMatch4;
+                                                    
+                                                    AlternationBranch8:
+                                                    pos = alternation_starting_pos4;
+                                                    slice = inputSpan.Slice(pos);
+                                                    UncaptureUntil(alternation_starting_capturepos4);
+                                                //}
+                                                
+                                                // Branch 1
+                                                //{
+                                                    // Match a character in the set [Ee\u016E\u016F] greedily, optionally.
+                                                    //{
+                                                        pos += 9;
+                                                        slice = inputSpan.Slice(pos);
+                                                        charloop_starting_pos3 = pos;
+                                                        
+                                                        if (!slice.IsEmpty && ((ch = slice[0]) < 128 ? ("\0\0\0\0 \0 \0"[ch >> 4] & (1 << (ch & 0xF))) != 0 : RegexRunner.CharInClass((char)ch, "\0\u0006\0EFefŮŰ")))
+                                                        {
+                                                            slice = slice.Slice(1);
+                                                            pos++;
+                                                        }
+                                                        
+                                                        charloop_ending_pos3 = pos;
+                                                        goto CharLoopEnd3;
+                                                        
+                                                        CharLoopBacktrack3:
+                                                        UncaptureUntil(charloop_capture_pos3);
+                                                        
+                                                        if (Utilities.s_hasTimeout)
+                                                        {
+                                                            base.CheckTimeout();
+                                                        }
+                                                        
+                                                        if (charloop_starting_pos3 >= charloop_ending_pos3)
+                                                        {
+                                                            goto AlternationBranch7;
+                                                        }
+                                                        pos = --charloop_ending_pos3;
+                                                        slice = inputSpan.Slice(pos);
+                                                        
+                                                        CharLoopEnd3:
+                                                        charloop_capture_pos3 = base.Crawlpos();
+                                                    //}
+                                                    
+                                                    alternation_branch3 = 1;
+                                                    goto AlternationMatch4;
+                                                //}
+                                                
+                                                AlternationBacktrack4:
+                                                if (Utilities.s_hasTimeout)
+                                                {
+                                                    base.CheckTimeout();
+                                                }
+                                                
+                                                switch (alternation_branch3)
+                                                {
+                                                    case 0:
+                                                        goto CharLoopBacktrack2;
+                                                    case 1:
+                                                        goto CharLoopBacktrack3;
+                                                }
+                                                
+                                                AlternationMatch4:;
+                                            //}
+                                            
+                                            alternation_branch = 2;
+                                            goto AlternationMatch1;
+                                            
+                                            AlternationBranch7:
+                                            pos = alternation_starting_pos1;
+                                            slice = inputSpan.Slice(pos);
+                                            UncaptureUntil(alternation_starting_capturepos1);
+                                        //}
+                                        
+                                        // Branch 3
+                                        //{
+                                            if ((uint)slice.Length < 16 ||
+                                                !slice.StartsWith("received invoice", StringComparison.OrdinalIgnoreCase)) // Match the string "received invoice" (ordinal case-insensitive)
+                                            {
+                                                goto AlternationBranch9;
+                                            }
+                                            
+                                            alternation_branch = 3;
+                                            pos += 16;
+                                            slice = inputSpan.Slice(pos);
+                                            goto AlternationMatch1;
+                                            
+                                            AlternationBranch9:
+                                            pos = alternation_starting_pos1;
+                                            slice = inputSpan.Slice(pos);
+                                            UncaptureUntil(alternation_starting_capturepos1);
+                                        //}
+                                        
+                                        // Branch 4
+                                        //{
+                                            if ((uint)slice.Length < 16 ||
+                                                !slice.StartsWith("incoming invoice", StringComparison.OrdinalIgnoreCase)) // Match the string "incoming invoice" (ordinal case-insensitive)
+                                            {
+                                                goto AlternationBranch10;
+                                            }
+                                            
+                                            alternation_branch = 4;
+                                            pos += 16;
+                                            slice = inputSpan.Slice(pos);
+                                            goto AlternationMatch1;
+                                            
+                                            AlternationBranch10:
+                                            pos = alternation_starting_pos1;
+                                            slice = inputSpan.Slice(pos);
+                                            UncaptureUntil(alternation_starting_capturepos1);
+                                        //}
+                                        
+                                        // Branch 5
+                                        //{
+                                            if ((uint)slice.Length < 16 ||
+                                                !slice.StartsWith("supplier invoice", StringComparison.OrdinalIgnoreCase)) // Match the string "supplier invoice" (ordinal case-insensitive)
+                                            {
+                                                goto AlternationBranch11;
+                                            }
+                                            
+                                            alternation_branch = 5;
+                                            pos += 16;
+                                            slice = inputSpan.Slice(pos);
+                                            goto AlternationMatch1;
+                                            
+                                            AlternationBranch11:
+                                            pos = alternation_starting_pos1;
+                                            slice = inputSpan.Slice(pos);
+                                            UncaptureUntil(alternation_starting_capturepos1);
+                                        //}
+                                        
+                                        // Branch 6
+                                        //{
+                                            if ((uint)slice.Length < 15 ||
+                                                !slice.StartsWith("expense invoice", StringComparison.OrdinalIgnoreCase)) // Match the string "expense invoice" (ordinal case-insensitive)
+                                            {
+                                                goto AlternationBranch12;
+                                            }
+                                            
+                                            alternation_branch = 6;
+                                            pos += 15;
+                                            slice = inputSpan.Slice(pos);
+                                            goto AlternationMatch1;
+                                            
+                                            AlternationBranch12:
+                                            pos = alternation_starting_pos1;
+                                            slice = inputSpan.Slice(pos);
+                                            UncaptureUntil(alternation_starting_capturepos1);
+                                        //}
+                                        
+                                        // Branch 7
+                                        //{
+                                            // Match a character in the set [Pp].
+                                            if (slice.IsEmpty || ((slice[0] | 0x20) != 'p'))
+                                            {
+                                                goto AlternationBranch;
+                                            }
+                                            
+                                            // Match with 4 alternative expressions.
+                                            //{
+                                                alternation_starting_pos5 = pos;
+                                                alternation_starting_capturepos5 = base.Crawlpos();
+                                                
+                                                // Branch 0
+                                                //{
+                                                    if ((uint)slice.Length < 16 ||
+                                                        ((slice[1] | 0x1) != 'ř') || // Match a character in the set [\u0158\u0159].
+                                                        !slice.Slice(2).StartsWith("ijatou fa", StringComparison.OrdinalIgnoreCase) || // Match the string "ijatou fa" (ordinal case-insensitive)
+                                                        ((((ch = slice[11]) | 0x20) != 'k') & (ch != 'K')) || // Match a character in the set [Kk\u212A].
+                                                        !slice.Slice(12).StartsWith("turu", StringComparison.OrdinalIgnoreCase)) // Match the string "turu" (ordinal case-insensitive)
+                                                    {
+                                                        goto AlternationBranch13;
+                                                    }
+                                                    
+                                                    alternation_branch4 = 0;
+                                                    pos += 16;
+                                                    slice = inputSpan.Slice(pos);
+                                                    goto AlternationMatch5;
+                                                    
+                                                    AlternationBranch13:
+                                                    pos = alternation_starting_pos5;
+                                                    slice = inputSpan.Slice(pos);
+                                                    UncaptureUntil(alternation_starting_capturepos5);
+                                                //}
+                                                
+                                                // Branch 1
+                                                //{
+                                                    if ((uint)slice.Length < 16 ||
+                                                        !slice.Slice(1).StartsWith("rijatou fa", StringComparison.OrdinalIgnoreCase) || // Match the string "rijatou fa" (ordinal case-insensitive)
+                                                        ((((ch = slice[11]) | 0x20) != 'k') & (ch != 'K')) || // Match a character in the set [Kk\u212A].
+                                                        !slice.Slice(12).StartsWith("turu", StringComparison.OrdinalIgnoreCase)) // Match the string "turu" (ordinal case-insensitive)
+                                                    {
+                                                        goto AlternationBranch14;
+                                                    }
+                                                    
+                                                    alternation_branch4 = 1;
+                                                    pos += 16;
+                                                    slice = inputSpan.Slice(pos);
+                                                    goto AlternationMatch5;
+                                                    
+                                                    AlternationBranch14:
+                                                    pos = alternation_starting_pos5;
+                                                    slice = inputSpan.Slice(pos);
+                                                    UncaptureUntil(alternation_starting_capturepos5);
+                                                //}
+                                                
+                                                // Branch 2
+                                                //{
+                                                    if ((uint)slice.Length < 15 ||
+                                                        ((slice[1] | 0x1) != 'ř') || // Match a character in the set [\u0158\u0159].
+                                                        !slice.Slice(2).StartsWith("ijat", StringComparison.OrdinalIgnoreCase) || // Match the string "ijat" (ordinal case-insensitive)
+                                                        ((slice[6] | 0x20) != 'é') || // Match a character in the set [\u00C9\u00E9].
+                                                        !slice.Slice(7).StartsWith(" fa", StringComparison.OrdinalIgnoreCase) || // Match the string " fa" (ordinal case-insensitive)
+                                                        ((((ch = slice[10]) | 0x20) != 'k') & (ch != 'K')) || // Match a character in the set [Kk\u212A].
+                                                        !slice.Slice(11).StartsWith("tury", StringComparison.OrdinalIgnoreCase)) // Match the string "tury" (ordinal case-insensitive)
+                                                    {
+                                                        goto AlternationBranch15;
+                                                    }
+                                                    
+                                                    alternation_branch4 = 2;
+                                                    pos += 15;
+                                                    slice = inputSpan.Slice(pos);
+                                                    goto AlternationMatch5;
+                                                    
+                                                    AlternationBranch15:
+                                                    pos = alternation_starting_pos5;
+                                                    slice = inputSpan.Slice(pos);
+                                                    UncaptureUntil(alternation_starting_capturepos5);
+                                                //}
+                                                
+                                                // Branch 3
+                                                //{
+                                                    if ((uint)slice.Length < 15 ||
+                                                        !slice.Slice(1).StartsWith("rijat", StringComparison.OrdinalIgnoreCase) || // Match the string "rijat" (ordinal case-insensitive)
+                                                        ((slice[6] | 0x20) != 'é') || // Match a character in the set [\u00C9\u00E9].
+                                                        !slice.Slice(7).StartsWith(" fa", StringComparison.OrdinalIgnoreCase) || // Match the string " fa" (ordinal case-insensitive)
+                                                        ((((ch = slice[10]) | 0x20) != 'k') & (ch != 'K')) || // Match a character in the set [Kk\u212A].
+                                                        !slice.Slice(11).StartsWith("tury", StringComparison.OrdinalIgnoreCase)) // Match the string "tury" (ordinal case-insensitive)
+                                                    {
+                                                        goto AlternationBranch;
+                                                    }
+                                                    
+                                                    alternation_branch4 = 3;
+                                                    pos += 15;
+                                                    slice = inputSpan.Slice(pos);
+                                                    goto AlternationMatch5;
+                                                //}
+                                                
+                                                AlternationBacktrack5:
+                                                if (Utilities.s_hasTimeout)
+                                                {
+                                                    base.CheckTimeout();
+                                                }
+                                                
+                                                switch (alternation_branch4)
+                                                {
+                                                    case 0:
+                                                        goto AlternationBranch13;
+                                                    case 1:
+                                                        goto AlternationBranch14;
+                                                    case 2:
+                                                        goto AlternationBranch15;
+                                                    case 3:
+                                                        goto AlternationBranch;
+                                                }
+                                                
+                                                AlternationMatch5:;
+                                            //}
+                                            
+                                            alternation_branch = 7;
+                                            goto AlternationMatch1;
+                                        //}
+                                        
+                                        AlternationBacktrack1:
+                                        if (Utilities.s_hasTimeout)
+                                        {
+                                            base.CheckTimeout();
+                                        }
+                                        
+                                        switch (alternation_branch)
+                                        {
+                                            case 0:
+                                                goto AlternationBacktrack2;
+                                            case 1:
+                                                goto AlternationBacktrack3;
+                                            case 2:
+                                                goto AlternationBacktrack4;
+                                            case 3:
+                                                goto AlternationBranch9;
+                                            case 4:
+                                                goto AlternationBranch10;
+                                            case 5:
+                                                goto AlternationBranch11;
+                                            case 6:
+                                                goto AlternationBranch12;
+                                            case 7:
+                                                goto AlternationBacktrack5;
+                                        }
+                                        
+                                        AlternationMatch1:;
+                                    //}
+                                    
+                                    base.Capture(1, capture_starting_pos, pos);
+                                    
+                                    goto CaptureSkipBacktrack;
+                                    
+                                    CaptureBacktrack:
+                                    goto AlternationBacktrack1;
+                                    
+                                    CaptureSkipBacktrack:;
+                                //}
+                                
+                                // Match if at a word boundary.
+                                if (!Utilities.IsPostWordCharBoundary(inputSpan, pos))
+                                {
+                                    goto CaptureBacktrack;
+                                }
+                                
+                                goto AlternationMatch;
+                                
+                                AlternationBranch:
+                                pos = alternation_starting_pos;
+                                slice = inputSpan.Slice(pos);
+                                UncaptureUntil(alternation_starting_capturepos);
+                            }
+                            
+                            // Branch 1
+                            {
+                                // 2nd capture group.
+                                //{
+                                    capture_starting_pos1 = pos;
+                                    
+                                    // Match with 2 alternative expressions.
+                                    //{
+                                        if (slice.IsEmpty)
+                                        {
+                                            UncaptureUntil(0);
+                                            return false; // The input didn't match.
+                                        }
+                                        
+                                        switch (slice[0])
+                                        {
+                                            case 'F' or 'f':
+                                                
+                                                if ((uint)slice.Length < 7 ||
+                                                    ((slice[1] | 0x20) != 'a') || // Match a character in the set [Aa].
+                                                    ((((ch = slice[2]) | 0x20) != 'k') & (ch != 'K')) || // Match a character in the set [Kk\u212A].
+                                                    !slice.Slice(3).StartsWith("tur", StringComparison.OrdinalIgnoreCase) || // Match the string "tur" (ordinal case-insensitive)
+                                                    ((long)((0x8000088080000880UL << (int)(charMinusLowUInt64 = (uint)slice[6] - 'A')) & (charMinusLowUInt64 - 64)) >= 0)) // Match a character in the set [AUYauy].
+                                                {
+                                                    UncaptureUntil(0);
+                                                    return false; // The input didn't match.
+                                                }
+                                                
+                                                pos += 7;
+                                                slice = inputSpan.Slice(pos);
+                                                break;
+                                                
+                                            case 'I' or 'i':
+                                                
+                                                if ((uint)slice.Length < 7 ||
+                                                    !slice.Slice(1).StartsWith("nvoice", StringComparison.OrdinalIgnoreCase)) // Match the string "nvoice" (ordinal case-insensitive)
+                                                {
+                                                    UncaptureUntil(0);
+                                                    return false; // The input didn't match.
+                                                }
+                                                
+                                                pos += 7;
+                                                slice = inputSpan.Slice(pos);
+                                                break;
+                                                
+                                            default:
+                                                UncaptureUntil(0);
+                                                return false; // The input didn't match.
+                                        }
+                                    //}
+                                    
+                                    base.Capture(2, capture_starting_pos1, pos);
+                                //}
+                                
+                                // Match if at a word boundary.
+                                if (!Utilities.IsPostWordCharBoundary(inputSpan, pos))
+                                {
+                                    UncaptureUntil(0);
+                                    return false; // The input didn't match.
+                                }
+                                
+                                // Match a character other than '\n' greedily at most 30 times.
+                                //{
+                                    charloop_starting_pos4 = pos;
+                                    
+                                    int iteration = 0;
+                                    while (iteration < 30 && (uint)iteration < (uint)slice.Length && slice[iteration] != '\n')
+                                    {
+                                        iteration++;
+                                    }
+                                    
+                                    slice = slice.Slice(iteration);
+                                    pos += iteration;
+                                    
+                                    charloop_ending_pos4 = pos;
+                                    goto CharLoopEnd4;
+                                    
+                                    CharLoopBacktrack4:
+                                    UncaptureUntil(charloop_capture_pos4);
+                                    
+                                    if (Utilities.s_hasTimeout)
+                                    {
+                                        base.CheckTimeout();
+                                    }
+                                    
+                                    if (charloop_starting_pos4 >= charloop_ending_pos4)
+                                    {
+                                        UncaptureUntil(0);
+                                        return false; // The input didn't match.
+                                    }
+                                    pos = --charloop_ending_pos4;
+                                    slice = inputSpan.Slice(pos);
+                                    
+                                    CharLoopEnd4:
+                                    charloop_capture_pos4 = base.Crawlpos();
+                                //}
+                                
+                                // Match if at a word boundary.
+                                if (!Utilities.IsPreWordCharBoundary(inputSpan, pos))
+                                {
+                                    goto CharLoopBacktrack4;
+                                }
+                                
+                                // Match a Unicode digit atomically at least 5 and at most 15 times.
+                                {
+                                    int iteration1 = 0;
+                                    while (iteration1 < 15 && (uint)iteration1 < (uint)slice.Length && char.IsDigit(slice[iteration1]))
+                                    {
+                                        iteration1++;
+                                    }
+                                    
+                                    if (iteration1 < 5)
+                                    {
+                                        goto CharLoopBacktrack4;
+                                    }
+                                    
+                                    slice = slice.Slice(iteration1);
+                                    pos += iteration1;
+                                }
+                                
+                                // Match if at a word boundary.
+                                if (!Utilities.IsPostWordCharBoundary(inputSpan, pos))
+                                {
+                                    goto CharLoopBacktrack4;
+                                }
+                                
+                            }
+                            
+                            AlternationMatch:;
+                        //}
+                        
+                        stackpos = atomic_stackpos;
+                    }
+                    
+                    // The input matched.
+                    base.runtextpos = pos;
+                    base.Capture(0, matchStart, pos);
+                    return true;
+                    
+                    // <summary>Undo captures until it reaches the specified capture position.</summary>
+                    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                    void UncaptureUntil(int capturePosition)
+                    {
+                        while (base.Crawlpos() > capturePosition)
+                        {
+                            base.Uncapture();
+                        }
+                    }
+                }
+            }
+        }
+
+    }
+    
+    /// <summary>Custom <see cref="Regex"/>-derived type for the NavigationKeywordPattern method.</summary>
+    [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.21808")]
+    file sealed class NavigationKeywordPattern_3 : Regex
+    {
+        /// <summary>Cached, thread-safe singleton instance.</summary>
+        internal static readonly NavigationKeywordPattern_3 Instance = new();
+    
+        /// <summary>Initializes the instance.</summary>
+        private NavigationKeywordPattern_3()
         {
             base.pattern = "\\b(otevři|otevri|otevřít|otevrit|ukaž|ukaz|ukázat|ukazat|přejdi|prejdi|přejít|prejit|naviguj|navigovat|zobraz|zobrazit|jdi na|jdi do|chci|potřebuju|potrebuju|nová faktura|nova faktura|novou fakturu|nový klient|novy klient|nového klienta|noveho klienta|nový dobropis|novy dobropis|seznam faktur|seznam klientů|seznam klientu|přehled faktur|prehled faktur|open|show|go to|navigate|display|new invoice|new client|new credit note|invoice list|client list)\\b";
             base.roptions = RegexOptions.IgnoreCase | RegexOptions.Compiled;
@@ -4798,13 +5989,13 @@ namespace System.Text.RegularExpressions.Generated
     
     /// <summary>Custom <see cref="Regex"/>-derived type for the InvoiceCreationPattern method.</summary>
     [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.21808")]
-    file sealed class InvoiceCreationPattern_3 : Regex
+    file sealed class InvoiceCreationPattern_4 : Regex
     {
         /// <summary>Cached, thread-safe singleton instance.</summary>
-        internal static readonly InvoiceCreationPattern_3 Instance = new();
+        internal static readonly InvoiceCreationPattern_4 Instance = new();
     
         /// <summary>Initializes the instance.</summary>
-        private InvoiceCreationPattern_3()
+        private InvoiceCreationPattern_4()
         {
             base.pattern = "\\b(vytvoř|vytvor|udělej|udelej|vystavit|vystav|vytvořit|vytvorit|create|make|generate|issue)\\b.*\\b(fakturu|faktura|faktur|invoice|dobropis|credit note)\\b|\\b(fakturu|faktura|invoice|dobropis|credit note)\\b.*\\b(za|na|for)\\b.*\\d";
             base.roptions = RegexOptions.IgnoreCase | RegexOptions.Compiled;
@@ -5788,13 +6979,13 @@ namespace System.Text.RegularExpressions.Generated
     
     /// <summary>Custom <see cref="Regex"/>-derived type for the ImportKeywordPattern method.</summary>
     [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.21808")]
-    file sealed class ImportKeywordPattern_4 : Regex
+    file sealed class ImportKeywordPattern_5 : Regex
     {
         /// <summary>Cached, thread-safe singleton instance.</summary>
-        internal static readonly ImportKeywordPattern_4 Instance = new();
+        internal static readonly ImportKeywordPattern_5 Instance = new();
     
         /// <summary>Initializes the instance.</summary>
-        private ImportKeywordPattern_4()
+        private ImportKeywordPattern_5()
         {
             base.pattern = "\\b(importuj|import|naimportuj|zaúčtuj|zauctuj|zaeviduj|přidej fakturu|pridej fakturu)\\b";
             base.roptions = RegexOptions.IgnoreCase | RegexOptions.Compiled;
@@ -6187,13 +7378,13 @@ namespace System.Text.RegularExpressions.Generated
     
     /// <summary>Custom <see cref="Regex"/>-derived type for the ExportKeywordPattern method.</summary>
     [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.21808")]
-    file sealed class ExportKeywordPattern_5 : Regex
+    file sealed class ExportKeywordPattern_6 : Regex
     {
         /// <summary>Cached, thread-safe singleton instance.</summary>
-        internal static readonly ExportKeywordPattern_5 Instance = new();
+        internal static readonly ExportKeywordPattern_6 Instance = new();
     
         /// <summary>Initializes the instance.</summary>
-        private ExportKeywordPattern_5()
+        private ExportKeywordPattern_6()
         {
             base.pattern = "\\b(stáhni|stahni|stáhnout|stahnout|exportuj|exportovat|export|download|vygeneruj|generuj|generate|stáhnout pdf|stahnout pdf|pošli pdf|posli pdf|ukaž pdf|ukaz pdf)\\b.*\\b(fakturu?|faktur|invoice|dobropis|credit note|pdf)\\b|\\b(fakturu?|faktur|invoice|dobropis|credit note)\\b.*\\b(stáhni|stahni|exportuj|download|pdf|export)\\b|\\b(nejnovější|nejnovejsi|poslední|posledni|latest|last|recent)\\b.*\\b(fakturu?|faktur|invoice|dobropis)\\b";
             base.roptions = RegexOptions.IgnoreCase | RegexOptions.Compiled;
@@ -8018,13 +9209,13 @@ namespace System.Text.RegularExpressions.Generated
     
     /// <summary>Custom <see cref="Regex"/>-derived type for the PlaceholderRegex method.</summary>
     [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.21808")]
-    file sealed class PlaceholderRegex_6 : Regex
+    file sealed class PlaceholderRegex_7 : Regex
     {
         /// <summary>Cached, thread-safe singleton instance.</summary>
-        internal static readonly PlaceholderRegex_6 Instance = new();
+        internal static readonly PlaceholderRegex_7 Instance = new();
     
         /// <summary>Initializes the instance.</summary>
-        private PlaceholderRegex_6()
+        private PlaceholderRegex_7()
         {
             base.pattern = "\\{\\{(.+?)\\}\\}";
             base.roptions = RegexOptions.None;
@@ -8192,13 +9383,13 @@ namespace System.Text.RegularExpressions.Generated
     
     /// <summary>Custom <see cref="Regex"/>-derived type for the DocumentNumberRegex method.</summary>
     [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.21808")]
-    file sealed class DocumentNumberRegex_7 : Regex
+    file sealed class DocumentNumberRegex_8 : Regex
     {
         /// <summary>Cached, thread-safe singleton instance.</summary>
-        internal static readonly DocumentNumberRegex_7 Instance = new();
+        internal static readonly DocumentNumberRegex_8 Instance = new();
     
         /// <summary>Initializes the instance.</summary>
-        private DocumentNumberRegex_7()
+        private DocumentNumberRegex_8()
         {
             base.pattern = "(?:(?:faktura|invoice)\\s*(?:č(?:íslo)?\\.?|no\\.?)|číslo\\s+faktury)\\s*:?\\s*(?<value>[\\w\\-/]+)";
             base.roptions = RegexOptions.IgnoreCase;
@@ -8674,13 +9865,13 @@ namespace System.Text.RegularExpressions.Generated
     
     /// <summary>Custom <see cref="Regex"/>-derived type for the IssueDateRegex method.</summary>
     [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.21808")]
-    file sealed class IssueDateRegex_8 : Regex
+    file sealed class IssueDateRegex_9 : Regex
     {
         /// <summary>Cached, thread-safe singleton instance.</summary>
-        internal static readonly IssueDateRegex_8 Instance = new();
+        internal static readonly IssueDateRegex_9 Instance = new();
     
         /// <summary>Initializes the instance.</summary>
-        private IssueDateRegex_8()
+        private IssueDateRegex_9()
         {
             base.pattern = "(?:datum\\s+vystavení|date\\s+of\\s+issue|vystaveno)\\s*:?\\s*(?<value>\\d{1,2}\\.\\s*\\d{1,2}\\.\\s*\\d{4}|\\d{4}-\\d{2}-\\d{2})";
             base.roptions = RegexOptions.IgnoreCase;
@@ -9127,13 +10318,13 @@ namespace System.Text.RegularExpressions.Generated
     
     /// <summary>Custom <see cref="Regex"/>-derived type for the DueDateRegex method.</summary>
     [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.21808")]
-    file sealed class DueDateRegex_9 : Regex
+    file sealed class DueDateRegex_10 : Regex
     {
         /// <summary>Cached, thread-safe singleton instance.</summary>
-        internal static readonly DueDateRegex_9 Instance = new();
+        internal static readonly DueDateRegex_10 Instance = new();
     
         /// <summary>Initializes the instance.</summary>
-        private DueDateRegex_9()
+        private DueDateRegex_10()
         {
             base.pattern = "(?:datum\\s+splatnosti|due\\s+date|splatnost)\\s*:?\\s*(?<value>\\d{1,2}\\.\\s*\\d{1,2}\\.\\s*\\d{4}|\\d{4}-\\d{2}-\\d{2})";
             base.roptions = RegexOptions.IgnoreCase;
@@ -9560,13 +10751,13 @@ namespace System.Text.RegularExpressions.Generated
     
     /// <summary>Custom <see cref="Regex"/>-derived type for the DuzpRegex method.</summary>
     [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.21808")]
-    file sealed class DuzpRegex_10 : Regex
+    file sealed class DuzpRegex_11 : Regex
     {
         /// <summary>Cached, thread-safe singleton instance.</summary>
-        internal static readonly DuzpRegex_10 Instance = new();
+        internal static readonly DuzpRegex_11 Instance = new();
     
         /// <summary>Initializes the instance.</summary>
-        private DuzpRegex_10()
+        private DuzpRegex_11()
         {
             base.pattern = "(?:DUZP|[Dd]atum\\s+uskut(?:ečnění)?\\s+zdanit(?:elného)?\\s+plnění)\\s*:?\\s*(?<value>\\d{1,2}\\.\\s*\\d{1,2}\\.\\s*\\d{4}|\\d{4}-\\d{2}-\\d{2})";
             base.roptions = RegexOptions.IgnoreCase;
@@ -10078,13 +11269,13 @@ namespace System.Text.RegularExpressions.Generated
     
     /// <summary>Custom <see cref="Regex"/>-derived type for the TotalAmountRegex method.</summary>
     [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.21808")]
-    file sealed class TotalAmountRegex_11 : Regex
+    file sealed class TotalAmountRegex_12 : Regex
     {
         /// <summary>Cached, thread-safe singleton instance.</summary>
-        internal static readonly TotalAmountRegex_11 Instance = new();
+        internal static readonly TotalAmountRegex_12 Instance = new();
     
         /// <summary>Initializes the instance.</summary>
-        private TotalAmountRegex_11()
+        private TotalAmountRegex_12()
         {
             base.pattern = "(?:celkem\\s+k\\s*úhradě|k\\s*úhradě|(?<!DPH\\s)(?<!daně\\s)celkem|total\\s*(?:amount)?)\\s*:?\\s*(?<value>[\\d\\s,\\.]+)\\s*(?:Kč|CZK|EUR|USD)?";
             base.roptions = RegexOptions.IgnoreCase;
@@ -10800,13 +11991,13 @@ namespace System.Text.RegularExpressions.Generated
     
     /// <summary>Custom <see cref="Regex"/>-derived type for the TotalBeforeVatRegex method.</summary>
     [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.21808")]
-    file sealed class TotalBeforeVatRegex_12 : Regex
+    file sealed class TotalBeforeVatRegex_13 : Regex
     {
         /// <summary>Cached, thread-safe singleton instance.</summary>
-        internal static readonly TotalBeforeVatRegex_12 Instance = new();
+        internal static readonly TotalBeforeVatRegex_13 Instance = new();
     
         /// <summary>Initializes the instance.</summary>
-        private TotalBeforeVatRegex_12()
+        private TotalBeforeVatRegex_13()
         {
             base.pattern = "(?:základ\\s*(?:daně)?|celkem\\s+bez\\s+DPH|subtotal|tax\\s+base)\\s*:?\\s*(?<value>[\\d\\s,\\.]+)";
             base.roptions = RegexOptions.IgnoreCase;
@@ -11288,13 +12479,13 @@ namespace System.Text.RegularExpressions.Generated
     
     /// <summary>Custom <see cref="Regex"/>-derived type for the TotalVatRegex method.</summary>
     [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.21808")]
-    file sealed class TotalVatRegex_13 : Regex
+    file sealed class TotalVatRegex_14 : Regex
     {
         /// <summary>Cached, thread-safe singleton instance.</summary>
-        internal static readonly TotalVatRegex_13 Instance = new();
+        internal static readonly TotalVatRegex_14 Instance = new();
     
         /// <summary>Initializes the instance.</summary>
-        private TotalVatRegex_13()
+        private TotalVatRegex_14()
         {
             base.pattern = "(?:DPH\\s*(?:celkem)?|VAT\\s*(?:total)?|daň\\s*(?:celkem)?)\\s*:?\\s*(?<value>[\\d\\s,\\.]+)";
             base.roptions = RegexOptions.IgnoreCase;
@@ -11821,13 +13012,13 @@ namespace System.Text.RegularExpressions.Generated
     
     /// <summary>Custom <see cref="Regex"/>-derived type for the VariableSymbolRegex method.</summary>
     [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.21808")]
-    file sealed class VariableSymbolRegex_14 : Regex
+    file sealed class VariableSymbolRegex_15 : Regex
     {
         /// <summary>Cached, thread-safe singleton instance.</summary>
-        internal static readonly VariableSymbolRegex_14 Instance = new();
+        internal static readonly VariableSymbolRegex_15 Instance = new();
     
         /// <summary>Initializes the instance.</summary>
-        private VariableSymbolRegex_14()
+        private VariableSymbolRegex_15()
         {
             base.pattern = "(?:variabilní\\s+symbol|VS)\\s*:?\\s*(?<value>\\d{1,10})";
             base.roptions = RegexOptions.IgnoreCase;
@@ -12074,13 +13265,13 @@ namespace System.Text.RegularExpressions.Generated
     
     /// <summary>Custom <see cref="Regex"/>-derived type for the IbanRegex method.</summary>
     [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.21808")]
-    file sealed class IbanRegex_15 : Regex
+    file sealed class IbanRegex_16 : Regex
     {
         /// <summary>Cached, thread-safe singleton instance.</summary>
-        internal static readonly IbanRegex_15 Instance = new();
+        internal static readonly IbanRegex_16 Instance = new();
     
         /// <summary>Initializes the instance.</summary>
-        private IbanRegex_15()
+        private IbanRegex_16()
         {
             base.pattern = "(?<value>[A-Z]{2}\\d{2}\\s?\\d{4}\\s?\\d{4}\\s?\\d{4}\\s?\\d{4}\\s?\\d{0,4})";
             base.roptions = RegexOptions.IgnoreCase;
@@ -12325,13 +13516,13 @@ namespace System.Text.RegularExpressions.Generated
     
     /// <summary>Custom <see cref="Regex"/>-derived type for the CzechBankAccountRegex method.</summary>
     [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.21808")]
-    file sealed class CzechBankAccountRegex_16 : Regex
+    file sealed class CzechBankAccountRegex_17 : Regex
     {
         /// <summary>Cached, thread-safe singleton instance.</summary>
-        internal static readonly CzechBankAccountRegex_16 Instance = new();
+        internal static readonly CzechBankAccountRegex_17 Instance = new();
     
         /// <summary>Initializes the instance.</summary>
-        private CzechBankAccountRegex_16()
+        private CzechBankAccountRegex_17()
         {
             base.pattern = "(?<value>(?:\\d{1,6}-)?\\d{2,10}/\\d{4})";
             base.roptions = RegexOptions.None;
@@ -12520,13 +13711,13 @@ namespace System.Text.RegularExpressions.Generated
     
     /// <summary>Custom <see cref="Regex"/>-derived type for the RegistrationNumberRegex method.</summary>
     [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.21808")]
-    file sealed class RegistrationNumberRegex_17 : Regex
+    file sealed class RegistrationNumberRegex_18 : Regex
     {
         /// <summary>Cached, thread-safe singleton instance.</summary>
-        internal static readonly RegistrationNumberRegex_17 Instance = new();
+        internal static readonly RegistrationNumberRegex_18 Instance = new();
     
         /// <summary>Initializes the instance.</summary>
-        private RegistrationNumberRegex_17()
+        private RegistrationNumberRegex_18()
         {
             base.pattern = "(?:IČ[O]?\\s*:?\\s*|[Rr]eg\\.?\\s*[Nn]o\\.?\\s*:?\\s*)(?<value>\\d{8})";
             base.roptions = RegexOptions.IgnoreCase;
@@ -12881,13 +14072,13 @@ namespace System.Text.RegularExpressions.Generated
     
     /// <summary>Custom <see cref="Regex"/>-derived type for the TaxNumberRegex method.</summary>
     [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.21808")]
-    file sealed class TaxNumberRegex_18 : Regex
+    file sealed class TaxNumberRegex_19 : Regex
     {
         /// <summary>Cached, thread-safe singleton instance.</summary>
-        internal static readonly TaxNumberRegex_18 Instance = new();
+        internal static readonly TaxNumberRegex_19 Instance = new();
     
         /// <summary>Initializes the instance.</summary>
-        private TaxNumberRegex_18()
+        private TaxNumberRegex_19()
         {
             base.pattern = "(?:DIČ|VAT\\s*ID|Tax\\s*ID)\\s*:?\\s*(?<value>[A-Z]{2}\\d{8,10})";
             base.roptions = RegexOptions.IgnoreCase;
@@ -13172,13 +14363,13 @@ namespace System.Text.RegularExpressions.Generated
     
     /// <summary>Custom <see cref="Regex"/>-derived type for the CurrencyRegex method.</summary>
     [GeneratedCodeAttribute("System.Text.RegularExpressions.Generator", "10.0.14.21808")]
-    file sealed class CurrencyRegex_19 : Regex
+    file sealed class CurrencyRegex_20 : Regex
     {
         /// <summary>Cached, thread-safe singleton instance.</summary>
-        internal static readonly CurrencyRegex_19 Instance = new();
+        internal static readonly CurrencyRegex_20 Instance = new();
     
         /// <summary>Initializes the instance.</summary>
-        private CurrencyRegex_19()
+        private CurrencyRegex_20()
         {
             base.pattern = "(?:Kč|CZK|EUR|USD|GBP)";
             base.roptions = RegexOptions.IgnoreCase;
@@ -13522,6 +14713,9 @@ namespace System.Text.RegularExpressions.Generated
         
         /// <summary>Supports searching for characters in or not in "CKTcktK".</summary>
         internal static readonly SearchValues<char> s_nonAscii_2110137CE7BD091395704D4DBE04F7CB7AEE960B6C982CCE5D9054682A3C175F = SearchValues.Create("CKTcktK");
+        
+        /// <summary>Supports searching for characters in or not in "CDIKPVcdikpvK".</summary>
+        internal static readonly SearchValues<char> s_nonAscii_5DBE7C79F9C32B241B7C44DC7996B8A1EE87DFE9E75FFFB407675D56933454FD = SearchValues.Create("CDIKPVcdikpvK");
         
         /// <summary>Supports searching for characters in or not in "DEHLNORTZdehlnortzŽž".</summary>
         internal static readonly SearchValues<char> s_nonAscii_769639EB26BCA21726A6D8544A662B75B799E7ACD308D1731A0827DAB8CD34EC = SearchValues.Create("DEHLNORTZdehlnortzŽž");

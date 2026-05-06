@@ -485,7 +485,27 @@ Implementace: `PaymentMatchingService.cs` (metoda `GetPaymentsForInvoiceAsync`).
 - Implementace: `Fakvio.Infrastructure/AiProviders/` (Anthropic, OpenAI, Gemini, Ollama).
 - API key storage: `CompanySystemSettings.AiApiKeyEncrypted` (per company) přes `CredentialProtector`.
 - SSE streaming přes `ChatController.StreamAsync`.
-- **MCP Tools**: chat má přístup k 21 tools přes `IChatToolExecutor` — invoice CRUD, client CRUD, reporting.
+- **Chat Tools**: 9 tools registrovaných v DI jako `IChatTool`, orchestrováno přes `IChatToolExecutor`.
+  Registrace v `ServiceCollectionExtensions.cs`; přidání nového toolu = implementace `IChatTool` + řádek v DI.
+
+#### Chat AI Tools matice
+
+| Tool | Třída | Entita | Operace | Klíčové parametry |
+|------|-------|--------|---------|--------------------|
+| `ares_lookup` | `AresLookupTool` | ARES (Czech registry) | Read (external API) | `registration_number` (IČO) |
+| `create_client` | `CreateClientTool` | Client | Create | `registration_number` (IČO) — data z ARES |
+| `create_invoice` | `CreateInvoiceTool` | Invoice (vydaná) | Create | `client_name`, `items` (JSON), `currency`, `notes` |
+| `import_invoice` | `ImportInvoiceTool` | Invoice / ReceivedInvoice | Create | vydaná vs přijatá auto-detekce z IČO; `document_number`, `items`, data atd. |
+| `export_invoice` | `ExportInvoiceTool` | Invoice (vydaná) | Read → Download | `document_number`, `client_name` |
+| `navigate` | `NavigateTool` | — | Navigation | `target` (new\_invoice, client\_list, …), `client_name` |
+| `get_received_invoice` | `GetReceivedInvoiceTool` | ReceivedInvoice | Read (detail) | `id` nebo `document_number`; vrátí položky, DPH, celkové částky, cross-check |
+| `list_received_invoices` | `ListReceivedInvoicesTool` | ReceivedInvoice | Read (paged list) | `status`, `supplier_name`, `issue_date_from/to`, `min/max_amount`, `currency`, `overdue` |
+| `search_received_invoices` | `SearchReceivedInvoicesTool` | ReceivedInvoice | Search | `query` (fulltext: číslo dokladu, dodavatel, VS, částka), `limit` |
+
+##### Co zatím NENÍ pokryto chat tools (jen MCP Server)
+- Reminders (dunning) — přístupné přes SysAdmin UI, ne přes chat
+- PaymentMatch / BankTransaction — přístupné přes SysAdmin UI
+- NumberSequence, BankAccount, VatRate, Currency, ContentTemplate — read-only přes MCP server (`Fakvio.McpServer`)
 
 ### 4.8 MCP Server (`Fakvio.McpServer`)
 

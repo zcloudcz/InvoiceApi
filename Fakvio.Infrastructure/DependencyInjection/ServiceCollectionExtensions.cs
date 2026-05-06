@@ -247,6 +247,12 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IChatTool, CreateInvoiceTool>();
         services.AddScoped<IChatTool, ImportInvoiceTool>();
         services.AddScoped<IChatTool, ExportInvoiceTool>();
+
+        // Received invoice tools — let the agent look up, list, and search přijaté faktury.
+        services.AddScoped<IChatTool, GetReceivedInvoiceTool>();
+        services.AddScoped<IChatTool, ListReceivedInvoicesTool>();
+        services.AddScoped<IChatTool, SearchReceivedInvoicesTool>();
+
         services.AddScopedWithLogging<IChatToolExecutor, ChatToolExecutor>();
 
         // ── Database Logging ────────────────────────────────────────────────
