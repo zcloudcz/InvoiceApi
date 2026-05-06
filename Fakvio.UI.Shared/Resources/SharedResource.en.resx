@@ -703,6 +703,22 @@
   </data>
   <data name="SystemSettings_AiTitle" xml:space="preserve"><value>AI Settings</value></data>
   <data name="SystemSettings_AiDefaultProvider" xml:space="preserve"><value>Default AI Provider</value></data>
+  <data name="AiInstructions_Title" xml:space="preserve"><value>AI Assistant Instructions</value></data>
+  <data name="AiInstructions_Subtitle" xml:space="preserve"><value>Customize the AI assistant system prompt. Changes take effect immediately (no redeploy needed).</value></data>
+  <data name="AiInstructions_CustomPromptLabel" xml:space="preserve"><value>Custom Instructions (replaces default style &amp; rules)</value></data>
+  <data name="AiInstructions_CustomPromptHint" xml:space="preserve"><value>When non-empty, replaces the hardcoded RESPONSE STYLE, TOOLS, IMPORT RULES, and RULES sections. Company identity and business context are always appended automatically.</value></data>
+  <data name="AiInstructions_AppendixLabel" xml:space="preserve"><value>Appendix (additional rules appended after main prompt)</value></data>
+  <data name="AiInstructions_AppendixHint" xml:space="preserve"><value>Added after the main instructions (custom or default). Use this to add extra rules without overriding the defaults.</value></data>
+  <data name="AiInstructions_UsingDefault" xml:space="preserve"><value>Using hardcoded default</value></data>
+  <data name="AiInstructions_UsingCustom" xml:space="preserve"><value>Using custom instructions</value></data>
+  <data name="AiInstructions_Preview" xml:space="preserve"><value>Preview Full Prompt</value></data>
+  <data name="AiInstructions_ResetToDefault" xml:space="preserve"><value>Reset to Default</value></data>
+  <data name="AiInstructions_ResetConfirm" xml:space="preserve"><value>This will clear both custom instructions and appendix. The AI will use the hardcoded defaults. Continue?</value></data>
+  <data name="AiInstructions_SaveSuccess" xml:space="preserve"><value>AI instructions saved. Changes take effect on the next chat call.</value></data>
+  <data name="AiInstructions_ResetSuccess" xml:space="preserve"><value>AI instructions reset to defaults.</value></data>
+  <data name="AiInstructions_PreviewTitle" xml:space="preserve"><value>Full Prompt Preview</value></data>
+  <data name="AiInstructions_PreviewNote" xml:space="preserve"><value>Business context stats show placeholders — actual values are injected at runtime from the tenant database.</value></data>
+  <data name="Nav_AiInstructions" xml:space="preserve"><value>AI Instructions</value></data>
   <data name="Log_Title" xml:space="preserve">
     <value>Application Logs</value>
   </data>

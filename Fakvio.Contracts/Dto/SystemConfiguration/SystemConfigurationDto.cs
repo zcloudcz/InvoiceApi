@@ -53,4 +53,17 @@ public class SystemConfigurationDto
     public string? AzureBlobContainerPrefix { get; set; }
     /// <summary>Shared blob container name. Null/empty means "use default fakvio-files".</summary>
     public string? AzureBlobContainerName { get; set; }
+
+    // ─── AI System Prompt Settings ───────────────────────────────────────────
+    /// <summary>
+    /// Custom instructions that REPLACE the hardcoded style/rules sections.
+    /// Null/empty means the hardcoded default is used.
+    /// </summary>
+    public string? AiSystemPromptCustom { get; set; }
+
+    /// <summary>
+    /// Additional instructions APPENDED after the main prompt sections.
+    /// Null/empty means no appendix is added.
+    /// </summary>
+    public string? AiSystemPromptAppendix { get; set; }
 }
