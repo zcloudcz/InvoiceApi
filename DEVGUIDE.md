@@ -1056,6 +1056,8 @@ await sub.Received(1).MethodAsync(Arg.Any<T>());  // received check vyžaduje aw
 | Nový code-table pattern (master / tenant / dual-context) | §11.2 |
 | Nový background lock klíč | §6.3 (tabulka klíčů) |
 | Změna observability stacku (App Insights → jiný) | §10 |
+| Nová/změněná funkce **viditelná uživateli** (stránka, akce, stav, export) | **USERGUIDE.md** |
+| Nová/změněná funkce **viditelná SysAdminovi** (nastavení, provider, log, provisioning) | **ADMINGUIDE.md** |
 
 **Volitelné** ale doporučené:
 - Nový NuGet upgrade s breaking change → §12 gotchas.
