@@ -1,0 +1,615 @@
+# Fakvio — Uživatelská příručka (USERGUIDE)
+
+> Praktický průvodce pro uživatele firmy (tenant). Vysvětluje **co a kde** v aplikaci najdete a **jak** to používat — ne technické detaily. Cílová skupina: účetní, fakturant nebo majitel firmy.
+>
+> **MAINTENANCE RULE (povinné):** Pokud přidáváš nebo měníš funkci viditelnou uživateli (nová stránka, nová akce, změna chování formuláře, nový stav faktury, nový export…), **musíš aktualizovat odpovídající sekci tohoto souboru**. Bez záznamu PR neprochází review.
+
+---
+
+## Obsah
+
+1. [Přehled (Dashboard)](#1-přehled-dashboard)
+2. [Faktury](#2-faktury)
+3. [Dobropisy](#3-dobropisy)
+4. [Proforma faktury a daňový doklad o přijaté platbě](#4-proforma-faktury-a-daňový-doklad-o-přijaté-platbě)
+5. [Klienti](#5-klienti)
+6. [Šablony faktur (InvoiceTemplates)](#6-šablony-faktur-invoicetemplates)
+7. [Šablony dokumentů (ContentTemplates — PDF + email)](#7-šablony-dokumentů-contenttemplates--pdf--email)
+8. [Přijaté faktury](#8-přijaté-faktury)
+9. [Číselné řady](#9-číselné-řady)
+10. [Nastavení firmy](#10-nastavení-firmy)
+11. [DPH sazby a režimy](#11-dph-sazby-a-režimy)
+12. [Přehled DPH + EPO export](#12-přehled-dph--epo-export)
+13. [AI asistent](#13-ai-asistent)
+14. [Upomínky (Dunning)](#14-upomínky-dunning)
+15. [Párování plateb](#15-párování-plateb)
+16. [Lokalizace — přepínání jazyka CZ/EN](#16-lokalizace--přepínání-jazyka-czen)
+
+---
+
+## 1. Přehled (Dashboard)
+
+**Stránka:** `/` (úvodní stránka po přihlášení)
+
+Dashboard zobrazuje aktuální přehled vaší firmy na jednom místě:
+
+### KPI karty (klikatelné — navigují na příslušný seznam)
+
+| Karta | Co zobrazuje | Navigace |
+|-------|-------------|----------|
+| Faktury splatné tento měsíc | Počet vydaných faktur se splatností v aktuálním měsíci + celkové součty bez/s DPH | `/invoices` |
+| Aktivní klienti | Počet klientů se stavem Aktivní | `/clients` |
+| Nesplaceno | Celková částka v CZK u vydaných (Completed) ale nezaplacených faktur | `/invoices` |
+| Nespárované platby | Počet bankovních transakcí čekajících na párování (zobrazí se jen když > 0) | `/payments` |
+| Upozornění | Počet otevřených alertů (zobrazí se jen když > 0) — kliknutím se rozbalí detail panel | expanduje panel |
+
+### Grafy
+
+- **Faktury podle stavu** — koláčový (donut) graf: Draft / Issued / Paid / Credited
+- **Top klienti podle obratu** — koláčový graf: top 10 klientů, seřazeni sestupně
+
+### Pojistné zálohy
+
+Pokud máte nastavenu daňovou konfiguraci, zobrazí se:
+- Datum příští platby zálohy pojistného + kolik dnů zbývá (červeně pokud prošlo nebo zbývají ≤ 5 dní)
+- Výše měsíčních záloh — sociální + zdravotní pojistné
+
+### Přehled po splatnosti
+
+Tabulka faktur, které překročily datum splatnosti. Každý řádek je klikatelný — otevře detail faktury.
+
+### Poslední faktury
+
+Tabulka posledních 5 faktur s číslem, klientem, datem a stavem. Kliknutím se otevře detail.
+
+### Widget upomínek
+
+Zobrazí se pokud máte aktivní upomínkový systém: počty Draft/Sent/Failed upomínek + poslední záznamy.
+
+### Quick Start
+
+Pro nové uživatele: průvodce v krocích (Klienti → Faktury).
+
+---
+
+## 2. Faktury
+
+**Stránka:** `/invoices`
+
+### 2.1 Přehled faktur
+
+Grid zobrazuje vydané faktury s těmito sloupci:
+- Číslo dokladu (chip s ikonou)
+- Klient
+- Datum vystavení
+- Datum uskutečnění zdanitelného plnění (DUZP) — zobrazí se jen pokud jste plátce DPH
+- Datum splatnosti
+- Celková částka s DPH + měna
+- Stav (chip barevný — viz tabulka stavů)
+- Upozornění (ikonka varování pokud faktura má otevřený alert)
+- Odesláno emailem (ikonka obálky s datem posledního odeslání)
+
+**Filtrace:**
+- Globální textové hledání (číslo dokladu, klient, poznámky) — debounce 300 ms
+- Sloupcové filtry (kliknutím na záhlaví sloupce) — datum funguje s operátory =, >, <, between
+- Sloupcové řazení (kliknutím na záhlaví)
+
+**Hromadné operace** (bulkové — po zaškrtnutí checkboxů):
+- Vystavit (pouze Draft faktury)
+- Označit jako zaplacené (pouze Issued faktury)
+- Stáhnout PDF jako ZIP
+- Odeslat emailem
+- Smazat (Draft nebo Issued)
+
+### 2.2 Stavy faktury
+
+| Stav | Barva | Význam |
+|------|-------|--------|
+| Draft (Koncept) | Šedá | Faktura je ve stavu konceptu, lze editovat a smazat |
+| Issued (Vydaná) | Modrá | Faktura byla vystavena, čeká na zaplacení |
+| Paid (Zaplacená) | Zelená | Faktura je uhrazena |
+| Creditnoted (Dobropisována) | Oranžová | K faktuře byl vystaven dobropis |
+| Deleted (Smazaná) | Tmavá | Faktura je soft-smazaná, lze ji obnovit |
+
+### 2.3 Akce v řádku gridu
+
+| Ikona | Akce | Podmínka |
+|-------|------|----------|
+| Oko | Zobrazit detail | vždy |
+| Odeslat | Vystavit fakturu (Draft → Issued) | pouze Draft |
+| Smazat | Smazat fakturu | pouze Draft |
+| Zaplatit | Označit jako zaplacenu | pouze Issued |
+| PDF | Stáhnout PDF (výběr šablony) | vždy |
+| Email | Odeslat emailem | vždy |
+| Kopírovat | Zkopírovat fakturu jako nový Draft | ne CreditNote, ne Deleted |
+| Tři tečky | Sekundární akce (Vytvořit šablonu) | vždy |
+| Obnovit | Obnovit smazanou fakturu | pouze Deleted |
+
+### 2.4 Vytvoření nové faktury
+
+**Tlačítko:** „Nová faktura" na stránce `/invoices`
+
+**Postup:**
+1. Klikněte na „+ Nová faktura" → otevře se stránka `/invoices/create`
+2. Vyberte klienta — po výběru se automaticky doplní fakturační nastavení (prefix/suffix, vlastní číselná řada, splatnost)
+3. Vyberte typ dokladu (Faktura / Dobropis / Proforma / Daňový doklad)
+4. Vyberte měnu
+5. Číslo dokladu — nechte prázdné pro automatické číslování, nebo zadejte vlastní
+6. Vyplňte data (datum vystavení, datum splatnosti, DUZP)
+7. Přidejte položky faktury v editoru položek
+8. Klikněte „Vytvořit"
+
+**Vytvoření ze šablony:**
+- Z gridu: rozbalovací menu vedle „+ Nová faktura" → „Nová z šablony" → vyberte šablonu + klienta
+- Z řádku faktury: tři tečky → „Vytvořit šablonu" (uloží fakturu jako šablonu pro budoucí použití)
+
+**Vytvoření importem:**
+- Z gridu: rozbalovací menu → „Import faktur" → `/invoices/import?target=IssuedInvoice`
+
+### 2.5 Editace faktury
+
+- Detail faktury na `/invoices/{id}` — klikněte na řádek nebo ikonu oka
+- Ve stavu Draft: přímá editace, tlačítko „Uložit"
+- Ve stavu Issued/Paid: pouze zobrazení; pro editaci vraťte fakturu do Draft (pokud to systém umožňuje)
+- Unsaved changes guard: při navigaci pryč bez uložení se zobrazí potvrzovací dialog
+
+### 2.6 Kopírování faktury
+
+- Ikonka kopírování v řádku gridu → vytvoří nový Draft se stejnými daty
+- Nová faktura dostane nové číslo dokladu (z číselné řady)
+- Po zkopírování se zobrazí toast se číslem nové faktury + grid se obnoví
+- Kopírování není dostupné pro Dobropisy ani Smazané faktury
+
+### 2.7 Export PDF
+
+- Kliknutím na ikonu PDF v řádku gridu
+- Výběr šablony: výchozí šablona nebo vlastní (pokud máte nakonfigurované ContentTemplates)
+- Soubor se stáhne pojmenovaný `Faktura_{číslo}.pdf`
+
+**Hromadný PDF export:** zaškrtněte faktury → toolbar → PDF → stáhne se ZIP archiv
+
+### 2.8 Export ISDOC
+
+Dostupný z detailu faktury — viz příslušné tlačítko. ISDOC je český standard pro elektronické faktury.
+
+### 2.9 Odeslání emailem
+
+- Z gridu: ikona emailu → dialog „Odeslat fakturu"
+- Zadejte emailovou adresu příjemce (předvyplněna z nastavení klienta)
+- Klikněte „Odeslat"
+- Po odeslání se v řádku zobrazí ikonka zelené obálky s datem
+
+**Hromadné odeslání:** zaškrtněte faktury → toolbar → Email → odešle se na výchozí email každého klienta
+
+---
+
+## 3. Dobropisy
+
+**Stránka:** `/invoices?type=CreditNote`
+
+Dobropis (credit note) opravuje nebo ruší vydanou fakturu.
+
+### Vytvoření dobropisu
+
+**Ze stránky Faktury:**
+1. Klikněte „+ Nový dobropis" (nebo z gridu faktur přes Nová faktura → typ Dobropis)
+2. Vyberte **původní fakturu** (pole Původní faktura — povinné pro CreditNote)
+3. Doplňte položky a uložte
+
+**Alternativně:** Otevřete detail faktury → tlačítko „Vystavit dobropis" (pokud existuje, závisí na konfiguraci)
+
+### Specifika dobropisu
+
+- V gridu faktur jsou dostupné přes URL parametr `?type=CreditNote`
+- Číslo dokladu začíná prefixem `CN-` (dle konfigurace číselné řady)
+- Kopírování dobropisu není dostupné (ikonka kopírování se nezobrazuje)
+- Po vystavení dobropisu se původní faktura označí stavem `Creditnoted`
+
+---
+
+## 4. Proforma faktury a daňový doklad o přijaté platbě
+
+### Proforma faktura
+
+**Stránka:** `/invoices?type=Proforma`
+
+Proforma (záloha) je nezávazný doklad před přijetím platby. Číslo dokladu: prefix `PF-`.
+
+**Vytvoření:** stejný postup jako standardní faktura, typ = Proforma.
+
+### Daňový doklad o přijaté platbě (DPP)
+
+**Stránka:** `/invoices?type=TaxReceiptForAdvance`
+
+Vystavuje se po přijetí zálohy. Číslo dokladu: prefix `DPP-`.
+
+**Automatické vystavení:** systém může automaticky vystavit DPP po označení proformy jako zaplacené (závisí na nastavení).
+
+---
+
+## 5. Klienti
+
+**Stránka:** `/clients`
+
+### 5.1 Seznam klientů
+
+Grid s klienty: název firmy, IČ, DIČ, město, plátce DPH (ano/ne), stav (aktivní/neaktivní).
+
+Kliknutím na řádek nebo ikonu oka otevřete detail klienta.
+
+### 5.2 Nový klient
+
+1. Klikněte „+ Nový klient" → `/clients/create`
+2. Zadejte IČ a klikněte „ARES" — systém automaticky doplní název, adresu a DIČ z ARES (CZ obchodní rejstřík)
+3. Upravte nebo ručně zadejte zbývající údaje:
+   - Název firmy / obchodní název
+   - DIČ, plátce DPH (přepínač)
+   - Jazyk dokumentů (cs / en) — v tomto jazyce se generují PDF a emaily pro tohoto klienta
+   - Barva (volitelná) — barevně označí řádky tohoto klienta v gridu faktur
+4. Přidejte adresy (fakturační, doručovací…) tlačítkem „+ Adresa"
+5. Přidejte kontakty (email, telefon)
+6. Přidejte bankovní účty
+7. Klikněte „Vytvořit"
+
+### 5.3 Fakturační nastavení klienta
+
+V detailu klienta sekce „Fakturační nastavení" (BillingSettings):
+
+| Pole | Popis |
+|------|-------|
+| Prefix čísla dokladu | Přidá se před číslo faktury (např. `FIRMA-`) |
+| Suffix čísla dokladu | Přidá se za číslo faktury |
+| Vlastní číselná řada | Pokud nastavena, použije se místo výchozí řady |
+| Splatnost (dny) | Výchozí počet dní od data vystavení do data splatnosti |
+
+Tyto hodnoty se automaticky aplikují při vytváření nové faktury pro tohoto klienta.
+
+### 5.4 Historie faktur klienta
+
+V detailu klienta se zobrazuje tabulka faktur tohoto klienta (server-side stránkování).
+
+---
+
+## 6. Šablony faktur (InvoiceTemplates)
+
+**Stránka:** `/invoice-templates`
+
+Šablona faktury ukládá opakované položky (např. měsíční paušál) pro rychlé vytvoření nové faktury.
+
+### Vytvoření šablony
+
+**Ze šablon:** „+ Nová šablona" → `/invoice-templates/create`
+
+**Z existující faktury:**
+1. V gridu faktur: tři tečky (⋮) v řádku → „Vytvořit šablonu"
+2. Zadejte název šablony a volitelně popis
+3. Systém zkopíruje položky faktury do šablony
+
+### Použití šablony pro novou fakturu
+
+**Z gridu faktur:**
+1. Rozbalovací menu vedle „+ Nová faktura" → „Nová z šablony"
+2. Vyberte šablonu (šablona může mít nastaveného výchozího klienta — pak se předvyplní)
+3. Vyberte klienta
+4. Klikněte „Vytvořit" → otevře se stránka vytvoření faktury s předvyplněnými položkami
+
+### Filtrace šablon
+
+Grid šablon umožňuje filtrovat podle:
+- Textového hledání (název)
+- Typu dokladu (Faktura / Dobropis)
+- Stavu (aktivní / neaktivní)
+
+---
+
+## 7. Šablony dokumentů (ContentTemplates — PDF + email)
+
+**Stránka:** `/content-templates`
+
+ContentTemplates jsou HTML šablony pro generování PDF a emailů. Lze je editovat v WYSIWYG editoru.
+
+### Typy šablon
+
+| Skupina | Typy |
+|---------|------|
+| PDF | InvoicePdf, CreditNotePdf, AdvanceInvoicePdf (Proforma), TaxReceiptForAdvancePdf |
+| Email | InvoiceEmail, ReminderEmail, InvitationEmail, PasswordResetEmail |
+| Systémové | Šablony upravované SysAdminem (globální) |
+
+### Filtrování
+
+Čipy v horní části: Vše / PDF / Email / Systémové
+
+### Editace šablony
+
+Detail šablony `/content-templates/{id}` → WYSIWYG editor (Quill) pro HTML obsah.
+
+**Placeholdery** (dostupné v PDF/email šablonách):
+- `{{IssuerName}}`, `{{IssuerAddress}}`, `{{ClientName}}`, `{{ClientAddress}}`
+- `{{InvoiceNumber}}`, `{{IssueDate}}`, `{{DueDate}}`, `{{TaxableSupplyDate}}`
+- `{{TotalWithoutVat}}`, `{{TotalVat}}`, `{{TotalWithVat}}`, `{{CurrencyCode}}`
+- `{{Items}}` (tabulka položek), `{{Notes}}`, `{{PaymentInfo}}`
+
+---
+
+## 8. Přijaté faktury
+
+**Stránka:** `/received-invoices`
+
+Správa faktur, které vaše firma přijala od dodavatelů.
+
+### Import přijaté faktury
+
+Dvě možnosti:
+1. **Ruční zadání:** „+ Nová přijatá faktura" → formulář
+2. **Import:** „Import" → `/received-invoices/import?target=ReceivedInvoice` → nahrání souboru (PDF/XML)
+
+### Stavy přijatých faktur
+
+Filtrovat lze podle stavu pomocí výběrového pole nad gridem.
+
+### Přehled DPH z přijatých faktur
+
+Data z přijatých faktur se projevují v přehledu DPH (sekce Vstupní DPH) na stránce `/vat-report`.
+
+---
+
+## 9. Číselné řady
+
+**Stránka:** `/number-sequences`
+
+Konfigurace formátů číslovacích řad pro dokumenty.
+
+### Formáty číselných řad
+
+Grid Formátů zobrazuje dostupné formáty:
+
+| Pole | Popis |
+|------|-------|
+| Název | Identifikátor formátu |
+| Vzor (FormatPattern) | Šablona čísla — např. `INV-{YEAR}-{SEQ:4}` |
+| Počet číslic | Délka pořadového čísla (s leading zeros) |
+| Reset ročně | Pořadové číslo se každý rok resetuje na 1 |
+| Reset měsíčně | Pořadové číslo se každý měsíc resetuje na 1 |
+
+**Dostupné tokeny ve vzoru:**
+- `{YEAR}` — aktuální rok (4 číslice)
+- `{MONTH}` — aktuální měsíc (2 číslice)
+- `{SEQ:N}` — pořadové číslo s N čísticemi
+
+### Přiřazení číslovací řady
+
+Sekce „Číselné řady" zobrazuje přiřazení konkrétní číselné řady ke každému typu dokladu (Faktura, Dobropis, Proforma, DPP).
+
+Lze přiřadit:
+- Výchozí systémový formát
+- Vlastní formát (kliknutím na řádek → dialog editace)
+
+---
+
+## 10. Nastavení firmy
+
+**Stránka:** `/my-company`
+
+Správa informací o vaší firmě (vydavatele faktur).
+
+### Co lze nastavit
+
+**Základní informace:**
+- IČ — tlačítko „ARES" automaticky doplní z registru
+- Název firmy, obchodní název
+- DIČ, plátce DPH
+
+**Adresy:** sídlo, provozovna, fakturační adresa (přes dialog Adresa)
+
+**Kontakty:** email, telefon
+
+**Bankovní účty:**
+- Přidávání přes dialog „Bankovní účet"
+- Formát: číslo účtu, kód banky, IBAN, BIC/SWIFT
+- QR kód platba — systém generuje QR kód pro faktury automaticky
+
+**Cloud úložiště:**
+- Napojení cloudového úložiště pro ukládání dokumentů
+
+### Jak editovat
+
+1. Klikněte „Upravit" (tužka) v pravém horním rohu
+2. Upravte pole
+3. Klikněte „Uložit"
+
+Při navigaci pryč bez uložení se zobrazí potvrzovací dialog.
+
+---
+
+## 11. DPH sazby a režimy
+
+**Stránka:** `/vat-rates`
+
+### DPH sazby
+
+Grid zobrazuje dostupné DPH sazby:
+
+| Pole | Popis |
+|------|-------|
+| Název | Popis sazby (např. „Základní sazba", „Snížená sazba") |
+| Sazba | Procento (např. 21 %, 12 %) |
+| Platí od / Platí do | Časové vymezení platnosti sazby |
+| Typ | Standardní / Snížená |
+| Výchozí | Hvězdička = výchozí sazba v položkách faktury |
+
+Kliknutím na řádek nebo „+ Nová sazba" lze editovat nebo přidávat.
+
+### DPH režimy (EVatRegime) — na položkách faktury
+
+Každá položka faktury má DPH regime:
+
+| Režim | Kdy použít |
+|-------|-----------|
+| **Standard** | Standardní tuzemská transakce s DPH |
+| **ReverseCharge (PDP)** | Přenesená daňová povinnost — kupující odvádí DPH. Povinné uvedení kódu §92 (ReverseChargeCode). |
+| **Exempt** (Osvobozeno) | Plnění osvobozené od DPH (§51–§62 ZDPH) |
+| **OutOfScope** (Mimo scope) | Plnění, které není předmětem DPH |
+
+**Přenesená daňová povinnost (PDP / Reverse Charge):**
+- Nastavte regime = ReverseCharge
+- Vyberte příslušný kód §92b/c/d/e z číselníku MFČR (pole „Kód přenesené DPH")
+- Faktura se správně zobrazí v kontrolním hlášení (DPHKH1)
+
+---
+
+## 12. Přehled DPH + EPO export
+
+**Stránka:** `/vat-report`
+
+### Přehled DPH
+
+1. Vyberte období (datum od–do) nebo použijte rychlé filtry (Aktuální měsíc, Předchozí měsíc, Aktuální čtvrtletí, Předchozí čtvrtletí)
+2. Klikněte „Generovat"
+
+**Zobrazené informace:**
+- Výstupní DPH (z vydaných faktur): celková výše + počet faktur
+- Vstupní DPH (z přijatých faktur): celková výše + počet faktur
+- Daňová povinnost = Výstupní − Vstupní (kladná = odvod, záporná = nadměrný odpočet)
+- Výnosy, náklady, zisk
+- Detailní rozpad výstupního DPH po sazbách
+- Detailní rozpad vstupního DPH po sazbách
+
+### EPO export (Elektronické podání daňového přiznání)
+
+**Dostupné pouze pro plátce DPH.**
+
+Sekce „EPO Export" umožňuje stáhnout dva soubory pro portál EPO MFČR:
+
+| Soubor | Typ | Obsah |
+|--------|-----|-------|
+| DPHDP3 | XML | Daňové přiznání k DPH |
+| DPHKH1 | XML | Kontrolní hlášení DPH |
+
+**Postup:**
+1. Vyberte rok a typ období (Měsíční / Čtvrtletní)
+2. Vyberte konkrétní měsíc nebo čtvrtletí
+3. Klikněte „Stáhnout DPHDP3" nebo „Stáhnout DPHKH1"
+4. Vygenerovaný XML soubor nahrajte na portál EPO (https://adisepo.mfcr.cz)
+
+---
+
+## 13. AI asistent
+
+**Přístup:** ikona AI robota v pravém horním rohu hlavní navigace → otevře se boční panel (Chat Drawer)
+
+### Co AI asistent umí
+
+AI asistent zná kontext vaší firmy a umí odpovídat na otázky i provádět akce:
+
+| Oblast | Co umí |
+|--------|--------|
+| Faktury | Vyhledat fakturu, zobrazit detail, vypsat seznam faktur podle kritérií |
+| Klienti | Vyhledat klienta, zobrazit detail |
+| Přijaté faktury | Vyhledat, vypsat seznam |
+| Obecné dotazy | Odpovídat na otázky o funkcích aplikace |
+| Navigace | Přesměrovat vás na příslušnou stránku |
+
+### Jak používat
+
+1. Klikněte na ikonu AI v pravém horním rohu
+2. V panelu napište dotaz v přirozeném jazyce (česky nebo anglicky)
+3. Odpověď se zobrazuje streamovaně (postupně, token po tokenu)
+4. Konverzace se ukládají — historii konverzací zobrazíte tlačítkem hodiny (History)
+
+### Výběr AI poskytovatele
+
+Pokud je nakonfigurováno více AI poskytovatelů, zobrazí se rozbalovací seznam (Claude / OpenAI / Gemini / Ollama) pro výběr.
+
+### Příklady dotazů
+
+- „Ukaž mi faktury pro klienta XYZ za poslední měsíc"
+- „Jaký je celkový obrat za Q1 2026?"
+- „Najdi fakturu číslo FAK-2026-001"
+- „Kolik mám nesplacených faktur?"
+
+---
+
+## 14. Upomínky (Dunning)
+
+**Stránka:** `/reminders`
+
+Systém automaticky generuje upomínky pro faktury po splatnosti.
+
+### Přehled upomínek
+
+Grid zobrazuje upomínky se sloupci: datum, číslo faktury, klient, úroveň upomínky, celková částka, stav.
+
+**Filtrace:** textové hledání + filtr podle stavu
+
+### Stavy upomínek
+
+| Stav | Barva | Popis |
+|------|-------|-------|
+| Draft | Šedá | Upomínka čeká na odeslání |
+| Sent | Zelená | Upomínka odeslána emailem |
+| Failed | Červená | Odeslání selhalo |
+| Cancelled | Oranžová | Upomínka zrušena |
+
+### Hromadné akce
+
+Po zaškrtnutí upomínek v gridu se zobrazí toolbar:
+- **Odeslat** — odešle Draft upomínky emailem
+- **Zrušit** — přestaví Draft upomínky na Cancelled
+
+### Nastavení upomínek
+
+**Stránka:** `/reminder-settings`
+
+Konfigurace pravidel automatického generování upomínek (časové rozstupy, počet upomínek, text).
+
+### Dashboard widget
+
+Na Dashboardu se zobrazuje souhrn: počty Draft/Sent/Failed + poslední záznamy + celková nesplacená částka.
+
+---
+
+## 15. Párování plateb
+
+**Stránka:** `/payments`
+
+Automatické párování bankovních plateb s fakturami pomocí IMAP (příjem emailových notifikací z banky).
+
+### Jak funguje
+
+1. Banka odesílá emailová oznámení o příchozích platbách na speciální adresu vaší firmy
+2. Systém tyto emaily přijme a automaticky spáruje platbu s fakturou (dle variabilního symbolu nebo jiných kritérií)
+3. Nespárované nebo pochybné platby čekají na ruční kontrolu
+
+### Přehled plateb
+
+Grid zobrazuje bankovní transakce:
+
+| Pole | Popis |
+|------|-------|
+| Datum | Datum transakce |
+| Částka + měna | Příchozí / odchozí |
+| Stav párování | Unmatched / NeedsReview / Matched / PartiallyMatched / Ignored |
+| Spárovaná faktura | Pokud existuje |
+
+**Filtrace:** stav párování, směr platby (příchozí / odchozí), textové hledání
+
+### Ruční párování
+
+Kliknutím na řádek s platbou se otevře detail → tlačítko „Spárovat s fakturou" → výběr faktury ze seznamu.
+
+### Dashboard badge
+
+V levém menu vedle „Platby" se zobrazuje číslo (badge) s počtem nespárovaných plateb. Na Dashboardu se zobrazí KPI karta.
+
+---
+
+## 16. Lokalizace — přepínání jazyka CZ/EN
+
+**Komponenta:** LanguageSwitcher v pravém horním rohu navigace
+
+Aplikace podporuje dvě jazykové mutace:
+- **Česky (cs)** — výchozí
+- **English (en)** — přepnutím se změní veškerý popis UI
+
+**Jazyk dokumentů** (PDF, emaily) závisí na nastavení každého klienta (pole „Jazyk" v detailu klienta), ne na jazyku UI. Pokud klient má `en`, dostane PDF a email v angličtině bez ohledu na váš jazyk UI.
