@@ -76,6 +76,26 @@ public partial class ChatToolExecutor : IChatToolExecutor
     private static partial Regex ToolKeywordPattern();
 
     /// <summary>
+    /// Matches Czech and English phrases that indicate the user is asking about
+    /// received (incoming) invoices — přijaté faktury / expenses from suppliers.
+    ///
+    /// Czech: přijatá faktura, přijaté faktury, přijatou fakturu, přijatá, výdaj/ová faktura,
+    ///        dodavatel, dodavatelská faktura, faktura od ...
+    /// English: received invoice, incoming invoice, supplier invoice, expense invoice
+    ///
+    /// A standalone 8-to-15-digit number after "faktura" or "invoice" also triggers this path
+    /// because the user likely means a document number (e.g. "faktura 267708922").
+    /// </summary>
+    [GeneratedRegex(
+        @"\b(přijat[áaéeou]|prijat[áaéeou]|přijat[íi]|prijat[íi]|" +
+        @"výdaj[oová]?|vydaj[oová]?|dodavatel[sš]k[áaé]?|dodavatel[eů]?|" +
+        @"received invoice|incoming invoice|supplier invoice|expense invoice|" +
+        @"přijatou fakturu|prijatou fakturu|přijaté faktury|prijaté faktury)\b|" +
+        @"\b(faktura|fakturu|faktury|invoice)\b.{0,30}\b\d{5,15}\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled)]
+    private static partial Regex ReceivedInvoiceKeywordPattern();
+
+    /// <summary>
     /// Matches Czech and English keywords indicating the user wants to navigate
     /// somewhere in the application or open a page/form.
     ///
@@ -198,6 +218,13 @@ public partial class ChatToolExecutor : IChatToolExecutor
             return true;
         }
 
+        // Path 7: Received invoice keyword — user asks about přijaté faktury / expenses.
+        if (ReceivedInvoiceKeywordPattern().IsMatch(userMessage))
+        {
+            _logger.LogDebug("Tool intent detected in message: received invoice keyword match");
+            return true;
+        }
+
         return false;
     }
 
@@ -232,7 +259,13 @@ public partial class ChatToolExecutor : IChatToolExecutor
             "  Use \"navigate\" with target \"new_invoice\" when the user just wants to open the form.\n" +
             "  The items parameter must be a JSON array. Extract items from the user's message.\n" +
             "- If the user wants to EXPORT/DOWNLOAD/PRINT an invoice as PDF, use \"export_invoice\".\n" +
-            "  Provide document_number or client_name. If neither is specified, exports the most recent invoice.\n\n" +
+            "  Provide document_number or client_name. If neither is specified, exports the most recent invoice.\n" +
+            "- If the user asks about a RECEIVED (incoming/expense) invoice by ID or document number, use \"get_received_invoice\".\n" +
+            "  Provide id or document_number. Returns full detail including items and VAT breakdown.\n" +
+            "- If the user wants to LIST or BROWSE received invoices (with filters), use \"list_received_invoices\".\n" +
+            "  Supports status, supplier_name, date range, amount range, currency, and overdue filters.\n" +
+            "- If the user SEARCHES for received invoices by text (number, supplier, amount), use \"search_received_invoices\".\n" +
+            "  Provide a query string — matched against document number, supplier name, variable symbol, and amount.\n\n" +
             "HOW TO USE TOOLS:\n" +
             "Your ENTIRE response must be ONLY this JSON, nothing else:\n" +
             "{\"action\": \"tool_name\", \"parameters\": {\"key\": \"value\"}}\n\n" +
@@ -415,6 +448,56 @@ public partial class ChatToolExecutor : IChatToolExecutor
                             Description = "Optional notes to include on the invoice" }
                     };
                     def.Required = new List<string> { "client_name", "items" };
+                    break;
+
+                case "get_received_invoice":
+                    def.Parameters = new List<NativeToolParameter>
+                    {
+                        new() { Name = "id", Type = "string",
+                            Description = "Internal database ID of the received invoice" },
+                        new() { Name = "document_number", Type = "string",
+                            Description = "Document number as printed on the invoice (e.g. '267708922')" }
+                    };
+                    def.Required = new List<string>();  // at least one is required, validated inside ExecuteAsync
+                    break;
+
+                case "list_received_invoices":
+                    def.Parameters = new List<NativeToolParameter>
+                    {
+                        new() { Name = "page", Type = "string",
+                            Description = "Page number (default 1)" },
+                        new() { Name = "page_size", Type = "string",
+                            Description = "Items per page (default 10, max 50)" },
+                        new() { Name = "status", Type = "string",
+                            Description = "Filter by status",
+                            EnumValues = new List<string> { "Received", "Approved", "Paid", "Rejected" } },
+                        new() { Name = "supplier_name", Type = "string",
+                            Description = "Supplier company name (case-insensitive substring match)" },
+                        new() { Name = "issue_date_from", Type = "string",
+                            Description = "Issue date range start (YYYY-MM-DD)" },
+                        new() { Name = "issue_date_to", Type = "string",
+                            Description = "Issue date range end (YYYY-MM-DD)" },
+                        new() { Name = "min_amount", Type = "string",
+                            Description = "Minimum total amount (with VAT)" },
+                        new() { Name = "max_amount", Type = "string",
+                            Description = "Maximum total amount (with VAT)" },
+                        new() { Name = "currency", Type = "string",
+                            Description = "Currency code filter (e.g. CZK, EUR)" },
+                        new() { Name = "overdue", Type = "string",
+                            Description = "Pass 'true' to show only overdue invoices" }
+                    };
+                    def.Required = new List<string>();
+                    break;
+
+                case "search_received_invoices":
+                    def.Parameters = new List<NativeToolParameter>
+                    {
+                        new() { Name = "query", Type = "string",
+                            Description = "Free-text search — matched against document number, supplier name, variable symbol, and amount" },
+                        new() { Name = "limit", Type = "string",
+                            Description = "Max results to return (default 10, max 50)" }
+                    };
+                    def.Required = new List<string> { "query" };
                     break;
 
                 case "import_invoice":

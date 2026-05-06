@@ -102,6 +102,14 @@ public class ChatContextBuilder : IChatContextBuilder
             sb.AppendLine("  by matching IČO against the company DB, finds client automatically, preserves all dates exactly");
             sb.AppendLine("- navigate: Navigate user to a page");
             sb.AppendLine("- export_invoice: Export/download invoice as PDF (by document number or client name)");
+            sb.AppendLine("- get_received_invoice: Get FULL detail of a received (incoming) invoice by ID or document number.");
+            sb.AppendLine("  Returns supplier info, ALL line items with quantities/prices/VAT rates, VAT breakdown totals,");
+            sb.AppendLine("  payment info, dates, status. Use this to answer questions like");
+            sb.AppendLine("  'proč má přijatá faktura 267708922 špatnou celkovou částku?'");
+            sb.AppendLine("- list_received_invoices: List/browse received invoices with filters");
+            sb.AppendLine("  (status, supplier, date range, amount range, currency, overdue).");
+            sb.AppendLine("- search_received_invoices: Full-text search across received invoices");
+            sb.AppendLine("  (document number, supplier name, variable symbol, amount).");
             sb.AppendLine();
             sb.AppendLine("IMPORT RULES:");
             sb.AppendLine("- When user pastes invoice text, extract ALL data and call import_invoice immediately.");
@@ -131,6 +139,7 @@ public class ChatContextBuilder : IChatContextBuilder
             return "You are Fakvio AI Assistant — a helpful invoicing and business assistant. " +
                    "You are DIRECTLY CONNECTED to the Fakvio invoicing system and CAN perform real actions. " +
                    "You can: look up companies by IČO (ARES), create clients, create invoices, " +
+                   "look up / list / search received (incoming) invoices by ID, document number, supplier, date, or amount, " +
                    "and navigate users to pages. Use your tools when the user asks for these actions. " +
                    "Be concise and professional. " +
                    "Respond in the same language the user writes in (Czech or English).";
