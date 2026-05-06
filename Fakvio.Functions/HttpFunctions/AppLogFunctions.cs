@@ -57,13 +57,16 @@ public class AppLogFunctions
         int.TryParse(req.Query["pageSize"], out var pageSize);
         if (!req.Query.ContainsKey("pageSize")) pageSize = 50;
         string? level = req.Query.TryGetValue("level", out var _levelVal) ? _levelVal.ToString() : null;
+        // New parameters added in issue #111: per-column Contains filters and fulltext search
+        string? source = req.Query.TryGetValue("source", out var _sourceVal) ? _sourceVal.ToString() : null;
+        string? message = req.Query.TryGetValue("message", out var _messageVal) ? _messageVal.ToString() : null;
         string? search = req.Query.TryGetValue("search", out var _searchVal) ? _searchVal.ToString() : null;
         DateTime? from = DateTime.TryParse(req.Query["from"], out var _fromParsed) ? _fromParsed : null;
         DateTime? to = DateTime.TryParse(req.Query["to"], out var _toParsed) ? _toParsed : null;
         var ct = req.HttpContext.RequestAborted;
 
         // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.GetPaged(page, pageSize, level, search, from, to, ct));
+        return FunctionResultHelper.Normalize(await _controller.GetPaged(page, pageSize, level, source, message, search, from, to, ct));
     }
 
     /// <summary>
