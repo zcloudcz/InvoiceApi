@@ -37,8 +37,13 @@ public class AppLogController : ControllerBase
     /// </summary>
     /// <param name="page">Page number (1-based, default 1)</param>
     /// <param name="pageSize">Items per page (default 50, max 200)</param>
-    /// <param name="level">Filter by log level (e.g., "Error", "Warning")</param>
-    /// <param name="search">Search in Message and Source fields</param>
+    /// <param name="level">Exact match filter by log level (e.g., "Error", "Warning")</param>
+    /// <param name="source">Case-insensitive Contains filter on the Source (logger category) column</param>
+    /// <param name="message">Case-insensitive Contains filter on the Message column</param>
+    /// <param name="search">
+    /// Fulltext case-insensitive Contains search across Message, Source, Exception and CorrelationId.
+    /// Uses PostgreSQL ILIKE for native server-side performance.
+    /// </param>
     /// <param name="from">Filter logs from this date (UTC)</param>
     /// <param name="to">Filter logs until this date (UTC)</param>
     /// <param name="ct">Cancellation token</param>
@@ -48,6 +53,8 @@ public class AppLogController : ControllerBase
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 50,
         [FromQuery] string? level = null,
+        [FromQuery] string? source = null,
+        [FromQuery] string? message = null,
         [FromQuery] string? search = null,
         [FromQuery] DateTime? from = null,
         [FromQuery] DateTime? to = null,
@@ -59,12 +66,31 @@ public class AppLogController : ControllerBase
 
         var query = _context.AppLog.AsNoTracking().AsQueryable();
 
-        // Apply filters
+        // Exact match on Level (dropdown select — values are fixed strings like "Error")
         if (!string.IsNullOrWhiteSpace(level))
             query = query.Where(l => l.Level == level);
 
+        // Column-level Contains filters — use ILIKE for case-insensitive matching on PostgreSQL.
+        // ILIKE translates to a native SQL ILIKE operator which uses the column index efficiently.
+        if (!string.IsNullOrWhiteSpace(source))
+            query = query.Where(l => EF.Functions.ILike(l.Source, $"%{source}%"));
+
+        if (!string.IsNullOrWhiteSpace(message))
+            query = query.Where(l => EF.Functions.ILike(l.Message, $"%{message}%"));
+
+        // Global fulltext search — case-insensitive Contains across all relevant text columns.
+        // Runs as a server-side OR across four columns so AppLog.Message (potentially large)
+        // and the nullable Exception / CorrelationId are all included.
+        // Null-coalescing is not needed because ILike handles nulls — NULL ILIKE '%x%' = NULL (false), safe.
         if (!string.IsNullOrWhiteSpace(search))
-            query = query.Where(l => l.Message.Contains(search) || l.Source.Contains(search));
+        {
+            var pattern = $"%{search}%";
+            query = query.Where(l =>
+                EF.Functions.ILike(l.Message, pattern) ||
+                EF.Functions.ILike(l.Source, pattern) ||
+                (l.Exception != null && EF.Functions.ILike(l.Exception, pattern)) ||
+                (l.CorrelationId != null && EF.Functions.ILike(l.CorrelationId, pattern)));
+        }
 
         if (from.HasValue)
             query = query.Where(l => l.Timestamp >= from.Value);

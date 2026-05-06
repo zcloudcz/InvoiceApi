@@ -102,8 +102,15 @@
     // No OnInitializedAsync needed — MudDataGrid calls ServerData automatically on first render
 
     /// <summary>
-    /// ServerData callback invoked by MudDataGrid whenever it needs data (initial load, page change, etc.).
+    /// ServerData callback invoked by MudDataGrid whenever it needs data (initial load, page change, sort, filter).
     /// Translates MudDataGrid's GridState into our API call and returns a GridData result.
+    ///
+    /// Filter sources (in priority order per column):
+    ///  - Level: page-level MudSelect (_levelFilter) takes precedence; column filter row also supported.
+    ///  - Source / Message: column filter row via state.GetStringFilter() → sent as server-side ILike.
+    ///  - Timestamp: DateColumnFilter custom component → state.GetDateRange("Timestamp").
+    ///  - Search box: _searchFilter → fulltext ILike across Message, Source, Exception, CorrelationId.
+    ///
     /// Note: state.Page is 0-based, but our API expects 1-based page numbers.
     /// </summary>
     private async Task<GridData<AppLogDto>> LoadServerData(GridState<AppLogDto> state)
@@ -116,15 +123,36 @@
             // (operator + from + to). No page-level pickers anymore.
             var (timestampFrom, timestampTo) = state.GetDateRange("Timestamp");
 
-            // Call the API with current filter values and the page/size from the grid state
+            // Column filter row string filters — read the value the user typed into the
+            // Source / Message filter cell. MudDataGrid stores them as plain strings on
+            // FilterDefinition.Value, keyed by Column.PropertyName.
+            // These are sent to the API as ILike (case-insensitive Contains) filters.
+            var sourceColumnFilter = state.GetStringFilter<AppLogDto>("Source");
+            var messageColumnFilter = state.GetStringFilter<AppLogDto>("Message");
+
+            // Level: prefer the page-level MudSelect (_levelFilter), fall back to what the
+            // column filter row might have set (edge case — the column has a CellTemplate with
+            // a chip, so the filter row shows a plain text box which the user could use).
+            var effectiveLevelFilter = !string.IsNullOrWhiteSpace(_levelFilter)
+                ? _levelFilter
+                : state.GetStringFilter<AppLogDto>("Level");
+
+            // Call the API with all active filter values and the page/size from the grid state
             var result = await LogService.GetPagedAsync(
-                state.Page + 1, state.PageSize, _levelFilter, _searchFilter, timestampFrom, timestampTo);
+                page: state.Page + 1,
+                pageSize: state.PageSize,
+                level: effectiveLevelFilter,
+                source: sourceColumnFilter,
+                message: messageColumnFilter,
+                search: _searchFilter,
+                from: timestampFrom,
+                to: timestampTo);
 
             // Return the data in the format MudDataGrid expects
             return new GridData<AppLogDto>
             {
-                Items = result.Items,
-                TotalItems = result.TotalCount
+                Items = result?.Items ?? new List<AppLogDto>(),
+                TotalItems = result?.TotalCount ?? 0
             };
         }
         catch (Exception ex)
