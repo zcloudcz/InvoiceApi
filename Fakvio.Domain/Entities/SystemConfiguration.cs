@@ -152,4 +152,25 @@ public class SystemConfiguration : BaseEntity
     /// - starts with a letter or digit
     /// </summary>
     public string? AzureBlobContainerName { get; set; }
+
+    // ─── AI System Prompt Settings ───────────────────────────────────────────
+    // Allows SysAdmin to customize the AI assistant system prompt from the UI.
+    // When empty/null the hardcoded default in ChatContextBuilder is used.
+
+    /// <summary>
+    /// Custom system prompt that REPLACES the hardcoded style + rules sections in
+    /// ChatContextBuilder. When non-empty, it is used instead of the built-in
+    /// RESPONSE STYLE, TOOLS, IMPORT RULES, and RULES sections.
+    /// Company identity, tool definitions, and business context stats are always
+    /// auto-appended regardless of this value.
+    /// When null or empty, the hardcoded default sections are used.
+    /// </summary>
+    public string? AiSystemPromptCustom { get; set; }
+
+    /// <summary>
+    /// Additional instructions that are APPENDED after the default (or custom) prompt
+    /// sections, but before the auto-generated business context block.
+    /// Use this to add extra rules without completely overriding the default behavior.
+    /// </summary>
+    public string? AiSystemPromptAppendix { get; set; }
 }

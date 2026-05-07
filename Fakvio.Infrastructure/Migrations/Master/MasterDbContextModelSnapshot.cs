@@ -1284,6 +1284,12 @@ namespace Fakvio.Infrastructure.Migrations.Master
                     b.Property<string>("AiOpenAiModel")
                         .HasColumnType("text");
 
+                    b.Property<string>("AiSystemPromptAppendix")
+                        .HasColumnType("text");
+
+                    b.Property<string>("AiSystemPromptCustom")
+                        .HasColumnType("text");
+
                     b.Property<string>("AppName")
                         .IsRequired()
                         .HasColumnType("text");

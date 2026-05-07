@@ -84,6 +84,9 @@ public static class ServiceCollectionExtensions
         services.AddApiClient<PaymentMatchingApiService>();
         services.AddApiClient<PaymentMatchingSysAdminApiService>();
 
+        // AI assistant instructions — SysAdmin editable system prompt.
+        services.AddApiClient<AiInstructionsApiService>();
+
         // Shared app state — cross-component notifications (e.g., company list changed → refresh dropdown)
         services.AddScoped<AppStateService>();
 

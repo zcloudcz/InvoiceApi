@@ -703,6 +703,22 @@
   </data>
   <data name="SystemSettings_AiTitle" xml:space="preserve"><value>Nastavení AI</value></data>
   <data name="SystemSettings_AiDefaultProvider" xml:space="preserve"><value>Výchozí AI poskytovatel</value></data>
+  <data name="AiInstructions_Title" xml:space="preserve"><value>Instrukce AI asistenta</value></data>
+  <data name="AiInstructions_Subtitle" xml:space="preserve"><value>Upravte systémový prompt AI asistenta. Změny se projeví okamžitě (bez potřeby nasazení).</value></data>
+  <data name="AiInstructions_CustomPromptLabel" xml:space="preserve"><value>Vlastní instrukce (nahrazuje výchozí styl a pravidla)</value></data>
+  <data name="AiInstructions_CustomPromptHint" xml:space="preserve"><value>Pokud není prázdné, nahradí sekce RESPONSE STYLE, TOOLS, IMPORT RULES a RULES. Identita firmy a business kontext se vždy připojí automaticky.</value></data>
+  <data name="AiInstructions_AppendixLabel" xml:space="preserve"><value>Dodatek (připojí se za hlavní instrukce)</value></data>
+  <data name="AiInstructions_AppendixHint" xml:space="preserve"><value>Přidáno za hlavní instrukce (vlastní nebo výchozí). Použijte pro přidání dalších pravidel bez přepsání výchozích.</value></data>
+  <data name="AiInstructions_UsingDefault" xml:space="preserve"><value>Používám výchozí instrukce</value></data>
+  <data name="AiInstructions_UsingCustom" xml:space="preserve"><value>Používám vlastní instrukce</value></data>
+  <data name="AiInstructions_Preview" xml:space="preserve"><value>Náhled celého promptu</value></data>
+  <data name="AiInstructions_ResetToDefault" xml:space="preserve"><value>Obnovit výchozí</value></data>
+  <data name="AiInstructions_ResetConfirm" xml:space="preserve"><value>Tím se vymažou vlastní instrukce i dodatek. AI bude používat výchozí pevný prompt. Pokračovat?</value></data>
+  <data name="AiInstructions_SaveSuccess" xml:space="preserve"><value>Instrukce AI uloženy. Změny se projeví při příštím volání chatu.</value></data>
+  <data name="AiInstructions_ResetSuccess" xml:space="preserve"><value>Instrukce AI obnoveny na výchozí hodnoty.</value></data>
+  <data name="AiInstructions_PreviewTitle" xml:space="preserve"><value>Náhled celého promptu</value></data>
+  <data name="AiInstructions_PreviewNote" xml:space="preserve"><value>Business statistiky zobrazují zástupné hodnoty — skutečná data se vloží za běhu z databáze nájemce.</value></data>
+  <data name="Nav_AiInstructions" xml:space="preserve"><value>Instrukce AI</value></data>
   <data name="Log_Title" xml:space="preserve">
     <value>Logy aplikace</value>
   </data>

@@ -100,4 +100,19 @@ public class UpdateSystemConfigurationDto
     /// <summary>Shared blob container name. Null/empty = use default "fakvio-files".</summary>
     [StringLength(63)]
     public string? AzureBlobContainerName { get; set; }
+
+    // ─── AI System Prompt Settings ───────────────────────────────────────────
+    // Null = keep existing value. Empty string = clear (revert to default behavior).
+
+    /// <summary>
+    /// Custom system prompt replacing the hardcoded style/rules sections.
+    /// Null = keep existing. Empty string = clear (use hardcoded default).
+    /// </summary>
+    public string? AiSystemPromptCustom { get; set; }
+
+    /// <summary>
+    /// Appendix appended after the main prompt sections.
+    /// Null = keep existing. Empty string = clear (no appendix).
+    /// </summary>
+    public string? AiSystemPromptAppendix { get; set; }
 }

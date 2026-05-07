@@ -200,7 +200,10 @@ public class SystemConfigurationService : ISystemConfigurationService
             // Azure Blob Storage — connection string never exposed, only boolean flag
             HasAzureBlobConnectionString = !string.IsNullOrEmpty(entity.AzureBlobConnectionString),
             AzureBlobContainerPrefix = entity.AzureBlobContainerPrefix,
-            AzureBlobContainerName = entity.AzureBlobContainerName
+            AzureBlobContainerName = entity.AzureBlobContainerName,
+            // AI system prompt — sent in full (text, not a secret)
+            AiSystemPromptCustom = entity.AiSystemPromptCustom,
+            AiSystemPromptAppendix = entity.AiSystemPromptAppendix
         };
     }
 }
