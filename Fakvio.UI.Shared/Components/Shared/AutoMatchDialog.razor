@@ -1,0 +1,72 @@
+@using Fakvio.Contracts.Dto.PaymentMatching
+@inject IStringLocalizer<SharedResource> L
+
+@*
+    Confirmation dialog for the "Automaticky spárovat" auto-match feature.
+    Shown when a matching bank transaction is found for an invoice or received invoice.
+    The user sees the transaction details and can confirm or cancel the match.
+*@
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.AutoFixHigh" Class="mr-1" />
+            @L["AutoMatch_DialogTitle"]
+        </MudText>
+    </TitleContent>
+
+    <DialogContent>
+        <MudText Class="mb-3">@L["AutoMatch_DialogBody"]</MudText>
+
+        @if (Proposal != null)
+        {
+            <MudSimpleTable Dense="true" Striped="false" Bordered="true" Class="mb-2">
+                <tbody>
+                    <tr>
+                        <td><strong>@L["AutoMatch_Col_Date"]</strong></td>
+                        <td>@Proposal.TransactionDate.ToLocalTime().ToString("dd.MM.yyyy")</td>
+                    </tr>
+                    <tr>
+                        <td><strong>@L["AutoMatch_Col_Amount"]</strong></td>
+                        <td>@Proposal.Amount.ToString("N2") @Proposal.CurrencyCode</td>
+                    </tr>
+                    @if (!string.IsNullOrWhiteSpace(Proposal.CounterpartyName))
+                    {
+                        <tr>
+                            <td><strong>@L["AutoMatch_Col_Counterparty"]</strong></td>
+                            <td>@Proposal.CounterpartyName</td>
+                        </tr>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(Proposal.VariableSymbol))
+                    {
+                        <tr>
+                            <td><strong>@L["AutoMatch_Col_VS"]</strong></td>
+                            <td>@Proposal.VariableSymbol</td>
+                        </tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+        }
+    </DialogContent>
+
+    <DialogActions>
+        <MudButton Variant="Variant.Text" OnClick="Cancel">
+            @L["AutoMatch_Cancel"]
+        </MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Confirm">
+            <MudIcon Icon="@Icons.Material.Filled.Link" Class="mr-1" />
+            @L["AutoMatch_Confirm"]
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    /// <summary>The auto-match proposal to display. Set by the parent via DialogParameters.</summary>
+    [Parameter, EditorRequired] public AutoMatchProposalDto Proposal { get; set; } = null!;
+
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    private void Confirm() => MudDialog.Close(DialogResult.Ok(true));
+
+    private void Cancel() => MudDialog.Cancel();
+}

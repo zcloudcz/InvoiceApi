@@ -54,6 +54,7 @@ public class InvoiceControllerGetErrorHandlingTests
             Substitute.For<IEmailService>(),
             Substitute.For<IQrPaymentService>(),
             Substitute.For<ICloudStorageOrchestrator>(),
+            Substitute.For<IPaymentMatchingService>(),
             _logger);
 
         // Simulate an authenticated regular user with a company context

@@ -1,7 +1,9 @@
 using System.IO.Compression;
+using System.Security.Claims;
 using Fakvio.Contracts.Common.Pagination;
 using Fakvio.Contracts.Dto.Email;
 using Fakvio.Contracts.Dto.Invoice;
+using Fakvio.Contracts.Dto.PaymentMatching;
 using Fakvio.Application.Service;
 using Fakvio.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
@@ -28,6 +30,7 @@ public class InvoiceController : ControllerBase
     private readonly IEmailService _emailService;
     private readonly IQrPaymentService _qrPaymentService;
     private readonly ICloudStorageOrchestrator _cloudStorageOrchestrator;
+    private readonly IPaymentMatchingService _paymentMatcher;
     private readonly ILogger<InvoiceController> _logger;
 
     public InvoiceController(
@@ -37,6 +40,7 @@ public class InvoiceController : ControllerBase
         IEmailService emailService,
         IQrPaymentService qrPaymentService,
         ICloudStorageOrchestrator cloudStorageOrchestrator,
+        IPaymentMatchingService paymentMatcher,
         ILogger<InvoiceController> logger)
     {
         _invoiceService = invoiceService;
@@ -45,7 +49,15 @@ public class InvoiceController : ControllerBase
         _emailService = emailService;
         _qrPaymentService = qrPaymentService;
         _cloudStorageOrchestrator = cloudStorageOrchestrator;
+        _paymentMatcher = paymentMatcher;
         _logger = logger;
+    }
+
+    /// <summary>Reads the UserId JWT claim. Returns null when missing / malformed.</summary>
+    private long? GetUserId()
+    {
+        var raw = User.FindFirstValue("UserId");
+        return long.TryParse(raw, out var id) ? id : null;
     }
 
     /// <summary>
@@ -1045,6 +1057,33 @@ public class InvoiceController : ControllerBase
         }
 
         return Ok(result);
+    }
+
+    // ─── Auto-match ──────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Searches unmatched bank transactions for a candidate that automatically matches
+    /// the given issued invoice. Returns the best proposal or 204 NoContent when nothing found.
+    /// Used by the "Automaticky spárovat" button on the invoice detail page.
+    /// </summary>
+    /// <param name="id">Invoice ID</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <response code="200">Match proposal found</response>
+    /// <response code="204">No matching transaction found</response>
+    /// <response code="404">Invoice not found</response>
+    [HttpPost("{id:long}/auto-match")]
+    [ProducesResponseType(typeof(AutoMatchProposalDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> FindAutoMatch(long id, CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("POST /api/invoice/{Id}/auto-match", id);
+
+        var proposal = await _paymentMatcher.FindAutoMatchForInvoiceAsync(id, cancellationToken);
+        if (proposal == null)
+            return NoContent();
+
+        return Ok(proposal);
     }
 
     /// <summary>

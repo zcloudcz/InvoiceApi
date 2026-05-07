@@ -1439,6 +1439,19 @@
   <data name="InvoicePayments_Unmatch" xml:space="preserve"><value>Unmatch</value></data>
   <data name="InvoicePayments_UnmatchConfirm" xml:space="preserve"><value>Unmatch this payment? The invoice status will be recalculated.</value></data>
 
+  <data name="AutoMatch_Button" xml:space="preserve"><value>Auto-match</value></data>
+  <data name="AutoMatch_DialogTitle" xml:space="preserve"><value>Payment found</value></data>
+  <data name="AutoMatch_DialogBody" xml:space="preserve"><value>A matching payment was found. Do you want to match it?</value></data>
+  <data name="AutoMatch_Col_Date" xml:space="preserve"><value>Payment date</value></data>
+  <data name="AutoMatch_Col_Amount" xml:space="preserve"><value>Amount</value></data>
+  <data name="AutoMatch_Col_Counterparty" xml:space="preserve"><value>Counterparty</value></data>
+  <data name="AutoMatch_Col_VS" xml:space="preserve"><value>VS</value></data>
+  <data name="AutoMatch_Confirm" xml:space="preserve"><value>Match</value></data>
+  <data name="AutoMatch_Cancel" xml:space="preserve"><value>Cancel</value></data>
+  <data name="AutoMatch_NotFound" xml:space="preserve"><value>No matching payment was found.</value></data>
+  <data name="AutoMatch_Success" xml:space="preserve"><value>Invoice was successfully matched with the payment.</value></data>
+  <data name="AutoMatch_Error" xml:space="preserve"><value>Error while matching payment.</value></data>
+
   <data name="Dashboard_Kpi_UnmatchedPayments" xml:space="preserve"><value>Unmatched payments</value></data>
 
   <data name="PaymentDetail_BackToList" xml:space="preserve"><value>Back to list</value></data>

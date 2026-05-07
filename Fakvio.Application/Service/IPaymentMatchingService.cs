@@ -1,4 +1,5 @@
 using Fakvio.Contracts.Dto.PaymentMatching;
+// AutoMatchProposalDto, ConfirmAutoMatchRequest/Response live in Fakvio.Contracts.Dto.PaymentMatching
 
 namespace Fakvio.Application.Service;
 
@@ -69,7 +70,57 @@ public interface IPaymentMatchingService
     Task<IReadOnlyList<PaymentMatchDto>> GetPaymentsForInvoiceAsync(
         long invoiceId,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns all payments linked to a given received (supplier) invoice.
+    /// Unlike GetPaymentsForInvoiceAsync there is no cross-linking logic —
+    /// received invoices form a flat structure with no proforma/DPP relationships.
+    /// </summary>
+    /// <param name="receivedInvoiceId">Primary key of the received invoice.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>List of PaymentMatchDto ordered by MatchedAt ascending.</returns>
+    Task<IReadOnlyList<PaymentMatchDto>> GetPaymentsForReceivedInvoiceAsync(
+        long receivedInvoiceId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Searches unmatched BankTransaction rows for a possible automatic match
+    /// against a specific issued invoice. Called by the UI's "Auto-match" button.
+    ///
+    /// Search strategy (same as MatchAsync, but targeted):
+    ///   1. VS match: transaction.VariableSymbol == invoice.VariableSymbol
+    ///   2. Amount + account + due-date window (±7 days)
+    ///
+    /// Returns at most one candidate — the best match found. Returns null when
+    /// no suitable unmatched transaction is found.
+    /// </summary>
+    Task<AutoMatchProposalDto?> FindAutoMatchForInvoiceAsync(
+        long invoiceId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Same as FindAutoMatchForInvoiceAsync but searches for outgoing transactions
+    /// that match the given received (supplier) invoice.
+    /// </summary>
+    Task<AutoMatchProposalDto?> FindAutoMatchForReceivedInvoiceAsync(
+        long receivedInvoiceId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Confirms an auto-match proposal by creating a PaymentMatch row and
+    /// marking the invoice as Paid (or PartiallyPaid).
+    /// Used by the UI after the user clicks "Confirm" in the auto-match dialog.
+    /// </summary>
+    Task<ConfirmAutoMatchResult> ConfirmAutoMatchAsync(
+        long bankTransactionId,
+        long? invoiceId,
+        long? receivedInvoiceId,
+        long? userId,
+        CancellationToken ct = default);
 }
 
 /// <summary>Outcome of a manual match operation.</summary>
 public record ManualMatchResult(long PaymentMatchId, decimal InvoicePaidAmount, decimal InvoiceRemaining);
+
+/// <summary>Outcome of ConfirmAutoMatchAsync.</summary>
+public record ConfirmAutoMatchResult(long PaymentMatchId, decimal PaidAmount, decimal Remaining);

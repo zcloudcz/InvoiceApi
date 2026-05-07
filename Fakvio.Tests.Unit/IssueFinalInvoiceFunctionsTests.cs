@@ -78,6 +78,7 @@ public class Invoice_IssueFinalInvoiceFunctionsTests
             _emailService,
             _qrService,
             _cloudStorage,
+            Substitute.For<IPaymentMatchingService>(),
             Substitute.For<ILogger<InvoiceController>>());
 
         return (new InvoiceFunctions(controller), controller);
@@ -278,6 +279,7 @@ public class Invoice_GetRemainingAdvanceFunctionsTests
             _emailService,
             _qrService,
             _cloudStorage,
+            Substitute.For<IPaymentMatchingService>(),
             Substitute.For<ILogger<InvoiceController>>());
 
         return (new InvoiceFunctions(controller), controller);

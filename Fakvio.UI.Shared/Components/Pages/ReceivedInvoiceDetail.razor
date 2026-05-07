@@ -260,6 +260,16 @@ else
         </MudItem>
     </MudGrid>
 
+    @* Payments panel — show linked bank transactions + auto-match button *@
+    @if (!_isCreateMode && _invoice is not null)
+    {
+        <MudItem xs="12" Class="mt-3">
+            <ReceivedInvoicePaymentsPanel Invoice="_invoice"
+                                          RefreshTrigger="_paymentsRefreshTrigger"
+                                          OnChanged="OnPaymentsChanged" />
+        </MudItem>
+    }
+
     @* File attachments — attach scans, originals, etc. to received invoices *@
     @if (!_isCreateMode)
     {
@@ -297,6 +307,16 @@ else
 
     // Items as editable model
     private List<EditableItem> _items = new();
+
+    // Bumped after a payment match/unmatch so ReceivedInvoicePaymentsPanel reloads.
+    private int _paymentsRefreshTrigger;
+
+    /// <summary>Called when the payments panel reports a change (match / unmatch).</summary>
+    private async Task OnPaymentsChanged()
+    {
+        _paymentsRefreshTrigger++;
+        await LoadInvoice(); // Reload so the status chip reflects Paid
+    }
 
     protected override async Task OnInitializedAsync()
     {

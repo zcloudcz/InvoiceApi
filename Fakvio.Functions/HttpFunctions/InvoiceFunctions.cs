@@ -653,4 +653,29 @@ public class InvoiceFunctions
         // Call the controller action and normalize the response
         return FunctionResultHelper.Normalize(await _controller.GetRemainingAdvance(__proformaId_parsed, cancellationToken));
     }
+
+    /// <summary>
+    /// POST api/invoice/{id:long}/auto-match → InvoiceController.FindAutoMatch
+    /// Searches for an unmatched incoming bank transaction that matches the invoice
+    /// (by variable symbol or amount + counterparty account + due-date window).
+    /// Returns 200 with <see cref="AutoMatchProposalDto"/> when found, 204 when not.
+    /// </summary>
+    [Function("Invoice_FindAutoMatch")]
+    public async Task<IActionResult> Invoice_FindAutoMatch(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/invoice/{id}/auto-match")] HttpRequest req,
+        string id)
+    {
+        // Azure Functions Isolated Worker cannot bind non-string route parameters reliably.
+        if (!long.TryParse(id, out var __id_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid route parameter 'id': expected a number." });
+
+        _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
+
+        if (req.HttpContext.User.Identity?.IsAuthenticated != true)
+            return new UnauthorizedResult();
+
+        var cancellationToken = req.HttpContext.RequestAborted;
+
+        return FunctionResultHelper.Normalize(await _controller.FindAutoMatch(__id_parsed, cancellationToken));
+    }
 }

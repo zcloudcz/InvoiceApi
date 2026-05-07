@@ -197,6 +197,50 @@ public class PaymentMatchingController : ControllerBase
         return Ok(await _queryService.GetUnmatchedCountAsync(ct));
     }
 
+    // ─── Auto-match confirmation ────────────────────────────────────────────
+
+    /// <summary>
+    /// Confirms an auto-match proposal created by the "Automaticky spárovat" button.
+    /// Creates a PaymentMatch row between the transaction and the invoice/received invoice,
+    /// then marks the invoice as Paid (or PartiallyPaid).
+    ///
+    /// Exactly one of invoiceId / receivedInvoiceId must be provided.
+    /// </summary>
+    /// <response code="200">Match confirmed, returns PaymentMatchId + paid amounts</response>
+    /// <response code="400">Bad arguments or no remaining amount to match</response>
+    [HttpPost("confirm-auto-match")]
+    [ProducesResponseType(typeof(ConfirmAutoMatchResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<ConfirmAutoMatchResponse>> ConfirmAutoMatch(
+        [FromBody] ConfirmAutoMatchRequest req,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var result = await _matcher.ConfirmAutoMatchAsync(
+                req.BankTransactionId,
+                req.InvoiceId,
+                req.ReceivedInvoiceId,
+                GetUserId(),
+                ct);
+
+            return Ok(new ConfirmAutoMatchResponse
+            {
+                PaymentMatchId = result.PaymentMatchId,
+                PaidAmount = result.PaidAmount,
+                Remaining = result.Remaining,
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
     // ─── Helpers ────────────────────────────────────────────────────────────
 
     /// <summary>Parses the "UserId" JWT claim. Returns null for missing/malformed.</summary>

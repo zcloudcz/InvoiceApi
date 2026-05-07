@@ -67,6 +67,7 @@ public class InvoiceFunctionsIsdocTests
             _emailService,
             _qrPaymentService,
             _cloudStorage,
+            Substitute.For<IPaymentMatchingService>(),
             Substitute.For<ILogger<InvoiceController>>());
 
         var sut = new InvoiceFunctions(controller);
@@ -378,6 +379,7 @@ public class IsdocEndpointEdgeCaseTests
             _emailService,
             _qrPaymentService,
             _cloudStorage,
+            Substitute.For<IPaymentMatchingService>(),
             Substitute.For<ILogger<InvoiceController>>());
     }
 
