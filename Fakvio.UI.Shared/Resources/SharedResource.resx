@@ -1439,6 +1439,19 @@
   <data name="InvoicePayments_Unmatch" xml:space="preserve"><value>Zrušit párování</value></data>
   <data name="InvoicePayments_UnmatchConfirm" xml:space="preserve"><value>Opravdu zrušit párování této platby? Stav faktury se přepočítá.</value></data>
 
+  <data name="AutoMatch_Button" xml:space="preserve"><value>Automaticky spárovat</value></data>
+  <data name="AutoMatch_DialogTitle" xml:space="preserve"><value>Nalezená platba</value></data>
+  <data name="AutoMatch_DialogBody" xml:space="preserve"><value>Nalezena odpovídající platba. Chcete ji spárovat?</value></data>
+  <data name="AutoMatch_Col_Date" xml:space="preserve"><value>Datum platby</value></data>
+  <data name="AutoMatch_Col_Amount" xml:space="preserve"><value>Částka</value></data>
+  <data name="AutoMatch_Col_Counterparty" xml:space="preserve"><value>Protiúčet</value></data>
+  <data name="AutoMatch_Col_VS" xml:space="preserve"><value>VS</value></data>
+  <data name="AutoMatch_Confirm" xml:space="preserve"><value>Spárovat</value></data>
+  <data name="AutoMatch_Cancel" xml:space="preserve"><value>Zrušit</value></data>
+  <data name="AutoMatch_NotFound" xml:space="preserve"><value>Žádná odpovídající platba nebyla nalezena.</value></data>
+  <data name="AutoMatch_Success" xml:space="preserve"><value>Faktura byla úspěšně spárována s platbou.</value></data>
+  <data name="AutoMatch_Error" xml:space="preserve"><value>Chyba při párování platby.</value></data>
+
   <data name="Dashboard_Kpi_UnmatchedPayments" xml:space="preserve"><value>Platby k vyřešení</value></data>
 
   <data name="PaymentDetail_BackToList" xml:space="preserve"><value>Zpět na přehled</value></data>

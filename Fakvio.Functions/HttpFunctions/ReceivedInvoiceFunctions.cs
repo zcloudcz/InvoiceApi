@@ -213,4 +213,43 @@ public class ReceivedInvoiceFunctions
         var ct = req.HttpContext.RequestAborted;
         return FunctionResultHelper.Normalize(await _controller.Delete(id, ct));
     }
+
+    // ─── Payment matching ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// GET api/received-invoice/{id}/payments → ReceivedInvoiceController.GetPayments
+    /// Returns all PaymentMatch rows linked to the received invoice.
+    /// </summary>
+    [Function("ReceivedInvoice_GetPayments")]
+    public async Task<IActionResult> ReceivedInvoice_GetPayments(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/received-invoice/{id:long}/payments")] HttpRequest req,
+        long id)
+    {
+        _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
+
+        if (req.HttpContext.User.Identity?.IsAuthenticated != true)
+            return new UnauthorizedResult();
+
+        var ct = req.HttpContext.RequestAborted;
+        return FunctionResultHelper.Normalize(await _controller.GetPayments(id, ct));
+    }
+
+    /// <summary>
+    /// POST api/received-invoice/{id}/auto-match → ReceivedInvoiceController.FindAutoMatch
+    /// Searches for an unmatched bank transaction that matches the received invoice.
+    /// Returns the best proposal or 204 NoContent when nothing found.
+    /// </summary>
+    [Function("ReceivedInvoice_FindAutoMatch")]
+    public async Task<IActionResult> ReceivedInvoice_FindAutoMatch(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/received-invoice/{id:long}/auto-match")] HttpRequest req,
+        long id)
+    {
+        _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
+
+        if (req.HttpContext.User.Identity?.IsAuthenticated != true)
+            return new UnauthorizedResult();
+
+        var ct = req.HttpContext.RequestAborted;
+        return FunctionResultHelper.Normalize(await _controller.FindAutoMatch(id, ct));
+    }
 }

@@ -1,5 +1,6 @@
 using System.Text;
 using Fakvio.Contracts.Dto.Invoice;
+using Fakvio.Contracts.Dto.PaymentMatching;
 using Fakvio.UI.Shared.Models;
 using Fakvio.Domain.Enums;
 using Microsoft.AspNetCore.Components.Authorization;
@@ -372,4 +373,14 @@ public class FakvioService : ApiClientBase
     {
         return await PostWithoutBodyAsync<InvoiceDto>($"/api/invoice/{id}/copy");
     }
+
+    // ─── Auto-match ──────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Searches for an auto-match candidate for the given issued invoice.
+    /// Returns null (HTTP 204) when no candidate found.
+    /// Calls POST /api/invoice/{id}/auto-match.
+    /// </summary>
+    public Task<AutoMatchProposalDto?> FindAutoMatchAsync(long id) =>
+        PostWithoutBodyAsync<AutoMatchProposalDto>($"/api/invoice/{id}/auto-match");
 }

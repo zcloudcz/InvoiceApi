@@ -316,4 +316,34 @@ public class PaymentMatchingFunctions
         var ct = req.HttpContext.RequestAborted;
         return FunctionResultHelper.Normalize(await _controller.UnmatchedCount(ct));
     }
+
+    // ─── Auto-match ─────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// POST api/payment-matching/confirm-auto-match
+    /// → <see cref="PaymentMatchingController.ConfirmAutoMatch"/>
+    /// Body: <see cref="ConfirmAutoMatchRequest"/> with BankTransactionId +
+    /// either InvoiceId or ReceivedInvoiceId.
+    /// Creates the PaymentMatch row and updates the invoice status.
+    /// </summary>
+    [Function("PaymentMatching_ConfirmAutoMatch")]
+    public async Task<IActionResult> PaymentMatching_ConfirmAutoMatch(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/payment-matching/confirm-auto-match")] HttpRequest req)
+    {
+        _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
+
+        if (req.HttpContext.User.Identity?.IsAuthenticated != true)
+            return new UnauthorizedResult();
+
+        var ct = req.HttpContext.RequestAborted;
+
+        // Deserialize the auto-match confirmation payload.
+        var dto = await System.Text.Json.JsonSerializer.DeserializeAsync<ConfirmAutoMatchRequest>(
+            req.Body, FunctionResultHelper.JsonOptions, ct);
+
+        if (dto == null)
+            return new BadRequestObjectResult(new { message = "Invalid request body." });
+
+        return FunctionResultHelper.Normalize(await _controller.ConfirmAutoMatch(dto, ct));
+    }
 }

@@ -1,4 +1,6 @@
+using System.Security.Claims;
 using Fakvio.Contracts.Common.Pagination;
+using Fakvio.Contracts.Dto.PaymentMatching;
 using Fakvio.Contracts.Dto.ReceivedInvoice;
 using Fakvio.Application.Service;
 using Fakvio.Domain.Enums;
@@ -19,14 +21,24 @@ namespace Fakvio.API.Controller;
 public class ReceivedInvoiceController : ControllerBase
 {
     private readonly IReceivedInvoiceService _service;
+    private readonly IPaymentMatchingService _paymentMatcher;
     private readonly ILogger<ReceivedInvoiceController> _logger;
 
     public ReceivedInvoiceController(
         IReceivedInvoiceService service,
+        IPaymentMatchingService paymentMatcher,
         ILogger<ReceivedInvoiceController> logger)
     {
         _service = service;
+        _paymentMatcher = paymentMatcher;
         _logger = logger;
+    }
+
+    /// <summary>Reads the UserId JWT claim. Returns null when missing / malformed.</summary>
+    private long? GetUserId()
+    {
+        var raw = User.FindFirstValue("UserId");
+        return long.TryParse(raw, out var id) ? id : null;
     }
 
     /// <summary>
@@ -206,5 +218,57 @@ public class ReceivedInvoiceController : ControllerBase
         {
             return BadRequest(new { message = ex.Message });
         }
+    }
+
+    // ─── Payment matching ─────────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns all PaymentMatch rows linked to the given received invoice.
+    /// Used by the Payments panel on the ReceivedInvoiceDetail page.
+    /// </summary>
+    /// <response code="200">List of matched payments (may be empty)</response>
+    /// <response code="404">Received invoice not found</response>
+    [HttpGet("{id:long}/payments")]
+    [ProducesResponseType(typeof(IReadOnlyList<PaymentMatchDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<IReadOnlyList<PaymentMatchDto>>> GetPayments(
+        long id,
+        CancellationToken ct = default)
+    {
+        _logger.LogInformation("GET /api/received-invoice/{Id}/payments", id);
+
+        var invoice = await _service.GetByIdAsync(id, ct);
+        if (invoice is null)
+            return NotFound(new { message = $"ReceivedInvoice {id} not found." });
+
+        var payments = await _paymentMatcher.GetPaymentsForReceivedInvoiceAsync(id, ct);
+        return Ok(payments);
+    }
+
+    /// <summary>
+    /// Searches unmatched bank transactions for a candidate that automatically matches
+    /// the given received invoice. Returns the best proposal or 204 NoContent when nothing found.
+    /// Used by the "Automaticky spárovat" button on the received invoice detail page.
+    /// </summary>
+    /// <response code="200">Match proposal found</response>
+    /// <response code="204">No matching transaction found</response>
+    /// <response code="404">Received invoice not found</response>
+    [HttpPost("{id:long}/auto-match")]
+    [ProducesResponseType(typeof(AutoMatchProposalDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> FindAutoMatch(long id, CancellationToken ct = default)
+    {
+        _logger.LogInformation("POST /api/received-invoice/{Id}/auto-match", id);
+
+        var invoice = await _service.GetByIdAsync(id, ct);
+        if (invoice is null)
+            return NotFound(new { message = $"ReceivedInvoice {id} not found." });
+
+        var proposal = await _paymentMatcher.FindAutoMatchForReceivedInvoiceAsync(id, ct);
+        if (proposal == null)
+            return NoContent();
+
+        return Ok(proposal);
     }
 }

@@ -65,6 +65,7 @@ public class ProformaCrossLinkControllerTests
             _emailService,
             _qrService,
             _cloudStorage,
+            Substitute.For<IPaymentMatchingService>(),
             Substitute.For<ILogger<InvoiceController>>());
 
         var ctx = new DefaultHttpContext();

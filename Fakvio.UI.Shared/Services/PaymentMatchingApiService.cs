@@ -83,4 +83,14 @@ public class PaymentMatchingApiService : ApiClientBase
 
     public Task<int> GetUnmatchedCountAsync() =>
         GetAsync<int>("api/payment-matching/unmatched-count");
+
+    // ─── Auto-match ──────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Calls POST /api/payment-matching/confirm-auto-match.
+    /// Returns null when the server responds with 4xx/5xx.
+    /// </summary>
+    public Task<ConfirmAutoMatchResponse?> ConfirmAutoMatchAsync(ConfirmAutoMatchRequest req) =>
+        PostAsync<ConfirmAutoMatchRequest, ConfirmAutoMatchResponse>(
+            "api/payment-matching/confirm-auto-match", req);
 }

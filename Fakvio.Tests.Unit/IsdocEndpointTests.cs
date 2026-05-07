@@ -48,6 +48,7 @@ public class IsdocEndpointTests
             _emailService,
             _qrPaymentService,
             _cloudStorage,
+            Substitute.For<IPaymentMatchingService>(),
             _logger);
     }
 

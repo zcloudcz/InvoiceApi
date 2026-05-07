@@ -1,4 +1,5 @@
 using System.Text;
+using Fakvio.Contracts.Dto.PaymentMatching;
 using Fakvio.Contracts.Dto.ReceivedInvoice;
 using Fakvio.UI.Shared.Models;
 using Fakvio.Domain.Enums;
@@ -127,4 +128,20 @@ public class ReceivedInvoiceApiService : ApiClientBase
     {
         return await DeleteAsync($"/api/received-invoice/{id}");
     }
+
+    // ─── Payment matching ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns all PaymentMatch rows linked to the given received invoice.
+    /// Used by the Payments panel on the detail page.
+    /// </summary>
+    public Task<IReadOnlyList<PaymentMatchDto>?> GetPaymentsAsync(long id) =>
+        GetAsync<IReadOnlyList<PaymentMatchDto>>($"/api/received-invoice/{id}/payments");
+
+    /// <summary>
+    /// Searches for an auto-match candidate for the given received invoice.
+    /// Returns null (HTTP 204) when no candidate found.
+    /// </summary>
+    public Task<AutoMatchProposalDto?> FindAutoMatchAsync(long id) =>
+        PostWithoutBodyAsync<AutoMatchProposalDto>($"/api/received-invoice/{id}/auto-match");
 }
