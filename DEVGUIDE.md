@@ -485,7 +485,50 @@ Implementace: `PaymentMatchingService.cs` (metoda `GetPaymentsForInvoiceAsync`).
 - Implementace: `Fakvio.Infrastructure/AiProviders/` (Anthropic, OpenAI, Gemini, Ollama).
 - API key storage: `CompanySystemSettings.AiApiKeyEncrypted` (per company) přes `CredentialProtector`.
 - SSE streaming přes `ChatController.StreamAsync`.
-- **MCP Tools**: chat má přístup k 21 tools přes `IChatToolExecutor` — invoice CRUD, client CRUD, reporting.
+- **Chat Tools**: 9 tools registrovaných v DI jako `IChatTool`, orchestrováno přes `IChatToolExecutor`.
+  Registrace v `ServiceCollectionExtensions.cs`; přidání nového toolu = implementace `IChatTool` + řádek v DI.
+
+### 4.7.1 Editovatelné AI instrukce (issue #118)
+
+System prompt pro AI asistenta je sestavován v `ChatContextBuilder.BuildSystemPromptAsync`:
+
+| Sekce | Zdroj | Editovatelné? |
+|-------|-------|---------------|
+| Company identity (název, IČO, DIČ) | Tenant DB (Client.IsIssuer) | Ne — auto |
+| Styl odpovědí + pravidla | Hardcoded v kódu NEBO `SystemConfiguration.AiSystemPromptCustom` | **Ano** — SysAdmin UI |
+| Popis tools | Registrované `IChatTool` instance | Ne — auto |
+| Import rules | Hardcoded v kódu NEBO custom prompt | **Ano** — SysAdmin UI |
+| Business context (stats) | Tenant DB (counts/sums) | Ne — auto |
+| Custom appendix | `SystemConfiguration.AiSystemPromptAppendix` | **Ano** — SysAdmin UI |
+
+**Dva režimy:**
+- `AiSystemPromptCustom` **neprázdný** → NAHRADÍ hardcoded styl + pravidla. Tool definitions a business context se stále auto-appendují.
+- `AiSystemPromptAppendix` **neprázdný** → PŘIDÁ se za vše (custom doplňující instrukce).
+
+**Cache:** `IAiInstructionsService` cachuje instrukce v `IMemoryCache` (klíč `AiSystemPrompt`). Cache se invaliduje při save/reset přes `_cache.Remove()`.
+
+**API:** `AiInstructionsController` (`/api/ai-instructions`) — GET, PUT, DELETE (reset), GET preview. Vše `[Authorize(Roles="SysAdmin")]`.
+
+**UI:** SysAdmin stránka `AiInstructions.razor` — multiline editor, náhled, uložit, resetovat na default.
+
+#### Chat AI Tools matice
+
+| Tool | Třída | Entita | Operace | Klíčové parametry |
+|------|-------|--------|---------|--------------------|
+| `ares_lookup` | `AresLookupTool` | ARES (Czech registry) | Read (external API) | `registration_number` (IČO) |
+| `create_client` | `CreateClientTool` | Client | Create | `registration_number` (IČO) — data z ARES |
+| `create_invoice` | `CreateInvoiceTool` | Invoice (vydaná) | Create | `client_name`, `items` (JSON), `currency`, `notes` |
+| `import_invoice` | `ImportInvoiceTool` | Invoice / ReceivedInvoice | Create | vydaná vs přijatá auto-detekce z IČO; `document_number`, `items`, data atd. |
+| `export_invoice` | `ExportInvoiceTool` | Invoice (vydaná) | Read → Download | `document_number`, `client_name` |
+| `navigate` | `NavigateTool` | — | Navigation | `target` (new\_invoice, client\_list, …), `client_name` |
+| `get_received_invoice` | `GetReceivedInvoiceTool` | ReceivedInvoice | Read (detail) | `id` nebo `document_number`; vrátí položky, DPH, celkové částky, cross-check |
+| `list_received_invoices` | `ListReceivedInvoicesTool` | ReceivedInvoice | Read (paged list) | `status`, `supplier_name`, `issue_date_from/to`, `min/max_amount`, `currency`, `overdue` |
+| `search_received_invoices` | `SearchReceivedInvoicesTool` | ReceivedInvoice | Search | `query` (fulltext: číslo dokladu, dodavatel, VS, částka), `limit` |
+
+##### Co zatím NENÍ pokryto chat tools (jen MCP Server)
+- Reminders (dunning) — přístupné přes SysAdmin UI, ne přes chat
+- PaymentMatch / BankTransaction — přístupné přes SysAdmin UI
+- NumberSequence, BankAccount, VatRate, Currency, ContentTemplate — read-only přes MCP server (`Fakvio.McpServer`)
 
 ### 4.8 MCP Server (`Fakvio.McpServer`)
 
@@ -1036,6 +1079,8 @@ await sub.Received(1).MethodAsync(Arg.Any<T>());  // received check vyžaduje aw
 | Nový code-table pattern (master / tenant / dual-context) | §11.2 |
 | Nový background lock klíč | §6.3 (tabulka klíčů) |
 | Změna observability stacku (App Insights → jiný) | §10 |
+| Nová/změněná funkce **viditelná uživateli** (stránka, akce, stav, export) | **USERGUIDE.md** |
+| Nová/změněná funkce **viditelná SysAdminovi** (nastavení, provider, log, provisioning) | **ADMINGUIDE.md** |
 
 **Volitelné** ale doporučené:
 - Nový NuGet upgrade s breaking change → §12 gotchas.

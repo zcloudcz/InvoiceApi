@@ -85,6 +85,16 @@ Každá pravidelná úloha (poll, dunning, log flush, log cleanup, …) **musí 
   oba volají `IImapPollService.RunCycleAsync`. SysAdmin "Run now" v UI volá totéž
   přes HTTP `POST /api/sysadmin/payment-matching/run-now`.
 
+## Dokumentace — povinná údržba
+
+Repozitář má tři průvodce, které musí zůstat synchronizované s kódem:
+
+- **`DEVGUIDE.md`** — pro vývojáře a AI agenty. Aktualizuj při každé technické změně (nový pattern, nový provider, nový endpoint kategorie…). Viz §13 v DEVGUIDE pro kompletní seznam povinných případů.
+- **`USERGUIDE.md`** — pro uživatele (tenant firmy). **Aktualizuj při každé změně viditelné uživateli**: nová stránka, nová akce, nový stav, nový export, změna chování formuláře.
+- **`ADMINGUIDE.md`** — pro SysAdmina. **Aktualizuj při každé změně viditelné SysAdminovi**: nové nastavení, nový provider, nová správa tenantů, změna bezpečnostní konfigurace.
+
+PR bez odpovídající aktualizace průvodce (pokud se změna týká jeho obsahu) **neprochází review**.
+
 ## AgenticTeam workflow
 
 Tento repozitář používá AgenticTeam (Story → Task → Dev → Review → Test → Ops) řízený přes
