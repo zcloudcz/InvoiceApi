@@ -1330,6 +1330,112 @@ public class InvoiceService : IInvoiceService
         return result;
     }
 
+    // ─── Copy ─────────────────────────────────────────────────────────────────
+
+    /// <inheritdoc />
+    public async Task<InvoiceDto> CopyInvoiceAsync(long sourceId, CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Copying invoice {SourceId}", sourceId);
+
+        // Load source invoice with all related data needed for the deep copy.
+        // AsNoTracking: we're building a new entity from scratch, so we don't want
+        // EF to track the source and accidentally propagate changes to it.
+        var source = await _context.Invoice
+            .AsNoTracking()
+            .Include(i => i.InvoiceItem.OrderBy(item => item.OrderIndex))
+            .Include(i => i.Client)
+                .ThenInclude(c => c!.BillingSettings)
+            .FirstOrDefaultAsync(i => i.Id == sourceId, cancellationToken);
+
+        if (source == null)
+            throw new KeyNotFoundException($"Invoice with ID {sourceId} not found");
+
+        // CreditNote sources are not allowed — the Copy icon is hidden in the UI for
+        // CreditNotes, and this guard ensures the API enforces the same rule.
+        if (source.DocumentType == EDocumentType.CreditNote)
+            throw new InvalidOperationException(
+                "Copying a CreditNote is not allowed. " +
+                "Create a new credit note via the credit note workflow instead.");
+
+        // Build a CreateInvoiceDto from the source so we can re-use the full
+        // CreateInvoiceAsync pipeline (document number generation, VS derivation,
+        // duplicate VS check, VAT validation, totals calculation, etc.).
+        //
+        // Key differences from source:
+        //   - IssueDate = today (fresh document)
+        //   - DueDate = null → CalculateDueDate will re-derive from BillingSettings
+        //   - VariableSymbol = null, VariableSymbolIsManualOverride = false → backend derives from new DocumentNumber
+        //   - OriginalInvoiceId = null (copy is a standalone document, NOT a credit note)
+        //   - NumberSequenceId = null → use default pipeline for the document type
+        var createDto = new CreateInvoiceDto
+        {
+            DocumentType = source.DocumentType,
+            ClientId = source.ClientId ?? throw new InvalidOperationException(
+                $"Source invoice {sourceId} has no ClientId — cannot copy."),
+            IssuerId = source.IssuerId,
+            // IssueDate = today so the copy appears as a fresh document.
+            // DueDate left null so CalculateDueDate re-derives it from client BillingSettings.
+            IssueDate = DateTime.UtcNow,
+            DueDate = null,
+            // TaxableSupplyDate left null so it defaults to the new IssueDate (Czech accounting: DUZP = IssueDate).
+            TaxableSupplyDate = null,
+            // Not a credit note — no parent link.
+            OriginalInvoiceId = null,
+            // VS must NOT be copied from the source — it would duplicate the VS used by the original.
+            // Leave null and VariableSymbolIsManualOverride = false so InvoiceService re-derives it
+            // from the freshly generated DocumentNumber (same guard as issue #107 fix).
+            VariableSymbol = null,
+            VariableSymbolIsManualOverride = false,
+            ConstantSymbol = source.ConstantSymbol,
+            SpecificSymbol = source.SpecificSymbol,
+            BankAccountNumber = source.BankAccountNumber,
+            IBAN = source.IBAN,
+            SWIFT = source.SWIFT,
+            PaymentMethod = source.PaymentMethod,
+            CurrencyId = source.CurrencyId,
+            Notes = source.Notes,
+            // NumberSequenceId = null → inherit default sequence for the document type.
+            // The source may have been generated from a custom sequence, but the copy
+            // should use the standard pipeline unless the user explicitly changes it later.
+            NumberSequenceId = null,
+            // Deep-copy items: create new InvoiceItemDto instances with no Id/InvoiceId so
+            // EF Core treats them as inserts and never touches the source items.
+            InvoiceItem = source.InvoiceItem
+                .Select(item => new CreateInvoiceItemDto
+                {
+                    OrderIndex = item.OrderIndex,
+                    IsTextRow = item.IsTextRow,
+                    Description = item.Description,
+                    Quantity = item.Quantity,
+                    Unit = item.Unit,
+                    UnitPrice = item.UnitPrice,
+                    VatRateId = item.VatRateId,
+                    VatRatePercentage = item.VatRatePercentage,
+                    VatRegime = item.VatRegime,
+                    ReverseChargeCodeId = item.ReverseChargeCodeId,
+                    ProductCode = item.ProductCode,
+                    Notes = item.Notes
+                })
+                .ToList()
+        };
+
+        // Delegate to the full CreateInvoiceAsync pipeline — this handles:
+        //   - New document number via GenerateDocumentNumberAsync
+        //   - VariableSymbol derived from DocumentNumber
+        //   - Duplicate VS check
+        //   - VAT validation (issuer IsVatPayer guard)
+        //   - ReverseCharge code validation
+        //   - Item totals calculation
+        //   - Status = Draft (always set by CreateInvoiceAsync)
+        var copy = await CreateInvoiceAsync(createDto, cancellationToken);
+
+        _logger.LogInformation(
+            "Invoice copied: source #{SourceId} → new #{CopyId} ({DocNum})",
+            sourceId, copy.Id, copy.DocumentNumber);
+
+        return copy;
+    }
+
     // ─── Private Helpers ─────────────────────────────────────────────────────
 
     /// <summary>
