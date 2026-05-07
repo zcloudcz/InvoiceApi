@@ -586,6 +586,34 @@ public class InvoiceFunctions
         return FunctionResultHelper.Normalize(await _controller.RestoreInvoice(id, req.HttpContext.RequestAborted));
     }
 
+    /// <summary>
+    /// POST api/invoice/{id}/copy → InvoiceController.CopyInvoice
+    /// Creates a new Draft invoice as an exact copy of the source.
+    /// Route param arrives as string — Azure Functions Isolated Worker cannot bind non-string
+    /// route parameters reliably (FunctionInputConverterException for long/int).
+    /// </summary>
+    [Function("Invoice_CopyInvoice")]
+    public async Task<IActionResult> Invoice_CopyInvoice(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/invoice/{id}/copy")] HttpRequest req,
+        string id)
+    {
+        // Parse route parameter '{id}' from string to long
+        if (!long.TryParse(id, out var __id_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid route parameter 'id': expected a number." });
+
+        // Wire up the controller's HttpContext so it can access User claims, Request, etc.
+        _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
+
+        // Authorization check: [Authorize]
+        if (req.HttpContext.User.Identity?.IsAuthenticated != true)
+            return new UnauthorizedResult();
+
+        var cancellationToken = req.HttpContext.RequestAborted;
+
+        // Call the controller action and normalize the response
+        return FunctionResultHelper.Normalize(await _controller.CopyInvoice(__id_parsed, cancellationToken));
+    }
+
     [Function("Invoice_RevertToDraft")]
     public async Task<IActionResult> Invoice_RevertToDraft(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/invoice/{id:long}/revert-to-draft")] HttpRequest req, long id)
