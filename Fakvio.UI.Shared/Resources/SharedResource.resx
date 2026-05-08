@@ -1418,7 +1418,14 @@
   <data name="SysAdminPayment_LastProcessed" xml:space="preserve"><value>Zpracovaných e-mailů</value></data>
 
   <data name="Common_Yes" xml:space="preserve"><value>Ano</value></data>
+  <data name="Common_Back" xml:space="preserve"><value>Zpět</value></data>
   <data name="Common_Cancel" xml:space="preserve"><value>Zrušit</value></data>
+  <data name="Common_Created" xml:space="preserve"><value>Vytvořeno</value></data>
+  <data name="Common_Edit" xml:space="preserve"><value>Upravit</value></data>
+  <data name="Common_NotFound" xml:space="preserve"><value>Záznam nenalezen</value></data>
+  <data name="Common_Save" xml:space="preserve"><value>Uložit</value></data>
+  <data name="Common_Saved" xml:space="preserve"><value>Uloženo</value></data>
+  <data name="Invoice_ItemsRequired" xml:space="preserve"><value>Faktura musí mít alespoň jednu položku</value></data>
   <data name="Grid_RowsPerPage" xml:space="preserve"><value>Řádků na stránku:</value></data>
 
   <!-- Match dialog + InvoiceDetail Payments panel -->

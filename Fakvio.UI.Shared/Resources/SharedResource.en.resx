@@ -1418,7 +1418,14 @@
   <data name="SysAdminPayment_LastProcessed" xml:space="preserve"><value>Processed emails</value></data>
 
   <data name="Common_Yes" xml:space="preserve"><value>Yes</value></data>
+  <data name="Common_Back" xml:space="preserve"><value>Back</value></data>
   <data name="Common_Cancel" xml:space="preserve"><value>Cancel</value></data>
+  <data name="Common_Created" xml:space="preserve"><value>Created</value></data>
+  <data name="Common_Edit" xml:space="preserve"><value>Edit</value></data>
+  <data name="Common_NotFound" xml:space="preserve"><value>Record not found</value></data>
+  <data name="Common_Save" xml:space="preserve"><value>Save</value></data>
+  <data name="Common_Saved" xml:space="preserve"><value>Saved</value></data>
+  <data name="Invoice_ItemsRequired" xml:space="preserve"><value>Invoice must have at least one item</value></data>
   <data name="Grid_RowsPerPage" xml:space="preserve"><value>Rows per page:</value></data>
 
   <!-- Match dialog + InvoiceDetail Payments panel -->
