@@ -40,6 +40,10 @@ public class FileAttachmentFunctions
         if (req.HttpContext.User.Identity?.IsAuthenticated != true)
             return new UnauthorizedResult();
 
+        // TEMP DIAG: log claims to debug impersonation
+        var claims = req.HttpContext.User.Claims.Select(c => $"{c.Type}={c.Value}");
+        System.Console.Error.WriteLine($"FileAttachment_Upload claims: {string.Join(", ", claims)}");
+
         var ct = req.HttpContext.RequestAborted;
 
         // Multipart form data — extract file and form fields

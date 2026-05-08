@@ -194,10 +194,20 @@ public class FileAttachmentService : IFileAttachmentService
     /// </summary>
     private long RequireCompanyId()
     {
-        return _tenantResolver.GetCurrentCompanyId()
-            ?? throw new InvalidOperationException(
-                "No company context — cannot determine blob storage path. " +
-                "Ensure the request has a valid JWT with CompanyId claim.");
+        var companyId = _tenantResolver.GetCurrentCompanyId();
+        if (companyId.HasValue)
+            return companyId.Value;
+
+        // Diagnostic: log whether HttpContext exists and what claims are present
+        _logger.LogError(
+            "RequireCompanyId failed — IsSysAdmin={IsSysAdmin}. " +
+            "This usually means ImpersonationMiddleware did not set the CompanyId claim " +
+            "(SysAdmin without X-Company-Id header) or HttpContextAccessor returned wrong context.",
+            _tenantResolver.IsSysAdmin());
+
+        throw new InvalidOperationException(
+            "No company context — cannot determine blob storage path. " +
+            "Ensure the request has a valid JWT with CompanyId claim.");
     }
 
     /// <summary>
