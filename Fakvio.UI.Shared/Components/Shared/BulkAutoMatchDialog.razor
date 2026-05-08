@@ -1,0 +1,79 @@
+@using Fakvio.Contracts.Dto.PaymentMatching
+@using Fakvio.UI.Shared.Models
+@inject IStringLocalizer<SharedResource> L
+
+@*
+    Bulk auto-match summary dialog for the Payments page.
+    Shows all auto-match proposals found for unmatched transactions at once.
+    The user reviews the list and clicks "Confirm all" to create all matches,
+    or "Cancel" to abort the entire bulk operation.
+*@
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.AutoFixHigh" Class="mr-1" />
+            @L["BulkAutoMatch_DialogTitle"]
+        </MudText>
+    </TitleContent>
+
+    <DialogContent>
+        @if (Proposals == null || Proposals.Count == 0)
+        {
+            <MudAlert Severity="Severity.Info">@L["BulkAutoMatch_NoProposals"]</MudAlert>
+        }
+        else
+        {
+            <MudText Class="mb-3">
+                @string.Format(L["BulkAutoMatch_DialogBody"].Value, Proposals.Count)
+            </MudText>
+
+            <MudTable Items="Proposals" Dense="true" Hover="true" Striped="true">
+                <HeaderContent>
+                    <MudTh>@L["Payments_Col_Date"]</MudTh>
+                    <MudTh>@L["Payments_Col_Amount"]</MudTh>
+                    <MudTh>@L["Payments_Col_VS"]</MudTh>
+                    <MudTh>@L["BulkAutoMatch_Col_Invoice"]</MudTh>
+                    <MudTh>@L["BulkAutoMatch_Col_Client"]</MudTh>
+                    <MudTh>@L["BulkAutoMatch_Col_Remaining"]</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Transaction.TransactionDate.ToLocalTime().ToString("dd.MM.yyyy")</MudTd>
+                    <MudTd>@context.Transaction.Amount.ToString("N2") @context.Transaction.CurrencyCode</MudTd>
+                    <MudTd>@(context.Transaction.VariableSymbol ?? "—")</MudTd>
+                    <MudTd>@context.Proposal.DocumentNumber</MudTd>
+                    <MudTd>@(context.Proposal.ClientName ?? "—")</MudTd>
+                    <MudTd>@context.Proposal.Remaining.ToString("N2") @context.Proposal.CurrencyCode</MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </DialogContent>
+
+    <DialogActions>
+        <MudButton Variant="Variant.Text" OnClick="Cancel">
+            @L["AutoMatch_Cancel"]
+        </MudButton>
+        @if (Proposals != null && Proposals.Count > 0)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Confirm">
+                <MudIcon Icon="@Icons.Material.Filled.Link" Class="mr-1" />
+                @string.Format(L["BulkAutoMatch_ConfirmAll"].Value, Proposals.Count)
+            </MudButton>
+        }
+    </DialogActions>
+</MudDialog>
+
+@code {
+    /// <summary>
+    /// List of (transaction, invoice proposal) pairs found by the bulk auto-match.
+    /// Set by the parent via DialogParameters before showing the dialog.
+    /// </summary>
+    [Parameter, EditorRequired]
+    public List<BulkAutoMatchItem> Proposals { get; set; } = null!;
+
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    private void Confirm() => MudDialog.Close(DialogResult.Ok(true));
+
+    private void Cancel() => MudDialog.Cancel();
+}

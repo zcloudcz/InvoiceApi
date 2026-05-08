@@ -107,6 +107,21 @@ public interface IPaymentMatchingService
         CancellationToken ct = default);
 
     /// <summary>
+    /// Reverse auto-match: given an unmatched incoming BankTransaction, searches
+    /// unpaid issued invoices for the best candidate match.
+    ///
+    /// Search strategy (mirrors MatchIncomingAsync):
+    ///   1. VS match: transaction.VariableSymbol == invoice.VariableSymbol (single hit)
+    ///   2. Amount + counterparty account + due-date window (±7 days)
+    ///
+    /// Returns at most one candidate. Returns null when no suitable invoice is found.
+    /// Used by the Payments page "Auto-match" button per unmatched transaction.
+    /// </summary>
+    Task<TransactionAutoMatchProposalDto?> FindAutoMatchForTransactionAsync(
+        long bankTransactionId,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Confirms an auto-match proposal by creating a PaymentMatch row and
     /// marking the invoice as Paid (or PartiallyPaid).
     /// Used by the UI after the user clicks "Confirm" in the auto-match dialog.

@@ -1,8 +1,8 @@
 @page "/payments"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
-@using Fakvio.Contracts.Common.Pagination
 @using Fakvio.Contracts.Dto.PaymentMatching
 @using Fakvio.Domain.Enums
+@using Fakvio.UI.Shared.Models
 @inject PaymentMatchingApiService Api
 @inject IStringLocalizer<SharedResource> L
 @inject ISnackbar Snackbar
@@ -14,17 +14,130 @@
 *@
 
 @*
-    Payments grid — main entry point for the payment matching feature.
-    Users see bank transactions here and can review the unmatched ones,
-    match them against invoices manually, ignore false-positives, etc.
+    Payments page — main entry point for the payment matching feature.
 
-    Server-side pagination — mirrors the pattern used by Invoices.razor.
+    Layout (top to bottom):
+      1. "Unmatched payments" collapsible section — shows incoming transactions with
+         MatchStatus=Unmatched. Each row has a per-row "Spárovat" button (auto-match
+         for that single transaction) plus a "Spárovat vše" bulk button above the table.
+      2. All-transactions grid with filters (existing behaviour).
+
+    The auto-match "Spárovat" button calls
+      POST /api/payment-matching/transactions/{id}/auto-match
+    which returns the best candidate invoice. The user confirms in TransactionAutoMatchDialog.
+    Bulk "Spárovat vše" iterates all unmatched rows, collects proposals in parallel,
+    then shows BulkAutoMatchDialog with all proposals before any match is created.
 *@
 
 <PageTitle>@L["Payments_Title"]</PageTitle>
 
 <MudText Typo="Typo.h4" GutterBottom="true">@L["Payments_Title"]</MudText>
 <MudText Class="mb-4">@L["Payments_Subtitle"]</MudText>
+
+@* ─────────────────────────────────────────────────────────────────────────────
+   SECTION 1: Unmatched payments — auto-match candidates
+   ───────────────────────────────────────────────────────────────────────────── *@
+
+<MudPaper Class="pa-3 mb-4" Elevation="1">
+    <div class="d-flex align-center mb-2">
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.HelpOutline" Color="Color.Warning" Class="mr-1" />
+            @L["Payments_Unmatched_Title"]
+            @if (_unmatchedPage != null && _unmatchedPage.TotalCount > 0)
+            {
+                <MudChip T="string" Color="Color.Warning" Size="Size.Small" Class="ml-1">
+                    @_unmatchedPage.TotalCount
+                </MudChip>
+            }
+        </MudText>
+        <MudSpacer />
+        @* "Spárovat vše" — runs auto-match for ALL unmatched rows and shows bulk dialog *@
+        <MudButton Variant="Variant.Filled" Color="Color.Secondary"
+                   StartIcon="@Icons.Material.Filled.AutoFixHigh"
+                   OnClick="TriggerBulkAutoMatchAsync"
+                   Disabled="_bulkMatchBusy || _unmatchedPage == null || _unmatchedPage.TotalCount == 0"
+                   Class="mr-2">
+            @if (_bulkMatchBusy)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-1" />
+            }
+            @L["Payments_BulkAutoMatch"]
+        </MudButton>
+        <MudButton Variant="Variant.Text" Color="Color.Default"
+                   StartIcon="@Icons.Material.Filled.Refresh"
+                   OnClick="ReloadUnmatched"
+                   Disabled="_unmatchedLoading">
+            @L["Payments_Refresh"]
+        </MudButton>
+    </div>
+
+    @if (_unmatchedLoading)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Warning" Class="mb-2" />
+    }
+
+    @if (_unmatchedPage == null || _unmatchedPage.Items.Count == 0)
+    {
+        <MudText Typo="Typo.body2" Class="mud-text-secondary">
+            @L["Payments_Unmatched_Empty"]
+        </MudText>
+    }
+    else
+    {
+        <MudTable Items="_unmatchedPage.Items" Dense="true" Hover="true">
+            <HeaderContent>
+                <MudTh>@L["Payments_Col_Date"]</MudTh>
+                <MudTh>@L["Payments_Col_Amount"]</MudTh>
+                <MudTh>@L["Payments_Col_VS"]</MudTh>
+                <MudTh>@L["Payments_Col_Counterparty"]</MudTh>
+                <MudTh Style="width:140px; text-align:right;">@L["Payments_Col_Actions"]</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="@L["Payments_Col_Date"]">
+                    @context.TransactionDate.ToLocalTime().ToString("dd.MM.yyyy HH:mm")
+                </MudTd>
+                <MudTd DataLabel="@L["Payments_Col_Amount"]">
+                    <strong>@context.Amount.ToString("N2") @context.CurrencyCode</strong>
+                </MudTd>
+                <MudTd DataLabel="@L["Payments_Col_VS"]">@(context.VariableSymbol ?? "—")</MudTd>
+                <MudTd DataLabel="@L["Payments_Col_Counterparty"]">
+                    <div>@(context.CounterpartyName ?? "—")</div>
+                    @if (!string.IsNullOrWhiteSpace(context.CounterpartyAccount))
+                    {
+                        <MudText Typo="Typo.caption">@context.CounterpartyAccount</MudText>
+                    }
+                </MudTd>
+                <MudTd DataLabel="@L["Payments_Col_Actions"]" Style="text-align:right;">
+                    @* Per-row auto-match: finds the best invoice candidate and shows dialog *@
+                    <MudTooltip Text="@L["Payments_AutoMatch_Tooltip"]">
+                        <MudIconButton Size="Size.Small"
+                                       Icon="@Icons.Material.Filled.AutoFixHigh"
+                                       Color="Color.Secondary"
+                                       Disabled="_rowMatchBusy.Contains(context.Id)"
+                                       OnClick="@(() => TriggerRowAutoMatchAsync(context))" />
+                    </MudTooltip>
+                    @* Manual match dialog *@
+                    <MudTooltip Text="@L["InvoicePayments_MatchManually"]">
+                        <MudIconButton Size="Size.Small"
+                                       Icon="@Icons.Material.Filled.Link"
+                                       Color="Color.Primary"
+                                       OnClick="@(() => OpenMatchDialog(context))" />
+                    </MudTooltip>
+                    @* Ignore — mark as not our concern *@
+                    <MudTooltip Text="@L["Payments_Action_Ignore"]">
+                        <MudIconButton Size="Size.Small"
+                                       Icon="@Icons.Material.Filled.Block"
+                                       OnClick="@(() => IgnoreAsync(context))" />
+                    </MudTooltip>
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+</MudPaper>
+
+@* ─────────────────────────────────────────────────────────────────────────────
+   SECTION 2: All transactions with filters
+   ───────────────────────────────────────────────────────────────────────────── *@
 
 @* Filter toolbar — status, direction, date range, free-text search *@
 <MudPaper Class="pa-3 mb-3 d-flex flex-wrap align-center gap-2" Elevation="1">
@@ -153,14 +266,30 @@ else
     private EPaymentDirection? _directionFilter;
     private string? _search;
 
-    // Loading + paged result.
+    // ─── All-transactions grid state ──────────────────────────────────────
     private bool _loading;
-    private PagedResult<BankTransactionDto>? _page;
+    private Fakvio.Contracts.Common.Pagination.PagedResult<BankTransactionDto>? _page;
+
+    // ─── Unmatched section state ──────────────────────────────────────────
+    private bool _unmatchedLoading;
+    private Fakvio.Contracts.Common.Pagination.PagedResult<BankTransactionDto>? _unmatchedPage;
+
+    /// <summary>
+    /// Set of transaction IDs that are currently being matched (per-row spinner).
+    /// Using HashSet for O(1) contains check.
+    /// </summary>
+    private readonly HashSet<long> _rowMatchBusy = new();
+
+    /// <summary>True while "Spárovat vše" is running (disables the button).</summary>
+    private bool _bulkMatchBusy;
 
     protected override async Task OnInitializedAsync()
     {
-        await Reload();
+        // Load both grids in parallel for faster initial render.
+        await Task.WhenAll(Reload(), ReloadUnmatched());
     }
+
+    // ─── All-transactions grid ────────────────────────────────────────────
 
     private async Task Reload()
     {
@@ -200,6 +329,171 @@ else
     private void OpenDetail(BankTransactionDto row) =>
         Navigation.NavigateTo($"/payments/{row.Id}");
 
+    // ─── Unmatched section ────────────────────────────────────────────────
+
+    /// <summary>
+    /// Loads the unmatched incoming transactions for the top section.
+    /// Uses a large page size so the user sees all unmatched items at once.
+    /// </summary>
+    private async Task ReloadUnmatched()
+    {
+        _unmatchedLoading = true;
+        try
+        {
+            _unmatchedPage = await Api.ListTransactionsAsync(
+                status: EMatchStatus.Unmatched,
+                direction: EPaymentDirection.Incoming,
+                page: 1,
+                pageSize: 100);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _unmatchedLoading = false;
+        }
+    }
+
+    /// <summary>
+    /// Per-row auto-match: calls the server to find the best invoice for this transaction,
+    /// shows TransactionAutoMatchDialog for confirmation, then confirms the match.
+    /// </summary>
+    private async Task TriggerRowAutoMatchAsync(BankTransactionDto row)
+    {
+        _rowMatchBusy.Add(row.Id);
+        try
+        {
+            // Ask the server for a matching invoice candidate.
+            var proposal = await Api.FindAutoMatchForTransactionAsync(row.Id);
+
+            if (proposal == null)
+            {
+                Snackbar.Add(L["AutoMatch_NotFound"], Severity.Info);
+                return;
+            }
+
+            // Show the confirmation dialog with the invoice details.
+            var parameters = new DialogParameters { ["Proposal"] = proposal };
+            var dialog = await DialogService.ShowAsync<TransactionAutoMatchDialog>(
+                L["TxAutoMatch_DialogTitle"], parameters);
+            var result = await dialog.Result;
+
+            if (result?.Canceled == true) return;
+
+            // User confirmed — create the PaymentMatch.
+            var confirmResult = await Api.ConfirmAutoMatchAsync(new ConfirmAutoMatchRequest
+            {
+                BankTransactionId = row.Id,
+                InvoiceId = proposal.InvoiceId,
+            });
+
+            if (confirmResult != null)
+            {
+                Snackbar.Add(L["AutoMatch_Success"], Severity.Success);
+                // Reload both grids so the matched transaction disappears from the unmatched section.
+                await Task.WhenAll(ReloadUnmatched(), Reload());
+            }
+            else
+            {
+                Snackbar.Add(L["AutoMatch_Error"], Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["AutoMatch_Error"]}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _rowMatchBusy.Remove(row.Id);
+        }
+    }
+
+    /// <summary>
+    /// Bulk auto-match: iterates all unmatched transactions, asks the server for proposals,
+    /// then shows BulkAutoMatchDialog with all pairs. On confirm, creates all PaymentMatches.
+    /// </summary>
+    private async Task TriggerBulkAutoMatchAsync()
+    {
+        if (_unmatchedPage == null || _unmatchedPage.Items.Count == 0) return;
+
+        _bulkMatchBusy = true;
+        try
+        {
+            // Collect proposals for all unmatched rows (sequential — keeps server load predictable).
+            var proposals = new List<BulkAutoMatchItem>();
+            foreach (var tx in _unmatchedPage.Items)
+            {
+                var proposal = await Api.FindAutoMatchForTransactionAsync(tx.Id);
+                if (proposal != null)
+                    proposals.Add(new BulkAutoMatchItem(tx, proposal));
+            }
+
+            if (proposals.Count == 0)
+            {
+                Snackbar.Add(L["BulkAutoMatch_NoneFound"], Severity.Info);
+                return;
+            }
+
+            // Show the summary dialog — user reviews all proposals before anything is created.
+            var parameters = new DialogParameters { ["Proposals"] = proposals };
+            var dialog = await DialogService.ShowAsync<BulkAutoMatchDialog>(
+                L["BulkAutoMatch_DialogTitle"], parameters);
+            var result = await dialog.Result;
+
+            if (result?.Canceled == true) return;
+
+            // User confirmed — create all matches sequentially.
+            var successCount = 0;
+            var errorCount = 0;
+            foreach (var item in proposals)
+            {
+                try
+                {
+                    var confirmResult = await Api.ConfirmAutoMatchAsync(new ConfirmAutoMatchRequest
+                    {
+                        BankTransactionId = item.Transaction.Id,
+                        InvoiceId = item.Proposal.InvoiceId,
+                    });
+
+                    if (confirmResult != null)
+                        successCount++;
+                    else
+                        errorCount++;
+                }
+                catch
+                {
+                    errorCount++;
+                }
+            }
+
+            // Show result summary.
+            if (successCount > 0)
+                Snackbar.Add(
+                    string.Format(L["BulkAutoMatch_SuccessToast"].Value, successCount),
+                    Severity.Success);
+
+            if (errorCount > 0)
+                Snackbar.Add(
+                    string.Format(L["BulkAutoMatch_ErrorToast"].Value, errorCount),
+                    Severity.Warning);
+
+            // Reload both grids.
+            await Task.WhenAll(ReloadUnmatched(), Reload());
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["AutoMatch_Error"]}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _bulkMatchBusy = false;
+        }
+    }
+
+    // ─── Shared actions ───────────────────────────────────────────────────
+
     /// <summary>Opens the manual-match dialog with this transaction pre-selected.</summary>
     private async Task OpenMatchDialog(BankTransactionDto row)
     {
@@ -208,18 +502,18 @@ else
         var result = await dialog.Result;
         if (result?.Canceled == false)
         {
-            await Reload();
+            await Task.WhenAll(ReloadUnmatched(), Reload());
         }
     }
 
-    /// <summary>Flags a transaction as not-our-concern. Optimistic UI update → reload on success.</summary>
+    /// <summary>Flags a transaction as not-our-concern. Reloads both grids on success.</summary>
     private async Task IgnoreAsync(BankTransactionDto row)
     {
         try
         {
             await Api.IgnoreAsync(row.Id);
             Snackbar.Add(L["Payments_Ignored_Toast"], Severity.Success);
-            await Reload();
+            await Task.WhenAll(ReloadUnmatched(), Reload());
         }
         catch (Exception ex)
         {

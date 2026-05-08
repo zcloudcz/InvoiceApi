@@ -1452,6 +1452,30 @@
   <data name="AutoMatch_Success" xml:space="preserve"><value>Invoice was successfully matched with the payment.</value></data>
   <data name="AutoMatch_Error" xml:space="preserve"><value>Error while matching payment.</value></data>
 
+  <data name="TxAutoMatch_DialogTitle" xml:space="preserve"><value>Invoice found</value></data>
+  <data name="TxAutoMatch_DialogBody" xml:space="preserve"><value>A matching invoice was found. Do you want to match it with this payment?</value></data>
+  <data name="TxAutoMatch_Col_DocumentNumber" xml:space="preserve"><value>Invoice number</value></data>
+  <data name="TxAutoMatch_Col_Client" xml:space="preserve"><value>Client</value></data>
+  <data name="TxAutoMatch_Col_Remaining" xml:space="preserve"><value>Remaining</value></data>
+  <data name="TxAutoMatch_Col_VS" xml:space="preserve"><value>VS</value></data>
+  <data name="TxAutoMatch_Col_DueDate" xml:space="preserve"><value>Due date</value></data>
+
+  <data name="BulkAutoMatch_DialogTitle" xml:space="preserve"><value>Bulk payment matching</value></data>
+  <data name="BulkAutoMatch_DialogBody" xml:space="preserve"><value>{0} match proposals found. Confirm all matches:</value></data>
+  <data name="BulkAutoMatch_NoProposals" xml:space="preserve"><value>No matching invoice was found for any unmatched payment.</value></data>
+  <data name="BulkAutoMatch_Col_Invoice" xml:space="preserve"><value>Invoice</value></data>
+  <data name="BulkAutoMatch_Col_Client" xml:space="preserve"><value>Client</value></data>
+  <data name="BulkAutoMatch_Col_Remaining" xml:space="preserve"><value>Remaining</value></data>
+  <data name="BulkAutoMatch_ConfirmAll" xml:space="preserve"><value>Match all ({0})</value></data>
+  <data name="BulkAutoMatch_NoneFound" xml:space="preserve"><value>No matching invoice was found for any unmatched payment.</value></data>
+  <data name="BulkAutoMatch_SuccessToast" xml:space="preserve"><value>Successfully matched {0} payments.</value></data>
+  <data name="BulkAutoMatch_ErrorToast" xml:space="preserve"><value>{0} matches failed.</value></data>
+
+  <data name="Payments_Unmatched_Title" xml:space="preserve"><value>Unmatched payments</value></data>
+  <data name="Payments_Unmatched_Empty" xml:space="preserve"><value>No unmatched incoming payments.</value></data>
+  <data name="Payments_BulkAutoMatch" xml:space="preserve"><value>Match all</value></data>
+  <data name="Payments_AutoMatch_Tooltip" xml:space="preserve"><value>Auto-match with invoice</value></data>
+
   <data name="Dashboard_Kpi_UnmatchedPayments" xml:space="preserve"><value>Unmatched payments</value></data>
 
   <data name="PaymentDetail_BackToList" xml:space="preserve"><value>Back to list</value></data>

@@ -9,7 +9,8 @@
 
 @*
     Payments panel for the ReceivedInvoiceDetail page.
-    Shows matched outgoing bank transactions alongside the "Automaticky spárovat" button.
+    Shows matched outgoing bank transactions.
+    Auto-match has been moved to the Payments overview page (issue #125).
     Mirrors InvoicePaymentsPanel but targets ReceivedInvoice PaymentMatch rows.
 *@
 
@@ -21,17 +22,6 @@
                 <MudIcon Icon="@Icons.Material.Filled.Payments" Class="mr-1" />
                 @L["InvoicePayments_Panel_Title"]
             </MudText>
-            <MudSpacer />
-            <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Secondary"
-                       StartIcon="@Icons.Material.Filled.AutoFixHigh"
-                       OnClick="TriggerAutoMatchAsync"
-                       Disabled="_autoMatchBusy">
-                @if (_autoMatchBusy)
-                {
-                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-1" />
-                }
-                @L["AutoMatch_Button"]
-            </MudButton>
         </div>
 
         @if (_loading)
@@ -85,7 +75,6 @@
 
     private List<PaymentMatchDto>? _matches;
     private bool _loading;
-    private bool _autoMatchBusy;
     private int _lastTrigger = -1;
 
     protected override async Task OnParametersSetAsync()
@@ -114,61 +103,6 @@
         finally
         {
             _loading = false;
-        }
-    }
-
-    /// <summary>
-    /// Called when user clicks "Automaticky spárovat".
-    /// Calls the API to find a matching transaction, then shows a confirmation dialog.
-    /// </summary>
-    private async Task TriggerAutoMatchAsync()
-    {
-        if (Invoice == null) return;
-        _autoMatchBusy = true;
-        try
-        {
-            // Call backend to find a matching transaction.
-            var proposal = await ReceivedInvoiceApi.FindAutoMatchAsync(Invoice.Id);
-
-            if (proposal == null)
-            {
-                // HTTP 204 — no match found.
-                Snackbar.Add(L["AutoMatch_NotFound"], Severity.Info);
-                return;
-            }
-
-            // Show the confirmation dialog with the proposal details.
-            var parameters = new DialogParameters { ["Proposal"] = proposal };
-            var dialog = await DialogService.ShowAsync<AutoMatchDialog>(
-                L["AutoMatch_DialogTitle"], parameters);
-            var result = await dialog.Result;
-
-            if (result?.Canceled == true) return;
-
-            // User confirmed — create the PaymentMatch.
-            var confirmResult = await PaymentApi.ConfirmAutoMatchAsync(new ConfirmAutoMatchRequest
-            {
-                BankTransactionId = proposal.BankTransactionId,
-                ReceivedInvoiceId = Invoice.Id,
-            });
-
-            if (confirmResult != null)
-            {
-                Snackbar.Add(L["AutoMatch_Success"], Severity.Success);
-                await OnChanged.InvokeAsync();
-            }
-            else
-            {
-                Snackbar.Add(L["AutoMatch_Error"], Severity.Error);
-            }
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"{L["AutoMatch_Error"]}: {ex.Message}", Severity.Error);
-        }
-        finally
-        {
-            _autoMatchBusy = false;
         }
     }
 

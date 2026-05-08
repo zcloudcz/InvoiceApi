@@ -430,6 +430,118 @@ public class PaymentMatchingService : IPaymentMatchingService
     }
 
     /// <inheritdoc />
+    public async Task<TransactionAutoMatchProposalDto?> FindAutoMatchForTransactionAsync(
+        long bankTransactionId,
+        CancellationToken ct = default)
+    {
+        var tx = await _context.BankTransaction
+            .AsNoTracking()
+            .Include(t => t.BankAccount)
+            .FirstOrDefaultAsync(t => t.Id == bankTransactionId, ct);
+
+        if (tx == null)
+        {
+            _logger.LogWarning("FindAutoMatchForTransactionAsync: BankTransaction {Id} not found", bankTransactionId);
+            return null;
+        }
+
+        // Only unmatched/partially-matched incoming transactions make sense here.
+        if (tx.Direction != EPaymentDirection.Incoming)
+        {
+            _logger.LogDebug(
+                "FindAutoMatchForTransactionAsync: Tx {Id} is Outgoing — skip (use received invoice matching instead)",
+                bankTransactionId);
+            return null;
+        }
+
+        if (tx.MatchStatus is EMatchStatus.Matched or EMatchStatus.Ignored)
+        {
+            _logger.LogDebug(
+                "FindAutoMatchForTransactionAsync: Tx {Id} already {Status} — skip",
+                bankTransactionId, tx.MatchStatus);
+            return null;
+        }
+
+        // Load unpaid issued invoices in the same currency that belong to our bank account's issuer.
+        var issuerId = tx.BankAccount?.ClientId;
+
+        var query = _context.Invoice
+            .AsNoTracking()
+            .Include(i => i.Currency)
+            .Include(i => i.Client)
+                .ThenInclude(c => c!.BankAccount)
+            .Where(i =>
+                i.Currency.Code == tx.CurrencyCode
+                && i.Status != EInvoiceStatus.Paid
+                && i.Status != EInvoiceStatus.Creditnoted
+                && i.Status != EInvoiceStatus.Deleted
+                && i.Status != EInvoiceStatus.Draft);
+
+        // If the bank account belongs to a specific issuer, narrow candidates to that issuer's invoices.
+        if (issuerId.HasValue)
+            query = query.Where(i => i.IssuerId == issuerId.Value);
+
+        var candidates = await query.ToListAsync(ct);
+
+        // Rule 1 — Variable symbol (exact match, single hit).
+        if (!string.IsNullOrWhiteSpace(tx.VariableSymbol))
+        {
+            var vsMatches = candidates
+                .Where(i => i.VariableSymbol == tx.VariableSymbol)
+                .ToList();
+
+            if (vsMatches.Count == 1)
+                return ToInvoiceProposal(vsMatches[0]);
+
+            // Multiple VS matches — disambiguate by remaining amount.
+            if (vsMatches.Count > 1)
+            {
+                var exact = vsMatches.FirstOrDefault(i =>
+                    (i.TotalWithVat - i.PaidAmount) == tx.Amount);
+                if (exact != null)
+                    return ToInvoiceProposal(exact);
+
+                // Cannot determine a single winner — treat as NeedsReview; return null.
+                return null;
+            }
+        }
+
+        // Rule 2 — counterparty account (client's bank account) + remaining amount + due-date window.
+        if (!string.IsNullOrWhiteSpace(tx.CounterpartyAccount))
+        {
+            var normalizedCp = NormalizeAccount(tx.CounterpartyAccount);
+
+            var accountMatches = candidates
+                .Where(i => i.DueDate.HasValue
+                    && i.Client != null
+                    && i.Client.BankAccount.Any(b => NormalizeAccount(b.AccountNumber) == normalizedCp)
+                    && Math.Abs((i.DueDate.Value - tx.TransactionDate).TotalDays) <= AccountMatchWindowDays
+                    && (i.TotalWithVat - i.PaidAmount) == tx.Amount)
+                .ToList();
+
+            if (accountMatches.Count == 1)
+                return ToInvoiceProposal(accountMatches[0]);
+        }
+
+        return null;
+    }
+
+    /// <summary>Maps an Invoice entity to a TransactionAutoMatchProposalDto for the UI dialog.</summary>
+    private static TransactionAutoMatchProposalDto ToInvoiceProposal(Domain.Entities.Invoice invoice) =>
+        new()
+        {
+            InvoiceId = invoice.Id,
+            DocumentNumber = invoice.DocumentNumber ?? string.Empty,
+            ClientName = invoice.Client?.TradingName ?? invoice.Client?.CompanyName,
+            TotalWithVat = invoice.TotalWithVat,
+            PaidAmount = invoice.PaidAmount,
+            Remaining = invoice.TotalWithVat - invoice.PaidAmount,
+            CurrencyCode = invoice.Currency?.Code ?? "CZK",
+            DueDate = invoice.DueDate,
+            VariableSymbol = invoice.VariableSymbol,
+        };
+
+    /// <inheritdoc />
     public async Task<ConfirmAutoMatchResult> ConfirmAutoMatchAsync(
         long bankTransactionId,
         long? invoiceId,

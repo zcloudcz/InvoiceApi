@@ -197,6 +197,35 @@ public class PaymentMatchingController : ControllerBase
         return Ok(await _queryService.GetUnmatchedCountAsync(ct));
     }
 
+    // ─── Auto-match (transaction → invoice) ────────────────────────────────
+
+    /// <summary>
+    /// Reverse auto-match: given an unmatched incoming bank transaction, searches
+    /// for the best candidate issued invoice to match it against.
+    ///
+    /// Search strategy (VS first, then amount + account + due-date window):
+    ///   Returns the best candidate or HTTP 204 when nothing matches.
+    /// </summary>
+    /// <response code="200">Invoice proposal found</response>
+    /// <response code="204">No matching invoice found</response>
+    /// <response code="404">Bank transaction not found</response>
+    [HttpPost("transactions/{id:long}/auto-match")]
+    [ProducesResponseType(typeof(TransactionAutoMatchProposalDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> FindAutoMatchForTransaction(
+        long id,
+        CancellationToken ct = default)
+    {
+        _logger.LogInformation("POST /api/payment-matching/transactions/{Id}/auto-match", id);
+
+        var proposal = await _matcher.FindAutoMatchForTransactionAsync(id, ct);
+        if (proposal == null)
+            return NoContent();
+
+        return Ok(proposal);
+    }
+
     // ─── Auto-match confirmation ────────────────────────────────────────────
 
     /// <summary>
