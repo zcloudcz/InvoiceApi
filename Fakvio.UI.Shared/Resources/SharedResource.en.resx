@@ -438,6 +438,7 @@
   <data name="Invoice_Restore" xml:space="preserve"><value>Restore</value></data>
   <data name="Invoice_Restored" xml:space="preserve"><value>Invoice restored</value></data>
   <data name="Invoice_Issued" xml:space="preserve"><value>Invoice issued</value></data>
+  <data name="Invoice_Received" xml:space="preserve"><value>Received invoice</value></data>
   <data name="Invoice_MarkedAsPaid" xml:space="preserve"><value>Invoice marked as paid</value></data>
   <data name="Invoice_MarkAsUnpaid" xml:space="preserve"><value>Mark as unpaid</value></data>
   <data name="Invoice_MarkAsUnpaidSuccess" xml:space="preserve"><value>Invoice marked as unpaid</value></data>

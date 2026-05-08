@@ -523,6 +523,38 @@ public class PaymentMatchingService : IPaymentMatchingService
                 return ToInvoiceProposal(accountMatches[0]);
         }
 
+        // ── ReceivedInvoice matching (outgoing payments or incoming with no issued match) ──
+        var receivedQuery = _context.ReceivedInvoice
+            .AsNoTracking()
+            .Include(ri => ri.Supplier)
+            .Include(ri => ri.Currency)
+            .Where(ri =>
+                ri.Status != EReceivedInvoiceStatus.Paid
+                && ri.Status != EReceivedInvoiceStatus.Deleted);
+
+        var receivedCandidates = await receivedQuery.ToListAsync(ct);
+
+        // Rule 1R — VS match on received invoices
+        if (!string.IsNullOrWhiteSpace(tx.VariableSymbol))
+        {
+            var riVsMatches = receivedCandidates
+                .Where(ri => ri.VariableSymbol == tx.VariableSymbol)
+                .ToList();
+
+            if (riVsMatches.Count == 1)
+                return ToReceivedInvoiceProposal(riVsMatches[0]);
+        }
+
+        // Rule 2R — amount match on received invoices
+        {
+            var riAmountMatches = receivedCandidates
+                .Where(ri => ri.TotalWithVat == tx.Amount)
+                .ToList();
+
+            if (riAmountMatches.Count == 1)
+                return ToReceivedInvoiceProposal(riAmountMatches[0]);
+        }
+
         return null;
     }
 
@@ -531,6 +563,7 @@ public class PaymentMatchingService : IPaymentMatchingService
         new()
         {
             InvoiceId = invoice.Id,
+            ReceivedInvoiceId = null,
             DocumentNumber = invoice.DocumentNumber ?? string.Empty,
             ClientName = invoice.Client?.TradingName ?? invoice.Client?.CompanyName,
             TotalWithVat = invoice.TotalWithVat,
@@ -539,6 +572,22 @@ public class PaymentMatchingService : IPaymentMatchingService
             CurrencyCode = invoice.Currency?.Code ?? "CZK",
             DueDate = invoice.DueDate,
             VariableSymbol = invoice.VariableSymbol,
+        };
+
+    /// <summary>Maps a ReceivedInvoice entity to a TransactionAutoMatchProposalDto.</summary>
+    private static TransactionAutoMatchProposalDto ToReceivedInvoiceProposal(Domain.Entities.ReceivedInvoice ri) =>
+        new()
+        {
+            InvoiceId = null,
+            ReceivedInvoiceId = ri.Id,
+            DocumentNumber = ri.DocumentNumber ?? string.Empty,
+            ClientName = ri.Supplier?.CompanyName,
+            TotalWithVat = ri.TotalWithVat,
+            PaidAmount = 0,
+            Remaining = ri.TotalWithVat,
+            CurrencyCode = ri.Currency?.Code ?? "CZK",
+            DueDate = ri.DueDate,
+            VariableSymbol = ri.VariableSymbol,
         };
 
     /// <inheritdoc />

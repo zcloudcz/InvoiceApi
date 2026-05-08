@@ -438,6 +438,7 @@
   <data name="Invoice_Restore" xml:space="preserve"><value>Obnovit</value></data>
   <data name="Invoice_Restored" xml:space="preserve"><value>Faktura obnovena</value></data>
   <data name="Invoice_Issued" xml:space="preserve"><value>Faktura vystavena</value></data>
+  <data name="Invoice_Received" xml:space="preserve"><value>Přijatá faktura</value></data>
   <data name="Invoice_MarkedAsPaid" xml:space="preserve"><value>Faktura označena jako zaplacená</value></data>
   <data name="Invoice_MarkAsUnpaid" xml:space="preserve"><value>Označit jako nezaplaceno</value></data>
   <data name="Invoice_MarkAsUnpaidSuccess" xml:space="preserve"><value>Faktura označena jako nezaplacená</value></data>

@@ -84,7 +84,8 @@
     }
     else
     {
-        <MudTable Items="_unmatchedPage.Items" Dense="true" Hover="true">
+        <MudTable Items="_unmatchedPage.Items" Dense="true" Hover="true"
+                  MultiSelection="true" @bind-SelectedItems="_selectedUnmatched">
             <HeaderContent>
                 <MudTh>@L["Payments_Col_Date"]</MudTh>
                 <MudTh>@L["Payments_Col_Amount"]</MudTh>
@@ -283,6 +284,9 @@ else
     /// <summary>True while "Spárovat vše" is running (disables the button).</summary>
     private bool _bulkMatchBusy;
 
+    /// <summary>Checkbox-selected unmatched transactions for bulk auto-match.</summary>
+    private HashSet<BankTransactionDto> _selectedUnmatched = new();
+
     protected override async Task OnInitializedAsync()
     {
         // Load both grids in parallel for faster initial render.
@@ -387,6 +391,7 @@ else
             {
                 BankTransactionId = row.Id,
                 InvoiceId = proposal.InvoiceId,
+                ReceivedInvoiceId = proposal.ReceivedInvoiceId,
             });
 
             if (confirmResult != null)
@@ -421,9 +426,13 @@ else
         _bulkMatchBusy = true;
         try
         {
-            // Collect proposals for all unmatched rows (sequential — keeps server load predictable).
+            // Use selected rows if any are checked, otherwise fall back to all unmatched.
+            var targetRows = _selectedUnmatched.Count > 0
+                ? _selectedUnmatched.ToList()
+                : _unmatchedPage.Items.ToList();
+
             var proposals = new List<BulkAutoMatchItem>();
-            foreach (var tx in _unmatchedPage.Items)
+            foreach (var tx in targetRows)
             {
                 var proposal = await Api.FindAutoMatchForTransactionAsync(tx.Id);
                 if (proposal != null)
@@ -455,6 +464,7 @@ else
                     {
                         BankTransactionId = item.Transaction.Id,
                         InvoiceId = item.Proposal.InvoiceId,
+                        ReceivedInvoiceId = item.Proposal.ReceivedInvoiceId,
                     });
 
                     if (confirmResult != null)

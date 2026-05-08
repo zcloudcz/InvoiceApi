@@ -9,8 +9,14 @@ namespace Fakvio.Contracts.Dto.PaymentMatching;
 /// </summary>
 public class TransactionAutoMatchProposalDto
 {
-    /// <summary>Id of the candidate Invoice (issued invoice).</summary>
-    public long InvoiceId { get; set; }
+    /// <summary>Id of the candidate Invoice (issued invoice). Null when the match is a ReceivedInvoice.</summary>
+    public long? InvoiceId { get; set; }
+
+    /// <summary>Id of the candidate ReceivedInvoice. Null when the match is an issued Invoice.</summary>
+    public long? ReceivedInvoiceId { get; set; }
+
+    /// <summary>True when the proposal points to a ReceivedInvoice, false for an issued Invoice.</summary>
+    public bool IsReceivedInvoice => ReceivedInvoiceId.HasValue;
 
     /// <summary>Human-readable document number, e.g. "FAK-2025-0042".</summary>
     public string DocumentNumber { get; set; } = string.Empty;

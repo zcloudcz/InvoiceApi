@@ -26,6 +26,19 @@
             <MudSimpleTable Dense="true" Striped="false" Bordered="true" Class="mb-2">
                 <tbody>
                     <tr>
+                        <td><strong>@L["Label_Type"]</strong></td>
+                        <td>
+                            @if (Proposal.IsReceivedInvoice)
+                            {
+                                <MudChip T="string" Color="Color.Info" Size="Size.Small">@L["Invoice_Received"]</MudChip>
+                            }
+                            else
+                            {
+                                <MudChip T="string" Color="Color.Success" Size="Size.Small">@L["Invoice_Issued"]</MudChip>
+                            }
+                        </td>
+                    </tr>
+                    <tr>
                         <td><strong>@L["TxAutoMatch_Col_DocumentNumber"]</strong></td>
                         <td>@Proposal.DocumentNumber</td>
                     </tr>
