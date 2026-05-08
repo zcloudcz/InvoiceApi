@@ -109,4 +109,30 @@ public class SystemConfigurationFunctions
         // Call the controller action and normalize the response
         return FunctionResultHelper.Normalize(await _controller.TestBlobConnection(ct));
     }
+
+    /// <summary>
+    /// GET api/system-configuration/credential-health → SystemConfigurationController.GetCredentialHealth
+    /// Reports which encrypted credentials cannot be decrypted with the current key ring.
+    /// SysAdmin-only: shows a warning banner in the UI when issues are found.
+    /// </summary>
+    [Function("SystemConfiguration_GetCredentialHealth")]
+    public async Task<IActionResult> SystemConfiguration_GetCredentialHealth(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/system-configuration/credential-health")] HttpRequest req)
+    {
+        // Wire up the controller's HttpContext so it can access User claims, Request, etc.
+        _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
+
+        // Authorization check: [Authorize(Roles = "SysAdmin")]
+        if (req.HttpContext.User.Identity?.IsAuthenticated != true)
+            return new UnauthorizedResult();
+
+        // Role check: user must be in one of [SysAdmin]
+        if (!req.HttpContext.User.IsInRole("SysAdmin"))
+            return new ForbidResult();
+
+        var ct = req.HttpContext.RequestAborted;
+
+        // Call the controller action and normalize the response
+        return FunctionResultHelper.Normalize(await _controller.GetCredentialHealth(ct));
+    }
 }

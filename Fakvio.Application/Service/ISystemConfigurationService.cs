@@ -41,6 +41,24 @@ public interface ISystemConfigurationService
     /// Returns a result object with Success flag and an optional error message.
     /// </summary>
     Task<BlobTestConnectionResult> TestAzureBlobConnectionAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Checks the health of all encrypted credentials stored in the system.
+    ///
+    /// Covers:
+    ///   - SystemConfiguration: SmtpPassword, AiClaudeApiKey, AiOpenAiApiKey,
+    ///     AiGeminiApiKey, AzureBlobConnectionString
+    ///   - CompanySystemSettings (per tenant): SmtpPassword, AiClaudeApiKey,
+    ///     AiOpenAiApiKey, AiGeminiApiKey, GoogleDriveAccessToken,
+    ///     GoogleDriveRefreshToken, OneDriveAccessToken, OneDriveRefreshToken,
+    ///     AzureBlobConnectionString
+    ///   - PaymentMatchingSystemSettings: ImapPasswordEncrypted
+    ///
+    /// A credential is "corrupt" when it was encrypted with a key ring that is no
+    /// longer available (e.g., after Data Protection key loss on restart).
+    /// The UI shows a warning banner so the admin knows to re-save the affected fields.
+    /// </summary>
+    Task<CredentialHealthDto> CheckCredentialHealthAsync(CancellationToken ct = default);
 }
 
 /// <summary>

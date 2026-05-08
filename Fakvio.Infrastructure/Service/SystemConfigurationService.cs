@@ -236,6 +236,89 @@ public class SystemConfigurationService : ISystemConfigurationService
         }
     }
 
+    /// <inheritdoc />
+    public async Task<CredentialHealthDto> CheckCredentialHealthAsync(CancellationToken ct = default)
+    {
+        var issues = new List<CredentialHealthIssueDto>();
+
+        // ── 1. SystemConfiguration ─────────────────────────────────────────────
+        // Single-row global settings in the master schema.
+        var sysConfig = await GetOrCreateAsync(ct);
+        CheckField(issues, "SystemConfiguration", "SmtpPassword", null, sysConfig.SmtpPassword);
+        CheckField(issues, "SystemConfiguration", "AiClaudeApiKey", null, sysConfig.AiClaudeApiKey);
+        CheckField(issues, "SystemConfiguration", "AiOpenAiApiKey", null, sysConfig.AiOpenAiApiKey);
+        CheckField(issues, "SystemConfiguration", "AiGeminiApiKey", null, sysConfig.AiGeminiApiKey);
+        CheckField(issues, "SystemConfiguration", "AzureBlobConnectionString", null, sysConfig.AzureBlobConnectionString);
+
+        // ── 2. CompanySystemSettings (per tenant) ──────────────────────────────
+        // One row per registered company. Check all companies regardless of IsActive/IsProvisioned
+        // so the admin sees the full picture after a key-ring loss.
+        var companySettings = await _context.CompanySystemSettings
+            .AsNoTracking()
+            .ToListAsync(ct);
+
+        foreach (var company in companySettings)
+        {
+            var cid = company.CompanyId;
+            CheckField(issues, "CompanySystemSettings", "SmtpPassword", cid, company.SmtpPassword);
+            CheckField(issues, "CompanySystemSettings", "AiClaudeApiKey", cid, company.AiClaudeApiKey);
+            CheckField(issues, "CompanySystemSettings", "AiOpenAiApiKey", cid, company.AiOpenAiApiKey);
+            CheckField(issues, "CompanySystemSettings", "AiGeminiApiKey", cid, company.AiGeminiApiKey);
+            CheckField(issues, "CompanySystemSettings", "GoogleDriveAccessToken", cid, company.GoogleDriveAccessToken);
+            CheckField(issues, "CompanySystemSettings", "GoogleDriveRefreshToken", cid, company.GoogleDriveRefreshToken);
+            CheckField(issues, "CompanySystemSettings", "OneDriveAccessToken", cid, company.OneDriveAccessToken);
+            CheckField(issues, "CompanySystemSettings", "OneDriveRefreshToken", cid, company.OneDriveRefreshToken);
+            CheckField(issues, "CompanySystemSettings", "AzureBlobConnectionString", cid, company.AzureBlobConnectionString);
+        }
+
+        // ── 3. PaymentMatchingSystemSettings ──────────────────────────────────
+        // Single-row settings for the IMAP payment-matching worker.
+        var paySettings = await _context.PaymentMatchingSystemSettings
+            .AsNoTracking()
+            .OrderBy(p => p.Id)
+            .FirstOrDefaultAsync(ct);
+
+        if (paySettings != null)
+            CheckField(issues, "PaymentMatchingSystemSettings", "ImapPasswordEncrypted", null, paySettings.ImapPasswordEncrypted);
+
+        _logger.LogInformation(
+            "Credential health check completed — {IssueCount} issue(s) found",
+            issues.Count);
+
+        return new CredentialHealthDto
+        {
+            Healthy = issues.Count == 0,
+            Issues = issues
+        };
+    }
+
+    /// <summary>
+    /// Helper: checks a single encrypted field and appends an issue entry when it is corrupt.
+    /// Skips null/empty fields (not configured = healthy by definition).
+    /// </summary>
+    private void CheckField(
+        List<CredentialHealthIssueDto> issues,
+        string entity,
+        string field,
+        long? companyId,
+        string? encryptedValue)
+    {
+        if (_credentialProtector.IsHealthy(encryptedValue))
+            return;
+
+        _logger.LogWarning(
+            "Corrupt credential detected — Entity: {Entity}, Field: {Field}, CompanyId: {CompanyId}",
+            entity, field, companyId?.ToString() ?? "N/A");
+
+        issues.Add(new CredentialHealthIssueDto
+        {
+            Entity = entity,
+            Field = field,
+            CompanyId = companyId,
+            Status = "corrupt"
+        });
+    }
+
     /// <summary>
     /// Maps the SystemConfiguration entity to a DTO for API responses.
     /// SmtpPassword is NOT included — only a HasSmtpPassword flag.

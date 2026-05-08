@@ -1547,6 +1547,27 @@
   <data name="IssueFinalInvoice_AddItems" xml:space="preserve"><value>Final invoice items</value></data>
   <data name="IssueFinalInvoice_AddAtLeastOneItem" xml:space="preserve"><value>Please add at least one invoice item.</value></data>
 
+  <!-- ── Credential Health (issue #109 follow-up) ──────────────────────────── -->
+  <data name="CredentialHealth_Warning" xml:space="preserve"><value>Corrupted credentials</value></data>
+  <data name="CredentialHealth_Description" xml:space="preserve"><value>The following stored credentials need to be re-saved. Decryption failed, likely due to encryption key loss after a server restart.</value></data>
+  <data name="CredentialHealth_Entity_SystemConfiguration" xml:space="preserve"><value>System Configuration</value></data>
+  <data name="CredentialHealth_Entity_CompanySystemSettings" xml:space="preserve"><value>Company Settings</value></data>
+  <data name="CredentialHealth_Entity_PaymentMatchingSystemSettings" xml:space="preserve"><value>Payment Matching Settings</value></data>
+  <data name="CredentialHealth_Field_SmtpPassword" xml:space="preserve"><value>SMTP Password</value></data>
+  <data name="CredentialHealth_Field_AiClaudeApiKey" xml:space="preserve"><value>Claude API Key</value></data>
+  <data name="CredentialHealth_Field_AiOpenAiApiKey" xml:space="preserve"><value>OpenAI API Key</value></data>
+  <data name="CredentialHealth_Field_AiGeminiApiKey" xml:space="preserve"><value>Gemini API Key</value></data>
+  <data name="CredentialHealth_Field_AzureBlobConnectionString" xml:space="preserve"><value>Azure Blob Storage Connection</value></data>
+  <data name="CredentialHealth_Field_GoogleDriveAccessToken" xml:space="preserve"><value>Google Drive Access Token</value></data>
+  <data name="CredentialHealth_Field_GoogleDriveRefreshToken" xml:space="preserve"><value>Google Drive Refresh Token</value></data>
+  <data name="CredentialHealth_Field_OneDriveAccessToken" xml:space="preserve"><value>OneDrive Access Token</value></data>
+  <data name="CredentialHealth_Field_OneDriveRefreshToken" xml:space="preserve"><value>OneDrive Refresh Token</value></data>
+  <data name="CredentialHealth_Field_ImapPasswordEncrypted" xml:space="preserve"><value>IMAP Password</value></data>
+  <data name="CredentialHealth_CompanyId" xml:space="preserve"><value>Company ID</value></data>
+  <data name="CredentialHealth_GoToSystemSettings" xml:space="preserve"><value>System Settings</value></data>
+  <data name="CredentialHealth_GoToCompanySettings" xml:space="preserve"><value>Company Settings</value></data>
+  <data name="CredentialHealth_GoToPaymentSettings" xml:space="preserve"><value>Payment Matching</value></data>
+
   <!-- ── EPO export section on VatReport page (issue #40) ─────────────────── -->
   <data name="EpoExportSection" xml:space="preserve"><value>EPO Export</value></data>
   <data name="EpoYear" xml:space="preserve"><value>Year</value></data>

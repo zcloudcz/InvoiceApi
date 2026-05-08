@@ -175,14 +175,44 @@ a zavolá `GetPropertiesAsync`. Vždy vrátí HTTP 200 s `{ success: bool, error
 mohl zobrazit error bez řešení HTTP status kódů. Stejný endpoint je dostupný i v Azure Functions
 přes `SystemConfigurationFunctions.SystemConfiguration_TestBlobConnection`.
 
+#### Credential health check endpoint
+
+`GET /api/system-configuration/credential-health` (SysAdmin only) —
+volá `ISystemConfigurationService.CheckCredentialHealthAsync()`, která prochází všechna zašifrovaná pole
+v `SystemConfiguration`, `CompanySystemSettings` (per tenant) a `PaymentMatchingSystemSettings` a testuje
+každé přes `ICredentialProtector.IsHealthy()`.
+
+Vrátí HTTP 200 s `CredentialHealthDto`:
+```json
+{
+  "healthy": false,
+  "issues": [
+    { "entity": "SystemConfiguration", "field": "SmtpPassword", "companyId": null, "status": "corrupt" },
+    { "entity": "CompanySystemSettings", "field": "AiClaudeApiKey", "companyId": 42, "status": "corrupt" }
+  ]
+}
+```
+
+Pokud `healthy = false`, SystemSettings.razor zobrazí varovný banner. Endpoint je dostupný i v Azure
+Functions přes `SystemConfigurationFunctions.SystemConfiguration_GetCredentialHealth`.
+
+#### IsHealthy detection logic
+
+`ICredentialProtector.IsHealthy(string?)`:
+- `null`/`""` → `true` (nezkonfigurováno není chyba)
+- Po `Decrypt()`: pokud výsledek začíná `"CfDJ8"` (base64 prefix Data Protection payloadu), decryption selhal → `false`
+- Pokud `Decrypt()` vrátí referenčně stejný string (objekt se nezměnil) → `false`
+- Jinak → `true`
+
 | Co | Kde |
 |----|-----|
 | Encrypt | `Fakvio.Infrastructure/Service/CredentialProtector.cs:49-56` |
 | Decrypt | `Fakvio.Infrastructure/Service/CredentialProtector.cs:59-80` |
+| IsHealthy | `Fakvio.Infrastructure/Service/CredentialProtector.cs:82-110` |
 | Algoritmus | Data Protection API (AES-256-CBC + HMACSHA256) |
 | Purpose | `"Fakvio.Credentials.v1"` — **immutable**. Změna purpose = nemožnost decrypt všech existujících záznamů. |
 
-**Zero-downtime migrace plaintext → encrypted**: Decrypt catchne `CryptographicException` a vrátí původní hodnotu (legacy plaintext). Při dalším save se hodnota uloží už zašifrovaně.
+**Zero-downtime migrace plaintext → encrypted**: Decrypt catchne `CryptographicException` a vrátí původní hodnotu (legacy plaintext). Při dalším save se hodnota uloží už zašifrovaně. Legacy plaintext `IsHealthy` vrátí `true` (je použitelný) — na rozdíl od corrupt ciphertextu který vrátí `false` (nepoužitelný garbage).
 
 ### 2.7 Data Protection key persistence (KRITICKÉ — issue #109)
 

@@ -78,4 +78,24 @@ public class SystemConfigurationController : ControllerBase
         // This keeps the UI logic simple: check result.success instead of catching HTTP errors.
         return Ok(new { result.Success, result.Error });
     }
+
+    /// <summary>
+    /// Checks the health of all encrypted credentials stored in the system.
+    ///
+    /// Returns HTTP 200 with a report listing any corrupt fields.
+    /// Healthy = true means all credentials can be decrypted correctly.
+    /// Healthy = false means at least one credential was encrypted with a key ring that
+    /// is no longer available — typically after Data Protection key loss on server restart
+    /// (see issue #109 for the root cause and fix).
+    ///
+    /// SysAdmin-only: credentials are sensitive metadata, even if their values aren't returned.
+    /// </summary>
+    [HttpGet("credential-health")]
+    [ProducesResponseType(typeof(CredentialHealthDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<CredentialHealthDto>> GetCredentialHealth(CancellationToken ct = default)
+    {
+        _logger.LogInformation("GET /api/system-configuration/credential-health");
+        var result = await _service.CheckCredentialHealthAsync(ct);
+        return Ok(result);
+    }
 }

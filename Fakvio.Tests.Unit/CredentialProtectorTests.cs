@@ -207,4 +207,119 @@ public class CredentialProtectorTests
             "Instances sharing the same ApplicationName must be able to decrypt each other's values. " +
             "This mirrors the production setup where PersistKeysToDbContext shares one key ring.");
     }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // IsHealthy tests
+    // ──────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// IsHealthy returns true for null — field not configured is not an error.
+    /// </summary>
+    [Fact]
+    public void IsHealthy_NullInput_ReturnsTrue()
+    {
+        _protector.IsHealthy(null).ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// IsHealthy returns true for empty string — field cleared is not an error.
+    /// </summary>
+    [Fact]
+    public void IsHealthy_EmptyInput_ReturnsTrue()
+    {
+        _protector.IsHealthy("").ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// A value that was encrypted and can be successfully decrypted is healthy.
+    /// </summary>
+    [Theory]
+    [InlineData("my-smtp-password")]
+    [InlineData("sk-ant-api03-xxxx")]
+    [InlineData("DefaultEndpointsProtocol=https;AccountName=xxx")]
+    public void IsHealthy_ValidEncryptedValue_ReturnsTrue(string plaintext)
+    {
+        // Arrange — encrypt with the same protector instance (same key ring)
+        var encrypted = _protector.Encrypt(plaintext)!;
+
+        // Act
+        var result = _protector.IsHealthy(encrypted);
+
+        // Assert — decryption succeeds → healthy
+        result.ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// A value encrypted with a DIFFERENT key ring cannot be decrypted.
+    /// Decrypt() falls back to returning the raw ciphertext (starts with "CfDJ8").
+    /// IsHealthy must detect this and return false.
+    ///
+    /// This is the core scenario: after a Data Protection key loss (issue #109),
+    /// all previously encrypted fields become corrupt and IsHealthy detects them.
+    /// </summary>
+    [Fact]
+    public void IsHealthy_EncryptedWithDifferentKeyRing_ReturnsFalse()
+    {
+        // Arrange — encrypt with instance1 (simulates old key ring before server restart)
+        var instance1Provider = DataProtectionProvider.Create("Fakvio");
+        var instance1Logger = Substitute.For<ILogger<CredentialProtector>>();
+        var instance1 = new CredentialProtector(instance1Provider, instance1Logger);
+
+        var ciphertext = instance1.Encrypt("secret-password")!;
+
+        // Act — check health using instance2 with a DIFFERENT key ring
+        // (simulates the new key ring created after restart, when old keys are gone)
+        var instance2Provider = DataProtectionProvider.Create("AnotherApp");
+        var instance2Logger = Substitute.For<ILogger<CredentialProtector>>();
+        var instance2 = new CredentialProtector(instance2Provider, instance2Logger);
+
+        var result = instance2.IsHealthy(ciphertext);
+
+        // Assert — cross-key-ring decrypt fails → not healthy
+        result.ShouldBeFalse("A ciphertext from a different key ring must be reported as corrupt.");
+    }
+
+    /// <summary>
+    /// A legacy plaintext value (stored before encryption was introduced) is detected
+    /// as not a ciphertext and returned unchanged by Decrypt().
+    ///
+    /// Legacy plaintext does NOT start with "CfDJ8" and is NOT reference-equal to the
+    /// encrypted value (because there is no encrypted value — this IS the plaintext).
+    /// IsHealthy should return TRUE for legacy plaintext: the service can still USE it,
+    /// and the admin doesn't need to re-save (the next save will encrypt it automatically).
+    ///
+    /// This distinguishes legacy plaintext (safe degraded mode) from a corrupt ciphertext
+    /// (broken — service gets garbage password that never works).
+    /// </summary>
+    [Theory]
+    [InlineData("legacy-plain-password")]
+    [InlineData("old-smtp-password-from-before-encryption")]
+    public void IsHealthy_LegacyPlaintext_ReturnsTrue(string legacyValue)
+    {
+        // Act — the protector cannot decrypt a plain string (it's not a ciphertext),
+        // so Decrypt() returns it unchanged. But it doesn't start with "CfDJ8".
+        var result = _protector.IsHealthy(legacyValue);
+
+        // Assert — legacy plaintext is usable → report as healthy
+        result.ShouldBeTrue("Legacy plaintext is still usable by services and auto-upgrades on next save.");
+    }
+
+    /// <summary>
+    /// Verifies that the "CfDJ8" prefix detection works for a realistic ciphertext.
+    /// Data Protection payloads in base64 always start with this prefix.
+    /// </summary>
+    [Fact]
+    public void IsHealthy_DetectsCorruptByPrefix()
+    {
+        // Arrange — a realistic Data Protection ciphertext prefix
+        // "CfDJ8" → base64 of the magic header bytes 0x09 0xF0 0xBF
+        const string fakeCiphertext = "CfDJ8aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789...";
+
+        // Act — using a protector that cannot decrypt this (different key ring doesn't matter,
+        // the prefix check fires first after Decrypt() returns the raw value)
+        var result = _protector.IsHealthy(fakeCiphertext);
+
+        // Assert — starts with "CfDJ8" → Decrypt() returned it unchanged → corrupt
+        result.ShouldBeFalse("A value starting with 'CfDJ8' that was not decrypted is corrupt ciphertext.");
+    }
 }

@@ -278,4 +278,228 @@ public class SystemConfigurationServiceTests : IDisposable
         result.Success.ShouldBeFalse();
         result.Error.ShouldNotBeNullOrEmpty();
     }
+
+    // ─── CheckCredentialHealthAsync tests ────────────────────────────────────
+
+    /// <summary>
+    /// When no encrypted credentials are set (fresh install), the health check returns Healthy = true
+    /// with an empty Issues list.
+    /// Null/empty fields are skipped — "not configured" is not an error.
+    /// </summary>
+    [Fact]
+    public async Task CheckCredentialHealthAsync_NoCredentials_ReturnsHealthy()
+    {
+        // Arrange — default row has no credentials set (all null)
+        await _service.GetAsync();
+
+        // IsHealthy mock: always returns true (pass-through protector: null → healthy)
+        _credentialProtector.IsHealthy(Arg.Any<string?>()).Returns(true);
+
+        // Act
+        var result = await _service.CheckCredentialHealthAsync();
+
+        // Assert
+        result.Healthy.ShouldBeTrue();
+        result.Issues.ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// When a SystemConfiguration credential is corrupt, Healthy = false and Issues lists it.
+    /// </summary>
+    [Fact]
+    public async Task CheckCredentialHealthAsync_CorruptSystemConfigSmtp_ReturnsIssue()
+    {
+        // Arrange — seed SystemConfiguration with an encrypted SMTP password
+        _context.Set<SystemConfiguration>().Add(new SystemConfiguration
+        {
+            SmtpPassword = "CfDJ8corrupted-ciphertext",
+            SmtpPort = 587,
+            SmtpSenderEmail = "",
+            SmtpSenderName = "Test",
+            SmtpUseSsl = true,
+            JwtExpirationHours = 24,
+            CreatedAt = DateTime.UtcNow
+        });
+        await _context.SaveChangesAsync();
+
+        // Configure the mock: SmtpPassword is corrupt, everything else is healthy
+        _credentialProtector.IsHealthy("CfDJ8corrupted-ciphertext").Returns(false);
+        _credentialProtector.IsHealthy(Arg.Is<string?>(s => s != "CfDJ8corrupted-ciphertext")).Returns(true);
+
+        // Act
+        var result = await _service.CheckCredentialHealthAsync();
+
+        // Assert
+        result.Healthy.ShouldBeFalse();
+        result.Issues.Count.ShouldBe(1);
+        result.Issues[0].Entity.ShouldBe("SystemConfiguration");
+        result.Issues[0].Field.ShouldBe("SmtpPassword");
+        result.Issues[0].CompanyId.ShouldBeNull();
+        result.Issues[0].Status.ShouldBe("corrupt");
+    }
+
+    /// <summary>
+    /// When a CompanySystemSettings credential is corrupt, Issues carries the CompanyId
+    /// so the SysAdmin knows which tenant needs re-saving.
+    /// </summary>
+    [Fact]
+    public async Task CheckCredentialHealthAsync_CorruptCompanySmtp_ReturnsIssueWithCompanyId()
+    {
+        // Arrange — seed SystemConfiguration (required by GetOrCreateAsync) + company settings
+        await _service.GetAsync();
+
+        // InMemory DB does not enforce FK constraints, so we can add without a matching Client row.
+        _context.CompanySystemSettings.Add(new CompanySystemSettings
+        {
+            CompanyId = 42,
+            SchemaName = "tenant_42",
+            IsProvisioned = true,
+            IsActive = true,
+            SmtpPassword = "CfDJ8bad-company-smtp",
+            CreatedAt = DateTime.UtcNow
+        });
+        await _context.SaveChangesAsync();
+
+        // Configure mock: company SmtpPassword is corrupt
+        _credentialProtector.IsHealthy("CfDJ8bad-company-smtp").Returns(false);
+        _credentialProtector.IsHealthy(Arg.Is<string?>(s => s != "CfDJ8bad-company-smtp")).Returns(true);
+
+        // Act
+        var result = await _service.CheckCredentialHealthAsync();
+
+        // Assert
+        result.Healthy.ShouldBeFalse();
+        var issue = result.Issues.ShouldHaveSingleItem();
+        issue.Entity.ShouldBe("CompanySystemSettings");
+        issue.Field.ShouldBe("SmtpPassword");
+        issue.CompanyId.ShouldBe(42);
+        issue.Status.ShouldBe("corrupt");
+    }
+
+    /// <summary>
+    /// When PaymentMatchingSystemSettings has a corrupt IMAP password, it appears in Issues.
+    /// </summary>
+    [Fact]
+    public async Task CheckCredentialHealthAsync_CorruptImapPassword_ReturnsIssue()
+    {
+        // Arrange
+        await _service.GetAsync();
+
+        _context.PaymentMatchingSystemSettings.Add(new PaymentMatchingSystemSettings
+        {
+            IsEnabled = true,
+            ImapHost = "imap.example.com",
+            ImapPort = 993,
+            ImapUseSsl = true,
+            ImapUsername = "user@example.com",
+            ImapPasswordEncrypted = "CfDJ8corrupt-imap-pass",
+            ImapFolder = "INBOX",
+            ProcessedFolder = "Processed",
+            UnroutedFolder = "Unrouted",
+            InboundDomain = "fakvio.cz",
+            PollIntervalMinutes = 30,
+            InboundEmailRetentionDays = 1825,
+            CreatedAt = DateTime.UtcNow
+        });
+        await _context.SaveChangesAsync();
+
+        _credentialProtector.IsHealthy("CfDJ8corrupt-imap-pass").Returns(false);
+        _credentialProtector.IsHealthy(Arg.Is<string?>(s => s != "CfDJ8corrupt-imap-pass")).Returns(true);
+
+        // Act
+        var result = await _service.CheckCredentialHealthAsync();
+
+        // Assert
+        result.Healthy.ShouldBeFalse();
+        var issue = result.Issues.ShouldHaveSingleItem();
+        issue.Entity.ShouldBe("PaymentMatchingSystemSettings");
+        issue.Field.ShouldBe("ImapPasswordEncrypted");
+        issue.CompanyId.ShouldBeNull();
+        issue.Status.ShouldBe("corrupt");
+    }
+
+    /// <summary>
+    /// Multiple corrupt fields across different entities all appear in Issues.
+    /// </summary>
+    [Fact]
+    public async Task CheckCredentialHealthAsync_MultipleCorruptFields_ReturnsAllIssues()
+    {
+        // Arrange — corrupt SMTP in system config + corrupt IMAP
+        _context.Set<SystemConfiguration>().Add(new SystemConfiguration
+        {
+            SmtpPassword = "CfDJ8smtp-corrupt",
+            AiClaudeApiKey = "CfDJ8claude-corrupt",
+            SmtpPort = 587,
+            SmtpSenderEmail = "",
+            SmtpSenderName = "Test",
+            SmtpUseSsl = true,
+            JwtExpirationHours = 24,
+            CreatedAt = DateTime.UtcNow
+        });
+
+        _context.PaymentMatchingSystemSettings.Add(new PaymentMatchingSystemSettings
+        {
+            ImapPasswordEncrypted = "CfDJ8imap-corrupt",
+            ImapHost = "imap.example.com",
+            ImapPort = 993,
+            ImapUseSsl = true,
+            ImapUsername = "u",
+            ImapFolder = "INBOX",
+            ProcessedFolder = "Processed",
+            UnroutedFolder = "Unrouted",
+            InboundDomain = "fakvio.cz",
+            PollIntervalMinutes = 30,
+            InboundEmailRetentionDays = 1825,
+            CreatedAt = DateTime.UtcNow
+        });
+        await _context.SaveChangesAsync();
+
+        // All three specific values are corrupt
+        _credentialProtector.IsHealthy(Arg.Is<string?>(s =>
+            s == "CfDJ8smtp-corrupt" || s == "CfDJ8claude-corrupt" || s == "CfDJ8imap-corrupt"))
+            .Returns(false);
+        _credentialProtector.IsHealthy(Arg.Is<string?>(s =>
+            s != "CfDJ8smtp-corrupt" && s != "CfDJ8claude-corrupt" && s != "CfDJ8imap-corrupt"))
+            .Returns(true);
+
+        // Act
+        var result = await _service.CheckCredentialHealthAsync();
+
+        // Assert
+        result.Healthy.ShouldBeFalse();
+        result.Issues.Count.ShouldBe(3);
+        result.Issues.ShouldContain(i => i.Entity == "SystemConfiguration" && i.Field == "SmtpPassword");
+        result.Issues.ShouldContain(i => i.Entity == "SystemConfiguration" && i.Field == "AiClaudeApiKey");
+        result.Issues.ShouldContain(i => i.Entity == "PaymentMatchingSystemSettings" && i.Field == "ImapPasswordEncrypted");
+    }
+
+    /// <summary>
+    /// When all credentials are healthy, Healthy = true and Issues is empty.
+    /// </summary>
+    [Fact]
+    public async Task CheckCredentialHealthAsync_AllCredentialsHealthy_ReturnsHealthyTrue()
+    {
+        // Arrange — seed with encrypted (healthy) credentials
+        _context.Set<SystemConfiguration>().Add(new SystemConfiguration
+        {
+            SmtpPassword = "encrypted-but-healthy",
+            SmtpPort = 587,
+            SmtpSenderEmail = "",
+            SmtpSenderName = "Test",
+            SmtpUseSsl = true,
+            JwtExpirationHours = 24,
+            CreatedAt = DateTime.UtcNow
+        });
+        await _context.SaveChangesAsync();
+
+        // All fields are healthy
+        _credentialProtector.IsHealthy(Arg.Any<string?>()).Returns(true);
+
+        // Act
+        var result = await _service.CheckCredentialHealthAsync();
+
+        // Assert
+        result.Healthy.ShouldBeTrue();
+        result.Issues.ShouldBeEmpty();
+    }
 }

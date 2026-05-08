@@ -37,4 +37,12 @@ public class SystemConfigurationApiService : ApiClientBase
     /// </summary>
     public async Task<BlobConnectionTestResultDto?> TestBlobConnectionAsync()
         => await PostWithoutBodyAsync<BlobConnectionTestResultDto>("/api/system-configuration/test-blob-connection");
+
+    /// <summary>
+    /// Checks the health of all encrypted credentials.
+    /// Returns null on HTTP error (handled by caller).
+    /// Healthy = false means some credentials are corrupt (key-ring loss) — show warning banner.
+    /// </summary>
+    public async Task<CredentialHealthDto?> GetCredentialHealthAsync()
+        => await GetAsync<CredentialHealthDto>("/api/system-configuration/credential-health");
 }

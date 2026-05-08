@@ -396,7 +396,9 @@ Systémové šablony (typ = System) jsou sdílené a slouží jako výchozí pro
 **Co se stane při ztrátě klíčů** (restart bez persistovaných klíčů):
 - CredentialProtector.Decrypt zachytí CryptographicException a vrátí raw ciphertext jako "plaintext"
 - Služby (IMAP, SMTP, AI) dostanou neplatné heslo → `AuthenticationException`
-- **Řešení:** Uživatelé musí znovu uložit všechna hesla v UI
+- **Diagnostika:** Na stránce Systémová nastavení se zobrazí varovný banner s výpisem poškozených polí
+- **Detekce via API:** `GET /api/system-configuration/credential-health` (SysAdmin only) — vrací `{ healthy: bool, issues: [...] }`
+- **Řešení:** SysAdmin znovu uloží příslušná hesla/klíče v UI (SMTP, IMAP, AI API klíče, Azure Blob)
 
 **Preventivní kontrola:** Ověřte, že `ServiceCollectionExtensions.cs` obsahuje:
 ```

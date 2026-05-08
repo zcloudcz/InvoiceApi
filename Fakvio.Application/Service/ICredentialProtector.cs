@@ -44,4 +44,25 @@ public interface ICredentialProtector
     /// <param name="ciphertext">The encrypted credential from the database.</param>
     /// <returns>Decrypted plaintext credential, or original value if not encrypted.</returns>
     string? Decrypt(string? ciphertext);
+
+    /// <summary>
+    /// Checks whether a stored encrypted credential can be successfully decrypted
+    /// with the current Data Protection key ring.
+    ///
+    /// Returns true when the value is:
+    ///   - null or empty (field not configured — healthy by definition)
+    ///   - successfully decrypted AND the decrypted result does NOT start with "CfDJ8"
+    ///     (the base64 prefix of a Data Protection ciphertext payload)
+    ///
+    /// Returns false when:
+    ///   - Decryption fails (wrong/lost key ring) — Decrypt() falls back to returning
+    ///     the raw ciphertext unchanged, which still starts with "CfDJ8".
+    ///
+    /// Junior note: "CfDJ8" is always the start of an ASP.NET Core Data Protection
+    /// ciphertext when base64-encoded. If we decrypt and still see this prefix, the
+    /// decryption silently failed and we got back the original garbage.
+    /// </summary>
+    /// <param name="encryptedValue">Encrypted credential value from the database.</param>
+    /// <returns>True if healthy (null, empty, or correctly decryptable); false if corrupt.</returns>
+    bool IsHealthy(string? encryptedValue);
 }

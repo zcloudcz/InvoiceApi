@@ -11,6 +11,47 @@
 <MudText Typo="Typo.h3" GutterBottom="true">@L["SystemSettings_Title"]</MudText>
 <MudText Class="mb-6" Color="Color.Secondary">@L["SystemSettings_Subtitle"]</MudText>
 
+@* Credential health warning banner — shown when encrypted credentials cannot be decrypted
+   (e.g. after Data Protection key loss on restart, see issue #109).
+   Loaded once on page init and cached — does NOT refresh on every navigation. *@
+@if (_credentialHealth?.Healthy == false)
+{
+    <MudAlert Severity="Severity.Warning" Class="mb-4" Icon="@Icons.Material.Filled.LockOpen">
+        <MudText Typo="Typo.subtitle1"><strong>@L["CredentialHealth_Warning"]</strong></MudText>
+        <MudText Class="mb-2">@L["CredentialHealth_Description"]</MudText>
+        <MudList T="string" Dense="true">
+            @foreach (var issue in _credentialHealth.Issues)
+            {
+                <MudListItem T="string" Icon="@Icons.Material.Filled.Warning">
+                    @GetEntityLabel(issue.Entity)
+                    @if (issue.CompanyId.HasValue)
+                    {
+                        <text> (@L["CredentialHealth_CompanyId"] @issue.CompanyId)</text>
+                    }
+                    <text> — @GetFieldLabel(issue.Field)</text>
+                </MudListItem>
+            }
+        </MudList>
+        <div class="d-flex gap-2 mt-2">
+            <MudButton Variant="Variant.Text" Color="Color.Warning" Href="/system-settings">
+                @L["CredentialHealth_GoToSystemSettings"]
+            </MudButton>
+            @if (_credentialHealth.Issues.Any(i => i.Entity == "CompanySystemSettings"))
+            {
+                <MudButton Variant="Variant.Text" Color="Color.Warning" Href="/companies">
+                    @L["CredentialHealth_GoToCompanySettings"]
+                </MudButton>
+            }
+            @if (_credentialHealth.Issues.Any(i => i.Entity == "PaymentMatchingSystemSettings"))
+            {
+                <MudButton Variant="Variant.Text" Color="Color.Warning" Href="/sysadmin/payment-matching">
+                    @L["CredentialHealth_GoToPaymentSettings"]
+                </MudButton>
+            }
+        </div>
+    </MudAlert>
+}
+
 @if (_loading)
 {
     <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-4" />
@@ -365,10 +406,59 @@ else
     private bool _saving = false;
     /// <summary>True while the blob connection test is in progress — disables the button and shows spinner.</summary>
     private bool _testingBlobConnection = false;
+    /// <summary>
+    /// Credential health result — null until loaded, then cached for the lifetime of this page.
+    /// We check once on page load and do not poll — the banner disappears when the user re-saves
+    /// the affected field and navigates away and back.
+    /// </summary>
+    private CredentialHealthDto? _credentialHealth;
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadConfig();
+        // Load config and credential health in parallel for faster page load.
+        await Task.WhenAll(LoadConfig(), LoadCredentialHealth());
+    }
+
+    /// <summary>
+    /// Loads the credential health report from the API.
+    /// Silently ignores errors — a failed health check is non-critical.
+    /// The banner simply stays hidden if the API call fails.
+    /// </summary>
+    private async Task LoadCredentialHealth()
+    {
+        try
+        {
+            _credentialHealth = await ConfigService.GetCredentialHealthAsync();
+        }
+        catch (Exception ex)
+        {
+            // Non-fatal — log and continue. The settings page remains usable.
+            _logger.LogWarning(ex, "Failed to load credential health status");
+        }
+    }
+
+    /// <summary>
+    /// Returns a localized display name for a credential entity name.
+    /// Falls back to the raw entity name when no localization key exists.
+    /// </summary>
+    private string GetEntityLabel(string entity) => entity switch
+    {
+        "SystemConfiguration" => L["CredentialHealth_Entity_SystemConfiguration"].Value,
+        "CompanySystemSettings" => L["CredentialHealth_Entity_CompanySystemSettings"].Value,
+        "PaymentMatchingSystemSettings" => L["CredentialHealth_Entity_PaymentMatchingSystemSettings"].Value,
+        _ => entity
+    };
+
+    /// <summary>
+    /// Returns a localized display name for an encrypted field name.
+    /// Falls back to the raw field name when no localization key exists.
+    /// </summary>
+    private string GetFieldLabel(string field)
+    {
+        var key = $"CredentialHealth_Field_{field}";
+        var localized = L[key];
+        // If the localizer returns the key unchanged, no translation exists — use the raw name.
+        return localized.ResourceNotFound ? field : localized.Value;
     }
 
     /// <summary>

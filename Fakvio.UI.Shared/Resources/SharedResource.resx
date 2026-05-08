@@ -1547,6 +1547,27 @@
   <data name="IssueFinalInvoice_AddItems" xml:space="preserve"><value>Položky finální faktury</value></data>
   <data name="IssueFinalInvoice_AddAtLeastOneItem" xml:space="preserve"><value>Přidejte alespoň jednu položku faktury.</value></data>
 
+  <!-- ── Credential Health (issue #109 follow-up) ──────────────────────────── -->
+  <data name="CredentialHealth_Warning" xml:space="preserve"><value>Poškozené přihlašovací údaje</value></data>
+  <data name="CredentialHealth_Description" xml:space="preserve"><value>Následující uložené přihlašovací údaje je nutné znovu uložit. Šifrování selhalo, pravděpodobně z důvodu ztráty šifrovacích klíčů po restartu serveru.</value></data>
+  <data name="CredentialHealth_Entity_SystemConfiguration" xml:space="preserve"><value>Systémová konfigurace</value></data>
+  <data name="CredentialHealth_Entity_CompanySystemSettings" xml:space="preserve"><value>Nastavení firmy</value></data>
+  <data name="CredentialHealth_Entity_PaymentMatchingSystemSettings" xml:space="preserve"><value>Párování plateb</value></data>
+  <data name="CredentialHealth_Field_SmtpPassword" xml:space="preserve"><value>SMTP heslo</value></data>
+  <data name="CredentialHealth_Field_AiClaudeApiKey" xml:space="preserve"><value>Claude API klíč</value></data>
+  <data name="CredentialHealth_Field_AiOpenAiApiKey" xml:space="preserve"><value>OpenAI API klíč</value></data>
+  <data name="CredentialHealth_Field_AiGeminiApiKey" xml:space="preserve"><value>Gemini API klíč</value></data>
+  <data name="CredentialHealth_Field_AzureBlobConnectionString" xml:space="preserve"><value>Azure Blob Storage připojení</value></data>
+  <data name="CredentialHealth_Field_GoogleDriveAccessToken" xml:space="preserve"><value>Google Drive přístupový token</value></data>
+  <data name="CredentialHealth_Field_GoogleDriveRefreshToken" xml:space="preserve"><value>Google Drive obnovovací token</value></data>
+  <data name="CredentialHealth_Field_OneDriveAccessToken" xml:space="preserve"><value>OneDrive přístupový token</value></data>
+  <data name="CredentialHealth_Field_OneDriveRefreshToken" xml:space="preserve"><value>OneDrive obnovovací token</value></data>
+  <data name="CredentialHealth_Field_ImapPasswordEncrypted" xml:space="preserve"><value>IMAP heslo</value></data>
+  <data name="CredentialHealth_CompanyId" xml:space="preserve"><value>Firma ID</value></data>
+  <data name="CredentialHealth_GoToSystemSettings" xml:space="preserve"><value>Systémová nastavení</value></data>
+  <data name="CredentialHealth_GoToCompanySettings" xml:space="preserve"><value>Nastavení firmy</value></data>
+  <data name="CredentialHealth_GoToPaymentSettings" xml:space="preserve"><value>Párování plateb</value></data>
+
   <!-- ── EPO export section on VatReport page (issue #40) ─────────────────── -->
   <data name="EpoExportSection" xml:space="preserve"><value>EPO export</value></data>
   <data name="EpoYear" xml:space="preserve"><value>Rok</value></data>

@@ -78,4 +78,37 @@ public class CredentialProtector : ICredentialProtector
             return ciphertext;
         }
     }
+
+    /// <inheritdoc />
+    public bool IsHealthy(string? encryptedValue)
+    {
+        // Null/empty = field not configured. That is not an error — report as healthy
+        // so we don't alert on fields the admin hasn't set up yet.
+        if (string.IsNullOrEmpty(encryptedValue))
+            return true;
+
+        // Attempt decryption. Decrypt() never throws — on failure it returns the raw
+        // ciphertext unchanged (migration-safety fallback).
+        var decrypted = Decrypt(encryptedValue);
+
+        // If the decrypted value starts with "CfDJ8", the decryption silently failed:
+        // Decrypt() returned the original ciphertext untouched.
+        //
+        // "CfDJ8" is the invariant base64 prefix of every ASP.NET Core Data Protection
+        // payload (magic bytes 0x09 0xF0 0xBF, then version byte and GUID key-id).
+        // This prefix is stable across all Data Protection versions and key rings.
+        //
+        // Two outcomes for Decrypt() on an encrypted value:
+        //   a) Correct key ring → decrypted plaintext (never starts with "CfDJ8") → healthy
+        //   b) Wrong key ring  → raw ciphertext returned unchanged → starts with "CfDJ8" → corrupt
+        //
+        // Legacy plaintext (stored before encryption was added) also comes back through the
+        // Decrypt() catch path, BUT it does NOT start with "CfDJ8" (it's a real password/key),
+        // so it is correctly reported as healthy. Services can still USE it; the next save
+        // will encrypt it automatically (zero-downtime migration).
+        if (decrypted != null && decrypted.StartsWith("CfDJ8", StringComparison.Ordinal))
+            return false;
+
+        return true;
+    }
 }
