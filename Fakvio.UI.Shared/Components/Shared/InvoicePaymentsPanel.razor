@@ -2,7 +2,6 @@
 @using Fakvio.Contracts.Dto.PaymentMatching
 @using Fakvio.Domain.Enums
 @inject PaymentMatchingApiService PaymentApi
-@inject FakvioService InvoiceApi
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject IStringLocalizer<SharedResource> L
@@ -12,7 +11,7 @@
       - Progress bar PaidAmount / TotalWithVat
       - List of PaymentMatch rows (date, amount, source, note, Unmatch button)
       - "Match payment manually..." button → MatchPaymentDialog
-      - "Automaticky spárovat" button → calls auto-match API, then AutoMatchDialog
+    Auto-match has been moved to the Payments overview page (issue #125).
     Parent controls when to refresh by toggling the RefreshTrigger parameter.
 *@
 
@@ -25,17 +24,6 @@
                 @L["InvoicePayments_Panel_Title"]
             </MudText>
             <MudSpacer />
-            <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Secondary"
-                       StartIcon="@Icons.Material.Filled.AutoFixHigh"
-                       Class="mr-2"
-                       OnClick="TriggerAutoMatchAsync"
-                       Disabled="_autoMatchBusy">
-                @if (_autoMatchBusy)
-                {
-                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-1" />
-                }
-                @L["AutoMatch_Button"]
-            </MudButton>
             <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary"
                        StartIcon="@Icons.Material.Filled.Link"
                        OnClick="OpenMatchDialog">
@@ -104,7 +92,6 @@
 
     private List<PaymentMatchRow>? _matches;
     private bool _loading;
-    private bool _autoMatchBusy;
     private int _lastTrigger = -1;
 
     /// <summary>Local row type — we read PaymentMatch via the BankTransaction details endpoint.</summary>
@@ -173,61 +160,6 @@
         finally
         {
             _loading = false;
-        }
-    }
-
-    /// <summary>
-    /// Called when user clicks "Automaticky spárovat".
-    /// Calls the API to find a matching transaction, then shows a confirmation dialog.
-    /// </summary>
-    private async Task TriggerAutoMatchAsync()
-    {
-        if (Invoice == null) return;
-        _autoMatchBusy = true;
-        try
-        {
-            // Call backend to search for a matching unmatched transaction.
-            var proposal = await InvoiceApi.FindAutoMatchAsync(Invoice.Id);
-
-            if (proposal == null)
-            {
-                // HTTP 204 — no match found.
-                Snackbar.Add(L["AutoMatch_NotFound"], Severity.Info);
-                return;
-            }
-
-            // Show the confirmation dialog with the transaction details.
-            var parameters = new DialogParameters { ["Proposal"] = proposal };
-            var dialog = await DialogService.ShowAsync<AutoMatchDialog>(
-                L["AutoMatch_DialogTitle"], parameters);
-            var result = await dialog.Result;
-
-            if (result?.Canceled == true) return;
-
-            // User confirmed — create the PaymentMatch on the server.
-            var confirmResult = await PaymentApi.ConfirmAutoMatchAsync(new ConfirmAutoMatchRequest
-            {
-                BankTransactionId = proposal.BankTransactionId,
-                InvoiceId = Invoice.Id,
-            });
-
-            if (confirmResult != null)
-            {
-                Snackbar.Add(L["AutoMatch_Success"], Severity.Success);
-                await OnChanged.InvokeAsync();
-            }
-            else
-            {
-                Snackbar.Add(L["AutoMatch_Error"], Severity.Error);
-            }
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"{L["AutoMatch_Error"]}: {ex.Message}", Severity.Error);
-        }
-        finally
-        {
-            _autoMatchBusy = false;
         }
     }
 

@@ -87,6 +87,16 @@ public class PaymentMatchingApiService : ApiClientBase
     // ─── Auto-match ──────────────────────────────────────────────────────────
 
     /// <summary>
+    /// Reverse auto-match: given an unmatched incoming bank transaction ID, asks the server
+    /// to find the best candidate issued invoice.
+    /// Calls POST /api/payment-matching/transactions/{id}/auto-match.
+    /// Returns null when no invoice candidate is found (HTTP 204) or on error.
+    /// </summary>
+    public Task<TransactionAutoMatchProposalDto?> FindAutoMatchForTransactionAsync(long transactionId) =>
+        PostWithoutBodyAsync<TransactionAutoMatchProposalDto>(
+            $"api/payment-matching/transactions/{transactionId}/auto-match");
+
+    /// <summary>
     /// Calls POST /api/payment-matching/confirm-auto-match.
     /// Returns null when the server responds with 4xx/5xx.
     /// </summary>

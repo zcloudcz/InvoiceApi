@@ -1,0 +1,82 @@
+@using Fakvio.Contracts.Dto.PaymentMatching
+@inject IStringLocalizer<SharedResource> L
+
+@*
+    Confirmation dialog for the "Spárovat" auto-match button on the Payments page.
+    Shown when the server finds a matching Invoice for an unmatched BankTransaction.
+    The user sees the invoice details and can confirm or cancel the match.
+
+    This is the "reverse" of AutoMatchDialog — AutoMatchDialog shows a bank transaction
+    found for a given invoice, while this dialog shows an invoice found for a given transaction.
+*@
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.AutoFixHigh" Class="mr-1" />
+            @L["TxAutoMatch_DialogTitle"]
+        </MudText>
+    </TitleContent>
+
+    <DialogContent>
+        <MudText Class="mb-3">@L["TxAutoMatch_DialogBody"]</MudText>
+
+        @if (Proposal != null)
+        {
+            <MudSimpleTable Dense="true" Striped="false" Bordered="true" Class="mb-2">
+                <tbody>
+                    <tr>
+                        <td><strong>@L["TxAutoMatch_Col_DocumentNumber"]</strong></td>
+                        <td>@Proposal.DocumentNumber</td>
+                    </tr>
+                    @if (!string.IsNullOrWhiteSpace(Proposal.ClientName))
+                    {
+                        <tr>
+                            <td><strong>@L["TxAutoMatch_Col_Client"]</strong></td>
+                            <td>@Proposal.ClientName</td>
+                        </tr>
+                    }
+                    <tr>
+                        <td><strong>@L["TxAutoMatch_Col_Remaining"]</strong></td>
+                        <td>@Proposal.Remaining.ToString("N2") @Proposal.CurrencyCode</td>
+                    </tr>
+                    @if (!string.IsNullOrWhiteSpace(Proposal.VariableSymbol))
+                    {
+                        <tr>
+                            <td><strong>@L["TxAutoMatch_Col_VS"]</strong></td>
+                            <td>@Proposal.VariableSymbol</td>
+                        </tr>
+                    }
+                    @if (Proposal.DueDate.HasValue)
+                    {
+                        <tr>
+                            <td><strong>@L["TxAutoMatch_Col_DueDate"]</strong></td>
+                            <td>@Proposal.DueDate.Value.ToString("dd.MM.yyyy")</td>
+                        </tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+        }
+    </DialogContent>
+
+    <DialogActions>
+        <MudButton Variant="Variant.Text" OnClick="Cancel">
+            @L["AutoMatch_Cancel"]
+        </MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Confirm">
+            <MudIcon Icon="@Icons.Material.Filled.Link" Class="mr-1" />
+            @L["AutoMatch_Confirm"]
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    /// <summary>The invoice proposal to display. Set by the parent via DialogParameters.</summary>
+    [Parameter, EditorRequired] public TransactionAutoMatchProposalDto Proposal { get; set; } = null!;
+
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    private void Confirm() => MudDialog.Close(DialogResult.Ok(true));
+
+    private void Cancel() => MudDialog.Cancel();
+}
