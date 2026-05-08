@@ -320,6 +320,28 @@ public class PaymentMatchingFunctions
     // ─── Auto-match ─────────────────────────────────────────────────────────
 
     /// <summary>
+    /// POST api/payment-matching/transactions/{id}/auto-match
+    /// → <see cref="PaymentMatchingController.FindAutoMatchForTransaction"/>
+    /// Searches for an invoice matching this unmatched bank transaction by VS or amount.
+    /// </summary>
+    [Function("PaymentMatching_FindAutoMatchForTransaction")]
+    public async Task<IActionResult> PaymentMatching_FindAutoMatchForTransaction(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/payment-matching/transactions/{id:long}/auto-match")] HttpRequest req,
+        string id)
+    {
+        if (!long.TryParse(id, out var idParsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
+
+        _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
+
+        if (req.HttpContext.User.Identity?.IsAuthenticated != true)
+            return new UnauthorizedResult();
+
+        var ct = req.HttpContext.RequestAborted;
+        return FunctionResultHelper.Normalize(await _controller.FindAutoMatchForTransaction(idParsed, ct));
+    }
+
+    /// <summary>
     /// POST api/payment-matching/confirm-auto-match
     /// → <see cref="PaymentMatchingController.ConfirmAutoMatch"/>
     /// Body: <see cref="ConfirmAutoMatchRequest"/> with BankTransactionId +
