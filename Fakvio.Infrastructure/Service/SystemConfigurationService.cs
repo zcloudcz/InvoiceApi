@@ -181,7 +181,13 @@ public class SystemConfigurationService : ISystemConfigurationService
         if (!string.IsNullOrWhiteSpace(entity.AzureBlobConnectionString))
         {
             connectionString = _credentialProtector.Decrypt(entity.AzureBlobConnectionString);
-            _logger.LogDebug("Azure Blob test: using connection string from SystemConfiguration");
+            var preview = connectionString?.Length > 30
+                ? connectionString[..30] + "..."
+                : connectionString ?? "(null)";
+            _logger.LogWarning(
+                "Azure Blob test: from DB, decrypted length={Len}, starts with '{Preview}', " +
+                "raw encrypted length={RawLen}",
+                connectionString?.Length ?? 0, preview, entity.AzureBlobConnectionString.Length);
         }
 
         if (connectionString == null)
