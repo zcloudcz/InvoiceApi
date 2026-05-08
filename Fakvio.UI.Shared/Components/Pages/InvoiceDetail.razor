@@ -709,8 +709,7 @@ else
 
     @* File attachments — entity-agnostic component, works for any entity *@
     <FileAttachmentManager EntityName="Invoice"
-                           RecordId="_invoice.Id"
-                           ReadOnly="@(!_isEditing)" />
+                           RecordId="_invoice.Id" />
 
     @* Email send dialog *@
     <MudDialog @bind-Visible="_showEmailDialog" Options="@(new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true })">
