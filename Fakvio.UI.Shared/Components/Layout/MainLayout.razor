@@ -295,8 +295,9 @@
         var customAuth = (CustomAuthenticationStateProvider)AuthStateProvider;
         await customAuth.SetImpersonatedCompanyAsync(companyId, companyName);
 
-        // Force reload to update nav menu and all data
-        Navigation.NavigateTo(Navigation.Uri, forceLoad: true);
+        // Navigate to Dashboard on company change — stale data from previous tenant
+        // would be confusing on any other page.
+        Navigation.NavigateTo("/", forceLoad: true);
     }
 
     private async Task HandleLogoutAsync()
