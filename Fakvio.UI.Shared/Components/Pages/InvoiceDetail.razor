@@ -19,6 +19,7 @@
 @inject IJSRuntime JS
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
+@inject IDialogService DialogService
 @inject IStringLocalizer<SharedResource> L
 
 @* Dynamic page title — adapts to document type in both create and view mode *@
@@ -230,6 +231,12 @@ else
         {
             <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Check"
                        OnClick="MarkAsPaid">@L["Invoice_MarkAsPaid"]</MudButton>
+        }
+        @if (_invoice.Status == EInvoiceStatus.Paid)
+        {
+            @* Visible only when the invoice is in Paid status — lets the user revert an accidental payment mark. *@
+            <MudButton Variant="Variant.Outlined" Color="Color.Warning" StartIcon="@Icons.Material.Filled.MoneyOff"
+                       OnClick="MarkAsUnpaid">@L["Invoice_MarkAsUnpaid"]</MudButton>
         }
         @* PDF download with template selection — split button: primary = default, dropdown = template list *@
         <MudButtonGroup OverrideStyles="false">
@@ -1699,6 +1706,34 @@ else
             if (result != null)
             {
                 Snackbar.Add(L["Invoice_MarkedAsPaid"].Value, Severity.Success);
+                _invoice = result;
+            }
+        }
+        catch (Exception ex) { Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error); }
+    }
+
+    /// <summary>
+    /// Reverts a paid invoice back to Completed status after the user confirms the action.
+    /// Shows a confirmation dialog to prevent accidental removal of payment data.
+    /// </summary>
+    private async Task MarkAsUnpaid()
+    {
+        // Ask for confirmation — this action removes all payment matches.
+        var confirmed = await DialogService.ShowMessageBox(
+            L["Invoice_MarkAsUnpaid"].Value,
+            L["Invoice_MarkAsUnpaidConfirm"].Value,
+            yesText: L["Btn_Confirm"].Value,
+            cancelText: L["Btn_Cancel"].Value);
+
+        if (confirmed != true)
+            return;
+
+        try
+        {
+            var result = await InvoiceService.MarkAsUnpaidAsync(Id);
+            if (result != null)
+            {
+                Snackbar.Add(L["Invoice_MarkAsUnpaidSuccess"].Value, Severity.Success);
                 _invoice = result;
             }
         }

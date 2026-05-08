@@ -216,6 +216,18 @@ public interface IInvoiceService
     /// <param name="cancellationToken">Cancellation token</param>
     Task<List<InvoiceDto>> GetTaxReceiptsForProformaAsync(long proformaId, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Reverts a Paid invoice back to Completed status (marks it as unpaid).
+    /// Unlinks any PaymentMatch records by deleting them and recalculates the invoice.
+    /// Only Paid invoices can be marked as unpaid — other statuses throw InvalidOperationException.
+    /// </summary>
+    /// <param name="invoiceId">Invoice ID</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Updated invoice DTO</returns>
+    /// <exception cref="KeyNotFoundException">Invoice not found</exception>
+    /// <exception cref="InvalidOperationException">Invoice is not in Paid status</exception>
+    Task<InvoiceDto> MarkAsUnpaidAsync(long invoiceId, CancellationToken cancellationToken = default);
+
     // ─── Copy ─────────────────────────────────────────────────────────────────
 
     /// <summary>

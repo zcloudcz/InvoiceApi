@@ -614,6 +614,34 @@ public class InvoiceFunctions
         return FunctionResultHelper.Normalize(await _controller.CopyInvoice(__id_parsed, cancellationToken));
     }
 
+    /// <summary>
+    /// POST api/invoice/{id}/mark-unpaid → InvoiceController.MarkAsUnpaid
+    /// Reverts a Paid invoice back to Completed and removes its PaymentMatch links.
+    /// Route param arrives as string — Azure Functions Isolated Worker cannot bind non-string
+    /// route parameters reliably (FunctionInputConverterException for long/int).
+    /// </summary>
+    [Function("Invoice_MarkAsUnpaid")]
+    public async Task<IActionResult> Invoice_MarkAsUnpaid(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/invoice/{id}/mark-unpaid")] HttpRequest req,
+        string id)
+    {
+        // Parse route parameter '{id}' from string to long.
+        if (!long.TryParse(id, out var __id_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid route parameter 'id': expected a number." });
+
+        // Wire up the controller's HttpContext so it can access User claims, Request, etc.
+        _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
+
+        // Authorization check: [Authorize]
+        if (req.HttpContext.User.Identity?.IsAuthenticated != true)
+            return new UnauthorizedResult();
+
+        var cancellationToken = req.HttpContext.RequestAborted;
+
+        // Call the controller action and normalize the response.
+        return FunctionResultHelper.Normalize(await _controller.MarkAsUnpaid(__id_parsed, cancellationToken));
+    }
+
     [Function("Invoice_RevertToDraft")]
     public async Task<IActionResult> Invoice_RevertToDraft(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/invoice/{id:long}/revert-to-draft")] HttpRequest req, long id)

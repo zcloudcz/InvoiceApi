@@ -552,6 +552,45 @@ public class InvoiceController : ControllerBase
     }
 
     /// <summary>
+    /// Reverts a Paid invoice back to Completed status (marks it as unpaid).
+    /// Removes all linked PaymentMatch records so the bank transactions
+    /// become available for matching again.
+    /// Only Paid invoices can be marked as unpaid — other statuses return 400.
+    /// </summary>
+    /// <param name="id">Invoice ID</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <response code="200">Invoice reverted to Completed status</response>
+    /// <response code="400">Invoice is not in Paid status</response>
+    /// <response code="404">Invoice not found</response>
+    [HttpPost("{id}/mark-unpaid")]
+    [ProducesResponseType(typeof(InvoiceDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<InvoiceDto>> MarkAsUnpaid(
+        long id,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("POST /api/invoice/{Id}/mark-unpaid", id);
+
+        try
+        {
+            var invoice = await _invoiceService.MarkAsUnpaidAsync(id, cancellationToken);
+            _logger.LogInformation("Invoice {Id} marked as unpaid (reverted to Completed)", id);
+            return Ok(invoice);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            _logger.LogWarning("Invoice {Id} not found for mark-unpaid: {Message}", id, ex.Message);
+            return NotFound(new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning("Cannot mark invoice {Id} as unpaid: {Message}", id, ex.Message);
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    /// <summary>
     /// Reverts a Completed invoice back to Draft so it can be fully edited.
     /// Only Completed invoices can be reverted — Paid/Creditnoted return 400.
     /// </summary>

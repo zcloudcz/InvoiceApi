@@ -1330,6 +1330,74 @@ public class InvoiceService : IInvoiceService
         return result;
     }
 
+    // ─── Mark as Unpaid ───────────────────────────────────────────────────────
+
+    /// <inheritdoc />
+    public async Task<InvoiceDto> MarkAsUnpaidAsync(long invoiceId, CancellationToken cancellationToken = default)
+    {
+        // Load the invoice with its PaymentMatch rows so we can unlink them.
+        // Include BankTransaction via PaymentMatch so we can recalculate the transaction's MatchStatus.
+        var invoice = await _context.Invoice
+            .Include(i => i.PaymentMatch)
+                .ThenInclude(m => m.BankTransaction)
+                    .ThenInclude(t => t.PaymentMatch)
+            .FirstOrDefaultAsync(i => i.Id == invoiceId, cancellationToken);
+
+        if (invoice == null)
+            throw new KeyNotFoundException($"Invoice with ID {invoiceId} not found.");
+
+        // Only Paid invoices can be reverted — all other statuses are rejected.
+        if (invoice.Status != EInvoiceStatus.Paid)
+            throw new InvalidOperationException(
+                $"Only paid invoices can be marked as unpaid. Current status: {invoice.Status}");
+
+        _logger.LogInformation(
+            "Marking {DocumentType} {Id} as unpaid (reverting from Paid to Completed)",
+            invoice.DocumentType, invoice.Id);
+
+        // Collect affected bank transactions BEFORE removing the match rows,
+        // so we can still iterate over them and recalculate their MatchStatus.
+        var affectedTransactions = invoice.PaymentMatch
+            .Select(m => m.BankTransaction)
+            .DistinctBy(t => t.Id)
+            .ToList();
+
+        // Remove all PaymentMatch rows that link this invoice to bank transactions.
+        // This mirrors the behaviour of PaymentMatchingService.UnmatchAsync but in bulk —
+        // every payment record tied to this invoice is deleted so the transaction is free
+        // to be matched to a different invoice in the future.
+        _context.PaymentMatch.RemoveRange(invoice.PaymentMatch);
+
+        // Recalculate each affected bank transaction's MatchStatus.
+        // After removing this invoice's matches, sum what is still assigned on the transaction
+        // (other invoice / received-invoice matches from the same transaction, if any).
+        foreach (var tx in affectedTransactions)
+        {
+            var stillAssigned = tx.PaymentMatch
+                .Where(m => m.InvoiceId != invoiceId) // this invoice's rows are being removed
+                .Sum(m => m.MatchedAmount);
+
+            // Mirror PaymentMatchingService.RecalculateTransactionStatus logic:
+            // Unmatched → Matched → PartiallyMatched based on how much is still assigned.
+            if (stillAssigned <= 0)
+                tx.MatchStatus = EMatchStatus.Unmatched;
+            else if (stillAssigned >= tx.Amount)
+                tx.MatchStatus = EMatchStatus.Matched;
+            else
+                tx.MatchStatus = EMatchStatus.PartiallyMatched;
+        }
+
+        // Reset the invoice back to Completed (the state before payment was applied).
+        invoice.Status = EInvoiceStatus.Completed;
+        invoice.PaidAt = null;
+        invoice.PaidAmount = 0;
+
+        await _context.SaveChangesAsync(cancellationToken);
+
+        // Re-fetch with all navigation properties to return a complete DTO.
+        return (await GetInvoiceByIdAsync(invoice.Id, cancellationToken))!;
+    }
+
     // ─── Copy ─────────────────────────────────────────────────────────────────
 
     /// <inheritdoc />

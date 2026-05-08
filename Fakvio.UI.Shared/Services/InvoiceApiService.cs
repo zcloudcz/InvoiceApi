@@ -239,6 +239,16 @@ public class FakvioService : ApiClientBase
     }
 
     /// <summary>
+    /// Reverts a paid invoice back to Completed status (marks it as unpaid).
+    /// Removes all linked payment matches so bank transactions become available again.
+    /// Maps to POST /api/invoice/{id}/mark-unpaid on the backend.
+    /// </summary>
+    public async Task<InvoiceDto?> MarkAsUnpaidAsync(long id)
+    {
+        return await PostWithoutBodyAsync<InvoiceDto>($"/api/invoice/{id}/mark-unpaid");
+    }
+
+    /// <summary>
     /// Sends the invoice as an email with PDF attachment to the specified recipient.
     /// The backend generates the PDF and sends it via configured SMTP.
     /// </summary>
