@@ -84,4 +84,29 @@ public class SystemConfigurationFunctions
         // Call the controller action and normalize the response
         return FunctionResultHelper.Normalize(await _controller.Update(dto!, ct));
     }
+
+    /// <summary>
+    /// POST api/system-configuration/test-blob-connection → SystemConfigurationController.TestBlobConnection
+    /// Tests the configured Azure Blob Storage connection without modifying any data.
+    /// </summary>
+    [Function("SystemConfiguration_TestBlobConnection")]
+    public async Task<IActionResult> SystemConfiguration_TestBlobConnection(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/system-configuration/test-blob-connection")] HttpRequest req)
+    {
+        // Wire up the controller's HttpContext so it can access User claims, Request, etc.
+        _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
+
+        // Authorization check: [Authorize(Roles = "SysAdmin")]
+        if (req.HttpContext.User.Identity?.IsAuthenticated != true)
+            return new UnauthorizedResult();
+
+        // Role check: user must be in one of [SysAdmin]
+        if (!req.HttpContext.User.IsInRole("SysAdmin"))
+            return new ForbidResult();
+
+        var ct = req.HttpContext.RequestAborted;
+
+        // Call the controller action and normalize the response
+        return FunctionResultHelper.Normalize(await _controller.TestBlobConnection(ct));
+    }
 }

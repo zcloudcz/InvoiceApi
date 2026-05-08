@@ -4,6 +4,7 @@ using Fakvio.Domain.Entities;
 using Fakvio.Infrastructure.Data;
 using Fakvio.Infrastructure.Service;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 using Shouldly;
@@ -21,6 +22,8 @@ public class SystemConfigurationServiceTests : IDisposable
 {
     private readonly MasterDbContext _context;
     private readonly SystemConfigurationService _service;
+    private readonly ICredentialProtector _credentialProtector;
+    private readonly IConfiguration _configuration;
 
     public SystemConfigurationServiceTests()
     {
@@ -33,11 +36,15 @@ public class SystemConfigurationServiceTests : IDisposable
         var logger = Substitute.For<ILogger<SystemConfigurationService>>();
 
         // Pass-through credential protector — no real encryption in unit tests
-        var credentialProtector = Substitute.For<ICredentialProtector>();
-        credentialProtector.Encrypt(Arg.Any<string?>()).Returns(ci => ci.Arg<string?>());
-        credentialProtector.Decrypt(Arg.Any<string?>()).Returns(ci => ci.Arg<string?>());
+        _credentialProtector = Substitute.For<ICredentialProtector>();
+        _credentialProtector.Encrypt(Arg.Any<string?>()).Returns(ci => ci.Arg<string?>());
+        _credentialProtector.Decrypt(Arg.Any<string?>()).Returns(ci => ci.Arg<string?>());
 
-        _service = new SystemConfigurationService(_context, credentialProtector, logger);
+        // Empty configuration — individual tests can override via IConfiguration mock
+        _configuration = Substitute.For<IConfiguration>();
+        _configuration["AzureBlobStorage:ConnectionString"].Returns((string?)null);
+
+        _service = new SystemConfigurationService(_context, _credentialProtector, _configuration, logger);
     }
 
     public void Dispose()
@@ -189,5 +196,86 @@ public class SystemConfigurationServiceTests : IDisposable
 
         var count = await _context.Set<SystemConfiguration>().CountAsync();
         count.ShouldBe(1);
+    }
+
+    // ─── TestAzureBlobConnectionAsync tests ──────────────────────────────────
+
+    /// <summary>
+    /// When no connection string is configured anywhere (neither DB nor appsettings),
+    /// the test should return Success = false with a descriptive error.
+    /// No network call is made.
+    /// </summary>
+    [Fact]
+    public async Task TestAzureBlobConnectionAsync_NoConnectionString_ReturnsFalse()
+    {
+        // Arrange — DB has no AzureBlobConnectionString, appsettings returns null (mocked in ctor)
+        await _service.GetAsync(); // Ensure default row exists (no connection string in it)
+
+        // Act
+        var result = await _service.TestAzureBlobConnectionAsync();
+
+        // Assert
+        result.Success.ShouldBeFalse();
+        result.Error.ShouldNotBeNullOrEmpty(); // Must explain why it failed
+    }
+
+    /// <summary>
+    /// When an invalid connection string is stored in SystemConfiguration,
+    /// BlobServiceClient should throw and the service should catch it,
+    /// returning Success = false with the Azure SDK error message.
+    /// </summary>
+    [Fact]
+    public async Task TestAzureBlobConnectionAsync_InvalidConnectionString_ReturnsFalse()
+    {
+        // Arrange — store a syntactically invalid connection string in DB.
+        // The credential protector is a pass-through in tests, so the raw string is stored as-is.
+        _context.Set<SystemConfiguration>().Add(new SystemConfiguration
+        {
+            // "INVALID" is not a valid Azure Blob Storage connection string format
+            AzureBlobConnectionString = "INVALID_CONNECTION_STRING",
+            SmtpPort = 587,
+            SmtpSenderEmail = "",
+            SmtpSenderName = "Test",
+            SmtpUseSsl = true,
+            JwtExpirationHours = 24,
+            CreatedAt = DateTime.UtcNow
+        });
+        await _context.SaveChangesAsync();
+
+        // Act — the Azure SDK should throw when parsing the invalid connection string
+        var result = await _service.TestAzureBlobConnectionAsync();
+
+        // Assert — failure is caught and returned, not re-thrown
+        result.Success.ShouldBeFalse();
+        result.Error.ShouldNotBeNullOrEmpty();
+    }
+
+    /// <summary>
+    /// Connection string from appsettings.json should be used as fallback
+    /// when no connection string is stored in SystemConfiguration.
+    /// An invalid appsettings value should still return Success = false (not throw).
+    /// </summary>
+    [Fact]
+    public async Task TestAzureBlobConnectionAsync_AppsettingsFallback_InvalidString_ReturnsFalse()
+    {
+        // Arrange — DB has no connection string, but appsettings has an invalid one.
+        // Create a fresh service with an IConfiguration that has an invalid blob connection string
+        // (syntactically invalid — SDK fails at format parsing, no network call needed).
+        var configWithBlob = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["AzureBlobStorage:ConnectionString"] = "NOT_A_VALID_CONNECTION_STRING"
+            })
+            .Build();
+
+        var logger = Substitute.For<ILogger<SystemConfigurationService>>();
+        var serviceWithConfig = new SystemConfigurationService(_context, _credentialProtector, configWithBlob, logger);
+
+        // Act
+        var result = await serviceWithConfig.TestAzureBlobConnectionAsync();
+
+        // Assert — SDK rejects the invalid format immediately, no network access
+        result.Success.ShouldBeFalse();
+        result.Error.ShouldNotBeNullOrEmpty();
     }
 }

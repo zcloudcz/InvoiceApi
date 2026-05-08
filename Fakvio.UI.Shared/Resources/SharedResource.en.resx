@@ -1263,6 +1263,9 @@
   <data name="Settings_AzureBlobContainerPrefixHelper" xml:space="preserve"><value>Legacy field — unused</value></data>
   <data name="Settings_AzureBlobContainerName" xml:space="preserve"><value>Container Name</value></data>
   <data name="Settings_AzureBlobContainerNameHelper" xml:space="preserve"><value>Shared container for all tenants. Default: "fakvio-files"</value></data>
+  <data name="AzureBlob_TestConnection" xml:space="preserve"><value>Test Connection</value></data>
+  <data name="AzureBlob_TestSuccess" xml:space="preserve"><value>Azure Blob Storage connection is working</value></data>
+  <data name="AzureBlob_TestFailed" xml:space="preserve"><value>Connection test failed</value></data>
 
   <!-- ═══ Reminders (Dunning) ═══ -->
   <data name="Nav_Reminders" xml:space="preserve"><value>Reminders</value></data>

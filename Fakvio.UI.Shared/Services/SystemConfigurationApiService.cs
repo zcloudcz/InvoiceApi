@@ -29,4 +29,12 @@ public class SystemConfigurationApiService : ApiClientBase
     /// </summary>
     public async Task<SystemConfigurationDto?> UpdateAsync(UpdateSystemConfigurationDto dto)
         => await PutAsync<UpdateSystemConfigurationDto, SystemConfigurationDto>("/api/system-configuration", dto);
+
+    /// <summary>
+    /// Tests the currently configured Azure Blob Storage connection.
+    /// Always returns a result — never throws on a connection failure (failure is in result.Success = false).
+    /// Throws ApiException only on HTTP-level errors (auth, server crash, etc.).
+    /// </summary>
+    public async Task<BlobConnectionTestResultDto?> TestBlobConnectionAsync()
+        => await PostWithoutBodyAsync<BlobConnectionTestResultDto>("/api/system-configuration/test-blob-connection");
 }

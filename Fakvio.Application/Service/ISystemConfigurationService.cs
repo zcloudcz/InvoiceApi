@@ -34,6 +34,30 @@ public interface ISystemConfigurationService
     /// Returns null values for unconfigured providers.
     /// </summary>
     Task<SystemAiSettingsInternal> GetAiSettingsAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Tests the Azure Blob Storage connection using the currently configured connection string.
+    /// Attempts a lightweight operation (listing containers) to verify connectivity.
+    /// Returns a result object with Success flag and an optional error message.
+    /// </summary>
+    Task<BlobTestConnectionResult> TestAzureBlobConnectionAsync(CancellationToken ct = default);
+}
+
+/// <summary>
+/// Result of an Azure Blob Storage connection test.
+/// Carries a success flag and, on failure, a human-readable error message
+/// so the UI can show what went wrong without exposing sensitive internals.
+/// </summary>
+public class BlobTestConnectionResult
+{
+    /// <summary>True if the connection attempt succeeded.</summary>
+    public bool Success { get; init; }
+
+    /// <summary>
+    /// Short error description when Success = false.
+    /// Null when Success = true.
+    /// </summary>
+    public string? Error { get; init; }
 }
 
 /// <summary>
