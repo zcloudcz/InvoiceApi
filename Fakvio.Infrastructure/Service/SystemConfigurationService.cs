@@ -1,8 +1,10 @@
+using Azure.Storage.Blobs;
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.SystemConfiguration;
 using Fakvio.Domain.Entities;
 using Fakvio.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace Fakvio.Infrastructure.Service;
@@ -22,15 +24,18 @@ public class SystemConfigurationService : ISystemConfigurationService
 {
     private readonly MasterDbContext _context;
     private readonly ICredentialProtector _credentialProtector;
+    private readonly IConfiguration _configuration;
     private readonly ILogger<SystemConfigurationService> _logger;
 
     public SystemConfigurationService(
         MasterDbContext context,
         ICredentialProtector credentialProtector,
+        IConfiguration configuration,
         ILogger<SystemConfigurationService> logger)
     {
         _context = context;
         _credentialProtector = credentialProtector;
+        _configuration = configuration;
         _logger = logger;
     }
 
@@ -161,6 +166,68 @@ public class SystemConfigurationService : ISystemConfigurationService
             OllamaBaseUrl = entity.AiOllamaBaseUrl,
             OllamaModel = entity.AiOllamaModel
         };
+    }
+
+    /// <inheritdoc />
+    public async Task<BlobTestConnectionResult> TestAzureBlobConnectionAsync(CancellationToken ct = default)
+    {
+        // Resolve the connection string with the same fallback chain as AzureBlobFileStorage:
+        // 1. SystemConfiguration (DB)
+        // 2. appsettings.json
+        string? connectionString = null;
+
+        var entity = await GetOrCreateAsync(ct);
+
+        if (!string.IsNullOrWhiteSpace(entity.AzureBlobConnectionString))
+        {
+            connectionString = _credentialProtector.Decrypt(entity.AzureBlobConnectionString);
+            _logger.LogDebug("Azure Blob test: using connection string from SystemConfiguration");
+        }
+
+        if (connectionString == null)
+        {
+            var appSettingsCs = _configuration["AzureBlobStorage:ConnectionString"];
+            if (!string.IsNullOrWhiteSpace(appSettingsCs))
+            {
+                connectionString = appSettingsCs;
+                _logger.LogDebug("Azure Blob test: using connection string from appsettings.json");
+            }
+        }
+
+        // No connection string found anywhere — report configuration problem immediately
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            _logger.LogWarning("Azure Blob connection test skipped — no connection string configured");
+            return new BlobTestConnectionResult
+            {
+                Success = false,
+                Error = "No Azure Blob Storage connection string is configured."
+            };
+        }
+
+        try
+        {
+            // Lightweight test: create a BlobServiceClient and call GetProperties.
+            // GetPropertiesAsync fetches service-level properties (logging, metrics config) —
+            // it requires only a valid connection string and network access. No blobs are read or written.
+            var serviceClient = new BlobServiceClient(connectionString);
+            await serviceClient.GetPropertiesAsync(ct);
+
+            _logger.LogInformation("Azure Blob Storage connection test succeeded");
+            return new BlobTestConnectionResult { Success = true };
+        }
+        catch (Exception ex)
+        {
+            // Only log the exception type and message — do NOT log the connection string.
+            _logger.LogWarning(ex, "Azure Blob Storage connection test failed: {Message}", ex.Message);
+            return new BlobTestConnectionResult
+            {
+                Success = false,
+                // Expose the error message to SysAdmin (they own the credentials), but
+                // the full stack trace is in the server log only.
+                Error = ex.Message
+            };
+        }
     }
 
     /// <summary>

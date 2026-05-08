@@ -61,4 +61,21 @@ public class SystemConfigurationController : ControllerBase
         var result = await _service.UpdateAsync(dto, ct);
         return Ok(result);
     }
+
+    /// <summary>
+    /// Tests the currently configured Azure Blob Storage connection.
+    /// Makes a lightweight GetProperties call — no blobs are created or modified.
+    /// Returns 200 with { success: true } on success, or 200 with { success: false, error: "..." }
+    /// when the connection fails (so the UI can show the error without treating it as an HTTP error).
+    /// </summary>
+    [HttpPost("test-blob-connection")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<ActionResult> TestBlobConnection(CancellationToken ct = default)
+    {
+        _logger.LogInformation("POST /api/system-configuration/test-blob-connection");
+        var result = await _service.TestAzureBlobConnectionAsync(ct);
+        // Always return 200 — the success/error information is in the response body.
+        // This keeps the UI logic simple: check result.success instead of catching HTTP errors.
+        return Ok(new { result.Success, result.Error });
+    }
 }

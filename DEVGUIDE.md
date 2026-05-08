@@ -164,7 +164,16 @@ Reuse **InvitationToken** mechaniku (`User.InvitationToken` + `InvitationTokenEx
 
 ### 2.6 CredentialProtector (šifrování secrets v DB)
 
-Co chrání: SMTP hesla, OAuth secrets, AI provider API keys uložené v `CompanySystemSettings` / `SystemConfiguration`.
+Co chrání: SMTP hesla, OAuth secrets, AI provider API keys, Azure Blob Storage connection strings uložené v `CompanySystemSettings` / `SystemConfiguration`.
+
+#### Azure Blob Storage — test-connection endpoint
+
+`POST /api/system-configuration/test-blob-connection` (SysAdmin only) —
+volá `ISystemConfigurationService.TestAzureBlobConnectionAsync()`, která resolvuje connection string
+stejnou 3-tier logikou jako `AzureBlobFileStorage` (DB → appsettings.json), vytvoří `BlobServiceClient`
+a zavolá `GetPropertiesAsync`. Vždy vrátí HTTP 200 s `{ success: bool, error: string? }` tak, aby UI
+mohl zobrazit error bez řešení HTTP status kódů. Stejný endpoint je dostupný i v Azure Functions
+přes `SystemConfigurationFunctions.SystemConfiguration_TestBlobConnection`.
 
 | Co | Kde |
 |----|-----|

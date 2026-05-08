@@ -332,6 +332,21 @@ else
                         </MudList>
                     }
                 </MudCardContent>
+                <MudCardActions>
+                    @* Test Connection button — always visible (not just in edit mode) so SysAdmin
+                       can verify the saved connection string at any time without switching to edit mode. *@
+                    <MudButton Variant="Variant.Outlined"
+                               Color="Color.Info"
+                               StartIcon="@Icons.Material.Filled.NetworkCheck"
+                               OnClick="TestBlobConnectionAsync"
+                               Disabled="_testingBlobConnection">
+                        @if (_testingBlobConnection)
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                        }
+                        @L["AzureBlob_TestConnection"]
+                    </MudButton>
+                </MudCardActions>
             </MudCard>
         </MudItem>
     </MudGrid>
@@ -348,6 +363,8 @@ else
     private bool _loading = true;
     private bool _isEditing = false;
     private bool _saving = false;
+    /// <summary>True while the blob connection test is in progress — disables the button and shows spinner.</summary>
+    private bool _testingBlobConnection = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -423,6 +440,42 @@ else
     private void CancelEditing()
     {
         _isEditing = false;
+    }
+
+    /// <summary>
+    /// Tests the Azure Blob Storage connection using the currently saved connection string.
+    /// Does NOT require the user to be in edit mode — the saved (encrypted) string is used server-side.
+    /// Shows a success or error toast with details.
+    /// </summary>
+    private async Task TestBlobConnectionAsync()
+    {
+        _testingBlobConnection = true;
+        StateHasChanged();
+        try
+        {
+            var result = await ConfigService.TestBlobConnectionAsync();
+            if (result?.Success == true)
+            {
+                Snackbar.Add(L["AzureBlob_TestSuccess"].Value, Severity.Success);
+            }
+            else
+            {
+                // Show the error detail from the Azure SDK so SysAdmin can diagnose the problem.
+                var detail = string.IsNullOrEmpty(result?.Error)
+                    ? L["AzureBlob_TestFailed"].Value
+                    : $"{L["AzureBlob_TestFailed"].Value}: {result.Error}";
+                Snackbar.Add(detail, Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Azure Blob Storage connection test HTTP error");
+            Snackbar.Add($"{L["AzureBlob_TestFailed"].Value}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _testingBlobConnection = false;
+        }
     }
 
     /// <summary>

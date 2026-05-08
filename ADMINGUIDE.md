@@ -232,6 +232,22 @@ Pole „Výchozí poskytovatel" určuje, který AI se použije když firma nemá
 
 **Hesla/klíče:** jsou šifrovány přes CredentialProtector (Data Protection API, AES-256). Po restartu bez persistovaných klíčů jsou nedešifrovatelné — viz §9.
 
+### Azure Blob Storage
+
+Systémové úložiště souborů (přílohy faktur, exporty). Sdílený kontejner pro všechny tenanty — každý tenant má vlastní podadresář (`{CompanyId}/...`).
+
+| Pole | Popis |
+|------|-------|
+| Connection String | Connection string Azure Storage účtu (šifrovaný). Formát: `DefaultEndpointsProtocol=https;AccountName=...` |
+| Název kontejneru | Název blob kontejneru (výchozí: `fakvio-files`). Kontejner se vytvoří automaticky. |
+
+**Priorita konfigurace (3-tier):**
+1. `CompanySystemSettings.AzureBlobConnectionString` — per-firma override
+2. `SystemConfiguration.AzureBlobConnectionString` — systémové (tato stránka)
+3. `appsettings.json` sekce `AzureBlobStorage:ConnectionString` — fallback
+
+**Test připojení:** Klikněte „Otestovat připojení" (tlačítko je dostupné vždy, bez přepnutí do editace). Systém zavolá Azure SDK `GetProperties` — žádná data nejsou čtena ani zapisována. Výsledek se zobrazí jako toast notifikace.
+
 ---
 
 ## 6. IMAP + Párování plateb
