@@ -394,6 +394,9 @@ public abstract class ApiClientBase
 
             if (response.IsSuccessStatusCode)
             {
+                if (response.StatusCode == System.Net.HttpStatusCode.NoContent)
+                    return default;
+
                 return await response.Content.ReadFromJsonAsync<TResponse>();
             }
 
