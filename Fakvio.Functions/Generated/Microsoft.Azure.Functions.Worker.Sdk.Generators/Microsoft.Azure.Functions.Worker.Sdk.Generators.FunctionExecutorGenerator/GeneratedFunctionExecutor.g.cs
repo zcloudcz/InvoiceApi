@@ -16,8 +16,10 @@ namespace Fakvio.Functions
         private readonly global::Microsoft.Azure.Functions.Worker.IFunctionActivator _functionActivator;
         private readonly Dictionary<string, Type> types = new Dictionary<string, Type>()
         {
+            { "Fakvio.Functions.Generated.AlertFunctions", Type.GetType("Fakvio.Functions.Generated.AlertFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "Fakvio.Functions.Generated.AppLogFunctions", Type.GetType("Fakvio.Functions.Generated.AppLogFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "Fakvio.Functions.Generated.AuthFunctions", Type.GetType("Fakvio.Functions.Generated.AuthFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
+            { "Fakvio.Functions.Generated.AzureOperationFunctions", Type.GetType("Fakvio.Functions.Generated.AzureOperationFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "Fakvio.Functions.Generated.ChatFunctions", Type.GetType("Fakvio.Functions.Generated.ChatFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "Fakvio.Functions.Generated.ClientFunctions", Type.GetType("Fakvio.Functions.Generated.ClientFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "Fakvio.Functions.Generated.CloudStorageFunctions", Type.GetType("Fakvio.Functions.Generated.CloudStorageFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
@@ -28,6 +30,8 @@ namespace Fakvio.Functions
             { "Fakvio.Functions.Generated.DashboardFunctions", Type.GetType("Fakvio.Functions.Generated.DashboardFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "Fakvio.Functions.HttpFunctions.DiagnosticFunctions", Type.GetType("Fakvio.Functions.HttpFunctions.DiagnosticFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "Fakvio.Functions.Generated.EmailFunctions", Type.GetType("Fakvio.Functions.Generated.EmailFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
+            { "Fakvio.Functions.Generated.FileAttachmentFunctions", Type.GetType("Fakvio.Functions.Generated.FileAttachmentFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
+            { "Fakvio.Functions.Generated.ImportFunctions", Type.GetType("Fakvio.Functions.Generated.ImportFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "Fakvio.Functions.Generated.InvoiceFunctions", Type.GetType("Fakvio.Functions.Generated.InvoiceFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "Fakvio.Functions.Generated.InvoiceTemplateFunctions", Type.GetType("Fakvio.Functions.Generated.InvoiceTemplateFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
             { "Fakvio.Functions.Generated.NumberSequenceFunctions", Type.GetType("Fakvio.Functions.Generated.NumberSequenceFunctions, Fakvio.Functions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") },
@@ -58,6 +62,27 @@ namespace Fakvio.Functions
             var inputBindingResult = await inputBindingFeature.BindFunctionInputAsync(context);
             var inputArguments = inputBindingResult.Values;
 
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.AlertFunctions.Alert_GetAlerts", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.AlertFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.AlertFunctions;
+                context.GetInvocationResult().Value = await i.Alert_GetAlerts((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.AlertFunctions.Alert_GetDashboard", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.AlertFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.AlertFunctions;
+                context.GetInvocationResult().Value = await i.Alert_GetDashboard((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.AlertFunctions.Alert_ResolveAlert", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.AlertFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.AlertFunctions;
+                context.GetInvocationResult().Value = await i.Alert_ResolveAlert((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0], (string)inputArguments[1]);
+                return;
+            }
             if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.AppLogFunctions.AppLog_GetPaged", StringComparison.Ordinal))
             {
                 var instanceType = types["Fakvio.Functions.Generated.AppLogFunctions"];
@@ -119,6 +144,41 @@ namespace Fakvio.Functions
                 var instanceType = types["Fakvio.Functions.Generated.AuthFunctions"];
                 var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.AuthFunctions;
                 context.GetInvocationResult().Value = await i.Auth_RefreshToken((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.AzureOperationFunctions.TenantOperation_Provision", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.AzureOperationFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.AzureOperationFunctions;
+                context.GetInvocationResult().Value = await i.TenantOperation_Provision((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.AzureOperationFunctions.TenantOperation_List", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.AzureOperationFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.AzureOperationFunctions;
+                context.GetInvocationResult().Value = await i.TenantOperation_List((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.AzureOperationFunctions.TenantOperation_Status", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.AzureOperationFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.AzureOperationFunctions;
+                context.GetInvocationResult().Value = await i.TenantOperation_Status((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0], (string)inputArguments[1]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.AzureOperationFunctions.TenantOperation_Delete", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.AzureOperationFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.AzureOperationFunctions;
+                context.GetInvocationResult().Value = await i.TenantOperation_Delete((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0], (string)inputArguments[1]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.AzureOperationFunctions.TenantOperation_FixSchemaPermissions", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.AzureOperationFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.AzureOperationFunctions;
+                context.GetInvocationResult().Value = await i.TenantOperation_FixSchemaPermissions((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
                 return;
             }
             if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.ChatFunctions.Chat_GetConversations", StringComparison.Ordinal))
@@ -555,6 +615,48 @@ namespace Fakvio.Functions
                 context.GetInvocationResult().Value = await i.Email_Send((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
                 return;
             }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.FileAttachmentFunctions.FileAttachment_Upload", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.FileAttachmentFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.FileAttachmentFunctions;
+                context.GetInvocationResult().Value = await i.FileAttachment_Upload((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.FileAttachmentFunctions.FileAttachment_Download", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.FileAttachmentFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.FileAttachmentFunctions;
+                context.GetInvocationResult().Value = await i.FileAttachment_Download((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0], (string)inputArguments[1]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.FileAttachmentFunctions.FileAttachment_GetByEntity", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.FileAttachmentFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.FileAttachmentFunctions;
+                context.GetInvocationResult().Value = await i.FileAttachment_GetByEntity((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0], (string)inputArguments[1], (string)inputArguments[2]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.FileAttachmentFunctions.FileAttachment_Delete", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.FileAttachmentFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.FileAttachmentFunctions;
+                context.GetInvocationResult().Value = await i.FileAttachment_Delete((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0], (string)inputArguments[1]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.ImportFunctions.Import_Preview", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.ImportFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.ImportFunctions;
+                context.GetInvocationResult().Value = await i.Import_Preview((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.ImportFunctions.Import_Confirm", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.ImportFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.ImportFunctions;
+                context.GetInvocationResult().Value = await i.Import_Confirm((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
+                return;
+            }
             if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.InvoiceFunctions.Invoice_GetAllInvoices", StringComparison.Ordinal))
             {
                 var instanceType = types["Fakvio.Functions.Generated.InvoiceFunctions"];
@@ -716,6 +818,20 @@ namespace Fakvio.Functions
                 context.GetInvocationResult().Value = await i.Invoice_RestoreInvoice((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0], (long)inputArguments[1]);
                 return;
             }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.InvoiceFunctions.Invoice_CopyInvoice", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.InvoiceFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.InvoiceFunctions;
+                context.GetInvocationResult().Value = await i.Invoice_CopyInvoice((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0], (string)inputArguments[1]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.InvoiceFunctions.Invoice_MarkAsUnpaid", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.InvoiceFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.InvoiceFunctions;
+                context.GetInvocationResult().Value = await i.Invoice_MarkAsUnpaid((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0], (string)inputArguments[1]);
+                return;
+            }
             if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.InvoiceFunctions.Invoice_RevertToDraft", StringComparison.Ordinal))
             {
                 var instanceType = types["Fakvio.Functions.Generated.InvoiceFunctions"];
@@ -735,6 +851,13 @@ namespace Fakvio.Functions
                 var instanceType = types["Fakvio.Functions.Generated.InvoiceFunctions"];
                 var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.InvoiceFunctions;
                 context.GetInvocationResult().Value = await i.Invoice_GetRemainingAdvance((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0], (string)inputArguments[1]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.InvoiceFunctions.Invoice_FindAutoMatch", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.InvoiceFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.InvoiceFunctions;
+                context.GetInvocationResult().Value = await i.Invoice_FindAutoMatch((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0], (string)inputArguments[1]);
                 return;
             }
             if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.InvoiceTemplateFunctions.InvoiceTemplate_GetActiveTemplates", StringComparison.Ordinal))
@@ -961,6 +1084,20 @@ namespace Fakvio.Functions
                 context.GetInvocationResult().Value = await i.PaymentMatching_UnmatchedCount((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
                 return;
             }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.PaymentMatchingFunctions.PaymentMatching_FindAutoMatchForTransaction", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.PaymentMatchingFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.PaymentMatchingFunctions;
+                context.GetInvocationResult().Value = await i.PaymentMatching_FindAutoMatchForTransaction((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0], (string)inputArguments[1]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.PaymentMatchingFunctions.PaymentMatching_ConfirmAutoMatch", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.PaymentMatchingFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.PaymentMatchingFunctions;
+                context.GetInvocationResult().Value = await i.PaymentMatching_ConfirmAutoMatch((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
+                return;
+            }
             if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.PaymentMatchingSysAdminFunctions.PaymentMatchingSysAdmin_GetSettings", StringComparison.Ordinal))
             {
                 var instanceType = types["Fakvio.Functions.Generated.PaymentMatchingSysAdminFunctions"];
@@ -1052,6 +1189,20 @@ namespace Fakvio.Functions
                 context.GetInvocationResult().Value = await i.ReceivedInvoice_Delete((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0], (long)inputArguments[1]);
                 return;
             }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.ReceivedInvoiceFunctions.ReceivedInvoice_GetPayments", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.ReceivedInvoiceFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.ReceivedInvoiceFunctions;
+                context.GetInvocationResult().Value = await i.ReceivedInvoice_GetPayments((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0], (long)inputArguments[1]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.ReceivedInvoiceFunctions.ReceivedInvoice_FindAutoMatch", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.ReceivedInvoiceFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.ReceivedInvoiceFunctions;
+                context.GetInvocationResult().Value = await i.ReceivedInvoice_FindAutoMatch((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0], (long)inputArguments[1]);
+                return;
+            }
             if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.ReminderFunctions.Reminder_GetCompanySettings", StringComparison.Ordinal))
             {
                 var instanceType = types["Fakvio.Functions.Generated.ReminderFunctions"];
@@ -1141,6 +1292,20 @@ namespace Fakvio.Functions
                 var instanceType = types["Fakvio.Functions.Generated.SystemConfigurationFunctions"];
                 var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.SystemConfigurationFunctions;
                 context.GetInvocationResult().Value = await i.SystemConfiguration_Update((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.SystemConfigurationFunctions.SystemConfiguration_TestBlobConnection", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.SystemConfigurationFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.SystemConfigurationFunctions;
+                context.GetInvocationResult().Value = await i.SystemConfiguration_TestBlobConnection((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.SystemConfigurationFunctions.SystemConfiguration_GetCredentialHealth", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.SystemConfigurationFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.SystemConfigurationFunctions;
+                context.GetInvocationResult().Value = await i.SystemConfiguration_GetCredentialHealth((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
                 return;
             }
             if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.TaxFunctions.Tax_Estimate", StringComparison.Ordinal))
