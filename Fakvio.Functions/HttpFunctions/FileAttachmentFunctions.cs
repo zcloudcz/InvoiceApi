@@ -79,8 +79,12 @@ public class FileAttachmentFunctions
             if (file == null)
                 return new BadRequestObjectResult(new { message = "No file found in form data (field name must be 'file')." });
 
-            return FunctionResultHelper.Normalize(
-                await _controller.Upload(file, entityName, recordId, description, ct));
+            var uploadResult = await _controller.Upload(file, entityName, recordId, description, ct);
+            // ActionResult<T>.Result contains the IActionResult (Ok/BadRequest/etc.)
+            // ActionResult<T>.Value contains the implicit T return
+            if (uploadResult.Result != null)
+                return FunctionResultHelper.Normalize(uploadResult.Result);
+            return new OkObjectResult(uploadResult.Value);
         }
         catch (Exception ex)
         {
