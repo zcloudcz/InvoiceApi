@@ -1,3 +1,4 @@
+using Azure;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 using Fakvio.Application.Service;
@@ -40,6 +41,15 @@ public class AzureBlobFileStorage : IFileStorage
     /// </summary>
     private const string DefaultContainerName = "fakvio-files";
 
+    /// <summary>
+    /// Invariant base64 prefix of every ASP.NET Core Data Protection ciphertext.
+    /// If a "decrypted" value starts with this, decryption actually failed and
+    /// CredentialProtector returned the raw ciphertext unchanged (migration-safety fallback).
+    /// Using such a value as a connection string causes Azure to return 403 AuthorizationFailure
+    /// because the string is not a valid connection string — it is still encrypted garbage.
+    /// </summary>
+    private const string DataProtectionCiphertextPrefix = "CfDJ8";
+
     public AzureBlobFileStorage(
         MasterDbContext masterContext,
         ITenantResolver tenantResolver,
@@ -63,9 +73,25 @@ public class AzureBlobFileStorage : IFileStorage
     {
         var (containerClient, blobClient) = await GetBlobAndContainerClientAsync(blobPath, ct);
 
-        // Ensure the container exists before uploading.
-        // CreateIfNotExistsAsync is idempotent — safe to call on every upload.
-        await containerClient.CreateIfNotExistsAsync(cancellationToken: ct);
+        try
+        {
+            // Ensure the container exists before uploading.
+            // CreateIfNotExistsAsync is idempotent — safe to call on every upload.
+            await containerClient.CreateIfNotExistsAsync(cancellationToken: ct);
+        }
+        catch (RequestFailedException ex) when (ex.Status == 403)
+        {
+            // 403 on CreateIfNotExistsAsync usually means the connection string is corrupt
+            // (DP ciphertext used as-is) or the storage account has firewall/network restrictions.
+            // Log the full context so SysAdmin can diagnose without guessing.
+            _logger.LogError(ex,
+                "Azure Blob 403 on CreateIfNotExistsAsync — container '{Container}'. " +
+                "This usually means the connection string is corrupt (Data Protection key mismatch) " +
+                "or the storage account has network restrictions. " +
+                "Run credential health check (GET /api/system-configuration/credential-health) to verify.",
+                containerClient.Name);
+            throw;
+        }
 
         // Set Content-Type so browsers handle the file correctly on download.
         var headers = new BlobHttpHeaders
@@ -134,7 +160,7 @@ public class AzureBlobFileStorage : IFileStorage
     private async Task<(BlobContainerClient Container, BlobClient Blob)> GetBlobAndContainerClientAsync(
         string blobPath, CancellationToken ct)
     {
-        var (connectionString, containerName) = await ResolveStorageConfigAsync(ct);
+        var (connectionString, containerName, source) = await ResolveStorageConfigAsync(ct);
 
         if (string.IsNullOrWhiteSpace(connectionString))
         {
@@ -142,6 +168,10 @@ public class AzureBlobFileStorage : IFileStorage
                 "Azure Blob Storage connection string is not configured. " +
                 "Set it in CompanySystemSettings, SystemConfiguration, or appsettings.json (AzureBlobStorage:ConnectionString).");
         }
+
+        _logger.LogDebug(
+            "Blob storage resolved: source={Source}, container='{Container}', blobPath='{BlobPath}'",
+            source, containerName, blobPath);
 
         var serviceClient = new BlobServiceClient(connectionString);
         var containerClient = serviceClient.GetBlobContainerClient(containerName);
@@ -160,11 +190,15 @@ public class AzureBlobFileStorage : IFileStorage
     /// 4. Container name only — hard-coded default "fakvio-files"
     ///
     /// Connection strings from the database are decrypted via <see cref="ICredentialProtector"/>.
+    /// A corrupt decryption result (Data Protection key mismatch) is detected and skipped —
+    /// the next tier's value is used instead. This prevents 403 AuthorizationFailure
+    /// from Azure when a garbled ciphertext is used as a connection string.
     /// </summary>
-    private async Task<(string? ConnectionString, string ContainerName)> ResolveStorageConfigAsync(CancellationToken ct)
+    private async Task<(string? ConnectionString, string ContainerName, string Source)> ResolveStorageConfigAsync(CancellationToken ct)
     {
         string? connectionString = null;
         string? containerName = null;
+        var source = "none";
 
         // Tier 1: Company-specific overrides
         var companyId = _tenantResolver.GetCurrentCompanyId();
@@ -178,12 +212,39 @@ public class AzureBlobFileStorage : IFileStorage
             {
                 if (!string.IsNullOrWhiteSpace(companySettings.AzureBlobConnectionString))
                 {
-                    connectionString = _credentialProtector.Decrypt(companySettings.AzureBlobConnectionString);
-                    _logger.LogDebug("Using company Azure Blob connection string for CompanyId {CompanyId}", companyId.Value);
-                }
+                    var decrypted = _credentialProtector.Decrypt(companySettings.AzureBlobConnectionString);
 
-                if (!string.IsNullOrWhiteSpace(companySettings.AzureBlobContainerName))
+                    if (IsCorruptCiphertext(decrypted))
+                    {
+                        // Decryption failed silently — CredentialProtector returned raw ciphertext.
+                        // Skip this ENTIRE tier (both connection string AND container name) so we
+                        // don't pair a system-wide storage account with a company-specific container.
+                        _logger.LogWarning(
+                            "Company {CompanyId} AzureBlobConnectionString is corrupt (Data Protection key mismatch). " +
+                            "Skipping entire company override (connection string + container name) — " +
+                            "falling through to system-wide config. " +
+                            "Re-enter the connection string in Company Settings to fix.",
+                            companyId.Value);
+                    }
+                    else
+                    {
+                        connectionString = decrypted;
+                        source = $"CompanySystemSettings(companyId={companyId.Value})";
+                        _logger.LogDebug("Using company Azure Blob connection string for CompanyId {CompanyId}", companyId.Value);
+
+                        // Only apply company container name when the company connection string is valid.
+                        // Connection string + container name are a logical pair — using a company
+                        // container name with a different storage account would be wrong.
+                        if (!string.IsNullOrWhiteSpace(companySettings.AzureBlobContainerName))
+                        {
+                            containerName = companySettings.AzureBlobContainerName;
+                        }
+                    }
+                }
+                else if (!string.IsNullOrWhiteSpace(companySettings.AzureBlobContainerName))
                 {
+                    // Company has no connection string override but does have a container name override.
+                    // This is valid: use system-wide connection string + company-specific container.
                     containerName = companySettings.AzureBlobContainerName;
                 }
             }
@@ -201,8 +262,21 @@ public class AzureBlobFileStorage : IFileStorage
             {
                 if (connectionString == null && !string.IsNullOrWhiteSpace(systemConfig.AzureBlobConnectionString))
                 {
-                    connectionString = _credentialProtector.Decrypt(systemConfig.AzureBlobConnectionString);
-                    _logger.LogDebug("Using system-wide Azure Blob connection string from SystemConfiguration");
+                    var decrypted = _credentialProtector.Decrypt(systemConfig.AzureBlobConnectionString);
+
+                    if (IsCorruptCiphertext(decrypted))
+                    {
+                        _logger.LogWarning(
+                            "SystemConfiguration AzureBlobConnectionString is corrupt (Data Protection key mismatch). " +
+                            "Skipping — falling through to appsettings.json fallback. " +
+                            "Re-enter the connection string in System Settings to fix.");
+                    }
+                    else
+                    {
+                        connectionString = decrypted;
+                        source = "SystemConfiguration";
+                        _logger.LogDebug("Using system-wide Azure Blob connection string from SystemConfiguration");
+                    }
                 }
 
                 if (containerName == null && !string.IsNullOrWhiteSpace(systemConfig.AzureBlobContainerName))
@@ -219,6 +293,7 @@ public class AzureBlobFileStorage : IFileStorage
             if (!string.IsNullOrWhiteSpace(appSettingsCs))
             {
                 connectionString = appSettingsCs;
+                source = "appsettings.json";
                 _logger.LogDebug("Using Azure Blob connection string from appsettings.json");
             }
         }
@@ -235,6 +310,26 @@ public class AzureBlobFileStorage : IFileStorage
         // Tier 4: hard-coded default for container name (connection string has no default)
         containerName ??= DefaultContainerName;
 
-        return (connectionString, containerName);
+        return (connectionString, containerName, source);
+    }
+
+    /// <summary>
+    /// Detects if a "decrypted" value is actually a corrupt Data Protection ciphertext
+    /// that CredentialProtector returned unchanged because decryption failed.
+    ///
+    /// When the Data Protection key ring changes (e.g., key loss, app restart without
+    /// PersistKeysToDbContext, or a different SetApplicationName), Decrypt() catches
+    /// CryptographicException and returns the raw ciphertext as a migration-safety fallback.
+    /// That raw ciphertext always starts with "CfDJ8" (the invariant base64 prefix of every
+    /// ASP.NET Core Data Protection payload).
+    ///
+    /// Using such a value as an Azure Storage connection string results in the
+    /// BlobServiceClient sending garbage credentials → Azure returns 403 AuthorizationFailure.
+    /// This method catches that scenario so we can skip the corrupt value and fall through
+    /// to the next tier (system-wide, then appsettings.json).
+    /// </summary>
+    private static bool IsCorruptCiphertext(string? value)
+    {
+        return value != null && value.StartsWith(DataProtectionCiphertextPrefix, StringComparison.Ordinal);
     }
 }

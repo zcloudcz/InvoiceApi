@@ -279,6 +279,45 @@ public class SystemConfigurationServiceTests : IDisposable
         result.Error.ShouldNotBeNullOrEmpty();
     }
 
+    /// <summary>
+    /// When the connection string in DB is a corrupt Data Protection ciphertext
+    /// (starts with "CfDJ8"), TestAzureBlobConnectionAsync should immediately return
+    /// Success = false with a clear error message instead of sending garbage credentials
+    /// to Azure (which would result in a confusing 403 AuthorizationFailure).
+    ///
+    /// This scenario happens when the Data Protection key ring changes (e.g., app restart
+    /// without PersistKeysToDbContext) — CredentialProtector.Decrypt catches the
+    /// CryptographicException and returns the raw ciphertext as a migration-safety fallback.
+    /// </summary>
+    [Fact]
+    public async Task TestAzureBlobConnectionAsync_CorruptCiphertext_ReturnsFalse()
+    {
+        // Arrange — store a connection string that looks like encrypted DP ciphertext
+        const string corruptCiphertext = "CfDJ8fake-corrupt-ciphertext-that-looks-like-dp-output";
+        _context.Set<SystemConfiguration>().Add(new SystemConfiguration
+        {
+            AzureBlobConnectionString = corruptCiphertext,
+            SmtpPort = 587,
+            SmtpSenderEmail = "",
+            SmtpSenderName = "Test",
+            SmtpUseSsl = true,
+            JwtExpirationHours = 24,
+            CreatedAt = DateTime.UtcNow
+        });
+        await _context.SaveChangesAsync();
+
+        // The pass-through protector returns the ciphertext unchanged (simulates DP key mismatch)
+        _credentialProtector.Decrypt(corruptCiphertext).Returns(corruptCiphertext);
+
+        // Act
+        var result = await _service.TestAzureBlobConnectionAsync();
+
+        // Assert — should detect corrupt ciphertext immediately, not attempt Azure connection
+        result.Success.ShouldBeFalse();
+        result.Error.ShouldNotBeNullOrEmpty();
+        result.Error.ShouldContain("corrupt", Case.Insensitive);
+    }
+
     // ─── CheckCredentialHealthAsync tests ────────────────────────────────────
 
     /// <summary>

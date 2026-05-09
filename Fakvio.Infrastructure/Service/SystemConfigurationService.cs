@@ -175,19 +175,35 @@ public class SystemConfigurationService : ISystemConfigurationService
         // 1. SystemConfiguration (DB)
         // 2. appsettings.json
         string? connectionString = null;
+        string? containerName = null;
 
         var entity = await GetOrCreateAsync(ct);
 
         if (!string.IsNullOrWhiteSpace(entity.AzureBlobConnectionString))
         {
-            connectionString = _credentialProtector.Decrypt(entity.AzureBlobConnectionString);
-            var preview = connectionString?.Length > 30
-                ? connectionString[..30] + "..."
-                : connectionString ?? "(null)";
-            _logger.LogWarning(
-                "Azure Blob test: from DB, decrypted length={Len}, starts with '{Preview}', " +
-                "raw encrypted length={RawLen}",
-                connectionString?.Length ?? 0, preview, entity.AzureBlobConnectionString.Length);
+            var decrypted = _credentialProtector.Decrypt(entity.AzureBlobConnectionString);
+
+            // Detect corrupt Data Protection ciphertext — CredentialProtector returns the
+            // raw ciphertext when decryption fails (migration-safety fallback). Such values
+            // always start with "CfDJ8" and are NOT valid connection strings.
+            if (decrypted != null && decrypted.StartsWith("CfDJ8", StringComparison.Ordinal))
+            {
+                _logger.LogWarning(
+                    "Azure Blob test: SystemConfiguration connection string is CORRUPT " +
+                    "(Data Protection key mismatch — decryption returned raw ciphertext). " +
+                    "Re-enter the connection string in System Settings to fix.");
+                return new BlobTestConnectionResult
+                {
+                    Success = false,
+                    Error = "Connection string is corrupt (Data Protection key mismatch). " +
+                            "Re-enter the connection string in System Settings."
+                };
+            }
+
+            connectionString = decrypted;
+            _logger.LogDebug(
+                "Azure Blob test: from DB, decrypted length={Len}",
+                connectionString?.Length ?? 0);
         }
 
         if (connectionString == null)
@@ -199,6 +215,14 @@ public class SystemConfigurationService : ISystemConfigurationService
                 _logger.LogDebug("Azure Blob test: using connection string from appsettings.json");
             }
         }
+
+        // Resolve container name (same chain as AzureBlobFileStorage)
+        containerName = entity.AzureBlobContainerName;
+        if (string.IsNullOrWhiteSpace(containerName))
+        {
+            containerName = _configuration["AzureBlobStorage:ContainerName"];
+        }
+        containerName = string.IsNullOrWhiteSpace(containerName) ? "fakvio-files" : containerName;
 
         // No connection string found anywhere — report configuration problem immediately
         if (string.IsNullOrWhiteSpace(connectionString))
@@ -213,13 +237,23 @@ public class SystemConfigurationService : ISystemConfigurationService
 
         try
         {
-            // Lightweight test: create a BlobServiceClient and call GetProperties.
-            // GetPropertiesAsync fetches service-level properties (logging, metrics config) —
-            // it requires only a valid connection string and network access. No blobs are read or written.
             var serviceClient = new BlobServiceClient(connectionString);
+
+            // Step 1: Service-level test — validates connection string and network access.
             await serviceClient.GetPropertiesAsync(ct);
 
-            _logger.LogInformation("Azure Blob Storage connection test succeeded");
+            // Step 2: Container-level test — validates actual data-plane access.
+            // GetPropertiesAsync (Step 1) is a service-level call that can succeed even when
+            // container/blob operations are blocked (e.g., by storage firewall rules,
+            // Azure Policy, or specific access restrictions). CreateIfNotExistsAsync is the
+            // same operation that UploadAsync performs before writing a blob, so testing it
+            // here ensures the "Test Connection" button catches the same errors as real uploads.
+            var containerClient = serviceClient.GetBlobContainerClient(containerName);
+            await containerClient.CreateIfNotExistsAsync(cancellationToken: ct);
+
+            _logger.LogInformation(
+                "Azure Blob Storage connection test succeeded (service + container '{Container}')",
+                containerName);
             return new BlobTestConnectionResult { Success = true };
         }
         catch (Exception ex)
