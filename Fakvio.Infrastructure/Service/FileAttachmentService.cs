@@ -84,7 +84,13 @@ public class FileAttachmentService : IFileAttachmentService
         var blobPath = BuildBlobPath(companyId, fileGuid, extension);
 
         // Step 1: Upload bytes to blob storage (container resolved internally by IFileStorage)
+        _logger.LogWarning(
+            "FileAttachment uploading: path={BlobPath}, size={Size}, contentType={ContentType}, companyId={CompanyId}, storage={StorageType}",
+            blobPath, upload.FileContent.Length, upload.ContentType, companyId, _fileStorage.GetType().Name);
+
         await _fileStorage.UploadAsync(blobPath, upload.FileContent, upload.ContentType, ct);
+
+        _logger.LogWarning("FileAttachment blob upload completed: path={BlobPath}", blobPath);
 
         // Step 2: Save metadata to tenant database
         var entity = new FileAttachment
