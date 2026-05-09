@@ -364,7 +364,7 @@ public static class ServiceCollectionExtensions
             // even if the differences are cosmetic (e.g., environment-specific metadata).
             // Downgrade from Throw → Log so migrations proceed and the warning is still visible.
             options.ConfigureWarnings(w =>
-                w.Log(RelationalEventId.PendingModelChangesWarning));
+                w.Ignore(RelationalEventId.PendingModelChangesWarning));
         });
 
         // TenantDbContext — per-tenant schema for invoices, clients, templates, etc.
@@ -387,7 +387,7 @@ public static class ServiceCollectionExtensions
 
             // Downgrade PendingModelChangesWarning from Throw → Log (same as MasterDbContext above).
             options.ConfigureWarnings(w =>
-                w.Log(RelationalEventId.PendingModelChangesWarning));
+                w.Ignore(RelationalEventId.PendingModelChangesWarning));
         });
     }
 

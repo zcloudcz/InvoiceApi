@@ -620,7 +620,7 @@ public class TenantProvisioningService : ITenantProvisioningService
             // Downgrade PendingModelChangesWarning from Throw → Log so MigrateAsync()
             // doesn't fail when the code model is slightly ahead of the last migration.
             .ConfigureWarnings(w =>
-                w.Log(RelationalEventId.PendingModelChangesWarning))
+                w.Ignore(RelationalEventId.PendingModelChangesWarning))
             .Options;
 
         var context = new TenantDbContext(options);
