@@ -158,6 +158,20 @@ public partial class ChatToolExecutor : IChatToolExecutor
         RegexOptions.IgnoreCase | RegexOptions.Compiled)]
     private static partial Regex ExportKeywordPattern();
 
+    /// <summary>
+    /// Matches Czech and English keywords indicating the user wants to ATTACH a file
+    /// to an entity or LIST existing attachments.
+    ///
+    /// Czech: přilož, nahraj soubor, přidej přílohu, zobraz přílohy, seznam příloh, atd.
+    /// English: attach file, upload file, add attachment, list attachments, show files, etc.
+    /// </summary>
+    [GeneratedRegex(
+        @"\b(přilož|priloz|přiložit|priložit|nahraj soubor|přidej přílohu|pridej prilohu|" +
+        @"zobraz přílohy|seznam příloh|seznam prilohy|přiloha|priloha|přílohy|prilohy|" +
+        @"attach|attachment|attachments|upload file|add file|list files|show files|list attachments|show attachments)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled)]
+    private static partial Regex FileAttachmentKeywordPattern();
+
     // ─── Intent Detection ─────────────────────────────────────────────────
 
     /// <summary>
@@ -225,6 +239,13 @@ public partial class ChatToolExecutor : IChatToolExecutor
             return true;
         }
 
+        // Path 8: File attachment keyword — user wants to attach or list files.
+        if (FileAttachmentKeywordPattern().IsMatch(userMessage))
+        {
+            _logger.LogDebug("Tool intent detected in message: file attachment keyword match");
+            return true;
+        }
+
         return false;
     }
 
@@ -265,7 +286,12 @@ public partial class ChatToolExecutor : IChatToolExecutor
             "- If the user wants to LIST or BROWSE received invoices (with filters), use \"list_received_invoices\".\n" +
             "  Supports status, supplier_name, date range, amount range, currency, and overdue filters.\n" +
             "- If the user SEARCHES for received invoices by text (number, supplier, amount), use \"search_received_invoices\".\n" +
-            "  Provide a query string — matched against document number, supplier name, variable symbol, and amount.\n\n" +
+            "  Provide a query string — matched against document number, supplier name, variable symbol, and amount.\n" +
+            "- If the user wants to ATTACH a file to an entity (invoice, received invoice, client), use \"attach_file\".\n" +
+            "  Provide entity_name (Invoice/ReceivedInvoice/Client), record_id, file_name, and file_content_base64.\n" +
+            "  file_content_base64 must be the Base64-encoded file bytes (provided by the frontend when the user drops a file).\n" +
+            "- If the user wants to LIST or SEE attachments on an entity, use \"list_attachments\".\n" +
+            "  Provide entity_name and record_id. Returns name, size, upload date, and description for each file.\n\n" +
             "HOW TO USE TOOLS:\n" +
             "Your ENTIRE response must be ONLY this JSON, nothing else:\n" +
             "{\"action\": \"tool_name\", \"parameters\": {\"key\": \"value\"}}\n\n" +
@@ -279,7 +305,9 @@ public partial class ChatToolExecutor : IChatToolExecutor
             "- Create invoice with multiple items: {\"action\": \"create_invoice\", \"parameters\": {\"client_name\": \"ABC\", \"items\": \"[{\\\"description\\\": \\\"Item 1\\\", \\\"quantity\\\": 2, \\\"unit_price\\\": 500}, {\\\"description\\\": \\\"Item 2\\\", \\\"quantity\\\": 1, \\\"unit_price\\\": 300}]\"}}\n" +
             "- Export invoice by number: {\"action\": \"export_invoice\", \"parameters\": {\"document_number\": \"FV-2024-0001\"}}\n" +
             "- Export latest invoice for client: {\"action\": \"export_invoice\", \"parameters\": {\"client_name\": \"Alza\"}}\n" +
-            "- Export the most recent invoice: {\"action\": \"export_invoice\", \"parameters\": {}}\n\n" +
+            "- Export the most recent invoice: {\"action\": \"export_invoice\", \"parameters\": {}}\n" +
+            "- List attachments for invoice 42: {\"action\": \"list_attachments\", \"parameters\": {\"entity_name\": \"Invoice\", \"record_id\": \"42\"}}\n" +
+            "- Attach file to invoice: {\"action\": \"attach_file\", \"parameters\": {\"entity_name\": \"Invoice\", \"record_id\": \"42\", \"file_name\": \"contract.pdf\", \"file_content_base64\": \"<base64>\", \"content_type\": \"application/pdf\"}}\n\n" +
             "If no tool is needed, respond normally with text.";
     }
 
@@ -498,6 +526,38 @@ public partial class ChatToolExecutor : IChatToolExecutor
                             Description = "Max results to return (default 10, max 50)" }
                     };
                     def.Required = new List<string> { "query" };
+                    break;
+
+                case "attach_file":
+                    def.Parameters = new List<NativeToolParameter>
+                    {
+                        new() { Name = "entity_name", Type = "string",
+                            Description = "Target entity type",
+                            EnumValues = new List<string> { "Invoice", "ReceivedInvoice", "Client" } },
+                        new() { Name = "record_id", Type = "string",
+                            Description = "Primary key of the target entity record (numeric)" },
+                        new() { Name = "file_name", Type = "string",
+                            Description = "Original file name including extension (e.g. contract.pdf)" },
+                        new() { Name = "file_content_base64", Type = "string",
+                            Description = "File bytes encoded as Base64" },
+                        new() { Name = "content_type", Type = "string",
+                            Description = "MIME type of the file (e.g. application/pdf, image/png). Default: application/octet-stream" },
+                        new() { Name = "description", Type = "string",
+                            Description = "Optional human-readable note about the attachment" }
+                    };
+                    def.Required = new List<string> { "entity_name", "record_id", "file_name", "file_content_base64" };
+                    break;
+
+                case "list_attachments":
+                    def.Parameters = new List<NativeToolParameter>
+                    {
+                        new() { Name = "entity_name", Type = "string",
+                            Description = "Target entity type",
+                            EnumValues = new List<string> { "Invoice", "ReceivedInvoice", "Client" } },
+                        new() { Name = "record_id", Type = "string",
+                            Description = "Primary key of the target entity record (numeric)" }
+                    };
+                    def.Required = new List<string> { "entity_name", "record_id" };
                     break;
 
                 case "import_invoice":

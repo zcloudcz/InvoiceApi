@@ -55,7 +55,7 @@
         <MudButton Variant="Variant.Filled" Color="Color.Secondary"
                    StartIcon="@Icons.Material.Filled.AutoFixHigh"
                    OnClick="TriggerBulkAutoMatchAsync"
-                   Disabled="_bulkMatchBusy || _unmatchedPage == null || _unmatchedPage.TotalCount == 0"
+                   Disabled="_bulkMatchBusy || _unmatchedPage == null || _unmatchedPage.Items.Count == 0"
                    Class="mr-2">
             @if (_bulkMatchBusy)
             {

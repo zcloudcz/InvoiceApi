@@ -110,6 +110,11 @@ public class ChatContextBuilder : IChatContextBuilder
             sb.AppendLine("  (status, supplier, date range, amount range, currency, overdue).");
             sb.AppendLine("- search_received_invoices: Full-text search across received invoices");
             sb.AppendLine("  (document number, supplier name, variable symbol, amount).");
+            sb.AppendLine("- attach_file: Attach a file to an entity (Invoice, ReceivedInvoice, or Client).");
+            sb.AppendLine("  Requires entity_name, record_id, file_name, and file_content_base64 (Base64-encoded bytes).");
+            sb.AppendLine("  The frontend provides file_content_base64 when the user drops a file in the chat.");
+            sb.AppendLine("- list_attachments: List all files attached to an entity record.");
+            sb.AppendLine("  Provide entity_name and record_id. Returns file name, size, upload date, and description.");
             sb.AppendLine();
             sb.AppendLine("IMPORT RULES:");
             sb.AppendLine("- When user pastes invoice text, extract ALL data and call import_invoice immediately.");
@@ -140,6 +145,7 @@ public class ChatContextBuilder : IChatContextBuilder
                    "You are DIRECTLY CONNECTED to the Fakvio invoicing system and CAN perform real actions. " +
                    "You can: look up companies by IČO (ARES), create clients, create invoices, " +
                    "look up / list / search received (incoming) invoices by ID, document number, supplier, date, or amount, " +
+                   "attach files to entities and list existing attachments, " +
                    "and navigate users to pages. Use your tools when the user asks for these actions. " +
                    "Be concise and professional. " +
                    "Respond in the same language the user writes in (Czech or English).";

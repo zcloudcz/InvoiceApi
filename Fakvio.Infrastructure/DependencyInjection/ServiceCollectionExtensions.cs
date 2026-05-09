@@ -253,6 +253,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IChatTool, ListReceivedInvoicesTool>();
         services.AddScoped<IChatTool, SearchReceivedInvoicesTool>();
 
+        // File attachment tools — let the agent attach files to entities and list existing attachments.
+        services.AddScoped<IChatTool, AttachFileTool>();
+        services.AddScoped<IChatTool, ListAttachmentsTool>();
+
         services.AddScopedWithLogging<IChatToolExecutor, ChatToolExecutor>();
 
         // ── Database Logging ────────────────────────────────────────────────
