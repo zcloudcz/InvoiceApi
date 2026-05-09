@@ -9,6 +9,8 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Fakvio.API.Controller;
 
 namespace Fakvio.Functions.Generated;
@@ -88,6 +90,11 @@ public class FileAttachmentFunctions
         }
         catch (Exception ex)
         {
+            // Log to AppLog so the error is visible in SysAdmin logs page.
+            // Without this, the catch swallows the exception before GlobalExceptionMiddleware sees it.
+            var logger = req.HttpContext.RequestServices.GetService<Microsoft.Extensions.Logging.ILogger<FileAttachmentFunctions>>();
+            logger?.LogError(ex, "FileAttachment_Upload failed: {ErrorType}: {ErrorMessage}", ex.GetType().Name, ex.Message);
+
             return new ObjectResult(new
             {
                 message = "File upload failed.",
