@@ -17,14 +17,23 @@ namespace Fakvio.Functions.Generated;
 /// Azure Functions HTTP triggers wrapping <see cref="FileAttachmentController"/>.
 /// Route prefix: api/file-attachment.
 /// All endpoints require [Authorize] — JWT validated by middleware.
+///
+/// IMPORTANT: FileAttachmentService uses IHttpContextAccessor to resolve CompanyId
+/// for blob storage paths. In Functions Isolated Worker, IHttpContextAccessor may
+/// not automatically see the HTTP pipeline's HttpContext. We explicitly set it
+/// via _httpContextAccessor.HttpContext = req.HttpContext before each call.
 /// </summary>
 public class FileAttachmentFunctions
 {
     private readonly FileAttachmentController _controller;
+    private readonly IHttpContextAccessor _httpContextAccessor;
 
-    public FileAttachmentFunctions(FileAttachmentController controller)
+    public FileAttachmentFunctions(
+        FileAttachmentController controller,
+        IHttpContextAccessor httpContextAccessor)
     {
         _controller = controller;
+        _httpContextAccessor = httpContextAccessor;
     }
 
     /// <summary>
@@ -36,13 +45,10 @@ public class FileAttachmentFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/file-attachment/upload")] HttpRequest req)
     {
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
+        _httpContextAccessor.HttpContext = req.HttpContext;
 
         if (req.HttpContext.User.Identity?.IsAuthenticated != true)
             return new UnauthorizedResult();
-
-        // TEMP DIAG: log claims to debug impersonation
-        var claims = req.HttpContext.User.Claims.Select(c => $"{c.Type}={c.Value}");
-        System.Console.Error.WriteLine($"FileAttachment_Upload claims: {string.Join(", ", claims)}");
 
         var ct = req.HttpContext.RequestAborted;
 
@@ -69,6 +75,7 @@ public class FileAttachmentFunctions
             return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
 
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
+        _httpContextAccessor.HttpContext = req.HttpContext;
 
         if (req.HttpContext.User.Identity?.IsAuthenticated != true)
             return new UnauthorizedResult();
@@ -90,6 +97,7 @@ public class FileAttachmentFunctions
             return new BadRequestObjectResult(new { message = "Invalid parameter 'recordId'." });
 
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
+        _httpContextAccessor.HttpContext = req.HttpContext;
 
         if (req.HttpContext.User.Identity?.IsAuthenticated != true)
             return new UnauthorizedResult();
@@ -111,6 +119,7 @@ public class FileAttachmentFunctions
             return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
 
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
+        _httpContextAccessor.HttpContext = req.HttpContext;
 
         if (req.HttpContext.User.Identity?.IsAuthenticated != true)
             return new UnauthorizedResult();
