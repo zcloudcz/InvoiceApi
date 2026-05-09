@@ -44,22 +44,55 @@ public class FileAttachmentFunctions
     public async Task<IActionResult> FileAttachment_Upload(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/file-attachment/upload")] HttpRequest req)
     {
-        _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
-        _httpContextAccessor.HttpContext = req.HttpContext;
+        try
+        {
+            _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
+            _httpContextAccessor.HttpContext = req.HttpContext;
 
-        if (req.HttpContext.User.Identity?.IsAuthenticated != true)
-            return new UnauthorizedResult();
+            if (req.HttpContext.User.Identity?.IsAuthenticated != true)
+                return new UnauthorizedResult();
 
-        var ct = req.HttpContext.RequestAborted;
+            var ct = req.HttpContext.RequestAborted;
 
-        // Multipart form data — extract file and form fields
-        var file = req.Form.Files.GetFile("file");
-        var entityName = req.Form.TryGetValue("entityName", out var en) ? en.ToString() : "";
-        long.TryParse(req.Form.TryGetValue("recordId", out var ri) ? ri.ToString() : "", out var recordId);
-        var description = req.Form.TryGetValue("description", out var desc) ? desc.ToString() : null;
+            // Multipart form data — extract file and form fields
+            IFormFile? file = null;
+            string entityName = "";
+            long recordId = 0;
+            string? description = null;
 
-        return FunctionResultHelper.Normalize(
-            await _controller.Upload(file!, entityName, recordId, description, ct));
+            try
+            {
+                file = req.Form.Files.GetFile("file");
+                entityName = req.Form.TryGetValue("entityName", out var en) ? en.ToString() : "";
+                long.TryParse(req.Form.TryGetValue("recordId", out var ri) ? ri.ToString() : "", out recordId);
+                description = req.Form.TryGetValue("description", out var desc) ? desc.ToString() : null;
+            }
+            catch (Exception formEx)
+            {
+                return new BadRequestObjectResult(new
+                {
+                    message = $"Failed to parse multipart form data: {formEx.Message}",
+                    error = formEx.GetType().Name
+                });
+            }
+
+            if (file == null)
+                return new BadRequestObjectResult(new { message = "No file found in form data (field name must be 'file')." });
+
+            return FunctionResultHelper.Normalize(
+                await _controller.Upload(file, entityName, recordId, description, ct));
+        }
+        catch (Exception ex)
+        {
+            return new ObjectResult(new
+            {
+                message = "File upload failed.",
+                error = ex.GetType().Name,
+                detail = ex.Message,
+                innerError = ex.InnerException?.Message
+            })
+            { StatusCode = 500 };
+        }
     }
 
     /// <summary>
