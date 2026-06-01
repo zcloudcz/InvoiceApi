@@ -267,13 +267,21 @@
   </xs:complexType>
   <xs:complexType name="InvoiceType">
     <xs:sequence>
-      <xs:element name="DocumentType"            type="isdoc:DocumentTypeType"              minOccurs="0"/>
-      <xs:element name="SubDocument"             type="xs:string"                           minOccurs="0"/>
-      <xs:element name="UUID"                    type="xs:string"                           minOccurs="0"/>
-      <xs:element name="EgovFlag"                type="xs:boolean"                          minOccurs="0"/>
-      <xs:element name="IssuingSystem"           type="xs:string"                           minOccurs="0"/>
-      <xs:element name="ID"                      type="xs:string"/>
-      <xs:element name="IssueDate"               type="xs:date"/>
+      <xs:element name="DocumentType"                type="isdoc:DocumentTypeType"              minOccurs="0"/>
+      <xs:element name="SubDocumentType"             type="xs:string"                           minOccurs="0"/>
+      <xs:element name="SubDocumentTypeOrigin"       type="xs:string"                           minOccurs="0"/>
+      <xs:element name="TargetConsolidator"          type="xs:string"                           minOccurs="0"/>
+      <xs:element name="ClientOnTargetConsolidator"  type="xs:string"                           minOccurs="0"/>
+      <xs:element name="ClientBankAccount"           type="xs:string"                           minOccurs="0"/>
+      <xs:element name="ID"                          type="xs:string"/>
+      <xs:element name="UUID"                        type="xs:string"                           minOccurs="0"/>
+      <xs:element name="EgovFlag"                    type="xs:boolean"                          minOccurs="0"/>
+      <xs:element name="ISDS_ID"                     type="xs:string"                           minOccurs="0"/>
+      <xs:element name="FileReference"               type="xs:string"                           minOccurs="0"/>
+      <xs:element name="ReferenceNumber"             type="xs:string"                           minOccurs="0"/>
+      <xs:element name="EgovClassifiers"             type="xs:string"                           minOccurs="0"/>
+      <xs:element name="IssuingSystem"               type="xs:string"                           minOccurs="0"/>
+      <xs:element name="IssueDate"                   type="xs:date"/>
       <xs:element name="TaxPointDate"            type="xs:date"                             minOccurs="0"/>
       <xs:element name="VATApplicable"           type="xs:boolean"                          minOccurs="0"/>
       <xs:element name="Note"                    type="isdoc:NoteType"                      minOccurs="0" maxOccurs="unbounded"/>

@@ -11,11 +11,11 @@ namespace Fakvio.Infrastructure.Service.Isdoc;
 /// Pure static mapper: converts an Invoice entity to an ISDOC 6.0.2 XDocument.
 /// No database access, no I/O -- just mapping.
 ///
-/// Element order strictly follows the XSD InvoiceType sequence:
-///   DocumentType -> SubDocument -> UUID -> EgovFlag -> IssuingSystem -> ID ->
-///   IssueDate -> TaxPointDate -> VATApplicable -> Note(0..n) ->
-///   LocalCurrencyCode (required) -> ForeignCurrencyCode (optional) ->
-///   CurrRate -> RefCurrRate -> AccountingSupplierParty -> AccountingCustomerParty ->
+/// Element order strictly follows the official ISDOC 6.0.2 XSD InvoiceType sequence:
+///   DocumentType -> SubDocumentType? -> ... -> ID -> UUID -> EgovFlag? ->
+///   ... -> IssuingSystem? -> IssueDate -> TaxPointDate -> VATApplicable? ->
+///   Note(0..n) -> LocalCurrencyCode -> ForeignCurrencyCode? ->
+///   CurrRate? -> RefCurrRate? -> AccountingSupplierParty -> AccountingCustomerParty ->
 ///   InvoiceLine(1..n) -> TaxTotal -> LegalMonetaryTotal -> PaymentMeans -> Supplements
 /// </summary>
 internal static class IsdocMapper
@@ -61,12 +61,11 @@ internal static class IsdocMapper
         var isCzk = currencyCode.Equals("CZK", StringComparison.OrdinalIgnoreCase);
         var docType = invoice.DocumentType == EDocumentType.CreditNote ? "5" : "1";
 
-        // --- Identification block ---
+        // --- Identification block (XSD sequence: DocumentType, ID, UUID, ..., IssuingSystem) ---
         yield return new XElement(Ns + "DocumentType", docType);
-        // UUID before ID (XSD sequence order)
+        yield return new XElement(Ns + "ID", invoice.DocumentNumber ?? DeterministicUuid(invoice.Id));
         yield return new XElement(Ns + "UUID", DeterministicUuid(invoice.Id));
         yield return new XElement(Ns + "IssuingSystem", "Fakvio");
-        yield return new XElement(Ns + "ID", invoice.DocumentNumber ?? DeterministicUuid(invoice.Id));
 
         // --- Date block ---
         yield return new XElement(Ns + "IssueDate", FormatDate(invoice.IssueDate));
