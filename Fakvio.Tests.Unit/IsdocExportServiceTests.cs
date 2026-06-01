@@ -1093,6 +1093,37 @@ public class IsdocExportServiceTests : IDisposable
     }
 
     // -------------------------------------------------------------------------
+    // Element order: ISDOC 6.0.2 XSD requires strict sequence
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Map_HeaderElements_AreInCorrectXsdSequence()
+    {
+        // The ISDOC 6.0.2 XSD uses xs:sequence which enforces strict element order.
+        // Regression guard: ID must come before UUID, UUID before IssuingSystem, etc.
+        var inv = BuildMinimalInvoice();
+        var doc = IsdocMapper.Map(inv);
+        var ns = XNamespace.Get("http://isdoc.cz/namespace/2013");
+
+        var children = doc.Root!.Elements().Select(e => e.Name.LocalName).ToList();
+
+        var idxDocType = children.IndexOf("DocumentType");
+        var idxId = children.IndexOf("ID");
+        var idxUuid = children.IndexOf("UUID");
+        var idxIssuingSystem = children.IndexOf("IssuingSystem");
+        var idxIssueDate = children.IndexOf("IssueDate");
+        var idxLocalCurrency = children.IndexOf("LocalCurrencyCode");
+        var idxSupplier = children.IndexOf("AccountingSupplierParty");
+
+        idxDocType.ShouldBeLessThan(idxId, "DocumentType must precede ID");
+        idxId.ShouldBeLessThan(idxUuid, "ID must precede UUID");
+        idxUuid.ShouldBeLessThan(idxIssuingSystem, "UUID must precede IssuingSystem");
+        idxIssuingSystem.ShouldBeLessThan(idxIssueDate, "IssuingSystem must precede IssueDate");
+        idxIssueDate.ShouldBeLessThan(idxLocalCurrency, "IssueDate must precede LocalCurrencyCode");
+        idxLocalCurrency.ShouldBeLessThan(idxSupplier, "LocalCurrencyCode must precede AccountingSupplierParty");
+    }
+
+    // -------------------------------------------------------------------------
     // IssuingSystem element must always be present
     // -------------------------------------------------------------------------
 
