@@ -1112,6 +1112,7 @@ public class IsdocExportServiceTests : IDisposable
         var idxUuid = children.IndexOf("UUID");
         var idxIssuingSystem = children.IndexOf("IssuingSystem");
         var idxIssueDate = children.IndexOf("IssueDate");
+        var idxVatApplicable = children.IndexOf("VATApplicable");
         var idxLocalCurrency = children.IndexOf("LocalCurrencyCode");
         var idxSupplier = children.IndexOf("AccountingSupplierParty");
 
@@ -1119,7 +1120,8 @@ public class IsdocExportServiceTests : IDisposable
         idxId.ShouldBeLessThan(idxUuid, "ID must precede UUID");
         idxUuid.ShouldBeLessThan(idxIssuingSystem, "UUID must precede IssuingSystem");
         idxIssuingSystem.ShouldBeLessThan(idxIssueDate, "IssuingSystem must precede IssueDate");
-        idxIssueDate.ShouldBeLessThan(idxLocalCurrency, "IssueDate must precede LocalCurrencyCode");
+        idxIssueDate.ShouldBeLessThan(idxVatApplicable, "IssueDate must precede VATApplicable");
+        idxVatApplicable.ShouldBeLessThan(idxLocalCurrency, "VATApplicable must precede LocalCurrencyCode");
         idxLocalCurrency.ShouldBeLessThan(idxSupplier, "LocalCurrencyCode must precede AccountingSupplierParty");
     }
 
@@ -1164,6 +1166,32 @@ public class IsdocExportServiceTests : IDisposable
 
         // TaxPointDate is optional in the XSD (minOccurs="0") -- must be omitted
         doc.Descendants(ns + "TaxPointDate").ShouldBeEmpty();
+    }
+
+    // -------------------------------------------------------------------------
+    // VATApplicable: reflects issuer's VAT payer status
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Map_VatPayerIssuer_EmitsVATApplicableTrue()
+    {
+        var inv = BuildMinimalInvoice();
+        inv.Issuer!.IsVatPayer = true;
+        var doc = IsdocMapper.Map(inv);
+        var ns = XNamespace.Get("http://isdoc.cz/namespace/2013");
+
+        doc.Descendants(ns + "VATApplicable").First().Value.ShouldBe("true");
+    }
+
+    [Fact]
+    public void Map_NonVatPayerIssuer_EmitsVATApplicableFalse()
+    {
+        var inv = BuildMinimalInvoice();
+        inv.Issuer!.IsVatPayer = false;
+        var doc = IsdocMapper.Map(inv);
+        var ns = XNamespace.Get("http://isdoc.cz/namespace/2013");
+
+        doc.Descendants(ns + "VATApplicable").First().Value.ShouldBe("false");
     }
 
     // -------------------------------------------------------------------------

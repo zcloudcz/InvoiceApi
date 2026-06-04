@@ -13,7 +13,7 @@ namespace Fakvio.Infrastructure.Service.Isdoc;
 ///
 /// Element order strictly follows the official ISDOC 6.0.2 XSD InvoiceType sequence:
 ///   DocumentType -> SubDocumentType? -> ... -> ID -> UUID -> EgovFlag? ->
-///   ... -> IssuingSystem? -> IssueDate -> TaxPointDate -> VATApplicable? ->
+///   ... -> IssuingSystem? -> IssueDate -> TaxPointDate -> VATApplicable ->
 ///   Note(0..n) -> LocalCurrencyCode -> ForeignCurrencyCode? ->
 ///   CurrRate? -> RefCurrRate? -> AccountingSupplierParty -> AccountingCustomerParty ->
 ///   InvoiceLine(1..n) -> TaxTotal -> LegalMonetaryTotal -> PaymentMeans -> Supplements
@@ -71,6 +71,10 @@ internal static class IsdocMapper
         yield return new XElement(Ns + "IssueDate", FormatDate(invoice.IssueDate));
         if (invoice.TaxableSupplyDate.HasValue)
             yield return new XElement(Ns + "TaxPointDate", FormatDate(invoice.TaxableSupplyDate));
+
+        // --- VATApplicable (required by ISDOCReader even though XSD says minOccurs="0") ---
+        yield return new XElement(Ns + "VATApplicable",
+            (invoice.Issuer?.IsVatPayer == true).ToString().ToLowerInvariant());
 
         // --- Notes (before LocalCurrencyCode per XSD sequence) ---
         // For foreign-currency invoices emit both the user's notes AND the
