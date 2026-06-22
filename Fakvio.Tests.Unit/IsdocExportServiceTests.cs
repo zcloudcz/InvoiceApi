@@ -301,17 +301,18 @@ public class IsdocExportServiceTests : IDisposable
     [Fact]
     public void Map_InvoiceWithNotes_BothUserNoteAndForeignCurrencyNoteEmitted()
     {
-        // XSD allows multiple Note elements (maxOccurs="unbounded")
-        // Both the user's notes and the ForeignCurrencyNote must appear.
+        // Official XSD allows max 1 Note element -- both notes merged with " | " separator.
         var inv = BuildMinimalInvoice();
         inv.Currency = new Currency { Code = "EUR" };
         inv.Notes = "Platba do 15 dni";
         var doc = IsdocMapper.Map(inv);
         var ns = XNamespace.Get("http://isdoc.cz/namespace/2013");
 
-        var notes = doc.Descendants(ns + "Note").Select(n => n.Value).ToList();
-        notes.ShouldContain("Platba do 15 dni");
-        notes.ShouldContain(IsdocMapper.ForeignCurrencyNote);
+        // Single Note element (not under InvoiceLines) at invoice header level
+        var headerNotes = doc.Root!.Elements(ns + "Note").ToList();
+        headerNotes.Count.ShouldBe(1);
+        headerNotes[0].Value.ShouldContain("Platba do 15 dni");
+        headerNotes[0].Value.ShouldContain(IsdocMapper.ForeignCurrencyNote);
     }
 
     // -------------------------------------------------------------------------
@@ -1274,21 +1275,20 @@ public class IsdocExportServiceTests : IDisposable
     }
 
     // -------------------------------------------------------------------------
-    // IBAN-only bank transfer: still emits Details without BIC when SWIFT is null
+    // IBAN-only bank transfer: BIC emitted as empty (required by XSD BankAccount group)
     // -------------------------------------------------------------------------
 
     [Fact]
-    public void Map_BankTransfer_IbanWithoutSwift_EmitsIbanNoBic()
+    public void Map_BankTransfer_IbanWithoutSwift_EmitsIbanAndEmptyBic()
     {
         var inv = BuildMinimalInvoice();
         inv.IBAN = "CZ6508000000192000145399";
-        inv.SWIFT = null; // no SWIFT code available
+        inv.SWIFT = null;
         var doc = IsdocMapper.Map(inv);
         var ns = XNamespace.Get("http://isdoc.cz/namespace/2013");
 
         var details = doc.Descendants(ns + "Details").First();
         details.Element(ns + "IBAN")!.Value.ShouldBe("CZ6508000000192000145399");
-        // BIC element must be absent (not emitted as empty)
-        details.Element(ns + "BIC").ShouldBeNull();
+        details.Element(ns + "BIC")!.Value.ShouldBe(string.Empty);
     }
 }
