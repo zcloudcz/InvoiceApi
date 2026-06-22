@@ -144,6 +144,34 @@ internal static class IsdocMapper
             yield return new XElement(Ns + "PartyTaxScheme",
                 new XElement(Ns + "CompanyID", client.TaxNumber),
                 new XElement(Ns + "TaxScheme", "VAT"));
+
+        // Contact (optional) -- XSD: Name?, Telephone?, ElectronicMail?
+        var contact = MapContact(client);
+        if (contact != null)
+            yield return contact;
+    }
+
+    private static XElement? MapContact(Client client)
+    {
+        var contacts = client.Contact;
+        if (contacts == null || contacts.Count == 0) return null;
+
+        var phone = contacts.FirstOrDefault(c => c.ContactType == EContactType.Phone)?.ContactValue;
+        var email = contacts.FirstOrDefault(c => c.ContactType == EContactType.Email)?.ContactValue;
+        var name = contacts.FirstOrDefault(c => c.ContactType == EContactType.Phone)?.Label
+                ?? contacts.FirstOrDefault(c => c.ContactType == EContactType.Email)?.Label;
+
+        if (string.IsNullOrWhiteSpace(phone) && string.IsNullOrWhiteSpace(email))
+            return null;
+
+        var el = new XElement(Ns + "Contact");
+        if (!string.IsNullOrWhiteSpace(name))
+            el.Add(new XElement(Ns + "Name", name));
+        if (!string.IsNullOrWhiteSpace(phone))
+            el.Add(new XElement(Ns + "Telephone", phone));
+        if (!string.IsNullOrWhiteSpace(email))
+            el.Add(new XElement(Ns + "ElectronicMail", email));
+        return el;
     }
 
     // --------------------------------------------------------------------------

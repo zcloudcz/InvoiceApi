@@ -1291,4 +1291,74 @@ public class IsdocExportServiceTests : IDisposable
         details.Element(ns + "IBAN")!.Value.ShouldBe("CZ6508000000192000145399");
         details.Element(ns + "BIC")!.Value.ShouldBe(string.Empty);
     }
+
+    // -------------------------------------------------------------------------
+    // Contact: phone and email from Client.Contact collection
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Map_IssuerWithContacts_EmitsContactElement()
+    {
+        var inv = BuildMinimalInvoice();
+        inv.Issuer!.Contact = new List<Contact>
+        {
+            new Contact { ContactType = EContactType.Phone, ContactValue = "+420123456789", Label = "Jan Novak" },
+            new Contact { ContactType = EContactType.Email, ContactValue = "info@fakvio.cz" }
+        };
+        var doc = IsdocMapper.Map(inv);
+        var ns = XNamespace.Get("http://isdoc.cz/namespace/2013");
+
+        var supplier = doc.Descendants(ns + "AccountingSupplierParty").First();
+        var contact = supplier.Descendants(ns + "Contact").First();
+        contact.Element(ns + "Name")!.Value.ShouldBe("Jan Novak");
+        contact.Element(ns + "Telephone")!.Value.ShouldBe("+420123456789");
+        contact.Element(ns + "ElectronicMail")!.Value.ShouldBe("info@fakvio.cz");
+    }
+
+    [Fact]
+    public void Map_ClientWithContacts_EmitsContactElement()
+    {
+        var inv = BuildMinimalInvoice();
+        inv.Client!.Contact = new List<Contact>
+        {
+            new Contact { ContactType = EContactType.Email, ContactValue = "objednavky@odberatel.cz" }
+        };
+        var doc = IsdocMapper.Map(inv);
+        var ns = XNamespace.Get("http://isdoc.cz/namespace/2013");
+
+        var customer = doc.Descendants(ns + "AccountingCustomerParty").First();
+        var contact = customer.Descendants(ns + "Contact").First();
+        contact.Element(ns + "ElectronicMail")!.Value.ShouldBe("objednavky@odberatel.cz");
+        contact.Element(ns + "Telephone").ShouldBeNull();
+    }
+
+    [Fact]
+    public void Map_NoContacts_NoContactElement()
+    {
+        var inv = BuildMinimalInvoice();
+        var doc = IsdocMapper.Map(inv);
+        var ns = XNamespace.Get("http://isdoc.cz/namespace/2013");
+
+        var supplier = doc.Descendants(ns + "AccountingSupplierParty").First();
+        supplier.Descendants(ns + "Contact").ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void Map_IssuerWithContacts_StillValidatesAgainstXsd()
+    {
+        var inv = BuildMinimalInvoice();
+        inv.Issuer!.Contact = new List<Contact>
+        {
+            new Contact { ContactType = EContactType.Phone, ContactValue = "+420111222333", Label = "Reception" },
+            new Contact { ContactType = EContactType.Email, ContactValue = "fakturace@fakvio.cz" }
+        };
+        inv.Client!.Contact = new List<Contact>
+        {
+            new Contact { ContactType = EContactType.Email, ContactValue = "platby@odberatel.cz" }
+        };
+        var doc = IsdocMapper.Map(inv);
+
+        var errors = GetXsdErrors(doc);
+        errors.ShouldBeEmpty($"XSD validation errors:\n{string.Join("\n", errors)}");
+    }
 }

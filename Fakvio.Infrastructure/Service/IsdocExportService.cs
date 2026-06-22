@@ -54,8 +54,12 @@ public class IsdocExportService : IIsdocExportService
             .Include(i => i.InvoiceItem)
             .Include(i => i.Issuer)
                 .ThenInclude(c => c!.Address)
+            .Include(i => i.Issuer)
+                .ThenInclude(c => c!.Contact)
             .Include(i => i.Client)
                 .ThenInclude(c => c!.Address)
+            .Include(i => i.Client)
+                .ThenInclude(c => c!.Contact)
             .FirstOrDefaultAsync(i => i.Id == invoiceId, ct);
 
         if (invoice == null)
