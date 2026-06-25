@@ -92,4 +92,31 @@ public class AppLogFunctions
         // Call the controller action and normalize the response
         return FunctionResultHelper.Normalize(await _controller.GetSummary(ct));
     }
+
+    /// <summary>
+    /// POST api/logs/client → AppLogController.LogFromClient
+    /// Forwards WASM client-side errors to server log. [AllowAnonymous] — no auth required.
+    /// </summary>
+    [Function("AppLog_LogFromClient")]
+    public IActionResult AppLog_LogFromClient(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/logs/client")] HttpRequest req)
+    {
+        _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
+
+        // No authentication required ([AllowAnonymous] on the controller action)
+
+        Fakvio.Contracts.Dto.AppLog.ClientLogDto? dto = null;
+        try
+        {
+            dto = System.Text.Json.JsonSerializer.Deserialize<Fakvio.Contracts.Dto.AppLog.ClientLogDto>(
+                req.Body,
+                new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        }
+        catch
+        {
+            return new NoContentResult();
+        }
+
+        return FunctionResultHelper.Normalize(_controller.LogFromClient(dto!));
+    }
 }
