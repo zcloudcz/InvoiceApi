@@ -14,8 +14,10 @@
 @using Fakvio.Contracts.Dto.Client
 @using Fakvio.Contracts.Dto.CompanySettings
 @using Fakvio.Contracts.Dto.CloudStorage
+@using Fakvio.Contracts.Dto.InvoiceEmail
 @using Fakvio.Domain.Enums
 @inject ClientApiService ClientService
+@inject InvoiceMailboxApiService InvoiceMailboxApi
 @inject CompanySettingsApiService SettingsService
 @inject CloudStorageApiService CloudStorageApi
 @inject NavigationManager Navigation
@@ -612,6 +614,78 @@ else
         </Authorized>
     </AuthorizeView>
 
+    @* ─── Invoice Email Mailbox (Admin/SysAdmin) ─────────────────────────── *@
+    @* Per-tenant email alias for receiving invoices (PDF/ISDOC) by email.
+       Emails sent to this address are automatically parsed and imported. *@
+    <AuthorizeView Roles="Admin,SysAdmin">
+        <Authorized>
+            <MudPaper Elevation="2" Class="pa-4 mb-4 mt-4">
+                <MudText Typo="Typo.h6" Class="mb-2">Email pro příjem faktur</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+                    Aktivujte unikátní emailovou adresu pro automatický příjem faktur. Faktury zaslané na tuto adresu
+                    budou automaticky zpracovány — rozpoznány z příloh (PDF, ISDOC) a importovány jako přijaté nebo vydané faktury.
+                </MudText>
+
+                @if (_invoiceMailboxLoading)
+                {
+                    <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-2" />
+                }
+                else if (_invoiceMailbox == null || !_invoiceMailbox.IsActive)
+                {
+                    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="mb-3">
+                        Email pro příjem faktur není aktivní.
+                    </MudAlert>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.Email"
+                               OnClick="ActivateInvoiceMailbox">
+                        Aktivovat
+                    </MudButton>
+                }
+                else
+                {
+                    <MudGrid>
+                        <MudItem xs="12" md="6">
+                            <MudTextField Value="@_invoiceMailbox.FullEmailAddress"
+                                         Label="Email adresa" ReadOnly="true"
+                                         Adornment="Adornment.End"
+                                         AdornmentIcon="@Icons.Material.Filled.ContentCopy"
+                                         OnAdornmentClick="@CopyInvoiceMailboxEmail"
+                                         Variant="Variant.Outlined" />
+                        </MudItem>
+                        <MudItem xs="12" md="6">
+                            <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Class="mt-2">
+                                <MudChip T="string" Color="Color.Success" Size="Size.Small">Aktivní</MudChip>
+                                @if (_invoiceMailbox.EmailsReceivedCount > 0)
+                                {
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                        Přijato @_invoiceMailbox.EmailsReceivedCount emailů
+                                        @if (_invoiceMailbox.LastEmailReceivedAt.HasValue)
+                                        {
+                                            <text> — poslední @_invoiceMailbox.LastEmailReceivedAt.Value.ToString("d.M.yyyy HH:mm")</text>
+                                        }
+                                    </MudText>
+                                }
+                            </MudStack>
+                        </MudItem>
+                    </MudGrid>
+
+                    <MudStack Row="true" Spacing="2" Class="mt-3">
+                        <MudButton Variant="Variant.Outlined" Color="Color.Warning" Size="Size.Small"
+                                   StartIcon="@Icons.Material.Filled.Refresh"
+                                   OnClick="RegenerateInvoiceMailbox">
+                            Nový alias
+                        </MudButton>
+                        <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small"
+                                   StartIcon="@Icons.Material.Filled.PowerOff"
+                                   OnClick="DeactivateInvoiceMailbox">
+                            Deaktivovat
+                        </MudButton>
+                    </MudStack>
+                }
+            </MudPaper>
+        </Authorized>
+    </AuthorizeView>
+
     @* Full-page overlay during save operations *@
     <MudOverlay Visible="_saving" DarkBackground="true" Absolute="false" ZIndex="9999">
         <MudProgressCircular Color="Color.Primary" Indeterminate="true" Size="Size.Large" />
@@ -656,6 +730,10 @@ else
     private bool _cloudStorageLoading = true;
     private List<CloudStorageStatusDto> _cloudStorageStatuses = new();
 
+    // Invoice email mailbox
+    private bool _invoiceMailboxLoading = true;
+    private InvoiceMailboxDto? _invoiceMailbox;
+
     // AI Assistant settings form fields (Admin-only section)
     private bool _aiLoading = true;
     private bool _aiSaving = false;
@@ -683,6 +761,7 @@ else
         await LoadSmtpSettings();
         await LoadAiSettings();
         await LoadCloudStorageStatus();
+        await LoadInvoiceMailbox();
     }
 
     /// <summary>
@@ -1418,5 +1497,60 @@ else
         var key = $"{enumTypeName}_{value}";
         var localized = L[key];
         return localized.ResourceNotFound ? value : localized.Value;
+    }
+
+    // ─── Invoice Email Mailbox Methods ──────────────────────────────────────
+
+    private async Task LoadInvoiceMailbox()
+    {
+        try
+        {
+            _invoiceMailboxLoading = true;
+            _invoiceMailbox = await InvoiceMailboxApi.GetAsync();
+        }
+        catch
+        {
+            _invoiceMailbox = null;
+        }
+        finally
+        {
+            _invoiceMailboxLoading = false;
+        }
+    }
+
+    private async Task ActivateInvoiceMailbox()
+    {
+        _invoiceMailbox = await InvoiceMailboxApi.ActivateAsync();
+        if (_invoiceMailbox != null)
+            Snackbar.Add("Email pro příjem faktur aktivován.", Severity.Success);
+    }
+
+    private async Task DeactivateInvoiceMailbox()
+    {
+        var confirmed = await JS.InvokeAsync<bool>("confirm", "Opravdu deaktivovat email pro příjem faktur?");
+        if (!confirmed) return;
+
+        _invoiceMailbox = await InvoiceMailboxApi.DeactivateAsync();
+        Snackbar.Add("Email pro příjem faktur deaktivován.", Severity.Success);
+    }
+
+    private async Task RegenerateInvoiceMailbox()
+    {
+        var confirmed = await JS.InvokeAsync<bool>("confirm",
+            "Vygenerovat nový alias? Starý alias přestane fungovat okamžitě.");
+        if (!confirmed) return;
+
+        _invoiceMailbox = await InvoiceMailboxApi.RegenerateAsync();
+        if (_invoiceMailbox != null)
+            Snackbar.Add($"Nový alias: {_invoiceMailbox.FullEmailAddress}", Severity.Success);
+    }
+
+    private async Task CopyInvoiceMailboxEmail()
+    {
+        if (_invoiceMailbox != null)
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", _invoiceMailbox.FullEmailAddress);
+            Snackbar.Add("Email zkopírován do schránky.", Severity.Info);
+        }
     }
 }
