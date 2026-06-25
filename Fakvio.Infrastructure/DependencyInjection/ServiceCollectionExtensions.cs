@@ -155,6 +155,12 @@ public static class ServiceCollectionExtensions
         // Notifications — per-user in-app notifications (e.g., payment matched).
         services.AddScopedWithLogging<INotificationService, NotificationService>();
 
+        // Invoice email — receive invoices via email (ISDOC/PDF attachments).
+        services.AddScopedWithLogging<IInvoiceMailboxService, InvoiceMailboxService>();
+        services.AddScopedWithLogging<IInvoiceEmailProcessor, InvoiceEmailProcessor>();
+        services.AddScopedWithLogging<IInvoiceEmailClassifier, InvoiceEmailClassifier>();
+        services.AddSingleton<IIsdocImportParser, IsdocImportParser>();
+
         // Payment reminders (dunning) — settings CRUD, dunning job, manual send/cancel.
         services.AddScopedWithLogging<IReminderService, ReminderService>();
         services.AddSingleton<IInterestCalculator, InterestCalculator>();

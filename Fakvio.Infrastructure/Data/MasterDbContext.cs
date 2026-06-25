@@ -201,6 +201,10 @@ public class MasterDbContext : DbContext, IDataProtectionKeyContext
         modelBuilder.Ignore<BankTransaction>();
         modelBuilder.Ignore<PaymentMatch>();
 
+        // Invoice email tenant-only entities.
+        modelBuilder.Ignore<InvoiceMailbox>();
+        modelBuilder.Ignore<InboundInvoiceEmail>();
+
         ConfigureUser(modelBuilder);
         ConfigureClient(modelBuilder);
         ConfigureAddress(modelBuilder);
@@ -243,6 +247,15 @@ public class MasterDbContext : DbContext, IDataProtectionKeyContext
 
             entity.Property(e => e.InboundAlias).IsRequired().HasMaxLength(40);
             entity.Property(e => e.TenantSchema).IsRequired().HasMaxLength(100);
+
+            // MailboxType discriminator — determines which processor handles this alias.
+            // Default Payment for backward compatibility with existing rows.
+            entity.Property(e => e.MailboxType)
+                .HasConversion<int>()
+                .HasDefaultValue(Domain.Enums.EMailboxType.Payment);
+
+            // Invoice mailbox FK — only populated when MailboxType = Invoice.
+            // No DB-level FK constraint (cross-schema reference).
         });
     }
 

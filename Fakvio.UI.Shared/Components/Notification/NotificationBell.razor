@@ -185,12 +185,16 @@
     private static string GetIcon(ENotificationType type) => type switch
     {
         ENotificationType.PaymentMatched => Icons.Material.Filled.Payment,
+        ENotificationType.InvoiceEmailImported => Icons.Material.Filled.Email,
+        ENotificationType.InvoiceEmailNeedsReview => Icons.Material.Filled.MarkEmailUnread,
         _ => Icons.Material.Filled.Notifications
     };
 
     private static Color GetColor(ENotificationType type) => type switch
     {
         ENotificationType.PaymentMatched => Color.Success,
+        ENotificationType.InvoiceEmailImported => Color.Info,
+        ENotificationType.InvoiceEmailNeedsReview => Color.Warning,
         _ => Color.Default
     };
 

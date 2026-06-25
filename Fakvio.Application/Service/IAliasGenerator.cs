@@ -13,8 +13,15 @@ namespace Fakvio.Application.Service;
 public interface IAliasGenerator
 {
     /// <summary>
-    /// Produces a new random local-part for an inbound email address.
+    /// Produces a new random local-part for an inbound email address
+    /// with the default "pay-" prefix for payment mailboxes.
     /// Caller must verify uniqueness against MasterMailboxIndex before committing.
     /// </summary>
     string Generate();
+
+    /// <summary>
+    /// Produces a new random local-part with a custom prefix
+    /// (e.g., "fak-" for invoice mailboxes).
+    /// </summary>
+    string Generate(string prefix);
 }

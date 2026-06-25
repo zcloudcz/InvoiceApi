@@ -222,43 +222,107 @@ public class ImapPollService : IImapPollService
         var companyId = await ResolveCompanyIdFromSchemaAsync(master, index.TenantSchema, ct);
         var tenantCtx = (TenantDbContext)await tenantFactory.CreateContextForCompanyAsync(companyId, ct);
 
-        var parser = tenantScope.ServiceProvider.GetRequiredService<IBankEmailParser>();
-        var matcher = new PaymentMatchingService(
-            tenantCtx,
-            tenantScope.ServiceProvider.GetRequiredService<INotificationService>(),
-            tenantScope.ServiceProvider.GetRequiredService<ILogger<PaymentMatchingService>>());
-        var processor = new InboundEmailProcessor(
-            tenantCtx,
-            parser,
-            matcher,
-            tenantScope.ServiceProvider.GetRequiredService<ILogger<InboundEmailProcessor>>());
-
-        // Use the matched alias as the canonical ToAddress so the archive record
-        // reflects the actual routing address, not whatever was in the To: header
-        // (which may differ for catch-all / forwarded messages).
         var toAddress = message.To.Mailboxes.FirstOrDefault()?.Address
             ?? $"{resolution.MatchedAlias}@{inboundDomain ?? "fakvio.cz"}";
 
-        var payload = new InboundEmailPayload(
-            BankAccountMailboxId: index.TenantBankAccountMailboxId,
-            MessageId: message.MessageId ?? string.Empty,
-            ImapUid: uid.Id.ToString(),
-            ServerReceivedAt: DateTime.UtcNow,
-            FromAddress: message.From.Mailboxes.FirstOrDefault()?.Address ?? string.Empty,
-            FromDisplayName: message.From.Mailboxes.FirstOrDefault()?.Name,
-            ToAddress: toAddress,
-            Subject: message.Subject,
-            EmailDate: message.Date != default ? message.Date.UtcDateTime : null,
-            TextBody: message.TextBody,
-            HtmlBody: message.HtmlBody);
+        var messageId = message.MessageId ?? string.Empty;
+        var fromAddress = message.From.Mailboxes.FirstOrDefault()?.Address ?? string.Empty;
+        var fromName = message.From.Mailboxes.FirstOrDefault()?.Name;
+        var emailDate = message.Date != default ? message.Date.UtcDateTime : (DateTime?)null;
 
-        await processor.ProcessAsync(payload, companyId, ct);
+        // Route to the correct processor based on alias type
+        if (index.MailboxType == Domain.Enums.EMailboxType.Invoice && index.TenantInvoiceMailboxId.HasValue)
+        {
+            // Invoice email → extract attachments and process via InvoiceEmailProcessor
+            var invoiceProcessor = tenantScope.ServiceProvider.GetRequiredService<IInvoiceEmailProcessor>();
+
+            var invoicePayload = new InvoiceEmailPayload(
+                InvoiceMailboxId: index.TenantInvoiceMailboxId.Value,
+                MessageId: messageId,
+                ImapUid: uid.Id.ToString(),
+                ServerReceivedAt: DateTime.UtcNow,
+                FromAddress: fromAddress,
+                FromDisplayName: fromName,
+                ToAddress: toAddress,
+                Subject: message.Subject,
+                EmailDate: emailDate,
+                TextBody: message.TextBody,
+                HtmlBody: message.HtmlBody);
+
+            var attachments = ExtractAttachments(message);
+
+            await invoiceProcessor.ProcessAsync(invoicePayload, attachments, companyId, ct);
+        }
+        else
+        {
+            // Payment email → existing InboundEmailProcessor path
+            var parser = tenantScope.ServiceProvider.GetRequiredService<IBankEmailParser>();
+            var matcher = new PaymentMatchingService(
+                tenantCtx,
+                tenantScope.ServiceProvider.GetRequiredService<INotificationService>(),
+                tenantScope.ServiceProvider.GetRequiredService<ILogger<PaymentMatchingService>>());
+            var processor = new InboundEmailProcessor(
+                tenantCtx,
+                parser,
+                matcher,
+                tenantScope.ServiceProvider.GetRequiredService<ILogger<InboundEmailProcessor>>());
+
+            var payload = new InboundEmailPayload(
+                BankAccountMailboxId: index.TenantBankAccountMailboxId,
+                MessageId: messageId,
+                ImapUid: uid.Id.ToString(),
+                ServerReceivedAt: DateTime.UtcNow,
+                FromAddress: fromAddress,
+                FromDisplayName: fromName,
+                ToAddress: toAddress,
+                Subject: message.Subject,
+                EmailDate: emailDate,
+                TextBody: message.TextBody,
+                HtmlBody: message.HtmlBody);
+
+            await processor.ProcessAsync(payload, companyId, ct);
+        }
 
         await inbox.MoveToAsync(uid, processedFolder, ct);
         return HandleOutcome.Processed;
     }
 
     // ─── Low-level helpers ─────────────────────────────────────────────────
+
+    /// <summary>
+    /// Extracts PDF and ISDOC attachments from a MIME message for invoice processing.
+    /// </summary>
+    private static List<EmailAttachment> ExtractAttachments(MimeMessage message)
+    {
+        var attachments = new List<EmailAttachment>();
+
+        foreach (var part in message.BodyParts)
+        {
+            if (part is not MimePart mimePart || mimePart.Content == null)
+                continue;
+
+            var fileName = mimePart.FileName;
+            if (string.IsNullOrEmpty(fileName))
+                continue;
+
+            var isPdf = mimePart.ContentType.MimeType.Contains("pdf", StringComparison.OrdinalIgnoreCase)
+                     || fileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase);
+            var isIsdoc = fileName.EndsWith(".isdoc", StringComparison.OrdinalIgnoreCase)
+                       || fileName.EndsWith(".isdocx", StringComparison.OrdinalIgnoreCase);
+
+            if (!isPdf && !isIsdoc)
+                continue;
+
+            using var ms = new MemoryStream();
+            mimePart.Content.DecodeTo(ms);
+            attachments.Add(new EmailAttachment(
+                FileName: fileName,
+                ContentType: mimePart.ContentType.MimeType,
+                Content: ms.ToArray()));
+        }
+
+        return attachments;
+    }
 
     /// <summary>Opens an IMAP folder, creating it under the top-level namespace if it doesn't exist.</summary>
     private static async Task<IMailFolder> GetOrCreateFolderAsync(ImapClient client, string name, CancellationToken ct)

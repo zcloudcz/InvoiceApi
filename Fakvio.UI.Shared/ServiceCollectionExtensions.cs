@@ -90,6 +90,10 @@ public static class ServiceCollectionExtensions
         // Notifications — per-user in-app notifications (bell icon, dropdown, page).
         services.AddApiClient<NotificationApiService>();
 
+        // Invoice email — mailbox management + inbox list.
+        services.AddApiClient<InvoiceMailboxApiService>();
+        services.AddApiClient<InboundInvoiceEmailApiService>();
+
         // Shared app state — cross-component notifications (e.g., company list changed → refresh dropdown)
         services.AddScoped<AppStateService>();
 

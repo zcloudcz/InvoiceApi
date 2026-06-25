@@ -1226,6 +1226,124 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                     b.ToTable("InboundEmail");
                 });
 
+            modelBuilder.Entity("Fakvio.Domain.Entities.InboundInvoiceEmail", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("AttachmentCount")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("BodyTruncated")
+                        .HasColumnType("boolean");
+
+                    b.Property<decimal?>("ClassificationConfidence")
+                        .HasPrecision(4, 3)
+                        .HasColumnType("numeric(4,3)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("CreatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("DeduplicationHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<int?>("Direction")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("EmailDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FromAddress")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("FromDisplayName")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<bool>("HasIsdoc")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("HasPdf")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("HtmlBody")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ImapUid")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<long?>("InvoiceId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("InvoiceMailboxId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("MessageId")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<int>("ProcessAttempts")
+                        .HasColumnType("integer");
+
+                    b.Property<long?>("ReceivedInvoiceId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("ServerReceivedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("StatusError")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("Subject")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("TextBody")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ToAddress")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("UpdatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InvoiceId");
+
+                    b.HasIndex("ReceivedInvoiceId");
+
+                    b.HasIndex("ServerReceivedAt");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("InvoiceMailboxId", "DeduplicationHash")
+                        .IsUnique();
+
+                    b.ToTable("InboundInvoiceEmail");
+                });
+
             modelBuilder.Entity("Fakvio.Domain.Entities.Invoice", b =>
                 {
                     b.Property<long>("Id")
@@ -1470,6 +1588,56 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                     b.HasIndex("VatRateId");
 
                     b.ToTable("InvoiceItem");
+                });
+
+            modelBuilder.Entity("Fakvio.Domain.Entities.InvoiceMailbox", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("ActiveFrom")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("CreatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("DeactivatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("EmailsReceivedCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("InboundAlias")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("LastEmailReceivedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("UpdatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InboundAlias")
+                        .IsUnique();
+
+                    b.HasIndex("IsActive");
+
+                    b.ToTable("InvoiceMailbox");
                 });
 
             modelBuilder.Entity("Fakvio.Domain.Entities.Notification", b =>
@@ -2791,6 +2959,31 @@ namespace Fakvio.Infrastructure.Migrations.Tenant
                     b.Navigation("BankAccountMailbox");
 
                     b.Navigation("BankTransaction");
+                });
+
+            modelBuilder.Entity("Fakvio.Domain.Entities.InboundInvoiceEmail", b =>
+                {
+                    b.HasOne("Fakvio.Domain.Entities.Invoice", "Invoice")
+                        .WithMany()
+                        .HasForeignKey("InvoiceId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Fakvio.Domain.Entities.InvoiceMailbox", "InvoiceMailbox")
+                        .WithMany()
+                        .HasForeignKey("InvoiceMailboxId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Fakvio.Domain.Entities.ReceivedInvoice", "ReceivedInvoice")
+                        .WithMany()
+                        .HasForeignKey("ReceivedInvoiceId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Invoice");
+
+                    b.Navigation("InvoiceMailbox");
+
+                    b.Navigation("ReceivedInvoice");
                 });
 
             modelBuilder.Entity("Fakvio.Domain.Entities.Invoice", b =>

@@ -24,22 +24,20 @@ public class AliasGenerator : IAliasGenerator
     private const int BodyLength = 10;
 
     /// <inheritdoc />
-    public string Generate()
+    public string Generate() => Generate(Prefix);
+
+    /// <inheritdoc />
+    public string Generate(string prefix)
     {
-        // RandomNumberGenerator is cryptographically secure; System.Random is not.
-        // For an auth-like token, CSPRNG is the right call.
         Span<byte> randomBytes = stackalloc byte[BodyLength];
         RandomNumberGenerator.Fill(randomBytes);
 
         Span<char> body = stackalloc char[BodyLength];
         for (var i = 0; i < BodyLength; i++)
         {
-            // Map each byte to an index into the alphabet.
-            // Using modulo introduces a slight bias, but for 256 % 26 ≈ 9.85 the
-            // bias is negligible (at most one or two bits of entropy lost — still >45 bits).
             body[i] = Alphabet[randomBytes[i] % Alphabet.Length];
         }
 
-        return Prefix + new string(body);
+        return prefix + new string(body);
     }
 }

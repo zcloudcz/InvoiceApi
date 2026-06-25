@@ -209,6 +209,18 @@ public class TenantDbContext : DbContext
     /// </summary>
     public DbSet<NotificationRecipient> NotificationRecipient { get; set; }
 
+    // ─── Invoice Email ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Per-tenant invoice email mailbox. One per company — alias prefix "fak-".
+    /// </summary>
+    public DbSet<InvoiceMailbox> InvoiceMailbox { get; set; }
+
+    /// <summary>
+    /// Archive of inbound invoice emails with processing status and result links.
+    /// </summary>
+    public DbSet<InboundInvoiceEmail> InboundInvoiceEmail { get; set; }
+
     /// <summary>
     /// Reverse charge codes from MFČR číselník (kódy předmětu plnění PDP).
     /// Used in VAT control statement (kontrolní hlášení / EPO XML) sections A.1 and B.1.
@@ -295,6 +307,9 @@ public class TenantDbContext : DbContext
 
         ConfigureNotification(modelBuilder);
         ConfigureNotificationRecipient(modelBuilder);
+
+        ConfigureInvoiceMailbox(modelBuilder);
+        ConfigureInboundInvoiceEmail(modelBuilder);
 
         ConfigureBankAccountMailbox(modelBuilder);
         ConfigureInboundEmail(modelBuilder);
@@ -1267,6 +1282,68 @@ public class TenantDbContext : DbContext
                 .WithMany(n => n.Recipients)
                 .HasForeignKey(e => e.NotificationId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+    }
+
+    // ─── Invoice Email configuration ────────────────────────────────────
+
+    /// <summary>
+    /// InvoiceMailbox — one per tenant, "fak-" prefix alias for receiving invoices by email.
+    /// </summary>
+    private void ConfigureInvoiceMailbox(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<InvoiceMailbox>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            entity.HasIndex(e => e.InboundAlias).IsUnique();
+            entity.HasIndex(e => e.IsActive);
+
+            entity.Property(e => e.InboundAlias).IsRequired().HasMaxLength(40);
+        });
+    }
+
+    /// <summary>
+    /// InboundInvoiceEmail — archive of invoice emails with processing status.
+    /// </summary>
+    private void ConfigureInboundInvoiceEmail(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<InboundInvoiceEmail>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            entity.HasIndex(e => new { e.InvoiceMailboxId, e.DeduplicationHash }).IsUnique();
+            entity.HasIndex(e => e.Status);
+            entity.HasIndex(e => e.ServerReceivedAt);
+
+            entity.Property(e => e.MessageId).IsRequired().HasMaxLength(500);
+            entity.Property(e => e.ImapUid).HasMaxLength(50);
+            entity.Property(e => e.FromAddress).IsRequired().HasMaxLength(500);
+            entity.Property(e => e.FromDisplayName).HasMaxLength(500);
+            entity.Property(e => e.ToAddress).IsRequired().HasMaxLength(500);
+            entity.Property(e => e.Subject).HasMaxLength(1000);
+            entity.Property(e => e.DeduplicationHash).IsRequired().HasMaxLength(64);
+            entity.Property(e => e.StatusError).HasMaxLength(2000);
+            entity.Property(e => e.Status).HasConversion<int>();
+            entity.Property(e => e.Direction).HasConversion<int?>();
+            entity.Property(e => e.ClassificationConfidence).HasPrecision(4, 3);
+
+            entity.HasOne(e => e.InvoiceMailbox)
+                .WithMany()
+                .HasForeignKey(e => e.InvoiceMailboxId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.ReceivedInvoice)
+                .WithMany()
+                .HasForeignKey(e => e.ReceivedInvoiceId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .IsRequired(false);
+
+            entity.HasOne(e => e.Invoice)
+                .WithMany()
+                .HasForeignKey(e => e.InvoiceId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .IsRequired(false);
         });
     }
 

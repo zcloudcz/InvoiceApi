@@ -1,4 +1,5 @@
 using Fakvio.Domain.Common;
+using Fakvio.Domain.Enums;
 
 namespace Fakvio.Domain.Entities;
 
@@ -10,6 +11,10 @@ namespace Fakvio.Domain.Entities;
 /// which tenant schema to open BEFORE it can query BankAccountMailbox. Without
 /// this index, we'd have to scan every tenant — O(N tenants) per email.
 ///
+/// Supports two alias types via <see cref="MailboxType"/>:
+///   - Payment ("pay-" prefix) → BankAccountMailbox → payment matching pipeline
+///   - Invoice ("fak-" prefix) → InvoiceMailbox → invoice import pipeline
+///
 /// Lifecycle:
 ///   - Mailbox activation   → new row with IsAliasRetired=false
 ///   - Alias regeneration   → old row IsAliasRetired=true; new row added
@@ -19,14 +24,23 @@ namespace Fakvio.Domain.Entities;
 /// </summary>
 public class MasterMailboxIndex : BaseEntity
 {
-    /// <summary>The alias local-part (e.g., "pay-7f3k9p2aqr"). Globally unique among non-retired rows.</summary>
+    /// <summary>The alias local-part (e.g., "pay-7f3k9p2aqr" or "fak-a7b3x9k2mp"). Globally unique among non-retired rows.</summary>
     public string InboundAlias { get; set; } = string.Empty;
 
     /// <summary>PostgreSQL schema for the tenant (e.g., "tenant_42").</summary>
     public string TenantSchema { get; set; } = string.Empty;
 
-    /// <summary>Id of the BankAccountMailbox row inside the tenant schema (for direct lookup).</summary>
+    /// <summary>
+    /// Discriminator — determines which processor handles emails for this alias.
+    /// Default: Payment (backward compatible with existing rows).
+    /// </summary>
+    public EMailboxType MailboxType { get; set; } = EMailboxType.Payment;
+
+    /// <summary>Id of the BankAccountMailbox row inside the tenant schema. Used when MailboxType = Payment.</summary>
     public long TenantBankAccountMailboxId { get; set; }
+
+    /// <summary>Id of the InvoiceMailbox row inside the tenant schema. Used when MailboxType = Invoice.</summary>
+    public long? TenantInvoiceMailboxId { get; set; }
 
     /// <summary>
     /// True once the alias has been regenerated and the new alias supersedes it.

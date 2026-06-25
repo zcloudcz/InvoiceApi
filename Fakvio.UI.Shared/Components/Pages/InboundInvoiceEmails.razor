@@ -1,0 +1,159 @@
+@page "/invoice-emails"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@using Fakvio.Contracts.Dto.InvoiceEmail
+@using Fakvio.Domain.Enums
+@using Fakvio.UI.Shared.Services
+@inject InboundInvoiceEmailApiService EmailService
+@inject NavigationManager Navigation
+
+<MudText Typo="Typo.h4" Class="mb-4">Příchozí faktury emailem</MudText>
+
+<MudStack Row="true" Spacing="2" Class="mb-4" AlignItems="AlignItems.Center">
+    <MudSelect T="EInvoiceEmailStatus?" Value="_statusFilter" ValueChanged="@OnStatusFilterChanged"
+               Label="Stav" Variant="Variant.Outlined" Dense="true" Clearable="true"
+               Style="min-width: 160px;">
+        <MudSelectItem Value="@((EInvoiceEmailStatus?)EInvoiceEmailStatus.Pending)">Čeká</MudSelectItem>
+        <MudSelectItem Value="@((EInvoiceEmailStatus?)EInvoiceEmailStatus.Imported)">Importováno</MudSelectItem>
+        <MudSelectItem Value="@((EInvoiceEmailStatus?)EInvoiceEmailStatus.NeedsReview)">K přezkoumání</MudSelectItem>
+        <MudSelectItem Value="@((EInvoiceEmailStatus?)EInvoiceEmailStatus.Failed)">Chyba</MudSelectItem>
+        <MudSelectItem Value="@((EInvoiceEmailStatus?)EInvoiceEmailStatus.Ignored)">Ignorováno</MudSelectItem>
+    </MudSelect>
+    <MudSelect T="EInvoiceDirection?" Value="_directionFilter" ValueChanged="@OnDirectionFilterChanged"
+               Label="Směr" Variant="Variant.Outlined" Dense="true" Clearable="true"
+               Style="min-width: 160px;">
+        <MudSelectItem Value="@((EInvoiceDirection?)EInvoiceDirection.Received)">Přijatá</MudSelectItem>
+        <MudSelectItem Value="@((EInvoiceDirection?)EInvoiceDirection.Issued)">Vydaná</MudSelectItem>
+    </MudSelect>
+</MudStack>
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else if (_items.Count == 0)
+{
+    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="my-4">
+        Žádné příchozí faktury emailem
+    </MudAlert>
+}
+else
+{
+    <MudTable Items="@_items" Dense="true" Hover="true" Striped="true"
+              OnRowClick="@(new EventCallback<TableRowClickEventArgs<InboundInvoiceEmailDto>>(this, OnRowClick))">
+        <HeaderContent>
+            <MudTh>Datum</MudTh>
+            <MudTh>Odesílatel</MudTh>
+            <MudTh>Předmět</MudTh>
+            <MudTh>Přílohy</MudTh>
+            <MudTh>Směr</MudTh>
+            <MudTh>Stav</MudTh>
+            <MudTh>Akce</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@(context.EmailDate?.ToString("d.M.yyyy HH:mm") ?? context.ServerReceivedAt.ToString("d.M.yyyy HH:mm"))</MudTd>
+            <MudTd>@(context.FromDisplayName ?? context.FromAddress)</MudTd>
+            <MudTd>@context.Subject</MudTd>
+            <MudTd>
+                @if (context.HasIsdoc) { <MudChip T="string" Size="Size.Small" Color="Color.Success">ISDOC</MudChip> }
+                @if (context.HasPdf) { <MudChip T="string" Size="Size.Small" Color="Color.Info">PDF</MudChip> }
+                @if (context.AttachmentCount > 0 && !context.HasPdf && !context.HasIsdoc)
+                {
+                    <MudChip T="string" Size="Size.Small">@context.AttachmentCount</MudChip>
+                }
+            </MudTd>
+            <MudTd>
+                @if (context.Direction == EInvoiceDirection.Received)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Primary">Přijatá</MudChip>
+                }
+                else if (context.Direction == EInvoiceDirection.Issued)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Secondary">Vydaná</MudChip>
+                }
+            </MudTd>
+            <MudTd>
+                <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">
+                    @GetStatusLabel(context.Status)
+                </MudChip>
+            </MudTd>
+            <MudTd>
+                @if (context.Status == EInvoiceEmailStatus.Failed || context.Status == EInvoiceEmailStatus.NeedsReview)
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.VisibilityOff" Size="Size.Small"
+                                   OnClick="@(() => IgnoreAsync(context))" Title="Ignorovat" />
+                }
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+
+    @if (_totalPages > 1)
+    {
+        <MudStack Row="true" Justify="Justify.Center" Class="mt-4">
+            <MudPagination Count="@_totalPages" Selected="@_page"
+                          SelectedChanged="@OnPageChanged" Color="Color.Primary" />
+        </MudStack>
+    }
+}
+
+@code {
+    private List<InboundInvoiceEmailDto> _items = [];
+    private bool _loading = true;
+    private int _page = 1;
+    private int _totalPages = 1;
+    private EInvoiceEmailStatus? _statusFilter;
+    private EInvoiceDirection? _directionFilter;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        StateHasChanged();
+
+        var result = await EmailService.GetListAsync(_page, 20, _statusFilter, _directionFilter);
+        _items = result.Items;
+        _totalPages = result.TotalPages;
+        _loading = false;
+    }
+
+    private async Task OnPageChanged(int page) { _page = page; await LoadAsync(); }
+    private async Task OnStatusFilterChanged(EInvoiceEmailStatus? val) { _statusFilter = val; _page = 1; await LoadAsync(); }
+    private async Task OnDirectionFilterChanged(EInvoiceDirection? val) { _directionFilter = val; _page = 1; await LoadAsync(); }
+
+    private void OnRowClick(TableRowClickEventArgs<InboundInvoiceEmailDto> args)
+    {
+        var item = args.Item;
+        if (item == null) return;
+
+        if (item.ReceivedInvoiceId.HasValue)
+            Navigation.NavigateTo($"/received-invoices/{item.ReceivedInvoiceId}");
+        else if (item.InvoiceId.HasValue)
+            Navigation.NavigateTo($"/invoices/{item.InvoiceId}");
+    }
+
+    private async Task IgnoreAsync(InboundInvoiceEmailDto item)
+    {
+        await EmailService.IgnoreAsync(item.Id);
+        item.Status = EInvoiceEmailStatus.Ignored;
+    }
+
+    private static Color GetStatusColor(EInvoiceEmailStatus status) => status switch
+    {
+        EInvoiceEmailStatus.Pending => Color.Default,
+        EInvoiceEmailStatus.Imported => Color.Success,
+        EInvoiceEmailStatus.NeedsReview => Color.Warning,
+        EInvoiceEmailStatus.Failed => Color.Error,
+        EInvoiceEmailStatus.Ignored => Color.Dark,
+        _ => Color.Default
+    };
+
+    private static string GetStatusLabel(EInvoiceEmailStatus status) => status switch
+    {
+        EInvoiceEmailStatus.Pending => "Čeká",
+        EInvoiceEmailStatus.Imported => "Importováno",
+        EInvoiceEmailStatus.NeedsReview => "K přezkoumání",
+        EInvoiceEmailStatus.Failed => "Chyba",
+        EInvoiceEmailStatus.Ignored => "Ignorováno",
+        _ => status.ToString()
+    };
+}
