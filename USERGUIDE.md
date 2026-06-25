@@ -24,6 +24,7 @@
 14. [Upomínky (Dunning)](#14-upomínky-dunning)
 15. [Párování plateb](#15-párování-plateb)
 16. [Lokalizace — přepínání jazyka CZ/EN](#16-lokalizace--přepínání-jazyka-czen)
+17. [Notifikace](#17-notifikace)
 
 ---
 
@@ -42,6 +43,7 @@ Dashboard zobrazuje aktuální přehled vaší firmy na jednom místě:
 | Nesplaceno | Celková částka v CZK u vydaných (Completed) ale nezaplacených faktur | `/invoices` |
 | Nespárované platby | Počet bankovních transakcí čekajících na párování (zobrazí se jen když > 0) | `/payments` |
 | Upozornění | Počet otevřených alertů (zobrazí se jen když > 0) — kliknutím se rozbalí detail panel | expanduje panel |
+| Notifikace (zvoneček) | Ikona v horní liště — badge s počtem nepřečtených notifikací, kliknutím dropdown | viz [§17](#17-notifikace) |
 
 ### Grafy
 
@@ -598,6 +600,10 @@ Grid zobrazuje bankovní transakce:
 
 Kliknutím na řádek s platbou se otevře detail → tlačítko „Spárovat s fakturou" → výběr faktury ze seznamu.
 
+### Notifikace při spárování
+
+Při úspěšném spárování platby (automatickém i ručním) dostanou všichni uživatelé firmy notifikaci — zobrazí se jako badge na zvonečku v horní liště. Kliknutím na notifikaci přejdete přímo na detail spárované faktury.
+
 ### Dashboard badge
 
 V levém menu vedle „Platby" se zobrazuje číslo (badge) s počtem nespárovaných plateb. Na Dashboardu se zobrazí KPI karta.
@@ -613,3 +619,57 @@ Aplikace podporuje dvě jazykové mutace:
 - **English (en)** — přepnutím se změní veškerý popis UI
 
 **Jazyk dokumentů** (PDF, emaily) závisí na nastavení každého klienta (pole „Jazyk" v detailu klienta), ne na jazyku UI. Pokud klient má `en`, dostane PDF a email v angličtině bez ohledu na váš jazyk UI.
+
+---
+
+## 17. Notifikace
+
+**Přístup:** ikona zvonečku 🔔 v pravém horním rohu navigace (vedle tlačítka odhlášení)
+
+Systém notifikací vás informuje o důležitých událostech, například o spárování plateb s fakturami.
+
+### Zvoneček s badgem
+
+V horní liště aplikace se zobrazuje ikona zvonečku. Pokud máte nepřečtené notifikace, zobrazí se červený badge s jejich počtem.
+
+### Rozbalovací menu notifikací
+
+Kliknutím na zvoneček se otevře rozbalovací panel:
+
+- **Až 10 posledních notifikací** — seřazeny od nejnovější
+- Nepřečtené notifikace jsou zvýrazněny tučně a mají modrý indikátor
+- Každá notifikace obsahuje:
+  - Ikona dle typu (např. ikona platby pro spárované platby)
+  - Titulek
+  - Popis události
+  - Relativní čas (např. „před 5 min", „před 2 h")
+- **„Označit vše jako přečtené"** — tlačítko v záhlaví menu
+- **„Zobrazit vše"** — odkaz na stránku se všemi notifikacemi
+
+### Prokliknutí na detail
+
+Kliknutím na notifikaci:
+1. Notifikace se automaticky označí jako přečtená
+2. Aplikace vás přesměruje na detail příslušného dokladu (např. na detail faktury, přijaté faktury)
+
+### Stránka notifikací
+
+**Stránka:** `/notifications`
+
+Kompletní seznam všech notifikací se stránkováním a filtry:
+
+| Filtr | Popis |
+|-------|-------|
+| Jen nepřečtené | Přepínač — zobrazí pouze nepřečtené notifikace |
+
+**Akce:**
+- Kliknutím na řádek → přechod na detail dokladu + označení jako přečtené
+- „Označit vše jako přečtené" — hromadné označení
+
+### Typy notifikací
+
+| Typ | Kdy se generuje |
+|-----|----------------|
+| Platba spárována | Systém automaticky nebo ručně spároval bankovní platbu s fakturou |
+
+Další typy budou přibývat s rozvojem aplikace (např. upomínky, opakované faktury).

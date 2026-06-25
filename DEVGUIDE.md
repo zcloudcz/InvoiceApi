@@ -249,7 +249,7 @@ Functions přes `SystemConfigurationFunctions.SystemConfiguration_GetCredentialH
 |---------|--------|-------------|----------|
 | `ApplicationDbContext` | (přechodný — postupně mizí) | Legacy single-tenant entity. Postupně se přesouvá do Master/Tenant. | Scoped |
 | `MasterDbContext` | `public` | `User`, `Company` (issuer registry), `CompanySystemSettings`, `SystemConfiguration`, `AppLog`, code tables (master copy: `VatRate`, `Currency`, `NumberSequenceFormat`, `ContentTemplate`). | Scoped |
-| `TenantDbContext` | `tenant_{companyId}` (dynamic) | `Client`, `Invoice`, `InvoiceItem`, `InvoiceTemplate`, `NumberSequence`, `Reminder`, `ReceivedInvoice`, code tables (tenant kopie). | Scoped, **`Schema` set per-request** middlewarem. |
+| `TenantDbContext` | `tenant_{companyId}` (dynamic) | `Client`, `Invoice`, `InvoiceItem`, `InvoiceTemplate`, `NumberSequence`, `Reminder`, `ReceivedInvoice`, `Notification`, `NotificationRecipient`, code tables (tenant kopie). | Scoped, **`Schema` set per-request** middlewarem. |
 
 **Klíčový trik**: `TenantModelCacheKeyFactory` (`Fakvio.Infrastructure/Data/TenantModelCacheKeyFactory.cs:24-48`). EF Core cachuje compiled model per `DbContext.Type` — bez tohoto factory by všechny tenanty sdílely jediný cached model s prvním viděným schématem. Cache key teď zahrnuje `Schema` → jeden compiled model per schéma, lazy.
 
@@ -548,14 +548,61 @@ Implementace: `PaymentMatchingService.cs` (metoda `GetPaymentsForInvoiceAsync`).
 - PaymentMatch / BankTransaction — přístupné přes SysAdmin UI
 - NumberSequence, BankAccount, VatRate, Currency, ContentTemplate — read-only přes MCP server (`Fakvio.McpServer`)
 
-### 4.8 MCP Server (`Fakvio.McpServer`)
+### 4.8 In-app notifikace (per-user)
+
+Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolve lifecycle, notifikace jsou per-user s read/unread lifecycle.
+
+**Architektura:**
+
+| Vrstva | Kde | Co dělá |
+|--------|-----|---------|
+| Entity | `Fakvio.Domain/Entities/Notification.cs` + `NotificationRecipient.cs` | Event + per-user read state |
+| Enum | `Fakvio.Domain/Enums/ENotificationType.cs` | `PaymentMatched = 1` (rozšiřitelný) |
+| Interface | `Fakvio.Application/Service/INotificationService.cs` | Create, get, mark read |
+| Implementace | `Fakvio.Infrastructure/Service/NotificationService.cs` | Cross-context (MasterDbContext pro user list, TenantDbContext pro data) |
+| API | `Fakvio.API/Controller/NotificationController.cs` | 5 endpointů (viz níže) |
+| Blazor client | `Fakvio.UI.Shared/Services/NotificationApiService.cs` | Dědí `ApiClientBase` |
+| UI | `Fakvio.UI.Shared/Components/Notification/NotificationBell.razor` | Bell icon + dropdown popover v AppBar |
+| UI stránka | `Fakvio.UI.Shared/Components/Pages/Notifications.razor` | `/notifications` — stránkovaný seznam |
+
+**Datový model:**
+
+- `Notification` (TenantDbContext): `Type` (int), `Title` (max 500), `Message` (max 2000), `RelatedEntityId` + `RelatedEntityType` (polymorfní odkaz na Invoice, ReceivedInvoice atd.).
+- `NotificationRecipient` (TenantDbContext): `NotificationId` (FK, cascade), `UserId` (plain long — cross-context, User žije v master), `ReadAt` (null = unread).
+- Indexy: `(RelatedEntityId, RelatedEntityType)`, `CreatedAt`, unique `(NotificationId, UserId)`, `(UserId, ReadAt)`.
+
+**API endpointy** (všechny `[Authorize]`, scoped na current user):
+
+| Endpoint | Popis |
+|----------|-------|
+| `GET /api/notification` | Stránkovaný seznam, filtry: `?unreadOnly=true&type=1` |
+| `GET /api/notification/unread-count` | Int pro badge |
+| `GET /api/notification/dashboard` | Unread count + 10 recent |
+| `POST /api/notification/{id}/read` | Mark single as read (204) |
+| `POST /api/notification/read-all` | Mark all as read (204) |
+
+**CreateForAllUsersAsync flow:**
+1. `ITenantResolver.GetCurrentCompanyId()` → `companyId`.
+2. `MasterDbContext.Set<User>().Where(u.CompanyId == companyId && u.IsActive)` → user IDs.
+3. Vytvoří 1× `Notification` + N× `NotificationRecipient`.
+
+**Integrace:** `PaymentMatchingService` volá `CreateForAllUsersAsync` po úspěšném matchi:
+- `ConfirmAutoMatchAsync` (auto match) — Invoice i ReceivedInvoice branch.
+- `ManualMatchAsync` (manuální match).
+- `ImapPollService` ručně instantiuje `PaymentMatchingService` — konstruktor musí dostat `INotificationService`.
+
+**UI polling:** bell icon fetchuje unread count v `OnAfterRenderAsync` + na `NavigationManager.LocationChanged`. Žádný SignalR (v1).
+
+**Rozšíření:** přidat nový `ENotificationType` + volání `CreateForAllUsersAsync` v příslušném servisu. Žádná schema změna.
+
+### 4.9 MCP Server (`Fakvio.McpServer`)
 
 - Standalone .NET tool (PackAsTool), stdio transport.
 - Auth: `FAKVIO_API_TOKEN` env var (JWT bearer).
 - 21 tools: 8 invoice + 6 client + 3 template + 4 reporting.
 - Konfigurace v Claude Desktop / Claude Code: spustí `fakvio-mcp-server` jako subprocess se stdio piping.
 
-### 4.9 EPO XML export (DPHDP3 + DPHKH1)
+### 4.10 EPO XML export (DPHDP3 + DPHKH1)
 
 Česká daňová přiznání ve formátu EPO Finanční správy ČR.
 
