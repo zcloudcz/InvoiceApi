@@ -82,6 +82,19 @@ public class InvoiceMailboxService : IInvoiceMailboxService
             mailbox.DeactivatedAt = null;
             await _tenant.SaveChangesAsync(ct);
 
+            // Re-register in master index (was retired on deactivate)
+            var existingEntry = await _master.MasterMailboxIndex
+                .FirstOrDefaultAsync(i => i.InboundAlias == mailbox.InboundAlias, ct);
+            if (existingEntry != null && existingEntry.IsAliasRetired)
+            {
+                existingEntry.IsAliasRetired = false;
+                await _master.SaveChangesAsync(ct);
+            }
+            else if (existingEntry == null)
+            {
+                await RegisterInMasterIndexAsync(mailbox.InboundAlias, mailbox.Id, ct);
+            }
+
             _logger.LogInformation(
                 "Invoice mailbox reactivated: Alias={Alias} ActiveFrom={ActiveFrom}",
                 mailbox.InboundAlias, now);
@@ -101,6 +114,17 @@ public class InvoiceMailboxService : IInvoiceMailboxService
             mailbox.IsActive = false;
             mailbox.DeactivatedAt = DateTime.UtcNow;
             await _tenant.SaveChangesAsync(ct);
+
+            // Retire master index entry so InboundAliasRouter stops routing to this alias.
+            // Without this, emails would be routed → InvoiceEmailProcessor checks IsActive → skips,
+            // but IMAP message is already moved to Processed folder → silent email loss.
+            var masterEntry = await _master.MasterMailboxIndex
+                .FirstOrDefaultAsync(i => i.InboundAlias == mailbox.InboundAlias && !i.IsAliasRetired, ct);
+            if (masterEntry != null)
+            {
+                masterEntry.IsAliasRetired = true;
+                await _master.SaveChangesAsync(ct);
+            }
 
             _logger.LogInformation("Invoice mailbox deactivated: Alias={Alias}", mailbox.InboundAlias);
         }

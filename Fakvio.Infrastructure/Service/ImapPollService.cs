@@ -233,8 +233,20 @@ public class ImapPollService : IImapPollService
         // Route to the correct processor based on alias type
         if (index.MailboxType == Domain.Enums.EMailboxType.Invoice && index.TenantInvoiceMailboxId.HasValue)
         {
-            // Invoice email → extract attachments and process via InvoiceEmailProcessor
-            var invoiceProcessor = tenantScope.ServiceProvider.GetRequiredService<IInvoiceEmailProcessor>();
+            // Invoice email → construct processor with the tenant-scoped DbContext.
+            // Cannot use DI resolution here — the scoped TenantDbContext from DI has no
+            // Schema set. We must pass the explicitly-configured tenantCtx (same pattern
+            // as InboundEmailProcessor for payment emails).
+            var invoiceProcessor = new InvoiceEmailProcessor(
+                tenantCtx,
+                tenantScope.ServiceProvider.GetRequiredService<IIsdocImportParser>(),
+                tenantScope.ServiceProvider.GetRequiredService<IInvoiceEmailClassifier>(),
+                tenantScope.ServiceProvider.GetRequiredService<IInvoiceImportService>(),
+                tenantScope.ServiceProvider.GetRequiredService<IClientService>(),
+                tenantScope.ServiceProvider.GetRequiredService<IReceivedInvoiceService>(),
+                tenantScope.ServiceProvider.GetRequiredService<INotificationService>(),
+                tenantScope.ServiceProvider.GetRequiredService<ILogger<InvoiceEmailProcessor>>(),
+                tenantScope.ServiceProvider.GetService<IFileAttachmentService>());
 
             var invoicePayload = new InvoiceEmailPayload(
                 InvoiceMailboxId: index.TenantInvoiceMailboxId.Value,

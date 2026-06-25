@@ -68,14 +68,6 @@ public class InvoiceEmailClassifier : IInvoiceEmailClassifier
         long? companyId,
         CancellationToken ct = default)
     {
-        // Fast path: if we have IČO data from structured sources, compare directly
-        // This avoids AI costs and is 100% reliable
-        if (!string.IsNullOrEmpty(isdocXml) || !string.IsNullOrEmpty(pdfText))
-        {
-            // Try programmatic classification first
-            // (IČO comparison will happen in the processor which has InvoiceExtractedData)
-        }
-
         var provider = await _aiResolver.ResolveProviderAsync(companyId, null, ct);
 
         var content = BuildUserContent(emailBody, pdfText, companyIco, companyName);

@@ -86,7 +86,7 @@ public class InvoiceEmailProcessor : IInvoiceEmailProcessor
 
         // 2. Dedup
         var hash = ComputeDeduplicationHash(
-            payload.InvoiceMailboxId, payload.MessageId, payload.ImapUid, payload.ServerReceivedAt);
+            payload.InvoiceMailboxId, payload.MessageId, payload.ImapUid);
 
         var exists = await _context.InboundInvoiceEmail
             .AnyAsync(e => e.InvoiceMailboxId == payload.InvoiceMailboxId
@@ -266,10 +266,13 @@ public class InvoiceEmailProcessor : IInvoiceEmailProcessor
         var isdocAttachment = attachments.FirstOrDefault(a => IsIsdoc(a));
         if (isdocAttachment != null)
         {
-            var xml = Encoding.UTF8.GetString(isdocAttachment.Content);
-            data = _isdocParser.Parse(xml);
-            if (data != null)
-                _logger.LogDebug("ISDOC extraction succeeded for email {EmailId}", email.Id);
+            var xml = ExtractIsdocXml(isdocAttachment);
+            if (xml != null)
+            {
+                data = _isdocParser.Parse(xml);
+                if (data != null)
+                    _logger.LogDebug("ISDOC extraction succeeded for email {EmailId}", email.Id);
+            }
         }
 
         // Priority 2: PDF attachment via existing import pipeline
@@ -543,9 +546,9 @@ public class InvoiceEmailProcessor : IInvoiceEmailProcessor
     // ─── Helpers ─────────────────────────────────────────────────────────
 
     private static string ComputeDeduplicationHash(
-        long mailboxId, string messageId, string? imapUid, DateTime receivedAt)
+        long mailboxId, string messageId, string? imapUid)
     {
-        var input = $"{mailboxId}|{messageId}|{imapUid}|{receivedAt:O}";
+        var input = $"{mailboxId}|{messageId}|{imapUid}";
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(input));
         return Convert.ToHexStringLower(bytes);
     }
@@ -556,6 +559,46 @@ public class InvoiceEmailProcessor : IInvoiceEmailProcessor
     private static bool IsPdf(EmailAttachment att)
         => att.ContentType.Contains("pdf", StringComparison.OrdinalIgnoreCase)
         || att.FileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Extracts ISDOC XML from an attachment. Handles both plain .isdoc (XML)
+    /// and .isdocx (ZIP container with .isdoc inside).
+    /// </summary>
+    private string? ExtractIsdocXml(EmailAttachment att)
+    {
+        // ZIP files start with PK header (0x504B0304)
+        if (att.Content.Length >= 4
+            && att.Content[0] == 0x50 && att.Content[1] == 0x4B
+            && att.Content[2] == 0x03 && att.Content[3] == 0x04)
+        {
+            try
+            {
+                using var zipStream = new MemoryStream(att.Content);
+                using var archive = new System.IO.Compression.ZipArchive(zipStream, System.IO.Compression.ZipArchiveMode.Read);
+
+                var isdocEntry = archive.Entries
+                    .FirstOrDefault(e => e.Name.EndsWith(".isdoc", StringComparison.OrdinalIgnoreCase));
+
+                if (isdocEntry == null)
+                {
+                    _logger.LogDebug("ISDOCX ZIP contains no .isdoc file");
+                    return null;
+                }
+
+                using var entryStream = isdocEntry.Open();
+                using var reader = new StreamReader(entryStream, Encoding.UTF8);
+                return reader.ReadToEnd();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to extract ISDOC from ZIP container");
+                return null;
+            }
+        }
+
+        // Plain .isdoc XML
+        return Encoding.UTF8.GetString(att.Content);
+    }
 
     private static bool IsIsdoc(EmailAttachment att)
         => att.FileName.EndsWith(".isdoc", StringComparison.OrdinalIgnoreCase)
