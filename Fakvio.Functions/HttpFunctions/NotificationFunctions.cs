@@ -15,14 +15,10 @@ namespace Fakvio.Functions.Generated;
 public class NotificationFunctions
 {
     private readonly NotificationController _controller;
-    private readonly IHttpContextAccessor _httpContextAccessor;
 
-    public NotificationFunctions(
-        NotificationController controller,
-        IHttpContextAccessor httpContextAccessor)
+    public NotificationFunctions(NotificationController controller)
     {
         _controller = controller;
-        _httpContextAccessor = httpContextAccessor;
     }
 
     [Function("Notification_GetNotifications")]
@@ -30,7 +26,6 @@ public class NotificationFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/notification")] HttpRequest req)
     {
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
-        _httpContextAccessor.HttpContext = req.HttpContext;
 
         if (req.HttpContext.User.Identity?.IsAuthenticated != true)
             return new UnauthorizedResult();
@@ -50,7 +45,6 @@ public class NotificationFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/notification/unread-count")] HttpRequest req)
     {
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
-        _httpContextAccessor.HttpContext = req.HttpContext;
 
         if (req.HttpContext.User.Identity?.IsAuthenticated != true)
             return new UnauthorizedResult();
@@ -64,7 +58,6 @@ public class NotificationFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/notification/dashboard")] HttpRequest req)
     {
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
-        _httpContextAccessor.HttpContext = req.HttpContext;
 
         if (req.HttpContext.User.Identity?.IsAuthenticated != true)
             return new UnauthorizedResult();
@@ -82,7 +75,6 @@ public class NotificationFunctions
             return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
 
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
-        _httpContextAccessor.HttpContext = req.HttpContext;
 
         if (req.HttpContext.User.Identity?.IsAuthenticated != true)
             return new UnauthorizedResult();
@@ -96,7 +88,6 @@ public class NotificationFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/notification/read-all")] HttpRequest req)
     {
         _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
-        _httpContextAccessor.HttpContext = req.HttpContext;
 
         if (req.HttpContext.User.Identity?.IsAuthenticated != true)
             return new UnauthorizedResult();

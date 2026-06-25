@@ -19,6 +19,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Middleware;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 
@@ -54,6 +55,16 @@ public class JwtAuthenticationMiddleware : IFunctionsWorkerMiddleware
             await next(context);
             return;
         }
+
+        // Azure Functions Isolated Worker has two DI scopes: the ASP.NET Core HTTP
+        // scope (httpContext.RequestServices) and the Worker scope (context.InstanceServices).
+        // IHttpContextAccessor in the Worker scope does NOT automatically see the HTTP
+        // pipeline's HttpContext. Wire it up here so that all downstream services
+        // (CurrentUserService, FileAttachmentService, etc.) can read User claims
+        // without each Function wrapper needing to do it manually.
+        var httpContextAccessor = context.InstanceServices.GetService<IHttpContextAccessor>();
+        if (httpContextAccessor != null)
+            httpContextAccessor.HttpContext = httpContext;
 
         var path = httpContext.Request.Path.Value ?? "(unknown)";
         var method = httpContext.Request.Method;
