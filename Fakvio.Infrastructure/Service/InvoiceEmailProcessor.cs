@@ -156,10 +156,43 @@ public class InvoiceEmailProcessor : IInvoiceEmailProcessor
             var isLowConfidence = email.ClassificationConfidence.HasValue
                                  && email.ClassificationConfidence.Value < ConfidenceThreshold;
 
-            // 6. Create invoice
-            long? createdId = null;
+            // 6. Check for existing invoice (duplicate detection → attach-only mode)
+            var (existingId, existingEntityType) = await FindExistingInvoiceAsync(extractedData, direction, ct);
+
+            long? createdId;
             string entityType;
 
+            if (existingId.HasValue)
+            {
+                // Document already exists → attach files to existing invoice, don't create duplicate
+                createdId = existingId;
+                entityType = existingEntityType!;
+
+                if (direction == EInvoiceDirection.Received)
+                    email.ReceivedInvoiceId = createdId;
+                else
+                    email.InvoiceId = createdId;
+
+                email.Status = EInvoiceEmailStatus.Imported;
+                await _context.SaveChangesAsync(ct);
+
+                if (_fileAttachmentService != null)
+                    await AttachFilesAsync(attachments, entityType, createdId.Value, ct);
+
+                var existingDocNum = extractedData.DocumentNumber ?? "?";
+                await NotifyAsync(ENotificationType.InvoiceEmailImported,
+                    "Příloha přidána k faktuře",
+                    $"Email od {payload.FromAddress} — přílohy přidány k existující faktuře {existingDocNum}.",
+                    createdId.Value, ct, entityType);
+
+                _logger.LogInformation(
+                    "Invoice email matched existing document: EmailId={EmailId} {EntityType}/{EntityId} DocNum={DocNum}",
+                    email.Id, entityType, createdId, existingDocNum);
+
+                return email.Status;
+            }
+
+            // 7. Create new invoice
             if (direction == EInvoiceDirection.Received)
             {
                 createdId = await CreateReceivedInvoiceAsync(extractedData, ct);
@@ -176,13 +209,13 @@ public class InvoiceEmailProcessor : IInvoiceEmailProcessor
             email.Status = isLowConfidence ? EInvoiceEmailStatus.NeedsReview : EInvoiceEmailStatus.Imported;
             await _context.SaveChangesAsync(ct);
 
-            // 7. Attach original files
+            // 8. Attach original files
             if (createdId.HasValue && _fileAttachmentService != null)
             {
                 await AttachFilesAsync(attachments, entityType, createdId.Value, ct);
             }
 
-            // 8. Notify
+            // 9. Notify
             var directionLabel = direction == EInvoiceDirection.Received ? "přijatá" : "vydaná";
             var docNumber = extractedData.DocumentNumber ?? "?";
             var notifType = isLowConfidence
@@ -315,6 +348,49 @@ public class InvoiceEmailProcessor : IInvoiceEmailProcessor
         }
 
         return (data, direction);
+    }
+
+    // ─── Duplicate detection ─────────────────────────────────────────────
+
+    /// <summary>
+    /// Checks if an invoice with the same document number already exists.
+    /// For received invoices: match on DocumentNumber + supplier IČO.
+    /// For issued invoices: match on DocumentNumber.
+    /// Returns (existingId, entityType) or (null, null) if no match.
+    /// </summary>
+    private async Task<(long? id, string? entityType)> FindExistingInvoiceAsync(
+        InvoiceExtractedData data, EInvoiceDirection direction, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(data.DocumentNumber))
+            return (null, null);
+
+        if (direction == EInvoiceDirection.Received)
+        {
+            var query = _context.Set<ReceivedInvoice>()
+                .AsNoTracking()
+                .Where(r => r.DocumentNumber == data.DocumentNumber);
+
+            // Narrow by supplier IČO if available
+            if (!string.IsNullOrEmpty(data.IssuerRegistrationNumber))
+            {
+                query = query.Where(r => r.Supplier != null
+                    && r.Supplier.RegistrationNumber == data.IssuerRegistrationNumber);
+            }
+
+            var existing = await query.Select(r => r.Id).FirstOrDefaultAsync(ct);
+            return existing > 0 ? (existing, "ReceivedInvoice") : (null, null);
+        }
+        else
+        {
+            var existing = await _context.Invoice
+                .AsNoTracking()
+                .Where(i => i.DocumentNumber == data.DocumentNumber
+                         && i.Status != EInvoiceStatus.Deleted)
+                .Select(i => i.Id)
+                .FirstOrDefaultAsync(ct);
+
+            return existing > 0 ? (existing, "Invoice") : (null, null);
+        }
     }
 
     // ─── Invoice creation ────────────────────────────────────────────────
