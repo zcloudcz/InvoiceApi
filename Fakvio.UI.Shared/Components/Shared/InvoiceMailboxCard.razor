@@ -1,0 +1,193 @@
+@using Fakvio.Contracts.Dto.InvoiceEmail
+@inject InvoiceMailboxApiService Api
+@inject IStringLocalizer<SharedResource> L
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+@inject IDialogService DialogService
+
+@*
+    Reusable card for the invoice email mailbox ("fak-" alias).
+    Shows the current mailbox state and Activate / Deactivate / Regenerate actions.
+    Mirrors BankAccountMailboxCard pattern — same UX for both alias types.
+*@
+
+<MudPaper Class="pa-3" Elevation="1">
+    <MudText Typo="Typo.subtitle1" Class="mb-2">
+        <MudIcon Icon="@Icons.Material.Filled.MarkEmailRead" Class="mr-1" />
+        Email pro příjem faktur
+    </MudText>
+
+    @if (_loading)
+    {
+        <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+    }
+    else if (_mailbox == null)
+    {
+        @* Not yet activated — show a single CTA. *@
+        <MudText Typo="Typo.body2" Class="mb-2">
+            Aktivujte unikátní emailovou adresu pro automatický příjem faktur.
+            Faktury (PDF, ISDOC) zaslané na tuto adresu budou automaticky zpracovány a importovány.
+        </MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.PlayArrow"
+                   OnClick="ActivateAsync" Disabled="_busy">
+            Aktivovat
+        </MudButton>
+    }
+    else
+    {
+        <div class="d-flex align-center gap-2 mb-2">
+            <MudChip T="string" Size="Size.Small"
+                     Color="@(_mailbox.IsActive ? Color.Success : Color.Default)">
+                @(_mailbox.IsActive ? "Aktivní" : "Neaktivní")
+            </MudChip>
+            @if (_mailbox.IsActive)
+            {
+                <MudText Typo="Typo.caption">
+                    Přijato emailů: @_mailbox.EmailsReceivedCount
+                    @if (_mailbox.LastEmailReceivedAt.HasValue)
+                    {
+                        <text> — poslední @_mailbox.LastEmailReceivedAt.Value.ToLocalTime().ToString("g")</text>
+                    }
+                </MudText>
+            }
+        </div>
+
+        @* Alias always shown — even when deactivated — so user can see history. *@
+        <MudPaper Class="pa-2 mb-2 d-flex align-center gap-2" Outlined="true">
+            <MudText Typo="Typo.body1" Style="font-family: monospace; word-break: break-all;">
+                @_mailbox.FullEmailAddress
+            </MudText>
+            <MudSpacer />
+            <MudTooltip Text="Zkopírovat">
+                <MudIconButton Size="Size.Small" Icon="@Icons.Material.Filled.ContentCopy"
+                               OnClick="CopyAsync" />
+            </MudTooltip>
+        </MudPaper>
+
+        <MudText Typo="Typo.caption" Class="mb-2">
+            Aktivní od: @_mailbox.ActiveFrom.ToLocalTime().ToString("g")
+        </MudText>
+
+        <div class="d-flex gap-1">
+            @if (_mailbox.IsActive)
+            {
+                <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Warning"
+                           StartIcon="@Icons.Material.Filled.Pause"
+                           OnClick="DeactivateAsync" Disabled="_busy">
+                    Deaktivovat
+                </MudButton>
+            }
+            else
+            {
+                <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Success"
+                           StartIcon="@Icons.Material.Filled.PlayArrow"
+                           OnClick="ActivateAsync" Disabled="_busy">
+                    Aktivovat
+                </MudButton>
+            }
+
+            <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error"
+                       StartIcon="@Icons.Material.Filled.Refresh"
+                       OnClick="RegenerateAsync" Disabled="_busy">
+                Nový alias
+            </MudButton>
+        </div>
+    }
+</MudPaper>
+
+@code {
+    [Parameter] public EventCallback<InvoiceMailboxDto?> OnChanged { get; set; }
+
+    private InvoiceMailboxDto? _mailbox;
+    private bool _loading = true;
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _mailbox = await Api.GetAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ActivateAsync()
+    {
+        _busy = true;
+        try
+        {
+            _mailbox = await Api.ActivateAsync();
+            Snackbar.Add("Email pro příjem faktur aktivován.", Severity.Success);
+            await OnChanged.InvokeAsync(_mailbox);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task DeactivateAsync()
+    {
+        var confirmed = await DialogService.ShowMessageBox(
+            "Deaktivovat", "Opravdu deaktivovat email pro příjem faktur?",
+            yesText: "Ano", cancelText: "Zrušit");
+        if (confirmed != true) return;
+
+        _busy = true;
+        try
+        {
+            _mailbox = await Api.DeactivateAsync();
+            Snackbar.Add("Email pro příjem faktur deaktivován.", Severity.Info);
+            await OnChanged.InvokeAsync(_mailbox);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task RegenerateAsync()
+    {
+        var confirmed = await DialogService.ShowMessageBox(
+            "Nový alias", "Vygenerovat nový alias? Starý alias přestane fungovat okamžitě.",
+            yesText: "Ano", cancelText: "Zrušit");
+        if (confirmed != true) return;
+
+        _busy = true;
+        try
+        {
+            _mailbox = await Api.RegenerateAsync();
+            Snackbar.Add($"Nový alias: {_mailbox?.FullEmailAddress}", Severity.Success);
+            await OnChanged.InvokeAsync(_mailbox);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task CopyAsync()
+    {
+        if (_mailbox == null) return;
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", _mailbox.FullEmailAddress);
+        Snackbar.Add("Email zkopírován do schránky.", Severity.Info);
+    }
+}
