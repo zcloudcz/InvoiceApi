@@ -1,3 +1,4 @@
+using Fakvio.Application.Service;
 using Fakvio.Domain.Entities;
 using Fakvio.Domain.Enums;
 using Fakvio.Infrastructure.Data;
@@ -32,7 +33,7 @@ public class PaymentMatchingServiceTests : IDisposable
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
         _context = new TenantDbContext(options);
-        _sut = new PaymentMatchingService(_context, Substitute.For<ILogger<PaymentMatchingService>>());
+        _sut = new PaymentMatchingService(_context, Substitute.For<INotificationService>(), Substitute.For<ILogger<PaymentMatchingService>>());
 
         Seed();
     }

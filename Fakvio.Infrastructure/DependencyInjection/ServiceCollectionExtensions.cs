@@ -152,6 +152,9 @@ public static class ServiceCollectionExtensions
         // Alerts — generic business alerts (e.g., overpaid proforma) displayed on the dashboard.
         services.AddScopedWithLogging<IAlertService, AlertService>();
 
+        // Notifications — per-user in-app notifications (e.g., payment matched).
+        services.AddScopedWithLogging<INotificationService, NotificationService>();
+
         // Payment reminders (dunning) — settings CRUD, dunning job, manual send/cancel.
         services.AddScopedWithLogging<IReminderService, ReminderService>();
         services.AddSingleton<IInterestCalculator, InterestCalculator>();

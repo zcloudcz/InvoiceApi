@@ -30,14 +30,19 @@ namespace Fakvio.Infrastructure.Service;
 public class PaymentMatchingService : IPaymentMatchingService
 {
     private readonly TenantDbContext _context;
+    private readonly INotificationService _notificationService;
     private readonly ILogger<PaymentMatchingService> _logger;
 
     /// <summary>How many days before/after the due date we accept for account-based fallback.</summary>
     private const int AccountMatchWindowDays = 7;
 
-    public PaymentMatchingService(TenantDbContext context, ILogger<PaymentMatchingService> logger)
+    public PaymentMatchingService(
+        TenantDbContext context,
+        INotificationService notificationService,
+        ILogger<PaymentMatchingService> logger)
     {
         _context = context;
+        _notificationService = notificationService;
         _logger = logger;
     }
 
@@ -123,6 +128,14 @@ public class PaymentMatchingService : IPaymentMatchingService
         _logger.LogInformation(
             "Manual match: Tx={TxId} → Invoice={InvoiceId} Amount={Amount} User={UserId}",
             tx.Id, invoice.Id, matchedAmount, userId);
+
+        await _notificationService.CreateForAllUsersAsync(
+            ENotificationType.PaymentMatched,
+            "Platba spárována",
+            $"Transakce VS {tx.VariableSymbol} ({matchedAmount:N2} {tx.CurrencyCode}) ručně spárována s fakturou {invoice.DocumentNumber}.",
+            invoice.Id,
+            "Invoice",
+            ct);
 
         return new ManualMatchResult(match.Id, invoice.PaidAmount, invoice.TotalWithVat - invoice.PaidAmount);
     }
@@ -645,6 +658,14 @@ public class PaymentMatchingService : IPaymentMatchingService
                 "ConfirmAutoMatch: Tx={TxId} → Invoice={InvoiceId} Amount={Amount} User={UserId}",
                 tx.Id, invoice.Id, matched, userId);
 
+            await _notificationService.CreateForAllUsersAsync(
+                ENotificationType.PaymentMatched,
+                "Platba spárována",
+                $"Transakce VS {tx.VariableSymbol} ({matched:N2} {tx.CurrencyCode}) automaticky spárována s fakturou {invoice.DocumentNumber}.",
+                invoice.Id,
+                "Invoice",
+                ct);
+
             return new ConfirmAutoMatchResult(match.Id, invoice.PaidAmount, invoice.TotalWithVat - invoice.PaidAmount);
         }
         else
@@ -678,6 +699,14 @@ public class PaymentMatchingService : IPaymentMatchingService
             _logger.LogInformation(
                 "ConfirmAutoMatch: Tx={TxId} → ReceivedInvoice={ReceivedInvoiceId} Amount={Amount} User={UserId}",
                 tx.Id, receivedInvoice.Id, matched, userId);
+
+            await _notificationService.CreateForAllUsersAsync(
+                ENotificationType.PaymentMatched,
+                "Platba spárována",
+                $"Transakce VS {tx.VariableSymbol} ({matched:N2} {tx.CurrencyCode}) automaticky spárována s přijatou fakturou {receivedInvoice.DocumentNumber}.",
+                receivedInvoice.Id,
+                "ReceivedInvoice",
+                ct);
 
             return new ConfirmAutoMatchResult(match.Id, matched, receivedInvoice.TotalWithVat - matched);
         }

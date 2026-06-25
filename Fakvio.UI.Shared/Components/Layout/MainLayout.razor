@@ -4,10 +4,12 @@
 @using Fakvio.Contracts.Dto.Client
 @using Fakvio.UI.Shared.Components.Shared
 @using Fakvio.UI.Shared.Components.Chat
+@using Fakvio.UI.Shared.Components.Notification
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
 @inject CompanyApiService CompanyService
 @inject IStringLocalizer<SharedResource> L
+@inject NotificationApiService NotificationService
 @inject AppStateService AppState
 @inject IJSRuntime JS
 @implements IDisposable
@@ -55,6 +57,10 @@
                             @context.User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value
                         </MudChip>
                     </MudText>
+                    @if (_hasTenantContext)
+                    {
+                        <NotificationBell />
+                    }
                     <MudIconButton Icon="@Icons.Material.Filled.Logout"
                                    Color="Color.Inherit"
                                    OnClick="@HandleLogoutAsync"

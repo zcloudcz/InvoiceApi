@@ -87,6 +87,9 @@ public static class ServiceCollectionExtensions
         // Alerts — "Upozornění" tile and per-invoice resolve action.
         services.AddApiClient<AlertApiService>();
 
+        // Notifications — per-user in-app notifications (bell icon, dropdown, page).
+        services.AddApiClient<NotificationApiService>();
+
         // Shared app state — cross-component notifications (e.g., company list changed → refresh dropdown)
         services.AddScoped<AppStateService>();
 

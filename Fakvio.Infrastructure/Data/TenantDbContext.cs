@@ -196,6 +196,19 @@ public class TenantDbContext : DbContext
     /// </summary>
     public DbSet<Alert> Alert { get; set; }
 
+    // ─── Notifications ───────────────────────────────────────────────────────
+
+    /// <summary>
+    /// In-app notifications (e.g., "payment matched"). One row per business event.
+    /// Per-user read state is tracked via <see cref="NotificationRecipient"/>.
+    /// </summary>
+    public DbSet<Notification> Notification { get; set; }
+
+    /// <summary>
+    /// Per-user read/unread state for each notification.
+    /// </summary>
+    public DbSet<NotificationRecipient> NotificationRecipient { get; set; }
+
     /// <summary>
     /// Reverse charge codes from MFČR číselník (kódy předmětu plnění PDP).
     /// Used in VAT control statement (kontrolní hlášení / EPO XML) sections A.1 and B.1.
@@ -279,6 +292,9 @@ public class TenantDbContext : DbContext
         ConfigureRecurringInvoiceSchedule(modelBuilder);
 
         ConfigureAlert(modelBuilder);
+
+        ConfigureNotification(modelBuilder);
+        ConfigureNotificationRecipient(modelBuilder);
 
         ConfigureBankAccountMailbox(modelBuilder);
         ConfigureInboundEmail(modelBuilder);
@@ -1205,6 +1221,52 @@ public class TenantDbContext : DbContext
             entity.Property(e => e.NameCs).IsRequired().HasMaxLength(500);
             entity.Property(e => e.NameEn).HasMaxLength(500);
             entity.Property(e => e.ParagraphRef).IsRequired().HasMaxLength(10);
+        });
+    }
+
+    // ─── Notification configuration ─────────────────────────────────────────
+
+    /// <summary>
+    /// Notification table configuration.
+    /// Indexes support:
+    ///   1. Navigation: "find notification for entity X" via (RelatedEntityId, RelatedEntityType)
+    ///   2. Listing: newest first via CreatedAt descending
+    /// Type is stored as int for forward-compatibility.
+    /// </summary>
+    private void ConfigureNotification(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<Notification>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            entity.HasIndex(e => new { e.RelatedEntityId, e.RelatedEntityType });
+            entity.HasIndex(e => e.CreatedAt);
+
+            entity.Property(e => e.Type).HasConversion<int>();
+            entity.Property(e => e.Title).IsRequired().HasMaxLength(500);
+            entity.Property(e => e.Message).IsRequired().HasMaxLength(2000);
+            entity.Property(e => e.RelatedEntityType).IsRequired().HasMaxLength(100);
+        });
+    }
+
+    /// <summary>
+    /// NotificationRecipient table configuration.
+    /// Unique constraint on (NotificationId, UserId) prevents duplicate recipients.
+    /// Composite index on (UserId, ReadAt) supports the "unread count for user X" fast path.
+    /// </summary>
+    private void ConfigureNotificationRecipient(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<NotificationRecipient>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            entity.HasIndex(e => new { e.NotificationId, e.UserId }).IsUnique();
+            entity.HasIndex(e => new { e.UserId, e.ReadAt });
+
+            entity.HasOne(e => e.Notification)
+                .WithMany(n => n.Recipients)
+                .HasForeignKey(e => e.NotificationId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 

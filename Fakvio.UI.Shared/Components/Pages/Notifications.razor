@@ -1,0 +1,151 @@
+@page "/notifications"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@using Fakvio.Contracts.Dto.Notification
+@using Fakvio.Domain.Enums
+@using Fakvio.UI.Shared.Services
+@inject NotificationApiService NotificationService
+@inject NavigationManager Navigation
+@inject IStringLocalizer<SharedResource> L
+
+<MudText Typo="Typo.h4" Class="mb-4">Notifikace</MudText>
+
+<MudStack Row="true" Spacing="2" Class="mb-4" AlignItems="AlignItems.Center">
+    <MudSwitch T="bool" Value="_unreadOnly" ValueChanged="@OnUnreadOnlyChanged" Color="Color.Primary" Label="Jen nepřečtené" />
+    <MudSpacer />
+    <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
+               OnClick="@MarkAllAsReadAsync" Disabled="@(_loading)">
+        Označit vše jako přečtené
+    </MudButton>
+</MudStack>
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else if (_notifications.Count == 0)
+{
+    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="my-4">
+        Žádné notifikace
+    </MudAlert>
+}
+else
+{
+    <MudList T="NotificationDto" Dense="false">
+        @foreach (var n in _notifications)
+        {
+            <MudListItem T="NotificationDto" OnClick="@(() => OnNotificationClickAsync(n))"
+                         Class="@(n.IsRead ? "" : "notification-unread")"
+                         Style="cursor: pointer;">
+                <MudStack Row="true" Spacing="3" AlignItems="AlignItems.Center">
+                    <MudIcon Icon="@GetIcon(n.Type)" Color="@GetColor(n.Type)" />
+                    <MudStack Spacing="0" Style="flex: 1;">
+                        <MudText Typo="Typo.body1" Style="@(n.IsRead ? "" : "font-weight: 600;")">
+                            @n.Title
+                        </MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">
+                            @n.Message
+                        </MudText>
+                    </MudStack>
+                    <MudText Typo="Typo.caption" Color="Color.Tertiary" Style="white-space: nowrap;">
+                        @n.CreatedAt.ToString("d.M.yyyy HH:mm")
+                    </MudText>
+                    @if (!n.IsRead)
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.Circle" Color="Color.Primary" Size="Size.Small" />
+                    }
+                </MudStack>
+            </MudListItem>
+            <MudDivider />
+        }
+    </MudList>
+
+    @* Pagination *@
+    @if (_totalPages > 1)
+    {
+        <MudStack Row="true" Justify="Justify.Center" Class="mt-4">
+            <MudPagination Count="@_totalPages" Selected="@_page"
+                          SelectedChanged="@OnPageChanged" Color="Color.Primary" />
+        </MudStack>
+    }
+}
+
+@code {
+    private List<NotificationDto> _notifications = [];
+    private bool _loading = true;
+    private bool _unreadOnly;
+    private int _page = 1;
+    private int _pageSize = 20;
+    private int _totalPages = 1;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        StateHasChanged();
+
+        var result = await NotificationService.GetNotificationsAsync(
+            page: _page,
+            pageSize: _pageSize,
+            unreadOnly: _unreadOnly ? true : null);
+
+        _notifications = result.Items;
+        _totalPages = result.TotalPages;
+        _loading = false;
+    }
+
+    private async Task OnUnreadOnlyChanged(bool value)
+    {
+        _unreadOnly = value;
+        _page = 1;
+        await LoadAsync();
+    }
+
+    private async Task OnPageChanged(int page)
+    {
+        _page = page;
+        await LoadAsync();
+    }
+
+    private async Task OnNotificationClickAsync(NotificationDto notification)
+    {
+        if (!notification.IsRead)
+        {
+            await NotificationService.MarkAsReadAsync(notification.Id);
+            notification.IsRead = true;
+        }
+
+        var url = GetEntityUrl(notification.RelatedEntityType, notification.RelatedEntityId);
+        if (url != null)
+            Navigation.NavigateTo(url);
+    }
+
+    private async Task MarkAllAsReadAsync()
+    {
+        await NotificationService.MarkAllAsReadAsync();
+        await LoadAsync();
+    }
+
+    private static string? GetEntityUrl(string entityType, long entityId) => entityType switch
+    {
+        "Invoice" => $"/invoices/{entityId}",
+        "ReceivedInvoice" => $"/received-invoices/{entityId}",
+        "BankTransaction" => $"/payment-matching",
+        _ => null
+    };
+
+    private static string GetIcon(ENotificationType type) => type switch
+    {
+        ENotificationType.PaymentMatched => Icons.Material.Filled.Payment,
+        _ => Icons.Material.Filled.Notifications
+    };
+
+    private static Color GetColor(ENotificationType type) => type switch
+    {
+        ENotificationType.PaymentMatched => Color.Success,
+        _ => Color.Default
+    };
+}
