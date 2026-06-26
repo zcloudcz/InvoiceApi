@@ -448,6 +448,21 @@ public class MasterDbContext : DbContext, IDataProtectionKeyContext
                 .HasForeignKey<BillingSettings>(b => b.ClientId)
                 .OnDelete(DeleteBehavior.Cascade);
 
+            // Tax regime fields — store enum values as strings for readability.
+            // Must match TenantDbContext.ConfigureClient exactly — both contexts
+            // share the same Client entity and the column type must be consistent.
+            entity.Property(e => e.TaxRegime)
+                .HasConversion<string?>()
+                .HasMaxLength(30);
+
+            entity.Property(e => e.ActivityType)
+                .HasConversion<string?>()
+                .HasMaxLength(30);
+
+            entity.Property(e => e.FlatRateBand)
+                .HasConversion<string?>()
+                .HasMaxLength(10);
+
             // Currency FK for schema compatibility
             entity.HasOne(e => e.PreferredCurrency)
                 .WithMany()
