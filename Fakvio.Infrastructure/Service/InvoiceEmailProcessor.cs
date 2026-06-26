@@ -129,14 +129,13 @@ public class InvoiceEmailProcessor : IInvoiceEmailProcessor
             "Invoice email archived: Id={EmailId} From={From} Subject={Subject} Attachments={Count}",
             email.Id, payload.FromAddress, payload.Subject, attachments.Count);
 
-        // 4. Extract invoice data
+        // 4. Process each attachment independently (batch: one email can contain multiple invoices)
         try
         {
             email.ProcessAttempts++;
-            var (extractedData, direction) = await ExtractAndClassifyAsync(
-                email, payload, attachments, companyId, ct);
+            var invoiceAttachments = attachments.Where(a => IsPdf(a) || IsIsdoc(a)).ToList();
 
-            if (extractedData == null)
+            if (invoiceAttachments.Count == 0)
             {
                 email.Status = EInvoiceEmailStatus.Failed;
                 email.StatusError = "No invoice data could be extracted from email or attachments.";
@@ -150,88 +149,81 @@ public class InvoiceEmailProcessor : IInvoiceEmailProcessor
                 return EInvoiceEmailStatus.Failed;
             }
 
-            email.Direction = direction;
+            var importedCount = 0;
+            var failedCount = 0;
+            var docNumbers = new List<string>();
 
-            // 5. Determine confidence threshold
-            var isLowConfidence = email.ClassificationConfidence.HasValue
-                                 && email.ClassificationConfidence.Value < ConfidenceThreshold;
-
-            // 6. Check for existing invoice (duplicate detection → attach-only mode)
-            var (existingId, existingEntityType) = await FindExistingInvoiceAsync(extractedData, direction, ct);
-
-            long? createdId;
-            string entityType;
-
-            if (existingId.HasValue)
+            foreach (var att in invoiceAttachments)
             {
-                // Document already exists → attach files to existing invoice, don't create duplicate
-                createdId = existingId;
-                entityType = existingEntityType!;
+                try
+                {
+                    var result = await ProcessSingleAttachmentAsync(
+                        email, payload, att, companyId, ct);
 
-                if (direction == EInvoiceDirection.Received)
-                    email.ReceivedInvoiceId = createdId;
-                else
-                    email.InvoiceId = createdId;
+                    if (result.createdId.HasValue)
+                    {
+                        importedCount++;
+                        docNumbers.Add(result.docNumber ?? $"#{result.createdId}");
 
-                email.Status = EInvoiceEmailStatus.Imported;
-                await _context.SaveChangesAsync(ct);
+                        // Store first created ID on the email record for navigation
+                        if (result.direction == EInvoiceDirection.Received && email.ReceivedInvoiceId == null)
+                            email.ReceivedInvoiceId = result.createdId;
+                        else if (result.direction == EInvoiceDirection.Issued && email.InvoiceId == null)
+                            email.InvoiceId = result.createdId;
 
-                if (_fileAttachmentService != null)
-                    await AttachFilesAsync(attachments, entityType, createdId.Value, companyId, ct);
-
-                var existingDocNum = extractedData.DocumentNumber ?? "?";
-                await NotifyAsync(ENotificationType.InvoiceEmailImported,
-                    "Příloha přidána k faktuře",
-                    $"Email od {payload.FromAddress} — přílohy přidány k existující faktuře {existingDocNum}.",
-                    createdId.Value, companyId, ct, entityType);
-
-                _logger.LogInformation(
-                    "Invoice email matched existing document: EmailId={EmailId} {EntityType}/{EntityId} DocNum={DocNum}",
-                    email.Id, entityType, createdId, existingDocNum);
-
-                return email.Status;
+                        if (email.Direction == null)
+                            email.Direction = result.direction;
+                    }
+                    else
+                    {
+                        failedCount++;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    failedCount++;
+                    _logger.LogError(ex, "Failed to process attachment {FileName} from email {EmailId}",
+                        att.FileName, email.Id);
+                }
             }
 
-            // 7. Create new invoice
-            if (direction == EInvoiceDirection.Received)
-            {
-                createdId = await CreateReceivedInvoiceAsync(extractedData, ct);
-                email.ReceivedInvoiceId = createdId;
-                entityType = "ReceivedInvoice";
-            }
+            // Set overall email status
+            if (importedCount > 0)
+                email.Status = email.ClassificationConfidence.HasValue
+                    && email.ClassificationConfidence.Value < ConfidenceThreshold
+                    ? EInvoiceEmailStatus.NeedsReview
+                    : EInvoiceEmailStatus.Imported;
             else
-            {
-                createdId = await CreateIssuedInvoiceAsync(extractedData, ct);
-                email.InvoiceId = createdId;
-                entityType = "Invoice";
-            }
+                email.Status = EInvoiceEmailStatus.Failed;
 
-            email.Status = isLowConfidence ? EInvoiceEmailStatus.NeedsReview : EInvoiceEmailStatus.Imported;
+            if (failedCount > 0 && importedCount > 0)
+                email.StatusError = $"{failedCount} of {invoiceAttachments.Count} attachments failed.";
+
             await _context.SaveChangesAsync(ct);
 
-            // 8. Attach original files
-            if (createdId.HasValue && _fileAttachmentService != null)
+            // Notify — single notification summarizing all imports
+            if (importedCount > 0)
             {
-                await AttachFilesAsync(attachments, entityType, createdId.Value, companyId, ct);
+                var summary = importedCount == 1
+                    ? $"Faktura {docNumbers.FirstOrDefault()} importována z emailu od {payload.FromAddress}."
+                    : $"{importedCount} faktur importováno z emailu od {payload.FromAddress}: {string.Join(", ", docNumbers)}.";
+
+                await NotifyAsync(
+                    email.Status == EInvoiceEmailStatus.NeedsReview
+                        ? ENotificationType.InvoiceEmailNeedsReview
+                        : ENotificationType.InvoiceEmailImported,
+                    importedCount == 1 ? "Faktura importována" : $"{importedCount} faktur importováno",
+                    summary,
+                    email.ReceivedInvoiceId ?? email.InvoiceId ?? email.Id,
+                    companyId, ct,
+                    email.ReceivedInvoiceId.HasValue ? "ReceivedInvoice"
+                        : email.InvoiceId.HasValue ? "Invoice"
+                        : "InboundInvoiceEmail");
             }
 
-            // 9. Notify
-            var directionLabel = direction == EInvoiceDirection.Received ? "přijatá" : "vydaná";
-            var docNumber = extractedData.DocumentNumber ?? "?";
-            var notifType = isLowConfidence
-                ? ENotificationType.InvoiceEmailNeedsReview
-                : ENotificationType.InvoiceEmailImported;
-
-            await NotifyAsync(notifType,
-                $"Faktura {directionLabel} importována",
-                $"Faktura {docNumber} od {payload.FromAddress} automaticky importována jako {directionLabel}.",
-                createdId ?? email.Id,
-                companyId, ct,
-                createdId.HasValue ? entityType : "InboundInvoiceEmail");
-
             _logger.LogInformation(
-                "Invoice email processed: EmailId={EmailId} Direction={Direction} DocNum={DocNum} Status={Status}",
-                email.Id, direction, docNumber, email.Status);
+                "Invoice email batch processed: EmailId={EmailId} Imported={Imported} Failed={Failed}",
+                email.Id, importedCount, failedCount);
 
             return email.Status;
         }
@@ -251,106 +243,108 @@ public class InvoiceEmailProcessor : IInvoiceEmailProcessor
         }
     }
 
-    // ─── Extraction + Classification ─────────────────────────────────────
+    // ─── Single attachment processing ──────────────────────────────────────
 
-    private async Task<(InvoiceExtractedData? data, EInvoiceDirection direction)> ExtractAndClassifyAsync(
+    private async Task<(long? createdId, EInvoiceDirection direction, string? docNumber)> ProcessSingleAttachmentAsync(
         InboundInvoiceEmail email,
         InvoiceEmailPayload payload,
-        IReadOnlyList<EmailAttachment> attachments,
+        EmailAttachment att,
         long companyId,
         CancellationToken ct)
     {
+        // Extract invoice data from this single attachment
         InvoiceExtractedData? data = null;
 
-        // Priority 1: ISDOC XML attachment
-        var isdocAttachment = attachments.FirstOrDefault(a => IsIsdoc(a));
-        if (isdocAttachment != null)
+        if (IsIsdoc(att))
         {
-            var xml = ExtractIsdocXml(isdocAttachment);
+            var xml = ExtractIsdocXml(att);
             if (xml != null)
-            {
                 data = _isdocParser.Parse(xml);
-                if (data != null)
-                    _logger.LogDebug("ISDOC extraction succeeded for email {EmailId}", email.Id);
-            }
         }
-
-        // Priority 2: PDF attachment via existing import pipeline
-        if (data == null)
+        else if (IsPdf(att))
         {
-            var pdfAttachment = attachments.FirstOrDefault(a => IsPdf(a));
-            if (pdfAttachment != null)
+            try
             {
-                try
-                {
-                    var preview = await _importService.PreviewImportAsync(
-                        pdfAttachment.Content,
-                        pdfAttachment.FileName,
-                        EImportTarget.ReceivedInvoice,
-                        ct);
-
-                    if (preview != null)
-                    {
-                        data = MapPreviewToExtractedData(preview);
-                        _logger.LogDebug("PDF extraction succeeded for email {EmailId}", email.Id);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "PDF extraction failed for email {EmailId}", email.Id);
-                }
+                var preview = await _importService.PreviewImportAsync(
+                    att.Content, att.FileName, EImportTarget.ReceivedInvoice, ct);
+                if (preview != null)
+                    data = MapPreviewToExtractedData(preview);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "PDF extraction failed for {FileName}", att.FileName);
             }
         }
 
         if (data == null)
         {
-            _logger.LogDebug("No invoice data extracted from attachments for email {EmailId}", email.Id);
-            return (null, EInvoiceDirection.Received);
+            _logger.LogWarning("No invoice data extracted from {FileName}", att.FileName);
+            return (null, EInvoiceDirection.Received, null);
         }
 
-        // Classify direction — programmatic first (IČO comparison), AI fallback
+        // Classify direction
         var issuer = await _context.Client
             .AsNoTracking()
             .FirstOrDefaultAsync(c => c.IsIssuer, ct);
-
         var companyIco = issuer?.RegistrationNumber ?? "";
-        var companyName = issuer?.CompanyName ?? "";
 
         EInvoiceDirection direction;
-
         if (!string.IsNullOrEmpty(data.IssuerRegistrationNumber) && !string.IsNullOrEmpty(companyIco))
         {
-            // Deterministic: compare IČO directly
             direction = data.IssuerRegistrationNumber.Trim() == companyIco.Trim()
                 ? EInvoiceDirection.Issued
                 : EInvoiceDirection.Received;
             email.ClassificationConfidence = 1.0m;
-
-            _logger.LogDebug(
-                "Direction classified by IČO comparison: Issuer={IssuerIco} Company={CompanyIco} → {Direction}",
-                data.IssuerRegistrationNumber, companyIco, direction);
         }
         else
         {
-            // AI fallback
             var result = await _classifier.ClassifyAsync(
-                payload.TextBody, null, null, companyIco, companyName, companyId, ct);
-
+                payload.TextBody, null, null, companyIco,
+                issuer?.CompanyName ?? "", companyId, ct);
             direction = result.Direction;
             email.ClassificationConfidence = result.Confidence;
-
-            // Enrich extracted data with AI-provided IČO if available
-            if (!string.IsNullOrEmpty(result.IssuerRegistrationNumber))
-                data.IssuerRegistrationNumber ??= result.IssuerRegistrationNumber;
-            if (!string.IsNullOrEmpty(result.IssuerName))
-                data.IssuerName ??= result.IssuerName;
-
-            _logger.LogDebug(
-                "Direction classified by AI: {Direction} (confidence={Confidence})",
-                direction, result.Confidence);
+            data.IssuerRegistrationNumber ??= result.IssuerRegistrationNumber;
+            data.IssuerName ??= result.IssuerName;
         }
 
-        return (data, direction);
+        // Duplicate detection
+        var (existingId, existingEntityType) = await FindExistingInvoiceAsync(data, direction, ct);
+        if (existingId.HasValue)
+        {
+            if (_fileAttachmentService != null)
+                await AttachFilesAsync([att], existingEntityType!, existingId.Value, companyId, ct);
+
+            _logger.LogInformation(
+                "Attachment {FileName} matched existing {EntityType}/{EntityId}",
+                att.FileName, existingEntityType, existingId);
+
+            return (existingId, direction, data.DocumentNumber);
+        }
+
+        // Create invoice
+        long? createdId;
+        string entityType;
+
+        if (direction == EInvoiceDirection.Received)
+        {
+            createdId = await CreateReceivedInvoiceAsync(data, ct);
+            entityType = "ReceivedInvoice";
+        }
+        else
+        {
+            createdId = await CreateIssuedInvoiceAsync(data, ct);
+            entityType = "Invoice";
+        }
+
+        // Attach file to created invoice
+        if (createdId.HasValue && _fileAttachmentService != null)
+            await AttachFilesAsync([att], entityType, createdId.Value, companyId, ct);
+
+        _logger.LogInformation(
+            "Created {EntityType}/{EntityId} from {FileName} (DocNum={DocNum})",
+            entityType, createdId, att.FileName, data.DocumentNumber);
+
+        return (createdId, direction, data.DocumentNumber);
     }
 
     // ─── Duplicate detection ─────────────────────────────────────────────
