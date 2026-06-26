@@ -233,12 +233,16 @@ public class ImapPollService : IImapPollService
         // Route to the correct processor based on alias type
         if (index.MailboxType == Domain.Enums.EMailboxType.Invoice && index.TenantInvoiceMailboxId.HasValue)
         {
-            // Invoice email → construct processor with the tenant-scoped DbContext.
-            // Cannot use DI resolution here — the scoped TenantDbContext from DI has no
-            // Schema set. We must pass the explicitly-configured tenantCtx (same pattern
-            // as InboundEmailProcessor for payment emails).
+            // Set schema on the DI-scoped TenantDbContext so ALL services resolved from
+            // tenantScope (IReceivedInvoiceService, IClientService, etc.) use the correct
+            // tenant schema. Without this, only the explicitly-created tenantCtx has schema
+            // set, but DI-resolved services get their own TenantDbContext with Schema=null
+            // → queries hit "public" schema → "relation does not exist".
+            var scopedTenantCtx = tenantScope.ServiceProvider.GetRequiredService<TenantDbContext>();
+            scopedTenantCtx.Schema = tenantCtx.Schema;
+
             var invoiceProcessor = new InvoiceEmailProcessor(
-                tenantCtx,
+                scopedTenantCtx,
                 tenantScope.ServiceProvider.GetRequiredService<IIsdocImportParser>(),
                 tenantScope.ServiceProvider.GetRequiredService<IInvoiceEmailClassifier>(),
                 tenantScope.ServiceProvider.GetRequiredService<IInvoiceImportService>(),
