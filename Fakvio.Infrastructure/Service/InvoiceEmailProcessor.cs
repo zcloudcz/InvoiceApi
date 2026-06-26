@@ -3,6 +3,7 @@ using System.Text;
 using Fakvio.Application.QrPayment;
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.Import;
+using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Contracts.Dto.ReceivedInvoice;
 using Fakvio.Domain.Entities;
 using Fakvio.Domain.Enums;
@@ -32,6 +33,7 @@ public class InvoiceEmailProcessor : IInvoiceEmailProcessor
     private readonly IInvoiceImportService _importService;
     private readonly IClientService _clientService;
     private readonly IReceivedInvoiceService _receivedInvoiceService;
+    private readonly IInvoiceService _invoiceService;
     private readonly INotificationService _notificationService;
     private readonly IFileAttachmentService? _fileAttachmentService;
     private readonly ILogger<InvoiceEmailProcessor> _logger;
@@ -46,6 +48,7 @@ public class InvoiceEmailProcessor : IInvoiceEmailProcessor
         IInvoiceImportService importService,
         IClientService clientService,
         IReceivedInvoiceService receivedInvoiceService,
+        IInvoiceService invoiceService,
         INotificationService notificationService,
         ILogger<InvoiceEmailProcessor> logger,
         IFileAttachmentService? fileAttachmentService = null)
@@ -56,6 +59,7 @@ public class InvoiceEmailProcessor : IInvoiceEmailProcessor
         _importService = importService;
         _clientService = clientService;
         _receivedInvoiceService = receivedInvoiceService;
+        _invoiceService = invoiceService;
         _notificationService = notificationService;
         _fileAttachmentService = fileAttachmentService;
         _logger = logger;
@@ -478,13 +482,95 @@ public class InvoiceEmailProcessor : IInvoiceEmailProcessor
 
     private async Task<long?> CreateIssuedInvoiceAsync(InvoiceExtractedData data, CancellationToken ct)
     {
-        // For issued invoices received by email (confirmation copies), we just log for now.
-        // Full implementation would call IInvoiceService.CreateInvoiceAsync
-        // but issued invoices typically already exist in the system.
-        _logger.LogInformation(
-            "Issued invoice detected in email: DocNum={DocNum} — skipping auto-create (confirmation copy)",
-            data.DocumentNumber);
-        return null;
+        var issuer = await _context.Client
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.IsIssuer, ct);
+
+        if (issuer == null)
+        {
+            _logger.LogWarning("No issuer found in tenant — cannot create issued invoice");
+            return null;
+        }
+
+        // Find or create recipient client
+        long? clientId = null;
+        if (!string.IsNullOrEmpty(data.RecipientRegistrationNumber))
+        {
+            var existing = await _context.Client
+                .AsNoTracking()
+                .FirstOrDefaultAsync(c => c.RegistrationNumber == data.RecipientRegistrationNumber
+                                       && !c.IsIssuer, ct);
+
+            if (existing != null)
+            {
+                clientId = existing.Id;
+            }
+            else
+            {
+                var created = await _clientService.CreateClientAsync(new Contracts.Dto.Client.CreateClientDto
+                {
+                    RegistrationNumber = data.RecipientRegistrationNumber,
+                    CompanyName = data.RecipientName ?? $"Imported — {data.RecipientRegistrationNumber}",
+                }, ct);
+                clientId = created.Id;
+            }
+        }
+
+        if (clientId == null)
+        {
+            _logger.LogWarning("No recipient IČO found — cannot create issued invoice without client");
+            return null;
+        }
+
+        var currencyCode = data.Currency ?? "CZK";
+        var currency = await _context.Currency
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Code == currencyCode, ct);
+
+        var docType = ResolveDocumentType(data.DetectedDocumentType);
+
+        var items = data.Items?.Select(i => new CreateInvoiceItemDto
+        {
+            Description = i.Description ?? "Položka",
+            Quantity = i.Quantity ?? 1m,
+            UnitPrice = i.UnitPrice ?? 0m,
+            Unit = i.Unit ?? "ks",
+        }).ToList();
+
+        if (items == null || items.Count == 0)
+        {
+            items =
+            [
+                new CreateInvoiceItemDto
+                {
+                    Description = data.DocumentNumber != null
+                        ? $"Faktura {data.DocumentNumber}"
+                        : "Položka faktury",
+                    Quantity = 1m,
+                    UnitPrice = data.TotalBeforeVat ?? data.TotalAmount ?? 0m,
+                    Unit = "ks",
+                }
+            ];
+        }
+
+        var dto = new CreateInvoiceDto
+        {
+            DocumentType = docType,
+            ClientId = clientId.Value,
+            IssuerId = issuer.Id,
+            IssueDate = data.IssueDate,
+            DueDate = data.DueDate,
+            TaxableSupplyDate = data.TaxableSupplyDate,
+            VariableSymbol = data.VariableSymbol,
+            BankAccountNumber = data.BankAccountNumber,
+            IBAN = data.IBAN,
+            SWIFT = data.SWIFT,
+            CurrencyId = currency?.Id ?? 1,
+            InvoiceItem = items,
+        };
+
+        var result = await _invoiceService.CreateInvoiceAsync(dto, ct);
+        return result?.Id;
     }
 
     // ─── File attachment ─────────────────────────────────────────────────
@@ -573,6 +659,30 @@ public class InvoiceEmailProcessor : IInvoiceEmailProcessor
     private static string? Truncate(string? value, int maxLength)
         => value != null && value.Length > maxLength ? value[..maxLength] : value;
 
+    /// <summary>
+    /// Infers document type from document number prefix when AI/ISDOC type is unavailable.
+    /// </summary>
+    private static string? InferDocumentTypeFromNumber(string? docNumber)
+    {
+        if (string.IsNullOrWhiteSpace(docNumber)) return null;
+        var upper = docNumber.TrimStart().ToUpperInvariant();
+        if (upper.StartsWith("CN") || upper.StartsWith("D-") || upper.Contains("DOBROPIS"))
+            return "CreditNote";
+        if (upper.StartsWith("PF") || upper.Contains("PROFORMA") || upper.Contains("ZÁLOHO"))
+            return "Proforma";
+        if (upper.StartsWith("DPP"))
+            return "TaxReceiptForAdvance";
+        return null;
+    }
+
+    private static EDocumentType ResolveDocumentType(string? detected) => detected?.ToLowerInvariant() switch
+    {
+        "creditnote" => EDocumentType.CreditNote,
+        "proforma" => EDocumentType.Proforma,
+        "taxreceiptforadvance" => EDocumentType.TaxReceiptForAdvance,
+        _ => EDocumentType.Invoice
+    };
+
     private static bool IsPdf(EmailAttachment att)
         => att.ContentType.Contains("pdf", StringComparison.OrdinalIgnoreCase)
         || att.FileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase);
@@ -626,6 +736,7 @@ public class InvoiceEmailProcessor : IInvoiceEmailProcessor
         Contracts.Dto.Import.InvoiceImportPreviewDto p) => new()
     {
         DocumentNumber = p.DocumentNumber,
+        DetectedDocumentType = InferDocumentTypeFromNumber(p.DocumentNumber),
         IssueDate = p.IssueDate,
         DueDate = p.DueDate,
         TaxableSupplyDate = p.TaxableSupplyDate,

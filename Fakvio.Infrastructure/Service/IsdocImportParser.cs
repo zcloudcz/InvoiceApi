@@ -42,11 +42,12 @@ public class IsdocImportParser : IIsdocImportParser
 
             var result = new InvoiceExtractedData
             {
-                Source = EExtractionSource.Merged, // We'll add an Isdoc source value
+                Source = EExtractionSource.Merged,
                 DocumentNumber = Str(root, ns, "ID"),
                 IssueDate = Date(root, ns, "IssueDate"),
                 TaxableSupplyDate = Date(root, ns, "TaxPointDate"),
                 Currency = Str(root, ns, "ForeignCurrencyCode") ?? Str(root, ns, "LocalCurrencyCode") ?? "CZK",
+                DetectedDocumentType = MapIsdocDocumentType(Str(root, ns, "DocumentType")),
             };
 
             // Supplier (issuer) party
@@ -153,6 +154,21 @@ public class IsdocImportParser : IIsdocImportParser
         if (str == null) return null;
         return decimal.TryParse(str, NumberStyles.Any, CultureInfo.InvariantCulture, out var val) ? val : null;
     }
+
+    /// <summary>
+    /// Maps ISDOC DocumentType integer to EDocumentType name string.
+    /// ISDOC values: 1=Invoice, 2=CreditNote, 3=DebitNote, 4=ProformaInvoice,
+    /// 5=AdvanceInvoice (=Proforma), 6=CreditAdvanceInvoice.
+    /// </summary>
+    private static string? MapIsdocDocumentType(string? value) => value switch
+    {
+        "1" => "Invoice",
+        "2" or "5" => "CreditNote",
+        "3" => "Invoice", // DebitNote → treat as Invoice
+        "4" => "Proforma",
+        "6" => "CreditNote", // CreditAdvanceInvoice → CreditNote
+        _ => null
+    };
 
     private static DateTime? Date(XElement? parent, XNamespace ns, string element)
     {

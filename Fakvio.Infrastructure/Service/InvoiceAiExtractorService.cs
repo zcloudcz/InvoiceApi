@@ -179,6 +179,7 @@ public class InvoiceAiExtractorService : IInvoiceAiExtractor
     {
         var data = new InvoiceExtractedData
         {
+            DetectedDocumentType = NullIfEmpty(ai.DocumentType),
             DocumentNumber = NullIfEmpty(ai.DocumentNumber),
             IssueDate = ParseDate(ai.IssueDate),
             DueDate = ParseDate(ai.DueDate),
@@ -298,6 +299,7 @@ public class InvoiceAiExtractorService : IInvoiceAiExtractor
         Extract the following fields. Use null for any field you cannot find in the text.
 
         {
+          "documentType": "Invoice|CreditNote|Proforma|TaxReceiptForAdvance — type of document. Invoice = standard tax invoice (faktura), CreditNote = dobropis, Proforma = zálohová faktura / proforma, TaxReceiptForAdvance = daňový doklad o přijaté platbě. Default to Invoice if unclear.",
           "documentNumber": "string — the invoice/document number EXACTLY as printed (e.g., FV2026001, 20260042). Do NOT modify or reformat.",
           "issueDate": "YYYY-MM-DD — date when the invoice was issued",
           "dueDate": "YYYY-MM-DD — payment due date (datum splatnosti)",
@@ -343,6 +345,9 @@ public class InvoiceAiExtractorService : IInvoiceAiExtractor
         - If items table is not found, set items to null (not empty array)
         - Distinguish between issuer (who created the invoice) and recipient (who receives it)
         - Document number must be extracted EXACTLY as it appears — no reformatting
+        - documentType: look for keywords like "Dobropis" / "Credit Note" → CreditNote, "Zálohová faktura" / "Proforma" → Proforma,
+          "Daňový doklad o přijaté platbě" → TaxReceiptForAdvance. If none found, default to "Invoice".
+          Czech hints: prefix CN/CN- = CreditNote, PF/PF- = Proforma, DPP/DPP- = TaxReceiptForAdvance.
         - Extract ALL data faithfully from the document. Your job is OCR-like extraction, not generation.
         """;
 
@@ -355,6 +360,7 @@ public class InvoiceAiExtractorService : IInvoiceAiExtractor
     /// </summary>
     internal class AiExtractionResponse
     {
+        public string? DocumentType { get; set; }
         public string? DocumentNumber { get; set; }
         public string? IssueDate { get; set; }
         public string? DueDate { get; set; }

@@ -248,6 +248,7 @@ public class ImapPollService : IImapPollService
                 tenantScope.ServiceProvider.GetRequiredService<IInvoiceImportService>(),
                 tenantScope.ServiceProvider.GetRequiredService<IClientService>(),
                 tenantScope.ServiceProvider.GetRequiredService<IReceivedInvoiceService>(),
+                tenantScope.ServiceProvider.GetRequiredService<IInvoiceService>(),
                 tenantScope.ServiceProvider.GetRequiredService<INotificationService>(),
                 tenantScope.ServiceProvider.GetRequiredService<ILogger<InvoiceEmailProcessor>>(),
                 tenantScope.ServiceProvider.GetService<IFileAttachmentService>());

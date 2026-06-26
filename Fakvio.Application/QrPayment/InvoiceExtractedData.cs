@@ -182,6 +182,16 @@ public class InvoiceExtractedData
     /// </summary>
     public List<ExtractedInvoiceItem>? Items { get; set; }
 
+    // ─── Document type ──────────────────────────────────────────────────
+
+    /// <summary>
+    /// Detected document type: Invoice, CreditNote, Proforma, TaxReceiptForAdvance.
+    /// Null means not detected — defaults to Invoice.
+    /// From ISDOC: DocumentType element (1=Invoice, 2=CreditNote, 4=ProformaInvoice, etc.).
+    /// From AI: explicit field in extraction prompt.
+    /// </summary>
+    public string? DetectedDocumentType { get; set; }
+
     // ─── Metadata ────────────────────────────────────────────────────────
 
     /// <summary>
