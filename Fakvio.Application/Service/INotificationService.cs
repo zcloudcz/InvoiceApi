@@ -36,6 +36,19 @@ public interface INotificationService
         CancellationToken ct = default);
 
     /// <summary>
+    /// Creates a notification with an explicit company ID — for use in background workers
+    /// where ITenantResolver cannot resolve CompanyId from HTTP context.
+    /// </summary>
+    Task<long> CreateForAllUsersAsync(
+        ENotificationType type,
+        string title,
+        string message,
+        long relatedEntityId,
+        string relatedEntityType,
+        long companyId,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Returns the number of unread notifications for the given user.
     /// Used for the bell icon badge.
     /// </summary>

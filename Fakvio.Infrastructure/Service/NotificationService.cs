@@ -43,15 +43,40 @@ public class NotificationService : INotificationService
         CancellationToken ct = default)
     {
         var companyId = _tenantResolver.GetCurrentCompanyId();
-        if (companyId == null)
+
+        // Fallback for background workers where HTTP context is unavailable:
+        // resolve companyId from tenant schema name via CompanySystemSettings.
+        if (companyId == null && !string.IsNullOrEmpty(_context.Schema))
         {
-            _logger.LogWarning("Cannot create notification — no tenant context");
+            var settings = await _masterContext.Set<CompanySystemSettings>()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.SchemaName == _context.Schema, ct);
+            companyId = settings?.CompanyId;
+        }
+
+        if (companyId == null || companyId == 0)
+        {
+            _logger.LogWarning("Cannot create notification — no tenant context (schema={Schema})", _context.Schema);
             return 0;
         }
 
+        return await CreateForAllUsersAsync(type, title, message, relatedEntityId, relatedEntityType, companyId.Value, ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<long> CreateForAllUsersAsync(
+        ENotificationType type,
+        string title,
+        string message,
+        long relatedEntityId,
+        string relatedEntityType,
+        long companyId,
+        CancellationToken ct = default)
+    {
+
         var userIds = await _masterContext.Set<User>()
             .AsNoTracking()
-            .Where(u => u.CompanyId == companyId.Value && u.IsActive)
+            .Where(u => u.CompanyId == companyId && u.IsActive)
             .Select(u => u.Id)
             .ToListAsync(ct);
 

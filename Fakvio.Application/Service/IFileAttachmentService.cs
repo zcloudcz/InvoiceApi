@@ -28,6 +28,12 @@ public interface IFileAttachmentService
     Task<FileAttachmentDto> UploadAsync(FileAttachmentUploadDto upload, CancellationToken ct = default);
 
     /// <summary>
+    /// Uploads a file with an explicit company ID — for use in background workers
+    /// where ITenantResolver cannot resolve CompanyId from HTTP context.
+    /// </summary>
+    Task<FileAttachmentDto> UploadAsync(FileAttachmentUploadDto upload, long companyId, CancellationToken ct = default);
+
+    /// <summary>
     /// Downloads file bytes by FileAttachment ID.
     /// Loads the metadata from DB, then retrieves actual bytes from blob storage.
     /// Returns a tuple with content, file name, and MIME type for the controller to build the response.

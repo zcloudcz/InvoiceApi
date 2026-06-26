@@ -145,7 +145,7 @@ public class InvoiceEmailProcessor : IInvoiceEmailProcessor
                 await NotifyAsync(ENotificationType.InvoiceEmailNeedsReview,
                     "Email bez faktury",
                     $"Email od {payload.FromAddress} neobsahuje rozpoznatelnou fakturu.",
-                    email.Id, ct);
+                    email.Id, companyId, ct);
 
                 return EInvoiceEmailStatus.Failed;
             }
@@ -177,13 +177,13 @@ public class InvoiceEmailProcessor : IInvoiceEmailProcessor
                 await _context.SaveChangesAsync(ct);
 
                 if (_fileAttachmentService != null)
-                    await AttachFilesAsync(attachments, entityType, createdId.Value, ct);
+                    await AttachFilesAsync(attachments, entityType, createdId.Value, companyId, ct);
 
                 var existingDocNum = extractedData.DocumentNumber ?? "?";
                 await NotifyAsync(ENotificationType.InvoiceEmailImported,
                     "Příloha přidána k faktuře",
                     $"Email od {payload.FromAddress} — přílohy přidány k existující faktuře {existingDocNum}.",
-                    createdId.Value, ct, entityType);
+                    createdId.Value, companyId, ct, entityType);
 
                 _logger.LogInformation(
                     "Invoice email matched existing document: EmailId={EmailId} {EntityType}/{EntityId} DocNum={DocNum}",
@@ -212,7 +212,7 @@ public class InvoiceEmailProcessor : IInvoiceEmailProcessor
             // 8. Attach original files
             if (createdId.HasValue && _fileAttachmentService != null)
             {
-                await AttachFilesAsync(attachments, entityType, createdId.Value, ct);
+                await AttachFilesAsync(attachments, entityType, createdId.Value, companyId, ct);
             }
 
             // 9. Notify
@@ -226,7 +226,7 @@ public class InvoiceEmailProcessor : IInvoiceEmailProcessor
                 $"Faktura {directionLabel} importována",
                 $"Faktura {docNumber} od {payload.FromAddress} automaticky importována jako {directionLabel}.",
                 createdId ?? email.Id,
-                ct,
+                companyId, ct,
                 createdId.HasValue ? entityType : "InboundInvoiceEmail");
 
             _logger.LogInformation(
@@ -245,7 +245,7 @@ public class InvoiceEmailProcessor : IInvoiceEmailProcessor
             await NotifyAsync(ENotificationType.InvoiceEmailNeedsReview,
                 "Import faktury selhal",
                 $"Zpracování emailu od {payload.FromAddress} selhalo: {email.StatusError}",
-                email.Id, ct, "InboundInvoiceEmail");
+                email.Id, companyId, ct, "InboundInvoiceEmail");
 
             return EInvoiceEmailStatus.Failed;
         }
@@ -499,6 +499,7 @@ public class InvoiceEmailProcessor : IInvoiceEmailProcessor
         IReadOnlyList<EmailAttachment> attachments,
         string entityType,
         long entityId,
+        long companyId,
         CancellationToken ct)
     {
         var attached = 0;
@@ -517,7 +518,7 @@ public class InvoiceEmailProcessor : IInvoiceEmailProcessor
                             ContentType = att.ContentType,
                             FileContent = att.Content,
                             Description = "Imported from email",
-                        }, ct);
+                        }, companyId, ct);
                     attached++;
                     _logger.LogInformation("Attached {FileName} to {EntityType}/{EntityId}",
                         att.FileName, entityType, entityId);
@@ -540,11 +541,11 @@ public class InvoiceEmailProcessor : IInvoiceEmailProcessor
 
     private async Task NotifyAsync(
         ENotificationType type, string title, string message,
-        long entityId, CancellationToken ct, string entityType = "InboundInvoiceEmail")
+        long entityId, long companyId, CancellationToken ct, string entityType = "InboundInvoiceEmail")
     {
         try
         {
-            await _notificationService.CreateForAllUsersAsync(type, title, message, entityId, entityType, ct);
+            await _notificationService.CreateForAllUsersAsync(type, title, message, entityId, entityType, companyId, ct);
         }
         catch (Exception ex)
         {

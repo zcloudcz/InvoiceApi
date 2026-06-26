@@ -60,17 +60,20 @@ public class FileAttachmentService : IFileAttachmentService
     }
 
     /// <inheritdoc />
-    public async Task<FileAttachmentDto> UploadAsync(
+    public Task<FileAttachmentDto> UploadAsync(
         FileAttachmentUploadDto upload, CancellationToken ct = default)
+        => UploadAsync(upload, RequireCompanyId(), ct);
+
+    /// <inheritdoc />
+    public async Task<FileAttachmentDto> UploadAsync(
+        FileAttachmentUploadDto upload, long companyId, CancellationToken ct = default)
     {
-        // Validate file size
         if (upload.FileContent.Length > MaxFileSizeBytes)
         {
             throw new InvalidOperationException(
                 $"File size ({upload.FileContent.Length} bytes) exceeds the maximum allowed size ({MaxFileSizeBytes} bytes).");
         }
 
-        // Validate file extension (security: reject executables)
         var extension = Path.GetExtension(upload.FileName);
         if (!string.IsNullOrEmpty(extension) && !AllowedExtensions.Contains(extension))
         {
@@ -78,10 +81,7 @@ public class FileAttachmentService : IFileAttachmentService
                 $"File extension '{extension}' is not allowed. Allowed extensions: {string.Join(", ", AllowedExtensions)}");
         }
 
-        // Generate unique identifiers for this attachment.
-        // Blob path is "{companyId}/{guid}{ext}" — tenant isolation lives in the path prefix.
         var fileGuid = Guid.NewGuid();
-        var companyId = RequireCompanyId();
         var blobPath = BuildBlobPath(companyId, fileGuid, extension);
 
         // Step 1: Upload bytes to blob storage (container resolved internally by IFileStorage)
