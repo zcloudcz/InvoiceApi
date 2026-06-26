@@ -495,12 +495,13 @@ public class InvoiceEmailProcessor : IInvoiceEmailProcessor
 
     // ─── File attachment ─────────────────────────────────────────────────
 
-    private async Task AttachFilesAsync(
+    private async Task<int> AttachFilesAsync(
         IReadOnlyList<EmailAttachment> attachments,
         string entityType,
         long entityId,
         CancellationToken ct)
     {
+        var attached = 0;
         foreach (var att in attachments.Where(a => IsPdf(a) || IsIsdoc(a)))
         {
             try
@@ -517,14 +518,22 @@ public class InvoiceEmailProcessor : IInvoiceEmailProcessor
                             FileContent = att.Content,
                             Description = "Imported from email",
                         }, ct);
+                    attached++;
+                    _logger.LogInformation("Attached {FileName} to {EntityType}/{EntityId}",
+                        att.FileName, entityType, entityId);
+                }
+                else
+                {
+                    _logger.LogWarning("IFileAttachmentService not available — skipping attachment {FileName}", att.FileName);
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to attach file {FileName} to {EntityType}/{EntityId}",
-                    att.FileName, entityType, entityId);
+                _logger.LogError(ex, "Failed to attach file {FileName} to {EntityType}/{EntityId}: {Error}",
+                    att.FileName, entityType, entityId, GetFullExceptionMessage(ex));
             }
         }
+        return attached;
     }
 
     // ─── Notifications ───────────────────────────────────────────────────

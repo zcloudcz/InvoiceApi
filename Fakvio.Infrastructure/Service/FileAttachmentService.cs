@@ -43,7 +43,8 @@ public class FileAttachmentService : IFileAttachmentService
         ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".csv", ".txt", ".rtf", ".odt", ".ods",
         ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".svg", ".webp", ".tiff",
         ".zip", ".rar", ".7z",
-        ".xml", ".json", ".html"
+        ".xml", ".json", ".html",
+        ".isdoc", ".isdocx"
     };
 
     public FileAttachmentService(
