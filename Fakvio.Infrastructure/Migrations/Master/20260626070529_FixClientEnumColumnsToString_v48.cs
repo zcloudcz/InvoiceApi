@@ -11,16 +11,37 @@ namespace Fakvio.Infrastructure.Migrations.Master
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             // PostgreSQL requires USING clause when changing column type from integer to varchar.
-            // Existing integer values (if any) are cast to their string representation.
+            // Explicit CASE mapping converts integer enum values to their C# name strings,
+            // matching what EF Core HasConversion<string?>() expects.
             migrationBuilder.Sql("""
                 ALTER TABLE "Client" ALTER COLUMN "TaxRegime" TYPE character varying(30)
-                    USING "TaxRegime"::character varying(30);
+                    USING CASE "TaxRegime"
+                        WHEN 1 THEN 'FlatRateTax'
+                        WHEN 2 THEN 'LumpSumExpenses80'
+                        WHEN 3 THEN 'LumpSumExpenses60'
+                        WHEN 4 THEN 'LumpSumExpenses40'
+                        WHEN 5 THEN 'LumpSumExpenses30'
+                        WHEN 6 THEN 'TaxRecords'
+                        WHEN 7 THEN 'FullAccounting'
+                        ELSE NULL
+                    END;
 
                 ALTER TABLE "Client" ALTER COLUMN "ActivityType" TYPE character varying(30)
-                    USING "ActivityType"::character varying(30);
+                    USING CASE "ActivityType"
+                        WHEN 1 THEN 'CraftTrade'
+                        WHEN 2 THEN 'NonCraftTrade'
+                        WHEN 3 THEN 'RegulatedProfession'
+                        WHEN 4 THEN 'Rental'
+                        ELSE NULL
+                    END;
 
                 ALTER TABLE "Client" ALTER COLUMN "FlatRateBand" TYPE character varying(10)
-                    USING "FlatRateBand"::character varying(10);
+                    USING CASE "FlatRateBand"
+                        WHEN 1 THEN 'Band1'
+                        WHEN 2 THEN 'Band2'
+                        WHEN 3 THEN 'Band3'
+                        ELSE NULL
+                    END;
                 """);
         }
 
