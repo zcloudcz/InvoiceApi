@@ -239,7 +239,7 @@ public class InvoiceEmailProcessor : IInvoiceEmailProcessor
         {
             _logger.LogError(ex, "Failed to process invoice email {EmailId}", email.Id);
             email.Status = EInvoiceEmailStatus.Failed;
-            email.StatusError = ex.Message.Length > 2000 ? ex.Message[..2000] : ex.Message;
+            email.StatusError = GetFullExceptionMessage(ex);
             await _context.SaveChangesAsync(ct);
 
             await NotifyAsync(ENotificationType.InvoiceEmailNeedsReview,
@@ -551,6 +551,19 @@ public class InvoiceEmailProcessor : IInvoiceEmailProcessor
         var input = $"{mailboxId}|{messageId}|{imapUid}";
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(input));
         return Convert.ToHexStringLower(bytes);
+    }
+
+    private static string GetFullExceptionMessage(Exception ex)
+    {
+        var parts = new List<string>();
+        var current = ex;
+        while (current != null)
+        {
+            parts.Add(current.Message);
+            current = current.InnerException;
+        }
+        var full = string.Join(" → ", parts);
+        return full.Length > 2000 ? full[..2000] : full;
     }
 
     private static string? Truncate(string? value, int maxLength)

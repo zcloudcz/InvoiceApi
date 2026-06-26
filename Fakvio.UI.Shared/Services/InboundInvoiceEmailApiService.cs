@@ -52,4 +52,10 @@ public class InboundInvoiceEmailApiService : ApiClientBase
         try { await PostWithoutBodyAsync<object>($"/api/inbound-invoice-email/{id}/ignore"); }
         catch (ApiException) { }
     }
+
+    public async Task RetryAsync(long id)
+    {
+        try { await PostWithoutBodyAsync<object>($"/api/inbound-invoice-email/{id}/retry"); }
+        catch (ApiException) { }
+    }
 }

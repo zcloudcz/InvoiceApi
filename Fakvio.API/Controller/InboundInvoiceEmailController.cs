@@ -124,4 +124,32 @@ public class InboundInvoiceEmailController : ControllerBase
         await _context.SaveChangesAsync(ct);
         return NoContent();
     }
+
+    /// <summary>
+    /// Reset a Failed/NeedsReview email back to Pending for reprocessing.
+    /// Clears error and result links so the next IMAP poll cycle picks it up.
+    /// </summary>
+    [HttpPost("{id:long}/retry")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> Retry(long id, CancellationToken ct = default)
+    {
+        var email = await _context.InboundInvoiceEmail.FirstOrDefaultAsync(x => x.Id == id, ct);
+        if (email == null) return NotFound();
+
+        if (email.Status != EInvoiceEmailStatus.Failed && email.Status != EInvoiceEmailStatus.NeedsReview)
+            return BadRequest("Only Failed or NeedsReview emails can be retried.");
+
+        email.Status = EInvoiceEmailStatus.Pending;
+        email.StatusError = null;
+        email.Direction = null;
+        email.ClassificationConfidence = null;
+        email.ReceivedInvoiceId = null;
+        email.InvoiceId = null;
+        await _context.SaveChangesAsync(ct);
+
+        _logger.LogInformation("Invoice email {EmailId} reset to Pending for retry", id);
+        return NoContent();
+    }
 }

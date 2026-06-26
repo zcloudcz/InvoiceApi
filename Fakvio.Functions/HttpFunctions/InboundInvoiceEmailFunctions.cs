@@ -74,4 +74,21 @@ public class InboundInvoiceEmailFunctions
         var ct = req.HttpContext.RequestAborted;
         return FunctionResultHelper.Normalize(await _controller.Ignore(idParsed, ct));
     }
+
+    [Function("InboundInvoiceEmail_Retry")]
+    public async Task<IActionResult> InboundInvoiceEmail_Retry(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/inbound-invoice-email/{id:long}/retry")] HttpRequest req,
+        string id)
+    {
+        if (!long.TryParse(id, out var idParsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
+
+        _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
+
+        if (req.HttpContext.User.Identity?.IsAuthenticated != true)
+            return new UnauthorizedResult();
+
+        var ct = req.HttpContext.RequestAborted;
+        return FunctionResultHelper.Normalize(await _controller.Retry(idParsed, ct));
+    }
 }

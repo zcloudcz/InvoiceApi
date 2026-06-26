@@ -95,6 +95,8 @@ else
                 }
                 @if (context.Status == EInvoiceEmailStatus.Failed || context.Status == EInvoiceEmailStatus.NeedsReview)
                 {
+                    <MudIconButton Icon="@Icons.Material.Filled.Replay" Size="Size.Small"
+                                   OnClick="@(() => RetryAsync(context))" Title="Zkusit znovu" />
                     <MudIconButton Icon="@Icons.Material.Filled.VisibilityOff" Size="Size.Small"
                                    OnClick="@(() => IgnoreAsync(context))" Title="Ignorovat" />
                 }
@@ -251,6 +253,13 @@ else
     {
         if (!_expandedIds.Remove(item.Id))
             _expandedIds.Add(item.Id);
+    }
+
+    private async Task RetryAsync(InboundInvoiceEmailDto item)
+    {
+        await EmailService.RetryAsync(item.Id);
+        item.Status = EInvoiceEmailStatus.Pending;
+        item.StatusError = null;
     }
 
     private async Task IgnoreAsync(InboundInvoiceEmailDto item)
