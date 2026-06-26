@@ -25,6 +25,7 @@
 15. [Párování plateb](#15-párování-plateb)
 16. [Lokalizace — přepínání jazyka CZ/EN](#16-lokalizace--přepínání-jazyka-czen)
 17. [Notifikace](#17-notifikace)
+18. [Příjem faktur emailem](#18-příjem-faktur-emailem)
 
 ---
 
@@ -411,6 +412,9 @@ Správa informací o vaší firmě (vydavatele faktur).
 - Formát: číslo účtu, kód banky, IBAN, BIC/SWIFT
 - QR kód platba — systém generuje QR kód pro faktury automaticky
 
+**Email pro příjem faktur:**
+- Aktivace unikátní emailové adresy pro automatický příjem faktur — viz [§18](#18-příjem-faktur-emailem)
+
 **Cloud úložiště:**
 - Napojení cloudového úložiště pro ukládání dokumentů
 
@@ -671,5 +675,90 @@ Kompletní seznam všech notifikací se stránkováním a filtry:
 | Typ | Kdy se generuje |
 |-----|----------------|
 | Platba spárována | Systém automaticky nebo ručně spároval bankovní platbu s fakturou |
+| Faktura importována emailem | Email s fakturou byl automaticky zpracován a doklad vytvořen |
+| Faktura k přezkoumání | Email s fakturou importován, ale s nízkou spolehlivostí rozpoznání |
 
-Další typy budou přibývat s rozvojem aplikace (např. upomínky, opakované faktury).
+---
+
+## 18. Příjem faktur emailem
+
+**Stránka nastavení:** `/my-company` (sekce „Email pro příjem faktur")
+**Stránka přehledu:** `/invoice-emails`
+
+Systém umožňuje automatický příjem a zpracování faktur zaslaných emailem.
+
+### Jak aktivovat
+
+1. Přejděte na **Nastavení firmy** (`/my-company`)
+2. V sekci **Email pro příjem faktur** klikněte **Aktivovat**
+3. Systém vygeneruje unikátní emailovou adresu (např. `fak-a7b3x9k2mp@fakvio.cz`)
+4. Zkopírujte adresu (ikona kopírování) a sdělte ji dodavatelům nebo ji nastavte jako přeposílací adresu
+
+### Jak to funguje
+
+1. Dodavatel (nebo vy) pošle email s fakturou (PDF nebo ISDOC příloha) na vygenerovanou adresu
+2. Systém automaticky:
+   - Rozpozná typ dokumentu z příloh (ISDOC má přednost před PDF)
+   - Určí, zda jde o **přijatou fakturu** (od dodavatele) nebo **vydanou fakturu** (naši) — porovnáním IČO
+   - Pokud dodavatel v systému neexistuje, automaticky ho založí (z ARES dle IČO)
+   - Pokud faktura se stejným číslem již existuje, přidá přílohy k existujícímu dokladu
+   - Vytvoří doklad a připojí originální PDF/ISDOC jako přílohu
+3. Dostanete **notifikaci** (zvoneček) o výsledku importu
+
+### Přehled příchozích emailů
+
+**Stránka:** `/invoice-emails`
+
+Zobrazuje všechny emaily přijaté na fakturační adresu:
+
+| Sloupec | Popis |
+|---------|-------|
+| Datum | Datum přijetí emailu |
+| Odesílatel | Email nebo jméno odesílatele |
+| Předmět | Předmět emailu |
+| Přílohy | Typ příloh — ISDOC (zelený chip), PDF (modrý chip) |
+| Směr | Přijatá / Vydaná faktura |
+| Stav | Aktuální stav zpracování (viz tabulka níže) |
+
+**Rozbalitelný detail** — klikněte na šipku ▸ u každého řádku:
+- Email metadata (od, předmět, datum, čas přijetí, počet příloh)
+- Zpracování (stav, směr, spolehlivost rozpoznání v %, odkaz na vytvořený doklad)
+- Chybová zpráva (pokud zpracování selhalo) — zobrazena v plném znění
+
+### Stavy zpracování
+
+| Stav | Barva | Popis |
+|------|-------|-------|
+| Čeká | Šedá | Email přijat, čeká na zpracování |
+| Importováno | Zelená | Faktura úspěšně vytvořena |
+| K přezkoumání | Oranžová | Faktura vytvořena, ale s nízkou spolehlivostí — zkontrolujte |
+| Chyba | Červená | Zpracování selhalo — detail chyby v rozbalitelném panelu |
+| Ignorováno | Tmavá | Uživatel označil email jako „ne-fakturu" |
+
+### Akce
+
+| Ikona | Akce | Kdy dostupná |
+|-------|------|-------------|
+| ↻ (retry) | Zkusit zpracovat znovu | Chyba, K přezkoumání |
+| 👁‍🗨 (ignorovat) | Označit jako ne-fakturu | Chyba, K přezkoumání |
+| ↗ (otevřít) | Přejít na vytvořenou fakturu | Importováno |
+
+### Správa emailové adresy
+
+V sekci **Nastavení firmy** máte k dispozici:
+
+| Akce | Popis |
+|------|-------|
+| Aktivovat | Vygeneruje novou emailovou adresu |
+| Deaktivovat | Přeruší příjem — emaily na starou adresu budou ignorovány |
+| Nový alias | Vygeneruje novou adresu, stará přestane okamžitě fungovat |
+| Kopírovat | Zkopíruje emailovou adresu do schránky |
+
+### Podporované formáty příloh
+
+| Formát | Spolehlivost | Popis |
+|--------|-------------|-------|
+| ISDOC (.isdoc) | Nejvyšší | Český standard pro elektronické faktury — strukturovaný XML |
+| ISDOCX (.isdocx) | Nejvyšší | ZIP kontejner s ISDOC XML uvnitř |
+| PDF | Vysoká | Rozpoznání přes QR kód, AI, nebo textovou analýzu |
+| Email bez příloh | Nízká | Pokus o rozpoznání z těla emailu (pouze AI) |

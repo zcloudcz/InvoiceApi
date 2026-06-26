@@ -602,7 +602,62 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
 - 21 tools: 8 invoice + 6 client + 3 template + 4 reporting.
 - Konfigurace v Claude Desktop / Claude Code: spustí `fakvio-mcp-server` jako subprocess se stdio piping.
 
-### 4.10 EPO XML export (DPHDP3 + DPHKH1)
+### 4.10 Invoice by Email (IMAP → auto-import)
+
+Rozšíření stávajícího IMAP pipeline (§4.5) o druhý typ aliasu — "fak-" prefix pro příjem faktur emailem.
+
+**Sdílená infrastruktura** (beze změn): stejný IMAP server, credentials (`PaymentMatchingSystemSettings`), `InboundAliasRouter`, advisory lock, `ImapPollService` cyklus.
+
+**Routing:** `MasterMailboxIndex.MailboxType` (enum `EMailboxType`: Payment=1, Invoice=2) rozhoduje v `ImapPollService.HandleMessageAsync` který processor se zavolá.
+
+**Architektura:**
+
+| Vrstva | Kde | Co dělá |
+|--------|-----|---------|
+| Entity (tenant) | `InvoiceMailbox.cs` | Per-tenant "fak-" alias, 1 per company |
+| Entity (tenant) | `InboundInvoiceEmail.cs` | Email archiv + status + link na vytvořený doklad |
+| Entity (master) | `MasterMailboxIndex.cs` | Rozšířen o `MailboxType` + `TenantInvoiceMailboxId` |
+| Enum | `EMailboxType`, `EInvoiceEmailStatus`, `EInvoiceDirection` | Routing, processing status, received/issued |
+| Processor | `InvoiceEmailProcessor.cs` | Orchestrátor: archiv → extract → classify → import → notify |
+| Classifier | `InvoiceEmailClassifier.cs` | AI klasifikace směru (přijatá/vydaná) s IČO fast path |
+| ISDOC parser | `IsdocImportParser.cs` | ISDOC 6.0.2 XML → `InvoiceExtractedData` (bez AI) |
+| Mailbox CRUD | `InvoiceMailboxService.cs` | Activate/deactivate/regenerate alias |
+| API | `InvoiceMailboxController.cs`, `InboundInvoiceEmailController.cs` | Mailbox management + inbox list/detail/retry/ignore |
+| UI | `InvoiceMailboxCard.razor`, `InboundInvoiceEmails.razor` | Company Settings card + inbox stránka |
+
+**Processing pipeline (`InvoiceEmailProcessor`):**
+
+```
+1. Guard (mailbox active, email within ActiveFrom window)
+2. Dedup: SHA-256(mailboxId | messageId | imapUid)
+3. Archive: persist InboundInvoiceEmail (status=Pending)
+4. Extract attachments: PDF bytes + ISDOC XML z MimeMessage
+5. Parse invoice data (priority chain):
+   a. ISDOC XML → IsdocImportParser (.isdoc plain + .isdocx ZIP)
+   b. PDF → InvoiceImportService pipeline (QR → AI → regex)
+6. Duplicate detection: DocumentNumber + supplier IČO → existující doklad?
+   → YES: přidat přílohy k existujícímu, notifikace "Příloha přidána"
+   → NO: pokračovat na krok 7
+7. Classify direction:
+   a. IČO comparison (deterministic, confidence=1.0)
+   b. AI fallback (IInvoiceEmailClassifier)
+8. Auto-create client (IClientService + ARES)
+9. Create doklad: ReceivedInvoice nebo Invoice
+10. Attach PDF/ISDOC jako FileAttachment
+11. Notify: CreateForAllUsersAsync (InvoiceEmailImported / InvoiceEmailNeedsReview)
+```
+
+**Error handling:** `GetFullExceptionMessage()` rozbalí celý InnerException chain (EF Core wrappuje skutečnou chybu za generickou zprávu). Zobrazeno v UI detail panelu.
+
+**Retry:** `POST /api/inbound-invoice-email/{id}/retry` resetuje Failed/NeedsReview → Pending.
+
+**Deactivace:** Retiruje master index entry → alias router přestane routovat → žádná tichá ztráta emailů.
+
+**Klíčový DI pattern:** `ImapPollService` konstruuje `InvoiceEmailProcessor` ručně s explicitním `TenantDbContext` (ne z DI scope). DI scope nemá tenant schema nastavené — stejný pattern jako `InboundEmailProcessor` pro platby.
+
+**Pokud přidáváš nový typ emailového zpracování:** rozšiř `EMailboxType`, přidej nový processor, a přidej branch do `ImapPollService.HandleMessageAsync`.
+
+### 4.11 EPO XML export (DPHDP3 + DPHKH1)
 
 Česká daňová přiznání ve formátu EPO Finanční správy ČR.
 
