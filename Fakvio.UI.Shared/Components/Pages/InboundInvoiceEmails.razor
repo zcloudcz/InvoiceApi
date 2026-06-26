@@ -38,9 +38,9 @@ else if (_items.Count == 0)
 }
 else
 {
-    <MudTable Items="@_items" Dense="true" Hover="true" Striped="true"
-              OnRowClick="@(new EventCallback<TableRowClickEventArgs<InboundInvoiceEmailDto>>(this, OnRowClick))">
+    <MudTable Items="@_items" Dense="true" Hover="true" Striped="true">
         <HeaderContent>
+            <MudTh Style="width: 40px;"></MudTh>
             <MudTh>Datum</MudTh>
             <MudTh>Odesílatel</MudTh>
             <MudTh>Předmět</MudTh>
@@ -50,6 +50,10 @@ else
             <MudTh>Akce</MudTh>
         </HeaderContent>
         <RowTemplate>
+            <MudTd>
+                <MudIconButton Icon="@(IsExpanded(context) ? Icons.Material.Filled.ExpandLess : Icons.Material.Filled.ExpandMore)"
+                               Size="Size.Small" OnClick="@(() => ToggleExpand(context))" />
+            </MudTd>
             <MudTd>@(context.EmailDate?.ToString("d.M.yyyy HH:mm") ?? context.ServerReceivedAt.ToString("d.M.yyyy HH:mm"))</MudTd>
             <MudTd>@(context.FromDisplayName ?? context.FromAddress)</MudTd>
             <MudTd>@context.Subject</MudTd>
@@ -77,6 +81,18 @@ else
                 </MudChip>
             </MudTd>
             <MudTd>
+                @if (context.ReceivedInvoiceId.HasValue)
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.OpenInNew" Size="Size.Small"
+                                   OnClick="@(() => Navigation.NavigateTo($"/received-invoices/{context.ReceivedInvoiceId}"))"
+                                   Title="Otevřít přijatou fakturu" />
+                }
+                else if (context.InvoiceId.HasValue)
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.OpenInNew" Size="Size.Small"
+                                   OnClick="@(() => Navigation.NavigateTo($"/invoices/{context.InvoiceId}"))"
+                                   Title="Otevřít fakturu" />
+                }
                 @if (context.Status == EInvoiceEmailStatus.Failed || context.Status == EInvoiceEmailStatus.NeedsReview)
                 {
                     <MudIconButton Icon="@Icons.Material.Filled.VisibilityOff" Size="Size.Small"
@@ -84,6 +100,114 @@ else
                 }
             </MudTd>
         </RowTemplate>
+        <ChildRowContent>
+            @if (IsExpanded(context))
+            {
+                <MudTr>
+                    <td colspan="8">
+                        <MudPaper Class="pa-4 ma-2" Elevation="0" Outlined="true">
+                            <MudGrid Spacing="2">
+                                @* Levý sloupec: email metadata *@
+                                <MudItem xs="12" md="6">
+                                    <MudText Typo="Typo.subtitle2" Class="mb-2">Email</MudText>
+                                    <MudSimpleTable Dense="true" Hover="false" Bordered="false" Style="background: transparent;">
+                                        <tbody>
+                                            <tr>
+                                                <td style="width: 120px;"><strong>Od:</strong></td>
+                                                <td>@context.FromAddress @if (!string.IsNullOrEmpty(context.FromDisplayName)) { <text>(@context.FromDisplayName)</text> }</td>
+                                            </tr>
+                                            <tr>
+                                                <td><strong>Předmět:</strong></td>
+                                                <td>@(context.Subject ?? "—")</td>
+                                            </tr>
+                                            <tr>
+                                                <td><strong>Datum emailu:</strong></td>
+                                                <td>@(context.EmailDate?.ToString("d.M.yyyy HH:mm") ?? "—")</td>
+                                            </tr>
+                                            <tr>
+                                                <td><strong>Přijato:</strong></td>
+                                                <td>@context.ServerReceivedAt.ToString("d.M.yyyy HH:mm:ss")</td>
+                                            </tr>
+                                            <tr>
+                                                <td><strong>Přílohy:</strong></td>
+                                                <td>
+                                                    @context.AttachmentCount příloha/y
+                                                    @if (context.HasPdf) { <text> (PDF)</text> }
+                                                    @if (context.HasIsdoc) { <text> (ISDOC)</text> }
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </MudSimpleTable>
+                                </MudItem>
+
+                                @* Pravý sloupec: zpracování *@
+                                <MudItem xs="12" md="6">
+                                    <MudText Typo="Typo.subtitle2" Class="mb-2">Zpracování</MudText>
+                                    <MudSimpleTable Dense="true" Hover="false" Bordered="false" Style="background: transparent;">
+                                        <tbody>
+                                            <tr>
+                                                <td style="width: 120px;"><strong>Stav:</strong></td>
+                                                <td>
+                                                    <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">
+                                                        @GetStatusLabel(context.Status)
+                                                    </MudChip>
+                                                </td>
+                                            </tr>
+                                            @if (context.Direction.HasValue)
+                                            {
+                                                <tr>
+                                                    <td><strong>Směr:</strong></td>
+                                                    <td>@(context.Direction == EInvoiceDirection.Received ? "Přijatá faktura (od dodavatele)" : "Vydaná faktura (naše)")</td>
+                                                </tr>
+                                            }
+                                            @if (context.ClassificationConfidence.HasValue)
+                                            {
+                                                <tr>
+                                                    <td><strong>Confidence:</strong></td>
+                                                    <td>@(context.ClassificationConfidence.Value.ToString("P0"))</td>
+                                                </tr>
+                                            }
+                                            @if (context.ReceivedInvoiceId.HasValue)
+                                            {
+                                                <tr>
+                                                    <td><strong>Doklad:</strong></td>
+                                                    <td>
+                                                        <MudLink Href="@($"/received-invoices/{context.ReceivedInvoiceId}")">
+                                                            Přijatá faktura #@context.ReceivedInvoiceId
+                                                        </MudLink>
+                                                    </td>
+                                                </tr>
+                                            }
+                                            @if (context.InvoiceId.HasValue)
+                                            {
+                                                <tr>
+                                                    <td><strong>Doklad:</strong></td>
+                                                    <td>
+                                                        <MudLink Href="@($"/invoices/{context.InvoiceId}")">
+                                                            Faktura #@context.InvoiceId
+                                                        </MudLink>
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </MudSimpleTable>
+                                </MudItem>
+
+                                @* Chyba — plná šířka, výrazná *@
+                                @if (!string.IsNullOrWhiteSpace(context.StatusError))
+                                {
+                                    <MudItem xs="12">
+                                        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Dense="true" Class="mt-1">
+                                            <MudText Typo="Typo.body2" Style="font-family: monospace; white-space: pre-wrap; word-break: break-word;">@context.StatusError</MudText>
+                                        </MudAlert>
+                                    </MudItem>
+                                }
+                            </MudGrid>
+                        </MudPaper>
+                    </td>
+                </MudTr>
+            }
+        </ChildRowContent>
     </MudTable>
 
     @if (_totalPages > 1)
@@ -102,6 +226,7 @@ else
     private int _totalPages = 1;
     private EInvoiceEmailStatus? _statusFilter;
     private EInvoiceDirection? _directionFilter;
+    private HashSet<long> _expandedIds = [];
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
@@ -116,19 +241,16 @@ else
         _loading = false;
     }
 
-    private async Task OnPageChanged(int page) { _page = page; await LoadAsync(); }
-    private async Task OnStatusFilterChanged(EInvoiceEmailStatus? val) { _statusFilter = val; _page = 1; await LoadAsync(); }
-    private async Task OnDirectionFilterChanged(EInvoiceDirection? val) { _directionFilter = val; _page = 1; await LoadAsync(); }
+    private async Task OnPageChanged(int page) { _page = page; _expandedIds.Clear(); await LoadAsync(); }
+    private async Task OnStatusFilterChanged(EInvoiceEmailStatus? val) { _statusFilter = val; _page = 1; _expandedIds.Clear(); await LoadAsync(); }
+    private async Task OnDirectionFilterChanged(EInvoiceDirection? val) { _directionFilter = val; _page = 1; _expandedIds.Clear(); await LoadAsync(); }
 
-    private void OnRowClick(TableRowClickEventArgs<InboundInvoiceEmailDto> args)
+    private bool IsExpanded(InboundInvoiceEmailDto item) => _expandedIds.Contains(item.Id);
+
+    private void ToggleExpand(InboundInvoiceEmailDto item)
     {
-        var item = args.Item;
-        if (item == null) return;
-
-        if (item.ReceivedInvoiceId.HasValue)
-            Navigation.NavigateTo($"/received-invoices/{item.ReceivedInvoiceId}");
-        else if (item.InvoiceId.HasValue)
-            Navigation.NavigateTo($"/invoices/{item.InvoiceId}");
+        if (!_expandedIds.Remove(item.Id))
+            _expandedIds.Add(item.Id);
     }
 
     private async Task IgnoreAsync(InboundInvoiceEmailDto item)
