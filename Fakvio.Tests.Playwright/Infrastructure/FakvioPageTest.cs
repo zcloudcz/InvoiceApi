@@ -120,4 +120,74 @@ public class FakvioPageTest : PageTest
         }
         catch (TimeoutException) { }
     }
+
+    /// <summary>
+    /// Creates a bilingual button locator that matches either Czech or English text.
+    /// Reduces duplication in tests that must work with both locales.
+    /// </summary>
+    protected ILocator BilingualButton(string czech, string english) =>
+        Page.GetByRole(AriaRole.Button).Filter(new() { HasText = czech })
+            .Or(Page.GetByRole(AriaRole.Button).Filter(new() { HasText = english }));
+
+    /// <summary>
+    /// Finds the first invoice row matching the given status and clicks through to detail.
+    /// Returns true if a matching row was found and navigated to.
+    /// </summary>
+    protected async Task<bool> NavigateToInvoiceByStatusAsync(string statusText, bool matchStatus = true)
+    {
+        var rows = Page.Locator(".mud-table-body tr");
+        var rowCount = await rows.CountAsync();
+
+        for (int i = 0; i < rowCount; i++)
+        {
+            var rowText = await rows.Nth(i).TextContentAsync() ?? "";
+            var containsStatus = rowText.Contains(statusText, StringComparison.OrdinalIgnoreCase);
+
+            if (containsStatus == matchStatus)
+            {
+                await rows.Nth(i).ClickAsync();
+                await Page.WaitForSelectorAsync("h4, h3, h5", new() { Timeout = Config.BlazorLoadTimeout });
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Finds a column header by text and returns its locator, or null if not found.
+    /// </summary>
+    protected async Task<ILocator?> FindColumnHeaderAsync(string czech, string english)
+    {
+        var headers = Page.Locator(".mud-table-head th");
+        var headerCount = await headers.CountAsync();
+
+        for (int i = 0; i < headerCount; i++)
+        {
+            var text = await headers.Nth(i).TextContentAsync() ?? "";
+            if (text.Contains(czech, StringComparison.OrdinalIgnoreCase)
+                || text.Contains(english, StringComparison.OrdinalIgnoreCase))
+            {
+                return headers.Nth(i);
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Waits for any MudBlazor snackbar to appear (success or error).
+    /// </summary>
+    protected async Task<bool> WaitForAnySnackbarAsync(int timeoutMs = 8_000)
+    {
+        try
+        {
+            await Page.Locator(".mud-snackbar").First.WaitForAsync(new() { Timeout = timeoutMs });
+            return true;
+        }
+        catch (TimeoutException)
+        {
+            return false;
+        }
+    }
 }
