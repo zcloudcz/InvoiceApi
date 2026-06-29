@@ -181,7 +181,6 @@ internal static class IsdocMapper
     private static IEnumerable<XElement> MapInvoiceLines(Invoice invoice)
     {
         var items = invoice.InvoiceItem?
-            .Where(i => !i.IsTextRow)
             .OrderBy(i => i.OrderIndex)
             .ToList() ?? new List<InvoiceItem>();
 
@@ -190,30 +189,33 @@ internal static class IsdocMapper
             var item = items[i];
             var lineId = (i + 1).ToString(CultureInfo.InvariantCulture);
 
-            // Official XSD InvoiceLineType sequence:
-            //   ID -> ... -> InvoicedQuantity? -> LineExtensionAmountCurr? ->
-            //   LineExtensionAmount -> ... -> LineExtensionAmountTaxInclusive ->
-            //   ... -> LineExtensionTaxAmount -> UnitPrice -> UnitPriceTaxInclusive ->
-            //   ClassifiedTaxCategory -> ... -> Item?
-            var unitPriceTaxInclusive = item.UnitPrice * (1 + item.VatRatePercentage / 100m);
+            // Text rows carry only a description — emit zero amounts so they
+            // appear in the ISDOC document while not affecting totals.
+            var quantity = item.IsTextRow ? 0m : item.Quantity;
+            var totalBeforeVat = item.IsTextRow ? 0m : item.TotalBeforeVat;
+            var totalWithVat = item.IsTextRow ? 0m : item.TotalWithVat;
+            var vatAmount = item.IsTextRow ? 0m : item.VatAmount;
+            var unitPrice = item.IsTextRow ? 0m : item.UnitPrice;
+            var vatRate = item.IsTextRow ? 0m : item.VatRatePercentage;
+            var unitPriceTaxInclusive = unitPrice * (1 + vatRate / 100m);
 
             yield return new XElement(Ns + "InvoiceLine",
                 new XElement(Ns + "ID", lineId),
                 new XElement(Ns + "InvoicedQuantity",
                     new XAttribute("unitCode", item.Unit ?? "H87"),
-                    FormatDecimal(item.Quantity)),
+                    FormatDecimal(quantity)),
                 new XElement(Ns + "LineExtensionAmount",
-                    FormatDecimal(item.TotalBeforeVat)),
+                    FormatDecimal(totalBeforeVat)),
                 new XElement(Ns + "LineExtensionAmountTaxInclusive",
-                    FormatDecimal(item.TotalWithVat)),
+                    FormatDecimal(totalWithVat)),
                 new XElement(Ns + "LineExtensionTaxAmount",
-                    FormatDecimal(item.VatAmount)),
+                    FormatDecimal(vatAmount)),
                 new XElement(Ns + "UnitPrice",
-                    FormatDecimal(item.UnitPrice)),
+                    FormatDecimal(unitPrice)),
                 new XElement(Ns + "UnitPriceTaxInclusive",
                     FormatDecimal(unitPriceTaxInclusive)),
                 new XElement(Ns + "ClassifiedTaxCategory",
-                    new XElement(Ns + "Percent", FormatDecimal(item.VatRatePercentage)),
+                    new XElement(Ns + "Percent", FormatDecimal(vatRate)),
                     new XElement(Ns + "VATCalculationMethod", "0")),
                 new XElement(Ns + "Item",
                     new XElement(Ns + "Description", item.Description ?? string.Empty)));

@@ -914,14 +914,13 @@ public class IsdocExportServiceTests : IDisposable
     // -------------------------------------------------------------------------
 
     [Fact]
-    public void Map_TextRowItems_AreExcludedFromInvoiceLines()
+    public void Map_TextRowItems_AreIncludedWithZeroAmounts()
     {
-        // IsTextRow=true rows are section headers / comments -- they carry no
-        // amounts and must not appear as InvoiceLine elements in the XML.
+        // IsTextRow=true rows are section headers / comments -- they appear in the
+        // ISDOC document as lines with zero amounts so the text is preserved.
         var inv = BuildMinimalInvoice();
         inv.InvoiceItem = new List<InvoiceItem>
         {
-            // Normal billable line
             new InvoiceItem
             {
                 OrderIndex = 1, Description = "Vyvoj",
@@ -929,7 +928,6 @@ public class IsdocExportServiceTests : IDisposable
                 VatRatePercentage = 21, TotalBeforeVat = 5000, VatAmount = 1050, TotalWithVat = 6050,
                 IsTextRow = false
             },
-            // Text-only section header row -- must be skipped
             new InvoiceItem
             {
                 OrderIndex = 2, Description = "Tato polozka je pouze textova",
@@ -939,10 +937,61 @@ public class IsdocExportServiceTests : IDisposable
         var doc = IsdocMapper.Map(inv);
         var ns = XNamespace.Get("http://isdoc.cz/namespace/2013");
 
-        // Only one InvoiceLine must appear (the text row is excluded)
         var lines = doc.Descendants(ns + "InvoiceLine").ToList();
-        lines.Count.ShouldBe(1);
+        lines.Count.ShouldBe(2);
+
+        // First line: normal billable item
         lines[0].Element(ns + "Item")!.Element(ns + "Description")!.Value.ShouldBe("Vyvoj");
+        lines[0].Element(ns + "LineExtensionAmount")!.Value.ShouldBe("5000.00");
+
+        // Second line: text row with zero amounts and preserved description
+        lines[1].Element(ns + "Item")!.Element(ns + "Description")!.Value.ShouldBe("Tato polozka je pouze textova");
+        lines[1].Element(ns + "InvoicedQuantity")!.Value.ShouldBe("0.00");
+        lines[1].Element(ns + "LineExtensionAmount")!.Value.ShouldBe("0.00");
+        lines[1].Element(ns + "UnitPrice")!.Value.ShouldBe("0.00");
+    }
+
+    [Fact]
+    public void Map_TextRowItems_StillExcludedFromTaxTotal()
+    {
+        // Text rows must not affect TaxSubTotal grouping or amounts.
+        var inv = BuildMinimalInvoice();
+        inv.InvoiceItem = new List<InvoiceItem>
+        {
+            new InvoiceItem
+            {
+                OrderIndex = 1, Description = "Vyvoj",
+                Quantity = 10, Unit = "hod", UnitPrice = 500,
+                VatRatePercentage = 21, TotalBeforeVat = 5000, VatAmount = 1050, TotalWithVat = 6050,
+                IsTextRow = false
+            },
+            new InvoiceItem
+            {
+                OrderIndex = 2, Description = "Poznamka",
+                IsTextRow = true
+            }
+        };
+        var doc = IsdocMapper.Map(inv);
+        var ns = XNamespace.Get("http://isdoc.cz/namespace/2013");
+
+        // Only one TaxSubTotal (21%) — text row must not create a 0% group
+        var taxSubTotals = doc.Descendants(ns + "TaxSubTotal").ToList();
+        taxSubTotals.Count.ShouldBe(1);
+        taxSubTotals[0].Element(ns + "TaxableAmount")!.Value.ShouldBe("5000.00");
+    }
+
+    [Fact]
+    public void Map_InvoiceWithTextRows_ValidatesAgainstXsd()
+    {
+        var inv = BuildMinimalInvoice();
+        inv.InvoiceItem!.Add(new InvoiceItem
+        {
+            OrderIndex = 0, Description = "Sekce: Vyvoj", IsTextRow = true
+        });
+        var doc = IsdocMapper.Map(inv);
+
+        var errors = GetXsdErrors(doc);
+        errors.ShouldBeEmpty($"XSD validation errors:\n{string.Join("\n", errors)}");
     }
 
     // -------------------------------------------------------------------------
