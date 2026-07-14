@@ -55,18 +55,19 @@
                     }
                 </CellTemplate>
             </PropertyColumn>
-            <PropertyColumn Property="x => x.TemplateType" Title="@L["ContentTemplate_Type"].Value" Sortable="false">
+            @* Client-side grid — sorting is free on every column, keep it enabled *@
+            <PropertyColumn Property="x => x.TemplateType" Title="@L["ContentTemplate_Type"].Value">
                 <CellTemplate>
                     <MudChip T="string" Size="Size.Small" Color="@GetTemplateTypeColor(context.Item.TemplateType)">
                         @GetTemplateTypeLabel(context.Item.TemplateType)
                     </MudChip>
                 </CellTemplate>
             </PropertyColumn>
-            <PropertyColumn Property="x => x.Language" Title="@L["ContentTemplate_Language"].Value" Sortable="false">
+            <PropertyColumn Property="x => x.Language" Title="@L["ContentTemplate_Language"].Value">
                 <CellTemplate>@context.Item.Language.ToUpperInvariant()</CellTemplate>
             </PropertyColumn>
             <PropertyColumn Property="x => x.Subject" Title="@L["ContentTemplate_Subject"].Value" />
-            <PropertyColumn Property="x => x.IsDefault" Title="@L["ContentTemplate_IsDefault"].Value" Sortable="false" Filterable="false">
+            <PropertyColumn Property="x => x.IsDefault" Title="@L["ContentTemplate_IsDefault"].Value">
                 <CellTemplate>
                     @if (context.Item.IsDefault)
                     {
