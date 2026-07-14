@@ -1049,6 +1049,9 @@
   <data name="Nav_ReceivedInvoices" xml:space="preserve"><value>Přijaté faktury</value></data>
   <data name="Nav_VatReport" xml:space="preserve"><value>Přehled DPH</value></data>
   <data name="ReceivedInvoice_Title" xml:space="preserve"><value>Přijaté faktury</value></data>
+  <data name="ReceivedInvoice_Attachments" xml:space="preserve"><value>Přílohy</value></data>
+  <data name="ReceivedInvoice_DownloadAttachments" xml:space="preserve"><value>Stáhnout přílohy</value></data>
+  <data name="ReceivedInvoice_NoAttachments" xml:space="preserve"><value>Žádné přílohy ke stažení</value></data>
   <data name="ReceivedInvoice_New" xml:space="preserve"><value>Nová přijatá faktura</value></data>
   <data name="ReceivedInvoice_Detail" xml:space="preserve"><value>Detail přijaté faktury</value></data>
   <data name="ReceivedInvoice_Supplier" xml:space="preserve"><value>Dodavatel</value></data>

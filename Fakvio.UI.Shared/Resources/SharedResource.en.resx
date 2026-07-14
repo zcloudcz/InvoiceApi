@@ -1049,6 +1049,9 @@
   <data name="Nav_ReceivedInvoices" xml:space="preserve"><value>Received Invoices</value></data>
   <data name="Nav_VatReport" xml:space="preserve"><value>VAT Report</value></data>
   <data name="ReceivedInvoice_Title" xml:space="preserve"><value>Received Invoices</value></data>
+  <data name="ReceivedInvoice_Attachments" xml:space="preserve"><value>Attachments</value></data>
+  <data name="ReceivedInvoice_DownloadAttachments" xml:space="preserve"><value>Download attachments</value></data>
+  <data name="ReceivedInvoice_NoAttachments" xml:space="preserve"><value>No attachments to download</value></data>
   <data name="ReceivedInvoice_New" xml:space="preserve"><value>New Received Invoice</value></data>
   <data name="ReceivedInvoice_Detail" xml:space="preserve"><value>Received Invoice Detail</value></data>
   <data name="ReceivedInvoice_Supplier" xml:space="preserve"><value>Supplier</value></data>

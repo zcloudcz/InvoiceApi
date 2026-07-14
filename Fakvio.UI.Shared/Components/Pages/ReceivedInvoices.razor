@@ -10,6 +10,7 @@
 @using Microsoft.Extensions.Localization
 
 @inject ReceivedInvoiceApiService ReceivedInvoiceService
+@inject FileAttachmentApiService FileAttachmentService
 @inject ClientApiService ClientService
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
@@ -74,6 +75,9 @@
         <MudButton Variant="Variant.Filled" Color="Color.Error" Size="Size.Small"
                    StartIcon="@Icons.Material.Filled.Delete" OnClick="BulkDelete"
                    Disabled="_bulkProcessing">@L["Common_Delete"]</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Info" Size="Size.Small"
+                   StartIcon="@Icons.Material.Filled.Download" OnClick="BulkDownloadAttachments"
+                   Disabled="_bulkProcessing">@L["ReceivedInvoice_DownloadAttachments"]</MudButton>
         <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="ClearSelection">@L["Bulk_ClearSelection"]</MudButton>
         @if (_bulkProcessing)
         {
@@ -164,6 +168,24 @@
             </CellTemplate>
         </PropertyColumn>
 
+        @* Attachments column — download single file directly, multiple as ZIP *@
+        <TemplateColumn T="ReceivedInvoiceDto" Title="@L["ReceivedInvoice_Attachments"].Value"
+                        Sortable="false" Filterable="false" CellStyle="white-space:nowrap;">
+            <CellTemplate>
+                @if (context.Item.AttachmentCount > 0)
+                {
+                    <MudBadge Content="@context.Item.AttachmentCount" Color="Color.Info"
+                              Overlap="true" Bordered="true">
+                        <MudIconButton Icon="@Icons.Material.Filled.Download"
+                                       Size="Size.Small"
+                                       Title="@L["ReceivedInvoice_DownloadAttachments"]"
+                                       Disabled="_downloadingAttachments"
+                                       OnClick="@(() => DownloadAttachments(context.Item))" />
+                    </MudBadge>
+                }
+            </CellTemplate>
+        </TemplateColumn>
+
         @* Actions column — conditional buttons based on invoice status *@
         <TemplateColumn T="ReceivedInvoiceDto" Title="@L["Common_Actions"].Value"
                         Sortable="false" Filterable="false" CellStyle="white-space:nowrap;">
@@ -215,6 +237,7 @@
     private MudDataGrid<ReceivedInvoiceDto>? _dataGrid;
     private bool _loading;
     private bool _bulkProcessing;
+    private bool _downloadingAttachments;
     private string? _search;
     private EReceivedInvoiceStatus? _statusFilter;
     private HashSet<ReceivedInvoiceDto> _selectedInvoices = new();
@@ -344,6 +367,99 @@
         {
             Snackbar.Add(L["Common_Deleted"].Value, Severity.Success);
             await _dataGrid!.ReloadServerData();
+        }
+    }
+
+    // ─── Attachment download ─────────────────────────────────────────────
+
+    /// <summary>
+    /// Downloads attachments of one invoice from the grid row.
+    /// One attachment → direct download with the original file name and type.
+    /// Multiple attachments → one ZIP named by the invoice document number.
+    /// </summary>
+    private async Task DownloadAttachments(ReceivedInvoiceDto invoice)
+    {
+        _downloadingAttachments = true;
+        try
+        {
+            if (invoice.AttachmentCount == 1)
+            {
+                // Single file: fetch metadata to get the id + original name, then
+                // reuse the single-download endpoint (no pointless ZIP wrapping).
+                var attachments = await FileAttachmentService.GetByEntityAsync("ReceivedInvoice", invoice.Id);
+                var single = attachments.FirstOrDefault();
+                if (single is null)
+                {
+                    Snackbar.Add(L["ReceivedInvoice_NoAttachments"].Value, Severity.Warning);
+                    return;
+                }
+
+                var bytes = await FileAttachmentService.DownloadAsync(single.Id);
+                if (bytes is null) return;
+
+                await JS.InvokeVoidAsync("downloadFile",
+                    single.OriginalFileName, Convert.ToBase64String(bytes), single.ContentType);
+            }
+            else
+            {
+                var zipBytes = await FileAttachmentService.DownloadAllAsync("ReceivedInvoice", invoice.Id);
+                if (zipBytes is null) return;
+
+                var zipName = $"Prilohy_{invoice.DocumentNumber ?? invoice.Id.ToString()}.zip";
+                await JS.InvokeVoidAsync("downloadFile",
+                    zipName, Convert.ToBase64String(zipBytes), "application/zip");
+            }
+        }
+        catch (ApiException)
+        {
+            // 404 — attachments disappeared between grid load and click
+            Snackbar.Add(L["ReceivedInvoice_NoAttachments"].Value, Severity.Warning);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _downloadingAttachments = false;
+        }
+    }
+
+    /// <summary>
+    /// Bulk downloads attachments of all selected invoices as one ZIP
+    /// (folder per invoice). Invoices without attachments are skipped.
+    /// </summary>
+    private async Task BulkDownloadAttachments()
+    {
+        var eligible = _selectedInvoices.Where(i => i.AttachmentCount > 0).ToList();
+        if (eligible.Count == 0)
+        {
+            Snackbar.Add(L["Bulk_NoneEligible"].Value, Severity.Warning);
+            return;
+        }
+
+        _bulkProcessing = true;
+        StateHasChanged();
+        try
+        {
+            var zipBytes = await ReceivedInvoiceService.BulkDownloadAttachmentsAsync(eligible.Select(i => i.Id));
+            if (zipBytes is not null)
+            {
+                await JS.InvokeVoidAsync("downloadFile",
+                    $"Prilohy_{DateTime.Now:yyyyMMdd}.zip", Convert.ToBase64String(zipBytes), "application/zip");
+            }
+        }
+        catch (ApiException)
+        {
+            Snackbar.Add(L["ReceivedInvoice_NoAttachments"].Value, Severity.Warning);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _bulkProcessing = false;
         }
     }
 

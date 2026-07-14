@@ -109,6 +109,21 @@ public class FileAttachmentApiService : ApiClientBase
     }
 
     /// <summary>
+    /// Downloads ALL attachments of an entity record as a ZIP archive.
+    /// Returns the raw ZIP bytes — the caller saves the file via JS interop.
+    /// The caller should only use this when the record has more than one
+    /// attachment; for a single attachment prefer DownloadAsync (keeps the
+    /// original file name and type instead of wrapping in a ZIP).
+    /// </summary>
+    /// <param name="entityName">Entity type (e.g., "ReceivedInvoice").</param>
+    /// <param name="recordId">ID of the entity record.</param>
+    /// <returns>ZIP bytes. Throws ApiException (404) when the record has no attachments.</returns>
+    public async Task<byte[]?> DownloadAllAsync(string entityName, long recordId)
+    {
+        return await GetBytesAsync($"/api/file-attachment/{entityName}/{recordId}/download-all");
+    }
+
+    /// <summary>
     /// Lists all file attachments for a given entity record.
     /// </summary>
     /// <param name="entityName">Entity type (e.g., "Invoice").</param>

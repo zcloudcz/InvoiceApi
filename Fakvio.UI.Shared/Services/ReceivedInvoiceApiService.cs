@@ -135,6 +135,16 @@ public class ReceivedInvoiceApiService : ApiClientBase
         return await DeleteAsync($"/api/received-invoice/{id}");
     }
 
+    /// <summary>
+    /// Downloads attachments of multiple received invoices as one ZIP archive.
+    /// ZIP contains a folder per invoice (named by document number).
+    /// Throws ApiException (404) when none of the invoices has attachments.
+    /// </summary>
+    public async Task<byte[]?> BulkDownloadAttachmentsAsync(IEnumerable<long> ids)
+    {
+        return await GetBytesAsync($"/api/received-invoice/bulk/attachments?ids={string.Join(',', ids)}");
+    }
+
     // ─── Payment matching ────────────────────────────────────────────────────
 
     /// <summary>
