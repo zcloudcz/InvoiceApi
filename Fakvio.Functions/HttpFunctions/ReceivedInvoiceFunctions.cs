@@ -248,4 +248,22 @@ public class ReceivedInvoiceFunctions
         var ct = req.HttpContext.RequestAborted;
         return FunctionResultHelper.Normalize(await _controller.FindAutoMatch(id, ct));
     }
+
+    /// <summary>
+    /// GET api/received-invoice/bulk/attachments → ReceivedInvoiceController.BulkDownloadAttachments
+    /// Downloads attachments of multiple received invoices as one ZIP archive.
+    /// </summary>
+    [Function("ReceivedInvoice_BulkDownloadAttachments")]
+    public async Task<IActionResult> ReceivedInvoice_BulkDownloadAttachments(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/received-invoice/bulk/attachments")] HttpRequest req)
+    {
+        _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
+
+        if (req.HttpContext.User.Identity?.IsAuthenticated != true)
+            return new UnauthorizedResult();
+
+        var ct = req.HttpContext.RequestAborted;
+        var ids = req.Query["ids"].ToString();
+        return FunctionResultHelper.Normalize(await _controller.BulkDownloadAttachments(ids, ct));
+    }
 }

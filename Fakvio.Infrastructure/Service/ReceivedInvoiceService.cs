@@ -163,13 +163,40 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
         // Use the same paging extension as InvoiceService
         var pagedResult = await query.ToPagedResultAsync(filter.Page, filter.PageSize, ct);
 
+        // Attachment counts for the grid's "download attachments" action.
+        // One grouped query over just the page's ids (max PageSize=100 rows) —
+        // avoids an N+1 per row while keeping the entity-based MapToDto untouched.
+        var pageIds = pagedResult.Items.Select(r => r.Id).ToList();
+        var attachmentCounts = await _context.FileAttachment
+            .AsNoTracking()
+            .Where(f => f.EntityName == nameof(ReceivedInvoice) && pageIds.Contains(f.RecordId))
+            .GroupBy(f => f.RecordId)
+            .Select(g => new { g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.Key, x => x.Count, ct);
+
         return new PagedResult<ReceivedInvoiceDto>
         {
-            Items = pagedResult.Items.Select(MapToDto).ToList(),
+            Items = pagedResult.Items.Select(entity =>
+            {
+                var dto = MapToDto(entity);
+                dto.AttachmentCount = attachmentCounts.GetValueOrDefault(entity.Id);
+                return dto;
+            }).ToList(),
             TotalCount = pagedResult.TotalCount,
             PageNumber = pagedResult.PageNumber,
             PageSize = pagedResult.PageSize
         };
+    }
+
+    /// <inheritdoc />
+    public async Task<Dictionary<long, string?>> GetDocumentNumbersAsync(
+        IReadOnlyCollection<long> ids, CancellationToken ct = default)
+    {
+        return await _context.ReceivedInvoice
+            .AsNoTracking()
+            .Where(r => ids.Contains(r.Id) && r.Status != EReceivedInvoiceStatus.Deleted)
+            .Select(r => new { r.Id, r.DocumentNumber })
+            .ToDictionaryAsync(x => x.Id, x => x.DocumentNumber, ct);
     }
 
     /// <inheritdoc />

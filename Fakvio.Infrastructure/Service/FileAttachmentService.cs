@@ -149,6 +149,39 @@ public class FileAttachmentService : IFileAttachmentService
     }
 
     /// <inheritdoc />
+    public async Task<List<(byte[] Content, FileAttachmentDto Meta)>> DownloadByEntityAsync(
+        string entityName, long recordId, CancellationToken ct = default)
+    {
+        var entities = await _context.FileAttachment
+            .AsNoTracking()
+            .Where(f => f.EntityName == entityName && f.RecordId == recordId)
+            .OrderByDescending(f => f.CreatedAt)
+            .ToListAsync(ct);
+
+        var results = new List<(byte[] Content, FileAttachmentDto Meta)>(entities.Count);
+
+        // Sequential fetch — per-record attachment counts are small (units, not hundreds),
+        // so parallel blob IO isn't worth the added complexity here.
+        foreach (var entity in entities)
+        {
+            try
+            {
+                var content = await _fileStorage.DownloadAsync(entity.BlobPath, ct);
+                results.Add((content, MapToDto(entity)));
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // Skip-and-log: one missing/corrupt blob must not fail the whole batch.
+                _logger.LogWarning(ex,
+                    "Skipping attachment #{Id} ({FileName}) — blob download failed for {EntityName} #{RecordId}",
+                    entity.Id, entity.OriginalFileName, entityName, recordId);
+            }
+        }
+
+        return results;
+    }
+
+    /// <inheritdoc />
     public async Task<bool> DeleteAsync(long attachmentId, CancellationToken ct = default)
     {
         var entity = await _context.FileAttachment

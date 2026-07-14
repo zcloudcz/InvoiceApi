@@ -1,3 +1,4 @@
+using Fakvio.Application.Common.Helpers;
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.FileAttachment;
 using Microsoft.AspNetCore.Authorization;
@@ -149,6 +150,38 @@ public class FileAttachmentController : ControllerBase
     {
         var attachments = await _fileAttachmentService.GetByEntityAsync(entityName, recordId, ct);
         return Ok(attachments);
+    }
+
+    /// <summary>
+    /// Downloads ALL attachments of a given entity record as a single ZIP archive.
+    /// Always returns a ZIP — even for one attachment — so the response shape is
+    /// predictable; the client decides when to prefer the single-file download
+    /// endpoint instead (it knows the attachment count).
+    /// Entry name collisions inside the record are deduplicated ("scan (2).pdf").
+    /// </summary>
+    /// <param name="entityName">Entity type (e.g., "ReceivedInvoice").</param>
+    /// <param name="recordId">ID of the entity record.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>ZIP file with all attachments, or 404 when the record has none.</returns>
+    [HttpGet("{entityName}/{recordId:long}/download-all")]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> DownloadAll(string entityName, long recordId, CancellationToken ct)
+    {
+        var attachments = await _fileAttachmentService.DownloadByEntityAsync(entityName, recordId, ct);
+
+        if (attachments.Count == 0)
+        {
+            return NotFound(new { message = $"No attachments found for {entityName} #{recordId}." });
+        }
+
+        var usedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var entries = attachments.Select(a =>
+            (ZipArchiveHelper.UniqueEntryName(usedNames, a.Meta.OriginalFileName), a.Content));
+
+        var zipBytes = ZipArchiveHelper.CreateZip(entries);
+
+        return File(zipBytes, "application/zip", $"{entityName}_{recordId}_attachments.zip");
     }
 
     /// <summary>

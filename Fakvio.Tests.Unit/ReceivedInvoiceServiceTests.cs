@@ -542,6 +542,59 @@ public class ReceivedInvoiceServiceTests : IDisposable
         result.Items.Count.ShouldBe(2);
     }
 
+    // ── GetPagedAsync — AttachmentCount ──────────────────────────────
+
+    /// <summary>
+    /// Helper: adds a FileAttachment metadata row for the given entity record.
+    /// Only metadata matters for AttachmentCount — no blob storage involved.
+    /// </summary>
+    private void AddAttachment(string entityName, long recordId, string fileName)
+    {
+        _context.FileAttachment.Add(new FileAttachment
+        {
+            EntityName = entityName,
+            RecordId = recordId,
+            OriginalFileName = fileName,
+            ContentType = "application/pdf",
+            FileSizeBytes = 100,
+            BlobPath = $"1/{Guid.NewGuid()}.pdf"
+        });
+        _context.SaveChanges();
+    }
+
+    [Fact]
+    public async Task GetPagedAsync_AttachmentCount_ReflectsPerInvoiceCounts()
+    {
+        var firstId = await CreateInvoiceInDb();
+
+        var second = CreateValidDto();
+        second.DocumentNumber = "FAK-2026-002";
+        var secondId = (await _service.CreateAsync(second)).Id;
+
+        AddAttachment(nameof(ReceivedInvoice), firstId, "scan.pdf");
+        AddAttachment(nameof(ReceivedInvoice), firstId, "photo.jpg");
+        // secondId gets no attachments
+
+        var result = await _service.GetPagedAsync(new ReceivedInvoiceFilterDto());
+
+        result.Items.Single(i => i.Id == firstId).AttachmentCount.ShouldBe(2);
+        result.Items.Single(i => i.Id == secondId).AttachmentCount.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task GetPagedAsync_AttachmentCount_IgnoresOtherEntityTypes()
+    {
+        var id = await CreateInvoiceInDb();
+
+        // Same RecordId but different EntityName — must NOT be counted
+        AddAttachment("Invoice", id, "unrelated.pdf");
+        AddAttachment(nameof(ReceivedInvoice), id, "mine.pdf");
+
+        var result = await _service.GetPagedAsync(new ReceivedInvoiceFilterDto());
+
+        result.Items.Single(i => i.Id == id).AttachmentCount.ShouldBe(1);
+    }
+
     // ── Full Lifecycle Test ──────────────────────────────────────────
 
     [Fact]

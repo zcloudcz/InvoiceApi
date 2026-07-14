@@ -139,6 +139,27 @@ public class FileAttachmentFunctions
     }
 
     /// <summary>
+    /// GET api/file-attachment/{entityName}/{recordId}/download-all
+    /// Downloads all attachments of an entity record as one ZIP archive.
+    /// </summary>
+    [Function("FileAttachment_DownloadAll")]
+    public async Task<IActionResult> FileAttachment_DownloadAll(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/file-attachment/{entityName}/{recordId:long}/download-all")] HttpRequest req,
+        string entityName, string recordId)
+    {
+        if (!long.TryParse(recordId, out var recordIdParsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'recordId'." });
+
+        _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
+
+        if (req.HttpContext.User.Identity?.IsAuthenticated != true)
+            return new UnauthorizedResult();
+
+        var ct = req.HttpContext.RequestAborted;
+        return FunctionResultHelper.Normalize(await _controller.DownloadAll(entityName, recordIdParsed, ct));
+    }
+
+    /// <summary>
     /// DELETE api/file-attachment/{id}
     /// Deletes a file attachment by ID.
     /// </summary>

@@ -65,4 +65,14 @@ public interface IReceivedInvoiceService
     /// Only allowed in Received or Rejected status.
     /// </summary>
     Task<bool> DeleteAsync(long id, CancellationToken ct = default);
+
+    /// <summary>
+    /// Lightweight lookup of document numbers for a set of invoice ids.
+    /// Tenant-scoped and excludes deleted invoices — ids from another tenant
+    /// or unknown ids are simply absent from the result.
+    /// Used by the bulk attachment ZIP endpoint to build folder names
+    /// without loading full invoices (items, navigations) per id.
+    /// </summary>
+    Task<Dictionary<long, string?>> GetDocumentNumbersAsync(
+        IReadOnlyCollection<long> ids, CancellationToken ct = default);
 }

@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Fakvio.Application.Common.Helpers;
 using Fakvio.Contracts.Common.Pagination;
 using Fakvio.Contracts.Dto.PaymentMatching;
 using Fakvio.Contracts.Dto.ReceivedInvoice;
@@ -22,15 +23,18 @@ public class ReceivedInvoiceController : ControllerBase
 {
     private readonly IReceivedInvoiceService _service;
     private readonly IPaymentMatchingService _paymentMatcher;
+    private readonly IFileAttachmentService _fileAttachmentService;
     private readonly ILogger<ReceivedInvoiceController> _logger;
 
     public ReceivedInvoiceController(
         IReceivedInvoiceService service,
         IPaymentMatchingService paymentMatcher,
+        IFileAttachmentService fileAttachmentService,
         ILogger<ReceivedInvoiceController> logger)
     {
         _service = service;
         _paymentMatcher = paymentMatcher;
+        _fileAttachmentService = fileAttachmentService;
         _logger = logger;
     }
 
@@ -270,5 +274,80 @@ public class ReceivedInvoiceController : ControllerBase
             return NoContent();
 
         return Ok(proposal);
+    }
+
+    // ─── Bulk attachment download ─────────────────────────────────────────
+
+    /// <summary>
+    /// Maximum invoice ids accepted by the bulk attachment endpoint.
+    /// Matches the grid's max page size — a sane upper bound for one ZIP.
+    /// </summary>
+    private const int MaxBulkAttachmentIds = 100;
+
+    /// <summary>
+    /// Downloads attachments of multiple received invoices as one ZIP archive.
+    /// ZIP layout: one folder per invoice named by its document number (or id when
+    /// the document number is missing), e.g. "FAK-2026-001/scan.pdf". Folders
+    /// sidestep cross-invoice file name collisions; collisions within one invoice
+    /// are deduplicated with a numeric suffix.
+    ///
+    /// Ids unknown in this tenant and invoices without attachments are silently
+    /// skipped (mirrors the bulk PDF export behavior).
+    /// </summary>
+    /// <param name="ids">Comma-separated list of received invoice IDs.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>ZIP file, 404 when nothing to download, 400 when too many ids.</returns>
+    [HttpGet("bulk/attachments")]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> BulkDownloadAttachments(
+        [FromQuery] string ids,
+        CancellationToken ct = default)
+    {
+        // Parse comma-separated IDs and deduplicate (same pattern as bulk PDF export)
+        var invoiceIds = (ids ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries)
+            .Select(s => long.TryParse(s.Trim(), out var id) ? id : 0)
+            .Where(id => id > 0)
+            .Distinct()
+            .ToList();
+
+        if (invoiceIds.Count == 0)
+            return BadRequest(new { message = "No valid invoice ids provided." });
+
+        if (invoiceIds.Count > MaxBulkAttachmentIds)
+            return BadRequest(new { message = $"Too many ids — maximum is {MaxBulkAttachmentIds}." });
+
+        _logger.LogInformation("GET /api/received-invoice/bulk/attachments - {Count} invoices", invoiceIds.Count);
+
+        // Tenant-scoped lookup: ids from another tenant are simply absent here → skipped.
+        var documentNumbers = await _service.GetDocumentNumbersAsync(invoiceIds, ct);
+
+        var entries = new List<(string EntryName, byte[] Content)>();
+        foreach (var invoiceId in invoiceIds)
+        {
+            if (!documentNumbers.TryGetValue(invoiceId, out var documentNumber))
+                continue; // unknown / foreign / deleted id
+
+            var attachments = await _fileAttachmentService.DownloadByEntityAsync(
+                "ReceivedInvoice", invoiceId, ct);
+            if (attachments.Count == 0)
+                continue; // invoice without attachments
+
+            var folder = ZipArchiveHelper.SanitizePathSegment(documentNumber ?? invoiceId.ToString());
+            // Names must be unique per folder only — each invoice gets its own set.
+            var usedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var (content, meta) in attachments)
+            {
+                var entryName = ZipArchiveHelper.UniqueEntryName(usedNames, meta.OriginalFileName);
+                entries.Add(($"{folder}/{entryName}", content));
+            }
+        }
+
+        if (entries.Count == 0)
+            return NotFound(new { message = "Selected invoices have no attachments." });
+
+        var zipBytes = ZipArchiveHelper.CreateZip(entries);
+        return File(zipBytes, "application/zip", $"Attachments_{DateTime.UtcNow:yyyyMMdd}.zip");
     }
 }

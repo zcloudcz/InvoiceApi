@@ -57,6 +57,19 @@ public interface IFileAttachmentService
         string entityName, long recordId, CancellationToken ct = default);
 
     /// <summary>
+    /// Downloads all attachments of a given entity record — metadata plus file bytes.
+    /// Blobs are fetched sequentially; an attachment whose blob download fails is
+    /// skipped (and logged) so one broken blob doesn't break the whole batch.
+    /// Used by the "download all as ZIP" endpoints.
+    /// </summary>
+    /// <param name="entityName">Entity type name (e.g., "ReceivedInvoice").</param>
+    /// <param name="recordId">Primary key of the entity record.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>List of (file bytes, attachment metadata) pairs; empty when the record has no attachments.</returns>
+    Task<List<(byte[] Content, FileAttachmentDto Meta)>> DownloadByEntityAsync(
+        string entityName, long recordId, CancellationToken ct = default);
+
+    /// <summary>
     /// Deletes a file attachment — removes both the database record and the blob in storage.
     /// Blob deletion is attempted first; if it fails, the DB record is NOT deleted
     /// (prevents orphaned DB records pointing to existing blobs).

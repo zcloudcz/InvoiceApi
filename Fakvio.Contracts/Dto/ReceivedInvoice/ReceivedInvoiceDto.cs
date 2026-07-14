@@ -47,6 +47,13 @@ public class ReceivedInvoiceDto
     public string? AttachmentFileName { get; set; }
     public string? AttachmentContentType { get; set; }
 
+    /// <summary>
+    /// Number of FileAttachment records linked to this invoice.
+    /// Populated by the paged list query so the grid can render the
+    /// "download attachments" action without extra API calls per row.
+    /// </summary>
+    public int AttachmentCount { get; set; }
+
     public List<ReceivedInvoiceItemDto> Items { get; set; } = new();
 
     public DateTime CreatedAt { get; set; }
