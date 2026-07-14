@@ -1,0 +1,164 @@
+@*
+    FakvioGrid<T> — THE universal data grid for all list pages.
+
+    A thin wrapper around MudDataGrid that owns everything every grid page used to
+    copy-paste by hand:
+    - the standard attribute block (Dense/Hover/Striped, ColumnFilterRow filtering,
+      single-column sorting, column resize + drag-drop reordering, hideable columns),
+    - column state persistence (visibility survives navigation via GridStatePersistence),
+    - the standard pager and a localized "no records" default.
+
+    Columns stay on the page — pass them through the Columns fragment unchanged.
+    MudBlazor columns find their grid via a CascadingParameter, so forwarding the
+    fragment into the inner MudDataGrid works exactly like direct markup.
+
+    Usage (server mode):
+    <FakvioGrid T="InvoiceDto" GridKey="invoices" ServerData="LoadServerData" @ref="_grid">
+        <Columns>
+            <PropertyColumn Property="x => x.DocumentNumber" ... />
+        </Columns>
+    </FakvioGrid>
+
+    Usage (client mode): pass Items instead of ServerData.
+
+    Filter convention: in your LoadServerData, translate column filters with one line
+    per filterable column — state.GetStringFilter / GetEnumFilter / GetBoolFilter /
+    GetDateRange. See DEVGUIDE.md "FakvioGrid" section.
+*@
+@typeparam T
+@inject IStringLocalizer<SharedResource> L
+
+<MudDataGrid T="T"
+             @ref="_grid"
+             ServerData="ServerData"
+             Items="Items"
+             Dense="true"
+             Hover="true"
+             Striped="true"
+             Loading="Loading"
+             LoadingProgressColor="Color.Primary"
+             MultiSelection="MultiSelection"
+             SelectOnRowClick="false"
+             SelectedItems="SelectedItems"
+             SelectedItemsChanged="SelectedItemsChanged"
+             RowClick="RowClick"
+             RowStyleFunc="@ResolveRowStyleFunc()"
+             FilterMode="DataGridFilterMode.ColumnFilterRow"
+             SortMode="SortMode.Single"
+             Filterable="true"
+             ColumnResizeMode="ResizeMode.Column"
+             DragDropColumnReordering="true"
+             Hideable="true"
+             ToolBarContent="ToolBarContent">
+    <Columns>@Columns</Columns>
+    <NoRecordsContent>
+        @if (NoRecordsContent is not null)
+        {
+            @NoRecordsContent
+        }
+        else
+        {
+            <MudText>@L["Common_NoRecords"]</MudText>
+        }
+    </NoRecordsContent>
+    <PagerContent>
+        <MudDataGridPager T="T" PageSizeOptions="PageSizeOptions" />
+    </PagerContent>
+</MudDataGrid>
+<GridStatePersistence T="T" DataGrid="_grid" GridKey="@GridKey" />
+
+@code {
+    private MudDataGrid<T>? _grid;
+
+    /// <summary>
+    /// Unique key for column state persistence (localStorage).
+    /// Convention: kebab-case route name, e.g. "received-invoices".
+    /// </summary>
+    [Parameter, EditorRequired]
+    public string GridKey { get; set; } = "";
+
+    /// <summary>
+    /// Column definitions — same markup as inside a raw MudDataGrid.
+    /// </summary>
+    [Parameter, EditorRequired]
+    public RenderFragment Columns { get; set; } = default!;
+
+    /// <summary>
+    /// Server-side data callback (paging/sort/filter handled by the API).
+    /// Mutually exclusive with <see cref="Items"/>.
+    /// </summary>
+    [Parameter]
+    public Func<GridState<T>, Task<GridData<T>>>? ServerData { get; set; }
+
+    /// <summary>
+    /// In-memory data source (client-side paging/sort/filter).
+    /// Mutually exclusive with <see cref="ServerData"/>.
+    /// </summary>
+    [Parameter]
+    public IEnumerable<T>? Items { get; set; }
+
+    /// <summary>Shows the linear loading indicator.</summary>
+    [Parameter]
+    public bool Loading { get; set; }
+
+    /// <summary>Enables checkbox multi-selection (page adds its own SelectColumn).</summary>
+    [Parameter]
+    public bool MultiSelection { get; set; }
+
+    /// <summary>Selected rows when MultiSelection is enabled.</summary>
+    [Parameter]
+    public HashSet<T> SelectedItems { get; set; } = new();
+
+    [Parameter]
+    public EventCallback<HashSet<T>> SelectedItemsChanged { get; set; }
+
+    /// <summary>
+    /// Row click handler (typically navigation to a detail page).
+    /// When set, rows automatically get the pointer cursor.
+    /// </summary>
+    [Parameter]
+    public EventCallback<DataGridRowClickEventArgs<T>> RowClick { get; set; }
+
+    /// <summary>Optional row style override; defaults to pointer cursor when RowClick is set.</summary>
+    [Parameter]
+    public Func<T, int, string>? RowStyleFunc { get; set; }
+
+    /// <summary>Optional toolbar (e.g. a search field rendered inside the grid header).</summary>
+    [Parameter]
+    public RenderFragment? ToolBarContent { get; set; }
+
+    /// <summary>Optional custom empty-state content; defaults to localized "no records".</summary>
+    [Parameter]
+    public RenderFragment? NoRecordsContent { get; set; }
+
+    /// <summary>Page size choices in the pager.</summary>
+    [Parameter]
+    public int[] PageSizeOptions { get; set; } = { 10, 25, 50, 100 };
+
+    /// <summary>
+    /// Escape hatch to the inner MudDataGrid for anything the wrapper
+    /// doesn't expose (e.g. programmatic sorting in tests).
+    /// </summary>
+    public MudDataGrid<T>? Grid => _grid;
+
+    /// <summary>
+    /// Re-runs the ServerData callback (after create/update/delete or filter change).
+    /// Safe no-op before the first render or in client (Items) mode.
+    /// </summary>
+    public Task ReloadAsync() => _grid?.ReloadServerData() ?? Task.CompletedTask;
+
+    protected override void OnParametersSet()
+    {
+        // ServerData and Items are mutually exclusive in MudDataGrid — failing fast
+        // here beats MudBlazor's silent preference for one of them.
+        if (ServerData is not null && Items is not null)
+            throw new InvalidOperationException(
+                $"FakvioGrid '{GridKey}': set either ServerData or Items, not both.");
+    }
+
+    /// <summary>
+    /// Rows with a click handler get the pointer cursor unless the page overrides styling.
+    /// </summary>
+    private Func<T, int, string> ResolveRowStyleFunc()
+        => RowStyleFunc ?? ((_, _) => RowClick.HasDelegate ? "cursor: pointer;" : string.Empty);
+}

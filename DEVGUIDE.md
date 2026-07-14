@@ -943,6 +943,49 @@ Example — "Create from template" moved to the three-dot overflow menu in `Invo
 - Copy / duplicate actions: wrap `MudIconButton` in `MudTooltip` for discoverability.
 - After a mutating action (copy, restore, delete): call `await SearchInvoices()` to refresh the grid — no navigation.
 
+### 7.10 FakvioGrid — POVINNÝ grid pattern
+
+Každá list stránka (přehled s tabulkou dat) používá **`FakvioGrid<T>`**
+(`Fakvio.UI.Shared\Components\Shared\FakvioGrid.razor`) — tenký wrapper nad
+`MudDataGrid`, který vlastní standardní chování: Dense/Hover/Striped,
+`ColumnFilterRow` filtrování, `SortMode.Single`, resize + drag-drop reordering,
+hideable sloupce, persistence viditelnosti sloupců (`GridStatePersistence`,
+klíč `GridKey`), standardní pager a lokalizovaný "no records".
+
+```razor
+<FakvioGrid T="InvoiceDto" GridKey="invoices" ServerData="LoadServerData" @ref="_grid">
+    <Columns>
+        <PropertyColumn Property="x => x.DocumentNumber" Title="..." />
+    </Columns>
+</FakvioGrid>
+```
+
+Pravidla:
+- **Kdy použít:** všechny list stránky — server-side (`ServerData=`) i client-side (`Items=`).
+  `ServerData` a `Items` jsou vzájemně výlučné (wrapper vyhodí výjimku).
+- **Kdy NE:** malé embedded seznamy na detail stránkách zůstávají `MudTable`
+  (žádný paging/sort/filter/persistence → wrapper nic nepřináší).
+- **`GridKey`** = kebab-case název route (`"received-invoices"`, `"invoice-templates"`).
+  Embedded gridy: prefix stránky (`"client-detail-invoices"`).
+- **Reload po akci:** `await _grid.ReloadAsync()` (místo `_dataGrid.ReloadServerData()`).
+- **Escape hatch:** `_grid.Grid` vrací vnitřní `MudDataGrid<T>`.
+
+**Konvence propagace column filtrů (server-side):** v `LoadServerData` JEDEN řádek
+per filtrovatelný sloupec — jinak filter řádek v UI existuje, ale nic nedělá:
+
+```csharp
+var name   = state.GetStringFilter("Name");                       // string sloupce
+var status = state.GetEnumFilter<RowDto, EStatus>("Status");      // enum sloupce
+var active = state.GetBoolFilter("IsActive");                     // bool sloupce
+var (from, to) = state.GetDateRange("IssueDate");                 // DateColumnFilter
+```
+
+Helpers: `Models\DateGridFilterExtensions.cs` (string + date),
+`Models\GridFilterExtensions.cs` (enum + bool). Každý takto čtený filtr musí mít
+odpovídající parametr ve filter DTO / API service a `Where` v backend service —
+a **sloupec uvedený v backend `validSortFields`**, pokud je sortable
+(jinak sort tiše spadne na default).
+
 ---
 
 ## 8. Tests
@@ -1199,6 +1242,7 @@ await sub.Received(1).MethodAsync(Arg.Any<T>());  // received check vyžaduje aw
 | Nový code-table pattern (master / tenant / dual-context) | §11.2 |
 | Nový background lock klíč | §6.3 (tabulka klíčů) |
 | Změna observability stacku (App Insights → jiný) | §10 |
+| Nová list stránka s gridem / změna grid patternu | §7.10 (FakvioGrid) |
 | Nová/změněná funkce **viditelná uživateli** (stránka, akce, stav, export) | **USERGUIDE.md** |
 | Nová/změněná funkce **viditelná SysAdminovi** (nastavení, provider, log, provisioning) | **ADMINGUIDE.md** |
 
