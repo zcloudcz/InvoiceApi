@@ -137,6 +137,7 @@ public static class ServiceCollectionExtensions
         services.AddScopedWithLogging<IVatRateService, VatRateService>();
         services.AddScopedWithLogging<IAuthService, AuthService>();
         services.AddScopedWithLogging<IUserService, UserService>();
+        services.AddScopedWithLogging<IUserPreferencesService, UserPreferencesService>();
         services.AddScopedWithLogging<ICurrencyService, CurrencyService>();
         services.AddScopedWithLogging<IInvoiceTemplateService, InvoiceTemplateService>();
         services.AddScopedWithLogging<IPdfExportService, PdfExportService>();

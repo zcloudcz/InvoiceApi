@@ -51,6 +51,13 @@ public class FakvioGridTests : BunitContext, IAsyncLifetime
         Services.AddSingleton(Substitute.For<ILocalStorageService>());
         Services.AddSingleton<GridStateService>();
 
+        // FakvioGrid awaits UserPreferencesState before rendering — substitute
+        // (protected ctor + virtual members) returns defaults without any HTTP.
+        var preferencesState = Substitute.For<UserPreferencesState>();
+        preferencesState.Preferences.Returns(new Fakvio.Contracts.Dto.User.UserPreferencesDto());
+        preferencesState.EnsureLoadedAsync().Returns(new Fakvio.Contracts.Dto.User.UserPreferencesDto());
+        Services.AddSingleton(preferencesState);
+
         // Localizer returns the key itself — good enough for asserting presence.
         var localizer = Substitute.For<IStringLocalizer<SharedResource>>();
         localizer[Arg.Any<string>()].Returns(ci => new LocalizedString(
@@ -153,6 +160,55 @@ public class FakvioGridTests : BunitContext, IAsyncLifetime
         var cut = RenderGrid(items: Array.Empty<Row>());
 
         cut.Markup.ShouldContain("Common_NoRecords");
+    }
+
+    // ── User preference: default page size ───────────────────────────
+
+    [Fact]
+    public void RowsPerPage_ComesFromUserPreference()
+    {
+        // Reconfigure the substitute to a non-default page size
+        var state = Services.GetRequiredService<UserPreferencesState>();
+        state.Preferences.Returns(new Fakvio.Contracts.Dto.User.UserPreferencesDto { DefaultGridPageSize = 50 });
+        state.EnsureLoadedAsync().Returns(new Fakvio.Contracts.Dto.User.UserPreferencesDto { DefaultGridPageSize = 50 });
+
+        var cut = RenderGrid(items: Array.Empty<Row>());
+
+        cut.Instance.Grid!.RowsPerPage.ShouldBe(50);
+    }
+
+    [Fact]
+    public void RowsPerPage_PageOverride_WinsOverPreference()
+    {
+        var state = Services.GetRequiredService<UserPreferencesState>();
+        state.Preferences.Returns(new Fakvio.Contracts.Dto.User.UserPreferencesDto { DefaultGridPageSize = 50 });
+
+        var root = Render(builder =>
+        {
+            builder.OpenComponent<MudPopoverProvider>(0);
+            builder.CloseComponent();
+
+            builder.OpenComponent<FakvioGrid<Row>>(1);
+            builder.AddComponentParameter(2, nameof(FakvioGrid<Row>.GridKey), "test-grid");
+            builder.AddComponentParameter(3, nameof(FakvioGrid<Row>.Columns), TestColumns());
+            builder.AddComponentParameter(4, nameof(FakvioGrid<Row>.Items), Array.Empty<Row>());
+            builder.AddComponentParameter(5, nameof(FakvioGrid<Row>.RowsPerPage), (int?)25);
+            builder.CloseComponent();
+        });
+
+        root.FindComponent<FakvioGrid<Row>>().Instance.Grid!.RowsPerPage.ShouldBe(25);
+    }
+
+    [Fact]
+    public void RowsPerPage_PreferenceOutsidePagerOptions_FallsBackTo10()
+    {
+        var state = Services.GetRequiredService<UserPreferencesState>();
+        // Corrupted / legacy value not among pager options
+        state.Preferences.Returns(new Fakvio.Contracts.Dto.User.UserPreferencesDto { DefaultGridPageSize = 33 });
+
+        var cut = RenderGrid(items: Array.Empty<Row>());
+
+        cut.Instance.Grid!.RowsPerPage.ShouldBe(10);
     }
 
     // ── GridFilterExtensions (through rendered columns) ──────────────

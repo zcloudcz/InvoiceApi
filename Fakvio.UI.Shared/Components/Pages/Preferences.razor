@@ -1,0 +1,88 @@
+@page "/preferences"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+
+@using Fakvio.Contracts.Dto.User
+@using Fakvio.UI.Shared.Services
+
+@inject UserPreferencesApiService PreferencesService
+@inject UserPreferencesState PreferencesState
+@inject ISnackbar Snackbar
+@inject IStringLocalizer<SharedResource> L
+
+<PageTitle>@L["Pref_Title"]</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">@L["Pref_Title"]</MudText>
+<MudText Class="mb-6" Color="Color.Secondary">@L["Pref_Subtitle"]</MudText>
+
+<MudPaper Class="pa-6" Elevation="1" Style="max-width: 600px;">
+    @if (_loading)
+    {
+        <MudProgressCircular Indeterminate="true" />
+    }
+    else
+    {
+        @* Default grid page size — applies to every FakvioGrid in the app *@
+        <MudSelect T="int" @bind-Value="_preferences.DefaultGridPageSize"
+                   Label="@L["Pref_GridPageSize"].Value"
+                   HelperText="@L["Pref_GridPageSizeHelper"].Value"
+                   Variant="Variant.Outlined">
+            @foreach (var size in PageSizeOptions)
+            {
+                <MudSelectItem T="int" Value="@size">@size</MudSelectItem>
+            }
+        </MudSelect>
+
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mt-6"
+                   StartIcon="@Icons.Material.Filled.Save"
+                   OnClick="SaveAsync" Disabled="_saving">
+            @L["Btn_Save"]
+        </MudButton>
+    }
+</MudPaper>
+
+@code {
+    // Must match FakvioGrid pager options and the server-side allowed set
+    private static readonly int[] PageSizeOptions = { 10, 25, 50, 100 };
+
+    private UserPreferencesDto _preferences = new();
+    private bool _loading = true;
+    private bool _saving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Load fresh from API (not from the session cache) so the form always
+        // shows the persisted values, then prime the cache with them.
+        _preferences = await PreferencesService.GetAsync();
+        PreferencesState.Set(_preferences);
+        _loading = false;
+    }
+
+    private async Task SaveAsync()
+    {
+        _saving = true;
+        try
+        {
+            var saved = await PreferencesService.UpdateAsync(_preferences);
+            if (saved is not null)
+            {
+                _preferences = saved;
+                // Update the session cache so grids opened after this pick up
+                // the new page size without reloading the app.
+                PreferencesState.Set(saved);
+                Snackbar.Add(L["Msg_SaveSuccess"].Value, Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add(L["Msg_Error"].Value, Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

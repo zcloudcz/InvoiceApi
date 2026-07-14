@@ -1049,6 +1049,11 @@
   <data name="Nav_ReceivedInvoices" xml:space="preserve"><value>Přijaté faktury</value></data>
   <data name="Nav_VatReport" xml:space="preserve"><value>Přehled DPH</value></data>
   <data name="ReceivedInvoice_Title" xml:space="preserve"><value>Přijaté faktury</value></data>
+  <data name="Nav_Preferences" xml:space="preserve"><value>Moje preference</value></data>
+  <data name="Pref_Title" xml:space="preserve"><value>Moje preference</value></data>
+  <data name="Pref_Subtitle" xml:space="preserve"><value>Osobní nastavení uživatelského rozhraní. Platí jen pro váš účet.</value></data>
+  <data name="Pref_GridPageSize" xml:space="preserve"><value>Počet záznamů v tabulkách</value></data>
+  <data name="Pref_GridPageSizeHelper" xml:space="preserve"><value>Výchozí počet řádků zobrazených v přehledech (faktury, klienti, …).</value></data>
   <data name="ReceivedInvoice_Attachments" xml:space="preserve"><value>Přílohy</value></data>
   <data name="ReceivedInvoice_DownloadAttachments" xml:space="preserve"><value>Stáhnout přílohy</value></data>
   <data name="ReceivedInvoice_NoAttachments" xml:space="preserve"><value>Žádné přílohy ke stažení</value></data>

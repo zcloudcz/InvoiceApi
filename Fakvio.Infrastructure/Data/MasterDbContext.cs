@@ -70,6 +70,12 @@ public class MasterDbContext : DbContext, IDataProtectionKeyContext
     public DbSet<User> User { get; set; }
 
     /// <summary>
+    /// Per-user UI preferences (grid page size, …). One row per user, created lazily
+    /// on first save. Lives in master DB so preferences follow the user across tenants.
+    /// </summary>
+    public DbSet<UserPreferences> UserPreferences { get; set; }
+
+    /// <summary>
     /// Companies (Client records where IsIssuer = true).
     /// In the master DB, we only store issuer/company records — customers live in tenant DBs.
     /// NOTE: The Client table schema is the same, but master DB only contains IsIssuer = true records.
@@ -206,6 +212,7 @@ public class MasterDbContext : DbContext, IDataProtectionKeyContext
         modelBuilder.Ignore<InboundInvoiceEmail>();
 
         ConfigureUser(modelBuilder);
+        ConfigureUserPreferences(modelBuilder);
         ConfigureClient(modelBuilder);
         ConfigureAddress(modelBuilder);
         ConfigureContact(modelBuilder);
@@ -225,6 +232,28 @@ public class MasterDbContext : DbContext, IDataProtectionKeyContext
         ConfigurePaymentMatchingSystemSettings(modelBuilder);
 
         SeedData(modelBuilder);
+    }
+
+    /// <summary>
+    /// UserPreferences — per-user UI preferences, 1:1 with User (unique UserId).
+    /// Cascade delete: removing a user removes their preferences row.
+    /// </summary>
+    private void ConfigureUserPreferences(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<UserPreferences>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            // One preferences row per user
+            entity.HasIndex(e => e.UserId).IsUnique();
+
+            entity.HasOne(e => e.User)
+                .WithOne()
+                .HasForeignKey<UserPreferences>(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.Property(e => e.DefaultGridPageSize).HasDefaultValue(10);
+        });
     }
 
     /// <summary>

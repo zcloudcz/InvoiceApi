@@ -80,6 +80,10 @@ public static class ServiceCollectionExtensions
         services.AddApiClient<FileAttachmentApiService>();
         services.AddApiClient<ReminderApiService>();
 
+        // User preferences — API client + session cache used by FakvioGrid (page size)
+        services.AddApiClient<UserPreferencesApiService>();
+        services.AddScoped<UserPreferencesState>();
+
         // Payment matching — tenant user + SysAdmin.
         services.AddApiClient<PaymentMatchingApiService>();
         services.AddApiClient<PaymentMatchingSysAdminApiService>();

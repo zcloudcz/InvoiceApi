@@ -990,6 +990,14 @@ Pravidla:
   Embedded gridy: prefix stránky (`"client-detail-invoices"`).
 - **Reload po akci:** `await _grid.ReloadAsync()` (místo `_dataGrid.ReloadServerData()`).
 - **Escape hatch:** `_grid.Grid` vrací vnitřní `MudDataGrid<T>`.
+- **Page size:** výchozí počet řádků čte FakvioGrid z uživatelské preference
+  (`UserPreferencesState`, jednorázově cacheované GET `/api/user-preferences`;
+  entita `UserPreferences` v master DB, 1:1 k User). Stránka může přebít
+  parametrem `RowsPerPage`. Nové preference přidávej do `UserPreferencesDto` +
+  `UserPreferencesService` (validace) + stránky `/preferences`.
+- **Client-side gridy (`Items=`):** řazení i filtrování fungují nativně zdarma —
+  NEvypínej `Sortable` na PropertyColumn bez důvodu (TemplateColumn bez
+  `SortBy` sortable být nemůže, tam je `Sortable="false"` správně).
 
 **Konvence propagace column filtrů (server-side):** v `LoadServerData` JEDEN řádek
 per filtrovatelný sloupec — jinak filter řádek v UI existuje, ale nic nedělá:

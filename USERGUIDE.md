@@ -633,6 +633,19 @@ V levém menu vedle „Platby" se zobrazuje číslo (badge) s počtem nespárova
 
 ---
 
+## 15a. Moje preference
+
+**Stránka:** `/preferences` (menu Nastavení → Moje preference)
+
+Osobní nastavení uživatelského rozhraní — platí jen pro váš účet a přenáší se
+mezi zařízeními (ukládá se k profilu, ne do prohlížeče).
+
+| Volba | Popis |
+|-------|-------|
+| Počet záznamů v tabulkách | Výchozí počet řádků ve všech přehledech (10/25/50/100). Změna se projeví po uložení na nově otevřených přehledech. |
+
+---
+
 ## 16. Lokalizace — přepínání jazyka CZ/EN
 
 **Komponenta:** LanguageSwitcher v pravém horním rohu navigace

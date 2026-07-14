@@ -1049,6 +1049,11 @@
   <data name="Nav_ReceivedInvoices" xml:space="preserve"><value>Received Invoices</value></data>
   <data name="Nav_VatReport" xml:space="preserve"><value>VAT Report</value></data>
   <data name="ReceivedInvoice_Title" xml:space="preserve"><value>Received Invoices</value></data>
+  <data name="Nav_Preferences" xml:space="preserve"><value>My Preferences</value></data>
+  <data name="Pref_Title" xml:space="preserve"><value>My Preferences</value></data>
+  <data name="Pref_Subtitle" xml:space="preserve"><value>Personal UI settings. They apply only to your account.</value></data>
+  <data name="Pref_GridPageSize" xml:space="preserve"><value>Records per grid page</value></data>
+  <data name="Pref_GridPageSizeHelper" xml:space="preserve"><value>Default number of rows shown in list pages (invoices, clients, …).</value></data>
   <data name="ReceivedInvoice_Attachments" xml:space="preserve"><value>Attachments</value></data>
   <data name="ReceivedInvoice_DownloadAttachments" xml:space="preserve"><value>Download attachments</value></data>
   <data name="ReceivedInvoice_NoAttachments" xml:space="preserve"><value>No attachments to download</value></data>

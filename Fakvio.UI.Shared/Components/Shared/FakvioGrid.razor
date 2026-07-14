@@ -28,9 +28,16 @@
 @typeparam T
 @attribute [CascadingTypeParameter(nameof(T))]
 @inject IStringLocalizer<SharedResource> L
+@inject UserPreferencesState PreferencesState
 
+@* Grid renders only after user preferences are loaded — MudDataGrid reads
+   RowsPerPage once at init, so we must know the user's default page size
+   BEFORE the first ServerData call. The load is a one-time cached request. *@
+@if (_preferencesLoaded)
+{
 <MudDataGrid T="T"
              @ref="_grid"
+             RowsPerPage="ResolveRowsPerPage()"
              ServerData="ServerData"
              Items="Items"
              Dense="true"
@@ -69,9 +76,36 @@
     </PagerContent>
 </MudDataGrid>
 <GridStatePersistence T="T" DataGrid="_grid" GridKey="@GridKey" />
+}
 
 @code {
     private MudDataGrid<T>? _grid;
+    private bool _preferencesLoaded;
+
+    /// <summary>
+    /// Optional page-level override of the initial page size.
+    /// When null (default), the user's DefaultGridPageSize preference applies.
+    /// </summary>
+    [Parameter]
+    public int? RowsPerPage { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        // One HTTP call per app session (cached in UserPreferencesState);
+        // failures inside fall back to defaults, so this never blocks the grid.
+        await PreferencesState.EnsureLoadedAsync();
+        _preferencesLoaded = true;
+    }
+
+    /// <summary>
+    /// Page override wins; otherwise the user's preferred default page size.
+    /// Falls back to 10 when the preference is not among the pager options.
+    /// </summary>
+    private int ResolveRowsPerPage()
+    {
+        var size = RowsPerPage ?? PreferencesState.Preferences.DefaultGridPageSize;
+        return PageSizeOptions.Contains(size) ? size : 10;
+    }
 
     /// <summary>
     /// Unique key for column state persistence (localStorage).
