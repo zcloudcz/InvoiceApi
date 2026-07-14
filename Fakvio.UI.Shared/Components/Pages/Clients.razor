@@ -20,22 +20,14 @@
     </MudButton>
 
     @* MudDataGrid with column filters, quick search, and inline actions *@
-    <MudDataGrid T="ClientDto"
-                 @ref="_dataGrid"
-                 Items="@_clients"
-                 Loading="@_loading"
-                 Dense="true"
-                 Hover="true"
-                 Striped="true"
-                 FilterMode="DataGridFilterMode.ColumnFilterRow"
-                 SortMode="SortMode.Single"
-                 Filterable="true"
-                 ColumnResizeMode="ResizeMode.Column"
-             DragDropColumnReordering="true"
-                 Hideable="true"
-                 QuickFilter="@FilterFunc"
-                 RowClick="@(args => Navigation.NavigateTo($"/clients/{args.Item.Id}"))"
-                 RowStyleFunc="@((item, idx) => $"cursor: pointer; {GetClientRowStyle(item)}")">
+    <FakvioGrid T="ClientDto"
+                GridKey="clients"
+                @ref="_dataGrid"
+                Items="@_clients"
+                Loading="@_loading"
+                QuickFilter="@FilterFunc"
+                RowClick="@(args => Navigation.NavigateTo($"/clients/{args.Item.Id}"))"
+                RowStyleFunc="@((item, idx) => $"cursor: pointer; {GetClientRowStyle(item)}")">
         <ToolBarContent>
             <MudTextField @bind-Value="_searchString" Placeholder="@L["Btn_Search"].Value" Adornment="Adornment.Start"
                           AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0"></MudTextField>
@@ -77,12 +69,11 @@
         <NoRecordsContent>
             <MudAlert Severity="Severity.Info">@L["Client_NoRecords"]</MudAlert>
         </NoRecordsContent>
-    </MudDataGrid>
-    <GridStatePersistence T="ClientDto" DataGrid="_dataGrid" GridKey="clients" />
+    </FakvioGrid>
 </MudPaper>
 
 @code {
-    private MudDataGrid<ClientDto>? _dataGrid;
+    private FakvioGrid<ClientDto>? _dataGrid;
     private List<ClientDto> _clients = new();
     private bool _loading = true;
     private string _searchString = "";

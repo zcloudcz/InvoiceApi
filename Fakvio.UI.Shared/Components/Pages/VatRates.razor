@@ -12,19 +12,12 @@
 <MudText Class="mb-4">@L["VatRate_Subtitle"]</MudText>
 
 @* MudDataGrid with client-side Items — small dataset, no server paging needed *@
-<MudDataGrid T="VatRateDto"
-             @ref="_dataGrid"
-             Items="@_vatRates"
-             Dense="true" Hover="true" Striped="true"
-             Loading="@_loading" LoadingProgressColor="Color.Primary"
-             FilterMode="DataGridFilterMode.ColumnFilterRow"
-             SortMode="SortMode.Single"
-             Filterable="true"
-             ColumnResizeMode="ResizeMode.Column"
-             DragDropColumnReordering="true"
-             Hideable="true"
-             RowClick="@(args => OpenEditDialog(args.Item))"
-             RowStyleFunc="@((item, idx) => "cursor: pointer;")">
+<FakvioGrid T="VatRateDto"
+            GridKey="vat-rates"
+            @ref="_dataGrid"
+            Items="@_vatRates"
+            Loading="@_loading"
+            RowClick="@(args => OpenEditDialog(args.Item))">
     <ToolBarContent>
         <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialog">
             @L["VatRate_New"]
@@ -89,8 +82,7 @@
     <NoRecordsContent>
         <MudAlert Severity="Severity.Info">@L["VatRate_NoRecords"]</MudAlert>
     </NoRecordsContent>
-</MudDataGrid>
-<GridStatePersistence T="VatRateDto" DataGrid="_dataGrid" GridKey="vat-rates" />
+</FakvioGrid>
 
 @* ========== Create Dialog — Options enables ESC key to close ========== *@
 <MudDialog @bind-Visible="_showCreateDialog" Options="_dialogOptions">
@@ -133,7 +125,7 @@
 </MudDialog>
 
 @code {
-    private MudDataGrid<VatRateDto>? _dataGrid;
+    private FakvioGrid<VatRateDto>? _dataGrid;
     private List<VatRateDto> _vatRates = new();
     private bool _loading = true;
 

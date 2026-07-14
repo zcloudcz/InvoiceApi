@@ -31,23 +31,13 @@
     </div>
 
     @* MudDataGrid with client-side data, column filters, and inline actions *@
-    <MudDataGrid T="ContentTemplateDto"
-                 @ref="_dataGrid"
-                 Items="@_filteredTemplates"
-                 Dense="true"
-                 Hover="true"
-                 Striped="true"
-                 Loading="@_loading"
-                 LoadingProgressColor="Color.Primary"
-                 QuickFilter="@FilterFunc"
-                 RowClick="@(args => Navigation.NavigateTo($"/content-templates/{args.Item.Id}"))"
-                 RowStyleFunc="@((item, idx) => "cursor: pointer;")"
-                 FilterMode="DataGridFilterMode.ColumnFilterRow"
-                 SortMode="SortMode.Single"
-                 Filterable="true"
-                 ColumnResizeMode="ResizeMode.Column"
-             DragDropColumnReordering="true"
-                 Hideable="true">
+    <FakvioGrid T="ContentTemplateDto"
+                GridKey="content-templates"
+                @ref="_dataGrid"
+                Items="@_filteredTemplates"
+                Loading="@_loading"
+                QuickFilter="@FilterFunc"
+                RowClick="@(args => Navigation.NavigateTo($"/content-templates/{args.Item.Id}"))">
         <ToolBarContent>
             @* Search box for filtering by name, subject, or description *@
             <MudTextField @bind-Value="_searchString" Placeholder="@L["Btn_Search"].Value"
@@ -128,8 +118,7 @@
         <NoRecordsContent>
             <MudText>@L["ContentTemplate_NoRecords"]</MudText>
         </NoRecordsContent>
-    </MudDataGrid>
-    <GridStatePersistence T="ContentTemplateDto" DataGrid="_dataGrid" GridKey="content-templates" />
+    </FakvioGrid>
 </MudPaper>
 
 @* Dialog for email template HTML preview *@
@@ -151,7 +140,7 @@
 </MudDialog>
 
 @code {
-    private MudDataGrid<ContentTemplateDto>? _dataGrid;
+    private FakvioGrid<ContentTemplateDto>? _dataGrid;
     private List<ContentTemplateDto> _templates = new();
     private List<ContentTemplateDto> _filteredTemplates = new();
     private bool _loading = true;

@@ -50,6 +50,7 @@
              ColumnResizeMode="ResizeMode.Column"
              DragDropColumnReordering="true"
              Hideable="true"
+             QuickFilter="QuickFilter"
              ToolBarContent="ToolBarContent">
     <Columns>@Columns</Columns>
     <NoRecordsContent>
@@ -124,6 +125,13 @@
     /// <summary>Optional row style override; defaults to pointer cursor when RowClick is set.</summary>
     [Parameter]
     public Func<T, int, string>? RowStyleFunc { get; set; }
+
+    /// <summary>
+    /// Client-mode quick filter (typically bound to a toolbar search box).
+    /// Only meaningful with <see cref="Items"/> — server mode filters via the API.
+    /// </summary>
+    [Parameter]
+    public Func<T, bool>? QuickFilter { get; set; }
 
     /// <summary>Optional toolbar (e.g. a search field rendered inside the grid header).</summary>
     [Parameter]

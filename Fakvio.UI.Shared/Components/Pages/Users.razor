@@ -15,22 +15,13 @@
 <MudText Class="mb-4">@L["User_Subtitle"]</MudText>
 
 @* MudDataGrid with column filters, quick search, and inline actions *@
-<MudDataGrid T="UserDto"
-             @ref="_dataGrid"
-             Items="@_users"
-             Loading="@_loading"
-             Dense="true"
-             Hover="true"
-             Striped="true"
-             FilterMode="DataGridFilterMode.ColumnFilterRow"
-             SortMode="SortMode.Single"
-             Filterable="true"
-             ColumnResizeMode="ResizeMode.Column"
-             DragDropColumnReordering="true"
-             Hideable="true"
-             QuickFilter="@FilterFunc"
-             RowClick="@(args => OpenEditDialog(args.Item))"
-             RowStyleFunc="@((item, idx) => "cursor: pointer;")">
+<FakvioGrid T="UserDto"
+            GridKey="users"
+            @ref="_dataGrid"
+            Items="@_users"
+            Loading="@_loading"
+            QuickFilter="@FilterFunc"
+            RowClick="@(args => OpenEditDialog(args.Item))">
     <ToolBarContent>
         <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialog" Class="mr-4">
             @L["User_New"]
@@ -78,8 +69,7 @@
     <NoRecordsContent>
         <MudAlert Severity="Severity.Info">@L["User_NoRecords"]</MudAlert>
     </NoRecordsContent>
-</MudDataGrid>
-<GridStatePersistence T="UserDto" DataGrid="_dataGrid" GridKey="users" />
+</FakvioGrid>
 
 <MudDialog @bind-Visible="_showDialog" Options="_dialogOptions">
     <TitleContent>
@@ -163,7 +153,7 @@
 </MudDialog>
 
 @code {
-    private MudDataGrid<UserDto>? _dataGrid;
+    private FakvioGrid<UserDto>? _dataGrid;
     private List<UserDto> _users = new();
     private List<ClientDto> _companies = new();
     private bool _loading = true;

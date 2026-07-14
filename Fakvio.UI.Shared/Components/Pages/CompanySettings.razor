@@ -30,22 +30,12 @@
 <MudText Class="mb-4">@L["TenantSettings_Subtitle"]</MudText>
 
 @* ========== Main Grid: All Company Tenant Settings — MudDataGrid with inline actions ========== *@
-<MudDataGrid T="CompanySystemSettingsDto"
-             @ref="_dataGrid"
-             Items="@_settings"
-             Dense="true"
-             Hover="true"
-             Striped="true"
-             Loading="@_loading"
-             LoadingProgressColor="Color.Primary"
-             FilterMode="DataGridFilterMode.ColumnFilterRow"
-             SortMode="SortMode.Single"
-             Filterable="true"
-             ColumnResizeMode="ResizeMode.Column"
-             DragDropColumnReordering="true"
-             Hideable="true"
-             RowClick="@(args => OpenEditDialog(args.Item))"
-             RowStyleFunc="@((item, idx) => "cursor: pointer;")">
+<FakvioGrid T="CompanySystemSettingsDto"
+            GridKey="company-settings"
+            @ref="_dataGrid"
+            Items="@_settings"
+            Loading="@_loading"
+            RowClick="@(args => OpenEditDialog(args.Item))">
     <ToolBarContent>
         <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
                    StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialog">
@@ -124,8 +114,7 @@
     <NoRecordsContent>
         <MudAlert Severity="Severity.Info">@L["TenantSettings_NoRecords"]</MudAlert>
     </NoRecordsContent>
-</MudDataGrid>
-<GridStatePersistence T="CompanySystemSettingsDto" DataGrid="_dataGrid" GridKey="company-settings" />
+</FakvioGrid>
 
 @* ========== Create Settings Dialog ========== *@
 <MudDialog @bind-Visible="_showCreateDialog" Options="_dialogOptions">
@@ -188,7 +177,7 @@
 </MudDialog>
 
 @code {
-    private MudDataGrid<CompanySystemSettingsDto>? _dataGrid;
+    private FakvioGrid<CompanySystemSettingsDto>? _dataGrid;
 
     // ========== Loading State ==========
     private bool _loading = false;

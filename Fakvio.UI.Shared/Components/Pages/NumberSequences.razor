@@ -15,22 +15,12 @@
 @* ========== Number Sequence Formats — MudDataGrid with inline actions ========== *@
 <MudText Typo="Typo.h5" Class="mt-6 mb-2">@L["NumSeq_Formats"]</MudText>
 
-<MudDataGrid T="NumberSequenceFormatDto"
-             @ref="_formatsGrid"
-             Items="@_filteredFormats"
-             Dense="true"
-             Hover="true"
-             Striped="true"
-             Loading="@_loadingFormats"
-             LoadingProgressColor="Color.Primary"
-             FilterMode="DataGridFilterMode.ColumnFilterRow"
-             SortMode="SortMode.Single"
-             Filterable="true"
-             ColumnResizeMode="ResizeMode.Column"
-             DragDropColumnReordering="true"
-             Hideable="true"
-             RowClick="@(args => OpenEditFormatDialog(args.Item))"
-             RowStyleFunc="@((item, idx) => "cursor: pointer;")">
+<FakvioGrid T="NumberSequenceFormatDto"
+            GridKey="numseq-formats"
+            @ref="_formatsGrid"
+            Items="@_filteredFormats"
+            Loading="@_loadingFormats"
+            RowClick="@(args => OpenEditFormatDialog(args.Item))">
     <ToolBarContent>
         <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
                    StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateFormatDialog">
@@ -87,28 +77,17 @@
     <NoRecordsContent>
         <MudAlert Severity="Severity.Info">@L["NumSeq_NoFormats"]</MudAlert>
     </NoRecordsContent>
-</MudDataGrid>
-<GridStatePersistence T="NumberSequenceFormatDto" DataGrid="_formatsGrid" GridKey="numseq-formats" />
+</FakvioGrid>
 
 @* ========== Number Sequences — MudDataGrid with inline actions ========== *@
 <MudText Typo="Typo.h5" Class="mt-6 mb-2">@L["NumSeq_Sequences"]</MudText>
 
-<MudDataGrid T="NumberSequenceDto"
-             @ref="_sequencesGrid"
-             Items="@_filteredSequences"
-             Dense="true"
-             Hover="true"
-             Striped="true"
-             Loading="@_loadingSequences"
-             LoadingProgressColor="Color.Primary"
-             FilterMode="DataGridFilterMode.ColumnFilterRow"
-             SortMode="SortMode.Single"
-             Filterable="true"
-             ColumnResizeMode="ResizeMode.Column"
-             DragDropColumnReordering="true"
-             Hideable="true"
-             RowClick="@(args => OpenEditSequenceDialog(args.Item))"
-             RowStyleFunc="@((item, idx) => "cursor: pointer;")">
+<FakvioGrid T="NumberSequenceDto"
+            GridKey="numseq-sequences"
+            @ref="_sequencesGrid"
+            Items="@_filteredSequences"
+            Loading="@_loadingSequences"
+            RowClick="@(args => OpenEditSequenceDialog(args.Item))">
     <ToolBarContent>
         <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
                    StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateSequenceDialog">
@@ -174,8 +153,7 @@
     <NoRecordsContent>
         <MudAlert Severity="Severity.Info">@L["NumSeq_NoSequences"]</MudAlert>
     </NoRecordsContent>
-</MudDataGrid>
-<GridStatePersistence T="NumberSequenceDto" DataGrid="_sequencesGrid" GridKey="numseq-sequences" />
+</FakvioGrid>
 
 @* ========== Create Format Dialog ========== *@
 <MudDialog @bind-Visible="_showFormatDialog" Options="_dialogOptions">
@@ -291,8 +269,8 @@
 </MudDialog>
 
 @code {
-    private MudDataGrid<NumberSequenceFormatDto>? _formatsGrid;
-    private MudDataGrid<NumberSequenceDto>? _sequencesGrid;
+    private FakvioGrid<NumberSequenceFormatDto>? _formatsGrid;
+    private FakvioGrid<NumberSequenceDto>? _sequencesGrid;
 
     // Loading state
     private bool _loadingFormats = false;
