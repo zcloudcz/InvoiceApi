@@ -748,6 +748,27 @@ Gate: env `RUN_EPO_SANDBOX_TESTS=true`. Sandbox: `https://adisepo.mfcr.cz/adis/j
 - **Soft delete**: pole `IsDeleted` na entitách, kde dává smysl (Currency, …). Global query filter `HasQueryFilter(x => !x.IsDeleted)`.
 - **Concurrency**: každá entita s rizikem race condition má `RowVersion` (xmin).
 
+### 5.5 FileAttachment — přílohy entit + hromadné stažení
+
+- Polymorfní vazba `EntityName` + `RecordId` (bez FK) — přílohu lze připojit
+  k jakékoliv entitě bez změny kódu. Bytes v Azure Blob (`IFileStorage`),
+  metadata v tenant DB.
+- **Endpointy** (`FileAttachmentController`, entity-agnostic):
+  - `GET /api/file-attachment/{id}/download` — jeden soubor,
+  - `GET /api/file-attachment/{entityName}/{recordId}/download-all` — **vždy ZIP**
+    všech příloh záznamu (404 když žádné). Klient zná `AttachmentCount`, takže
+    případ jedné přílohy řeší sám přes single endpoint (zachová jméno souboru).
+- **Bulk přes záznamy**: `GET /api/received-invoice/bulk/attachments?ids=...` —
+  ZIP se složkou per faktura (`{DocumentNumber}/{soubor}`), cap 100 ids,
+  cizí/neznámé ids tiše skip (tenant izolace). ZIP stavět přes
+  `ZipArchiveHelper` (`Fakvio.Application/Common/Helpers/`) — řeší kolize jmen
+  („scan (2).pdf") a sanitizaci path segmentů.
+- **AttachmentCount v grid DTO — anti-N+1 pattern**: počty příloh pro stránku
+  gridu načítej JEDNÍM grouped dotazem nad ids stránky a doplň do DTO při
+  mapování (viz `ReceivedInvoiceService.GetPagedAsync`). Nikdy ne per-row dotaz.
+- Nové endpointy vždy dostávají i **Azure Functions wrapper**
+  (`Fakvio.Functions/HttpFunctions/`) — viz §6 dual-host pravidlo.
+
 ---
 
 ## 6. Background work pattern (POVINNÝ)

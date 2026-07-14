@@ -148,4 +148,29 @@ public class InvoiceServiceFilterTests : IDisposable
         // Assert — TotalCount should be 3 (not 5)
         result.TotalCount.ShouldBe(3);
     }
+
+    // ── Column filters (grid ColumnFilterRow → API) ──────────────────
+
+    [Fact]
+    public async Task GetInvoicesPagedAsync_DocumentNumberFilter_ReturnsOnlyMatchingRows()
+    {
+        // Case-insensitive contains — "inv-002" must match only INV-002
+        var filter = new InvoiceFilterDto { DocumentNumber = "inv-002" };
+
+        var result = await _service.GetInvoicesPagedAsync(filter);
+
+        result.Items.Count.ShouldBe(1);
+        result.Items[0].DocumentNumber.ShouldBe("INV-002");
+    }
+
+    [Fact]
+    public async Task GetInvoicesPagedAsync_ClientNameFilter_ReturnsOnlyMatchingRows()
+    {
+        // All seeded invoices belong to "Customer A" — non-matching name returns nothing
+        var noMatch = await _service.GetInvoicesPagedAsync(new InvoiceFilterDto { ClientName = "nobody" });
+        noMatch.Items.ShouldBeEmpty();
+
+        var match = await _service.GetInvoicesPagedAsync(new InvoiceFilterDto { ClientName = "customer a" });
+        match.Items.Count.ShouldBe(3); // deleted still excluded
+    }
 }

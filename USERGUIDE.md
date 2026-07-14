@@ -351,6 +351,25 @@ Dvě možnosti:
 
 Filtrovat lze podle stavu pomocí výběrového pole nad gridem.
 
+### Filtrování a řazení v gridu
+
+Kromě fulltextového vyhledávání nad gridem lze filtrovat přímo v řádku filtrů
+pod hlavičkou sloupců — číslo dokladu a dodavatel (obsahuje text), stav (výběr),
+datum vystavení a splatnosti (operátory =, >, <, mezi). Kliknutím na hlavičku
+sloupce se řadí; druhé kliknutí obrátí směr.
+
+### Stažení příloh přijatých faktur
+
+Sloupec **Přílohy** v gridu zobrazuje počet příloh faktury a tlačítko stažení:
+
+- **1 příloha** → stáhne se přímo původní soubor.
+- **Více příloh** → stáhne se ZIP `Prilohy_{číslo dokladu}.zip`.
+- Faktury bez příloh tlačítko nemají.
+
+**Hromadné stažení:** označte faktury zaškrtávátky → v panelu hromadných akcí
+klikněte na „Stáhnout přílohy". Stáhne se jeden ZIP se složkou pro každou
+fakturu (pojmenovanou podle čísla dokladu). Faktury bez příloh se přeskočí.
+
 ### Přehled DPH z přijatých faktur
 
 Data z přijatých faktur se projevují v přehledu DPH (sekce Vstupní DPH) na stránce `/vat-report`.

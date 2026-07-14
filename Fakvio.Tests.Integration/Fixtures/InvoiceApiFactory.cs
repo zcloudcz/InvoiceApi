@@ -114,12 +114,31 @@ public class FakvioFactory : WebApplicationFactory<Program>
         using var scope = Services.CreateScope();
 
         // Create master DB schema + seed data (SysAdmin user, currencies, VAT rates, etc.)
+        //
+        // GOTCHA: EnsureCreated() is a NO-OP when the database already "exists" — and the
+        // InMemory store springs into existence as soon as ANY code touches the context
+        // during host startup (e.g. Data Protection key persistence writes a key row).
+        // In that case the schema exists but HasData seed rows (SysAdmin!) were never
+        // inserted, and every login in tests fails with 401. Detect the half-initialized
+        // state (no users) and force a delete + recreate, which re-applies the seed.
         var masterDb = scope.ServiceProvider.GetRequiredService<MasterDbContext>();
         masterDb.Database.EnsureCreated();
+        if (!masterDb.User.Any())
+        {
+            masterDb.Database.EnsureDeleted();
+            masterDb.Database.EnsureCreated();
+        }
 
         // Create tenant DB schema + seed data (number sequences, currencies, VAT rates, etc.)
+        // Same guard as above — Currency is part of the tenant seed, so an empty Currency
+        // table means the seed never ran.
         var tenantDb = scope.ServiceProvider.GetRequiredService<TenantDbContext>();
         tenantDb.Database.EnsureCreated();
+        if (!tenantDb.Currency.Any())
+        {
+            tenantDb.Database.EnsureDeleted();
+            tenantDb.Database.EnsureCreated();
+        }
     }
 
     /// <summary>
