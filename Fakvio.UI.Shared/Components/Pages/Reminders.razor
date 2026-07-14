@@ -104,7 +104,7 @@
         <PropertyColumn Property="x => x.ClientName" Title="@L["Reminder_Client"].Value" />
 
         @* Escalation level (1, 2, 3, ...) — higher levels = more serious *@
-        <PropertyColumn Property="x => x.Level" Title="@L["Reminder_Level"].Value" />
+        <PropertyColumn Property="x => x.Level" Title="@L["Reminder_Level"].Value" HideSmall="true" />
 
         @* Status — colored chip matching the reminder lifecycle *@
         <PropertyColumn Property="x => x.Status" Title="@L["Reminder_Status"].Value" Filterable="true">
@@ -124,7 +124,7 @@
         </PropertyColumn>
 
         @* Reminder fee in CZK *@
-        <PropertyColumn Property="x => x.FeeCzk" Title="@L["Reminder_Fee"].Value"
+        <PropertyColumn Property="x => x.FeeCzk" Title="@L["Reminder_Fee"].Value" HideSmall="true"
                         SortBy="x => x.FeeCzk">
             <CellTemplate>
                 @context.Item.FeeCzk.ToString("N2")
@@ -132,7 +132,7 @@
         </PropertyColumn>
 
         @* Late payment interest in CZK *@
-        <PropertyColumn Property="x => x.InterestCzk" Title="@L["Reminder_Interest"].Value"
+        <PropertyColumn Property="x => x.InterestCzk" Title="@L["Reminder_Interest"].Value" HideSmall="true"
                         SortBy="x => x.InterestCzk">
             <CellTemplate>
                 @context.Item.InterestCzk.ToString("N2")
@@ -148,7 +148,7 @@
         </PropertyColumn>
 
         @* When the reminder email was sent — null if not yet sent *@
-        <PropertyColumn Property="x => x.SentAt" Title="@L["Reminder_SentAt"].Value" Format="g">
+        <PropertyColumn Property="x => x.SentAt" Title="@L["Reminder_SentAt"].Value" Format="g" HideSmall="true">
             <CellTemplate>
                 @if (context.Item.SentAt.HasValue)
                 {

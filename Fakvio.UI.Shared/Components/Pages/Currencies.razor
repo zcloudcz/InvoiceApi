@@ -31,10 +31,9 @@
             </MudSelect>
         </MudItem>
         <MudItem xs="12" sm="12" md="5" Class="d-flex align-end justify-end">
-            <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                       OnClick="OpenCreateDialog" StartIcon="@Icons.Material.Filled.Add">
-                @L["Currency_New"]
-            </MudButton>
+            <ResponsiveButton Label="@L["Currency_New"].Value"
+                              StartIcon="@Icons.Material.Filled.Add"
+                              OnClick="OpenCreateDialog" />
         </MudItem>
     </MudGrid>
 </MudPaper>

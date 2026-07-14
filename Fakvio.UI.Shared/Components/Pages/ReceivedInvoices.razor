@@ -44,19 +44,15 @@
         </MudItem>
     </MudGrid>
     <MudGrid Class="mt-2">
-        <MudItem xs="12" sm="6" Class="d-flex gap-2">
-            <MudButton Variant="Variant.Filled"
-                       Color="Color.Primary"
-                       StartIcon="@Icons.Material.Filled.Add"
-                       OnClick="CreateNew">
-                @L["ReceivedInvoice_New"]
-            </MudButton>
-            <MudButton Variant="Variant.Outlined"
-                       Color="Color.Primary"
-                       StartIcon="@Icons.Material.Filled.UploadFile"
-                       OnClick="@(() => Navigation.NavigateTo("/received-invoices/import?target=ReceivedInvoice"))">
-                @L["Nav_ImportInvoices"]
-            </MudButton>
+        <MudItem xs="12" sm="6" Class="d-flex flex-wrap gap-2">
+            @* ResponsiveButtons: collapse to icon-only on phones *@
+            <ResponsiveButton Label="@L["ReceivedInvoice_New"].Value"
+                              StartIcon="@Icons.Material.Filled.Add"
+                              OnClick="CreateNew" />
+            <ResponsiveButton Label="@L["Nav_ImportInvoices"].Value"
+                              StartIcon="@Icons.Material.Filled.UploadFile"
+                              Variant="Variant.Outlined"
+                              Href="/received-invoices/import?target=ReceivedInvoice" />
         </MudItem>
     </MudGrid>
 </MudPaper>
@@ -111,14 +107,14 @@
         <PropertyColumn Property="x => x.SupplierName" Title="@L["ReceivedInvoice_Supplier"].Value" />
 
         @* Issue date — short date format *@
-        <PropertyColumn Property="x => x.IssueDate" Title="@L["Invoice_IssueDate"].Value" Format="d">
+        <PropertyColumn Property="x => x.IssueDate" Title="@L["Invoice_IssueDate"].Value" Format="d" HideSmall="true">
             <FilterTemplate>
                 <DateColumnFilter T="ReceivedInvoiceDto" Context="context" ValueFunc="x => x.IssueDate" FilterKey="IssueDate" />
             </FilterTemplate>
         </PropertyColumn>
 
         @* Due date — highlight overdue invoices in red *@
-        <PropertyColumn Property="x => x.DueDate" Title="@L["Invoice_DueDate"].Value">
+        <PropertyColumn Property="x => x.DueDate" Title="@L["Invoice_DueDate"].Value" HideSmall="true">
             <FilterTemplate>
                 <DateColumnFilter T="ReceivedInvoiceDto" Context="context" ValueFunc="x => x.DueDate" FilterKey="DueDate" />
             </FilterTemplate>

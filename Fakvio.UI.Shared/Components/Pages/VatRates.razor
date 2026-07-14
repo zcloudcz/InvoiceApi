@@ -19,9 +19,9 @@
             Loading="@_loading"
             RowClick="@(args => OpenEditDialog(args.Item))">
     <ToolBarContent>
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialog">
-            @L["VatRate_New"]
-        </MudButton>
+        <ResponsiveButton Label="@L["VatRate_New"].Value"
+                          StartIcon="@Icons.Material.Filled.Add"
+                          OnClick="OpenCreateDialog" />
     </ToolBarContent>
     <Columns>
         @* PropertyColumn: sortable + filterable by default. CellTemplate uses context.Item. *@

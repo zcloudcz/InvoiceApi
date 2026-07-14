@@ -20,7 +20,7 @@ namespace Fakvio.Tests.Unit;
 /// GridFilterExtensions helpers (string/enum/bool column filter extraction).
 ///
 /// The filter helpers are tested through a rendered grid because
-/// FilterDefinition.Column must be a real rendered column — its PropertyName
+/// FilterDefinition.Column must be a real rendered column - its PropertyName
 /// is derived from the PropertyColumn Property expression at render time.
 /// </summary>
 public class FakvioGridTests : BunitContext, IAsyncLifetime
@@ -43,7 +43,7 @@ public class FakvioGridTests : BunitContext, IAsyncLifetime
     public FakvioGridTests()
     {
         // MudDataGrid needs MudBlazor services; JS calls (resize observer, scroll
-        // manager, localStorage persistence) are irrelevant here — loose mode
+        // manager, localStorage persistence) are irrelevant here - loose mode
         // answers them all with defaults.
         Services.AddMudServices();
         JSInterop.Mode = JSRuntimeMode.Loose;
@@ -51,14 +51,14 @@ public class FakvioGridTests : BunitContext, IAsyncLifetime
         Services.AddSingleton(Substitute.For<ILocalStorageService>());
         Services.AddSingleton<GridStateService>();
 
-        // FakvioGrid awaits UserPreferencesState before rendering — substitute
+        // FakvioGrid awaits UserPreferencesState before rendering - substitute
         // (protected ctor + virtual members) returns defaults without any HTTP.
         var preferencesState = Substitute.For<UserPreferencesState>();
         preferencesState.Preferences.Returns(new Fakvio.Contracts.Dto.User.UserPreferencesDto());
         preferencesState.EnsureLoadedAsync().Returns(new Fakvio.Contracts.Dto.User.UserPreferencesDto());
         Services.AddSingleton(preferencesState);
 
-        // Localizer returns the key itself — good enough for asserting presence.
+        // Localizer returns the key itself - good enough for asserting presence.
         var localizer = Substitute.For<IStringLocalizer<SharedResource>>();
         localizer[Arg.Any<string>()].Returns(ci => new LocalizedString(
             ci.Arg<string>(), ci.Arg<string>()));
@@ -66,7 +66,7 @@ public class FakvioGridTests : BunitContext, IAsyncLifetime
     }
 
     /// <summary>Column fragment with one string, one enum, and one bool column.</summary>
-    private static RenderFragment TestColumns() => builder =>
+    private static RenderFragment TestColumns(bool hideStatusOnSmall = false) => builder =>
     {
         builder.OpenComponent<PropertyColumn<Row, string>>(0);
         builder.AddComponentParameter(1, "Property", (Expression<Func<Row, string>>)(x => x.Name));
@@ -76,17 +76,20 @@ public class FakvioGridTests : BunitContext, IAsyncLifetime
         builder.OpenComponent<PropertyColumn<Row, TestStatus>>(3);
         builder.AddComponentParameter(4, "Property", (Expression<Func<Row, TestStatus>>)(x => x.Status));
         builder.AddComponentParameter(5, "Title", "Status");
+        if (hideStatusOnSmall)
+            builder.AddComponentParameter(6, "HideSmall", true);
         builder.CloseComponent();
 
-        builder.OpenComponent<PropertyColumn<Row, bool>>(6);
-        builder.AddComponentParameter(7, "Property", (Expression<Func<Row, bool>>)(x => x.IsActive));
-        builder.AddComponentParameter(8, "Title", "Active");
+        builder.OpenComponent<PropertyColumn<Row, bool>>(7);
+        builder.AddComponentParameter(8, "Property", (Expression<Func<Row, bool>>)(x => x.IsActive));
+        builder.AddComponentParameter(9, "Title", "Active");
         builder.CloseComponent();
     };
 
     private IRenderedComponent<FakvioGrid<Row>> RenderGrid(
         IEnumerable<Row>? items = null,
-        Func<GridState<Row>, Task<GridData<Row>>>? serverData = null)
+        Func<GridState<Row>, Task<GridData<Row>>>? serverData = null,
+        bool hideStatusOnSmall = false)
     {
         // MudDataGrid requires a MudPopoverProvider in the render tree
         // (column menus / filter popovers), so render both together.
@@ -97,7 +100,7 @@ public class FakvioGridTests : BunitContext, IAsyncLifetime
 
             builder.OpenComponent<FakvioGrid<Row>>(1);
             builder.AddComponentParameter(2, nameof(FakvioGrid<Row>.GridKey), "test-grid");
-            builder.AddComponentParameter(3, nameof(FakvioGrid<Row>.Columns), TestColumns());
+            builder.AddComponentParameter(3, nameof(FakvioGrid<Row>.Columns), TestColumns(hideStatusOnSmall));
             if (items is not null)
                 builder.AddComponentParameter(4, nameof(FakvioGrid<Row>.Items), items);
             if (serverData is not null)
@@ -108,7 +111,7 @@ public class FakvioGridTests : BunitContext, IAsyncLifetime
         return root.FindComponent<FakvioGrid<Row>>();
     }
 
-    // ── Rendering & defaults ─────────────────────────────────────────
+    // -- Rendering & defaults ------------------------------------------------
 
     [Fact]
     public void RendersForwardedColumns()
@@ -150,7 +153,7 @@ public class FakvioGridTests : BunitContext, IAsyncLifetime
     {
         var cut = RenderGrid(items: Array.Empty<Row>());
 
-        // Client mode has no ServerData — reload must be a safe no-op
+        // Client mode has no ServerData - reload must be a safe no-op
         await cut.Instance.ReloadAsync();
     }
 
@@ -162,7 +165,7 @@ public class FakvioGridTests : BunitContext, IAsyncLifetime
         cut.Markup.ShouldContain("Common_NoRecords");
     }
 
-    // ── User preference: default page size ───────────────────────────
+    // -- User preference: default page size ----------------------------------
 
     [Fact]
     public void RowsPerPage_ComesFromUserPreference()
@@ -211,7 +214,25 @@ public class FakvioGridTests : BunitContext, IAsyncLifetime
         cut.Instance.Grid!.RowsPerPage.ShouldBe(10);
     }
 
-    // ── GridFilterExtensions (through rendered columns) ──────────────
+    // -- Mobile column hiding (HideSmall convention) --------------------------
+
+    /// <summary>
+    /// The mobile column convention relies on MudBlazor stamping the
+    /// mud-table-cell-hide class on ALL cells of a HideSmall column (header,
+    /// filter row, body) - app.css then hides that class below 600px. This
+    /// guards the convention against MudBlazor changing the class propagation.
+    /// </summary>
+    [Fact]
+    public void HideSmallColumn_StampsHideClass_OnHeaderFilterAndBodyCells()
+    {
+        var cut = RenderGrid(items: new[] { new Row { Name = "Alpha" } }, hideStatusOnSmall: true);
+
+        // 3 occurrences: header th + filter-row th + body td of the Status column
+        var count = System.Text.RegularExpressions.Regex.Matches(cut.Markup, "mud-table-cell-hide").Count;
+        count.ShouldBe(3);
+    }
+
+    // -- GridFilterExtensions (through rendered columns) ----------------------
 
     /// <summary>
     /// Builds a GridState whose FilterDefinition points at a real rendered column,

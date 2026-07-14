@@ -73,11 +73,10 @@
         <MudSpacer />
         @* Split button: Primary click = new document, dropdown = from template/import *@
         <MudButtonGroup OverrideStyles="false">
-            <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                       StartIcon="@Icons.Material.Filled.Add"
-                       OnClick="@NavigateToCreate">
-                @NewButtonLabel
-            </MudButton>
+            @* ResponsiveButton: collapses to icon-only "+" on phones *@
+            <ResponsiveButton Label="@NewButtonLabel"
+                              StartIcon="@Icons.Material.Filled.Add"
+                              OnClick="@NavigateToCreate" />
             <MudMenu Icon="@Icons.Material.Filled.ArrowDropDown"
                      Variant="Variant.Filled" Color="Color.Primary">
                 <MudMenuItem OnClick="OpenFromTemplateDialog"
@@ -108,7 +107,7 @@
         <PropertyColumn Property="x => x.ClientName" Title="@L["Invoice_Client"].Value" />
 
         @* Issue date — sortable, filterable *@
-        <PropertyColumn Property="x => x.IssueDate" Title="@L["Table_IssueDate"].Value"
+        <PropertyColumn Property="x => x.IssueDate" Title="@L["Table_IssueDate"].Value" HideSmall="true"
                         Format="d">
             <FilterTemplate>
                 <DateColumnFilter T="InvoiceDto" Context="context" ValueFunc="x => x.IssueDate" FilterKey="IssueDate" />
@@ -118,7 +117,7 @@
         @* Taxable supply date (DUZP) — only visible when issuer is VAT payer *@
         @if (_issuerIsVatPayer)
         {
-            <PropertyColumn Property="x => x.TaxableSupplyDate" Title="@L["Invoice_TaxableSupplyDate"].Value"
+            <PropertyColumn Property="x => x.TaxableSupplyDate" Title="@L["Invoice_TaxableSupplyDate"].Value" HideSmall="true"
                             Format="d">
                 <FilterTemplate>
                     <DateColumnFilter T="InvoiceDto" Context="context" ValueFunc="x => x.TaxableSupplyDate" FilterKey="TaxableSupplyDate" />
@@ -127,7 +126,7 @@
         }
 
         @* Due date — sortable, filterable *@
-        <PropertyColumn Property="x => x.DueDate" Title="@L["Table_DueDate"].Value"
+        <PropertyColumn Property="x => x.DueDate" Title="@L["Table_DueDate"].Value" HideSmall="true"
                         Format="d">
             <FilterTemplate>
                 <DateColumnFilter T="InvoiceDto" Context="context" ValueFunc="x => x.DueDate" FilterKey="DueDate" />
@@ -164,7 +163,7 @@
         </TemplateColumn>
 
         @* Email sent indicator *@
-        <TemplateColumn T="InvoiceDto" Title="@L["Invoice_EmailColumn"].Value" Sortable="false" Filterable="false">
+        <TemplateColumn T="InvoiceDto" Title="@L["Invoice_EmailColumn"].Value" HideSmall="true" Sortable="false" Filterable="false">
             <CellTemplate>
                 @if (context.Item.IsSentByEmail)
                 {

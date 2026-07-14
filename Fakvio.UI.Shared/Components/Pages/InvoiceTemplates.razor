@@ -50,10 +50,9 @@
         </MudItem>
         <MudItem xs="12" sm="6" md="3" Class="d-flex align-end justify-end">
             @* Navigate to create page instead of opening a dialog *@
-            <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                       OnClick="@(() => Navigation.NavigateTo("/invoice-templates/create"))" StartIcon="@Icons.Material.Filled.Add">
-                @L["Template_New"]
-            </MudButton>
+            <ResponsiveButton Label="@L["Template_New"].Value"
+                              StartIcon="@Icons.Material.Filled.Add"
+                              Href="/invoice-templates/create" />
         </MudItem>
     </MudGrid>
 </MudPaper>
@@ -83,12 +82,12 @@
                 </MudChip>
             </CellTemplate>
         </PropertyColumn>
-        <PropertyColumn Property="x => x.ClientName" Title="@L["Invoice_Client"].Value" Sortable="false" />
-        <PropertyColumn Property="x => x.CurrencyCode" Title="@L["Template_Currency"].Value" Sortable="false" Filterable="false" />
+        <PropertyColumn Property="x => x.ClientName" Title="@L["Invoice_Client"].Value" Sortable="false" HideSmall="true" />
+        <PropertyColumn Property="x => x.CurrencyCode" Title="@L["Template_Currency"].Value" Sortable="false" Filterable="false" HideSmall="true" />
         <PropertyColumn Property="x => x.UsageCount" Title="@L["Template_UsageCount"].Value">
             <CellTemplate>@context.Item.UsageCount×</CellTemplate>
         </PropertyColumn>
-        <PropertyColumn Property="x => x.LastUsedAt" Title="@L["Template_LastUsed"].Value" Format="d">
+        <PropertyColumn Property="x => x.LastUsedAt" Title="@L["Template_LastUsed"].Value" Format="d" HideSmall="true">
             <FilterTemplate>
                 <DateColumnFilter T="InvoiceTemplateDto" Context="context" ValueFunc="x => x.LastUsedAt" FilterKey="LastUsedAt" />
             </FilterTemplate>

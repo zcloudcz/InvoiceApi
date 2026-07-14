@@ -22,10 +22,9 @@
             Loading="@_loadingFormats"
             RowClick="@(args => OpenEditFormatDialog(args.Item))">
     <ToolBarContent>
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
-                   StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateFormatDialog">
-            @L["NumSeq_NewFormat"]
-        </MudButton>
+        <ResponsiveButton Label="@L["NumSeq_NewFormat"].Value" Size="Size.Small"
+                          StartIcon="@Icons.Material.Filled.Add"
+                          OnClick="OpenCreateFormatDialog" />
         <MudSpacer />
         <MudSwitch T="bool" @bind-Value="_showDeletedFormats" Label="@L["Label_ShowDeleted"].Value"
                    Color="Color.Warning" />
@@ -89,10 +88,9 @@
             Loading="@_loadingSequences"
             RowClick="@(args => OpenEditSequenceDialog(args.Item))">
     <ToolBarContent>
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
-                   StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateSequenceDialog">
-            @L["NumSeq_NewSequence"]
-        </MudButton>
+        <ResponsiveButton Label="@L["NumSeq_NewSequence"].Value" Size="Size.Small"
+                          StartIcon="@Icons.Material.Filled.Add"
+                          OnClick="OpenCreateSequenceDialog" />
         <MudSpacer />
         <MudSwitch T="bool" @bind-Value="_showDeletedSequences" Label="@L["Label_ShowDeleted"].Value"
                    Color="Color.Warning" />

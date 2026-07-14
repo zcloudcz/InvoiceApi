@@ -92,3 +92,87 @@ h1:focus {
 .dialog-large .mud-dialog .mud-dialog-content {
     overflow-y: auto;
 }
+
+/* ============================================================================
+   Responsive / mobile (see DEVGUIDE 7.11)
+   Breakpoint follows MudBlazor: xs < 600px. The RCL is hosted by both the
+   Blazor WASM web app and the MAUI hybrid app, so these rules cover phones
+   in both. Desktop keeps full labels/columns; below 600px the UI collapses
+   to icons and fewer columns.
+   ============================================================================ */
+
+/* Impersonation select in the AppBar — fixed width on desktop, shrinks on phones
+   (was an inline style min-width:220px which overflowed 375px screens). */
+.appbar-select {
+    min-width: 220px;
+}
+
+@media (max-width: 599.98px) {
+    /* Generic utility — hide anything nonessential on phones */
+    .hide-xs {
+        display: none !important;
+    }
+
+    /* ResponsiveButton: label hides, StartIcon remains -> icon-only "+" button.
+       min-width unset so the button shrinks to the icon; the icon margin is
+       removed because there is no label next to it anymore. */
+    .btn-responsive .btn-responsive-label {
+        display: none;
+    }
+    .btn-responsive {
+        min-width: unset;
+    }
+    .btn-responsive .mud-button-icon-start {
+        margin: 0;
+    }
+
+    /* Grid columns marked HideSmall="true" hide on phones. MudBlazor stamps
+       mud-table-cell-hide on the column's header, filter-row, and body cells;
+       its own CSS only activates the class inside MudTable's card mode, so
+       this rule is what actually hides DataGrid columns — at OUR breakpoint. */
+    .mud-table-cell-hide {
+        display: none !important;
+    }
+
+    /* AppBar: app title text and user name give way; logo and avatar icon stay */
+    .appbar-title {
+        display: none;
+    }
+    .appbar-username {
+        display: none;
+    }
+    .appbar-select {
+        min-width: 90px !important;
+        max-width: 28vw;
+        margin-right: 8px !important;
+    }
+    .appbar-logo {
+        margin-left: 4px !important;
+        margin-right: 4px !important;
+    }
+    /* Profile button: icon + dropdown arrow only, tight margins */
+    .appbar-profile-btn {
+        min-width: unset;
+        margin-right: 4px !important;
+    }
+    /* Tighter AppBar gutters — every horizontal pixel counts on 375px */
+    .mud-appbar .mud-toolbar {
+        padding-left: 4px;
+        padding-right: 4px;
+    }
+
+    /* Dialogs go full-screen on phones. Opt out with .dialog-keep-size on the
+       dialog's Options.BackgroundClass / inline dialog Class when a small
+       popup is genuinely wanted. */
+    .mud-dialog:not(.dialog-keep-size) {
+        width: 100vw !important;
+        max-width: 100vw !important;
+        max-height: 100% !important;
+        height: 100%;
+        margin: 0;
+        border-radius: 0;
+    }
+    .mud-dialog:not(.dialog-keep-size) .mud-dialog-content {
+        overflow-y: auto;
+    }
+}

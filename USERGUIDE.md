@@ -646,6 +646,19 @@ mezi zařízeními (ukládá se k profilu, ne do prohlížeče).
 
 ---
 
+## 15b. Mobilní zobrazení
+
+Aplikace se na telefonu (šířka pod 600px) automaticky přizpůsobí:
+
+- Tlačítka akcí (Nová faktura, Import, …) se zmenší na ikonu — popis se zobrazí
+  po podržení prstu / najetí.
+- V přehledech se skryjí méně důležité sloupce (datumy, IČO/DIČ, …); zobrazit
+  je lze přes menu sloupců v hlavičce tabulky.
+- Odhlášení najdete v menu profilu (ikona avatara vpravo nahoře).
+- Dialogy se otevírají přes celou obrazovku.
+
+---
+
 ## 16. Lokalizace — přepínání jazyka CZ/EN
 
 **Komponenta:** LanguageSwitcher v pravém horním rohu navigace

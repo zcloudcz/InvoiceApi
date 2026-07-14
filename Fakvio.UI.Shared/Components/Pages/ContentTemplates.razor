@@ -15,12 +15,11 @@
 
 <MudPaper Class="pa-4">
     @* Toolbar section with Create button and filter chips *@
-    <div class="d-flex justify-space-between align-center mb-4">
+    <div class="d-flex flex-wrap justify-space-between align-center gap-2 mb-4">
         @* Navigate to create page instead of opening a dialog *@
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
-                   OnClick="@(() => Navigation.NavigateTo("/content-templates/create"))">
-            @L["ContentTemplate_New"]
-        </MudButton>
+        <ResponsiveButton Label="@L["ContentTemplate_New"].Value"
+                          StartIcon="@Icons.Material.Filled.Add"
+                          Href="/content-templates/create" />
         @* Filter by template type group *@
         <MudChipSet T="string" SelectionMode="SelectionMode.SingleSelection" SelectedValueChanged="OnFilterChanged">
             <MudChip T="string" Value="@("all")" Default="true">@L["Label_All"]</MudChip>
@@ -63,11 +62,11 @@
                     </MudChip>
                 </CellTemplate>
             </PropertyColumn>
-            <PropertyColumn Property="x => x.Language" Title="@L["ContentTemplate_Language"].Value">
+            <PropertyColumn Property="x => x.Language" Title="@L["ContentTemplate_Language"].Value" HideSmall="true">
                 <CellTemplate>@context.Item.Language.ToUpperInvariant()</CellTemplate>
             </PropertyColumn>
-            <PropertyColumn Property="x => x.Subject" Title="@L["ContentTemplate_Subject"].Value" />
-            <PropertyColumn Property="x => x.IsDefault" Title="@L["ContentTemplate_IsDefault"].Value">
+            <PropertyColumn Property="x => x.Subject" Title="@L["ContentTemplate_Subject"].Value" HideSmall="true" />
+            <PropertyColumn Property="x => x.IsDefault" Title="@L["ContentTemplate_IsDefault"].Value" HideSmall="true">
                 <CellTemplate>
                     @if (context.Item.IsDefault)
                     {

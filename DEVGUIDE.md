@@ -1015,6 +1015,25 @@ odpovídající parametr ve filter DTO / API service a `Where` v backend service
 a **sloupec uvedený v backend `validSortFields`**, pokud je sortable
 (jinak sort tiše spadne na default).
 
+### 7.11 Responsive / mobile konvence
+
+RCL hostují web (WASM) i MAUI hybrid → responsivita v `Fakvio.UI.Shared` platí
+pro obě. Breakpoint = MudBlazor **xs < 600px** (media query `max-width:599.98px`
+v `wwwroot\css\app.css`, sekce „Responsive / mobile").
+
+| Prvek | Pravidlo |
+|---|---|
+| Primární akce v toolbaru/filter baru | **POVINNĚ `ResponsiveButton`** (`Components\Shared\ResponsiveButton.razor`) — na mobilu jen ikona ("+"), label = tooltip. NE holý `MudButton` s textem. |
+| Řádky s více tlačítky | vždy `d-flex flex-wrap gap-2` |
+| Cokoliv postradatelného | utility třída `.hide-xs` |
+| Grid sloupce | sekundární sloupce (datumy, kódy, města) označ `HideSmall="true"` — MudBlazor razítkuje `mud-table-cell-hide` na header/filter/body buňky, app.css je pod 600px skryje. Ponech identifikaci + částku + stav + akce. Nebojuje s persistencí ani column menu (čisté CSS). |
+| Dialogy | pod 600px automaticky fullscreen (CSS). Opt-out: `dialog-keep-size`. |
+| AppBar | title text, jméno uživatele, dark-mode a logout ikona se na xs skrývají (logout je v profil menu); tříd `appbar-*` se nedotýkej bez přeměření na 375px |
+
+**Ověření:** Playwright `Tests\Navigation\MobileLayoutTests.cs` (viewport 375×812 —
+overflow, ikonová tlačítka, AppBar, skryté sloupce). Při změně layoutu je pusť
+proti běžícímu stacku.
+
 ---
 
 ## 8. Tests

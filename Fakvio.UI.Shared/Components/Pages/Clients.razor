@@ -14,10 +14,9 @@
 
 <MudPaper Class="pa-4">
     @* Navigate to create page instead of opening a dialog *@
-    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
-               OnClick="@(() => Navigation.NavigateTo("/clients/create"))" Class="mb-4">
-        @L["Client_New"]
-    </MudButton>
+    <ResponsiveButton Label="@L["Client_New"].Value"
+                      StartIcon="@Icons.Material.Filled.Add"
+                      Href="/clients/create" Class="mb-4" />
 
     @* MudDataGrid with column filters, quick search, and inline actions *@
     <FakvioGrid T="ClientDto"
@@ -34,11 +33,11 @@
         </ToolBarContent>
         <Columns>
             <PropertyColumn Property="x => x.CompanyName" Title="@L["Client_CompanyName"].Value" />
-            <PropertyColumn Property="x => x.RegistrationNumber" Title="@L["Client_RegistrationNumber"].Value" />
-            <PropertyColumn Property="x => x.TaxNumber" Title="@L["Client_TaxNumber"].Value">
+            <PropertyColumn Property="x => x.RegistrationNumber" Title="@L["Client_RegistrationNumber"].Value" HideSmall="true" />
+            <PropertyColumn Property="x => x.TaxNumber" Title="@L["Client_TaxNumber"].Value" HideSmall="true">
                 <CellTemplate>@(context.Item.TaxNumber ?? "—")</CellTemplate>
             </PropertyColumn>
-            <TemplateColumn T="ClientDto" Title="@L["Client_City"].Value" Sortable="false">
+            <TemplateColumn T="ClientDto" Title="@L["Client_City"].Value" Sortable="false" HideSmall="true">
                 <CellTemplate>@(context.Item.Address.FirstOrDefault()?.City ?? "—")</CellTemplate>
             </TemplateColumn>
             <PropertyColumn Property="x => x.IsVatPayer" Title="@L["Client_IsVatPayer"].Value" Filterable="false">

@@ -57,7 +57,7 @@
                 </MudChip>
             </CellTemplate>
         </PropertyColumn>
-        <PropertyColumn Property="x => x.Source" Title="@L["Log_Source"].Value">
+        <PropertyColumn Property="x => x.Source" Title="@L["Log_Source"].Value" HideSmall="true">
             <CellTemplate>
                 <MudText Typo="Typo.body2" Style="max-width: 250px; overflow: hidden; text-overflow: ellipsis;">
                     @GetShortSource(context.Item.Source)

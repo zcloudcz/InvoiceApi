@@ -205,4 +205,9 @@
     /// </summary>
     private Func<T, int, string> ResolveRowStyleFunc()
         => RowStyleFunc ?? ((_, _) => RowClick.HasDelegate ? "cursor: pointer;" : string.Empty);
+
+    // Mobile column hiding: pages mark secondary columns with HideSmall="true".
+    // MudBlazor stamps mud-table-cell-hide on the column's header, filter, and
+    // body cells; app.css hides that class below 600px. No code needed here —
+    // it's pure CSS, so it doesn't fight column persistence or the column menu.
 }

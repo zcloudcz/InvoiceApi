@@ -26,8 +26,9 @@
                 </Authorized>
             </AuthorizeView>
             @* App logo + title — switches between grey (dark mode) and color (light mode) *@
-            <MudImage Src="@_logoSrc" Alt="Fakvio" Width="32" Height="32" Class="ml-3 mr-2" />
-            <MudText Typo="Typo.h5">@L["Layout_AppTitle"]</MudText>
+            <MudImage Src="@_logoSrc" Alt="Fakvio" Width="32" Height="32" Class="ml-3 mr-2 appbar-logo" />
+            @* appbar-title hides on phones (logo stays) — see app.css responsive section *@
+            <MudText Typo="Typo.h5" Class="appbar-title">@L["Layout_AppTitle"]</MudText>
             <MudSpacer />
 
             <AuthorizeView>
@@ -36,11 +37,12 @@
                     <AuthorizeView Roles="SysAdmin" Context="sysAdminImpContext">
                         @* Company selector — uses Color.Inherit so text color follows AppBar theme
                            (white on dark AppBar, dark on light AppBar) instead of hardcoded white *@
+                        @* Width lives in .appbar-select CSS (220px desktop, shrinks on phones) *@
                         <MudSelect T="long?" Value="_impersonatedCompanyId"
                                    ValueChanged="OnImpersonatedCompanyChanged"
                                    Label="" Placeholder="Zvolit společnost..."
                                    Variant="Variant.Outlined" Dense="true" Margin="Margin.Dense"
-                                   Class="mr-4 appbar-select" Style="min-width: 220px;"
+                                   Class="mr-4 appbar-select"
                                    Clearable="true"
                                    ToStringFunc="@(id => _availableCompanies.FirstOrDefault(c => c.Id == id)?.CompanyName ?? L["Layout_NoCompany"].Value)">
                             @foreach (var company in _availableCompanies)
@@ -53,14 +55,17 @@
                     @* User profile menu — avatar + name opens personal settings (preferences, 2FA) *@
                     <MudMenu Dense="true" AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter">
                         <ActivatorContent>
-                            <MudButton Color="Color.Inherit" Class="mr-4 text-none"
+                            <MudButton Color="Color.Inherit" Class="mr-4 text-none appbar-profile-btn"
                                        StartIcon="@Icons.Material.Filled.AccountCircle"
                                        EndIcon="@Icons.Material.Filled.ArrowDropDown"
                                        title="@L["Layout_MyProfile"]">
-                                @context.User.Identity?.Name
-                                <MudChip T="string" Size="Size.Small" Color="Color.Primary" Class="ml-2">
-                                    @context.User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value
-                                </MudChip>
+                                @* Name + role chip hide on phones — avatar icon + arrow stay *@
+                                <span class="appbar-username">
+                                    @context.User.Identity?.Name
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Primary" Class="ml-2">
+                                        @context.User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value
+                                    </MudChip>
+                                </span>
                             </MudButton>
                         </ActivatorContent>
                         <ChildContent>
@@ -72,16 +77,23 @@
                                          OnClick="@(() => Navigation.NavigateTo("/profile/two-factor"))">
                                 @L["Nav_TwoFactor"]
                             </MudMenuItem>
+                            <MudDivider />
+                            @* Logout also lives here — the AppBar logout icon hides on phones *@
+                            <MudMenuItem Icon="@Icons.Material.Filled.Logout"
+                                         OnClick="@HandleLogoutAsync">
+                                @L["Btn_Logout"]
+                            </MudMenuItem>
                         </ChildContent>
                     </MudMenu>
                     @if (_hasTenantContext)
                     {
                         <NotificationBell />
                     }
+                    @* Hidden on phones — logout lives in the profile menu there *@
                     <MudIconButton Icon="@Icons.Material.Filled.Logout"
                                    Color="Color.Inherit"
                                    OnClick="@HandleLogoutAsync"
-                                   title="@L["Btn_Logout"]" />
+                                   title="@L["Btn_Logout"]" Class="hide-xs" />
                 </Authorized>
                 <NotAuthorized>
                     <MudButton Href="/login"
@@ -112,7 +124,8 @@
             @* Dark/light mode toggle — only shown for authenticated users *@
             <AuthorizeView>
                 <Authorized>
-                    <MudIconButton Icon="@Icons.Material.Filled.Brightness4" Color="Color.Inherit" OnClick="@ToggleDarkMode" title="@L["Layout_ToggleDarkMode"]" />
+                    @* Least essential AppBar icon — hidden on phones to save width *@
+                    <MudIconButton Icon="@Icons.Material.Filled.Brightness4" Color="Color.Inherit" OnClick="@ToggleDarkMode" title="@L["Layout_ToggleDarkMode"]" Class="hide-xs" />
                 </Authorized>
             </AuthorizeView>
         </MudAppBar>
