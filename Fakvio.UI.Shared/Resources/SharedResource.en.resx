@@ -1431,6 +1431,14 @@
 
   <data name="Common_Yes" xml:space="preserve"><value>Yes</value></data>
   <data name="Common_Back" xml:space="preserve"><value>Back</value></data>
+  <data name="Common_Actions" xml:space="preserve"><value>Actions</value></data>
+  <data name="Common_Delete" xml:space="preserve"><value>Delete</value></data>
+  <data name="Common_DeleteConfirm" xml:space="preserve"><value>Do you really want to delete this record?</value></data>
+  <data name="Common_Deleted" xml:space="preserve"><value>Deleted</value></data>
+  <data name="Common_NoRecords" xml:space="preserve"><value>No records</value></data>
+  <data name="Common_Search" xml:space="preserve"><value>Search</value></data>
+  <data name="Common_Status" xml:space="preserve"><value>Status</value></data>
+  <data name="Common_ViewAll" xml:space="preserve"><value>View all</value></data>
   <data name="Common_Cancel" xml:space="preserve"><value>Cancel</value></data>
   <data name="Common_Created" xml:space="preserve"><value>Created</value></data>
   <data name="Common_Edit" xml:space="preserve"><value>Edit</value></data>
