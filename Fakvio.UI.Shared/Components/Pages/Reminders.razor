@@ -72,26 +72,15 @@
     </MudPaper>
 }
 
-@* ── MudDataGrid with server-side pagination, sorting, column filters ── *@
-<MudDataGrid T="ReminderDto"
-             ServerData="LoadServerData"
-             @ref="_dataGrid"
-             Dense="true"
-             Hover="true"
-             Striped="true"
-             Loading="_loading"
-             LoadingProgressColor="Color.Primary"
-             MultiSelection="true"
-             SelectOnRowClick="false"
-             SelectedItems="_selectedReminders"
-             SelectedItemsChanged="@(items => { _selectedReminders = items; StateHasChanged(); })"
-             RowStyleFunc="@((item, idx) => "cursor: pointer;")"
-             FilterMode="DataGridFilterMode.ColumnFilterRow"
-             SortMode="SortMode.Single"
-             Filterable="true"
-             ColumnResizeMode="ResizeMode.Column"
-             DragDropColumnReordering="true"
-             Hideable="true">
+@* ── FakvioGrid = universal grid wrapper (see DEVGUIDE 7.10) ── *@
+<FakvioGrid T="ReminderDto"
+            GridKey="reminders"
+            ServerData="LoadServerData"
+            @ref="_dataGrid"
+            Loading="_loading"
+            MultiSelection="true"
+            SelectedItems="_selectedReminders"
+            SelectedItemsChanged="@(items => { _selectedReminders = items; StateHasChanged(); })">
     <Columns>
         @* Checkbox column for bulk selection — required in MudBlazor v8 MudDataGrid *@
         <SelectColumn T="ReminderDto" />
@@ -209,21 +198,15 @@
     <NoRecordsContent>
         <MudAlert Severity="Severity.Info">@L["Reminder_NoRecords"]</MudAlert>
     </NoRecordsContent>
-    <PagerContent>
-        <MudDataGridPager T="ReminderDto" PageSizeOptions="new int[] { 10, 25, 50, 100 }"
-                          RowsPerPageString="@L["Table_RowsPerPage"].Value" />
-    </PagerContent>
-</MudDataGrid>
-@* Persists grid state (column widths, sort, page) across navigation *@
-<GridStatePersistence T="ReminderDto" DataGrid="_dataGrid" GridKey="reminders" />
+</FakvioGrid>
 
 @code {
     // ─── State Fields ──────────────────────────────────────────────────────
 
     /// <summary>
-    /// MudDataGrid reference — used for ReloadServerData() calls after actions.
+    /// FakvioGrid reference — used for ReloadAsync() calls after actions.
     /// </summary>
-    private MudDataGrid<ReminderDto>? _dataGrid;
+    private FakvioGrid<ReminderDto>? _dataGrid;
 
     /// <summary>
     /// Indicates whether server data is currently being loaded.
@@ -327,7 +310,7 @@
     {
         _search = value;
         if (_dataGrid is not null)
-            await _dataGrid.ReloadServerData();
+            await _dataGrid.ReloadAsync();
     }
 
     /// <summary>
@@ -338,7 +321,7 @@
     {
         _statusFilter = value;
         if (_dataGrid is not null)
-            await _dataGrid.ReloadServerData();
+            await _dataGrid.ReloadAsync();
     }
 
     // ─── Row Actions ───────────────────────────────────────────────────────
@@ -355,7 +338,7 @@
             if (result is not null)
             {
                 Snackbar.Add(L["Reminder_Sent"].Value, Severity.Success);
-                await _dataGrid!.ReloadServerData();
+                await _dataGrid!.ReloadAsync();
             }
         }
         catch (Exception ex)
@@ -380,7 +363,7 @@
             if (result is not null)
             {
                 Snackbar.Add(L["Reminder_Cancelled"].Value, Severity.Warning);
-                await _dataGrid!.ReloadServerData();
+                await _dataGrid!.ReloadAsync();
             }
         }
         catch (Exception ex)
@@ -431,7 +414,7 @@
             }
             ShowBulkSnackbar(ok, fail);
             ClearSelection();
-            await _dataGrid!.ReloadServerData();
+            await _dataGrid!.ReloadAsync();
         }
         catch (Exception ex)
         {
@@ -471,7 +454,7 @@
             }
             ShowBulkSnackbar(ok, fail);
             ClearSelection();
-            await _dataGrid!.ReloadServerData();
+            await _dataGrid!.ReloadAsync();
         }
         catch (Exception ex)
         {

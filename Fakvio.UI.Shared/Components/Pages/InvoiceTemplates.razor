@@ -58,23 +58,13 @@
     </MudGrid>
 </MudPaper>
 
-@* MudDataGrid with server-side pagination, column filters, and inline actions *@
-<MudDataGrid T="InvoiceTemplateDto"
-             ServerData="LoadData"
-             @ref="_dataGrid"
-             Dense="true"
-             Hover="true"
-             Striped="true"
-             Loading="@_loading"
-             LoadingProgressColor="Color.Primary"
-             RowClick="@(args => Navigation.NavigateTo($"/invoice-templates/{args.Item.Id}"))"
-             RowStyleFunc="@((item, idx) => "cursor: pointer;")"
-             FilterMode="DataGridFilterMode.ColumnFilterRow"
-             SortMode="SortMode.Single"
-             Filterable="true"
-             ColumnResizeMode="ResizeMode.Column"
-             DragDropColumnReordering="true"
-             Hideable="true">
+@* FakvioGrid = universal grid wrapper (see DEVGUIDE 7.10) *@
+<FakvioGrid T="InvoiceTemplateDto"
+            GridKey="invoice-templates"
+            ServerData="LoadData"
+            @ref="_dataGrid"
+            Loading="@_loading"
+            RowClick="@(args => Navigation.NavigateTo($"/invoice-templates/{args.Item.Id}"))">
     <Columns>
         @* PropertyColumn: sortable + filterable by default. CellTemplate uses context.Item. *@
         <PropertyColumn Property="x => x.Name" Title="@L["Label_Name"].Value">
@@ -136,11 +126,7 @@
     <NoRecordsContent>
         <MudText>@L["Template_NoRecords"]</MudText>
     </NoRecordsContent>
-    <PagerContent>
-        <MudDataGridPager T="InvoiceTemplateDto" />
-    </PagerContent>
-</MudDataGrid>
-<GridStatePersistence T="InvoiceTemplateDto" DataGrid="_dataGrid" GridKey="invoice-templates" />
+</FakvioGrid>
 
 @* Dialog for creating an invoice from a template — kept as small popup *@
 <MudDialog @bind-Visible="_showCreateInvoiceDialog" Options="_dialogOptions">
@@ -183,7 +169,7 @@
 </MudDialog>
 
 @code {
-    private MudDataGrid<InvoiceTemplateDto>? _dataGrid;
+    private FakvioGrid<InvoiceTemplateDto>? _dataGrid;
     private MudForm? _invoiceForm;
     private bool _loading = false;
     private bool _showCreateInvoiceDialog = false;
@@ -292,7 +278,7 @@
     {
         if (_dataGrid != null)
         {
-            await _dataGrid.ReloadServerData();
+            await _dataGrid.ReloadAsync();
         }
     }
 

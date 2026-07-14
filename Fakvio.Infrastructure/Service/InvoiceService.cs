@@ -173,6 +173,19 @@ public class InvoiceService : IInvoiceService
         if (filter.MaxAmount.HasValue)
             query = query.Where(i => i.TotalWithVat <= filter.MaxAmount.Value);
 
+        // Column filters — single-column contains, separate from the global Search below
+        if (!string.IsNullOrWhiteSpace(filter.DocumentNumber))
+        {
+            var docNumber = filter.DocumentNumber.ToLower();
+            query = query.Where(i => i.DocumentNumber != null && i.DocumentNumber.ToLower().Contains(docNumber));
+        }
+
+        if (!string.IsNullOrWhiteSpace(filter.ClientName))
+        {
+            var clientName = filter.ClientName.ToLower();
+            query = query.Where(i => i.Client.CompanyName != null && i.Client.CompanyName.ToLower().Contains(clientName));
+        }
+
         // Search filter - search across DocumentNumber, Client.CompanyName, VariableSymbol
         if (!string.IsNullOrWhiteSpace(filter.Search))
         {

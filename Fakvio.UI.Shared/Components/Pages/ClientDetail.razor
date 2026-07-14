@@ -340,16 +340,13 @@ else
             </MudGrid>
         </MudPaper>
 
-        @* MudDataGrid replaces MudTable for richer column features (filtering, resizing, sorting) *@
-        <MudDataGrid T="InvoiceDto"
-                     ServerData="LoadClientInvoices"
-                     @ref="_invoiceGrid"
-                     Dense="true" Hover="true" Striped="true"
-                     Loading="@_invoiceLoading" LoadingProgressColor="Color.Primary"
-                     SortMode="SortMode.Single"
-                     ColumnResizeMode="ResizeMode.Column"
-             DragDropColumnReordering="true"
-                     Hideable="true">
+        @* FakvioGrid = universal grid wrapper (see DEVGUIDE 7.10) *@
+        <FakvioGrid T="InvoiceDto"
+                    GridKey="client-invoices"
+                    ServerData="LoadClientInvoices"
+                    @ref="_invoiceGrid"
+                    Loading="@_invoiceLoading"
+                    PageSizeOptions="new int[] { 10, 25, 50 }">
             <Columns>
                 @* Document number column with chip display *@
                 <PropertyColumn Property="x => x.DocumentNumber" Title="@L["Table_Number"].Value" Sortable="true">
@@ -389,12 +386,7 @@ else
             <NoRecordsContent>
                 <MudText>@L["Client_NoInvoices"]</MudText>
             </NoRecordsContent>
-            <PagerContent>
-                <MudDataGridPager T="InvoiceDto" PageSizeOptions="new int[] { 10, 25, 50 }"
-                                  RowsPerPageString="@L["Table_RowsPerPage"].Value" />
-            </PagerContent>
-        </MudDataGrid>
-        <GridStatePersistence T="InvoiceDto" DataGrid="_invoiceGrid" GridKey="client-invoices" />
+        </FakvioGrid>
     }
 
     @* File attachments — entity-agnostic component, works for any entity *@
@@ -437,8 +429,8 @@ else
     // OnParametersSetAsync fires every time [Parameter] values change.
     private long _previousId = -1;
 
-    // Invoice history filter state — MudDataGrid replaces MudTable
-    private MudDataGrid<InvoiceDto>? _invoiceGrid;
+    // Invoice history filter state — FakvioGrid (universal grid wrapper)
+    private FakvioGrid<InvoiceDto>? _invoiceGrid;
     private string _invoiceSearch = "";
     private EInvoiceStatus? _invoiceStatusFilter;
 
@@ -865,12 +857,16 @@ else
             var (issueFrom, issueTo) = state.GetDateRange("IssueDate");
             var (dueFrom, dueTo) = state.GetDateRange("DueDate");
 
+            // Column filter (ColumnFilterRow) — DocumentNumber text filter
+            var documentNumberFilter = state.GetStringFilter("DocumentNumber");
+
             var result = await InvoiceService.GetPagedAsync(
                 page: state.Page + 1,
                 pageSize: state.PageSize,
                 search: _invoiceSearch,
                 sortBy: sortBy,
                 sortDirection: sortDirection,
+                documentNumber: documentNumberFilter,
                 clientId: Id,
                 status: _invoiceStatusFilter,
                 issueDateFrom: issueFrom,
@@ -901,7 +897,7 @@ else
     /// </summary>
     private async Task SearchClientInvoices()
     {
-        if (_invoiceGrid != null) await _invoiceGrid.ReloadServerData();
+        if (_invoiceGrid != null) await _invoiceGrid.ReloadAsync();
     }
 
     private void GoBack() => Navigation.NavigateTo("/clients");

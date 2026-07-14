@@ -51,6 +51,8 @@ public class FakvioService : ApiClientBase
         string? search = null,
         string? sortBy = null,
         string? sortDirection = "asc",
+        string? documentNumber = null,
+        string? clientName = null,
         EDocumentType? documentType = null,
         EInvoiceStatus? status = null,
         long? clientId = null,
@@ -79,6 +81,12 @@ public class FakvioService : ApiClientBase
 
             if (!string.IsNullOrWhiteSpace(sortDirection))
                 queryParams.Append($"&SortDirection={sortDirection}");
+
+            if (!string.IsNullOrWhiteSpace(documentNumber))
+                queryParams.Append($"&DocumentNumber={Uri.EscapeDataString(documentNumber)}");
+
+            if (!string.IsNullOrWhiteSpace(clientName))
+                queryParams.Append($"&ClientName={Uri.EscapeDataString(clientName)}");
 
             if (documentType.HasValue)
                 queryParams.Append($"&DocumentType={documentType.Value}");

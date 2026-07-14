@@ -53,26 +53,17 @@
     </MudPaper>
 }
 
-@* MudDataGrid with server-side pagination, column filters, multi-select *@
-<MudDataGrid T="InvoiceDto"
-             ServerData="LoadServerData"
-             @ref="_dataGrid"
-             Dense="true"
-             Hover="true"
-             Striped="true"
-             Loading="@_loading"
-             LoadingProgressColor="Color.Primary"
-             MultiSelection="true"
-             SelectedItems="_selectedInvoices"
-             SelectedItemsChanged="@(items => { _selectedInvoices = items; StateHasChanged(); })"
-             RowClick="@(args => OnInvoiceRowClick(args.Item))"
-             RowStyleFunc="@DataGridRowStyle"
-             FilterMode="DataGridFilterMode.ColumnFilterRow"
-             SortMode="SortMode.Single"
-             Filterable="true"
-             ColumnResizeMode="ResizeMode.Column"
-             DragDropColumnReordering="true"
-             Hideable="true">
+@* FakvioGrid = universal grid wrapper (see DEVGUIDE 7.10) *@
+<FakvioGrid T="InvoiceDto"
+            GridKey="invoices"
+            ServerData="LoadServerData"
+            @ref="_dataGrid"
+            Loading="@_loading"
+            MultiSelection="true"
+            SelectedItems="_selectedInvoices"
+            SelectedItemsChanged="@(items => { _selectedInvoices = items; StateHasChanged(); })"
+            RowClick="@(args => OnInvoiceRowClick(args.Item))"
+            RowStyleFunc="@DataGridRowStyle">
     <ToolBarContent>
         @* Global search field — searches across document number, client name, notes *@
         <MudTextField @bind-Value="_searchString" Placeholder="@L["Invoice_SearchPlaceholder"].Value"
@@ -247,12 +238,7 @@
     <NoRecordsContent>
         <MudAlert Severity="Severity.Info">@L["Invoice_NoRecords"]</MudAlert>
     </NoRecordsContent>
-    <PagerContent>
-        <MudDataGridPager T="InvoiceDto" PageSizeOptions="new int[] { 10, 25, 50, 100 }"
-                          RowsPerPageString="@L["Table_RowsPerPage"].Value" />
-    </PagerContent>
-</MudDataGrid>
-<GridStatePersistence T="InvoiceDto" DataGrid="_dataGrid" GridKey="invoices" />
+</FakvioGrid>
 
 @* Email dialog - allows user to enter recipient email and send invoice *@
 <MudDialog @bind-Visible="_showEmailDialog" Options="_emailDialogOptions">
@@ -361,7 +347,7 @@
     [SupplyParameterFromQuery(Name = "type")]
     public string? TypeFilter { get; set; }
 
-    private MudDataGrid<InvoiceDto>? _dataGrid;
+    private FakvioGrid<InvoiceDto>? _dataGrid;
     private bool _loading = false;
 
     // Computed page labels — resolved from localization based on the current document type filter
@@ -573,12 +559,20 @@
             var (dueFrom, dueTo) = state.GetDateRange("DueDate");
             var (taxableFrom, taxableTo) = state.GetDateRange("TaxableSupplyDate");
 
+            // Column filters (ColumnFilterRow) — one line per filterable column.
+            var documentNumberFilter = state.GetStringFilter("DocumentNumber");
+            var clientNameFilter = state.GetStringFilter("ClientName");
+            var statusFilter = state.GetEnumFilter<InvoiceDto, EInvoiceStatus>("Status");
+
             var result = await InvoiceService.GetPagedAsync(
                 page: state.Page + 1,
                 pageSize: state.PageSize,
                 search: _searchString,
                 sortBy: sortBy,
                 sortDirection: sortDirection,
+                documentNumber: documentNumberFilter,
+                clientName: clientNameFilter,
+                status: statusFilter,
                 documentType: _filterDocumentType,
                 issueDateFrom: issueFrom,
                 issueDateTo: issueTo,
@@ -610,7 +604,7 @@
     /// </summary>
     private async Task SearchInvoices()
     {
-        if (_dataGrid != null) await _dataGrid.ReloadServerData();
+        if (_dataGrid != null) await _dataGrid.ReloadAsync();
     }
 
     /// <summary>

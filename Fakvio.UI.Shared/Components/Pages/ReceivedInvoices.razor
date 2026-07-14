@@ -86,27 +86,16 @@
     </MudPaper>
 }
 
-@* ── Data Grid (MudDataGrid with server-side pagination, sorting, filtering) ── *@
-<MudDataGrid T="ReceivedInvoiceDto"
-             ServerData="LoadServerData"
-             @ref="_dataGrid"
-             Dense="true"
-             Hover="true"
-             Striped="true"
-             Loading="_loading"
-             LoadingProgressColor="Color.Primary"
-             MultiSelection="true"
-             SelectOnRowClick="false"
-             SelectedItems="_selectedInvoices"
-             SelectedItemsChanged="@(items => { _selectedInvoices = items; StateHasChanged(); })"
-             RowClick="@(args => Navigation.NavigateTo($"/received-invoices/{args.Item.Id}"))"
-             RowStyleFunc="@((item, idx) => "cursor: pointer;")"
-             FilterMode="DataGridFilterMode.ColumnFilterRow"
-             SortMode="SortMode.Single"
-             Filterable="true"
-             ColumnResizeMode="ResizeMode.Column"
-             DragDropColumnReordering="true"
-             Hideable="true">
+@* ── Data Grid — FakvioGrid = universal grid wrapper (see DEVGUIDE 7.10) ── *@
+<FakvioGrid T="ReceivedInvoiceDto"
+            GridKey="received-invoices"
+            ServerData="LoadServerData"
+            @ref="_dataGrid"
+            Loading="_loading"
+            MultiSelection="true"
+            SelectedItems="_selectedInvoices"
+            SelectedItemsChanged="@(items => { _selectedInvoices = items; StateHasChanged(); })"
+            RowClick="@(args => Navigation.NavigateTo($"/received-invoices/{args.Item.Id}"))">
     <Columns>
         @* Checkbox column for bulk selection — required in MudBlazor v8 MudDataGrid *@
         <SelectColumn T="ReceivedInvoiceDto" />
@@ -223,18 +212,11 @@
             </CellTemplate>
         </TemplateColumn>
     </Columns>
-    <NoRecordsContent>
-        <MudText>@L["Common_NoRecords"]</MudText>
-    </NoRecordsContent>
-    <PagerContent>
-        <MudDataGridPager T="ReceivedInvoiceDto" PageSizeOptions="new int[] { 10, 25, 50, 100 }" />
-    </PagerContent>
-</MudDataGrid>
-<GridStatePersistence T="ReceivedInvoiceDto" DataGrid="_dataGrid" GridKey="received-invoices" />
+</FakvioGrid>
 
 @code {
-    // MudDataGrid reference — used for ReloadServerData() calls after actions
-    private MudDataGrid<ReceivedInvoiceDto>? _dataGrid;
+    // FakvioGrid reference — used for ReloadAsync() calls after actions
+    private FakvioGrid<ReceivedInvoiceDto>? _dataGrid;
     private bool _loading;
     private bool _bulkProcessing;
     private bool _downloadingAttachments;
@@ -309,14 +291,14 @@
     {
         _search = value;
         if (_dataGrid is not null)
-            await _dataGrid.ReloadServerData();
+            await _dataGrid.ReloadAsync();
     }
 
     private async Task OnStatusChanged(EReceivedInvoiceStatus? value)
     {
         _statusFilter = value;
         if (_dataGrid is not null)
-            await _dataGrid.ReloadServerData();
+            await _dataGrid.ReloadAsync();
     }
 
     private void CreateNew()
@@ -330,7 +312,7 @@
         if (result is not null)
         {
             Snackbar.Add(L["ReceivedInvoice_Approved"].Value, Severity.Success);
-            await _dataGrid!.ReloadServerData();
+            await _dataGrid!.ReloadAsync();
         }
     }
 
@@ -340,7 +322,7 @@
         if (result is not null)
         {
             Snackbar.Add(L["Invoice_MarkedAsPaid"].Value, Severity.Success);
-            await _dataGrid!.ReloadServerData();
+            await _dataGrid!.ReloadAsync();
         }
     }
 
@@ -353,7 +335,7 @@
         if (result is not null)
         {
             Snackbar.Add(L["ReceivedInvoice_Rejected"].Value, Severity.Warning);
-            await _dataGrid!.ReloadServerData();
+            await _dataGrid!.ReloadAsync();
         }
     }
 
@@ -366,7 +348,7 @@
         if (deleted)
         {
             Snackbar.Add(L["Common_Deleted"].Value, Severity.Success);
-            await _dataGrid!.ReloadServerData();
+            await _dataGrid!.ReloadAsync();
         }
     }
 
@@ -500,7 +482,7 @@
             }
             ShowBulkSnackbar(ok, fail);
             ClearSelection();
-            await _dataGrid!.ReloadServerData();
+            await _dataGrid!.ReloadAsync();
         }
         catch (Exception ex) { Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error); }
         finally { _bulkProcessing = false; }
@@ -535,7 +517,7 @@
             }
             ShowBulkSnackbar(ok, fail);
             ClearSelection();
-            await _dataGrid!.ReloadServerData();
+            await _dataGrid!.ReloadAsync();
         }
         catch (Exception ex) { Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error); }
         finally { _bulkProcessing = false; }
@@ -571,7 +553,7 @@
             }
             ShowBulkSnackbar(ok, fail);
             ClearSelection();
-            await _dataGrid!.ReloadServerData();
+            await _dataGrid!.ReloadAsync();
         }
         catch (Exception ex) { Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error); }
         finally { _bulkProcessing = false; }

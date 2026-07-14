@@ -14,6 +14,18 @@ public class InvoiceFilterDto : PaginationParams
     public string? Search { get; set; }
 
     /// <summary>
+    /// Filter by document number (contains, case-insensitive).
+    /// Fed by the grid column filter — unlike Search it targets one column only.
+    /// </summary>
+    public string? DocumentNumber { get; set; }
+
+    /// <summary>
+    /// Filter by client name (contains, case-insensitive).
+    /// Fed by the grid column filter — unlike Search it targets one column only.
+    /// </summary>
+    public string? ClientName { get; set; }
+
+    /// <summary>
     /// Filter by document type
     /// </summary>
     public EDocumentType? DocumentType { get; set; }

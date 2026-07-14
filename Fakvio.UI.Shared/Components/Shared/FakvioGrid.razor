@@ -26,6 +26,7 @@
     GetDateRange. See DEVGUIDE.md "FakvioGrid" section.
 *@
 @typeparam T
+@attribute [CascadingTypeParameter(nameof(T))]
 @inject IStringLocalizer<SharedResource> L
 
 <MudDataGrid T="T"
@@ -62,7 +63,8 @@
         }
     </NoRecordsContent>
     <PagerContent>
-        <MudDataGridPager T="T" PageSizeOptions="PageSizeOptions" />
+        <MudDataGridPager T="T" PageSizeOptions="PageSizeOptions"
+                          RowsPerPageString="@L["Table_RowsPerPage"].Value" />
     </PagerContent>
 </MudDataGrid>
 <GridStatePersistence T="T" DataGrid="_grid" GridKey="@GridKey" />

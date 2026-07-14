@@ -33,20 +33,14 @@
     </MudItem>
 </MudGrid>
 
-@* Log entries data grid — uses ServerData for built-in server-side pagination *@
-<MudDataGrid T="AppLogDto"
-             ServerData="LoadServerData"
-             @ref="_dataGrid"
-             Dense="true" Hover="true" Striped="true"
-             Loading="@_loading" LoadingProgressColor="Color.Primary"
-             RowClick="@(args => OpenDetailAsync(args.Item))"
-             RowStyleFunc="@((item, idx) => "cursor: pointer;")"
-             FilterMode="DataGridFilterMode.ColumnFilterRow"
-             SortMode="SortMode.Single"
-             Filterable="true"
-             ColumnResizeMode="ResizeMode.Column"
-             DragDropColumnReordering="true"
-             Hideable="true">
+@* Log entries data grid — FakvioGrid = universal grid wrapper (see DEVGUIDE 7.10) *@
+<FakvioGrid T="AppLogDto"
+            GridKey="logs"
+            ServerData="LoadServerData"
+            @ref="_dataGrid"
+            Loading="@_loading"
+            RowClick="@(args => OpenDetailAsync(args.Item))"
+            PageSizeOptions="new int[] { 25, 50, 100 }">
     <Columns>
         <PropertyColumn Property="x => x.Timestamp" Title="@L["Log_Timestamp"].Value">
             <FilterTemplate>
@@ -81,15 +75,11 @@
     <NoRecordsContent>
         <MudAlert Severity="Severity.Info">@L["Log_NoEntries"]</MudAlert>
     </NoRecordsContent>
-    <PagerContent>
-        <MudDataGridPager T="AppLogDto" PageSizeOptions="new int[] { 25, 50, 100 }" RowsPerPageString="@L["Table_RowsPerPage"].Value" />
-    </PagerContent>
-</MudDataGrid>
-<GridStatePersistence T="AppLogDto" DataGrid="_dataGrid" GridKey="logs" />
+</FakvioGrid>
 
 @code {
-    // Reference to the MudDataGrid — used to trigger ReloadServerData() when filters change
-    private MudDataGrid<AppLogDto>? _dataGrid;
+    // Reference to the FakvioGrid — used to trigger ReloadAsync() when filters change
+    private FakvioGrid<AppLogDto>? _dataGrid;
 
     // Loading flag — MudDataGrid's Loading attribute shows a progress bar automatically
     private bool _loading;
@@ -174,14 +164,14 @@
     {
         _levelFilter = level;
         // ReloadServerData resets the grid back to page 0 and fetches fresh data
-        if (_dataGrid != null) await _dataGrid.ReloadServerData();
+        if (_dataGrid != null) await _dataGrid.ReloadAsync();
     }
 
     private async Task OnSearchKeyUp(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
     {
         if (e.Key == "Enter")
         {
-            if (_dataGrid != null) await _dataGrid.ReloadServerData();
+            if (_dataGrid != null) await _dataGrid.ReloadAsync();
         }
     }
 

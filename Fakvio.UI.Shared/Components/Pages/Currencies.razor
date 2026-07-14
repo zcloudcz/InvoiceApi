@@ -39,20 +39,13 @@
     </MudGrid>
 </MudPaper>
 
-@* MudDataGrid with ServerData — loads paged data from API, supports sorting and filtering *@
-<MudDataGrid T="CurrencyDto"
-             ServerData="LoadData"
-             @ref="_dataGrid"
-             Dense="true" Hover="true" Striped="true"
-             Loading="@_loading" LoadingProgressColor="Color.Primary"
-             FilterMode="DataGridFilterMode.ColumnFilterRow"
-             SortMode="SortMode.Single"
-             Filterable="true"
-             ColumnResizeMode="ResizeMode.Column"
-             DragDropColumnReordering="true"
-             Hideable="true"
-             RowClick="@(args => OpenEditDialog(args.Item))"
-             RowStyleFunc="@((item, idx) => "cursor: pointer;")">
+@* FakvioGrid = universal grid wrapper (see DEVGUIDE 7.10) *@
+<FakvioGrid T="CurrencyDto"
+            GridKey="currencies"
+            ServerData="LoadData"
+            @ref="_dataGrid"
+            Loading="@_loading"
+            RowClick="@(args => OpenEditDialog(args.Item))">
     <Columns>
         @* PropertyColumn: sortable + filterable by default. CellTemplate uses context.Item (CellContext<T>). *@
         <PropertyColumn Property="x => x.Code" Title="@L["Currency_Code"].Value">
@@ -84,11 +77,7 @@
     <NoRecordsContent>
         <MudAlert Severity="Severity.Info">@L["Msg_NoRecords"]</MudAlert>
     </NoRecordsContent>
-    <PagerContent>
-        <MudDataGridPager T="CurrencyDto" PageSizeOptions="new int[] { 10, 25, 50, 100 }" RowsPerPageString="@L["Table_RowsPerPage"].Value" />
-    </PagerContent>
-</MudDataGrid>
-<GridStatePersistence T="CurrencyDto" DataGrid="_dataGrid" GridKey="currencies" />
+</FakvioGrid>
 
 @* Dialog for creating/editing a currency — uses @bind-Visible (not @bind-IsVisible, renamed in MudBlazor v8) *@
 <MudDialog @bind-Visible="_showDialog" Options="_dialogOptions">
@@ -133,8 +122,8 @@
 </MudDialog>
 
 @code {
-    // MudDataGrid reference — used for ReloadServerData() when search/filter changes
-    private MudDataGrid<CurrencyDto>? _dataGrid;
+    // FakvioGrid reference — used for ReloadAsync() when search/filter changes
+    private FakvioGrid<CurrencyDto>? _dataGrid;
     private MudForm? _form;
     private bool _loading = false;
     private bool _showDialog = false;
@@ -204,7 +193,7 @@
     {
         if (_dataGrid != null)
         {
-            await _dataGrid.ReloadServerData();
+            await _dataGrid.ReloadAsync();
         }
     }
 
