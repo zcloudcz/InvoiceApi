@@ -15,6 +15,18 @@ public class ReceivedInvoiceFilterDto : PaginationParams
     public string? Search { get; set; }
 
     /// <summary>
+    /// Filter by document number (contains, case-insensitive).
+    /// Fed by the grid column filter — unlike Search it targets one column only.
+    /// </summary>
+    public string? DocumentNumber { get; set; }
+
+    /// <summary>
+    /// Filter by supplier name (contains, case-insensitive).
+    /// Fed by the grid column filter — unlike Search it targets one column only.
+    /// </summary>
+    public string? SupplierName { get; set; }
+
+    /// <summary>
     /// Filter by status.
     /// </summary>
     public EReceivedInvoiceStatus? Status { get; set; }

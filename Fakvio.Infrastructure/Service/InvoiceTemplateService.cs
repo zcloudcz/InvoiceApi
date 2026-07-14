@@ -86,6 +86,7 @@ public class InvoiceTemplateService : IInvoiceTemplateService
         int page = 1,
         int pageSize = 10,
         string? search = null,
+        string? name = null,
         EDocumentType? documentType = null,
         string? category = null,
         bool? isActive = null,
@@ -122,6 +123,13 @@ public class InvoiceTemplateService : IInvoiceTemplateService
         if (issuerId.HasValue)
             query = query.Where(t => t.IssuerId == issuerId.Value);
 
+        // Name column filter — single-column contains, separate from the global search below
+        if (!string.IsNullOrWhiteSpace(name))
+        {
+            var nameLower = name.ToLower();
+            query = query.Where(t => t.Name.ToLower().Contains(nameLower));
+        }
+
         // Search filter - search across Name, Description, Category
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -140,7 +148,7 @@ public class InvoiceTemplateService : IInvoiceTemplateService
             query = query.Where(t => t.LastUsedAt <= DateTime.SpecifyKind(lastUsedAtTo.Value, DateTimeKind.Utc));
 
         // Apply sorting
-        var validSortFields = new[] { "Name", "Category", "DocumentType", "UsageCount", "LastUsedAt", "CreatedAt", "UpdatedAt" };
+        var validSortFields = new[] { "Name", "Category", "DocumentType", "UsageCount", "LastUsedAt", "IsActive", "CreatedAt", "UpdatedAt" };
         var sortField = !string.IsNullOrWhiteSpace(sortBy) && validSortFields.Contains(sortBy, StringComparer.OrdinalIgnoreCase)
             ? sortBy : "Name";
 

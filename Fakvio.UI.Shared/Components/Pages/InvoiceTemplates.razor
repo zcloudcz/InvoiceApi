@@ -86,7 +86,7 @@
                 }
             </CellTemplate>
         </PropertyColumn>
-        <PropertyColumn Property="x => x.DocumentType" Title="@L["Template_DocumentType"].Value" Sortable="false">
+        <PropertyColumn Property="x => x.DocumentType" Title="@L["Template_DocumentType"].Value">
             <CellTemplate>
                 <MudChip T="string" Size="Size.Small" Color="@(context.Item.DocumentType == EDocumentType.Invoice ? Color.Primary : Color.Warning)">
                     @(context.Item.DocumentType == EDocumentType.Invoice ? L["Template_DocumentTypeInvoice"] : L["Template_DocumentTypeCreditNote"])
@@ -252,12 +252,18 @@
             // Date column filter on LastUsedAt
             var (lastUsedFrom, lastUsedTo) = state.GetDateRange("LastUsedAt");
 
+            // Column filters (ColumnFilterRow) — one line per filterable column.
+            // Page-level selects take precedence over column filters where both exist.
+            var nameFilter = state.GetStringFilter("Name");
+            var isActiveFilter = _filterActive ?? state.GetBoolFilter("IsActive");
+
             var response = await TemplateService.GetPagedAsync(
                 page: state.Page + 1, // MudDataGrid is 0-based, API is 1-based
                 pageSize: state.PageSize,
                 search: _searchString,
+                name: nameFilter,
                 documentType: _filterDocumentType,
-                isActive: _filterActive,
+                isActive: isActiveFilter,
                 sortBy: sortBy,
                 isDescending: isDescending,
                 lastUsedAtFrom: lastUsedFrom,

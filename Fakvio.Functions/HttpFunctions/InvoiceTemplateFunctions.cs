@@ -80,6 +80,7 @@ public class InvoiceTemplateFunctions
         int.TryParse(req.Query["pageSize"], out var pageSize);
         if (!req.Query.ContainsKey("pageSize")) pageSize = 10;
         string? search = req.Query.TryGetValue("search", out var _searchVal) ? _searchVal.ToString() : null;
+        string? name = req.Query.TryGetValue("name", out var _nameVal) ? _nameVal.ToString() : null;
         // Parse nullable enum from query: ?documentType=Value
         global::Fakvio.Domain.Enums.EDocumentType? documentType = req.Query.TryGetValue("documentType", out var _documentTypeVal) && Enum.TryParse(_documentTypeVal.ToString(), true, out global::Fakvio.Domain.Enums.EDocumentType _documentTypeParsed)
             ? _documentTypeParsed
@@ -95,7 +96,7 @@ public class InvoiceTemplateFunctions
 
         // Call the controller action and normalize the response
         return FunctionResultHelper.Normalize(await _controller.GetTemplatesPaged(
-            page, pageSize, search, documentType, category, isActive, issuerId, sortBy, isDescending,
+            page, pageSize, search, name, documentType, category, isActive, issuerId, sortBy, isDescending,
             lastUsedAtFrom, lastUsedAtTo, cancellationToken));
     }
 

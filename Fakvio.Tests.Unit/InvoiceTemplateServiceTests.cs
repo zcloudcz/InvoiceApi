@@ -686,4 +686,72 @@ public class InvoiceTemplateServiceTests : IDisposable
         invoice.DocumentNumber.ShouldBe("VIP-INV2026055");
         invoice.DocumentNumber.ShouldStartWith("VIP-");
     }
+
+    // =====================================================================
+    // GetTemplatesPagedAsync — column filters & sorting
+    // =====================================================================
+
+    /// <summary>
+    /// Helper: creates one active and one inactive template with distinct names.
+    /// Returns nothing — tests query via GetTemplatesPagedAsync.
+    /// </summary>
+    private async Task SeedTwoTemplatesForFiltering()
+    {
+        await _templateService.CreateTemplateAsync(CreateValidTemplateDto("Alpha Hosting"));
+        var beta = await _templateService.CreateTemplateAsync(CreateValidTemplateDto("Beta Consulting"));
+
+        // Deactivate the second template directly — no service method needed for the test setup
+        var entity = await _context.Set<InvoiceTemplate>().FindAsync(beta.Id);
+        entity!.IsActive = false;
+        await _context.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task GetTemplatesPagedAsync_NameFilter_ReturnsOnlyMatchingRows()
+    {
+        await SeedTwoTemplatesForFiltering();
+
+        // Case-insensitive contains on Name only — must not match description/category
+        var result = await _templateService.GetTemplatesPagedAsync(name: "beta");
+
+        result.Items.Count.ShouldBe(1);
+        result.Items[0].Name.ShouldBe("Beta Consulting");
+    }
+
+    [Fact]
+    public async Task GetTemplatesPagedAsync_NameFilter_NoMatch_ReturnsEmpty()
+    {
+        await SeedTwoTemplatesForFiltering();
+
+        var result = await _templateService.GetTemplatesPagedAsync(name: "does-not-exist");
+
+        result.Items.ShouldBeEmpty();
+        result.TotalCount.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task GetTemplatesPagedAsync_SortByIsActive_Ascending_InactiveFirst()
+    {
+        await SeedTwoTemplatesForFiltering();
+
+        // IsActive was previously missing from validSortFields — clicking the column
+        // header silently fell back to Name sort. This guards the fix.
+        var result = await _templateService.GetTemplatesPagedAsync(
+            sortBy: "IsActive", isDescending: false);
+
+        result.Items.Count.ShouldBe(2);
+        result.Items[0].IsActive.ShouldBeFalse(); // false < true in ascending order
+        result.Items[1].IsActive.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task GetTemplatesPagedAsync_UnknownSortField_FallsBackToNameWithoutError()
+    {
+        await SeedTwoTemplatesForFiltering();
+
+        var result = await _templateService.GetTemplatesPagedAsync(sortBy: "nonsense-field");
+
+        result.Items.Count.ShouldBe(2);
+        result.Items[0].Name.ShouldBe("Alpha Hosting"); // fallback = Name ascending
+    }
 }

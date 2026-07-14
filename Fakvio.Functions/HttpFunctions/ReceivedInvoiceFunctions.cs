@@ -69,15 +69,11 @@ public class ReceivedInvoiceFunctions
         var ct = req.HttpContext.RequestAborted;
 
         // Model binding: ASP.NET MVC auto-binds [FromQuery] on the controller,
-        // but Azure Functions doesn't. Parse filter from query string manually.
-        var filter = new ReceivedInvoiceFilterDto
-        {
-            Page = int.TryParse(req.Query["page"], out var p) ? p : 1,
-            PageSize = int.TryParse(req.Query["pageSize"], out var ps) ? ps : 20,
-            Search = req.Query["search"],
-            Status = Enum.TryParse<EReceivedInvoiceStatus>(req.Query["status"], out var st) ? st : null,
-            SupplierId = long.TryParse(req.Query["supplierId"], out var sup) ? sup : null
-        };
+        // but Azure Functions doesn't. BindFromQuery binds ALL DTO properties via
+        // reflection (incl. SortBy/SortDirection, date ranges, column filters) —
+        // the previous hand-written binding silently dropped everything but
+        // Page/PageSize/Search/Status/SupplierId, so sorting never worked here.
+        var filter = FunctionResultHelper.BindFromQuery<ReceivedInvoiceFilterDto>(req.Query);
 
         return FunctionResultHelper.Normalize(await _controller.GetPaged(filter, ct));
     }

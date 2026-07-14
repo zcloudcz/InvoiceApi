@@ -26,6 +26,7 @@ public interface IInvoiceTemplateService
         int page = 1,
         int pageSize = 10,
         string? search = null,
+        string? name = null,
         EDocumentType? documentType = null,
         string? category = null,
         bool? isActive = null,

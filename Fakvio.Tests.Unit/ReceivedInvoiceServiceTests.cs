@@ -445,6 +445,103 @@ public class ReceivedInvoiceServiceTests : IDisposable
         result.ShouldBeNull();
     }
 
+    // ── GetPagedAsync — column filters & sorting ─────────────────────
+
+    /// <summary>
+    /// Helper: creates a second active supplier and one invoice per supplier
+    /// with distinct document numbers, so filter tests can distinguish rows.
+    /// </summary>
+    private async Task SeedTwoInvoicesForFiltering()
+    {
+        _context.Client.Add(new Client
+        {
+            Id = 3, CompanyName = "Supplier B", RegistrationNumber = "SUP003",
+            IsIssuer = false, IsActive = true
+        });
+        await _context.SaveChangesAsync();
+
+        var first = CreateValidDto(); // DocumentNumber FAK-2026-001, SupplierId 1 (Supplier A)
+        await _service.CreateAsync(first);
+
+        var second = CreateValidDto();
+        second.DocumentNumber = "INV-2026-777";
+        second.SupplierId = 3;
+        await _service.CreateAsync(second);
+    }
+
+    [Fact]
+    public async Task GetPagedAsync_DocumentNumberFilter_ReturnsOnlyMatchingRows()
+    {
+        await SeedTwoInvoicesForFiltering();
+
+        // Case-insensitive contains — "inv-2026" must match only "INV-2026-777"
+        var result = await _service.GetPagedAsync(new ReceivedInvoiceFilterDto
+        {
+            DocumentNumber = "inv-2026"
+        });
+
+        result.Items.Count.ShouldBe(1);
+        result.Items[0].DocumentNumber.ShouldBe("INV-2026-777");
+    }
+
+    [Fact]
+    public async Task GetPagedAsync_SupplierNameFilter_ReturnsOnlyMatchingRows()
+    {
+        await SeedTwoInvoicesForFiltering();
+
+        var result = await _service.GetPagedAsync(new ReceivedInvoiceFilterDto
+        {
+            SupplierName = "supplier b"
+        });
+
+        result.Items.Count.ShouldBe(1);
+        result.Items[0].SupplierName.ShouldBe("Supplier B");
+    }
+
+    [Fact]
+    public async Task GetPagedAsync_DocumentNumberFilter_NoMatch_ReturnsEmpty()
+    {
+        await SeedTwoInvoicesForFiltering();
+
+        var result = await _service.GetPagedAsync(new ReceivedInvoiceFilterDto
+        {
+            DocumentNumber = "does-not-exist"
+        });
+
+        result.Items.ShouldBeEmpty();
+        result.TotalCount.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task GetPagedAsync_SortByDocumentNumberAscending_OrdersCorrectly()
+    {
+        await SeedTwoInvoicesForFiltering();
+
+        var result = await _service.GetPagedAsync(new ReceivedInvoiceFilterDto
+        {
+            SortBy = "documentnumber",
+            SortDirection = "asc"
+        });
+
+        result.Items.Count.ShouldBe(2);
+        result.Items[0].DocumentNumber.ShouldBe("FAK-2026-001");
+        result.Items[1].DocumentNumber.ShouldBe("INV-2026-777");
+    }
+
+    [Fact]
+    public async Task GetPagedAsync_UnknownSortField_FallsBackToDefaultWithoutError()
+    {
+        await SeedTwoInvoicesForFiltering();
+
+        // Garbage sort field must not throw — falls back to ReceivedDate ordering
+        var result = await _service.GetPagedAsync(new ReceivedInvoiceFilterDto
+        {
+            SortBy = "nonsense-field"
+        });
+
+        result.Items.Count.ShouldBe(2);
+    }
+
     // ── Full Lifecycle Test ──────────────────────────────────────────
 
     [Fact]

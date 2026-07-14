@@ -245,13 +245,21 @@
             var (issueFrom, issueTo) = state.GetDateRange("IssueDate");
             var (dueFrom, dueTo) = state.GetDateRange("DueDate");
 
+            // Column filters (ColumnFilterRow) — one line per filterable column.
+            // Page-level EnumSelect takes precedence over the Status column filter.
+            var documentNumberFilter = state.GetStringFilter("DocumentNumber");
+            var supplierNameFilter = state.GetStringFilter("SupplierName");
+            var statusFilter = _statusFilter ?? state.GetEnumFilter<ReceivedInvoiceDto, EReceivedInvoiceStatus>("Status");
+
             var result = await ReceivedInvoiceService.GetPagedAsync(
                 page: state.Page + 1, // MudDataGrid is 0-based, API is 1-based
                 pageSize: state.PageSize,
                 search: _search,
                 sortBy: sortBy,
                 sortDirection: sortDirection,
-                status: _statusFilter,
+                status: statusFilter,
+                documentNumber: documentNumberFilter,
+                supplierName: supplierNameFilter,
                 issueDateFrom: issueFrom,
                 issueDateTo: issueTo,
                 dueDateFrom: dueFrom,

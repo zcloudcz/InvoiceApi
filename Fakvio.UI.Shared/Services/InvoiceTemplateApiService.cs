@@ -29,6 +29,7 @@ public class InvoiceTemplateApiService : ApiClientBase
         int page = 1,
         int pageSize = 10,
         string? search = null,
+        string? name = null,
         EDocumentType? documentType = null,
         bool? isActive = null,
         string sortBy = "Name",
@@ -43,6 +44,9 @@ public class InvoiceTemplateApiService : ApiClientBase
                            $"&documentType={documentType}" +
                            $"&isActive={isActive}" +
                            $"&sortBy={sortBy}&isDescending={isDescending}";
+
+            if (!string.IsNullOrWhiteSpace(name))
+                endpoint += $"&name={Uri.EscapeDataString(name)}";
 
             if (lastUsedAtFrom.HasValue)
                 endpoint += $"&lastUsedAtFrom={lastUsedAtFrom.Value:yyyy-MM-dd}";

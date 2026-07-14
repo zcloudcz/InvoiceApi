@@ -97,6 +97,19 @@ public class ReceivedInvoiceService : IReceivedInvoiceService
                 (r.VariableSymbol != null && r.VariableSymbol.ToLower().Contains(search)));
         }
 
+        // Column filters — single-column contains, separate from the global Search above
+        if (!string.IsNullOrWhiteSpace(filter.DocumentNumber))
+        {
+            var docNumber = filter.DocumentNumber.ToLower();
+            query = query.Where(r => r.DocumentNumber != null && r.DocumentNumber.ToLower().Contains(docNumber));
+        }
+
+        if (!string.IsNullOrWhiteSpace(filter.SupplierName))
+        {
+            var supplierName = filter.SupplierName.ToLower();
+            query = query.Where(r => r.Supplier.CompanyName.ToLower().Contains(supplierName));
+        }
+
         if (filter.Status.HasValue)
             query = query.Where(r => r.Status == filter.Status.Value);
 

@@ -49,6 +49,7 @@ public class InvoiceTemplateController : ControllerBase
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 10,
         [FromQuery] string? search = null,
+        [FromQuery] string? name = null,
         [FromQuery] EDocumentType? documentType = null,
         [FromQuery] string? category = null,
         [FromQuery] bool? isActive = null,
@@ -60,7 +61,7 @@ public class InvoiceTemplateController : ControllerBase
         CancellationToken cancellationToken = default)
     {
         var result = await _templateService.GetTemplatesPagedAsync(
-            page, pageSize, search, documentType, category, isActive, issuerId, sortBy, isDescending,
+            page, pageSize, search, name, documentType, category, isActive, issuerId, sortBy, isDescending,
             lastUsedAtFrom, lastUsedAtTo, cancellationToken);
 
         return Ok(result);

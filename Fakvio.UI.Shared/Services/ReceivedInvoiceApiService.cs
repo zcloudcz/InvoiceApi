@@ -32,6 +32,8 @@ public class ReceivedInvoiceApiService : ApiClientBase
         string? sortBy = null,
         string? sortDirection = "desc",
         EReceivedInvoiceStatus? status = null,
+        string? documentNumber = null,
+        string? supplierName = null,
         long? supplierId = null,
         DateTime? issueDateFrom = null,
         DateTime? issueDateTo = null,
@@ -51,6 +53,10 @@ public class ReceivedInvoiceApiService : ApiClientBase
                 q.Append($"&SortDirection={sortDirection}");
             if (status.HasValue)
                 q.Append($"&Status={status.Value}");
+            if (!string.IsNullOrWhiteSpace(documentNumber))
+                q.Append($"&DocumentNumber={Uri.EscapeDataString(documentNumber)}");
+            if (!string.IsNullOrWhiteSpace(supplierName))
+                q.Append($"&SupplierName={Uri.EscapeDataString(supplierName)}");
             if (supplierId.HasValue)
                 q.Append($"&SupplierId={supplierId.Value}");
             if (issueDateFrom.HasValue)
