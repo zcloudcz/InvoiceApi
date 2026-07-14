@@ -1050,6 +1050,7 @@
   <data name="Nav_VatReport" xml:space="preserve"><value>Přehled DPH</value></data>
   <data name="ReceivedInvoice_Title" xml:space="preserve"><value>Přijaté faktury</value></data>
   <data name="Nav_Preferences" xml:space="preserve"><value>Moje preference</value></data>
+  <data name="Layout_MyProfile" xml:space="preserve"><value>Můj profil</value></data>
   <data name="Pref_Title" xml:space="preserve"><value>Moje preference</value></data>
   <data name="Pref_Subtitle" xml:space="preserve"><value>Osobní nastavení uživatelského rozhraní. Platí jen pro váš účet.</value></data>
   <data name="Pref_GridPageSize" xml:space="preserve"><value>Počet záznamů v tabulkách</value></data>

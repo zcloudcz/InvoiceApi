@@ -50,13 +50,30 @@
                         </MudSelect>
                     </AuthorizeView>
 
-                    <MudText Typo="Typo.body2" Class="mr-4">
-                        <MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Small" Class="mr-1" />
-                        @context.User.Identity?.Name
-                        <MudChip T="string" Size="Size.Small" Color="Color.Primary" Class="ml-2">
-                            @context.User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value
-                        </MudChip>
-                    </MudText>
+                    @* User profile menu — avatar + name opens personal settings (preferences, 2FA) *@
+                    <MudMenu Dense="true" AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter">
+                        <ActivatorContent>
+                            <MudButton Color="Color.Inherit" Class="mr-4 text-none"
+                                       StartIcon="@Icons.Material.Filled.AccountCircle"
+                                       EndIcon="@Icons.Material.Filled.ArrowDropDown"
+                                       title="@L["Layout_MyProfile"]">
+                                @context.User.Identity?.Name
+                                <MudChip T="string" Size="Size.Small" Color="Color.Primary" Class="ml-2">
+                                    @context.User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value
+                                </MudChip>
+                            </MudButton>
+                        </ActivatorContent>
+                        <ChildContent>
+                            <MudMenuItem Icon="@Icons.Material.Filled.Tune"
+                                         OnClick="@(() => Navigation.NavigateTo("/preferences"))">
+                                @L["Nav_Preferences"]
+                            </MudMenuItem>
+                            <MudMenuItem Icon="@Icons.Material.Filled.Security"
+                                         OnClick="@(() => Navigation.NavigateTo("/profile/two-factor"))">
+                                @L["Nav_TwoFactor"]
+                            </MudMenuItem>
+                        </ChildContent>
+                    </MudMenu>
                     @if (_hasTenantContext)
                     {
                         <NotificationBell />

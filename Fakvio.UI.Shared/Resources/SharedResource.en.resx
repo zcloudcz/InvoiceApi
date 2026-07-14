@@ -1050,6 +1050,7 @@
   <data name="Nav_VatReport" xml:space="preserve"><value>VAT Report</value></data>
   <data name="ReceivedInvoice_Title" xml:space="preserve"><value>Received Invoices</value></data>
   <data name="Nav_Preferences" xml:space="preserve"><value>My Preferences</value></data>
+  <data name="Layout_MyProfile" xml:space="preserve"><value>My Profile</value></data>
   <data name="Pref_Title" xml:space="preserve"><value>My Preferences</value></data>
   <data name="Pref_Subtitle" xml:space="preserve"><value>Personal UI settings. They apply only to your account.</value></data>
   <data name="Pref_GridPageSize" xml:space="preserve"><value>Records per grid page</value></data>

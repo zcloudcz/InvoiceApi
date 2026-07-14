@@ -41,8 +41,7 @@
             }
 
             <MudNavGroup Title="@L["Nav_Settings"].Value" Icon="@Icons.Material.Filled.Settings">
-                @* User preferences — personal UI settings, visible for every authenticated user *@
-                <MudNavLink Href="/preferences" Icon="@Icons.Material.Filled.Tune">@L["Nav_Preferences"]</MudNavLink>
+                @* User preferences moved to the AppBar profile menu (avatar + name) *@
                 @* Two-Factor Auth — visible for all authenticated users with invoicing context *@
                 @if (_showInvoicing)
                 {
