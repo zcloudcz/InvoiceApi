@@ -74,6 +74,9 @@
         <MudButton Variant="Variant.Filled" Color="Color.Info" Size="Size.Small"
                    StartIcon="@Icons.Material.Filled.Download" OnClick="BulkDownloadAttachments"
                    Disabled="_bulkProcessing">@L["ReceivedInvoice_DownloadAttachments"]</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Secondary" Size="Size.Small"
+                   StartIcon="@Icons.Material.Filled.Download" OnClick="BulkIsdoc"
+                   Disabled="_bulkProcessing">@L["Bulk_Isdoc"]</MudButton>
         <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="ClearSelection">@L["Bulk_ClearSelection"]</MudButton>
         @if (_bulkProcessing)
         {
@@ -430,6 +433,41 @@
         catch (ApiException)
         {
             Snackbar.Add(L["ReceivedInvoice_NoAttachments"].Value, Severity.Warning);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _bulkProcessing = false;
+        }
+    }
+
+    /// <summary>
+    /// Bulk downloads ISDOC exports for all selected received invoices as one
+    /// ZIP archive. Invoices that fail to export server-side are skipped.
+    /// </summary>
+    private async Task BulkIsdoc()
+    {
+        if (_selectedInvoices.Count == 0) return;
+
+        _bulkProcessing = true;
+        StateHasChanged();
+        try
+        {
+            var zipBytes = await ReceivedInvoiceService.BulkExportIsdocAsync(
+                _selectedInvoices.Select(i => i.Id).Distinct());
+            if (zipBytes != null && zipBytes.Length > 0)
+            {
+                await JS.InvokeVoidAsync("downloadFile",
+                    $"Isdoc_{DateTime.Now:yyyyMMdd}.zip", Convert.ToBase64String(zipBytes), "application/zip");
+                Snackbar.Add(L["Invoice_IsdocDownloaded"].Value, Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add(L["Invoice_IsdocFailed"].Value, Severity.Error);
+            }
         }
         catch (Exception ex)
         {

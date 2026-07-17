@@ -341,6 +341,13 @@ context.InstanceServices       ← Functions Worker scope (kde žije Function cl
    - iText7 `HtmlConverter.ConvertToPdf` → A4 stream.
    - **DŮLEŽITÉ**: `pdfWriter.SetCloseStream(false)` (`PdfExportService.cs:139-177`) — bez toho iText zavře `MemoryStream` při dispose `PdfDocument` a nemůžeš číst bytes.
 3. **ISDOC** (CZ standard pro elektronické faktury): `IIsdocExportService` → XML.
+   `ExportInvoiceAsync` pro vydané faktury, `ExportReceivedInvoiceAsync` pro přijaté
+   (supplier = dodavatel faktury, customer = tenant issuer `Client.IsIssuer = true`;
+   mapper `IsdocMapper.Map(ReceivedInvoice, Client?)` sdílí line/tax/payment buildery
+   s vydanými fakturami). Endpointy: `GET /api/invoice/{id}/isdoc`,
+   `GET /api/invoice/bulk/isdoc?ids=`, `GET /api/received-invoice/{id}/isdoc`,
+   `GET /api/received-invoice/bulk/isdoc?ids=` (bulk = ZIP `.isdoc` souborů,
+   selhané kusy se přeskakují; každý má Functions wrapper).
 4. **Render template** pro tělo emailu: `IContentTemplateService.RenderTemplateAsync` (`ContentTemplateService.cs:235-252`) — placeholdery v subjectu i body.
 5. **SMTP settings — 3-tier resolution** (`EmailService.cs:409-483`):
    1. `CompanySystemSettings.SmtpPasswordEncrypted` (master DB) — per-company SMTP, decrypt přes `ICredentialProtector`.

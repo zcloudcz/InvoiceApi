@@ -24,17 +24,20 @@ public class ReceivedInvoiceController : ControllerBase
     private readonly IReceivedInvoiceService _service;
     private readonly IPaymentMatchingService _paymentMatcher;
     private readonly IFileAttachmentService _fileAttachmentService;
+    private readonly IIsdocExportService _isdocExportService;
     private readonly ILogger<ReceivedInvoiceController> _logger;
 
     public ReceivedInvoiceController(
         IReceivedInvoiceService service,
         IPaymentMatchingService paymentMatcher,
         IFileAttachmentService fileAttachmentService,
+        IIsdocExportService isdocExportService,
         ILogger<ReceivedInvoiceController> logger)
     {
         _service = service;
         _paymentMatcher = paymentMatcher;
         _fileAttachmentService = fileAttachmentService;
+        _isdocExportService = isdocExportService;
         _logger = logger;
     }
 
@@ -222,6 +225,106 @@ public class ReceivedInvoiceController : ControllerBase
         {
             return BadRequest(new { message = ex.Message });
         }
+    }
+
+    // ─── ISDOC export ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Exports the specified received invoice as an ISDOC 6.0.2 XML file.
+    /// The supplier on the document is the invoice's supplier; the customer is
+    /// the tenant's own company. Importable into Pohoda, Money S3, Helios etc.
+    /// </summary>
+    /// <param name="id">Received invoice ID to export</param>
+    /// <param name="ct">Cancellation token</param>
+    /// <response code="200">Returns .isdoc XML file</response>
+    /// <response code="404">Received invoice not found</response>
+    [HttpGet("{id:long}/isdoc")]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> ExportIsdoc(long id, CancellationToken ct = default)
+    {
+        _logger.LogInformation("GET /api/received-invoice/{Id}/isdoc - Generating ISDOC export", id);
+
+        try
+        {
+            var isdocBytes = await _isdocExportService.ExportReceivedInvoiceAsync(id, ct);
+
+            // Fetch the invoice to build a meaningful file name from the supplier's document number
+            var invoice = await _service.GetByIdAsync(id, ct);
+            var fileName = $"ReceivedInvoice_{invoice?.DocumentNumber ?? id.ToString()}.isdoc";
+
+            _logger.LogInformation("ISDOC generated for received invoice {Id}, size: {Size} bytes", id, isdocBytes.Length);
+
+            return File(isdocBytes, "application/xml", fileName);
+        }
+        catch (KeyNotFoundException)
+        {
+            _logger.LogWarning("Received invoice {Id} not found for ISDOC export", id);
+            return NotFound(new { message = $"Received invoice with ID {id} not found" });
+        }
+    }
+
+    /// <summary>
+    /// Generates ISDOC 6.0.2 XML exports for multiple received invoices and
+    /// returns them as a ZIP archive. Invoices that fail to export are silently
+    /// skipped (mirrors the bulk attachment download behavior).
+    /// </summary>
+    /// <param name="ids">Comma-separated list of received invoice IDs.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>ZIP file containing individual .isdoc files</returns>
+    [HttpGet("bulk/isdoc")]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> BulkExportIsdoc(
+        [FromQuery] string ids,
+        CancellationToken ct = default)
+    {
+        // Parse comma-separated IDs and deduplicate (same pattern as bulk attachments)
+        var invoiceIds = (ids ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries)
+            .Select(s => long.TryParse(s.Trim(), out var id) ? id : 0)
+            .Where(id => id > 0)
+            .Distinct()
+            .ToList();
+
+        if (invoiceIds.Count == 0)
+            return BadRequest(new { message = "No valid invoice ids provided." });
+
+        _logger.LogInformation("GET /api/received-invoice/bulk/isdoc - {Count} invoices", invoiceIds.Count);
+
+        // Tenant-scoped lookup for file names: ids from another tenant are absent → skipped.
+        var documentNumbers = await _service.GetDocumentNumbersAsync(invoiceIds, ct);
+
+        var entries = new List<(string EntryName, byte[] Content)>();
+        // Supplier document numbers can collide across suppliers — UniqueEntryName
+        // deduplicates with a numeric suffix.
+        var usedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var invoiceId in invoiceIds)
+        {
+            if (!documentNumbers.TryGetValue(invoiceId, out var documentNumber))
+                continue; // unknown / foreign / deleted id
+
+            try
+            {
+                var isdocBytes = await _isdocExportService.ExportReceivedInvoiceAsync(invoiceId, ct);
+                var fileName = ZipArchiveHelper.SanitizePathSegment(
+                    $"ReceivedInvoice_{documentNumber ?? invoiceId.ToString()}") + ".isdoc";
+
+                entries.Add((ZipArchiveHelper.UniqueEntryName(usedNames, fileName), isdocBytes));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("Bulk ISDOC failed for received invoice {Id}: {Error}", invoiceId, ex.Message);
+                // Skip failed invoices — include only successful ones in the ZIP
+            }
+        }
+
+        if (entries.Count == 0)
+            return NotFound(new { message = "No ISDOC exports could be generated for the selected invoices." });
+
+        var zipBytes = ZipArchiveHelper.CreateZip(entries);
+        return File(zipBytes, "application/zip", $"Isdoc_{DateTime.UtcNow:yyyyMMdd}.zip");
     }
 
     // ─── Payment matching ─────────────────────────────────────────────────

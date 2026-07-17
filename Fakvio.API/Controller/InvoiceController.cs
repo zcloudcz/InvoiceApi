@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Security.Claims;
+using Fakvio.Application.Common.Helpers;
 using Fakvio.Contracts.Common.Pagination;
 using Fakvio.Contracts.Dto.Email;
 using Fakvio.Contracts.Dto.Invoice;
@@ -1239,5 +1240,62 @@ public class InvoiceController : ControllerBase
         zipStream.Position = 0;
         // ZIP archive name — "Documents" is a neutral term covering both invoices and credit notes
         return File(zipStream.ToArray(), "application/zip", $"Documents_{DateTime.UtcNow:yyyyMMdd}.zip");
+    }
+
+    /// <summary>
+    /// Generates ISDOC 6.0.2 XML exports for multiple invoices and returns them
+    /// as a ZIP archive. Useful for bulk handover to accounting software
+    /// (Pohoda, Money S3, Helios).
+    /// Invoices that fail to export (e.g. deleted) are silently skipped —
+    /// mirrors the bulk PDF export behavior.
+    /// </summary>
+    /// <param name="ids">Comma-separated list of invoice IDs</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>ZIP file containing individual .isdoc files</returns>
+    [HttpGet("bulk/isdoc")]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    public async Task<IActionResult> BulkExportIsdoc(
+        [FromQuery] string ids,
+        CancellationToken cancellationToken = default)
+    {
+        // Parse comma-separated IDs and deduplicate to prevent duplicate entries in the ZIP
+        var invoiceIds = ids.Split(',', StringSplitOptions.RemoveEmptyEntries)
+            .Select(s => long.TryParse(s.Trim(), out var id) ? id : 0)
+            .Where(id => id > 0)
+            .Distinct()
+            .ToList();
+
+        _logger.LogInformation("GET /api/invoice/bulk/isdoc - {Count} invoices", invoiceIds.Count);
+
+        var entries = new List<(string EntryName, byte[] Content)>();
+        // Entry names must be unique within the ZIP — document numbers should be
+        // unique per tenant, but UniqueEntryName guards against edge cases.
+        var usedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var id in invoiceIds)
+        {
+            try
+            {
+                var isdocBytes = await _isdocExportService.ExportInvoiceAsync(id, cancellationToken);
+                var invoice = await _invoiceService.GetInvoiceByIdAsync(id, cancellationToken);
+                // Use document type prefix — "Invoice" for invoices, "CreditNote" for credit notes
+                var prefix = invoice?.DocumentType == EDocumentType.CreditNote ? "CreditNote" : "Invoice";
+                var fileName = ZipArchiveHelper.SanitizePathSegment(
+                    $"{prefix}_{invoice?.DocumentNumber ?? id.ToString()}") + ".isdoc";
+
+                entries.Add((ZipArchiveHelper.UniqueEntryName(usedNames, fileName), isdocBytes));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("Bulk ISDOC failed for invoice {Id}: {Error}", id, ex.Message);
+                // Skip failed invoices — include only successful ones in the ZIP
+            }
+        }
+
+        if (entries.Count == 0)
+            return NotFound(new { message = "No ISDOC exports could be generated for the selected invoices." });
+
+        var zipBytes = ZipArchiveHelper.CreateZip(entries);
+        return File(zipBytes, "application/zip", $"Isdoc_{DateTime.UtcNow:yyyyMMdd}.zip");
     }
 }

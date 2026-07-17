@@ -73,6 +73,50 @@ public class IsdocExportService : IIsdocExportService
         return SerialiseToBytes(document);
     }
 
+    /// <inheritdoc />
+    public async Task<byte[]> ExportReceivedInvoiceAsync(long receivedInvoiceId, CancellationToken ct = default)
+    {
+        _logger.LogInformation("Starting ISDOC export for received invoice {ReceivedInvoiceId}", receivedInvoiceId);
+
+        // Same loading strategy as issued invoices: read-only, split query,
+        // soft-deleted documents excluded.
+        var invoice = await _db.ReceivedInvoice
+            .AsNoTracking()
+            .AsSplitQuery()
+            .Where(i => i.Status != EReceivedInvoiceStatus.Deleted)
+            .Include(i => i.Currency)
+            .Include(i => i.Items)
+            .Include(i => i.Supplier)
+                .ThenInclude(c => c!.Address)
+            .Include(i => i.Supplier)
+                .ThenInclude(c => c!.Contact)
+            .FirstOrDefaultAsync(i => i.Id == receivedInvoiceId, ct);
+
+        if (invoice == null)
+        {
+            _logger.LogError("Received invoice {ReceivedInvoiceId} not found for ISDOC export", receivedInvoiceId);
+            throw new KeyNotFoundException($"Received invoice {receivedInvoiceId} not found.");
+        }
+
+        // The customer party on a received invoice is the tenant's own company.
+        // There is exactly one issuer record per tenant DB (IsIssuer = true);
+        // when missing (misconfigured tenant) we still export with an empty party.
+        var ourCompany = await _db.Client
+            .AsNoTracking()
+            .Include(c => c.Address)
+            .Include(c => c.Contact)
+            .FirstOrDefaultAsync(c => c.IsIssuer, ct);
+
+        if (ourCompany == null)
+            _logger.LogWarning(
+                "No issuer client (IsIssuer = true) found — ISDOC customer party for received invoice {ReceivedInvoiceId} will be empty",
+                receivedInvoiceId);
+
+        var document = IsdocMapper.Map(invoice, ourCompany);
+        ValidateAgainstSchema(document, receivedInvoiceId);
+        return SerialiseToBytes(document);
+    }
+
     // --------------------------------------------------------------------------
     // XSD validation (non-blocking: warns but does not throw)
     // --------------------------------------------------------------------------

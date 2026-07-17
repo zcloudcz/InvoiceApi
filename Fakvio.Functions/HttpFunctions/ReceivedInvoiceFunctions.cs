@@ -266,4 +266,40 @@ public class ReceivedInvoiceFunctions
         var ids = req.Query["ids"].ToString();
         return FunctionResultHelper.Normalize(await _controller.BulkDownloadAttachments(ids, ct));
     }
+
+    /// <summary>
+    /// GET api/received-invoice/{id}/isdoc → ReceivedInvoiceController.ExportIsdoc
+    /// Generates an ISDOC 6.0.2 XML export of one received invoice.
+    /// </summary>
+    [Function("ReceivedInvoice_ExportIsdoc")]
+    public async Task<IActionResult> ReceivedInvoice_ExportIsdoc(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/received-invoice/{id:long}/isdoc")] HttpRequest req,
+        long id)
+    {
+        _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
+
+        if (req.HttpContext.User.Identity?.IsAuthenticated != true)
+            return new UnauthorizedResult();
+
+        var ct = req.HttpContext.RequestAborted;
+        return FunctionResultHelper.Normalize(await _controller.ExportIsdoc(id, ct));
+    }
+
+    /// <summary>
+    /// GET api/received-invoice/bulk/isdoc → ReceivedInvoiceController.BulkExportIsdoc
+    /// Generates ISDOC exports for multiple received invoices as one ZIP archive.
+    /// </summary>
+    [Function("ReceivedInvoice_BulkExportIsdoc")]
+    public async Task<IActionResult> ReceivedInvoice_BulkExportIsdoc(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/received-invoice/bulk/isdoc")] HttpRequest req)
+    {
+        _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
+
+        if (req.HttpContext.User.Identity?.IsAuthenticated != true)
+            return new UnauthorizedResult();
+
+        var ct = req.HttpContext.RequestAborted;
+        var ids = req.Query["ids"].ToString();
+        return FunctionResultHelper.Normalize(await _controller.BulkExportIsdoc(ids, ct));
+    }
 }

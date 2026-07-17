@@ -145,6 +145,24 @@ public class ReceivedInvoiceApiService : ApiClientBase
         return await GetBytesAsync($"/api/received-invoice/bulk/attachments?ids={string.Join(',', ids)}");
     }
 
+    /// <summary>
+    /// Downloads the received invoice as an ISDOC 6.0.2 XML byte array.
+    /// ISDOC is the Czech electronic invoice standard importable by Pohoda, Money S3, Helios.
+    /// </summary>
+    public async Task<byte[]?> ExportIsdocAsync(long id)
+    {
+        return await GetBytesAsync($"/api/received-invoice/{id}/isdoc");
+    }
+
+    /// <summary>
+    /// Downloads a ZIP archive containing ISDOC exports for multiple received invoices.
+    /// Returns the ZIP as a byte array for client-side download via JS interop.
+    /// </summary>
+    public async Task<byte[]?> BulkExportIsdocAsync(IEnumerable<long> ids)
+    {
+        return await GetBytesAsync($"/api/received-invoice/bulk/isdoc?ids={string.Join(',', ids)}");
+    }
+
     // ─── Payment matching ────────────────────────────────────────────────────
 
     /// <summary>

@@ -577,6 +577,28 @@ public class InvoiceFunctions
         return FunctionResultHelper.Normalize(await _controller.BulkExportPdf(ids, cancellationToken));
     }
 
+    /// <summary>
+    /// GET api/invoice/bulk/isdoc → InvoiceController.BulkExportIsdoc
+    /// Generates ISDOC exports for multiple invoices as one ZIP archive.
+    /// </summary>
+    [Function("Invoice_BulkExportIsdoc")]
+    public async Task<IActionResult> Invoice_BulkExportIsdoc(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/invoice/bulk/isdoc")] HttpRequest req)
+    {
+        // Wire up the controller's HttpContext so it can access User claims, Request, etc.
+        _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
+
+        // Authorization check: [Authorize]
+        if (req.HttpContext.User.Identity?.IsAuthenticated != true)
+            return new UnauthorizedResult();
+
+        string ids = req.Query["ids"].ToString() ?? "";
+        var cancellationToken = req.HttpContext.RequestAborted;
+
+        // Call the controller action and normalize the response
+        return FunctionResultHelper.Normalize(await _controller.BulkExportIsdoc(ids, cancellationToken));
+    }
+
     [Function("Invoice_RestoreInvoice")]
     public async Task<IActionResult> Invoice_RestoreInvoice(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/invoice/{id:long}/restore")] HttpRequest req, long id)

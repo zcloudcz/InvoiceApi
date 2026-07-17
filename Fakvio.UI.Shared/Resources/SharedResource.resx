@@ -950,6 +950,7 @@
   <data name="Bulk_Delete" xml:space="preserve"><value>Smazat</value></data>
   <data name="Bulk_Email" xml:space="preserve"><value>Odeslat e-mailem</value></data>
   <data name="Bulk_Pdf" xml:space="preserve"><value>Stáhnout PDF</value></data>
+  <data name="Bulk_Isdoc" xml:space="preserve"><value>Stáhnout ISDOC</value></data>
   <data name="Bulk_ClearSelection" xml:space="preserve"><value>Zrušit výběr</value></data>
   <data name="Bulk_ConfirmTitle" xml:space="preserve"><value>Potvrzení hromadné akce</value></data>
   <data name="Bulk_ConfirmIssue" xml:space="preserve"><value>Opravdu chcete vystavit {0} fakturu/faktur?</value></data>

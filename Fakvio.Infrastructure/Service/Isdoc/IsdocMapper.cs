@@ -36,6 +36,23 @@ internal static class IsdocMapper
         return new XDocument(new XDeclaration("1.0", "UTF-8", null), root);
     }
 
+    /// <summary>
+    /// Maps a ReceivedInvoice entity to a fully-formed ISDOC 6.0.2 XDocument.
+    /// The supplier party is the invoice's supplier; the customer party is the
+    /// tenant's own company (<paramref name="customer"/>, Client with IsIssuer = true).
+    /// ISDOC itself has no incoming/outgoing distinction — the direction is implied
+    /// by the parties, so accounting software imports this as a received invoice.
+    /// </summary>
+    internal static XDocument Map(ReceivedInvoice invoice, Client? customer)
+    {
+        var root = new XElement(Ns + "Invoice",
+            new XAttribute("version", IsdocVersion));
+
+        root.Add(MapReceivedHeader(invoice, customer));
+
+        return new XDocument(new XDeclaration("1.0", "UTF-8", null), root);
+    }
+
     // --------------------------------------------------------------------------
     // Header (top-level InvoiceType children in XSD sequence order)
     // --------------------------------------------------------------------------
@@ -47,9 +64,10 @@ internal static class IsdocMapper
         var docType = invoice.DocumentType == EDocumentType.CreditNote ? "5" : "1";
 
         // --- Identification block ---
+        var uuid = DeterministicUuid($"fakvio-invoice-{invoice.Id}");
         yield return new XElement(Ns + "DocumentType", docType);
-        yield return new XElement(Ns + "ID", invoice.DocumentNumber ?? DeterministicUuid(invoice.Id));
-        yield return new XElement(Ns + "UUID", DeterministicUuid(invoice.Id));
+        yield return new XElement(Ns + "ID", invoice.DocumentNumber ?? uuid);
+        yield return new XElement(Ns + "UUID", uuid);
         yield return new XElement(Ns + "IssuingSystem", "Fakvio");
 
         // --- Date block ---
@@ -98,10 +116,75 @@ internal static class IsdocMapper
     }
 
     // --------------------------------------------------------------------------
+    // Header — received (incoming) invoice
+    // --------------------------------------------------------------------------
+
+    private static IEnumerable<object> MapReceivedHeader(ReceivedInvoice invoice, Client? customer)
+    {
+        var currencyCode = invoice.Currency?.Code ?? "CZK";
+        var isCzk = currencyCode.Equals("CZK", StringComparison.OrdinalIgnoreCase);
+
+        // --- Identification block ---
+        // Received documents are always regular invoices ("1") — credit notes
+        // from suppliers are not tracked as a separate document type.
+        // The UUID name is prefixed differently from issued invoices so the two
+        // ID sequences can never produce the same UUID.
+        var uuid = DeterministicUuid($"fakvio-received-invoice-{invoice.Id}");
+        yield return new XElement(Ns + "DocumentType", "1");
+        yield return new XElement(Ns + "ID", invoice.DocumentNumber ?? uuid);
+        yield return new XElement(Ns + "UUID", uuid);
+        yield return new XElement(Ns + "IssuingSystem", "Fakvio");
+
+        // --- Date block ---
+        yield return new XElement(Ns + "IssueDate", FormatDate(invoice.IssueDate));
+        if (invoice.TaxableSupplyDate.HasValue)
+            yield return new XElement(Ns + "TaxPointDate", FormatDate(invoice.TaxableSupplyDate));
+
+        // --- VATApplicable (required) — the document issuer is the supplier ---
+        yield return new XElement(Ns + "VATApplicable",
+            (invoice.Supplier?.IsVatPayer == true).ToString().ToLowerInvariant());
+
+        // --- ElectronicPossibilityAgreementReference (required) ---
+        yield return new XElement(Ns + "ElectronicPossibilityAgreementReference",
+            "Electronic invoice");
+
+        // --- Note (optional, max 1 in official XSD) ---
+        var noteParts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(invoice.Notes))
+            noteParts.Add(invoice.Notes);
+        if (!isCzk)
+            noteParts.Add(ForeignCurrencyNote);
+        if (noteParts.Count > 0)
+            yield return new XElement(Ns + "Note", string.Join(" | ", noteParts));
+
+        // --- Currency block (CurrRate and RefCurrRate are required) ---
+        yield return new XElement(Ns + "LocalCurrencyCode", "CZK");
+        if (!isCzk)
+            yield return new XElement(Ns + "ForeignCurrencyCode", currencyCode);
+        yield return new XElement(Ns + "CurrRate", FormatDecimal(1));
+        yield return new XElement(Ns + "RefCurrRate", FormatDecimal(1));
+
+        // --- Parties — supplier issued the document, our company receives it ---
+        yield return MapSupplierParty(invoice.Supplier);
+        yield return MapCustomerParty(customer);
+
+        // --- Lines (wrapped in InvoiceLines container) ---
+        yield return new XElement(Ns + "InvoiceLines", MapReceivedInvoiceLines(invoice));
+
+        // --- Totals ---
+        yield return MapReceivedTaxTotal(invoice);
+        yield return BuildLegalMonetaryTotal(invoice.TotalBeforeVat, invoice.TotalWithVat);
+
+        // --- Payment ---
+        var paymentMeans = MapReceivedPaymentMeans(invoice);
+        if (paymentMeans != null) yield return paymentMeans;
+    }
+
+    // --------------------------------------------------------------------------
     // Parties
     // --------------------------------------------------------------------------
 
-    private static XElement MapSupplierParty(Client issuer) =>
+    private static XElement MapSupplierParty(Client? issuer) =>
         new(Ns + "AccountingSupplierParty",
             new XElement(Ns + "Party", BuildPartyElements(issuer)));
 
@@ -111,7 +194,10 @@ internal static class IsdocMapper
 
     private static IEnumerable<object> BuildPartyElements(Client? client)
     {
-        if (client == null) yield break;
+        // A missing party (e.g. misconfigured tenant without an issuer record)
+        // must still emit the XSD-required skeleton — an empty <Party> element
+        // is schema-invalid and would be rejected by importing software.
+        client ??= new Client();
 
         // PartyIdentification (required) -- holds ICO
         yield return new XElement(Ns + "PartyIdentification",
@@ -197,29 +283,61 @@ internal static class IsdocMapper
             var vatAmount = item.IsTextRow ? 0m : item.VatAmount;
             var unitPrice = item.IsTextRow ? 0m : item.UnitPrice;
             var vatRate = item.IsTextRow ? 0m : item.VatRatePercentage;
-            var unitPriceTaxInclusive = unitPrice * (1 + vatRate / 100m);
-
-            yield return new XElement(Ns + "InvoiceLine",
-                new XElement(Ns + "ID", lineId),
-                new XElement(Ns + "InvoicedQuantity",
-                    new XAttribute("unitCode", item.Unit ?? "H87"),
-                    FormatDecimal(quantity)),
-                new XElement(Ns + "LineExtensionAmount",
-                    FormatDecimal(totalBeforeVat)),
-                new XElement(Ns + "LineExtensionAmountTaxInclusive",
-                    FormatDecimal(totalWithVat)),
-                new XElement(Ns + "LineExtensionTaxAmount",
-                    FormatDecimal(vatAmount)),
-                new XElement(Ns + "UnitPrice",
-                    FormatDecimal(unitPrice)),
-                new XElement(Ns + "UnitPriceTaxInclusive",
-                    FormatDecimal(unitPriceTaxInclusive)),
-                new XElement(Ns + "ClassifiedTaxCategory",
-                    new XElement(Ns + "Percent", FormatDecimal(vatRate)),
-                    new XElement(Ns + "VATCalculationMethod", "0")),
-                new XElement(Ns + "Item",
-                    new XElement(Ns + "Description", item.Description ?? string.Empty)));
+            yield return BuildInvoiceLine(lineId, item.Unit ?? "H87", quantity,
+                totalBeforeVat, totalWithVat, vatAmount, unitPrice, vatRate,
+                item.Description ?? string.Empty);
         }
+    }
+
+    private static IEnumerable<XElement> MapReceivedInvoiceLines(ReceivedInvoice invoice)
+    {
+        var items = invoice.Items?
+            .OrderBy(i => i.OrderIndex)
+            .ToList() ?? new List<ReceivedInvoiceItem>();
+
+        for (int i = 0; i < items.Count; i++)
+        {
+            var item = items[i];
+            var lineId = (i + 1).ToString(CultureInfo.InvariantCulture);
+
+            // ReceivedInvoiceItem has no text rows — every item carries amounts.
+            yield return BuildInvoiceLine(lineId, item.Unit, item.Quantity,
+                item.TotalBeforeVat, item.TotalWithVat, item.VatAmount,
+                item.UnitPrice, item.VatRatePercentage, item.Description);
+        }
+    }
+
+    /// <summary>
+    /// Builds one InvoiceLine element in the official XSD sequence order.
+    /// Shared by issued and received invoice mapping — the line structure is identical.
+    /// </summary>
+    private static XElement BuildInvoiceLine(
+        string lineId, string unit, decimal quantity,
+        decimal totalBeforeVat, decimal totalWithVat, decimal vatAmount,
+        decimal unitPrice, decimal vatRate, string description)
+    {
+        var unitPriceTaxInclusive = unitPrice * (1 + vatRate / 100m);
+
+        return new XElement(Ns + "InvoiceLine",
+            new XElement(Ns + "ID", lineId),
+            new XElement(Ns + "InvoicedQuantity",
+                new XAttribute("unitCode", unit),
+                FormatDecimal(quantity)),
+            new XElement(Ns + "LineExtensionAmount",
+                FormatDecimal(totalBeforeVat)),
+            new XElement(Ns + "LineExtensionAmountTaxInclusive",
+                FormatDecimal(totalWithVat)),
+            new XElement(Ns + "LineExtensionTaxAmount",
+                FormatDecimal(vatAmount)),
+            new XElement(Ns + "UnitPrice",
+                FormatDecimal(unitPrice)),
+            new XElement(Ns + "UnitPriceTaxInclusive",
+                FormatDecimal(unitPriceTaxInclusive)),
+            new XElement(Ns + "ClassifiedTaxCategory",
+                new XElement(Ns + "Percent", FormatDecimal(vatRate)),
+                new XElement(Ns + "VATCalculationMethod", "0")),
+            new XElement(Ns + "Item",
+                new XElement(Ns + "Description", description)));
     }
 
     // --------------------------------------------------------------------------
@@ -228,23 +346,42 @@ internal static class IsdocMapper
 
     private static XElement MapTaxTotal(Invoice invoice)
     {
-        // Official XSD TaxTotalType: TaxSubTotal(1..n) -> TaxAmountCurr? -> TaxAmount
         var taxGroups = (invoice.InvoiceItem ?? Enumerable.Empty<InvoiceItem>())
             .Where(i => !i.IsTextRow)
             .GroupBy(i => i.VatRatePercentage)
-            .Select(g => new
-            {
-                Rate = g.Key,
-                TaxableAmount = g.Sum(x => x.TotalBeforeVat),
-                TaxAmount = g.Sum(x => x.VatAmount),
-                TaxInclusiveAmount = g.Sum(x => x.TotalWithVat)
-            })
-            .OrderByDescending(g => g.Rate)
-            .ToList();
+            .Select(g => (
+                Rate: g.Key,
+                TaxableAmount: g.Sum(x => x.TotalBeforeVat),
+                TaxAmount: g.Sum(x => x.VatAmount),
+                TaxInclusiveAmount: g.Sum(x => x.TotalWithVat)));
 
+        return BuildTaxTotal(taxGroups, invoice.TotalVat);
+    }
+
+    private static XElement MapReceivedTaxTotal(ReceivedInvoice invoice)
+    {
+        var taxGroups = (invoice.Items ?? Enumerable.Empty<ReceivedInvoiceItem>())
+            .GroupBy(i => i.VatRatePercentage)
+            .Select(g => (
+                Rate: g.Key,
+                TaxableAmount: g.Sum(x => x.TotalBeforeVat),
+                TaxAmount: g.Sum(x => x.VatAmount),
+                TaxInclusiveAmount: g.Sum(x => x.TotalWithVat)));
+
+        return BuildTaxTotal(taxGroups, invoice.TotalVat);
+    }
+
+    /// <summary>
+    /// Builds the TaxTotal element from per-VAT-rate groups.
+    /// Official XSD TaxTotalType: TaxSubTotal(1..n) -> TaxAmountCurr? -> TaxAmount.
+    /// </summary>
+    private static XElement BuildTaxTotal(
+        IEnumerable<(decimal Rate, decimal TaxableAmount, decimal TaxAmount, decimal TaxInclusiveAmount)> taxGroups,
+        decimal totalVat)
+    {
         var taxTotalEl = new XElement(Ns + "TaxTotal");
 
-        foreach (var group in taxGroups)
+        foreach (var group in taxGroups.OrderByDescending(g => g.Rate))
         {
             // Official TaxSubTotalType has many required elements for advance-payment
             // scenarios. For standard invoices: AlreadyClaimed* = 0, Difference* = actual.
@@ -264,7 +401,7 @@ internal static class IsdocMapper
         }
 
         // TaxAmount at the end
-        taxTotalEl.Add(new XElement(Ns + "TaxAmount", FormatDecimal(invoice.TotalVat)));
+        taxTotalEl.Add(new XElement(Ns + "TaxAmount", FormatDecimal(totalVat)));
 
         return taxTotalEl;
     }
@@ -274,18 +411,24 @@ internal static class IsdocMapper
     // --------------------------------------------------------------------------
 
     private static XElement MapLegalMonetaryTotal(Invoice invoice)
+        => BuildLegalMonetaryTotal(invoice.TotalBeforeVat, invoice.TotalWithVat);
+
+    /// <summary>
+    /// Builds the LegalMonetaryTotal element. Shared by issued and received invoices.
+    /// Official XSD LegalMonetaryTotalType: many required elements for advance-payment.
+    /// For standard invoices: AlreadyClaimed* = 0, Difference* = actual, PaidDeposits = 0.
+    /// </summary>
+    private static XElement BuildLegalMonetaryTotal(decimal totalBeforeVat, decimal totalWithVat)
     {
-        // Official XSD LegalMonetaryTotalType: many required elements for advance-payment.
-        // For standard invoices: AlreadyClaimed* = 0, Difference* = actual, PaidDeposits = 0.
         return new XElement(Ns + "LegalMonetaryTotal",
-            new XElement(Ns + "TaxExclusiveAmount",                  FormatDecimal(invoice.TotalBeforeVat)),
-            new XElement(Ns + "TaxInclusiveAmount",                  FormatDecimal(invoice.TotalWithVat)),
+            new XElement(Ns + "TaxExclusiveAmount",                  FormatDecimal(totalBeforeVat)),
+            new XElement(Ns + "TaxInclusiveAmount",                  FormatDecimal(totalWithVat)),
             new XElement(Ns + "AlreadyClaimedTaxExclusiveAmount",    FormatDecimal(0)),
             new XElement(Ns + "AlreadyClaimedTaxInclusiveAmount",    FormatDecimal(0)),
-            new XElement(Ns + "DifferenceTaxExclusiveAmount",        FormatDecimal(invoice.TotalBeforeVat)),
-            new XElement(Ns + "DifferenceTaxInclusiveAmount",        FormatDecimal(invoice.TotalWithVat)),
+            new XElement(Ns + "DifferenceTaxExclusiveAmount",        FormatDecimal(totalBeforeVat)),
+            new XElement(Ns + "DifferenceTaxInclusiveAmount",        FormatDecimal(totalWithVat)),
             new XElement(Ns + "PaidDepositsAmount",                  FormatDecimal(0)),
-            new XElement(Ns + "PayableAmount",                       FormatDecimal(invoice.TotalWithVat)));
+            new XElement(Ns + "PayableAmount",                       FormatDecimal(totalWithVat)));
     }
 
     // --------------------------------------------------------------------------
@@ -293,22 +436,44 @@ internal static class IsdocMapper
     // --------------------------------------------------------------------------
 
     private static XElement? MapPaymentMeans(Invoice invoice)
+        => BuildPaymentMeans(invoice.PaymentMethod, invoice.TotalWithVat, invoice.DueDate,
+            invoice.BankAccountNumber, invoice.IBAN, invoice.SWIFT,
+            invoice.VariableSymbol, invoice.ConstantSymbol, invoice.SpecificSymbol);
+
+    private static XElement? MapReceivedPaymentMeans(ReceivedInvoice invoice)
+        // ReceivedInvoice stores only the variable symbol — constant/specific symbols
+        // are not captured for incoming documents.
+        => BuildPaymentMeans(invoice.PaymentMethod, invoice.TotalWithVat, invoice.DueDate,
+            invoice.BankAccountNumber, invoice.IBAN, invoice.SWIFT,
+            invoice.VariableSymbol, constantSymbol: null, specificSymbol: null);
+
+    /// <summary>
+    /// Builds the PaymentMeans element. Shared by issued and received invoices.
+    /// Official XSD PaymentType: PaidAmount (required) -> PaymentMeansCode -> Details?
+    /// </summary>
+    private static XElement? BuildPaymentMeans(
+        EPaymentMethod? paymentMethod, decimal paidAmount, DateTime? dueDate,
+        string? bankAccountNumber, string? iban, string? swift,
+        string? variableSymbol, string? constantSymbol, string? specificSymbol)
     {
-        if (!invoice.PaymentMethod.HasValue) return null;
+        if (!paymentMethod.HasValue) return null;
 
-        // Official XSD PaymentType: PaidAmount (required) -> PaymentMeansCode -> Details?
         var payment = new XElement(Ns + "Payment",
-            new XElement(Ns + "PaidAmount", FormatDecimal(invoice.TotalWithVat)),
+            new XElement(Ns + "PaidAmount", FormatDecimal(paidAmount)),
             new XElement(Ns + "PaymentMeansCode",
-                MapPaymentMeansCode(invoice.PaymentMethod.Value)));
+                MapPaymentMeansCode(paymentMethod.Value)));
 
-        var details = BuildPaymentDetails(invoice);
+        var details = BuildPaymentDetails(paymentMethod, dueDate,
+            bankAccountNumber, iban, swift, variableSymbol, constantSymbol, specificSymbol);
         if (details != null) payment.Add(details);
 
         return new XElement(Ns + "PaymentMeans", payment);
     }
 
-    private static XElement? BuildPaymentDetails(Invoice invoice)
+    private static XElement? BuildPaymentDetails(
+        EPaymentMethod? paymentMethod, DateTime? dueDate,
+        string? bankAccountNumber, string? iban, string? swift,
+        string? variableSymbol, string? constantSymbol, string? specificSymbol)
     {
         // Official XSD DetailsType uses xs:choice:
         //   1) Cash: DocumentID + IssueDate
@@ -316,27 +481,27 @@ internal static class IsdocMapper
         // For bank transfer, we need at minimum PaymentDueDate + BankAccount group.
         // All BankAccount elements are required (no minOccurs=0).
 
-        var isBankTransfer = invoice.PaymentMethod == EPaymentMethod.BankTransfer;
+        var isBankTransfer = paymentMethod == EPaymentMethod.BankTransfer;
 
-        if (isBankTransfer && invoice.DueDate.HasValue)
+        if (isBankTransfer && dueDate.HasValue)
         {
             // Parse CZ bank account format "number/bankcode"
-            var (accountNumber, bankCode) = ParseBankAccount(invoice.BankAccountNumber);
+            var (accountNumber, bankCode) = ParseBankAccount(bankAccountNumber);
 
             var el = new XElement(Ns + "Details",
-                new XElement(Ns + "PaymentDueDate", FormatDate(invoice.DueDate)),
+                new XElement(Ns + "PaymentDueDate", FormatDate(dueDate)),
                 new XElement(Ns + "ID", accountNumber),
                 new XElement(Ns + "BankCode", bankCode),
                 new XElement(Ns + "Name", string.Empty),
-                new XElement(Ns + "IBAN", invoice.IBAN ?? string.Empty),
-                new XElement(Ns + "BIC", invoice.SWIFT ?? string.Empty));
+                new XElement(Ns + "IBAN", iban ?? string.Empty),
+                new XElement(Ns + "BIC", swift ?? string.Empty));
 
-            if (!string.IsNullOrWhiteSpace(invoice.VariableSymbol))
-                el.Add(new XElement(Ns + "VariableSymbol", invoice.VariableSymbol));
-            if (!string.IsNullOrWhiteSpace(invoice.ConstantSymbol))
-                el.Add(new XElement(Ns + "ConstantSymbol", invoice.ConstantSymbol));
-            if (!string.IsNullOrWhiteSpace(invoice.SpecificSymbol))
-                el.Add(new XElement(Ns + "SpecificSymbol", invoice.SpecificSymbol));
+            if (!string.IsNullOrWhiteSpace(variableSymbol))
+                el.Add(new XElement(Ns + "VariableSymbol", variableSymbol));
+            if (!string.IsNullOrWhiteSpace(constantSymbol))
+                el.Add(new XElement(Ns + "ConstantSymbol", constantSymbol));
+            if (!string.IsNullOrWhiteSpace(specificSymbol))
+                el.Add(new XElement(Ns + "SpecificSymbol", specificSymbol));
 
             return el;
         }
@@ -398,13 +563,14 @@ internal static class IsdocMapper
         => string.IsNullOrWhiteSpace(value) ? null : new XElement(name, value);
 
     /// <summary>
-    /// Generates a deterministic UUID v5 (SHA-1, RFC 4122 DNS namespace).
+    /// Generates a deterministic UUID v5 (SHA-1, RFC 4122 DNS namespace)
+    /// from the given name, e.g. "fakvio-invoice-42" or "fakvio-received-invoice-42".
     /// </summary>
-    private static string DeterministicUuid(long invoiceId)
+    private static string DeterministicUuid(string name)
     {
         byte[] ns = [0x6b, 0xa7, 0xb8, 0x10, 0x9d, 0xad, 0x11, 0xd1,
                      0x80, 0xb4, 0x00, 0xc0, 0x4f, 0xd4, 0x30, 0xc8];
-        var nameBytes = Encoding.UTF8.GetBytes($"fakvio-invoice-{invoiceId}");
+        var nameBytes = Encoding.UTF8.GetBytes(name);
         var combined = ns.Concat(nameBytes).ToArray();
         var hash = SHA1.HashData(combined);
         var uuid = hash.Take(16).ToArray();

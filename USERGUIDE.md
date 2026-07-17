@@ -175,6 +175,8 @@ Grid zobrazuje vydané faktury s těmito sloupci:
 
 Dostupný z detailu faktury — viz příslušné tlačítko. ISDOC je český standard pro elektronické faktury.
 
+**Hromadný ISDOC export:** zaškrtněte faktury → toolbar → „Stáhnout ISDOC" → stáhne se ZIP archiv s `.isdoc` soubory. Koncepty (Draft) se přeskakují — nevydaná faktura nemá právně platný ISDOC.
+
 ### 2.9 Odeslání emailem
 
 - Z gridu: ikona emailu → dialog „Odeslat fakturu"
@@ -369,6 +371,17 @@ Sloupec **Přílohy** v gridu zobrazuje počet příloh faktury a tlačítko sta
 **Hromadné stažení:** označte faktury zaškrtávátky → v panelu hromadných akcí
 klikněte na „Stáhnout přílohy". Stáhne se jeden ZIP se složkou pro každou
 fakturu (pojmenovanou podle čísla dokladu). Faktury bez příloh se přeskočí.
+
+### Export ISDOC
+
+Přijatou fakturu lze exportovat do formátu ISDOC (český standard elektronické
+fakturace — import do Pohody, Money S3, Helios apod.):
+
+- **Z detailu faktury:** tlačítko „Stáhnout ISDOC" v horní liště. Dodavatelem
+  dokumentu je dodavatel faktury, odběratelem vaše firma.
+- **Hromadně:** označte faktury zaškrtávátky → v panelu hromadných akcí
+  „Stáhnout ISDOC" → stáhne se jeden ZIP s `.isdoc` soubory pojmenovanými
+  podle čísel dokladů.
 
 ### Přehled DPH z přijatých faktur
 

@@ -319,6 +319,16 @@ public class FakvioService : ApiClientBase
     }
 
     /// <summary>
+    /// Downloads a ZIP archive containing ISDOC exports for multiple invoices.
+    /// Returns the ZIP as a byte array for client-side download via JS interop.
+    /// </summary>
+    public async Task<byte[]?> BulkExportIsdocAsync(List<long> invoiceIds)
+    {
+        var idsParam = string.Join(",", invoiceIds);
+        return await GetBytesAsync($"/api/invoice/bulk/isdoc?ids={idsParam}");
+    }
+
+    /// <summary>
     /// Downloads a ZIP archive containing PDFs for multiple invoices.
     /// Returns the ZIP as a byte array for client-side download via JS interop.
     /// </summary>

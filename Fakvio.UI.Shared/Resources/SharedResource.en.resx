@@ -950,6 +950,7 @@
   <data name="Bulk_Delete" xml:space="preserve"><value>Delete</value></data>
   <data name="Bulk_Email" xml:space="preserve"><value>Send Email</value></data>
   <data name="Bulk_Pdf" xml:space="preserve"><value>Download PDF</value></data>
+  <data name="Bulk_Isdoc" xml:space="preserve"><value>Download ISDOC</value></data>
   <data name="Bulk_ClearSelection" xml:space="preserve"><value>Clear Selection</value></data>
   <data name="Bulk_ConfirmTitle" xml:space="preserve"><value>Confirm Bulk Action</value></data>
   <data name="Bulk_ConfirmIssue" xml:space="preserve"><value>Are you sure you want to issue {0} invoice(s)?</value></data>

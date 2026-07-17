@@ -41,6 +41,10 @@
         }
         else if (_invoice is not null)
         {
+            @* ISDOC export — received documents are already final, no status restriction *@
+            <MudButton Variant="Variant.Outlined" Color="Color.Secondary"
+                       StartIcon="@Icons.Material.Filled.Download"
+                       OnClick="DownloadIsdoc">@L["Btn_ExportIsdoc"]</MudButton>
             @if (_invoice.Status == EReceivedInvoiceStatus.Received || _invoice.Status == EReceivedInvoiceStatus.Approved)
             {
                 <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Edit" OnClick="EnableEditing">@L["Common_Edit"]</MudButton>
@@ -494,6 +498,32 @@ else
             Snackbar.Add(L["Invoice_MarkedAsPaid"].Value, Severity.Success);
             await LoadInvoice();
         }
+    }
+
+    /// <summary>
+    /// Downloads the received invoice as an ISDOC 6.0.2 XML file via JS interop.
+    /// ISDOC is the Czech electronic invoice standard (importable in Pohoda, Money S3, Helios, etc.).
+    /// </summary>
+    private async Task DownloadIsdoc()
+    {
+        if (_invoice == null) return;
+        try
+        {
+            var isdocBytes = await ReceivedInvoiceService.ExportIsdocAsync(Id);
+            if (isdocBytes != null && isdocBytes.Length > 0)
+            {
+                var base64 = Convert.ToBase64String(isdocBytes);
+                // File name matches the supplier's document number so the user can identify the file easily.
+                var fileName = $"{_invoice.DocumentNumber ?? Id.ToString()}.isdoc";
+                await JS.InvokeVoidAsync("downloadFile", fileName, base64, "application/xml");
+                Snackbar.Add(L["Invoice_IsdocDownloaded"].Value, Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add(L["Invoice_IsdocFailed"].Value, Severity.Error);
+            }
+        }
+        catch (Exception ex) { Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error); }
     }
 
     private void OnSupplierChanged(long? value)

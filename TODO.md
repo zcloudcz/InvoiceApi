@@ -148,6 +148,20 @@ Current state: `PdfExportService` renders the entire HTML template as a single b
 
 ## Completed
 
+### ISDOC export for received invoices + bulk ISDOC actions (2026-07-17)
+ISDOC export (dosud jen na detailu vydané faktury) rozšířen na přijaté faktury a hromadné akce:
+
+- [x] `IIsdocExportService.ExportReceivedInvoiceAsync` + implementace (supplier = dodavatel, customer = tenant issuer `IsIssuer = true`)
+- [x] `IsdocMapper.Map(ReceivedInvoice, Client?)` — sdílené buildery (lines, TaxTotal, LegalMonetaryTotal, PaymentMeans) s vydanými fakturami; UUID prefix `fakvio-received-invoice-{id}` (žádné kolize s vydanými)
+- [x] Null party → XSD-validní prázdný skeleton (misconfigured tenant bez issuer záznamu)
+- [x] Endpointy: `GET /api/received-invoice/{id}/isdoc`, `GET /api/received-invoice/bulk/isdoc?ids=`, `GET /api/invoice/bulk/isdoc?ids=` (bulk = ZIP, selhané kusy přeskočeny, `ZipArchiveHelper` dedup názvů)
+- [x] Azure Functions wrappery: `ReceivedInvoice_ExportIsdoc`, `ReceivedInvoice_BulkExportIsdoc`, `Invoice_BulkExportIsdoc`
+- [x] UI: tlačítko „Stáhnout ISDOC" na ReceivedInvoiceDetail; bulk akce na Invoices (Drafty přeskočeny) i ReceivedInvoices
+- [x] API services: `InvoiceApiService.BulkExportIsdocAsync`, `ReceivedInvoiceApiService.ExportIsdocAsync/BulkExportIsdocAsync`
+- [x] Lokalizace `Bulk_Isdoc` (CZ/EN)
+- [x] 25 nových testů (IsdocReceivedInvoiceExportTests + IsdocReceivedInvoiceEndpointTests), všech 133 ISDOC testů zelených
+- [x] USERGUIDE + DEVGUIDE aktualizovány
+
 ### Localized file names + MudBlazor.HtmlEditor migration (2026-03-26)
 Two improvements implemented in a single pass:
 
