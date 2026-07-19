@@ -29,8 +29,19 @@ public class RecognizedCounterparty : BaseEntity
     /// Counterparty bank account number as entered by the user (Czech format
     /// "number/bankcode" or IBAN). Stored raw; matching compares a normalized
     /// form (whitespace/hyphens stripped, uppercased) on both sides.
+    /// Optional since card-payment support — at least one of
+    /// (CounterpartyAccount, CounterpartyNamePattern) must be filled
+    /// (enforced by RecognizedCounterpartyService validation).
     /// </summary>
-    public string CounterpartyAccount { get; set; } = string.Empty;
+    public string? CounterpartyAccount { get; set; }
+
+    /// <summary>
+    /// Optional merchant/counterparty name pattern for payments that carry no
+    /// account number — typically CARD payments ("Platba kartou v ANTHROPIC*
+    /// CLAUDE SUB, SAN FRANCISCO, CA"). Matched as a case-insensitive substring
+    /// against the transaction's CounterpartyName AND Message.
+    /// </summary>
+    public string? CounterpartyNamePattern { get; set; }
 
     /// <summary>
     /// Optional variable symbol constraint. Null/empty = wildcard (any VS matches).

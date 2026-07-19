@@ -90,6 +90,7 @@ public class RecognizedCounterpartyService : IRecognizedCounterpartyService
 
         entity.Label = request.Label;
         entity.CounterpartyAccount = request.CounterpartyAccount;
+        entity.CounterpartyNamePattern = request.CounterpartyNamePattern;
         entity.VariableSymbol = request.VariableSymbol;
         entity.SpecificSymbol = request.SpecificSymbol;
         entity.ConstantSymbol = request.ConstantSymbol;
@@ -159,12 +160,17 @@ public class RecognizedCounterpartyService : IRecognizedCounterpartyService
                 affected.Count, recognizedCounterpartyId);
     }
 
-    /// <summary>Minimal validation — Label and CounterpartyAccount are mandatory.</summary>
+    /// <summary>
+    /// Minimal validation — Label plus at least one identifying constraint
+    /// (account for bank transfers, name pattern for card payments).
+    /// </summary>
     private static void ValidateRequest(SaveRecognizedCounterpartyRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Label))
             throw new ArgumentException("Label is required.", nameof(request));
-        if (string.IsNullOrWhiteSpace(request.CounterpartyAccount))
-            throw new ArgumentException("CounterpartyAccount is required.", nameof(request));
+        if (string.IsNullOrWhiteSpace(request.CounterpartyAccount)
+            && string.IsNullOrWhiteSpace(request.CounterpartyNamePattern))
+            throw new ArgumentException(
+                "Either CounterpartyAccount or CounterpartyNamePattern is required.", nameof(request));
     }
 }

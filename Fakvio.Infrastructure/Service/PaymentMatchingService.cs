@@ -990,29 +990,45 @@ public class PaymentMatchingService : IPaymentMatchingService
 
     /// <summary>
     /// Rule 3 fallback: tries to assign the transaction to a recognized-counterparty
-    /// registry entry (insurance, tax office, …). Match condition: normalized
-    /// counterparty account equality AND every symbol filled on the entry equals
-    /// the transaction's symbol (empty entry symbol = wildcard).
+    /// registry entry (insurance, tax office, card-payment merchants, …).
     ///
-    /// Multiple hits: the most specific entry wins (most filled symbol constraints).
-    /// A tie between entries with different labels is ambiguous → NeedsReview.
+    /// An entry matches when EVERY constraint filled on it holds (empty = wildcard):
+    ///   - CounterpartyAccount: normalized equality with the transaction's account
+    ///     (a transaction without an account can never satisfy an account constraint),
+    ///   - CounterpartyNamePattern: case-insensitive substring of the transaction's
+    ///     CounterpartyName OR Message (card payments carry only the merchant name),
+    ///   - VS/SS/KS: exact equality.
+    /// Entries with neither account nor name pattern never match (service
+    /// validation prevents saving them).
+    ///
+    /// Multiple hits: the most specific entry wins — account counts double
+    /// (stronger identifier than a name substring). A tie between entries with
+    /// different labels is ambiguous → NeedsReview.
     /// Returns true when it decided the transaction (Recognized or NeedsReview).
     /// </summary>
     private async Task<bool> TryRecognizeAsync(BankTransaction tx, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(tx.CounterpartyAccount))
-            return false;
-
-        var normalized = NormalizeAccount(tx.CounterpartyAccount);
+        var normalizedAccount = string.IsNullOrWhiteSpace(tx.CounterpartyAccount)
+            ? null
+            : NormalizeAccount(tx.CounterpartyAccount);
 
         // The registry is tiny (units to tens of rows) — load active entries and
-        // compare in memory; NormalizeAccount is not translatable to SQL anyway.
+        // compare in memory; NormalizeAccount/OrdinalIgnoreCase Contains are not
+        // translatable to SQL anyway.
         var entries = await _context.RecognizedCounterparty
             .Where(r => r.IsActive)
             .ToListAsync(ct);
 
+        bool MatchesNamePattern(string pattern) =>
+            (tx.CounterpartyName?.Contains(pattern, StringComparison.OrdinalIgnoreCase) ?? false)
+            || (tx.Message?.Contains(pattern, StringComparison.OrdinalIgnoreCase) ?? false);
+
         var hits = entries.Where(r =>
-                NormalizeAccount(r.CounterpartyAccount) == normalized
+                // At least one identifying constraint must exist AND hold.
+                (!string.IsNullOrWhiteSpace(r.CounterpartyAccount) || !string.IsNullOrWhiteSpace(r.CounterpartyNamePattern))
+                && (string.IsNullOrWhiteSpace(r.CounterpartyAccount)
+                    || (normalizedAccount != null && NormalizeAccount(r.CounterpartyAccount) == normalizedAccount))
+                && (string.IsNullOrWhiteSpace(r.CounterpartyNamePattern) || MatchesNamePattern(r.CounterpartyNamePattern))
                 && (string.IsNullOrWhiteSpace(r.VariableSymbol) || r.VariableSymbol == tx.VariableSymbol)
                 && (string.IsNullOrWhiteSpace(r.SpecificSymbol) || r.SpecificSymbol == tx.SpecificSymbol)
                 && (string.IsNullOrWhiteSpace(r.ConstantSymbol) || r.ConstantSymbol == tx.ConstantSymbol))
@@ -1021,10 +1037,12 @@ public class PaymentMatchingService : IPaymentMatchingService
         if (hits.Count == 0)
             return false;
 
-        // Most specific entry wins: an entry constrained by VS beats an
-        // account-only entry for the same account.
+        // Most specific entry wins. Account counts double — it identifies the
+        // counterparty exactly, while a name pattern is only a substring guess.
         static int Specificity(RecognizedCounterparty r) =>
-            (string.IsNullOrWhiteSpace(r.VariableSymbol) ? 0 : 1)
+            (string.IsNullOrWhiteSpace(r.CounterpartyAccount) ? 0 : 2)
+            + (string.IsNullOrWhiteSpace(r.CounterpartyNamePattern) ? 0 : 1)
+            + (string.IsNullOrWhiteSpace(r.VariableSymbol) ? 0 : 1)
             + (string.IsNullOrWhiteSpace(r.SpecificSymbol) ? 0 : 1)
             + (string.IsNullOrWhiteSpace(r.ConstantSymbol) ? 0 : 1);
 
@@ -1056,9 +1074,9 @@ public class PaymentMatchingService : IPaymentMatchingService
     {
         // Only Unmatched transactions are eligible — Matched/Ignored/Recognized are
         // decided, NeedsReview waits for the user, PartiallyMatched belongs to invoices.
+        // No account pre-filter: card payments have no account and match by name pattern.
         var unmatched = await _context.BankTransaction
-            .Where(t => t.MatchStatus == EMatchStatus.Unmatched
-                        && t.CounterpartyAccount != null)
+            .Where(t => t.MatchStatus == EMatchStatus.Unmatched)
             .ToListAsync(ct);
 
         var recognized = 0;

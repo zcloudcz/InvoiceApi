@@ -123,6 +123,7 @@ public class BankTransactionQueryService : IBankTransactionQueryService
             CounterpartyAccount = t.CounterpartyAccount,
             CounterpartyName = t.CounterpartyName,
             Message = t.Message,
+            TransactionCode = t.TransactionCode,
             ImportSource = t.ImportSource,
             MatchStatus = t.MatchStatus,
             ParserConfidence = t.ParserConfidence,

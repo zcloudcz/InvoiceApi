@@ -13,8 +13,17 @@ public class RecognizedCounterpartyDto
     /// <summary>Display name shown on the Payments grid ("OSSZ — sociální pojištění").</summary>
     public string Label { get; set; } = string.Empty;
 
-    /// <summary>Counterparty account as entered (Czech "number/bankcode" or IBAN).</summary>
-    public string CounterpartyAccount { get; set; } = string.Empty;
+    /// <summary>
+    /// Counterparty account as entered (Czech "number/bankcode" or IBAN).
+    /// Optional — at least one of account / name pattern must be filled.
+    /// </summary>
+    public string? CounterpartyAccount { get; set; }
+
+    /// <summary>
+    /// Merchant/counterparty name pattern for payments without an account
+    /// (card payments). Case-insensitive substring of CounterpartyName/Message.
+    /// </summary>
+    public string? CounterpartyNamePattern { get; set; }
 
     /// <summary>Optional variable symbol constraint. Null/empty = any VS matches.</summary>
     public string? VariableSymbol { get; set; }
@@ -41,7 +50,8 @@ public class RecognizedCounterpartyDto
 public class SaveRecognizedCounterpartyRequest
 {
     public string Label { get; set; } = string.Empty;
-    public string CounterpartyAccount { get; set; } = string.Empty;
+    public string? CounterpartyAccount { get; set; }
+    public string? CounterpartyNamePattern { get; set; }
     public string? VariableSymbol { get; set; }
     public string? SpecificSymbol { get; set; }
     public string? ConstantSymbol { get; set; }

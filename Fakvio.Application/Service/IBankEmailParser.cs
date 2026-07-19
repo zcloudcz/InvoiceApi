@@ -28,6 +28,7 @@ public record BankEmailParsed(
     string? CounterpartyAccount,
     string? CounterpartyName,
     string? Message,
+    string? TransactionCode,
     decimal Confidence,
     string ModelUsed);
 

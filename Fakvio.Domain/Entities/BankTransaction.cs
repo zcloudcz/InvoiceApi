@@ -58,6 +58,14 @@ public class BankTransaction : BaseEntity
     /// <summary>"Zpráva pro příjemce" — free-text message.</summary>
     public string? Message { get; set; }
 
+    /// <summary>
+    /// Bank's transaction identifier ("Kód transakce") when present in the
+    /// notification — the only unique identifier of CARD payments, which carry
+    /// no VS and no counterparty account. Included in DeduplicationHash so two
+    /// same-day card payments of the same amount are not collapsed as duplicates.
+    /// </summary>
+    public string? TransactionCode { get; set; }
+
     /// <summary>How this row got into the system — email, Fio API, import, manual.</summary>
     public EImportSource ImportSource { get; set; }
 

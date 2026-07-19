@@ -183,6 +183,127 @@ public class RecognizedCounterpartyMatchingTests : IDisposable
         reloaded.RecognizedCounterpartyId.ShouldBe(entry.Id);
     }
 
+    // ─── Card payments — merchant name pattern ────────────────────────────
+
+    [Fact]
+    public async Task CardPayment_NoAccount_MatchesByNamePattern()
+    {
+        var entry = AddEntry("Anthropic — Claude", account: null, namePattern: "ANTHROPIC");
+        var tx = AddTransaction(account: null, direction: EPaymentDirection.Outgoing,
+            counterpartyName: "ANTHROPIC* CLAUDE SUB, SAN FRANCISCO, CA");
+
+        await _sut.MatchAsync(tx.Id);
+
+        var reloaded = await _context.BankTransaction.AsNoTracking().FirstAsync(t => t.Id == tx.Id);
+        reloaded.MatchStatus.ShouldBe(EMatchStatus.Recognized);
+        reloaded.RecognizedCounterpartyId.ShouldBe(entry.Id);
+    }
+
+    [Fact]
+    public async Task NamePattern_MatchesInMessageToo()
+    {
+        // Some banks put the merchant into the message instead of the name.
+        var entry = AddEntry("Anthropic — Claude", account: null, namePattern: "ANTHROPIC");
+        var tx = AddTransaction(account: null, direction: EPaymentDirection.Outgoing,
+            message: "Platba kartou v ANTHROPIC* CLAUDE SUB");
+
+        await _sut.MatchAsync(tx.Id);
+
+        (await _context.BankTransaction.AsNoTracking().FirstAsync(t => t.Id == tx.Id))
+            .RecognizedCounterpartyId.ShouldBe(entry.Id);
+    }
+
+    [Fact]
+    public async Task NamePattern_IsCaseInsensitive()
+    {
+        AddEntry("Anthropic", account: null, namePattern: "anthropic");
+        var tx = AddTransaction(account: null, direction: EPaymentDirection.Outgoing,
+            counterpartyName: "ANTHROPIC* CLAUDE SUB");
+
+        await _sut.MatchAsync(tx.Id);
+
+        (await _context.BankTransaction.AsNoTracking().FirstAsync(t => t.Id == tx.Id))
+            .MatchStatus.ShouldBe(EMatchStatus.Recognized);
+    }
+
+    [Fact]
+    public async Task NamePattern_Mismatch_StaysUnmatched()
+    {
+        AddEntry("Anthropic", account: null, namePattern: "ANTHROPIC");
+        var tx = AddTransaction(account: null, direction: EPaymentDirection.Outgoing,
+            counterpartyName: "GITHUB, INC.");
+
+        await _sut.MatchAsync(tx.Id);
+
+        (await _context.BankTransaction.AsNoTracking().FirstAsync(t => t.Id == tx.Id))
+            .MatchStatus.ShouldBe(EMatchStatus.Unmatched);
+    }
+
+    [Fact]
+    public async Task AccountEntry_DoesNotMatchTransactionWithoutAccount()
+    {
+        // Account constraint requires the transaction to HAVE an account.
+        AddEntry("OSSZ", OsszAccount);
+        var tx = AddTransaction(account: null, direction: EPaymentDirection.Outgoing,
+            counterpartyName: "OSSZ Praha");
+
+        await _sut.MatchAsync(tx.Id);
+
+        (await _context.BankTransaction.AsNoTracking().FirstAsync(t => t.Id == tx.Id))
+            .MatchStatus.ShouldBe(EMatchStatus.Unmatched);
+    }
+
+    [Fact]
+    public async Task EntryWithAccountAndPattern_RequiresBoth()
+    {
+        AddEntry("Nájem", account: "555/0300", namePattern: "REALITY");
+
+        var accountOnly = AddTransaction(account: "555/0300", direction: EPaymentDirection.Outgoing,
+            counterpartyName: "Jina firma");
+        var both = AddTransaction(account: "555/0300", direction: EPaymentDirection.Outgoing,
+            counterpartyName: "REALITY PLUS s.r.o.");
+
+        await _sut.MatchAsync(accountOnly.Id);
+        await _sut.MatchAsync(both.Id);
+
+        (await _context.BankTransaction.AsNoTracking().FirstAsync(t => t.Id == accountOnly.Id))
+            .MatchStatus.ShouldBe(EMatchStatus.Unmatched);
+        (await _context.BankTransaction.AsNoTracking().FirstAsync(t => t.Id == both.Id))
+            .MatchStatus.ShouldBe(EMatchStatus.Recognized);
+    }
+
+    [Fact]
+    public async Task AccountEntry_WinsOverNamePatternEntry()
+    {
+        // Account is the stronger identifier — specificity +2 vs +1.
+        var byName = AddEntry("Podle jména", account: null, namePattern: "OSSZ");
+        var byAccount = AddEntry("Podle účtu", OsszAccount);
+
+        var tx = AddTransaction(account: OsszAccount, direction: EPaymentDirection.Outgoing,
+            counterpartyName: "OSSZ Praha");
+
+        await _sut.MatchAsync(tx.Id);
+
+        var reloaded = await _context.BankTransaction.AsNoTracking().FirstAsync(t => t.Id == tx.Id);
+        reloaded.MatchStatus.ShouldBe(EMatchStatus.Recognized);
+        reloaded.RecognizedCounterpartyId.ShouldBe(byAccount.Id);
+        _ = byName;
+    }
+
+    [Fact]
+    public async Task RescanUnmatched_PicksUpCardPaymentsWithoutAccount()
+    {
+        var cardTx = AddTransaction(account: null, direction: EPaymentDirection.Outgoing,
+            counterpartyName: "ANTHROPIC* CLAUDE SUB");
+        AddEntry("Anthropic", account: null, namePattern: "ANTHROPIC");
+
+        var recognized = await _sut.RescanUnmatchedAsync();
+
+        recognized.ShouldBe(1);
+        (await _context.BankTransaction.AsNoTracking().FirstAsync(t => t.Id == cardTx.Id))
+            .MatchStatus.ShouldBe(EMatchStatus.Recognized);
+    }
+
     // ─── Manual match clears recognition ──────────────────────────────────
 
     [Fact]
@@ -297,12 +418,14 @@ public class RecognizedCounterpartyMatchingTests : IDisposable
     }
 
     private RecognizedCounterparty AddEntry(
-        string label, string account, string? vs = null, string? ss = null, bool isActive = true)
+        string label, string? account, string? vs = null, string? ss = null,
+        bool isActive = true, string? namePattern = null)
     {
         var entry = new RecognizedCounterparty
         {
             Label = label,
             CounterpartyAccount = account,
+            CounterpartyNamePattern = namePattern,
             VariableSymbol = vs,
             SpecificSymbol = ss,
             IsActive = isActive,
@@ -369,7 +492,9 @@ public class RecognizedCounterpartyMatchingTests : IDisposable
         string? account,
         EPaymentDirection direction,
         string? vs = null,
-        decimal amount = 500m)
+        decimal amount = 500m,
+        string? counterpartyName = null,
+        string? message = null)
     {
         var tx = new BankTransaction
         {
@@ -381,6 +506,8 @@ public class RecognizedCounterpartyMatchingTests : IDisposable
             Direction = direction,
             VariableSymbol = vs,
             CounterpartyAccount = account,
+            CounterpartyName = counterpartyName,
+            Message = message,
             ImportSource = EImportSource.Manual,
             MatchStatus = EMatchStatus.Unmatched,
         };

@@ -168,6 +168,7 @@ public class InboundEmailProcessor : IInboundEmailProcessor
                 CounterpartyAccount = parsed.CounterpartyAccount,
                 CounterpartyName = parsed.CounterpartyName,
                 Message = parsed.Message,
+                TransactionCode = parsed.TransactionCode,
                 ImportSource = EImportSource.InboundEmail,
                 ParserConfidence = parsed.Confidence,
                 ParserModel = parsed.ModelUsed,
@@ -208,7 +209,14 @@ public class InboundEmailProcessor : IInboundEmailProcessor
         return Sha256Hex(input);
     }
 
-    /// <summary>SHA-256 stable hash over the transaction shape — transaction-level idempotency.</summary>
+    /// <summary>
+    /// SHA-256 stable hash over the transaction shape — transaction-level idempotency.
+    /// TransactionCode is included because card payments carry no VS and no
+    /// counterparty account — without it, two same-day card payments of the same
+    /// amount to the same merchant would collapse into one transaction.
+    /// (Hash composition change is safe: email-level dedup blocks re-delivery
+    /// of already-processed emails, so old rows are never re-hashed.)
+    /// </summary>
     internal static string ComputeTransactionHash(long bankAccountId, BankEmailParsed p)
     {
         var input = string.Join("|",
@@ -218,7 +226,8 @@ public class InboundEmailProcessor : IInboundEmailProcessor
             p.Direction,
             p.TransactionDate.ToUniversalTime().ToString("O"),
             p.VariableSymbol ?? "",
-            p.CounterpartyAccount ?? "");
+            p.CounterpartyAccount ?? "",
+            p.TransactionCode ?? "");
         return Sha256Hex(input);
     }
 

@@ -95,11 +95,17 @@
     /// </summary>
     private async Task CreateFromPayment()
     {
+        // Card payments have no counterparty account — pre-fill the merchant
+        // name pattern instead so the rule matches future payments by name.
+        // With an account present the account alone is the precise identifier.
+        var hasAccount = !string.IsNullOrWhiteSpace(Transaction?.CounterpartyAccount);
+
         var model = new SaveRecognizedCounterpartyRequest
         {
             // Counterparty name is the best label guess; user can rewrite it.
             Label = Transaction?.CounterpartyName ?? string.Empty,
-            CounterpartyAccount = Transaction?.CounterpartyAccount ?? string.Empty,
+            CounterpartyAccount = Transaction?.CounterpartyAccount,
+            CounterpartyNamePattern = hasAccount ? null : Transaction?.CounterpartyName,
             // Symbols are constraints (empty = wildcard) — pre-fill from the
             // payment because VS/SS typically identify the payer and repeat
             // on every future payment to the same institution.

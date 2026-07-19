@@ -148,6 +148,17 @@ Current state: `PdfExportService` renders the entire HTML template as a single b
 
 ## Completed
 
+### Card payment recognition — merchant name pattern + transaction code (2026-07-19)
+Platby kartou nemají protiúčet ani symboly — rozšíření rozpoznávání:
+
+- [x] `RecognizedCounterparty.CounterpartyNamePattern` (case-insensitive substring proti CounterpartyName i Message), účet nyní volitelný — aspoň jedno z (účet, vzor) povinné; migrace `Add_CardPaymentRecognition_v54`
+- [x] `TryRecognizeAsync` bez account gate — per-entry constraints (účet vyžaduje účet na transakci); specificita účet +2 > vzor +1; rescan bere i transakce bez účtu
+- [x] AI prompt: karty JSOU platby, merchant → counterparty_name, maskovaná karta NENÍ účet, `transaction_code` extrakce
+- [x] `BankTransaction.TransactionCode` + zahrnut do dedup hashe (fix: dvě stejné denní platby kartou se slévaly do jedné)
+- [x] UI: pole vzoru v dialogu + sloupec v editoru, validace „aspoň jedno", CreateFromPayment prefilluje vzor u plateb bez účtu, kód transakce na detailu platby
+- [x] 12 nových testů (name-pattern matching, hash uniqueness, parser card JSON, validace), unit suite 1787 zelených
+- [x] USERGUIDE §15, DEVGUIDE §4.5.2
+
 ### Recognized counterparties — payment recognition without invoice (2026-07-19)
 Evidence známých bankovních účtů (pojišťovny, FÚ…) + rozpoznávání pravidelných plateb:
 

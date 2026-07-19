@@ -136,6 +136,7 @@ public class InboundEmailProcessorTests : IDisposable
             CounterpartyAccount: "1234/0100",
             CounterpartyName: "Acme",
             Message: null,
+            TransactionCode: null,
             Confidence: 0.9m,
             ModelUsed: "TestModel");
 
@@ -183,6 +184,38 @@ public class InboundEmailProcessorTests : IDisposable
 
         // Hash uses MessageId + IMAP UID + timestamp — not From.
         h1.ShouldBe(h2);
+    }
+
+    // ─── Transaction dedup hash ──────────────────────────────────────────
+
+    [Fact]
+    public void ComputeTransactionHash_DifferentTransactionCode_ProducesDifferentHash()
+    {
+        // Card payments: same amount, same day, same merchant, no VS, no account —
+        // only the bank's transaction code tells them apart. Without it in the
+        // hash the second payment would be silently dropped as a duplicate.
+        var date = DateTime.UtcNow;
+        BankEmailParsed MakeCardPayment(string? code) => new(
+            Amount: 2254.95m,
+            CurrencyCode: "CZK",
+            Direction: EPaymentDirection.Outgoing,
+            TransactionDate: date,
+            VariableSymbol: null,
+            ConstantSymbol: null,
+            SpecificSymbol: null,
+            CounterpartyAccount: null,
+            CounterpartyName: "ANTHROPIC* CLAUDE SUB",
+            Message: null,
+            TransactionCode: code,
+            Confidence: 0.9m,
+            ModelUsed: "T");
+
+        var hash1 = InboundEmailProcessor.ComputeTransactionHash(1, MakeCardPayment("27427871883"));
+        var hash2 = InboundEmailProcessor.ComputeTransactionHash(1, MakeCardPayment("27427871999"));
+        var hash1Again = InboundEmailProcessor.ComputeTransactionHash(1, MakeCardPayment("27427871883"));
+
+        hash1.ShouldNotBe(hash2);
+        hash1.ShouldBe(hash1Again); // still deterministic
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────

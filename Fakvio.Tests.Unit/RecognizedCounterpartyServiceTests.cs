@@ -74,17 +74,42 @@ public class RecognizedCounterpartyServiceTests : IDisposable
         await _matcher.DidNotReceive().RescanUnmatchedAsync(Arg.Any<CancellationToken>());
     }
 
-    [Theory]
-    [InlineData("", "123/0100")]
-    [InlineData("Label", "")]
-    public async Task Create_MissingRequiredField_Throws(string label, string account)
+    [Fact]
+    public async Task Create_MissingLabel_Throws()
     {
         await Should.ThrowAsync<ArgumentException>(
             () => _sut.CreateAsync(new SaveRecognizedCounterpartyRequest
             {
-                Label = label,
-                CounterpartyAccount = account,
+                Label = "",
+                CounterpartyAccount = "123/0100",
             }));
+    }
+
+    [Fact]
+    public async Task Create_NeitherAccountNorNamePattern_Throws()
+    {
+        await Should.ThrowAsync<ArgumentException>(
+            () => _sut.CreateAsync(new SaveRecognizedCounterpartyRequest
+            {
+                Label = "Label",
+                CounterpartyAccount = null,
+                CounterpartyNamePattern = null,
+            }));
+    }
+
+    [Fact]
+    public async Task Create_NamePatternOnly_IsValid()
+    {
+        // Card-payment entries have no account — a name pattern alone suffices.
+        var response = await _sut.CreateAsync(new SaveRecognizedCounterpartyRequest
+        {
+            Label = "Anthropic — Claude",
+            CounterpartyNamePattern = "ANTHROPIC",
+            Category = EPaymentCategory.Other,
+        });
+
+        response.Entry.CounterpartyAccount.ShouldBeNull();
+        response.Entry.CounterpartyNamePattern.ShouldBe("ANTHROPIC");
     }
 
     // ─── Read ─────────────────────────────────────────────────────────────

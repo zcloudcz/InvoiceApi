@@ -1156,6 +1156,7 @@ public class TenantDbContext : DbContext
             entity.Property(e => e.CounterpartyAccount).HasMaxLength(100);
             entity.Property(e => e.CounterpartyName).HasMaxLength(500);
             entity.Property(e => e.Message).HasMaxLength(2000);
+            entity.Property(e => e.TransactionCode).HasMaxLength(50);
             entity.Property(e => e.ParserConfidence).HasPrecision(4, 3);
             entity.Property(e => e.ParserModel).HasMaxLength(100);
             // RawPayload unbounded (PostgreSQL text).
@@ -1194,7 +1195,10 @@ public class TenantDbContext : DbContext
             entity.HasIndex(e => e.IsActive);
 
             entity.Property(e => e.Label).IsRequired().HasMaxLength(200);
-            entity.Property(e => e.CounterpartyAccount).IsRequired().HasMaxLength(100);
+            // Account is optional since card-payment support — service validation
+            // requires at least one of (CounterpartyAccount, CounterpartyNamePattern).
+            entity.Property(e => e.CounterpartyAccount).HasMaxLength(100);
+            entity.Property(e => e.CounterpartyNamePattern).HasMaxLength(200);
             entity.Property(e => e.VariableSymbol).HasMaxLength(20);
             entity.Property(e => e.SpecificSymbol).HasMaxLength(20);
             entity.Property(e => e.ConstantSymbol).HasMaxLength(20);

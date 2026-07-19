@@ -644,6 +644,10 @@ na finanční úřad — lze rozpoznávat podle evidence známých účtů:
 1. Na stránce **Moje firma** → sekce „Rozpoznané protistrany" přidejte záznam:
    název (např. „OSSZ — sociální pojištění"), číslo účtu a volitelně VS/SS/KS
    (prázdný symbol = libovolná hodnota) + kategorii (pojištění, DPH, daň…).
+   Pro **platby kartou** (nemají protiúčet ani symboly) vyplňte místo účtu
+   **vzor jména obchodníka** — např. „ANTHROPIC" rozpozná platbu
+   „Platba kartou v ANTHROPIC* CLAUDE SUB, SAN FRANCISCO, CA". Hledá se
+   v názvu protistrany i ve zprávě, bez rozlišení velikosti písmen.
 2. Po uložení se automaticky projdou existující nespárované platby — počet nově
    rozpoznaných ukáže notifikace.
 3. Nové platby na známý účet se při příjmu rozpoznají samy (faktury mají vždy

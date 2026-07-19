@@ -47,6 +47,10 @@ else
                     <MudListItem T="string"><strong>@L["Payments_Col_Counterparty"]:</strong> @(_tx.CounterpartyName ?? "—")</MudListItem>
                     <MudListItem T="string"><strong>@L["PaymentDetail_CounterpartyAccount"]:</strong> @(_tx.CounterpartyAccount ?? "—")</MudListItem>
                     <MudListItem T="string"><strong>@L["PaymentDetail_Message"]:</strong> @(_tx.Message ?? "—")</MudListItem>
+                    @if (!string.IsNullOrWhiteSpace(_tx.TransactionCode))
+                    {
+                        <MudListItem T="string"><strong>@L["PaymentDetail_TransactionCode"]:</strong> @_tx.TransactionCode</MudListItem>
+                    }
                 </MudList>
             </MudPaper>
         </MudItem>

@@ -21,15 +21,32 @@
                               MaxLength="200" />
             </MudItem>
 
-            @* Counterparty account is required — the primary matching key *@
-            <MudItem xs="12">
+            @* At least one of account / name pattern must be filled (Save validates) *@
+            <MudItem xs="12" sm="6">
                 <MudTextField @bind-Value="Model.CounterpartyAccount"
                               Label="@L["RecognizedCounterparty_Account"].Value"
-                              Required="true"
                               Placeholder="1011-7724311/0710"
                               HelperText="@L["RecognizedCounterparty_AccountHelper"].Value"
                               MaxLength="100" />
             </MudItem>
+
+            @* Merchant name pattern — for card payments that carry no account *@
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="Model.CounterpartyNamePattern"
+                              Label="@L["RecognizedCounterparty_NamePattern"].Value"
+                              Placeholder="ANTHROPIC"
+                              HelperText="@L["RecognizedCounterparty_NamePatternHelper"].Value"
+                              MaxLength="200" />
+            </MudItem>
+
+            @if (_constraintMissing)
+            {
+                <MudItem xs="12">
+                    <MudAlert Severity="Severity.Warning" Dense="true">
+                        @L["RecognizedCounterparty_ConstraintRequired"]
+                    </MudAlert>
+                </MudItem>
+            }
 
             @* Optional symbol constraints — empty means "any value matches" *@
             <MudItem xs="12" sm="4">
@@ -96,13 +113,23 @@
     [Parameter]
     public SaveRecognizedCounterpartyRequest Model { get; set; } = new();
 
+    /// <summary>Shows the "account or name pattern required" warning after a failed save.</summary>
+    private bool _constraintMissing;
+
     /// <summary>Validates required fields and closes the dialog with the edited entry.</summary>
     private void Save()
     {
-        // Label + account are mandatory — matches server-side validation.
-        if (string.IsNullOrWhiteSpace(Model.Label) || string.IsNullOrWhiteSpace(Model.CounterpartyAccount))
+        if (string.IsNullOrWhiteSpace(Model.Label))
         {
-            return; // Required="true" fields show their own validation error
+            return; // Required="true" field shows its own validation error
+        }
+
+        // At least one identifying constraint — matches server-side validation.
+        _constraintMissing = string.IsNullOrWhiteSpace(Model.CounterpartyAccount)
+            && string.IsNullOrWhiteSpace(Model.CounterpartyNamePattern);
+        if (_constraintMissing)
+        {
+            return;
         }
 
         MudDialog.Close(DialogResult.Ok(Model));

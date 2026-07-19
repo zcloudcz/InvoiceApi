@@ -45,6 +45,7 @@ else
         <HeaderContent>
             <MudTh>@L["RecognizedCounterparty_Label"]</MudTh>
             <MudTh>@L["RecognizedCounterparty_Account"]</MudTh>
+            <MudTh>@L["RecognizedCounterparty_NamePattern"]</MudTh>
             <MudTh>@L["Payments_Col_VS"]</MudTh>
             <MudTh>@L["RecognizedCounterparty_SS"]</MudTh>
             <MudTh>@L["RecognizedCounterparty_KS"]</MudTh>
@@ -54,7 +55,8 @@ else
         </HeaderContent>
         <RowTemplate>
             <MudTd DataLabel="@L["RecognizedCounterparty_Label"]">@context.Label</MudTd>
-            <MudTd DataLabel="@L["RecognizedCounterparty_Account"]">@context.CounterpartyAccount</MudTd>
+            <MudTd DataLabel="@L["RecognizedCounterparty_Account"]">@(string.IsNullOrWhiteSpace(context.CounterpartyAccount) ? "—" : context.CounterpartyAccount)</MudTd>
+            <MudTd DataLabel="@L["RecognizedCounterparty_NamePattern"]">@(string.IsNullOrWhiteSpace(context.CounterpartyNamePattern) ? "—" : context.CounterpartyNamePattern)</MudTd>
             <MudTd DataLabel="@L["Payments_Col_VS"]">@(context.VariableSymbol ?? "—")</MudTd>
             <MudTd DataLabel="@L["RecognizedCounterparty_SS"]">@(context.SpecificSymbol ?? "—")</MudTd>
             <MudTd DataLabel="@L["RecognizedCounterparty_KS"]">@(context.ConstantSymbol ?? "—")</MudTd>
@@ -141,6 +143,7 @@ else
         {
             Label = entry.Label,
             CounterpartyAccount = entry.CounterpartyAccount,
+            CounterpartyNamePattern = entry.CounterpartyNamePattern,
             VariableSymbol = entry.VariableSymbol,
             SpecificSymbol = entry.SpecificSymbol,
             ConstantSymbol = entry.ConstantSymbol,

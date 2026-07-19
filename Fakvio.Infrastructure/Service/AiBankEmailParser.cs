@@ -209,6 +209,7 @@ public class AiBankEmailParser : IBankEmailParser
                 CounterpartyAccount: NullIfEmpty(raw.CounterpartyAccount),
                 CounterpartyName: NullIfEmpty(raw.CounterpartyName),
                 Message: NullIfEmpty(raw.Message),
+                TransactionCode: NullIfEmpty(raw.TransactionCode),
                 Confidence: Math.Clamp(raw.Confidence ?? 0m, 0m, 1m),
                 ModelUsed: providerName);
         }
@@ -269,6 +270,7 @@ public class AiBankEmailParser : IBankEmailParser
           "counterparty_account": string | null,  // Czech 1234567890/0100 or IBAN
           "counterparty_name": string | null,  // payer / payee display name
           "message": string | null,            // "zpráva pro příjemce" / payment memo
+          "transaction_code": string | null,   // bank's transaction id ("Kód transakce")
           "confidence": number                 // 0..1 — your self-assessed accuracy
         }
 
@@ -280,6 +282,15 @@ public class AiBankEmailParser : IBankEmailParser
         - "Konstantní symbol" or "KS" → constant_symbol.
         - "Specifický symbol" or "SS" → specific_symbol.
         - "Refund" / "Vrácení platby" → direction "outgoing" from the issuer's perspective.
+
+        CARD PAYMENTS ("Platba kartou"):
+        - Card payment notifications ARE payments → is_payment true, direction "outgoing"
+          (unless it is a refund TO the card, then "incoming").
+        - The merchant after "v"/"at" (e.g. "Platba kartou v ANTHROPIC* CLAUDE SUB,
+          SAN FRANCISCO, CA") → counterparty_name.
+        - Card payments have no counterparty account and no symbols → those stay null.
+          The masked card number is NOT an account — do not put it into counterparty_account.
+        - "Kód transakce" / "ID transakce" / "Reference" → transaction_code.
         """;
 
     // ─── DTOs for JSON response ────────────────────────────────────────────
@@ -319,6 +330,9 @@ public class AiBankEmailParser : IBankEmailParser
 
         [JsonPropertyName("message")]
         public string? Message { get; set; }
+
+        [JsonPropertyName("transaction_code")]
+        public string? TransactionCode { get; set; }
 
         [JsonPropertyName("confidence")]
         public decimal? Confidence { get; set; }

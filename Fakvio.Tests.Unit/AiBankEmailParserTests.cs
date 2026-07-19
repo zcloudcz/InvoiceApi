@@ -55,6 +55,60 @@ public class AiBankEmailParserTests
     }
 
     [Fact]
+    public void ParseAiResponse_CardPayment_NoAccountNoSymbols_ParsesWithTransactionCode()
+    {
+        // Card payment: merchant name only, no account, no symbols — must still
+        // parse; "Kód transakce" lands in TransactionCode.
+        const string json = """
+        {
+          "is_payment": true,
+          "amount": 2254.95,
+          "currency_code": "CZK",
+          "direction": "outgoing",
+          "transaction_date": "2026-07-09T14:37:00Z",
+          "variable_symbol": null,
+          "constant_symbol": null,
+          "specific_symbol": null,
+          "counterparty_account": null,
+          "counterparty_name": "ANTHROPIC* CLAUDE SUB, SAN FRANCISCO, CA",
+          "message": "Platba kartou",
+          "transaction_code": "27427871883",
+          "confidence": 0.92
+        }
+        """;
+
+        var result = AiBankEmailParser.ParseAiResponse(json, "TestProvider");
+
+        result.ShouldNotBeNull();
+        result.Direction.ShouldBe(EPaymentDirection.Outgoing);
+        result.CounterpartyAccount.ShouldBeNull();
+        result.CounterpartyName.ShouldBe("ANTHROPIC* CLAUDE SUB, SAN FRANCISCO, CA");
+        result.TransactionCode.ShouldBe("27427871883");
+    }
+
+    [Fact]
+    public void ParseAiResponse_MissingTransactionCode_MapsNull()
+    {
+        // Older bank-transfer notifications have no transaction code field.
+        const string json = """
+        {
+          "is_payment": true,
+          "amount": 100,
+          "currency_code": "CZK",
+          "direction": "incoming",
+          "transaction_date": "2026-07-09T10:00:00Z",
+          "counterparty_account": "123/0100",
+          "confidence": 0.9
+        }
+        """;
+
+        var result = AiBankEmailParser.ParseAiResponse(json, "P");
+
+        result.ShouldNotBeNull();
+        result.TransactionCode.ShouldBeNull();
+    }
+
+    [Fact]
     public void ParseAiResponse_NotAPayment_ReturnsNull()
     {
         const string json = """{ "is_payment": false }""";

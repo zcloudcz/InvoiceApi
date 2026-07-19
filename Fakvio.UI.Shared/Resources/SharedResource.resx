@@ -1389,7 +1389,10 @@
   <data name="RecognizedCounterparty_Edit" xml:space="preserve"><value>Upravit protistranu</value></data>
   <data name="RecognizedCounterparty_Label" xml:space="preserve"><value>Název</value></data>
   <data name="RecognizedCounterparty_Account" xml:space="preserve"><value>Číslo účtu</value></data>
-  <data name="RecognizedCounterparty_AccountHelper" xml:space="preserve"><value>Český formát (číslo/kód banky) nebo IBAN</value></data>
+  <data name="RecognizedCounterparty_AccountHelper" xml:space="preserve"><value>Český formát (číslo/kód banky) nebo IBAN. Nepovinné, pokud je vyplněn vzor jména.</value></data>
+  <data name="RecognizedCounterparty_NamePattern" xml:space="preserve"><value>Vzor jména obchodníka</value></data>
+  <data name="RecognizedCounterparty_NamePatternHelper" xml:space="preserve"><value>Pro platby kartou — hledá se v názvu protistrany i zprávě, bez rozlišení velikosti písmen</value></data>
+  <data name="RecognizedCounterparty_ConstraintRequired" xml:space="preserve"><value>Vyplňte číslo účtu nebo vzor jména obchodníka (alespoň jedno).</value></data>
   <data name="RecognizedCounterparty_SymbolHelper" xml:space="preserve"><value>Prázdné = libovolná hodnota</value></data>
   <data name="RecognizedCounterparty_SS" xml:space="preserve"><value>SS</value></data>
   <data name="RecognizedCounterparty_KS" xml:space="preserve"><value>KS</value></data>
@@ -1407,6 +1410,7 @@
   <data name="RecognizedCounterparty_Unassign" xml:space="preserve"><value>Zrušit přiřazení</value></data>
   <data name="RecognizedCounterparty_Assigned_Toast" xml:space="preserve"><value>Platba přiřazena protistraně</value></data>
   <data name="RecognizedCounterparty_Unassigned_Toast" xml:space="preserve"><value>Přiřazení zrušeno</value></data>
+  <data name="PaymentDetail_TransactionCode" xml:space="preserve"><value>Kód transakce</value></data>
 
   <data name="EPaymentDirection_Incoming" xml:space="preserve"><value>Příchozí</value></data>
   <data name="EPaymentDirection_Outgoing" xml:space="preserve"><value>Odchozí</value></data>

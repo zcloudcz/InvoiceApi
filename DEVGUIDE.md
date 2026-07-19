@@ -494,8 +494,15 @@ optionally `ReverseChargeCodeId` (FK to `ReverseChargeCode` lookup, nullable).
 Tenant-evidence známých účtů (pojišťovny, FÚ…) pro kategorizaci pravidelných
 plateb bez faktury (sociální/zdravotní pojištění, DPH…). Migrace `Add_RecognizedCounterparty_v53`.
 
-- **Entita** `RecognizedCounterparty`: Label, CounterpartyAccount (porovnává se přes
-  `NormalizeAccount`), volitelné VS/SS/KS (null = wildcard), `EPaymentCategory? Category`, IsActive.
+- **Entita** `RecognizedCounterparty`: Label, volitelný CounterpartyAccount (porovnává se přes
+  `NormalizeAccount`), volitelný `CounterpartyNamePattern` (case-insensitive substring proti
+  CounterpartyName I Message — platby kartou nemají účet), volitelné VS/SS/KS (null = wildcard),
+  `EPaymentCategory? Category`, IsActive. Aspoň jedno z (účet, vzor) povinné (service validace,
+  migrace `Add_CardPaymentRecognition_v54`). Specificita: účet +2, vzor +1, symbol +1.
+- **Platby kartou**: AI prompt (`AiBankEmailParser.SystemPrompt`) extrahuje merchant →
+  `counterparty_name` a `transaction_code` („Kód transakce") → `BankTransaction.TransactionCode`.
+  TransactionCode je součást `ComputeTransactionHash` (InboundEmailProcessor) — bez něj by se
+  dvě stejné denní platby kartou stejnému obchodníkovi slily do jedné (dedup).
 - **Přiřazení** = nullable FK `BankTransaction.RecognizedCounterpartyId` (SetNull on delete)
   + `EMatchStatus.Recognized = 6`. ZÁMĚRNĚ ne přes `PaymentMatch` — ten nese `MatchedAmount`
   pro settlement faktur (CHECK constraint, PaidAmount přepočty); rozpoznání je kategorizace, ne úhrada.

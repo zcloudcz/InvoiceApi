@@ -1265,6 +1265,7 @@ public sealed class Mapper : IMapper
             destination.Id = source.Id;
             destination.Label = source.Label;
             destination.CounterpartyAccount = source.CounterpartyAccount;
+            destination.CounterpartyNamePattern = source.CounterpartyNamePattern;
             destination.VariableSymbol = source.VariableSymbol;
             destination.SpecificSymbol = source.SpecificSymbol;
             destination.ConstantSymbol = source.ConstantSymbol;
@@ -1279,6 +1280,7 @@ public sealed class Mapper : IMapper
             destination.Id = source.Id;
             destination.Label = source.Label;
             destination.CounterpartyAccount = source.CounterpartyAccount;
+            destination.CounterpartyNamePattern = source.CounterpartyNamePattern;
             destination.VariableSymbol = source.VariableSymbol;
             destination.SpecificSymbol = source.SpecificSymbol;
             destination.ConstantSymbol = source.ConstantSymbol;
@@ -1324,6 +1326,7 @@ public sealed class Mapper : IMapper
             var destination = new Fakvio.Domain.Entities.RecognizedCounterparty();
             destination.Label = source.Label;
             destination.CounterpartyAccount = source.CounterpartyAccount;
+            destination.CounterpartyNamePattern = source.CounterpartyNamePattern;
             destination.VariableSymbol = source.VariableSymbol;
             destination.SpecificSymbol = source.SpecificSymbol;
             destination.ConstantSymbol = source.ConstantSymbol;
@@ -1337,6 +1340,7 @@ public sealed class Mapper : IMapper
         {
             destination.Label = source.Label;
             destination.CounterpartyAccount = source.CounterpartyAccount;
+            destination.CounterpartyNamePattern = source.CounterpartyNamePattern;
             destination.VariableSymbol = source.VariableSymbol;
             destination.SpecificSymbol = source.SpecificSymbol;
             destination.ConstantSymbol = source.ConstantSymbol;

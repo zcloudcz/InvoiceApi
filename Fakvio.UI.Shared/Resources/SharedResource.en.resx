@@ -1389,7 +1389,10 @@
   <data name="RecognizedCounterparty_Edit" xml:space="preserve"><value>Edit counterparty</value></data>
   <data name="RecognizedCounterparty_Label" xml:space="preserve"><value>Name</value></data>
   <data name="RecognizedCounterparty_Account" xml:space="preserve"><value>Account number</value></data>
-  <data name="RecognizedCounterparty_AccountHelper" xml:space="preserve"><value>Czech format (number/bank code) or IBAN</value></data>
+  <data name="RecognizedCounterparty_AccountHelper" xml:space="preserve"><value>Czech format (number/bank code) or IBAN. Optional when a name pattern is filled.</value></data>
+  <data name="RecognizedCounterparty_NamePattern" xml:space="preserve"><value>Merchant name pattern</value></data>
+  <data name="RecognizedCounterparty_NamePatternHelper" xml:space="preserve"><value>For card payments — searched in counterparty name and message, case-insensitive</value></data>
+  <data name="RecognizedCounterparty_ConstraintRequired" xml:space="preserve"><value>Fill in the account number or the merchant name pattern (at least one).</value></data>
   <data name="RecognizedCounterparty_SymbolHelper" xml:space="preserve"><value>Empty = any value</value></data>
   <data name="RecognizedCounterparty_SS" xml:space="preserve"><value>SS</value></data>
   <data name="RecognizedCounterparty_KS" xml:space="preserve"><value>KS</value></data>
@@ -1407,6 +1410,7 @@
   <data name="RecognizedCounterparty_Unassign" xml:space="preserve"><value>Remove assignment</value></data>
   <data name="RecognizedCounterparty_Assigned_Toast" xml:space="preserve"><value>Payment assigned to counterparty</value></data>
   <data name="RecognizedCounterparty_Unassigned_Toast" xml:space="preserve"><value>Assignment removed</value></data>
+  <data name="PaymentDetail_TransactionCode" xml:space="preserve"><value>Transaction code</value></data>
 
   <data name="EPaymentDirection_Incoming" xml:space="preserve"><value>Incoming</value></data>
   <data name="EPaymentDirection_Outgoing" xml:space="preserve"><value>Outgoing</value></data>

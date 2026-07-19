@@ -25,6 +25,9 @@ public class BankTransactionDto
     public string? CounterpartyName { get; set; }
     public string? Message { get; set; }
 
+    /// <summary>Bank's transaction id ("Kód transakce") — unique identifier of card payments.</summary>
+    public string? TransactionCode { get; set; }
+
     public EImportSource ImportSource { get; set; }
     public EMatchStatus MatchStatus { get; set; }
 
