@@ -566,8 +566,10 @@ else
     /// </summary>
     private async Task OpenAssignRecognizedDialog(BankTransactionDto row)
     {
+        // Transaction is passed so "create from payment" pre-fills account + symbols.
+        var parameters = new DialogParameters { ["Transaction"] = row };
         var dialog = await DialogService.ShowAsync<AssignRecognizedDialog>(
-            L["RecognizedCounterparty_Assign"]);
+            L["RecognizedCounterparty_Assign"], parameters);
         var result = await dialog.Result;
         if (result?.Canceled != false || result.Data is not long entryId) return;
 

@@ -1396,13 +1396,14 @@
   <data name="RecognizedCounterparty_Category" xml:space="preserve"><value>Category</value></data>
   <data name="RecognizedCounterparty_Note" xml:space="preserve"><value>Note</value></data>
   <data name="RecognizedCounterparty_Active" xml:space="preserve"><value>Active</value></data>
-  <data name="RecognizedCounterparty_Empty" xml:space="preserve"><value>No recognized counterparties yet. Add them on the My Company page.</value></data>
+  <data name="RecognizedCounterparty_Empty" xml:space="preserve"><value>No recognized counterparties yet.</value></data>
   <data name="RecognizedCounterparty_Saved" xml:space="preserve"><value>Counterparty saved</value></data>
   <data name="RecognizedCounterparty_Deleted" xml:space="preserve"><value>Counterparty deleted</value></data>
   <data name="RecognizedCounterparty_DeleteTitle" xml:space="preserve"><value>Delete counterparty</value></data>
   <data name="RecognizedCounterparty_DeleteConfirm" xml:space="preserve"><value>Really delete "{0}"? Its recognized payments will revert to unmatched.</value></data>
   <data name="RecognizedCounterparty_RescanToast" xml:space="preserve"><value>{0} payments recognized</value></data>
   <data name="RecognizedCounterparty_Assign" xml:space="preserve"><value>Assign counterparty</value></data>
+  <data name="RecognizedCounterparty_CreateFromPayment" xml:space="preserve"><value>Create counterparty from payment</value></data>
   <data name="RecognizedCounterparty_Unassign" xml:space="preserve"><value>Remove assignment</value></data>
   <data name="RecognizedCounterparty_Assigned_Toast" xml:space="preserve"><value>Payment assigned to counterparty</value></data>
   <data name="RecognizedCounterparty_Unassigned_Toast" xml:space="preserve"><value>Assignment removed</value></data>

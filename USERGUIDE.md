@@ -654,6 +654,11 @@ na finanční úřad — lze rozpoznávat podle evidence známých účtů:
 Ruční akce na `/payments`: „Přiřadit protistranu" (ikona záložky) u nespárované
 platby, „Zrušit přiřazení" u rozpoznané platby (vrátí ji mezi nespárované).
 
+V okně „Přiřadit protistranu" je i tlačítko **„Vytvořit protistranu z platby"** —
+otevře formulář předvyplněný údaji z platby (číslo účtu, VS/SS/KS, název
+protistrany), stačí doplnit název/kategorii a uložit. Nový záznam se rovnou
+použije pro přiřazení, není třeba nic kopírovat ručně.
+
 ### Notifikace při spárování
 
 Při úspěšném spárování platby (automatickém i ručním) dostanou všichni uživatelé firmy notifikaci — zobrazí se jako badge na zvonečku v horní liště. Kliknutím na notifikaci přejdete přímo na detail spárované faktury.

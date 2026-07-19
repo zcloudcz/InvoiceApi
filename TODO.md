@@ -160,6 +160,7 @@ Evidence známých bankovních účtů (pojišťovny, FÚ…) + rozpoznávání 
 - [x] Lokalizace: `EMatchStatus_Recognized`, 6× `EPaymentCategory_*`, 23× `RecognizedCounterparty_*` (CZ/EN)
 - [x] 33 nových testů (matching + CRUD service + Functions parity smoke), unit suite 1775 zelených
 - [x] USERGUIDE §15, DEVGUIDE §4.5.2
+- [x] Follow-up: tlačítko „Vytvořit protistranu z platby" v assign dialogu — formulář předvyplněný z transakce (účet, VS/SS/KS, název), po uložení rovnou přiřadí
 
 ### ISDOC export for received invoices + bulk ISDOC actions (2026-07-17)
 ISDOC export (dosud jen na detailu vydané faktury) rozšířen na přijaté faktury a hromadné akce:

@@ -3,9 +3,17 @@
     registry entry ("Přiřadit protistranu" action on the Payments page).
     Loads active registry entries and returns the selected entry's Id via
     MudDialog.Close(DialogResult.Ok(id)).
+
+    "Create from payment" button: opens RecognizedCounterpartyDialog pre-filled
+    from the transaction (account, symbols, counterparty name) so the user
+    doesn't have to copy account numbers by hand. The new entry is saved
+    immediately and returned as the assignment target.
 *@
 @inject RecognizedCounterpartyApiService Api
 @inject IStringLocalizer<SharedResource> L
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@using Fakvio.Contracts.Dto.PaymentMatching
 @using Fakvio.Contracts.Dto.RecognizedCounterparty
 
 <MudDialog>
@@ -16,7 +24,7 @@
         }
         else if (_entries.Count == 0)
         {
-            @* Registry is empty — point the user to the MyCompany page where entries are managed *@
+            @* Registry is empty — the user can create the first entry right here *@
             <MudAlert Severity="Severity.Info" Dense="true">
                 @L["RecognizedCounterparty_Empty"]
             </MudAlert>
@@ -36,6 +44,13 @@
         }
     </DialogContent>
     <DialogActions>
+        @* Create a new registry entry pre-filled from this payment's data *@
+        <MudButton Variant="Variant.Outlined" Color="Color.Tertiary"
+                   StartIcon="@Icons.Material.Filled.AddCircleOutline"
+                   OnClick="CreateFromPayment">
+            @L["RecognizedCounterparty_CreateFromPayment"]
+        </MudButton>
+        <MudSpacer />
         <MudButton OnClick="Cancel">@L["Btn_Cancel"]</MudButton>
         <MudButton Variant="Variant.Filled" Color="Color.Primary"
                    Disabled="@(_selectedId == null)" OnClick="Confirm">
@@ -47,6 +62,14 @@
 @code {
     [CascadingParameter]
     private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    /// <summary>
+    /// The transaction being assigned — used to pre-fill the "create from
+    /// payment" dialog (account, symbols, counterparty name). Optional: without
+    /// it the create dialog simply starts empty.
+    /// </summary>
+    [Parameter]
+    public BankTransactionDto? Transaction { get; set; }
 
     private bool _loading = true;
     private List<RecognizedCounterpartyDto> _entries = new();
@@ -62,6 +85,56 @@
         finally
         {
             _loading = false;
+        }
+    }
+
+    /// <summary>
+    /// Opens the registry-entry dialog pre-filled from the transaction, saves
+    /// the new entry, and closes this dialog with the new entry as the
+    /// assignment target — the caller then assigns the payment to it.
+    /// </summary>
+    private async Task CreateFromPayment()
+    {
+        var model = new SaveRecognizedCounterpartyRequest
+        {
+            // Counterparty name is the best label guess; user can rewrite it.
+            Label = Transaction?.CounterpartyName ?? string.Empty,
+            CounterpartyAccount = Transaction?.CounterpartyAccount ?? string.Empty,
+            // Symbols are constraints (empty = wildcard) — pre-fill from the
+            // payment because VS/SS typically identify the payer and repeat
+            // on every future payment to the same institution.
+            VariableSymbol = Transaction?.VariableSymbol,
+            SpecificSymbol = Transaction?.SpecificSymbol,
+            ConstantSymbol = Transaction?.ConstantSymbol,
+        };
+
+        var parameters = new DialogParameters { ["Model"] = model };
+        var dialog = await DialogService.ShowAsync<RecognizedCounterpartyDialog>(
+            L["RecognizedCounterparty_Add"], parameters);
+        var result = await dialog.Result;
+        if (result?.Canceled != false) return;
+
+        try
+        {
+            var response = await Api.CreateAsync(model);
+            if (response == null) return;
+
+            Snackbar.Add(L["RecognizedCounterparty_Saved"].Value, Severity.Success);
+            if (response.RecognizedCount > 0)
+            {
+                Snackbar.Add(
+                    string.Format(L["RecognizedCounterparty_RescanToast"].Value, response.RecognizedCount),
+                    Severity.Info);
+            }
+
+            // Close with the new entry as the assignment target. The caller's
+            // AssignRecognizedAsync is idempotent even when the automatic
+            // rescan already recognized this transaction.
+            MudDialog.Close(DialogResult.Ok(response.Entry.Id));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
         }
     }
 
