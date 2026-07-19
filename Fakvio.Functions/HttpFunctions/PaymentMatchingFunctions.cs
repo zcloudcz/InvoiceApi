@@ -368,4 +368,54 @@ public class PaymentMatchingFunctions
 
         return FunctionResultHelper.Normalize(await _controller.ConfirmAutoMatch(dto, ct));
     }
+
+    /// <summary>
+    /// POST api/payment-matching/transactions/{id}/assign-recognized
+    /// → <see cref="PaymentMatchingController.AssignRecognized"/>
+    /// Request body: <see cref="Fakvio.Contracts.Dto.RecognizedCounterparty.AssignRecognizedRequest"/>.
+    /// </summary>
+    [Function("PaymentMatching_AssignRecognized")]
+    public async Task<IActionResult> PaymentMatching_AssignRecognized(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/payment-matching/transactions/{id:long}/assign-recognized")] HttpRequest req,
+        string id)
+    {
+        if (!long.TryParse(id, out var idParsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
+
+        _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
+
+        if (req.HttpContext.User.Identity?.IsAuthenticated != true)
+            return new UnauthorizedResult();
+
+        var ct = req.HttpContext.RequestAborted;
+
+        var dto = await System.Text.Json.JsonSerializer.DeserializeAsync<Fakvio.Contracts.Dto.RecognizedCounterparty.AssignRecognizedRequest>(
+            req.Body, FunctionResultHelper.JsonOptions, ct);
+
+        if (dto == null)
+            return new BadRequestObjectResult(new { message = "Invalid request body." });
+
+        return FunctionResultHelper.Normalize(await _controller.AssignRecognized(idParsed, dto, ct));
+    }
+
+    /// <summary>
+    /// POST api/payment-matching/transactions/{id}/unassign-recognized
+    /// → <see cref="PaymentMatchingController.UnassignRecognized"/>
+    /// </summary>
+    [Function("PaymentMatching_UnassignRecognized")]
+    public async Task<IActionResult> PaymentMatching_UnassignRecognized(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/payment-matching/transactions/{id:long}/unassign-recognized")] HttpRequest req,
+        string id)
+    {
+        if (!long.TryParse(id, out var idParsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
+
+        _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
+
+        if (req.HttpContext.User.Identity?.IsAuthenticated != true)
+            return new UnauthorizedResult();
+
+        var ct = req.HttpContext.RequestAborted;
+        return FunctionResultHelper.Normalize(await _controller.UnassignRecognized(idParsed, ct));
+    }
 }

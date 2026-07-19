@@ -1,0 +1,206 @@
+@*
+    Self-contained editor for the recognized-counterparty registry — known bank
+    accounts (insurance, tax office, …) used to recognize recurring payments
+    without an invoice.
+
+    Unlike BankAccountListEditor this component talks to its own API service and
+    persists immediately — it does NOT participate in the company form's
+    Save/Cancel lifecycle (the registry is standalone tenant data).
+
+    After create/update the server automatically re-scans unmatched transactions;
+    the snackbar reports how many payments were recognized.
+*@
+@inject RecognizedCounterpartyApiService Api
+@inject IStringLocalizer<SharedResource> L
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@using Fakvio.Contracts.Dto.RecognizedCounterparty
+@using Fakvio.Domain.Enums
+
+<div class="d-flex align-center mb-2">
+    <MudText Typo="Typo.h6">@L["RecognizedCounterparty_Section_Title"]</MudText>
+    <MudSpacer />
+    <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
+               StartIcon="@Icons.Material.Filled.Add" OnClick="AddEntry">
+        @L["RecognizedCounterparty_Add"]
+    </MudButton>
+</div>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    @L["RecognizedCounterparty_InfoText"]
+</MudText>
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="my-2" />
+}
+else if (_entries.Count == 0)
+{
+    <MudText Typo="Typo.body2" Class="mud-text-secondary">
+        @L["RecognizedCounterparty_Empty"]
+    </MudText>
+}
+else
+{
+    <MudTable Items="_entries" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>@L["RecognizedCounterparty_Label"]</MudTh>
+            <MudTh>@L["RecognizedCounterparty_Account"]</MudTh>
+            <MudTh>@L["Payments_Col_VS"]</MudTh>
+            <MudTh>@L["RecognizedCounterparty_SS"]</MudTh>
+            <MudTh>@L["RecognizedCounterparty_KS"]</MudTh>
+            <MudTh>@L["RecognizedCounterparty_Category"]</MudTh>
+            <MudTh>@L["RecognizedCounterparty_Active"]</MudTh>
+            <MudTh Style="width:100px; text-align:right;">@L["Payments_Col_Actions"]</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="@L["RecognizedCounterparty_Label"]">@context.Label</MudTd>
+            <MudTd DataLabel="@L["RecognizedCounterparty_Account"]">@context.CounterpartyAccount</MudTd>
+            <MudTd DataLabel="@L["Payments_Col_VS"]">@(context.VariableSymbol ?? "—")</MudTd>
+            <MudTd DataLabel="@L["RecognizedCounterparty_SS"]">@(context.SpecificSymbol ?? "—")</MudTd>
+            <MudTd DataLabel="@L["RecognizedCounterparty_KS"]">@(context.ConstantSymbol ?? "—")</MudTd>
+            <MudTd DataLabel="@L["RecognizedCounterparty_Category"]">
+                @(context.Category.HasValue ? L[$"EPaymentCategory_{context.Category}"] : "—")
+            </MudTd>
+            <MudTd DataLabel="@L["RecognizedCounterparty_Active"]">
+                @if (context.IsActive)
+                {
+                    <MudIcon Icon="@Icons.Material.Filled.Check" Color="Color.Success" Size="Size.Small" />
+                }
+                else
+                {
+                    <MudIcon Icon="@Icons.Material.Filled.Close" Color="Color.Default" Size="Size.Small" />
+                }
+            </MudTd>
+            <MudTd DataLabel="@L["Payments_Col_Actions"]" Style="text-align:right;">
+                <MudIconButton Size="Size.Small" Icon="@Icons.Material.Filled.Edit"
+                               OnClick="@(() => EditEntry(context))" />
+                <MudIconButton Size="Size.Small" Icon="@Icons.Material.Filled.Delete"
+                               Color="Color.Error"
+                               OnClick="@(() => DeleteEntry(context))" />
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    private bool _loading = true;
+    private List<RecognizedCounterpartyDto> _entries = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _entries = await Api.GetAllAsync() ?? new();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    /// <summary>Opens the dialog with an empty model; creates the entry on confirm.</summary>
+    private async Task AddEntry()
+    {
+        var model = new SaveRecognizedCounterpartyRequest();
+        var parameters = new DialogParameters { ["Model"] = model };
+        var dialog = await DialogService.ShowAsync<RecognizedCounterpartyDialog>(
+            L["RecognizedCounterparty_Add"], parameters);
+        var result = await dialog.Result;
+        if (result?.Canceled != false) return;
+
+        try
+        {
+            var response = await Api.CreateAsync(model);
+            if (response != null)
+            {
+                ShowSaveToast(response.RecognizedCount);
+                await LoadAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+    }
+
+    /// <summary>Opens the dialog pre-filled with a copy of the entry; updates on confirm.</summary>
+    private async Task EditEntry(RecognizedCounterpartyDto entry)
+    {
+        // Edit a copy — cancel must not mutate the grid row.
+        var model = new SaveRecognizedCounterpartyRequest
+        {
+            Label = entry.Label,
+            CounterpartyAccount = entry.CounterpartyAccount,
+            VariableSymbol = entry.VariableSymbol,
+            SpecificSymbol = entry.SpecificSymbol,
+            ConstantSymbol = entry.ConstantSymbol,
+            Category = entry.Category,
+            Note = entry.Note,
+            IsActive = entry.IsActive,
+        };
+
+        var parameters = new DialogParameters { ["Model"] = model };
+        var dialog = await DialogService.ShowAsync<RecognizedCounterpartyDialog>(
+            L["RecognizedCounterparty_Edit"], parameters);
+        var result = await dialog.Result;
+        if (result?.Canceled != false) return;
+
+        try
+        {
+            var response = await Api.UpdateAsync(entry.Id, model);
+            if (response != null)
+            {
+                ShowSaveToast(response.RecognizedCount);
+                await LoadAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+    }
+
+    /// <summary>Confirms and deletes an entry; its recognized transactions revert to Unmatched.</summary>
+    private async Task DeleteEntry(RecognizedCounterpartyDto entry)
+    {
+        var confirmed = await DialogService.ShowMessageBox(
+            L["RecognizedCounterparty_DeleteTitle"].Value,
+            string.Format(L["RecognizedCounterparty_DeleteConfirm"].Value, entry.Label),
+            yesText: L["Btn_Delete"].Value,
+            cancelText: L["Btn_Cancel"].Value);
+        if (confirmed != true) return;
+
+        try
+        {
+            await Api.DeleteAsync(entry.Id);
+            Snackbar.Add(L["RecognizedCounterparty_Deleted"].Value, Severity.Success);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+    }
+
+    /// <summary>Save toast — includes the automatic rescan result when it recognized anything.</summary>
+    private void ShowSaveToast(int recognizedCount)
+    {
+        Snackbar.Add(L["RecognizedCounterparty_Saved"].Value, Severity.Success);
+        if (recognizedCount > 0)
+        {
+            Snackbar.Add(
+                string.Format(L["RecognizedCounterparty_RescanToast"].Value, recognizedCount),
+                Severity.Info);
+        }
+    }
+}

@@ -187,6 +187,55 @@ public class PaymentMatchingController : ControllerBase
         return NoContent();
     }
 
+    // ─── Recognized counterparty assignment ─────────────────────────────────
+
+    /// <summary>
+    /// Manually assigns a transaction to a recognized-counterparty registry entry
+    /// (MatchStatus → Recognized). Rejected for Matched/Ignored transactions.
+    /// </summary>
+    /// <response code="204">Assigned</response>
+    /// <response code="400">Transaction already matched/ignored or entry not found</response>
+    [HttpPost("transactions/{id:long}/assign-recognized")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> AssignRecognized(
+        long id,
+        [FromBody] Contracts.Dto.RecognizedCounterparty.AssignRecognizedRequest req,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            await _matcher.AssignRecognizedAsync(id, req.RecognizedCounterpartyId, GetUserId(), ct);
+            return NoContent();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Removes the recognized-counterparty assignment from a transaction
+    /// (typically back to Unmatched).
+    /// </summary>
+    /// <response code="204">Unassigned</response>
+    /// <response code="400">Transaction not found</response>
+    [HttpPost("transactions/{id:long}/unassign-recognized")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> UnassignRecognized(long id, CancellationToken ct = default)
+    {
+        try
+        {
+            await _matcher.UnassignRecognizedAsync(id, GetUserId(), ct);
+            return NoContent();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
     // ─── Dashboard ──────────────────────────────────────────────────────────
 
     /// <summary>Count of unmatched/needs-review transactions for the nav badge.</summary>

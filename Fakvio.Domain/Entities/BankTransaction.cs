@@ -73,6 +73,16 @@ public class BankTransaction : BaseEntity
     /// <summary>Current state of matching against invoices.</summary>
     public EMatchStatus MatchStatus { get; set; } = EMatchStatus.Unmatched;
 
+    /// <summary>
+    /// FK to the recognized counterparty registry entry this transaction was
+    /// assigned to (when MatchStatus = Recognized). Null otherwise.
+    /// SetNull on registry-entry delete — the service also resets MatchStatus.
+    /// </summary>
+    public long? RecognizedCounterpartyId { get; set; }
+
+    /// <summary>Navigation to the recognized counterparty registry entry.</summary>
+    public RecognizedCounterparty? RecognizedCounterparty { get; set; }
+
     /// <summary>Matches created for this transaction.</summary>
     public ICollection<PaymentMatch> PaymentMatch { get; set; } = new List<PaymentMatch>();
 }

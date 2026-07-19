@@ -49,6 +49,7 @@ public class BankTransactionQueryService : IBankTransactionQueryService
             .Include(t => t.BankAccount)
             .Include(t => t.PaymentMatch)
                 .ThenInclude(m => m.Invoice)
+            .Include(t => t.RecognizedCounterparty)
             .AsNoTracking()
             .ToListAsync(ct);
 
@@ -64,6 +65,7 @@ public class BankTransactionQueryService : IBankTransactionQueryService
             .Include(t => t.BankAccount)
             .Include(t => t.PaymentMatch)
                 .ThenInclude(m => m.Invoice)
+            .Include(t => t.RecognizedCounterparty)
             .FirstOrDefaultAsync(t => t.Id == id, ct);
 
         return row == null ? null : MapToDto(row);
@@ -130,6 +132,9 @@ public class BankTransactionQueryService : IBankTransactionQueryService
                 .Select(m => m.Invoice!.DocumentNumber ?? "")
                 .ToList(),
             MatchedTotal = t.PaymentMatch.Sum(m => m.MatchedAmount),
+            RecognizedCounterpartyId = t.RecognizedCounterpartyId,
+            RecognizedCounterpartyLabel = t.RecognizedCounterparty?.Label,
+            RecognizedCategory = t.RecognizedCounterparty?.Category,
         };
     }
 }

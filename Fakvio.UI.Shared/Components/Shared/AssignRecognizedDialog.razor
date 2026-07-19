@@ -1,0 +1,75 @@
+@*
+    Small picker dialog: assigns a bank transaction to a recognized-counterparty
+    registry entry ("Přiřadit protistranu" action on the Payments page).
+    Loads active registry entries and returns the selected entry's Id via
+    MudDialog.Close(DialogResult.Ok(id)).
+*@
+@inject RecognizedCounterpartyApiService Api
+@inject IStringLocalizer<SharedResource> L
+@using Fakvio.Contracts.Dto.RecognizedCounterparty
+
+<MudDialog>
+    <DialogContent>
+        @if (_loading)
+        {
+            <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="my-2" />
+        }
+        else if (_entries.Count == 0)
+        {
+            @* Registry is empty — point the user to the MyCompany page where entries are managed *@
+            <MudAlert Severity="Severity.Info" Dense="true">
+                @L["RecognizedCounterparty_Empty"]
+            </MudAlert>
+        }
+        else
+        {
+            <MudSelect T="long?" @bind-Value="_selectedId"
+                       Label="@L["RecognizedCounterparty_Section_Title"].Value"
+                       Required="true">
+                @foreach (var entry in _entries)
+                {
+                    <MudSelectItem T="long?" Value="@((long?)entry.Id)">
+                        @entry.Label (@entry.CounterpartyAccount)
+                    </MudSelectItem>
+                }
+            </MudSelect>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">@L["Btn_Cancel"]</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                   Disabled="@(_selectedId == null)" OnClick="Confirm">
+            @L["RecognizedCounterparty_Assign"]
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    private bool _loading = true;
+    private List<RecognizedCounterpartyDto> _entries = new();
+    private long? _selectedId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Only active entries make sense as assignment targets.
+            _entries = (await Api.GetAllAsync())?.Where(e => e.IsActive).ToList() ?? new();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void Confirm()
+    {
+        if (_selectedId != null)
+            MudDialog.Close(DialogResult.Ok(_selectedId.Value));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

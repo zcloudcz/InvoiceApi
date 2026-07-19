@@ -380,6 +380,37 @@ public static class Mapper_Extensions
     }
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    public static Fakvio.Contracts.Dto.RecognizedCounterparty.RecognizedCounterpartyDto ToRecognizedCounterpartyDto(this Fakvio.Domain.Entities.RecognizedCounterparty source)
+    {
+        var destination = new Fakvio.Contracts.Dto.RecognizedCounterparty.RecognizedCounterpartyDto();
+        destination.Id = source.Id;
+        destination.Label = source.Label;
+        destination.CounterpartyAccount = source.CounterpartyAccount;
+        destination.VariableSymbol = source.VariableSymbol;
+        destination.SpecificSymbol = source.SpecificSymbol;
+        destination.ConstantSymbol = source.ConstantSymbol;
+        destination.Category = source.Category;
+        destination.Note = source.Note;
+        destination.IsActive = source.IsActive;
+        return destination;
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    public static Fakvio.Domain.Entities.RecognizedCounterparty ToRecognizedCounterparty(this Fakvio.Contracts.Dto.RecognizedCounterparty.SaveRecognizedCounterpartyRequest source)
+    {
+        var destination = new Fakvio.Domain.Entities.RecognizedCounterparty();
+        destination.Label = source.Label;
+        destination.CounterpartyAccount = source.CounterpartyAccount;
+        destination.VariableSymbol = source.VariableSymbol;
+        destination.SpecificSymbol = source.SpecificSymbol;
+        destination.ConstantSymbol = source.ConstantSymbol;
+        destination.Category = source.Category;
+        destination.Note = source.Note;
+        destination.IsActive = source.IsActive;
+        return destination;
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     public static Fakvio.Contracts.Dto.Reminder.ReminderLevelDto ToReminderLevelDto(this Fakvio.Domain.Entities.ReminderLevel source)
     {
         var destination = new Fakvio.Contracts.Dto.Reminder.ReminderLevelDto();

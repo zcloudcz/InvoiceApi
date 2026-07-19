@@ -253,6 +253,12 @@ public class TenantDbContext : DbContext
     /// </summary>
     public DbSet<PaymentMatch> PaymentMatch { get; set; }
 
+    /// <summary>
+    /// Registry of known counterparty accounts (insurance, tax office, …) used to
+    /// recognize recurring payments that have no invoice.
+    /// </summary>
+    public DbSet<RecognizedCounterparty> RecognizedCounterparty { get; set; }
+
     // ─── Entity Configuration ─────────────────────────────────────────────────
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -315,6 +321,7 @@ public class TenantDbContext : DbContext
         ConfigureInboundEmail(modelBuilder);
         ConfigureBankTransaction(modelBuilder);
         ConfigurePaymentMatch(modelBuilder);
+        ConfigureRecognizedCounterparty(modelBuilder);
 
         ConfigureReverseChargeCode(modelBuilder);
 
@@ -1161,6 +1168,38 @@ public class TenantDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(e => e.BankAccountId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            // FK to RecognizedCounterparty — SetNull: deleting a registry entry
+            // must not delete accounting history; the service also resets MatchStatus.
+            entity.HasIndex(e => e.RecognizedCounterpartyId);
+            entity.HasOne(e => e.RecognizedCounterparty)
+                .WithMany()
+                .HasForeignKey(e => e.RecognizedCounterpartyId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .IsRequired(false);
+        });
+    }
+
+    /// <summary>
+    /// RecognizedCounterparty — tenant registry of known counterparty accounts
+    /// (insurance, tax office, …). Standalone reference data, no outgoing FKs.
+    /// </summary>
+    private void ConfigureRecognizedCounterparty(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<RecognizedCounterparty>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            // Matcher hot path: WHERE IsActive = true (table is tiny, index cheap).
+            entity.HasIndex(e => e.IsActive);
+
+            entity.Property(e => e.Label).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.CounterpartyAccount).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.VariableSymbol).HasMaxLength(20);
+            entity.Property(e => e.SpecificSymbol).HasMaxLength(20);
+            entity.Property(e => e.ConstantSymbol).HasMaxLength(20);
+            entity.Property(e => e.Note).HasMaxLength(1000);
+            entity.Property(e => e.Category).HasConversion<int>();
         });
     }
 

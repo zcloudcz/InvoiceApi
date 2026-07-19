@@ -148,6 +148,19 @@ Current state: `PdfExportService` renders the entire HTML template as a single b
 
 ## Completed
 
+### Recognized counterparties — payment recognition without invoice (2026-07-19)
+Evidence známých bankovních účtů (pojišťovny, FÚ…) + rozpoznávání pravidelných plateb:
+
+- [x] Entity `RecognizedCounterparty` (Label, účet, volitelné VS/SS/KS = wildcard, `EPaymentCategory?`, IsActive) + migrace `Add_RecognizedCounterparty_v53`
+- [x] `EMatchStatus.Recognized = 6` + nullable FK `BankTransaction.RecognizedCounterpartyId` (SetNull) — kategorizace mimo PaymentMatch (nezasahuje do PaidAmount invariantů)
+- [x] `TryRecognizeAsync` — Rule 3 fallback v obou směrech matcheru; nejspecifičtější záznam vyhrává, remíza různých labelů → NeedsReview; faktura vždy vítězí (manual/confirm match nuluje FK)
+- [x] `RescanUnmatchedAsync` — automaticky po create/update aktivního záznamu (počet → snackbar), + `POST /rescan`; delete/deaktivace resetuje transakce na Unmatched
+- [x] API: `RecognizedCounterpartyController` (CRUD + rescan), assign/unassign-recognized na PaymentMatchingController + Functions wrappery (8 nových funkcí)
+- [x] UI: `RecognizedCounterpartyEditor` sekce na MyCompany, `AssignRecognizedDialog` picker, chip + akce na Payments/PaymentDetail, filtr stavu Rozpoznané
+- [x] Lokalizace: `EMatchStatus_Recognized`, 6× `EPaymentCategory_*`, 23× `RecognizedCounterparty_*` (CZ/EN)
+- [x] 33 nových testů (matching + CRUD service + Functions parity smoke), unit suite 1775 zelených
+- [x] USERGUIDE §15, DEVGUIDE §4.5.2
+
 ### ISDOC export for received invoices + bulk ISDOC actions (2026-07-17)
 ISDOC export (dosud jen na detailu vydané faktury) rozšířen na přijaté faktury a hromadné akce:
 

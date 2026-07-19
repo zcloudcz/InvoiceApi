@@ -336,6 +336,13 @@ else
         }
     </MudPaper>
 
+    @* Full-width section: recognized-counterparty registry (insurance, tax office, …).
+       Self-contained — persists immediately via its own API service, independent of
+       the company form's edit/save lifecycle. *@
+    <MudPaper Elevation="2" Class="pa-4 mb-4">
+        <RecognizedCounterpartyEditor />
+    </MudPaper>
+
     @* ── Email Settings section (Admin only) ─────────────────────────────────── *@
     @* Only users with Admin role can configure company SMTP settings.
        Regular Users see the rest of the page but NOT this section. *@

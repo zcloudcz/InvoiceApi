@@ -19,5 +19,12 @@ public enum EMatchStatus
     Ignored = 4,
 
     /// <summary>Multiple candidates detected or ambiguous data — user must decide.</summary>
-    NeedsReview = 5
+    NeedsReview = 5,
+
+    /// <summary>
+    /// Assigned to a recognized counterparty from the registry (RecognizedCounterparty)
+    /// instead of an invoice — e.g. social/health insurance, VAT to the tax office.
+    /// Categorization only; does not affect any invoice paid amounts.
+    /// </summary>
+    Recognized = 6
 }

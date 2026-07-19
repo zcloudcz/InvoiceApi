@@ -627,14 +627,32 @@ Grid zobrazuje bankovní transakce:
 |------|-------|
 | Datum | Datum transakce |
 | Částka + měna | Příchozí / odchozí |
-| Stav párování | Unmatched / NeedsReview / Matched / PartiallyMatched / Ignored |
-| Spárovaná faktura | Pokud existuje |
+| Stav párování | Nespárované / Vyžaduje kontrolu / Spárované / Částečně spárované / Rozpoznané / Ignorované |
+| Spárovaná faktura / protistrana | Číslo faktury, nebo štítek rozpoznané protistrany |
 
 **Filtrace:** stav párování, směr platby (příchozí / odchozí), textové hledání
 
 ### Ruční párování
 
 Kliknutím na řádek s platbou se otevře detail → tlačítko „Spárovat s fakturou" → výběr faktury ze seznamu.
+
+### Rozpoznané protistrany (platby bez faktury)
+
+Pravidelné platby bez faktury — sociální a zdravotní pojištění, nemocenská, DPH
+na finanční úřad — lze rozpoznávat podle evidence známých účtů:
+
+1. Na stránce **Moje firma** → sekce „Rozpoznané protistrany" přidejte záznam:
+   název (např. „OSSZ — sociální pojištění"), číslo účtu a volitelně VS/SS/KS
+   (prázdný symbol = libovolná hodnota) + kategorii (pojištění, DPH, daň…).
+2. Po uložení se automaticky projdou existující nespárované platby — počet nově
+   rozpoznaných ukáže notifikace.
+3. Nové platby na známý účet se při příjmu rozpoznají samy (faktury mají vždy
+   přednost). Rozpoznaná platba má stav **Rozpoznáno** a v gridu štítek se
+   jménem protistrany.
+4. Funguje obousměrně — např. vratka DPH přijde jako příchozí platba z účtu FÚ.
+
+Ruční akce na `/payments`: „Přiřadit protistranu" (ikona záložky) u nespárované
+platby, „Zrušit přiřazení" u rozpoznané platby (vrátí ji mezi nespárované).
 
 ### Notifikace při spárování
 

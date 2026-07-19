@@ -1,0 +1,122 @@
+@*
+    Dialog for adding or editing a recognized-counterparty registry entry
+    (known bank account of an insurance company, tax office, …).
+    Used by RecognizedCounterpartyEditor for both "Add" and "Edit".
+    Returns the edited SaveRecognizedCounterpartyRequest via MudDialog.Close().
+    Follows the same pattern as BankAccountDialog.razor.
+*@
+@inject IStringLocalizer<SharedResource> L
+@using Fakvio.Contracts.Dto.RecognizedCounterparty
+@using Fakvio.Domain.Enums
+
+<MudDialog DefaultFocus="DefaultFocus.FirstChild">
+    <DialogContent>
+        <MudGrid @onkeydown="OnKeyDown">
+            @* Label is required — it is what the user sees on the Payments grid *@
+            <MudItem xs="12">
+                <MudTextField @bind-Value="Model.Label"
+                              Label="@L["RecognizedCounterparty_Label"].Value"
+                              Required="true"
+                              Placeholder="OSSZ — sociální pojištění"
+                              MaxLength="200" />
+            </MudItem>
+
+            @* Counterparty account is required — the primary matching key *@
+            <MudItem xs="12">
+                <MudTextField @bind-Value="Model.CounterpartyAccount"
+                              Label="@L["RecognizedCounterparty_Account"].Value"
+                              Required="true"
+                              Placeholder="1011-7724311/0710"
+                              HelperText="@L["RecognizedCounterparty_AccountHelper"].Value"
+                              MaxLength="100" />
+            </MudItem>
+
+            @* Optional symbol constraints — empty means "any value matches" *@
+            <MudItem xs="12" sm="4">
+                <MudTextField @bind-Value="Model.VariableSymbol"
+                              Label="@L["Payments_Col_VS"].Value"
+                              HelperText="@L["RecognizedCounterparty_SymbolHelper"].Value"
+                              MaxLength="20" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudTextField @bind-Value="Model.SpecificSymbol"
+                              Label="@L["RecognizedCounterparty_SS"].Value"
+                              MaxLength="20" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudTextField @bind-Value="Model.ConstantSymbol"
+                              Label="@L["RecognizedCounterparty_KS"].Value"
+                              MaxLength="20" />
+            </MudItem>
+
+            @* Optional category for future expense reporting *@
+            <MudItem xs="12" sm="6">
+                <MudSelect T="EPaymentCategory?" @bind-Value="Model.Category"
+                           Label="@L["RecognizedCounterparty_Category"].Value"
+                           Clearable="true">
+                    @foreach (var category in Enum.GetValues<EPaymentCategory>())
+                    {
+                        <MudSelectItem T="EPaymentCategory?" Value="@((EPaymentCategory?)category)">
+                            @L[$"EPaymentCategory_{category}"]
+                        </MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+
+            @* Active toggle — inactive entries are kept but skipped by the matcher *@
+            <MudItem xs="12" sm="6" Class="d-flex align-center">
+                <MudSwitch @bind-Value="Model.IsActive"
+                           Label="@L["RecognizedCounterparty_Active"].Value"
+                           Color="Color.Success" />
+            </MudItem>
+
+            <MudItem xs="12">
+                <MudTextField @bind-Value="Model.Note"
+                              Label="@L["RecognizedCounterparty_Note"].Value"
+                              Lines="2"
+                              MaxLength="1000" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">@L["Btn_Cancel"]</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save">@L["Btn_Save"]</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    /// <summary>MudDialog instance — required for closing the dialog with a result.</summary>
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    /// <summary>
+    /// The entry being created or edited. Pre-populated by the caller
+    /// (empty for add, copy of the existing entry for edit).
+    /// </summary>
+    [Parameter]
+    public SaveRecognizedCounterpartyRequest Model { get; set; } = new();
+
+    /// <summary>Validates required fields and closes the dialog with the edited entry.</summary>
+    private void Save()
+    {
+        // Label + account are mandatory — matches server-side validation.
+        if (string.IsNullOrWhiteSpace(Model.Label) || string.IsNullOrWhiteSpace(Model.CounterpartyAccount))
+        {
+            return; // Required="true" fields show their own validation error
+        }
+
+        MudDialog.Close(DialogResult.Ok(Model));
+    }
+
+    /// <summary>Closes the dialog without saving.</summary>
+    private void Cancel() => MudDialog.Cancel();
+
+    /// <summary>Enter → Save; ESC handled by MudDialog itself.</summary>
+    private void OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            Save();
+        }
+    }
+}

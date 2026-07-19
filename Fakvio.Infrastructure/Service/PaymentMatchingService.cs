@@ -61,7 +61,7 @@ public class PaymentMatchingService : IPaymentMatchingService
         }
 
         // Skip already-decided transactions — the caller may hit us twice.
-        if (tx.MatchStatus is EMatchStatus.Matched or EMatchStatus.Ignored)
+        if (tx.MatchStatus is EMatchStatus.Matched or EMatchStatus.Ignored or EMatchStatus.Recognized)
         {
             _logger.LogDebug("MatchAsync: transaction {Id} already {Status} — skipping", tx.Id, tx.MatchStatus);
             return;
@@ -119,6 +119,9 @@ public class PaymentMatchingService : IPaymentMatchingService
             Note = note,
         };
         _context.PaymentMatch.Add(match);
+
+        // Invoice match wins over registry categorization — drop any recognition.
+        tx.RecognizedCounterpartyId = null;
 
         RecalculateInvoice(invoice, delta: matchedAmount, tx.TransactionDate);
         RecalculateTransactionStatus(tx, alreadyAssigned + matchedAmount);
@@ -467,7 +470,7 @@ public class PaymentMatchingService : IPaymentMatchingService
             return null;
         }
 
-        if (tx.MatchStatus is EMatchStatus.Matched or EMatchStatus.Ignored)
+        if (tx.MatchStatus is EMatchStatus.Matched or EMatchStatus.Ignored or EMatchStatus.Recognized)
         {
             _logger.LogDebug(
                 "FindAutoMatchForTransactionAsync: Tx {Id} already {Status} — skip",
@@ -649,6 +652,9 @@ public class PaymentMatchingService : IPaymentMatchingService
             };
             _context.PaymentMatch.Add(match);
 
+            // Invoice match wins over registry categorization — drop any recognition.
+            tx.RecognizedCounterpartyId = null;
+
             RecalculateInvoice(invoice, delta: matched, tx.TransactionDate);
             RecalculateTransactionStatus(tx, alreadyAssigned + matched);
 
@@ -690,6 +696,9 @@ public class PaymentMatchingService : IPaymentMatchingService
                 MatchedByUserId = userId,
             };
             _context.PaymentMatch.Add(match);
+
+            // Invoice match wins over registry categorization — drop any recognition.
+            tx.RecognizedCounterpartyId = null;
 
             RecalculateReceivedInvoice(receivedInvoice, delta: matched, tx.TransactionDate);
             RecalculateTransactionStatus(tx, alreadyAssigned + matched);
@@ -780,6 +789,10 @@ public class PaymentMatchingService : IPaymentMatchingService
             }
         }
 
+        // Rule 3 — recognized counterparty registry (no invoice — e.g. VAT refund from FÚ).
+        if (await TryRecognizeAsync(tx, ct))
+            return;
+
         // No rule matched.
         tx.MatchStatus = EMatchStatus.Unmatched;
     }
@@ -848,6 +861,11 @@ public class PaymentMatchingService : IPaymentMatchingService
                 return;
             }
         }
+
+        // Rule 3 — recognized counterparty registry (recurring payments without an
+        // invoice: social/health insurance, VAT to the tax office, …).
+        if (await TryRecognizeAsync(tx, ct))
+            return;
 
         // No rule matched.
         tx.MatchStatus = EMatchStatus.Unmatched;
@@ -966,6 +984,149 @@ public class PaymentMatchingService : IPaymentMatchingService
         {
             tx.MatchStatus = EMatchStatus.PartiallyMatched;
         }
+    }
+
+    // ─── Recognized counterparties (registry fallback) ──────────────────────
+
+    /// <summary>
+    /// Rule 3 fallback: tries to assign the transaction to a recognized-counterparty
+    /// registry entry (insurance, tax office, …). Match condition: normalized
+    /// counterparty account equality AND every symbol filled on the entry equals
+    /// the transaction's symbol (empty entry symbol = wildcard).
+    ///
+    /// Multiple hits: the most specific entry wins (most filled symbol constraints).
+    /// A tie between entries with different labels is ambiguous → NeedsReview.
+    /// Returns true when it decided the transaction (Recognized or NeedsReview).
+    /// </summary>
+    private async Task<bool> TryRecognizeAsync(BankTransaction tx, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(tx.CounterpartyAccount))
+            return false;
+
+        var normalized = NormalizeAccount(tx.CounterpartyAccount);
+
+        // The registry is tiny (units to tens of rows) — load active entries and
+        // compare in memory; NormalizeAccount is not translatable to SQL anyway.
+        var entries = await _context.RecognizedCounterparty
+            .Where(r => r.IsActive)
+            .ToListAsync(ct);
+
+        var hits = entries.Where(r =>
+                NormalizeAccount(r.CounterpartyAccount) == normalized
+                && (string.IsNullOrWhiteSpace(r.VariableSymbol) || r.VariableSymbol == tx.VariableSymbol)
+                && (string.IsNullOrWhiteSpace(r.SpecificSymbol) || r.SpecificSymbol == tx.SpecificSymbol)
+                && (string.IsNullOrWhiteSpace(r.ConstantSymbol) || r.ConstantSymbol == tx.ConstantSymbol))
+            .ToList();
+
+        if (hits.Count == 0)
+            return false;
+
+        // Most specific entry wins: an entry constrained by VS beats an
+        // account-only entry for the same account.
+        static int Specificity(RecognizedCounterparty r) =>
+            (string.IsNullOrWhiteSpace(r.VariableSymbol) ? 0 : 1)
+            + (string.IsNullOrWhiteSpace(r.SpecificSymbol) ? 0 : 1)
+            + (string.IsNullOrWhiteSpace(r.ConstantSymbol) ? 0 : 1);
+
+        var top = hits.Max(Specificity);
+        var tied = hits.Where(h => Specificity(h) == top).ToList();
+
+        if (tied.Count > 1 && tied.Select(t => t.Label).Distinct().Count() > 1)
+        {
+            // Two equally-specific entries with different labels — user must decide.
+            tx.MatchStatus = EMatchStatus.NeedsReview;
+            _logger.LogInformation(
+                "Recognition ambiguous: Tx={TxId} matches {Count} registry entries — NeedsReview",
+                tx.Id, tied.Count);
+            return true;
+        }
+
+        tx.RecognizedCounterpartyId = tied[0].Id;
+        tx.MatchStatus = EMatchStatus.Recognized;
+
+        _logger.LogInformation(
+            "Recognized: Tx={TxId} → RecognizedCounterparty={RcId} ({Label})",
+            tx.Id, tied[0].Id, tied[0].Label);
+
+        return true;
+    }
+
+    /// <inheritdoc />
+    public async Task<int> RescanUnmatchedAsync(CancellationToken ct = default)
+    {
+        // Only Unmatched transactions are eligible — Matched/Ignored/Recognized are
+        // decided, NeedsReview waits for the user, PartiallyMatched belongs to invoices.
+        var unmatched = await _context.BankTransaction
+            .Where(t => t.MatchStatus == EMatchStatus.Unmatched
+                        && t.CounterpartyAccount != null)
+            .ToListAsync(ct);
+
+        var recognized = 0;
+        foreach (var tx in unmatched)
+        {
+            if (await TryRecognizeAsync(tx, ct) && tx.MatchStatus == EMatchStatus.Recognized)
+                recognized++;
+        }
+
+        await _context.SaveChangesAsync(ct);
+
+        _logger.LogInformation(
+            "RescanUnmatched: {Recognized} of {Total} unmatched transactions recognized",
+            recognized, unmatched.Count);
+
+        return recognized;
+    }
+
+    /// <inheritdoc />
+    public async Task AssignRecognizedAsync(
+        long bankTransactionId,
+        long recognizedCounterpartyId,
+        long? userId,
+        CancellationToken ct = default)
+    {
+        var tx = await _context.BankTransaction
+            .FirstOrDefaultAsync(t => t.Id == bankTransactionId, ct)
+            ?? throw new InvalidOperationException($"BankTransaction {bankTransactionId} not found.");
+
+        // Matched transactions belong to invoices; Ignored ones were explicitly discarded.
+        if (tx.MatchStatus is EMatchStatus.Matched or EMatchStatus.PartiallyMatched or EMatchStatus.Ignored)
+            throw new InvalidOperationException(
+                $"Transaction {bankTransactionId} is {tx.MatchStatus} — unmatch/restore it first.");
+
+        var entry = await _context.RecognizedCounterparty
+            .FirstOrDefaultAsync(r => r.Id == recognizedCounterpartyId, ct)
+            ?? throw new InvalidOperationException($"RecognizedCounterparty {recognizedCounterpartyId} not found.");
+
+        tx.RecognizedCounterpartyId = entry.Id;
+        tx.MatchStatus = EMatchStatus.Recognized;
+
+        await _context.SaveChangesAsync(ct);
+
+        _logger.LogInformation(
+            "AssignRecognized: Tx={TxId} → RecognizedCounterparty={RcId} ({Label}) User={UserId}",
+            tx.Id, entry.Id, entry.Label, userId);
+    }
+
+    /// <inheritdoc />
+    public async Task UnassignRecognizedAsync(
+        long bankTransactionId,
+        long? userId,
+        CancellationToken ct = default)
+    {
+        var tx = await _context.BankTransaction
+            .Include(t => t.PaymentMatch)
+            .FirstOrDefaultAsync(t => t.Id == bankTransactionId, ct)
+            ?? throw new InvalidOperationException($"BankTransaction {bankTransactionId} not found.");
+
+        tx.RecognizedCounterpartyId = null;
+        // Recompute from invoice matches — a recognized transaction has none,
+        // so this normally lands on Unmatched.
+        RecalculateTransactionStatus(tx, tx.PaymentMatch.Sum(m => m.MatchedAmount));
+
+        await _context.SaveChangesAsync(ct);
+
+        _logger.LogInformation(
+            "UnassignRecognized: Tx={TxId} → {Status} User={UserId}", tx.Id, tx.MatchStatus, userId);
     }
 
     /// <summary>

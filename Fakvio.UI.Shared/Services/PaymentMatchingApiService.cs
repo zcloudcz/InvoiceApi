@@ -103,4 +103,20 @@ public class PaymentMatchingApiService : ApiClientBase
     public Task<ConfirmAutoMatchResponse?> ConfirmAutoMatchAsync(ConfirmAutoMatchRequest req) =>
         PostAsync<ConfirmAutoMatchRequest, ConfirmAutoMatchResponse>(
             "api/payment-matching/confirm-auto-match", req);
+
+    // ─── Recognized counterparty assignment ──────────────────────────────────
+
+    /// <summary>Manually assigns a transaction to a recognized-counterparty registry entry.</summary>
+    public Task AssignRecognizedAsync(long transactionId, long recognizedCounterpartyId) =>
+        PostAsync<Contracts.Dto.RecognizedCounterparty.AssignRecognizedRequest, object>(
+            $"api/payment-matching/transactions/{transactionId}/assign-recognized",
+            new Contracts.Dto.RecognizedCounterparty.AssignRecognizedRequest
+            {
+                RecognizedCounterpartyId = recognizedCounterpartyId
+            });
+
+    /// <summary>Removes the recognized-counterparty assignment (back to Unmatched).</summary>
+    public Task UnassignRecognizedAsync(long transactionId) =>
+        PostAsync<object, object>(
+            $"api/payment-matching/transactions/{transactionId}/unassign-recognized", new { });
 }

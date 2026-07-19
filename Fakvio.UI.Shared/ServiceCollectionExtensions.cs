@@ -87,6 +87,7 @@ public static class ServiceCollectionExtensions
         // Payment matching — tenant user + SysAdmin.
         services.AddApiClient<PaymentMatchingApiService>();
         services.AddApiClient<PaymentMatchingSysAdminApiService>();
+        services.AddApiClient<RecognizedCounterpartyApiService>();
 
         // Alerts — "Upozornění" tile and per-invoice resolve action.
         services.AddApiClient<AlertApiService>();

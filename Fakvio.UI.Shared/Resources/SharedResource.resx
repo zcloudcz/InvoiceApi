@@ -1374,6 +1374,38 @@
   <data name="EMatchStatus_PartiallyMatched" xml:space="preserve"><value>Částečně spárované</value></data>
   <data name="EMatchStatus_Ignored" xml:space="preserve"><value>Ignorované</value></data>
   <data name="EMatchStatus_NeedsReview" xml:space="preserve"><value>Vyžaduje kontrolu</value></data>
+  <data name="EMatchStatus_Recognized" xml:space="preserve"><value>Rozpoznané</value></data>
+
+  <data name="EPaymentCategory_SocialInsurance" xml:space="preserve"><value>Sociální pojištění</value></data>
+  <data name="EPaymentCategory_HealthInsurance" xml:space="preserve"><value>Zdravotní pojištění</value></data>
+  <data name="EPaymentCategory_SicknessInsurance" xml:space="preserve"><value>Nemocenské pojištění</value></data>
+  <data name="EPaymentCategory_Vat" xml:space="preserve"><value>DPH</value></data>
+  <data name="EPaymentCategory_IncomeTax" xml:space="preserve"><value>Daň z příjmu</value></data>
+  <data name="EPaymentCategory_Other" xml:space="preserve"><value>Jiné</value></data>
+
+  <data name="RecognizedCounterparty_Section_Title" xml:space="preserve"><value>Rozpoznané protistrany</value></data>
+  <data name="RecognizedCounterparty_InfoText" xml:space="preserve"><value>Evidence známých bankovních účtů (pojišťovny, finanční úřad…). Platby na tyto účty se automaticky rozpoznají, i když k nim neexistuje faktura. Volitelné symboly (VS/SS/KS) zpřesňují shodu — prázdný symbol znamená libovolnou hodnotu.</value></data>
+  <data name="RecognizedCounterparty_Add" xml:space="preserve"><value>Přidat protistranu</value></data>
+  <data name="RecognizedCounterparty_Edit" xml:space="preserve"><value>Upravit protistranu</value></data>
+  <data name="RecognizedCounterparty_Label" xml:space="preserve"><value>Název</value></data>
+  <data name="RecognizedCounterparty_Account" xml:space="preserve"><value>Číslo účtu</value></data>
+  <data name="RecognizedCounterparty_AccountHelper" xml:space="preserve"><value>Český formát (číslo/kód banky) nebo IBAN</value></data>
+  <data name="RecognizedCounterparty_SymbolHelper" xml:space="preserve"><value>Prázdné = libovolná hodnota</value></data>
+  <data name="RecognizedCounterparty_SS" xml:space="preserve"><value>SS</value></data>
+  <data name="RecognizedCounterparty_KS" xml:space="preserve"><value>KS</value></data>
+  <data name="RecognizedCounterparty_Category" xml:space="preserve"><value>Kategorie</value></data>
+  <data name="RecognizedCounterparty_Note" xml:space="preserve"><value>Poznámka</value></data>
+  <data name="RecognizedCounterparty_Active" xml:space="preserve"><value>Aktivní</value></data>
+  <data name="RecognizedCounterparty_Empty" xml:space="preserve"><value>Zatím žádné rozpoznané protistrany. Přidejte je na stránce Moje firma.</value></data>
+  <data name="RecognizedCounterparty_Saved" xml:space="preserve"><value>Protistrana uložena</value></data>
+  <data name="RecognizedCounterparty_Deleted" xml:space="preserve"><value>Protistrana smazána</value></data>
+  <data name="RecognizedCounterparty_DeleteTitle" xml:space="preserve"><value>Smazat protistranu</value></data>
+  <data name="RecognizedCounterparty_DeleteConfirm" xml:space="preserve"><value>Opravdu smazat „{0}"? Rozpoznané platby se vrátí mezi nespárované.</value></data>
+  <data name="RecognizedCounterparty_RescanToast" xml:space="preserve"><value>Rozpoznáno {0} plateb</value></data>
+  <data name="RecognizedCounterparty_Assign" xml:space="preserve"><value>Přiřadit protistranu</value></data>
+  <data name="RecognizedCounterparty_Unassign" xml:space="preserve"><value>Zrušit přiřazení</value></data>
+  <data name="RecognizedCounterparty_Assigned_Toast" xml:space="preserve"><value>Platba přiřazena protistraně</value></data>
+  <data name="RecognizedCounterparty_Unassigned_Toast" xml:space="preserve"><value>Přiřazení zrušeno</value></data>
 
   <data name="EPaymentDirection_Incoming" xml:space="preserve"><value>Příchozí</value></data>
   <data name="EPaymentDirection_Outgoing" xml:space="preserve"><value>Odchozí</value></data>

@@ -218,6 +218,10 @@ public static class ServiceCollectionExtensions
         services.AddScopedWithLogging<IPaymentMatchingService, PaymentMatchingService>();
         services.AddScopedWithLogging<IBankTransactionQueryService, BankTransactionQueryService>();
 
+        // Registry of known counterparty accounts (insurance, tax office, …) for
+        // recognizing recurring payments without an invoice.
+        services.AddScopedWithLogging<IRecognizedCounterpartyService, RecognizedCounterpartyService>();
+
         // Stateless IMAP poll cycle service — shared by:
         //   - ImapPollWorker (BackgroundService in API host)
         //   - PaymentMatchingFunctions.RunImapPoll (Azure Functions TimerTrigger)

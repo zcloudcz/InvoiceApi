@@ -132,6 +132,33 @@ public interface IPaymentMatchingService
         long? receivedInvoiceId,
         long? userId,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Re-runs the recognized-counterparty recognition over all Unmatched
+    /// transactions. Called after a registry entry is created or updated so
+    /// existing unmatched payments pick up the new rule immediately.
+    /// </summary>
+    /// <returns>Number of transactions newly recognized.</returns>
+    Task<int> RescanUnmatchedAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Manually assigns a transaction to a recognized-counterparty registry entry
+    /// (MatchStatus → Recognized). Rejected for transactions already Matched or Ignored.
+    /// </summary>
+    Task AssignRecognizedAsync(
+        long bankTransactionId,
+        long recognizedCounterpartyId,
+        long? userId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Removes the recognized-counterparty assignment from a transaction and
+    /// recomputes its status from existing invoice matches (typically → Unmatched).
+    /// </summary>
+    Task UnassignRecognizedAsync(
+        long bankTransactionId,
+        long? userId,
+        CancellationToken ct = default);
 }
 
 /// <summary>Outcome of a manual match operation.</summary>

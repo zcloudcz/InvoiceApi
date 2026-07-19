@@ -36,6 +36,15 @@ public class BankTransactionDto
 
     /// <summary>Sum of MatchedAmount across all PaymentMatch rows for this transaction.</summary>
     public decimal MatchedTotal { get; set; }
+
+    /// <summary>FK to the recognized counterparty registry entry (MatchStatus = Recognized).</summary>
+    public long? RecognizedCounterpartyId { get; set; }
+
+    /// <summary>Label of the recognized counterparty ("OSSZ — sociální pojištění").</summary>
+    public string? RecognizedCounterpartyLabel { get; set; }
+
+    /// <summary>Payment category of the recognized counterparty (for reporting).</summary>
+    public EPaymentCategory? RecognizedCategory { get; set; }
 }
 
 /// <summary>Filter parameters used by the Payments grid.</summary>

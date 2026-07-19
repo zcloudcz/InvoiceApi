@@ -206,6 +206,7 @@ public class MasterDbContext : DbContext, IDataProtectionKeyContext
         modelBuilder.Ignore<InboundEmail>();
         modelBuilder.Ignore<BankTransaction>();
         modelBuilder.Ignore<PaymentMatch>();
+        modelBuilder.Ignore<RecognizedCounterparty>();
 
         // Invoice email tenant-only entities.
         modelBuilder.Ignore<InvoiceMailbox>();

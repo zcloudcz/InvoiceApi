@@ -124,6 +124,13 @@
                                        Color="Color.Primary"
                                        OnClick="@(() => OpenMatchDialog(context))" />
                     </MudTooltip>
+                    @* Assign to a recognized counterparty (insurance, tax office, …) *@
+                    <MudTooltip Text="@L["RecognizedCounterparty_Assign"]">
+                        <MudIconButton Size="Size.Small"
+                                       Icon="@Icons.Material.Filled.Bookmark"
+                                       Color="Color.Tertiary"
+                                       OnClick="@(() => OpenAssignRecognizedDialog(context))" />
+                    </MudTooltip>
                     @* Ignore — mark as not our concern *@
                     <MudTooltip Text="@L["Payments_Action_Ignore"]">
                         <MudIconButton Size="Size.Small"
@@ -149,6 +156,7 @@
         <MudSelectItem T="EMatchStatus?" Value="@((EMatchStatus?)EMatchStatus.NeedsReview)">@L["EMatchStatus_NeedsReview"]</MudSelectItem>
         <MudSelectItem T="EMatchStatus?" Value="@((EMatchStatus?)EMatchStatus.Matched)">@L["EMatchStatus_Matched"]</MudSelectItem>
         <MudSelectItem T="EMatchStatus?" Value="@((EMatchStatus?)EMatchStatus.PartiallyMatched)">@L["EMatchStatus_PartiallyMatched"]</MudSelectItem>
+        <MudSelectItem T="EMatchStatus?" Value="@((EMatchStatus?)EMatchStatus.Recognized)">@L["EMatchStatus_Recognized"]</MudSelectItem>
         <MudSelectItem T="EMatchStatus?" Value="@((EMatchStatus?)EMatchStatus.Ignored)">@L["EMatchStatus_Ignored"]</MudSelectItem>
     </MudSelect>
 
@@ -224,7 +232,14 @@ else
                 </MudChip>
             </MudTd>
             <MudTd DataLabel="@L["Payments_Col_MatchedInvoices"]">
-                @if (context.MatchedInvoiceNumbers.Count == 0)
+                @if (context.RecognizedCounterpartyLabel != null)
+                {
+                    @* Recognized counterparty — categorized without an invoice *@
+                    <MudChip T="string" Color="Color.Tertiary" Size="Size.Small">
+                        @context.RecognizedCounterpartyLabel
+                    </MudChip>
+                }
+                else if (context.MatchedInvoiceNumbers.Count == 0)
                 {
                     <span>—</span>
                 }
@@ -242,9 +257,23 @@ else
                                        OnClick="@(() => OpenMatchDialog(context))"
                                        OnClickStopPropagation="true" />
                     </MudTooltip>
+                    <MudTooltip Text="@L["RecognizedCounterparty_Assign"]">
+                        <MudIconButton Size="Size.Small" Icon="@Icons.Material.Filled.Bookmark"
+                                       Color="Color.Tertiary"
+                                       OnClick="@(() => OpenAssignRecognizedDialog(context))"
+                                       OnClickStopPropagation="true" />
+                    </MudTooltip>
                     <MudTooltip Text="@L["Payments_Action_Ignore"]">
                         <MudIconButton Size="Size.Small" Icon="@Icons.Material.Filled.Block"
                                        OnClick="@(() => IgnoreAsync(context))"
+                                       OnClickStopPropagation="true" />
+                    </MudTooltip>
+                }
+                else if (context.MatchStatus == EMatchStatus.Recognized)
+                {
+                    <MudTooltip Text="@L["RecognizedCounterparty_Unassign"]">
+                        <MudIconButton Size="Size.Small" Icon="@Icons.Material.Filled.LinkOff"
+                                       OnClick="@(() => UnassignRecognizedAsync(context))"
                                        OnClickStopPropagation="true" />
                     </MudTooltip>
                 }
@@ -531,6 +560,44 @@ else
         }
     }
 
+    /// <summary>
+    /// Opens the recognized-counterparty picker and assigns the transaction to
+    /// the selected registry entry (MatchStatus → Recognized).
+    /// </summary>
+    private async Task OpenAssignRecognizedDialog(BankTransactionDto row)
+    {
+        var dialog = await DialogService.ShowAsync<AssignRecognizedDialog>(
+            L["RecognizedCounterparty_Assign"]);
+        var result = await dialog.Result;
+        if (result?.Canceled != false || result.Data is not long entryId) return;
+
+        try
+        {
+            await Api.AssignRecognizedAsync(row.Id, entryId);
+            Snackbar.Add(L["RecognizedCounterparty_Assigned_Toast"], Severity.Success);
+            await Task.WhenAll(ReloadUnmatched(), Reload());
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+    }
+
+    /// <summary>Removes the recognized-counterparty assignment (back to Unmatched).</summary>
+    private async Task UnassignRecognizedAsync(BankTransactionDto row)
+    {
+        try
+        {
+            await Api.UnassignRecognizedAsync(row.Id);
+            Snackbar.Add(L["RecognizedCounterparty_Unassigned_Toast"], Severity.Success);
+            await Task.WhenAll(ReloadUnmatched(), Reload());
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+    }
+
     /// <summary>Maps EMatchStatus → chip color for quick visual scan.</summary>
     private static Color StatusColor(EMatchStatus s) => s switch
     {
@@ -539,6 +606,7 @@ else
         EMatchStatus.Unmatched => Color.Warning,
         EMatchStatus.NeedsReview => Color.Error,
         EMatchStatus.Ignored => Color.Dark,
+        EMatchStatus.Recognized => Color.Tertiary,
         _ => Color.Default,
     };
 }

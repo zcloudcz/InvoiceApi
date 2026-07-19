@@ -1259,6 +1259,124 @@ public sealed class Mapper : IMapper
             return destination;
         }
 
+        public Fakvio.Contracts.Dto.RecognizedCounterparty.RecognizedCounterpartyDto Map_RecognizedCounterparty_To_RecognizedCounterpartyDto(Fakvio.Domain.Entities.RecognizedCounterparty source)
+        {
+            var destination = new Fakvio.Contracts.Dto.RecognizedCounterparty.RecognizedCounterpartyDto();
+            destination.Id = source.Id;
+            destination.Label = source.Label;
+            destination.CounterpartyAccount = source.CounterpartyAccount;
+            destination.VariableSymbol = source.VariableSymbol;
+            destination.SpecificSymbol = source.SpecificSymbol;
+            destination.ConstantSymbol = source.ConstantSymbol;
+            destination.Category = source.Category;
+            destination.Note = source.Note;
+            destination.IsActive = source.IsActive;
+            return destination;
+        }
+
+        public Fakvio.Contracts.Dto.RecognizedCounterparty.RecognizedCounterpartyDto Map_RecognizedCounterparty_To_RecognizedCounterpartyDto(Fakvio.Domain.Entities.RecognizedCounterparty source, Fakvio.Contracts.Dto.RecognizedCounterparty.RecognizedCounterpartyDto destination)
+        {
+            destination.Id = source.Id;
+            destination.Label = source.Label;
+            destination.CounterpartyAccount = source.CounterpartyAccount;
+            destination.VariableSymbol = source.VariableSymbol;
+            destination.SpecificSymbol = source.SpecificSymbol;
+            destination.ConstantSymbol = source.ConstantSymbol;
+            destination.Category = source.Category;
+            destination.Note = source.Note;
+            destination.IsActive = source.IsActive;
+            return destination;
+        }
+
+        public Fakvio.Contracts.Dto.RecognizedCounterparty.RecognizedCounterpartyDto[] MapArray_RecognizedCounterparty_To_RecognizedCounterpartyDto(System.ReadOnlySpan<Fakvio.Domain.Entities.RecognizedCounterparty> source)
+        {
+            var destination = new Fakvio.Contracts.Dto.RecognizedCounterparty.RecognizedCounterpartyDto[source.Length];
+            for (int i = 0; i < source.Length; i++)
+            {
+                destination[i] = source[i].ToRecognizedCounterpartyDto();
+            }
+
+            return destination;
+        }
+
+        public List<Fakvio.Contracts.Dto.RecognizedCounterparty.RecognizedCounterpartyDto> MapList_RecognizedCounterparty_To_RecognizedCounterpartyDto(System.Collections.Generic.IReadOnlyList<Fakvio.Domain.Entities.RecognizedCounterparty> source)
+        {
+            var destination = new List<Fakvio.Contracts.Dto.RecognizedCounterparty.RecognizedCounterpartyDto>(source.Count);
+            for (int i = 0; i < source.Count; i++)
+            {
+                destination.Add(source[i].ToRecognizedCounterpartyDto());
+            }
+            return destination;
+        }
+
+        public List<Fakvio.Contracts.Dto.RecognizedCounterparty.RecognizedCounterpartyDto> MapList_RecognizedCounterparty_To_RecognizedCounterpartyDto_Enumerable(System.Collections.Generic.IEnumerable<Fakvio.Domain.Entities.RecognizedCounterparty> source)
+        {
+            var destination = new List<Fakvio.Contracts.Dto.RecognizedCounterparty.RecognizedCounterpartyDto>();
+            foreach (var item in source)
+            {
+                destination.Add(item.ToRecognizedCounterpartyDto());
+            }
+            return destination;
+        }
+
+        public Fakvio.Domain.Entities.RecognizedCounterparty Map_SaveRecognizedCounterpartyRequest_To_RecognizedCounterparty(Fakvio.Contracts.Dto.RecognizedCounterparty.SaveRecognizedCounterpartyRequest source)
+        {
+            var destination = new Fakvio.Domain.Entities.RecognizedCounterparty();
+            destination.Label = source.Label;
+            destination.CounterpartyAccount = source.CounterpartyAccount;
+            destination.VariableSymbol = source.VariableSymbol;
+            destination.SpecificSymbol = source.SpecificSymbol;
+            destination.ConstantSymbol = source.ConstantSymbol;
+            destination.Category = source.Category;
+            destination.Note = source.Note;
+            destination.IsActive = source.IsActive;
+            return destination;
+        }
+
+        public Fakvio.Domain.Entities.RecognizedCounterparty Map_SaveRecognizedCounterpartyRequest_To_RecognizedCounterparty(Fakvio.Contracts.Dto.RecognizedCounterparty.SaveRecognizedCounterpartyRequest source, Fakvio.Domain.Entities.RecognizedCounterparty destination)
+        {
+            destination.Label = source.Label;
+            destination.CounterpartyAccount = source.CounterpartyAccount;
+            destination.VariableSymbol = source.VariableSymbol;
+            destination.SpecificSymbol = source.SpecificSymbol;
+            destination.ConstantSymbol = source.ConstantSymbol;
+            destination.Category = source.Category;
+            destination.Note = source.Note;
+            destination.IsActive = source.IsActive;
+            return destination;
+        }
+
+        public Fakvio.Domain.Entities.RecognizedCounterparty[] MapArray_SaveRecognizedCounterpartyRequest_To_RecognizedCounterparty(System.ReadOnlySpan<Fakvio.Contracts.Dto.RecognizedCounterparty.SaveRecognizedCounterpartyRequest> source)
+        {
+            var destination = new Fakvio.Domain.Entities.RecognizedCounterparty[source.Length];
+            for (int i = 0; i < source.Length; i++)
+            {
+                destination[i] = source[i].ToRecognizedCounterparty();
+            }
+
+            return destination;
+        }
+
+        public List<Fakvio.Domain.Entities.RecognizedCounterparty> MapList_SaveRecognizedCounterpartyRequest_To_RecognizedCounterparty(System.Collections.Generic.IReadOnlyList<Fakvio.Contracts.Dto.RecognizedCounterparty.SaveRecognizedCounterpartyRequest> source)
+        {
+            var destination = new List<Fakvio.Domain.Entities.RecognizedCounterparty>(source.Count);
+            for (int i = 0; i < source.Count; i++)
+            {
+                destination.Add(source[i].ToRecognizedCounterparty());
+            }
+            return destination;
+        }
+
+        public List<Fakvio.Domain.Entities.RecognizedCounterparty> MapList_SaveRecognizedCounterpartyRequest_To_RecognizedCounterparty_Enumerable(System.Collections.Generic.IEnumerable<Fakvio.Contracts.Dto.RecognizedCounterparty.SaveRecognizedCounterpartyRequest> source)
+        {
+            var destination = new List<Fakvio.Domain.Entities.RecognizedCounterparty>();
+            foreach (var item in source)
+            {
+                destination.Add(item.ToRecognizedCounterparty());
+            }
+            return destination;
+        }
+
         public Fakvio.Contracts.Dto.Reminder.ReminderLevelDto Map_ReminderLevel_To_ReminderLevelDto(Fakvio.Domain.Entities.ReminderLevel source)
         {
             var destination = new Fakvio.Contracts.Dto.Reminder.ReminderLevelDto();
@@ -1625,6 +1743,10 @@ public sealed class Mapper : IMapper
                 return (TDestination)(object)((Fakvio.Domain.Entities.ReceivedInvoiceItem)(object)source!).ToReceivedInvoiceItemDto();
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.ReceivedInvoice) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceDto))
                 return (TDestination)(object)((Fakvio.Domain.Entities.ReceivedInvoice)(object)source!).ToReceivedInvoiceDto();
+            if (typeof(TSource) == typeof(Fakvio.Domain.Entities.RecognizedCounterparty) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.RecognizedCounterparty.RecognizedCounterpartyDto))
+                return (TDestination)(object)((Fakvio.Domain.Entities.RecognizedCounterparty)(object)source!).ToRecognizedCounterpartyDto();
+            if (typeof(TSource) == typeof(Fakvio.Contracts.Dto.RecognizedCounterparty.SaveRecognizedCounterpartyRequest) && typeof(TDestination) == typeof(Fakvio.Domain.Entities.RecognizedCounterparty))
+                return (TDestination)(object)((Fakvio.Contracts.Dto.RecognizedCounterparty.SaveRecognizedCounterpartyRequest)(object)source!).ToRecognizedCounterparty();
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.ReminderLevel) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.Reminder.ReminderLevelDto))
                 return (TDestination)(object)((Fakvio.Domain.Entities.ReminderLevel)(object)source!).ToReminderLevelDto();
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.Reminder) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.Reminder.ReminderDto))
@@ -1676,6 +1798,10 @@ public sealed class Mapper : IMapper
                 return (TDestination)(object)Map_ReceivedInvoiceItem_To_ReceivedInvoiceItemDto((Fakvio.Domain.Entities.ReceivedInvoiceItem)(object)source!, (Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceItemDto)(object)destination!);
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.ReceivedInvoice) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceDto))
                 return (TDestination)(object)Map_ReceivedInvoice_To_ReceivedInvoiceDto((Fakvio.Domain.Entities.ReceivedInvoice)(object)source!, (Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceDto)(object)destination!);
+            if (typeof(TSource) == typeof(Fakvio.Domain.Entities.RecognizedCounterparty) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.RecognizedCounterparty.RecognizedCounterpartyDto))
+                return (TDestination)(object)Map_RecognizedCounterparty_To_RecognizedCounterpartyDto((Fakvio.Domain.Entities.RecognizedCounterparty)(object)source!, (Fakvio.Contracts.Dto.RecognizedCounterparty.RecognizedCounterpartyDto)(object)destination!);
+            if (typeof(TSource) == typeof(Fakvio.Contracts.Dto.RecognizedCounterparty.SaveRecognizedCounterpartyRequest) && typeof(TDestination) == typeof(Fakvio.Domain.Entities.RecognizedCounterparty))
+                return (TDestination)(object)Map_SaveRecognizedCounterpartyRequest_To_RecognizedCounterparty((Fakvio.Contracts.Dto.RecognizedCounterparty.SaveRecognizedCounterpartyRequest)(object)source!, (Fakvio.Domain.Entities.RecognizedCounterparty)(object)destination!);
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.ReminderLevel) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.Reminder.ReminderLevelDto))
                 return (TDestination)(object)Map_ReminderLevel_To_ReminderLevelDto((Fakvio.Domain.Entities.ReminderLevel)(object)source!, (Fakvio.Contracts.Dto.Reminder.ReminderLevelDto)(object)destination!);
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.Reminder) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.Reminder.ReminderDto))
@@ -1781,6 +1907,16 @@ public sealed class Mapper : IMapper
                 var typedSource = System.Runtime.CompilerServices.Unsafe.As<System.ReadOnlySpan<TSource>, System.ReadOnlySpan<Fakvio.Domain.Entities.ReceivedInvoice>>(ref source);
                 return (TDestination[])(object)MapArray_ReceivedInvoice_To_ReceivedInvoiceDto(typedSource);
             }
+            else if (typeof(TSource) == typeof(Fakvio.Domain.Entities.RecognizedCounterparty) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.RecognizedCounterparty.RecognizedCounterpartyDto))
+            {
+                var typedSource = System.Runtime.CompilerServices.Unsafe.As<System.ReadOnlySpan<TSource>, System.ReadOnlySpan<Fakvio.Domain.Entities.RecognizedCounterparty>>(ref source);
+                return (TDestination[])(object)MapArray_RecognizedCounterparty_To_RecognizedCounterpartyDto(typedSource);
+            }
+            else if (typeof(TSource) == typeof(Fakvio.Contracts.Dto.RecognizedCounterparty.SaveRecognizedCounterpartyRequest) && typeof(TDestination) == typeof(Fakvio.Domain.Entities.RecognizedCounterparty))
+            {
+                var typedSource = System.Runtime.CompilerServices.Unsafe.As<System.ReadOnlySpan<TSource>, System.ReadOnlySpan<Fakvio.Contracts.Dto.RecognizedCounterparty.SaveRecognizedCounterpartyRequest>>(ref source);
+                return (TDestination[])(object)MapArray_SaveRecognizedCounterpartyRequest_To_RecognizedCounterparty(typedSource);
+            }
             else if (typeof(TSource) == typeof(Fakvio.Domain.Entities.ReminderLevel) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.Reminder.ReminderLevelDto))
             {
                 var typedSource = System.Runtime.CompilerServices.Unsafe.As<System.ReadOnlySpan<TSource>, System.ReadOnlySpan<Fakvio.Domain.Entities.ReminderLevel>>(ref source);
@@ -1847,6 +1983,10 @@ public sealed class Mapper : IMapper
                 return (List<TDestination>)(object)MapList_ReceivedInvoiceItem_To_ReceivedInvoiceItemDto((System.Collections.Generic.IReadOnlyList<Fakvio.Domain.Entities.ReceivedInvoiceItem>)(object)source);
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.ReceivedInvoice) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceDto))
                 return (List<TDestination>)(object)MapList_ReceivedInvoice_To_ReceivedInvoiceDto((System.Collections.Generic.IReadOnlyList<Fakvio.Domain.Entities.ReceivedInvoice>)(object)source);
+            if (typeof(TSource) == typeof(Fakvio.Domain.Entities.RecognizedCounterparty) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.RecognizedCounterparty.RecognizedCounterpartyDto))
+                return (List<TDestination>)(object)MapList_RecognizedCounterparty_To_RecognizedCounterpartyDto((System.Collections.Generic.IReadOnlyList<Fakvio.Domain.Entities.RecognizedCounterparty>)(object)source);
+            if (typeof(TSource) == typeof(Fakvio.Contracts.Dto.RecognizedCounterparty.SaveRecognizedCounterpartyRequest) && typeof(TDestination) == typeof(Fakvio.Domain.Entities.RecognizedCounterparty))
+                return (List<TDestination>)(object)MapList_SaveRecognizedCounterpartyRequest_To_RecognizedCounterparty((System.Collections.Generic.IReadOnlyList<Fakvio.Contracts.Dto.RecognizedCounterparty.SaveRecognizedCounterpartyRequest>)(object)source);
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.ReminderLevel) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.Reminder.ReminderLevelDto))
                 return (List<TDestination>)(object)MapList_ReminderLevel_To_ReminderLevelDto((System.Collections.Generic.IReadOnlyList<Fakvio.Domain.Entities.ReminderLevel>)(object)source);
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.Reminder) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.Reminder.ReminderDto))
@@ -1898,6 +2038,10 @@ public sealed class Mapper : IMapper
                 return (List<TDestination>)(object)MapList_ReceivedInvoiceItem_To_ReceivedInvoiceItemDto_Enumerable((System.Collections.Generic.IEnumerable<Fakvio.Domain.Entities.ReceivedInvoiceItem>)(object)source);
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.ReceivedInvoice) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.ReceivedInvoice.ReceivedInvoiceDto))
                 return (List<TDestination>)(object)MapList_ReceivedInvoice_To_ReceivedInvoiceDto_Enumerable((System.Collections.Generic.IEnumerable<Fakvio.Domain.Entities.ReceivedInvoice>)(object)source);
+            if (typeof(TSource) == typeof(Fakvio.Domain.Entities.RecognizedCounterparty) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.RecognizedCounterparty.RecognizedCounterpartyDto))
+                return (List<TDestination>)(object)MapList_RecognizedCounterparty_To_RecognizedCounterpartyDto_Enumerable((System.Collections.Generic.IEnumerable<Fakvio.Domain.Entities.RecognizedCounterparty>)(object)source);
+            if (typeof(TSource) == typeof(Fakvio.Contracts.Dto.RecognizedCounterparty.SaveRecognizedCounterpartyRequest) && typeof(TDestination) == typeof(Fakvio.Domain.Entities.RecognizedCounterparty))
+                return (List<TDestination>)(object)MapList_SaveRecognizedCounterpartyRequest_To_RecognizedCounterparty_Enumerable((System.Collections.Generic.IEnumerable<Fakvio.Contracts.Dto.RecognizedCounterparty.SaveRecognizedCounterpartyRequest>)(object)source);
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.ReminderLevel) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.Reminder.ReminderLevelDto))
                 return (List<TDestination>)(object)MapList_ReminderLevel_To_ReminderLevelDto_Enumerable((System.Collections.Generic.IEnumerable<Fakvio.Domain.Entities.ReminderLevel>)(object)source);
             if (typeof(TSource) == typeof(Fakvio.Domain.Entities.Reminder) && typeof(TDestination) == typeof(Fakvio.Contracts.Dto.Reminder.ReminderDto))

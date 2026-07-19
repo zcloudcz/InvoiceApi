@@ -35,6 +35,8 @@ public static class ZMapper_ServiceCollectionExtensions
         new Fakvio.Infrastructure.Mapping.NumberSequenceProfile().Configure(config);
         // Register mappings from ReceivedInvoiceProfile
         new Fakvio.Infrastructure.Mapping.ReceivedInvoiceProfile().Configure(config);
+        // Register mappings from RecognizedCounterpartyProfile
+        new Fakvio.Infrastructure.Mapping.RecognizedCounterpartyProfile().Configure(config);
         // Register mappings from ReminderProfile
         new Fakvio.Infrastructure.Mapping.ReminderProfile().Configure(config);
         // Register mappings from ReverseChargeCodeProfile

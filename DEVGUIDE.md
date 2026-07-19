@@ -484,9 +484,35 @@ optionally `ReverseChargeCodeId` (FK to `ReverseChargeCode` lookup, nullable).
    - **`PaymentMatchingService.MatchAsync`** (`PaymentMatchingService.cs:14-24`):
      - Rule 1: exact VS match (jediná unpaid invoice s daným VariableSymbol).
      - Rule 2: account + amount + due-date window ±7 dní.
+     - Rule 3 (fallback, oba směry): **rozpoznané protistrany** — viz §4.5.2.
      - Match → `PaymentMatch` entity, invoice `Status=Paid`.
 
 **SysAdmin "Run now"**: `POST /api/sysadmin/payment-matching/run-now` (`PaymentMatchingSysAdminController.cs`) — volá tutéž `IImapPollService.RunCycleAsync()`.
+
+### 4.5.2 Rozpoznané protistrany (RecognizedCounterparty)
+
+Tenant-evidence známých účtů (pojišťovny, FÚ…) pro kategorizaci pravidelných
+plateb bez faktury (sociální/zdravotní pojištění, DPH…). Migrace `Add_RecognizedCounterparty_v53`.
+
+- **Entita** `RecognizedCounterparty`: Label, CounterpartyAccount (porovnává se přes
+  `NormalizeAccount`), volitelné VS/SS/KS (null = wildcard), `EPaymentCategory? Category`, IsActive.
+- **Přiřazení** = nullable FK `BankTransaction.RecognizedCounterpartyId` (SetNull on delete)
+  + `EMatchStatus.Recognized = 6`. ZÁMĚRNĚ ne přes `PaymentMatch` — ten nese `MatchedAmount`
+  pro settlement faktur (CHECK constraint, PaidAmount přepočty); rozpoznání je kategorizace, ne úhrada.
+- **Pravidlo** `TryRecognizeAsync` (PaymentMatchingService): fallback po pravidlech faktur
+  v `MatchIncomingAsync` i `MatchOutgoingAsync` (vratka DPH chodí příchozí). Shoda = normalizovaný
+  účet + každý vyplněný symbol záznamu == symbol transakce. Víc shod → vyhrává nejspecifičtější
+  (počet vyplněných symbolů); remíza s různými labely → `NeedsReview`.
+- **Faktura vyhrává**: `ManualMatchAsync` / `ConfirmAutoMatchAsync` nulují FK.
+- **Rescan**: `IPaymentMatchingService.RescanUnmatchedAsync` — bere jen `Unmatched`;
+  volá se automaticky z `RecognizedCounterpartyService.Create/Update` (aktivní záznam)
+  a přes `POST /api/recognized-counterparties/rescan`. Delete/deaktivace záznamu resetuje
+  jeho transakce zpět na `Unmatched`.
+- **API**: `RecognizedCounterpartyController` (`api/recognized-counterparties`, CRUD + rescan),
+  `PaymentMatchingController` `POST transactions/{id}/assign-recognized|unassign-recognized`.
+  Functions wrappery: `RecognizedCounterpartyFunctions` + 2 v HTTP `PaymentMatchingFunctions`.
+- **UI**: `RecognizedCounterpartyEditor.razor` (sekce na MyCompany, samostatný persist),
+  `AssignRecognizedDialog.razor` (picker na /payments), chip + akce na Payments/PaymentDetail.
 
 ### 4.5.1 PaymentMatch lookup — proforma ↔ DPP cross-link (#31)
 

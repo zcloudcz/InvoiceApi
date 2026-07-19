@@ -82,6 +82,22 @@ else
                     </MudList>
                 }
 
+                @if (_tx.RecognizedCounterpartyLabel != null)
+                {
+                    @* Recognized counterparty — categorized without an invoice *@
+                    <MudText Typo="Typo.subtitle2" Class="mt-3">@L["RecognizedCounterparty_Section_Title"]</MudText>
+                    <MudChip T="string" Color="Color.Tertiary" Size="Size.Medium">
+                        @_tx.RecognizedCounterpartyLabel
+                    </MudChip>
+                    @if (_tx.RecognizedCategory.HasValue)
+                    {
+                        <MudText Typo="Typo.body2" Class="mt-1">
+                            <strong>@L["RecognizedCounterparty_Category"]:</strong>
+                            @L[$"EPaymentCategory_{_tx.RecognizedCategory}"]
+                        </MudText>
+                    }
+                }
+
                 <div class="mt-3 d-flex gap-1">
                     @if (_tx.MatchStatus is EMatchStatus.Unmatched or EMatchStatus.NeedsReview)
                     {
@@ -94,6 +110,14 @@ else
                                    StartIcon="@Icons.Material.Filled.Block"
                                    OnClick="IgnoreAsync">
                             @L["Payments_Action_Ignore"]
+                        </MudButton>
+                    }
+                    else if (_tx.MatchStatus == EMatchStatus.Recognized)
+                    {
+                        <MudButton Variant="Variant.Outlined" Color="Color.Default"
+                                   StartIcon="@Icons.Material.Filled.LinkOff"
+                                   OnClick="UnassignRecognizedAsync">
+                            @L["RecognizedCounterparty_Unassign"]
                         </MudButton>
                     }
                 </div>
@@ -154,6 +178,22 @@ else
         }
     }
 
+    /// <summary>Removes the recognized-counterparty assignment (back to Unmatched).</summary>
+    private async Task UnassignRecognizedAsync()
+    {
+        if (_tx == null) return;
+        try
+        {
+            await Api.UnassignRecognizedAsync(_tx.Id);
+            Snackbar.Add(L["RecognizedCounterparty_Unassigned_Toast"], Severity.Success);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+    }
+
     private static Color StatusColor(EMatchStatus s) => s switch
     {
         EMatchStatus.Matched => Color.Success,
@@ -161,6 +201,7 @@ else
         EMatchStatus.Unmatched => Color.Warning,
         EMatchStatus.NeedsReview => Color.Error,
         EMatchStatus.Ignored => Color.Dark,
+        EMatchStatus.Recognized => Color.Tertiary,
         _ => Color.Default,
     };
 }
