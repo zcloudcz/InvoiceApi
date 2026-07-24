@@ -47,7 +47,9 @@ public static class ServiceCollectionExtensions
         services.AddTransient<UnauthorizedRedirectHandler>();
 
         // Authentication services
-        services.AddScoped<AuthApiService>();
+        // AuthApiService derives from ApiClientBase — register via AddApiClient so login/
+        // registration failures are forwarded to the server-side AppLog like all other API errors.
+        services.AddApiClient<AuthApiService>();
         services.AddScoped<AuthenticationStateProvider, CustomAuthenticationStateProvider>();
 
         // API services — all inherit ApiClientBase for shared auth, logging, and impersonation.
@@ -105,6 +107,10 @@ public static class ServiceCollectionExtensions
         // Forwards UI errors to the server log so they reach the AppLog table.
         // Without this, anything caught in the WASM client only shows in the browser console.
         services.AddScoped<IClientLogger, ClientLoggerService>();
+
+        // Central handler for catch blocks in pages/components: shows the snackbar AND forwards
+        // client-origin exceptions to AppLog (skips ApiException — ApiClientBase already logged it).
+        services.AddScoped<IUiErrorHandler, UiErrorHandler>();
 
         return services;
     }

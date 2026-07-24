@@ -1197,6 +1197,27 @@ await sub.Received(1).MethodAsync(Arg.Any<T>());  // received check vyžaduje aw
 
 `Fakvio.Functions/Middleware/CorrelationIdMiddleware.cs` — stejný pattern, `AsyncLocal` flows přes Function invocation.
 
+### 10.4 Client-side logging (WASM → AppLog)
+
+Chyby vzniklé v Blazor WASM klientovi by jinak skončily jen v browser konzoli. Pipeline:
+
+- **`ClientLoggerService : IClientLogger`** (`UI.Shared/Services/ClientLoggerService.cs`) —
+  POST `/api/logs/client` (endpoint `AppLogController.LogFromClient`, `[AllowAnonymous]`,
+  defenzivní — nikdy nevrací chybu). Fire-and-forget, nikdy nehází, žádná rekurze.
+- **`ApiClientBase`** — všechny HTTP chyby (4xx = Warning, 5xx = Error) i transport výjimky
+  automaticky forwarduje přes `ForwardToServerLog`. Wiring dělá `AddApiClient<T>` v
+  `ServiceCollectionExtensions` — **novou UI service vždy registruj přes `AddApiClient<T>`,
+  ne `AddScoped<T>`**, jinak se forwarding nezapojí.
+- **`AuthApiService`** — dědí `ApiClientBase`, ale staví vlastní requesty (X-Captcha-Token).
+  Chyby forwarduje ručně přes protected `ForwardToServerLog`/`LogClientException`.
+  Nikdy neloguje request body (obsahuje hesla).
+- **`LoggingErrorBoundary`** (MainLayout) — neodchycené render výjimky → AppLog.
+- **`IUiErrorHandler`** (`UI.Shared/Services/UiErrorHandler.cs`) — centrální handler pro
+  catch bloky ve stránkách: `catch (Exception ex) { ErrorHandler.Handle(ex, "Page.Action"); }`
+  Zobrazí snackbar + forwarduje NE-`ApiException` chyby (ApiException už zalogoval
+  `ApiClientBase` — nedupluj). **Nové catch bloky v UI piš přes `IUiErrorHandler`**,
+  existující `Snackbar.Add` catch bloky konvertuj průběžně při úpravách dané stránky.
+
 ---
 
 ## 11. Decision trees (rozhodovací stromy)

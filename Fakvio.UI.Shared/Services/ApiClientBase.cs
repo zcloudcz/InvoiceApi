@@ -64,8 +64,10 @@ public abstract class ApiClientBase
     /// <summary>
     /// Sends an error to the server log (best-effort, never throws).
     /// Centralized so we don't sprinkle null checks all over the catch blocks.
+    /// Protected so subclasses with custom HTTP flows (e.g. AuthApiService, which builds
+    /// raw HttpRequestMessages for captcha headers) can forward their errors too.
     /// </summary>
-    private void ForwardToServerLog(string level, string message, string? exception, string source)
+    protected void ForwardToServerLog(string level, string message, string? exception, string source)
     {
         if (_clientLogger == null)
             return; // Logger not wired — silently degrade to local-only logging.
@@ -178,7 +180,7 @@ public abstract class ApiClientBase
     /// Logs a transport-level exception (network failure, deserialization error, timeout, etc.)
     /// to BOTH the local console logger AND the server-side AppLog (best-effort). Non-throwing.
     /// </summary>
-    private void LogClientException(Exception ex, string httpMethod, string endpoint)
+    protected void LogClientException(Exception ex, string httpMethod, string endpoint)
     {
         _logger.LogError(ex, "Error during {HttpMethod} {Endpoint}", httpMethod, endpoint);
         ForwardToServerLog(

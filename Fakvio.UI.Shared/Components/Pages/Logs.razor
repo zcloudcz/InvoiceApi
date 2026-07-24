@@ -3,7 +3,7 @@
 @using Fakvio.Contracts.Dto.AppLog
 @using Fakvio.UI.Shared.Models
 @inject AppLogApiService LogService
-@inject ISnackbar Snackbar
+@inject IUiErrorHandler ErrorHandler
 @inject IDialogService DialogService
 @inject IStringLocalizer<SharedResource> L
 
@@ -147,7 +147,8 @@
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+            // Central handler: shows the snackbar AND forwards non-ApiException errors to AppLog.
+            ErrorHandler.Handle(ex, "Logs.LoadServerData");
             return new GridData<AppLogDto> { Items = new List<AppLogDto>(), TotalItems = 0 };
         }
         finally
