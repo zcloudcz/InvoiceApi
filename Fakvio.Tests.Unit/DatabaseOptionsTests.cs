@@ -239,6 +239,11 @@ public class DatabaseOptionsTests
 
         ex.InnerException.ShouldNotBeNull();
         ex.Message.ShouldContain("connection string");
+        // AC requires the wrapped exception to name the config key, not just say
+        // "invalid connection string" — otherwise an operator can't tell which
+        // setting to fix.
+        ex.Message.ShouldContain("ConnectionStrings:DefaultConnection");
+        ex.Message.ShouldContain("Database:ConnectionString");
     }
 
     [Fact]

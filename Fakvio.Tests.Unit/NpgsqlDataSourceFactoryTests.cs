@@ -1,4 +1,5 @@
 using Fakvio.Infrastructure.Data;
+using Microsoft.Extensions.Configuration;
 using Npgsql;
 using Shouldly;
 
@@ -78,7 +79,7 @@ public class NpgsqlDataSourceFactoryTests
     // ---------------------------------------------------------------------
 
     [Fact]
-    public void Root_PasswordMode_ActuallyOpensConnection_UsingThePasswordFromTheConnectionString()
+    public void Root_PasswordMode_ConnectionStringOmitsPassword_ButSourceOptionsRetainIt()
     {
         // NpgsqlDataSource.ConnectionString always omits the password (Npgsql's own security
         // default, regardless of auth mode — verified: even with Password mode, "Password=..."
@@ -107,6 +108,35 @@ public class NpgsqlDataSourceFactoryTests
 
         var builder = new NpgsqlConnectionStringBuilder(factory.Root.ConnectionString);
         builder.Password.ShouldBeNullOrEmpty();
+    }
+
+    [Fact]
+    public void AuthMode_ReflectsAzureEntraIdOptions()
+    {
+        // The interface property is a plain pass-through to the options the factory was
+        // built with — but it is what design-time factories and #133's composition root
+        // will branch on, so it deserves its own explicit assertion rather than relying
+        // on it being implicitly exercised elsewhere.
+        Func<CancellationToken, ValueTask<string>> tokenProvider = _ => ValueTask.FromResult("fake-token");
+
+        using var factory = new NpgsqlDataSourceFactory(AzureEntraIdOptions(), tokenProvider);
+
+        factory.AuthMode.ShouldBe(DatabaseAuthMode.AzureEntraId);
+    }
+
+    [Fact]
+    public void Ctor_PasswordMode_WithDefaultAccessTokenProvider_DoesNotThrow()
+    {
+        // No seam passed here at all (accessTokenProvider defaults to null), which is the
+        // real production code path — the ctor wires up a Lazy<DefaultAzureCredential>
+        // closure regardless of mode. This must succeed in Password mode with no Azure
+        // environment (no az login, no managed identity) available, because the closure
+        // is never dereferenced unless AzureEntraId mode actually builds a data source
+        // that opens a connection.
+        Should.NotThrow(() =>
+        {
+            using var factory = new NpgsqlDataSourceFactory(PasswordOptions());
+        });
     }
 
     // ---------------------------------------------------------------------
@@ -250,6 +280,24 @@ public class NpgsqlDataSourceFactoryTests
         Should.NotThrow(() => factory.Evict("never_requested"));
     }
 
+    [Fact]
+    public void Evict_DisposesBothIncludePublicVariants()
+    {
+        // Evict's doc comment promises it removes BOTH the includePublic=true and
+        // includePublic=false cached entries for a schema, not just whichever one was
+        // requested first. Cache both variants, evict once, and assert both are gone —
+        // a per-variant bug here would silently leave one pooled connection alive against
+        // a schema that was supposed to be fully evicted.
+        using var factory = new NpgsqlDataSourceFactory(PasswordOptions());
+        var withPublic = factory.GetForSchema("tenant_evict_both", includePublicInSearchPath: true);
+        var withoutPublic = factory.GetForSchema("tenant_evict_both", includePublicInSearchPath: false);
+
+        factory.Evict("tenant_evict_both");
+
+        Should.Throw<ObjectDisposedException>(() => withPublic.OpenConnection());
+        Should.Throw<ObjectDisposedException>(() => withoutPublic.OpenConnection());
+    }
+
     // ---------------------------------------------------------------------
     // Disposal
     // ---------------------------------------------------------------------
@@ -296,5 +344,60 @@ public class NpgsqlDataSourceFactoryTests
         factory.Dispose();
 
         Should.Throw<ObjectDisposedException>(() => factory.GetForSchema("tenant_1"));
+    }
+
+    // ---------------------------------------------------------------------
+    // static Create(IConfiguration, ...) — the single entry point future tasks
+    // (#133-#137: composition root, design-time factories, MigrationTool, smoke test)
+    // will all call. Resolve + Validate + ctor must actually compose correctly.
+    // ---------------------------------------------------------------------
+
+    [Fact]
+    public void Create_ValidConfiguration_ReturnsFactoryWithResolvedAuthMode()
+    {
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Database:AuthMode"] = "Password",
+            ["ConnectionStrings:DefaultConnection"] = PasswordConnectionString
+        }).Build();
+
+        using var factory = NpgsqlDataSourceFactory.Create(config);
+
+        factory.AuthMode.ShouldBe(DatabaseAuthMode.Password);
+        factory.Root.ShouldNotBeNull();
+    }
+
+    [Fact]
+    public void Create_InvalidConfiguration_PropagatesValidationFailure()
+    {
+        // Create() is documented as Resolve() + Validate() + new(...) — a bad connection
+        // string must fail fast here too, not just when DatabaseOptions.Validate() is
+        // called directly. This is what makes it safe for #133's composition root to call
+        // Create() without a separate manual Validate() step.
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Database:AuthMode"] = "AzureEntraId",
+            ["ConnectionStrings:DefaultConnection"] = PasswordConnectionString // has Password=, invalid for AzureEntraId
+        }).Build();
+
+        var ex = Should.Throw<InvalidOperationException>(() => NpgsqlDataSourceFactory.Create(config));
+
+        ex.Message.ShouldContain("Password");
+    }
+
+    [Fact]
+    public void Create_SectionNameAndConnectionStringName_AreForwardedToResolve()
+    {
+        // MigrationTool needs a second instance built from a differently-named section
+        // ("SourceDatabase" / "SourceConnection"). Create() must forward both parameters
+        // to Resolve() rather than hardcoding "Database" / "DefaultConnection".
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["SourceDatabase:ConnectionString"] = PasswordConnectionString
+        }).Build();
+
+        using var factory = NpgsqlDataSourceFactory.Create(config, sectionName: "SourceDatabase", connectionStringName: "SourceConnection");
+
+        factory.AuthMode.ShouldBe(DatabaseAuthMode.Password);
     }
 }
