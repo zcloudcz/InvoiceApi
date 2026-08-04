@@ -369,10 +369,14 @@ public static class ServiceCollectionExtensions
         // shutdown — factory.Dispose()/DisposeAsync() simply never run, and the process exit is
         // what actually reclaims Root. Once #134 injects the factory somewhere, resolution happens
         // and the disposal path described on INpgsqlDataSourceFactory's XML doc becomes real. See
-        // NpgsqlDataSourceFactoryTests.ContainerDisposesFactory_WhenRegisteredViaFactoryDelegate_NotViaInstance
+        // NpgsqlDataSourceFactoryTests.ContainerDisposesFactory_WhenRegisteredViaFactoryDelegate_AndResolved
         // for what this proves (delegate registration + resolution => disposed) and what it does not
         // (it does not prove today's composition root disposes anything, because nothing resolves
-        // the factory here).
+        // the factory here). Its sibling
+        // ContainerDoesNotDisposeInstance_WhenRegisteredViaBareInstance_EvenIfResolved pins the
+        // contrasting rule that the `AddSingleton(factory.Root)` line below relies on, and
+        // ContainerDoesNotDisposeFactory_WhenRegisteredViaDelegate_ButNeverResolved pins today's
+        // actual state (delegate registered, never resolved => never disposed).
         services.AddSingleton<INpgsqlDataSourceFactory>(_ => factory);
 
         // AddSingleton(factory.Root) is kept ON PURPOSE — it is the public contract 9 existing

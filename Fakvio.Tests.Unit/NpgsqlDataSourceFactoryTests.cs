@@ -425,6 +425,31 @@ public class NpgsqlDataSourceFactoryTests
         spy.WasDisposed.ShouldBeFalse();
     }
 
+    [Fact]
+    public void ContainerDoesNotDisposeFactory_WhenRegisteredViaDelegate_ButNeverResolved()
+    {
+        // Pins the state ServiceCollectionExtensions.AddDatabaseContexts is actually in TODAY:
+        // the factory is registered via a delegate (same shape as ContainerDisposesFactory_...
+        // above), but — as of this PR — nothing in production code resolves
+        // INpgsqlDataSourceFactory (0 consumers, first arrives with #134). A delegate
+        // registration only gives the container something to dispose once the delegate has
+        // run at least once; if it never runs, there is nothing "created" to dispose. Without
+        // this test, the delegate-registration claim in the AddDatabaseContexts comment
+        // ("today this line does NOT yet give the factory a disposal path") would rest on
+        // narrative alone, same failure mode that blocked review rounds 1 and 2.
+        var spy = new DisposalTrackingSpy();
+        var services = new ServiceCollection();
+        services.AddSingleton<IDisposable>(_ => spy);
+
+        using (var provider = services.BuildServiceProvider())
+        {
+            // Deliberately NOT resolved — mirrors today's composition root, where
+            // INpgsqlDataSourceFactory is registered but nothing calls GetRequiredService on it.
+        }
+
+        spy.WasDisposed.ShouldBeFalse();
+    }
+
     private sealed class DisposalTrackingSpy : IDisposable
     {
         public bool WasDisposed { get; private set; }
