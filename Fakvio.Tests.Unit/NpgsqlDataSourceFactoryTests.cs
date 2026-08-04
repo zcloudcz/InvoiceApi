@@ -369,19 +369,18 @@ public class NpgsqlDataSourceFactoryTests
     // ---------------------------------------------------------------------
 
     [Fact]
-    public void ContainerDisposesFactory_WhenRegisteredViaFactoryDelegate_NotViaInstance()
+    public void ContainerDisposesFactory_WhenRegisteredViaFactoryDelegate_AndResolved()
     {
-        // AddDatabaseContexts registers the factory with a FACTORY DELEGATE
-        // (`AddSingleton<INpgsqlDataSourceFactory>(_ => factory)`), not a bare instance
-        // (`AddSingleton<INpgsqlDataSourceFactory>(factory)`). Microsoft.Extensions.
-        // DependencyInjection only disposes objects it considers itself to have created —
-        // a delegate registration qualifies for that, a pre-built instance registration does
-        // not. This test proves the container really does call factory.Dispose() at shutdown
-        // for the delegate form, which is what makes the composition root actually honour the
-        // ownership rule documented on INpgsqlDataSourceFactory instead of just asserting it.
-        //
-        // `factory.Root` is registered the OTHER way (as a plain instance, same as production),
-        // so it must NOT be disposed independently by the container — only via factory.Dispose().
+        // NOTE on what this test proves and what it does not: it mirrors the registration
+        // shape from ServiceCollectionExtensions.AddDatabaseContexts (delegate registration,
+        // `AddSingleton<INpgsqlDataSourceFactory>(_ => factory)`), but it ALSO resolves the
+        // service (`GetRequiredService<INpgsqlDataSourceFactory>()`) before disposing the
+        // provider. That resolve step is exactly what today's composition root does NOT do —
+        // as of this PR nothing in production code resolves INpgsqlDataSourceFactory (the
+        // first consumer arrives with #134). So this test demonstrates the rule "delegate
+        // registration + resolution => the container disposes it at shutdown", not the claim
+        // "the composition root disposes the factory today". See the bare-instance sibling
+        // test below for the contrasting case that pins the MEDI rule this depends on.
         var factory = new NpgsqlDataSourceFactory(PasswordOptions());
         var services = new ServiceCollection();
         services.AddSingleton<INpgsqlDataSourceFactory>(_ => factory);
@@ -392,10 +391,45 @@ public class NpgsqlDataSourceFactoryTests
             provider.GetRequiredService<INpgsqlDataSourceFactory>().ShouldBeSameAs(factory);
         }
 
-        // The `using` block above disposed the ServiceProvider — if the delegate registration
-        // gave the container ownership as expected, factory.Dispose() already ran and Root
-        // is unusable now.
+        // The `using` block above disposed the ServiceProvider — because the factory was
+        // resolved above, the delegate registration gave the container ownership, so
+        // factory.Dispose() already ran and Root is unusable now.
         Should.Throw<ObjectDisposedException>(() => factory.Root.OpenConnection());
+    }
+
+    [Fact]
+    public void ContainerDoesNotDisposeInstance_WhenRegisteredViaBareInstance_EvenIfResolved()
+    {
+        // Contrasting case for the test above: registering the SAME kind of singleton as a
+        // BARE INSTANCE (`AddSingleton<TService>(instance)`, not a delegate) means the
+        // container never considers itself to have created it, so it is never disposed at
+        // shutdown — even though it was resolved. This pins the MEDI rule that
+        // AddDatabaseContexts' `services.AddSingleton(factory.Root)` line relies on (Root is
+        // registered this same, bare-instance way) as a regression test instead of just a
+        // code comment.
+        //
+        // A minimal disposal-tracking spy is used here instead of NpgsqlDataSourceFactory/
+        // NpgsqlDataSource, so the test exercises only the MEDI rule and does not depend on
+        // Npgsql or network behaviour (calling a real NpgsqlDataSource's OpenConnection()
+        // while NOT disposed would require a reachable PostgreSQL server, which this test
+        // class is documented to never need).
+        var spy = new DisposalTrackingSpy();
+        var services = new ServiceCollection();
+        services.AddSingleton<IDisposable>(spy);
+
+        using (var provider = services.BuildServiceProvider())
+        {
+            provider.GetRequiredService<IDisposable>().ShouldBeSameAs(spy);
+        }
+
+        spy.WasDisposed.ShouldBeFalse();
+    }
+
+    private sealed class DisposalTrackingSpy : IDisposable
+    {
+        public bool WasDisposed { get; private set; }
+
+        public void Dispose() => WasDisposed = true;
     }
 
     // ---------------------------------------------------------------------

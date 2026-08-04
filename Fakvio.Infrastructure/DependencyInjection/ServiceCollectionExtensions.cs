@@ -359,12 +359,20 @@ public static class ServiceCollectionExtensions
 
         // Registered with a FACTORY DELEGATE (`_ => factory`), not a bare instance
         // (AddSingleton<TService>(instance)). This matters: Microsoft.Extensions.DependencyInjection
-        // only disposes objects it considers itself to have created — a delegate registration
-        // qualifies, a pre-built instance registration does not. So this line is what actually
-        // gives the factory a disposal path at host shutdown (Dispose/DisposeAsync run there),
-        // fulfilling the ownership rule documented on INpgsqlDataSourceFactory. See
+        // only disposes singletons it considers itself to have created — a delegate registration
+        // qualifies, a pre-built instance registration does not. BUT the container only "creates"
+        // a delegate-registered singleton the first time something RESOLVES it (constructor
+        // injection or GetRequiredService/GetService) — a delegate that never runs has nothing
+        // for the container to dispose. As of this PR, nothing in production code resolves
+        // INpgsqlDataSourceFactory (the first consumer arrives with #134's TenantProvisioningService
+        // change), so today this line does NOT yet give the factory a disposal path at host
+        // shutdown — factory.Dispose()/DisposeAsync() simply never run, and the process exit is
+        // what actually reclaims Root. Once #134 injects the factory somewhere, resolution happens
+        // and the disposal path described on INpgsqlDataSourceFactory's XML doc becomes real. See
         // NpgsqlDataSourceFactoryTests.ContainerDisposesFactory_WhenRegisteredViaFactoryDelegate_NotViaInstance
-        // for the proof.
+        // for what this proves (delegate registration + resolution => disposed) and what it does not
+        // (it does not prove today's composition root disposes anything, because nothing resolves
+        // the factory here).
         services.AddSingleton<INpgsqlDataSourceFactory>(_ => factory);
 
         // AddSingleton(factory.Root) is kept ON PURPOSE — it is the public contract 9 existing
