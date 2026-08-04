@@ -1,5 +1,6 @@
 using Fakvio.Infrastructure.Data;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using Shouldly;
 
@@ -344,6 +345,57 @@ public class NpgsqlDataSourceFactoryTests
         factory.Dispose();
 
         Should.Throw<ObjectDisposedException>(() => factory.GetForSchema("tenant_1"));
+    }
+
+    [Fact]
+    public void Root_DisposedDirectly_ThenFactoryDisposedToo_DoesNotThrow()
+    {
+        // Guards the ownership-rule caveat documented on ServiceCollectionExtensions'
+        // `services.AddSingleton(factory.Root)` line: if some caller disposes Root directly —
+        // bypassing the "callers never dispose anything from this factory" contract — the
+        // factory's own Dispose() must not throw when it disposes the SAME Root a second time
+        // as part of its normal cleanup. This backs the "NpgsqlDataSource.Dispose() is
+        // idempotent" claim with an actual test instead of just asserting it in a comment.
+        var factory = new NpgsqlDataSourceFactory(PasswordOptions());
+
+        factory.Root.Dispose();
+
+        Should.NotThrow(() => factory.Dispose());
+    }
+
+    // ---------------------------------------------------------------------
+    // Composition-root ownership contract — mirrors the registration pattern in
+    // ServiceCollectionExtensions.AddDatabaseContexts (Fakvio.Infrastructure).
+    // ---------------------------------------------------------------------
+
+    [Fact]
+    public void ContainerDisposesFactory_WhenRegisteredViaFactoryDelegate_NotViaInstance()
+    {
+        // AddDatabaseContexts registers the factory with a FACTORY DELEGATE
+        // (`AddSingleton<INpgsqlDataSourceFactory>(_ => factory)`), not a bare instance
+        // (`AddSingleton<INpgsqlDataSourceFactory>(factory)`). Microsoft.Extensions.
+        // DependencyInjection only disposes objects it considers itself to have created —
+        // a delegate registration qualifies for that, a pre-built instance registration does
+        // not. This test proves the container really does call factory.Dispose() at shutdown
+        // for the delegate form, which is what makes the composition root actually honour the
+        // ownership rule documented on INpgsqlDataSourceFactory instead of just asserting it.
+        //
+        // `factory.Root` is registered the OTHER way (as a plain instance, same as production),
+        // so it must NOT be disposed independently by the container — only via factory.Dispose().
+        var factory = new NpgsqlDataSourceFactory(PasswordOptions());
+        var services = new ServiceCollection();
+        services.AddSingleton<INpgsqlDataSourceFactory>(_ => factory);
+        services.AddSingleton(factory.Root);
+
+        using (var provider = services.BuildServiceProvider())
+        {
+            provider.GetRequiredService<INpgsqlDataSourceFactory>().ShouldBeSameAs(factory);
+        }
+
+        // The `using` block above disposed the ServiceProvider — if the delegate registration
+        // gave the container ownership as expected, factory.Dispose() already ran and Root
+        // is unusable now.
+        Should.Throw<ObjectDisposedException>(() => factory.Root.OpenConnection());
     }
 
     // ---------------------------------------------------------------------

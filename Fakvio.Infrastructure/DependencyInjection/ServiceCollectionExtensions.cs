@@ -356,14 +356,29 @@ public static class ServiceCollectionExtensions
 
         services.Configure<DatabaseOptions>(configuration.GetSection("Database"));
         services.AddSingleton(options);
-        services.AddSingleton<INpgsqlDataSourceFactory>(factory);
+
+        // Registered with a FACTORY DELEGATE (`_ => factory`), not a bare instance
+        // (AddSingleton<TService>(instance)). This matters: Microsoft.Extensions.DependencyInjection
+        // only disposes objects it considers itself to have created — a delegate registration
+        // qualifies, a pre-built instance registration does not. So this line is what actually
+        // gives the factory a disposal path at host shutdown (Dispose/DisposeAsync run there),
+        // fulfilling the ownership rule documented on INpgsqlDataSourceFactory. See
+        // NpgsqlDataSourceFactoryTests.ContainerDisposesFactory_WhenRegisteredViaFactoryDelegate_NotViaInstance
+        // for the proof.
+        services.AddSingleton<INpgsqlDataSourceFactory>(_ => factory);
 
         // AddSingleton(factory.Root) is kept ON PURPOSE — it is the public contract 9 existing
         // consumers rely on by injecting NpgsqlDataSource directly (AzureOperationController,
         // TimerFunctions, LogFlushService, LogCleanupService, ImapPollService, AdvisoryLock,
         // TenantDbContextFactory, TenantProvisioningService + tests). Keeping this registration
-        // means none of them need to change. The container can dispose Root too;
-        // NpgsqlDataSource.Dispose() is idempotent (covered by NpgsqlDataSourceFactoryTests).
+        // means none of them need to change.
+        //
+        // Unlike the factory registration above, THIS is a pre-built instance registration —
+        // the container never disposes it. That is intentional: Root has a single owner (the
+        // factory, which disposes it in its own Dispose/DisposeAsync), so it is disposed exactly
+        // once even though it is exposed here for direct injection. NpgsqlDataSource.Dispose()
+        // is also verified idempotent (NpgsqlDataSourceFactoryTests.Root_DisposedDirectly_ThenFactoryDisposedToo_DoesNotThrow)
+        // in case any consumer disposes it despite the documented "callers never dispose" rule.
         services.AddSingleton(factory.Root);
 
         var dataSource = factory.Root;
