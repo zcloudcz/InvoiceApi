@@ -654,16 +654,11 @@ public class TenantProvisioningService : ITenantProvisioningService
 
     /// <summary>
     /// Sanitizes a schema name to prevent SQL injection.
-    /// Only allows lowercase alphanumeric characters and underscores.
-    /// PostgreSQL schema names must start with a letter or underscore.
+    /// Forwards to <see cref="SchemaNames.Sanitize"/> — the canonical implementation now
+    /// lives in Fakvio.Infrastructure.Data so it can be shared with NpgsqlDataSourceFactory
+    /// without a circular dependency between this service and the Data namespace.
     /// </summary>
-    private static string SanitizeSchemaName(string name)
-    {
-        var sanitized = new string(name.Where(c => char.IsLetterOrDigit(c) || c == '_').ToArray()).ToLowerInvariant();
-        if (string.IsNullOrEmpty(sanitized))
-            throw new InvalidOperationException($"Invalid schema name: '{name}' — must contain alphanumeric characters.");
-        return sanitized;
-    }
+    private static string SanitizeSchemaName(string name) => SchemaNames.Sanitize(name);
 
     /// <summary>
     /// Copies code tables from master DB ("public" schema) to the newly provisioned tenant schema.
