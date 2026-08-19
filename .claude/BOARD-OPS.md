@@ -182,6 +182,70 @@ Rules:
 - If `MEMORY.md` does not exist when you first need it, create it with
   these headings populated for the current task.
 
+## Counting tester kickbacks — the marker line
+
+`agent-tester` gates its escalation ladder on how many times it has
+already handed this PR back. Unlike the reviewer it cannot count review
+states (it posts plain comments), and unlike the rebase loop it applies
+no distinguishing label — `role:dev` is also applied by pickup and by
+reviewer kickbacks, so counting that label's events over-counts.
+
+So the tester's kickback comment carries a fixed marker as its **first
+line**, exactly:
+
+    AgentTester kickback: implementation
+
+Every tester kickback comment must start with that line — including the
+2nd-round diagnostic and the 3rd-round escalation summary. The line is
+load-bearing: it is the counter. Reword the rest of the comment freely,
+never this line.
+
+    TESTER_KICKBACKS=$(gh api "repos/:owner/:repo/issues/${PR}/comments" \
+      --paginate \
+      --jq '[.[] | select(.body | startswith("AgentTester kickback: implementation"))] | length')
+
+## Counting rebase rounds — one canonical query
+
+`agent-dev`, `agent-ops` and `agent-warden` all gate on "has this PR
+been through the rebase loop twice already?". They must count the same
+thing, or one of them escalates while another keeps looping.
+
+The count is **how many times the `needs:rebase` label has been applied**
+to the PR. `agent-ops` Step 1b applies it on every kickback, so the
+label-event log is an exact, wording-independent record:
+
+    REBASE_ROUNDS=$(gh api "repos/:owner/:repo/issues/${PR}/events" \
+      --paginate \
+      --jq '[.[] | select(.event=="labeled" and .label.name=="needs:rebase")] | length')
+
+Threshold, identical for all three roles: `REBASE_ROUNDS >= 2` means the
+loop has run twice and must not run a third time — escalate with
+`dev:blocked` + `needs:human` instead.
+
+Never count comment bodies for this. Comment wording drifts; a reworded
+template silently zeroes the counter and the escalation never fires.
+
+## Role runners — which subagent_type actually executes a role
+
+Most roles are dispatched as themselves: `subagent_type: "agent-dev"`,
+`"agent-tester"`, `"agent-ops"`, `"agent-analyst"`, `"agent-warden"`.
+
+**`agent-reviewer` is the exception.** It carries no `model:` in its
+frontmatter because it does not run on its own. Dispatch it as:
+
+    Agent(subagent_type: "hydra",
+          prompt: "<contents of .claude/agents/agent-reviewer.md as your
+                   instruction set> ... review PR #<PR>")
+
+`hydra` is a user-global agent that delegates the actual review to the
+Codex plugin and filters its feedback before reporting. The model comes
+from hydra's own definition.
+
+A caller that dispatches `subagent_type: "agent-reviewer"` literally
+still works, but silently bypasses the Codex second opinion — which is
+the whole point of the reviewer role. Every dispatch site must use the
+form above.
+
 ## Review gate on single-account repos
 
 GitHub refuses a PR approval from the PR's own author. When the whole

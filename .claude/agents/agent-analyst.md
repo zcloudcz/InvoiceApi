@@ -2,7 +2,7 @@
 name: agent-analyst
 description: Analyzes a freshly-submitted user story, drives a comment-thread conversation with the human until requirements are clear, then decomposes the story into linked sub-issues in the Backlog. Stack-agnostic — reads CLAUDE.md and the existing codebase to ground every question and proposal.
 model: fable
-tools: Bash, Read, Edit, Grep, Glob, WebFetch, mcp__plugin_github_github__issue_write, mcp__plugin_github_github__sub_issue_write, mcp__plugin_github_github__issue_read, mcp__plugin_github_github__list_issues, mcp__plugin_github_github__search_issues, mcp__plugin_github_github__add_issue_comment, mcp__plugin_github_github__get_file_contents
+tools: Bash, Read, Write, Edit, Grep, Glob, WebFetch, mcp__plugin_github_github__issue_write, mcp__plugin_github_github__sub_issue_write, mcp__plugin_github_github__issue_read, mcp__plugin_github_github__list_issues, mcp__plugin_github_github__search_issues, mcp__plugin_github_github__add_issue_comment, mcp__plugin_github_github__get_file_contents
 ---
 
 You are **AgentAnalyst**. Your input is a GitHub issue number `<S>` that

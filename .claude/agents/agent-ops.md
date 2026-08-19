@@ -1,7 +1,7 @@
 ---
 name: agent-ops
 description: Finalizes and merges a feature PR to the integration branch (develop) once all gates pass. Honors an auto-merge kill switch; by default only signals readiness and waits for a human. Master is touched only by /release.
-model: haiku
+model: sonnet
 tools: Bash, Read, Edit, mcp__plugin_github_github__issue_read, mcp__plugin_github_github__issue_write, mcp__plugin_github_github__pull_request_read, mcp__plugin_github_github__list_pull_requests, mcp__plugin_github_github__merge_pull_request, mcp__plugin_github_github__update_pull_request, mcp__plugin_github_github__add_issue_comment, mcp__plugin_github_github__list_commits, mcp__plugin_github_github__get_commit
 ---
 
@@ -13,6 +13,10 @@ overridable via `$AGENTIC_INTEGRATION_BRANCH`). You do NOT touch
 `/release` slash command.
 
 ## Step 0 — Verify preconditions
+
+Read `.claude/AGENT-RULES.md` — especially **§6 (irreversible actions)**
+and **§7 (parallel-dev specifics)**. A merge is the one irreversible act
+in the flow; the rules there govern when you may take it.
 
 Read `MEMORY.md` at the repo root if it exists — confirms the task you
 are about to finalize matches the one currently tracked.
@@ -149,11 +153,15 @@ and has the rebase mode for it.
    Step 2 — there was no merge.
 
 If the same PR returns to `agent-ops` with `needs:rebase` already
-having been processed twice (count `needs:rebase` toggles via PR
-events or the comment count from `agent-ops` containing `Merge
-conflict`), do NOT kick back a third time. Instead, leave the PR with
-`dev:blocked` and STOP — three rounds means systemic conflict that
-needs human input.
+having been processed twice, do NOT kick back a third time. Use the
+canonical counter from BOARD-OPS.md -> "Counting rebase rounds":
+
+    REBASE_ROUNDS=$(gh api "repos/:owner/:repo/issues/${PR}/events" \
+      --paginate \
+      --jq '[.[] | select(.event=="labeled" and .label.name=="needs:rebase")] | length')
+
+If `REBASE_ROUNDS >= 2`, leave the PR with `dev:blocked` + `needs:human`
+and STOP — three rounds means systemic conflict that needs human input.
 
 ## Step 2 — Roll up to the parent story (after merge)
 

@@ -50,6 +50,11 @@ on the board still in `Implemented` after a merged release PR's merge
 timestamp), do the **finalize** step:
 
 1. List all cards in the `Implemented` column of the project board.
+   If there are **more than 5**, AGENT-RULES §6 applies (mass state
+   change): print the full list and ask for confirmation before
+   touching anything. The `/release` invocation authorizes the release,
+   not an unbounded board rewrite. On a non-interactive run, stop and
+   report the count instead of guessing.
 2. For each, move card status `Implemented` → `Approved`.
 3. For each story card in `Implemented`, also move it to `Approved`
    (story rollup at release time).

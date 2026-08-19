@@ -79,9 +79,14 @@ tests you just wrote):
 Count prior tester kickbacks:
 
     TESTER_KICKBACKS=$(gh api "repos/:owner/:repo/issues/${PR}/comments" \
-      --jq '[.[] | select(.body | test("Handing back to agent-dev"))] | length')
+      --paginate \
+      --jq '[.[] | select(.body | startswith("AgentTester kickback: implementation"))] | length')
 
-Post a comment describing the failing test + minimal reproduction, then:
+See BOARD-OPS.md -> "Counting tester kickbacks". Post a comment
+describing the failing test + minimal reproduction. Its **first line
+must be exactly** `AgentTester kickback: implementation` - that line is
+the counter, so every kickback comment carries it, diagnostics and
+escalations included. Then:
 
 - **1st** (`TESTER_KICKBACKS` == 0): hand back normally.
 - **2nd** (`TESTER_KICKBACKS` == 1): also add `quality:recurring`,

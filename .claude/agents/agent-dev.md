@@ -317,12 +317,16 @@ After all conflicts resolved:
 
 ### Retry limit
 
-Track rebase attempts via the count of `needs:rebase` comments from
-`agent-ops` on this PR (or the `dev:rebase-attempt-<n>` label if
-present). After 2 failed rebase attempts on the same PR, do NOT try a
-third — escalate via `dev:blocked` as in 2c.3, regardless of how clean
-the next rebase would look. A third loop signals systemic conflict
-that needs human design input.
+Count rebase rounds with the canonical query from BOARD-OPS.md →
+"Counting rebase rounds":
+
+    REBASE_ROUNDS=$(gh api "repos/:owner/:repo/issues/${EXISTING_PR_NUMBER}/events" \
+      --paginate \
+      --jq '[.[] | select(.event=="labeled" and .label.name=="needs:rebase")] | length')
+
+If `REBASE_ROUNDS >= 2`, do NOT try a third — escalate via `dev:blocked`
+as in 2c.3, regardless of how clean the next rebase would look. A third
+loop signals systemic conflict that needs human design input.
 
 ## Hard rules
 

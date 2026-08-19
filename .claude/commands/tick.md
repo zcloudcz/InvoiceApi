@@ -32,7 +32,10 @@ Priority order (top first):
    -> invoke `agent-tester` with that PR number.
 
 3. A card in `CodeReview` with label `role:reviewer`
-   -> invoke `agent-reviewer` with that PR number.
+   -> dispatch the reviewer role for that PR number. Use
+      `subagent_type: "hydra"` with `.claude/agents/agent-reviewer.md`
+      as the instruction set, not `subagent_type: "agent-reviewer"`
+      (see "Role runners" in BOARD-OPS.md).
 
 4. A card in `Progress` with label `role:dev`
    -> invoke `agent-dev` with that issue number (re-dispatch — review or

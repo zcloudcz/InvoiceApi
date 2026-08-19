@@ -181,8 +181,10 @@ the repeated cycle signals a deeper problem. Escalation rules:
 
 A "kickback" is any transition that moves the card from `CodeReview` →
 `Progress` or from `Test` → `Progress`. Count them per PR by counting
-`CHANGES_REQUESTED` reviews (reviewer) and "Handing back to agent-dev"
-comments (tester) on the PR.
+`CHANGES_REQUESTED` reviews (reviewer) and comments starting with
+`AgentTester kickback: implementation` (tester) on the PR. Both
+counters are defined once in `BOARD-OPS.md` — use those queries, do
+not invent a variant.
 
 ### Thresholds
 
