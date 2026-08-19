@@ -29,15 +29,32 @@ running tick (if any). When the user asks why a card has not advanced,
 or what the last automated tick did, grep this log file for the most
 recent `START` / `END` block.
 
-## Find the oldest item in a given status column
+## Task priority — bugs jump the queue
+
+`type:bug` outranks every other priority signal. Whenever multiple cards
+are eligible for the same action (same status column, same role label,
+same `/tick` priority level), pick the `type:bug` card first regardless
+of `createdAt` or `priority:*`. Within `type:bug` cards, oldest-first;
+within non-bug cards, oldest-first. `priority:high` only breaks ties
+*after* `type:bug` has been applied.
+
+Applies to: `/pickup-task`, `/tick`, `/tick-tests`, `/tick-stories`, and
+any agent that picks "the next" item from a column. A `type:bug` story
+in `StoryNew` is also claimed first by the analyst.
+
+## Find the oldest item in a given status column (bugs first)
 
     gh project item-list "$AGENTIC_PROJECT_NUMBER" \
         --owner "$AGENTIC_PROJECT_OWNER" --format json --limit 200 \
       | jq -r --arg S "Backlog" '
           .items
           | map(select(.status == $S))
-          | sort_by(.createdAt)
+          | sort_by([(.labels | index("type:bug") | not), .createdAt])
           | .[0] // empty'
+
+The compound sort key puts `type:bug` cards (where `index("type:bug")`
+is non-null, so `| not` is `false`) ahead of non-bug cards, then
+`createdAt` ascending within each group.
 
 ## Resolve the IDs needed to move a card
 
@@ -88,55 +105,32 @@ in any target repo, regardless of plugin availability.
 
 ### List sub-issues of a story
 
-MCP (preferred):
-
     mcp__plugin_github_github__issue_read
       method: "get_sub_issues", owner: "$OWNER", repo: "$REPO",
       issue_number: <S>, perPage: 100
+    # Fallback: gh api repos/:owner/:repo/issues/<S>/sub_issues
 
-`gh` fallback:
+### Count still-open children
 
-    gh api repos/:owner/:repo/issues/<S>/sub_issues
-
-### Count still-open children (used by agent-ops for last-child detection)
-
-MCP: filter the `get_sub_issues` response in code, keep entries with
-`state == "open"`, take its length.
-
-`gh` fallback:
-
-    gh api repos/:owner/:repo/issues/<S>/sub_issues \
-      --jq '[.[] | select(.state=="open")] | length'
+Filter `get_sub_issues` response for `state == "open"`, take length.
+Fallback: `gh api repos/:owner/:repo/issues/<S>/sub_issues --jq '[.[] | select(.state=="open")] | length'`
 
 ### Find the parent of an issue
 
-The MCP plugin does not expose a parent lookup. `agent-ops` reads the
-parent number from the `Parent story:` line in `MEMORY.md` instead.
-If that is unavailable:
-
-    gh api repos/:owner/:repo/issues/<N>/parent_issue --jq '.number' 2>/dev/null
+Read `Parent story:` line from `MEMORY.md`. Fallback: `gh api repos/:owner/:repo/issues/<N>/parent_issue --jq '.number'`
 
 ### Add a child to a parent
-
-MCP (preferred):
 
     mcp__plugin_github_github__sub_issue_write
       method: "add", owner: "$OWNER", repo: "$REPO",
       issue_number: <S>, sub_issue_id: <CHILD_ID>
 
-`sub_issue_id` is the **internal numeric `id`** of the child issue, not
-its issue number. The `issue_write` MCP call returns it on `create`.
+`sub_issue_id` is the **internal numeric `id`** (not the issue number).
+Fallback: `gh api -X POST repos/:owner/:repo/issues/<S>/sub_issues -F sub_issue_id="$CHILD_ID"` (typed `-F` required — string `-f` gets 422 "not of type integer")
 
-`gh` fallback:
+## Worktree isolation → see agent-dev Step 2a/2c and agent-tester Step 0/4
 
-    PARENT_ID=$(gh api repos/:owner/:repo/issues/<S>   --jq '.id')
-    CHILD_ID=$(gh api  repos/:owner/:repo/issues/<NEW> --jq '.id')
-    gh api -X POST repos/:owner/:repo/issues/<S>/sub_issues \
-           -f sub_issue_id="$CHILD_ID"
-
-Note: if the target GitHub instance has no sub-issues feature at all,
-fall back to a `Parent story: #<S>` line in the body and a checklist on
-the parent — agents should still parse the body for parent linkage.
+## Parallel-dev labels → see agent-analyst Step 3 and AGENT-RULES §7
 
 ## MEMORY.md format
 
@@ -187,6 +181,23 @@ Rules:
 - Same language as the repo's code comments (per root `CLAUDE.md`).
 - If `MEMORY.md` does not exist when you first need it, create it with
   these headings populated for the current task.
+
+## Review gate on single-account repos
+
+GitHub refuses a PR approval from the PR's own author. When the whole
+agentic flow runs under one account (author == token account), a formal
+`reviewDecision == "APPROVED"` is therefore impossible. Convention:
+
+- `agent-reviewer` submits the passing review as a **comment** whose
+  first line is exactly `AgentReviewer verdict: APPROVED`.
+- `agent-ops` accepts such a review as satisfying the approval gate.
+- Autonomy: with `AGENTIC_AUTO_MERGE=true`, agents act on passed gates
+  without asking for extra confirmation — the env flags in
+  `.claude/settings.json` ARE the human authorization. Agents ask only
+  when a gate genuinely fails or a rule conflict has no defined path.
+
+If the repo ever gains a second (bot/machine) review account, drop this
+convention and require the formal approval again.
 
 ## Integration branch model
 
@@ -250,6 +261,8 @@ Task flow (sub-issues created from a story, or standalone backlog items):
                                  Implemented cards to Approved
     any         -> Blocked     : agent-dev when it must ask a question, label +blocked:question
     Blocked     -> ToDo        : human after answering (manual)
+    Implemented -> Progress    : agent-ops on merge conflict, +needs:rebase, label -> role:dev
+                                 (parallel-dev rebase loop; PR stays open)
 
 Story flow (a `type:story` issue, before and around its task children):
 

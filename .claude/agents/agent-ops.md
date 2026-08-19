@@ -27,7 +27,12 @@ what is missing and STOP — do not merge.
     gh pr view <PR> --json isDraft,reviewDecision,statusCheckRollup,labels,mergeable,baseRefName
 
 - `isDraft == false` (or you will flip it after the other checks)
-- `reviewDecision == "APPROVED"`
+- `reviewDecision == "APPROVED"` — **single-account fallback:** on repos
+  where the PR author and the token account are the same, GitHub refuses
+  self-approval, so `reviewDecision` can never be `APPROVED`. In that case
+  accept a review whose body starts with `AgentReviewer verdict: APPROVED`
+  (see BOARD-OPS.md "Review gate on single-account repos") as satisfying
+  this gate. Do not stall on the missing formal approval.
 - Every entry in `statusCheckRollup[]` has `conclusion` in
   `{"SUCCESS", "NEUTRAL", "SKIPPED"}`
 - Label `role:ops` is present
@@ -43,14 +48,35 @@ Auto-merge is gated by env var `AGENTIC_AUTO_MERGE`.
 
 If `AGENTIC_AUTO_MERGE == "true"`:
 
+The env flag records the owner's standing decision (see BOARD-OPS.md
+"Review gate on single-account repos"). When every Step 0 gate passes,
+proceed directly with the commands below; a failed gate still takes the
+failure path (comment and stop).
+
     gh pr ready <PR>                      # flip from draft if still draft
-    gh pr merge <PR> --squash --delete-branch
+
+    # Re-check mergeable just before the merge call — the integration
+    # branch may have advanced since Step 0. If a sibling PR merged
+    # in between, this is now a conflict and must be kicked back, not
+    # merged.
+    MERGEABLE=$(gh pr view <PR> --json mergeable --jq '.mergeable')
+    if [ "$MERGEABLE" != "MERGEABLE" ]; then
+      goto Step 1b — Merge conflict
+    fi
+
+    gh pr merge <PR> --squash --delete-branch || goto Step 1b
 
 `--squash` is intentional: each feature PR becomes one commit on the
 integration branch. The linked issue auto-closes because the PR body
 contains `Closes #<N>`. The Project card stays in `Implemented` (the
-column means "merged to develop, awaiting release" now). Proceed to
-Step 2.
+column means "merged to develop, awaiting release" now). After the
+merge, remove `role:ops` from the issue (the PR's labels die with the
+merge) — a merged card must not carry an active role, or the next tick
+re-dispatches ops on it forever:
+
+    gh issue edit <N> --remove-label "role:ops"
+
+Proceed to Step 2.
 
 Otherwise (default — auto-merge disabled):
 
@@ -61,6 +87,73 @@ awaiting human", Next step = "human finalizes merge of PR #<PR> into
 ${INTEGRATION}". STOP. Step 2 runs only after an actual merge — when a
 human merges, they (or a future tick) re-invoke `agent-ops` so this
 step still applies.
+
+## Step 1b — Merge conflict (kick back to agent-dev)
+
+The PR is no longer mergeable because the integration branch advanced
+(typically a sibling parallel PR merged first). Do NOT attempt to
+resolve the conflict yourself — `agent-dev` owns conflict resolution
+and has the rebase mode for it.
+
+1. **Identify the competing merged PR(s)** — the commits on
+   `${INTEGRATION}` that the PR's branch needs to rebase over:
+
+       BASE_BRANCH=$(gh pr view <PR> --json baseRefName --jq '.baseRefName')
+       HEAD_BRANCH=$(gh pr view <PR> --json headRefName --jq '.headRefName')
+       git fetch origin "$BASE_BRANCH" "$HEAD_BRANCH"
+
+       # commits on integration that <PR>'s branch does not have:
+       BEHIND=$(git log "origin/${HEAD_BRANCH}..origin/${BASE_BRANCH}" \
+         --pretty='%H' --merges --first-parent || \
+                git log "origin/${HEAD_BRANCH}..origin/${BASE_BRANCH}" \
+         --pretty='%H')
+
+       # extract the squash-merged PR numbers from those commit messages:
+       COMPETING=$(git log "origin/${HEAD_BRANCH}..origin/${BASE_BRANCH}" \
+         --pretty='%s' | grep -oP '#\K[0-9]+' | sort -u)
+
+2. **List the conflicting files** — the intersection of files changed
+   on the integration branch since the PR forked and files changed by
+   the PR itself:
+
+       MERGE_BASE=$(git merge-base "origin/${HEAD_BRANCH}" "origin/${BASE_BRANCH}")
+       INTEGRATION_FILES=$(git diff --name-only "$MERGE_BASE" "origin/${BASE_BRANCH}")
+       PR_FILES=$(git diff --name-only "$MERGE_BASE" "origin/${HEAD_BRANCH}")
+       CONFLICTING=$(comm -12 <(echo "$INTEGRATION_FILES" | sort) <(echo "$PR_FILES" | sort))
+
+3. **Kick back to dev** — leave the PR open; it stays in `Implemented`
+   no longer (column reflects merged status). Move the Project card
+   from `Implemented` back to `Progress`. Swap labels on issue and PR:
+   remove `role:ops`, add `role:dev` and `needs:rebase`.
+
+       gh pr comment <PR> -b "$(printf '%s\n' \
+         'Merge conflict — cannot squash into '"${BASE_BRANCH}"'.' \
+         '' \
+         'Competing merged PR(s): '"$(echo $COMPETING | sed 's/[^ ]*/#&/g')" \
+         '' \
+         'Conflicting files:' \
+         "$(echo "$CONFLICTING" | sed 's/^/- /')" \
+         '' \
+         'Read each competing PR'\''s issue and the diff of the conflicting' \
+         'files only (token-trimmed), then rebase. See agent-dev Step 2c.')"
+
+       gh issue edit <N>  --add-label "role:dev,needs:rebase" \
+                          --remove-label "role:ops"
+       gh pr    edit <PR> --add-label "role:dev,needs:rebase" \
+                          --remove-label "role:ops"
+       # move Project card back to Progress (resolve IDs per BOARD-OPS.md)
+
+4. Update `MEMORY.md`: Progress append "[!] agent-ops: merge conflict
+   on PR #<PR> with $COMPETING; kicked back to agent-dev for rebase",
+   Next step = "agent-dev rebases PR #<PR>". STOP. Do NOT proceed to
+   Step 2 — there was no merge.
+
+If the same PR returns to `agent-ops` with `needs:rebase` already
+having been processed twice (count `needs:rebase` toggles via PR
+events or the comment count from `agent-ops` containing `Merge
+conflict`), do NOT kick back a third time. Instead, leave the PR with
+`dev:blocked` and STOP — three rounds means systemic conflict that
+needs human input.
 
 ## Step 2 — Roll up to the parent story (after merge)
 

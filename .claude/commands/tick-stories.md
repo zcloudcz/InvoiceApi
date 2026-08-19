@@ -85,6 +85,9 @@ column + labels):
   start saturating the orchestrator's context window with their
   return summaries. If there are 12 eligible stories, do 8 now and
   print: `8 dispatched, 4 still queued — re-run /tick-stories`.
+  When the cap forces a tail to be deferred, sort the dispatch list
+  with `type:bug` stories first, then oldest-first by `createdAt`,
+  per "Task priority — bugs jump the queue" in BOARD-OPS.md.
 - If a single story has been parallel-dispatched 3 times in a row
   with the same `blocked:question` outcome, surface it as a stall.
 
