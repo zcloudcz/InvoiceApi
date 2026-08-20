@@ -23,10 +23,13 @@ internal static class DesignTimeDataSource
     /// <summary>
     /// Last-resort connection string, used only when configuration provides none at all
     /// (e.g. <c>dotnet ef</c> invoked from a directory where Fakvio.API/appsettings.json
-    /// is not reachable). Points at the local Docker PostgreSQL from docker-compose.yml.
+    /// is not reachable). The credentials match the <c>db</c> service in docker-compose.yml
+    /// (<c>POSTGRES_USER</c> / <c>POSTGRES_PASSWORD</c> / <c>POSTGRES_DB</c>), so the
+    /// fallback can actually log in — a fallback with a made-up password would only trade
+    /// one failure for another.
     /// </summary>
     private const string LocalFallbackConnectionString =
-        "Host=localhost;Database=fakvio;Username=fakvio;Password=YourStrong!Passw0rd";
+        "Host=localhost;Database=fakvio;Username=fakvio;Password=fakvio_dev";
 
     /// <summary>
     /// The factory is deliberately parked in a static field instead of being disposed at
@@ -67,11 +70,17 @@ internal static class DesignTimeDataSource
     /// Appends the local Docker fallback to <paramref name="builder"/>, but only when the
     /// sources already registered on it provide no connection string at all.
     ///
-    /// The fallback always sets <c>Database:AuthMode=Password</c> together with the
-    /// connection string. That pairing is mandatory, not cosmetic: the fallback carries a
-    /// password, and <see cref="DatabaseOptions.Validate"/> rejects a password in
-    /// <see cref="DatabaseAuthMode.AzureEntraId"/> mode. Without pinning the mode, the
-    /// fallback would be unusable on any machine whose environment says "Azure".
+    /// The fallback declares a COMPLETE password-mode configuration: the connection string,
+    /// the new <c>Database:AuthMode</c> key and the legacy <c>UseAzureAdAuthentication</c>
+    /// bool. Setting all three is mandatory, not cosmetic. The fallback carries a password,
+    /// and <see cref="DatabaseOptions.Validate"/> rejects a password in
+    /// <see cref="DatabaseAuthMode.AzureEntraId"/> mode — so without pinning the mode, the
+    /// fallback would be unusable on any machine whose environment says "Azure". And this
+    /// repository says exactly that: Fakvio.API/appsettings.json ships
+    /// <c>"UseAzureAdAuthentication": true</c> and no <c>Database:AuthMode</c> at all.
+    /// Pinning only the new key would therefore leave the two disagreeing, and
+    /// <see cref="DatabaseOptions.Resolve"/> fails fast on that pair — the fallback would
+    /// still be unusable, just with a different exception.
     ///
     /// Exposed (internal) as a seam so the fallback rules can be unit tested over an
     /// in-memory builder, without touching real appsettings files or the process environment.
@@ -100,7 +109,13 @@ internal static class DesignTimeDataSource
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["ConnectionStrings:DefaultConnection"] = LocalFallbackConnectionString,
-                ["Database:AuthMode"] = nameof(DatabaseAuthMode.Password)
+                ["Database:AuthMode"] = nameof(DatabaseAuthMode.Password),
+
+                // The legacy bool is global (not scoped under "Database"), so appsettings.json
+                // can keep asserting "Azure" while the fallback asks for "Password". This
+                // in-memory source is registered last, so it wins over appsettings and over
+                // the environment, and the two keys end up agreeing.
+                ["UseAzureAdAuthentication"] = "false"
             })
             .Build();
     }
