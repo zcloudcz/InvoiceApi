@@ -140,7 +140,7 @@ Provisioning provede:
 1. Vytvoří PostgreSQL schema `tenant_{companyId}`
 2. Aplikuje EF Core migrace na nové schéma
 3. Zkopíruje systémové číselníky (VatRate, Currency, NumberSequenceFormat, ContentTemplate) z master schématu do tenant schématu
-4. Vytvoří záznam vystavitele (issuer) v tenant schématu
+4. Vytvoří záznam vystavitele (issuer) v tenant schématu — včetně adres, kontaktů, bankovních účtů a fakturačního nastavení z master záznamu firmy
 5. Vytvoří výchozí číselné řady pro 4 typy dokladů (INV, CN-, PF-, DPP-)
 6. Označí firmu jako IsProvisioned=true, IsActive=true
 
