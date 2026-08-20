@@ -453,8 +453,11 @@ Správa informací o vaší firmě (vydavatele faktur).
 **Nastavení EPO (jen role Admin):**
 - Hlavičkové údaje pro elektronické podání přiznání k DPH a kontrolního hlášení — viz [§12](#12-přehled-dph--epo-export)
 - Kód finančního úřadu a kód územního pracoviště jsou povinné, bez nich EPO export nelze vygenerovat
-- Kontaktní telefon, kontaktní e-mail a jméno oprávněné osoby jsou volitelné
+- Kontaktní telefon, kontaktní e-mail a jméno oprávněné osoby jsou volitelné (uložený kontaktní
+  e-mail zatím nejde vymazat, jen přepsat jiným)
 - Sekce má vlastní tlačítko „Uložit" — ukládá se nezávisle na tlačítku „Upravit" nahoře
+- **Známé omezení:** uložení dnes projde jen správci systému. U role Admin skončí chybou —
+  než bude opraveno, požádejte o vyplnění správce systému.
 
 ### Jak editovat
 

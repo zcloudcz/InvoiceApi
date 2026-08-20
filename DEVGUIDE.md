@@ -744,6 +744,11 @@ Odkaz „Přejít do nastavení firmy" v `VatReport.razor` je vidět jen pro tyt
 dostanou hlášku, že pole musí doplnit administrátor. **Role list na obou místech musí sedět** —
 jinak buď posíláme uživatele na stránku, kde sekci neuvidí, nebo mu odkaz zbytečně skryjeme.
 
+Pozor na `""` vs. `null` v `UpdateCompanySystemSettingsDto`: pole s `[EmailAddress]`
+(`EpoContactEmail`, `SmtpSenderEmail`) prázdný řetězec **neprojde** — validace `[ApiController]`
+vrátí 400 ještě před vstupem do endpointu. Nevyplněné volitelné e-mailové pole se proto posílá
+jako `null` (= ponechat stávající), u ostatních textových polí zůstává `""` (= vymazat). Viz #186.
+
 **Roční update XSD:**
 Viz `Fakvio.Infrastructure/Resources/Epo/EPO-README.md` — stažení z `adisspr.mfcr.cz`, pojmenování, verifikace.
 

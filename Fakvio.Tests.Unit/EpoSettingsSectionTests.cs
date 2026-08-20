@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using Bunit;
 using Fakvio.Contracts.Dto.CompanySettings;
 using Fakvio.UI.Shared;
@@ -140,6 +141,64 @@ public class EpoSettingsSectionTests : BunitContext, IAsyncLifetime
         // clearing a field impossible — the section must send an empty string.
         saved.ShouldNotBeNull();
         saved.EpoContactPhone.ShouldBe(string.Empty);
+    }
+
+    [Fact]
+    public void Save_ProducesDtoTheApiAccepts_WhenTheOptionalContactsAreLeftEmpty()
+    {
+        UpdateCompanySystemSettingsDto? saved = null;
+        var callback = EventCallback.Factory.Create<UpdateCompanySystemSettingsDto>(
+            this, dto => saved = dto);
+
+        // Fresh company: no settings record yet, so every input starts empty.
+        var cut = RenderSection(settings: null, callback);
+        var inputs = cut.FindAll("input");
+        inputs[0].Change("451");   // tax office code
+        inputs[1].Change("2001");  // tax office branch code
+        // The three contact fields stay untouched — the guides call them optional.
+
+        ClickSave(cut);
+
+        // CompanyController is an [ApiController], so ASP.NET validates the DTO before the
+        // endpoint body runs. A payload that fails here never reaches the database — the
+        // user just gets a 400 and a generic error snackbar.
+        saved.ShouldNotBeNull();
+        AssertPassesApiValidation(saved);
+    }
+
+    [Fact]
+    public void Save_SendsNullForBlankContactEmail_BecauseEmptyStringFailsEmailValidation()
+    {
+        UpdateCompanySystemSettingsDto? saved = null;
+        var callback = EventCallback.Factory.Create<UpdateCompanySystemSettingsDto>(
+            this, dto => saved = dto);
+
+        var cut = RenderSection(ExistingSettings(), callback);
+        // Clear the contact e-mail (4th input — after the two codes and the phone).
+        cut.FindAll("input")[3].Change("");
+
+        ClickSave(cut);
+
+        // [EmailAddress] on the DTO rejects "" but accepts null, so a blank e-mail must go
+        // as null. Consequence: the stored e-mail stays — clearing it is not possible
+        // through this endpoint (issue #186). A 400 would be the worse trade.
+        saved.ShouldNotBeNull();
+        saved.EpoContactEmail.ShouldBeNull();
+        AssertPassesApiValidation(saved);
+    }
+
+    /// <summary>
+    /// Runs the same DataAnnotations validation ASP.NET runs on an [ApiController] action
+    /// parameter, and fails the test with the offending member names when it does not pass.
+    /// </summary>
+    private static void AssertPassesApiValidation(UpdateCompanySystemSettingsDto dto)
+    {
+        var results = new List<ValidationResult>();
+        var isValid = Validator.TryValidateObject(
+            dto, new ValidationContext(dto), results, validateAllProperties: true);
+
+        isValid.ShouldBeTrue(
+            "API would answer 400: " + string.Join("; ", results.Select(r => r.ErrorMessage)));
     }
 
     [Fact]

@@ -25,17 +25,20 @@
 else
 {
     <MudGrid>
+        @* Min/Max mirror the [Range] attributes on UpdateCompanySystemSettingsDto. Without
+           them the user could type a value the API rejects with a 400 before the endpoint
+           even runs, and the page would only show a generic error. *@
         <MudItem xs="12" md="6">
             <MudNumericField T="int?" @bind-Value="_taxOfficeCode"
                              Label="@L["Epo_TaxOfficeCode"].Value"
                              HelperText="@L["Epo_TaxOfficeCodeHelper"].Value"
-                             Required="true" Min="1" Class="mb-3" />
+                             Required="true" Min="1" Max="999" Class="mb-3" />
         </MudItem>
         <MudItem xs="12" md="6">
             <MudNumericField T="int?" @bind-Value="_taxOfficeBranchCode"
                              Label="@L["Epo_TaxOfficeBranchCode"].Value"
                              HelperText="@L["Epo_TaxOfficeBranchCodeHelper"].Value"
-                             Required="true" Min="1" Class="mb-3" />
+                             Required="true" Min="1" Max="99999" Class="mb-3" />
         </MudItem>
         <MudItem xs="12" md="6">
             <MudTextField @bind-Value="_contactPhone" Label="@L["Epo_ContactPhone"].Value" Class="mb-3" />
@@ -117,6 +120,15 @@ else
     /// the API treats null as "keep the current value", so null would make clearing a
     /// field impossible. Numeric fields have no such escape hatch, but both are required
     /// for the export anyway, so "clear the tax office code" is not a real scenario.
+    ///
+    /// The contact e-mail is the one exception. UpdateCompanySystemSettingsDto marks it
+    /// [EmailAddress], and that attribute rejects an empty string (only null passes it).
+    /// CompanyController is an [ApiController], so the DTO is validated *before* the
+    /// endpoint body runs — an empty string would turn every save with a blank e-mail
+    /// into a 400, even though the field is documented as optional. A blank e-mail is
+    /// therefore sent as null = "keep the stored value". The price is that an already
+    /// stored e-mail cannot be cleared from here; that is a defect of the DTO contract
+    /// shared with SmtpSenderEmail and is tracked separately in issue #186.
     /// </summary>
     private async Task SaveAsync()
     {
@@ -125,7 +137,8 @@ else
             EpoTaxOfficeCode = _taxOfficeCode,
             EpoTaxOfficeBranchCode = _taxOfficeBranchCode,
             EpoContactPhone = _contactPhone ?? string.Empty,
-            EpoContactEmail = _contactEmail ?? string.Empty,
+            // Blank goes as null on purpose — see the remark above, "" fails [EmailAddress].
+            EpoContactEmail = string.IsNullOrWhiteSpace(_contactEmail) ? null : _contactEmail,
             EpoAuthorizedPersonName = _authorizedPersonName ?? string.Empty
         };
 
