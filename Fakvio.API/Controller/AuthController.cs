@@ -137,43 +137,6 @@ public class AuthController : ControllerBase
         }
     }
 
-    // ─── Email Verification ──────────────────────────────────────────────────
-
-    /// <summary>
-    /// Verifies the user's email address using the token from the verification link.
-    /// On success, the user's email is marked as verified and their tenant database is provisioned.
-    /// </summary>
-    /// <param name="request">Verification token from the email link</param>
-    /// <returns>Success or failure status</returns>
-    /// <response code="200">Email verified successfully</response>
-    /// <response code="400">Invalid or expired token</response>
-    [HttpPost("verify-email")]
-    [AllowAnonymous]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<ActionResult> VerifyEmail([FromBody] VerifyEmailRequest request)
-    {
-        try
-        {
-            var result = await _authService.VerifyEmailAsync(request.Token);
-
-            if (!result.EmailVerified)
-            {
-                return BadRequest(new { message = result.Message });
-            }
-
-            // Email verified — return full response including provisioning status.
-            // HTTP 200 even if provisioning failed (email IS verified, tenant can be retried).
-            return Ok(result);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error during email verification");
-            return StatusCode(StatusCodes.Status500InternalServerError,
-                new { message = "An error occurred during email verification." });
-        }
-    }
-
     // ─── External OAuth Login ────────────────────────────────────────────────
 
     /// <summary>

@@ -18,10 +18,9 @@ namespace Fakvio.Tests.Unit;
 ///   2. Failed login returns null AND forwards a Warning to the server log (audit signal).
 ///   3. Transport exception during login returns null AND forwards an Error.
 ///   4. Failed registration throws InvalidOperationException AND forwards a Warning.
-///   5. VerifyEmail failure returns EmailVerified=false AND forwards a Warning.
-///   6. ValidateToken: non-success is routine (expired token) — NOT forwarded;
+///   5. ValidateToken: non-success is routine (expired token) — NOT forwarded;
 ///      transport exception IS forwarded as Error.
-///   7. No IClientLogger wired (test hosts) → no crash, graceful degradation.
+///   6. No IClientLogger wired (test hosts) → no crash, graceful degradation.
 /// </summary>
 public class AuthApiServiceTests
 {
@@ -177,29 +176,6 @@ public class AuthApiServiceTests
             Arg.Is<string>(m => m.Contains("/api/auth/register")),
             Arg.Any<string>(),
             Arg.Any<string?>(),
-            Arg.Any<string?>());
-    }
-
-    // ── VerifyEmailAsync ──────────────────────────────────────────────────────
-
-    [Fact]
-    public async Task VerifyEmailAsync_BadRequest_ReturnsNotVerified_AndForwardsWarning()
-    {
-        var (svc, clientLogger) = CreateService(new StubHttpMessageHandler(
-            new HttpResponseMessage(HttpStatusCode.BadRequest)
-            {
-                Content = new StringContent("Token expired.")
-            }));
-
-        var result = await svc.VerifyEmailAsync("expired-token");
-
-        result.EmailVerified.ShouldBeFalse();
-        result.Message.ShouldBe("Token expired.");
-        await clientLogger.Received(1).LogAsync(
-            "Warning",
-            Arg.Is<string>(m => m.Contains("/api/auth/verify-email")),
-            "AuthApiService",
-            "Token expired.",
             Arg.Any<string?>());
     }
 

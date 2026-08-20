@@ -196,6 +196,55 @@ public class UserInvitationTests : IDisposable
     }
 
     /// <summary>
+    /// The set-password link IS the email verification step — there is no separate
+    /// /verify-email flow (issue #162). Opening the emailed token proves the user owns
+    /// the address, so SetPasswordAsync must flip IsEmailVerified and kick off
+    /// tenant provisioning for the self-registered company.
+    /// </summary>
+    [Fact]
+    public async Task SetPasswordAsync_ValidToken_VerifiesEmailAndProvisionsTenant()
+    {
+        // Arrange — a self-registered user: no password yet, email not verified yet
+        var token = Guid.NewGuid().ToString();
+        _context.User.Add(new User
+        {
+            Email = "selfregistered@test.com",
+            PasswordHash = null,
+            FirstName = "Self",
+            LastName = "Registered",
+            Role = EUserRole.Admin,
+            CompanyId = 1,
+            IsActive = true,
+            IsEmailVerified = false,
+            InvitationToken = token,
+            InvitationTokenExpiresAt = DateTime.UtcNow.AddHours(24),
+            IsInvitationPending = true,
+            CreatedAt = DateTime.UtcNow
+        });
+        await _context.SaveChangesAsync();
+
+        _provisioningService.ProvisionTenantAsync(1, Arg.Any<CancellationToken>())
+            .Returns(true);
+
+        // Act
+        var result = await _userService.SetPasswordAsync(new SetPasswordDto
+        {
+            Token = token,
+            NewPassword = "MySecurePassword123"
+        });
+
+        // Assert — email is now verified and the tenant schema was requested exactly once
+        result.ShouldBeTrue();
+
+        var dbUser = await _context.User.FirstOrDefaultAsync(u => u.Email == "selfregistered@test.com");
+        dbUser.ShouldNotBeNull();
+        dbUser!.IsEmailVerified.ShouldBeTrue();
+
+        await _provisioningService.Received(1)
+            .ProvisionTenantAsync(1, Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
     /// Tests that SetPasswordAsync returns false when the token has expired.
     /// The user should request a new invitation from the admin.
     /// </summary>

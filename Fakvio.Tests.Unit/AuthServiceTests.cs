@@ -24,7 +24,6 @@ public class AuthServiceTests : IDisposable
     private readonly MasterDbContext _context;
     private readonly AuthService _service;
     private readonly IConfiguration _configuration;
-    private readonly ITenantProvisioningService _provisioningService;
     private readonly IEmailService _emailService;
     private readonly IAresService _aresService;
     private readonly ILogger<AuthService> _logger;
@@ -57,8 +56,7 @@ public class AuthServiceTests : IDisposable
             .AddInMemoryCollection(configData)
             .Build();
 
-        // Create NSubstitute mocks for new dependencies
-        _provisioningService = Substitute.For<ITenantProvisioningService>();
+        // Create NSubstitute mocks for the service dependencies
         _emailService = Substitute.For<IEmailService>();
         _aresService = Substitute.For<IAresService>();
         _logger = Substitute.For<ILogger<AuthService>>();
@@ -67,7 +65,6 @@ public class AuthServiceTests : IDisposable
         _service = new AuthService(
             _context,
             _configuration,
-            _provisioningService,
             _emailService,
             _aresService,
             _logger,
@@ -552,128 +549,6 @@ public class AuthServiceTests : IDisposable
             Arg.Any<byte[]?>(),
             Arg.Any<string?>(),
             Arg.Any<CancellationToken>());
-    }
-
-    // ─── Email Verification Tests ────────────────────────────────────────────
-
-    /// <summary>
-    /// Valid token sets IsEmailVerified = true and clears the token.
-    /// </summary>
-    [Fact]
-    public async Task VerifyEmail_ValidToken_SetsEmailVerified()
-    {
-        // Seed an unverified user with a token
-        var token = Guid.NewGuid().ToString();
-        _context.User.Add(new User
-        {
-            Id = 100,
-            Email = "unverified@example.com",
-            PasswordHash = SeedPasswordHash,
-            FirstName = "Unverified",
-            LastName = "User",
-            Role = EUserRole.Admin,
-            IsActive = true,
-            IsEmailVerified = false,
-            EmailVerificationToken = token,
-            EmailVerificationTokenExpiresAt = DateTime.UtcNow.AddHours(24)
-        });
-        _context.SaveChanges();
-
-        var result = await _service.VerifyEmailAsync(token);
-
-        result.EmailVerified.ShouldBeTrue();
-        var user = await _context.User.FindAsync(100L);
-        user!.IsEmailVerified.ShouldBeTrue();
-        user.EmailVerificationToken.ShouldBeNull();
-        user.EmailVerificationTokenExpiresAt.ShouldBeNull();
-    }
-
-    /// <summary>
-    /// Expired token returns false.
-    /// </summary>
-    [Fact]
-    public async Task VerifyEmail_ExpiredToken_ReturnsFalse()
-    {
-        var token = Guid.NewGuid().ToString();
-        _context.User.Add(new User
-        {
-            Id = 101,
-            Email = "expired@example.com",
-            PasswordHash = SeedPasswordHash,
-            FirstName = "Expired",
-            LastName = "User",
-            Role = EUserRole.Admin,
-            IsActive = true,
-            IsEmailVerified = false,
-            EmailVerificationToken = token,
-            EmailVerificationTokenExpiresAt = DateTime.UtcNow.AddHours(-1) // already expired
-        });
-        _context.SaveChanges();
-
-        var result = await _service.VerifyEmailAsync(token);
-
-        result.EmailVerified.ShouldBeFalse();
-    }
-
-    /// <summary>
-    /// Non-existent token returns false.
-    /// </summary>
-    [Fact]
-    public async Task VerifyEmail_InvalidToken_ReturnsFalse()
-    {
-        var result = await _service.VerifyEmailAsync("nonexistent-token-12345");
-        result.EmailVerified.ShouldBeFalse();
-    }
-
-    /// <summary>
-    /// Successful verification triggers tenant provisioning.
-    /// </summary>
-    [Fact]
-    public async Task VerifyEmail_TriggersProvisioning()
-    {
-        // Create a company for the user
-        var client = new Client
-        {
-            Id = 200,
-            CompanyName = "Provision Corp",
-            RegistrationNumber = "PROV-001",
-            IsIssuer = true,
-            IsActive = true
-        };
-        _context.Client.Add(client);
-        _context.SaveChanges();
-
-        var token = Guid.NewGuid().ToString();
-        _context.User.Add(new User
-        {
-            Id = 102,
-            Email = "provision@example.com",
-            PasswordHash = SeedPasswordHash,
-            FirstName = "Provision",
-            LastName = "User",
-            Role = EUserRole.Admin,
-            CompanyId = 200,
-            IsActive = true,
-            IsEmailVerified = false,
-            EmailVerificationToken = token,
-            EmailVerificationTokenExpiresAt = DateTime.UtcNow.AddHours(24)
-        });
-        _context.SaveChanges();
-
-        // Configure provisioning mock to succeed
-        _provisioningService.ProvisionTenantAsync(200, Arg.Any<CancellationToken>())
-            .Returns(true);
-
-        var result = await _service.VerifyEmailAsync(token);
-
-        // Verify provisioning was called with the correct company ID
-        await _provisioningService.Received(1)
-            .ProvisionTenantAsync(200, Arg.Any<CancellationToken>());
-
-        // Verify response indicates both email verified and tenant provisioned
-        result.EmailVerified.ShouldBeTrue();
-        result.TenantProvisioned.ShouldBeTrue();
-        result.ProvisioningError.ShouldBeNull();
     }
 
     // ─── Login with Unverified Email / OAuth Tests ───────────────────────────

@@ -233,6 +233,36 @@ Functions přes `SystemConfigurationFunctions.SystemConfiguration_GetCredentialH
 
 **Pravidlo**: NIKDY neodstraňuj `PersistKeysToDbContext` ani neměň `ApplicationName`. Pokud musíš změnit ApplicationName, je to ekvivalent ztráty všech zašifrovaných dat — plánuj migrační okno.
 
+### 2.8 Registrace firmy a ověření e-mailu (issue #162)
+
+**Neexistuje samostatný „verify e-mail" krok.** Vlastnictví adresy prokazuje otevření
+odkazu, který přišel e-mailem — jinou cestou se do aplikace nedostaneš.
+
+Skutečný tok self-registrace (`AuthService.RegisterAsync`, `Fakvio.Infrastructure/Service/AuthService.cs`):
+
+1. `POST /api/auth/register` — založí `Client` (issuer), `CompanySystemSettings`
+   (`IsProvisioned = false`) a `User` s rolí `Admin`.
+2. User **nemá heslo** (`PasswordHash = null`), má `IsInvitationPending = true`
+   a `InvitationToken` (GUID, expirace 24 h). `IsEmailVerified = false`.
+3. Odejde e-mail s odkazem **`/set-password?token={InvitationToken}`** — ne `/verify-email`.
+4. `UserService.SetPasswordAsync` (`Fakvio.Infrastructure/Service/UserService.cs`) zahashuje
+   heslo, vyčistí invitation pole, nastaví **`IsEmailVerified = true`** a spustí
+   **provisioning tenanta** (viz §3.5). Provisioning selhat může, heslo tím nepadá.
+5. Teprve pak `LoginAsync` uživatele pustí dovnitř (login odmítá neověřený e-mail).
+
+Stejný `InvitationToken` obsluhuje tři scénáře — self-registrace, pozvánka od admina
+(`InviteUserAsync`) a reset hesla (`ForgotPasswordAsync`, §2.5). Jeden token, jedna stránka,
+jedna metoda; jiný token pro tyto účely **nezaváděj**.
+
+OAuth registrace ověření neřeší vůbec: poskytovatel adresu ověřil za nás, takže
+`ExternalLoginAsync` nastaví `IsEmailVerified = true` při propojení účtu.
+
+> Historie: entita `User` měla pole `EmailVerificationToken` + endpoint
+> `POST /api/auth/verify-email` + stránku `/verify-email`. Token **nikdy nikdo nenastavil**,
+> takže celá větev byla nedosažitelná. Issue #162 ji smazala (migrace
+> `RemoveEmailVerificationToken`). Když budeš potřebovat oddělené ověření adresy
+> (např. změna e-mailu u existujícího účtu), postav ho vědomě znovu — nekopíruj mrtvý kód z historie.
+
 ---
 
 ## 3. Multi-tenant — jak data oddělujeme

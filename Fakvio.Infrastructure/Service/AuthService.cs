@@ -17,14 +17,13 @@ namespace Fakvio.Infrastructure.Service;
 
 /// <summary>
 /// Service for authentication operations.
-/// Handles login, self-registration, email verification, external OAuth login,
+/// Handles login, self-registration, external OAuth login,
 /// JWT token generation, and password hashing.
 /// </summary>
 public class AuthService : IAuthService
 {
     private readonly MasterDbContext _context;
     private readonly IConfiguration _configuration;
-    private readonly ITenantProvisioningService _provisioningService;
     private readonly IEmailService _emailService;
     private readonly IAresService _aresService;
     private readonly ILogger<AuthService> _logger;
@@ -33,7 +32,6 @@ public class AuthService : IAuthService
     public AuthService(
         MasterDbContext context,
         IConfiguration configuration,
-        ITenantProvisioningService provisioningService,
         IEmailService emailService,
         IAresService aresService,
         ILogger<AuthService> logger,
@@ -41,7 +39,6 @@ public class AuthService : IAuthService
     {
         _context = context;
         _configuration = configuration;
-        _provisioningService = provisioningService;
         _emailService = emailService;
         _aresService = aresService;
         _logger = logger;
@@ -207,7 +204,7 @@ public class AuthService : IAuthService
         _context.Client.Add(client);
         await _context.SaveChangesAsync(ct);
 
-        // 4. Create CompanySystemSettings — tenant schema will be provisioned after email verification.
+        // 4. Create CompanySystemSettings — tenant schema is provisioned once the user sets a password.
         // Schema name follows PostgreSQL naming convention: "tenant_{companyId}".
         var schemaName = $"tenant_{client.Id}";
         var companySettings = new CompanySystemSettings
@@ -222,9 +219,10 @@ public class AuthService : IAuthService
         await _context.SaveChangesAsync(ct);
 
         // 5. Create User — Admin role for the self-registered company owner.
-        // Password is NOT set during registration — the user sets it after email verification.
-        // We use InvitationToken (not EmailVerificationToken) so that the set-password flow
-        // handles both password creation and email verification in one step.
+        // Password is NOT set during registration — the user sets it via the emailed link.
+        // InvitationToken is the ONLY token in this flow: opening the link proves the user
+        // owns the address, so SetPasswordAsync does password + email verification in one step.
+        // There is no separate verification token (see DEVGUIDE §2.8).
         var invitationToken = Guid.NewGuid().ToString();
         var tokenExpiresAt = DateTime.UtcNow.AddHours(24);
 
@@ -303,90 +301,6 @@ public class AuthService : IAuthService
             RequiresEmailVerification = true,
             EmailSent = emailSent,
             EmailError = emailError
-        };
-    }
-
-    // ─── Email Verification ──────────────────────────────────────────────────
-
-    /// <summary>
-    /// Verifies a user's email using the token from the verification link.
-    /// On success: sets IsEmailVerified = true, clears token, triggers tenant provisioning.
-    /// </summary>
-    public async Task<VerifyEmailResponse> VerifyEmailAsync(string token, CancellationToken ct = default)
-    {
-        // Find user by verification token
-        var user = await _context.User
-            .FirstOrDefaultAsync(u => u.EmailVerificationToken == token, ct);
-
-        if (user == null)
-        {
-            _logger.LogWarning("Email verification attempted with invalid token");
-            return new VerifyEmailResponse
-            {
-                EmailVerified = false,
-                TenantProvisioned = false,
-                Message = "Invalid or expired verification token."
-            };
-        }
-
-        // Check if token has expired (24 hours from registration)
-        if (user.EmailVerificationTokenExpiresAt.HasValue &&
-            user.EmailVerificationTokenExpiresAt.Value < DateTime.UtcNow)
-        {
-            _logger.LogWarning("Email verification attempted with expired token for user {Email}", user.Email);
-            return new VerifyEmailResponse
-            {
-                EmailVerified = false,
-                TenantProvisioned = false,
-                Message = "Verification token has expired. Please request a new one."
-            };
-        }
-
-        // Mark email as verified and clear token fields
-        user.IsEmailVerified = true;
-        user.EmailVerificationToken = null;
-        user.EmailVerificationTokenExpiresAt = null;
-        user.UpdatedAt = DateTime.UtcNow;
-
-        await _context.SaveChangesAsync(ct);
-
-        // Trigger tenant database provisioning for the user's company.
-        // Provisioning failure should NOT fail the email verification — it can be retried by SysAdmin.
-        // But we now surface the error in the response so the UI and logs show what happened.
-        var tenantProvisioned = false;
-        string? provisioningError = null;
-
-        if (user.CompanyId.HasValue)
-        {
-            try
-            {
-                await _provisioningService.ProvisionTenantAsync(user.CompanyId.Value, ct);
-                tenantProvisioned = true;
-                _logger.LogInformation(
-                    "Tenant provisioned for company {CompanyId} after email verification by user {Email}",
-                    user.CompanyId.Value, user.Email);
-            }
-            catch (Exception ex)
-            {
-                // Log the full error chain — ProvisionTenantAsync now includes step info in the message.
-                provisioningError = ex.Message;
-                _logger.LogError(ex,
-                    "Tenant provisioning failed for company {CompanyId} after email verification by user {Email}",
-                    user.CompanyId.Value, user.Email);
-            }
-        }
-
-        _logger.LogInformation("Email verified for user {Email} (UserId={UserId}), TenantProvisioned={TenantProvisioned}",
-            user.Email, user.Id, tenantProvisioned);
-
-        return new VerifyEmailResponse
-        {
-            EmailVerified = true,
-            TenantProvisioned = tenantProvisioned,
-            Message = tenantProvisioned
-                ? "Email verified successfully. Your workspace is ready."
-                : "Email verified successfully, but workspace setup failed. Please contact support.",
-            ProvisioningError = provisioningError
         };
     }
 

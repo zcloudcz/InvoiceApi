@@ -99,23 +99,11 @@ public class User : BaseEntity
 
     /// <summary>
     /// Whether the user has verified their email address.
-    /// Self-registered users must verify via email link before they can log in.
-    /// Invited users and OAuth users are auto-verified (set to true on creation).
+    /// There is no separate verification link: the address is proven by opening the
+    /// emailed InvitationToken link, so SetPasswordAsync flips this to true.
+    /// OAuth users are verified by the provider on first login.
     /// </summary>
     public bool IsEmailVerified { get; set; } = false;
-
-    /// <summary>
-    /// Email verification token (GUID string) sent to the user's email.
-    /// Similar to InvitationToken — used for the email verification flow.
-    /// Cleared after successful verification.
-    /// </summary>
-    public string? EmailVerificationToken { get; set; }
-
-    /// <summary>
-    /// Expiration timestamp for the email verification token (typically 24 hours).
-    /// After this time, the user must request a new verification email.
-    /// </summary>
-    public DateTime? EmailVerificationTokenExpiresAt { get; set; }
 
     /// <summary>
     /// Computed property: true if this user authenticates via an external OAuth provider.

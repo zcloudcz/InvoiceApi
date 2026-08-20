@@ -148,6 +148,17 @@ Current state: `PdfExportService` renders the entire HTML template as a single b
 
 ## Completed
 
+### Odstranění mrtvé cesty ověření e-mailu (issue #162) (2026-08-20)
+`EmailVerificationToken` nikdy nikdo nenastavil — celá větev byla nedosažitelná. Adresu ověřuje
+odkaz `/set-password?token={InvitationToken}` z registračního e-mailu.
+
+- [x] Smazán endpoint `POST /api/auth/verify-email` (`AuthController`, `AuthFunctions`), `IAuthService.VerifyEmailAsync` + implementace, DTO `VerifyEmailRequest`/`VerifyEmailResponse`
+- [x] Smazána stránka `/verify-email` (`VerifyEmail.razor`), `AuthApiService.VerifyEmailAsync` a 6 lokalizačních klíčů `VerifyEmail_*` (CZ + EN)
+- [x] Smazána pole `User.EmailVerificationToken(ExpiresAt)` + filtrovaný index; migrace `RemoveEmailVerificationToken` (index `IsEmailVerified` zůstává)
+- [x] `AuthService` už nebere `ITenantProvisioningService` — závislost sloužila jen mrtvé metodě
+- [x] Testy: 5 mrtvých testů pryč, nový `SetPasswordAsync_ValidToken_VerifiesEmailAndProvisionsTenant` pokrývá skutečný tok
+- [x] DEVGUIDE §2.8 (skutečný registrační tok) + poznámka o automatickém provisioningu v ADMINGUIDE §3
+
 ### Card payment recognition — merchant name pattern + transaction code (2026-07-19)
 Platby kartou nemají protiúčet ani symboly — rozšíření rozpoznávání:
 

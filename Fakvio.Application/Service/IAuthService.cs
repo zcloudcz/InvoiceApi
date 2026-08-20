@@ -49,20 +49,10 @@ public interface IAuthService
     /// Optionally calls ARES to auto-fill company data if IČO is provided.
     /// </summary>
     /// <param name="request">Registration details (email, password, company info)</param>
-    /// <param name="baseUrl">Base URL for building the verification link (e.g. "https://app.example.com")</param>
+    /// <param name="baseUrl">Base URL for building the set-password link (e.g. "https://app.example.com")</param>
     /// <param name="ct">Cancellation token</param>
     /// <returns>Registration response with user ID and verification status</returns>
     Task<RegisterResponse> RegisterAsync(RegisterRequest request, string baseUrl, CancellationToken ct = default);
-
-    /// <summary>
-    /// Verifies a user's email address using the token from the verification link.
-    /// Sets IsEmailVerified = true and triggers tenant provisioning.
-    /// Returns a detailed response with both email verification and provisioning status.
-    /// </summary>
-    /// <param name="token">Email verification token (GUID string)</param>
-    /// <param name="ct">Cancellation token</param>
-    /// <returns>VerifyEmailResponse with verification + provisioning status details</returns>
-    Task<VerifyEmailResponse> VerifyEmailAsync(string token, CancellationToken ct = default);
 
     /// <summary>
     /// Handles login/linking for users authenticated via an external OAuth provider.

@@ -74,25 +74,6 @@ public class AuthFunctions
     }
 
     /// <summary>
-    /// POST api/auth/verify-email → AuthController.VerifyEmail
-    /// </summary>
-    [Function("Auth_VerifyEmail")]
-    public async Task<IActionResult> Auth_VerifyEmail(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/auth/verify-email")] HttpRequest req)
-    {
-        // Wire up the controller's HttpContext so it can access User claims, Request, etc.
-        _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
-
-        // No authentication required ([AllowAnonymous] or no [Authorize])
-
-        // Deserialize request body → VerifyEmailRequest
-        var request = await System.Text.Json.JsonSerializer.DeserializeAsync<global::Fakvio.Contracts.Dto.Auth.VerifyEmailRequest>(req.Body, FunctionResultHelper.JsonOptions, req.HttpContext.RequestAborted);
-
-        // Call the controller action and normalize the response
-        return FunctionResultHelper.Normalize(await _controller.VerifyEmail(request!));
-    }
-
-    /// <summary>
     /// GET api/auth/external-login → AuthController.ExternalLogin
     /// </summary>
     [Function("Auth_ExternalLogin")]

@@ -373,14 +373,8 @@ public class MasterDbContext : DbContext, IDataProtectionKeyContext
                 .IsUnique();
 
             // ── Email verification configuration ─────────────────────────────
-            // Self-registered users must verify their email before logging in.
-            // Token is a GUID string, filtered index for fast lookup during verification.
-            entity.Property(e => e.EmailVerificationToken)
-                .HasMaxLength(100);
-
-            entity.HasIndex(e => e.EmailVerificationToken)
-                .HasFilter("\"EmailVerificationToken\" IS NOT NULL");
-
+            // The flag is set by the set-password flow (see UserService.SetPasswordAsync);
+            // the index supports admin filtering of not-yet-verified users.
             entity.HasIndex(e => e.IsEmailVerified);
 
             // ── Two-Factor Authentication configuration ─────────────────────

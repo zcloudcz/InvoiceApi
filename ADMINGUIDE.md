@@ -144,6 +144,8 @@ Provisioning provede:
 5. Vytvoří výchozí číselné řady pro 4 typy dokladů (INV, CN-, PF-, DPP-)
 6. Označí firmu jako IsProvisioned=true, IsActive=true
 
+**Kdy provisioning proběhne sám:** u firem založených **self-registrací** se provisioning spustí automaticky ve chvíli, kdy si uživatel nastaví heslo přes odkaz z registračního e-mailu. Tím se zároveň jeho e-mail označí jako ověřený — samostatné „ověření e-mailu" aplikace nemá. Ruční tlačítko „Provision" použijte, když firmu zakládáte vy, nebo když automatický provisioning selhal (stav **Not provisioned**).
+
 **Idempotentní** — bezpečné spustit opakovaně při chybě.
 
 ### Aktivace / Deaktivace firmy

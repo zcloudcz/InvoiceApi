@@ -889,12 +889,6 @@
   <data name="ForgotPassword_Sent" xml:space="preserve"><value>Pokud je e-mail registrován, odkaz pro obnovu hesla byl odeslán. Zkontrolujte svou e-mailovou schránku.</value></data>
   <data name="Login_OrContinueWith" xml:space="preserve"><value>Nebo pokračujte pomocí</value></data>
   <!-- ── Email Verification ───────────────────────────────────────────────── -->
-  <data name="VerifyEmail_Title" xml:space="preserve"><value>Ověření e-mailu</value></data>
-  <data name="VerifyEmail_Verifying" xml:space="preserve"><value>Ověřování e-mailu...</value></data>
-  <data name="VerifyEmail_Success" xml:space="preserve"><value>E-mail ověřen! Váš účet je připraven.</value></data>
-  <data name="VerifyEmail_Failed" xml:space="preserve"><value>Neplatný nebo expirovaný ověřovací odkaz.</value></data>
-  <data name="VerifyEmail_GoToLogin" xml:space="preserve"><value>Přejít na přihlášení</value></data>
-  <data name="VerifyEmail_ProvisioningFailed" xml:space="preserve"><value>E-mail ověřen, ale nastavení pracovního prostoru selhalo. Administrátor dokončí nastavení. Můžete se přihlásit.</value></data>
   <!-- ── OAuth Provider Names ─────────────────────────────────────────────── -->
   <data name="EExternalProvider_Google" xml:space="preserve"><value>Google</value></data>
   <data name="EExternalProvider_Microsoft" xml:space="preserve"><value>Microsoft</value></data>
