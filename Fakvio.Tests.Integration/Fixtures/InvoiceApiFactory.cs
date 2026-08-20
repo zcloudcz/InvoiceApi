@@ -94,11 +94,25 @@ public class FakvioFactory : WebApplicationFactory<Program>
         builder.UseSetting("JwtSettings:Issuer", "Fakvio.Tests");
         builder.UseSetting("JwtSettings:Audience", "Fakvio.Tests.Client");
 
-        // ── Configure connection strings (required by LogFlushService constructor) ──
-        // Even though we removed LogFlushService, other services may read these.
-        // Provide dummy values so configuration binding doesn't throw.
-        builder.UseSetting("ConnectionStrings:MasterConnection", "Server=test;Database=test;");
-        builder.UseSetting("ConnectionStrings:TenantTemplateConnection", "Server=test;Database=test;");
+        // ── Configure database auth mode for AddDatabaseContexts ──────────────
+        // AddDatabaseContexts now builds its NpgsqlDataSource singleton EAGERLY (inside
+        // DatabaseOptions.Validate() + the NpgsqlDataSourceFactory constructor), before any
+        // of the ConfigureServices overrides above run. Fakvio.API/appsettings.json points at
+        // the Azure host in "AzureEntraId" mode (no password in the connection string), so
+        // without this override Validate() would fail host startup for every integration test.
+        // A syntactically valid Password-mode connection string is enough — nothing here ever
+        // opens a real connection (MasterDbContext/TenantDbContext are swapped to InMemory
+        // above; RemoveAll<NpgsqlDataSource>() is NOT used because AzureOperationController,
+        // ImapPollService and AdvisoryLock all inject NpgsqlDataSource directly and would fail
+        // to construct without it).
+        builder.UseSetting("ConnectionStrings:DefaultConnection", "Host=localhost;Port=5432;Database=fakvio;Username=fakvio;Password=fakvio_dev");
+        builder.UseSetting("Database:AuthMode", "Password");
+
+        // The legacy flag must also be overridden to agree with the new key — DatabaseOptions.Resolve
+        // throws on a genuine mismatch between "Database:AuthMode" and "UseAzureAdAuthentication"
+        // (appsettings.json has it hardcoded to true for the Azure host), and there is no
+        // appsettings.Testing.json to override it for the "Testing" environment this factory uses.
+        builder.UseSetting("UseAzureAdAuthentication", "false");
     }
 
     /// <summary>

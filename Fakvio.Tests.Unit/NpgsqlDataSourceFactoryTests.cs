@@ -1,5 +1,6 @@
 using Fakvio.Infrastructure.Data;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using Shouldly;
 
@@ -344,6 +345,116 @@ public class NpgsqlDataSourceFactoryTests
         factory.Dispose();
 
         Should.Throw<ObjectDisposedException>(() => factory.GetForSchema("tenant_1"));
+    }
+
+    [Fact]
+    public void Root_DisposedDirectly_ThenFactoryDisposedToo_DoesNotThrow()
+    {
+        // Guards the ownership-rule caveat documented on ServiceCollectionExtensions'
+        // `services.AddSingleton(factory.Root)` line: if some caller disposes Root directly —
+        // bypassing the "callers never dispose anything from this factory" contract — the
+        // factory's own Dispose() must not throw when it disposes the SAME Root a second time
+        // as part of its normal cleanup. This backs the "NpgsqlDataSource.Dispose() is
+        // idempotent" claim with an actual test instead of just asserting it in a comment.
+        var factory = new NpgsqlDataSourceFactory(PasswordOptions());
+
+        factory.Root.Dispose();
+
+        Should.NotThrow(() => factory.Dispose());
+    }
+
+    // ---------------------------------------------------------------------
+    // Composition-root ownership contract — mirrors the registration pattern in
+    // ServiceCollectionExtensions.AddDatabaseContexts (Fakvio.Infrastructure).
+    // ---------------------------------------------------------------------
+
+    [Fact]
+    public void ContainerDisposesFactory_WhenRegisteredViaFactoryDelegate_AndResolved()
+    {
+        // NOTE on what this test proves and what it does not: it mirrors the registration
+        // shape from ServiceCollectionExtensions.AddDatabaseContexts (delegate registration,
+        // `AddSingleton<INpgsqlDataSourceFactory>(_ => factory)`), but it ALSO resolves the
+        // service (`GetRequiredService<INpgsqlDataSourceFactory>()`) before disposing the
+        // provider. That resolve step is exactly what today's composition root does NOT do —
+        // as of this PR nothing in production code resolves INpgsqlDataSourceFactory (the
+        // first consumer arrives with #134). So this test demonstrates the rule "delegate
+        // registration + resolution => the container disposes it at shutdown", not the claim
+        // "the composition root disposes the factory today". See the bare-instance sibling
+        // test below for the contrasting case that pins the MEDI rule this depends on.
+        var factory = new NpgsqlDataSourceFactory(PasswordOptions());
+        var services = new ServiceCollection();
+        services.AddSingleton<INpgsqlDataSourceFactory>(_ => factory);
+        services.AddSingleton(factory.Root);
+
+        using (var provider = services.BuildServiceProvider())
+        {
+            provider.GetRequiredService<INpgsqlDataSourceFactory>().ShouldBeSameAs(factory);
+        }
+
+        // The `using` block above disposed the ServiceProvider — because the factory was
+        // resolved above, the delegate registration gave the container ownership, so
+        // factory.Dispose() already ran and Root is unusable now.
+        Should.Throw<ObjectDisposedException>(() => factory.Root.OpenConnection());
+    }
+
+    [Fact]
+    public void ContainerDoesNotDisposeInstance_WhenRegisteredViaBareInstance_EvenIfResolved()
+    {
+        // Contrasting case for the test above: registering the SAME kind of singleton as a
+        // BARE INSTANCE (`AddSingleton<TService>(instance)`, not a delegate) means the
+        // container never considers itself to have created it, so it is never disposed at
+        // shutdown — even though it was resolved. This pins the MEDI rule that
+        // AddDatabaseContexts' `services.AddSingleton(factory.Root)` line relies on (Root is
+        // registered this same, bare-instance way) as a regression test instead of just a
+        // code comment.
+        //
+        // A minimal disposal-tracking spy is used here instead of NpgsqlDataSourceFactory/
+        // NpgsqlDataSource, so the test exercises only the MEDI rule and does not depend on
+        // Npgsql or network behaviour (calling a real NpgsqlDataSource's OpenConnection()
+        // while NOT disposed would require a reachable PostgreSQL server, which this test
+        // class is documented to never need).
+        var spy = new DisposalTrackingSpy();
+        var services = new ServiceCollection();
+        services.AddSingleton<IDisposable>(spy);
+
+        using (var provider = services.BuildServiceProvider())
+        {
+            provider.GetRequiredService<IDisposable>().ShouldBeSameAs(spy);
+        }
+
+        spy.WasDisposed.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void ContainerDoesNotDisposeFactory_WhenRegisteredViaDelegate_ButNeverResolved()
+    {
+        // Pins the state ServiceCollectionExtensions.AddDatabaseContexts is actually in TODAY:
+        // the factory is registered via a delegate (same shape as ContainerDisposesFactory_...
+        // above), but — as of this PR — nothing in production code resolves
+        // INpgsqlDataSourceFactory (0 consumers, first arrives with #134). A delegate
+        // registration only gives the container something to dispose once the delegate has
+        // run at least once; if it never runs, there is nothing "created" to dispose. Without
+        // this test, the delegate-registration claim in the AddDatabaseContexts comment
+        // ("today this line does NOT yet give the factory a disposal path") would rest on
+        // narrative alone, same failure mode that blocked review rounds 1 and 2.
+        var spy = new DisposalTrackingSpy();
+        var services = new ServiceCollection();
+        services.AddSingleton<IDisposable>(_ => spy);
+
+        using (var provider = services.BuildServiceProvider())
+        {
+            // Deliberately NOT resolved — mirrors today's composition root, where
+            // INpgsqlDataSourceFactory is registered but nothing calls GetRequiredService on it.
+        }
+
+        spy.WasDisposed.ShouldBeFalse();
+    }
+
+    private sealed class DisposalTrackingSpy : IDisposable
+    {
+        public bool WasDisposed { get; private set; }
+
+        public void Dispose() => WasDisposed = true;
     }
 
     // ---------------------------------------------------------------------
