@@ -120,6 +120,35 @@
                         <MudAlert Severity="@_aresSeverity" Dense="true">@_aresMessage</MudAlert>
                     }
 
+                    @*
+                        Registered office address — pre-filled by the ARES lookup so the user
+                        sees what will be printed on the invoices and can correct it.
+                        Optional: when left empty, the server falls back to the ARES address.
+                    *@
+                    <MudText Typo="Typo.subtitle2" Class="mt-2">@L["Register_AddressSection"]</MudText>
+
+                    <MudTextField @bind-Value="_request.Street"
+                                  Label="@L["Client_Street"].Value"
+                                  Variant="Variant.Outlined"
+                                  Adornment="Adornment.Start"
+                                  AdornmentIcon="@Icons.Material.Filled.Home" />
+
+                    <MudStack Row="true" Spacing="2">
+                        <MudTextField @bind-Value="_request.PostalCode"
+                                      Label="@L["Client_PostalCode"].Value"
+                                      Variant="Variant.Outlined"
+                                      Style="flex: 1" />
+
+                        <MudTextField @bind-Value="_request.City"
+                                      Label="@L["Client_City"].Value"
+                                      Variant="Variant.Outlined"
+                                      Style="flex: 2" />
+                    </MudStack>
+
+                    <MudTextField @bind-Value="_request.Country"
+                                  Label="@L["Client_Country"].Value"
+                                  Variant="Variant.Outlined" />
+
                     @* Submit button *@
                     <MudButton ButtonType="ButtonType.Button"
                                Variant="Variant.Filled"
@@ -273,6 +302,18 @@
                 if (aresData != null && !string.IsNullOrEmpty(aresData.CompanyName))
                 {
                     _request.CompanyName = aresData.CompanyName;
+
+                    // Pre-fill the registered office so the user can review / correct it.
+                    // ARES returns the office as the first (primary) address.
+                    var aresAddress = aresData.Address?.FirstOrDefault();
+                    if (aresAddress != null)
+                    {
+                        _request.Street = aresAddress.Street;
+                        _request.City = aresAddress.City;
+                        _request.PostalCode = aresAddress.PostalCode;
+                        _request.Country = aresAddress.Country;
+                    }
+
                     _aresMessage = L["Register_AresSuccess"].Value;
                     _aresSeverity = Severity.Success;
                 }
@@ -300,10 +341,23 @@
     }
 
     /// <summary>
-    /// Simple DTO for ARES response deserialization (only CompanyName is needed here)
+    /// Simple DTO for ARES response deserialization — only the fields the
+    /// registration form pre-fills (company name and registered office address).
     /// </summary>
     private class AresResult
     {
         public string? CompanyName { get; set; }
+        public List<AresAddressResult>? Address { get; set; }
+    }
+
+    /// <summary>
+    /// Address part of the ARES response (matches AddressDto on the API side).
+    /// </summary>
+    private class AresAddressResult
+    {
+        public string? Street { get; set; }
+        public string? City { get; set; }
+        public string? PostalCode { get; set; }
+        public string? Country { get; set; }
     }
 }

@@ -43,4 +43,30 @@ public class RegisterRequest
     /// </summary>
     [Required, MaxLength(20)]
     public string RegistrationNumber { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Street and building number of the registered office (optional).
+    /// The registration form pre-fills it from ARES; the user may correct it
+    /// before submitting. When left empty, the ARES value is used server-side.
+    /// </summary>
+    [MaxLength(200)]
+    public string? Street { get; set; }
+
+    /// <summary>
+    /// City of the registered office (optional) — see <see cref="Street"/>.
+    /// </summary>
+    [MaxLength(100)]
+    public string? City { get; set; }
+
+    /// <summary>
+    /// Postal code of the registered office (optional) — see <see cref="Street"/>.
+    /// </summary>
+    [MaxLength(20)]
+    public string? PostalCode { get; set; }
+
+    /// <summary>
+    /// Country of the registered office (optional) — see <see cref="Street"/>.
+    /// </summary>
+    [MaxLength(100)]
+    public string? Country { get; set; }
 }

@@ -1,4 +1,5 @@
 using AresService;
+using AresService.Model;
 using Fakvio.Contracts.Dto.Auth;
 using Fakvio.Application.Service;
 using Fakvio.Domain.Entities;
@@ -29,6 +30,13 @@ public class AuthService : IAuthService
     private readonly IAresService _aresService;
     private readonly ILogger<AuthService> _logger;
     private readonly ITwoFactorService _twoFactorService;
+
+    /// <summary>
+    /// Country used for the registered office when neither the registration form
+    /// nor ARES provides one. Self-registration requires a Czech IČO, so Czechia
+    /// is the only sensible default.
+    /// </summary>
+    private const string DefaultCountry = "Česká republika";
 
     public AuthService(
         MasterDbContext context,
@@ -177,6 +185,9 @@ public class AuthService : IAuthService
         string companyName = request.CompanyName;
         string registrationNumber = request.RegistrationNumber;
         string? taxNumber = null;
+        // Registered office address from ARES — stays null when the lookup fails
+        // or the company was not found (all failure paths leave Address null).
+        AresAddress? aresAddress = null;
 
         try
         {
@@ -187,6 +198,7 @@ public class AuthService : IAuthService
                 : request.CompanyName;
             registrationNumber = aresInfo.RegistrationNumber ?? request.RegistrationNumber;
             taxNumber = aresInfo.TaxNumber;
+            aresAddress = aresInfo.Address;
         }
         catch (Exception ex)
         {
@@ -203,6 +215,15 @@ public class AuthService : IAuthService
             IsIssuer = true,
             IsActive = true
         };
+
+        // Attach the registered office address. Without it the issuer has no address,
+        // every generated invoice PDF renders an empty issuer block, and the document
+        // is legally invalid — that was bug #157.
+        var registeredOffice = BuildRegisteredOfficeAddress(request, aresAddress);
+        if (registeredOffice != null)
+        {
+            client.Address.Add(registeredOffice);
+        }
 
         _context.Client.Add(client);
         await _context.SaveChangesAsync(ct);
@@ -305,6 +326,55 @@ public class AuthService : IAuthService
             EmailError = emailError
         };
     }
+
+    /// <summary>
+    /// Builds the primary (registered office) address of a newly registered company.
+    ///
+    /// Priority: whatever the user typed in the registration form wins. The form
+    /// pre-fills those fields from ARES, so a non-empty value means the user either
+    /// accepted or deliberately corrected the ARES data. Only when the request carries
+    /// no address at all (e.g. an API client that does not send one) do we fall back
+    /// to the address just fetched from ARES.
+    ///
+    /// Returns null when neither source has any address data — an empty address record
+    /// would be worse than none, because invoice templates would render blank lines.
+    /// </summary>
+    private static Address? BuildRegisteredOfficeAddress(RegisterRequest request, AresAddress? aresAddress)
+    {
+        var hasManualAddress = !string.IsNullOrWhiteSpace(request.Street)
+            || !string.IsNullOrWhiteSpace(request.City)
+            || !string.IsNullOrWhiteSpace(request.PostalCode);
+
+        if (hasManualAddress)
+        {
+            return CreatePrimaryAddress(request.Street, request.City, request.PostalCode, request.Country);
+        }
+
+        if (aresAddress == null)
+        {
+            return null;
+        }
+
+        return CreatePrimaryAddress(
+            aresAddress.Street, aresAddress.City, aresAddress.PostalCode, aresAddress.Country);
+    }
+
+    /// <summary>
+    /// Creates a primary address entity from raw values, normalizing nulls to empty
+    /// strings (the entity's columns are non-nullable).
+    /// </summary>
+    private static Address CreatePrimaryAddress(string? street, string? city, string? postalCode, string? country)
+        => new()
+        {
+            AddressType = EAddressType.Primary,
+            Street = street ?? string.Empty,
+            City = city ?? string.Empty,
+            PostalCode = postalCode ?? string.Empty,
+            // Registration always starts from a Czech IČO, so Czechia is the safe default
+            // when neither the form nor ARES supplied a country.
+            Country = string.IsNullOrWhiteSpace(country) ? DefaultCountry : country,
+            IsPrimary = true
+        };
 
     // ─── Email Verification ──────────────────────────────────────────────────
 

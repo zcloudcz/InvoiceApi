@@ -8,6 +8,7 @@
 
 ## Obsah
 
+0. [Registrace firmy](#0-registrace-firmy)
 1. [Přehled (Dashboard)](#1-přehled-dashboard)
 2. [Faktury](#2-faktury)
 3. [Dobropisy](#3-dobropisy)
@@ -26,6 +27,24 @@
 16. [Lokalizace — přepínání jazyka CZ/EN](#16-lokalizace--přepínání-jazyka-czen)
 17. [Notifikace](#17-notifikace)
 18. [Příjem faktur emailem](#18-příjem-faktur-emailem)
+
+---
+
+## 0. Registrace firmy
+
+**Stránka:** `/register` (dostupná bez přihlášení)
+
+1. Vyplňte e-mail, jméno, příjmení, název firmy a IČO.
+2. Klikněte „Načíst z ARES" — systém doplní oficiální název firmy **a sídlo**
+   (ulice, PSČ, město, země) z obchodního rejstříku ARES.
+3. Sekce „Sídlo firmy" je editovatelná — pokud ARES nemá aktuální údaje,
+   adresu jednoduše přepište. Odesílá se to, co vidíte ve formuláři.
+4. Klikněte „Zaregistrovat se" — na zadaný e-mail přijde odkaz pro nastavení hesla.
+
+Sídlo se uloží k vaší firmě jako primární adresa a používá se jako blok vystavitele
+na fakturách (PDF). Změnit ho lze později v „Nastavení firmy".
+Pokud sídlo nevyplníte a ARES ho nevrátí, firma vznikne bez adresy a je potřeba ji
+doplnit v „Nastavení firmy" před vystavením první faktury.
 
 ---
 

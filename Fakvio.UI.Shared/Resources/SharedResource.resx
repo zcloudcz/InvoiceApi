@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
     <xsd:element name="root" msdata:IsDataSet="true">
@@ -873,6 +873,7 @@
   <data name="Register_AresLoading" xml:space="preserve"><value>Načítání z ARES...</value></data>
   <data name="Register_AresSuccess" xml:space="preserve"><value>Data načtena z ARES</value></data>
   <data name="Register_AresFailed" xml:space="preserve"><value>Nepodařilo se načíst z ARES</value></data>
+  <data name="Register_AddressSection" xml:space="preserve"><value>Sídlo firmy (z ARES, lze upravit)</value></data>
   <data name="Register_Submit" xml:space="preserve"><value>Zaregistrovat se</value></data>
   <data name="Register_Registering" xml:space="preserve"><value>Registrace...</value></data>
   <data name="Register_Success" xml:space="preserve"><value>Registrace úspěšná! Zkontrolujte e-mail.</value></data>
