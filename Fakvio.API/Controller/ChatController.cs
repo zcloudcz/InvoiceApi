@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text.Json;
+using Fakvio.Application.Exceptions;
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.Chat;
 using Microsoft.AspNetCore.Authorization;
@@ -28,6 +29,15 @@ public class ChatController : ControllerBase
     /// Maximum allowed PDF file size for text extraction (10 MB).
     /// </summary>
     private const int MaxPdfSizeBytes = 10 * 1024 * 1024;
+
+    /// <summary>
+    /// The only text the client ever gets for a missing conversation.
+    ///
+    /// Written here, in the controller — never taken from the exception. It is deliberately
+    /// identical for "does not exist" and "belongs to somebody else", so probing foreign IDs
+    /// tells the caller nothing (issue #156).
+    /// </summary>
+    private const string ConversationNotFoundMessage = "Conversation not found.";
 
     public ChatController(
         IChatService chatService,
@@ -73,9 +83,9 @@ public class ChatController : ControllerBase
             var conversation = await _chatService.GetConversationAsync(id, userId, ct);
             return Ok(conversation);
         }
-        catch (InvalidOperationException ex)
+        catch (ChatConversationNotFoundException)
         {
-            return NotFound(new { message = ex.Message });
+            return NotFound(new { message = ConversationNotFoundMessage });
         }
     }
 
@@ -87,10 +97,12 @@ public class ChatController : ControllerBase
     /// <param name="ct">Cancellation token</param>
     /// <response code="200">AI response with conversation metadata</response>
     /// <response code="400">Invalid request body (model validation)</response>
+    /// <response code="404">ConversationId does not exist or doesn't belong to the user</response>
     /// <response code="500">Processing failed — body carries a reference ID, details are in AppLog</response>
     [HttpPost("send")]
     [ProducesResponseType(typeof(SendMessageResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<SendMessageResponse>> SendMessage(
         [FromBody] SendMessageRequest request, CancellationToken ct = default)
@@ -101,19 +113,32 @@ public class ChatController : ControllerBase
             var response = await _chatService.SendMessageAsync(userId, request, ct);
             return Ok(response);
         }
+        catch (ChatConversationNotFoundException ex)
+        {
+            // A caller-supplied ID that does not resolve is a client mistake, not a server
+            // failure: a tab still holding an ID deleted in another tab, or a hand-crafted
+            // request probing somebody else's conversations. It gets the same 404 as
+            // GetConversation and DeleteConversation, so all three endpoints answer "this
+            // conversation does not exist" the same way.
+            //
+            // Only ConversationId is logged, and only as a warning — this is not an incident
+            // worth alerting on. The response text comes from the constant above, never from
+            // ex.Message, which is what leaked internals in issue #156.
+            _logger.LogWarning(
+                "Chat message rejected — conversation {ConversationId} not found for the current user",
+                ex.ConversationId);
+
+            return NotFound(new { message = ConversationNotFoundMessage });
+        }
         catch (Exception ex)
         {
-            // One handler for everything that escapes the service — deliberately no separate
-            // catch for InvalidOperationException. That branch used to echo ex.Message back to
-            // the caller, which is exactly how the configuration dump from
+            // Everything else is treated as an untrusted infrastructure failure. There is
+            // deliberately no catch for InvalidOperationException here: that branch used to echo
+            // ex.Message back to the caller, which is exactly how the configuration dump from
             // CompanyAiSettingsResolver ("No AI provider resolved. CompanyId=…, Tier 1 → …")
             // reached the browser via InvoiceImport.razor (issue #156), and it logged nothing.
-            //
-            // We cannot tell an authored validation text apart from an infrastructure detail by
-            // exception type, so every escaped exception is treated as untrusted. Trade-off: a
-            // request with an unknown ConversationId now answers 500 instead of 400. That is
-            // accepted — the UI only ever sends IDs it got from the server, and a silent leak is
-            // the worse failure mode.
+            // Client errors are told apart by their own exception type (see the catch above),
+            // not by trusting the message of a general-purpose type.
             //
             // The full exception (stack trace included) goes to the server log only —
             // DatabaseLogger picks up the CorrelationId automatically and writes it to AppLog.
@@ -240,9 +265,9 @@ public class ChatController : ControllerBase
             await _chatService.DeleteConversationAsync(id, userId, ct);
             return NoContent();
         }
-        catch (InvalidOperationException ex)
+        catch (ChatConversationNotFoundException)
         {
-            return NotFound(new { message = ex.Message });
+            return NotFound(new { message = ConversationNotFoundMessage });
         }
     }
 

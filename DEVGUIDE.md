@@ -1233,13 +1233,26 @@ pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. P
 - SSE endpointy se na middleware spolehnout nemůžou (hlavičky už odešly) — chybu
   pošlou jako SSE událost `data: {"error": …, "correlationId": …}`
   (vzor: `ChatController.StreamMessage`).
-- **Pozor na `catch (InvalidOperationException ex) => BadRequest(ex.Message)`.** Ten
-  vzor je v pořádku jen tam, kde výjimku hází přímo daný service s vlastním, pro
-  uživatele psaným textem („Conversation 5 not found."). Jakmile stejným typem
-  probublává i výjimka z infrastruktury (typicky `CompanyAiSettingsResolver` —
-  vypíše CompanyId, poskytovatele a celý konfigurační fallback), nelze je od sebe
-  podle typu odlišit → sanituj **všechny** a vrať referenční ID
-  (vzor: `ChatController.SendMessage`).
+- **Klientskou chybu odliš vlastním typem výjimky — nikdy ne obsahem hlášky.**
+  `catch (InvalidOperationException ex) => BadRequest(ex.Message)` je vada, ne vzor:
+  tím typem probublává i výjimka z infrastruktury (typicky `CompanyAiSettingsResolver`
+  — vypíše CompanyId, poskytovatele a celý konfigurační fallback), takže „autorský
+  text pro uživatele" a „interní diagnostika" v něm nejdou rozeznat. Přesně tak
+  vznikla #156. Správný postup:
+  1. doménová výjimka vlastního typu v `Fakvio.Application/Exceptions/`
+     (`ChatConversationNotFoundException`, `VatPayerRequiredException`,
+     `EpoValidationException`, …),
+  2. typový `catch` v controlleru **před** catch-all → konkrétní stavový kód
+     (vzory: `ChatController.SendMessage` → 404, `VatReportController` → 403/400),
+  3. **text odpovědi píše controller** (konstanta / literál v controlleru).
+     Syrová `ex.Message` se do odpovědi nedostane ani u „neškodné" výjimky —
+     co je dnes autorská hláška, je po refactoringu klidně cesta k souboru.
+  4. `catch (Exception)` zůstává poslední a vrací sanitovanou hlášku
+     + referenční ID (viz odrážky výše).
+
+  Důsledek pro stavové kódy: stejná doménová podmínka musí mít **stejnou odpověď
+  napříč endpointy**. Když jeden endpoint na „konverzace neexistuje" vrací 404,
+  nesmí druhý na totéž vracet 500 — 500 je to, na co se alertuje.
 
 ---
 

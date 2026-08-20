@@ -576,6 +576,10 @@ toto referenční ID, podle něj chybu v logu dohledá.
 Platí to pro všechna místa, kde aplikace volá AI: chatovací panel i AI kontrolu
 importu dokladů (hláška „AI review failed…" na stránce importu).
 
+Výjimkou je hláška „Conversation not found." — ta referenční ID nemá, protože
+nejde o chybu serveru. Znamená, že konverzace už neexistuje (typicky jste ji
+smazali v jiném okně prohlížeče). Stačí obnovit seznam konverzací.
+
 ---
 
 ## 14. Upomínky (Dunning)

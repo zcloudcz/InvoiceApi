@@ -16,6 +16,7 @@
 using System.Security.Claims;
 using System.Text.Json;
 using Fakvio.API.Controller;
+using Fakvio.Application.Exceptions;
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.Chat;
 using Microsoft.AspNetCore.Http;
@@ -261,6 +262,147 @@ public class ChatControllerErrorHandlingTests
             Arg.Any<Func<object, Exception?, string>>());
     }
 
+    // ─── Unknown / foreign ConversationId (issue #156, round 3) ───────────────
+
+    /// <summary>
+    /// A ConversationId that does not resolve is a CLIENT mistake, not a server failure,
+    /// so it must answer 404 — the same as GetConversation and DeleteConversation do for
+    /// the very same condition. Answering 500 would page the on-call for a stale browser
+    /// tab and would turn an IDOR probe into a stream of fake incidents.
+    ///
+    /// Junior note: the endpoint is a plain JWT-authenticated REST endpoint (also exposed
+    /// through Fakvio.Functions), so "our UI only sends IDs it received from the server"
+    /// is not a guarantee — any authenticated caller can send any number.
+    /// </summary>
+    [Fact]
+    public async Task SendMessage_WhenConversationNotFound_ReturnsNotFound()
+    {
+        // Arrange — the service reports the conversation is missing (or belongs to someone else).
+        var thrown = new ChatConversationNotFoundException(999);
+        _chatService
+            .SendMessageAsync(Arg.Any<long>(), Arg.Any<SendMessageRequest>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(thrown);
+
+        var controller = BuildController();
+
+        // Act
+        var result = await controller.SendMessage(
+            new SendMessageRequest { Message = "Hi", ConversationId = 999 });
+
+        // Assert — 404, not 500.
+        var notFound = result.Result.ShouldBeOfType<NotFoundObjectResult>();
+        notFound.StatusCode.ShouldBe(StatusCodes.Status404NotFound);
+    }
+
+    /// <summary>
+    /// The 404 body must be written by the controller. Echoing <c>ex.Message</c> is the exact
+    /// habit that caused issue #156 — and here it would additionally confirm which foreign IDs
+    /// exist, because the lookup filters by conversation ID AND user ID at once.
+    /// </summary>
+    [Fact]
+    public async Task SendMessage_WhenConversationNotFound_DoesNotEchoExceptionMessage()
+    {
+        // Arrange
+        var thrown = new ChatConversationNotFoundException(999);
+        _chatService
+            .SendMessageAsync(Arg.Any<long>(), Arg.Any<SendMessageRequest>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(thrown);
+
+        var controller = BuildController();
+
+        // Act
+        var result = await controller.SendMessage(
+            new SendMessageRequest { Message = "Hi", ConversationId = 999 });
+
+        // Assert — controller-authored text only; no exception message, no ID echoed back.
+        var notFound = result.Result.ShouldBeOfType<NotFoundObjectResult>();
+        var body = JsonSerializer.Serialize(notFound.Value);
+
+        body.ShouldNotContain(thrown.Message);
+        body.ShouldNotContain("999");
+        body.ShouldContain("Conversation not found.");
+    }
+
+    /// <summary>
+    /// A missing conversation is a routine client error, so it must not be logged as an Error —
+    /// Error level is what alerting and the AppLog error view react to. It also must not fall
+    /// through to the catch-all, which would produce the 500 this round of work removes.
+    /// </summary>
+    [Fact]
+    public async Task SendMessage_WhenConversationNotFound_DoesNotLogAsError()
+    {
+        // Arrange
+        _chatService
+            .SendMessageAsync(Arg.Any<long>(), Arg.Any<SendMessageRequest>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new ChatConversationNotFoundException(999));
+
+        var controller = BuildController();
+
+        // Act
+        await controller.SendMessage(new SendMessageRequest { Message = "Hi", ConversationId = 999 });
+
+        // Assert
+        _logger.DidNotReceive().Log(
+            LogLevel.Error,
+            Arg.Any<EventId>(),
+            Arg.Any<object>(),
+            Arg.Any<Exception?>(),
+            Arg.Any<Func<object, Exception?, string>>());
+    }
+
+    /// <summary>
+    /// GetConversation already answered 404 before this change; the point of the assertion is
+    /// that it keeps doing so now that the service throws a dedicated type, and that its body
+    /// no longer repeats <c>ex.Message</c>.
+    /// </summary>
+    [Fact]
+    public async Task GetConversation_WhenConversationNotFound_ReturnsNotFoundWithoutExceptionMessage()
+    {
+        // Arrange
+        var thrown = new ChatConversationNotFoundException(999);
+        _chatService
+            .GetConversationAsync(Arg.Any<long>(), Arg.Any<long>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(thrown);
+
+        var controller = BuildController();
+
+        // Act
+        var result = await controller.GetConversation(999);
+
+        // Assert
+        var notFound = result.Result.ShouldBeOfType<NotFoundObjectResult>();
+        var body = JsonSerializer.Serialize(notFound.Value);
+
+        body.ShouldNotContain(thrown.Message);
+        body.ShouldContain("Conversation not found.");
+    }
+
+    /// <summary>
+    /// Same guarantee for DeleteConversation — all three endpoints give one answer to
+    /// "this conversation does not exist".
+    /// </summary>
+    [Fact]
+    public async Task DeleteConversation_WhenConversationNotFound_ReturnsNotFoundWithoutExceptionMessage()
+    {
+        // Arrange
+        var thrown = new ChatConversationNotFoundException(999);
+        _chatService
+            .DeleteConversationAsync(Arg.Any<long>(), Arg.Any<long>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(thrown);
+
+        var controller = BuildController();
+
+        // Act
+        var result = await controller.DeleteConversation(999);
+
+        // Assert
+        var notFound = result.ShouldBeOfType<NotFoundObjectResult>();
+        var body = JsonSerializer.Serialize(notFound.Value);
+
+        body.ShouldNotContain(thrown.Message);
+        body.ShouldContain("Conversation not found.");
+    }
+
     // ─── SSE endpoint (POST /api/chat/stream) ─────────────────────────────────
 
     /// <summary>
@@ -282,11 +424,13 @@ public class ChatControllerErrorHandlingTests
         await controller.StreamMessage(new SendMessageRequest { Message = "Hi" });
 
         // Assert — the error payload is sanitized and correlatable.
+        // The whole response body is checked first: asserting only on the "error" property
+        // would pass even if the detail leaked through some other property of the same frame.
         var body = await ReadBodyAsync(controller.HttpContext);
-        var error = ExtractSseError(body);
+        ShouldNotLeakExceptionDetails(body, thrown);
 
+        var error = ExtractSseError(body);
         error.ShouldNotBeNull();
-        ShouldNotLeakExceptionDetails(error!, thrown);
         error!.ShouldContain(TestCorrelationId);
     }
 
@@ -312,14 +456,16 @@ public class ChatControllerErrorHandlingTests
         // Act
         await controller.StreamMessage(new SendMessageRequest { Message = "Hi" });
 
-        // Assert — no configuration internals, but a usable reference for the user.
-        var error = ExtractSseError(await ReadBodyAsync(controller.HttpContext));
+        // Assert — no configuration internals anywhere in the stream, but a usable
+        // reference for the user in the error frame.
+        var body = await ReadBodyAsync(controller.HttpContext);
+        body.ShouldNotContain("CompanyId");
+        body.ShouldNotContain("appsettings");
+        body.ShouldNotContain(thrown.Message);
 
+        var error = ExtractSseError(body);
         error.ShouldNotBeNull();
-        error!.ShouldNotContain("CompanyId");
-        error.ShouldNotContain("appsettings");
-        error.ShouldNotContain(thrown.Message);
-        error.ShouldContain(TestCorrelationId);
+        error!.ShouldContain(TestCorrelationId);
     }
 
     /// <summary>

@@ -1,3 +1,4 @@
+using Fakvio.Application.Exceptions;
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.Chat;
 using Fakvio.Domain.Entities;
@@ -190,7 +191,7 @@ public class ChatServiceTests : IDisposable
         var request = new SendMessageRequest { Message = "Test", ConversationId = 9999 };
 
         // Act & Assert
-        await Should.ThrowAsync<InvalidOperationException>(
+        await Should.ThrowAsync<ChatConversationNotFoundException>(
             () => _service.SendMessageAsync(TestUserId, request));
     }
 
@@ -203,7 +204,7 @@ public class ChatServiceTests : IDisposable
 
         // Act & Assert — user 99 tries to use the same conversation.
         var request = new SendMessageRequest { Message = "Hijack", ConversationId = result.ConversationId };
-        await Should.ThrowAsync<InvalidOperationException>(
+        await Should.ThrowAsync<ChatConversationNotFoundException>(
             () => _service.SendMessageAsync(99, request));
     }
 
@@ -285,7 +286,7 @@ public class ChatServiceTests : IDisposable
             new SendMessageRequest { Message = "Mine" });
 
         // Act & Assert
-        await Should.ThrowAsync<InvalidOperationException>(
+        await Should.ThrowAsync<ChatConversationNotFoundException>(
             () => _service.DeleteConversationAsync(result.ConversationId, 99));
     }
 
