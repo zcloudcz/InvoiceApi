@@ -1107,6 +1107,21 @@ await sub.Received(1).MethodAsync(Arg.Any<T>());  // received check vyžaduje aw
   - Environment `"Testing"` → skip migrations.
 - `Program` má `public partial class Program { }` na konci `Fakvio.API/Program.cs:189` aby `WebApplicationFactory<Program>` mohl referencovat top-level statements typ.
 
+#### 8.2.1 Testy proti reálnému PostgreSQL (throwaway schema)
+
+`FakvioFactory` běží na InMemory, takže **nevidí FK, unique indexy ani DDL**. Chování, které
+závisí na reálných constraintech, patří do testu, který si založí vlastní jednorázové schéma.
+Vzor: `TenantIssuerProvisioningDatabaseTests` (provisioning issuera, issue #153).
+
+- Connection string: default z `docker-compose.yml`, přepis přes env `FAKVIO_TEST_POSTGRES`.
+- Schéma `test_<téma>_<guid>` per instance třídy; `DROP SCHEMA ... CASCADE` v `DisposeAsync`.
+- Tabulky zakládej přes `IRelationalDatabaseCreator.CreateTablesAsync()`, **ne** `EnsureCreatedAsync()`
+  — ta je no-op, jakmile existuje *databáze* (schémata neřeší). `TenantDbContext.Schema`
+  + `ReplaceService<IModelCacheKeyFactory, TenantModelCacheKeyFactory>` nasměrují model do schématu.
+- Gate: jeden raw `OpenConnectionAsync()` probe → `[SkippableFact]` + `Skip.IfNot(...)`.
+  Skipuje se **jen** nedostupný server; cokoliv po úspěšném probe musí spadnout nahlas
+  (EF balí chyby spojení do generické `InvalidOperationException`, proto probe na úrovni driveru).
+
 ### 8.3 E2E (`Fakvio.Tests.Playwright`)
 
 - Stack: **Microsoft.Playwright.NUnit 1.52.0 + NUnit 4.3.2**.
@@ -1123,6 +1138,7 @@ await sub.Received(1).MethodAsync(Arg.Any<T>());  // received check vyžaduje aw
 | Service orchestrace s mocky externí services | Unit (NSubstitute) |
 | EF queries, repository | Unit (InMemoryDatabase) |
 | Controller → service → DB end-to-end | Integration (`WebApplicationFactory`) |
+| FK / unique index / DDL, tenant schema | Integration proti reálnému PostgreSQL (§8.2.1) |
 | User-visible flow (login, invoice CRUD UI) | Playwright |
 | External API (SMTP, IMAP, OAuth, ARES) | Manuálně + smoke testy |
 

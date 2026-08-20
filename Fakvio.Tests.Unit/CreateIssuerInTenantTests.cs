@@ -249,6 +249,31 @@ public class CreateIssuerInTenantTests : IDisposable
         billing.CustomCreditNoteNumberSequenceId.ShouldBeNull();
     }
 
+    /// <summary>
+    /// The copy also skips BillingSettings.BankAccountNumber — the [Obsolete] single-account
+    /// field that the Client.BankAccount collection replaced. That field is still written and
+    /// displayed in a few places, so pin the decision: the tenant issuer must not end up with
+    /// a second, stale copy of its account number that nothing keeps in sync with the
+    /// collection the invoices actually read.
+    /// </summary>
+    [Fact]
+    public async Task CreateIssuerInTenant_DoesNotCopyObsoleteBankAccountNumber()
+    {
+        const string legacyAccountNumber = "2400123456/2010";
+        var master = BuildMasterCompany();
+#pragma warning disable CS0618 // Touching the obsolete field IS the subject of this test.
+        master.BillingSettings!.BankAccountNumber = legacyAccountNumber;
+
+        await InvokeCreateIssuerAsync(master);
+
+        var issuer = await LoadTenantIssuerAsync();
+        issuer.BillingSettings.ShouldNotBeNull().BankAccountNumber.ShouldBeNull();
+#pragma warning restore CS0618
+
+        // The number is not lost — it lives in the collection that superseded the field.
+        issuer.BankAccount.ShouldContain(a => a.AccountNumber == legacyAccountNumber);
+    }
+
     [Fact]
     public async Task CreateIssuerInTenant_MasterWithoutBillingSettings_CreatesIssuerWithoutThem()
     {
