@@ -455,8 +455,13 @@ public class UserService : IUserService
     /// Sets the password for an invited user using their invitation token.
     /// Finds the user by token, validates expiration, hashes the new password,
     /// and clears all invitation-related fields so the user can log in normally.
+    ///
+    /// For users that belong to a company this also triggers tenant provisioning.
+    /// Provisioning failures never revoke the password, but they ARE reported back
+    /// through <see cref="SetPasswordResultDto.WorkspaceReady"/> so the UI can tell
+    /// the user the truth instead of a misleading "Done, log in".
     /// </summary>
-    public async Task<bool> SetPasswordAsync(SetPasswordDto dto, CancellationToken cancellationToken = default)
+    public async Task<SetPasswordResultDto> SetPasswordAsync(SetPasswordDto dto, CancellationToken cancellationToken = default)
     {
         // Find user by invitation token
         var user = await _context.User
@@ -465,13 +470,13 @@ public class UserService : IUserService
         // Token not found — invalid
         if (user == null)
         {
-            return false;
+            return new SetPasswordResultDto { PasswordSet = false };
         }
 
         // Token expired — no longer valid
         if (user.InvitationTokenExpiresAt.HasValue && user.InvitationTokenExpiresAt.Value < DateTime.UtcNow)
         {
-            return false;
+            return new SetPasswordResultDto { PasswordSet = false };
         }
 
         // Hash the new password, verify email, and clear invitation fields.
@@ -486,39 +491,76 @@ public class UserService : IUserService
 
         await _context.SaveChangesAsync(cancellationToken);
 
-        // Trigger tenant database provisioning after password is set (for self-registered users).
-        // Provisioning creates the PostgreSQL schema, applies migrations, copies code tables, etc.
-        if (user.CompanyId.HasValue)
+        // Users without a company (SysAdmin) have no tenant schema — nothing to provision,
+        // so their workspace is ready by definition.
+        if (!user.CompanyId.HasValue)
         {
-            try
-            {
-                _logger.LogInformation(
-                    "Starting tenant provisioning for CompanyId={CompanyId} (triggered by password set, user={Email})",
-                    user.CompanyId.Value, user.Email);
-
-                await _provisioningService.ProvisionTenantAsync(user.CompanyId.Value, cancellationToken);
-
-                _logger.LogInformation(
-                    "Tenant provisioning SUCCEEDED for CompanyId={CompanyId}, user={Email}",
-                    user.CompanyId.Value, user.Email);
-            }
-            catch (InvalidOperationException ex) when (ex.Message.Contains("already provisioned"))
-            {
-                // Already provisioned — this is fine (idempotent, e.g. SysAdmin provisioned first).
-                _logger.LogInformation(
-                    "Tenant already provisioned for CompanyId={CompanyId} — skipping",
-                    user.CompanyId.Value);
-            }
-            catch (Exception ex)
-            {
-                // Provisioning failure should not fail password setting — can be retried by SysAdmin.
-                _logger.LogError(ex,
-                    "Tenant provisioning FAILED for CompanyId={CompanyId}, user={Email}: {Error}",
-                    user.CompanyId.Value, user.Email, ex.Message);
-            }
+            return new SetPasswordResultDto { PasswordSet = true, WorkspaceReady = true };
         }
 
-        return true;
+        // Trigger tenant database provisioning after password is set (for self-registered users).
+        // Provisioning creates the PostgreSQL schema, applies migrations, copies code tables, etc.
+        try
+        {
+            _logger.LogInformation(
+                "Starting tenant provisioning for CompanyId={CompanyId} (triggered by password set, user={Email})",
+                user.CompanyId.Value, user.Email);
+
+            await _provisioningService.ProvisionTenantAsync(user.CompanyId.Value, cancellationToken);
+
+            _logger.LogInformation(
+                "Tenant provisioning SUCCEEDED for CompanyId={CompanyId}, user={Email}",
+                user.CompanyId.Value, user.Email);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("already provisioned"))
+        {
+            // Already provisioned — this is fine (idempotent, e.g. SysAdmin provisioned first).
+            _logger.LogInformation(
+                "Tenant already provisioned for CompanyId={CompanyId} — skipping",
+                user.CompanyId.Value);
+        }
+        catch (Exception ex)
+        {
+            // Provisioning failure must not fail password setting — the password is already
+            // persisted and the tenant can be re-provisioned by SysAdmin. The failure is NOT
+            // swallowed though: it is reported to the caller via WorkspaceReady below.
+            _logger.LogError(ex,
+                "Tenant provisioning FAILED for CompanyId={CompanyId}, user={Email}: {Error}",
+                user.CompanyId.Value, user.Email, ex.Message);
+        }
+
+        return new SetPasswordResultDto
+        {
+            PasswordSet = true,
+            WorkspaceReady = await IsTenantProvisionedAsync(user.CompanyId.Value, cancellationToken)
+        };
+    }
+
+    /// <summary>
+    /// Reads the persisted provisioning state of a tenant from the master database.
+    ///
+    /// The stored CompanySystemSettings.IsProvisioned flag — not "the provisioning call
+    /// did not throw" — is the single source of truth. That way a half-finished run that
+    /// never reached the final flag is reported as "not ready" too, and a company whose
+    /// settings row is missing entirely (would break tenant routing) is not reported ready.
+    /// </summary>
+    private async Task<bool> IsTenantProvisionedAsync(long companyId, CancellationToken cancellationToken)
+    {
+        var isProvisioned = await _context.CompanySystemSettings
+            .AsNoTracking()
+            .Where(s => s.CompanyId == companyId)
+            .Select(s => (bool?)s.IsProvisioned)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (isProvisioned != true)
+        {
+            _logger.LogWarning(
+                "Tenant for CompanyId={CompanyId} is NOT provisioned after the password was set — " +
+                "the user is being told their workspace is not ready yet",
+                companyId);
+        }
+
+        return isProvisioned == true;
     }
 
     /// <inheritdoc />

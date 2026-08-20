@@ -26,6 +26,7 @@
 16. [Lokalizace — přepínání jazyka CZ/EN](#16-lokalizace--přepínání-jazyka-czen)
 17. [Notifikace](#17-notifikace)
 18. [Příjem faktur emailem](#18-příjem-faktur-emailem)
+19. [Nastavení hesla a první přihlášení](#19-nastavení-hesla-a-první-přihlášení)
 
 ---
 
@@ -847,3 +848,23 @@ V sekci **Nastavení firmy** máte k dispozici:
 | ISDOCX (.isdocx) | Nejvyšší | ZIP kontejner s ISDOC XML uvnitř |
 | PDF | Vysoká | Rozpoznání přes QR kód, AI, nebo textovou analýzu |
 | Email bez příloh | Nízká | Pokus o rozpoznání z těla emailu (pouze AI) |
+
+
+---
+
+## 19. Nastavení hesla a první přihlášení
+
+Odkaz z registračního nebo pozvánkového emailu vede na stránku **Nastavení hesla**
+(`/set-password?token=…`). Po zadání hesla se současně ověří vaše emailová adresa
+a založí se váš pracovní prostor (databáze vaší firmy).
+
+Výsledek uvidíte přímo na stránce:
+
+| Hlášení | Co znamená | Co dělat |
+|---------|-----------|----------|
+| Zelené „Heslo bylo úspěšně nastaveno" | Heslo je nastavené a pracovní prostor je připravený | Přihlaste se |
+| Oranžové „Heslo bylo nastaveno, ale váš pracovní prostor se nepodařilo připravit" | Heslo platí, ale založení prostoru selhalo — přihlášení zatím nebude fungovat | Zkuste to za chvíli znovu; pokud problém trvá, kontaktujte podporu (přípravu dokončí administrátor) |
+| Červené „Pozvánka je neplatná nebo vypršela" | Odkaz vypršel (48 hodin) nebo už byl použit | Požádejte administrátora o novou pozvánku |
+
+Oranžové hlášení nikdy neznamená, že musíte zakládat účet znovu — heslo zůstává
+platné a po dokončení přípravy se přihlásíte stejnými údaji.

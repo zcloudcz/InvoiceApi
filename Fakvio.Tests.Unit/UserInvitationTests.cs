@@ -71,6 +71,19 @@ public class UserInvitationTests : IDisposable
             IsActive = true,
             CreatedAt = DateTime.UtcNow
         });
+
+        // Every company (tenant) also owns a CompanySystemSettings row — it is created
+        // at registration time with IsProvisioned = false and flipped to true only once
+        // TenantProvisioningService has built the tenant schema.
+        _context.CompanySystemSettings.Add(new CompanySystemSettings
+        {
+            CompanyId = 1,
+            SchemaName = "tenant_1",
+            IsProvisioned = false,
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
+        });
+
         _context.SaveChanges();
     }
 
@@ -184,7 +197,7 @@ public class UserInvitationTests : IDisposable
         var result = await _userService.SetPasswordAsync(dto);
 
         // Assert — password was set successfully
-        result.ShouldBeTrue();
+        result.PasswordSet.ShouldBeTrue();
 
         // Verify the database record — invitation fields should be cleared
         var dbUser = await _context.User.FirstOrDefaultAsync(u => u.Email == "invited@test.com");
@@ -230,7 +243,7 @@ public class UserInvitationTests : IDisposable
         var result = await _userService.SetPasswordAsync(dto);
 
         // Assert — should fail because token is expired
-        result.ShouldBeFalse();
+        result.PasswordSet.ShouldBeFalse();
 
         // Verify the password was NOT changed
         var dbUser = await _context.User.FirstOrDefaultAsync(u => u.Email == "expired@test.com");
@@ -255,7 +268,126 @@ public class UserInvitationTests : IDisposable
         var result = await _userService.SetPasswordAsync(dto);
 
         // Assert — should fail because token doesn't exist
-        result.ShouldBeFalse();
+        result.PasswordSet.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// Regression test for issue #152.
+    ///
+    /// When tenant provisioning throws, the password must still be set (that part
+    /// succeeded), but the caller must learn that the workspace is NOT usable.
+    /// Before the fix the exception was swallowed and the method returned a plain
+    /// "true", so the UI told the user "Done, log in" into a company with no schema.
+    /// </summary>
+    [Fact]
+    public async Task SetPasswordAsync_ProvisioningFails_SetsPasswordButReportsWorkspaceNotReady()
+    {
+        // Arrange — provisioning blows up (e.g. the DB user may not CREATE SCHEMA)
+        _provisioningService
+            .ProvisionTenantAsync(1, Arg.Any<CancellationToken>())
+            .Returns<Task<bool>>(_ => throw new InvalidOperationException("permission denied for database"));
+
+        var token = await SeedInvitedUserAsync("provisionfail@test.com", companyId: 1);
+
+        var dto = new SetPasswordDto { Token = token, NewPassword = "MySecurePassword123" };
+
+        // Act
+        var result = await _userService.SetPasswordAsync(dto);
+
+        // Assert — password part succeeded ...
+        result.PasswordSet.ShouldBeTrue();
+
+        // ... but the workspace is not ready, and the caller can see it
+        result.WorkspaceReady.ShouldBeFalse();
+
+        // The password really was persisted — the user is not locked out of the account
+        var dbUser = await _context.User.FirstOrDefaultAsync(u => u.Email == "provisionfail@test.com");
+        dbUser!.PasswordHash.ShouldBe("HASH:MySecurePassword123");
+        dbUser.IsInvitationPending.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// Counterpart to the failure case: when provisioning completes and marks the
+    /// tenant as provisioned, the result reports a ready workspace.
+    /// Readiness is read from the persisted CompanySystemSettings.IsProvisioned flag,
+    /// not from "the call did not throw" — the flag is the single source of truth.
+    /// </summary>
+    [Fact]
+    public async Task SetPasswordAsync_ProvisioningSucceeds_ReportsWorkspaceReady()
+    {
+        // Arrange — a provisioning run that marks the tenant as provisioned,
+        // exactly like the real TenantProvisioningService does at the end of its pipeline.
+        _provisioningService
+            .ProvisionTenantAsync(1, Arg.Any<CancellationToken>())
+            .Returns(async _ =>
+            {
+                var settings = await _context.CompanySystemSettings.FirstAsync(s => s.CompanyId == 1);
+                settings.IsProvisioned = true;
+                settings.ProvisionedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+                return true;
+            });
+
+        var token = await SeedInvitedUserAsync("provisionok@test.com", companyId: 1);
+
+        var dto = new SetPasswordDto { Token = token, NewPassword = "MySecurePassword123" };
+
+        // Act
+        var result = await _userService.SetPasswordAsync(dto);
+
+        // Assert
+        result.PasswordSet.ShouldBeTrue();
+        result.WorkspaceReady.ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// A user without a company (SysAdmin) has no tenant schema at all,
+    /// so there is nothing to provision and the workspace counts as ready.
+    /// </summary>
+    [Fact]
+    public async Task SetPasswordAsync_UserWithoutCompany_ReportsWorkspaceReady()
+    {
+        // Arrange — SysAdmin has CompanyId = null
+        var token = await SeedInvitedUserAsync("sysadmin@test.com", companyId: null, role: EUserRole.SysAdmin);
+
+        var dto = new SetPasswordDto { Token = token, NewPassword = "MySecurePassword123" };
+
+        // Act
+        var result = await _userService.SetPasswordAsync(dto);
+
+        // Assert
+        result.PasswordSet.ShouldBeTrue();
+        result.WorkspaceReady.ShouldBeTrue();
+
+        // No provisioning attempt is made for company-less users
+        await _provisioningService.DidNotReceive().ProvisionTenantAsync(Arg.Any<long>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Helper: creates an invited user with a fresh, valid invitation token
+    /// and returns that token. Keeps the provisioning tests focused on their assertions.
+    /// </summary>
+    private async Task<string> SeedInvitedUserAsync(string email, long? companyId, EUserRole role = EUserRole.Admin)
+    {
+        var token = Guid.NewGuid().ToString();
+
+        _context.User.Add(new User
+        {
+            Email = email,
+            PasswordHash = "HASH:temporary",
+            FirstName = "Test",
+            LastName = "User",
+            Role = role,
+            CompanyId = companyId,
+            IsActive = true,
+            InvitationToken = token,
+            InvitationTokenExpiresAt = DateTime.UtcNow.AddHours(48),
+            IsInvitationPending = true,
+            CreatedAt = DateTime.UtcNow
+        });
+        await _context.SaveChangesAsync();
+
+        return token;
     }
 
     /// <summary>

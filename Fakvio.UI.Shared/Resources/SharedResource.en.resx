@@ -295,6 +295,8 @@
   <data name="SetPassword_TokenExpired" xml:space="preserve"><value>Invitation is invalid or expired. Ask an administrator for a new invitation.</value></data>
   <data name="SetPassword_ValidatingToken" xml:space="preserve"><value>Validating invitation...</value></data>
   <data name="SetPassword_SetFailed" xml:space="preserve"><value>Failed to set password. Token may have expired.</value></data>
+  <data name="SetPassword_WorkspaceNotReady" xml:space="preserve"><value>Your password has been set, but your workspace could not be prepared.</value></data>
+  <data name="SetPassword_WorkspaceNotReadyHint" xml:space="preserve"><value>Logging in will not work yet. An administrator will finish the setup — please try again later or contact support.</value></data>
   <data name="Dashboard_Welcome" xml:space="preserve"><value>Welcome to the Invoice Management System</value></data>
   <data name="Dashboard_InvoicesDueThisMonth" xml:space="preserve"><value>Invoices due this month</value></data>
   <data name="Dashboard_ThisMonth" xml:space="preserve"><value>This month</value></data>

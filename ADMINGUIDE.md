@@ -146,6 +146,13 @@ Provisioning provede:
 
 **Idempotentní** — bezpečné spustit opakovaně při chybě.
 
+**Selhaný provisioning po self-registraci:** provisioning se spouští automaticky i při
+nastavení hesla nově registrovaným uživatelem. Když v tu chvíli selže, firma zůstane ve
+stavu **Not provisioned** a uživatel dostane na stránce nastavení hesla oranžové upozornění,
+že pracovní prostor není připravený (heslo mu ale platí). Takové firmy najdete v přehledu
+`/company-settings` se stavem „Ne" ve sloupci Provisioned — provisioning z něj spustíte
+znovu tlačítkem ▶. Důvod selhání je ve serverových logech (`Tenant provisioning FAILED`).
+
 ### Aktivace / Deaktivace firmy
 
 V detailu firmy: chip stavu (Aktivní/Neaktivní) + možnost editovat příznaky IsActive přímo.

@@ -153,11 +153,22 @@ public class UserApiService : ApiClientBase
     /// This is an anonymous call — uses the base HttpClient directly without auth header.
     /// Called from the SetPassword page when the user clicks the invitation link.
     /// </summary>
-    public async Task<bool> SetPasswordAsync(SetPasswordDto setPasswordDto)
+    public async Task<SetPasswordResultDto> SetPasswordAsync(SetPasswordDto setPasswordDto)
     {
         // Anonymous endpoint — call the HttpClient directly (no auth header via AddAuthorizationHeaderAsync)
         var response = await _httpClient.PostAsJsonAsync("/api/user/set-password", setPasswordDto);
-        return response.IsSuccessStatusCode;
+
+        if (!response.IsSuccessStatusCode)
+        {
+            // 400 = invalid or expired token; nothing was changed
+            return new SetPasswordResultDto { PasswordSet = false };
+        }
+
+        // The API reports whether the tenant workspace was provisioned. Older/foreign responses
+        // without a body would deserialize to null — treat that as "password set, state unknown"
+        // and do NOT claim the workspace is ready.
+        return await response.Content.ReadFromJsonAsync<SetPasswordResultDto>()
+               ?? new SetPasswordResultDto { PasswordSet = true, WorkspaceReady = false };
     }
 
     /// <summary>
