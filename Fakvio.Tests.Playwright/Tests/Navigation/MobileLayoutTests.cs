@@ -10,7 +10,8 @@ namespace Fakvio.Tests.Playwright.Tests.Navigation;
 /// - no horizontal page overflow,
 /// - ResponsiveButton collapses to icon-only (label hidden),
 /// - AppBar content fits the viewport,
-/// - HideSmall grid columns are not visible.
+/// - HideSmall grid columns are not visible,
+/// - the AI chat drawer fits the phone screen (issue #161).
 /// </summary>
 [TestFixture]
 public class MobileLayoutTests : FakvioPageTest
@@ -85,6 +86,47 @@ public class MobileLayoutTests : FakvioPageTest
         var (scrollW, clientW) = await GetDocumentWidthsAsync();
         Assert.That(scrollW, Is.LessThanOrEqualTo(clientW + 1),
             "Received invoices page must not scroll horizontally on a phone viewport");
+    }
+
+    /// <summary>
+    /// The chat drawer used to be a hardcoded 400px, i.e. wider than the 375px screen.
+    /// It must now fill the viewport exactly, and the pointer-only drag &amp; drop zone
+    /// inside the chat input must be gone.
+    /// </summary>
+    [Test]
+    public async Task Mobile_ChatDrawer_FitsViewport_AndHidesDropZone()
+    {
+        await LoginAndNavigateAsync("/", "h4, h3, .mud-card");
+
+        // The AppBar toggle carries the localized assistant name as its aria-label.
+        var toggle = Page.Locator(".mud-appbar button[aria-label='AI Asistent']");
+        if (await toggle.CountAsync() == 0)
+        {
+            Assert.Inconclusive("AI assistant is hidden for this account (no tenant context) — skip");
+            return;
+        }
+
+        await toggle.ClickAsync();
+
+        var drawer = Page.Locator(".mud-drawer.chat-drawer");
+        await drawer.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 10_000 });
+        await Page.WaitForTimeoutAsync(500); // drawer slide-in animation is 225ms
+
+        var box = await drawer.BoundingBoxAsync();
+        Assert.That(box, Is.Not.Null, "Open chat drawer must be measurable");
+        Assert.That(box!.Width, Is.LessThanOrEqualTo(376),
+            "Chat drawer must not be wider than the 375px phone viewport");
+
+        var (scrollW, clientW) = await GetDocumentWidthsAsync();
+        Assert.That(scrollW, Is.LessThanOrEqualTo(clientW + 1),
+            "An open chat drawer must not make the page scroll horizontally");
+
+        var dropZone = Page.Locator(".chat-dropzone");
+        if (await dropZone.CountAsync() > 0)
+        {
+            Assert.That(await dropZone.First.IsVisibleAsync(), Is.False,
+                "Drag & drop upload zone must be hidden on a phone");
+        }
     }
 
     [Test]
