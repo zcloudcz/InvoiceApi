@@ -1,8 +1,9 @@
+﻿using System.Reflection;
 using Fakvio.Domain.Entities;
 using Fakvio.Infrastructure.Data;
 using Fakvio.Infrastructure.Service;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 using NSubstitute;
@@ -27,8 +28,19 @@ namespace Fakvio.Tests.Unit;
 /// </summary>
 public class TenantProvisioningServiceTests : IDisposable
 {
+    private const string TestConnectionString =
+        "Host=localhost;Database=fakvio;Username=fakvio;Password=test";
+
+    /// <summary>
+    /// Marker baked into the stubbed per-schema connection string so a test can tell the
+    /// factory's data source apart from the root one.
+    /// </summary>
+    private const string SchemaDataSourceMarker = "fakvio-schema-source";
+
     private readonly MasterDbContext _masterContext;
-    private readonly IConfiguration _configuration;
+    private readonly INpgsqlDataSourceFactory _dataSourceFactory;
+    private readonly NpgsqlDataSource _rootDataSource;
+    private readonly NpgsqlDataSource _schemaDataSource;
     private readonly ILogger<TenantProvisioningService> _logger;
     private readonly TenantProvisioningService _service;
 
@@ -41,22 +53,26 @@ public class TenantProvisioningServiceTests : IDisposable
 
         _masterContext = new MasterDbContext(options);
 
-        // Configuration with a mock PostgreSQL connection string (won't actually connect in unit tests)
-        _configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["ConnectionStrings:DefaultConnection"] = "Host=localhost;Database=fakvio;Username=fakvio;Password=test"
-            })
-            .Build();
-
         _logger = Substitute.For<ILogger<TenantProvisioningService>>();
 
         // NpgsqlDataSource for unit tests — points to localhost, won't actually connect.
-        // Tests that trigger real DB operations will fail at SQL level (expected in unit tests).
-        var dataSource = new NpgsqlDataSourceBuilder(
-            "Host=localhost;Database=fakvio;Username=fakvio;Password=test").Build();
+        // Building a data source only parses the connection string; no network I/O happens
+        // until a connection is requested, so tests that trigger real DB operations fail at
+        // SQL level (expected in unit tests).
+        _rootDataSource = new NpgsqlDataSourceBuilder(TestConnectionString).Build();
 
-        _service = new TenantProvisioningService(_masterContext, _configuration, dataSource, _logger);
+        // Stand-in for what the real factory hands out for a tenant schema: same host, but
+        // tagged via ApplicationName so a test can prove the context uses THIS instance.
+        _schemaDataSource = new NpgsqlDataSourceBuilder(
+            $"{TestConnectionString};Application Name={SchemaDataSourceMarker}").Build();
+
+        // The factory is substituted: these tests assert WHICH data source the service asks
+        // for, not how the factory builds one (that is covered by NpgsqlDataSourceFactoryTests).
+        _dataSourceFactory = Substitute.For<INpgsqlDataSourceFactory>();
+        _dataSourceFactory.Root.Returns(_rootDataSource);
+        _dataSourceFactory.GetForSchema(Arg.Any<string>(), Arg.Any<bool>()).Returns(_schemaDataSource);
+
+        _service = new TenantProvisioningService(_masterContext, _dataSourceFactory, _rootDataSource, _logger);
     }
 
     /// <summary>
@@ -309,9 +325,82 @@ public class TenantProvisioningServiceTests : IDisposable
 
     #endregion
 
+    #region CreateTenantContext (per-schema data source)
+
+    /// <summary>
+    /// Invokes the private CreateTenantContext(string) via reflection.
+    /// The method is private by design (an implementation detail of provisioning), but its
+    /// wiring — which data source it uses and where migration history is recorded — is
+    /// exactly what this task changed, so it is worth pinning directly.
+    /// </summary>
+    private TenantDbContext InvokeCreateTenantContext(string schemaName)
+    {
+        var method = typeof(TenantProvisioningService)
+            .GetMethod("CreateTenantContext", BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException("TenantProvisioningService.CreateTenantContext not found.");
+
+        return (TenantDbContext)method.Invoke(_service, [schemaName])!;
+    }
+
+    [Fact]
+    public void CreateTenantContext_AsksTheFactoryForTheSchemaDataSource_ExactlyOnce()
+    {
+        // The leak fix: the service must REUSE the factory's cached per-schema data source
+        // instead of building (and dropping) a new NpgsqlDataSource on every call.
+        // "Exactly once per call" is the observable part of that contract.
+        using var context = InvokeCreateTenantContext("tenant_42");
+
+        _dataSourceFactory.Received(1).GetForSchema("tenant_42", true);
+    }
+
+    [Fact]
+    public void CreateTenantContext_UsesTheDataSourceReturnedByTheFactory()
+    {
+        // The stubbed schema data source carries a marker in its connection string, so the
+        // connection handed out by the context proves it really came from the factory —
+        // and not from a locally built data source with a hand-rolled search_path.
+        using var context = InvokeCreateTenantContext("tenant_42");
+
+        context.Database.GetDbConnection().ConnectionString.ShouldContain(SchemaDataSourceMarker);
+    }
+
+    [Fact]
+    public void CreateTenantContext_SanitizesTheSchemaNameBeforeAskingTheFactory()
+    {
+        // Schema names reach this method from the database (CompanySystemSettings.SchemaName),
+        // so they are still sanitized here — the factory sanitizes again, but defence in
+        // depth is intentional and the sanitized form must be what gets cached.
+        // SchemaNames.Sanitize lowercases and drops everything outside [a-z0-9_].
+        using var context = InvokeCreateTenantContext("Tenant_42!");
+
+        _dataSourceFactory.Received(1).GetForSchema("tenant_42", true);
+    }
+
+    [Fact]
+    public void CreateTenantContext_KeepsMigrationsHistoryTableInTheTenantSchema()
+    {
+        // Load-bearing regression guard: without a per-schema __EFMigrationsHistory, every
+        // tenant would share one history table in "public" and the second tenant would skip
+        // migrations that the first one already recorded as applied.
+        using var context = InvokeCreateTenantContext("tenant_42");
+
+        // Extensions are keyed by their concrete type, so FindExtension<RelationalOptionsExtension>()
+        // would miss the Npgsql-specific subclass — filter the list by assignability instead.
+        var relationalOptions = context.GetService<IDbContextOptions>()
+            .Extensions.OfType<RelationalOptionsExtension>().Single();
+
+        relationalOptions.MigrationsHistoryTableName.ShouldBe("__EFMigrationsHistory");
+        relationalOptions.MigrationsHistoryTableSchema.ShouldBe("tenant_42");
+        relationalOptions.MigrationsAssembly.ShouldBe("Fakvio.Infrastructure");
+    }
+
+    #endregion
+
     public void Dispose()
     {
         _masterContext.Database.EnsureDeleted();
         _masterContext.Dispose();
+        _rootDataSource.Dispose();
+        _schemaDataSource.Dispose();
     }
 }

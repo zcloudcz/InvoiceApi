@@ -5,7 +5,6 @@ using Fakvio.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 
@@ -24,25 +23,37 @@ namespace Fakvio.Infrastructure.Service;
 public class TenantProvisioningService : ITenantProvisioningService
 {
     private readonly MasterDbContext _masterContext;
-    private readonly IConfiguration _configuration;
+    private readonly INpgsqlDataSourceFactory _dataSourceFactory;
     private readonly NpgsqlDataSource _dataSource;
     private readonly ILogger<TenantProvisioningService> _logger;
 
     /// <summary>
     /// Constructor with dependency injection.
-    /// NpgsqlDataSource is the shared connection factory that handles both
-    /// Azure AD token auth and password auth transparently.
-    /// All raw NpgsqlConnection instances MUST come from _dataSource.OpenConnectionAsync()
-    /// — never from "new NpgsqlConnection(connectionString)" — to ensure Azure AD tokens are used.
+    ///
+    /// Two database entry points are injected, and they are NOT interchangeable:
+    /// - <paramref name="dataSource"/> is the shared "root" data source (default search_path).
+    ///   All raw NpgsqlConnection instances MUST come from _dataSource.OpenConnectionAsync()
+    ///   — never from "new NpgsqlConnection(connectionString)" — so that the configured
+    ///   authentication mode (password or Entra ID token) is applied automatically.
+    /// - <paramref name="dataSourceFactory"/> additionally hands out per-schema data sources
+    ///   (search_path pointing at one tenant schema), which is what migrations need.
+    ///   The factory OWNS and caches those instances, so this service must never dispose
+    ///   anything it gets back — that ownership rule is what fixes the pool/token-timer leak
+    ///   this service used to cause by building a fresh data source on every call.
+    ///
+    /// In production both parameters resolve to the same underlying object
+    /// (the container registers <c>factory.Root</c> as the NpgsqlDataSource singleton),
+    /// but keeping the explicit NpgsqlDataSource dependency leaves the raw-SQL paths
+    /// untouched and makes this service testable without a real factory.
     /// </summary>
     public TenantProvisioningService(
         MasterDbContext masterContext,
-        IConfiguration configuration,
+        INpgsqlDataSourceFactory dataSourceFactory,
         NpgsqlDataSource dataSource,
         ILogger<TenantProvisioningService> logger)
     {
         _masterContext = masterContext;
-        _configuration = configuration;
+        _dataSourceFactory = dataSourceFactory;
         _dataSource = dataSource;
         _logger = logger;
     }
@@ -313,6 +324,13 @@ public class TenantProvisioningService : ITenantProvisioningService
                 await using var dropCmd = connection.CreateCommand();
                 dropCmd.CommandText = $"DROP SCHEMA IF EXISTS \"{safeName}\" CASCADE";
                 await dropCmd.ExecuteNonQueryAsync(cancellationToken);
+
+                // The schema is gone, so any cached data source still pointing at it is now
+                // invalid: its pooled connections carry a search_path to a schema that no
+                // longer exists, and reusing one would fail with a confusing "relation does
+                // not exist". Evicting disposes the pool and lets a later re-provisioning of
+                // the same schema name start from a clean data source.
+                _dataSourceFactory.Evict(safeName);
 
                 _logger.LogInformation("Dropped tenant schema '{SchemaName}' for company {CompanyId}",
                     settings.SchemaName, settings.CompanyId);
@@ -587,21 +605,17 @@ public class TenantProvisioningService : ITenantProvisioningService
     {
         var safeName = SanitizeSchemaName(schemaName);
 
-        // Build a new NpgsqlDataSource with search_path pointing to the tenant schema.
+        // Ask the factory for a data source whose search_path points at the tenant schema.
         // This ensures that MigrateAsync() CREATE TABLE statements (which have no explicit schema)
-        // are created in the tenant schema, not in "public".
-        // We also include "public" in the search_path as a fallback for shared extensions/functions.
-        var connStringBuilder = new NpgsqlConnectionStringBuilder(_dataSource.ConnectionString)
-        {
-            SearchPath = $"\"{safeName}\", public"
-        };
-
-        // Create a per-tenant NpgsqlDataSource — needed for search_path override.
-        // Azure AD token auth is inherited from the connection string (no password needed).
-        var useAzureAd = _configuration.GetValue<bool>("UseAzureAdAuthentication");
-        var tenantDataSource = useAzureAd
-            ? CreateAzureDataSourceFromConnectionString(connStringBuilder.ToString())
-            : new NpgsqlDataSourceBuilder(connStringBuilder.ToString()).Build();
+        // are created in the tenant schema, not in "public". The default
+        // includePublicInSearchPath: true keeps "public" in the path as a fallback for shared
+        // extensions/functions, exactly as the previous hand-rolled connection string did.
+        //
+        // The factory caches and owns this instance, so it is deliberately NOT disposed here:
+        // the previous code built a brand-new NpgsqlDataSource on every call and dropped it on
+        // the floor, leaking a connection pool (and, in Entra ID mode, a token refresh timer)
+        // per provisioning/migration operation.
+        var tenantDataSource = _dataSourceFactory.GetForSchema(safeName);
 
         var options = new DbContextOptionsBuilder<TenantDbContext>()
             .UseNpgsql(tenantDataSource, b =>
@@ -626,30 +640,6 @@ public class TenantProvisioningService : ITenantProvisioningService
         var context = new TenantDbContext(options);
         context.Schema = schemaName;
         return context;
-    }
-
-    /// <summary>
-    /// Creates an NpgsqlDataSource with Azure AD token auth from a connection string.
-    /// Similar to ServiceCollectionExtensions.CreateAzureDataSource but accepts
-    /// a custom connection string (with modified search_path for tenant schema).
-    /// </summary>
-    private static NpgsqlDataSource CreateAzureDataSourceFromConnectionString(string connectionString)
-    {
-        var credential = new Azure.Identity.DefaultAzureCredential();
-        var dataSourceBuilder = new NpgsqlDataSourceBuilder(connectionString);
-
-        dataSourceBuilder.UsePeriodicPasswordProvider(
-            async (_, cancellationToken) =>
-            {
-                var tokenRequest = new Azure.Core.TokenRequestContext(
-                    ["https://ossrdbms-aad.database.windows.net/.default"]);
-                var token = await credential.GetTokenAsync(tokenRequest, cancellationToken);
-                return token.Token;
-            },
-            successRefreshInterval: TimeSpan.FromMinutes(55),
-            failureRefreshInterval: TimeSpan.FromSeconds(10));
-
-        return dataSourceBuilder.Build();
     }
 
     /// <summary>
