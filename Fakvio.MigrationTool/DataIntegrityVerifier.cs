@@ -1,6 +1,5 @@
 using Fakvio.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 
@@ -21,15 +20,27 @@ namespace Fakvio.MigrationTool;
 /// </summary>
 public class DataIntegrityVerifier
 {
-    private readonly IConfiguration _configuration;
+    // Target database (master public schema + all tenant schemas).
+    private readonly INpgsqlDataSourceFactory _targetFactory;
+
+    // Source database (the legacy single-DB installation being migrated away from).
+    private readonly INpgsqlDataSourceFactory _sourceFactory;
+
     private readonly ILogger<DataIntegrityVerifier> _logger;
     private int _checks;
     private int _passed;
     private int _failed;
 
-    public DataIntegrityVerifier(IConfiguration configuration, ILogger<DataIntegrityVerifier> logger)
+    /// <param name="targetFactory">Data sources for the target (multi-tenant) database.</param>
+    /// <param name="sourceFactory">Data sources for the source (legacy single) database.</param>
+    /// <param name="logger">Console logger.</param>
+    public DataIntegrityVerifier(
+        INpgsqlDataSourceFactory targetFactory,
+        INpgsqlDataSourceFactory sourceFactory,
+        ILogger<DataIntegrityVerifier> logger)
     {
-        _configuration = configuration;
+        _targetFactory = targetFactory;
+        _sourceFactory = sourceFactory;
         _logger = logger;
     }
 
@@ -41,14 +52,10 @@ public class DataIntegrityVerifier
     {
         _logger.LogInformation("=== Starting Data Integrity Verification ===");
 
-        var sourceConn = _configuration.GetConnectionString("SourceConnection")
-            ?? throw new InvalidOperationException("SourceConnection not configured.");
-        // DefaultConnection points to the shared PostgreSQL database (public schema = master)
-        var masterConn = _configuration.GetConnectionString("DefaultConnection")
-            ?? throw new InvalidOperationException("DefaultConnection not configured.");
-
-        using var source = CreateContext<SourceDbContext>(sourceConn);
-        using var master = CreateContext<MasterDbContext>(masterConn);
+        // Root data sources: the source database as-is, and the target database's default
+        // (public) schema, which holds the master data.
+        using var source = CreateContext<SourceDbContext>(_sourceFactory.Root);
+        using var master = CreateContext<MasterDbContext>(_targetFactory.Root);
 
         // Check 1: Master DB — Users
         var sourceUserCount = await source.User.CountAsync(ct);
@@ -90,10 +97,13 @@ public class DataIntegrityVerifier
 
         foreach (var tenant in tenants)
         {
-            // Build connection string targeting the tenant's schema via search_path
-            var tenantConn = BuildTenantConnectionString(masterConn, tenant.SchemaName);
+            // Data source targeting the tenant's schema via search_path. "public" is kept OUT
+            // of the path on purpose: the TenantDbContext is built without an explicit schema,
+            // so a table missing from the tenant schema must fail loudly instead of silently
+            // resolving to the master table in "public" and reporting a false PASS.
+            var tenantDataSource = _targetFactory.GetForSchema(tenant.SchemaName, includePublicInSearchPath: false);
 
-            using var tenantCtx = CreateContext<TenantDbContext>(tenantConn);
+            using var tenantCtx = CreateContext<TenantDbContext>(tenantDataSource);
 
             // Check: Tenant schema has exactly one issuer
             var issuerCount = await tenantCtx.Client.CountAsync(c => c.IsIssuer, ct);
@@ -201,32 +211,19 @@ public class DataIntegrityVerifier
     #region Helpers
 
     /// <summary>
-    /// Creates a DbContext of the specified type connected to the given PostgreSQL database/schema.
-    /// Uses reflection to construct the generic DbContextOptionsBuilder for the correct type.
-    /// The connection string's search_path determines which schema is targeted.
+    /// Creates a DbContext of the specified type connected to the given PostgreSQL data source.
+    /// Uses reflection to construct the generic DbContextOptionsBuilder for the correct type;
+    /// the UseNpgsql(dataSource, ...) overload lives on the non-generic base class, so the
+    /// reflected builder can still be used directly.
+    /// The data source's search_path determines which schema is targeted.
     /// </summary>
-    private static T CreateContext<T>(string connectionString) where T : DbContext
+    private static T CreateContext<T>(NpgsqlDataSource dataSource) where T : DbContext
     {
         var optionsType = typeof(DbContextOptionsBuilder<>).MakeGenericType(typeof(T));
         var optionsBuilder = (DbContextOptionsBuilder)Activator.CreateInstance(optionsType)!;
-        optionsBuilder.UseNpgsql(connectionString, b => b.MigrationsAssembly("Fakvio.Infrastructure"));
+        optionsBuilder.UseNpgsql(dataSource, b => b.MigrationsAssembly("Fakvio.Infrastructure"));
         var options = optionsBuilder.Options;
         return (T)Activator.CreateInstance(typeof(T), options)!;
-    }
-
-    /// <summary>
-    /// Builds a tenant connection string from the master connection string
-    /// by setting the PostgreSQL search_path to the tenant schema.
-    /// All tenants share the same database — schema isolation is achieved via search_path.
-    /// </summary>
-    private static string BuildTenantConnectionString(string masterConnectionString, string schemaName)
-    {
-        var builder = new NpgsqlConnectionStringBuilder(masterConnectionString)
-        {
-            // search_path tells PostgreSQL which schema to use for unqualified table names
-            SearchPath = schemaName
-        };
-        return builder.ConnectionString;
     }
 
     #endregion
