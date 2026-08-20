@@ -151,7 +151,8 @@ nastavení hesla nově registrovaným uživatelem. Když v tu chvíli selže, fi
 stavu **Not provisioned** a uživatel dostane na stránce nastavení hesla oranžové upozornění,
 že pracovní prostor není připravený (heslo mu ale platí). Takové firmy najdete v přehledu
 `/company-settings` se stavem „Ne" ve sloupci Provisioned — provisioning z něj spustíte
-znovu tlačítkem ▶. Důvod selhání je ve serverových logech (`Tenant provisioning FAILED`).
+znovu tlačítkem ▶. Důvod selhání najdete přímo v aplikaci na stránce `/logs` — vyhledejte
+`Tenant provisioning FAILED`; záznam obsahuje krok, na kterém provisioning spadl.
 
 ### Aktivace / Deaktivace firmy
 

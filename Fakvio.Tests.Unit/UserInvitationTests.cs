@@ -25,17 +25,21 @@ public class UserInvitationTests : IDisposable
     private readonly ITenantProvisioningService _provisioningService;
 
     /// <summary>
+    /// Name of the in-memory database backing <see cref="_context"/>.
+    /// Kept so a test can open a second context over the same data — needed when the
+    /// test itself kills <see cref="_context"/> to simulate a lost database connection.
+    /// </summary>
+    private readonly string _databaseName;
+
+    /// <summary>
     /// Sets up a fresh in-memory database and mock IAuthService for each test.
     /// The mock IAuthService simulates password hashing by prefixing "HASH:" to the input.
     /// </summary>
     public UserInvitationTests()
     {
         // Fresh in-memory database for each test — prevents cross-test contamination
-        var options = new DbContextOptionsBuilder<MasterDbContext>()
-            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
-            .Options;
-
-        _context = new MasterDbContext(options);
+        _databaseName = Guid.NewGuid().ToString();
+        _context = new MasterDbContext(CreateContextOptions());
 
         // Mock IAuthService — we don't need real BCrypt for unit tests
         _authService = Substitute.For<IAuthService>();
@@ -55,6 +59,15 @@ public class UserInvitationTests : IDisposable
         // Seed a test company (required for non-SysAdmin users)
         SeedTestCompany();
     }
+
+    /// <summary>
+    /// Options pointing at this test's in-memory database. Used for the shared context
+    /// and for any extra context a test needs over the very same data.
+    /// </summary>
+    private DbContextOptions<MasterDbContext> CreateContextOptions()
+        => new DbContextOptionsBuilder<MasterDbContext>()
+            .UseInMemoryDatabase(databaseName: _databaseName)
+            .Options;
 
     /// <summary>
     /// Creates a test company in the in-memory database.
@@ -361,6 +374,49 @@ public class UserInvitationTests : IDisposable
 
         // No provisioning attempt is made for company-less users
         await _provisioningService.DidNotReceive().ProvisionTenantAsync(Arg.Any<long>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The readiness check itself can fail — the master database connection can die in the
+    /// window between committing the password and reading CompanySystemSettings.IsProvisioned.
+    ///
+    /// That must not turn into an exception: the password is already persisted, and the
+    /// caller maps any failed call onto "invalid or expired token", which would send the
+    /// user off to request a new invitation for a password that actually works.
+    /// An unreadable state is therefore reported as "workspace not ready".
+    /// </summary>
+    [Fact]
+    public async Task SetPasswordAsync_ProvisioningStateUnreadable_ReportsWorkspaceNotReady_WithoutThrowing()
+    {
+        // Arrange — the master connection dies right after provisioning ran. Disposing the
+        // shared context is the in-memory equivalent: every later query on it throws.
+        _provisioningService
+            .ProvisionTenantAsync(1, Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                _context.Dispose();
+                return Task.FromResult(true);
+            });
+
+        var token = await SeedInvitedUserAsync("readfail@test.com", companyId: 1);
+
+        var dto = new SetPasswordDto { Token = token, NewPassword = "MySecurePassword123" };
+
+        // Act — must return a result instead of propagating the read failure
+        var result = await _userService.SetPasswordAsync(dto);
+
+        // Assert — the password outcome is reported truthfully ...
+        result.PasswordSet.ShouldBeTrue();
+
+        // ... and an unknown workspace state is never reported as ready
+        result.WorkspaceReady.ShouldBeFalse();
+
+        // The password really is persisted, which is exactly why the call must not throw:
+        // a thrown exception would tell this user their token had expired.
+        await using var verificationContext = new MasterDbContext(CreateContextOptions());
+        var dbUser = await verificationContext.User.FirstOrDefaultAsync(u => u.Email == "readfail@test.com");
+        dbUser!.PasswordHash.ShouldBe("HASH:MySecurePassword123");
+        dbUser.IsInvitationPending.ShouldBeFalse();
     }
 
     /// <summary>

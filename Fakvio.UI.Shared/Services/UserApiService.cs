@@ -164,9 +164,9 @@ public class UserApiService : ApiClientBase
             return new SetPasswordResultDto { PasswordSet = false };
         }
 
-        // The API reports whether the tenant workspace was provisioned. Older/foreign responses
-        // without a body would deserialize to null — treat that as "password set, state unknown"
-        // and do NOT claim the workspace is ready.
+        // The API reports whether the tenant workspace was provisioned. A body that
+        // deserializes to null (a literal JSON "null") means the state is unknown — treat that
+        // as "password set, state unknown" and do NOT claim the workspace is ready.
         return await response.Content.ReadFromJsonAsync<SetPasswordResultDto>()
                ?? new SetPasswordResultDto { PasswordSet = true, WorkspaceReady = false };
     }

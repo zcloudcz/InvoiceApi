@@ -543,14 +543,34 @@ public class UserService : IUserService
     /// did not throw" — is the single source of truth. That way a half-finished run that
     /// never reached the final flag is reported as "not ready" too, and a company whose
     /// settings row is missing entirely (would break tenant routing) is not reported ready.
+    ///
+    /// The read itself can fail (e.g. the master connection dies right after the password
+    /// was committed). That must not bubble up: the password IS already saved, so throwing
+    /// here would make the caller report "invalid or expired token" for a password that
+    /// actually works. An unknown state is therefore reported as "not ready" — the same
+    /// rule the rest of this flow follows: never claim ready unless we have proof.
     /// </summary>
     private async Task<bool> IsTenantProvisionedAsync(long companyId, CancellationToken cancellationToken)
     {
-        var isProvisioned = await _context.CompanySystemSettings
-            .AsNoTracking()
-            .Where(s => s.CompanyId == companyId)
-            .Select(s => (bool?)s.IsProvisioned)
-            .FirstOrDefaultAsync(cancellationToken);
+        bool? isProvisioned;
+
+        try
+        {
+            isProvisioned = await _context.CompanySystemSettings
+                .AsNoTracking()
+                .Where(s => s.CompanyId == companyId)
+                .Select(s => (bool?)s.IsProvisioned)
+                .FirstOrDefaultAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Could not read the provisioning state for CompanyId={CompanyId} after the password " +
+                "was set — reporting the workspace as not ready: {Error}",
+                companyId, ex.Message);
+
+            return false;
+        }
 
         if (isProvisioned != true)
         {
