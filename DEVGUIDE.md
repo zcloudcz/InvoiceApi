@@ -1134,12 +1134,24 @@ appka opravdu resolvuje při startu, skutečně otevře spojení, že jsou nasaz
 a že jde dotázat `public` schéma.
 
 - Kontexty se staví přes `NpgsqlDataSourceFactory.Create(configuration)` — tedy **tu samou
-  cestu, kterou jde produkce** (viz §9.5). Žádný `UseNpgsql(string)`.
+  cestu, kterou jde produkce** (`AddDatabaseContexts` v
+  `Fakvio.Infrastructure/DependencyInjection/ServiceCollectionExtensions.cs`). Žádný
+  `UseNpgsql(string)`.
 - Gate: `[DatabaseSmokeFact]` (potomek `FactAttribute`) přeskočí test, dokud není
   `FAKVIO_DB_SMOKE=1`. Bez proměnné hlásí runner **skipped** s návodem, ne fail —
   `dotnet test` je tedy zelený i bez Dockeru a bez `az login`.
 - xUnit 2.x nemá `Assert.Skip` (přišel až ve v3) a runtime skip exception se reportuje jako
   fail — proto je gate na atributu, který se vyhodnocuje při discovery.
+- Proč ne `[SkippableFact]` (`Xunit.SkippableFact`, repo ho už má — používá ho
+  `Fakvio.Tests.Integration/EpoSandboxSmokeTests.cs`): `Skip.If(…)` se volá až **v těle testu**,
+  takže xUnit předtím zkonstruuje testovací třídu. A ctor tady dělá skutečnou práci: čte
+  `appsettings.json` s `optional: false`, pouští `DatabaseOptions.Resolve` + `Validate()`
+  a staví reálný `NpgsqlDataSource`. Výjimka z ctoru je **fail, ne skip** — chronická
+  červená by se vrátila zadními vrátky. Změřeno na stejných verzích (xunit 2.9.3,
+  SkippableFact 1.4.13, runner xunit.runner.visualstudio 3.1.4): házející ctor +
+  `[SkippableFact]` = `[FAIL]`, ten samý ctor za gate na atributu = `[SKIP]` a ctor se
+  vůbec nespustí. Pro `Fakvio.Tests.Integration` je `[SkippableFact]` dál správná volba —
+  tamní gate závisí na hodnotách, které jsou známé až za běhu.
 - Konfigurace = `Fakvio.API/appsettings*.json` + **environment variables navrch**. Spuštění
   proti lokálnímu Dockeru (`docker compose up -d`):
 

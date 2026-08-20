@@ -14,6 +14,17 @@ namespace Fakvio.Tests.Unit;
 /// in xUnit v3), and throwing a skip exception at runtime is reported as a failure by the
 /// current runner. Overriding <see cref="FactAttribute.Skip"/> is the supported v2 way — the
 /// value is read during test discovery, so the test class is never even constructed.
+///
+/// Why not <c>[SkippableFact]</c> (Xunit.SkippableFact, already used by
+/// <c>Fakvio.Tests.Integration/EpoSandboxSmokeTests.cs</c>): its <c>Skip.If(...)</c> call sits
+/// inside the test body, so xUnit constructs the test class first - and this class's
+/// constructor does real work (reads appsettings.json with <c>optional: false</c>, runs
+/// <c>DatabaseOptions.Resolve</c> + <c>Validate()</c>, builds a real
+/// <see cref="Npgsql.NpgsqlDataSource"/>). A constructor exception is reported as a failure,
+/// not as a skip, which would let the chronic red state this gate exists to remove back in
+/// through the side door. Measured on these exact versions (xunit 2.9.3, SkippableFact
+/// 1.4.13): a throwing constructor behind [SkippableFact] is reported [FAIL]; the same
+/// constructor behind an attribute gate is [SKIP] and never runs.
 /// </summary>
 [AttributeUsage(AttributeTargets.Method)]
 public sealed class DatabaseSmokeFactAttribute : FactAttribute
