@@ -189,6 +189,78 @@ public class ChatControllerErrorHandlingTests
             Arg.Any<Func<object, Exception?, string>>());
     }
 
+    /// <summary>
+    /// The concrete scenario named in issue #156, on the NON-streaming path.
+    ///
+    /// <c>CompanyAiSettingsResolver</c> throws a plain
+    /// <see cref="InvalidOperationException"/> whose message spells out the CompanyId, the
+    /// requested provider and the whole three-tier configuration fallback. The controller used
+    /// to echo that message back verbatim (<c>BadRequest(new { message = ex.Message })</c>) and
+    /// <c>InvoiceImport.razor</c> renders it as "AI review failed: {message}" — so the whole
+    /// configuration dump landed on the user's screen.
+    /// </summary>
+    [Fact]
+    public async Task SendMessage_WhenConfigurationResolverThrows_DoesNotLeakConfigurationDetails()
+    {
+        // Arrange — the exact message shape thrown by CompanyAiSettingsResolver.
+        // Note the type: InvalidOperationException, NOT a generic exception. That is the whole
+        // point of this test — the old code had a dedicated catch for this type.
+        var thrown = new InvalidOperationException(
+            "No AI provider resolved. CompanyId=7, RequestedProvider=Claude. " +
+            "Tier 1 (company) → Tier 2 (system DB) → Tier 3 (appsettings.json) all failed. " +
+            "Configure AI settings in SysAdmin System Settings or company settings.");
+
+        _chatService
+            .SendMessageAsync(Arg.Any<long>(), Arg.Any<SendMessageRequest>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(thrown);
+
+        var controller = BuildController();
+
+        // Act
+        var result = await controller.SendMessage(new SendMessageRequest { Message = "Hi" });
+
+        // Assert — no configuration internals, but a usable reference for the user.
+        var objectResult = result.Result.ShouldBeOfType<ObjectResult>();
+        var body = JsonSerializer.Serialize(objectResult.Value);
+
+        body.ShouldNotContain("CompanyId");
+        body.ShouldNotContain("appsettings");
+        body.ShouldNotContain("SysAdmin");
+        body.ShouldNotContain(thrown.Message);
+        body.ShouldContain(TestCorrelationId);
+    }
+
+    /// <summary>
+    /// The old <c>catch (InvalidOperationException)</c> branch returned a 400 and logged
+    /// nothing at all — the user got the leak and the operator got no record. The exception
+    /// must reach ILogger so DatabaseLogger can persist it into AppLog under the CorrelationId
+    /// that the user is asked to report.
+    /// </summary>
+    [Fact]
+    public async Task SendMessage_WhenConfigurationResolverThrows_LogsFullExceptionServerSide()
+    {
+        // Arrange
+        var thrown = new InvalidOperationException(
+            "No AI provider resolved. CompanyId=7, RequestedProvider=Claude.");
+
+        _chatService
+            .SendMessageAsync(Arg.Any<long>(), Arg.Any<SendMessageRequest>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(thrown);
+
+        var controller = BuildController();
+
+        // Act
+        await controller.SendMessage(new SendMessageRequest { Message = "Hi" });
+
+        // Assert — the exception object itself (with its message) reached the log.
+        _logger.Received(1).Log(
+            LogLevel.Error,
+            Arg.Any<EventId>(),
+            Arg.Any<object>(),
+            thrown,
+            Arg.Any<Func<object, Exception?, string>>());
+    }
+
     // ─── SSE endpoint (POST /api/chat/stream) ─────────────────────────────────
 
     /// <summary>
@@ -274,6 +346,41 @@ public class ChatControllerErrorHandlingTests
             Arg.Any<object>(),
             thrown,
             Arg.Any<Func<object, Exception?, string>>());
+    }
+
+    /// <summary>
+    /// The "provider answered with nothing" branch is not an exception, but it is still an
+    /// error the user sees. USERGUIDE §13 promises a reference ID on every chat failure,
+    /// so this payload has to carry the CorrelationId as well.
+    /// </summary>
+    [Fact]
+    public async Task StreamMessage_WhenProviderReturnsNoContent_IncludesReferenceId()
+    {
+        // Arrange — a stream that completes normally but never yields any text.
+        _chatService
+            .StreamMessageAsync(Arg.Any<long>(), Arg.Any<SendMessageRequest>(), Arg.Any<CancellationToken>())
+            .Returns(EmptyStream());
+
+        var controller = BuildController();
+
+        // Act
+        await controller.StreamMessage(new SendMessageRequest { Message = "Hi" });
+
+        // Assert
+        var error = ExtractSseError(await ReadBodyAsync(controller.HttpContext));
+
+        error.ShouldNotBeNull();
+        error!.ShouldContain(TestCorrelationId);
+    }
+
+    /// <summary>
+    /// A stream that completes without yielding a single chunk — what a silently failing
+    /// AI provider looks like from the controller's point of view.
+    /// </summary>
+    private static async IAsyncEnumerable<string> EmptyStream()
+    {
+        await Task.CompletedTask;
+        yield break;
     }
 
     /// <summary>

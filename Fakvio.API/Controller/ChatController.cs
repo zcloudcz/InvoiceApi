@@ -86,10 +86,12 @@ public class ChatController : ControllerBase
     /// <param name="request">Message request with optional conversation ID and provider override</param>
     /// <param name="ct">Cancellation token</param>
     /// <response code="200">AI response with conversation metadata</response>
-    /// <response code="400">Invalid request</response>
+    /// <response code="400">Invalid request body (model validation)</response>
+    /// <response code="500">Processing failed — body carries a reference ID, details are in AppLog</response>
     [HttpPost("send")]
     [ProducesResponseType(typeof(SendMessageResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<SendMessageResponse>> SendMessage(
         [FromBody] SendMessageRequest request, CancellationToken ct = default)
     {
@@ -99,12 +101,20 @@ public class ChatController : ControllerBase
             var response = await _chatService.SendMessageAsync(userId, request, ct);
             return Ok(response);
         }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(new { message = ex.Message });
-        }
         catch (Exception ex)
         {
+            // One handler for everything that escapes the service — deliberately no separate
+            // catch for InvalidOperationException. That branch used to echo ex.Message back to
+            // the caller, which is exactly how the configuration dump from
+            // CompanyAiSettingsResolver ("No AI provider resolved. CompanyId=…, Tier 1 → …")
+            // reached the browser via InvoiceImport.razor (issue #156), and it logged nothing.
+            //
+            // We cannot tell an authored validation text apart from an infrastructure detail by
+            // exception type, so every escaped exception is treated as untrusted. Trade-off: a
+            // request with an unknown ConversationId now answers 500 instead of 400. That is
+            // accepted — the UI only ever sends IDs it got from the server, and a silent leak is
+            // the worse failure mode.
+            //
             // The full exception (stack trace included) goes to the server log only —
             // DatabaseLogger picks up the CorrelationId automatically and writes it to AppLog.
             var correlationId = GetCorrelationId();
@@ -154,12 +164,21 @@ public class ChatController : ControllerBase
             // This catches silent failures where the AI provider returns nothing.
             if (!hasContent)
             {
-                _logger.LogWarning("SSE stream completed with no content — possible AI provider issue");
+                // Provider and ConversationId come from the caller's own request, so echoing them
+                // back leaks nothing. The reference ID is added because USERGUIDE §13 promises one
+                // for every chat failure — this branch is a failure too, just not an exception.
+                var emptyCorrelationId = GetCorrelationId();
+                _logger.LogWarning(
+                    "SSE stream completed with no content — possible AI provider issue [{CorrelationId}]",
+                    emptyCorrelationId);
+
                 var emptyPayload = JsonSerializer.Serialize(new
                 {
                     error = "AI provider returned no response. Check server logs for details. " +
                             $"Provider: {request.Provider ?? "(default)"}, " +
-                            $"ConversationId: {request.ConversationId?.ToString() ?? "new"}"
+                            $"ConversationId: {request.ConversationId?.ToString() ?? "new"}. " +
+                            $"Reference ID: {emptyCorrelationId}",
+                    correlationId = emptyCorrelationId
                 });
                 await Response.WriteAsync($"data: {emptyPayload}\n\n", HttpContext.RequestAborted);
                 await Response.Body.FlushAsync(HttpContext.RequestAborted);

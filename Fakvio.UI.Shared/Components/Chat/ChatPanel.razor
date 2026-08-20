@@ -253,6 +253,10 @@
                 if (evt.IsError)
                 {
                     // Server-side error — display it as the assistant response so user sees it.
+                    // This — not the catch below — is where SSE failures land: the API sends them
+                    // as a regular {"error": …} event, ChatApiService turns it into an error event.
+                    // The text is already sanitized server-side and carries the reference ID
+                    // (issue #156), so rendering it verbatim is safe.
                     _streamingContent += $"\n\n**Error:** {evt.Error}";
                     StateHasChanged();
                 }
@@ -320,10 +324,14 @@
         }
         catch (Exception ex)
         {
-            // Never render ex.ToString() here — it would print the whole .NET stack trace
-            // into the chat bubble (issue #156). An ApiException already carries the text the
-            // API decided is safe to show (it includes the reference ID for the server log);
-            // anything else is a local failure the user can only react to by retrying.
+            // This catch handles failures of the request itself — a non-2xx response before the
+            // stream starts, a dropped connection, a JS interop error. (Errors reported *inside*
+            // a running stream arrive as evt.IsError above, not here.)
+            //
+            // Never render ex.ToString() — it would print the whole .NET stack trace into the
+            // chat bubble (issue #156). An ApiException already carries the text the API decided
+            // is safe to show (it includes the reference ID for the server log); anything else is
+            // a local failure the user can only react to by retrying.
             var errorText = ex is ApiException apiEx
                 ? apiEx.Message
                 : L["Chat_Error_Unexpected"].Value;

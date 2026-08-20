@@ -1233,6 +1233,13 @@ pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. P
 - SSE endpointy se na middleware spolehnout nemůžou (hlavičky už odešly) — chybu
   pošlou jako SSE událost `data: {"error": …, "correlationId": …}`
   (vzor: `ChatController.StreamMessage`).
+- **Pozor na `catch (InvalidOperationException ex) => BadRequest(ex.Message)`.** Ten
+  vzor je v pořádku jen tam, kde výjimku hází přímo daný service s vlastním, pro
+  uživatele psaným textem („Conversation 5 not found."). Jakmile stejným typem
+  probublává i výjimka z infrastruktury (typicky `CompanyAiSettingsResolver` —
+  vypíše CompanyId, poskytovatele a celý konfigurační fallback), nelze je od sebe
+  podle typu odlišit → sanituj **všechny** a vrať referenční ID
+  (vzor: `ChatController.SendMessage`).
 
 ---
 
