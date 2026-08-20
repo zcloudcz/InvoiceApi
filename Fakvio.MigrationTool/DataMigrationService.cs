@@ -387,8 +387,14 @@ public class DataMigrationService
             return;
         }
 
-        // Schema name follows the convention "tenant_{companyId}" (e.g., "tenant_42")
-        var schemaName = $"{tenantPrefix}{masterCompanyId}";
+        // Schema name follows the convention "tenant_{companyId}" (e.g., "tenant_42").
+        // Canonicalize ONCE, right here: SchemaNames.Sanitize lowercases, and the physical
+        // schema below is created through it. If we persisted the raw value instead, a
+        // non-canonical Migration:TenantSchemaPrefix (e.g. "Tenant_") would write "Tenant_42"
+        // into CompanySystemSettings while creating the schema "tenant_42" — and the runtime
+        // TenantDbContextFactory uses the stored name verbatim, so the tenant would become
+        // unreachable after migration. One canonical value = created == stored == search_path.
+        var schemaName = SchemaNames.Sanitize($"{tenantPrefix}{masterCompanyId}");
 
         if (existingSettings == null && !dryRun)
         {
@@ -1124,7 +1130,9 @@ public class DataMigrationService
         // configured authentication mode (password or Entra ID access token).
         await using var connection = await _targetFactory.Root.OpenConnectionAsync(ct);
 
-        // Sanitize schema name (alphanumeric + underscore only) to prevent SQL injection
+        // Canonical, injection-safe schema name: SchemaNames.Sanitize keeps only letters,
+        // digits and underscores, lowercases the result and throws when nothing is left.
+        // Callers already pass a sanitized name, so this is a defence-in-depth no-op.
         var safeName = SchemaNames.Sanitize(schemaName);
 
         // Check if schema already exists using PostgreSQL's information_schema

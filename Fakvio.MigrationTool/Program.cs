@@ -99,21 +99,6 @@ Console.WriteLine($"  Source DB: {MaskConnectionString(sourceConnectionDisplay ?
 Console.WriteLine($"  Target DB: {MaskConnectionString(targetConnectionDisplay ?? "")}");
 Console.WriteLine();
 
-// Confirm before proceeding (unless DRY RUN)
-if (!dryRun)
-{
-    Console.ForegroundColor = ConsoleColor.Red;
-    Console.Write("  This will modify databases. Continue? (y/N): ");
-    Console.ResetColor();
-    var answer = Console.ReadLine()?.Trim().ToLowerInvariant();
-    if (answer != "y")
-    {
-        Console.WriteLine("  Migration cancelled.");
-        return 1;
-    }
-    Console.WriteLine();
-}
-
 // Execute migration or verification
 try
 {
@@ -129,6 +114,25 @@ try
 
     Console.WriteLine($"  Auth mode: source={sourceFactory.AuthMode}, target={targetFactory.AuthMode}");
     Console.WriteLine();
+
+    // Confirm before proceeding (unless DRY RUN). The prompt sits INSIDE the try and AFTER
+    // both factories are built on purpose: the operator must see the resolved authentication
+    // mode before approving a destructive run, and a broken configuration must still surface
+    // as LogCritical + exit code 2 rather than as a question nobody can answer sensibly.
+    // Building the factories is safe — it only validates and opens no connection.
+    if (!dryRun)
+    {
+        Console.ForegroundColor = ConsoleColor.Red;
+        Console.Write("  This will modify databases. Continue? (y/N): ");
+        Console.ResetColor();
+        var answer = Console.ReadLine()?.Trim().ToLowerInvariant();
+        if (answer != "y")
+        {
+            Console.WriteLine("  Migration cancelled.");
+            return 1;
+        }
+        Console.WriteLine();
+    }
 
     if (verifyOnly)
     {
