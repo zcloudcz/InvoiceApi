@@ -1,3 +1,4 @@
+using Fakvio.Application.Service;
 using Fakvio.Domain.Entities;
 using Fakvio.Domain.Enums;
 using Fakvio.Infrastructure.Data;
@@ -27,7 +28,14 @@ public class ChatContextBuilderTests : IDisposable
 
         _context = new TenantDbContext(options);
         _logger = Substitute.For<ILogger<ChatContextBuilder>>();
-        _builder = new ChatContextBuilder(_context, _logger);
+
+        // The capability list in the prompt is generated from the registered tools,
+        // so the builder needs them — one fake tool is enough to prove the wiring.
+        var tool = Substitute.For<IChatTool>();
+        tool.ToolName.Returns("ares_lookup");
+        tool.Description.Returns("Look up a Czech company by IČO");
+
+        _builder = new ChatContextBuilder(_context, [tool], _logger);
     }
 
     public void Dispose()
@@ -45,6 +53,16 @@ public class ChatContextBuilderTests : IDisposable
         // Assert — should identify as Fakvio assistant.
         prompt.ShouldContain("Fakvio AI Assistant");
         prompt.ShouldContain("invoicing");
+    }
+
+    [Fact]
+    public async Task BuildSystemPrompt_ListsRegisteredToolsFromTheirOwnMetadata()
+    {
+        // Act
+        var prompt = await _builder.BuildSystemPromptAsync();
+
+        // Assert — no hand-written tool catalog: name and description come from the tool itself.
+        prompt.ShouldContain("- ares_lookup: Look up a Czech company by IČO");
     }
 
     [Fact]

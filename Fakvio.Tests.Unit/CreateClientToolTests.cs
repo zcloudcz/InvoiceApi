@@ -103,23 +103,6 @@ public class CreateClientToolTests
     }
 
     [Fact]
-    public async Task Execute_ReturnsFailure_WhenMissingParameter()
-    {
-        // Act
-        var result = await _tool.ExecuteAsync(new Dictionary<string, string>());
-
-        // Assert
-        result.IsSuccess.ShouldBeFalse();
-        result.OutputText.ShouldContain("Missing required parameter");
-
-        // Neither lookup nor create should be called.
-        await _clientService.DidNotReceive()
-            .GetClientByRegistrationNumberAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
-        await _clientService.DidNotReceive()
-            .CreateClientAsync(Arg.Any<CreateClientDto>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
     public async Task Execute_ReturnsFailure_WhenServiceThrowsInvalidOperation()
     {
         // Arrange — no existing client, but create throws (e.g., ARES fetch failure).

@@ -567,7 +567,68 @@ Implementace: `PaymentMatchingService.cs` (metoda `GetPaymentsForInvoiceAsync`).
 - **Chat Tools**: 11 tools registrovaných v DI jako `IChatTool`, orchestrováno přes `IChatToolExecutor`.
   Registrace v `ServiceCollectionExtensions.cs`; přidání nového toolu = implementace `IChatTool` + řádek v DI.
 
+#### Přidání nového chat toolu (POVINNÝ postup)
+
+Tool se popisuje **na jednom místě** — ve vlastní třídě. Z `IChatTool.Parameters` se generuje
+JSON Schema pro native tool calling, textové instrukce do system promptu i centrální validace
+parametrů. Žádné další soubory se needitují (kromě jednoho řádku v DI).
+
+```csharp
+public class MyTool : IChatTool
+{
+    public string ToolName => "my_tool";          // snake_case, unikátní
+    public string Description => "Co tool dělá."; // tohle vidí model
+
+    // Schéma je konstantní → static readonly, žádná alokace na každý přístup.
+    private static readonly ChatToolParameter[] Schema =
+    [
+        new()
+        {
+            Name = "invoice_id",
+            Type = ChatToolParameterType.Integer,   // String | Number | Integer | Boolean | ObjectArray
+            Description = "ID faktury",
+            IsRequired = true
+        },
+        new()
+        {
+            Name = "mode",
+            Type = ChatToolParameterType.String,
+            Description = "Režim zpracování",
+            AllowedValues = ["fast", "full"]        // jen pro String parametry
+        }
+    ];
+
+    public IReadOnlyList<ChatToolParameter> Parameters => Schema;
+
+    public Task<ChatToolResult> ExecuteAsync(Dictionary<string, string> parameters, CancellationToken ct = default)
+    {
+        // Povinné parametry, povolené hodnoty i typy už ověřil ChatToolExecutor —
+        // NEopakuj tyhle kontroly. Můžeš rovnou indexovat.
+        var invoiceId = long.Parse(parameters["invoice_id"]);
+        ...
+    }
+}
+```
+
+Pravidla:
+
+1. **`Type` volíš vědomě.** Ne všechno je `string` — čísla, booleany a pole položek mají
+   svůj typ, jinak je model posílá jako escapované řetězce ve stringu.
+2. **Validaci nepiš do `ExecuteAsync`.** Centrálně ji dělá `ChatToolExecutor.ExecuteToolAsync`
+   (povinnost, povolené hodnoty, typ) a chybu vrací modelu, který si volání opraví.
+   Do toolu patří jen pravidla, která schéma nevyjádří (např. „aspoň jeden z `id` /
+   `document_number`" v `GetReceivedInvoiceTool`).
+3. **Rozbité schéma spadne hlasitě.** Chybějící `Parameters` = chyba buildu (interface),
+   duplicitní/prázdný název parametru, chybějící popis nebo `AllowedValues` na ne-stringu
+   = `InvalidOperationException` při startu v konstruktoru `ChatToolExecutor`.
+4. **Katalog toolů nikde neduplikuj.** `BuildToolInstructions()` (textový flow),
+   `GetToolDefinitions()` (native flow) i seznam schopností v `ChatContextBuilder`
+   se generují z registrovaných `IChatTool`. Hardcoded seznam = review reject.
+5. Registrace: jeden řádek `services.AddScoped<IChatTool, MyTool>();`.
+
 #### Chat AI Tools matice
+
+Sloupec „Klíčové parametry" je jen orientační — závazné je schéma v příslušné třídě.
 
 | Tool | Třída | Entita | Operace | Klíčové parametry |
 |------|-------|--------|---------|--------------------|
@@ -1350,6 +1411,7 @@ Chyby vzniklé v Blazor WASM klientovi by jinak skončily jen v browser konzoli.
 | Nová seed migrace s hardcoded Id | §12 (non-idempotent seed) |
 | Nový code-table pattern (master / tenant / dual-context) | §11.2 |
 | Nový background lock klíč | §6.3 (tabulka klíčů) |
+| Nový chat tool nebo změna schématu parametrů (`IChatTool.Parameters`) | §4.7 (postup + matice) |
 | Změna observability stacku (App Insights → jiný) | §10 |
 | Nová list stránka s gridem / změna grid patternu | §7.10 (FakvioGrid) |
 | Nová/změněná funkce **viditelná uživateli** (stránka, akce, stav, export) | **USERGUIDE.md** |

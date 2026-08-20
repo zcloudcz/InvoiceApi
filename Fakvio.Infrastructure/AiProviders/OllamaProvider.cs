@@ -320,6 +320,12 @@ public class OllamaProvider : IAiProvider
                     propDef["enum"] = param.EnumValues;
                 }
 
+                // Array parameters must declare the schema of their elements.
+                if (param.ArrayItemType is { Length: > 0 })
+                {
+                    propDef["items"] = new Dictionary<string, object> { ["type"] = param.ArrayItemType };
+                }
+
                 properties[param.Name] = propDef;
             }
 

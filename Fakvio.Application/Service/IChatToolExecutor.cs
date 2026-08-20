@@ -26,12 +26,15 @@ public record ParsedToolCall
 /// <summary>
 /// Orchestrates chat tool detection, AI interaction, and tool execution.
 ///
-/// The two-pass flow (used by ChatService):
-/// 1. DetectToolIntent — fast regex check on user message (IČO pattern + keywords)
-/// 2. BuildToolInstructions — appended to system prompt for the first AI call
-/// 3. ParseToolCall — extracts structured JSON tool call from AI response
-/// 4. ExecuteToolAsync — runs the matching IChatTool
-/// 5. ChatService then makes a second AI call with the tool result in context
+/// Two flows exist, both ending in ExecuteToolAsync:
+/// - Native tool calling (providers with a function-calling API):
+///   GetToolDefinitions — JSON Schema handed to the provider, the model returns a structured call
+/// - Text-based tool calling (providers without one):
+///   BuildToolInstructions — appended to the system prompt, ParseToolCall — extracts the JSON call
+///
+/// ChatService then makes a second AI call with the tool result in context.
+/// Both flows and both prompt surfaces are generated from IChatTool.Parameters,
+/// so a tool is described in exactly one place.
 ///
 /// This is provider-agnostic — works with any IAiProvider (Claude, OpenAI, Gemini, Ollama)
 /// because the AI interaction uses the standard text-in/text-out interface.
@@ -42,21 +45,9 @@ public record ParsedToolCall
 public interface IChatToolExecutor
 {
     /// <summary>
-    /// Checks if the user's message likely requires a tool call.
-    /// Uses fast regex matching — no AI call, no network request.
-    /// Returns true if patterns like "IČO 12345678" or "založ klienta" are found.
-    ///
-    /// This is the performance gate: regular messages skip tool processing entirely,
-    /// so there's zero latency overhead for normal chat.
-    /// </summary>
-    /// <param name="userMessage">The user's chat message text.</param>
-    /// <returns>True if the message likely needs tool execution.</returns>
-    bool DetectToolIntent(string userMessage);
-
-    /// <summary>
     /// Builds tool instruction text to append to the system prompt.
-    /// Describes available tools and the JSON format the AI should use.
-    /// Only appended when DetectToolIntent returns true (not for every message).
+    /// Describes available tools, their typed parameter schema and the JSON format
+    /// the AI should answer with. Generated from IChatTool.Parameters.
     /// </summary>
     /// <returns>Tool instruction text to append to the system prompt.</returns>
     string BuildToolInstructions();
@@ -72,8 +63,10 @@ public interface IChatToolExecutor
     ParsedToolCall? ParseToolCall(string aiResponse);
 
     /// <summary>
-    /// Executes a parsed tool call by dispatching to the matching IChatTool.
+    /// Validates the parameters against the tool schema and, if they pass,
+    /// dispatches the call to the matching IChatTool.
     /// Returns the tool result (success with output, or failure with error message).
+    /// The failure message is fed back to the model, so it can correct the call itself.
     /// </summary>
     /// <param name="toolCall">The parsed tool call from the AI.</param>
     /// <param name="ct">Cancellation token.</param>
@@ -87,8 +80,8 @@ public interface IChatToolExecutor
 
     /// <summary>
     /// Builds native tool definitions from all registered IChatTool instances.
-    /// Used by providers that support native tool calling (e.g., Ollama).
-    /// Each IChatTool is converted to a NativeToolDefinition with JSON Schema parameters.
+    /// Used by providers that support native tool calling (e.g., Ollama, Claude).
+    /// Each IChatTool.Parameters entry becomes a JSON Schema property with its real type.
     ///
     /// Junior note: Native tool calling is more reliable than text-based instructions
     /// because the AI model was fine-tuned to produce structured tool calls,

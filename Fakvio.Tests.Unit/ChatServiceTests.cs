@@ -57,10 +57,9 @@ public class ChatServiceTests : IDisposable
             .BuildSystemPromptAsync(Arg.Any<CancellationToken>())
             .Returns("You are a test assistant.");
 
-        // Mock tool executor — by default, no tool intent is detected.
-        // This ensures all existing tests pass unchanged (regular chat flow).
+        // Mock tool executor — by default it parses no tool call,
+        // so the tests below exercise the regular chat flow.
         _toolExecutor = Substitute.For<IChatToolExecutor>();
-        _toolExecutor.DetectToolIntent(Arg.Any<string>()).Returns(false);
 
         // Mock company AI settings resolver — delegates to the global factory by default.
         _companyAiResolver = Substitute.For<ICompanyAiSettingsResolver>();
@@ -340,8 +339,7 @@ public class ChatServiceTests : IDisposable
     [Fact]
     public async Task SendMessage_FallsBackToRegularFlow_WhenToolCallNotParsed()
     {
-        // Arrange — intent detected but AI doesn't produce a tool call.
-        _toolExecutor.DetectToolIntent(Arg.Any<string>()).Returns(true);
+        // Arrange — tool instructions are sent, but the AI doesn't produce a tool call.
         _toolExecutor.BuildToolInstructions().Returns("\nTOOLS: ...");
         _toolExecutor.ParseToolCall(Arg.Any<string>()).Returns((ParsedToolCall?)null);
 
@@ -387,7 +385,6 @@ public class ChatServiceTests : IDisposable
     {
         // Arrange — tool returns a result with a UiAction (navigation).
         var navAction = Fakvio.Contracts.Dto.Chat.ChatUiAction.Navigate("/invoices/create");
-        _toolExecutor.DetectToolIntent(Arg.Any<string>()).Returns(true);
         _toolExecutor.BuildToolInstructions().Returns("\nTOOLS: ...");
         _toolExecutor.ParseToolCall(Arg.Any<string>()).Returns(
             new ParsedToolCall

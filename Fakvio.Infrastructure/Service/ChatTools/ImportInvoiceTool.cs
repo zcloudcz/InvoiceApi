@@ -76,11 +76,111 @@ public class ImportInvoiceTool : IChatTool
         "(vydaná) or received (přijatá) invoice by matching IČO against the company database. " +
         "Finds the client/supplier automatically. Preserves all dates exactly as extracted.";
 
-    public string ParameterDescription =>
-        "issuer_ico, issuer_name, recipient_ico, recipient_name, document_number, " +
-        "issue_date (YYYY-MM-DD), due_date (YYYY-MM-DD), taxable_supply_date (YYYY-MM-DD), " +
-        "variable_symbol, bank_account, iban, swift, currency, " +
-        "items (JSON array: [{\"description\":\"...\",\"quantity\":1,\"unit_price\":100,\"vat_rate\":21}]), notes";
+    /// <summary>
+    /// Parameter schema — static because it never changes per instance.
+    /// Dates are strings on purpose: JSON Schema has no date type that models honour reliably,
+    /// and the description pins the expected YYYY-MM-DD format.
+    /// </summary>
+    private static readonly ChatToolParameter[] Schema =
+    [
+        new()
+        {
+            Name = "issuer_ico",
+            Type = ChatToolParameterType.String,
+            Description = "IČO of the invoice issuer (dodavatel/vystavitel)"
+        },
+        new()
+        {
+            Name = "issuer_name",
+            Type = ChatToolParameterType.String,
+            Description = "Company name of the invoice issuer"
+        },
+        new()
+        {
+            Name = "recipient_ico",
+            Type = ChatToolParameterType.String,
+            Description = "IČO of the invoice recipient (odběratel/příjemce)"
+        },
+        new()
+        {
+            Name = "recipient_name",
+            Type = ChatToolParameterType.String,
+            Description = "Company name of the invoice recipient"
+        },
+        new()
+        {
+            Name = "document_number",
+            Type = ChatToolParameterType.String,
+            Description = "Invoice number EXACTLY as printed on the document",
+            IsRequired = true
+        },
+        new()
+        {
+            Name = "issue_date",
+            Type = ChatToolParameterType.String,
+            Description = "Date of issue in YYYY-MM-DD format, EXACTLY from the invoice"
+        },
+        new()
+        {
+            Name = "due_date",
+            Type = ChatToolParameterType.String,
+            Description = "Payment due date in YYYY-MM-DD format, EXACTLY from the invoice"
+        },
+        new()
+        {
+            Name = "taxable_supply_date",
+            Type = ChatToolParameterType.String,
+            Description = "DUZP (taxable supply date) in YYYY-MM-DD format, EXACTLY from the invoice"
+        },
+        new()
+        {
+            Name = "variable_symbol",
+            Type = ChatToolParameterType.String,
+            Description = "Variable symbol (variabilní symbol) used for payment"
+        },
+        new()
+        {
+            Name = "bank_account",
+            Type = ChatToolParameterType.String,
+            Description = "Bank account number"
+        },
+        new()
+        {
+            Name = "iban",
+            Type = ChatToolParameterType.String,
+            Description = "IBAN"
+        },
+        new()
+        {
+            Name = "swift",
+            Type = ChatToolParameterType.String,
+            Description = "SWIFT/BIC code"
+        },
+        new()
+        {
+            Name = "currency",
+            Type = ChatToolParameterType.String,
+            Description = "ISO 4217 currency code (CZK, EUR, …)"
+        },
+        new()
+        {
+            Name = "items",
+            Type = ChatToolParameterType.ObjectArray,
+            Description = "Invoice line items. Each item has \"description\" (string), " +
+                          "\"quantity\" (number), \"unit_price\" (number) and \"vat_rate\" (number, percent). " +
+                          "Example: [{\"description\": \"Consulting\", \"quantity\": 1, " +
+                          "\"unit_price\": 100, \"vat_rate\": 21}]",
+            IsRequired = true
+        },
+        new()
+        {
+            Name = "notes",
+            Type = ChatToolParameterType.String,
+            Description = "Optional notes from the invoice"
+        }
+    ];
+
+    public IReadOnlyList<ChatToolParameter> Parameters => Schema;
 
     public async Task<ChatToolResult> ExecuteAsync(
         Dictionary<string, string> parameters, CancellationToken ct = default)

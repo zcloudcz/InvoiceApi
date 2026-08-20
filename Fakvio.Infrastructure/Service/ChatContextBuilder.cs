@@ -22,11 +22,19 @@ namespace Fakvio.Infrastructure.Service;
 public class ChatContextBuilder : IChatContextBuilder
 {
     private readonly TenantDbContext _context;
+    private readonly IReadOnlyList<IChatTool> _tools;
     private readonly ILogger<ChatContextBuilder> _logger;
 
-    public ChatContextBuilder(TenantDbContext context, ILogger<ChatContextBuilder> logger)
+    public ChatContextBuilder(
+        TenantDbContext context,
+        IEnumerable<IChatTool> tools,
+        ILogger<ChatContextBuilder> logger)
     {
         _context = context;
+
+        // The capability list in the system prompt is generated from the registered tools,
+        // so it can never drift from what the assistant can actually do.
+        _tools = tools.ToList();
         _logger = logger;
     }
 
@@ -95,26 +103,10 @@ public class ChatContextBuilder : IChatContextBuilder
             sb.AppendLine("Respond in the same language the user writes in (Czech or English).");
             sb.AppendLine();
             sb.AppendLine("TOOLS (use them, don't ask unnecessary questions):");
-            sb.AppendLine("- ares_lookup: Look up Czech company by IČO");
-            sb.AppendLine("- create_client: Create client from IČO (auto-fills from ARES)");
-            sb.AppendLine("- create_invoice: Create a new issued invoice with line items");
-            sb.AppendLine("- import_invoice: Import invoice from pasted text/data — auto-detects issued vs received");
-            sb.AppendLine("  by matching IČO against the company DB, finds client automatically, preserves all dates exactly");
-            sb.AppendLine("- navigate: Navigate user to a page");
-            sb.AppendLine("- export_invoice: Export/download invoice as PDF (by document number or client name)");
-            sb.AppendLine("- get_received_invoice: Get FULL detail of a received (incoming) invoice by ID or document number.");
-            sb.AppendLine("  Returns supplier info, ALL line items with quantities/prices/VAT rates, VAT breakdown totals,");
-            sb.AppendLine("  payment info, dates, status. Use this to answer questions like");
-            sb.AppendLine("  'proč má přijatá faktura 267708922 špatnou celkovou částku?'");
-            sb.AppendLine("- list_received_invoices: List/browse received invoices with filters");
-            sb.AppendLine("  (status, supplier, date range, amount range, currency, overdue).");
-            sb.AppendLine("- search_received_invoices: Full-text search across received invoices");
-            sb.AppendLine("  (document number, supplier name, variable symbol, amount).");
-            sb.AppendLine("- attach_file: Attach a file to an entity (Invoice, ReceivedInvoice, or Client).");
-            sb.AppendLine("  Requires entity_name, record_id, file_name, and file_content_base64 (Base64-encoded bytes).");
-            sb.AppendLine("  The frontend provides file_content_base64 when the user drops a file in the chat.");
-            sb.AppendLine("- list_attachments: List all files attached to an entity record.");
-            sb.AppendLine("  Provide entity_name and record_id. Returns file name, size, upload date, and description.");
+            foreach (var tool in _tools)
+            {
+                sb.AppendLine($"- {tool.ToolName}: {tool.Description}");
+            }
             sb.AppendLine();
             sb.AppendLine("IMPORT RULES:");
             sb.AppendLine("- When user pastes invoice text, extract ALL data and call import_invoice immediately.");
@@ -140,14 +132,13 @@ public class ChatContextBuilder : IChatContextBuilder
         {
             _logger.LogWarning(ex, "Failed to build chat context from database, using default prompt");
 
-            // Fallback: return a basic prompt without business data but WITH capabilities.
+            // Fallback: basic prompt without business data, but still WITH the real capability list
+            // (generated from the registered tools — no hand-maintained copy to go stale).
             return "You are Fakvio AI Assistant — a helpful invoicing and business assistant. " +
                    "You are DIRECTLY CONNECTED to the Fakvio invoicing system and CAN perform real actions. " +
-                   "You can: look up companies by IČO (ARES), create clients, create invoices, " +
-                   "look up / list / search received (incoming) invoices by ID, document number, supplier, date, or amount, " +
-                   "attach files to entities and list existing attachments, " +
-                   "and navigate users to pages. Use your tools when the user asks for these actions. " +
-                   "Be concise and professional. " +
+                   "Use your tools when the user asks for these actions:\n" +
+                   string.Join("\n", _tools.Select(t => $"- {t.ToolName}: {t.Description}")) +
+                   "\nBe concise and professional. " +
                    "Respond in the same language the user writes in (Czech or English).";
         }
     }
