@@ -1,3 +1,5 @@
+﻿using System.Collections.Concurrent;
+using System.Reflection;
 using Fakvio.Infrastructure.Data;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -297,6 +299,95 @@ public class NpgsqlDataSourceFactoryTests
 
         Should.Throw<ObjectDisposedException>(() => withPublic.OpenConnection());
         Should.Throw<ObjectDisposedException>(() => withoutPublic.OpenConnection());
+    }
+
+    [Fact]
+    public void Evict_WhenCachedEntryIsNotYetConstructed_StillDisposesTheInstance()
+    {
+        // Guards a race that only became reachable now that a production caller exists
+        // (TenantProvisioningService evicts after DROP SCHEMA): a cache entry can already
+        // be in the dictionary while another thread is still inside the Lazy value factory.
+        // Skipping such an entry (a plain "IsValueCreated" check) would let that in-flight
+        // data source end up outside the cache, owned by nobody and never disposed — the
+        // exact leak this factory exists to fix.
+        //
+        // A real thread race is not reproducible deterministically, so the same state is
+        // created directly via the private cache field: an entry whose Lazy has not been
+        // evaluated yet. Reflection is used only to SET UP the state; the assertion is on
+        // the public behaviour of Evict.
+        using var factory = new NpgsqlDataSourceFactory(PasswordOptions());
+        NpgsqlDataSource? constructed = null;
+
+        SchemaSourceCache(factory)["tenant_inflight|True"] = new Lazy<NpgsqlDataSource>(
+            () =>
+            {
+                constructed = new NpgsqlDataSourceBuilder(PasswordConnectionString).Build();
+                return constructed;
+            },
+            LazyThreadSafetyMode.ExecutionAndPublication);
+
+        factory.Evict("tenant_inflight");
+
+        constructed.ShouldNotBeNull();
+        Should.Throw<ObjectDisposedException>(() => constructed!.OpenConnection());
+    }
+
+    [Fact]
+    public void Evict_WhenCachedConstructionFailed_DoesNotThrow()
+    {
+        // Lazy caches the exception thrown by its value factory and rethrows it on every
+        // later access. Because Evict now reads .Value (see the test above), it must
+        // swallow that rethrow: eviction is cleanup after a schema was dropped, and it
+        // must not turn a failed data source into a failed tenant deletion.
+        using var factory = new NpgsqlDataSourceFactory(PasswordOptions());
+
+        SchemaSourceCache(factory)["tenant_broken|True"] = new Lazy<NpgsqlDataSource>(
+            () => throw new InvalidOperationException("construction failed earlier"),
+            LazyThreadSafetyMode.ExecutionAndPublication);
+
+        Should.NotThrow(() => factory.Evict("tenant_broken"));
+    }
+
+    [Fact]
+    public void Evict_WhenConstructionFailedEarlier_ClearsTheCachedFailure()
+    {
+        // Sharper variant of the test above. There the Lazy had never been evaluated, so
+        // Evict hit the exception on its FIRST access; in production that state is only
+        // reachable through GetForSchema, which leaves behind a Lazy whose exception is
+        // already cached and rethrown to everyone from then on. Swallowing that rethrow is
+        // only half the contract — the poisoned entry must also be gone afterwards, so the
+        // next provisioning attempt for the same schema gets a clean build instead of
+        // inheriting a failure from a schema that has since been dropped and recreated.
+        const string brokenSchema = "tenant_broken_cached";
+        using var factory = new NpgsqlDataSourceFactory(PasswordOptions());
+        var cache = SchemaSourceCache(factory);
+
+        cache[$"{brokenSchema}|True"] = new Lazy<NpgsqlDataSource>(
+            () => throw new InvalidOperationException("construction failed earlier"),
+            LazyThreadSafetyMode.ExecutionAndPublication);
+        Should.Throw<InvalidOperationException>(() => cache[$"{brokenSchema}|True"].Value);
+
+        factory.Evict(brokenSchema);
+
+        // Asserted through the public surface: a rebuild would rethrow the cached exception
+        // if Evict had left the entry in place.
+        Should.NotThrow(() => factory.GetForSchema(brokenSchema));
+    }
+
+    /// <summary>
+    /// Reaches the factory's private per-schema cache so a test can plant an entry in a
+    /// state that cannot be produced through the public API (a Lazy that has not been
+    /// evaluated yet). Used only for arranging the two race tests above.
+    /// </summary>
+    private static ConcurrentDictionary<string, Lazy<NpgsqlDataSource>> SchemaSourceCache(
+        NpgsqlDataSourceFactory factory)
+    {
+        var field = typeof(NpgsqlDataSourceFactory)
+            .GetField("_schemaSources", BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException(
+                "NpgsqlDataSourceFactory._schemaSources not found — the cache field was renamed.");
+
+        return (ConcurrentDictionary<string, Lazy<NpgsqlDataSource>>)field.GetValue(factory)!;
     }
 
     // ---------------------------------------------------------------------

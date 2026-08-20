@@ -164,9 +164,30 @@ public sealed class NpgsqlDataSourceFactory : INpgsqlDataSourceFactory, IAsyncDi
         foreach (var includePublic in new[] { true, false })
         {
             var key = $"{safeName}|{includePublic}";
-            if (_schemaSources.TryRemove(key, out var lazy) && lazy.IsValueCreated)
+            if (!_schemaSources.TryRemove(key, out var lazy))
             {
+                continue;
+            }
+
+            try
+            {
+                // Read .Value instead of checking IsValueCreated first. Why it matters:
+                // if another thread is between GetOrAdd and the end of construction, the
+                // entry is in the dictionary but IsValueCreated is still false — skipping
+                // it would leave that thread's freshly built data source outside the cache
+                // and therefore never disposed (the very leak this factory exists to fix).
+                // ExecutionAndPublication makes this call block until that construction
+                // finishes and then hands back the SAME instance, so it gets disposed.
+                // In the ordinary, non-racing case the value is already created and this
+                // costs nothing extra: a cached entry can only exist because some earlier
+                // GetForSchema call already read .Value.
                 lazy.Value.Dispose();
+            }
+            catch (Exception)
+            {
+                // Construction of this data source failed earlier; Lazy caches the exception
+                // and rethrows it here. There is nothing to dispose in that case, and
+                // eviction (a cleanup step after DROP SCHEMA) must never throw.
             }
         }
     }
