@@ -450,6 +450,12 @@ Správa informací o vaší firmě (vydavatele faktur).
 **Cloud úložiště:**
 - Napojení cloudového úložiště pro ukládání dokumentů
 
+**Nastavení EPO (jen role Admin):**
+- Hlavičkové údaje pro elektronické podání přiznání k DPH a kontrolního hlášení — viz [§12](#12-přehled-dph--epo-export)
+- Kód finančního úřadu a kód územního pracoviště jsou povinné, bez nich EPO export nelze vygenerovat
+- Kontaktní telefon, kontaktní e-mail a jméno oprávněné osoby jsou volitelné
+- Sekce má vlastní tlačítko „Uložit" — ukládá se nezávisle na tlačítku „Upravit" nahoře
+
 ### Jak editovat
 
 1. Klikněte „Upravit" (tužka) v pravém horním rohu
@@ -529,6 +535,16 @@ Sekce „EPO Export" umožňuje stáhnout dva soubory pro portál EPO MFČR:
 2. Vyberte konkrétní měsíc nebo čtvrtletí
 3. Klikněte „Stáhnout DPHDP3" nebo „Stáhnout DPHKH1"
 4. Vygenerovaný XML soubor nahrajte na portál EPO (https://adisepo.mfcr.cz)
+
+### Chybějící nastavení EPO
+
+Export vyžaduje vyplněný kód finančního úřadu a kód územního pracoviště. Pokud chybí,
+místo staženého souboru se zobrazí upozornění se seznamem chybějících polí:
+
+- **Máte roli Admin** — upozornění nabídne tlačítko „Přejít do nastavení firmy", které vás
+  přenese na `/my-company` do sekce „Nastavení EPO" (viz [§10](#10-nastavení-firmy)).
+- **Nemáte roli Admin** — sekce nastavení je pro vás skrytá, takže upozornění místo odkazu
+  napíše, že pole musí doplnit administrátor firmy.
 
 ---
 

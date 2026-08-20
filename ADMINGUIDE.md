@@ -167,6 +167,17 @@ V detailu firmy sekce „Email Settings" — umožňuje nastavit firemní SMTP o
 
 V detailu firmy sekce „AI Settings" — umožňuje nakonfigurovat AI poskytovatele specifické pro tuto firmu (přepíše systémové nastavení pro tuto firmu).
 
+### EPO nastavení firmy (per-company)
+
+Sekce „Nastavení EPO" na `/my-company` (viditelná pro role Admin a SysAdmin) — hlavičkové údaje
+pro elektronické podání přiznání k DPH a kontrolního hlášení:
+- Kód finančního úřadu (c_ufo) a kód územního pracoviště (c_pracufo) — **povinné**, bez nich
+  API odmítne EPO export chybou `EPO_HEADER_INCOMPLETE`
+- Kontaktní telefon, kontaktní e-mail, jméno oprávněné osoby — volitelné
+
+Data leží na `CompanySystemSettings` v master DB, stejně jako SMTP a AI nastavení. SysAdmin
+se k sekci dostane po zvolení firmy v přepínači impersonace.
+
 ---
 
 ## 4. Systémové nastavení

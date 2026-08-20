@@ -737,6 +737,13 @@ Pisemnost
 Načítány z `CompanySystemSettings` (master DB): `EpoTaxOfficeCode` (c_ufo), `EpoTaxOfficeBranchCode` (c_pracufo), `EpoContactPhone`, `EpoContactEmail`, `EpoAuthorizedPersonName`.
 Chybí-li c_ufo nebo c_pracufo → `EpoHeaderIncompleteException` → HTTP 400 `EPO_HEADER_INCOMPLETE`.
 
+Editace v UI: `EpoSettingsSection.razor` (Components/Shared) hostovaná v `MyCompany.razor`
+uvnitř `AuthorizeView Roles="Admin,SysAdmin"`, ukládá se přes `PUT /api/company/{id}/settings`
+(partial update — DTO nese jen `Epo*` pole, SMTP/AI na stejném záznamu zůstanou beze změny).
+Odkaz „Přejít do nastavení firmy" v `VatReport.razor` je vidět jen pro tytéž role; ostatní
+dostanou hlášku, že pole musí doplnit administrátor. **Role list na obou místech musí sedět** —
+jinak buď posíláme uživatele na stránku, kde sekci neuvidí, nebo mu odkaz zbytečně skryjeme.
+
 **Roční update XSD:**
 Viz `Fakvio.Infrastructure/Resources/Epo/EPO-README.md` — stažení z `adisspr.mfcr.cz`, pojmenování, verifikace.
 

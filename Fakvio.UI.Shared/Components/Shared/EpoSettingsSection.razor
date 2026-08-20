@@ -1,0 +1,134 @@
+@*
+    EpoSettingsSection.razor — editor for the EPO (electronic tax filing) header
+    fields stored on CompanySystemSettings.
+
+    These values end up in the DPHDP3 / DPHKH1 XML header that the user uploads to
+    the Czech tax portal (adisepo.mfcr.cz). Without TaxOfficeCode (c_ufo) and
+    TaxOfficeBranchCode (c_pracufo) the API refuses to generate the export and
+    /vat-report shows the EPO_HEADER_INCOMPLETE warning.
+
+    The component is deliberately service-free: it only renders inputs and hands the
+    finished update DTO back to its host page through OnSave. Persistence (which API
+    to call, which company id to use) is the host page's concern — see MyCompany.razor.
+    That split keeps this section unit-testable without any HTTP plumbing.
+*@
+@using Fakvio.Contracts.Dto.CompanySettings
+@inject IStringLocalizer<SharedResource> L
+
+<MudText Typo="Typo.h6" Class="mb-2">@L["Epo_SettingsTitle"]</MudText>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">@L["Epo_SettingsInfoText"]</MudText>
+
+@if (Loading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-2" />
+}
+else
+{
+    <MudGrid>
+        <MudItem xs="12" md="6">
+            <MudNumericField T="int?" @bind-Value="_taxOfficeCode"
+                             Label="@L["Epo_TaxOfficeCode"].Value"
+                             HelperText="@L["Epo_TaxOfficeCodeHelper"].Value"
+                             Required="true" Min="1" Class="mb-3" />
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudNumericField T="int?" @bind-Value="_taxOfficeBranchCode"
+                             Label="@L["Epo_TaxOfficeBranchCode"].Value"
+                             HelperText="@L["Epo_TaxOfficeBranchCodeHelper"].Value"
+                             Required="true" Min="1" Class="mb-3" />
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudTextField @bind-Value="_contactPhone" Label="@L["Epo_ContactPhone"].Value" Class="mb-3" />
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudTextField @bind-Value="_contactEmail" Label="@L["Epo_ContactEmail"].Value"
+                          InputType="InputType.Email" Class="mb-3" />
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudTextField @bind-Value="_authorizedPersonName"
+                          Label="@L["Epo_AuthorizedPersonName"].Value" Class="mb-3" />
+        </MudItem>
+    </MudGrid>
+
+    <div class="d-flex gap-2 mt-3">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.Save"
+                   OnClick="SaveAsync" Disabled="Saving">
+            @if (Saving)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            @L["Btn_Save"]
+        </MudButton>
+    </div>
+}
+
+@code {
+    /// <summary>
+    /// Currently persisted settings. May be null when the company has no
+    /// CompanySystemSettings record yet — the form then starts empty.
+    /// </summary>
+    [Parameter]
+    public CompanySystemSettingsDto? Settings { get; set; }
+
+    /// <summary>True while the host page is loading the settings.</summary>
+    [Parameter]
+    public bool Loading { get; set; }
+
+    /// <summary>True while the host page is persisting the values (disables the button).</summary>
+    [Parameter]
+    public bool Saving { get; set; }
+
+    /// <summary>
+    /// Raised when the user clicks Save. Carries an update DTO that contains only the
+    /// EPO fields — the API applies partial updates, so SMTP / AI settings are untouched.
+    /// </summary>
+    [Parameter]
+    public EventCallback<UpdateCompanySystemSettingsDto> OnSave { get; set; }
+
+    // Local edit state — copied from Settings, never written back to the parameter.
+    private int? _taxOfficeCode;
+    private int? _taxOfficeBranchCode;
+    private string? _contactPhone;
+    private string? _contactEmail;
+    private string? _authorizedPersonName;
+
+    // Identity of the Settings instance the form was last filled from. Blazor re-renders
+    // the component for many unrelated reasons; without this guard every re-render would
+    // overwrite what the user is currently typing.
+    private CompanySystemSettingsDto? _loadedFrom;
+
+    protected override void OnParametersSet()
+    {
+        if (ReferenceEquals(_loadedFrom, Settings)) return;
+
+        _loadedFrom = Settings;
+        _taxOfficeCode = Settings?.EpoTaxOfficeCode;
+        _taxOfficeBranchCode = Settings?.EpoTaxOfficeBranchCode;
+        _contactPhone = Settings?.EpoContactPhone;
+        _contactEmail = Settings?.EpoContactEmail;
+        _authorizedPersonName = Settings?.EpoAuthorizedPersonName;
+    }
+
+    /// <summary>
+    /// Builds the partial update DTO and hands it to the host page.
+    ///
+    /// Text fields are sent as empty strings rather than null when the user cleared them:
+    /// the API treats null as "keep the current value", so null would make clearing a
+    /// field impossible. Numeric fields have no such escape hatch, but both are required
+    /// for the export anyway, so "clear the tax office code" is not a real scenario.
+    /// </summary>
+    private async Task SaveAsync()
+    {
+        var dto = new UpdateCompanySystemSettingsDto
+        {
+            EpoTaxOfficeCode = _taxOfficeCode,
+            EpoTaxOfficeBranchCode = _taxOfficeBranchCode,
+            EpoContactPhone = _contactPhone ?? string.Empty,
+            EpoContactEmail = _contactEmail ?? string.Empty,
+            EpoAuthorizedPersonName = _authorizedPersonName ?? string.Empty
+        };
+
+        await OnSave.InvokeAsync(dto);
+    }
+}
