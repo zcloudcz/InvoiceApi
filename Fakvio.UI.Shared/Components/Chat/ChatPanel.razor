@@ -5,6 +5,7 @@
 @inject IJSRuntime JS
 @inject IStringLocalizer<SharedResource> L
 @inject ILogger<ChatPanel> Logger
+@inject IUiErrorHandler ErrorHandler
 
 @*
     Main chat panel component — displayed inside the right MudDrawer in MainLayout.
@@ -319,16 +320,22 @@
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Error streaming chat message");
+            // Never render ex.ToString() here — it would print the whole .NET stack trace
+            // into the chat bubble (issue #156). An ApiException already carries the text the
+            // API decided is safe to show (it includes the reference ID for the server log);
+            // anything else is a local failure the user can only react to by retrying.
+            var errorText = ex is ApiException apiEx
+                ? apiEx.Message
+                : L["Chat_Error_Unexpected"].Value;
 
-            // Show the full error so the user sees what's going on.
-            // Include inner exceptions — the real cause is often wrapped.
-            var errorText = ex.ToString();
+            // Central handler: mirrors the error to the console, forwards non-ApiException
+            // errors to AppLog and shows the snackbar. See DEVGUIDE §10.4.
+            ErrorHandler.Handle(ex, "ChatPanel.HandleSendMessage", errorText);
 
             _messages.Add(new ChatMessageDto
             {
                 Role = "Assistant",
-                Content = $"**Error:** {errorText}",
+                Content = $"**{L["Msg_Error"]}:** {errorText}",
                 CreatedAt = DateTime.UtcNow
             });
         }

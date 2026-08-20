@@ -1,0 +1,297 @@
+// ============================================================================
+// ChatControllerErrorHandlingTests — coverage for issue #156.
+//
+// ChatController used to send ex.ToString() — the FULL .NET stack trace — to
+// the browser, both on the non-streaming endpoint (HTTP 500 body) and on the
+// SSE stream ({"error": "..."} payload). The Blazor chat panel rendered it
+// verbatim as an assistant message, so internal type names, file paths and
+// configuration details ended up on the user's screen.
+//
+// Expected behaviour after the fix (issue #156):
+//   - the full exception goes to ILogger → DatabaseLogger → AppLog (server side),
+//   - the client only receives a short, safe message carrying the CorrelationId
+//     so the user can quote it when reporting the problem.
+// ============================================================================
+
+using System.Security.Claims;
+using System.Text.Json;
+using Fakvio.API.Controller;
+using Fakvio.Application.Service;
+using Fakvio.Contracts.Dto.Chat;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
+using NSubstitute;
+using NSubstitute.ExceptionExtensions;
+using Shouldly;
+
+namespace Fakvio.Tests.Unit;
+
+/// <summary>
+/// Verifies that both chat error paths (non-streaming HTTP 500 and SSE error event)
+/// return a sanitized message with a CorrelationId instead of a raw stack trace.
+///
+/// Junior note: <c>ex.ToString()</c> renders the exception type, its message, all
+/// inner exceptions AND the stack trace (namespaces, method names, source file paths).
+/// Sending that to a browser is an information-disclosure bug — the tests below assert
+/// that none of those fragments appear in what the client receives.
+/// </summary>
+public class ChatControllerErrorHandlingTests
+{
+    private const string TestCorrelationId = "11111111-2222-3333-4444-555555555555";
+
+    private readonly IChatService _chatService = Substitute.For<IChatService>();
+    private readonly IPdfTextExtractorService _pdfTextExtractor = Substitute.For<IPdfTextExtractorService>();
+    private readonly ILogger<ChatController> _logger = Substitute.For<ILogger<ChatController>>();
+
+    // ─── Helpers ──────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Builds the controller with an authenticated user and a CorrelationId already
+    /// present in HttpContext.Items — exactly what CorrelationIdMiddleware does for
+    /// every real request before the controller runs.
+    /// </summary>
+    private ChatController BuildController()
+    {
+        var controller = new ChatController(_chatService, _pdfTextExtractor, _logger);
+
+        // ChatController.GetCurrentUserId() parses the NameIdentifier claim as long.
+        var identity = new ClaimsIdentity(
+            new[] { new Claim(ClaimTypes.NameIdentifier, "42") }, "TestAuth");
+
+        var httpContext = new DefaultHttpContext
+        {
+            User = new ClaimsPrincipal(identity)
+        };
+        httpContext.Items["CorrelationId"] = TestCorrelationId;
+
+        // A writable body is required so the SSE endpoint can call Response.WriteAsync.
+        httpContext.Response.Body = new MemoryStream();
+
+        controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
+        return controller;
+    }
+
+    /// <summary>
+    /// Creates an exception that already carries a stack trace (throwing and catching it
+    /// is the only way to populate <see cref="Exception.StackTrace"/>), wrapped in an
+    /// outer exception — the shape the chat pipeline produces in production.
+    /// </summary>
+    private static Exception CreateRealisticException(string innerMessage)
+    {
+        try
+        {
+            try
+            {
+                throw new InvalidOperationException(innerMessage);
+            }
+            catch (InvalidOperationException inner)
+            {
+                throw new HttpRequestException("AI provider call failed.", inner);
+            }
+        }
+        catch (HttpRequestException ex)
+        {
+            return ex;
+        }
+    }
+
+    /// <summary>
+    /// An async stream that optionally emits one chunk and then fails — the two shapes of
+    /// SSE failure: before anything was written, and in the middle of an answer.
+    /// </summary>
+    private static async IAsyncEnumerable<string> FailingStream(Exception ex, bool emitChunkFirst)
+    {
+        if (emitChunkFirst)
+        {
+            yield return "Partial answer";
+        }
+
+        await Task.CompletedTask;
+        throw ex;
+    }
+
+    /// <summary>
+    /// Reads back everything the controller wrote into the response body.
+    /// </summary>
+    private static async Task<string> ReadBodyAsync(HttpContext context)
+    {
+        context.Response.Body.Seek(0, SeekOrigin.Begin);
+        return await new StreamReader(context.Response.Body).ReadToEndAsync();
+    }
+
+    /// <summary>
+    /// Asserts that a client-visible text contains none of the internal details that
+    /// <c>ex.ToString()</c> would have leaked.
+    /// </summary>
+    private static void ShouldNotLeakExceptionDetails(string clientText, Exception ex)
+    {
+        clientText.ShouldNotContain(ex.GetType().FullName!);
+        clientText.ShouldNotContain(ex.Message);
+        clientText.ShouldNotContain(ex.InnerException!.Message);
+        clientText.ShouldNotContain("   at ");
+        clientText.ShouldNotContain(nameof(ChatControllerErrorHandlingTests));
+    }
+
+    // ─── Non-streaming endpoint (POST /api/chat/send) ─────────────────────────
+
+    /// <summary>
+    /// Regression test for issue #156: an unexpected failure must produce HTTP 500 with a
+    /// short message that quotes the CorrelationId — never the exception or its stack trace.
+    /// </summary>
+    [Fact]
+    public async Task SendMessage_WhenServiceThrows_ReturnsSafeMessageWithCorrelationId()
+    {
+        // Arrange — the AI provider blows up with a detail-rich exception.
+        var thrown = CreateRealisticException("Company 7 has no API key for provider 'Claude'.");
+        _chatService
+            .SendMessageAsync(Arg.Any<long>(), Arg.Any<SendMessageRequest>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(thrown);
+
+        var controller = BuildController();
+
+        // Act
+        var result = await controller.SendMessage(new SendMessageRequest { Message = "Hi" });
+
+        // Assert — HTTP 500 with a sanitized, correlatable message.
+        var objectResult = result.Result.ShouldBeOfType<ObjectResult>();
+        objectResult.StatusCode.ShouldBe(StatusCodes.Status500InternalServerError);
+
+        var body = JsonSerializer.Serialize(objectResult.Value);
+        ShouldNotLeakExceptionDetails(body, thrown);
+        body.ShouldContain(TestCorrelationId);
+    }
+
+    /// <summary>
+    /// The sanitized response must not silently swallow the failure — the full exception
+    /// (stack trace included) has to reach ILogger, which DatabaseLogger persists into AppLog.
+    /// </summary>
+    [Fact]
+    public async Task SendMessage_WhenServiceThrows_LogsFullExceptionServerSide()
+    {
+        // Arrange
+        var thrown = CreateRealisticException("Company 7 has no API key for provider 'Claude'.");
+        _chatService
+            .SendMessageAsync(Arg.Any<long>(), Arg.Any<SendMessageRequest>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(thrown);
+
+        var controller = BuildController();
+
+        // Act
+        await controller.SendMessage(new SendMessageRequest { Message = "Hi" });
+
+        // Assert — ILogger.Log received the exception object itself (not just its message).
+        _logger.Received(1).Log(
+            LogLevel.Error,
+            Arg.Any<EventId>(),
+            Arg.Any<object>(),
+            thrown,
+            Arg.Any<Func<object, Exception?, string>>());
+    }
+
+    // ─── SSE endpoint (POST /api/chat/stream) ─────────────────────────────────
+
+    /// <summary>
+    /// Regression test for issue #156: when the stream fails after some text was already
+    /// sent, the SSE error event must carry the safe message, not the stack trace.
+    /// </summary>
+    [Fact]
+    public async Task StreamMessage_WhenStreamFailsMidResponse_SendsSafeErrorEvent()
+    {
+        // Arrange
+        var thrown = CreateRealisticException("Company 7 has no API key for provider 'Claude'.");
+        _chatService
+            .StreamMessageAsync(Arg.Any<long>(), Arg.Any<SendMessageRequest>(), Arg.Any<CancellationToken>())
+            .Returns(FailingStream(thrown, emitChunkFirst: true));
+
+        var controller = BuildController();
+
+        // Act
+        await controller.StreamMessage(new SendMessageRequest { Message = "Hi" });
+
+        // Assert — the error payload is sanitized and correlatable.
+        var body = await ReadBodyAsync(controller.HttpContext);
+        var error = ExtractSseError(body);
+
+        error.ShouldNotBeNull();
+        ShouldNotLeakExceptionDetails(error!, thrown);
+        error!.ShouldContain(TestCorrelationId);
+    }
+
+    /// <summary>
+    /// The concrete scenario named in issue #156: CompanyAiSettingsResolver throws an
+    /// InvalidOperationException whose message spells out the CompanyId, the requested
+    /// provider and the whole configuration fallback chain. None of it may reach the client.
+    /// </summary>
+    [Fact]
+    public async Task StreamMessage_WhenConfigurationResolverThrows_DoesNotLeakConfigurationDetails()
+    {
+        // Arrange — the message shape thrown by CompanyAiSettingsResolver.
+        var thrown = new InvalidOperationException(
+            "No AI provider configured for CompanyId 7. Requested provider 'Claude'. " +
+            "Tier 1 (company settings) empty, tier 2 (system settings) empty, tier 3 (appsettings) empty.");
+
+        _chatService
+            .StreamMessageAsync(Arg.Any<long>(), Arg.Any<SendMessageRequest>(), Arg.Any<CancellationToken>())
+            .Returns(FailingStream(thrown, emitChunkFirst: false));
+
+        var controller = BuildController();
+
+        // Act
+        await controller.StreamMessage(new SendMessageRequest { Message = "Hi" });
+
+        // Assert — no configuration internals, but a usable reference for the user.
+        var error = ExtractSseError(await ReadBodyAsync(controller.HttpContext));
+
+        error.ShouldNotBeNull();
+        error!.ShouldNotContain("CompanyId");
+        error.ShouldNotContain("appsettings");
+        error.ShouldNotContain(thrown.Message);
+        error.ShouldContain(TestCorrelationId);
+    }
+
+    /// <summary>
+    /// Same server-side logging guarantee as for the non-streaming path.
+    /// </summary>
+    [Fact]
+    public async Task StreamMessage_WhenStreamFails_LogsFullExceptionServerSide()
+    {
+        // Arrange
+        var thrown = CreateRealisticException("Company 7 has no API key for provider 'Claude'.");
+        _chatService
+            .StreamMessageAsync(Arg.Any<long>(), Arg.Any<SendMessageRequest>(), Arg.Any<CancellationToken>())
+            .Returns(FailingStream(thrown, emitChunkFirst: false));
+
+        var controller = BuildController();
+
+        // Act
+        await controller.StreamMessage(new SendMessageRequest { Message = "Hi" });
+
+        // Assert
+        _logger.Received(1).Log(
+            LogLevel.Error,
+            Arg.Any<EventId>(),
+            Arg.Any<object>(),
+            thrown,
+            Arg.Any<Func<object, Exception?, string>>());
+    }
+
+    /// <summary>
+    /// Pulls the "error" property out of the first SSE event that carries one.
+    /// SSE frames look like: <c>data: {"error":"...","correlationId":"..."}\n\n</c>
+    /// </summary>
+    private static string? ExtractSseError(string body)
+    {
+        foreach (var line in body.Split('\n'))
+        {
+            if (!line.StartsWith("data: {"))
+                continue;
+
+            using var doc = JsonDocument.Parse(line["data: ".Length..]);
+            if (doc.RootElement.TryGetProperty("error", out var errorProp))
+                return errorProp.GetString();
+        }
+
+        return null;
+    }
+}

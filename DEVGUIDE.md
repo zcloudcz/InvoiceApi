@@ -1218,6 +1218,22 @@ Chyby vzniklé v Blazor WASM klientovi by jinak skončily jen v browser konzoli.
   `ApiClientBase` — nedupluj). **Nové catch bloky v UI piš přes `IUiErrorHandler`**,
   existující `Snackbar.Add` catch bloky konvertuj průběžně při úpravách dané stránky.
 
+### 10.5 Co smí ven ke klientovi
+
+Detail výjimky (typ, zpráva, stack trace, inner exceptions) **nikdy nejde do odpovědi
+pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. Pravidlo:
+
+- Plná výjimka → `_logger.LogError(ex, …)` → `DatabaseLogger` → `AppLog`
+  (CorrelationId se doplní sám z `AsyncLocal`).
+- Klient dostane krátkou hlášku **s CorrelationId**, aby ho uživatel mohl nahlásit
+  a support podle něj našel záznam v AppLog (`/logs`).
+- Nezachycené výjimky řeší `GlobalExceptionMiddleware` — v Development přidá detail,
+  v Production jen `message` + `correlationId`. Vlastní `catch` v controlleru piš
+  ve stejném tvaru; `ex.ToString()` v odpovědi je bezpečnostní vada, ne debug pomůcka.
+- SSE endpointy se na middleware spolehnout nemůžou (hlavičky už odešly) — chybu
+  pošlou jako SSE událost `data: {"error": …, "correlationId": …}`
+  (vzor: `ChatController.StreamMessage`).
+
 ---
 
 ## 11. Decision trees (rozhodovací stromy)

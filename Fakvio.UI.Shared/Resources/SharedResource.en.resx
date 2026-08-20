@@ -1044,6 +1044,7 @@
   <data name="Chat_PdfOnly" xml:space="preserve"><value>Only PDF files are supported.</value></data>
   <data name="Chat_UnsupportedFileType" xml:space="preserve"><value>Unsupported file type.</value></data>
   <data name="Chat_FileTooLarge" xml:space="preserve"><value>File exceeds the maximum allowed size of 10 MB.</value></data>
+  <data name="Chat_Error_Unexpected" xml:space="preserve"><value>The message could not be processed. Please try again.</value></data>
   <data name="EChatRole_User" xml:space="preserve"><value>You</value></data>
   <data name="EChatRole_Assistant" xml:space="preserve"><value>Assistant</value></data>
   <!-- Received Invoices (Expenses) -->

@@ -105,10 +105,13 @@ public class ChatController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error sending chat message");
-            // TODO: In production, consider replacing ex.ToString() with a safe message.
+            // The full exception (stack trace included) goes to the server log only —
+            // DatabaseLogger picks up the CorrelationId automatically and writes it to AppLog.
+            var correlationId = GetCorrelationId();
+            _logger.LogError(ex, "Error sending chat message [{CorrelationId}]", correlationId);
+
             return StatusCode(StatusCodes.Status500InternalServerError,
-                new { message = ex.ToString() });
+                new { message = BuildSafeErrorMessage(correlationId), correlationId });
         }
     }
 
@@ -183,13 +186,16 @@ public class ChatController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during SSE streaming");
+            // Same contract as the non-streaming path: details to AppLog, reference ID to the user.
+            // The SSE stream cannot fall back to GlobalExceptionMiddleware — the response headers
+            // are already sent, so the error has to travel as a regular SSE event.
+            var correlationId = GetCorrelationId();
+            _logger.LogError(ex, "Error during SSE streaming [{CorrelationId}]", correlationId);
 
-            // Send the full exception to the client so we can see what's going on.
-            // TODO: In production, consider replacing ex.ToString() with a safe message.
             try
             {
-                var errorPayload = JsonSerializer.Serialize(new { error = ex.ToString() });
+                var errorPayload = JsonSerializer.Serialize(
+                    new { error = BuildSafeErrorMessage(correlationId), correlationId });
                 await Response.WriteAsync($"data: {errorPayload}\n\n", HttpContext.RequestAborted);
                 await Response.Body.FlushAsync(HttpContext.RequestAborted);
             }
@@ -300,6 +306,26 @@ public class ChatController : ControllerBase
     }
 
     // ─── Private helpers ────────────────────────────────────────────────
+
+    /// <summary>
+    /// Reads the CorrelationId that CorrelationIdMiddleware stored in HttpContext.Items.
+    /// The middleware runs first for every request, so the value is normally always present;
+    /// "unknown" is only a defensive fallback (e.g., the endpoint called from a unit test).
+    /// </summary>
+    private string GetCorrelationId()
+        => HttpContext.Items["CorrelationId"] as string ?? "unknown";
+
+    /// <summary>
+    /// Builds the only error text the chat client is ever allowed to see.
+    ///
+    /// Why: the exception itself (type, message, stack trace, inner exceptions) can expose
+    /// internal class names, file paths and configuration details, and the chat UI renders
+    /// whatever it receives as an assistant message. The user gets the CorrelationId instead —
+    /// with it, support can find the full exception in AppLog.
+    /// </summary>
+    private static string BuildSafeErrorMessage(string correlationId)
+        => "An unexpected error occurred while processing your message. " +
+           $"Please report this reference ID: {correlationId}";
 
     /// <summary>
     /// Extracts the current user's ID from JWT claims.

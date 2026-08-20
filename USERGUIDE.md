@@ -566,6 +566,13 @@ Pokud je nakonfigurováno více AI poskytovatelů, zobrazí se rozbalovací sezn
 - „Najdi fakturu číslo FAK-2026-001"
 - „Kolik mám nesplacených faktur?"
 
+### Když se odpověď nepodaří vygenerovat
+
+Místo odpovědi se v panelu objeví krátká hláška s **referenčním ID** (dlouhé číslo
+ve tvaru `11111111-2222-…`). Technický detail chyby se neposílá do prohlížeče —
+zapisuje se do serverového logu. Při hlášení problému administrátorovi vždy uveďte
+toto referenční ID, podle něj chybu v logu dohledá.
+
 ---
 
 ## 14. Upomínky (Dunning)
