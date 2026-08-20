@@ -420,6 +420,16 @@ Lze přiřadit:
 - Výchozí systémový formát
 - Vlastní formát (kliknutím na řádek → dialog editace)
 
+### Když číselná řada chybí nebo je vypnutá
+
+Číslo dokladu se generuje **výhradně** z přiřazené číselné řady. Pokud pro daný typ
+dokladu žádná aktivní výchozí řada neexistuje, je přiřazená řada deaktivovaná, nebo se
+číslo z jiného důvodu nepodaří vygenerovat, vytvoření dokladu **skončí chybou**.
+
+Aplikace v takovém případě nikdy nepřidělí náhradní číslo mimo vaši řadu — číslování
+dokladů musí zůstat souvislé a předvídatelné. Chybová hláška uvádí typ dokladu i stránku
+`/number-sequences`, kde řadu nastavíte; po nastavení aktivní výchozí řady akci zopakujte.
+
 ---
 
 ## 10. Nastavení firmy

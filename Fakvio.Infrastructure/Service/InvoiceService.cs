@@ -1842,23 +1842,32 @@ public class InvoiceService : IInvoiceService
         }
         catch (InvalidOperationException ex)
         {
-            // Fallback to simple generation if no sequence is configured
-            _logger.LogWarning("Number sequence generation failed, using fallback: {Message}", ex.Message);
+            // Issue #155: a failed number generation is an ERROR, never a silent fallback.
+            //
+            // The previous implementation caught this exception and returned a hardcoded
+            // "INV{year}{counter}" number. That number ignored the configured series, its
+            // prefix and its format, and the user was never told — only a warning was logged.
+            // For accounting documents that is unacceptable: the series must stay continuous
+            // and predictable, because that is what the accountant reconciles against.
+            //
+            // INumberSequenceService throws InvalidOperationException when the series is
+            // missing, inactive, or when concurrent requests exhausted its retry budget.
+            // We rethrow with a message that tells the user WHAT is wrong and WHERE to fix it,
+            // keeping the original error as InnerException for diagnostics.
+            //
+            // The exception type stays InvalidOperationException on purpose: the API
+            // controllers already translate it into HTTP 400 with the message passed through
+            // to the UI, so the user sees the actionable text instead of a generic 500.
+            _logger.LogError(ex,
+                "Document number generation failed for {DocumentType} {Id}: {Message}",
+                invoice.DocumentType, invoice.Id, ex.Message);
 
-            var issueDate = invoice.IssueDate ?? DateTime.UtcNow;
-            var year = issueDate.Year;
-            var prefix = invoice.DocumentType == EDocumentType.Invoice ? "INV" : "CN";
-
-            // Count existing documents of same type in same year
-            var count = await _context.Invoice
-                .Where(i => i.DocumentType == invoice.DocumentType &&
-                           i.IssueDate.HasValue &&
-                           i.IssueDate.Value.Year == year &&
-                           i.Status != EInvoiceStatus.Deleted &&
-                           i.Id != invoice.Id)
-                .CountAsync(cancellationToken);
-
-            return $"{prefix}{year:0000}{(count + 1):000}";
+            throw new InvalidOperationException(
+                $"Cannot generate a document number for {invoice.DocumentType} — the number sequence " +
+                $"is missing, inactive or unusable ({ex.Message}). " +
+                "Set up an active default number sequence for this document type on the " +
+                "/number-sequences page and try again.",
+                ex);
         }
     }
 

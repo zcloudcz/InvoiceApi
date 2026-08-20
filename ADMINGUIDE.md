@@ -146,6 +146,13 @@ Provisioning provede:
 
 **Idempotentní** — bezpečné spustit opakovaně při chybě.
 
+**Krok 5 je povinný.** Pokud v tenant schématu není žádný aktivní formát číselné řady
+(`NumberSequenceFormat`), provisioning v kroku 5 selže s chybou a firma zůstane
+`IsProvisioned=false`. Dřív se krok tiše přeskočil a tenant vznikl úplně bez číselných
+řad — jeho faktury pak nešlo očíslovat. Náprava: zkontrolovat master číselník
+„Formáty číselných řad" (musí mít alespoň jeden aktivní záznam), pak provisioning
+spustit znovu.
+
 ### Aktivace / Deaktivace firmy
 
 V detailu firmy: chip stavu (Aktivní/Neaktivní) + možnost editovat příznaky IsActive přímo.

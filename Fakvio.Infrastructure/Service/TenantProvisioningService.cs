@@ -887,6 +887,11 @@ public class TenantProvisioningService : ITenantProvisioningService
     /// If CopyCodeTablesAsync already cleared and re-seeded NumberSequence,
     /// this method safely adds only missing defaults.
     /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when the tenant schema contains no active NumberSequenceFormat. Without a format
+    /// the tenant would get zero number sequences and every document number would be wrong, so
+    /// provisioning must fail here instead of reporting success (issue #155).
+    /// </exception>
     private static async Task CreateDefaultNumberSequencesAsync(
         TenantDbContext tenantContext, CancellationToken cancellationToken)
     {
@@ -897,8 +902,15 @@ public class TenantProvisioningService : ITenantProvisioningService
 
         if (defaultFormat == null)
         {
-            // No formats available — skip sequence creation (admin can add later)
-            return;
+            // Issue #155: do NOT skip silently. A tenant without number sequences cannot
+            // issue a single document with a correct number, yet the old code returned here
+            // and let provisioning report success. Failing the step keeps IsProvisioned=false
+            // (Step 8 never runs), so the SysAdmin sees the real problem — the code tables
+            // were not copied — and can re-run provisioning after fixing the master data.
+            throw new InvalidOperationException(
+                "No active NumberSequenceFormat exists in the tenant schema, so no default " +
+                "number sequences can be created. Copy the code tables from the master schema " +
+                "(or activate a format there) and re-run provisioning.");
         }
 
         // Only create default Invoice sequence if one doesn't already exist
