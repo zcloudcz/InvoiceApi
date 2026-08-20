@@ -1,3 +1,4 @@
+using Fakvio.Application.Service;
 using Fakvio.Domain.Entities;
 using Fakvio.Domain.Enums;
 using Fakvio.Infrastructure.Data;
@@ -11,11 +12,13 @@ namespace Fakvio.Tests.Unit;
 
 /// <summary>
 /// Unit tests for ChatContextBuilder.
-/// Tests that the system prompt is built correctly with business data from the tenant database.
+/// Tests that the system prompt is built correctly with business data from the tenant
+/// database, and that the SysAdmin-editable instructions are placed correctly.
 /// </summary>
 public class ChatContextBuilderTests : IDisposable
 {
     private readonly TenantDbContext _context;
+    private readonly IAiInstructionsService _aiInstructions;
     private readonly ChatContextBuilder _builder;
     private readonly ILogger<ChatContextBuilder> _logger;
 
@@ -27,8 +30,19 @@ public class ChatContextBuilderTests : IDisposable
 
         _context = new TenantDbContext(options);
         _logger = Substitute.For<ILogger<ChatContextBuilder>>();
-        _builder = new ChatContextBuilder(_context, _logger);
+
+        // Default for every test: nothing stored, so the built-in block applies.
+        _aiInstructions = Substitute.For<IAiInstructionsService>();
+        StoredInstructions(null, null);
+
+        _builder = new ChatContextBuilder(_context, _aiInstructions, _logger);
     }
+
+    /// <summary>Sets what the (faked) instructions service returns to the builder.</summary>
+    private void StoredInstructions(string? customPrompt, string? appendix)
+        => _aiInstructions
+            .GetCachedInstructionsAsync(Arg.Any<CancellationToken>())
+            .Returns((customPrompt, appendix));
 
     public void Dispose()
     {
@@ -119,5 +133,98 @@ public class ChatContextBuilderTests : IDisposable
         prompt.ShouldContain("Total active clients: 0");
         prompt.ShouldContain("Open (unpaid) invoices: 0");
         prompt.ShouldContain("Overdue invoices: 0");
+    }
+
+    // ── SysAdmin-editable instructions ────────────────────────────────────
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    public async Task BuildSystemPrompt_WithoutCustomPrompt_UsesTheBuiltInBlock(string? customPrompt)
+    {
+        // Both "never set" (null) and "cleared by the user" (empty) fall back to the default.
+        StoredInstructions(customPrompt, null);
+
+        var prompt = await _builder.BuildSystemPromptAsync();
+
+        prompt.ShouldContain(AiSystemPrompt.DefaultMainBlock);
+    }
+
+    [Fact]
+    public async Task BuildSystemPrompt_WithCustomPrompt_ReplacesTheBuiltInBlock()
+    {
+        const string customPrompt = "CUSTOM RULES: Be very concise. Only respond in English.";
+        StoredInstructions(customPrompt, null);
+
+        var prompt = await _builder.BuildSystemPromptAsync();
+
+        prompt.ShouldContain(customPrompt);
+        prompt.ShouldNotContain("RESPONSE STYLE");
+        prompt.ShouldNotContain("IMPORT RULES");
+    }
+
+    [Fact]
+    public async Task BuildSystemPrompt_WithCustomPrompt_KeepsIdentityAndBusinessContext()
+    {
+        // A custom prompt may replace the rules, but never the app-generated parts.
+        StoredInstructions("Custom rules only.", null);
+
+        var prompt = await _builder.BuildSystemPromptAsync();
+
+        prompt.ShouldContain(AiSystemPrompt.Identity);
+        prompt.ShouldContain(AiSystemPrompt.BusinessContextHeader);
+        prompt.ShouldContain("Total active clients: 0");
+    }
+
+    [Fact]
+    public async Task BuildSystemPrompt_WithAppendix_KeepsTheBuiltInBlock()
+    {
+        const string appendix = "EXTRA: Always respond in formal Czech.";
+        StoredInstructions(null, appendix);
+
+        var prompt = await _builder.BuildSystemPromptAsync();
+
+        prompt.ShouldContain(appendix);
+        prompt.ShouldContain(AiSystemPrompt.DefaultMainBlock);
+    }
+
+    [Fact]
+    public async Task BuildSystemPrompt_WithAppendix_PlacesItBeforeTheBusinessContext()
+    {
+        // Order matters: the statistics block must stay last so the AI reads it as data.
+        const string appendix = "EXTRA: Unique appendix marker XYZ123.";
+        StoredInstructions(null, appendix);
+
+        var prompt = await _builder.BuildSystemPromptAsync();
+
+        var appendixPosition = prompt.IndexOf(appendix, StringComparison.Ordinal);
+        var contextPosition = prompt.IndexOf(AiSystemPrompt.BusinessContextHeader, StringComparison.Ordinal);
+
+        appendixPosition.ShouldBeGreaterThanOrEqualTo(0);
+        contextPosition.ShouldBeGreaterThanOrEqualTo(0);
+        appendixPosition.ShouldBeLessThan(contextPosition);
+    }
+
+    [Fact]
+    public async Task BuildSystemPrompt_WithCustomPromptAndAppendix_ContainsBoth()
+    {
+        const string customPrompt = "CUSTOM: Short custom instructions.";
+        const string appendix = "APPENDIX: Additional rules here.";
+        StoredInstructions(customPrompt, appendix);
+
+        var prompt = await _builder.BuildSystemPromptAsync();
+
+        prompt.ShouldContain(customPrompt);
+        prompt.ShouldContain(appendix);
+        prompt.ShouldNotContain("RESPONSE STYLE");
+    }
+
+    [Fact]
+    public async Task BuildSystemPrompt_ReadsInstructionsThroughTheCache()
+    {
+        // The hot path must go through the cached accessor — one call per prompt, no more.
+        await _builder.BuildSystemPromptAsync();
+
+        await _aiInstructions.Received(1).GetCachedInstructionsAsync(Arg.Any<CancellationToken>());
     }
 }

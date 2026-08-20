@@ -559,6 +559,11 @@ AI asistent zná kontext vaší firmy a umí odpovídat na otázky i provádět 
 
 Pokud je nakonfigurováno více AI poskytovatelů, zobrazí se rozbalovací seznam (Claude / OpenAI / Gemini / Ollama) pro výběr.
 
+### Chování asistenta
+
+Styl odpovědí a pravidla asistenta nastavuje správce systému. Pokud vám asistent odpovídá
+jinak, než jste zvyklí, je pravděpodobně upravené systémové nastavení — obraťte se na správce.
+
 ### Příklady dotazů
 
 - „Ukaž mi faktury pro klienta XYZ za poslední měsíc"

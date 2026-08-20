@@ -70,6 +70,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<GridStateService>();
         services.AddApiClient<CompanySettingsApiService>();
         services.AddApiClient<SystemConfigurationApiService>();
+        // Editable AI assistant instructions — SysAdmin-only page /ai-instructions.
+        services.AddApiClient<AiInstructionsApiService>();
         services.AddApiClient<AppLogApiService>();
         services.AddApiClient<TwoFactorApiService>();
         services.AddApiClient<CloudStorageApiService>();
