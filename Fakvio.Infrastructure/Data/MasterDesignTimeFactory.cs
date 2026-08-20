@@ -1,6 +1,5 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
-using Microsoft.Extensions.Configuration;
 
 namespace Fakvio.Infrastructure.Data;
 
@@ -12,27 +11,22 @@ namespace Fakvio.Infrastructure.Data;
 ///   dotnet ef database update --context MasterDbContext --project Fakvio.Infrastructure --startup-project Fakvio.API
 ///
 /// The master context uses the default "public" schema in PostgreSQL.
-/// This factory provides a connection string at design time when no DI container is available.
-/// At runtime, the connection string comes from appsettings.json via Program.cs DI configuration.
+/// This factory provides a connection at design time when no DI container is available.
+/// At runtime, the same data source is built by Program.cs DI configuration instead.
+///
+/// Configuration and the data source itself come from <see cref="DesignTimeDataSource"/>,
+/// shared with <see cref="TenantDesignTimeFactory"/>.
 /// </summary>
 public class MasterDesignTimeFactory : IDesignTimeDbContextFactory<MasterDbContext>
 {
     public MasterDbContext CreateDbContext(string[] args)
     {
-        // Try to read from appsettings.json first (preferred — matches runtime config)
-        var configuration = new ConfigurationBuilder()
-            .SetBasePath(Path.Combine(Directory.GetCurrentDirectory(), "..", "Fakvio.API"))
-            .AddJsonFile("appsettings.json", optional: true)
-            .AddJsonFile("appsettings.Development.json", optional: true)
-            .Build();
-
-        // Fallback connection string for PostgreSQL (used when appsettings not found)
-        var connectionString = configuration.GetConnectionString("DefaultConnection")
-            ?? "Host=localhost;Database=fakvio;Username=fakvio;Password=YourStrong!Passw0rd";
-
         var optionsBuilder = new DbContextOptionsBuilder<MasterDbContext>();
+
+        // The data source (not a plain connection string) is what makes `dotnet ef` work
+        // against Azure: it carries the Entra ID token provider when that auth mode is on.
         optionsBuilder.UseNpgsql(
-            connectionString,
+            DesignTimeDataSource.Root,
             b => b.MigrationsAssembly("Fakvio.Infrastructure"));
 
         return new MasterDbContext(optionsBuilder.Options);
