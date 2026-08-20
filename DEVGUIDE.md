@@ -1126,6 +1126,34 @@ await sub.Received(1).MethodAsync(Arg.Any<T>());  // received check vyžaduje aw
 | User-visible flow (login, invoice CRUD UI) | Playwright |
 | External API (SMTP, IMAP, OAuth, ARES) | Manuálně + smoke testy |
 
+### 8.5 DB connectivity smoke test (env-gated)
+
+`Fakvio.Tests.Unit\DatabaseConnectivitySmokeTests.cs` je **jediná** výjimka z pravidla
+"unit testy jedou na InMemory" — sahá na reálný PostgreSQL. Ověřuje, že konfigurace, kterou
+appka opravdu resolvuje při startu, skutečně otevře spojení, že jsou nasazené migrace
+a že jde dotázat `public` schéma.
+
+- Kontexty se staví přes `NpgsqlDataSourceFactory.Create(configuration)` — tedy **tu samou
+  cestu, kterou jde produkce** (viz §9.5). Žádný `UseNpgsql(string)`.
+- Gate: `[DatabaseSmokeFact]` (potomek `FactAttribute`) přeskočí test, dokud není
+  `FAKVIO_DB_SMOKE=1`. Bez proměnné hlásí runner **skipped** s návodem, ne fail —
+  `dotnet test` je tedy zelený i bez Dockeru a bez `az login`.
+- xUnit 2.x nemá `Assert.Skip` (přišel až ve v3) a runtime skip exception se reportuje jako
+  fail — proto je gate na atributu, který se vyhodnocuje při discovery.
+- Konfigurace = `Fakvio.API/appsettings*.json` + **environment variables navrch**. Spuštění
+  proti lokálnímu Dockeru (`docker compose up -d`):
+
+```powershell
+$env:FAKVIO_DB_SMOKE = "1"
+$env:ConnectionStrings__DefaultConnection = "Host=localhost;Port=5432;Database=fakvio;Username=fakvio;Password=fakvio_dev"
+$env:Database__AuthMode = "Password"
+$env:UseAzureAdAuthentication = "false"   # legacy klíč musí souhlasit, jinak Resolve hodí conflict
+dotnet test Fakvio.Tests.Unit --filter "FullyQualifiedName~DatabaseConnectivitySmokeTests"
+```
+
+  Proti Azure PostgreSQL stačí `az login` + `FAKVIO_DB_SMOKE=1` (commitnutá konfigurace už
+  na Azure míří).
+
 ---
 
 ## 9. Deploy
