@@ -24,11 +24,17 @@ public class NumberSequenceServiceTests : IDisposable
     private readonly NumberSequenceService _service;
     private readonly ILogger<NumberSequenceService> _logger;
 
+    /// <summary>
+    /// Name of the in-memory tenant database. Kept in a field so a test can open a SECOND
+    /// context over the very same data (see the concurrency-collision test at the end).
+    /// </summary>
+    private readonly string _databaseName = Guid.NewGuid().ToString();
+
     public NumberSequenceServiceTests()
     {
         // Setup in-memory tenant database — unique name per test class instance for isolation
         var options = new DbContextOptionsBuilder<TenantDbContext>()
-            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .UseInMemoryDatabase(databaseName: _databaseName)
             .Options;
 
         _context = new TenantDbContext(options);
@@ -672,5 +678,70 @@ public class NumberSequenceServiceTests : IDisposable
         creditNum.ShouldBe("CN-2026003");
         proNum.ShouldBe("PF-2026001");
         dppNum.ShouldBe("DPP-2026001");
+    }
+
+    // ==================== Concurrency collision (issue #155) ====================
+
+    /// <summary>
+    /// Test double that fails EVERY save with an optimistic-concurrency conflict.
+    /// This is how two parallel requests drawing from the same sequence behave in
+    /// production: the RowVersion token no longer matches and EF Core throws
+    /// <see cref="DbUpdateConcurrencyException"/>. Faking it here is the only reliable way —
+    /// the in-memory provider does not enforce concurrency tokens, and a real race is
+    /// timing-dependent and therefore flaky in a unit test.
+    /// </summary>
+    private sealed class AlwaysConflictingTenantDbContext : TenantDbContext
+    {
+        /// <summary>How many times the service tried to persist the incremented counter.</summary>
+        public int SaveAttempts { get; private set; }
+
+        public AlwaysConflictingTenantDbContext(DbContextOptions<TenantDbContext> options)
+            : base(options)
+        {
+        }
+
+        public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+        {
+            SaveAttempts++;
+            throw new DbUpdateConcurrencyException("Simulated optimistic concurrency conflict.");
+        }
+    }
+
+    /// <summary>
+    /// Issue #155 — the third failure path from the acceptance criteria: a number collision.
+    ///
+    /// Before the fix the catch filter (`when (attempt &lt; MaxConcurrencyRetries)`) skipped the
+    /// conflict of the LAST attempt, so a raw DbUpdateConcurrencyException escaped this method
+    /// and the explicit "after N retries" throw below the loop was dead code. Callers
+    /// (InvoiceService, InvoiceController) only handle InvalidOperationException, so the user
+    /// ended up with a generic HTTP 500 instead of the actionable message.
+    ///
+    /// This test pins the contract the callers rely on: exhausted retries surface as an
+    /// InvalidOperationException carrying the original conflict as InnerException.
+    /// </summary>
+    [Fact]
+    public async Task GenerateNextNumberAsync_WhenEveryAttemptConflicts_ThrowsInvalidOperationExceptionWithInnerConflict()
+    {
+        // Arrange — second context over the SAME in-memory data, but every save conflicts.
+        // Sequence 1 ("Invoice sequence") was already seeded by the constructor.
+        var options = new DbContextOptionsBuilder<TenantDbContext>()
+            .UseInMemoryDatabase(databaseName: _databaseName)
+            .Options;
+
+        using var conflictingContext = new AlwaysConflictingTenantDbContext(options);
+        var service = new NumberSequenceService(conflictingContext, _masterContext,
+            Substitute.For<ITenantResolver>(), _logger);
+
+        // Act
+        var ex = await Should.ThrowAsync<InvalidOperationException>(
+            () => service.GenerateNextNumberAsync(1, new DateTime(2026, 5, 1)));
+
+        // Assert — explicit error, not a leaked EF Core exception
+        ex.Message.ShouldContain("after 3 retries",
+            customMessage: "The message must state that the retry budget was exhausted");
+        ex.InnerException.ShouldBeOfType<DbUpdateConcurrencyException>();
+
+        // Assert — the retry budget really was spent: 1 initial attempt + 3 retries
+        conflictingContext.SaveAttempts.ShouldBe(4);
     }
 }

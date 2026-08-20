@@ -461,6 +461,7 @@ public class GenerateDocumentNumberTests : IDisposable
 
         // Assert — no document ever gets the old hardcoded fallback number
         var numbers = await _context.Invoice.Select(i => i.DocumentNumber).ToListAsync();
+        numbers.Count.ShouldBe(1, customMessage: "The draft row is saved before numbering, so it must exist");
         numbers.ShouldAllBe(n => n == "DRAFT",
             "No invoice may receive a fallback number that ignores the configured series");
     }
@@ -492,6 +493,7 @@ public class GenerateDocumentNumberTests : IDisposable
             customMessage: "The error must not hand out a substitute document number");
 
         var numbers = await _context.Invoice.Select(i => i.DocumentNumber).ToListAsync();
+        numbers.Count.ShouldBe(1, customMessage: "The draft row is saved before numbering, so it must exist");
         numbers.ShouldAllBe(n => n == "DRAFT");
     }
 
@@ -499,6 +501,12 @@ public class GenerateDocumentNumberTests : IDisposable
     /// Number collision: concurrent requests exhausted the optimistic-concurrency retries
     /// inside NumberSequenceService. The old fallback turned that transient conflict into
     /// a permanently wrong number; now the caller sees the failure and can retry.
+    ///
+    /// The mocked exception mirrors EXACTLY what the real service throws on this path —
+    /// an InvalidOperationException wrapping the last DbUpdateConcurrencyException. That
+    /// shape is pinned on the producing side by
+    /// NumberSequenceServiceTests.GenerateNextNumberAsync_WhenEveryAttemptConflicts_…,
+    /// so the two tests together cover the whole chain instead of agreeing on a fiction.
     /// </summary>
     [Fact]
     public async Task GenerateDocumentNumber_ConcurrencyCollision_ShouldThrowInsteadOfFallback()
@@ -508,7 +516,8 @@ public class GenerateDocumentNumberTests : IDisposable
 
         var sequenceError = new InvalidOperationException(
             $"Failed to generate document number for sequence {ClientCustomSequenceId} " +
-            "after 3 retries due to concurrency conflicts.");
+            "after 3 retries due to concurrency conflicts.",
+            new DbUpdateConcurrencyException("Simulated optimistic concurrency conflict."));
 
         _numberSequence
             .GenerateNextNumberAsync(ClientCustomSequenceId, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
@@ -520,10 +529,18 @@ public class GenerateDocumentNumberTests : IDisposable
         var ex = await Should.ThrowAsync<InvalidOperationException>(
             () => _service.CreateInvoiceAsync(dto));
 
-        // Assert
+        // Assert — original cause preserved for the log
         ex.InnerException.ShouldBe(sequenceError);
 
+        // Assert — a transient collision must advise a retry, NOT send the user to
+        // /number-sequences: nothing is misconfigured there, so that advice would mislead.
+        ex.Message.ShouldContain("repeat the action",
+            customMessage: "A transient collision must tell the user to simply try again");
+        ex.Message.ShouldNotContain("/number-sequences",
+            customMessage: "A transient collision is not a configuration problem");
+
         var numbers = await _context.Invoice.Select(i => i.DocumentNumber).ToListAsync();
+        numbers.Count.ShouldBe(1);
         numbers.ShouldAllBe(n => n == "DRAFT");
     }
 }

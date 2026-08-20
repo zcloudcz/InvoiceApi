@@ -430,6 +430,11 @@ Aplikace v takovém případě nikdy nepřidělí náhradní číslo mimo vaši 
 dokladů musí zůstat souvislé a předvídatelné. Chybová hláška uvádí typ dokladu i stránku
 `/number-sequences`, kde řadu nastavíte; po nastavení aktivní výchozí řady akci zopakujte.
 
+Zvláštní případ je **souběh** — dva doklady si sáhnou pro číslo ze stejné řady ve stejný
+okamžik. Aplikace se pokus několikrát zopakuje sama, a když ani pak neuspěje, vytvoření
+dokladu skončí chybou. Tady není nic špatně nastaveného: hláška to výslovně říká a stačí
+akci zopakovat.
+
 ---
 
 ## 10. Nastavení firmy

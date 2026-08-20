@@ -1840,6 +1840,25 @@ public class InvoiceService : IInvoiceService
 
             return number;
         }
+        catch (InvalidOperationException ex) when (ex.InnerException is DbUpdateConcurrencyException)
+        {
+            // Issue #155, transient case: concurrent requests exhausted the optimistic-concurrency
+            // retry budget inside NumberSequenceService.GenerateNextNumberAsync. That method wraps
+            // the last DbUpdateConcurrencyException into an InvalidOperationException, and the inner
+            // type is what distinguishes this case from a configuration problem.
+            //
+            // Nothing is misconfigured here, so pointing the user at /number-sequences would be
+            // misleading advice — the correct instruction is simply to repeat the action.
+            _logger.LogError(ex,
+                "Document number generation hit a concurrency collision for {DocumentType} {Id}: {Message}",
+                invoice.DocumentType, invoice.Id, ex.Message);
+
+            throw new InvalidOperationException(
+                $"Cannot generate a document number for {invoice.DocumentType} right now — another " +
+                "request was drawing a number from the same sequence at the same moment " +
+                $"({ex.Message}). Nothing is misconfigured; please repeat the action.",
+                ex);
+        }
         catch (InvalidOperationException ex)
         {
             // Issue #155: a failed number generation is an ERROR, never a silent fallback.
@@ -1850,8 +1869,10 @@ public class InvoiceService : IInvoiceService
             // For accounting documents that is unacceptable: the series must stay continuous
             // and predictable, because that is what the accountant reconciles against.
             //
-            // INumberSequenceService throws InvalidOperationException when the series is
-            // missing, inactive, or when concurrent requests exhausted its retry budget.
+            // This branch handles the CONFIGURATION failures reported by INumberSequenceService:
+            // the series is missing or it is inactive. (The third failure path — an exhausted
+            // concurrency retry budget — is transient and handled by the catch block above,
+            // which is selected by the DbUpdateConcurrencyException carried as InnerException.)
             // We rethrow with a message that tells the user WHAT is wrong and WHERE to fix it,
             // keeping the original error as InnerException for diagnostics.
             //
