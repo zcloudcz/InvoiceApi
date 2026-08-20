@@ -1,4 +1,5 @@
-﻿using System.Reflection;
+﻿using System.Data.Common;
+using System.Reflection;
 using Fakvio.Domain.Entities;
 using Fakvio.Infrastructure.Data;
 using Fakvio.Infrastructure.Service;
@@ -6,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.Logging;
 using Npgsql;
+using Npgsql.EntityFrameworkCore.PostgreSQL.Infrastructure.Internal;
 using NSubstitute;
 using Shouldly;
 
@@ -392,6 +394,63 @@ public class TenantProvisioningServiceTests : IDisposable
         relationalOptions.MigrationsHistoryTableName.ShouldBe("__EFMigrationsHistory");
         relationalOptions.MigrationsHistoryTableSchema.ShouldBe("tenant_42");
         relationalOptions.MigrationsAssembly.ShouldBe("Fakvio.Infrastructure");
+    }
+
+    [Fact]
+    public void CreateTenantContext_DisposingTheContext_DoesNotDisposeTheFactoryOwnedDataSource()
+    {
+        // The ownership rule the whole leak fix rests on: the context BORROWS the factory's
+        // per-schema data source, it does not own it. EF Core only disposes a data source it
+        // created itself, never one handed to UseNpgsql(DbDataSource) — but that is a
+        // third-party guarantee, so pin it: if a future EF/Npgsql version started disposing
+        // it, the factory's cache would hand a dead instance to the next tenant and
+        // provisioning would fail on everything after the first one.
+        using (InvokeCreateTenantContext("tenant_42"))
+        {
+        }
+
+        IsDisposed(_schemaDataSource).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void CreateTenantContext_CalledAgainAfterTheFirstContextWasDisposed_GetsTheSameInstanceBack()
+    {
+        // Provisioning and migration walk tenants in a loop: create context, use it, dispose
+        // it, move on. Before the fix every iteration built its own NpgsqlDataSource and
+        // dropped it on the floor (one leaked pool per iteration); now every iteration goes
+        // back to the factory, which hands out the one cached instance per schema.
+        using (InvokeCreateTenantContext("tenant_42"))
+        {
+        }
+
+        using var second = InvokeCreateTenantContext("tenant_42");
+
+        _dataSourceFactory.Received(2).GetForSchema("tenant_42", true);
+        DataSourceOf(second).ShouldBeSameAs(_schemaDataSource);
+    }
+
+    /// <summary>
+    /// Returns the data source EF Core actually stored in the context's options — the
+    /// strongest available proof of "which instance is this context running on", stronger
+    /// than comparing connection strings.
+    /// </summary>
+    private static DbDataSource? DataSourceOf(DbContext context) =>
+        context.GetService<IDbContextOptions>()
+            .FindExtension<NpgsqlOptionsExtension>()?.DataSource;
+
+    /// <summary>
+    /// Reads Npgsql's private disposal flag. NpgsqlDataSource exposes no public "is disposed"
+    /// state, and its only member that reacts to disposal (OpenConnection) would attempt a
+    /// real network connection when the source is still alive — which a unit test must not do.
+    /// </summary>
+    private static bool IsDisposed(NpgsqlDataSource dataSource)
+    {
+        var field = typeof(NpgsqlDataSource)
+            .GetField("_isDisposed", BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException(
+                "NpgsqlDataSource._isDisposed not found — Npgsql internals changed, adjust this helper.");
+
+        return (int)field.GetValue(dataSource)! != 0;
     }
 
     #endregion

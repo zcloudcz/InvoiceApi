@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Reflection;
 using Fakvio.Infrastructure.Data;
 using Microsoft.Extensions.Configuration;
@@ -345,6 +345,32 @@ public class NpgsqlDataSourceFactoryTests
             LazyThreadSafetyMode.ExecutionAndPublication);
 
         Should.NotThrow(() => factory.Evict("tenant_broken"));
+    }
+
+    [Fact]
+    public void Evict_WhenConstructionFailedEarlier_ClearsTheCachedFailure()
+    {
+        // Sharper variant of the test above. There the Lazy had never been evaluated, so
+        // Evict hit the exception on its FIRST access; in production that state is only
+        // reachable through GetForSchema, which leaves behind a Lazy whose exception is
+        // already cached and rethrown to everyone from then on. Swallowing that rethrow is
+        // only half the contract — the poisoned entry must also be gone afterwards, so the
+        // next provisioning attempt for the same schema gets a clean build instead of
+        // inheriting a failure from a schema that has since been dropped and recreated.
+        const string brokenSchema = "tenant_broken_cached";
+        using var factory = new NpgsqlDataSourceFactory(PasswordOptions());
+        var cache = SchemaSourceCache(factory);
+
+        cache[$"{brokenSchema}|True"] = new Lazy<NpgsqlDataSource>(
+            () => throw new InvalidOperationException("construction failed earlier"),
+            LazyThreadSafetyMode.ExecutionAndPublication);
+        Should.Throw<InvalidOperationException>(() => cache[$"{brokenSchema}|True"].Value);
+
+        factory.Evict(brokenSchema);
+
+        // Asserted through the public surface: a rebuild would rethrow the cached exception
+        // if Evict had left the entry in place.
+        Should.NotThrow(() => factory.GetForSchema(brokenSchema));
     }
 
     /// <summary>
