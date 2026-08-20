@@ -107,4 +107,17 @@ public class BillingSettings : BaseEntity
     /// Example: "Always send invoice copy to accountant", "Requires PO number"
     /// </summary>
     public string? Notes { get; set; }
+
+    /// <summary>
+    /// Controls when an advance invoice (proforma) is automatically converted into a
+    /// tax receipt for advance payment (daňový doklad o přijaté platbě).
+    ///
+    /// Only meaningful on the ISSUER's billing settings (Client.IsIssuer = true);
+    /// customer billing settings ignore it.
+    ///
+    /// Written exclusively through IClientService.SetAdvanceTaxReceiptModeAsync
+    /// (the role-gated issuer endpoint), never through the generic billing-settings
+    /// update — see the comment in ClientService.UpdateBillingSettingsAsync.
+    /// </summary>
+    public EAdvanceTaxReceiptMode AdvanceTaxReceiptMode { get; set; } = EAdvanceTaxReceiptMode.OnPaymentMatch;
 }

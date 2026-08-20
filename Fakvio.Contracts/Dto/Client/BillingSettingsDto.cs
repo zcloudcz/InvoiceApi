@@ -71,3 +71,18 @@ public class UpdateBillingSettingsDto
     public string? BankAccountNumber { get; set; }
     public string? Notes { get; set; }
 }
+
+/// <summary>
+/// Request body of PUT /api/client/issuer/advance-tax-receipt-mode.
+///
+/// A wrapper object instead of a bare enum value keeps the payload a proper JSON
+/// object ({ "mode": "OnPaymentMatch" }), which is what every other endpoint in this
+/// API accepts and what the Functions host deserializes without special-casing.
+/// </summary>
+public class SetAdvanceTaxReceiptModeDto
+{
+    /// <summary>
+    /// New auto-conversion mode for the issuer.
+    /// </summary>
+    public EAdvanceTaxReceiptMode Mode { get; set; }
+}

@@ -333,6 +333,20 @@ namespace Fakvio.Functions
                 context.GetInvocationResult().Value = await i.Client_UpdateBillingSettings((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0], (string)inputArguments[1]);
                 return;
             }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.ClientFunctions.Client_GetAdvanceTaxReceiptMode", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.ClientFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.ClientFunctions;
+                context.GetInvocationResult().Value = await i.Client_GetAdvanceTaxReceiptMode((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
+                return;
+            }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.ClientFunctions.Client_SetAdvanceTaxReceiptMode", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.ClientFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.ClientFunctions;
+                context.GetInvocationResult().Value = await i.Client_SetAdvanceTaxReceiptMode((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
+                return;
+            }
             if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.CloudStorageFunctions.CloudStorage_GetStatus", StringComparison.Ordinal))
             {
                 var instanceType = types["Fakvio.Functions.Generated.CloudStorageFunctions"];

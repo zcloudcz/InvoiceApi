@@ -1025,6 +1025,11 @@
   <data name="Billing_BankAccount" xml:space="preserve"><value>Bank Account</value></data>
   <data name="Billing_Notes" xml:space="preserve"><value>Notes</value></data>
   <data name="Billing_NotConfigured" xml:space="preserve"><value>Billing settings not configured</value></data>
+  <data name="Billing_AdvanceTaxReceiptMode" xml:space="preserve"><value>Auto-convert advance invoice to tax receipt</value></data>
+  <!-- EAdvanceTaxReceiptMode enum values — convention: {EnumTypeName}_{EnumValue} -->
+  <data name="EAdvanceTaxReceiptMode_Disabled" xml:space="preserve"><value>Disabled (manual conversion)</value></data>
+  <data name="EAdvanceTaxReceiptMode_OnPaymentMatch" xml:space="preserve"><value>On automatic payment match</value></data>
+  <data name="EAdvanceTaxReceiptMode_OnAnyPayment" xml:space="preserve"><value>On any recorded payment</value></data>
 
   <!-- AI Chat -->
   <data name="Chat_Title" xml:space="preserve"><value>AI Assistant</value></data>

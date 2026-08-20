@@ -1,5 +1,6 @@
 using System.Text;
 using Fakvio.Contracts.Dto.Client;
+using Fakvio.Domain.Enums;
 using Fakvio.UI.Shared.Models;
 using Microsoft.AspNetCore.Components.Authorization;
 
@@ -135,5 +136,26 @@ public class ClientApiService : ApiClientBase
     public async Task<ClientDto?> FetchFromAresAsync(string registrationNumber)
     {
         return await GetAsync<ClientDto>($"/api/client/ares/{registrationNumber}");
+    }
+
+    /// <summary>
+    /// Reads the issuer's advance-tax-receipt auto-conversion mode.
+    /// Every authenticated user may read it.
+    /// </summary>
+    public async Task<EAdvanceTaxReceiptMode> GetAdvanceTaxReceiptModeAsync()
+    {
+        return await GetAsync<EAdvanceTaxReceiptMode>("/api/client/issuer/advance-tax-receipt-mode");
+    }
+
+    /// <summary>
+    /// Stores the issuer's advance-tax-receipt auto-conversion mode.
+    /// The API rejects this call with 403 for anyone who is not Admin/SysAdmin,
+    /// so callers must only offer it to those roles.
+    /// </summary>
+    public async Task<EAdvanceTaxReceiptMode> SetAdvanceTaxReceiptModeAsync(EAdvanceTaxReceiptMode mode)
+    {
+        return await PutAsync<SetAdvanceTaxReceiptModeDto, EAdvanceTaxReceiptMode>(
+            "/api/client/issuer/advance-tax-receipt-mode",
+            new SetAdvanceTaxReceiptModeDto { Mode = mode });
     }
 }

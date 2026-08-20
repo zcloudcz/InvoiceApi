@@ -228,7 +228,9 @@ Proforma (záloha) je nezávazný doklad před přijetím platby. Číslo doklad
 
 Vystavuje se po přijetí zálohy. Číslo dokladu: prefix `DPP-`.
 
-**Automatické vystavení:** systém může automaticky vystavit DPP po označení proformy jako zaplacené (závisí na nastavení).
+**Automatické vystavení:** kdy se má DPP vystavit automaticky, řídí volba „Auto-překlop zálohy na daňový doklad" v [Nastavení firmy](#10-nastavení-firmy) — vypnuto / při automatickém spárování platby / při jakékoliv přijaté platbě.
+
+> **Pozor:** volba se zatím pouze ukládá. Automatické vystavení DPP ještě není v aplikaci zapojené, takže DPP dnes vystavujete ručně tlačítkem na detailu proformy bez ohledu na zvolený režim.
 
 ---
 
@@ -443,6 +445,15 @@ Správa informací o vaší firmě (vydavatele faktur).
 - Přidávání přes dialog „Bankovní účet"
 - Formát: číslo účtu, kód banky, IBAN, BIC/SWIFT
 - QR kód platba — systém generuje QR kód pro faktury automaticky
+
+**Fakturační nastavení:**
+- Výchozí způsob platby, splatnost ve dnech a způsob výpočtu data splatnosti
+- **Auto-překlop zálohy na daňový doklad** — kdy se ze zaplacené proformy má stát DPP:
+  - *Vypnuto (ruční překlop)* — DPP vystavíte sami na detailu proformy
+  - *Při automatickém spárování platby* — po spárování platby z banky (výchozí)
+  - *Při jakékoliv přijaté platbě* — i když proformu označíte jako zaplacenou ručně
+  - Měnit ji může jen uživatel s rolí Admin; ostatní ji vidí jen ke čtení. Automatické vystavení
+    DPP zatím není zapojené — viz poznámka v [§4](#4-proforma-faktury-a-daňový-doklad-o-přijaté-platbě)
 
 **Email pro příjem faktur:**
 - Aktivace unikátní emailové adresy pro automatický příjem faktur — viz [§18](#18-příjem-faktur-emailem)

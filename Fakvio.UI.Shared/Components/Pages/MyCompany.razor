@@ -210,6 +210,25 @@ else
                                     Value="_billingSettings.DueDateCalculationType"
                                     ValueChanged="@(v => _billingSettings.DueDateCalculationType = v)"
                                     Label="@L["Billing_DueDateCalcType"].Value" />
+                        @* Advance tax receipt mode is a company-wide accounting decision, so the
+                           API only lets Admin/SysAdmin change it. Everyone else sees the value
+                           disabled — offering an editable control would only end in a 403. *@
+                        <AuthorizeView Roles="Admin,SysAdmin">
+                            <Authorized>
+                                <EnumSelect TEnum="EAdvanceTaxReceiptMode"
+                                            Value="_advanceTaxReceiptMode"
+                                            ValueChanged="@(v => { _advanceTaxReceiptMode = v; _isDirty = true; })"
+                                            Label="@L["Billing_AdvanceTaxReceiptMode"].Value"
+                                            Class="mt-3" />
+                            </Authorized>
+                            <NotAuthorized>
+                                <EnumSelect TEnum="EAdvanceTaxReceiptMode"
+                                            Value="_advanceTaxReceiptMode"
+                                            Label="@L["Billing_AdvanceTaxReceiptMode"].Value"
+                                            Disabled="true"
+                                            Class="mt-3" />
+                            </NotAuthorized>
+                        </AuthorizeView>
                     }
                     else if (_company.BillingSettings != null)
                     {
@@ -222,6 +241,10 @@ else
                             }
                             <MudListItem T="string">
                                 <strong>@L["Billing_DueDays"]:</strong> @_company.BillingSettings.DueDays
+                            </MudListItem>
+                            <MudListItem T="string">
+                                <strong>@L["Billing_AdvanceTaxReceiptMode"]:</strong>
+                                @GetLocalizedEnum("EAdvanceTaxReceiptMode", _advanceTaxReceiptMode.ToString())
                             </MudListItem>
                         </MudList>
                     }
@@ -646,6 +669,13 @@ else
     // Form data for edit mode
     private CreateClientDto _editClient = new();
     private CreateBillingSettingsDto _billingSettings = new();
+
+    // Advance tax receipt mode lives on the issuer's billing settings, but it has its own
+    // role-gated endpoints (see ClientController) — hence a separate field instead of a
+    // property on _billingSettings. _savedAdvanceTaxReceiptMode remembers what the server
+    // holds, so SaveCompany only calls the Admin-only PUT when the user actually changed it.
+    private EAdvanceTaxReceiptMode _advanceTaxReceiptMode = EAdvanceTaxReceiptMode.OnPaymentMatch;
+    private EAdvanceTaxReceiptMode _savedAdvanceTaxReceiptMode = EAdvanceTaxReceiptMode.OnPaymentMatch;
     private List<CreateAddressDto> _addresses = new();
     // Bank accounts use BankAccountDto so the per-account Id is preserved when
     // entering edit mode. The dialog needs Id to bind the mailbox card to the
@@ -710,6 +740,8 @@ else
         {
             _loading = true;
             _company = await ClientService.GetIssuerAsync();
+            _savedAdvanceTaxReceiptMode = await ClientService.GetAdvanceTaxReceiptModeAsync();
+            _advanceTaxReceiptMode = _savedAdvanceTaxReceiptMode;
         }
         catch (Exception ex)
         {
@@ -890,6 +922,14 @@ else
             var result = await ClientService.UpdateAsync(_company.Id, updateDto);
             if (result != null)
             {
+                // Separate call: the mode has its own Admin-only endpoint and is not part of
+                // the billing-settings payload. Only sent when the value really changed, so a
+                // non-admin saving the rest of the form never hits the role-gated endpoint.
+                if (_advanceTaxReceiptMode != _savedAdvanceTaxReceiptMode)
+                {
+                    _savedAdvanceTaxReceiptMode = await ClientService.SetAdvanceTaxReceiptModeAsync(_advanceTaxReceiptMode);
+                }
+
                 _isDirty = false;
                 Snackbar.Add(L["Msg_SaveSuccess"].Value, Severity.Success);
                 _isEditing = false;

@@ -431,6 +431,61 @@ public class ClientController : ControllerBase
         return Ok(client);
     }
 
+    // ─── Advance tax receipt mode (issuer-only company setting) ───────────────
+
+    /// <summary>
+    /// Gets the advance-tax-receipt auto-conversion mode of this tenant's issuer.
+    /// Readable by every authenticated user — the invoice screens show the resulting
+    /// behaviour, so hiding the value would only be confusing.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Current mode</returns>
+    /// <response code="200">Returns the current mode</response>
+    /// <response code="404">Tenant has no issuer</response>
+    [HttpGet("issuer/advance-tax-receipt-mode")]
+    [ProducesResponseType(typeof(EAdvanceTaxReceiptMode), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<EAdvanceTaxReceiptMode>> GetAdvanceTaxReceiptMode(
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("GET /api/client/issuer/advance-tax-receipt-mode");
+
+        var mode = await _clientService.GetAdvanceTaxReceiptModeAsync(cancellationToken);
+
+        if (mode == null)
+            return NotFound(new { message = "Issuer not configured." });
+
+        return Ok(mode.Value);
+    }
+
+    /// <summary>
+    /// Sets the advance-tax-receipt auto-conversion mode of this tenant's issuer.
+    /// Restricted to Admin/SysAdmin — it is a company-wide accounting decision,
+    /// not a per-user preference.
+    /// </summary>
+    /// <param name="dto">New mode</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>The stored mode</returns>
+    /// <response code="200">Mode updated successfully</response>
+    /// <response code="404">Tenant has no issuer</response>
+    [HttpPut("issuer/advance-tax-receipt-mode")]
+    [Authorize(Roles = "Admin,SysAdmin")]
+    [ProducesResponseType(typeof(EAdvanceTaxReceiptMode), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<EAdvanceTaxReceiptMode>> SetAdvanceTaxReceiptMode(
+        [FromBody] SetAdvanceTaxReceiptModeDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("PUT /api/client/issuer/advance-tax-receipt-mode -> {Mode}", dto.Mode);
+
+        var updated = await _clientService.SetAdvanceTaxReceiptModeAsync(dto.Mode, cancellationToken);
+
+        if (!updated)
+            return NotFound(new { message = "Issuer not configured." });
+
+        return Ok(dto.Mode);
+    }
+
     #region Helper Methods
 
     /// <summary>

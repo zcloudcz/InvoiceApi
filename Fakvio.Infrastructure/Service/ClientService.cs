@@ -4,6 +4,7 @@ using Fakvio.Contracts.Common.Pagination;
 using Fakvio.Contracts.Dto.Client;
 using Fakvio.Application.Service;
 using Fakvio.Domain.Entities;
+using Fakvio.Domain.Enums;
 using Fakvio.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -726,10 +727,63 @@ public class ClientService : IClientService
         client.BillingSettings.DefaultPaymentMethod = settingsDto.DefaultPaymentMethod;
         client.BillingSettings.BankAccountNumber = settingsDto.BankAccountNumber;
         client.BillingSettings.Notes = settingsDto.Notes;
+        // AdvanceTaxReceiptMode is deliberately NOT written here. It is a company-level
+        // switch that only Admin/SysAdmin may change, and it is not part of
+        // CreateBillingSettingsDto — mapping it from a DTO that every authenticated user
+        // can post would silently bypass that role check. Use SetAdvanceTaxReceiptModeAsync.
 
         await _context.SaveChangesAsync(cancellationToken);
 
         return await GetClientByIdAsync(clientId, cancellationToken);
     }
 
+    // ─── Advance tax receipt mode (issuer-only company setting) ───────────────
+
+    /// <inheritdoc />
+    public async Task<EAdvanceTaxReceiptMode?> GetAdvanceTaxReceiptModeAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var issuer = await _context.Client
+            .AsNoTracking()
+            .Include(c => c.BillingSettings)
+            .FirstOrDefaultAsync(c => c.IsIssuer, cancellationToken);
+
+        if (issuer == null)
+        {
+            _logger.LogWarning("Advance tax receipt mode requested but this tenant has no issuer");
+            return null;
+        }
+
+        // Billing settings are optional — an issuer that never opened the billing form
+        // has no row at all, so answer with the same default the entity would use.
+        return issuer.BillingSettings?.AdvanceTaxReceiptMode
+               ?? EAdvanceTaxReceiptMode.OnPaymentMatch;
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> SetAdvanceTaxReceiptModeAsync(
+        EAdvanceTaxReceiptMode mode,
+        CancellationToken cancellationToken = default)
+    {
+        var issuer = await _context.Client
+            .Include(c => c.BillingSettings)
+            .FirstOrDefaultAsync(c => c.IsIssuer, cancellationToken);
+
+        if (issuer == null)
+        {
+            _logger.LogWarning("Cannot set advance tax receipt mode — this tenant has no issuer");
+            return false;
+        }
+
+        // First write for this tenant: create the billing settings row. The remaining
+        // columns keep the entity defaults (14 days from issue), exactly like the
+        // billing-settings form would create them.
+        issuer.BillingSettings ??= new BillingSettings { ClientId = issuer.Id };
+
+        issuer.BillingSettings.AdvanceTaxReceiptMode = mode;
+        await _context.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation("Advance tax receipt mode set to {Mode} for issuer {IssuerId}", mode, issuer.Id);
+        return true;
+    }
 }

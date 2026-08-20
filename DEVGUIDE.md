@@ -542,6 +542,32 @@ VariableSymbol je lidský string — může se duplikovat. `OriginalInvoiceId` j
 
 Implementace: `PaymentMatchingService.cs` (metoda `GetPaymentsForInvoiceAsync`).
 
+### 4.5.3 EAdvanceTaxReceiptMode — per-tenant auto-překlop zálohy na DPP (#145)
+
+Per-tenant volba, kdy se ze zaplacené proformy má automaticky stát DPP.
+
+| Vrstva | Kde |
+|--------|-----|
+| Enum | `Fakvio.Domain/Enums/EAdvanceTaxReceiptMode.cs` — `Disabled=0`, `OnPaymentMatch=1`, `OnAnyPayment=2` |
+| Persistence | `BillingSettings.AdvanceTaxReceiptMode` **vydavatele** (`Client.IsIssuer`), tenant DB, migrace `AddAdvanceTaxReceiptMode_v55` (`defaultValue: 1`) |
+| Service | `IClientService.GetAdvanceTaxReceiptModeAsync` / `SetAdvanceTaxReceiptModeAsync` |
+| API | `GET /api/client/issuer/advance-tax-receipt-mode` (každý přihlášený), `PUT` totéž (**Admin/SysAdmin**) |
+| Functions | `ClientFunctions.Client_GetAdvanceTaxReceiptMode` / `Client_SetAdvanceTaxReceiptMode` (role check ručně — Functions `[Authorize]` nevyhodnocuje) |
+| UI | `MyCompany.razor`, karta „Fakturační nastavení", `EnumSelect` uvnitř `AuthorizeView Roles="Admin,SysAdmin"` |
+| Lokalizace | `Billing_AdvanceTaxReceiptMode`, `EAdvanceTaxReceiptMode_*` v obou resx |
+
+**Proč vlastní endpointy a ne pole v `CreateBillingSettingsDto`:** fakturační nastavení může
+ukládat každý přihlášený uživatel (`PUT /api/client/{id}`). Kdyby se režim mapoval z toho DTO,
+role check by šel obejít — a navíc by se non-default volba (Disabled) tiše resetovala na C#
+default DTO při každém uložení formuláře. `UpdateBillingSettingsAsync` i `UpdateClientAsync`
+proto pole **záměrně nezapisují**; hlídají to regresní testy v `AdvanceTaxReceiptModeTests`.
+
+**Zatím bez konzumenta.** Nikdo hodnotu nečte kromě UI — služba, která podle ní DPP skutečně
+vystaví (archivní `AdvanceTaxReceiptService`, původní issue #29), v `develop` chybí a je potřeba
+ji portovat samostatně. Do té doby je volba pouze deklarativní; USERGUIDE §4 to říká uživateli
+otevřeně. Až konzument přijde, počítej s tím, že archivní návrh používal `Invoice.HasAlert`,
+zatímco dnešní kód má na totéž entitu `Alert` + `EAlertType.OverpaidProforma`.
+
 ### 4.6 Reminders (dunning) — daily 6 AM UTC
 
 `Fakvio.Infrastructure/Service/ReminderService.cs:449-484` `ProcessOverdueInvoicesAsync`:

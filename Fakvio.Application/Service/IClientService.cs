@@ -1,5 +1,6 @@
 using Fakvio.Contracts.Common.Pagination;
 using Fakvio.Contracts.Dto.Client;
+using Fakvio.Domain.Enums;
 
 namespace Fakvio.Application.Service;
 
@@ -122,4 +123,22 @@ public interface IClientService
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Updated client or null if not found</returns>
     Task<ClientDto?> AddBankAccountAsync(long clientId, CreateBankAccountDto bankAccountDto, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Reads the advance-tax-receipt auto-conversion mode from the issuer's billing settings.
+    /// Falls back to the default (OnPaymentMatch) when the issuer has no billing settings yet,
+    /// so callers never have to deal with "configured but unknown".
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Current mode, or null when this tenant has no issuer at all</returns>
+    Task<EAdvanceTaxReceiptMode?> GetAdvanceTaxReceiptModeAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Persists the advance-tax-receipt auto-conversion mode on the issuer's billing settings.
+    /// Creates the billing settings row when the issuer does not have one yet.
+    /// </summary>
+    /// <param name="mode">New mode</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>True on success, false when this tenant has no issuer at all</returns>
+    Task<bool> SetAdvanceTaxReceiptModeAsync(EAdvanceTaxReceiptMode mode, CancellationToken cancellationToken = default);
 }
