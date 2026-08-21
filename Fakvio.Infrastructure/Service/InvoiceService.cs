@@ -55,17 +55,33 @@ public class InvoiceService : IInvoiceService
         dto.CurrencySymbol = entity.Currency?.Symbol ?? string.Empty;
         dto.OriginalInvoiceNumber = entity.OriginalInvoice?.DocumentNumber;
 
-        // Populate nested ReverseChargeCode on each item — ZMapper skips navigation properties,
-        // so we manually map from the eagerly-loaded entity navigation to the DTO.
-        if (dto.InvoiceItem != null && entity.InvoiceItem != null)
+        // Populate the nested ReverseChargeCode on every line item. ZMapper copies scalar
+        // properties only, so the navigation object has to be mapped by hand here.
+        //
+        // Items are paired by Id, never by list position. dto.InvoiceItem and
+        // entity.InvoiceItem are two independent collections, and OrderIndex — which drives
+        // the query ordering — is neither unique nor a key, so equal positions do not
+        // guarantee the same line. Pairing by primary key cannot attach a code to the wrong
+        // line even when the two collections are ordered differently.
+        //
+        // The Any() pre-check keeps the common case (an invoice with no reverse-charge line)
+        // free of the dictionary allocation — it is a cheap O(n) scan that allocates nothing.
+        if (dto.InvoiceItem.Count > 0 && entity.InvoiceItem.Any(item => item.ReverseChargeCode is not null))
         {
-            var entityItems = entity.InvoiceItem.ToList();
-            for (var i = 0; i < dto.InvoiceItem.Count; i++)
+            var dtoItemsById = dto.InvoiceItem.ToDictionary(item => item.Id);
+
+            foreach (var entityItem in entity.InvoiceItem)
             {
-                var entityItem = entityItems.ElementAtOrDefault(i);
-                if (entityItem?.ReverseChargeCode != null)
+                if (entityItem.ReverseChargeCode is null)
                 {
-                    dto.InvoiceItem[i].ReverseChargeCode = entityItem.ReverseChargeCode.ToReverseChargeCodeDto();
+                    continue;
+                }
+
+                // Unknown Id cannot happen for a DB-loaded graph, but TryGetValue keeps the
+                // mapper total instead of throwing if a caller ever hands over a partial DTO.
+                if (dtoItemsById.TryGetValue(entityItem.Id, out var itemDto))
+                {
+                    itemDto.ReverseChargeCode = entityItem.ReverseChargeCode.ToReverseChargeCodeDto();
                 }
             }
         }

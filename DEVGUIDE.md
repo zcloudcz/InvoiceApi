@@ -264,7 +264,8 @@ Pipeline pořadí v `Fakvio.API/Program.cs`:
 
 **TenantContextMiddleware** (`Fakvio.API/Middleware/TenantContextMiddleware.cs`):
 - Řádek 35: `MasterOnlyPaths` — `/api/auth`, `/api/user`, `/api/company`, `/api/system-configuration`, `/api/logs`, `/api/twofactor`, `/api/cloud-storage`, `/api/email`, `/api/sysadmin/payment-matching`. **Skip** tenant kontroly.
-- Řádek 56: `SysAdminCodeTablePaths` — code-table endpointy přístupné SysAdminovi i bez `X-Company-Id` (konfigurace systémových číselníků).
+- Řádek 56: `SysAdminCodeTablePaths` — code-table endpointy přístupné SysAdminovi i bez `X-Company-Id` (konfigurace systémových číselníků). Patří sem **jen dual-context číselníky** (`/api/currency`, `/api/vatrate`, `/api/contenttemplate`, `/api/numbersequence/formats`), jejichž service umí sáhnout do Master i Tenant DB.
+- **Tenant-only číselník do žádného z těch dvou seznamů nepatří.** Např. `/api/reversechargecode` (issue #46) čte přes `ReverseChargeCodeService` výhradně `TenantDbContext`, takže potřebuje normální tenant resolution — data jsou sice statutární (MFČR), ale fyzicky leží v tenant schématu. Bez `X-Company-Id` proto SysAdmin tyto řádky nevidí; až #49 přidá SysAdmin CRUD, bude nutné vědomě rozhodnout, zda service překlopit na dual-context.
 - Řádek 126: `await factory.ResolveSchemaAsync(companyId)` — jediný zdroj pravdy.
 - Řádek 144: `await factory.EnsureMigratedAsync(companyId)` — lazy migrate per schema, cached per-process.
 
@@ -470,6 +471,35 @@ optionally `ReverseChargeCodeId` (FK to `ReverseChargeCode` lookup, nullable).
 
 **Calculation helper**: `InvoiceService.CalculateItemVat(InvoiceItem item)` — called from both
 `CreateInvoiceAsync` and `UpdateInvoiceAsync` for DRY calculation (issue #45, §9 KISS/DRY rule).
+
+#### API surface číselníku PDP kódů (issue #46)
+
+**Endpoint** — `Fakvio.API/Controller/ReverseChargeCodeController.cs`, `[Authorize]` (běžný přihlášený
+uživatel, ne SysAdmin — dropdown v editoru položek ho potřebuje):
+
+| Route | Vrací |
+|-------|-------|
+| `GET /api/reversechargecode` | jen **aktivní** kódy, seřazené podle `Code` — zdroj pro dropdown |
+| `GET /api/reversechargecode/{id}` | detail včetně **neaktivních** — historická faktura musí umět vykreslit kód, který už se nenabízí |
+
+Tenant-scoped (viz §3.3), read-only. Admin CRUD je samostatný task #49.
+Klient: `Fakvio.UI.Shared/Services/ReverseChargeCodeApiService.cs` (dědí `ApiClientBase`, list metoda
+polyká `ApiException` a vrací prázdný seznam — stejný kontrakt jako `VatRateApiService`).
+
+**Nested DTO na položce faktury** — `InvoiceItemDto.ReverseChargeCode : ReverseChargeCodeDto?`.
+Read-only, plní se **jen v response**; request ho ignoruje (zápis jde přes `ReverseChargeCodeId`).
+
+Mapování má dvě podmínky, obě je nutné dodržet u **každé nové read cesty** nad fakturou:
+
+1. **Eager load**: dotaz musí mít `.Include(i => i.InvoiceItem…).ThenInclude(item => item.ReverseChargeCode)`.
+   FK je nullable → LEFT JOIN → Standard položky vrátí `null` a nic nespadne.
+2. **Ruční doplnění v `InvoiceService.MapToDto`**: ZMapper kopíruje jen skalární properties, navigační
+   objekt si musí service naplnit sám. Páruje se **podle `Id` položky, nikdy podle pozice v seznamu** —
+   `OrderIndex` není unikátní ani klíč, takže stejný index v obou kolekcích nezaručuje stejný řádek.
+   Špatné spárování by tiše poslalo cizí „předmět plnění“ do kontrolního hlášení.
+
+Regresní pojistka: `Fakvio.Tests.Unit/InvoiceServiceNestedReverseChargeCodeTests.cs` (faktura se třemi
+položkami, dvěma různými kódy a prohozeným pořadím `Id` vs. `OrderIndex`).
 
 ### 4.5 Payment matching (IMAP → invoice mark paid)
 
@@ -1315,7 +1345,10 @@ Chyby vzniklé v Blazor WASM klientovi by jinak skončily jen v browser konzoli.
 
 ```
 1. Master nebo tenant scope?
-   └─ Pokud master → uveď cestu do MasterOnlyPaths v TenantContextMiddleware
+   ├─ Master → uveď cestu do MasterOnlyPaths v TenantContextMiddleware
+   ├─ Dual-context číselník (Master i Tenant) → i do SysAdminCodeTablePaths
+   └─ Tenant-only (i když jde o číselník, viz /api/reversechargecode) → do žádného
+      z těch seznamů; endpoint jede standardní tenant resolution (§3.3)
 2. JWT Authorize?
    ├─ Public (login, password reset) → [AllowAnonymous]
    ├─ Tenant user → [Authorize] (default)
