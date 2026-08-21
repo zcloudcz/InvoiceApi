@@ -30,6 +30,24 @@ public class DesignTimeDataSourceTests
         "Host=example.postgres.database.azure.com;Database=postgres;Port=5432;" +
         "Username=developer@example.onmicrosoft.com;Ssl Mode=Require;";
 
+    // A SECOND Entra-shaped connection string, deliberately different from the one above.
+    // The precedence rows below need two distinguishable values, otherwise "the
+    // higher-precedence key won" and "some key won" look exactly the same.
+    private const string SectionConnectionString =
+        "Host=section.postgres.database.azure.com;Database=postgres;Port=5432;" +
+        "Username=developer@example.onmicrosoft.com;Ssl Mode=Require;";
+
+    // A key that exists but holds only whitespace — how a single command normally "removes"
+    // an environment variable (ConnectionStrings__DefaultConnection="" dotnet ef ...).
+    private const string BlankValue = "   ";
+
+    // The two values DatabaseOptions.AuthModeSource reports in this file. Asserting the
+    // SOURCE and not only the mode is what makes the rows discriminate: "Password because
+    // the fallback forced it" and "Password because the legacy key said so" are different
+    // outcomes that a mode-only assertion would happily conflate.
+    private const string FallbackAuthModeSource = "Database:AuthMode";
+    private const string LegacyAuthModeSource = "UseAzureAdAuthentication (legacy)";
+
     // The legacy global bool that Fakvio.API/appsettings.json really ships (line 13).
     // DatabaseOptions.Resolve reads it as "this machine wants Azure", and throws when it
     // disagrees with an explicit "Database:AuthMode". Any test that claims the fallback is
@@ -41,15 +59,20 @@ public class DesignTimeDataSourceTests
         new ConfigurationBuilder().AddInMemoryCollection(data);
 
     /// <summary>
-    /// Mirrors the real design-time layering: Fakvio.API/appsettings.json first (which only
-    /// ever sets the legacy Azure bool), environment variables on top.
+    /// Mirrors the real design-time layering: Fakvio.API/appsettings.json first, environment
+    /// variables on top. The json layer always sets the legacy Azure bool, because that is
+    /// what the file really ships; <paramref name="jsonConnectionString"/> adds the shipped
+    /// connection string on top of it, for the rows that need the json layer to be beaten
+    /// rather than merely empty.
     /// </summary>
     private static IConfigurationBuilder BuilderWithShippedAppSettings(
-        Dictionary<string, string?> environmentLayer) =>
+        Dictionary<string, string?> environmentLayer,
+        string? jsonConnectionString = null) =>
         new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                [LegacyAzureKey] = "true"
+                [LegacyAzureKey] = "true",
+                ["ConnectionStrings:DefaultConnection"] = jsonConnectionString
             })
             .AddInMemoryCollection(environmentLayer);
 
@@ -208,5 +231,162 @@ public class DesignTimeDataSourceTests
 
         configuration.GetConnectionString("DefaultConnection").ShouldBe(AzureEntraIdConnectionString);
         configuration["Database:AuthMode"].ShouldBeNull();
+    }
+
+    // ---------------------------------------------------------------------
+    // Precedence matrix — the keys DatabaseOptions.Resolve ranks against each other
+    // ---------------------------------------------------------------------
+
+    [Theory]
+    // "Database:ConnectionString" | "ConnectionStrings:DefaultConnection" | resolved connection string | resolved mode | where the mode came from
+    [InlineData(null, null, ExpectedLocalFallback, DatabaseAuthMode.Password, FallbackAuthModeSource)]
+    [InlineData(null, BlankValue, ExpectedLocalFallback, DatabaseAuthMode.Password, FallbackAuthModeSource)]
+    [InlineData(null, AzureEntraIdConnectionString, AzureEntraIdConnectionString, DatabaseAuthMode.AzureEntraId, LegacyAuthModeSource)]
+    [InlineData(SectionConnectionString, null, SectionConnectionString, DatabaseAuthMode.AzureEntraId, LegacyAuthModeSource)]
+    [InlineData(SectionConnectionString, BlankValue, SectionConnectionString, DatabaseAuthMode.AzureEntraId, LegacyAuthModeSource)]
+    [InlineData(SectionConnectionString, AzureEntraIdConnectionString, SectionConnectionString, DatabaseAuthMode.AzureEntraId, LegacyAuthModeSource)]
+    public void ApplyLocalFallback_ConnectionStringKeys_StepInOnlyWhenBothAreEmpty(
+        string? sectionConnectionString,
+        string? defaultConnection,
+        string expectedConnectionString,
+        DatabaseAuthMode expectedAuthMode,
+        string expectedAuthModeSource)
+    {
+        // The step-aside is the least visible decision in DesignTimeDataSource: the fallback
+        // must lose to BOTH connection-string keys, not only to the classic one. Driving all
+        // four combinations through the same assertions is what turns "it worked for the case
+        // I happened to try" into a decision table.
+        //
+        // Arranged over the configuration this repository really ships, so every row also
+        // answers the question the round-1 bug hid in: what does the fallback do with the
+        // legacy Azure bool that appsettings.json sets to true?
+        var configuration = DesignTimeDataSource.ApplyLocalFallback(
+            BuilderWithShippedAppSettings(new()
+            {
+                ["Database:ConnectionString"] = sectionConnectionString,
+                ["ConnectionStrings:DefaultConnection"] = defaultConnection
+            }));
+
+        var options = DatabaseOptions.Resolve(configuration);
+
+        options.ConnectionString.ShouldBe(expectedConnectionString);
+        options.AuthMode.ShouldBe(expectedAuthMode);
+        options.AuthModeSource.ShouldBe(expectedAuthModeSource);
+
+        // Every row must also survive the fail-fast the application runs at startup: the
+        // fallback pairs its password-bearing string with Password mode, and every
+        // step-aside row leaves a passwordless Azure string in AzureEntraId mode.
+        Should.NotThrow(() => options.Validate());
+    }
+
+    [Theory]
+    // "Database:AuthMode" | legacy "UseAzureAdAuthentication"
+    [InlineData(null, null)]
+    [InlineData(null, "true")]
+    [InlineData(null, "false")]
+    [InlineData("Password", null)]
+    [InlineData("Password", "true")]        // conflicting pair — must keep throwing
+    [InlineData("Password", "false")]
+    [InlineData("AzureEntraId", null)]
+    [InlineData("AzureEntraId", "true")]
+    [InlineData("AzureEntraId", "false")]   // conflicting pair — must keep throwing
+    public void ApplyLocalFallback_ConnectionStringPresent_LeavesEveryAuthKeyUntouched(
+        string? authMode,
+        string? legacyKey)
+    {
+        // An auth key leaking past the step-aside guard would silently downgrade a real
+        // Entra ID design-time run to password authentication, for which no password exists.
+        // Instead of re-listing nine expected outcomes (which would only duplicate
+        // DatabaseOptionsTests), assert the property that actually matters: with a connection
+        // string present, going through the seam is indistinguishable from not going through
+        // it at all — including how it fails.
+        var keys = new Dictionary<string, string?>
+        {
+            ["Database:ConnectionString"] = SectionConnectionString,
+            ["Database:AuthMode"] = authMode,
+            [LegacyAzureKey] = legacyKey
+        };
+
+        var withoutSeam = ResolveOutcome.Capture(
+            new ConfigurationBuilder().AddInMemoryCollection(keys).Build());
+
+        var throughSeam = ResolveOutcome.Capture(
+            DesignTimeDataSource.ApplyLocalFallback(
+                new ConfigurationBuilder().AddInMemoryCollection(keys)));
+
+        throughSeam.ShouldBe(withoutSeam);
+    }
+
+    [Fact]
+    public void ApplyLocalFallback_EnvironmentSuppliesConnectionString_BeatsTheJsonLayer()
+    {
+        // Adding .AddEnvironmentVariables() on top of the appsettings files is the whole
+        // point of this change (a design-time run can now be redirected without editing a
+        // file), so pin the direction of that override: the environment layer wins, and the
+        // fallback stays out of the way of both.
+        var configuration = DesignTimeDataSource.ApplyLocalFallback(
+            BuilderWithShippedAppSettings(
+                new() { ["ConnectionStrings:DefaultConnection"] = SectionConnectionString },
+                jsonConnectionString: AzureEntraIdConnectionString));
+
+        DatabaseOptions.Resolve(configuration).ConnectionString.ShouldBe(SectionConnectionString);
+    }
+
+    [Fact]
+    public void ApplyLocalFallback_BlankSectionConnectionString_StepsInButResolveStillRefuses()
+    {
+        // Characterization of an asymmetry that lives in DatabaseOptions.Resolve (#132), not
+        // in the fallback: Resolve picks the section key up with "??=", which only fires on
+        // null, so a key that EXISTS but is blank shadows the classic key — while the same
+        // value counts as "missing" three lines later and produces the not-configured error.
+        // The fallback reads blank as missing (consistently with the matrix above) and steps
+        // in, yet the configuration it hands back is still rejected, because nothing
+        // overrides the blank higher-precedence key.
+        //
+        // Verified end to end: `Database__ConnectionString= dotnet ef migrations list --context
+        // MasterDbContext ...` fails with exactly the message asserted below.
+        //
+        // Pinned rather than reported as a defect: the outcome is a loud, actionable error
+        // and the input is a deliberately blanked-out Database__ConnectionString, so this is
+        // not the round-1 situation of a test certifying a broken path as working. If Resolve
+        // ever learns to treat blank as missing, this test goes red — delete it and fold the
+        // case into the matrix above, where it would then belong.
+        var configuration = DesignTimeDataSource.ApplyLocalFallback(
+            BuilderWithShippedAppSettings(new()
+            {
+                ["Database:ConnectionString"] = BlankValue
+            }));
+
+        configuration.GetConnectionString("DefaultConnection").ShouldBe(ExpectedLocalFallback);
+
+        Should.Throw<InvalidOperationException>(() => DatabaseOptions.Resolve(configuration))
+            .Message.ShouldContain("Database connection string not configured");
+    }
+
+    /// <summary>
+    /// The observable result of <see cref="DatabaseOptions.Resolve"/> over one configuration:
+    /// either the values it resolved, or the message it refused with. Captured as a value so
+    /// that two configurations can be compared with a single structural assertion.
+    /// </summary>
+    private sealed record ResolveOutcome(
+        DatabaseAuthMode? AuthMode,
+        string? AuthModeSource,
+        string? ConnectionString,
+        string? Error)
+    {
+        public static ResolveOutcome Capture(IConfiguration configuration)
+        {
+            try
+            {
+                var options = DatabaseOptions.Resolve(configuration);
+                return new ResolveOutcome(
+                    options.AuthMode, options.AuthModeSource, options.ConnectionString, Error: null);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return new ResolveOutcome(
+                    AuthMode: null, AuthModeSource: null, ConnectionString: null, ex.Message);
+            }
+        }
     }
 }
