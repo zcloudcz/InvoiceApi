@@ -520,6 +520,69 @@ public class ChatControllerErrorHandlingTests
     }
 
     /// <summary>
+    /// The SSE endpoint resolves the conversation through the same lookup as SendMessage
+    /// (<c>ChatService.GetOrCreateConversationAsync</c>), and it is the endpoint the chat panel
+    /// really uses — so a conversation deleted in another browser tab surfaces here first.
+    ///
+    /// The client must get the controller's own "not found" text, not the sanitized
+    /// "something went wrong, here is a reference ID" message: there is no server-side incident
+    /// to look up. This is also what USERGUIDE §13 documents for this one message.
+    /// </summary>
+    [Fact]
+    public async Task StreamMessage_WhenConversationNotFound_SendsNotFoundEventWithoutReferenceId()
+    {
+        // Arrange — a stale ConversationId, the shape ChatService throws for it.
+        var thrown = new ChatConversationNotFoundException(999);
+        _chatService
+            .StreamMessageAsync(Arg.Any<long>(), Arg.Any<SendMessageRequest>(), Arg.Any<CancellationToken>())
+            .Returns(FailingStream(thrown, emitChunkFirst: false));
+
+        var controller = BuildController();
+
+        // Act
+        await controller.StreamMessage(
+            new SendMessageRequest { Message = "Hi", ConversationId = 999 });
+
+        // Assert — check the whole frame first, so a leak through another property cannot hide.
+        var body = await ReadBodyAsync(controller.HttpContext);
+        body.ShouldNotContain(thrown.Message);
+        body.ShouldNotContain("999");
+        body.ShouldNotContain(TestCorrelationId);
+
+        var error = ExtractSseError(body);
+        error.ShouldNotBeNull();
+        error!.ShouldBe("Conversation not found.");
+    }
+
+    /// <summary>
+    /// The same operational point as on the non-streaming path: a stale conversation ID is a
+    /// routine client mistake. Logging it as an Error would page the on-call engineer and would
+    /// let anyone probing foreign IDs manufacture incidents.
+    /// </summary>
+    [Fact]
+    public async Task StreamMessage_WhenConversationNotFound_DoesNotLogAsError()
+    {
+        // Arrange
+        _chatService
+            .StreamMessageAsync(Arg.Any<long>(), Arg.Any<SendMessageRequest>(), Arg.Any<CancellationToken>())
+            .Returns(FailingStream(new ChatConversationNotFoundException(999), emitChunkFirst: false));
+
+        var controller = BuildController();
+
+        // Act
+        await controller.StreamMessage(
+            new SendMessageRequest { Message = "Hi", ConversationId = 999 });
+
+        // Assert
+        _logger.DidNotReceive().Log(
+            LogLevel.Error,
+            Arg.Any<EventId>(),
+            Arg.Any<object>(),
+            Arg.Any<Exception?>(),
+            Arg.Any<Func<object, Exception?, string>>());
+    }
+
+    /// <summary>
     /// A stream that completes without yielding a single chunk — what a silently failing
     /// AI provider looks like from the controller's point of view.
     /// </summary>

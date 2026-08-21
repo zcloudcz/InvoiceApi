@@ -1308,7 +1308,10 @@ pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. P
 
   Důsledek pro stavové kódy: stejná doménová podmínka musí mít **stejnou odpověď
   napříč endpointy**. Když jeden endpoint na „konverzace neexistuje" vrací 404,
-  nesmí druhý na totéž vracet 500 — 500 je to, na co se alertuje.
+  nesmí druhý na totéž vracet 500 — 500 je to, na co se alertuje. Na SSE cestě
+  stavový kód k dispozici není, takže „stejná odpověď" znamená stejný text a
+  stejná úroveň logu (`LogWarning`, ne `LogError`) — viz obě větve
+  `ChatController.StreamMessage`.
 
 ---
 

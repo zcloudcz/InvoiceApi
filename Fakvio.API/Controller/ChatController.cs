@@ -228,6 +228,32 @@ public class ChatController : ControllerBase
         {
             _logger.LogDebug("SSE stream cancelled (client disconnected)");
         }
+        catch (ChatConversationNotFoundException ex)
+        {
+            // The streaming endpoint resolves the conversation through the very same lookup as
+            // SendMessage (ChatService.GetOrCreateConversationAsync), so it can fail for the very
+            // same client-side reason — most often a browser tab still holding the ID of a
+            // conversation that was deleted in another tab. This is the endpoint the chat panel
+            // actually uses, so that is not a rare case.
+            //
+            // It gets the same treatment as on the non-streaming path: a warning in the log
+            // (not an Error — nobody should be paged for a stale tab) and the controller's own
+            // text, never ex.Message. No reference ID is attached because there is no server-side
+            // incident to look up; USERGUIDE §13 documents this one message as the exception.
+            _logger.LogWarning(
+                "SSE stream rejected — conversation {ConversationId} not found for the current user",
+                ex.ConversationId);
+
+            try
+            {
+                // The status code cannot be used here: this is an SSE response, so the error has
+                // to travel as a normal stream event just like every other failure below.
+                var notFoundPayload = JsonSerializer.Serialize(new { error = ConversationNotFoundMessage });
+                await Response.WriteAsync($"data: {notFoundPayload}\n\n", HttpContext.RequestAborted);
+                await Response.Body.FlushAsync(HttpContext.RequestAborted);
+            }
+            catch { /* Connection already closed */ }
+        }
         catch (Exception ex)
         {
             // Same contract as the non-streaming path: details to AppLog, reference ID to the user.
