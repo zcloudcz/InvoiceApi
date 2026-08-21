@@ -457,6 +457,43 @@ public class UserInvitationTests : IDisposable
     }
 
     /// <summary>
+    /// The mirror image of the failure case, and the reason readiness must be read rather
+    /// than inferred: an established company is provisioned once, but every later invited
+    /// colleague runs SetPasswordAsync and so re-runs the whole provisioning pipeline over
+    /// a tenant that already holds data. That re-run can well throw (see the follow-up on
+    /// the re-seed of the code tables) without anything being wrong with the workspace.
+    ///
+    /// Such a user must still be told "ready" — otherwise the warning added for issue #152
+    /// would fire for every second and further user of every healthy company.
+    /// </summary>
+    [Fact]
+    public async Task SetPasswordAsync_AlreadyProvisionedCompany_ReportsWorkspaceReady_EvenWhenTheReRunThrows()
+    {
+        // Arrange - the tenant was provisioned long ago ...
+        var settings = await _context.CompanySystemSettings.FirstAsync(s => s.CompanyId == SeededCompanyId);
+        settings.IsProvisioned = true;
+        settings.ProvisionedAt = DateTime.UtcNow.AddDays(-30);
+        await _context.SaveChangesAsync();
+
+        // ... and the re-run triggered by this invitation fails over the existing data
+        _provisioningService
+            .ProvisionTenantAsync(SeededCompanyId, Arg.Any<CancellationToken>())
+            .Returns<Task<bool>>(_ => throw new InvalidOperationException(
+                "23503: update or delete on table \"VatRate\" violates foreign key constraint"));
+
+        var token = await SeedInvitedUserAsync("colleague@test.com", companyId: SeededCompanyId);
+
+        var dto = new SetPasswordDto { Token = token, NewPassword = "MySecurePassword123" };
+
+        // Act
+        var result = await _userService.SetPasswordAsync(dto);
+
+        // Assert - the workspace exists, so the user is let in without a warning
+        result.PasswordSet.ShouldBeTrue();
+        result.WorkspaceReady.ShouldBeTrue();
+    }
+
+    /// <summary>
     /// A company with no CompanySystemSettings row at all has no schema name either, so
     /// tenant routing cannot work for it. The missing row reads back as "no value", which
     /// must be reported as "not ready" - never as ready by absence of a negative answer.
