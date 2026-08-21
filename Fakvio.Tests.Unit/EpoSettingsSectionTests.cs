@@ -1,4 +1,3 @@
-using System.ComponentModel.DataAnnotations;
 using Bunit;
 using Fakvio.Contracts.Dto.CompanySettings;
 using Fakvio.UI.Shared;
@@ -188,18 +187,12 @@ public class EpoSettingsSectionTests : BunitContext, IAsyncLifetime
     }
 
     /// <summary>
-    /// Runs the same DataAnnotations validation ASP.NET runs on an [ApiController] action
-    /// parameter, and fails the test with the offending member names when it does not pass.
+    /// Fails the test unless the DTO passes the validation [ApiController] runs before the
+    /// endpoint body. Shared with UpdateCompanySystemSettingsDtoValidationTests, which owns
+    /// the contract those rules come from.
     /// </summary>
     private static void AssertPassesApiValidation(UpdateCompanySystemSettingsDto dto)
-    {
-        var results = new List<ValidationResult>();
-        var isValid = Validator.TryValidateObject(
-            dto, new ValidationContext(dto), results, validateAllProperties: true);
-
-        isValid.ShouldBeTrue(
-            "API would answer 400: " + string.Join("; ", results.Select(r => r.ErrorMessage)));
-    }
+        => UpdateCompanySystemSettingsDtoValidationTests.AssertPassesApiValidation(dto);
 
     [Fact]
     public void ShowsProgressBarInsteadOfForm_WhileLoading()
