@@ -19,6 +19,9 @@ namespace Fakvio.Tests.Unit;
 /// </summary>
 public class UserInvitationTests : IDisposable
 {
+    /// <summary>Id of the company seeded by <see cref="SeedTestCompany"/> for every test.</summary>
+    private const long SeededCompanyId = 1;
+
     private readonly MasterDbContext _context;
     private readonly UserService _userService;
     private readonly IAuthService _authService;
@@ -417,6 +420,82 @@ public class UserInvitationTests : IDisposable
         var dbUser = await verificationContext.User.FirstOrDefaultAsync(u => u.Email == "readfail@test.com");
         dbUser!.PasswordHash.ShouldBe("HASH:MySecurePassword123");
         dbUser.IsInvitationPending.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// The readiness flag must come from the persisted state, not from "the provisioning
+    /// call returned". A run can finish early — a step returns without reaching the final
+    /// CompanySystemSettings.IsProvisioned = true — and such a half-finished tenant has no
+    /// usable schema. Reporting it as ready would recreate issue #152 through the back door,
+    /// this time without any exception to notice.
+    /// </summary>
+    [Fact]
+    public async Task SetPasswordAsync_ProvisioningReturnsWithoutSettingTheFlag_ReportsWorkspaceNotReady()
+    {
+        // Arrange - provisioning completes without throwing, but never flips IsProvisioned
+        _provisioningService
+            .ProvisionTenantAsync(SeededCompanyId, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(true));
+
+        var token = await SeedInvitedUserAsync("halfdone@test.com", companyId: SeededCompanyId);
+
+        var dto = new SetPasswordDto { Token = token, NewPassword = "MySecurePassword123" };
+
+        // Act
+        var result = await _userService.SetPasswordAsync(dto);
+
+        // Assert - the password holds, the workspace does not
+        result.PasswordSet.ShouldBeTrue();
+        result.WorkspaceReady.ShouldBeFalse();
+
+        // The provisioning attempt really did happen and really did report success -
+        // otherwise this test would pass for the trivial reason that nothing ran.
+        await _provisioningService.Received(1).ProvisionTenantAsync(SeededCompanyId, Arg.Any<CancellationToken>());
+
+        var settings = await _context.CompanySystemSettings.FirstAsync(s => s.CompanyId == SeededCompanyId);
+        settings.IsProvisioned.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// A company with no CompanySystemSettings row at all has no schema name either, so
+    /// tenant routing cannot work for it. The missing row reads back as "no value", which
+    /// must be reported as "not ready" - never as ready by absence of a negative answer.
+    /// </summary>
+    [Fact]
+    public async Task SetPasswordAsync_CompanySettingsRowMissing_ReportsWorkspaceNotReady()
+    {
+        // Arrange - a second company that was never given a settings row
+        const long companyWithoutSettings = 2;
+        SeedCompanyWithoutSystemSettings(companyWithoutSettings);
+
+        var token = await SeedInvitedUserAsync("nosettings@test.com", companyId: companyWithoutSettings);
+
+        var dto = new SetPasswordDto { Token = token, NewPassword = "MySecurePassword123" };
+
+        // Act
+        var result = await _userService.SetPasswordAsync(dto);
+
+        // Assert
+        result.PasswordSet.ShouldBeTrue();
+        result.WorkspaceReady.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// Helper: adds a company that deliberately has no CompanySystemSettings row,
+    /// the state a tenant ends up in when registration itself did not finish.
+    /// </summary>
+    private void SeedCompanyWithoutSystemSettings(long companyId)
+    {
+        _context.Client.Add(new Client
+        {
+            Id = companyId,
+            RegistrationNumber = "87654321",
+            CompanyName = "Company Without Settings",
+            IsIssuer = true,
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
+        });
+        _context.SaveChanges();
     }
 
     /// <summary>
