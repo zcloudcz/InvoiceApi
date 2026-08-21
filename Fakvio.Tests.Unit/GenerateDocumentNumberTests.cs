@@ -543,4 +543,42 @@ public class GenerateDocumentNumberTests : IDisposable
         numbers.Count.ShouldBe(1);
         numbers.ShouldAllBe(n => n == "DRAFT");
     }
+
+    /// <summary>
+    /// Boundary between the two catch blocks: the transient branch is selected by the TYPE of
+    /// the inner exception (DbUpdateConcurrencyException), not by the mere presence of one.
+    ///
+    /// A configuration failure often carries an inner exception too — the sequence service
+    /// wraps whatever EF Core threw while loading the series. Such a failure must still be
+    /// reported as a configuration problem and send the user to /number-sequences; telling him
+    /// to "repeat the action" would send him in circles, because repeating cannot fix a missing
+    /// series.
+    /// </summary>
+    [Fact]
+    public async Task GenerateDocumentNumber_ConfigurationErrorWithUnrelatedInnerException_KeepsConfigurationAdvice()
+    {
+        // Arrange — configuration failure carrying an inner exception that is NOT a concurrency conflict
+        var sequenceError = new InvalidOperationException(
+            "No default number sequence configured for Invoice",
+            new TimeoutException("Reading the sequence timed out"));
+
+        _numberSequence
+            .GenerateNextNumberForDocumentTypeAsync(
+                Arg.Any<EDocumentType>(), Arg.Any<DateTime>(),
+                Arg.Any<string?>(), Arg.Any<string?>(),
+                Arg.Any<CancellationToken>())
+            .ThrowsAsync(sequenceError);
+
+        var dto = MakeInvoiceDto();
+
+        // Act
+        var ex = await Should.ThrowAsync<InvalidOperationException>(
+            () => _service.CreateInvoiceAsync(dto));
+
+        // Assert — configuration advice, not the transient "repeat the action" one
+        ex.Message.ShouldContain("/number-sequences",
+            customMessage: "Only a DbUpdateConcurrencyException inner may switch to the transient branch");
+        ex.Message.ShouldNotContain("repeat the action");
+        ex.InnerException.ShouldBe(sequenceError);
+    }
 }

@@ -683,29 +683,72 @@ public class NumberSequenceServiceTests : IDisposable
     // ==================== Concurrency collision (issue #155) ====================
 
     /// <summary>
-    /// Test double that fails EVERY save with an optimistic-concurrency conflict.
+    /// Number of times the service may try to persist the incremented counter:
+    /// one initial attempt plus NumberSequenceService.MaxConcurrencyRetries (3) retries.
+    ///
+    /// The value is duplicated here ON PURPOSE instead of being read from the service via
+    /// reflection: the tests below must PIN the budget, and a test that derives it from the
+    /// production constant would silently follow any change to it. If the retry budget is
+    /// ever tuned, update this constant deliberately and re-check both tests.
+    /// </summary>
+    private const int TotalAttemptBudget = 4;
+
+    /// <summary>
+    /// Test double that fails the first <c>conflictsBeforeSuccess</c> saves with an
+    /// optimistic-concurrency conflict and lets every later save through.
     /// This is how two parallel requests drawing from the same sequence behave in
     /// production: the RowVersion token no longer matches and EF Core throws
     /// <see cref="DbUpdateConcurrencyException"/>. Faking it here is the only reliable way —
     /// the in-memory provider does not enforce concurrency tokens, and a real race is
     /// timing-dependent and therefore flaky in a unit test.
     /// </summary>
-    private sealed class AlwaysConflictingTenantDbContext : TenantDbContext
+    private sealed class ConflictingTenantDbContext : TenantDbContext
     {
+        /// <summary>Conflict count high enough that the retry loop always runs out of attempts.</summary>
+        public const int ConflictsForever = int.MaxValue;
+
+        private readonly int _conflictsBeforeSuccess;
+
         /// <summary>How many times the service tried to persist the incremented counter.</summary>
         public int SaveAttempts { get; private set; }
 
-        public AlwaysConflictingTenantDbContext(DbContextOptions<TenantDbContext> options)
+        public ConflictingTenantDbContext(DbContextOptions<TenantDbContext> options, int conflictsBeforeSuccess)
             : base(options)
         {
+            _conflictsBeforeSuccess = conflictsBeforeSuccess;
         }
 
         public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
         {
             SaveAttempts++;
-            throw new DbUpdateConcurrencyException("Simulated optimistic concurrency conflict.");
+
+            if (SaveAttempts <= _conflictsBeforeSuccess)
+                throw new DbUpdateConcurrencyException("Simulated optimistic concurrency conflict.");
+
+            // The conflict has cleared — persist for real, exactly like a winning retry does.
+            return base.SaveChangesAsync(cancellationToken);
         }
     }
+
+    /// <summary>
+    /// Opens a SECOND context over the very same in-memory data, whose saves conflict as
+    /// requested. The test keeps the instance so it can assert how many attempts were spent.
+    /// </summary>
+    private ConflictingTenantDbContext CreateConflictingContext(int conflictsBeforeSuccess)
+    {
+        var options = new DbContextOptionsBuilder<TenantDbContext>()
+            .UseInMemoryDatabase(databaseName: _databaseName)
+            .Options;
+
+        return new ConflictingTenantDbContext(options, conflictsBeforeSuccess);
+    }
+
+    /// <summary>
+    /// Builds the service under test on top of a given tenant context. The tenant resolver is a
+    /// bare substitute — these tests never leave the tenant branch.
+    /// </summary>
+    private NumberSequenceService CreateServiceOver(TenantDbContext tenantContext) =>
+        new(tenantContext, _masterContext, Substitute.For<ITenantResolver>(), _logger);
 
     /// <summary>
     /// Issue #155 — the third failure path from the acceptance criteria: a number collision.
@@ -724,13 +767,9 @@ public class NumberSequenceServiceTests : IDisposable
     {
         // Arrange — second context over the SAME in-memory data, but every save conflicts.
         // Sequence 1 ("Invoice sequence") was already seeded by the constructor.
-        var options = new DbContextOptionsBuilder<TenantDbContext>()
-            .UseInMemoryDatabase(databaseName: _databaseName)
-            .Options;
-
-        using var conflictingContext = new AlwaysConflictingTenantDbContext(options);
-        var service = new NumberSequenceService(conflictingContext, _masterContext,
-            Substitute.For<ITenantResolver>(), _logger);
+        using var conflictingContext = CreateConflictingContext(
+            ConflictingTenantDbContext.ConflictsForever);
+        var service = CreateServiceOver(conflictingContext);
 
         // Act
         var ex = await Should.ThrowAsync<InvalidOperationException>(
@@ -742,6 +781,49 @@ public class NumberSequenceServiceTests : IDisposable
         ex.InnerException.ShouldBeOfType<DbUpdateConcurrencyException>();
 
         // Assert — the retry budget really was spent: 1 initial attempt + 3 retries
-        conflictingContext.SaveAttempts.ShouldBe(4);
+        conflictingContext.SaveAttempts.ShouldBe(TotalAttemptBudget,
+            customMessage: $"The service must spend its whole budget of {TotalAttemptBudget} save attempts " +
+                           "(1 initial + MaxConcurrencyRetries) before giving up. A lower number means it " +
+                           "gave up early; a higher one means the loop over-runs the configured retries. " +
+                           "If MaxConcurrencyRetries was deliberately re-tuned, update TotalAttemptBudget.");
+    }
+
+    /// <summary>
+    /// Issue #155 — the OTHER half of the collision story, and the common one in production:
+    /// a conflict that clears before the retry budget runs out.
+    ///
+    /// The explicit error added for #155 must stay reserved for the hopeless case. A collision
+    /// that the retry loop wins has to end in a normal document number, with no error reaching
+    /// the user and — just as important — with no number burnt: each failed save is rolled back
+    /// by the database, so the counter may advance only once, no matter how many attempts it took.
+    /// </summary>
+    [Fact]
+    public async Task GenerateNextNumberAsync_WhenConflictClearsWithinBudget_ReturnsNumberWithoutError()
+    {
+        // Arrange — the first two saves conflict, the third one goes through.
+        // Sequence 1 ("Invoice sequence", prefix "INV-", CurrentNumber = 5) comes from the seed.
+        const int ConflictsBeforeSuccess = 2;
+        using var conflictingContext = CreateConflictingContext(ConflictsBeforeSuccess);
+        var service = CreateServiceOver(conflictingContext);
+
+        // Act
+        var number = await service.GenerateNextNumberAsync(1, new DateTime(2026, 5, 1));
+
+        // Assert — the caller gets a real number from the configured series, not an error
+        number.ShouldBe("INV-2026006",
+            customMessage: "A collision that clears within the retry budget must still produce " +
+                           "the next number of the configured series");
+
+        // Assert — it took exactly one attempt more than the number of conflicts, and the
+        // service stopped retrying as soon as the save succeeded
+        conflictingContext.SaveAttempts.ShouldBe(ConflictsBeforeSuccess + 1,
+            customMessage: "The loop must stop at the first successful save, not spend the whole budget");
+
+        // Assert — no numbers were burnt by the failed attempts. AsNoTracking bypasses the
+        // change tracker of the seeding context so we read what is really stored.
+        var stored = await _context.NumberSequence.AsNoTracking().FirstAsync(s => s.Id == 1);
+        stored.CurrentNumber.ShouldBe(6,
+            customMessage: "Each retry re-reads the sequence, so the counter may advance by exactly " +
+                           "one — otherwise a retried collision would leave gaps in the series");
     }
 }
