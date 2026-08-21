@@ -38,13 +38,16 @@
 2. Klikněte „Načíst z ARES" — systém doplní oficiální název firmy **a sídlo**
    (ulice, PSČ, město, země) z obchodního rejstříku ARES.
 3. Sekce „Sídlo firmy" je editovatelná — pokud ARES nemá aktuální údaje,
-   adresu jednoduše přepište. Odesílá se to, co vidíte ve formuláři.
+   adresu jednoduše přepište. Uloží se to, co ve formuláři vidíte.
 4. Klikněte „Zaregistrovat se" — na zadaný e-mail přijde odkaz pro nastavení hesla.
 
 Sídlo se uloží k vaší firmě jako primární adresa a používá se jako blok vystavitele
 na fakturách (PDF). Změnit ho lze později v „Nastavení firmy".
-Pokud sídlo nevyplníte a ARES ho nevrátí, firma vznikne bez adresy a je potřeba ji
-doplnit v „Nastavení firmy" před vystavením první faktury.
+
+**Pozor na jednu výjimku:** když ulici, PSČ i město **úplně vymažete**, systém to bere
+jako „nevyplněno" a doplní adresu z ARES. Firma bez adresy vznikne jen tehdy, když ji
+nemá ani ARES (nebo je registr nedostupný) — pak ji doplňte v „Nastavení firmy"
+před vystavením první faktury. Chcete-li adresu odstranit, udělejte to tam.
 
 ---
 

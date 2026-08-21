@@ -194,6 +194,34 @@ public class RegistrationAresAddressTests : IDisposable
     }
 
     /// <summary>
+    /// Pins the one behaviour USERGUIDE §0 has to warn about: clearing the address
+    /// section does NOT register the company without an address — on the wire an empty
+    /// field is indistinguishable from "an API client sent no address", so the ARES
+    /// value comes back. Country stays pre-filled on purpose and must not, on its own,
+    /// count as "the user typed an address" (that would store an address with an empty
+    /// street, city and postcode).
+    /// </summary>
+    [Fact]
+    public async Task Register_UserClearsAddressFields_FallsBackToAresAddress()
+    {
+        const string ico = "32345678";
+        ArrangeAresWithAddress(ico);
+
+        var request = BuildRequest(ico);
+        request.Street = "";
+        request.City = "   ";       // whitespace counts as cleared
+        request.PostalCode = null;
+        request.Country = "Česká republika";  // left untouched by the user
+
+        await _service.RegisterAsync(request, "https://app.example.com");
+
+        var address = (await LoadIssuerAsync(ico)).Address.ShouldHaveSingleItem();
+        address.Street.ShouldBe("Hlavní 123", "cleared fields fall back to the ARES address");
+        address.City.ShouldBe("Praha");
+        address.PostalCode.ShouldBe("120 00");
+    }
+
+    /// <summary>
     /// ARES is unreachable (or the IČO is unknown) and the user supplied no address —
     /// registration must still succeed, just without an address record.
     /// </summary>

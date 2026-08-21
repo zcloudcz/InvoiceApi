@@ -49,13 +49,15 @@ public class RegisterRequest
     /// The registration form pre-fills it from ARES; the user may correct it
     /// before submitting. When left empty, the ARES value is used server-side.
     /// </summary>
-    [MaxLength(200)]
+    // Lengths mirror the Address table (MasterDbContext.ConfigureAddress) so that
+    // validation never rejects a value the database would happily store.
+    [MaxLength(500)]
     public string? Street { get; set; }
 
     /// <summary>
     /// City of the registered office (optional) — see <see cref="Street"/>.
     /// </summary>
-    [MaxLength(100)]
+    [MaxLength(200)]
     public string? City { get; set; }
 
     /// <summary>

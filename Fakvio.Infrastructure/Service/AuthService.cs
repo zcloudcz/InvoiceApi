@@ -336,6 +336,22 @@ public class AuthService : IAuthService
     /// no address at all (e.g. an API client that does not send one) do we fall back
     /// to the address just fetched from ARES.
     ///
+    /// The address is taken as one atomic unit — a single non-empty field out of
+    /// Street/City/PostalCode makes the whole request address win. Merging field by
+    /// field is deliberately NOT done: it would silently mix a corrected city with a
+    /// stale ARES street and produce an address that exists nowhere. The registration
+    /// form always submits all four fields together, so for the UI path the two
+    /// strategies are equivalent anyway.
+    ///
+    /// Country is excluded from the "did the user type an address?" test on purpose:
+    /// it is pre-filled and rarely cleared, so a lone country would otherwise defeat
+    /// the ARES fallback and store an address with an empty street, city and postcode.
+    ///
+    /// Consequence worth knowing (documented in USERGUIDE §0): clearing the whole
+    /// address section does NOT register the company without an address — the ARES
+    /// value comes back. A company without a registered office is created only when
+    /// ARES has none either; it can be removed later in company settings.
+    ///
     /// Returns null when neither source has any address data — an empty address record
     /// would be worse than none, because invoice templates would render blank lines.
     /// </summary>

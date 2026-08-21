@@ -280,7 +280,10 @@
 
     /// <summary>
     /// Calls the ARES API to auto-fill company details from IČO (registration number).
-    /// Uses the existing /api/client/ares/{ico} endpoint.
+    ///
+    /// Uses the anonymous /api/auth/ares/{ico} endpoint. The tenant-scoped
+    /// /api/client/ares/{ico} requires a JWT, which a visitor of /register does not
+    /// have — calling it from here always ended in 401 (issue #157, review round 1).
     /// </summary>
     private async Task LoadFromAresAsync()
     {
@@ -291,37 +294,24 @@
 
         try
         {
-            // Use the existing ARES endpoint on the API
-            var apiBaseUrl = Configuration["ApiSettings:BaseUrl"]!;
-            using var httpClient = new HttpClient { BaseAddress = new Uri(apiBaseUrl) };
-            var response = await httpClient.GetAsync($"/api/client/ares/{_request.RegistrationNumber}");
+            // The anonymous endpoint is captcha-gated, exactly like login/register.
+            var captchaToken = await JS.InvokeAsync<string>("getRecaptchaToken", "ares");
 
-            if (response.IsSuccessStatusCode)
+            var aresData = await AuthApiService.FetchFromAresAsync(_request.RegistrationNumber, captchaToken);
+
+            if (aresData != null && !string.IsNullOrEmpty(aresData.CompanyName))
             {
-                var aresData = await response.Content.ReadFromJsonAsync<AresResult>();
-                if (aresData != null && !string.IsNullOrEmpty(aresData.CompanyName))
-                {
-                    _request.CompanyName = aresData.CompanyName;
+                _request.CompanyName = aresData.CompanyName;
 
-                    // Pre-fill the registered office so the user can review / correct it.
-                    // ARES returns the office as the first (primary) address.
-                    var aresAddress = aresData.Address?.FirstOrDefault();
-                    if (aresAddress != null)
-                    {
-                        _request.Street = aresAddress.Street;
-                        _request.City = aresAddress.City;
-                        _request.PostalCode = aresAddress.PostalCode;
-                        _request.Country = aresAddress.Country;
-                    }
+                // Pre-fill the registered office so the user can review / correct it
+                // before submitting. Empty strings mean ARES has no address on file.
+                _request.Street = aresData.Street;
+                _request.City = aresData.City;
+                _request.PostalCode = aresData.PostalCode;
+                _request.Country = aresData.Country;
 
-                    _aresMessage = L["Register_AresSuccess"].Value;
-                    _aresSeverity = Severity.Success;
-                }
-                else
-                {
-                    _aresMessage = L["Register_AresFailed"].Value;
-                    _aresSeverity = Severity.Warning;
-                }
+                _aresMessage = L["Register_AresSuccess"].Value;
+                _aresSeverity = Severity.Success;
             }
             else
             {
@@ -338,26 +328,5 @@
         {
             _isLoadingAres = false;
         }
-    }
-
-    /// <summary>
-    /// Simple DTO for ARES response deserialization — only the fields the
-    /// registration form pre-fills (company name and registered office address).
-    /// </summary>
-    private class AresResult
-    {
-        public string? CompanyName { get; set; }
-        public List<AresAddressResult>? Address { get; set; }
-    }
-
-    /// <summary>
-    /// Address part of the ARES response (matches AddressDto on the API side).
-    /// </summary>
-    private class AresAddressResult
-    {
-        public string? Street { get; set; }
-        public string? City { get; set; }
-        public string? PostalCode { get; set; }
-        public string? Country { get; set; }
     }
 }

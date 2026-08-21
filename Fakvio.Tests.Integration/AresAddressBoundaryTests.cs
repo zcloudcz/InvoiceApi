@@ -31,6 +31,12 @@ public class AresAddressBoundaryTests
     /// </summary>
     private const string WellKnownIco = "00006947";
 
+    /// <summary>
+    /// Prefix AresServiceImpl uses for HttpRequestException failures (AresServiceImpl.cs,
+    /// catch (HttpRequestException)). Keep in sync if that message ever changes.
+    /// </summary>
+    private const string ConnectionErrorPrefix = "ARES API connection error";
+
     [SkippableFact]
     public async Task GetCompanyInfo_LiveAres_ReturnsRegisteredOfficeAddress()
     {
@@ -53,9 +59,18 @@ public class AresAddressBoundaryTests
         // ── Act ───────────────────────────────────────────────────────────────
         var info = await service.GetCompanyInfoAsync(WellKnownIco);
 
-        // ARES outage must not turn into a red build — skip instead.
-        Skip.IfNot(info.IsSuccessful,
-            $"ARES lookup failed ({info.ErrorMessage}) — skipping (registry unavailable).");
+        // A registry OUTAGE must not turn into a red build — skip instead.
+        // But skip ONLY on that: AresServiceImpl also reports IsSuccessful == false when it
+        // fails to PARSE the response ("Error parsing ARES response: ...") or when the
+        // subject is missing, and those are exactly the contract regressions this test
+        // exists to catch. Matching the connection-error prefix keeps the two apart.
+        var isRegistryUnreachable = info.ErrorMessage?.StartsWith(
+            ConnectionErrorPrefix, StringComparison.Ordinal) == true;
+        Skip.If(isRegistryUnreachable,
+            $"Skipped: ARES is unreachable ({info.ErrorMessage}).");
+
+        // Anything else (parse error, subject not found) is a real failure.
+        info.IsSuccessful.ShouldBeTrue($"ARES lookup failed: {info.ErrorMessage}");
 
         // ── Assert: the address block our registration flow relies on ────────
         info.CompanyName.ShouldNotBeNullOrWhiteSpace();

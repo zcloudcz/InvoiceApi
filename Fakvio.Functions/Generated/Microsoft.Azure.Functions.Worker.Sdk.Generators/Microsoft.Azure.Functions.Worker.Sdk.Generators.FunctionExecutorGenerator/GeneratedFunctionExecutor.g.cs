@@ -123,6 +123,13 @@ namespace Fakvio.Functions
                 context.GetInvocationResult().Value = await i.Auth_Register((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0]);
                 return;
             }
+            if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.AuthFunctions.Auth_FetchFromAres", StringComparison.Ordinal))
+            {
+                var instanceType = types["Fakvio.Functions.Generated.AuthFunctions"];
+                var i = _functionActivator.CreateInstance(instanceType, context) as global::Fakvio.Functions.Generated.AuthFunctions;
+                context.GetInvocationResult().Value = await i.Auth_FetchFromAres((global::Microsoft.AspNetCore.Http.HttpRequest)inputArguments[0], (string)inputArguments[1]);
+                return;
+            }
             if (string.Equals(context.FunctionDefinition.EntryPoint, "Fakvio.Functions.Generated.AuthFunctions.Auth_VerifyEmail", StringComparison.Ordinal))
             {
                 var instanceType = types["Fakvio.Functions.Generated.AuthFunctions"];
