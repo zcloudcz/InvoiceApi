@@ -1352,7 +1352,9 @@ Chyby vzniklé v Blazor WASM klientovi by jinak skončily jen v browser konzoli.
 - Po ztrátě key ringu uživatel musí znovu uložit VŠECHNA hesla (SMTP, IMAP, AI keys).
 
 ### EF Core Identity Map caching
-- `FindAsync` bez `Include` cachuje entitu v identity mapu. Pozdější query s `Include` vrátí cached instanci s `null` navigation properties (issue #104). Fix: `AsNoTracking()` na read-only queries, nebo explicitní `Include` na `FindAsync`.
+- `FindAsync` bez `Include` cachuje entitu v identity mapu. Pozdější query s `Include` vrátí cached instanci s `null` navigation properties (issue #104). Fix: `AsNoTracking()` na read-only queries, nebo `FindAsync` nahradit za `Include(...).FirstOrDefaultAsync(...)` (`FindAsync` nemá `Include` overload).
+- Stejná past platí i tam, kde `FindAsync` navigation property nikdy nenačte — `client.BillingSettings` bylo vždy `null` a splatnost tiše spadla na výchozích 14 dní (issue #106). Když se entita načítá kvůli navigation property, načti ji query s `Include`, ne přes `FindAsync`.
+- **Unit test tuhle vadu nechytí, když seeduje přes tentýž `DbContext`, který pak dostane služba** — InMemory provider si obě entity drží v identity mapě a udělá relationship fixup, takže navigation property „magicky" není `null`. Seeduj přes samostatný `DbContext` (stejné `databaseName`) a služba ať dostane čerstvý — pak má prázdnou identity mapu jako reálný HTTP request. Vzor: `Fakvio.Tests.Unit/InvoiceServiceDueDateTests.cs`.
 
 ### Non-idempotent seed migrace
 - `migrationBuilder.InsertData` s hardcoded `Id` selže na `PK duplicate` pokud data už existují (issue #97/#109). Vždy použít raw SQL `INSERT ... ON CONFLICT (Id) DO NOTHING` nebo `DELETE + InsertData` guard.

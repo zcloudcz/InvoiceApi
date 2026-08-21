@@ -266,8 +266,16 @@ V detailu klienta sekce „Fakturační nastavení" (BillingSettings):
 | Suffix čísla dokladu | Přidá se za číslo faktury |
 | Vlastní číselná řada | Pokud nastavena, použije se místo výchozí řady |
 | Splatnost (dny) | Výchozí počet dní od data vystavení do data splatnosti |
+| Způsob výpočtu splatnosti | Určuje, jak se ze „Splatnost (dny)" počítá datum splatnosti — od data vystavení, od konce měsíce, konec aktuálního / následujícího měsíce |
 
 Tyto hodnoty se automaticky aplikují při vytváření nové faktury pro tohoto klienta.
+
+Datum splatnosti se určuje v tomto pořadí:
+
+1. **Ručně zadané datum** ve formuláři faktury — má vždy přednost.
+2. **Fakturační nastavení klienta** — použije se, když datum nezadáte. Týká se i dokladů,
+   které vznikají bez formuláře: kopie faktury, dobropis a faktura vytvořená AI asistentem.
+3. **Výchozí hodnota 14 dní** od data vystavení — když klient fakturační nastavení nemá.
 
 ### 5.4 Historie faktur klienta
 

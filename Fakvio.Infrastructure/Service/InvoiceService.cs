@@ -18,6 +18,14 @@ namespace Fakvio.Infrastructure.Service;
 /// </summary>
 public class InvoiceService : IInvoiceService
 {
+    /// <summary>
+    /// Due days used when the client has no BillingSettings of its own — the last step of the
+    /// due date resolution order in <see cref="CalculateDueDate"/>. Mirrors the default value of
+    /// BillingSettings.DueDays so a client with freshly created billing settings keeps the same
+    /// due date as one with none at all.
+    /// </summary>
+    private const int DefaultDueDays = 14;
+
     private readonly TenantDbContext _context;
     private readonly INumberSequenceService _numberSequenceService;
     private readonly ILogger<InvoiceService> _logger;
@@ -260,8 +268,23 @@ public class InvoiceService : IInvoiceService
     {
         _logger.LogInformation("Creating new {DocumentType}", createDto.DocumentType);
 
-        // Validate client and issuer exist
-        var client = await _context.Client.FindAsync(new object[] { createDto.ClientId }, cancellationToken);
+        // Validate client and issuer exist.
+        //
+        // The client is loaded WITH its BillingSettings because CalculateDueDate below needs
+        // DueDateCalculationType + DueDays from it. FindAsync must NOT be used here: it loads
+        // the row without any navigation property, so client.BillingSettings would stay null
+        // and every invoice would silently fall back to the default 14-day due date (issue #106).
+        //
+        // AsNoTracking() is REQUIRED for the same reason as in GenerateDocumentNumberAsync —
+        // EF Core identity resolution hands back an already-tracked Client instance when one is
+        // in the DbContext scope, and that cached instance keeps BillingSettings null even
+        // when this query asks for the Include. A no-tracking query always materializes a fresh
+        // object graph straight from the database. The entity is only read here (the invoice
+        // links the client through the ClientId foreign key), so nothing needs to be tracked.
+        var client = await _context.Client
+            .AsNoTracking()
+            .Include(c => c.BillingSettings)
+            .FirstOrDefaultAsync(c => c.Id == createDto.ClientId, cancellationToken);
         if (client == null)
             throw new InvalidOperationException($"Client with ID {createDto.ClientId} not found");
 
@@ -1601,14 +1624,18 @@ public class InvoiceService : IInvoiceService
     }
 
     /// <summary>
-    /// Calculates due date based on client's billing settings, respecting EDueDateCalculationType.
+    /// Calculates due date, respecting EDueDateCalculationType.
     /// Uses DueDateCalculator shared helper to ensure consistent calculation across backend and UI.
     ///
-    /// If the client has BillingSettings, uses their DueDateCalculationType + DueDays.
-    /// Otherwise falls back to DaysFromIssue with 14 days.
+    /// Resolution order (first match wins):
+    ///   1. Explicit DueDate on the DTO — the user typed a date, it is never recalculated.
+    ///   2. The client's own BillingSettings — DueDateCalculationType + DueDays.
+    ///   3. Fallback — DaysFromIssue with <see cref="DefaultDueDays"/> days.
     ///
-    /// If the DTO already has an explicit DueDate set by the user, that value is returned as-is
-    /// (manual override takes priority over automatic calculation).
+    /// IMPORTANT for callers: the <paramref name="client"/> instance must have been loaded WITH
+    /// its BillingSettings navigation property (Include + AsNoTracking). A client loaded via
+    /// FindAsync has BillingSettings == null and silently degrades every invoice to step 3 —
+    /// that was exactly the defect in issue #106.
     /// </summary>
     private DateTime CalculateDueDate(CreateInvoiceDto createDto, Client client)
     {
@@ -1628,10 +1655,10 @@ public class InvoiceService : IInvoiceService
                 client.BillingSettings.DueDateCalculationType))!.Value;
         }
 
-        // Default: DaysFromIssue with 14 days (when client has no billing settings)
+        // Default: DaysFromIssue with DefaultDueDays (when client has no billing settings)
         return NormalizeToUtcMidnight(DueDateCalculator.Calculate(
             issueDate,
-            dueDays: 14,
+            DefaultDueDays,
             EDueDateCalculationType.DaysFromIssue))!.Value;
     }
 
