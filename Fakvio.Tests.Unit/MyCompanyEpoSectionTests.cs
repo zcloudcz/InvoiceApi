@@ -1,3 +1,4 @@
+using AngleSharp.Dom;
 using System.Net;
 using System.Net.Http.Json;
 using Bunit;
@@ -12,6 +13,7 @@ using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging.Abstractions;
+using MudBlazor;
 using MudBlazor.Services;
 using NSubstitute;
 using Shouldly;
@@ -33,7 +35,17 @@ public class MyCompanyEpoSectionTests : BunitContext, IAsyncLifetime
     private const long CompanyId = 42;
     private const string CompanyName = "Testovací s.r.o.";
 
+    // The two mandatory EPO header codes, reused by every save test.
+    // 451 = Finanční úřad pro hl. m. Prahu, 2001 = its territorial branch.
+    private const int TaxOfficeCode = 451;
+    private const int TaxOfficeBranchCode = 2001;
+
     private readonly CompanyBackendHandler _backend = new();
+
+    // Substituted so a test can assert what the user was told after a save. The real
+    // MudBlazor snackbar would need a provider in the render tree and swallows the
+    // message; the same substitution is used by UiErrorHandlerTests.
+    private readonly ISnackbar _snackbar = Substitute.For<ISnackbar>();
 
     // MudBlazor's PopoverService only supports async disposal; xunit disposes test
     // classes synchronously, so route disposal through IAsyncLifetime.
@@ -46,6 +58,7 @@ public class MyCompanyEpoSectionTests : BunitContext, IAsyncLifetime
         // MudPopoverProvider in a bUnit render tree, so the guard has to be switched off.
         Services.AddMudServices(o => o.PopoverOptions.CheckForPopoverProvider = false);
         JSInterop.Mode = JSRuntimeMode.Loose;
+        Services.AddSingleton(_snackbar);
 
         // Localizer returns the key itself, so assertions can target keys instead of
         // translations (the page renders both CZ and EN from the same markup).
@@ -138,8 +151,8 @@ public class MyCompanyEpoSectionTests : BunitContext, IAsyncLifetime
         // the same record the SMTP section uses, not from a second API call.
         var values = cut.FindComponent<EpoSettingsSection>()
             .FindAll("input").Select(i => i.GetAttribute("value")).ToList();
-        values.ShouldContain("451");
-        values.ShouldContain("2001");
+        values.ShouldContain(TaxOfficeCode.ToString());
+        values.ShouldContain(TaxOfficeBranchCode.ToString());
     }
 
     [Fact]
@@ -147,17 +160,15 @@ public class MyCompanyEpoSectionTests : BunitContext, IAsyncLifetime
     {
         var cut = RenderPageAs("Admin");
         var section = cut.FindComponent<EpoSettingsSection>();
-        var inputs = section.FindAll("input");
-        inputs[0].Change("451");
-        inputs[1].Change("2001");
+        EnterMandatoryCodes(section);
 
         ClickSave(section);
 
         // The whole point of the issue: entering the values here must reach the endpoint
         // that /vat-report validates against.
         await cut.WaitForAssertionAsync(() => _backend.LastUpdate.ShouldNotBeNull());
-        _backend.LastUpdate!.EpoTaxOfficeCode.ShouldBe(451);
-        _backend.LastUpdate.EpoTaxOfficeBranchCode.ShouldBe(2001);
+        _backend.LastUpdate!.EpoTaxOfficeCode.ShouldBe(TaxOfficeCode);
+        _backend.LastUpdate.EpoTaxOfficeBranchCode.ShouldBe(TaxOfficeBranchCode);
         // Partial update — the SMTP and AI values on the same record must stay untouched.
         _backend.LastUpdate.SmtpHost.ShouldBeNull();
         _backend.LastUpdate.AiDefaultProvider.ShouldBeNull();
@@ -168,9 +179,7 @@ public class MyCompanyEpoSectionTests : BunitContext, IAsyncLifetime
     {
         var cut = RenderPageAs("Admin");
         var section = cut.FindComponent<EpoSettingsSection>();
-        var inputs = section.FindAll("input");
-        inputs[0].Change("451");
-        inputs[1].Change("2001");
+        EnterMandatoryCodes(section);
         // Phone, e-mail and authorized person are left empty — the guides call them optional.
 
         ClickSave(section);
@@ -184,21 +193,82 @@ public class MyCompanyEpoSectionTests : BunitContext, IAsyncLifetime
             .AssertPassesApiValidation(_backend.LastUpdate);
     }
 
+    [Fact]
+    public void Admin_SaveRejectedByTheApi_ReportsItAndLeavesTheFormUsable()
+    {
+        // 403 is what a tenant Admin gets from CompanyController today (issue #177), so this
+        // is the failure the new section actually meets in production until that one lands.
+        _backend.UpdateStatusCode = HttpStatusCode.Forbidden;
+        var cut = RenderPageAs("Admin");
+        var section = cut.FindComponent<EpoSettingsSection>();
+        EnterMandatoryCodes(section);
+
+        ClickSave(section);
+
+        // The user has to be told. A silent no-op is indistinguishable from a saved form,
+        // and the whole point of the issue is not leaving people on a dead end.
+        cut.WaitForAssertion(() => _snackbar.Received().Add(
+            Arg.Is<string>(message => message.Contains("Msg_Error")),
+            Severity.Error,
+            Arg.Any<Action<SnackbarOptions>>(),
+            Arg.Any<string>()));
+
+        // The Saving flag must be cleared on the failure path too, otherwise a single
+        // rejected save disables the button for as long as the page stays open.
+        FindSaveButton(section).HasAttribute("disabled").ShouldBeFalse();
+
+        // The entered values survive, so a retry does not start from an empty form.
+        section.FindAll("input")[0].GetAttribute("value").ShouldBe(TaxOfficeCode.ToString());
+    }
+
+    [Fact]
+    public async Task Admin_AfterSaving_ShowsWhatTheServerStored_NotWhatWasTyped()
+    {
+        // The saved record is the source of truth: the page re-points the section at the
+        // response, so a value the API changed shows up instead of the typed one.
+        const int storedBranchCode = 2002;
+        _backend.StoredAfterUpdate = SettingsWithEpoHeader(storedBranchCode);
+        var cut = RenderPageAs("Admin");
+        var section = cut.FindComponent<EpoSettingsSection>();
+        EnterMandatoryCodes(section);
+
+        ClickSave(section);
+
+        await cut.WaitForAssertionAsync(() => section.FindAll("input")[1]
+            .GetAttribute("value").ShouldBe(storedBranchCode.ToString()));
+    }
+
     /// <summary>Settings record with the two mandatory EPO header codes filled in.</summary>
-    private static CompanySystemSettingsDto SettingsWithEpoHeader() => new()
+    private static CompanySystemSettingsDto SettingsWithEpoHeader(
+        int branchCode = TaxOfficeBranchCode) => new()
     {
         Id = 1,
         CompanyId = CompanyId,
-        EpoTaxOfficeCode = 451,
-        EpoTaxOfficeBranchCode = 2001
+        EpoTaxOfficeCode = TaxOfficeCode,
+        EpoTaxOfficeBranchCode = branchCode
     };
 
     /// <summary>
-    /// Clicks the section's Save button. Located by its label because MudNumericField
-    /// renders its own spinner buttons, so "the first button" is not the Save button.
+    /// Types the two mandatory EPO header codes into the section. They are the minimum the
+    /// export needs, and the only fields every save test cares about.
     /// </summary>
+    private static void EnterMandatoryCodes(IRenderedComponent<EpoSettingsSection> section)
+    {
+        var inputs = section.FindAll("input");
+        inputs[0].Change(TaxOfficeCode.ToString());
+        inputs[1].Change(TaxOfficeBranchCode.ToString());
+    }
+
+    /// <summary>
+    /// The section's Save button. Located by its label because MudNumericField renders its
+    /// own spinner buttons, so "the first button" is not the Save button.
+    /// </summary>
+    private static IElement FindSaveButton(IRenderedComponent<EpoSettingsSection> section)
+        => section.FindAll("button").First(b => b.TextContent.Contains("Btn_Save"));
+
+    /// <summary>Clicks the section's Save button.</summary>
     private static void ClickSave(IRenderedComponent<EpoSettingsSection> section)
-        => section.FindAll("button").First(b => b.TextContent.Contains("Btn_Save")).Click();
+        => FindSaveButton(section).Click();
 
     /// <summary>
     /// Stub backend for /my-company: it answers the three GETs the page fires on init and
@@ -215,6 +285,15 @@ public class MyCompanyEpoSectionTests : BunitContext, IAsyncLifetime
 
         /// <summary>Body of the last PUT /api/company/{id}/settings, null until one arrives.</summary>
         public UpdateCompanySystemSettingsDto? LastUpdate { get; private set; }
+
+        /// <summary>Status answered to PUT /api/company/{id}/settings.</summary>
+        public HttpStatusCode UpdateStatusCode { get; set; } = HttpStatusCode.OK;
+
+        /// <summary>
+        /// Record echoed back by a successful PUT. Null means "echo <see cref="Settings"/>",
+        /// which is what the real endpoint does when it stores the payload unchanged.
+        /// </summary>
+        public CompanySystemSettingsDto? StoredAfterUpdate { get; set; }
 
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
@@ -238,6 +317,10 @@ public class MyCompanyEpoSectionTests : BunitContext, IAsyncLifetime
                 {
                     LastUpdate = await request.Content!
                         .ReadFromJsonAsync<UpdateCompanySystemSettingsDto>(cancellationToken);
+
+                    return UpdateStatusCode == HttpStatusCode.OK
+                        ? Json(StoredAfterUpdate ?? Settings)
+                        : new HttpResponseMessage(UpdateStatusCode);
                 }
 
                 return Json(Settings);
