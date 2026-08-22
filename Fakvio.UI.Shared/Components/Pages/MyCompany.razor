@@ -218,15 +218,13 @@ else
                                 <EnumSelect TEnum="EAdvanceTaxReceiptMode"
                                             Value="_advanceTaxReceiptMode"
                                             ValueChanged="@(v => { _advanceTaxReceiptMode = v; _isDirty = true; })"
-                                            Label="@L["Billing_AdvanceTaxReceiptMode"].Value"
-                                            Class="mt-3" />
+                                            Label="@L["Billing_AdvanceTaxReceiptMode"].Value" />
                             </Authorized>
                             <NotAuthorized>
                                 <EnumSelect TEnum="EAdvanceTaxReceiptMode"
                                             Value="_advanceTaxReceiptMode"
                                             Label="@L["Billing_AdvanceTaxReceiptMode"].Value"
-                                            Disabled="true"
-                                            Class="mt-3" />
+                                            Disabled="true" />
                             </NotAuthorized>
                         </AuthorizeView>
                     }

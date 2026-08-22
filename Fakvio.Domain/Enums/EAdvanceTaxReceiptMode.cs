@@ -10,7 +10,7 @@ namespace Fakvio.Domain.Enums;
 ///
 /// NOTE for juniors: this enum only *declares* the tenant's preference. The component
 /// that reads it and actually issues the DPP is not part of this change — see the
-/// "Notes" in DEVGUIDE §4.7. Until it lands, the value is stored and read back but
+/// "Notes" in DEVGUIDE §4.5.3. Until it lands, the value is stored and read back but
 /// nothing acts on it.
 /// </summary>
 public enum EAdvanceTaxReceiptMode

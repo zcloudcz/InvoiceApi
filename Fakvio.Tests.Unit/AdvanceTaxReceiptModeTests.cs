@@ -257,12 +257,22 @@ public class AdvanceTaxReceiptModeTests : IDisposable
 
     // ── Regression: the mode must not bleed through other update paths ──────
 
-    [Fact]
-    public async Task UpdateBillingSettings_DefaultDto_DoesNotResetDisabledMode()
+    [Theory]
+    [InlineData(EAdvanceTaxReceiptMode.Disabled)]
+    [InlineData(EAdvanceTaxReceiptMode.OnPaymentMatch)]
+    [InlineData(EAdvanceTaxReceiptMode.OnAnyPayment)]
+    public async Task UpdateBillingSettings_DefaultDto_DoesNotResetStoredMode(
+        EAdvanceTaxReceiptMode storedMode)
     {
         // UpdateBillingSettingsAsync takes CreateBillingSettingsDto, which knows nothing
-        // about the mode. Saving the billing form must therefore leave Disabled alone.
-        var issuerId = await SeedIssuerAsync(existingMode: EAdvanceTaxReceiptMode.Disabled);
+        // about the mode. Saving the billing form must therefore leave it alone.
+        //
+        // Why a Theory over EVERY value instead of a single seeded one: if the DTO ever
+        // regrows the property without an initializer, it arrives as the CLR default
+        // (Disabled = 0). A test seeded with Disabled would still pass, because the
+        // bleed-through happens to write back exactly the value it asserts. Only a case
+        // seeded with a non-zero mode catches that regression, so cover them all.
+        var issuerId = await SeedIssuerAsync(existingMode: storedMode);
 
         await _service.UpdateBillingSettingsAsync(issuerId, new CreateBillingSettingsDto
         {
@@ -270,7 +280,7 @@ public class AdvanceTaxReceiptModeTests : IDisposable
             DueDateCalculationType = EDueDateCalculationType.DaysFromIssue
         });
 
-        (await ReadStoredModeAsync(issuerId)).ShouldBe(EAdvanceTaxReceiptMode.Disabled);
+        (await ReadStoredModeAsync(issuerId)).ShouldBe(storedMode);
     }
 
     [Fact]
@@ -286,5 +296,27 @@ public class AdvanceTaxReceiptModeTests : IDisposable
         });
 
         (await ReadStoredModeAsync(issuerId)).ShouldBe(EAdvanceTaxReceiptMode.OnAnyPayment);
+    }
+
+    [Fact]
+    public async Task CreateClient_WithBillingSettingsPayload_KeepsEntityDefaultMode()
+    {
+        // CreateClientAsync maps CreateBillingSettingsDto with ZMapper, which pairs
+        // properties BY NAME and needs no change in the service to pick a new one up.
+        // The create path is therefore one more place where the mode could start coming
+        // from the caller — a brand-new client must always land on the entity default.
+        var created = await _service.CreateClientAsync(new CreateClientDto
+        {
+            CompanyName = "Brand New Customer s.r.o.",
+            RegistrationNumber = "87654321",
+            FetchFromAres = false,
+            BillingSettings = new CreateBillingSettingsDto
+            {
+                DueDays = 30,
+                DueDateCalculationType = EDueDateCalculationType.DaysFromIssue
+            }
+        });
+
+        (await ReadStoredModeAsync(created.Id)).ShouldBe(EAdvanceTaxReceiptMode.OnPaymentMatch);
     }
 }

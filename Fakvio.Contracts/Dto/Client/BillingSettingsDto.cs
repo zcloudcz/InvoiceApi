@@ -76,8 +76,9 @@ public class UpdateBillingSettingsDto
 /// Request body of PUT /api/client/issuer/advance-tax-receipt-mode.
 ///
 /// A wrapper object instead of a bare enum value keeps the payload a proper JSON
-/// object ({ "mode": "OnPaymentMatch" }), which is what every other endpoint in this
-/// API accepts and what the Functions host deserializes without special-casing.
+/// object ({ "mode": 1 }), which is what every other endpoint in this API accepts
+/// and what the Functions host deserializes without special-casing. The value is a
+/// number, not a name — the API has no JsonStringEnumConverter registered.
 /// </summary>
 public class SetAdvanceTaxReceiptModeDto
 {
