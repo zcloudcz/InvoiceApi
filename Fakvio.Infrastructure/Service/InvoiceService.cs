@@ -274,13 +274,15 @@ public class InvoiceService : IInvoiceService
         // DueDateCalculationType + DueDays from it. FindAsync must NOT be used here: it loads
         // the row without any navigation property, so client.BillingSettings would stay null
         // and every invoice would silently fall back to the default 14-day due date (issue #106).
+        // The Include is therefore the actual fix.
         //
-        // AsNoTracking() is REQUIRED for the same reason as in GenerateDocumentNumberAsync —
-        // EF Core identity resolution hands back an already-tracked Client instance when one is
-        // in the DbContext scope, and that cached instance keeps BillingSettings null even
-        // when this query asks for the Include. A no-tracking query always materializes a fresh
-        // object graph straight from the database. The entity is only read here (the invoice
-        // links the client through the ClientId foreign key), so nothing needs to be tracked.
+        // AsNoTracking() is NOT part of that fix — it is here because this is a read-only load.
+        // The client entity is only inspected (the invoice links the client through the ClientId
+        // foreign key, not through a navigation), so nothing is ever written back and the change
+        // tracker would only add snapshot overhead. It also matches the sibling load in
+        // GenerateDocumentNumberAsync. A tracked Include would return the same correct data —
+        // EF Core fills in ("fixes up") navigation properties even on an already-tracked
+        // instance — so do not treat AsNoTracking() here as load-bearing for correctness.
         var client = await _context.Client
             .AsNoTracking()
             .Include(c => c.BillingSettings)
@@ -1633,9 +1635,9 @@ public class InvoiceService : IInvoiceService
     ///   3. Fallback — DaysFromIssue with <see cref="DefaultDueDays"/> days.
     ///
     /// IMPORTANT for callers: the <paramref name="client"/> instance must have been loaded WITH
-    /// its BillingSettings navigation property (Include + AsNoTracking). A client loaded via
-    /// FindAsync has BillingSettings == null and silently degrades every invoice to step 3 —
-    /// that was exactly the defect in issue #106.
+    /// its BillingSettings navigation property, i.e. by a query using Include (tracked or
+    /// no-tracking, both work). A client loaded via FindAsync has BillingSettings == null and
+    /// silently degrades every invoice to step 3 — that was exactly the defect in issue #106.
     /// </summary>
     private DateTime CalculateDueDate(CreateInvoiceDto createDto, Client client)
     {

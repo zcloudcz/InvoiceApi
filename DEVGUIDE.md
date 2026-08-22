@@ -1352,8 +1352,9 @@ Chyby vzniklé v Blazor WASM klientovi by jinak skončily jen v browser konzoli.
 - Po ztrátě key ringu uživatel musí znovu uložit VŠECHNA hesla (SMTP, IMAP, AI keys).
 
 ### EF Core Identity Map caching
-- `FindAsync` bez `Include` cachuje entitu v identity mapu. Pozdější query s `Include` vrátí cached instanci s `null` navigation properties (issue #104). Fix: `AsNoTracking()` na read-only queries, nebo `FindAsync` nahradit za `Include(...).FirstOrDefaultAsync(...)` (`FindAsync` nemá `Include` overload).
-- Stejná past platí i tam, kde `FindAsync` navigation property nikdy nenačte — `client.BillingSettings` bylo vždy `null` a splatnost tiše spadla na výchozích 14 dní (issue #106). Když se entita načítá kvůli navigation property, načti ji query s `Include`, ne přes `FindAsync`.
+- **`FindAsync` nenačte navigation property nikdy** — načte jen řádek entity a navigace zůstane `null` (`FindAsync` nemá `Include` overload). To je ta skutečná past (issue #104). Fix: nahradit za `Include(...).FirstOrDefaultAsync(...)`.
+- **Pozor na rozšířený mýtus:** „pozdější query s `Include` vrátí cached instanci s `null` navigacemi" **neplatí**. Tracked dotaz s `Include` navigaci na už trackované instanci naopak doplní (relationship fixup) — ověřeno proti reálnému PostgreSQL na EF Core 10. `AsNoTracking()` tedy tuhle třídu chyb neopravuje; používej ho proto, že jde o read-only dotaz (žádný tracking overhead), ne jako pojistku na navigace.
+- Přesně tohle byl i #106: `client.BillingSettings` bylo vždy `null` a splatnost tiše spadla na výchozích 14 dní. Když se entita načítá kvůli navigation property, načti ji query s `Include`, ne přes `FindAsync`.
 - **Unit test tuhle vadu nechytí, když seeduje přes tentýž `DbContext`, který pak dostane služba** — InMemory provider si obě entity drží v identity mapě a udělá relationship fixup, takže navigation property „magicky" není `null`. Seeduj přes samostatný `DbContext` (stejné `databaseName`) a služba ať dostane čerstvý — pak má prázdnou identity mapu jako reálný HTTP request. Vzor: `Fakvio.Tests.Unit/InvoiceServiceDueDateTests.cs`.
 
 ### Non-idempotent seed migrace

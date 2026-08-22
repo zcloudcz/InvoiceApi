@@ -29,8 +29,9 @@ namespace Fakvio.Tests.Unit;
 ///
 /// In production every HTTP request gets a fresh DbContext, so FindAsync issues a plain
 /// "SELECT * FROM client WHERE id = @id" with no join and the navigation stays null.
-/// Seeding through a separate, disposed context reproduces exactly that state: the service's
-/// context starts with an empty identity map, so only what the query explicitly loads is there.
+/// Seeding through a separate, disposed context reproduces the same empty-identity-map starting
+/// state, so only what the query explicitly loads is there. Note the limit: this reproduces the
+/// change-tracker state, not the relational provider — InMemory still runs no SQL.
 /// </summary>
 public class InvoiceServiceDueDateTests : IDisposable
 {

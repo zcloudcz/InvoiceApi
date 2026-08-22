@@ -277,6 +277,11 @@ Datum splatnosti se určuje v tomto pořadí:
    které vznikají bez formuláře: kopie faktury, dobropis a faktura vytvořená AI asistentem.
 3. **Výchozí hodnota 14 dní** od data vystavení — když klient fakturační nastavení nemá.
 
+Výjimka — **faktura vytvořená ze šablony**: šablona má vlastní pole „Splatnost (dny)"
+(výchozí 14) a datum splatnosti se počítá z něj, od data vystavení. Fakturační nastavení
+klienta se v tomto případě nepoužije. Chcete-li u faktur ze šablony jinou splatnost,
+upravte ji v šabloně (kapitola 6) nebo datum přepište ručně přímo na faktuře.
+
 ### 5.4 Historie faktur klienta
 
 V detailu klienta se zobrazuje tabulka faktur tohoto klienta (server-side stránkování).
