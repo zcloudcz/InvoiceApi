@@ -4,6 +4,7 @@ using Fakvio.Contracts.Common.Pagination;
 using Fakvio.Contracts.Dto.Client;
 using Fakvio.Application.Service;
 using Fakvio.Domain.Entities;
+using Fakvio.Domain.Validation;
 using Fakvio.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -321,6 +322,8 @@ public class ClientService : IClientService
             var hasExplicitDefault = createDto.BankAccount.Any(b => b.IsDefault);
             foreach (var (bankDto, index) in createDto.BankAccount.Select((b, i) => (b, i)))
             {
+                ValidateBankAccountOrThrow(bankDto.AccountNumber, bankDto.IBAN);
+
                 var bankAccount = bankDto.ToBankAccount();
                 // Auto-default: first account is default if no explicit default is set
                 if (!hasExplicitDefault)
@@ -461,6 +464,8 @@ public class ClientService : IClientService
             var hasExplicitDefault = updateDto.BankAccount.Any(b => b.IsDefault == true);
             foreach (var (bankDto, index) in updateDto.BankAccount.Select((b, i) => (b, i)))
             {
+                ValidateBankAccountOrThrow(bankDto.AccountNumber, bankDto.IBAN);
+
                 client.BankAccount.Add(new BankAccount
                 {
                     ClientId = clientId,
@@ -650,6 +655,39 @@ public class ClientService : IClientService
     }
 
     /// <summary>
+    /// Rejects a bank account that could never be paid to.
+    ///
+    /// WHY the write path validates at all (issue #154):
+    /// an account number with a typo used to be stored happily and only turned into a problem
+    /// much later — as an unscannable QR code on an invoice the customer already received.
+    /// The moment the user types the value is the only moment they still have the correct
+    /// number in front of them, so that is where the failure belongs.
+    ///
+    /// What is and is not rejected is decided by BankAccountValidator (see its class comment):
+    /// a Czech-shaped account number must pass the modulo 11 checksum, an IBAN must pass its
+    /// own checksum, and a free-form foreign account number is accepted as-is because there
+    /// is no checksum to verify it against.
+    /// </summary>
+    /// <exception cref="ArgumentException">
+    /// The account number or the IBAN is invalid. The message names the offending value and
+    /// the reason; ClientController turns it into an HTTP 400 the UI shows to the user.
+    /// </exception>
+    private static void ValidateBankAccountOrThrow(string? accountNumber, string? iban)
+    {
+        if (!BankAccountValidator.TryValidateAccountNumber(accountNumber, out var accountError))
+        {
+            throw new ArgumentException(accountError, nameof(accountNumber));
+        }
+
+        // The IBAN is optional — only a filled-in value has to be correct.
+        if (!string.IsNullOrWhiteSpace(iban) &&
+            !BankAccountValidator.TryValidateIban(iban, out var ibanError))
+        {
+            throw new ArgumentException(ibanError, nameof(iban));
+        }
+    }
+
+    /// <summary>
     /// Adds a bank account to an existing client.
     /// If this is the first bank account, it is automatically set as default.
     /// If IsDefault is true, clears default from all other accounts (only one default allowed).
@@ -665,6 +703,8 @@ public class ClientService : IClientService
 
         if (client == null)
             return null;
+
+        ValidateBankAccountOrThrow(bankAccountDto.AccountNumber, bankAccountDto.IBAN);
 
         // If this is the first account or explicitly marked as default, manage the default flag
         var isFirstAccount = client.BankAccount.Count == 0;

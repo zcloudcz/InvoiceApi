@@ -697,6 +697,38 @@ Rozšíření stávajícího IMAP pipeline (§4.5) o druhý typ aliasu — "fak-
 
 **Pokud přidáváš nový typ emailového zpracování:** rozšiř `EMailboxType`, přidej nový processor, a přidej branch do `ImapPollService.HandleMessageAsync`.
 
+### 4.12 QR platba — kontrakt „žádný nezaplatitelný kód" (issue #154)
+
+QR kód na faktuře je platební prvek. Kód, který se naskenuje a nic nenabídne, je horší než
+žádný kód: vystavitel i příjemce věří, že platba je na jedno naskenování, a na papíře to od
+skutečné QR platby nikdo nerozezná. Generátor proto **nikdy nevrací kód, který nejde
+zaplatit** — místo toho vyhodí `QrPaymentUnavailableException` s důvodem.
+
+**Vrstvy:**
+
+| Vrstva | Kde | Co dělá |
+|--------|-----|---------|
+| Pravidla | `Fakvio.Domain/Validation/BankAccountValidator.cs` | IBAN (ISO 7064 MOD 97-10 + u CZ i domácí modulo 11) a české číslo účtu (modulo 11). Jediný zdroj pravdy pro **všechny tři** vrstvy níže. |
+| Zápis | `Fakvio.Infrastructure/Service/ClientService.cs` | Odmítne uložit nepoužitelný účet (`ArgumentException` → `ClientController` → HTTP 400) |
+| Generování | `Fakvio.Infrastructure/Service/QrPaymentService.cs` | Strategie 1 platný IBAN → lokální SPD; 2 platný český účet → paylibo; 3 **neexistuje** → výjimka |
+| Payload | `Fakvio.Application/QrPayment/SpdIntegrator.cs` | `BuildSimpleSpdString` validuje IBAN dřív, než ho zapíše do `ACC` |
+| API | `Fakvio.API/Controller/InvoiceController.cs` | 422 = špatná konfigurace (opraví uživatel), 503 = výpadek paylibo (retry). Tělo nese i `reason`. |
+| UI | `Fakvio.UI.Shared/Components/Pages/InvoiceDetail.razor` | Karta „QR platba" ukazuje lokalizovaný důvod + odkaz na `/my-company` |
+
+**Pravidla, když v téhle oblasti něco měníš:**
+
+- Nepřidávej „radši něco vygenerujeme" fallback. SIND (QR Faktura) sám o sobě žádné platební
+  údaje nenese — je dostupný jen přes `GenerateSindStringAsync` / `GET /api/invoice/{id}/qr/sind`,
+  kde si o něj volající řekne jménem a nemůže si ho splést s platbou.
+- Zahraniční číslo účtu bez IBANu **jde uložit**, ale QR z něj nevznikne (paylibo je česká
+  služba). To není chyba validace, to je vlastnost.
+- `PayliboClient` chyby **nepolyká** — propaguje je a `QrPaymentService` z nich udělá
+  `ProviderUnavailable`. Nikdy nevracet `Array.Empty<byte>()` jako „tichý neúspěch".
+- PDF zůstává non-fatal: faktura bez QR je pořád doručitelný doklad. Rozdíl je v logu —
+  chybějící bankovní spojení je `LogWarning`, cokoli neočekávaného `LogError`.
+
+---
+
 ### 4.11 EPO XML export (DPHDP3 + DPHKH1)
 
 Česká daňová přiznání ve formátu EPO Finanční správy ČR.
@@ -1405,6 +1437,11 @@ pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. P
 ### EF Core Identity Map caching
 - `FindAsync` bez `Include` cachuje entitu v identity mapu. Pozdější query s `Include` vrátí cached instanci s `null` navigation properties (issue #104). Fix: `AsNoTracking()` na read-only queries, nebo explicitní `Include` na `FindAsync`.
 
+### QR platba / bankovní spojení
+- Neexistuje fallback na „dekorativní" QR kód. Když chybí platný IBAN nebo platné české číslo účtu, `QrPaymentService` vyhodí `QrPaymentUnavailableException` (issue #154). Viz §4.12.
+- IBAN a číslo účtu validuj **jen** přes `BankAccountValidator` v `Fakvio.Domain`. Vlastní kopie checksumu = tři vrstvy, které se rozejdou.
+- Příklady v UI (placeholdery, helper texty) musí projít vlastní validací pole — hlídá to `BankAccountValidatorTests.ExamplesShownInBankAccountDialog_AreValid`.
+
 ### Non-idempotent seed migrace
 - `migrationBuilder.InsertData` s hardcoded `Id` selže na `PK duplicate` pokud data už existují (issue #97/#109). Vždy použít raw SQL `INSERT ... ON CONFLICT (Id) DO NOTHING` nebo `DELETE + InsertData` guard.
 
@@ -1457,6 +1494,7 @@ pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. P
 | Nová periodická úloha (3-pack) | §6.3 (tabulka!) |
 | Nový endpoint kategorie (master-only / tenant code-table) | §3.3 + §11.3 |
 | Nový email/PDF placeholder | §4.3 (typy) |
+| Změna pravidel QR platby / validace bankovního spojení | §4.12 + §12 |
 | Nový hostovací model (např. native API workflow) | §1.2 + §9.1 |
 | Změna config zdroje (Key Vault, App Configuration) | §9.2 |
 | Změna Data Protection persistence / ApplicationName | §2.7 |

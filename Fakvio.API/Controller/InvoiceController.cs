@@ -1,6 +1,7 @@
 using System.IO.Compression;
 using System.Security.Claims;
 using Fakvio.Application.Common.Helpers;
+using Fakvio.Application.QrPayment;
 using Fakvio.Contracts.Common.Pagination;
 using Fakvio.Contracts.Dto.Email;
 using Fakvio.Contracts.Dto.Invoice;
@@ -970,9 +971,12 @@ public class InvoiceController : ControllerBase
     // ─── QR Code Endpoints ───────────────────────────────────────────────────
 
     /// <summary>
-    /// Generates a QR code image (PNG) for the given invoice.
-    /// If the invoice has a valid IBAN, generates combined "QR Platba+F" (payment + invoice data).
-    /// If no IBAN is available, generates "QR Faktura" only (invoice data without payment).
+    /// Generates a QR payment code image (PNG) for the given invoice ("QR Platba").
+    ///
+    /// The invoice must carry a usable bank connection — a valid IBAN or a valid Czech
+    /// account number. Otherwise no image is produced and the endpoint answers with an
+    /// actionable message (see <see cref="QrPaymentUnavailableException"/> and issue #154);
+    /// it never returns a QR code that cannot actually be paid.
     /// </summary>
     /// <param name="id">Invoice ID</param>
     /// <param name="size">QR module size in pixels (default 10, range 5-20)</param>
@@ -981,6 +985,8 @@ public class InvoiceController : ControllerBase
     [HttpGet("{id}/qr")]
     [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> GetQrCode(
         [FromRoute] long id,
         [FromQuery] int size = 10,
@@ -1000,6 +1006,10 @@ public class InvoiceController : ControllerBase
         {
             _logger.LogWarning("Invoice {Id} not found for QR code generation", id);
             return NotFound(new { message = $"Invoice with ID {id} not found" });
+        }
+        catch (QrPaymentUnavailableException ex)
+        {
+            return QrUnavailableResult(ex);
         }
     }
 
@@ -1031,16 +1041,18 @@ public class InvoiceController : ControllerBase
     }
 
     /// <summary>
-    /// Returns the SPD (Short Payment Descriptor) string with integrated QR Faktura data.
-    /// This is the combined "QR Platba+F" format.
-    /// If the invoice has no IBAN, returns the SIND string instead.
+    /// Returns the SPD (Short Payment Descriptor) payment string for the invoice.
+    /// An SPD string can only be built from a valid IBAN; without one the endpoint answers
+    /// with an actionable message instead of quietly returning a non-payment SIND string.
     /// </summary>
     /// <param name="id">Invoice ID</param>
     /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>SPD or SIND string</returns>
+    /// <returns>SPD string</returns>
     [HttpGet("{id}/qr/spd")]
     [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> GetSpdString(
         [FromRoute] long id,
         CancellationToken cancellationToken = default)
@@ -1056,6 +1068,33 @@ public class InvoiceController : ControllerBase
         {
             return NotFound(new { message = $"Invoice with ID {id} not found" });
         }
+        catch (QrPaymentUnavailableException ex)
+        {
+            return QrUnavailableResult(ex);
+        }
+    }
+
+    /// <summary>
+    /// Translates a refused QR payment code into an HTTP response the UI can act on.
+    ///
+    /// The distinction matters to the user (issue #154):
+    /// - 422 Unprocessable Entity — the bank connection is missing or wrong. Only the user
+    ///   can fix it, and the message says exactly what to fix and where.
+    /// - 503 Service Unavailable — the external QR generator is down. Nothing is
+    ///   misconfigured, so the correct advice is to retry.
+    /// The reason is echoed in the body so the client can branch without parsing prose.
+    /// </summary>
+    private IActionResult QrUnavailableResult(QrPaymentUnavailableException ex)
+    {
+        var isTransient = ex.Reason == EQrPaymentUnavailableReason.ProviderUnavailable;
+
+        _logger.LogWarning(
+            "QR code unavailable for invoice {Id} ({Reason}): {Message}",
+            ex.InvoiceId, ex.Reason, ex.Message);
+
+        return StatusCode(
+            isTransient ? StatusCodes.Status503ServiceUnavailable : StatusCodes.Status422UnprocessableEntity,
+            new { message = ex.Message, reason = ex.Reason.ToString() });
     }
 
     // ─── Bulk Operation Endpoints ────────────────────────────────────────────

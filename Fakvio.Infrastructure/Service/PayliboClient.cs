@@ -31,33 +31,43 @@ public class PayliboClient : IPayliboClient
         _logger = logger;
     }
 
+    /// <summary>
+    /// Media type prefix every successful paylibo response must carry.
+    /// The API answers an unparsable request with a 200 and an HTML/JSON error body,
+    /// which would otherwise be handed on as if it were a PNG.
+    /// </summary>
+    private const string ImageMediaTypePrefix = "image/";
+
     /// <inheritdoc />
     public async Task<byte[]> CreateQrPaymentImageAsync(PayliboQrOptions options)
     {
-        try
+        // Build full URL with query string (same pattern as Monarc.Core)
+        var queryString = options.ToString();
+        var requestUrl = $"{PayliboApiUrl}?{queryString}";
+
+        _logger.LogInformation("Calling paylibo API for QR payment code generation");
+
+        var response = await _httpClient.GetAsync(requestUrl);
+
+        // Issue #154: every failure used to be swallowed into an empty byte array, and the
+        // caller silently replaced the missing payment code with a decorative one. Failures
+        // are propagated now; QrPaymentService turns them into a ProviderUnavailable error
+        // that the operator sees in the log and the user sees in the UI.
+        response.EnsureSuccessStatusCode();
+
+        var mediaType = response.Content.Headers.ContentType?.MediaType;
+        if (mediaType is null || !mediaType.StartsWith(ImageMediaTypePrefix, StringComparison.OrdinalIgnoreCase))
         {
-            // Build full URL with query string (same pattern as Monarc.Core)
-            var queryString = options.ToString();
-            var requestUrl = $"{PayliboApiUrl}?{queryString}";
-
-            _logger.LogInformation("Calling paylibo API for QR payment code generation");
-
-            var response = await _httpClient.GetAsync(requestUrl);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                _logger.LogWarning("Paylibo API returned {StatusCode} — returning empty QR image",
-                    response.StatusCode);
-                return Array.Empty<byte>();
-            }
-
-            return await response.Content.ReadAsByteArrayAsync();
+            throw new HttpRequestException(
+                $"Paylibo API returned content type '{mediaType ?? "(none)"}' instead of an image.");
         }
-        catch (Exception ex)
+
+        var image = await response.Content.ReadAsByteArrayAsync();
+        if (image.Length == 0)
         {
-            // Paylibo failure is non-critical — invoice can still be generated without QR
-            _logger.LogWarning(ex, "Paylibo API call failed — returning empty QR image");
-            return Array.Empty<byte>();
+            throw new HttpRequestException("Paylibo API returned an empty image body.");
         }
+
+        return image;
     }
 }

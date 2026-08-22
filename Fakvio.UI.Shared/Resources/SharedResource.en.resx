@@ -769,14 +769,23 @@
   <data name="Dashboard_SysAdminLogSummary" xml:space="preserve">
     <value>Log Summary by Level</value>
   </data>
-  <data name="QR_InvoiceOnly" xml:space="preserve">
-    <value>QR Faktura (invoice data only, no payment info)</value>
-  </data>
-  <data name="QR_PaymentAndInvoice" xml:space="preserve">
-    <value>QR Platba+F (payment and invoice data)</value>
-  </data>
   <data name="QR_NotAvailable" xml:space="preserve">
     <value>QR code not available</value>
+  </data>
+  <data name="QR_Payment_Caption" xml:space="preserve">
+    <value>Scan it in your banking app to pay the invoice.</value>
+  </data>
+  <data name="QR_Unavailable_NoBankConnection" xml:space="preserve">
+    <value>No QR payment code — this document has no usable bank connection. Add or correct the account number or IBAN and re-issue the document.</value>
+  </data>
+  <data name="QR_Unavailable_ProviderDown" xml:space="preserve">
+    <value>The QR payment code is temporarily unavailable — the QR generator is not responding. Nothing is wrong with the document, please try again in a moment.</value>
+  </data>
+  <data name="QR_Unavailable_FixBankAccount" xml:space="preserve">
+    <value>Go to bank accounts</value>
+  </data>
+  <data name="QR_Payment_Title" xml:space="preserve">
+    <value>QR Payment</value>
   </data>
   <data name="Nav_MyCompany" xml:space="preserve">
     <value>My Company</value>
@@ -1007,7 +1016,9 @@
   <data name="BankAccount_Label" xml:space="preserve"><value>Label</value></data>
   <data name="BankAccount_BankName" xml:space="preserve"><value>Bank Name</value></data>
   <data name="BankAccount_AccountNumber" xml:space="preserve"><value>Account Number</value></data>
-  <data name="BankAccount_AccountNumberHelper" xml:space="preserve"><value>Format: 1234567890/0100</value></data>
+  <data name="BankAccount_AccountNumberHelper" xml:space="preserve"><value>Format: 19-2000145399/0800</value></data>
+  <data name="BankAccount_AccountNumberInvalid" xml:space="preserve"><value>Invalid account number. Check the format (e.g. 19-2000145399/0800) and look for typos.</value></data>
+  <data name="BankAccount_IbanInvalid" xml:space="preserve"><value>Invalid IBAN. Check that you copied it in full and without typos.</value></data>
   <data name="BankAccount_IBAN" xml:space="preserve"><value>IBAN</value></data>
   <data name="BankAccount_SWIFT" xml:space="preserve"><value>SWIFT/BIC</value></data>
   <data name="BankAccount_Currency" xml:space="preserve"><value>Currency</value></data>

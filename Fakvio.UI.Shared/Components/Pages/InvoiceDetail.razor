@@ -9,6 +9,7 @@
 @using Fakvio.Contracts.Common
 @using Fakvio.Contracts.Dto.ContentTemplate
 @using Fakvio.Domain.Enums
+@using System.Net
 @inject AlertApiService AlertService
 @inject FakvioService InvoiceService
 @inject ClientApiService ClientService
@@ -669,16 +670,18 @@ else
                 </MudItem>
             }
 
-            @* QR code section — QR Platba+F (payment + invoice) or QR Faktura (invoice only) *@
+            @* QR payment code section.
+               Issue #154: the API only ever returns a QR code that can actually be paid, so
+               there is no "QR Faktura" (invoice-data-only) variant to label any more. When no
+               payment code can be produced, the reason is shown right here — this card is
+               where the user looks for the QR code, so it is where the explanation belongs. *@
             @if (_invoice.Status != EInvoiceStatus.Draft)
             {
                 <MudItem xs="12" md="4">
                     <MudCard Elevation="2" Class="mt-2">
                         <MudCardHeader>
                             <CardHeaderContent>
-                                <MudText Typo="Typo.h6">
-                                    @(string.IsNullOrWhiteSpace(_invoice.IBAN) ? "QR Faktura" : "QR Platba+F")
-                                </MudText>
+                                <MudText Typo="Typo.h6">@L["QR_Payment_Title"]</MudText>
                             </CardHeaderContent>
                         </MudCardHeader>
                         <MudCardContent Style="text-align: center;">
@@ -687,14 +690,31 @@ else
                                 <img src="data:image/png;base64,@_qrCodeBase64" alt="QR Code"
                                      style="max-width: 250px; width: 100%; image-rendering: pixelated;" />
                                 <MudText Typo="Typo.caption" Class="mt-2" Color="Color.Default">
-                                    @(string.IsNullOrWhiteSpace(_invoice.IBAN)
-                                        ? @L["QR_InvoiceOnly"]
-                                        : @L["QR_PaymentAndInvoice"])
+                                    @L["QR_Payment_Caption"]
                                 </MudText>
                             }
                             else if (_qrLoading)
                             {
                                 <MudProgressCircular Indeterminate="true" Size="Size.Large" />
+                            }
+                            else if (_qrUnavailableKind != null)
+                            {
+                                @* Issue #154: say WHY there is no QR code, in the user's language,
+                                   and — when the user is the one who can fix it — link straight to
+                                   the screen where the bank account lives. *@
+                                <MudAlert Severity="@(_qrUnavailableKind == QrUnavailableKind.Configuration
+                                                        ? Severity.Warning : Severity.Info)"
+                                          Dense="true" Class="text-left">
+                                    @(_qrUnavailableKind == QrUnavailableKind.Configuration
+                                        ? L["QR_Unavailable_NoBankConnection"]
+                                        : L["QR_Unavailable_ProviderDown"])
+                                    @if (_qrUnavailableKind == QrUnavailableKind.Configuration)
+                                    {
+                                        <MudLink Href="/my-company" Class="d-block mt-1">
+                                            @L["QR_Unavailable_FixBankAccount"]
+                                        </MudLink>
+                                    }
+                                </MudAlert>
                             }
                             else
                             {
@@ -888,6 +908,24 @@ else
     // QR code state — loaded for completed/paid invoices in view mode
     private string? _qrCodeBase64;
     private bool _qrLoading = false;
+
+    /// <summary>
+    /// Issue #154: the two kinds of "no QR code" the user needs told apart.
+    /// They differ in who can do something about it, which drives both the wording
+    /// and the severity of the alert.
+    /// </summary>
+    private enum QrUnavailableKind
+    {
+        /// <summary>Bank connection missing or invalid — only the user can fix it.</summary>
+        Configuration,
+
+        /// <summary>External QR generator is down — retrying is the only sensible advice.</summary>
+        ProviderOutage
+    }
+
+    // Why no QR payment code could be produced. Null when it loaded fine, or when it
+    // failed for an unexpected reason (that still goes to the snackbar).
+    private QrUnavailableKind? _qrUnavailableKind;
 
     // PDF template list — loaded once, used for the PDF template picker split button
     private List<ContentTemplateDto> _pdfTemplates = new();
@@ -1337,6 +1375,7 @@ else
         try
         {
             _qrLoading = true;
+            _qrUnavailableKind = null;
             StateHasChanged();
 
             var qrBytes = await InvoiceService.GetQrCodeAsync(Id);
@@ -1345,9 +1384,25 @@ else
                 _qrCodeBase64 = Convert.ToBase64String(qrBytes);
             }
         }
+        catch (ApiException ex) when (ex.StatusCode is HttpStatusCode.UnprocessableEntity
+                                                    or HttpStatusCode.ServiceUnavailable)
+        {
+            // Issue #154: the API refuses to hand out a QR code that cannot be paid and says
+            // why. 422 = the bank connection is missing or wrong and only the user can fix it;
+            // 503 = the external QR generator is down and retrying is the right advice.
+            //
+            // The message is rendered in the QR card, not in a snackbar: a snackbar disappears
+            // while the problem does not, and this card is exactly where the user came looking
+            // for the QR code. The API text is English-only diagnostics for the log, so the UI
+            // shows its own localized wording and maps only the status code.
+            _qrCodeBase64 = null;
+            _qrUnavailableKind = ex.StatusCode == HttpStatusCode.ServiceUnavailable
+                ? QrUnavailableKind.ProviderOutage
+                : QrUnavailableKind.Configuration;
+        }
         catch (Exception ex)
         {
-            // QR code generation failure is non-critical — just log and show "not available"
+            // Anything else is unexpected — keep the old non-critical behaviour.
             _qrCodeBase64 = null;
             Snackbar.Add($"QR code generation failed: {ex.Message}", Severity.Warning);
         }

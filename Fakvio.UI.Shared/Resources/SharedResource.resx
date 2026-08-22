@@ -769,14 +769,23 @@
   <data name="Dashboard_SysAdminLogSummary" xml:space="preserve">
     <value>Souhrn logů podle úrovně</value>
   </data>
-  <data name="QR_InvoiceOnly" xml:space="preserve">
-    <value>QR Faktura (pouze data faktury, bez platebních údajů)</value>
-  </data>
-  <data name="QR_PaymentAndInvoice" xml:space="preserve">
-    <value>QR Platba+F (platba i data faktury)</value>
-  </data>
   <data name="QR_NotAvailable" xml:space="preserve">
     <value>QR kód není k dispozici</value>
+  </data>
+  <data name="QR_Payment_Caption" xml:space="preserve">
+    <value>Naskenujte v bankovní aplikaci a fakturu zaplatíte.</value>
+  </data>
+  <data name="QR_Unavailable_NoBankConnection" xml:space="preserve">
+    <value>QR platbu nelze vytvořit — doklad nemá použitelné bankovní spojení. Doplňte nebo opravte číslo účtu či IBAN a doklad znovu vystavte.</value>
+  </data>
+  <data name="QR_Unavailable_ProviderDown" xml:space="preserve">
+    <value>QR platba je dočasně nedostupná — generátor QR kódů neodpovídá. Na dokladu není nic špatně, zkuste to prosím za chvíli znovu.</value>
+  </data>
+  <data name="QR_Unavailable_FixBankAccount" xml:space="preserve">
+    <value>Přejít na bankovní účty</value>
+  </data>
+  <data name="QR_Payment_Title" xml:space="preserve">
+    <value>QR Platba</value>
   </data>
   <data name="Nav_MyCompany" xml:space="preserve">
     <value>Moje společnost</value>
@@ -1007,7 +1016,9 @@
   <data name="BankAccount_Label" xml:space="preserve"><value>Označení</value></data>
   <data name="BankAccount_BankName" xml:space="preserve"><value>Název banky</value></data>
   <data name="BankAccount_AccountNumber" xml:space="preserve"><value>Číslo účtu</value></data>
-  <data name="BankAccount_AccountNumberHelper" xml:space="preserve"><value>Formát: 1234567890/0100</value></data>
+  <data name="BankAccount_AccountNumberHelper" xml:space="preserve"><value>Formát: 19-2000145399/0800</value></data>
+  <data name="BankAccount_AccountNumberInvalid" xml:space="preserve"><value>Neplatné číslo účtu. Zkontrolujte formát (např. 19-2000145399/0800) a překlepy.</value></data>
+  <data name="BankAccount_IbanInvalid" xml:space="preserve"><value>Neplatný IBAN. Zkontrolujte, zda jste ho opsali celý a bez překlepů.</value></data>
   <data name="BankAccount_IBAN" xml:space="preserve"><value>IBAN</value></data>
   <data name="BankAccount_SWIFT" xml:space="preserve"><value>SWIFT/BIC</value></data>
   <data name="BankAccount_Currency" xml:space="preserve"><value>Měna</value></data>

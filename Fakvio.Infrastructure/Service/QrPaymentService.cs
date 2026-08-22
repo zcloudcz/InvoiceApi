@@ -2,6 +2,7 @@ using Fakvio.Application.QrPayment;
 using Fakvio.Application.Service;
 using Fakvio.Domain.Entities;
 using Fakvio.Domain.Enums;
+using Fakvio.Domain.Validation;
 using Fakvio.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -13,14 +14,24 @@ namespace Fakvio.Infrastructure.Service;
 /// Service for generating QR codes for Czech invoices.
 ///
 /// QR code generation strategy (in priority order):
-/// 1. IBAN available → local SPD generation via QRCoder (fast, no external dependency)
-/// 2. Czech bank account available (e.g., "1342333010/3030") → paylibo.com API
+/// 1. Valid IBAN available → local SPD generation via QRCoder (fast, no external dependency)
+/// 2. Valid Czech bank account available (e.g., "1342333010/3030") → paylibo.com API
 ///    (converts Czech account format to valid QR Platba — same approach as Monarc.Core)
-/// 3. Neither → SIND-only QR Faktura (invoice data, no payment instructions)
+/// 3. Neither → <see cref="QrPaymentUnavailableException"/>. There is NO third strategy.
 ///
 /// The paylibo API is the proven solution for Czech domestic bank accounts
 /// that don't have an IBAN. It generates a valid SPD QR code that all Czech
 /// banking apps (George, mBank, Fio, etc.) can reliably scan.
+///
+/// WHY there is no fallback any more (issue #154):
+/// this service used to fall back to a SIND-only "QR Faktura" whenever no bank connection
+/// was available. That QR code carries invoice metadata but no payment instructions — it
+/// scans fine and then does nothing, and it was printed on the PDF looking exactly like a
+/// real QR Platba. A QR code that cannot be paid is worse than no QR code, because both the
+/// issuer and the recipient believe payment is a scan away. The generator now refuses and
+/// reports why, so the caller can show the user an actionable message.
+/// SIND remains available on its own, through <see cref="GenerateSindStringAsync"/>, where
+/// the caller explicitly asks for that format and cannot be misled about what it contains.
 /// </summary>
 public class QrPaymentService : IQrPaymentService
 {
@@ -56,24 +67,17 @@ public class QrPaymentService : IQrPaymentService
     {
         var invoice = await LoadInvoiceWithDetailsAsync(invoiceId, cancellationToken);
 
-        // If IBAN is available, generate a simple SPD (QR Platba) with payment data only
-        if (!string.IsNullOrWhiteSpace(invoice.IBAN))
+        // An SPD string can only be built locally from an IBAN. The Czech-account route goes
+        // through paylibo, which returns a rendered image and never the underlying string —
+        // so there is nothing honest this method could return for an account-only invoice.
+        // It used to return a SIND string in a field named "spd", which was simply a lie.
+        if (string.IsNullOrWhiteSpace(invoice.IBAN))
         {
-            return SpdIntegrator.BuildSimpleSpdString(
-                invoice.IBAN,
-                invoice.SWIFT,
-                invoice.TotalWithVat,
-                invoice.Currency?.Code,
-                invoice.DueDate,
-                invoice.VariableSymbol,
-                invoice.DocumentNumber);
+            throw NoIbanForSpdString(invoice);
         }
 
-        // No IBAN — fall back to standalone SIND (QR Faktura only)
-        var builder = BuildSindFromInvoice(invoice);
-        _logger.LogWarning("Invoice {InvoiceId} has no IBAN — generating QR Faktura only (no payment data)",
-            invoiceId);
-        return builder.Build();
+        RequireValidIban(invoice);
+        return BuildSimpleSpd(invoice);
     }
 
     /// <inheritdoc />
@@ -85,44 +89,117 @@ public class QrPaymentService : IQrPaymentService
         // Strategy 1: IBAN available → local SPD generation (fastest, no external dependency)
         if (!string.IsNullOrWhiteSpace(invoice.IBAN))
         {
-            var spdContent = SpdIntegrator.BuildSimpleSpdString(
-                invoice.IBAN,
-                invoice.SWIFT,
-                invoice.TotalWithVat,
-                invoice.Currency?.Code,
-                invoice.DueDate,
-                invoice.VariableSymbol,
-                invoice.DocumentNumber);
+            RequireValidIban(invoice);
 
             _logger.LogInformation("Generating QR Platba for invoice {InvoiceId} via local SPD (IBAN available)",
                 invoiceId);
-            return GenerateQrPng(spdContent, pixelsPerModule);
+            return GenerateQrPng(BuildSimpleSpd(invoice), pixelsPerModule);
         }
 
         // Strategy 2: Czech bank account available → paylibo.com API
         // (same approach as Monarc.Core — the API handles Czech account format natively)
         if (!string.IsNullOrWhiteSpace(invoice.BankAccountNumber))
         {
+            RequireValidCzechBankAccount(invoice);
+
             _logger.LogInformation(
                 "Generating QR Platba for invoice {InvoiceId} via paylibo API (Czech bank account: {Account})",
                 invoiceId, invoice.BankAccountNumber);
 
-            var payliboResult = await GenerateViaPayliboAsync(invoice);
-            if (payliboResult.Length > 0)
-            {
-                return payliboResult;
-            }
-
-            // Paylibo failed — fall through to SIND fallback
-            _logger.LogWarning("Paylibo API failed for invoice {InvoiceId} — falling back to SIND QR Faktura",
-                invoiceId);
+            return await GenerateViaPayliboAsync(invoice);
         }
 
-        // Strategy 3: No bank account at all → SIND-only (QR Faktura, invoice data without payment)
-        var builder = BuildSindFromInvoice(invoice);
-        _logger.LogInformation("Generating QR Faktura for invoice {InvoiceId} (no bank account — invoice data only)",
+        // No bank connection at all. This is the case reported in issue #154: the issuer has
+        // no bank account, so there is nothing to pay to. Refuse instead of printing a QR code
+        // that only looks payable.
+        _logger.LogWarning(
+            "QR payment code refused for invoice {InvoiceId}: the document carries no IBAN and no bank account",
             invoiceId);
-        return GenerateQrPng(builder.Build(), pixelsPerModule);
+
+        throw new QrPaymentUnavailableException(
+            EQrPaymentUnavailableReason.NoBankAccount,
+            invoice.Id,
+            $"Invoice {invoice.DocumentNumber ?? invoice.Id.ToString()} carries no bank connection, " +
+            "so no QR payment code can be generated. Add a bank account (account number or IBAN) " +
+            "to your company profile and re-issue the document.");
+    }
+
+    /// <summary>
+    /// Builds the simple SPD (QR Platba) payment string from the invoice.
+    /// Shared by the string endpoint and the image endpoint so both always agree
+    /// on the content of the payment code.
+    /// </summary>
+    private static string BuildSimpleSpd(Invoice invoice) =>
+        SpdIntegrator.BuildSimpleSpdString(
+            invoice.IBAN!,
+            invoice.SWIFT,
+            invoice.TotalWithVat,
+            invoice.Currency?.Code,
+            invoice.DueDate,
+            invoice.VariableSymbol,
+            invoice.DocumentNumber);
+
+    /// <summary>
+    /// Rejects an invoice whose IBAN is present but malformed.
+    ///
+    /// SpdIntegrator used to copy the IBAN into the SPD "ACC" attribute without looking at it,
+    /// so a typo produced a QR code that scanned into a payment form the bank then refused —
+    /// or, worse, into a different existing account. Validating here means the failure is
+    /// reported to the user instead of being discovered by whoever tries to pay.
+    /// </summary>
+    private void RequireValidIban(Invoice invoice)
+    {
+        if (BankAccountValidator.TryValidateIban(invoice.IBAN, out var error))
+        {
+            return;
+        }
+
+        _logger.LogWarning("QR payment code refused for invoice {InvoiceId}: {Error}", invoice.Id, error);
+
+        throw new QrPaymentUnavailableException(
+            EQrPaymentUnavailableReason.InvalidBankAccount,
+            invoice.Id,
+            $"No QR payment code can be generated for invoice {invoice.DocumentNumber ?? invoice.Id.ToString()} — " +
+            $"{error} Correct the IBAN on the bank account in your company profile and re-issue the document.");
+    }
+
+    /// <summary>
+    /// Rejects an invoice whose bank account cannot be turned into a Czech QR Platba.
+    ///
+    /// Two distinct cases end up here, and both are genuine dead ends for a payment QR code:
+    /// a Czech-shaped number that fails the modulo 11 check (a typo), and a foreign account
+    /// number that paylibo cannot process at all (an IBAN is required for those).
+    /// </summary>
+    private void RequireValidCzechBankAccount(Invoice invoice)
+    {
+        if (BankAccountValidator.TryValidateCzechAccountNumber(invoice.BankAccountNumber, out var error))
+        {
+            return;
+        }
+
+        _logger.LogWarning("QR payment code refused for invoice {InvoiceId}: {Error}", invoice.Id, error);
+
+        throw new QrPaymentUnavailableException(
+            EQrPaymentUnavailableReason.InvalidBankAccount,
+            invoice.Id,
+            $"No QR payment code can be generated for invoice {invoice.DocumentNumber ?? invoice.Id.ToString()} — " +
+            $"{error} Correct the bank account in your company profile, or add its IBAN, " +
+            "and re-issue the document.");
+    }
+
+    /// <summary>
+    /// Builds the error for the SPD-string endpoint when the invoice has no IBAN.
+    /// </summary>
+    private QrPaymentUnavailableException NoIbanForSpdString(Invoice invoice)
+    {
+        _logger.LogWarning("SPD string refused for invoice {InvoiceId}: the document has no IBAN", invoice.Id);
+
+        return new QrPaymentUnavailableException(
+            EQrPaymentUnavailableReason.NoBankAccount,
+            invoice.Id,
+            $"Invoice {invoice.DocumentNumber ?? invoice.Id.ToString()} has no IBAN, and an SPD payment " +
+            "string can only be built from an IBAN. Add an IBAN to the bank account in your company " +
+            "profile and re-issue the document.");
     }
 
     /// <summary>
@@ -133,6 +210,11 @@ public class QrPaymentService : IQrPaymentService
     ///   accountPrefix = part before dash (if present)
     ///   accountNumber = part after dash (or full number if no dash)
     ///   bankCode = part after slash
+    ///
+    /// A paylibo failure used to be swallowed into an empty byte array, which the caller then
+    /// replaced with a SIND-only QR code. It is now surfaced as ProviderUnavailable so the
+    /// operator sees a real error and the user is told to retry rather than handed a QR code
+    /// that cannot be paid.
     /// </summary>
     private async Task<byte[]> GenerateViaPayliboAsync(Invoice invoice)
     {
@@ -154,8 +236,37 @@ public class QrPaymentService : IQrPaymentService
             compress = false
         };
 
-        return await _payliboClient.CreateQrPaymentImageAsync(options);
+        byte[] image;
+        try
+        {
+            image = await _payliboClient.CreateQrPaymentImageAsync(options);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Paylibo API failed for invoice {InvoiceId} — no QR payment code produced",
+                invoice.Id);
+            throw PayliboUnavailable(invoice, ex);
+        }
+
+        if (image.Length == 0)
+        {
+            _logger.LogError("Paylibo API returned an empty image for invoice {InvoiceId}", invoice.Id);
+            throw PayliboUnavailable(invoice, innerException: null);
+        }
+
+        return image;
     }
+
+    /// <summary>
+    /// Builds the error for a paylibo outage. Kept in one place so both failure shapes
+    /// (exception and empty response) tell the user the same thing.
+    /// </summary>
+    private static QrPaymentUnavailableException PayliboUnavailable(Invoice invoice, Exception? innerException) =>
+        new(EQrPaymentUnavailableReason.ProviderUnavailable,
+            invoice.Id,
+            "The QR payment code could not be generated right now because the external QR generator " +
+            "is unavailable. Nothing is misconfigured on the invoice — please try again in a moment.",
+            innerException);
 
     /// <summary>
     /// Parses a Czech bank account string into prefix, account number, and bank code.

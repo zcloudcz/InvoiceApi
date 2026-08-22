@@ -25,22 +25,38 @@ namespace Fakvio.Tests.Unit;
 /// </summary>
 public class QrPaymentTests : IDisposable
 {
+    private readonly DbContextOptions<TenantDbContext> _options;
     private readonly TenantDbContext _context;
     private readonly IPayliboClient _payliboClient;
 
     public QrPaymentTests()
     {
-        var options = new DbContextOptionsBuilder<TenantDbContext>()
+        // One in-memory database per test instance, addressed by name so that several
+        // DbContext instances can be opened over the same data.
+        _options = new DbContextOptionsBuilder<TenantDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
-        _context = new TenantDbContext(options);
+
+        // DEVGUIDE §12: seed through a SEPARATE context and dispose it before the tests run.
+        //
+        // Seeding through the very context the service later queries hands the service EF's
+        // relationship fixup for free: every entity is already in the change tracker, so
+        // navigation properties such as Invoice.Currency or Invoice.Issuer are populated even
+        // when the query never asked for them. A missing .Include() then looks perfectly
+        // correct here and fails only in production, where each request gets a fresh context.
+        // That is exactly how issues #104 and #106 shipped green. Disposing the seed context
+        // removes the crutch — the service has to load what it needs on its own.
+        using (var seedContext = new TenantDbContext(_options))
+        {
+            SeedTestData(seedContext);
+        }
+
+        _context = new TenantDbContext(_options);
 
         // Mock paylibo client — returns empty by default (tests focus on IBAN/SIND strategies)
         _payliboClient = Substitute.For<IPayliboClient>();
         _payliboClient.CreateQrPaymentImageAsync(Arg.Any<PayliboQrOptions>())
             .Returns(Array.Empty<byte>());
-
-        SeedTestData();
     }
 
     public void Dispose()
@@ -52,15 +68,15 @@ public class QrPaymentTests : IDisposable
     /// <summary>
     /// Seeds a minimal invoice with related entities for QR code generation tests.
     /// </summary>
-    private void SeedTestData()
+    private static void SeedTestData(TenantDbContext context)
     {
         var currency = new Currency
         {
             Id = 1, Code = "CZK", Name = "Česká koruna", Symbol = "Kč",
             IsActive = true, DecimalPlaces = 2
         };
-        _context.Currency.Add(currency);
-        _context.SaveChanges();
+        context.Currency.Add(currency);
+        context.SaveChanges();
 
         var vatRate21 = new VatRate
         {
@@ -72,9 +88,9 @@ public class QrPaymentTests : IDisposable
             Id = 2, Name = "DPH 12%", Rate = 12m, IsActive = true, IsReduced = true, IsDefault = true,
             ValidFrom = new DateTime(2015, 1, 1, 0, 0, 0, DateTimeKind.Utc)
         };
-        _context.VatRate.Add(vatRate21);
-        _context.VatRate.Add(vatRate12);
-        _context.SaveChanges();
+        context.VatRate.Add(vatRate21);
+        context.VatRate.Add(vatRate12);
+        context.SaveChanges();
 
         // Issuer (your company)
         var issuer = new Client
@@ -82,8 +98,8 @@ public class QrPaymentTests : IDisposable
             Id = 1, CompanyName = "Test Issuer s.r.o.", RegistrationNumber = "12345678",
             TaxNumber = "CZ12345678", IsIssuer = true, IsActive = true, IsVatPayer = true
         };
-        _context.Client.Add(issuer);
-        _context.SaveChanges();
+        context.Client.Add(issuer);
+        context.SaveChanges();
 
         // Client (recipient)
         var client = new Client
@@ -91,8 +107,8 @@ public class QrPaymentTests : IDisposable
             Id = 2, CompanyName = "Test Client a.s.", RegistrationNumber = "98765432",
             TaxNumber = "CZ98765432", IsIssuer = false, IsActive = true, IsVatPayer = true
         };
-        _context.Client.Add(client);
-        _context.SaveChanges();
+        context.Client.Add(client);
+        context.SaveChanges();
 
         // Invoice with IBAN (for combined QR Platba+F)
         var invoice = new Invoice
@@ -132,8 +148,8 @@ public class QrPaymentTests : IDisposable
                 }
             }
         };
-        _context.Invoice.Add(invoice);
-        _context.SaveChanges();
+        context.Invoice.Add(invoice);
+        context.SaveChanges();
 
         // Invoice without IBAN (for QR Faktura only)
         var invoice2 = new Invoice
@@ -162,8 +178,8 @@ public class QrPaymentTests : IDisposable
                 }
             }
         };
-        _context.Invoice.Add(invoice2);
-        _context.SaveChanges();
+        context.Invoice.Add(invoice2);
+        context.SaveChanges();
 
         // Invoice with Czech bank account but NO IBAN (for paylibo API fallback — Strategy 2)
         var invoice3 = new Invoice
@@ -193,9 +209,42 @@ public class QrPaymentTests : IDisposable
                 }
             }
         };
-        _context.Invoice.Add(invoice3);
-        _context.SaveChanges();
+        context.Invoice.Add(invoice3);
+        context.SaveChanges();
+
+        // Issue #154 fixtures — bank connections that exist but cannot be paid.
+        // 20: IBAN with a typo (mod-97 fails), 21: Czech account failing modulo 11,
+        // 22: foreign free-form account with no IBAN (paylibo cannot process it).
+        context.Invoice.AddRange(
+            BuildMinimalInvoice(20, "INV2026020", iban: "CZ5855000000001265098002", bankAccountNumber: null),
+            BuildMinimalInvoice(21, "INV2026021", iban: null, bankAccountNumber: "1234567890/0100"),
+            BuildMinimalInvoice(22, "INV2026022", iban: null, bankAccountNumber: "DE-ACCOUNT-4711"));
+        context.SaveChanges();
     }
+
+    /// <summary>
+    /// Builds a completed invoice with just enough data for QR generation.
+    /// Used by the issue #154 fixtures, where only the bank connection matters.
+    /// </summary>
+    private static Invoice BuildMinimalInvoice(
+        long id, string documentNumber, string? iban, string? bankAccountNumber) => new()
+        {
+            Id = id,
+            DocumentType = EDocumentType.Invoice,
+            Status = EInvoiceStatus.Completed,
+            DocumentNumber = documentNumber,
+            IssueDate = new DateTime(2026, 4, 1, 0, 0, 0, DateTimeKind.Utc),
+            DueDate = new DateTime(2026, 4, 15, 0, 0, 0, DateTimeKind.Utc),
+            IssuerId = 1,
+            ClientId = 2,
+            CurrencyId = 1,
+            VariableSymbol = documentNumber,
+            IBAN = iban,
+            BankAccountNumber = bankAccountNumber,
+            TotalBeforeVat = 1000m,
+            TotalVat = 210m,
+            TotalWithVat = 1210m
+        };
 
     // ─── CRC32 Tests ─────────────────────────────────────────────────────────
 
@@ -547,18 +596,22 @@ public class QrPaymentTests : IDisposable
     }
 
     [Fact]
-    public async Task GenerateSpdWithInvoiceAsync_WithoutIban_FallsBackToSind()
+    public async Task GenerateSpdWithInvoiceAsync_WithoutIban_ThrowsInsteadOfReturningSind()
     {
+        // Issue #154: this used to return a SIND string from a method (and an endpoint field)
+        // that advertises SPD — a non-payment string presented as a payment string.
         var logger = Substitute.For<ILogger<QrPaymentService>>();
         var service = new QrPaymentService(_context, _payliboClient, logger);
 
-        // Invoice 2 has no IBAN
-        var result = await service.GenerateSpdWithInvoiceAsync(2);
+        // Invoice 2 has neither IBAN nor bank account number
+        var act = () => service.GenerateSpdWithInvoiceAsync(2);
 
-        // Should fall back to SIND format (QR Faktura only)
-        result.ShouldStartWith("SID*1.0*");
-        result.ShouldContain("ID:INV2026002*");
-        result.ShouldNotContain("SPD*");
+        var ex = await Should.ThrowAsync<QrPaymentUnavailableException>(act);
+        ex.Reason.ShouldBe(EQrPaymentUnavailableReason.NoBankAccount);
+        ex.InvoiceId.ShouldBe(2);
+        // The message has to be actionable, not just descriptive.
+        ex.Message.ShouldContain("IBAN");
+        ex.Message.ShouldContain("company profile");
     }
 
     [Fact]
@@ -636,8 +689,13 @@ public class QrPaymentTests : IDisposable
             TotalVat = 0m,
             InvoiceItem = new List<InvoiceItem>()
         };
-        _context.Invoice.Add(creditNote);
-        _context.SaveChanges();
+        // Seeded through its own context for the same reason as the fixture data
+        // (DEVGUIDE §12) — the service must not inherit a warm change tracker.
+        using (var seedContext = new TenantDbContext(_options))
+        {
+            seedContext.Invoice.Add(creditNote);
+            seedContext.SaveChanges();
+        }
 
         var logger = Substitute.For<ILogger<QrPaymentService>>();
         var service = new QrPaymentService(_context, _payliboClient, logger);
@@ -678,21 +736,42 @@ public class QrPaymentTests : IDisposable
     }
 
     [Fact]
-    public async Task GenerateQrCodeImageAsync_PayliboFails_FallsBackToSind()
+    public async Task GenerateQrCodeImageAsync_PayliboReturnsEmpty_ThrowsProviderUnavailable()
     {
-        // When paylibo API returns empty (failure), service should fall back to SIND QR Faktura.
+        // Issue #154: an empty paylibo response used to be turned into a SIND-only QR code —
+        // the invoice looked payable although the payment data never arrived.
         _payliboClient.CreateQrPaymentImageAsync(Arg.Any<PayliboQrOptions>())
             .Returns(Array.Empty<byte>());
 
         var logger = Substitute.For<ILogger<QrPaymentService>>();
         var service = new QrPaymentService(_context, _payliboClient, logger);
 
-        var result = await service.GenerateQrCodeImageAsync(10, pixelsPerModule: 5);
+        var act = () => service.GenerateQrCodeImageAsync(10, pixelsPerModule: 5);
 
-        // Should fall back to local QR generation (SIND) — returns valid PNG
-        result.ShouldNotBeNull();
-        result.Length.ShouldBeGreaterThan(0);
-        result[0].ShouldBe((byte)0x89); // PNG signature
+        var ex = await Should.ThrowAsync<QrPaymentUnavailableException>(act);
+        // Transient — the invoice is configured correctly, so the advice must be "retry",
+        // not "go and fix your bank account".
+        ex.Reason.ShouldBe(EQrPaymentUnavailableReason.ProviderUnavailable);
+        ex.Message.ShouldContain("try again");
+    }
+
+    [Fact]
+    public async Task GenerateQrCodeImageAsync_PayliboThrows_ThrowsProviderUnavailableWithInnerException()
+    {
+        // A paylibo outage now propagates out of the client instead of being swallowed
+        // into an empty array; the service must classify it as transient and keep the cause.
+        var transportFailure = new HttpRequestException("paylibo unreachable");
+        _payliboClient.CreateQrPaymentImageAsync(Arg.Any<PayliboQrOptions>())
+            .Returns<byte[]>(_ => throw transportFailure);
+
+        var logger = Substitute.For<ILogger<QrPaymentService>>();
+        var service = new QrPaymentService(_context, _payliboClient, logger);
+
+        var act = () => service.GenerateQrCodeImageAsync(10, pixelsPerModule: 5);
+
+        var ex = await Should.ThrowAsync<QrPaymentUnavailableException>(act);
+        ex.Reason.ShouldBe(EQrPaymentUnavailableReason.ProviderUnavailable);
+        ex.InnerException.ShouldBe(transportFailure);
     }
 
     [Fact]
@@ -708,19 +787,92 @@ public class QrPaymentTests : IDisposable
         await _payliboClient.DidNotReceive().CreateQrPaymentImageAsync(Arg.Any<PayliboQrOptions>());
     }
 
+    // ─── Issue #154: no unpayable QR code is ever produced ────────────────────
+
+    /// <summary>
+    /// The defect reported in issue #154, reproduced end to end: invoice 2 has neither an IBAN
+    /// nor a bank account number. The old implementation returned a perfectly valid PNG holding
+    /// a SIND-only "QR Faktura" — a code that scans and then does nothing in a banking app.
+    /// </summary>
     [Fact]
-    public async Task GenerateSpdWithInvoiceAsync_CzechBankAccountNoIban_FallsToSind()
+    public async Task GenerateQrCodeImageAsync_NoBankConnection_ThrowsInsteadOfDecorativeQr()
     {
-        // GenerateSpdWithInvoiceAsync does NOT use paylibo — only IBAN or SIND fallback.
-        // Invoice 10 has BankAccountNumber but no IBAN → SIND fallback.
         var logger = Substitute.For<ILogger<QrPaymentService>>();
         var service = new QrPaymentService(_context, _payliboClient, logger);
 
-        var result = await service.GenerateSpdWithInvoiceAsync(10);
+        var act = () => service.GenerateQrCodeImageAsync(2, pixelsPerModule: 5);
 
-        // Should return SIND (QR Faktura) format since there's no IBAN
-        result.ShouldStartWith("SID*1.0*");
-        result.ShouldContain("ID:INV2026010*");
+        var ex = await Should.ThrowAsync<QrPaymentUnavailableException>(act);
+        ex.Reason.ShouldBe(EQrPaymentUnavailableReason.NoBankAccount);
+        ex.InvoiceId.ShouldBe(2);
+        // The user must learn WHAT is missing and WHERE to fix it, not just that it failed.
+        ex.Message.ShouldContain("INV2026002");
+        ex.Message.ShouldContain("bank account");
+        ex.Message.ShouldContain("company profile");
+        await _payliboClient.DidNotReceive().CreateQrPaymentImageAsync(Arg.Any<PayliboQrOptions>());
+    }
+
+    [Fact]
+    public async Task GenerateQrCodeImageAsync_IbanWithTypo_ThrowsInvalidBankAccount()
+    {
+        // Invoice 20 carries an IBAN whose check digits no longer match the body.
+        // SpdIntegrator used to copy it into ACC unchecked, producing an unpayable QR code.
+        var logger = Substitute.For<ILogger<QrPaymentService>>();
+        var service = new QrPaymentService(_context, _payliboClient, logger);
+
+        var act = () => service.GenerateQrCodeImageAsync(20, pixelsPerModule: 5);
+
+        var ex = await Should.ThrowAsync<QrPaymentUnavailableException>(act);
+        ex.Reason.ShouldBe(EQrPaymentUnavailableReason.InvalidBankAccount);
+        ex.Message.ShouldContain("IBAN");
+    }
+
+    [Fact]
+    public async Task GenerateQrCodeImageAsync_CzechAccountFailingMod11_ThrowsWithoutCallingPaylibo()
+    {
+        // Invoice 21 has "1234567890/0100" — Czech-shaped but failing the modulo 11 checksum.
+        // Catching it locally also spares a pointless call to the external API.
+        var logger = Substitute.For<ILogger<QrPaymentService>>();
+        var service = new QrPaymentService(_context, _payliboClient, logger);
+
+        var act = () => service.GenerateQrCodeImageAsync(21, pixelsPerModule: 5);
+
+        var ex = await Should.ThrowAsync<QrPaymentUnavailableException>(act);
+        ex.Reason.ShouldBe(EQrPaymentUnavailableReason.InvalidBankAccount);
+        ex.Message.ShouldContain("modulo 11");
+        await _payliboClient.DidNotReceive().CreateQrPaymentImageAsync(Arg.Any<PayliboQrOptions>());
+    }
+
+    [Fact]
+    public async Task GenerateQrCodeImageAsync_ForeignAccountWithoutIban_ThrowsAndAsksForIban()
+    {
+        // Invoice 22 has a free-form foreign account number. It is a legitimate value to store,
+        // but paylibo is a Czech-only service, so a QR Platba cannot be built from it.
+        var logger = Substitute.For<ILogger<QrPaymentService>>();
+        var service = new QrPaymentService(_context, _payliboClient, logger);
+
+        var act = () => service.GenerateQrCodeImageAsync(22, pixelsPerModule: 5);
+
+        var ex = await Should.ThrowAsync<QrPaymentUnavailableException>(act);
+        ex.Reason.ShouldBe(EQrPaymentUnavailableReason.InvalidBankAccount);
+        ex.Message.ShouldContain("IBAN");
+        await _payliboClient.DidNotReceive().CreateQrPaymentImageAsync(Arg.Any<PayliboQrOptions>());
+    }
+
+    [Fact]
+    public async Task GenerateSpdWithInvoiceAsync_CzechBankAccountNoIban_ThrowsInsteadOfReturningSind()
+    {
+        // GenerateSpdWithInvoiceAsync builds the SPD string locally and therefore needs an IBAN;
+        // paylibo only ever returns a rendered image. Invoice 10 has a valid Czech account but
+        // no IBAN, so the honest answer is an error — not a SIND string labelled "spd".
+        var logger = Substitute.For<ILogger<QrPaymentService>>();
+        var service = new QrPaymentService(_context, _payliboClient, logger);
+
+        var act = () => service.GenerateSpdWithInvoiceAsync(10);
+
+        var ex = await Should.ThrowAsync<QrPaymentUnavailableException>(act);
+        ex.Reason.ShouldBe(EQrPaymentUnavailableReason.NoBankAccount);
+        ex.Message.ShouldContain("IBAN");
     }
 
     // ─── ParseCzechBankAccount Tests ──────────────────────────────────────
@@ -820,6 +972,29 @@ public class QrPaymentTests : IDisposable
         result.ShouldStartWith("SPD*1.0*");
         // Must NOT end with * — strict banking app parsers reject trailing *
         result.ShouldNotEndWith("*");
+    }
+
+    [Theory]
+    [InlineData("CZ5855000000001265098002")]  // check digits no longer match the body
+    [InlineData("CZ0708000000001234567890")]  // mod-97 fine, domestic modulo 11 fails
+    [InlineData("not-an-iban")]
+    [InlineData("")]
+    public void BuildSimpleSpdString_InvalidIban_ThrowsInsteadOfEmittingIt(string iban)
+    {
+        // Issue #154: the IBAN used to be copied into the SPD "ACC" attribute after nothing
+        // more than stripping spaces and dashes, so a typo produced a QR code that scanned
+        // into a payment no bank would accept. The payment string is a system boundary — it
+        // has to fail here, not in the recipient's banking app.
+        var act = () => SpdIntegrator.BuildSimpleSpdString(
+            iban: iban,
+            swift: null,
+            amount: 100m,
+            currencyCode: "CZK",
+            dueDate: null,
+            variableSymbol: null,
+            message: null);
+
+        Should.Throw<ArgumentException>(act);
     }
 
     [Fact]

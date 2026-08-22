@@ -82,8 +82,8 @@ public class BankAccountServiceTests : IDisposable
             FetchFromAres = false,
             BankAccount = new List<CreateBankAccountDto>
             {
-                new() { AccountNumber = "1234567890/0100", Label = "CZK", IBAN = "CZ123", CurrencyCode = "CZK", IsDefault = true },
-                new() { AccountNumber = "9876543210/0300", Label = "EUR", IBAN = "CZ456", CurrencyCode = "EUR", IsDefault = false }
+                new() { AccountNumber = "1234567899/0100", Label = "CZK", IBAN = "CZ9501000000001234567899", CurrencyCode = "CZK", IsDefault = true },
+                new() { AccountNumber = "9876543211/0300", Label = "EUR", IBAN = "CZ6903000000009876543211", CurrencyCode = "EUR", IsDefault = false }
             }
         };
 
@@ -92,8 +92,8 @@ public class BankAccountServiceTests : IDisposable
 
         // Assert — both accounts saved, correct properties
         result.BankAccount.Count.ShouldBe(2);
-        result.BankAccount.ShouldContain(a => a.AccountNumber == "1234567890/0100" && a.IsDefault);
-        result.BankAccount.ShouldContain(a => a.AccountNumber == "9876543210/0300" && !a.IsDefault);
+        result.BankAccount.ShouldContain(a => a.AccountNumber == "1234567899/0100" && a.IsDefault);
+        result.BankAccount.ShouldContain(a => a.AccountNumber == "9876543211/0300" && !a.IsDefault);
     }
 
     /// <summary>
@@ -112,8 +112,8 @@ public class BankAccountServiceTests : IDisposable
             FetchFromAres = false,
             BankAccount = new List<CreateBankAccountDto>
             {
-                new() { AccountNumber = "111/0100", IsDefault = false },
-                new() { AccountNumber = "222/0200", IsDefault = false }
+                new() { AccountNumber = "1003/0100", IsDefault = false },
+                new() { AccountNumber = "2006/0200", IsDefault = false }
             }
         };
 
@@ -122,8 +122,8 @@ public class BankAccountServiceTests : IDisposable
 
         // Assert — first account is auto-defaulted, second is not
         result.BankAccount.Count.ShouldBe(2);
-        var first = result.BankAccount.First(a => a.AccountNumber == "111/0100");
-        var second = result.BankAccount.First(a => a.AccountNumber == "222/0200");
+        var first = result.BankAccount.First(a => a.AccountNumber == "1003/0100");
+        var second = result.BankAccount.First(a => a.AccountNumber == "2006/0200");
         first.IsDefault.ShouldBeTrue();
         second.IsDefault.ShouldBeFalse();
     }
@@ -270,5 +270,96 @@ public class BankAccountServiceTests : IDisposable
 
         // Assert
         result.ShouldBeNull();
+    }
+
+    // ─── Issue #154: the write path refuses an unpayable bank connection ─────
+
+    /// <summary>
+    /// A Czech-shaped account number that fails the modulo 11 checksum must not be stored.
+    ///
+    /// Storing it was the first half of issue #154: nothing complained at write time, and the
+    /// value only became visible much later as a QR code nobody could pay, on an invoice the
+    /// customer had already received. The write path is the last moment the user still has the
+    /// correct number in front of them, so that is where the failure belongs.
+    /// </summary>
+    [Fact]
+    public async Task CreateClient_BankAccountFailingMod11_IsRejected()
+    {
+        var createDto = new CreateClientDto
+        {
+            RegistrationNumber = "22222222",
+            CompanyName = "Typo Company",
+            FetchFromAres = false,
+            BankAccount = new List<CreateBankAccountDto>
+            {
+                new() { AccountNumber = "1234567890/0100", IsDefault = true }
+            }
+        };
+
+        var ex = await Should.ThrowAsync<ArgumentException>(() => _service.CreateClientAsync(createDto));
+        ex.Message.ShouldContain("1234567890/0100");
+
+        // Nothing must have been persisted — a rejected account cannot leave a half-created client.
+        (await _context.Client.CountAsync()).ShouldBe(0);
+    }
+
+    /// <summary>
+    /// An IBAN with a broken check digit is rejected as well — it would produce a QR code
+    /// that scans into a payment the bank then refuses.
+    /// </summary>
+    [Fact]
+    public async Task AddBankAccount_IbanWithTypo_IsRejected()
+    {
+        var clientId = await SeedIssuerAsync();
+
+        var ex = await Should.ThrowAsync<ArgumentException>(() =>
+            _service.AddBankAccountAsync(clientId, new CreateBankAccountDto
+            {
+                AccountNumber = "19-2000145399/0800",
+                IBAN = "CZ6508000000192000145398"
+            }));
+        ex.Message.ShouldContain("IBAN");
+
+        var client = await _context.Client.Include(c => c.BankAccount)
+            .FirstAsync(c => c.Id == clientId);
+        client.BankAccount.ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// A correct Czech account number with a matching IBAN goes through untouched — the new
+    /// validation must not turn into a wall for legitimate data.
+    /// </summary>
+    [Fact]
+    public async Task AddBankAccount_ValidCzechAccountAndIban_IsAccepted()
+    {
+        var clientId = await SeedIssuerAsync();
+
+        var result = await _service.AddBankAccountAsync(clientId, new CreateBankAccountDto
+        {
+            AccountNumber = "19-2000145399/0800",
+            IBAN = "CZ65 0800 0000 1920 0014 5399"
+        });
+
+        result.ShouldNotBeNull();
+        result!.BankAccount.ShouldContain(a => a.AccountNumber == "19-2000145399/0800");
+    }
+
+    /// <summary>
+    /// A free-form foreign account number is still storable. There is no checksum to verify it
+    /// against, and blocking it would break international issuers; it simply cannot produce a
+    /// QR payment code, which is QrPaymentService's call to make, not the write path's.
+    /// </summary>
+    [Fact]
+    public async Task AddBankAccount_ForeignFreeFormAccount_IsAccepted()
+    {
+        var clientId = await SeedIssuerAsync();
+
+        var result = await _service.AddBankAccountAsync(clientId, new CreateBankAccountDto
+        {
+            AccountNumber = "DE-ACCOUNT-4711"
+        });
+
+        result.ShouldNotBeNull();
+        result!.BankAccount.ShouldContain(a => a.AccountNumber == "DE-ACCOUNT-4711");
     }
 }

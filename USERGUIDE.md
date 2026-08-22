@@ -177,6 +177,28 @@ Dostupný z detailu faktury — viz příslušné tlačítko. ISDOC je český s
 
 **Hromadný ISDOC export:** zaškrtněte faktury → toolbar → „Stáhnout ISDOC" → stáhne se ZIP archiv s `.isdoc` soubory. Koncepty (Draft) se přeskakují — nevydaná faktura nemá právně platný ISDOC.
 
+### 2.8a QR platba
+
+Na detailu vydané faktury (tedy ne u konceptu) je karta **QR platba**. Kód se generuje
+z bankovního spojení uvedeného na dokladu a vejde se do něj částka, variabilní symbol,
+datum splatnosti a měna — příjemce ho jen naskenuje v bankovní aplikaci. Stejný kód se
+vytiskne i do PDF, pokud ho šablona obsahuje.
+
+**QR kód se vytvoří jen tehdy, když je z čeho platit.** Doklad k tomu potřebuje platný
+IBAN nebo platné české číslo účtu. Když ho nemá, na kartě se místo kódu objeví vysvětlení
+a odkaz na nastavení bankovních účtů:
+
+| Co uvidíte | Co to znamená | Co s tím |
+|---|---|---|
+| „QR platbu nelze vytvořit — doklad nemá použitelné bankovní spojení" | Vystavitel nemá bankovní účet, účet obsahuje překlep, nebo jde o zahraniční účet bez IBANu | Doplňte nebo opravte účet v [Nastavení firmy](#10-nastavení-firmy) a doklad znovu vystavte |
+| „QR platba je dočasně nedostupná" | Externí generátor QR kódů neodpovídá. Na dokladu není nic špatně | Zkuste to za chvíli znovu |
+
+Faktura bez QR kódu je pořád platná — PDF se vygeneruje a odešle normálně, jen bez kódu.
+
+> **Změna oproti dřívějšku:** dřív se QR kód vytiskl vždy, i když vystavitel žádný účet
+> neměl. Takový kód sice šel naskenovat, ale žádnou platbu nenabídl a nebylo jak to poznat.
+> Nově se raději nevytiskne nic a je řečeno proč.
+
 ### 2.9 Odeslání emailem
 
 - Z gridu: ikona emailu → dialog „Odeslat fakturu"
@@ -457,7 +479,11 @@ Správa informací o vaší firmě (vydavatele faktur).
 **Bankovní účty:**
 - Přidávání přes dialog „Bankovní účet"
 - Formát: číslo účtu, kód banky, IBAN, BIC/SWIFT
-- QR kód platba — systém generuje QR kód pro faktury automaticky
+- Číslo účtu i IBAN se kontrolují už při zadávání. České číslo účtu musí projít
+  kontrolním součtem (modulo 11), IBAN svým kontrolním číslem. Překlep formulář
+  odmítne a napíše proč — nejde ho uložit. Zahraniční číslo účtu bez IBANu
+  uložit lze, ale QR platbu z něj vytvořit nejde (viz [§2.8a](#28a-qr-platba)).
+- QR platba na faktuře se generuje z tohoto účtu — viz [§2.8a](#28a-qr-platba)
 
 **Email pro příjem faktur:**
 - Aktivace unikátní emailové adresy pro automatický příjem faktur — viz [§18](#18-příjem-faktur-emailem)

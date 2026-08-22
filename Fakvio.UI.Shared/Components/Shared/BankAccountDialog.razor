@@ -14,6 +14,7 @@
 *@
 @inject IStringLocalizer<SharedResource> L
 @using Fakvio.Contracts.Dto.Client
+@using Fakvio.Domain.Validation
 
 <MudDialog DefaultFocus="DefaultFocus.FirstChild">
     <DialogContent>
@@ -24,7 +25,9 @@
                 <MudTextField @bind-Value="BankAccount.AccountNumber"
                               Label="@L["BankAccount_AccountNumber"].Value"
                               Required="true"
-                              Placeholder="1234567890/0100"
+                              Immediate="true"
+                              Validation="@(new Func<string?, string?>(ValidateAccountNumber))"
+                              Placeholder="19-2000145399/0800"
                               HelperText="@L["BankAccount_AccountNumberHelper"].Value" />
             </MudItem>
 
@@ -46,7 +49,9 @@
             <MudItem xs="12">
                 <MudTextField @bind-Value="BankAccount.IBAN"
                               Label="@L["BankAccount_IBAN"].Value"
-                              Placeholder="CZ65 0800 0000 0019 2000 0145" />
+                              Immediate="true"
+                              Validation="@(new Func<string?, string?>(ValidateIban))"
+                              Placeholder="CZ65 0800 0000 1920 0014 5399" />
             </MudItem>
 
             @* SWIFT and Currency side by side *@
@@ -120,7 +125,45 @@
     public string DialogTitle { get; set; } = "";
 
     /// <summary>
-    /// Validates required fields and closes the dialog returning the edited bank account.
+    /// Inline validation of the account number.
+    ///
+    /// Issue #154: the only rule here used to be Required="true", so a mistyped account number
+    /// was accepted, stored, and only became visible much later — as a QR code nobody could
+    /// pay, on an invoice the customer had already received. The moment the user types the
+    /// value is the only moment the correct number is still in front of them.
+    ///
+    /// The shared <see cref="BankAccountValidator"/> decides what is valid (Czech-shaped
+    /// numbers must pass modulo 11, foreign ones are accepted as-is), so the form, the API,
+    /// and the QR generator cannot drift apart. Its reasons are technical and English-only,
+    /// so the message shown here is the localized one.
+    /// </summary>
+    private string? ValidateAccountNumber(string? value)
+    {
+        // Empty is handled by Required="true" — no point in showing two errors at once.
+        if (string.IsNullOrWhiteSpace(value)) return null;
+
+        return BankAccountValidator.TryValidateAccountNumber(value, out _)
+            ? null
+            : L["BankAccount_AccountNumberInvalid"].Value;
+    }
+
+    /// <summary>
+    /// Inline validation of the IBAN. The field is optional, so only a filled-in value
+    /// has to be correct — but an incorrect one would produce an unpayable QR code.
+    /// </summary>
+    private string? ValidateIban(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+
+        return BankAccountValidator.TryValidateIban(value, out _)
+            ? null
+            : L["BankAccount_IbanInvalid"].Value;
+    }
+
+    /// <summary>
+    /// Validates the fields and closes the dialog returning the edited bank account.
+    /// The same checks run in ClientService on the server, so a client that skips the
+    /// dialog still cannot store an unusable account — this is the convenience half.
     /// </summary>
     private void Save()
     {
@@ -128,6 +171,14 @@
         if (string.IsNullOrWhiteSpace(BankAccount.AccountNumber))
         {
             return; // MudTextField Required="true" will show validation error
+        }
+
+        // Don't close while a field is showing a validation error; the inline messages
+        // already tell the user what is wrong.
+        if (ValidateAccountNumber(BankAccount.AccountNumber) != null ||
+            ValidateIban(BankAccount.IBAN) != null)
+        {
+            return;
         }
 
         MudDialog.Close(DialogResult.Ok(BankAccount));

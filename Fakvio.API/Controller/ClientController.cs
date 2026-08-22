@@ -205,6 +205,13 @@ public class ClientController : ControllerBase
                 createDto.RegistrationNumber);
             return Conflict(new { message = ex.Message });
         }
+        catch (ArgumentException ex)
+        {
+            // Bank account / IBAN failed validation (issue #154). The message names the
+            // offending value and the reason, so it is passed through to the UI as-is.
+            _logger.LogWarning("Rejected client creation — invalid input: {Message}", ex.Message);
+            return BadRequest(new { message = ex.Message });
+        }
     }
 
     /// <summary>
@@ -228,7 +235,17 @@ public class ClientController : ControllerBase
     {
         _logger.LogInformation("PUT /api/client/{Id}", id);
 
-        var client = await _clientService.UpdateClientAsync(id, updateDto, cancellationToken);
+        ClientDto? client;
+        try
+        {
+            client = await _clientService.UpdateClientAsync(id, updateDto, cancellationToken);
+        }
+        catch (ArgumentException ex)
+        {
+            // Bank account / IBAN failed validation (issue #154) — 400 with the actionable text.
+            _logger.LogWarning("Rejected update of client {Id} — invalid input: {Message}", id, ex.Message);
+            return BadRequest(new { message = ex.Message });
+        }
 
         if (client == null)
         {
@@ -379,9 +396,11 @@ public class ClientController : ControllerBase
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Updated client with all bank accounts</returns>
     /// <response code="200">Bank account added successfully</response>
+    /// <response code="400">Account number or IBAN is invalid</response>
     /// <response code="404">Client not found</response>
     [HttpPost("{id}/bank-account")]
     [ProducesResponseType(typeof(ClientDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ClientDto>> AddBankAccount(
         long id,
@@ -390,7 +409,17 @@ public class ClientController : ControllerBase
     {
         _logger.LogInformation("POST /api/client/{Id}/bank-account", id);
 
-        var client = await _clientService.AddBankAccountAsync(id, bankAccountDto, cancellationToken);
+        ClientDto? client;
+        try
+        {
+            client = await _clientService.AddBankAccountAsync(id, bankAccountDto, cancellationToken);
+        }
+        catch (ArgumentException ex)
+        {
+            // Bank account / IBAN failed validation (issue #154) — 400 with the actionable text.
+            _logger.LogWarning("Rejected bank account for client {Id} — invalid input: {Message}", id, ex.Message);
+            return BadRequest(new { message = ex.Message });
+        }
 
         if (client == null)
         {

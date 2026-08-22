@@ -1,3 +1,4 @@
+using Fakvio.Application.QrPayment;
 using Fakvio.Application.Service;
 using Fakvio.Domain.Enums;
 using Fakvio.Infrastructure.Data;
@@ -114,8 +115,19 @@ public class PdfExportService : IPdfExportService
             }
         }
 
-        // Generate QR code for the invoice (QR Platba+F or QR Faktura).
-        // Non-critical — if QR generation fails, the PDF is still generated without it.
+        // Generate the QR payment code for the invoice.
+        //
+        // The PDF itself stays non-fatal on purpose: an invoice must remain deliverable even
+        // without a QR code, and printing "QR code missing" on a document the customer reads
+        // would be worse than leaving it out. What changed with issue #154 is WHAT gets left
+        // out and who hears about it:
+        // - The generator no longer produces a decorative, unpayable QR code, so a PDF without
+        //   a QR code is now the honest outcome instead of a misleading one.
+        // - A missing/invalid bank connection is a configuration problem the issuer must fix;
+        //   the actionable message is shown to them on the invoice detail page, and logged here
+        //   as a warning for support.
+        // - Anything else (paylibo outage, unexpected failure) is logged as an ERROR so it
+        //   surfaces in AppLog for the operator instead of hiding among warnings.
         string? qrCodeBase64 = null;
         try
         {
@@ -123,9 +135,17 @@ public class PdfExportService : IPdfExportService
             qrCodeBase64 = Convert.ToBase64String(qrBytes);
             _logger.LogInformation("Generated QR code for invoice {InvoiceId} ({Size} bytes)", invoiceId, qrBytes.Length);
         }
+        catch (QrPaymentUnavailableException ex)
+            when (ex.Reason != EQrPaymentUnavailableReason.ProviderUnavailable)
+        {
+            _logger.LogWarning(
+                "No QR payment code on the PDF of invoice {InvoiceId} ({Reason}): {Message}",
+                invoiceId, ex.Reason, ex.Message);
+        }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "QR code generation failed for invoice {InvoiceId}, PDF will be generated without QR", invoiceId);
+            _logger.LogError(ex,
+                "QR code generation failed for invoice {InvoiceId}, PDF will be generated without QR", invoiceId);
         }
 
         // Replace all Handlebars-style placeholders with actual invoice data

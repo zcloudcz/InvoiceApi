@@ -1,3 +1,4 @@
+using Fakvio.Application.QrPayment;
 using Fakvio.Contracts.Dto.ContentTemplate;
 using Fakvio.Application.Service;
 using Fakvio.Domain.Entities;
@@ -401,5 +402,56 @@ public class PdfExportServiceTests : IDisposable
         result.ShouldNotBeNull();
         await _contentTemplateService.Received(1)
             .GetDefaultByTypeAsync(EContentTemplateType.InvoicePdf, "en", Arg.Any<CancellationToken>());
+    }
+
+    // ─── Issue #154: an unavailable QR code must not cost the user their PDF ─
+
+    /// <summary>
+    /// The QR generator now refuses to produce an unpayable code and throws instead of
+    /// returning a decorative one. The PDF must survive that: an invoice without a bank
+    /// account is still a legally valid document the customer has to receive, and printing
+    /// an error onto a document the customer reads would be worse than leaving the code out.
+    ///
+    /// The user learns why the code is missing on the invoice detail page, where they can
+    /// act on it — not from a broken download.
+    /// </summary>
+    [Fact]
+    public async Task GenerateInvoicePdfAsync_QrCodeUnavailable_StillReturnsPdf()
+    {
+        _contentTemplateService
+            .GetDefaultByTypeAsync(EContentTemplateType.InvoicePdf, Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns((ContentTemplateDto?)null);
+
+        _qrPaymentService
+            .GenerateQrCodeImageAsync(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns<byte[]>(_ => throw new QrPaymentUnavailableException(
+                EQrPaymentUnavailableReason.NoBankAccount, 1, "no bank connection"));
+
+        var result = await _service.GenerateInvoicePdfAsync(1);
+
+        result.ShouldNotBeEmpty();
+        result[0].ShouldBe((byte)0x25); // %PDF
+    }
+
+    /// <summary>
+    /// The same holds for an unexpected failure inside the QR generator. It is logged as an
+    /// error rather than a warning (that distinction is the operator-visible half of the fix),
+    /// but it still must not take the invoice down with it.
+    /// </summary>
+    [Fact]
+    public async Task GenerateInvoicePdfAsync_QrCodeThrowsUnexpectedly_StillReturnsPdf()
+    {
+        _contentTemplateService
+            .GetDefaultByTypeAsync(EContentTemplateType.InvoicePdf, Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns((ContentTemplateDto?)null);
+
+        _qrPaymentService
+            .GenerateQrCodeImageAsync(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns<byte[]>(_ => throw new InvalidOperationException("boom"));
+
+        var result = await _service.GenerateInvoicePdfAsync(1);
+
+        result.ShouldNotBeEmpty();
+        result[0].ShouldBe((byte)0x25); // %PDF
     }
 }

@@ -1,4 +1,5 @@
 using System.Text;
+using Fakvio.Domain.Validation;
 
 namespace Fakvio.Application.QrPayment;
 
@@ -44,14 +45,26 @@ public static class SpdIntegrator
     /// <param name="variableSymbol">Optional variable symbol — becomes X-VS in SPD.</param>
     /// <param name="message">Optional message/document number (max 60 chars per SPD spec).</param>
     /// <returns>Simple SPD string ready for QR code encoding.</returns>
+    /// <exception cref="ArgumentException">
+    /// The IBAN is missing or invalid. Issue #154: this method used to strip the separators
+    /// and copy whatever was left into ACC, so a typo silently produced a QR code that no
+    /// banking app could pay. The payment string is a system boundary — it fails fast here
+    /// rather than in the recipient's bank app.
+    /// </exception>
     public static string BuildSimpleSpdString(
         string iban, string? swift, decimal amount, string? currencyCode,
         DateTime? dueDate, string? variableSymbol, string? message)
     {
+        if (!BankAccountValidator.TryValidateIban(iban, out var ibanError))
+        {
+            throw new ArgumentException(
+                $"Cannot build an SPD payment string: {ibanError}", nameof(iban));
+        }
+
         var attributes = new Dictionary<string, string>();
 
-        // ACC is required — sanitize whitespace and dashes from IBAN
-        var cleanIban = iban.Replace(" ", "").Replace("-", "");
+        // ACC is required — the normalized form drops the separators users paste along
+        var cleanIban = BankAccountValidator.NormalizeIban(iban);
         var accValue = !string.IsNullOrWhiteSpace(swift)
             ? $"{cleanIban}+{swift.Trim()}"
             : cleanIban;
