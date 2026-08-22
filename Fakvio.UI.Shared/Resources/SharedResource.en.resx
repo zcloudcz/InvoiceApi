@@ -695,7 +695,7 @@
   <data name="SystemSettings_AiTitle" xml:space="preserve"><value>AI Settings</value></data>
   <data name="SystemSettings_AiDefaultProvider" xml:space="preserve"><value>Default AI Provider</value></data>
   <data name="AiInstructions_Title" xml:space="preserve"><value>AI Assistant Instructions</value></data>
-  <data name="AiInstructions_Subtitle" xml:space="preserve"><value>Customize the AI assistant system prompt. Changes take effect immediately, no redeploy needed.</value></data>
+  <data name="AiInstructions_Subtitle" xml:space="preserve"><value>Customize the AI assistant system prompt. Changes take effect within 5 minutes on all instances, no redeploy needed.</value></data>
   <data name="AiInstructions_CustomPromptLabel" xml:space="preserve"><value>Custom instructions (replace the default style and rules)</value></data>
   <data name="AiInstructions_CustomPromptHint" xml:space="preserve"><value>When non-empty, replaces the entire built-in RESPONSE STYLE, TOOLS, IMPORT RULES and RULES block — including the tool descriptions. Company identity and business context are always appended automatically.</value></data>
   <data name="AiInstructions_CustomPromptPlaceholder" xml:space="preserve"><value>Leave empty to use the built-in defaults…</value></data>
@@ -709,7 +709,7 @@
   <data name="AiInstructions_PreviewNote" xml:space="preserve"><value>Company identity and business statistics are shown as placeholders — the real values are injected at runtime from the tenant database.</value></data>
   <data name="AiInstructions_ResetToDefault" xml:space="preserve"><value>Reset to default</value></data>
   <data name="AiInstructions_ResetConfirm" xml:space="preserve"><value>This clears both the custom instructions and the appendix, and the AI will use the built-in defaults. Continue?</value></data>
-  <data name="AiInstructions_SaveSuccess" xml:space="preserve"><value>AI instructions saved. They take effect on the next chat message.</value></data>
+  <data name="AiInstructions_SaveSuccess" xml:space="preserve"><value>AI instructions saved. They take effect within 5 minutes on all instances.</value></data>
   <data name="AiInstructions_ResetSuccess" xml:space="preserve"><value>AI instructions reset to the defaults.</value></data>
   <data name="Nav_AiInstructions" xml:space="preserve"><value>AI Instructions</value></data>
   <data name="Log_Title" xml:space="preserve">

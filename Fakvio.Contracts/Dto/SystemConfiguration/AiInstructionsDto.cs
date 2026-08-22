@@ -8,24 +8,25 @@ public class AiInstructionsDto
 {
     /// <summary>
     /// Custom instructions replacing the built-in style/tools/rules block.
-    /// Null or empty means the built-in default is active.
+    /// Null or blank means the built-in default is active.
     /// </summary>
     public string? CustomPrompt { get; set; }
 
     /// <summary>
     /// Extra instructions appended after the main block.
-    /// Null or empty means no appendix is active.
+    /// Null or blank means no appendix is active.
     /// </summary>
     public string? Appendix { get; set; }
 
     /// <summary>
-    /// True when <see cref="CustomPrompt"/> is non-empty, i.e. the built-in default
+    /// True when <see cref="CustomPrompt"/> carries real text, i.e. the built-in default
     /// is overridden. Convenience flag so the UI can render a status chip.
+    /// Whitespace-only counts as "not set" — same rule the prompt composition uses.
     /// </summary>
-    public bool IsCustomActive => !string.IsNullOrEmpty(CustomPrompt);
+    public bool IsCustomActive => !string.IsNullOrWhiteSpace(CustomPrompt);
 
-    /// <summary>True when <see cref="Appendix"/> is non-empty.</summary>
-    public bool IsAppendixActive => !string.IsNullOrEmpty(Appendix);
+    /// <summary>True when <see cref="Appendix"/> carries real text (whitespace = not set).</summary>
+    public bool IsAppendixActive => !string.IsNullOrWhiteSpace(Appendix);
 }
 
 /// <summary>

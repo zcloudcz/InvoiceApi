@@ -4,6 +4,7 @@ using Fakvio.Infrastructure.Data;
 using Fakvio.Infrastructure.Service;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Internal;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 using Shouldly;
@@ -149,6 +150,25 @@ public class AiInstructionsServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task UpdateAsync_WhitespaceOnlyValue_ClearsTheValue()
+    {
+        await SeedConfigAsync("Old prompt", "Old appendix");
+
+        // Whitespace is not a usable prompt: storing it as "custom" would replace the whole
+        // built-in block with an empty line and leave the AI without tools and rules.
+        var result = await _service.UpdateAsync(new UpdateAiInstructionsDto
+        {
+            CustomPrompt = "   ",
+            Appendix = "  "
+        });
+
+        result.CustomPrompt.ShouldBeNull();
+        result.Appendix.ShouldBeNull();
+        result.IsCustomActive.ShouldBeFalse();
+        result.IsAppendixActive.ShouldBeFalse();
+    }
+
+    [Fact]
     public async Task UpdateAsync_Null_KeepsTheStoredValue()
     {
         await SeedConfigAsync("Existing prompt", "Existing appendix");
@@ -255,6 +275,43 @@ public class AiInstructionsServiceTests : IDisposable
         (await _context.Set<SystemConfiguration>().CountAsync()).ShouldBe(0);
     }
 
+    [Fact]
+    public async Task GetCachedInstructionsAsync_DropsTheEntry_AfterTheAbsoluteExpiry()
+    {
+        // IMemoryCache is process-local: a SysAdmin edit served by another instance never
+        // invalidates this one. The only guarantee that the stale value goes away is the
+        // absolute expiry — a sliding one would be renewed by the traffic and never fire.
+        var clock = new TestClock();
+        using var cache = new MemoryCache(new MemoryCacheOptions { Clock = clock });
+        var service = new AiInstructionsService(
+            _context, cache, Substitute.For<ILogger<AiInstructionsService>>());
+
+        await SeedConfigAsync("Original prompt", null);
+        (await service.GetCachedInstructionsAsync()).CustomPrompt.ShouldBe("Original prompt");
+
+        // Another instance rewrites the row; this process gets no notification.
+        var stored = await _context.Set<SystemConfiguration>().SingleAsync();
+        stored.AiSystemPromptCustom = "Changed elsewhere";
+        await _context.SaveChangesAsync();
+
+        // Chat traffic every four minutes keeps a sliding entry alive forever.
+        clock.UtcNow = clock.UtcNow.AddMinutes(4);
+        (await service.GetCachedInstructionsAsync()).CustomPrompt.ShouldBe("Original prompt");
+
+        // Six minutes after it was cached the entry must be gone regardless of the traffic.
+        clock.UtcNow = clock.UtcNow.AddMinutes(2);
+        (await service.GetCachedInstructionsAsync()).CustomPrompt.ShouldBe("Changed elsewhere");
+    }
+
+    /// <summary>
+    /// Drives MemoryCache expiry from the test instead of from the wall clock, so the
+    /// five-minute bound can be verified without the test sleeping for five minutes.
+    /// </summary>
+    private sealed class TestClock : ISystemClock
+    {
+        public DateTimeOffset UtcNow { get; set; } = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+    }
+
     // ── GetPreviewAsync ───────────────────────────────────────────────────
 
     [Fact]
@@ -274,7 +331,22 @@ public class AiInstructionsServiceTests : IDisposable
         var preview = await _service.GetPreviewAsync();
 
         // The preview must show the real built-in text, not a "see the source code" stub.
-        preview.FullPrompt.ShouldContain(AiSystemPrompt.DefaultMainBlock);
+        preview.FullPrompt.ShouldContainBuiltInMainBlock();
+    }
+
+    [Fact]
+    public async Task GetPreviewAsync_IgnoresTheCache_AndShowsTheStoredText()
+    {
+        await SeedConfigAsync("Stored in the database", null);
+
+        // A cache entry from before the last write (or written by another instance) must
+        // not leak into the preview — the SysAdmin has to see what is actually stored.
+        _cache.Set(AiInstructionsService.CacheKey, ("Stale cached prompt", (string?)null));
+
+        var preview = await _service.GetPreviewAsync();
+
+        preview.FullPrompt.ShouldContain("Stored in the database");
+        preview.FullPrompt.ShouldNotContain("Stale cached prompt");
     }
 
     [Fact]
@@ -286,6 +358,17 @@ public class AiInstructionsServiceTests : IDisposable
 
         preview.FullPrompt.ShouldContain("CUSTOM: My special rules.");
         preview.FullPrompt.ShouldNotContain("RESPONSE STYLE");
+    }
+
+    [Fact]
+    public async Task GetPreviewAsync_WithWhitespaceOnlyPrompt_StillShowsTheBuiltInBlock()
+    {
+        // Defence in depth for rows written before NullIfBlank existed, or edited in SQL.
+        await SeedConfigAsync("   ", null);
+
+        var preview = await _service.GetPreviewAsync();
+
+        preview.FullPrompt.ShouldContainBuiltInMainBlock();
     }
 
     [Fact]

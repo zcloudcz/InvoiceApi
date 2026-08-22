@@ -89,7 +89,7 @@ public static class AiSystemPrompt
     /// <param name="companyBlock">
     /// Company identity block, or null/empty when the tenant has no issuer configured.
     /// </param>
-    /// <param name="customPrompt">SysAdmin override of the main block; null/empty = built-in.</param>
+    /// <param name="customPrompt">SysAdmin override of the main block; null/blank = built-in.</param>
     /// <param name="appendix">Optional SysAdmin text appended after the main block.</param>
     /// <param name="businessContextBlock">Business statistics block (already formatted).</param>
     public static string Compose(
@@ -108,11 +108,12 @@ public static class AiSystemPrompt
             sb.AppendLine();
         }
 
-        // A non-empty custom prompt replaces the built-in block entirely.
-        sb.AppendLine(string.IsNullOrEmpty(customPrompt) ? DefaultMainBlock : customPrompt.TrimEnd());
+        // A custom prompt replaces the built-in block entirely. Whitespace-only does not
+        // count as custom — it would leave the prompt without any tools or rules at all.
+        sb.AppendLine(string.IsNullOrWhiteSpace(customPrompt) ? DefaultMainBlock : customPrompt.TrimEnd());
         sb.AppendLine();
 
-        if (!string.IsNullOrEmpty(appendix))
+        if (!string.IsNullOrWhiteSpace(appendix))
         {
             sb.AppendLine(appendix.TrimEnd());
             sb.AppendLine();

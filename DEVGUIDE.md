@@ -587,8 +587,19 @@ Pořadí bloků shora dolů:
 - Neprázdný `AiSystemPromptCustom` **nahradí celý blok 3** — včetně popisu tools. Když
   přidáš nový chat tool, doplň ho do `DefaultMainBlock`; tenanti s vlastním promptem si
   popis musí doplnit sami (upozorňuje na to hint na stránce).
-- Čtení je cachované v `IMemoryCache` (klíč `AiInstructionsService.CacheKey`, 5 min sliding).
-  Zápis (PUT/DELETE) cache invaliduje, takže změna platí od další zprávy v chatu.
+- Čtení je cachované v `IMemoryCache` (klíč `AiInstructionsService.CacheKey`), s **absolutní**
+  platností 5 minut — záměrně ne sliding: sliding entry by se na vytížené instanci obnovovala
+  provozem donekonečna a nikdy neexpirovala. Zápis (PUT/DELETE) cache invaliduje, ale
+  `IMemoryCache` je **procesně lokální**, takže `Remove` zasáhne jen instanci, která zápis
+  odbavila; ostatní instance (produkce = škálovaný Azure Function App) dojedou starý prompt
+  nejvýše 5 minut. Distribuovaná cache ani invalidační kanál se vědomě nezavádějí (YAGNI) —
+  ohraničené stárnutí stačí. Texty v UI i v ADMINGUIDE musejí slíbit **do 5 minut**, ne „okamžitě".
+- Prázdný i čistě bílý (whitespace) text se v obou polích bere jako „nenastaveno"
+  (`IsNullOrWhiteSpace` v `AiInstructionsService.NullIfBlank`, `AiSystemPrompt.Compose`
+  i `AiInstructionsDto.IsCustomActive`) — jinak by prompt složený z mezer smazal celý blok 3.
+- Náhled (`GetPreviewAsync`) čte **mimo cache**, přímo z DB — aby SysAdminovi neukázal starší
+  hodnotu, kterou zrovna drží cache té instance, co request odbavila. Chat hot path cache
+  používá dál (`GetCachedInstructionsAsync`).
 - Čtecí cesty **nezapisují** do DB. Řádek `SystemConfiguration` zakládá jen zápis
   (sdílené `SystemConfigurationStore.GetOrCreateAsync`) — jinak by každá zpráva v chatu
   mohla vyvolat INSERT do master DB.

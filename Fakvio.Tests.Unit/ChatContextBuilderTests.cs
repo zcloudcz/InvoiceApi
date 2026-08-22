@@ -140,14 +140,16 @@ public class ChatContextBuilderTests : IDisposable
     [Theory]
     [InlineData(null)]
     [InlineData("")]
+    [InlineData("   ")]
     public async Task BuildSystemPrompt_WithoutCustomPrompt_UsesTheBuiltInBlock(string? customPrompt)
     {
-        // Both "never set" (null) and "cleared by the user" (empty) fall back to the default.
+        // "Never set" (null), "cleared by the user" (empty) and a value that is only
+        // whitespace all fall back to the built-in block — blanks must not blank the prompt.
         StoredInstructions(customPrompt, null);
 
         var prompt = await _builder.BuildSystemPromptAsync();
 
-        prompt.ShouldContain(AiSystemPrompt.DefaultMainBlock);
+        prompt.ShouldContainBuiltInMainBlock();
     }
 
     [Fact]
@@ -185,7 +187,7 @@ public class ChatContextBuilderTests : IDisposable
         var prompt = await _builder.BuildSystemPromptAsync();
 
         prompt.ShouldContain(appendix);
-        prompt.ShouldContain(AiSystemPrompt.DefaultMainBlock);
+        prompt.ShouldContainBuiltInMainBlock();
     }
 
     [Fact]
@@ -217,6 +219,19 @@ public class ChatContextBuilderTests : IDisposable
         prompt.ShouldContain(customPrompt);
         prompt.ShouldContain(appendix);
         prompt.ShouldNotContain("RESPONSE STYLE");
+    }
+
+    [Fact]
+    public async Task BuildSystemPrompt_WithWhitespaceOnlyAppendix_MatchesThePromptWithoutOne()
+    {
+        StoredInstructions(null, null);
+        var withoutAppendix = await _builder.BuildSystemPromptAsync();
+
+        StoredInstructions(null, "   ");
+        var withBlankAppendix = await _builder.BuildSystemPromptAsync();
+
+        // A blank appendix must not push an empty section between the rules and the stats.
+        withBlankAppendix.ShouldBe(withoutAppendix);
     }
 
     [Fact]

@@ -695,7 +695,7 @@
   <data name="SystemSettings_AiTitle" xml:space="preserve"><value>Nastavení AI</value></data>
   <data name="SystemSettings_AiDefaultProvider" xml:space="preserve"><value>Výchozí AI poskytovatel</value></data>
   <data name="AiInstructions_Title" xml:space="preserve"><value>Instrukce AI asistenta</value></data>
-  <data name="AiInstructions_Subtitle" xml:space="preserve"><value>Upravte systémový prompt AI asistenta. Změny se projeví okamžitě, bez nasazení nové verze.</value></data>
+  <data name="AiInstructions_Subtitle" xml:space="preserve"><value>Upravte systémový prompt AI asistenta. Změny se projeví do 5 minut na všech instancích, bez nasazení nové verze.</value></data>
   <data name="AiInstructions_CustomPromptLabel" xml:space="preserve"><value>Vlastní instrukce (nahrazují výchozí styl a pravidla)</value></data>
   <data name="AiInstructions_CustomPromptHint" xml:space="preserve"><value>Pokud není prázdné, nahradí celý vestavěný blok RESPONSE STYLE, TOOLS, IMPORT RULES a RULES — včetně popisu nástrojů. Identita firmy a business kontext se připojí vždy automaticky.</value></data>
   <data name="AiInstructions_CustomPromptPlaceholder" xml:space="preserve"><value>Ponechte prázdné pro vestavěné výchozí instrukce…</value></data>
@@ -709,7 +709,7 @@
   <data name="AiInstructions_PreviewNote" xml:space="preserve"><value>Identita firmy a business statistiky jsou zobrazeny jako zástupné hodnoty — skutečná data se doplní za běhu z databáze tenanta.</value></data>
   <data name="AiInstructions_ResetToDefault" xml:space="preserve"><value>Obnovit výchozí</value></data>
   <data name="AiInstructions_ResetConfirm" xml:space="preserve"><value>Tím se vymažou vlastní instrukce i dodatek a AI bude používat vestavěné výchozí instrukce. Pokračovat?</value></data>
-  <data name="AiInstructions_SaveSuccess" xml:space="preserve"><value>Instrukce AI uloženy. Projeví se při příští zprávě v chatu.</value></data>
+  <data name="AiInstructions_SaveSuccess" xml:space="preserve"><value>Instrukce AI uloženy. Projeví se do 5 minut na všech instancích.</value></data>
   <data name="AiInstructions_ResetSuccess" xml:space="preserve"><value>Instrukce AI obnoveny na výchozí hodnoty.</value></data>
   <data name="Nav_AiInstructions" xml:space="preserve"><value>Instrukce AI</value></data>
   <data name="Log_Title" xml:space="preserve">
