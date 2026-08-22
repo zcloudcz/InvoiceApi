@@ -1368,7 +1368,13 @@ pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. P
 1. Master nebo tenant scope?
    └─ Pokud master → uveď cestu do MasterOnlyPaths v TenantContextMiddleware
 2. JWT Authorize?
-   ├─ Public (login, password reset) → [AllowAnonymous]
+   ├─ Public (login, password reset, ARES lookup pro registraci) → [AllowAnonymous]
+   │   └─ POVINNĚ: captcha gate (X-Captcha-Token → ICaptchaService.VerifyAsync),
+   │      validace vstupu v controlleru a co nejužší DTO. NEdávej [AllowAnonymous]
+   │      na tenant-scoped controller — vznikne otevřená proxy.
+   │      Vzor: AuthController.FetchFromAres (GET /api/auth/ares/{ico}).
+   │      Rate-limit middleware NEpoužívej — Functions host ho neprovede;
+   │      captcha + cache-first lookup fungují v obou hostitelích.
    ├─ Tenant user → [Authorize] (default)
    └─ SysAdmin only → [Authorize(Roles="SysAdmin")]
 3. Tenant kontext potřebný?

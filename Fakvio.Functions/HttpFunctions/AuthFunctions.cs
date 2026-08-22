@@ -74,6 +74,25 @@ public class AuthFunctions
     }
 
     /// <summary>
+    /// GET api/auth/ares/{registrationNumber} → AuthController.FetchFromAres
+    /// </summary>
+    [Function("Auth_FetchFromAres")]
+    public async Task<IActionResult> Auth_FetchFromAres(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/auth/ares/{registrationNumber}")] HttpRequest req,
+        string registrationNumber)
+    {
+        // Wire up the controller's HttpContext so it can access User claims, Request, etc.
+        _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
+
+        // No authentication required ([AllowAnonymous] or no [Authorize])
+
+        var cancellationToken = req.HttpContext.RequestAborted;
+
+        // Call the controller action and normalize the response
+        return FunctionResultHelper.Normalize(await _controller.FetchFromAres(registrationNumber, cancellationToken));
+    }
+
+    /// <summary>
     /// POST api/auth/verify-email → AuthController.VerifyEmail
     /// </summary>
     [Function("Auth_VerifyEmail")]
