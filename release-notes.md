@@ -21,6 +21,11 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Opravy
 
+- **#157** — Při registraci nové firmy se adresa dohledaná v ARES nikam neuložila —
+  firma vznikla bez sídla a vystavitel v tenantu neměl adresu vůbec, takže PDF faktury
+  měl prázdný blok vystavitele. Adresa z ARES se teď uloží a propíše do tenanta;
+  registrační formulář ji navíc rovnou předvyplní, aby šla před odesláním zkontrolovat
+  a opravit. (PR #173, `cc55ed9`)
 - **#158** — Když k DPH exportu chyběly EPO údaje (kód finančního úřadu, kontaktní osoba…),
   `VatReport` poslal uživatele doplnit je na `/my-company` — stránku, kde tahle pole vůbec
   nebyla. Sekce je tam nyní pro Admina a SysAdmina; běžný uživatel dostane rovnou pokyn
