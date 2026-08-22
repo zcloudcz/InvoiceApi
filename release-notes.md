@@ -21,6 +21,10 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Opravy
 
+- **#158** — Když k DPH exportu chyběly EPO údaje (kód finančního úřadu, kontaktní osoba…),
+  `VatReport` poslal uživatele doplnit je na `/my-company` — stránku, kde tahle pole vůbec
+  nebyla. Sekce je tam nyní pro Admina a SysAdmina; běžný uživatel dostane rovnou pokyn
+  požádat administrátora, místo aby skončil na stránce bez řešení. (PR #176, `4219589`)
 - **#156** — Chat posílal uživateli do prohlížeče celý stack trace serverové výjimky.
   Nyní dostane jen bezpečnou hlášku s referenčním ID, podle kterého se chyba dohledá
   v `/logs`. Neznámá konverzace vrací 404 místo 500. (PR #172, `f6a4f37`)
