@@ -96,11 +96,16 @@ public class TenantProvisioningService : ITenantProvisioningService
             currentStep = "Step 2: Load company issuer data";
             _logger.LogInformation("[Provision:{CompanyId}] {Step}", companyId, currentStep);
 
-            // AsSplitQuery: Address and Contact are both collection navigations — prevents cartesian explosion.
+            // AsSplitQuery: Address, Contact and BankAccount are all collection navigations —
+            // prevents cartesian explosion. BillingSettings is a reference navigation (1:1).
+            // Everything included here is copied into the tenant by CreateIssuerInTenantAsync;
+            // anything NOT included would silently arrive empty in the tenant schema.
             var company = await _masterContext.Client
                 .AsSplitQuery()
                 .Include(c => c.Address)
                 .Include(c => c.Contact)
+                .Include(c => c.BankAccount)
+                .Include(c => c.BillingSettings)
                 .FirstOrDefaultAsync(c => c.Id == companyId && c.IsIssuer, cancellationToken)
                 ?? throw new InvalidOperationException(
                     $"Company with ID {companyId} not found or is not marked as issuer.");
@@ -802,7 +807,8 @@ public class TenantProvisioningService : ITenantProvisioningService
 
     /// <summary>
     /// Creates the issuer (company) record in the tenant schema.
-    /// Copies the company data from master DB, including addresses and contacts.
+    /// Copies the company data from master DB, including addresses, contacts,
+    /// bank accounts and billing settings.
     /// The tenant schema will have its own copy of the issuer for invoice generation.
     ///
     /// IDEMPOTENT: Checks if an issuer with the same RegistrationNumber already exists.
@@ -869,6 +875,49 @@ public class TenantProvisioningService : ITenantProvisioningService
             }
         }
 
+        // Copy bank accounts — without them the tenant issuer has no payment destination,
+        // so invoices come out with no account number and no QR payment data.
+        if (masterCompany.BankAccount != null)
+        {
+            foreach (var account in masterCompany.BankAccount)
+            {
+                tenantIssuer.BankAccount.Add(new BankAccount
+                {
+                    Label = account.Label,
+                    BankName = account.BankName,
+                    AccountNumber = account.AccountNumber,
+                    IBAN = account.IBAN,
+                    SWIFT = account.SWIFT,
+                    CurrencyCode = account.CurrencyCode,
+                    IsDefault = account.IsDefault,
+                    CreatedAt = DateTime.UtcNow
+                });
+            }
+        }
+
+        // Copy billing settings (due date rules, default payment method, number affixes).
+        // Deliberately NOT copied:
+        //   - CustomInvoiceNumberSequenceId / CustomCreditNoteNumberSequenceId — those are
+        //     primary keys of MASTER number sequences. The tenant gets its own sequences in
+        //     Step 5/7 with different Ids, so carrying the master Ids over would point the FK
+        //     at a foreign or non-existent row. Null means "use the tenant default sequence".
+        //   - BankAccountNumber — obsolete field superseded by the BankAccount collection above.
+        if (masterCompany.BillingSettings != null)
+        {
+            tenantIssuer.BillingSettings = new BillingSettings
+            {
+                DueDateCalculationType = masterCompany.BillingSettings.DueDateCalculationType,
+                DueDays = masterCompany.BillingSettings.DueDays,
+                DefaultPaymentMethod = masterCompany.BillingSettings.DefaultPaymentMethod,
+                InvoiceNumberPrefix = masterCompany.BillingSettings.InvoiceNumberPrefix,
+                InvoiceNumberSuffix = masterCompany.BillingSettings.InvoiceNumberSuffix,
+                CreditNoteNumberPrefix = masterCompany.BillingSettings.CreditNoteNumberPrefix,
+                CreditNoteNumberSuffix = masterCompany.BillingSettings.CreditNoteNumberSuffix,
+                Notes = masterCompany.BillingSettings.Notes,
+                CreatedAt = DateTime.UtcNow
+            };
+        }
+
         tenantContext.Client.Add(tenantIssuer);
         await tenantContext.SaveChangesAsync(cancellationToken);
     }
@@ -887,6 +936,11 @@ public class TenantProvisioningService : ITenantProvisioningService
     /// If CopyCodeTablesAsync already cleared and re-seeded NumberSequence,
     /// this method safely adds only missing defaults.
     /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when the tenant schema contains no active NumberSequenceFormat. Without a format
+    /// the tenant would get zero number sequences and every document number would be wrong, so
+    /// provisioning must fail here instead of reporting success (issue #155).
+    /// </exception>
     private static async Task CreateDefaultNumberSequencesAsync(
         TenantDbContext tenantContext, CancellationToken cancellationToken)
     {
@@ -897,8 +951,15 @@ public class TenantProvisioningService : ITenantProvisioningService
 
         if (defaultFormat == null)
         {
-            // No formats available — skip sequence creation (admin can add later)
-            return;
+            // Issue #155: do NOT skip silently. A tenant without number sequences cannot
+            // issue a single document with a correct number, yet the old code returned here
+            // and let provisioning report success. Failing the step keeps IsProvisioned=false
+            // (Step 8 never runs), so the SysAdmin sees the real problem — the code tables
+            // were not copied — and can re-run provisioning after fixing the master data.
+            throw new InvalidOperationException(
+                "No active NumberSequenceFormat exists in the tenant schema, so no default " +
+                "number sequences can be created. Copy the code tables from the master schema " +
+                "(or activate a format there) and re-run provisioning.");
         }
 
         // Only create default Invoice sequence if one doesn't already exist
