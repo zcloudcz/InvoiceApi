@@ -1133,6 +1133,21 @@ await sub.Received(1).MethodAsync(Arg.Any<T>());  // received check vyžaduje aw
   - Environment `"Testing"` → skip migrations.
 - `Program` má `public partial class Program { }` na konci `Fakvio.API/Program.cs:189` aby `WebApplicationFactory<Program>` mohl referencovat top-level statements typ.
 
+#### 8.2.1 Testy proti reálnému PostgreSQL (throwaway schema)
+
+`FakvioFactory` běží na InMemory, takže **nevidí FK, unique indexy ani DDL**. Chování, které
+závisí na reálných constraintech, patří do testu, který si založí vlastní jednorázové schéma.
+Vzor: `TenantIssuerProvisioningDatabaseTests` (provisioning issuera, issue #153).
+
+- Connection string: default z `docker-compose.yml`, přepis přes env `FAKVIO_TEST_POSTGRES`.
+- Schéma `test_<téma>_<guid>` per instance třídy; `DROP SCHEMA ... CASCADE` v `DisposeAsync`.
+- Tabulky zakládej přes `IRelationalDatabaseCreator.CreateTablesAsync()`, **ne** `EnsureCreatedAsync()`
+  — ta je no-op, jakmile existuje *databáze* (schémata neřeší). `TenantDbContext.Schema`
+  + `ReplaceService<IModelCacheKeyFactory, TenantModelCacheKeyFactory>` nasměrují model do schématu.
+- Gate: jeden raw `OpenConnectionAsync()` probe → `[SkippableFact]` + `Skip.IfNot(...)`.
+  Skipuje se **jen** nedostupný server; cokoliv po úspěšném probe musí spadnout nahlas
+  (EF balí chyby spojení do generické `InvalidOperationException`, proto probe na úrovni driveru).
+
 ### 8.3 E2E (`Fakvio.Tests.Playwright`)
 
 - Stack: **Microsoft.Playwright.NUnit 1.52.0 + NUnit 4.3.2**.
@@ -1149,8 +1164,49 @@ await sub.Received(1).MethodAsync(Arg.Any<T>());  // received check vyžaduje aw
 | Service orchestrace s mocky externí services | Unit (NSubstitute) |
 | EF queries, repository | Unit (InMemoryDatabase) |
 | Controller → service → DB end-to-end | Integration (`WebApplicationFactory`) |
+| FK / unique index / DDL, tenant schema | Integration proti reálnému PostgreSQL (§8.2.1) |
 | User-visible flow (login, invoice CRUD UI) | Playwright |
 | External API (SMTP, IMAP, OAuth, ARES) | Manuálně + smoke testy |
+
+### 8.5 DB connectivity smoke test (env-gated)
+
+`Fakvio.Tests.Unit\DatabaseConnectivitySmokeTests.cs` je **jediná** výjimka z pravidla
+"unit testy jedou na InMemory" — sahá na reálný PostgreSQL. Ověřuje, že konfigurace, kterou
+appka opravdu resolvuje při startu, skutečně otevře spojení, že jsou nasazené migrace
+a že jde dotázat `public` schéma.
+
+- Kontexty se staví přes `NpgsqlDataSourceFactory.Create(configuration)` — tedy **tu samou
+  cestu, kterou jde produkce** (`AddDatabaseContexts` v
+  `Fakvio.Infrastructure/DependencyInjection/ServiceCollectionExtensions.cs`). Žádný
+  `UseNpgsql(string)`.
+- Gate: `[DatabaseSmokeFact]` (potomek `FactAttribute`) přeskočí test, dokud není
+  `FAKVIO_DB_SMOKE=1`. Bez proměnné hlásí runner **skipped** s návodem, ne fail —
+  `dotnet test` je tedy zelený i bez Dockeru a bez `az login`.
+- xUnit 2.x nemá `Assert.Skip` (přišel až ve v3) a runtime skip exception se reportuje jako
+  fail — proto je gate na atributu, který se vyhodnocuje při discovery.
+- Proč ne `[SkippableFact]` (`Xunit.SkippableFact`, repo ho už má — používá ho
+  `Fakvio.Tests.Integration/EpoSandboxSmokeTests.cs`): `Skip.If(…)` se volá až **v těle testu**,
+  takže xUnit předtím zkonstruuje testovací třídu. A ctor tady dělá skutečnou práci: čte
+  `appsettings.json` s `optional: false`, pouští `DatabaseOptions.Resolve` + `Validate()`
+  a staví reálný `NpgsqlDataSource`. Výjimka z ctoru je **fail, ne skip** — chronická
+  červená by se vrátila zadními vrátky. Změřeno na stejných verzích (xunit 2.9.3,
+  SkippableFact 1.4.13, runner xunit.runner.visualstudio 3.1.4): házející ctor +
+  `[SkippableFact]` = `[FAIL]`, ten samý ctor za gate na atributu = `[SKIP]` a ctor se
+  vůbec nespustí. Pro `Fakvio.Tests.Integration` je `[SkippableFact]` dál správná volba —
+  tamní gate závisí na hodnotách, které jsou známé až za běhu.
+- Konfigurace = `Fakvio.API/appsettings*.json` + **environment variables navrch**. Spuštění
+  proti lokálnímu Dockeru (`docker compose up -d`):
+
+```powershell
+$env:FAKVIO_DB_SMOKE = "1"
+$env:ConnectionStrings__DefaultConnection = "Host=localhost;Port=5432;Database=fakvio;Username=fakvio;Password=fakvio_dev"
+$env:Database__AuthMode = "Password"
+$env:UseAzureAdAuthentication = "false"   # legacy klíč musí souhlasit, jinak Resolve hodí conflict
+dotnet test Fakvio.Tests.Unit --filter "FullyQualifiedName~DatabaseConnectivitySmokeTests"
+```
+
+  Proti Azure PostgreSQL stačí `az login` + `FAKVIO_DB_SMOKE=1` (commitnutá konfigurace už
+  na Azure míří).
 
 ---
 
@@ -1356,6 +1412,12 @@ Chyby vzniklé v Blazor WASM klientovi by jinak skončily jen v browser konzoli.
 - InMemoryDatabase enforcuje `IsRequired()` z fluent config — `Client.RegistrationNumber`, `Invoice.Issuer` musí být setnuty v test seedu.
 - Save entities **one-by-one** s `SaveChanges()`, ne `AddRange` (deterministická ID generation).
 
+### Generované soubory ze source generátorů (`Generated/`)
+- `Fakvio.Infrastructure` a `Fakvio.Functions` mají `<EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>` + `<CompilerGeneratedFilesOutputPath>Generated</CompilerGeneratedFilesOutputPath>`. Složka `Generated/` je tedy **výstup buildu, ne zdroják** — oba projekty ji navíc vyřazují z kompilace přes `<Compile Remove="Generated/**" />`. Generátor svůj výstup vkládá přímo do kompilace; kopie na disku slouží výhradně k nahlédnutí při debugování.
+- **Od issue #178 jsou složky `Generated/` v `.gitignore` a netrackují se.** Dřív commitnuté byly a každý `dotnet build` je přepsal: `RegexGenerator.g.cs` nese v `GeneratedCodeAttribute` build number generátoru (např. `10.0.14.32716` vs `10.0.14.37416`), takže mezi dvěma patchi .NET SDK vznikl 45řádkový fantomový diff, který musel každý dev před commitem ručně vracet.
+- Verzi `System.Text.RegularExpressions.Generator` **nelze pinovat** — chodí uvnitř .NET SDK, ne jako NuGet balíček. Netrackovat výstup je proto jediná spolehlivá varianta.
+- **Nevracej tyhle soubory do gitu** a nemaž řádky z `.gitignore`. Když je potřebuješ vidět, stačí `dotnet build` a vygenerují se lokálně. Když zapneš `EmitCompilerGeneratedFiles` na dalším projektu, přidej jeho `Generated/` do `.gitignore`.
+
 ---
 
 ## 13. Maintenance — kdy aktualizovat tento dokument
@@ -1374,6 +1436,7 @@ Chyby vzniklé v Blazor WASM klientovi by jinak skončily jen v browser konzoli.
 | Změna config zdroje (Key Vault, App Configuration) | §9.2 |
 | Změna Data Protection persistence / ApplicationName | §2.7 |
 | Nová seed migrace s hardcoded Id | §12 (non-idempotent seed) |
+| Nový projekt s `EmitCompilerGeneratedFiles` | §12 (Generated/) + `.gitignore` |
 | Nový code-table pattern (master / tenant / dual-context) | §11.2 |
 | Nový background lock klíč | §6.3 (tabulka klíčů) |
 | Změna observability stacku (App Insights → jiný) | §10 |
