@@ -278,9 +278,10 @@ Datum splatnosti se určuje v tomto pořadí:
 3. **Výchozí hodnota 14 dní** od data vystavení — když klient fakturační nastavení nemá.
 
 Výjimka — **faktura vytvořená ze šablony**: šablona má vlastní pole „Splatnost (dny)"
-(výchozí 14) a datum splatnosti se počítá z něj, od data vystavení. Fakturační nastavení
-klienta se v tomto případě nepoužije. Chcete-li u faktur ze šablony jinou splatnost,
-upravte ji v šabloně (kapitola 6) nebo datum přepište ručně přímo na faktuře.
+(výchozí 14) a datum splatnosti se počítá z něj, vždy od data vystavení. Formulář nové faktury
+ho takto předvyplní, takže se chová jako ručně zadané datum (krok 1) a fakturační nastavení
+klienta se neuplatní. Chcete-li u faktur ze šablony jinou splatnost, změňte „Splatnost (dny)"
+v šabloně (kapitola 6), nebo datum přepište přímo ve formuláři faktury.
 
 ### 5.4 Historie faktur klienta
 

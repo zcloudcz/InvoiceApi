@@ -271,18 +271,19 @@ public class InvoiceService : IInvoiceService
         // Validate client and issuer exist.
         //
         // The client is loaded WITH its BillingSettings because CalculateDueDate below needs
-        // DueDateCalculationType + DueDays from it. FindAsync must NOT be used here: it loads
-        // the row without any navigation property, so client.BillingSettings would stay null
-        // and every invoice would silently fall back to the default 14-day due date (issue #106).
-        // The Include is therefore the actual fix.
+        // DueDateCalculationType + DueDays from it. FindAsync must NOT be used here: it has no
+        // Include overload, so it loads the plain row and leaves every navigation property null.
+        // client.BillingSettings was therefore always null and every invoice silently fell back
+        // to the default 14-day due date (issue #106). The Include is the fix.
         //
-        // AsNoTracking() is NOT part of that fix — it is here because this is a read-only load.
-        // The client entity is only inspected (the invoice links the client through the ClientId
-        // foreign key, not through a navigation), so nothing is ever written back and the change
-        // tracker would only add snapshot overhead. It also matches the sibling load in
-        // GenerateDocumentNumberAsync. A tracked Include would return the same correct data —
-        // EF Core fills in ("fixes up") navigation properties even on an already-tracked
-        // instance — so do not treat AsNoTracking() here as load-bearing for correctness.
+        // AsNoTracking() is NOT part of that fix. A tracked Include would return exactly the same
+        // data — EF Core fills in ("fixes up") navigation properties even on an instance the
+        // change tracker already holds (verified against PostgreSQL on EF Core 10). It is here for
+        // the plain reason that this is a read-only load: the client is only inspected, never
+        // modified (the invoice references it through the ClientId foreign key), so tracking would
+        // buy nothing and only cost a change-tracker snapshot. Same query shape as the sibling
+        // load in GenerateDocumentNumberAsync, whose comment still claims the opposite — that is
+        // a pre-existing inaccuracy tracked in issue #202, not a difference in behaviour.
         var client = await _context.Client
             .AsNoTracking()
             .Include(c => c.BillingSettings)
