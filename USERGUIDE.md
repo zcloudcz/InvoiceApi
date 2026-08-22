@@ -8,6 +8,7 @@
 
 ## Obsah
 
+0. [Registrace firmy](#0-registrace-firmy)
 1. [Přehled (Dashboard)](#1-přehled-dashboard)
 2. [Faktury](#2-faktury)
 3. [Dobropisy](#3-dobropisy)
@@ -26,6 +27,27 @@
 16. [Lokalizace — přepínání jazyka CZ/EN](#16-lokalizace--přepínání-jazyka-czen)
 17. [Notifikace](#17-notifikace)
 18. [Příjem faktur emailem](#18-příjem-faktur-emailem)
+
+---
+
+## 0. Registrace firmy
+
+**Stránka:** `/register` (dostupná bez přihlášení)
+
+1. Vyplňte e-mail, jméno, příjmení, název firmy a IČO.
+2. Klikněte „Načíst z ARES" — systém doplní oficiální název firmy **a sídlo**
+   (ulice, PSČ, město, země) z obchodního rejstříku ARES.
+3. Sekce „Sídlo firmy" je editovatelná — pokud ARES nemá aktuální údaje,
+   adresu jednoduše přepište. Uloží se to, co ve formuláři vidíte.
+4. Klikněte „Zaregistrovat se" — na zadaný e-mail přijde odkaz pro nastavení hesla.
+
+Sídlo se uloží k vaší firmě jako primární adresa a používá se jako blok vystavitele
+na fakturách (PDF). Změnit ho lze později v „Nastavení firmy".
+
+**Pozor na jednu výjimku:** když ulici, PSČ i město **úplně vymažete**, systém to bere
+jako „nevyplněno" a doplní adresu z ARES. Firma bez adresy vznikne jen tehdy, když ji
+nemá ani ARES (nebo je registr nedostupný) — pak ji doplňte v „Nastavení firmy"
+před vystavením první faktury. Chcete-li adresu odstranit, udělejte to tam.
 
 ---
 
@@ -420,6 +442,21 @@ Lze přiřadit:
 - Výchozí systémový formát
 - Vlastní formát (kliknutím na řádek → dialog editace)
 
+### Když číselná řada chybí nebo je vypnutá
+
+Číslo dokladu se generuje **výhradně** z přiřazené číselné řady. Pokud pro daný typ
+dokladu žádná aktivní výchozí řada neexistuje, je přiřazená řada deaktivovaná, nebo se
+číslo z jiného důvodu nepodaří vygenerovat, vytvoření dokladu **skončí chybou**.
+
+Aplikace v takovém případě nikdy nepřidělí náhradní číslo mimo vaši řadu — číslování
+dokladů musí zůstat souvislé a předvídatelné. Chybová hláška uvádí typ dokladu i stránku
+`/number-sequences`, kde řadu nastavíte; po nastavení aktivní výchozí řady akci zopakujte.
+
+Zvláštní případ je **souběh** — dva doklady si sáhnou pro číslo ze stejné řady ve stejný
+okamžik. Aplikace se pokus několikrát zopakuje sama, a když ani pak neuspěje, vytvoření
+dokladu skončí chybou. Tady není nic špatně nastaveného: hláška to výslovně říká a stačí
+akci zopakovat.
+
 ---
 
 ## 10. Nastavení firmy
@@ -449,6 +486,15 @@ Správa informací o vaší firmě (vydavatele faktur).
 
 **Cloud úložiště:**
 - Napojení cloudového úložiště pro ukládání dokumentů
+
+**Nastavení EPO (jen role Admin):**
+- Hlavičkové údaje pro elektronické podání přiznání k DPH a kontrolního hlášení — viz [§12](#12-přehled-dph--epo-export)
+- Kód finančního úřadu a kód územního pracoviště jsou povinné, bez nich EPO export nelze vygenerovat
+- Kontaktní telefon, kontaktní e-mail a jméno oprávněné osoby jsou volitelné (uložený kontaktní
+  e-mail zatím nejde vymazat, jen přepsat jiným)
+- Sekce má vlastní tlačítko „Uložit" — ukládá se nezávisle na tlačítku „Upravit" nahoře
+- **Známé omezení:** uložení dnes projde jen správci systému. U role Admin skončí chybou —
+  než bude opraveno, požádejte o vyplnění správce systému.
 
 ### Jak editovat
 
@@ -530,6 +576,16 @@ Sekce „EPO Export" umožňuje stáhnout dva soubory pro portál EPO MFČR:
 3. Klikněte „Stáhnout DPHDP3" nebo „Stáhnout DPHKH1"
 4. Vygenerovaný XML soubor nahrajte na portál EPO (https://adisepo.mfcr.cz)
 
+### Chybějící nastavení EPO
+
+Export vyžaduje vyplněný kód finančního úřadu a kód územního pracoviště. Pokud chybí,
+místo staženého souboru se zobrazí upozornění se seznamem chybějících polí:
+
+- **Máte roli Admin** — upozornění nabídne tlačítko „Přejít do nastavení firmy", které vás
+  přenese na `/my-company` do sekce „Nastavení EPO" (viz [§10](#10-nastavení-firmy)).
+- **Nemáte roli Admin** — sekce nastavení je pro vás skrytá, takže upozornění místo odkazu
+  napíše, že pole musí doplnit administrátor firmy.
+
 ---
 
 ## 13. AI asistent
@@ -565,6 +621,20 @@ Pokud je nakonfigurováno více AI poskytovatelů, zobrazí se rozbalovací sezn
 - „Jaký je celkový obrat za Q1 2026?"
 - „Najdi fakturu číslo FAK-2026-001"
 - „Kolik mám nesplacených faktur?"
+
+### Když se odpověď nepodaří vygenerovat
+
+Místo odpovědi se objeví krátká hláška s **referenčním ID** (dlouhé číslo
+ve tvaru `11111111-2222-…`). Technický detail chyby se neposílá do prohlížeče —
+zapisuje se do serverového logu. Při hlášení problému administrátorovi vždy uveďte
+toto referenční ID, podle něj chybu v logu dohledá.
+
+Platí to pro všechna místa, kde aplikace volá AI: chatovací panel i AI kontrolu
+importu dokladů (hláška „AI review failed…" na stránce importu).
+
+Výjimkou je hláška „Conversation not found." — ta referenční ID nemá, protože
+nejde o chybu serveru. Znamená, že konverzace už neexistuje (typicky jste ji
+smazali v jiném okně prohlížeče). Stačí obnovit seznam konverzací.
 
 ---
 

@@ -243,36 +243,49 @@ public class CreateDefaultNumberSequencesTests : IDisposable
 
     // ─── No format available ────────────────────────────────────────────────────
 
+    // Issue #155: a tenant provisioned without number sequences would make every invoice
+    // fall back to a made-up document number. Provisioning must therefore FAIL when no
+    // active NumberSequenceFormat is available, instead of silently skipping Step 7 and
+    // reporting success.
+
     [Fact]
-    public async Task CreateDefaultNumberSequences_NoActiveFormat_CreatesNoSequences()
+    public async Task CreateDefaultNumberSequences_NoActiveFormat_Throws()
     {
-        // If CopyCodeTablesAsync hasn't yet added any NumberSequenceFormat rows,
-        // CreateDefaultNumberSequencesAsync should skip creation gracefully.
+        // If CopyCodeTablesAsync hasn't added any NumberSequenceFormat rows, the tenant
+        // would end up with zero number sequences — provisioning must not pretend it worked.
 
         // Remove the format seeded in the constructor
         var format = await _context.NumberSequenceFormat.FindAsync(1L);
         _context.NumberSequenceFormat.Remove(format!);
         await _context.SaveChangesAsync();
 
-        // Act — no format available → must not throw
-        await InvokeCreateDefaultSequencesAsync();
+        // Act — reflection wraps the real exception in TargetInvocationException only for
+        // synchronous throws; the method is async, so awaiting the returned Task surfaces
+        // the original exception type.
+        var ex = await Should.ThrowAsync<InvalidOperationException>(
+            () => InvokeCreateDefaultSequencesAsync());
 
-        // Assert — no sequences created (admin must add a format first)
+        ex.Message.ShouldContain("NumberSequenceFormat",
+            customMessage: "The error must name the missing code table so the admin can fix it");
+
+        // Assert — nothing half-created
         var count = await _context.NumberSequence.CountAsync();
-        count.ShouldBe(0, "Without a NumberSequenceFormat, no sequences should be created");
+        count.ShouldBe(0, "Without a NumberSequenceFormat, no sequences may be created");
     }
 
     [Fact]
-    public async Task CreateDefaultNumberSequences_OnlyInactiveFormat_CreatesNoSequences()
+    public async Task CreateDefaultNumberSequences_OnlyInactiveFormat_Throws()
     {
-        // Formats marked IsActive=false are ignored — the method looks for the first ACTIVE format.
+        // Formats marked IsActive=false are ignored — the method looks for the first ACTIVE
+        // format. None active == none usable, so provisioning fails the same way.
 
         // Deactivate the only format
         var format = await _context.NumberSequenceFormat.FindAsync(1L);
         format!.IsActive = false;
         await _context.SaveChangesAsync();
 
-        await InvokeCreateDefaultSequencesAsync();
+        await Should.ThrowAsync<InvalidOperationException>(
+            () => InvokeCreateDefaultSequencesAsync());
 
         var count = await _context.NumberSequence.CountAsync();
         count.ShouldBe(0, "Inactive formats must not be used to create default sequences");

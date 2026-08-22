@@ -619,6 +619,24 @@ else
         </Authorized>
     </AuthorizeView>
 
+    @* ─── EPO Settings Section (Admin/SysAdmin) ──────────────────────────── *@
+    @* Header fields for the Czech electronic tax filing (EPO) export generated on
+       /vat-report. They live on CompanySystemSettings, next to SMTP and AI settings.
+       The role list must stay in sync with the settings link in VatReport.razor —
+       that page only offers the link to roles that can actually edit the fields here. *@
+    <AuthorizeView Roles="Admin,SysAdmin">
+        <Authorized>
+            <MudPaper Elevation="2" Class="pa-4 mb-4 mt-4">
+                @* _smtpLoading is the flag of the shared LoadSmtpSettings() call that
+                   fetches _companySettings — the same record the EPO fields live on. *@
+                <EpoSettingsSection Settings="_companySettings"
+                                    Loading="_smtpLoading"
+                                    Saving="_epoSaving"
+                                    OnSave="SaveEpoSettings" />
+            </MudPaper>
+        </Authorized>
+    </AuthorizeView>
+
     @* ─── Invoice Email Mailbox (Admin/SysAdmin) ─────────────────────────── *@
     <AuthorizeView Roles="Admin,SysAdmin">
         <Authorized>
@@ -671,6 +689,10 @@ else
     // Cloud storage settings
     private bool _cloudStorageLoading = true;
     private List<CloudStorageStatusDto> _cloudStorageStatuses = new();
+
+    // EPO settings section (Admin-only). The values themselves live inside
+    // EpoSettingsSection; the page only owns the persistence flag.
+    private bool _epoSaving = false;
 
     // AI Assistant settings form fields (Admin-only section)
     private bool _aiLoading = true;
@@ -1268,6 +1290,43 @@ else
         finally
         {
             _aiSaving = false;
+        }
+    }
+
+    // ─── EPO Settings Methods (Admin only) ───────────────────────────────────
+
+    /// <summary>
+    /// Persists the EPO header fields via PUT /api/company/{companyId}/settings.
+    /// The DTO built by EpoSettingsSection carries only the EPO fields; the API applies
+    /// partial updates, so SMTP and AI settings on the same record stay untouched.
+    /// </summary>
+    /// <param name="dto">Update DTO produced by the EPO section.</param>
+    private async Task SaveEpoSettings(UpdateCompanySystemSettingsDto dto)
+    {
+        if (_company == null) return;
+
+        _epoSaving = true;
+        try
+        {
+            var result = await SettingsService.UpdateSettingsAsync(_company.Id, dto);
+            if (result != null)
+            {
+                // Re-point the section at the saved record so it shows the stored values.
+                _companySettings = result;
+                Snackbar.Add(L["Msg_SaveSuccess"].Value, Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add(L["Msg_Error"].Value, Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _epoSaving = false;
         }
     }
 

@@ -2,6 +2,7 @@ using Fakvio.UI.Shared.Models;
 using System.Net.Http.Json;
 // Import only VerifyEmailResponse from Contracts — other Auth DTOs (LoginRequest, etc.)
 // are defined in Fakvio.UI.Shared.Models and would cause ambiguous reference errors.
+using AresLookupResponse = Fakvio.Contracts.Dto.Auth.AresLookupResponse;
 using VerifyEmailResponse = Fakvio.Contracts.Dto.Auth.VerifyEmailResponse;
 
 namespace Fakvio.UI.Shared.Services;
@@ -104,6 +105,53 @@ public class AuthApiService : ApiClientBase
         {
             LogClientException(ex, "POST", "/api/auth/register");
             throw new InvalidOperationException($"Registration failed: {ex.Message}", ex);
+        }
+    }
+
+    /// <summary>
+    /// Looks up a company in ARES by its registration number (IČO) for the registration form.
+    ///
+    /// Uses the anonymous endpoint on AuthController — NOT /api/client/ares/{ico}, which is
+    /// tenant-scoped and requires a JWT the visitor of /register does not have yet.
+    /// Sends the reCAPTCHA v3 token via X-Captcha-Token header, same as login/register,
+    /// because that is what protects the anonymous endpoint from being used as a free
+    /// ARES proxy.
+    ///
+    /// Returns null when the company was not found or the lookup failed — the caller
+    /// shows a localized message; there is nothing actionable to bubble up.
+    /// </summary>
+    public async Task<AresLookupResponse?> FetchFromAresAsync(string registrationNumber, string? captchaToken = null)
+    {
+        var endpoint = $"/api/auth/ares/{Uri.EscapeDataString(registrationNumber)}";
+
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, endpoint);
+            if (!string.IsNullOrEmpty(captchaToken))
+                request.Headers.Add("X-Captcha-Token", captchaToken);
+
+            var response = await _httpClient.SendAsync(request);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                // Unknown IČO is a normal outcome here, so this is a Warning, not an Error.
+                _logger.LogWarning("GET {Endpoint} failed with status {StatusCode}",
+                    endpoint, response.StatusCode);
+                ForwardToServerLog(
+                    "Warning",
+                    $"GET {endpoint} failed: HTTP {(int)response.StatusCode} {response.StatusCode}",
+                    null,
+                    "AuthApiService");
+                return null;
+            }
+
+            return await response.Content.ReadFromJsonAsync<AresLookupResponse>();
+        }
+        catch (Exception ex)
+        {
+            // Transport-level failure (server down, network, deserialization).
+            LogClientException(ex, "GET", endpoint);
+            return null;
         }
     }
 

@@ -120,6 +120,35 @@
                         <MudAlert Severity="@_aresSeverity" Dense="true">@_aresMessage</MudAlert>
                     }
 
+                    @*
+                        Registered office address — pre-filled by the ARES lookup so the user
+                        sees what will be printed on the invoices and can correct it.
+                        Optional: when left empty, the server falls back to the ARES address.
+                    *@
+                    <MudText Typo="Typo.subtitle2" Class="mt-2">@L["Register_AddressSection"]</MudText>
+
+                    <MudTextField @bind-Value="_request.Street"
+                                  Label="@L["Client_Street"].Value"
+                                  Variant="Variant.Outlined"
+                                  Adornment="Adornment.Start"
+                                  AdornmentIcon="@Icons.Material.Filled.Home" />
+
+                    <MudStack Row="true" Spacing="2">
+                        <MudTextField @bind-Value="_request.PostalCode"
+                                      Label="@L["Client_PostalCode"].Value"
+                                      Variant="Variant.Outlined"
+                                      Style="flex: 1" />
+
+                        <MudTextField @bind-Value="_request.City"
+                                      Label="@L["Client_City"].Value"
+                                      Variant="Variant.Outlined"
+                                      Style="flex: 2" />
+                    </MudStack>
+
+                    <MudTextField @bind-Value="_request.Country"
+                                  Label="@L["Client_Country"].Value"
+                                  Variant="Variant.Outlined" />
+
                     @* Submit button *@
                     <MudButton ButtonType="ButtonType.Button"
                                Variant="Variant.Filled"
@@ -251,7 +280,10 @@
 
     /// <summary>
     /// Calls the ARES API to auto-fill company details from IČO (registration number).
-    /// Uses the existing /api/client/ares/{ico} endpoint.
+    ///
+    /// Uses the anonymous /api/auth/ares/{ico} endpoint. The tenant-scoped
+    /// /api/client/ares/{ico} requires a JWT, which a visitor of /register does not
+    /// have — calling it from here always ended in 401 (issue #157, review round 1).
     /// </summary>
     private async Task LoadFromAresAsync()
     {
@@ -262,25 +294,24 @@
 
         try
         {
-            // Use the existing ARES endpoint on the API
-            var apiBaseUrl = Configuration["ApiSettings:BaseUrl"]!;
-            using var httpClient = new HttpClient { BaseAddress = new Uri(apiBaseUrl) };
-            var response = await httpClient.GetAsync($"/api/client/ares/{_request.RegistrationNumber}");
+            // The anonymous endpoint is captcha-gated, exactly like login/register.
+            var captchaToken = await JS.InvokeAsync<string>("getRecaptchaToken", "ares");
 
-            if (response.IsSuccessStatusCode)
+            var aresData = await AuthApiService.FetchFromAresAsync(_request.RegistrationNumber, captchaToken);
+
+            if (aresData != null && !string.IsNullOrEmpty(aresData.CompanyName))
             {
-                var aresData = await response.Content.ReadFromJsonAsync<AresResult>();
-                if (aresData != null && !string.IsNullOrEmpty(aresData.CompanyName))
-                {
-                    _request.CompanyName = aresData.CompanyName;
-                    _aresMessage = L["Register_AresSuccess"].Value;
-                    _aresSeverity = Severity.Success;
-                }
-                else
-                {
-                    _aresMessage = L["Register_AresFailed"].Value;
-                    _aresSeverity = Severity.Warning;
-                }
+                _request.CompanyName = aresData.CompanyName;
+
+                // Pre-fill the registered office so the user can review / correct it
+                // before submitting. Empty strings mean ARES has no address on file.
+                _request.Street = aresData.Street;
+                _request.City = aresData.City;
+                _request.PostalCode = aresData.PostalCode;
+                _request.Country = aresData.Country;
+
+                _aresMessage = L["Register_AresSuccess"].Value;
+                _aresSeverity = Severity.Success;
             }
             else
             {
@@ -297,13 +328,5 @@
         {
             _isLoadingAres = false;
         }
-    }
-
-    /// <summary>
-    /// Simple DTO for ARES response deserialization (only CompanyName is needed here)
-    /// </summary>
-    private class AresResult
-    {
-        public string? CompanyName { get; set; }
     }
 }

@@ -1,5 +1,4 @@
 ﻿using AresService;
-using Azure.Identity;
 using Fakvio.Application.Service;
 using Fakvio.Infrastructure.AiProviders;
 using Fakvio.Infrastructure.Data;
@@ -332,56 +331,82 @@ public static class ServiceCollectionExtensions
     /// - MasterDbContext uses the "public" schema (default PostgreSQL schema)
     /// - TenantDbContext dynamically sets its schema per-request from CompanySystemSettings.SchemaName
     ///
-    /// Authentication modes (controlled by "UseAzureAdAuthentication" config flag):
-    /// - false (default, local dev): standard password-based connection string
-    /// - true (Azure production): Microsoft Entra ID (Azure AD) token-based authentication
-    ///   using DefaultAzureCredential + NpgsqlDataSource with automatic token refresh
+    /// Authentication mode is resolved by <see cref="DatabaseOptions.Resolve"/> (new
+    /// "Database:AuthMode" config, falling back to the legacy "UseAzureAdAuthentication" bool):
+    /// - Password (default, local dev): standard password-based connection string
+    /// - AzureEntraId (Azure production): Microsoft Entra ID (Azure AD) token-based
+    ///   authentication using DefaultAzureCredential + NpgsqlDataSource with automatic
+    ///   token refresh
     /// </summary>
     private static void AddDatabaseContexts(
         IServiceCollection services,
         IConfiguration configuration)
     {
-        // Shared connection string — single PostgreSQL database for all schemas.
-        var connectionString = configuration.GetConnectionString("DefaultConnection")
-            ?? throw new InvalidOperationException(
-                "Database connection string 'DefaultConnection' not configured. " +
-                "Set it in appsettings.json, local.settings.json, or environment variable " +
-                "ConnectionStrings__DefaultConnection.");
+        // Resolve + fail-fast validate at the composition root — a missing/invalid connection
+        // string or an auth-mode mismatch (e.g. password in an AzureEntraId connection string)
+        // crashes at startup with an actionable message instead of failing later with an
+        // opaque Npgsql error on the first request.
+        var options = DatabaseOptions.Resolve(configuration);
+        options.Validate();
 
-        // Determine authentication mode:
-        // - Local development: password in connection string (UseAzureAdAuthentication = false)
-        // - Azure production: Entra ID managed identity token (UseAzureAdAuthentication = true)
-        var useAzureAd = configuration.GetValue<bool>("UseAzureAdAuthentication");
+        // Single factory that owns every NpgsqlDataSource the app uses (Root for the request
+        // path, plus on-demand per-schema sources for provisioning/migration). See
+        // INpgsqlDataSourceFactory XML doc for the ownership rule.
+        var factory = new NpgsqlDataSourceFactory(options);
 
-        // Build a shared NpgsqlDataSource — THE SINGLE SOURCE for all PostgreSQL connections.
-        // When Azure AD is enabled: acquires and refreshes Entra ID access tokens automatically.
-        // When password auth: wraps the connection string as-is (still benefits from connection pooling).
+        services.Configure<DatabaseOptions>(configuration.GetSection("Database"));
+        services.AddSingleton(options);
+
+        // Registered with a FACTORY DELEGATE (`_ => factory`), not a bare instance
+        // (AddSingleton<TService>(instance)). This matters: Microsoft.Extensions.DependencyInjection
+        // only disposes singletons it considers itself to have created — a delegate registration
+        // qualifies, a pre-built instance registration does not. BUT the container only "creates"
+        // a delegate-registered singleton the first time something RESOLVES it (constructor
+        // injection or GetRequiredService/GetService) — a delegate that never runs has nothing
+        // for the container to dispose. As of this PR, nothing in production code resolves
+        // INpgsqlDataSourceFactory (the first consumer arrives with #134's TenantProvisioningService
+        // change), so today this line does NOT yet give the factory a disposal path at host
+        // shutdown — factory.Dispose()/DisposeAsync() simply never run, and the process exit is
+        // what actually reclaims Root. Once #134 injects the factory somewhere, resolution happens
+        // and the disposal path described on INpgsqlDataSourceFactory's XML doc becomes real. See
+        // NpgsqlDataSourceFactoryTests.ContainerDisposesFactory_WhenRegisteredViaFactoryDelegate_AndResolved
+        // for what this proves (delegate registration + resolution => disposed) and what it does not
+        // (it does not prove today's composition root disposes anything, because nothing resolves
+        // the factory here). Its sibling
+        // ContainerDoesNotDisposeInstance_WhenRegisteredViaBareInstance_EvenIfResolved pins the
+        // contrasting rule that the `AddSingleton(factory.Root)` line below relies on, and
+        // ContainerDoesNotDisposeFactory_WhenRegisteredViaDelegate_ButNeverResolved pins today's
+        // actual state (delegate registered, never resolved => never disposed).
+        services.AddSingleton<INpgsqlDataSourceFactory>(_ => factory);
+
+        // AddSingleton(factory.Root) is kept ON PURPOSE — it is the public contract 9 existing
+        // consumers rely on by injecting NpgsqlDataSource directly (AzureOperationController,
+        // TimerFunctions, LogFlushService, LogCleanupService, ImapPollService, AdvisoryLock,
+        // TenantDbContextFactory, TenantProvisioningService + tests). Keeping this registration
+        // means none of them need to change.
         //
-        // CRITICAL: This NpgsqlDataSource is registered in DI as a singleton so that ALL code
-        // that needs a raw NpgsqlConnection (TenantProvisioningService, LogFlushService, etc.)
-        // can get connections via dataSource.OpenConnectionAsync() instead of new NpgsqlConnection().
-        // Without this, raw connections to Azure PostgreSQL fail with "no password provided"
-        // because the connection string has no password (Azure AD provides the token instead).
-        var dataSource = useAzureAd
-            ? CreateAzureDataSource(connectionString)
-            : new NpgsqlDataSourceBuilder(connectionString).Build();
+        // Unlike the factory registration above, THIS is a pre-built instance registration —
+        // the container never disposes it. That is intentional: Root has a single owner (the
+        // factory, which disposes it in its own Dispose/DisposeAsync), so it is disposed exactly
+        // once even though it is exposed here for direct injection. NpgsqlDataSource.Dispose()
+        // is also verified idempotent (NpgsqlDataSourceFactoryTests.Root_DisposedDirectly_ThenFactoryDisposedToo_DoesNotThrow)
+        // in case any consumer disposes it despite the documented "callers never dispose" rule.
+        services.AddSingleton(factory.Root);
 
-        // Register NpgsqlDataSource as singleton — inject it wherever raw connections are needed.
-        // This ensures Azure AD token auth works everywhere, not just in DbContext queries.
-        services.AddSingleton(dataSource);
+        var dataSource = factory.Root;
 
         // MasterDbContext — "public" schema containing Users, Companies, CompanySystemSettings, code tables.
         // EnableRetryOnFailure handles transient PostgreSQL/Azure errors (network blips,
         // connection pool exhaustion, failovers) by automatically retrying failed operations.
-        services.AddDbContext<MasterDbContext>(options =>
+        services.AddDbContext<MasterDbContext>(dbOptions =>
         {
-            ConfigureNpgsql(options, dataSource);
+            ConfigureNpgsql(dbOptions, dataSource, options);
 
             // EF Core 10 throws PendingModelChangesWarning by default when the current model
             // doesn't exactly match the latest migration snapshot. This blocks MigrateAsync()
             // even if the differences are cosmetic (e.g., environment-specific metadata).
             // Downgrade from Throw → Log so migrations proceed and the warning is still visible.
-            options.ConfigureWarnings(w =>
+            dbOptions.ConfigureWarnings(w =>
                 w.Ignore(RelationalEventId.PendingModelChangesWarning));
         });
 
@@ -395,64 +420,18 @@ public static class ServiceCollectionExtensions
         // IMPORTANT: ReplaceService<IModelCacheKeyFactory> ensures EF Core caches a separate
         // compiled model per schema. Without this, all tenants would share the first tenant's
         // model and query the wrong schema. See TenantModelCacheKeyFactory for details.
-        services.AddDbContext<TenantDbContext>((serviceProvider, options) =>
+        services.AddDbContext<TenantDbContext>((serviceProvider, dbOptions) =>
         {
             // All tenants share the same PostgreSQL connection — schema isolation, not DB isolation.
-            ConfigureNpgsql(options, dataSource);
+            ConfigureNpgsql(dbOptions, dataSource, options);
 
             // Custom model cache: one cached model per schema (tenant_42, tenant_99, etc.)
-            options.ReplaceService<IModelCacheKeyFactory, TenantModelCacheKeyFactory>();
+            dbOptions.ReplaceService<IModelCacheKeyFactory, TenantModelCacheKeyFactory>();
 
             // Downgrade PendingModelChangesWarning from Throw → Log (same as MasterDbContext above).
-            options.ConfigureWarnings(w =>
+            dbOptions.ConfigureWarnings(w =>
                 w.Ignore(RelationalEventId.PendingModelChangesWarning));
         });
-    }
-
-    /// <summary>
-    /// Creates an NpgsqlDataSource that uses Microsoft Entra ID (Azure AD) for authentication.
-    /// Uses DefaultAzureCredential which supports:
-    /// - Managed Identity (App Service, Azure Functions — zero-config in Azure)
-    /// - Azure CLI credential (local dev with `az login`)
-    /// - Visual Studio / VS Code credential
-    ///
-    /// The token is automatically refreshed every 55 minutes (Azure AD tokens expire at 60 min).
-    /// If a refresh fails, it retries every 10 seconds until successful.
-    /// </summary>
-    /// <param name="connectionString">PostgreSQL connection string WITHOUT password.</param>
-    /// <returns>NpgsqlDataSource configured with periodic token refresh.</returns>
-    private static NpgsqlDataSource CreateAzureDataSource(string connectionString)
-    {
-        // DefaultAzureCredential tries multiple credential sources in order:
-        // 1. Environment variables (AZURE_CLIENT_ID, etc.)
-        // 2. Managed Identity (automatic in App Service / Functions)
-        // 3. Azure CLI (`az login` — useful for local dev against Azure DB)
-        // 4. Visual Studio / VS Code credentials
-        var credential = new DefaultAzureCredential();
-
-        var dataSourceBuilder = new NpgsqlDataSourceBuilder(connectionString);
-
-        // UsePeriodicPasswordProvider replaces the static password with a dynamically
-        // acquired Azure AD access token. Npgsql calls this callback:
-        // - Once at startup to get the initial token
-        // - Every 55 minutes (successRefreshInterval) to refresh before expiry
-        // - Every 10 seconds (failureRefreshInterval) if the previous refresh failed
-        dataSourceBuilder.UsePeriodicPasswordProvider(
-            async (_, cancellationToken) =>
-            {
-                // Request an access token for Azure Database for PostgreSQL.
-                // The scope "https://ossrdbms-aad.database.windows.net/.default" is the
-                // standard Azure resource identifier for PostgreSQL Flexible Server.
-                var tokenRequest = new Azure.Core.TokenRequestContext(
-                    ["https://ossrdbms-aad.database.windows.net/.default"]);
-
-                var token = await credential.GetTokenAsync(tokenRequest, cancellationToken);
-                return token.Token;
-            },
-            successRefreshInterval: TimeSpan.FromMinutes(55),  // Refresh 5 min before expiry
-            failureRefreshInterval: TimeSpan.FromSeconds(10)); // Retry quickly on failure
-
-        return dataSourceBuilder.Build();
     }
 
     /// <summary>
@@ -460,18 +439,20 @@ public static class ServiceCollectionExtensions
     /// The data source handles both Azure AD token auth and password auth transparently.
     /// Centralizes shared Npgsql options (migrations assembly, retry policy).
     /// </summary>
-    /// <param name="options">EF Core DbContext options builder.</param>
+    /// <param name="dbOptions">EF Core DbContext options builder.</param>
     /// <param name="dataSource">Shared NpgsqlDataSource (always non-null — built for either auth mode).</param>
+    /// <param name="databaseOptions">Resolved database options — supplies the retry policy instead of hardcoded values.</param>
     private static void ConfigureNpgsql(
-        DbContextOptionsBuilder options,
-        NpgsqlDataSource dataSource)
+        DbContextOptionsBuilder dbOptions,
+        NpgsqlDataSource dataSource,
+        DatabaseOptions databaseOptions)
     {
-        options.UseNpgsql(dataSource, b =>
+        dbOptions.UseNpgsql(dataSource, b =>
         {
             b.MigrationsAssembly("Fakvio.Infrastructure");
             b.EnableRetryOnFailure(
-                maxRetryCount: 3,
-                maxRetryDelay: TimeSpan.FromSeconds(5),
+                maxRetryCount: databaseOptions.MaxRetryCount,
+                maxRetryDelay: TimeSpan.FromSeconds(databaseOptions.MaxRetryDelaySeconds),
                 errorCodesToAdd: null);
         });
     }
