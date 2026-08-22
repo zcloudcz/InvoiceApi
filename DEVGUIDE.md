@@ -737,6 +737,18 @@ Pisemnost
 Načítány z `CompanySystemSettings` (master DB): `EpoTaxOfficeCode` (c_ufo), `EpoTaxOfficeBranchCode` (c_pracufo), `EpoContactPhone`, `EpoContactEmail`, `EpoAuthorizedPersonName`.
 Chybí-li c_ufo nebo c_pracufo → `EpoHeaderIncompleteException` → HTTP 400 `EPO_HEADER_INCOMPLETE`.
 
+Editace v UI: `EpoSettingsSection.razor` (Components/Shared) hostovaná v `MyCompany.razor`
+uvnitř `AuthorizeView Roles="Admin,SysAdmin"`, ukládá se přes `PUT /api/company/{id}/settings`
+(partial update — DTO nese jen `Epo*` pole, SMTP/AI na stejném záznamu zůstanou beze změny).
+Odkaz „Přejít do nastavení firmy" v `VatReport.razor` je vidět jen pro tytéž role; ostatní
+dostanou hlášku, že pole musí doplnit administrátor. **Role list na obou místech musí sedět** —
+jinak buď posíláme uživatele na stránku, kde sekci neuvidí, nebo mu odkaz zbytečně skryjeme.
+
+Pozor na `""` vs. `null` v `UpdateCompanySystemSettingsDto`: pole s `[EmailAddress]`
+(`EpoContactEmail`, `SmtpSenderEmail`) prázdný řetězec **neprojde** — validace `[ApiController]`
+vrátí 400 ještě před vstupem do endpointu. Nevyplněné volitelné e-mailové pole se proto posílá
+jako `null` (= ponechat stávající), u ostatních textových polí zůstává `""` (= vymazat). Viz #186.
+
 **Roční update XSD:**
 Viz `Fakvio.Infrastructure/Resources/Epo/EPO-README.md` — stažení z `adisspr.mfcr.cz`, pojmenování, verifikace.
 
@@ -1274,6 +1286,45 @@ Chyby vzniklé v Blazor WASM klientovi by jinak skončily jen v browser konzoli.
   `ApiClientBase` — nedupluj). **Nové catch bloky v UI piš přes `IUiErrorHandler`**,
   existující `Snackbar.Add` catch bloky konvertuj průběžně při úpravách dané stránky.
 
+### 10.5 Co smí ven ke klientovi
+
+Detail výjimky (typ, zpráva, stack trace, inner exceptions) **nikdy nejde do odpovědi
+pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. Pravidlo:
+
+- Plná výjimka → `_logger.LogError(ex, …)` → `DatabaseLogger` → `AppLog`
+  (CorrelationId se doplní sám z `AsyncLocal`).
+- Klient dostane krátkou hlášku **s CorrelationId**, aby ho uživatel mohl nahlásit
+  a support podle něj našel záznam v AppLog (`/logs`).
+- Nezachycené výjimky řeší `GlobalExceptionMiddleware` — v Development přidá detail,
+  v Production jen `message` + `correlationId`. Vlastní `catch` v controlleru piš
+  ve stejném tvaru; `ex.ToString()` v odpovědi je bezpečnostní vada, ne debug pomůcka.
+- SSE endpointy se na middleware spolehnout nemůžou (hlavičky už odešly) — chybu
+  pošlou jako SSE událost `data: {"error": …, "correlationId": …}`
+  (vzor: `ChatController.StreamMessage`).
+- **Klientskou chybu odliš vlastním typem výjimky — nikdy ne obsahem hlášky.**
+  `catch (InvalidOperationException ex) => BadRequest(ex.Message)` je vada, ne vzor:
+  tím typem probublává i výjimka z infrastruktury (typicky `CompanyAiSettingsResolver`
+  — vypíše CompanyId, poskytovatele a celý konfigurační fallback), takže „autorský
+  text pro uživatele" a „interní diagnostika" v něm nejdou rozeznat. Přesně tak
+  vznikla #156. Správný postup:
+  1. doménová výjimka vlastního typu v `Fakvio.Application/Exceptions/`
+     (`ChatConversationNotFoundException`, `VatPayerRequiredException`,
+     `EpoValidationException`, …),
+  2. typový `catch` v controlleru **před** catch-all → konkrétní stavový kód
+     (vzory: `ChatController.SendMessage` → 404, `VatReportController` → 403/400),
+  3. **text odpovědi píše controller** (konstanta / literál v controlleru).
+     Syrová `ex.Message` se do odpovědi nedostane ani u „neškodné" výjimky —
+     co je dnes autorská hláška, je po refactoringu klidně cesta k souboru.
+  4. `catch (Exception)` zůstává poslední a vrací sanitovanou hlášku
+     + referenční ID (viz odrážky výše).
+
+  Důsledek pro stavové kódy: stejná doménová podmínka musí mít **stejnou odpověď
+  napříč endpointy**. Když jeden endpoint na „konverzace neexistuje" vrací 404,
+  nesmí druhý na totéž vracet 500 — 500 je to, na co se alertuje. Na SSE cestě
+  stavový kód k dispozici není, takže „stejná odpověď" znamená stejný text a
+  stejná úroveň logu (`LogWarning`, ne `LogError`) — viz obě větve
+  `ChatController.StreamMessage`.
+
 ---
 
 ## 11. Decision trees (rozhodovací stromy)
@@ -1392,6 +1443,12 @@ Chyby vzniklé v Blazor WASM klientovi by jinak skončily jen v browser konzoli.
 - InMemoryDatabase enforcuje `IsRequired()` z fluent config — `Client.RegistrationNumber`, `Invoice.Issuer` musí být setnuty v test seedu.
 - Save entities **one-by-one** s `SaveChanges()`, ne `AddRange` (deterministická ID generation).
 
+### Generované soubory ze source generátorů (`Generated/`)
+- `Fakvio.Infrastructure` a `Fakvio.Functions` mají `<EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>` + `<CompilerGeneratedFilesOutputPath>Generated</CompilerGeneratedFilesOutputPath>`. Složka `Generated/` je tedy **výstup buildu, ne zdroják** — oba projekty ji navíc vyřazují z kompilace přes `<Compile Remove="Generated/**" />`. Generátor svůj výstup vkládá přímo do kompilace; kopie na disku slouží výhradně k nahlédnutí při debugování.
+- **Od issue #178 jsou složky `Generated/` v `.gitignore` a netrackují se.** Dřív commitnuté byly a každý `dotnet build` je přepsal: `RegexGenerator.g.cs` nese v `GeneratedCodeAttribute` build number generátoru (např. `10.0.14.32716` vs `10.0.14.37416`), takže mezi dvěma patchi .NET SDK vznikl 45řádkový fantomový diff, který musel každý dev před commitem ručně vracet.
+- Verzi `System.Text.RegularExpressions.Generator` **nelze pinovat** — chodí uvnitř .NET SDK, ne jako NuGet balíček. Netrackovat výstup je proto jediná spolehlivá varianta.
+- **Nevracej tyhle soubory do gitu** a nemaž řádky z `.gitignore`. Když je potřebuješ vidět, stačí `dotnet build` a vygenerují se lokálně. Když zapneš `EmitCompilerGeneratedFiles` na dalším projektu, přidej jeho `Generated/` do `.gitignore`.
+
 ---
 
 ## 13. Maintenance — kdy aktualizovat tento dokument
@@ -1410,6 +1467,7 @@ Chyby vzniklé v Blazor WASM klientovi by jinak skončily jen v browser konzoli.
 | Změna config zdroje (Key Vault, App Configuration) | §9.2 |
 | Změna Data Protection persistence / ApplicationName | §2.7 |
 | Nová seed migrace s hardcoded Id | §12 (non-idempotent seed) |
+| Nový projekt s `EmitCompilerGeneratedFiles` | §12 (Generated/) + `.gitignore` |
 | Nový code-table pattern (master / tenant / dual-context) | §11.2 |
 | Nový background lock klíč | §6.3 (tabulka klíčů) |
 | Změna observability stacku (App Insights → jiný) | §10 |

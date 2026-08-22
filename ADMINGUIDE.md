@@ -146,6 +146,13 @@ Provisioning provede:
 
 **Idempotentní** — bezpečné spustit opakovaně při chybě.
 
+**Krok 5 je povinný.** Pokud v tenant schématu není žádný aktivní formát číselné řady
+(`NumberSequenceFormat`), provisioning v kroku 5 selže s chybou a firma zůstane
+`IsProvisioned=false`. Dřív se krok tiše přeskočil a tenant vznikl úplně bez číselných
+řad — jeho faktury pak nešlo očíslovat. Náprava: zkontrolovat master číselník
+„Formáty číselných řad" (musí mít alespoň jeden aktivní záznam), pak provisioning
+spustit znovu.
+
 ### Aktivace / Deaktivace firmy
 
 V detailu firmy: chip stavu (Aktivní/Neaktivní) + možnost editovat příznaky IsActive přímo.
@@ -166,6 +173,17 @@ V detailu firmy sekce „Email Settings" — umožňuje nastavit firemní SMTP o
 ### AI nastavení firmy (per-company)
 
 V detailu firmy sekce „AI Settings" — umožňuje nakonfigurovat AI poskytovatele specifické pro tuto firmu (přepíše systémové nastavení pro tuto firmu).
+
+### EPO nastavení firmy (per-company)
+
+Sekce „Nastavení EPO" na `/my-company` (viditelná pro role Admin a SysAdmin) — hlavičkové údaje
+pro elektronické podání přiznání k DPH a kontrolního hlášení:
+- Kód finančního úřadu (c_ufo) a kód územního pracoviště (c_pracufo) — **povinné**, bez nich
+  API odmítne EPO export chybou `EPO_HEADER_INCOMPLETE`
+- Kontaktní telefon, kontaktní e-mail, jméno oprávněné osoby — volitelné
+
+Data leží na `CompanySystemSettings` v master DB, stejně jako SMTP a AI nastavení. SysAdmin
+se k sekci dostane po zvolení firmy v přepínači impersonace.
 
 ---
 
@@ -334,6 +352,8 @@ Grid s logy: Timestamp, Level (chip), Source (zkrácená kategorie loggeru), Zpr
 ### Diagnostika
 
 **CorrelationId:** Každý HTTP request má vlastní ID propagované přes `X-Correlation-Id` header. Pokud máte chybu, hledejte log záznamy se stejným CorrelationId.
+
+**Referenční ID od uživatele:** Když AI asistent (chat) selže, uživatel místo technického detailu uvidí hlášku s referenčním ID — to je právě CorrelationId. Zadejte ho do textového hledání v `/logs` a najdete záznam s plnou výjimkou včetně stack trace.
 
 **CompanyId:** Logy z tenant operací mají přiřazený CompanyId — lze filtrovat ve sloupci.
 

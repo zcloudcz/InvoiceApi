@@ -1045,6 +1045,7 @@
   <data name="Chat_PdfOnly" xml:space="preserve"><value>Only PDF files are supported.</value></data>
   <data name="Chat_UnsupportedFileType" xml:space="preserve"><value>Unsupported file type.</value></data>
   <data name="Chat_FileTooLarge" xml:space="preserve"><value>File exceeds the maximum allowed size of 10 MB.</value></data>
+  <data name="Chat_Error_Unexpected" xml:space="preserve"><value>The message could not be processed. Please try again.</value></data>
   <data name="EChatRole_User" xml:space="preserve"><value>You</value></data>
   <data name="EChatRole_Assistant" xml:space="preserve"><value>Assistant</value></data>
   <!-- Received Invoices (Expenses) -->
@@ -1638,4 +1639,14 @@
   <data name="EpoNotVatPayer" xml:space="preserve"><value>This feature is available for VAT payers only.</value></data>
   <data name="EpoDownloadError" xml:space="preserve"><value>Error generating EPO: {0}</value></data>
   <data name="EpoGoToSettings" xml:space="preserve"><value>Go to company settings</value></data>
+  <data name="EpoHeaderIncompleteAskAdmin" xml:space="preserve"><value>Only a company administrator can fill these fields in — please ask them to complete the settings.</value></data>
+  <data name="Epo_SettingsTitle" xml:space="preserve"><value>EPO settings (electronic filing)</value></data>
+  <data name="Epo_SettingsInfoText" xml:space="preserve"><value>Header data for the electronic VAT return and VAT control statement filed on the Czech EPO portal. Without the tax office and branch codes the XML files cannot be generated.</value></data>
+  <data name="Epo_TaxOfficeCode" xml:space="preserve"><value>Tax office code</value></data>
+  <data name="Epo_TaxOfficeCodeHelper" xml:space="preserve"><value>Numeric code of the competent tax office (c_ufo), e.g. 451 for Prague.</value></data>
+  <data name="Epo_TaxOfficeBranchCode" xml:space="preserve"><value>Tax office branch code</value></data>
+  <data name="Epo_TaxOfficeBranchCodeHelper" xml:space="preserve"><value>Numeric code of the tax office local branch (c_pracufo).</value></data>
+  <data name="Epo_ContactPhone" xml:space="preserve"><value>Contact phone</value></data>
+  <data name="Epo_ContactEmail" xml:space="preserve"><value>Contact email</value></data>
+  <data name="Epo_AuthorizedPersonName" xml:space="preserve"><value>Authorized person name</value></data>
 </root>

@@ -1,3 +1,4 @@
+using Fakvio.Application.Exceptions;
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.Chat;
 using Fakvio.Domain.Entities;
@@ -27,6 +28,9 @@ public class ChatServiceTests : IDisposable
     private readonly IChatToolExecutor _toolExecutor;
     private readonly ILogger<ChatService> _logger;
     private const long TestUserId = 42;
+
+    /// <summary>A second user, used for the "this conversation is not yours" scenarios.</summary>
+    private const long OtherUserId = 99;
 
     public ChatServiceTests()
     {
@@ -190,7 +194,7 @@ public class ChatServiceTests : IDisposable
         var request = new SendMessageRequest { Message = "Test", ConversationId = 9999 };
 
         // Act & Assert
-        await Should.ThrowAsync<InvalidOperationException>(
+        await Should.ThrowAsync<ChatConversationNotFoundException>(
             () => _service.SendMessageAsync(TestUserId, request));
     }
 
@@ -203,7 +207,7 @@ public class ChatServiceTests : IDisposable
 
         // Act & Assert — user 99 tries to use the same conversation.
         var request = new SendMessageRequest { Message = "Hijack", ConversationId = result.ConversationId };
-        await Should.ThrowAsync<InvalidOperationException>(
+        await Should.ThrowAsync<ChatConversationNotFoundException>(
             () => _service.SendMessageAsync(99, request));
     }
 
@@ -260,6 +264,84 @@ public class ChatServiceTests : IDisposable
         conversation.Messages[1].Role.ShouldBe("Assistant");
     }
 
+    /// <summary>
+    /// Loading somebody else's conversation must fail exactly like loading a non-existent one:
+    /// the lookup filters by conversation ID AND user ID, and the dedicated exception type is
+    /// what lets the controller answer 404 with its own text instead of 500 (issue #156).
+    /// </summary>
+    [Fact]
+    public async Task GetConversation_ThrowsChatConversationNotFound_ForWrongUser()
+    {
+        // Arrange — conversation owned by TestUserId.
+        var sendResult = await _service.SendMessageAsync(TestUserId,
+            new SendMessageRequest { Message = "Mine" });
+
+        // Act & Assert — user 99 tries to read it.
+        var caught = await Should.ThrowAsync<ChatConversationNotFoundException>(
+            () => _service.GetConversationAsync(sendResult.ConversationId, OtherUserId));
+
+        caught.ConversationId.ShouldBe(sendResult.ConversationId);
+    }
+
+    // ─── StreamMessageAsync Tests ────────────────────────────────────────
+
+    /// <summary>
+    /// The streaming path resolves the conversation through the same lookup as SendMessageAsync,
+    /// and /api/chat/stream is the endpoint the chat panel actually calls — so this is where a
+    /// conversation deleted in another browser tab shows up first (issue #156, round 3).
+    ///
+    /// Junior note on the "before yielding any chunk" part: StreamMessageAsync is an async
+    /// iterator, so its body only starts running on the first MoveNextAsync. The lookup is the
+    /// first await, before any yield, which is why the exception surfaces while the controller is
+    /// still inside its try block and can answer with a clean error event instead of having to
+    /// abort a half-written SSE response.
+    /// </summary>
+    [Fact]
+    public async Task StreamMessage_ThrowsChatConversationNotFound_BeforeYieldingAnyChunk()
+    {
+        // Arrange — an ID no conversation has.
+        const long missingConversationId = 9999;
+        var request = new SendMessageRequest { Message = "Test", ConversationId = missingConversationId };
+        var receivedChunks = new List<string>();
+
+        // Act & Assert
+        var caught = await Should.ThrowAsync<ChatConversationNotFoundException>(async () =>
+        {
+            await foreach (var chunk in _service.StreamMessageAsync(TestUserId, request))
+            {
+                receivedChunks.Add(chunk);
+            }
+        });
+
+        caught.ConversationId.ShouldBe(missingConversationId);
+        receivedChunks.ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// Same guarantee for a valid ID that belongs to somebody else — the case a hand-crafted
+    /// request probing foreign conversation IDs would hit.
+    /// </summary>
+    [Fact]
+    public async Task StreamMessage_ThrowsChatConversationNotFound_ForWrongUser()
+    {
+        // Arrange — conversation owned by TestUserId.
+        var sendResult = await _service.SendMessageAsync(TestUserId,
+            new SendMessageRequest { Message = "Mine" });
+
+        var request = new SendMessageRequest { Message = "Hijack", ConversationId = sendResult.ConversationId };
+
+        // Act & Assert
+        var caught = await Should.ThrowAsync<ChatConversationNotFoundException>(async () =>
+        {
+            await foreach (var _ in _service.StreamMessageAsync(OtherUserId, request))
+            {
+                // No chunk can arrive — the lookup fails first.
+            }
+        });
+
+        caught.ConversationId.ShouldBe(sendResult.ConversationId);
+    }
+
     // ─── DeleteConversationAsync Tests ───────────────────────────────────
 
     [Fact]
@@ -285,7 +367,7 @@ public class ChatServiceTests : IDisposable
             new SendMessageRequest { Message = "Mine" });
 
         // Act & Assert
-        await Should.ThrowAsync<InvalidOperationException>(
+        await Should.ThrowAsync<ChatConversationNotFoundException>(
             () => _service.DeleteConversationAsync(result.ConversationId, 99));
     }
 
