@@ -581,6 +581,20 @@ Pokud je nakonfigurováno více AI poskytovatelů, zobrazí se rozbalovací sezn
 - „Najdi fakturu číslo FAK-2026-001"
 - „Kolik mám nesplacených faktur?"
 
+### Když se odpověď nepodaří vygenerovat
+
+Místo odpovědi se objeví krátká hláška s **referenčním ID** (dlouhé číslo
+ve tvaru `11111111-2222-…`). Technický detail chyby se neposílá do prohlížeče —
+zapisuje se do serverového logu. Při hlášení problému administrátorovi vždy uveďte
+toto referenční ID, podle něj chybu v logu dohledá.
+
+Platí to pro všechna místa, kde aplikace volá AI: chatovací panel i AI kontrolu
+importu dokladů (hláška „AI review failed…" na stránce importu).
+
+Výjimkou je hláška „Conversation not found." — ta referenční ID nemá, protože
+nejde o chybu serveru. Znamená, že konverzace už neexistuje (typicky jste ji
+smazali v jiném okně prohlížeče). Stačí obnovit seznam konverzací.
+
 ---
 
 ## 14. Upomínky (Dunning)

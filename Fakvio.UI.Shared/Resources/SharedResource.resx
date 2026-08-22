@@ -1044,6 +1044,7 @@
   <data name="Chat_PdfOnly" xml:space="preserve"><value>Jsou podporovány pouze PDF soubory.</value></data>
   <data name="Chat_UnsupportedFileType" xml:space="preserve"><value>Nepodporovaný typ souboru.</value></data>
   <data name="Chat_FileTooLarge" xml:space="preserve"><value>Soubor přesahuje maximální povolenou velikost 10 MB.</value></data>
+  <data name="Chat_Error_Unexpected" xml:space="preserve"><value>Zprávu se nepodařilo zpracovat. Zkuste to prosím znovu.</value></data>
   <data name="EChatRole_User" xml:space="preserve"><value>Vy</value></data>
   <data name="EChatRole_Assistant" xml:space="preserve"><value>Asistent</value></data>
   <!-- Received Invoices (Expenses) -->

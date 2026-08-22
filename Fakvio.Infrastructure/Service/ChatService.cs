@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Text;
+using Fakvio.Application.Exceptions;
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.Chat;
 using Fakvio.Domain.Entities;
@@ -88,7 +89,8 @@ public class ChatService : IChatService
 
     /// <summary>
     /// Loads a single conversation with all its messages.
-    /// Throws InvalidOperationException if the conversation doesn't belong to the user.
+    /// Throws ChatConversationNotFoundException if the conversation does not exist
+    /// or does not belong to the user.
     /// </summary>
     public async Task<ChatConversationDto> GetConversationAsync(
         long conversationId, long userId, CancellationToken ct = default)
@@ -97,7 +99,7 @@ public class ChatService : IChatService
             .AsNoTracking()
             .Include(c => c.Messages.Where(m => m.Role != EChatRole.System))
             .FirstOrDefaultAsync(c => c.Id == conversationId && c.UserId == userId, ct)
-            ?? throw new InvalidOperationException($"Conversation {conversationId} not found.");
+            ?? throw new ChatConversationNotFoundException(conversationId);
 
         return new ChatConversationDto
         {
@@ -507,7 +509,7 @@ public class ChatService : IChatService
     {
         var conversation = await _context.ChatConversation
             .FirstOrDefaultAsync(c => c.Id == conversationId && c.UserId == userId, ct)
-            ?? throw new InvalidOperationException($"Conversation {conversationId} not found.");
+            ?? throw new ChatConversationNotFoundException(conversationId);
 
         _context.ChatConversation.Remove(conversation);
         await _context.SaveChangesAsync(ct);
@@ -597,7 +599,7 @@ public class ChatService : IChatService
         {
             var existing = await _context.ChatConversation
                 .FirstOrDefaultAsync(c => c.Id == conversationId.Value && c.UserId == userId, ct)
-                ?? throw new InvalidOperationException($"Conversation {conversationId} not found.");
+                ?? throw new ChatConversationNotFoundException(conversationId.Value);
             return existing;
         }
 

@@ -1274,6 +1274,45 @@ Chyby vzniklé v Blazor WASM klientovi by jinak skončily jen v browser konzoli.
   `ApiClientBase` — nedupluj). **Nové catch bloky v UI piš přes `IUiErrorHandler`**,
   existující `Snackbar.Add` catch bloky konvertuj průběžně při úpravách dané stránky.
 
+### 10.5 Co smí ven ke klientovi
+
+Detail výjimky (typ, zpráva, stack trace, inner exceptions) **nikdy nejde do odpovědi
+pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. Pravidlo:
+
+- Plná výjimka → `_logger.LogError(ex, …)` → `DatabaseLogger` → `AppLog`
+  (CorrelationId se doplní sám z `AsyncLocal`).
+- Klient dostane krátkou hlášku **s CorrelationId**, aby ho uživatel mohl nahlásit
+  a support podle něj našel záznam v AppLog (`/logs`).
+- Nezachycené výjimky řeší `GlobalExceptionMiddleware` — v Development přidá detail,
+  v Production jen `message` + `correlationId`. Vlastní `catch` v controlleru piš
+  ve stejném tvaru; `ex.ToString()` v odpovědi je bezpečnostní vada, ne debug pomůcka.
+- SSE endpointy se na middleware spolehnout nemůžou (hlavičky už odešly) — chybu
+  pošlou jako SSE událost `data: {"error": …, "correlationId": …}`
+  (vzor: `ChatController.StreamMessage`).
+- **Klientskou chybu odliš vlastním typem výjimky — nikdy ne obsahem hlášky.**
+  `catch (InvalidOperationException ex) => BadRequest(ex.Message)` je vada, ne vzor:
+  tím typem probublává i výjimka z infrastruktury (typicky `CompanyAiSettingsResolver`
+  — vypíše CompanyId, poskytovatele a celý konfigurační fallback), takže „autorský
+  text pro uživatele" a „interní diagnostika" v něm nejdou rozeznat. Přesně tak
+  vznikla #156. Správný postup:
+  1. doménová výjimka vlastního typu v `Fakvio.Application/Exceptions/`
+     (`ChatConversationNotFoundException`, `VatPayerRequiredException`,
+     `EpoValidationException`, …),
+  2. typový `catch` v controlleru **před** catch-all → konkrétní stavový kód
+     (vzory: `ChatController.SendMessage` → 404, `VatReportController` → 403/400),
+  3. **text odpovědi píše controller** (konstanta / literál v controlleru).
+     Syrová `ex.Message` se do odpovědi nedostane ani u „neškodné" výjimky —
+     co je dnes autorská hláška, je po refactoringu klidně cesta k souboru.
+  4. `catch (Exception)` zůstává poslední a vrací sanitovanou hlášku
+     + referenční ID (viz odrážky výše).
+
+  Důsledek pro stavové kódy: stejná doménová podmínka musí mít **stejnou odpověď
+  napříč endpointy**. Když jeden endpoint na „konverzace neexistuje" vrací 404,
+  nesmí druhý na totéž vracet 500 — 500 je to, na co se alertuje. Na SSE cestě
+  stavový kód k dispozici není, takže „stejná odpověď" znamená stejný text a
+  stejná úroveň logu (`LogWarning`, ne `LogError`) — viz obě větve
+  `ChatController.StreamMessage`.
+
 ---
 
 ## 11. Decision trees (rozhodovací stromy)
