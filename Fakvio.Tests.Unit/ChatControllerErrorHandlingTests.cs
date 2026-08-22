@@ -13,15 +13,23 @@
 //     so the user can quote it when reporting the problem.
 // ============================================================================
 
+using System.Net;
+using System.Reflection;
 using System.Security.Claims;
+using System.Text;
 using System.Text.Json;
 using Fakvio.API.Controller;
+using Fakvio.API.Middleware;
 using Fakvio.Application.Exceptions;
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.Chat;
+using Fakvio.UI.Shared.Services;
+using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Routing;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using Shouldly;
@@ -52,7 +60,11 @@ public class ChatControllerErrorHandlingTests
     /// present in HttpContext.Items — exactly what CorrelationIdMiddleware does for
     /// every real request before the controller runs.
     /// </summary>
-    private ChatController BuildController()
+    /// <param name="correlationId">
+    /// Value the middleware would have stored. Pass null to simulate a request that never
+    /// went through CorrelationIdMiddleware — the controller then falls back to "unknown".
+    /// </param>
+    private ChatController BuildController(string? correlationId = TestCorrelationId)
     {
         var controller = new ChatController(_chatService, _pdfTextExtractor, _logger);
 
@@ -64,7 +76,10 @@ public class ChatControllerErrorHandlingTests
         {
             User = new ClaimsPrincipal(identity)
         };
-        httpContext.Items["CorrelationId"] = TestCorrelationId;
+        if (correlationId != null)
+        {
+            httpContext.Items["CorrelationId"] = correlationId;
+        }
 
         // A writable body is required so the SSE endpoint can call Response.WriteAsync.
         httpContext.Response.Body = new MemoryStream();
@@ -609,5 +624,538 @@ public class ChatControllerErrorHandlingTests
         }
 
         return null;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // The error surface as a whole — added in the test round for issue #156.
+    //
+    // Why a second block of tests: all three review rounds on this fix turned on the
+    // same question, "which path does the client actually take?". Each round closed
+    // the branch that was being discussed (first the non-streaming catch, then the
+    // very same conversation lookup on the SSE path) and left an equivalent one open.
+    // The tests below stop treating those branches as separate stories:
+    //
+    //   1. ChatEndpoint is the COMPLETE inventory of the controller's endpoints, and a
+    //      reflection guard fails when the controller gains or loses one.
+    //   2. Every endpoint must be classified as either "handles its own failures" or
+    //      "lets them propagate to GlobalExceptionMiddleware" — a second guard fails
+    //      when one is left unclassified.
+    //   3. The theories below run the error contract against those classified sets.
+    //
+    // A fourth variant of "that branch was forgotten" therefore cannot be added
+    // silently: the guards go red before anyone has to spot the pattern by hand.
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /// <summary>Conversation ID used for every "this conversation is gone" scenario.</summary>
+    private const long MissingConversationId = 999;
+
+    /// <summary>
+    /// The only sentence a client may receive when a conversation cannot be resolved.
+    /// Mirrors the private constant in ChatController — if the two ever diverge the theories
+    /// below fail, which is the intent: USERGUIDE §13 quotes this text word for word.
+    /// </summary>
+    private const string ConversationNotFoundText = "Conversation not found.";
+
+    /// <summary>
+    /// Every endpoint ChatController exposes. Kept honest by
+    /// <see cref="ChatController_ExposesExactlyTheEndpointsInTheInventory"/>.
+    /// </summary>
+    public enum ChatEndpoint
+    {
+        GetConversations,
+        GetConversation,
+        SendMessage,
+        StreamMessage,
+        DeleteConversation,
+        GetProviders,
+        ExtractPdfText
+    }
+
+    /// <summary>
+    /// Endpoints that catch failures themselves and write the response body. Their contract:
+    /// nothing from the exception may appear in what the client receives.
+    /// </summary>
+    private static readonly ChatEndpoint[] SelfHandlingEndpoints =
+    {
+        ChatEndpoint.SendMessage,
+        ChatEndpoint.StreamMessage,
+        ChatEndpoint.ExtractPdfText
+    };
+
+    /// <summary>
+    /// Endpoints that deliberately have no catch-all: an infrastructure failure has to reach
+    /// GlobalExceptionMiddleware, which owns the sanitized 500 body for the whole API
+    /// (DEVGUIDE §10.5). Writing their own body would mean a second, unreviewed error shape.
+    /// </summary>
+    private static readonly ChatEndpoint[] PropagatingEndpoints =
+    {
+        ChatEndpoint.GetConversations,
+        ChatEndpoint.GetConversation,
+        ChatEndpoint.DeleteConversation,
+        ChatEndpoint.GetProviders
+    };
+
+    /// <summary>Endpoints that resolve a conversation and can therefore report it missing.</summary>
+    private static readonly ChatEndpoint[] ConversationLookupEndpoints =
+    {
+        ChatEndpoint.SendMessage,
+        ChatEndpoint.StreamMessage,
+        ChatEndpoint.GetConversation,
+        ChatEndpoint.DeleteConversation
+    };
+
+    public static IEnumerable<object[]> SelfHandlingCases => ToTheoryCases(SelfHandlingEndpoints);
+
+    public static IEnumerable<object[]> PropagatingCases => ToTheoryCases(PropagatingEndpoints);
+
+    public static IEnumerable<object[]> ConversationLookupCases => ToTheoryCases(ConversationLookupEndpoints);
+
+    private static IEnumerable<object[]> ToTheoryCases(IEnumerable<ChatEndpoint> endpoints)
+        => endpoints.Select(endpoint => new object[] { endpoint });
+
+    // ─── Guards: the inventory cannot go stale ────────────────────────────────
+
+    /// <summary>
+    /// Reflection guard: <see cref="ChatEndpoint"/> must list exactly the action methods the
+    /// controller declares. Adding an endpoint without adding it here fails this test, which is
+    /// the point — the author is then forced to say how the new endpoint reports failures.
+    /// </summary>
+    [Fact]
+    public void ChatController_ExposesExactlyTheEndpointsInTheInventory()
+    {
+        // Action methods are the public instance methods carrying [HttpGet] / [HttpPost] / …,
+        // all of which derive from HttpMethodAttribute. DeclaredOnly skips ControllerBase members.
+        var actionMethods = typeof(ChatController)
+            .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+            .Where(method => method.GetCustomAttributes<HttpMethodAttribute>(inherit: true).Any())
+            .Select(method => method.Name)
+            .ToList();
+
+        actionMethods.ShouldBe(Enum.GetNames<ChatEndpoint>(), ignoreOrder: true,
+            customMessage: "ChatController gained or lost an endpoint. Add it to the ChatEndpoint " +
+                           "inventory and classify it, so its error contract gets covered too.");
+    }
+
+    /// <summary>
+    /// Every endpoint in the inventory must be classified exactly once — either it answers its own
+    /// failures (and is checked for leaks) or it propagates them (and is checked for that).
+    /// </summary>
+    [Fact]
+    public void EveryEndpointInTheInventory_IsClassifiedExactlyOnce()
+    {
+        var classified = SelfHandlingEndpoints.Concat(PropagatingEndpoints).ToList();
+
+        classified.ShouldBeUnique();
+        classified.ShouldBe(Enum.GetValues<ChatEndpoint>(), ignoreOrder: true,
+            customMessage: "Classify the endpoint as self-handling or propagating — see DEVGUIDE §10.5.");
+    }
+
+    // ─── The contract, endpoint by endpoint ───────────────────────────────────
+
+    /// <summary>
+    /// The invariant behind issue #156, stated once for every endpoint that builds its own error
+    /// response: what the client receives may not contain the exception type, its message, the
+    /// message of an inner exception, or a stack frame.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(SelfHandlingCases))]
+    public async Task SelfHandlingEndpoint_WhenDependencyFails_SendsNothingFromTheException(
+        ChatEndpoint endpoint)
+    {
+        // Arrange & Act — a wrapped exception with a real stack trace, the shape production produces.
+        var thrown = CreateRealisticException("Company 7 has no API key for provider 'Claude'.");
+
+        var response = await InvokeWithFailingDependencyAsync(endpoint, thrown);
+
+        // Assert — sanitized, and still saying something the user can act on.
+        ShouldNotLeakExceptionDetails(response.RawBody, thrown);
+        response.Message.ShouldNotBeNullOrWhiteSpace();
+    }
+
+    /// <summary>
+    /// The counterpart: endpoints without a catch-all must let the failure travel to
+    /// GlobalExceptionMiddleware untouched. If one of them ever starts writing its own body, this
+    /// test fails and the new error shape gets reviewed instead of appearing unnoticed.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(PropagatingCases))]
+    public async Task PropagatingEndpoint_WhenDependencyFails_LeavesTheResponseToTheGlobalMiddleware(
+        ChatEndpoint endpoint)
+    {
+        // Arrange & Act
+        var thrown = CreateRealisticException("Database connection failed for tenant 7.");
+
+        var caught = await Should.ThrowAsync<HttpRequestException>(
+            () => InvokeWithFailingDependencyAsync(endpoint, thrown));
+
+        // Assert — the very same exception object, neither swallowed nor re-wrapped.
+        caught.ShouldBeSameAs(thrown);
+    }
+
+    /// <summary>
+    /// One condition, one answer — on all four paths that resolve a conversation, including the
+    /// SSE stream the chat panel really uses. This is the guarantee the third review round asked
+    /// for: REST and SSE, GET and DELETE, all say the same controller-authored sentence.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(ConversationLookupCases))]
+    public async Task ConversationLookupEndpoint_WhenConversationIsMissing_UsesTheOneAuthoredText(
+        ChatEndpoint endpoint)
+    {
+        // Arrange & Act
+        var thrown = new ChatConversationNotFoundException(MissingConversationId);
+
+        var response = await InvokeWithFailingDependencyAsync(endpoint, thrown);
+
+        // Assert — the exact constant, not ex.Message and not a per-endpoint variation.
+        response.Message.ShouldBe(ConversationNotFoundText);
+
+        // The ID is not echoed back (that would confirm which foreign IDs exist — the lookup
+        // filters by conversation ID AND user ID at once), and there is no reference ID: nothing
+        // was recorded as an incident. USERGUIDE §13 documents this as the one chat message
+        // that comes without one.
+        response.RawBody.ShouldNotContain(MissingConversationId.ToString());
+        response.RawBody.ShouldNotContain(TestCorrelationId);
+        response.RawBody.ShouldNotContain(thrown.Message);
+
+        // SSE cannot set a status code — the headers are already on the wire — so it is the one
+        // path where "the same answer" means the same text and log level instead of the same code.
+        if (response.StatusCode is not null)
+        {
+            response.StatusCode.ShouldBe(StatusCodes.Status404NotFound);
+        }
+    }
+
+    /// <summary>
+    /// A stale conversation ID is a routine client mistake on every path. Logging it at Error
+    /// level would page the on-call engineer for a browser tab left open, and would let anyone
+    /// probing foreign IDs manufacture incidents at will.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(ConversationLookupCases))]
+    public async Task ConversationLookupEndpoint_WhenConversationIsMissing_IsNotLoggedAsAnIncident(
+        ChatEndpoint endpoint)
+    {
+        // Arrange & Act
+        await InvokeWithFailingDependencyAsync(
+            endpoint, new ChatConversationNotFoundException(MissingConversationId));
+
+        // Assert
+        _logger.DidNotReceive().Log(
+            LogLevel.Error,
+            Arg.Any<EventId>(),
+            Arg.Any<object>(),
+            Arg.Any<Exception?>(),
+            Arg.Any<Func<object, Exception?, string>>());
+    }
+
+    // ─── SSE edge cases the endpoint has to tell apart ────────────────────────
+
+    /// <summary>
+    /// A client that closes the tab mid-answer cancels the stream. That is not a failure: no error
+    /// frame may be written (nobody is listening) and nothing may be logged at Error level.
+    ///
+    /// This pins the ORDER of the catch blocks. Moving the catch-all in front of
+    /// <see cref="OperationCanceledException"/> would turn every disconnect into a logged
+    /// incident — the same class of mistake issue #156 is about, just in the other direction.
+    /// </summary>
+    [Fact]
+    public async Task StreamMessage_WhenClientDisconnects_SendsNoErrorFrameAndDoesNotAlert()
+    {
+        // Arrange — one chunk goes out, then the client is gone.
+        _chatService
+            .StreamMessageAsync(Arg.Any<long>(), Arg.Any<SendMessageRequest>(), Arg.Any<CancellationToken>())
+            .Returns(FailingStream(new OperationCanceledException(), emitChunkFirst: true));
+
+        var controller = BuildController();
+
+        // Act
+        await controller.StreamMessage(new SendMessageRequest { Message = "Hi" });
+
+        // Assert
+        ExtractSseError(await ReadBodyAsync(controller.HttpContext)).ShouldBeNull();
+
+        _logger.DidNotReceive().Log(
+            LogLevel.Error,
+            Arg.Any<EventId>(),
+            Arg.Any<object>(),
+            Arg.Any<Exception?>(),
+            Arg.Any<Func<object, Exception?, string>>());
+    }
+
+    // ─── The reference ID itself ──────────────────────────────────────────────
+
+    /// <summary>
+    /// CorrelationIdMiddleware normally fills HttpContext.Items before the controller runs. If it
+    /// ever does not — a misordered pipeline, a direct call — the endpoint must still answer with
+    /// a sanitized message instead of throwing a NullReferenceException on top of the first error.
+    /// </summary>
+    [Fact]
+    public async Task SendMessage_WhenCorrelationIdIsMissing_StillAnswersWithASanitizedMessage()
+    {
+        // Arrange
+        var thrown = CreateRealisticException("Company 7 has no API key for provider 'Claude'.");
+        _chatService
+            .SendMessageAsync(Arg.Any<long>(), Arg.Any<SendMessageRequest>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(thrown);
+
+        var controller = BuildController(correlationId: null);
+
+        // Act
+        var result = await controller.SendMessage(new SendMessageRequest { Message = "Hi" });
+
+        // Assert — the documented "unknown" fallback, and still no leak.
+        var body = JsonSerializer.Serialize(result.Result.ShouldBeOfType<ObjectResult>().Value);
+        ShouldNotLeakExceptionDetails(body, thrown);
+        body.ShouldContain("unknown");
+    }
+
+    /// <summary>
+    /// Where the reference ID comes from, end to end: CorrelationIdMiddleware takes the inbound
+    /// <c>X-Correlation-Id</c> header as-is — no length limit, no character set, no format check —
+    /// and the controller quotes that value in the message the user sees.
+    ///
+    /// So the reference ID is CALLER-CONTROLLED TEXT. Nothing is broken today (the chat bubble
+    /// renders it as plain text), but anything that starts rendering chat errors as rich content
+    /// has to treat it as untrusted input — see PR #185, which adds a markdown renderer for chat
+    /// messages. If validation is ever added to the middleware, this is the test that has to be
+    /// updated, deliberately.
+    /// </summary>
+    [Fact]
+    public async Task SendMessage_ReferenceId_IsTheInboundHeaderVerbatim_AndIsNotValidated()
+    {
+        // Arrange — a header value no legitimate client would ever send.
+        const string callerSuppliedId = "[click here](javascript:alert(1))";
+
+        var thrown = CreateRealisticException("Company 7 has no API key for provider 'Claude'.");
+        _chatService
+            .SendMessageAsync(Arg.Any<long>(), Arg.Any<SendMessageRequest>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(thrown);
+
+        // No CorrelationId pre-seeded — the middleware under test is what fills it in.
+        var controller = BuildController(correlationId: null);
+        controller.HttpContext.Request.Headers[CorrelationIdMiddleware.HeaderName] = callerSuppliedId;
+
+        ActionResult<SendMessageResponse>? result = null;
+        var middleware = new CorrelationIdMiddleware(async _ =>
+            result = await controller.SendMessage(new SendMessageRequest { Message = "Hi" }));
+
+        // Act — run the real middleware over the controller's own HttpContext.
+        await middleware.InvokeAsync(controller.HttpContext);
+
+        // Assert — the caller's string is handed back to the user untouched.
+        var body = JsonSerializer.Serialize(result!.Result.ShouldBeOfType<ObjectResult>().Value);
+        body.ShouldContain(callerSuppliedId);
+    }
+
+    // ─── Server frame → real client parser ────────────────────────────────────
+
+    /// <summary>
+    /// The bytes the controller writes are replayed through the real client parser
+    /// (<see cref="ChatApiService.StreamMessageAsync"/>), the one ChatPanel consumes. Reading both
+    /// sides and concluding that they match is what the earlier rounds did; this executes it.
+    ///
+    /// Completing the <c>await foreach</c> is itself an assertion: the not-found frame is not
+    /// followed by <c>[DONE]</c>, and the client still has to terminate rather than hang.
+    /// </summary>
+    [Fact]
+    public async Task StreamMessage_NotFoundFrame_ReachesTheRealClientAsAnErrorEvent()
+    {
+        // Arrange & Act
+        var sseBody = await ProduceSseBodyAsync(new ChatConversationNotFoundException(MissingConversationId));
+
+        var events = await CollectClientEventsAsync(sseBody);
+
+        // Assert — one error event carrying exactly the controller's text (ChatPanel renders
+        // evt.Error verbatim), with no stray text chunk before it.
+        var single = events.ShouldHaveSingleItem();
+        single.IsError.ShouldBeTrue();
+        single.Error.ShouldBe(ConversationNotFoundText);
+    }
+
+    /// <summary>
+    /// The same round trip for an infrastructure failure: the client sees the sanitized sentence
+    /// with the reference ID, and none of the exception detail issue #156 was about.
+    /// </summary>
+    [Fact]
+    public async Task StreamMessage_SanitizedErrorFrame_ReachesTheRealClientAsAnErrorEvent()
+    {
+        // Arrange & Act
+        var thrown = CreateRealisticException("Company 7 has no API key for provider 'Claude'.");
+
+        var sseBody = await ProduceSseBodyAsync(thrown);
+        var events = await CollectClientEventsAsync(sseBody);
+
+        // Assert
+        var single = events.ShouldHaveSingleItem();
+        single.IsError.ShouldBeTrue();
+        single.Error!.ShouldContain(TestCorrelationId);
+        ShouldNotLeakExceptionDetails(single.Error, thrown);
+    }
+
+    // ─── Helpers for the endpoint-wide theories ───────────────────────────────
+
+    /// <summary>What the caller ends up with, normalized across the REST endpoints and the SSE stream.</summary>
+    /// <param name="StatusCode">HTTP status code; null for SSE, which cannot set one.</param>
+    /// <param name="RawBody">Everything the client receives — the whole JSON body or the whole stream.</param>
+    /// <param name="Message">The single user-facing sentence pulled out of that body.</param>
+    private sealed record ClientVisibleResponse(int? StatusCode, string RawBody, string? Message);
+
+    /// <summary>
+    /// Makes the endpoint's dependency fail with <paramref name="thrown"/>, calls the endpoint and
+    /// returns what the client would receive.
+    /// </summary>
+    private async Task<ClientVisibleResponse> InvokeWithFailingDependencyAsync(
+        ChatEndpoint endpoint, Exception thrown)
+    {
+        ArrangeFailure(endpoint, thrown);
+        return await InvokeAsync(BuildController(), endpoint);
+    }
+
+    /// <summary>
+    /// Dispatch table: which substituted dependency has to fail for each endpoint. One line per
+    /// endpoint by nature, and deliberately exhaustive — an unhandled enum value throws instead of
+    /// quietly producing a passing test.
+    /// </summary>
+    private void ArrangeFailure(ChatEndpoint endpoint, Exception thrown)
+    {
+        switch (endpoint)
+        {
+            case ChatEndpoint.GetConversations:
+                _chatService.GetConversationsAsync(Arg.Any<long>(), Arg.Any<CancellationToken>())
+                    .ThrowsAsync(thrown);
+                break;
+            case ChatEndpoint.GetConversation:
+                _chatService.GetConversationAsync(Arg.Any<long>(), Arg.Any<long>(), Arg.Any<CancellationToken>())
+                    .ThrowsAsync(thrown);
+                break;
+            case ChatEndpoint.SendMessage:
+                _chatService.SendMessageAsync(Arg.Any<long>(), Arg.Any<SendMessageRequest>(), Arg.Any<CancellationToken>())
+                    .ThrowsAsync(thrown);
+                break;
+            case ChatEndpoint.StreamMessage:
+                _chatService.StreamMessageAsync(Arg.Any<long>(), Arg.Any<SendMessageRequest>(), Arg.Any<CancellationToken>())
+                    .Returns(FailingStream(thrown, emitChunkFirst: false));
+                break;
+            case ChatEndpoint.DeleteConversation:
+                _chatService.DeleteConversationAsync(Arg.Any<long>(), Arg.Any<long>(), Arg.Any<CancellationToken>())
+                    .ThrowsAsync(thrown);
+                break;
+            case ChatEndpoint.GetProviders:
+                _chatService.GetAvailableProvidersAsync(Arg.Any<CancellationToken>())
+                    .ThrowsAsync(thrown);
+                break;
+            case ChatEndpoint.ExtractPdfText:
+                _pdfTextExtractor.ExtractTextAsync(Arg.Any<byte[]>(), Arg.Any<CancellationToken>())
+                    .ThrowsAsync(thrown);
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(endpoint), endpoint, "Unclassified endpoint.");
+        }
+    }
+
+    /// <summary>Calls the endpoint and normalizes its answer into a <see cref="ClientVisibleResponse"/>.</summary>
+    private static async Task<ClientVisibleResponse> InvokeAsync(ChatController controller, ChatEndpoint endpoint)
+    {
+        var request = new SendMessageRequest { Message = "Hi", ConversationId = MissingConversationId };
+
+        return endpoint switch
+        {
+            ChatEndpoint.GetConversations => FromRest((await controller.GetConversations()).Result),
+            ChatEndpoint.GetConversation => FromRest((await controller.GetConversation(MissingConversationId)).Result),
+            ChatEndpoint.SendMessage => FromRest((await controller.SendMessage(request)).Result),
+            ChatEndpoint.StreamMessage => await FromSseAsync(controller, request),
+            ChatEndpoint.DeleteConversation => FromRest(await controller.DeleteConversation(MissingConversationId)),
+            ChatEndpoint.GetProviders => FromRest((await controller.GetProviders()).Result),
+            ChatEndpoint.ExtractPdfText => FromRest(await controller.ExtractPdfText(CreatePdfUpload())),
+            _ => throw new ArgumentOutOfRangeException(nameof(endpoint), endpoint, "Unclassified endpoint.")
+        };
+    }
+
+    private static ClientVisibleResponse FromRest(IActionResult? result)
+    {
+        // NotFoundObjectResult and the plain 500 ObjectResult share this base type.
+        var objectResult = result.ShouldBeAssignableTo<ObjectResult>()!;
+        var rawBody = JsonSerializer.Serialize(objectResult.Value);
+
+        return new ClientVisibleResponse(objectResult.StatusCode, rawBody, ReadJsonProperty(rawBody, "message"));
+    }
+
+    private static async Task<ClientVisibleResponse> FromSseAsync(
+        ChatController controller, SendMessageRequest request)
+    {
+        await controller.StreamMessage(request);
+        var body = await ReadBodyAsync(controller.HttpContext);
+
+        return new ClientVisibleResponse(StatusCode: null, body, ExtractSseError(body));
+    }
+
+    private static string? ReadJsonProperty(string json, string propertyName)
+    {
+        using var document = JsonDocument.Parse(json);
+        return document.RootElement.TryGetProperty(propertyName, out var property)
+            ? property.GetString()
+            : null;
+    }
+
+    /// <summary>A minimal upload that gets past the controller's own extension and size checks.</summary>
+    private static IFormFile CreatePdfUpload()
+    {
+        var content = new MemoryStream("%PDF-1.7"u8.ToArray());
+        return new FormFile(content, baseStreamOffset: 0, length: content.Length,
+            name: "file", fileName: "invoice.pdf");
+    }
+
+    /// <summary>Runs the SSE endpoint against a failing stream and returns the raw bytes written.</summary>
+    private async Task<string> ProduceSseBodyAsync(Exception thrown)
+    {
+        _chatService
+            .StreamMessageAsync(Arg.Any<long>(), Arg.Any<SendMessageRequest>(), Arg.Any<CancellationToken>())
+            .Returns(FailingStream(thrown, emitChunkFirst: false));
+
+        var controller = BuildController();
+        await controller.StreamMessage(
+            new SendMessageRequest { Message = "Hi", ConversationId = MissingConversationId });
+
+        return await ReadBodyAsync(controller.HttpContext);
+    }
+
+    /// <summary>
+    /// Replays a server-produced SSE body through the real Blazor client service, wired the way DI
+    /// wires it (named "InvoiceAPI" HttpClient), and collects the events ChatPanel would see.
+    /// </summary>
+    private static async Task<List<ChatStreamEvent>> CollectClientEventsAsync(string sseBody)
+    {
+        var response = new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(sseBody, Encoding.UTF8, "text/event-stream")
+        };
+
+        var httpClientFactory = Substitute.For<IHttpClientFactory>();
+        httpClientFactory.CreateClient("InvoiceAPI").Returns(
+            new HttpClient(new SseHttpMessageHandler(response)) { BaseAddress = new Uri("https://test.local") });
+
+        // A plain substitute is not CustomAuthenticationStateProvider, so the auth-header step is
+        // a no-op — this test is about parsing the stream, not about authentication.
+        var service = new ChatApiService(
+            httpClientFactory,
+            NullLogger<ChatApiService>.Instance,
+            Substitute.For<AuthenticationStateProvider>());
+
+        var events = new List<ChatStreamEvent>();
+        await foreach (var streamEvent in service.StreamMessageAsync(new SendMessageRequest { Message = "Hi" }))
+        {
+            events.Add(streamEvent);
+        }
+
+        return events;
+    }
+
+    /// <summary>Returns the prepared SSE response for any request — no network involved.</summary>
+    private sealed class SseHttpMessageHandler(HttpResponseMessage response) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+            => Task.FromResult(response);
     }
 }
