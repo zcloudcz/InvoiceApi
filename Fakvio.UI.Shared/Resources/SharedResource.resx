@@ -1638,4 +1638,14 @@
   <data name="EpoNotVatPayer" xml:space="preserve"><value>Tato funkce je dostupná pouze pro plátce DPH.</value></data>
   <data name="EpoDownloadError" xml:space="preserve"><value>Chyba při generování EPO: {0}</value></data>
   <data name="EpoGoToSettings" xml:space="preserve"><value>Přejít do nastavení firmy</value></data>
+  <data name="EpoHeaderIncompleteAskAdmin" xml:space="preserve"><value>Tato pole může doplnit pouze administrátor firmy — požádejte ho o jejich vyplnění.</value></data>
+  <data name="Epo_SettingsTitle" xml:space="preserve"><value>Nastavení EPO (elektronické podání)</value></data>
+  <data name="Epo_SettingsInfoText" xml:space="preserve"><value>Hlavičkové údaje pro elektronické podání přiznání k DPH a kontrolního hlášení na portál EPO. Bez kódu finančního úřadu a územního pracoviště nelze XML soubory vygenerovat.</value></data>
+  <data name="Epo_TaxOfficeCode" xml:space="preserve"><value>Kód finančního úřadu</value></data>
+  <data name="Epo_TaxOfficeCodeHelper" xml:space="preserve"><value>Číselný kód místně příslušného finančního úřadu (c_ufo), např. 451 pro Prahu.</value></data>
+  <data name="Epo_TaxOfficeBranchCode" xml:space="preserve"><value>Kód územního pracoviště</value></data>
+  <data name="Epo_TaxOfficeBranchCodeHelper" xml:space="preserve"><value>Číselný kód územního pracoviště finančního úřadu (c_pracufo).</value></data>
+  <data name="Epo_ContactPhone" xml:space="preserve"><value>Kontaktní telefon</value></data>
+  <data name="Epo_ContactEmail" xml:space="preserve"><value>Kontaktní e-mail</value></data>
+  <data name="Epo_AuthorizedPersonName" xml:space="preserve"><value>Jméno oprávněné osoby</value></data>
 </root>

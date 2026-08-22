@@ -137,6 +137,33 @@ public class SharedResourceLocalizationTests : IDisposable
     }
 
     [Fact]
+    public void EpoSettingsKeys_ShouldBeTranslated_InBothCultures()
+    {
+        // The EPO settings section (issue #158) is user-facing, so every one of its
+        // labels must exist in both resource files — the UI is CZ/EN.
+        var epoKeys = new[]
+        {
+            "Epo_SettingsTitle", "Epo_SettingsInfoText",
+            "Epo_TaxOfficeCode", "Epo_TaxOfficeCodeHelper",
+            "Epo_TaxOfficeBranchCode", "Epo_TaxOfficeBranchCodeHelper",
+            "Epo_ContactPhone", "Epo_ContactEmail", "Epo_AuthorizedPersonName",
+            "EpoHeaderIncompleteAskAdmin"
+        };
+
+        foreach (var culture in new[] { "cs-CZ", "en-US" })
+        {
+            CultureInfo.CurrentUICulture = new CultureInfo(culture);
+
+            foreach (var key in epoKeys)
+            {
+                var result = _localizer[key];
+                result.ResourceNotFound.ShouldBeFalse(
+                    $"Key '{key}' is missing from the {culture} resources.");
+            }
+        }
+    }
+
+    [Fact]
     public void NonExistentKey_ShouldReturn_ResourceNotFound()
     {
         // Verify that a key that doesn't exist in .resx returns ResourceNotFound = true
