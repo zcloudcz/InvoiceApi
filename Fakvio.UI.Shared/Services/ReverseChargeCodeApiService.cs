@@ -46,11 +46,16 @@ public class ReverseChargeCodeApiService : ApiClientBase
     /// <summary>
     /// Fetches a single reverse charge code by its database ID.
     ///
-    /// Returns null when the code is not found (404) or on other errors.
+    /// Errors are NOT swallowed here, unlike GetAllActiveAsync: ApiClientBase.GetAsync
+    /// throws ApiException on every non-success status, 404 included. Callers that need
+    /// to tell "no such code" apart from "request failed" must catch it. Same contract as
+    /// VatRateApiService.GetByIdAsync.
+    ///
     /// Used by admin edit pages (task #49) to pre-populate the edit form.
     /// </summary>
     /// <param name="id">Database primary key (BaseEntity.Id).</param>
-    /// <returns>The matching code DTO, or null if not found.</returns>
+    /// <returns>The matching code DTO. Null only on a 204 No Content response.</returns>
+    /// <exception cref="ApiException">Thrown for any non-success status, including 404.</exception>
     public async Task<ReverseChargeCodeDto?> GetByIdAsync(long id)
     {
         return await GetAsync<ReverseChargeCodeDto>($"/api/reversechargecode/{id}");

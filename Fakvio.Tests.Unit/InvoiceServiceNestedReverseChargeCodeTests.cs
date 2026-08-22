@@ -5,11 +5,22 @@
 // ZMapper only copies scalar properties, so InvoiceService.MapToDto populates that
 // nested object by hand from the eagerly-loaded navigation property.
 //
-// That hand-written pairing is the riskiest code in the change: if it ever attaches
-// a code to the wrong line, the invoice silently reports the wrong predmet plneni
-// in the VAT control statement (kontrolni hlaseni). These tests pin the behaviour at
-// the service level — the ZMapper-only tests in InvoiceItemMappingTests cannot, because
-// ZMapper never touches the navigation property at all.
+// That hand-written population is what these tests pin, at the service level — the
+// ZMapper-only tests in InvoiceItemMappingTests cannot, because ZMapper never touches
+// the navigation property at all. Concretely, every test below fails if the eager load
+// is missing from its read path, if the population block is removed, or if a nested code
+// carries values other than the ones stored on that line.
+//
+// What these tests deliberately do NOT claim: that they discriminate the Id-keyed pairing
+// in MapToDto from the positional pairing it replaced. Inside MapToDto the two are
+// equivalent for every reachable input, because dto.InvoiceItem is a 1:1, order-preserving
+// projection of the very same entity.InvoiceItem enumeration (generated ZMapper:
+// source.InvoiceItem?.Select(item => item.ToInvoiceItemDto()).ToList()), and MapToDto
+// never mutates either collection in between. No in-process test entering through
+// MapToDto can therefore tell the two implementations apart. The Id-keyed version is kept
+// because it removes that hidden coupling, not because a test proves it wrong to omit.
+// The coupling itself is pinned separately, in
+// InvoiceItemMappingTests.ToInvoiceDto_ProjectsItemCollection_OneToOneInSourceOrder.
 // ============================================================================
 
 using Fakvio.Application.Service;
@@ -26,9 +37,9 @@ using Shouldly;
 namespace Fakvio.Tests.Unit;
 
 /// <summary>
-/// Verifies that InvoiceService read paths populate InvoiceItemDto.ReverseChargeCode
-/// and that every line item receives the code belonging to its own row — not the code
-/// of a neighbouring line.
+/// Verifies that every InvoiceService read path eagerly loads the reverse charge code and
+/// populates InvoiceItemDto.ReverseChargeCode, and that the values on each line describe
+/// the code referenced by that same line's ReverseChargeCodeId.
 /// </summary>
 public class InvoiceServiceNestedReverseChargeCodeTests : IDisposable
 {
@@ -41,8 +52,8 @@ public class InvoiceServiceNestedReverseChargeCodeTests : IDisposable
     private const long CurrencyId = 1;
     private const long VatRateId = 1;
 
-    // Two distinct MFCR codes — a single code cannot expose a mis-pairing bug,
-    // because every line would look correct no matter which row it was taken from.
+    // Two distinct MFCR codes. With a single code every line would look correct no matter
+    // which row its code came from, so the per-line assertions would carry no information.
     private const long ConstructionCodeId = 10;   // "11" / §92d
     private const long GoldCodeId = 20;           // "1"  / §92b
 
@@ -52,13 +63,20 @@ public class InvoiceServiceNestedReverseChargeCodeTests : IDisposable
     private const long StandardOnlyInvoiceId = 300;
 
     // Line item ids. Ids and OrderIndex values are deliberately inverted on the mixed
-    // invoice so that "position in the list" and "primary key" never coincide.
+    // invoice, so the query's OrderIndex ordering hands the lines back in an order that does
+    // not match ascending primary key. The assertions look each line up by Id rather than by
+    // position and therefore stay valid whatever order the rows arrive in.
     private const long MixedItemGoldId = 1001;         // OrderIndex 3
     private const long MixedItemStandardId = 1002;     // OrderIndex 2
     private const long MixedItemConstructionId = 1003; // OrderIndex 1
 
     private const long SharedIndexItemGoldId = 2001;
     private const long SharedIndexItemConstructionId = 2002;
+
+    // Credit note issued against the mixed invoice — exercises GetCreditNotesForInvoiceAsync.
+    private const long CreditNoteInvoiceId = 400;
+    private const long CreditNoteItemConstructionId = 4001;
+    private const long CreditNoteItemGoldId = 4002;
 
     public InvoiceServiceNestedReverseChargeCodeTests()
     {
@@ -169,10 +187,9 @@ public class InvoiceServiceNestedReverseChargeCodeTests : IDisposable
             ]
         });
 
-        // Desynchronisation scenario: both lines share the same OrderIndex. OrderIndex carries
-        // no uniqueness constraint, so ordering by it establishes no total order over these two
-        // rows and their materialisation order is not guaranteed. Pairing by primary key is
-        // what makes the outcome deterministic anyway.
+        // Both lines share one OrderIndex. OrderIndex carries no uniqueness constraint, so
+        // ordering by it establishes no total order over these two rows — whichever order the
+        // provider materialises them in, each line must still come back with its own code.
         _context.Invoice.Add(new Invoice
         {
             Id = SameOrderIndexInvoiceId,
@@ -238,8 +255,8 @@ public class InvoiceServiceNestedReverseChargeCodeTests : IDisposable
 
     /// <summary>
     /// Three lines, two different codes, Id order inverted against OrderIndex order.
-    /// Every returned line must carry the nested code matching its own ReverseChargeCodeId.
-    /// This is the assertion a mis-paired mapping cannot satisfy.
+    /// Every returned line must carry the fully populated nested code that matches its own
+    /// ReverseChargeCodeId, and the Standard line in between must stay empty.
     /// </summary>
     [Fact]
     public async Task GetInvoiceByIdAsync_MixedRegimesAndTwoCodes_EachItemCarriesItsOwnCode()
@@ -272,8 +289,9 @@ public class InvoiceServiceNestedReverseChargeCodeTests : IDisposable
 
     /// <summary>
     /// The same invariant stated as a rule rather than per item: whenever the nested object is
-    /// present it describes exactly the FK stored on that same line. Any pairing bug breaks
-    /// this regardless of how the two collections happen to be ordered.
+    /// present it describes exactly the FK stored on that same line. Note that this one passes
+    /// vacuously when no nested code is populated at all — it guards the content of a nested
+    /// code, not its presence; the tests around it guard presence.
     /// </summary>
     [Fact]
     public async Task GetInvoiceByIdAsync_NestedCodeIdAlwaysMatchesItsOwnForeignKey()
@@ -295,9 +313,9 @@ public class InvoiceServiceNestedReverseChargeCodeTests : IDisposable
     }
 
     /// <summary>
-    /// Desynchronisation case: two PDP lines share one OrderIndex, so nothing orders them
-    /// relative to each other. Pairing by Id keeps the result deterministic; pairing by list
-    /// position would depend on materialisation order and could swap the two codes.
+    /// Two PDP lines share one OrderIndex, so the query's ORDER BY imposes no order between
+    /// them. Whatever order they materialise in, each line must come back with its own code —
+    /// the result must not depend on the ordering of an ambiguous sort key.
     /// </summary>
     [Fact]
     public async Task GetInvoiceByIdAsync_ItemsShareOrderIndex_CodesStillPairedByItemId()
@@ -369,5 +387,52 @@ public class InvoiceServiceNestedReverseChargeCodeTests : IDisposable
 
         dto.ShouldNotBeNull();
         dto.InvoiceItem.Single(i => i.Id == MixedItemGoldId).ReverseChargeCode!.NameCs.ShouldBe("Zlato");
+    }
+
+    /// <summary>
+    /// The credit-note lookup is the fifth and last read path through MapToDto and it builds
+    /// its own query. A missing ThenInclude here would leave every PDP line on a credit note
+    /// without its code, and none of the four tests above would notice.
+    /// </summary>
+    [Fact]
+    public async Task GetCreditNotesForInvoiceAsync_PopulatesNestedCodeOnEveryPdpLine()
+    {
+        SeedCreditNoteForMixedInvoice();
+
+        var creditNotes = await _service.GetCreditNotesForInvoiceAsync(MixedInvoiceId);
+
+        var creditNote = creditNotes.ShouldHaveSingleItem();
+        creditNote.InvoiceItem.Single(i => i.Id == CreditNoteItemConstructionId)
+            .ReverseChargeCode!.Code.ShouldBe("11");
+        creditNote.InvoiceItem.Single(i => i.Id == CreditNoteItemGoldId)
+            .ReverseChargeCode!.Code.ShouldBe("1");
+    }
+
+    /// <summary>
+    /// Adds a credit note against the mixed invoice carrying the same two PDP codes.
+    /// Seeded on demand rather than in SeedTestData so the other read paths keep working
+    /// against exactly the invoices they were written for.
+    /// </summary>
+    private void SeedCreditNoteForMixedInvoice()
+    {
+        _context.Invoice.Add(new Invoice
+        {
+            Id = CreditNoteInvoiceId,
+            DocumentNumber = "CN-MIXED-046",
+            ClientId = ClientId,
+            IssuerId = IssuerId,
+            CurrencyId = CurrencyId,
+            Status = EInvoiceStatus.Draft,
+            DocumentType = EDocumentType.CreditNote,
+            OriginalInvoiceId = MixedInvoiceId,
+            IssueDate = DateTime.UtcNow,
+            InvoiceItem =
+            [
+                BuildItem(CreditNoteItemConstructionId, orderIndex: 1, "Stavební práce §92d", EVatRegime.ReverseCharge, ConstructionCodeId),
+                BuildItem(CreditNoteItemGoldId, orderIndex: 2, "Zlato §92b", EVatRegime.ReverseCharge, GoldCodeId)
+            ]
+        });
+
+        _context.SaveChanges();
     }
 }

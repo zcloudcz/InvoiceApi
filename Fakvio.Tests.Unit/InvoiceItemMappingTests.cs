@@ -221,6 +221,49 @@ public class InvoiceItemMappingTests
         dto.VatRegime.ShouldBeNull();
     }
 
+    // ── Invoice → InvoiceDto: shape of the mapped item collection ─────────────
+
+    /// <summary>
+    /// Pins the ZMapper contract that InvoiceService.MapToDto relies on: the generated
+    /// ToInvoiceDto() projects entity.InvoiceItem into dto.InvoiceItem as a 1:1,
+    /// order-preserving Select over a single enumeration.
+    ///
+    /// Why this test exists: MapToDto pairs each DTO line with its entity line by primary
+    /// key. That pairing is only *provably* equivalent to the cheaper "same index" pairing
+    /// while this invariant holds. If a future ZMapper version ever filtered, reordered or
+    /// deduplicated the collection, index-based pairing would silently attach a reverse
+    /// charge code to the wrong line — this test is the tripwire for that regression.
+    ///
+    /// The item ids are deliberately in an order that no sort would produce, so a mapper
+    /// that reordered by id or by OrderIndex would fail here.
+    /// </summary>
+    [Fact]
+    public void ToInvoiceDto_ProjectsItemCollection_OneToOneInSourceOrder()
+    {
+        var entity = BuildInvoiceWithItems(itemIds: [30, 10, 20]);
+
+        var dto = entity.ToInvoiceDto();
+
+        dto.InvoiceItem.Select(item => item.Id).ShouldBe(
+            entity.InvoiceItem.Select(item => item.Id),
+            "ToInvoiceDto must preserve both the count and the order of entity.InvoiceItem");
+    }
+
+    /// <summary>
+    /// The same invariant for the degenerate input: an invoice with no lines maps to an
+    /// empty (not null) DTO collection, which is what MapToDto dereferences before it
+    /// decides whether any nested code has to be populated.
+    /// </summary>
+    [Fact]
+    public void ToInvoiceDto_WithoutItems_ProducesEmptyItemCollection()
+    {
+        var entity = BuildInvoiceWithItems(itemIds: []);
+
+        var dto = entity.ToInvoiceDto();
+
+        dto.InvoiceItem.ShouldBeEmpty();
+    }
+
     // ── Helper ────────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -243,5 +286,25 @@ public class InvoiceItemMappingTests
             TotalWithVat = 121m,
             VatRegime = regime,
             ReverseChargeCodeId = codeId
+        };
+
+    /// <summary>
+    /// Builds an Invoice carrying one line per supplied id, in exactly that order.
+    /// Only identity and ordering matter here, so every line is otherwise identical.
+    /// </summary>
+    private static Invoice BuildInvoiceWithItems(long[] itemIds) =>
+        new Invoice
+        {
+            Id = 100,
+            DocumentNumber = "INV-ZMAPPER-046",
+            InvoiceItem = itemIds
+                .Select((id, index) =>
+                {
+                    var item = BuildItem(EVatRegime.Standard, null);
+                    item.Id = id;
+                    item.OrderIndex = index + 1;
+                    return item;
+                })
+                .ToList()
         };
 }

@@ -58,11 +58,13 @@ public class InvoiceService : IInvoiceService
         // Populate the nested ReverseChargeCode on every line item. ZMapper copies scalar
         // properties only, so the navigation object has to be mapped by hand here.
         //
-        // Items are paired by Id, never by list position. dto.InvoiceItem and
-        // entity.InvoiceItem are two independent collections, and OrderIndex — which drives
-        // the query ordering — is neither unique nor a key, so equal positions do not
-        // guarantee the same line. Pairing by primary key cannot attach a code to the wrong
-        // line even when the two collections are ordered differently.
+        // Items are paired by Id, not by list position. Pairing by position would also be
+        // correct today — the generated ZMapper builds dto.InvoiceItem as
+        // source.InvoiceItem.Select(...).ToList(), a 1:1 order-preserving projection of the
+        // same collection — but that makes correctness here depend on a detail of generated
+        // code that nothing in this file controls. Keying on the primary key removes the
+        // coupling at identical O(n) cost. Note the guarantee is only as strong as the
+        // pairing itself: no test can distinguish the two variants from outside MapToDto.
         //
         // The Any() pre-check keeps the common case (an invoice with no reverse-charge line)
         // free of the dictionary allocation — it is a cheap O(n) scan that allocates nothing.
@@ -77,8 +79,12 @@ public class InvoiceService : IInvoiceService
                     continue;
                 }
 
-                // Unknown Id cannot happen for a DB-loaded graph, but TryGetValue keeps the
-                // mapper total instead of throwing if a caller ever hands over a partial DTO.
+                // Unknown Id cannot happen for a DB-loaded graph; TryGetValue just avoids a
+                // throw if one ever did. It is not a general robustness guarantee — the
+                // ToDictionary above already requires the ids to be unique and would throw
+                // first on a graph of unsaved items that all still sit at Id == 0. Every
+                // caller of MapToDto reads through AsNoTracking with real primary keys, so
+                // that case is unreachable rather than handled.
                 if (dtoItemsById.TryGetValue(entityItem.Id, out var itemDto))
                 {
                     itemDto.ReverseChargeCode = entityItem.ReverseChargeCode.ToReverseChargeCodeDto();

@@ -20,6 +20,7 @@ namespace Fakvio.Tests.Integration;
 ///   - Authenticated + impersonating SysAdmin → 200 OK with seeded active codes.
 ///   - Inactive codes are NOT returned by the list endpoint.
 ///   - GET /{id} returns the correct code when it exists.
+///   - GET /{id} returns inactive codes too (DEVGUIDE §4.4.1) — unlike the list endpoint.
 ///   - GET /{id} returns 404 when the ID is not found.
 ///
 /// ReverseChargeCode lives in the TenantDbContext schema, so SysAdmin must
@@ -153,6 +154,25 @@ public class ReverseChargeCodeControllerTests : IClassFixture<FakvioFactory>
         code.Code.ShouldBe("5");
         code.NameCs.ShouldBe("Mobilní telefony");
         code.ParagraphRef.ShouldBe("§92c");
+    }
+
+    /// <summary>
+    /// The list endpoint hides inactive codes, but /{id} must still serve them: an invoice
+    /// issued while a code was valid has to keep rendering that code after MFČR retires it.
+    /// DEVGUIDE §4.4.1 documents this asymmetry — this test is what holds it in place.
+    /// </summary>
+    [Fact]
+    public async Task GetById_ReturnsInactiveCode_SoHistoricalInvoicesStillRender()
+    {
+        SeedAll();
+        var client = await CreateImpersonatingClientAsync();
+
+        var code = await client.GetFromJsonAsync<ReverseChargeCodeDto>(
+            $"/api/reversechargecode/{InactiveCodeId}");
+
+        code.ShouldNotBeNull("GET /{id} must not filter on IsActive.");
+        code.Id.ShouldBe(InactiveCodeId);
+        code.IsActive.ShouldBeFalse("Code 2003 is the seeded inactive one.");
     }
 
     [Fact]

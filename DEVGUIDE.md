@@ -485,6 +485,8 @@ uživatel, ne SysAdmin — dropdown v editoru položek ho potřebuje):
 Tenant-scoped (viz §3.3), read-only. Admin CRUD je samostatný task #49.
 Klient: `Fakvio.UI.Shared/Services/ReverseChargeCodeApiService.cs` (dědí `ApiClientBase`, list metoda
 polyká `ApiException` a vrací prázdný seznam — stejný kontrakt jako `VatRateApiService`).
+Detailní metoda `GetByIdAsync` naopak **`ApiException` propouští, včetně 404** — `ApiClientBase.GetAsync`
+hází na každém non-success statusu a `null` vrací jen při 204 No Content.
 
 **Nested DTO na položce faktury** — `InvoiceItemDto.ReverseChargeCode : ReverseChargeCodeDto?`.
 Read-only, plní se **jen v response**; request ho ignoruje (zápis jde přes `ReverseChargeCodeId`).
@@ -494,12 +496,28 @@ Mapování má dvě podmínky, obě je nutné dodržet u **každé nové read ce
 1. **Eager load**: dotaz musí mít `.Include(i => i.InvoiceItem…).ThenInclude(item => item.ReverseChargeCode)`.
    FK je nullable → LEFT JOIN → Standard položky vrátí `null` a nic nespadne.
 2. **Ruční doplnění v `InvoiceService.MapToDto`**: ZMapper kopíruje jen skalární properties, navigační
-   objekt si musí service naplnit sám. Páruje se **podle `Id` položky, nikdy podle pozice v seznamu** —
-   `OrderIndex` není unikátní ani klíč, takže stejný index v obou kolekcích nezaručuje stejný řádek.
-   Špatné spárování by tiše poslalo cizí „předmět plnění“ do kontrolního hlášení.
+   objekt si musí service naplnit sám. Páruje se **podle `Id` položky, ne podle pozice v seznamu**.
+   Pozice by dnes fungovala taky: vygenerovaný ZMapper staví `dto.InvoiceItem` jako
+   `source.InvoiceItem.Select(…).ToList()`, tedy 1:1 projekci téže kolekce se zachovaným pořadím,
+   a `MapToDto` mezi tím ani jednu kolekci nemění. Párování podle klíče jen odstraňuje závislost na
+   tomhle detailu generovaného kódu, za stejné O(n).
 
-Regresní pojistka: `Fakvio.Tests.Unit/InvoiceServiceNestedReverseChargeCodeTests.cs` (faktura se třemi
-položkami, dvěma různými kódy a prohozeným pořadím `Id` vs. `OrderIndex`).
+   **Testy ten rozdíl nerozliší** a nikdo by to od nich čekat neměl: když se pozicová varianta vrátí
+   zpět, celá sada projde. Žádný dosažitelný vstup ty dvě kolekce nerozsynchronizuje, takže zevnitř
+   `MapToDto` jsou obě varianty pozorovatelně shodné. Pokud někdy přibude read cesta, která
+   `dto.InvoiceItem` sestaví jinak než přes `entity.ToInvoiceDto()`, tenhle předpoklad padne — pak
+   teprve začne být párování podle `Id` testovatelný rozdíl, ne jen hygiena.
+
+Regresní pojistky:
+
+- `Fakvio.Tests.Unit/InvoiceServiceNestedReverseChargeCodeTests.cs` — faktura se třemi položkami,
+  dvěma různými kódy a prohozeným pořadím `Id` vs. `OrderIndex`, protáhnutá **všemi pěti read
+  cestami** přes `MapToDto` (`GetInvoiceById`, `GetAllInvoices`, `GetInvoicesPaged`,
+  `GetInvoiceByDocumentNumber`, `GetCreditNotesForInvoice`). Chytá chybějící eager load i vypadlé
+  doplnění navigačního objektu.
+- `Fakvio.Tests.Unit/InvoiceItemMappingTests.ToInvoiceDto_ProjectsItemCollection_OneToOneInSourceOrder`
+  — hlídá právě tu vlastnost ZMapperu, o kterou se pozicové párování opíralo. Kdyby ji budoucí verze
+  generátoru ztratila, spadne tenhle test.
 
 ### 4.5 Payment matching (IMAP → invoice mark paid)
 
