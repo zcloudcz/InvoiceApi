@@ -457,6 +457,11 @@ okamžik. Aplikace se pokus několikrát zopakuje sama, a když ani pak neuspěj
 dokladu skončí chybou. Tady není nic špatně nastaveného: hláška to výslovně říká a stačí
 akci zopakovat.
 
+**Neúspěšný pokus po sobě nic nenechá.** Doklad se ukládá až ve chvíli, kdy proběhne
+všechno — přidělení čísla i kontroly. Když vytvoření skončí chybou, v seznamu faktur
+nezůstane žádný rozpracovaný záznam a opakovaný pokus projde se stejnými údaji, včetně
+ručně zadaného variabilního symbolu.
+
 ---
 
 ## 10. Nastavení firmy

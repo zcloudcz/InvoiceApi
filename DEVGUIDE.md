@@ -1411,6 +1411,11 @@ pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. P
 ### EF Core Identity Map caching
 - `FindAsync` bez `Include` cachuje entitu v identity mapu. Pozdější query s `Include` vrátí cached instanci s `null` navigation properties (issue #104). Fix: `AsNoTracking()` na read-only queries, nebo explicitní `Include` na `FindAsync`.
 
+### Sdílený DbContext mezi službami (issue #181)
+- Scoped služby si v rámci requestu **sdílejí jednu instanci `TenantDbContext`**. `NumberSequenceService` na ní volá vlastní `SaveChangesAsync()` (uloží zvýšený čítač) — takže **cokoliv, co má volající v change trackeru rozpracované, se uloží s ním**. Přesně takhle vznikal osiřelý řádek `DocumentNumber = "DRAFT"` v `CreateInvoiceAsync`.
+- Pravidlo: entitu přidej do kontextu (`Add`) **až když všechno, co může vyhodit výjimku, proběhlo**. Jeden zápis na konci metody dá „všechno nebo nic" bez explicitní transakce — a bez úklidové větve, která může sama selhat.
+- Unit test s mocknutou závislostí tuhle třídu vad **strukturálně nevidí** (mock nikdy neuloží). Patří to do testu proti reálné DB s reálnou závislostí — vzor `Fakvio.Tests.Integration/InvoiceCreateRollbackDatabaseTests.cs`.
+
 ### Non-idempotent seed migrace
 - `migrationBuilder.InsertData` s hardcoded `Id` selže na `PK duplicate` pokud data už existují (issue #97/#109). Vždy použít raw SQL `INSERT ... ON CONFLICT (Id) DO NOTHING` nebo `DELETE + InsertData` guard.
 

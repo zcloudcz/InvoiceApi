@@ -291,6 +291,11 @@ public class InvoiceService : IInvoiceService
         // (flagging a preview digit string that is about to be discarded) or silently
         // skip a real collision — neither is correct. The post-generation duplicate
         // check further down handles the auto-derived value correctly.
+        //
+        // Since issue #181 the post-generation check would catch this case on its own
+        // (nothing is persisted before it). This early check is kept as a fail-fast: it
+        // rejects a doomed create BEFORE a number is drawn from the series, so a duplicate
+        // VS does not burn a document number and leave a gap in the accounting sequence.
         if (createDto.VariableSymbolIsManualOverride && !string.IsNullOrEmpty(createDto.VariableSymbol))
         {
             var preDuplicateExists = await _context.Invoice
@@ -431,8 +436,26 @@ public class InvoiceService : IInvoiceService
         invoice.TotalVat = totalVat;
         invoice.TotalWithVat = totalBeforeVat + totalVat;
 
-        _context.Invoice.Add(invoice);
-        await _context.SaveChangesAsync(cancellationToken);
+        // ── No invoice row is written until every remaining step has succeeded (issue #181) ──
+        //
+        // Document numbering and the duplicate-VS guard below can both fail. They used to run
+        // AFTER a first SaveChangesAsync, so a failure left a half-created row behind with
+        // DocumentNumber = "DRAFT". The unique index ignores such a row (it is filtered by
+        // <> 'DRAFT'), but the row still carries the VariableSymbol the caller supplied.
+        // A manually entered VS was therefore "taken" by a document that was never created,
+        // and the retry the error message asks the user to perform was rejected as a duplicate.
+        //
+        // The fix is ordering, not a transaction: keep the entity out of the change tracker
+        // until everything that can throw has passed. An exception then simply means
+        // SaveChangesAsync is never reached, and the invoice is written all-or-nothing by a
+        // single statement — no explicit transaction, no cleanup path that can itself fail.
+        // (The sequence counter is a separate, deliberate write: a drawn number is spent even
+        // if the create later fails, exactly as before this change.)
+        //
+        // IMPORTANT: the entity must stay UNTRACKED for the whole block below.
+        // INumberSequenceService shares this DbContext and saves the sequence counter itself,
+        // so adding the invoice any earlier would flush it as a side effect of that save and
+        // re-create exactly the orphan this ordering exists to prevent.
 
         // Generate the document number immediately at creation (not at completion)
         // so the user sees the real number straight away.
@@ -472,26 +495,30 @@ public class InvoiceService : IInvoiceService
         // Check for duplicate Variable Symbol (VS) before saving.
         // Czech banking requires unique VS per invoice — duplicate VS would cause
         // payment matching issues (bank can't tell which invoice was paid).
+        //
+        // No "i.Id != invoice.Id" self-exclusion here: the invoice does not exist in the
+        // database yet (see the ordering note above), so there is no own row to exclude.
         if (!string.IsNullOrEmpty(invoice.VariableSymbol))
         {
             var duplicateExists = await _context.Invoice
                 .AsNoTracking()
-                .AnyAsync(i => i.Id != invoice.Id
-                    && i.VariableSymbol == invoice.VariableSymbol
+                .AnyAsync(i => i.VariableSymbol == invoice.VariableSymbol
                     && i.Status != EInvoiceStatus.Deleted,
                     cancellationToken);
 
             if (duplicateExists)
             {
                 _logger.LogWarning(
-                    "Duplicate VariableSymbol '{VS}' detected for invoice ID {Id}",
-                    invoice.VariableSymbol, invoice.Id);
+                    "Duplicate VariableSymbol '{VS}' rejected for a new {DocumentType}",
+                    invoice.VariableSymbol, invoice.DocumentType);
                 throw new InvalidOperationException(
                     $"An invoice with Variable Symbol '{invoice.VariableSymbol}' already exists. " +
                     "Each invoice must have a unique Variable Symbol for payment tracking.");
             }
         }
 
+        // The single write of this method — reached only when nothing above threw.
+        _context.Invoice.Add(invoice);
         await _context.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation("Created {DocumentType} with ID {Id}, DocumentNumber {DocumentNumber}",

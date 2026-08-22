@@ -459,11 +459,11 @@ public class GenerateDocumentNumberTests : IDisposable
             customMessage: "The error must tell the user where to configure the sequence");
         ex.InnerException.ShouldBe(sequenceError);
 
-        // Assert — no document ever gets the old hardcoded fallback number
-        var numbers = await _context.Invoice.Select(i => i.DocumentNumber).ToListAsync();
-        numbers.Count.ShouldBe(1, customMessage: "The draft row is saved before numbering, so it must exist");
-        numbers.ShouldAllBe(n => n == "DRAFT",
-            "No invoice may receive a fallback number that ignores the configured series");
+        // Assert — no invoice may receive a fallback number that ignores the configured
+        // series. Since issue #181 the failed attempt is not persisted at all, which is the
+        // strongest form of that guarantee: there is no row left to carry a wrong number.
+        var invoices = await _context.Invoice.ToListAsync();
+        invoices.ShouldBeEmpty();
     }
 
     /// <summary>
@@ -492,9 +492,9 @@ public class GenerateDocumentNumberTests : IDisposable
         ex.Message.ShouldNotContain("INV2026",
             customMessage: "The error must not hand out a substitute document number");
 
-        var numbers = await _context.Invoice.Select(i => i.DocumentNumber).ToListAsync();
-        numbers.Count.ShouldBe(1, customMessage: "The draft row is saved before numbering, so it must exist");
-        numbers.ShouldAllBe(n => n == "DRAFT");
+        // Issue #181 — the failed attempt leaves no row behind.
+        var invoices = await _context.Invoice.ToListAsync();
+        invoices.ShouldBeEmpty();
     }
 
     /// <summary>
@@ -539,9 +539,10 @@ public class GenerateDocumentNumberTests : IDisposable
         ex.Message.ShouldNotContain("/number-sequences",
             customMessage: "A transient collision is not a configuration problem");
 
-        var numbers = await _context.Invoice.Select(i => i.DocumentNumber).ToListAsync();
-        numbers.Count.ShouldBe(1);
-        numbers.ShouldAllBe(n => n == "DRAFT");
+        // Issue #181 — "repeat the action" is only honest advice when the failed attempt
+        // left nothing behind that the repeated attempt could collide with.
+        var invoices = await _context.Invoice.ToListAsync();
+        invoices.ShouldBeEmpty();
     }
 
     /// <summary>
