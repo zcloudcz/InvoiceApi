@@ -58,6 +58,13 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Změny pro vývojáře
 
+- **#230** — AI asistent v chatu dosud odpovídal bez ponětí, kde uživatel zrovna je:
+  neznal dnešní datum, aktuální stránku ani otevřený doklad, a o nedokončeném nastavení
+  firmy (chybějící sídlo, číselné řady, šablony) nevěděl vůbec. Prompt teď dostává
+  poslední blok se situačním kontextem — datum, aktuální stránka, otevřený záznam a
+  seznam blokujících mezer v nastavení firmy s odkazem, kde je doplnit — takže asistent
+  může reagovat na to, co uživatel právě dělá, místo obecné odpovědi naslepo.
+  (PR #265, `640f7c6`)
 - **#206** — Vystavení faktury nebo dobropisu (ruční i hromadné, i automatické z
   šablony) teď nejdřív ověří, že má vystavitel vyplněné povinné údaje (adresa, IČO,
   bankovní účet, aktivní číselné řady). Když ne, vystavení se odmítne se srozumitelnou
