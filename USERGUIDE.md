@@ -28,6 +28,7 @@
 17. [Notifikace](#17-notifikace)
 18. [Příjem faktur emailem](#18-příjem-faktur-emailem)
 19. [Nastavení hesla a první přihlášení](#19-nastavení-hesla-a-první-přihlášení)
+20. [Napojení vlastního AI klienta (MCP server)](#20-napojení-vlastního-ai-klienta-mcp-server)
 
 ---
 
@@ -943,3 +944,54 @@ Výsledek uvidíte přímo na stránce:
 
 Oranžové hlášení nikdy neznamená, že musíte zakládat účet znovu — heslo zůstává
 platné a po dokončení přípravy se přihlásíte stejnými údaji.
+
+---
+
+## 20. Napojení vlastního AI klienta (MCP server)
+
+Kromě vestavěného [AI asistenta](#13-ai-asistent) umí Fakvio pracovat i s AI
+aplikací, kterou už používáte na svém počítači (např. Claude Desktop nebo
+Claude Code). Napojení zajišťuje **MCP server** — malý program, který běží
+u vás lokálně a překládá požadavky AI na volání Fakvia.
+
+**V čem se to liší od AI asistenta v aplikaci:**
+
+| | AI asistent v aplikaci | MCP server |
+|---|---|---|
+| Kde se ovládá | Panel v pravém horním rohu Fakvia | Vaše AI aplikace na počítači |
+| Instalace | Žádná | Nutná (program + konfigurační soubor) |
+| Rozsah akcí | Vyhledávání a přehledy | 36 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové výpočty, šablony |
+
+### Co je potřeba
+
+1. **Nainstalovaný MCP server** na vašem počítači. Instalaci a nastavení
+   provádí správce systému — technický postup je v souboru
+   `Fakvio.McpServer/README.md`.
+2. **Přístupový token** (JWT) vašeho účtu. Token zastupuje vaše přihlášení,
+   proto má AI přesně stejná oprávnění, jaká máte vy — nic víc.
+3. **Zápis do konfigurace AI aplikace** — vzor je v souboru
+   `.mcp.json.sample`; do něj se doplní adresa Fakvia a token.
+
+### Co s tím AI zvládne
+
+| Oblast | Příklady |
+|--------|---------|
+| Vydané faktury | Vypsat, najít podle čísla, vystavit novou, dokončit, označit jako uhrazenou, odeslat emailem, stáhnout PDF nebo ISDOC, smazat koncept |
+| Klienti | Vypsat, zobrazit detail, založit, upravit, dohledat firmu v ARES |
+| Přijaté faktury | Vypsat, zobrazit, zadat novou, schválit, označit jako uhrazenou, smazat |
+| Přehledy | Dashboard, faktury po splatnosti, faktury klienta, faktury za období, přehled DPH |
+| Daně | Odhad daně, porovnání daňových režimů, roční příjmy, zálohy na pojistné |
+| Šablony | Vypsat, zobrazit, vystavit fakturu ze šablony |
+
+Příklady zadání: „Vystav fakturu pro klienta XYZ na 15 000 Kč za konzultace“,
+„Stáhni mi PDF faktury FAK-2026-001“, „Kolik mám letos zaplatit na zálohách?“
+
+### Bezpečnost — čtěte, než token někam vložíte
+
+- Token **je uložen v konfiguračním souboru v čitelné podobě**. Kdo se dostane
+  k souboru, dostane se k vašemu účtu. Nesdílejte ho a neposílejte emailem.
+- Token **platí 24 hodin**. Po vypršení začne AI hlásit chyby — stačí vložit nový.
+- AI může data i **měnit a mazat** (vystavit fakturu, smazat koncept). Než akci
+  potvrdíte, přečtěte si, co se chystá udělat.
+- Napojení nefunguje přes internetový prohlížeč — server běží na vašem
+  počítači a připojuje se na stejné Fakvio, do kterého se hlásíte v UI.

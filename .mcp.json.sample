@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "fakvio": {
+      "command": "fakvio-mcp",
+      "args": [],
+      "env": {
+        "FAKVIO_API_URL": "https://localhost:7047",
+        "FAKVIO_API_TOKEN": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.PASTE-YOUR-JWT-HERE"
+      }
+    }
+  }
+}
