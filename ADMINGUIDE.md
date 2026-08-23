@@ -503,6 +503,36 @@ včetně TOTP). Kompletní runbook včetně blokující pre-flight kontroly viz
 klíčů projde zeleně i ve chvíli, kdy se žádný uživatel s 2FA nepřihlásí — stav 2FA se
 musí ověřit zvlášť.
 
+### reCAPTCHA v3 (ochrana anonymních endpointů)
+
+Chrání přihlášení, registraci a anonymní ARES lookup na registračním formuláři. Jiná ochrana proti robotům v aplikaci **není**.
+
+Konfigurace v `appsettings.json` nebo env proměnných (Azure App Settings používá dvojité podtržítko, např. `Recaptcha__SecretKey`). Přes UI nastavit nelze — jde o secret.
+
+| Klíč | Výchozí | Popis |
+|------|---------|-------|
+| `Recaptcha:Enabled` | `true` | `false` = ověřování se úplně přeskočí. Použijte jen tam, kde záměrně běžíte bez reCAPTCHA. |
+| `Recaptcha:SiteKey` | prázdný | Veřejný klíč pro frontend (`Fakvio.BlazorUI/wwwroot/appsettings.json`). |
+| `Recaptcha:SecretKey` | prázdný | Tajný klíč pro ověření na serveru. Získáte na https://www.google.com/recaptcha/admin (Score based v3). |
+| `Recaptcha:AllowedHostnames` | prázdné pole | Seznam hostů, na kterých se site key používá (např. `fakvio.cz`). Prázdné = kontrola hostname se přeskočí. |
+
+**DŮLEŽITÉ — brána je „fail closed"** (od issue #200): pokud je `Enabled=true` a `SecretKey` chybí, **přihlášení i registrace vracejí chybu 400**. Totéž při výpadku Googlu. Dřívější chování bylo opačné (při jakémkoli problému se požadavek propustil), což znamenalo, že zapomenutý klíč tiše vypnul ochranu.
+
+**Nasazení — jsou jen dvě funkční varianty.** Samotné doplnění `Recaptcha__SecretKey` mezi ně nepatří, to přihlášení naopak rozbije:
+
+| Varianta | Co nastavit | Výsledek |
+|----------|-------------|----------|
+| **A — brána vypnutá** | `Recaptcha__Enabled=false` v App Settings API **i** Function Appu | Přihlášení, registrace i ARES fungují, ochrana proti robotům žádná. |
+| **B — brána zapnutá** | (1) `Recaptcha__SecretKey` v App Settings API **i** Function Appu **a zároveň** (2) veřejný `SiteKey` zapsaný do `Fakvio.BlazorUI/wwwroot/appsettings.json` + nový deploy GitHub Pages | Ochrana je aktivní. |
+
+Krok (2) nejde nahradit App Settings: WASM klient se konfiguruje ze statického souboru ve `wwwroot`, který workflow `blazorui-deploy.yml` publikuje beze změny — žádná substituce hodnot při deployi neexistuje. Když je `SiteKey` prázdný, stránka si od Googlu token vůbec nevyžádá, hlavička `X-Captcha-Token` nedorazí na server a fail-closed brána odpoví **400 na přihlášení, registraci i ARES lookup — všem uživatelům**.
+
+`SiteKey` je veřejný klíč (přečte ho kdokoli ze zdroje stránky), takže jeho uložení do repozitáře není únik. Tajný je pouze `SecretKey` a ten do `wwwroot` **nikdy** nepatří.
+
+Pozn.: `Recaptcha__SiteKey` v Azure App Settings nedělá nic — server SiteKey nečte, potřebuje ho jen klient.
+
+**Diagnostika:** v logu (`/logs`, úroveň Error) hledejte zprávu `reCAPTCHA is enabled but Recaptcha:SecretKey is not configured`. Úroveň Warning zaznamená i odmítnutí kvůli nízkému skóre, neshodě akce nebo neznámému hostname.
+
 ### OAuth (Social login)
 
 Dostupní poskytovatelé: Google, Microsoft, Facebook, Seznam.cz

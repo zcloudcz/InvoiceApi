@@ -3,6 +3,7 @@
 @inject ChatApiService ChatApi
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
+@inject IDialogService DialogService
 @inject IStringLocalizer<SharedResource> L
 @inject ILogger<ChatPanel> Logger
 @inject IUiErrorHandler ErrorHandler
@@ -107,22 +108,24 @@
                 @if (_isStreaming)
                 {
                     <div class="d-flex justify-start mb-2">
-                        <div class="chat-bubble chat-bubble-assistant"
-                             style="max-width: 80%; padding: 12px 16px; border-radius: 12px;">
+                        @* Geometry/colors come from app.css — same classes as ChatMessageBubble *@
+                        <div class="chat-bubble chat-bubble-assistant">
                             <MudText Typo="Typo.caption" Class="mb-1" Style="opacity: 0.7;">
                                 @L["EChatRole_Assistant"]
                             </MudText>
-                            <MudText Typo="Typo.body2" Style="white-space: pre-wrap; word-break: break-word;">
-                                @if (string.IsNullOrEmpty(_streamingContent))
-                                {
+                            @if (string.IsNullOrEmpty(_streamingContent))
+                            {
+                                <MudText Typo="Typo.body2" Class="chat-bubble-text">
                                     <MudProgressCircular Size="Size.Small" Indeterminate="true" />
                                     <span class="ml-2">@L["Chat_Thinking"]</span>
-                                }
-                                else
-                                {
-                                    @_streamingContent
-                                }
-                            </MudText>
+                                </MudText>
+                            }
+                            else
+                            {
+                                @* Rendered as markdown while streaming too, so the answer does not
+                                   visually "snap" from raw asterisks to formatted text at the end. *@
+                                <MarkdownView Content="@_streamingContent" />
+                            }
                         </div>
                     </div>
                 }
@@ -507,9 +510,20 @@
 
     /// <summary>
     /// Deletes a conversation and refreshes the list.
+    /// Asks for confirmation first — deleting a conversation is irreversible and the
+    /// delete button sits right next to the row that selects the conversation.
     /// </summary>
     private async Task DeleteConversation(long conversationId)
     {
+        var confirmed = await DialogService.ShowMessageBox(
+            L["Msg_ConfirmDeleteTitle"].Value,
+            L["Chat_DeleteConfirm"].Value,
+            yesText: L["Btn_Delete"].Value,
+            cancelText: L["Btn_Cancel"].Value);
+
+        if (confirmed != true)
+            return;
+
         await ChatApi.DeleteConversationAsync(conversationId);
         await LoadConversations();
 
