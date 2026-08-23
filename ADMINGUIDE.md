@@ -140,11 +140,26 @@ Provisioning provede:
 1. Vytvoří PostgreSQL schema `tenant_{companyId}`
 2. Aplikuje EF Core migrace na nové schéma
 3. Zkopíruje systémové číselníky (VatRate, Currency, NumberSequenceFormat, ContentTemplate) z master schématu do tenant schématu
-4. Vytvoří záznam vystavitele (issuer) v tenant schématu
+4. Vytvoří záznam vystavitele (issuer) v tenant schématu — včetně adres, kontaktů, bankovních účtů a fakturačního nastavení z master záznamu firmy
 5. Vytvoří výchozí číselné řady pro 4 typy dokladů (INV, CN-, PF-, DPP-)
 6. Označí firmu jako IsProvisioned=true, IsActive=true
 
 **Idempotentní** — bezpečné spustit opakovaně při chybě.
+
+**Krok 5 je povinný.** Pokud v tenant schématu není žádný aktivní formát číselné řady
+(`NumberSequenceFormat`), provisioning v kroku 5 selže s chybou a firma zůstane
+`IsProvisioned=false`. Dřív se krok tiše přeskočil a tenant vznikl úplně bez číselných
+řad — jeho faktury pak nešlo očíslovat. Náprava: zkontrolovat master číselník
+„Formáty číselných řad" (musí mít alespoň jeden aktivní záznam), pak provisioning
+spustit znovu.
+
+**Selhaný provisioning po self-registraci:** provisioning se spouští automaticky i při
+nastavení hesla nově registrovaným uživatelem. Když v tu chvíli selže, firma zůstane ve
+stavu **Not provisioned** a uživatel dostane na stránce nastavení hesla oranžové upozornění,
+že pracovní prostor není připravený (heslo mu ale platí). Takové firmy najdete v přehledu
+`/company-settings` se stavem „Ne" ve sloupci Provisioned — provisioning z něj spustíte
+znovu tlačítkem ▶. Důvod selhání najdete přímo v aplikaci na stránce `/logs` — vyhledejte
+`Tenant provisioning FAILED`; záznam obsahuje krok, na kterém provisioning spadl.
 
 ### Aktivace / Deaktivace firmy
 
@@ -166,6 +181,17 @@ V detailu firmy sekce „Email Settings" — umožňuje nastavit firemní SMTP o
 ### AI nastavení firmy (per-company)
 
 V detailu firmy sekce „AI Settings" — umožňuje nakonfigurovat AI poskytovatele specifické pro tuto firmu (přepíše systémové nastavení pro tuto firmu).
+
+### EPO nastavení firmy (per-company)
+
+Sekce „Nastavení EPO" na `/my-company` (viditelná pro role Admin a SysAdmin) — hlavičkové údaje
+pro elektronické podání přiznání k DPH a kontrolního hlášení:
+- Kód finančního úřadu (c_ufo) a kód územního pracoviště (c_pracufo) — **povinné**, bez nich
+  API odmítne EPO export chybou `EPO_HEADER_INCOMPLETE`
+- Kontaktní telefon, kontaktní e-mail, jméno oprávněné osoby — volitelné
+
+Data leží na `CompanySystemSettings` v master DB, stejně jako SMTP a AI nastavení. SysAdmin
+se k sekci dostane po zvolení firmy v přepínači impersonace.
 
 ---
 
@@ -379,6 +405,8 @@ Grid s logy: Timestamp, Level (chip), Source (zkrácená kategorie loggeru), Zpr
 ### Diagnostika
 
 **CorrelationId:** Každý HTTP request má vlastní ID propagované přes `X-Correlation-Id` header. Pokud máte chybu, hledejte log záznamy se stejným CorrelationId.
+
+**Referenční ID od uživatele:** Když AI asistent (chat) selže, uživatel místo technického detailu uvidí hlášku s referenčním ID — to je právě CorrelationId. Zadejte ho do textového hledání v `/logs` a najdete záznam s plnou výjimkou včetně stack trace.
 
 **CompanyId:** Logy z tenant operací mají přiřazený CompanyId — lze filtrovat ve sloupci.
 

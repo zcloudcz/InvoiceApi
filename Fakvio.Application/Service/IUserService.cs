@@ -99,12 +99,18 @@ public interface IUserService
     /// <summary>
     /// Sets the password for an invited user using their invitation token.
     /// Validates the token, checks expiration, hashes the new password,
-    /// and clears the invitation fields.
+    /// and clears the invitation fields. For users with a company it also triggers
+    /// tenant provisioning (creating the tenant database schema).
     /// </summary>
     /// <param name="dto">Token and new password</param>
     /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>True if password was set successfully, false if token is invalid/expired</returns>
-    Task<bool> SetPasswordAsync(SetPasswordDto dto, CancellationToken cancellationToken = default);
+    /// <returns>
+    /// Result carrying two independent facts: whether the password was set
+    /// (false = invalid/expired token) and whether the tenant workspace is ready.
+    /// A failed provisioning does NOT undo the password — but the caller must be
+    /// able to tell the user that the workspace is not usable yet.
+    /// </returns>
+    Task<SetPasswordResultDto> SetPasswordAsync(SetPasswordDto dto, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Validates whether an invitation token is valid and not expired.

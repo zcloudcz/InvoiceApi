@@ -295,6 +295,8 @@
   <data name="SetPassword_TokenExpired" xml:space="preserve"><value>Pozvánka je neplatná nebo vypršela. Požádejte administrátora o novou pozvánku.</value></data>
   <data name="SetPassword_ValidatingToken" xml:space="preserve"><value>Ověřuji pozvánku...</value></data>
   <data name="SetPassword_SetFailed" xml:space="preserve"><value>Nepodařilo se nastavit heslo. Token mohl vypršet.</value></data>
+  <data name="SetPassword_WorkspaceNotReady" xml:space="preserve"><value>Heslo bylo nastaveno, ale váš pracovní prostor se nepodařilo připravit.</value></data>
+  <data name="SetPassword_WorkspaceNotReadyHint" xml:space="preserve"><value>Přihlášení zatím nebude fungovat. Přípravu dokončí administrátor — zkuste to prosím později, nebo kontaktujte podporu.</value></data>
   <data name="Dashboard_Welcome" xml:space="preserve"><value>Vítejte v systému správy faktur</value></data>
   <data name="Dashboard_InvoicesDueThisMonth" xml:space="preserve"><value>Splatnost vystavených faktur</value></data>
   <data name="Dashboard_ThisMonth" xml:space="preserve"><value>Tento měsíc</value></data>
@@ -891,6 +893,7 @@
   <data name="Register_AresLoading" xml:space="preserve"><value>Načítání z ARES...</value></data>
   <data name="Register_AresSuccess" xml:space="preserve"><value>Data načtena z ARES</value></data>
   <data name="Register_AresFailed" xml:space="preserve"><value>Nepodařilo se načíst z ARES</value></data>
+  <data name="Register_AddressSection" xml:space="preserve"><value>Sídlo firmy (z ARES, lze upravit)</value></data>
   <data name="Register_Submit" xml:space="preserve"><value>Zaregistrovat se</value></data>
   <data name="Register_Registering" xml:space="preserve"><value>Registrace...</value></data>
   <data name="Register_Success" xml:space="preserve"><value>Registrace úspěšná! Zkontrolujte e-mail.</value></data>
@@ -1062,6 +1065,7 @@
   <data name="Chat_PdfOnly" xml:space="preserve"><value>Jsou podporovány pouze PDF soubory.</value></data>
   <data name="Chat_UnsupportedFileType" xml:space="preserve"><value>Nepodporovaný typ souboru.</value></data>
   <data name="Chat_FileTooLarge" xml:space="preserve"><value>Soubor přesahuje maximální povolenou velikost 10 MB.</value></data>
+  <data name="Chat_Error_Unexpected" xml:space="preserve"><value>Zprávu se nepodařilo zpracovat. Zkuste to prosím znovu.</value></data>
   <data name="EChatRole_User" xml:space="preserve"><value>Vy</value></data>
   <data name="EChatRole_Assistant" xml:space="preserve"><value>Asistent</value></data>
   <!-- Received Invoices (Expenses) -->
@@ -1655,4 +1659,14 @@
   <data name="EpoNotVatPayer" xml:space="preserve"><value>Tato funkce je dostupná pouze pro plátce DPH.</value></data>
   <data name="EpoDownloadError" xml:space="preserve"><value>Chyba při generování EPO: {0}</value></data>
   <data name="EpoGoToSettings" xml:space="preserve"><value>Přejít do nastavení firmy</value></data>
+  <data name="EpoHeaderIncompleteAskAdmin" xml:space="preserve"><value>Tato pole může doplnit pouze administrátor firmy — požádejte ho o jejich vyplnění.</value></data>
+  <data name="Epo_SettingsTitle" xml:space="preserve"><value>Nastavení EPO (elektronické podání)</value></data>
+  <data name="Epo_SettingsInfoText" xml:space="preserve"><value>Hlavičkové údaje pro elektronické podání přiznání k DPH a kontrolního hlášení na portál EPO. Bez kódu finančního úřadu a územního pracoviště nelze XML soubory vygenerovat.</value></data>
+  <data name="Epo_TaxOfficeCode" xml:space="preserve"><value>Kód finančního úřadu</value></data>
+  <data name="Epo_TaxOfficeCodeHelper" xml:space="preserve"><value>Číselný kód místně příslušného finančního úřadu (c_ufo), např. 451 pro Prahu.</value></data>
+  <data name="Epo_TaxOfficeBranchCode" xml:space="preserve"><value>Kód územního pracoviště</value></data>
+  <data name="Epo_TaxOfficeBranchCodeHelper" xml:space="preserve"><value>Číselný kód územního pracoviště finančního úřadu (c_pracufo).</value></data>
+  <data name="Epo_ContactPhone" xml:space="preserve"><value>Kontaktní telefon</value></data>
+  <data name="Epo_ContactEmail" xml:space="preserve"><value>Kontaktní e-mail</value></data>
+  <data name="Epo_AuthorizedPersonName" xml:space="preserve"><value>Jméno oprávněné osoby</value></data>
 </root>

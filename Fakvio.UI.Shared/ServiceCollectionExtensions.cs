@@ -103,6 +103,10 @@ public static class ServiceCollectionExtensions
         services.AddApiClient<InvoiceMailboxApiService>();
         services.AddApiClient<InboundInvoiceEmailApiService>();
 
+        // Reverse charge codes — MFČR číselník for the PDP dropdown in invoice line-item editor.
+        // Read-only on the client side; admin CRUD is task #49 (ReverseChargeCodes.razor).
+        services.AddApiClient<ReverseChargeCodeApiService>();
+
         // Shared app state — cross-component notifications (e.g., company list changed → refresh dropdown)
         services.AddScoped<AppStateService>();
 

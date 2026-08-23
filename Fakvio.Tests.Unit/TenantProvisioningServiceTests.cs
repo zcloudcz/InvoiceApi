@@ -251,6 +251,47 @@ public class TenantProvisioningServiceTests : IDisposable
         ex.Message.ShouldNotContain("already provisioned");
     }
 
+    /// <summary>
+    /// Issue #155 — the provisioning half of the fix relies on this contract: Step 7 now THROWS
+    /// when the tenant schema has no active NumberSequenceFormat (see
+    /// CreateDefaultNumberSequencesTests), and that throw must prevent Step 8 from marking the
+    /// tenant as provisioned. A tenant without number sequences would otherwise look ready while
+    /// being unable to number a single document.
+    ///
+    /// This test pins the mechanism the guard depends on: when ANY step throws, the caller gets
+    /// an error naming that step and IsProvisioned stays false. The trigger used here is Step 2
+    /// (company is not an issuer), because it is the last failure reachable before the service
+    /// opens a PostgreSQL connection — Steps 3+ cannot run in a unit test.
+    /// </summary>
+    [Fact]
+    public async Task ProvisionTenantAsync_WhenAStepFails_LeavesTenantUnprovisionedAndNamesTheStep()
+    {
+        // Arrange — settings exist (Step 1 passes) but the company is not marked as issuer,
+        // so Step 2 fails the same way a Step 7 failure would.
+        const long CompanyId = 7;
+        var company = await SeedCompanyAsync(CompanyId);
+        await SeedSettingsAsync(CompanyId);
+
+        company.IsIssuer = false;
+        await _masterContext.SaveChangesAsync();
+
+        // Act
+        var ex = await Should.ThrowAsync<InvalidOperationException>(
+            () => _service.ProvisionTenantAsync(CompanyId));
+
+        // Assert — the SysAdmin is told which step broke, not just "provisioning failed"
+        ex.Message.ShouldContain("Step 2",
+            customMessage: "The failing step must be named so the SysAdmin can fix the right thing");
+
+        // Assert — the tenant must NOT be usable. AsNoTracking reads what was really persisted.
+        var settings = await _masterContext.CompanySystemSettings.AsNoTracking()
+            .FirstAsync(s => s.CompanyId == CompanyId);
+
+        settings.IsProvisioned.ShouldBeFalse(
+            customMessage: "A failed step must never leave the tenant marked as provisioned");
+        settings.ProvisionedAt.ShouldBeNull();
+    }
+
     #endregion
 
     #region MigrateAllTenantsAsync Tests

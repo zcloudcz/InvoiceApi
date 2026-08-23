@@ -7,6 +7,7 @@ using Fakvio.Infrastructure.Service;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using Shouldly;
 
 namespace Fakvio.Tests.Unit;
@@ -411,5 +412,173 @@ public class GenerateDocumentNumberTests : IDisposable
 
         // Assert — number stays as-is (IsNullOrEmpty guard prevents wrapping with "")
         result.DocumentNumber.ShouldBe("INV2026001");
+    }
+
+    // ── Issue #155: no silent fallback when the sequence cannot produce a number ──
+    //
+    // Historically GenerateDocumentNumberAsync caught InvalidOperationException from
+    // INumberSequenceService and returned a hardcoded "INV{year}{count+1}" number
+    // (e.g. "INV2026001"), logging only a warning. The user then received a document
+    // whose number matched neither the configured sequence, prefix nor format — and
+    // was never told. For accounting documents that is a serious defect: the series
+    // must stay continuous and predictable.
+    //
+    // Expected behaviour now: the failure surfaces as an InvalidOperationException
+    // whose message tells the user WHAT is wrong and WHERE to fix it, with the
+    // original sequence error preserved as InnerException for the log.
+
+    /// <summary>
+    /// Missing series: no default sequence exists for the document type, so the sequence
+    /// service throws. Creation must fail loudly instead of inventing "INV2026001".
+    /// </summary>
+    [Fact]
+    public async Task GenerateDocumentNumber_NoDefaultSequence_ShouldThrowInsteadOfFallback()
+    {
+        // Arrange — default-sequence path throws (this is what NumberSequenceService
+        // does when no active default sequence exists for the document type)
+        var sequenceError = new InvalidOperationException(
+            "No default number sequence configured for Invoice");
+
+        _numberSequence
+            .GenerateNextNumberForDocumentTypeAsync(
+                Arg.Any<EDocumentType>(), Arg.Any<DateTime>(),
+                Arg.Any<string?>(), Arg.Any<string?>(),
+                Arg.Any<CancellationToken>())
+            .ThrowsAsync(sequenceError);
+
+        var dto = MakeInvoiceDto();
+
+        // Act
+        var ex = await Should.ThrowAsync<InvalidOperationException>(
+            () => _service.CreateInvoiceAsync(dto));
+
+        // Assert — actionable message + original cause preserved
+        ex.Message.ShouldContain("number sequence",
+            customMessage: "The error must name the number sequence as the cause");
+        ex.Message.ShouldContain("/number-sequences",
+            customMessage: "The error must tell the user where to configure the sequence");
+        ex.InnerException.ShouldBe(sequenceError);
+
+        // Assert — no document ever gets the old hardcoded fallback number
+        var numbers = await _context.Invoice.Select(i => i.DocumentNumber).ToListAsync();
+        numbers.Count.ShouldBe(1, customMessage: "The draft row is saved before numbering, so it must exist");
+        numbers.ShouldAllBe(n => n == "DRAFT",
+            "No invoice may receive a fallback number that ignores the configured series");
+    }
+
+    /// <summary>
+    /// Inactive series: the sequence exists but is deactivated, so the sequence service
+    /// throws. Same rule — fail loudly, never substitute a made-up number.
+    /// </summary>
+    [Fact]
+    public async Task GenerateDocumentNumber_InactiveSequence_ShouldThrowInsteadOfFallback()
+    {
+        // Arrange — template forces a sequence that is not active
+        var sequenceError = new InvalidOperationException(
+            "Number sequence Export invoices is not active");
+
+        _numberSequence
+            .GenerateNextNumberAsync(TemplateSequenceId, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(sequenceError);
+
+        var dto = MakeInvoiceDto(numberSequenceId: TemplateSequenceId);
+
+        // Act
+        var ex = await Should.ThrowAsync<InvalidOperationException>(
+            () => _service.CreateInvoiceAsync(dto));
+
+        // Assert
+        ex.InnerException.ShouldBe(sequenceError);
+        ex.Message.ShouldNotContain("INV2026",
+            customMessage: "The error must not hand out a substitute document number");
+
+        var numbers = await _context.Invoice.Select(i => i.DocumentNumber).ToListAsync();
+        numbers.Count.ShouldBe(1, customMessage: "The draft row is saved before numbering, so it must exist");
+        numbers.ShouldAllBe(n => n == "DRAFT");
+    }
+
+    /// <summary>
+    /// Number collision: concurrent requests exhausted the optimistic-concurrency retries
+    /// inside NumberSequenceService. The old fallback turned that transient conflict into
+    /// a permanently wrong number; now the caller sees the failure and can retry.
+    ///
+    /// The mocked exception mirrors EXACTLY what the real service throws on this path —
+    /// an InvalidOperationException wrapping the last DbUpdateConcurrencyException. That
+    /// shape is pinned on the producing side by
+    /// NumberSequenceServiceTests.GenerateNextNumberAsync_WhenEveryAttemptConflicts_…,
+    /// so the two tests together cover the whole chain instead of agreeing on a fiction.
+    /// </summary>
+    [Fact]
+    public async Task GenerateDocumentNumber_ConcurrencyCollision_ShouldThrowInsteadOfFallback()
+    {
+        // Arrange — client custom sequence path exhausts its retries
+        AddBillingSettings(customInvoiceSequenceId: ClientCustomSequenceId);
+
+        var sequenceError = new InvalidOperationException(
+            $"Failed to generate document number for sequence {ClientCustomSequenceId} " +
+            "after 3 retries due to concurrency conflicts.",
+            new DbUpdateConcurrencyException("Simulated optimistic concurrency conflict."));
+
+        _numberSequence
+            .GenerateNextNumberAsync(ClientCustomSequenceId, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(sequenceError);
+
+        var dto = MakeInvoiceDto();
+
+        // Act
+        var ex = await Should.ThrowAsync<InvalidOperationException>(
+            () => _service.CreateInvoiceAsync(dto));
+
+        // Assert — original cause preserved for the log
+        ex.InnerException.ShouldBe(sequenceError);
+
+        // Assert — a transient collision must advise a retry, NOT send the user to
+        // /number-sequences: nothing is misconfigured there, so that advice would mislead.
+        ex.Message.ShouldContain("repeat the action",
+            customMessage: "A transient collision must tell the user to simply try again");
+        ex.Message.ShouldNotContain("/number-sequences",
+            customMessage: "A transient collision is not a configuration problem");
+
+        var numbers = await _context.Invoice.Select(i => i.DocumentNumber).ToListAsync();
+        numbers.Count.ShouldBe(1);
+        numbers.ShouldAllBe(n => n == "DRAFT");
+    }
+
+    /// <summary>
+    /// Boundary between the two catch blocks: the transient branch is selected by the TYPE of
+    /// the inner exception (DbUpdateConcurrencyException), not by the mere presence of one.
+    ///
+    /// A configuration failure often carries an inner exception too — the sequence service
+    /// wraps whatever EF Core threw while loading the series. Such a failure must still be
+    /// reported as a configuration problem and send the user to /number-sequences; telling him
+    /// to "repeat the action" would send him in circles, because repeating cannot fix a missing
+    /// series.
+    /// </summary>
+    [Fact]
+    public async Task GenerateDocumentNumber_ConfigurationErrorWithUnrelatedInnerException_KeepsConfigurationAdvice()
+    {
+        // Arrange — configuration failure carrying an inner exception that is NOT a concurrency conflict
+        var sequenceError = new InvalidOperationException(
+            "No default number sequence configured for Invoice",
+            new TimeoutException("Reading the sequence timed out"));
+
+        _numberSequence
+            .GenerateNextNumberForDocumentTypeAsync(
+                Arg.Any<EDocumentType>(), Arg.Any<DateTime>(),
+                Arg.Any<string?>(), Arg.Any<string?>(),
+                Arg.Any<CancellationToken>())
+            .ThrowsAsync(sequenceError);
+
+        var dto = MakeInvoiceDto();
+
+        // Act
+        var ex = await Should.ThrowAsync<InvalidOperationException>(
+            () => _service.CreateInvoiceAsync(dto));
+
+        // Assert — configuration advice, not the transient "repeat the action" one
+        ex.Message.ShouldContain("/number-sequences",
+            customMessage: "Only a DbUpdateConcurrencyException inner may switch to the transient branch");
+        ex.Message.ShouldNotContain("repeat the action");
+        ex.InnerException.ShouldBe(sequenceError);
     }
 }

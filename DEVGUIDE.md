@@ -264,7 +264,8 @@ Pipeline pořadí v `Fakvio.API/Program.cs`:
 
 **TenantContextMiddleware** (`Fakvio.API/Middleware/TenantContextMiddleware.cs`):
 - Řádek 35: `MasterOnlyPaths` — `/api/auth`, `/api/user`, `/api/company`, `/api/system-configuration`, `/api/logs`, `/api/twofactor`, `/api/cloud-storage`, `/api/email`, `/api/sysadmin/payment-matching`. **Skip** tenant kontroly.
-- Řádek 56: `SysAdminCodeTablePaths` — code-table endpointy přístupné SysAdminovi i bez `X-Company-Id` (konfigurace systémových číselníků).
+- Řádek 56: `SysAdminCodeTablePaths` — code-table endpointy přístupné SysAdminovi i bez `X-Company-Id` (konfigurace systémových číselníků). Patří sem **jen dual-context číselníky** (`/api/currency`, `/api/vatrate`, `/api/contenttemplate`, `/api/numbersequence/formats`), jejichž service umí sáhnout do Master i Tenant DB.
+- **Tenant-only číselník do žádného z těch dvou seznamů nepatří.** Např. `/api/reversechargecode` (issue #46) čte přes `ReverseChargeCodeService` výhradně `TenantDbContext`, takže potřebuje normální tenant resolution — data jsou sice statutární (MFČR), ale fyzicky leží v tenant schématu. Bez `X-Company-Id` proto SysAdmin tyto řádky nevidí; až #49 přidá SysAdmin CRUD, bude nutné vědomě rozhodnout, zda service překlopit na dual-context.
 - Řádek 126: `await factory.ResolveSchemaAsync(companyId)` — jediný zdroj pravdy.
 - Řádek 144: `await factory.EnsureMigratedAsync(companyId)` — lazy migrate per schema, cached per-process.
 
@@ -470,6 +471,53 @@ optionally `ReverseChargeCodeId` (FK to `ReverseChargeCode` lookup, nullable).
 
 **Calculation helper**: `InvoiceService.CalculateItemVat(InvoiceItem item)` — called from both
 `CreateInvoiceAsync` and `UpdateInvoiceAsync` for DRY calculation (issue #45, §9 KISS/DRY rule).
+
+#### API surface číselníku PDP kódů (issue #46)
+
+**Endpoint** — `Fakvio.API/Controller/ReverseChargeCodeController.cs`, `[Authorize]` (běžný přihlášený
+uživatel, ne SysAdmin — dropdown v editoru položek ho potřebuje):
+
+| Route | Vrací |
+|-------|-------|
+| `GET /api/reversechargecode` | jen **aktivní** kódy, seřazené podle `Code` — zdroj pro dropdown |
+| `GET /api/reversechargecode/{id}` | detail včetně **neaktivních** — historická faktura musí umět vykreslit kód, který už se nenabízí |
+
+Tenant-scoped (viz §3.3), read-only. Admin CRUD je samostatný task #49.
+Klient: `Fakvio.UI.Shared/Services/ReverseChargeCodeApiService.cs` (dědí `ApiClientBase`, list metoda
+polyká `ApiException` a vrací prázdný seznam — stejný kontrakt jako `VatRateApiService`).
+Detailní metoda `GetByIdAsync` naopak **`ApiException` propouští, včetně 404** — `ApiClientBase.GetAsync`
+hází na každém non-success statusu a `null` vrací jen při 204 No Content.
+
+**Nested DTO na položce faktury** — `InvoiceItemDto.ReverseChargeCode : ReverseChargeCodeDto?`.
+Read-only, plní se **jen v response**; request ho ignoruje (zápis jde přes `ReverseChargeCodeId`).
+
+Mapování má dvě podmínky, obě je nutné dodržet u **každé nové read cesty** nad fakturou:
+
+1. **Eager load**: dotaz musí mít `.Include(i => i.InvoiceItem…).ThenInclude(item => item.ReverseChargeCode)`.
+   FK je nullable → LEFT JOIN → Standard položky vrátí `null` a nic nespadne.
+2. **Ruční doplnění v `InvoiceService.MapToDto`**: ZMapper kopíruje jen skalární properties, navigační
+   objekt si musí service naplnit sám. Páruje se **podle `Id` položky, ne podle pozice v seznamu**.
+   Pozice by dnes fungovala taky: vygenerovaný ZMapper staví `dto.InvoiceItem` jako
+   `source.InvoiceItem.Select(…).ToList()`, tedy 1:1 projekci téže kolekce se zachovaným pořadím,
+   a `MapToDto` mezi tím ani jednu kolekci nemění. Párování podle klíče jen odstraňuje závislost na
+   tomhle detailu generovaného kódu, za stejné O(n).
+
+   **Testy ten rozdíl nerozliší** a nikdo by to od nich čekat neměl: když se pozicová varianta vrátí
+   zpět, celá sada projde. Žádný dosažitelný vstup ty dvě kolekce nerozsynchronizuje, takže zevnitř
+   `MapToDto` jsou obě varianty pozorovatelně shodné. Pokud někdy přibude read cesta, která
+   `dto.InvoiceItem` sestaví jinak než přes `entity.ToInvoiceDto()`, tenhle předpoklad padne — pak
+   teprve začne být párování podle `Id` testovatelný rozdíl, ne jen hygiena.
+
+Regresní pojistky:
+
+- `Fakvio.Tests.Unit/InvoiceServiceNestedReverseChargeCodeTests.cs` — faktura se třemi položkami,
+  dvěma různými kódy a prohozeným pořadím `Id` vs. `OrderIndex`, protáhnutá **všemi pěti read
+  cestami** přes `MapToDto` (`GetInvoiceById`, `GetAllInvoices`, `GetInvoicesPaged`,
+  `GetInvoiceByDocumentNumber`, `GetCreditNotesForInvoice`). Chytá chybějící eager load i vypadlé
+  doplnění navigačního objektu.
+- `Fakvio.Tests.Unit/InvoiceItemMappingTests.ToInvoiceDto_ProjectsItemCollection_OneToOneInSourceOrder`
+  — hlídá právě tu vlastnost ZMapperu, o kterou se pozicové párování opíralo. Kdyby ji budoucí verze
+  generátoru ztratila, spadne tenhle test.
 
 ### 4.5 Payment matching (IMAP → invoice mark paid)
 
@@ -778,6 +826,18 @@ Pisemnost
 **EPO header settings:**
 Načítány z `CompanySystemSettings` (master DB): `EpoTaxOfficeCode` (c_ufo), `EpoTaxOfficeBranchCode` (c_pracufo), `EpoContactPhone`, `EpoContactEmail`, `EpoAuthorizedPersonName`.
 Chybí-li c_ufo nebo c_pracufo → `EpoHeaderIncompleteException` → HTTP 400 `EPO_HEADER_INCOMPLETE`.
+
+Editace v UI: `EpoSettingsSection.razor` (Components/Shared) hostovaná v `MyCompany.razor`
+uvnitř `AuthorizeView Roles="Admin,SysAdmin"`, ukládá se přes `PUT /api/company/{id}/settings`
+(partial update — DTO nese jen `Epo*` pole, SMTP/AI na stejném záznamu zůstanou beze změny).
+Odkaz „Přejít do nastavení firmy" v `VatReport.razor` je vidět jen pro tytéž role; ostatní
+dostanou hlášku, že pole musí doplnit administrátor. **Role list na obou místech musí sedět** —
+jinak buď posíláme uživatele na stránku, kde sekci neuvidí, nebo mu odkaz zbytečně skryjeme.
+
+Pozor na `""` vs. `null` v `UpdateCompanySystemSettingsDto`: pole s `[EmailAddress]`
+(`EpoContactEmail`, `SmtpSenderEmail`) prázdný řetězec **neprojde** — validace `[ApiController]`
+vrátí 400 ještě před vstupem do endpointu. Nevyplněné volitelné e-mailové pole se proto posílá
+jako `null` (= ponechat stávající), u ostatních textových polí zůstává `""` (= vymazat). Viz #186.
 
 **Roční update XSD:**
 Viz `Fakvio.Infrastructure/Resources/Epo/EPO-README.md` — stažení z `adisspr.mfcr.cz`, pojmenování, verifikace.
@@ -1149,6 +1209,21 @@ await sub.Received(1).MethodAsync(Arg.Any<T>());  // received check vyžaduje aw
   - Environment `"Testing"` → skip migrations.
 - `Program` má `public partial class Program { }` na konci `Fakvio.API/Program.cs:189` aby `WebApplicationFactory<Program>` mohl referencovat top-level statements typ.
 
+#### 8.2.1 Testy proti reálnému PostgreSQL (throwaway schema)
+
+`FakvioFactory` běží na InMemory, takže **nevidí FK, unique indexy ani DDL**. Chování, které
+závisí na reálných constraintech, patří do testu, který si založí vlastní jednorázové schéma.
+Vzor: `TenantIssuerProvisioningDatabaseTests` (provisioning issuera, issue #153).
+
+- Connection string: default z `docker-compose.yml`, přepis přes env `FAKVIO_TEST_POSTGRES`.
+- Schéma `test_<téma>_<guid>` per instance třídy; `DROP SCHEMA ... CASCADE` v `DisposeAsync`.
+- Tabulky zakládej přes `IRelationalDatabaseCreator.CreateTablesAsync()`, **ne** `EnsureCreatedAsync()`
+  — ta je no-op, jakmile existuje *databáze* (schémata neřeší). `TenantDbContext.Schema`
+  + `ReplaceService<IModelCacheKeyFactory, TenantModelCacheKeyFactory>` nasměrují model do schématu.
+- Gate: jeden raw `OpenConnectionAsync()` probe → `[SkippableFact]` + `Skip.IfNot(...)`.
+  Skipuje se **jen** nedostupný server; cokoliv po úspěšném probe musí spadnout nahlas
+  (EF balí chyby spojení do generické `InvalidOperationException`, proto probe na úrovni driveru).
+
 ### 8.3 E2E (`Fakvio.Tests.Playwright`)
 
 - Stack: **Microsoft.Playwright.NUnit 1.52.0 + NUnit 4.3.2**.
@@ -1165,8 +1240,49 @@ await sub.Received(1).MethodAsync(Arg.Any<T>());  // received check vyžaduje aw
 | Service orchestrace s mocky externí services | Unit (NSubstitute) |
 | EF queries, repository | Unit (InMemoryDatabase) |
 | Controller → service → DB end-to-end | Integration (`WebApplicationFactory`) |
+| FK / unique index / DDL, tenant schema | Integration proti reálnému PostgreSQL (§8.2.1) |
 | User-visible flow (login, invoice CRUD UI) | Playwright |
 | External API (SMTP, IMAP, OAuth, ARES) | Manuálně + smoke testy |
+
+### 8.5 DB connectivity smoke test (env-gated)
+
+`Fakvio.Tests.Unit\DatabaseConnectivitySmokeTests.cs` je **jediná** výjimka z pravidla
+"unit testy jedou na InMemory" — sahá na reálný PostgreSQL. Ověřuje, že konfigurace, kterou
+appka opravdu resolvuje při startu, skutečně otevře spojení, že jsou nasazené migrace
+a že jde dotázat `public` schéma.
+
+- Kontexty se staví přes `NpgsqlDataSourceFactory.Create(configuration)` — tedy **tu samou
+  cestu, kterou jde produkce** (`AddDatabaseContexts` v
+  `Fakvio.Infrastructure/DependencyInjection/ServiceCollectionExtensions.cs`). Žádný
+  `UseNpgsql(string)`.
+- Gate: `[DatabaseSmokeFact]` (potomek `FactAttribute`) přeskočí test, dokud není
+  `FAKVIO_DB_SMOKE=1`. Bez proměnné hlásí runner **skipped** s návodem, ne fail —
+  `dotnet test` je tedy zelený i bez Dockeru a bez `az login`.
+- xUnit 2.x nemá `Assert.Skip` (přišel až ve v3) a runtime skip exception se reportuje jako
+  fail — proto je gate na atributu, který se vyhodnocuje při discovery.
+- Proč ne `[SkippableFact]` (`Xunit.SkippableFact`, repo ho už má — používá ho
+  `Fakvio.Tests.Integration/EpoSandboxSmokeTests.cs`): `Skip.If(…)` se volá až **v těle testu**,
+  takže xUnit předtím zkonstruuje testovací třídu. A ctor tady dělá skutečnou práci: čte
+  `appsettings.json` s `optional: false`, pouští `DatabaseOptions.Resolve` + `Validate()`
+  a staví reálný `NpgsqlDataSource`. Výjimka z ctoru je **fail, ne skip** — chronická
+  červená by se vrátila zadními vrátky. Změřeno na stejných verzích (xunit 2.9.3,
+  SkippableFact 1.4.13, runner xunit.runner.visualstudio 3.1.4): házející ctor +
+  `[SkippableFact]` = `[FAIL]`, ten samý ctor za gate na atributu = `[SKIP]` a ctor se
+  vůbec nespustí. Pro `Fakvio.Tests.Integration` je `[SkippableFact]` dál správná volba —
+  tamní gate závisí na hodnotách, které jsou známé až za běhu.
+- Konfigurace = `Fakvio.API/appsettings*.json` + **environment variables navrch**. Spuštění
+  proti lokálnímu Dockeru (`docker compose up -d`):
+
+```powershell
+$env:FAKVIO_DB_SMOKE = "1"
+$env:ConnectionStrings__DefaultConnection = "Host=localhost;Port=5432;Database=fakvio;Username=fakvio;Password=fakvio_dev"
+$env:Database__AuthMode = "Password"
+$env:UseAzureAdAuthentication = "false"   # legacy klíč musí souhlasit, jinak Resolve hodí conflict
+dotnet test Fakvio.Tests.Unit --filter "FullyQualifiedName~DatabaseConnectivitySmokeTests"
+```
+
+  Proti Azure PostgreSQL stačí `az login` + `FAKVIO_DB_SMOKE=1` (commitnutá konfigurace už
+  na Azure míří).
 
 ---
 
@@ -1260,6 +1376,45 @@ Chyby vzniklé v Blazor WASM klientovi by jinak skončily jen v browser konzoli.
   `ApiClientBase` — nedupluj). **Nové catch bloky v UI piš přes `IUiErrorHandler`**,
   existující `Snackbar.Add` catch bloky konvertuj průběžně při úpravách dané stránky.
 
+### 10.5 Co smí ven ke klientovi
+
+Detail výjimky (typ, zpráva, stack trace, inner exceptions) **nikdy nejde do odpovědi
+pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. Pravidlo:
+
+- Plná výjimka → `_logger.LogError(ex, …)` → `DatabaseLogger` → `AppLog`
+  (CorrelationId se doplní sám z `AsyncLocal`).
+- Klient dostane krátkou hlášku **s CorrelationId**, aby ho uživatel mohl nahlásit
+  a support podle něj našel záznam v AppLog (`/logs`).
+- Nezachycené výjimky řeší `GlobalExceptionMiddleware` — v Development přidá detail,
+  v Production jen `message` + `correlationId`. Vlastní `catch` v controlleru piš
+  ve stejném tvaru; `ex.ToString()` v odpovědi je bezpečnostní vada, ne debug pomůcka.
+- SSE endpointy se na middleware spolehnout nemůžou (hlavičky už odešly) — chybu
+  pošlou jako SSE událost `data: {"error": …, "correlationId": …}`
+  (vzor: `ChatController.StreamMessage`).
+- **Klientskou chybu odliš vlastním typem výjimky — nikdy ne obsahem hlášky.**
+  `catch (InvalidOperationException ex) => BadRequest(ex.Message)` je vada, ne vzor:
+  tím typem probublává i výjimka z infrastruktury (typicky `CompanyAiSettingsResolver`
+  — vypíše CompanyId, poskytovatele a celý konfigurační fallback), takže „autorský
+  text pro uživatele" a „interní diagnostika" v něm nejdou rozeznat. Přesně tak
+  vznikla #156. Správný postup:
+  1. doménová výjimka vlastního typu v `Fakvio.Application/Exceptions/`
+     (`ChatConversationNotFoundException`, `VatPayerRequiredException`,
+     `EpoValidationException`, …),
+  2. typový `catch` v controlleru **před** catch-all → konkrétní stavový kód
+     (vzory: `ChatController.SendMessage` → 404, `VatReportController` → 403/400),
+  3. **text odpovědi píše controller** (konstanta / literál v controlleru).
+     Syrová `ex.Message` se do odpovědi nedostane ani u „neškodné" výjimky —
+     co je dnes autorská hláška, je po refactoringu klidně cesta k souboru.
+  4. `catch (Exception)` zůstává poslední a vrací sanitovanou hlášku
+     + referenční ID (viz odrážky výše).
+
+  Důsledek pro stavové kódy: stejná doménová podmínka musí mít **stejnou odpověď
+  napříč endpointy**. Když jeden endpoint na „konverzace neexistuje" vrací 404,
+  nesmí druhý na totéž vracet 500 — 500 je to, na co se alertuje. Na SSE cestě
+  stavový kód k dispozici není, takže „stejná odpověď" znamená stejný text a
+  stejná úroveň logu (`LogWarning`, ne `LogError`) — viz obě větve
+  `ChatController.StreamMessage`.
+
 ---
 
 ## 11. Decision trees (rozhodovací stromy)
@@ -1301,9 +1456,18 @@ Chyby vzniklé v Blazor WASM klientovi by jinak skončily jen v browser konzoli.
 
 ```
 1. Master nebo tenant scope?
-   └─ Pokud master → uveď cestu do MasterOnlyPaths v TenantContextMiddleware
+   ├─ Master → uveď cestu do MasterOnlyPaths v TenantContextMiddleware
+   ├─ Dual-context číselník (Master i Tenant) → i do SysAdminCodeTablePaths
+   └─ Tenant-only (i když jde o číselník, viz /api/reversechargecode) → do žádného
+      z těch seznamů; endpoint jede standardní tenant resolution (§3.3)
 2. JWT Authorize?
-   ├─ Public (login, password reset) → [AllowAnonymous]
+   ├─ Public (login, password reset, ARES lookup pro registraci) → [AllowAnonymous]
+   │   └─ POVINNĚ: captcha gate (X-Captcha-Token → ICaptchaService.VerifyAsync),
+   │      validace vstupu v controlleru a co nejužší DTO. NEdávej [AllowAnonymous]
+   │      na tenant-scoped controller — vznikne otevřená proxy.
+   │      Vzor: AuthController.FetchFromAres (GET /api/auth/ares/{ico}).
+   │      Rate-limit middleware NEpoužívej — Functions host ho neprovede;
+   │      captcha + cache-first lookup fungují v obou hostitelích.
    ├─ Tenant user → [Authorize] (default)
    └─ SysAdmin only → [Authorize(Roles="SysAdmin")]
 3. Tenant kontext potřebný?
@@ -1372,6 +1536,12 @@ Chyby vzniklé v Blazor WASM klientovi by jinak skončily jen v browser konzoli.
 - InMemoryDatabase enforcuje `IsRequired()` z fluent config — `Client.RegistrationNumber`, `Invoice.Issuer` musí být setnuty v test seedu.
 - Save entities **one-by-one** s `SaveChanges()`, ne `AddRange` (deterministická ID generation).
 
+### Generované soubory ze source generátorů (`Generated/`)
+- `Fakvio.Infrastructure` a `Fakvio.Functions` mají `<EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>` + `<CompilerGeneratedFilesOutputPath>Generated</CompilerGeneratedFilesOutputPath>`. Složka `Generated/` je tedy **výstup buildu, ne zdroják** — oba projekty ji navíc vyřazují z kompilace přes `<Compile Remove="Generated/**" />`. Generátor svůj výstup vkládá přímo do kompilace; kopie na disku slouží výhradně k nahlédnutí při debugování.
+- **Od issue #178 jsou složky `Generated/` v `.gitignore` a netrackují se.** Dřív commitnuté byly a každý `dotnet build` je přepsal: `RegexGenerator.g.cs` nese v `GeneratedCodeAttribute` build number generátoru (např. `10.0.14.32716` vs `10.0.14.37416`), takže mezi dvěma patchi .NET SDK vznikl 45řádkový fantomový diff, který musel každý dev před commitem ručně vracet.
+- Verzi `System.Text.RegularExpressions.Generator` **nelze pinovat** — chodí uvnitř .NET SDK, ne jako NuGet balíček. Netrackovat výstup je proto jediná spolehlivá varianta.
+- **Nevracej tyhle soubory do gitu** a nemaž řádky z `.gitignore`. Když je potřebuješ vidět, stačí `dotnet build` a vygenerují se lokálně. Když zapneš `EmitCompilerGeneratedFiles` na dalším projektu, přidej jeho `Generated/` do `.gitignore`.
+
 ---
 
 ## 13. Maintenance — kdy aktualizovat tento dokument
@@ -1390,6 +1560,7 @@ Chyby vzniklé v Blazor WASM klientovi by jinak skončily jen v browser konzoli.
 | Změna config zdroje (Key Vault, App Configuration) | §9.2 |
 | Změna Data Protection persistence / ApplicationName | §2.7 |
 | Nová seed migrace s hardcoded Id | §12 (non-idempotent seed) |
+| Nový projekt s `EmitCompilerGeneratedFiles` | §12 (Generated/) + `.gitignore` |
 | Nový code-table pattern (master / tenant / dual-context) | §11.2 |
 | Nový background lock klíč | §6.3 (tabulka klíčů) |
 | Změna observability stacku (App Insights → jiný) | §10 |
