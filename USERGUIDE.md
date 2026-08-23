@@ -602,6 +602,7 @@ AI asistent zná kontext vaší firmy a umí odpovídat na otázky i provádět 
 | Faktury | Vyhledat fakturu, zobrazit detail, vypsat seznam faktur podle kritérií |
 | Klienti | Vyhledat klienta, zobrazit detail |
 | Přijaté faktury | Vyhledat, vypsat seznam |
+| Přehledy a reporty | Shrnout dashboard, vypsat faktury po splatnosti, faktury za období nebo pro konkrétního klienta, spočítat DPH za období |
 | Obecné dotazy | Odpovídat na otázky o funkcích aplikace |
 | Navigace | Přesměrovat vás na příslušnou stránku |
 
