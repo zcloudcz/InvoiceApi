@@ -382,6 +382,19 @@ public class FakvioApiClientTests : IDisposable
         result.ShouldBeNull();
     }
 
+    [Fact]
+    public async Task GetReadinessAsync_TenantWide404_Throws_InsteadOfLookingLikeAMissingIssuer()
+    {
+        // Without an issuerId the endpoint never answers 404, so a 404 here is a broken route,
+        // not a domain answer. Swallowing it into null would make the MCP tool tell the user
+        // "Issuer with ID  not found." — an empty ID and a factually wrong diagnosis.
+        _handler.SetupResponse(HttpStatusCode.NotFound, new { message = "Not found" });
+
+        var ex = await Should.ThrowAsync<HttpRequestException>(() => _sut.GetReadinessAsync());
+
+        ex.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+    }
+
     // ── Error handling tests ───────────────────────────────────────────
 
     [Fact]

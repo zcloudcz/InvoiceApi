@@ -5,6 +5,7 @@ using Fakvio.Domain.Entities;
 using Fakvio.Domain.Enums;
 using Fakvio.Infrastructure.Data;
 using Fakvio.Infrastructure.Service;
+using Fakvio.Infrastructure.Service.ChatTools;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
@@ -58,7 +59,7 @@ public class ChatServiceTests : IDisposable
         // Mock context builder — returns a simple system prompt.
         _contextBuilder = Substitute.For<IChatContextBuilder>();
         _contextBuilder
-            .BuildSystemPromptAsync(Arg.Any<CancellationToken>())
+            .BuildSystemPromptAsync(Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns("You are a test assistant.");
 
         // Mock tool executor — by default it parses no tool call,
@@ -282,6 +283,65 @@ public class ChatServiceTests : IDisposable
         caught.ConversationId.ShouldBe(sendResult.ConversationId);
     }
 
+    // ─── Situational context forwarding (issue #230) ─────────────────────
+
+    /// <summary>
+    /// The route and the open record only reach the system prompt if the service hands them
+    /// to the context builder. Without this the wiring could be dropped and every prompt test
+    /// would still pass — the builder is faked here, the situation just never arrives.
+    /// </summary>
+    [Fact]
+    public async Task SendMessage_PassesTheClientSituationToTheContextBuilder()
+    {
+        var request = new SendMessageRequest
+        {
+            Message = "Change the due date",
+            CurrentRoute = "invoices/edit/42",
+            OpenEntity = "invoices #42"
+        };
+
+        await _service.SendMessageAsync(TestUserId, request);
+
+        await _contextBuilder.Received(1).BuildSystemPromptAsync(
+            "invoices/edit/42", "invoices #42", Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Same for the streaming path — that is the endpoint the chat panel actually calls,
+    /// so a forwarding gap here would hit every real user while the tested path stayed green.
+    /// </summary>
+    [Fact]
+    public async Task StreamMessage_PassesTheClientSituationToTheContextBuilder()
+    {
+        var request = new SendMessageRequest
+        {
+            Message = "Change the due date",
+            CurrentRoute = "invoices/edit/42",
+            OpenEntity = "invoices #42"
+        };
+
+        await foreach (var _ in _service.StreamMessageAsync(TestUserId, request))
+        {
+            // The faked provider streams nothing; only the context call is under test.
+        }
+
+        await _contextBuilder.Received(1).BuildSystemPromptAsync(
+            "invoices/edit/42", "invoices #42", Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Callers that send no situation (Functions, older clients) must reach the builder with
+    /// nulls — not with empty strings, which would print an empty "- Current page:" line.
+    /// </summary>
+    [Fact]
+    public async Task SendMessage_WithoutASituation_PassesNullsToTheContextBuilder()
+    {
+        await _service.SendMessageAsync(TestUserId, new SendMessageRequest { Message = "Hello" });
+
+        await _contextBuilder.Received(1).BuildSystemPromptAsync(
+            null, null, Arg.Any<CancellationToken>());
+    }
+
     // ─── StreamMessageAsync Tests ────────────────────────────────────────
 
     /// <summary>
@@ -415,6 +475,286 @@ public class ChatServiceTests : IDisposable
         _toolExecutor.Received(1).ParseToolCall("AI response text");
         await _toolExecutor.Received(1).ExecuteToolAsync(
             Arg.Is<ParsedToolCall>(tc => tc.Action == "ares_lookup"),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SendMessage_TellsModelNothingChanged_WhenToolOnlyReturnedAPreview()
+    {
+        // Issue #212: a confirmable tool that was called without approval did NOT run.
+        // If the second-pass prompt still said "was executed", the assistant would happily
+        // report a change that never happened — the exact failure the confirm gate prevents.
+        _toolExecutor.BuildToolInstructions().Returns("\nTOOLS: ...");
+        _toolExecutor.ParseToolCall(Arg.Any<string>()).Returns(
+            new ParsedToolCall
+            {
+                Action = "update_settings",
+                Parameters = new Dictionary<string, string> { ["value"] = "FA-2026" }
+            });
+        _toolExecutor.ExecuteToolAsync(Arg.Any<ParsedToolCall>(), Arg.Any<CancellationToken>())
+            .Returns(ChatToolResult.Success("Numbering would change to FA-2026.") with
+            {
+                RequiresConfirmation = true
+            });
+
+        var request = new SendMessageRequest { Message = "Změň číslování na FA-2026" };
+
+        await _service.SendMessageAsync(TestUserId, request);
+
+        // Second pass must be framed as a preview awaiting approval.
+        await _mockProvider.Received(1).GetCompletionAsync(
+            Arg.Any<List<ChatMessageDto>>(),
+            Arg.Is<string?>(prompt => prompt != null
+                                      && prompt.Contains("was NOT executed")
+                                      && prompt.Contains("ask them to confirm")),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Issue #212, review round 1 (B1): the same guarantee on the **native + streaming** path.
+    /// That is the flow the chat drawer really runs on Claude (`SupportsNativeTools = true`),
+    /// and it composes its own second-pass prompt out of an accumulated tool log — so the
+    /// preview framing has to be wired in there too. Without it the framing depended purely on
+    /// <c>ChatToolConfirmation.PreviewSuffix</c> inside the tool's own output text, which is
+    /// exactly the coupling <c>RequiresConfirmation</c> exists to remove.
+    /// </summary>
+    [Fact]
+    public async Task StreamMessage_NativeTools_TellsModelNothingChanged_WhenToolOnlyReturnedAPreview()
+    {
+        // Arrange — provider with native tool calling, model asks for a confirmable tool.
+        _mockProvider.SupportsNativeTools.Returns(true);
+        _toolExecutor.GetToolDefinitions().Returns(
+            [new NativeToolDefinition { Name = "update_settings", Description = "Změní číslování" }]);
+        _mockProvider
+            .GetCompletionWithToolsAsync(
+                Arg.Any<List<ChatMessageDto>>(), Arg.Any<string?>(),
+                Arg.Any<List<NativeToolDefinition>>(), Arg.Any<CancellationToken>())
+            .Returns(new NativeToolCallResult
+            {
+                ToolCalls =
+                [
+                    new NativeToolCall
+                    {
+                        ToolName = "update_settings",
+                        Arguments = new Dictionary<string, string> { ["value"] = "FA-2026" }
+                    }
+                ]
+            });
+
+        // The executor's confirm gate produced a preview — nothing was written.
+        _toolExecutor.ExecuteToolAsync(Arg.Any<ParsedToolCall>(), Arg.Any<CancellationToken>())
+            .Returns(ChatToolResult.Success("Numbering would change to FA-2026.") with
+            {
+                RequiresConfirmation = true
+            });
+
+        // Capture the second-pass prompt the final streamed answer is generated from.
+        string? secondPassPrompt = null;
+        _mockProvider
+            .StreamCompletionAsync(Arg.Any<List<ChatMessageDto>>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                secondPassPrompt = call.ArgAt<string?>(1);
+                return SingleChunkStream("ok");
+            });
+
+        // Act
+        await foreach (var _ in _service.StreamMessageAsync(TestUserId,
+                           new SendMessageRequest { Message = "Změň číslování na FA-2026" }))
+        {
+            // Chunks themselves are irrelevant here — the prompt behind them is what is asserted.
+        }
+
+        // Assert — the model must be told the tool did NOT run.
+        secondPassPrompt.ShouldNotBeNull();
+        secondPassPrompt.ShouldContain("was NOT executed");
+        secondPassPrompt.ShouldContain("nothing has been changed");
+        secondPassPrompt.ShouldContain("ask them to confirm");
+    }
+
+    /// <summary>Minimal IAsyncEnumerable stand-in for a provider stream.</summary>
+    private static async IAsyncEnumerable<string> SingleChunkStream(string chunk)
+    {
+        yield return chunk;
+        await Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Issue #212, streaming Path A with more than one iteration. A failed tool does not end
+    /// the loop, so the confirm framing has to come from the LAST result — a preview that
+    /// arrives only in the second round must still reach the model as "nothing changed".
+    /// The single-iteration test above cannot tell a per-iteration assignment apart from one
+    /// that is only ever made on the first round.
+    /// </summary>
+    [Fact]
+    public async Task StreamMessage_NativeTools_KeepsConfirmFraming_WhenAnEarlierToolFailed()
+    {
+        // Arrange — round 1 calls a tool that fails, round 2 calls the confirmable one.
+        _mockProvider.SupportsNativeTools.Returns(true);
+        _toolExecutor.GetToolDefinitions().Returns(
+            [new NativeToolDefinition { Name = "update_settings", Description = "Změní číslování" }]);
+        _mockProvider
+            .GetCompletionWithToolsAsync(
+                Arg.Any<List<ChatMessageDto>>(), Arg.Any<string?>(),
+                Arg.Any<List<NativeToolDefinition>>(), Arg.Any<CancellationToken>())
+            .Returns(
+                NativeCallOf("find_settings"),
+                NativeCallOf("update_settings"));
+
+        _toolExecutor.ExecuteToolAsync(Arg.Any<ParsedToolCall>(), Arg.Any<CancellationToken>())
+            .Returns(
+                ChatToolResult.Failure("Setting lookup timed out."),
+                ChatToolResult.Success("Numbering would change to FA-2026.") with
+                {
+                    RequiresConfirmation = true
+                });
+
+        string? finalPrompt = null;
+        _mockProvider
+            .StreamCompletionAsync(Arg.Any<List<ChatMessageDto>>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                finalPrompt = call.ArgAt<string?>(1);
+                return SingleChunkStream("ok");
+            });
+
+        // Act
+        await foreach (var _ in _service.StreamMessageAsync(TestUserId,
+                           new SendMessageRequest { Message = "Změň číslování na FA-2026" }))
+        {
+            // Only the accumulated prompt matters here.
+        }
+
+        // Assert — both results are in the log, and the closing instruction follows the preview.
+        finalPrompt.ShouldNotBeNull();
+        finalPrompt.ShouldContain("Setting lookup timed out.");
+        finalPrompt.ShouldContain("Tool 'update_settings' was NOT executed");
+        finalPrompt.ShouldContain("ask them to confirm");
+    }
+
+    /// <summary>Provider answer that asks for exactly one tool, with no arguments.</summary>
+    private static NativeToolCallResult NativeCallOf(string toolName)
+        => new() { ToolCalls = [new NativeToolCall { ToolName = toolName }] };
+
+    // ─── Confirm gate through the REAL executor (issue #212) ──────────────
+    //
+    // The tests above mock IChatToolExecutor, so they only prove that ChatService reacts
+    // correctly to a RequiresConfirmation flag somebody set for it. These two run the real
+    // ChatToolExecutor instead: model answer → parsing → gate → preview suffix → framing.
+    // That whole chain is the contract the seven tool tasks of story #149 build on.
+
+    private const string ConfirmableToolName = "update_settings";
+
+    /// <summary>
+    /// The model's first-pass answer: a call to the confirmable tool with no approval flag.
+    /// </summary>
+    private const string ToolCallWithoutConfirm =
+        """{"action": "update_settings", "parameters": {"value": "FA-2026"}}""";
+
+    /// <summary>
+    /// ChatService wired to a real <see cref="ChatToolExecutor"/> over the given tools —
+    /// everything else stays the shared test double from the constructor.
+    /// </summary>
+    private ChatService CreateServiceWithRealExecutor(params IChatTool[] tools)
+    {
+        var tenantResolver = Substitute.For<ITenantResolver>();
+        tenantResolver.GetCurrentCompanyId().Returns(1L);
+
+        return new ChatService(
+            _context, tenantResolver, _providerFactory, _companyAiResolver, _contextBuilder,
+            new ChatToolExecutor(tools, Substitute.For<ILogger<ChatToolExecutor>>()), _logger);
+    }
+
+    /// <summary>
+    /// A data-changing tool whose preview and execution are told apart by NSubstitute,
+    /// so a test can assert which of the two the gate actually reached.
+    /// </summary>
+    private static IConfirmableChatTool CreateConfirmableTool()
+    {
+        var tool = Substitute.For<IConfirmableChatTool>();
+        tool.ToolName.Returns(ConfirmableToolName);
+        tool.Description.Returns("Changes the invoice numbering");
+        tool.Parameters.Returns([
+            new ChatToolParameter
+            {
+                Name = "value",
+                Type = ChatToolParameterType.String,
+                Description = "New numbering mask",
+                IsRequired = true
+            }
+        ]);
+        tool.BuildPreviewAsync(Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>())
+            .Returns(ChatToolResult.Success("Numbering would change from FA-2025 to FA-2026."));
+        tool.ExecuteAsync(Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>())
+            .Returns(ChatToolResult.Success("Numbering changed."));
+        return tool;
+    }
+
+    [Fact]
+    public async Task SendMessage_ThroughTheRealExecutor_WritesNothing_AndAsksForApproval()
+    {
+        // Arrange — first pass emits the tool call, second pass produces the user-facing answer.
+        var tool = CreateConfirmableTool();
+        var service = CreateServiceWithRealExecutor(tool);
+        _mockProvider
+            .GetCompletionAsync(Arg.Any<List<ChatMessageDto>>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(ToolCallWithoutConfirm, "Chcete opravdu změnit číslování?");
+
+        // Act
+        await service.SendMessageAsync(TestUserId,
+            new SendMessageRequest { Message = "Změň číslování na FA-2026" });
+
+        // Assert — the write path was never entered…
+        await tool.DidNotReceive().ExecuteAsync(
+            Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>());
+
+        // …and the model was handed the preview, the suffix and the matching instruction.
+        await _mockProvider.Received(1).GetCompletionAsync(
+            Arg.Any<List<ChatMessageDto>>(),
+            Arg.Is<string?>(prompt => prompt != null
+                                      && prompt.Contains("was NOT executed")
+                                      && prompt.Contains("would change from FA-2025 to FA-2026")
+                                      && prompt.Contains("NOTHING HAS BEEN CHANGED YET")
+                                      && prompt.Contains("ask them to confirm")),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// KNOWN GAP, characterised on purpose — assigned to issue #217, not fixed here.
+    ///
+    /// When <c>BuildPreviewAsync</c> itself fails, the executor returns that failure unchanged,
+    /// so <c>RequiresConfirmation</c> stays false and the prompt announces the tool "was
+    /// executed" — about something that never ran. Harmless today (the payload is the error
+    /// text, and no production tool is confirmable yet), but #217 must add the third branch
+    /// "the preview could not be prepared".
+    ///
+    /// When it does, this test goes red. That is the point: update the expectation, do not
+    /// delete the test.
+    /// </summary>
+    [Fact]
+    public async Task SendMessage_ThroughTheRealExecutor_StillSaysExecuted_WhenThePreviewFailed()
+    {
+        var tool = CreateConfirmableTool();
+        tool.BuildPreviewAsync(Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>())
+            .Returns(ChatToolResult.Failure("Numbering sequence not found."));
+        var service = CreateServiceWithRealExecutor(tool);
+        _mockProvider
+            .GetCompletionAsync(Arg.Any<List<ChatMessageDto>>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(ToolCallWithoutConfirm, "Nepodařilo se to.");
+
+        await service.SendMessageAsync(TestUserId,
+            new SendMessageRequest { Message = "Změň číslování na FA-2026" });
+
+        // Nothing ran — neither the preview (it failed) nor the write.
+        await tool.DidNotReceive().ExecuteAsync(
+            Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>());
+
+        await _mockProvider.Received(1).GetCompletionAsync(
+            Arg.Any<List<ChatMessageDto>>(),
+            Arg.Is<string?>(prompt => prompt != null
+                                      && prompt.Contains($"Tool '{ConfirmableToolName}' was executed")
+                                      && prompt.Contains("Error: Numbering sequence not found.")
+                                      && !prompt.Contains("NOTHING HAS BEEN CHANGED YET")),
             Arg.Any<CancellationToken>());
     }
 

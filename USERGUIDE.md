@@ -650,9 +650,16 @@ AI asistent zná kontext vaší firmy a umí odpovídat na otázky i provádět 
 | Faktury | Vyhledat fakturu, zobrazit detail, vypsat seznam faktur podle kritérií |
 | Klienti | Vyhledat klienta, zobrazit detail |
 | Přijaté faktury | Vyhledat, vypsat seznam |
+| Přehledy a reporty | Shrnout dashboard, vypsat faktury po splatnosti, faktury za období nebo pro konkrétního klienta, spočítat DPH za období |
 | Obecné dotazy | Odpovídat na otázky o funkcích aplikace |
 | Nastavení firmy | Zkontrolovat, jestli máte vyplněné vše potřebné k vystavení faktury („Můžu už fakturovat?", „Co mi ještě chybí?"). Vypíše, co chybí, jestli to fakturaci brání, nebo jen omezuje jednu funkci, a na které stránce se to doplní. Nic sám nemění. |
 | Navigace | Otevřít libovolnou stránku aplikace — faktury, přijaté faktury, klienty, platby, šablony, DPH a daně, upomínky i nastavení („Otevři DPH přiznání", „Založ novou fakturu pro klienta XYZ"). Stránky správce systému a přihlašovací obrazovky asistent neotevírá. |
+
+Asistent navíc ví, **kde právě stojíte** — jakou stránku máte otevřenou a jestli je na ní
+konkrétní doklad — a zná dnešní datum. Můžete se tedy ptát „kdy je tahle faktura splatná"
+místo toho, abyste číslo dokladu opisovali. Pokud vám ještě něco chybí k vystavení faktury
+(vyplněná vlastní firma, adresa, číselná řada), asistent to ví a nasměruje vás na stránku,
+kde se to doplní.
 
 ### Jak používat
 

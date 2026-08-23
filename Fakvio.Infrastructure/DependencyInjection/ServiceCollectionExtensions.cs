@@ -286,6 +286,11 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IChatTool, AttachFileTool>();
         services.AddScoped<IChatTool, ListAttachmentsTool>();
 
+        // Reporting tools — read-only overviews (dashboard, receivables, period/client, DPH).
+        services.AddScoped<IChatTool, GetDashboardTool>();
+        services.AddScoped<IChatTool, ListInvoicesTool>();
+        services.AddScoped<IChatTool, GetVatReportTool>();
+
         // Setup tools — let the agent say what is still missing before the user can invoice.
         services.AddScoped<IChatTool, GetReadinessTool>();
 

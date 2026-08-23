@@ -49,6 +49,22 @@ public class SendMessageRequest
     /// </summary>
     [MaxLength(15_000_000)]
     public string? AttachedImageBase64 { get; set; }
+
+    /// <summary>
+    /// Route the user is looking at while writing the message (e.g. "invoices/edit/42").
+    /// Relative to the app root, without query string. Null when the client does not send it
+    /// (older clients, Functions callers) — the assistant then simply has no page context.
+    /// </summary>
+    [MaxLength(200)]
+    public string? CurrentRoute { get; set; }
+
+    /// <summary>
+    /// Short label of the record open on that page (e.g. "invoices #42"), null when the page
+    /// shows no single record (list pages, dashboard). Derived on the client from the route —
+    /// only the client knows what it is displaying.
+    /// </summary>
+    [MaxLength(100)]
+    public string? OpenEntity { get; set; }
 }
 
 /// <summary>
