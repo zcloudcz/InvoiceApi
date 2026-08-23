@@ -58,6 +58,13 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Změny pro vývojáře
 
+- **#229** — AI chat asistent uměl v aplikaci navigovat jen na 6 natvrdo napsaných
+  stránek. Nyní zná všech 28 stránek dostupných běžnému uživateli i firemnímu
+  administrátorovi (např. přehled DPH, upomínky, číselné řady, uživatelé) včetně
+  detailu konkrétního klienta — přihlašovací a čistě sysadminovské stránky zůstávají
+  mimo dosah. Katalog cílů je odvozený přímo z routovací tabulky UI, takže nová
+  stránka bez navigačního cíle spadne na testu, dokud ji někdo nedoplní.
+  (PR #262, `c8edf27`)
 - **#161** — AI asistent byl v aplikaci prakticky neviditelný: tlačítko v AppBaru
   splývalo s logem firmy, stav otevření se po refreshi nikdy nezapamatoval a nikde
   jinde na chat nevedl odkaz. Na mobilu zabíral drawer napevno celou obrazovku a
