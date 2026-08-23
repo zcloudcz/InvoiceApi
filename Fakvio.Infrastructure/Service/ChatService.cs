@@ -551,8 +551,13 @@ public class ChatService : IChatService
     /// that says whether the tool actually ran comes from here, never from the tool's own text.
     ///
     /// Three outcomes, because "did it run" and "did it work" are different questions (#217):
-    /// a preview that could not even be built also changed nothing, so it must not be announced
-    /// as an executed tool that happened to fail.
+    /// a call that never reached the write also changed nothing, so it must not be announced as
+    /// an executed tool that happened to fail.
+    ///
+    /// The failing branch is worded to cover every way a confirmable call can end short of the
+    /// write — rejected parameters as well as a preview that failed or threw — because those are
+    /// exactly the paths the executor marks with RequiresConfirmation. "The preview failed" would
+    /// be a lie about the first of them: the preview was never attempted.
     /// </summary>
     private static string DescribeToolResult(string toolName, ChatToolResult result)
         => (result.RequiresConfirmation, result.IsSuccess) switch
@@ -560,7 +565,7 @@ public class ChatService : IChatService
             (true, true) => $"Tool '{toolName}' was NOT executed — nothing has been changed. " +
                             $"It returned a preview of the change:\n{result.OutputText}",
             (true, false) => $"Tool '{toolName}' was NOT executed — nothing has been changed. " +
-                             $"The preview of the change could not be prepared:\n{result.OutputText}",
+                             $"The call could not be prepared:\n{result.OutputText}",
             _ => $"Tool '{toolName}' was executed. Result:\n{result.OutputText}"
         };
 

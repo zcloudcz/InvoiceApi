@@ -361,6 +361,13 @@ public class ChatToolExecutor : IChatToolExecutor
     ///
     /// A tool implementing <see cref="IConfirmableChatTool"/> only executes when the call
     /// carries <c>confirm: true</c>; otherwise its preview is returned and nothing is written.
+    ///
+    /// INVARIANT for confirmable tools, relied on by ChatService when it frames the result for
+    /// the model: if this method returns without reaching <see cref="IChatTool.ExecuteAsync"/>,
+    /// the result carries <c>RequiresConfirmation = true</c> — on every such path. There are
+    /// three of them (rejected parameters, preview returned a failure, preview threw), plus the
+    /// gate's own successful preview. The single path that does reach the write forces the flag
+    /// back to <c>false</c>. Add an early <c>return</c> here and it must answer that question too.
     /// </summary>
     public async Task<ChatToolResult> ExecuteToolAsync(
         ParsedToolCall toolCall,
@@ -369,11 +376,28 @@ public class ChatToolExecutor : IChatToolExecutor
         // Look up the tool in the dictionary (case-insensitive).
         if (!_tools.TryGetValue(toolCall.Action, out var tool))
         {
+            // Outside the invariant below on purpose: there is no tool object, so nothing here
+            // can be confirmable and there is no write to hold back. The flag stays false and the
+            // model reads a plain "unknown tool" error, which is already the whole truth.
             _logger.LogWarning("Unknown tool requested: {Action}. Available: {Available}",
                 toolCall.Action, string.Join(", ", _tools.Keys));
             return ChatToolResult.Failure(
                 $"Unknown tool: {toolCall.Action}. Available tools: {string.Join(", ", _tools.Keys)}");
         }
+
+        // ── Confirm gate state ────────────────────────────────────────────
+        // A data-changing tool runs ONLY with the user's explicit approval. Without it the
+        // tool's ExecuteAsync is never reached — the user sees a preview instead. Central on
+        // purpose: a per-tool check is one forgotten `if` away from a silent overwrite.
+        //
+        // Both flags are computed here, BEFORE the first thing that can return, because every
+        // exit below has to answer the same question: did ExecuteAsync run? For a confirmable
+        // tool the answer is "no" on every path that leaves this method without reaching the
+        // write — rejected parameters, a failed preview, an exception out of the preview — and
+        // ChatToolResult.RequiresConfirmation is what carries that fact to ChatService.
+        var confirmable = tool as IConfirmableChatTool;
+        var awaitingConfirmation = confirmable is not null
+                                   && !ChatToolConfirmation.IsConfirmed(toolCall.Parameters);
 
         // Central parameter validation — done once here instead of in every ExecuteAsync.
         var validationError = ValidateParameters(tool, toolCall.Parameters);
@@ -381,25 +405,18 @@ public class ChatToolExecutor : IChatToolExecutor
         {
             _logger.LogWarning("Tool {ToolName} called with invalid parameters: {Error}",
                 tool.ToolName, validationError);
-            return ChatToolResult.Failure(validationError);
+
+            // Keyed on "is this tool confirmable at all", NOT on awaitingConfirmation: a rejected
+            // call never reaches ExecuteAsync even when the caller did send confirm=true. Using
+            // the gate flag here would leave `confirm: true` + a missing required parameter
+            // reported to the model as an executed write (issue #217, review round 1).
+            return ChatToolResult.Failure(validationError)
+                with { RequiresConfirmation = confirmable is not null };
         }
 
         _logger.LogInformation("Executing tool {ToolName} with parameters: {Parameters}",
             tool.ToolName,
             string.Join(", ", toolCall.Parameters.Select(kv => $"{kv.Key}={kv.Value}")));
-
-        // ── Confirm gate ──────────────────────────────────────────────────
-        // A data-changing tool runs ONLY with the user's explicit approval. Without it the
-        // tool's ExecuteAsync is never reached — the user sees a preview instead. Central on
-        // purpose: a per-tool check is one forgotten `if` away from a silent overwrite.
-        //
-        // The decision is taken before the try block so the catch below also knows which path
-        // it is reporting on: an exception out of BuildPreviewAsync means the tool did not run
-        // either, and saying "was executed" about it would be just as untrue as for a preview
-        // that returned a failure.
-        var confirmable = tool as IConfirmableChatTool;
-        var awaitingConfirmation = confirmable is not null
-                                   && !ChatToolConfirmation.IsConfirmed(toolCall.Parameters);
 
         try
         {
@@ -435,11 +452,19 @@ public class ChatToolExecutor : IChatToolExecutor
             _logger.LogInformation("Tool {ToolName} completed: IsSuccess={IsSuccess}",
                 tool.ToolName, result.IsSuccess);
 
-            return result;
+            // The only exit that DID reach the write, so the flag is forced off here rather than
+            // trusted. A tool that set it by mistake would make ChatService announce a completed
+            // change as a mere preview — the user would believe nothing happened while the record
+            // is already gone. One line turns the "never set by a tool" convention into a fact.
+            return result with { RequiresConfirmation = false };
         }
         catch (Exception ex)
         {
             // Catch any unhandled exception from the tool to prevent the chat from crashing.
+            //
+            // Here — and only here — the gate flag is the right answer: awaitingConfirmation is
+            // true exactly when the exception came out of BuildPreviewAsync (nothing written),
+            // and false when it came out of ExecuteAsync, which may have written part of the way.
             _logger.LogError(ex, "Tool {ToolName} threw an unhandled exception", tool.ToolName);
             return ChatToolResult.Failure($"Tool execution failed: {ex.Message}")
                 with { RequiresConfirmation = awaitingConfirmation };

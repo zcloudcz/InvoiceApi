@@ -782,10 +782,20 @@ Co dělá `ChatToolExecutor` (`Fakvio.Infrastructure/Service/ChatTools/`) automa
 |------|---------|
 | Schéma | Do `Parameters` doplní volitelný `confirm` (boolean) — v textových instrukcích i v native JSON Schema. Tool si ho nesmí deklarovat sám. |
 | Volání bez `confirm: true` | `ExecuteAsync` se **vůbec nezavolá**. Spustí se `BuildPreviewAsync` a k výsledku se připojí `ChatToolConfirmation.PreviewSuffix`. |
-| Neparsovatelná hodnota (`"ano"`, `"1"`) | Centrální validace ji odmítne jako ne-boolean; nespustí se ani zápis, ani náhled (fail-closed). |
-| Neúspěšný náhled | Vrátí se jako obyčejná chyba (model **není** vyzván k `confirm: true` — jinak by šel rovnou do téže chyby, ale se zápisem), zároveň ale s `RequiresConfirmation = true`: `ExecuteAsync` neběžel. Framing proto říká „tool NEBYL spuštěn, náhled se nepodařilo připravit". Totéž platí, když `BuildPreviewAsync` vyhodí výjimku (#217). |
+| Neparsovatelná hodnota (`"ano"`, `"1"`) | Centrální validace ji odmítne jako ne-boolean; nespustí se ani zápis, ani náhled (fail-closed). Výsledek nese `RequiresConfirmation = true` — viz invariant níže. |
+| Jakékoli selhání validace | Chybějící povinný parametr, hodnota mimo `AllowedValues`, špatný typ — u confirmable toolu vždy `RequiresConfirmation = true`, **bez ohledu na hodnotu `confirm`**. `confirm: true` + chybějící parametr se k zápisu taky nedostane. |
+| Neúspěšný náhled | Vrátí se jako obyčejná chyba (model **není** vyzván k `confirm: true` — jinak by šel rovnou do téže chyby, ale se zápisem), zároveň ale s `RequiresConfirmation = true`: `ExecuteAsync` neběžel. Totéž platí, když `BuildPreviewAsync` vyhodí výjimku (#217). |
+| Úspěšný zápis | `RequiresConfirmation` se **přepíše na `false`**, i kdyby ho tool sám nastavil. Property patří executoru; tool ji nastavovat nemá a nastavit ji fakticky nemůže. |
 | `UiAction` u náhledu | Zahodí se (`UiAction = null`). Jinak by prohlížeč přenavigoval dřív, než uživatel cokoli potvrdil. UI akci vracej až z `ExecuteAsync`. |
-| Odpověď modelu | Všechny čtyři tool cesty (text/native × streaming/non-streaming) skládají druhý průchod přes `ChatService.DescribeToolResult` + `BuildToolResultInstruction`; u náhledu říkají „tool NEBYL spuštěn". Framing tedy nezávisí na textu, který dodá tool. |
+| Odpověď modelu | Všechny čtyři tool cesty (text/native × streaming/non-streaming) skládají druhý průchod přes `ChatService.DescribeToolResult` + `BuildToolResultInstruction`; u náhledu i u nespuštěného volání říkají „tool NEBYL spuštěn". Framing tedy nezávisí na textu, který dodá tool. O potvrzení se žádá jen u **úspěšného** náhledu (`ChatService.AwaitsConfirmation` = `RequiresConfirmation && IsSuccess`) — chybu potvrzovat nemá smysl. |
+
+**Invariant, na kterém to celé stojí (#217).** U confirmable toolu platí: **vrátí-li se
+`ExecuteToolAsync` dřív, než zavolá `tool.ExecuteAsync`, nese výsledek `RequiresConfirmation = true`** —
+ať už se vrátil kvůli gate, validaci, neúspěšnému náhledu nebo výjimce z náhledu. Jediná cesta,
+která zápis skutečně provede, flag naopak vynuluje. Property tedy neznamená „čeká se na potvrzení",
+ale „**`ExecuteAsync` neběžel**"; bez toho by framing řekl modelu „tool was executed" o volání, které
+se nikdy nespustilo, a asistent by ohlásil změnu, ke které nedošlo. Přidáváš-li do `ExecuteToolAsync`
+nový `return`, musí na tuhle otázku odpovědět taky.
 | `confirm` v parametrech | Neodfiltruje se — dojde i do `BuildPreviewAsync`, i do `ExecuteAsync`. Čti parametry přes `TryGetValue` a `confirm` prostě ignoruj. |
 
 **Co gate NENÍ: autorizační hranice.** Server si souhlas nikde nepamatuje — kroky „náhled" a
@@ -809,6 +819,15 @@ odmítne, a zápis se nespoléhá na snímek z náhledu; (2) chybějící zázna
 `Failure` už z náhledu (uživatel se dozví „nejde to" místo aby to potvrzoval); (3) tool
 nenabídne víc, než co uživatel zvládne bez chatu — proto `delete_invoice` maže jen koncepty,
 i když servis umí i poslední vydaný doklad.
+
+**Pozor na bod (3): zúžení na úrovni toolu je UX zábrana, ne záruka.** `delete_invoice` si stav
+ověří v `LoadDeletableAsync` a pak volá `InvoiceService.DeleteInvoiceAsync`, který si doklad načte
+**znovu** a má **slabší** podmínku. Mezi těmi dvěma čteními může jiný požadavek doklad vystavit —
+a smaže se i něco jiného než koncept (TOCTOU). Tool-level zúžení drží spolehlivě jen tehdy, když
+ho vynutí i autoritativní mutace: `complete_invoice` a `mark_invoice_paid` ten závod nemají, protože
+servis tam vynucuje **tentýž** predikát a selže bezpečně. Kopíruješ-li tenhle vzor na jiný
+destruktivní tool, buď zúžení protlač až do servisu, nebo v dokumentaci toolu napiš, že jde
+o best-effort.
 
 #### System prompt — složení a editovatelnost (issue #146)
 
