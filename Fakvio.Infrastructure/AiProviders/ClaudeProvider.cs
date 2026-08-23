@@ -3,6 +3,7 @@ using System.Text.Json;
 using Anthropic;
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.Chat;
+using Fakvio.Infrastructure.Service.ChatTools;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -185,12 +186,10 @@ public class ClaudeProvider : IAiProvider, IDisposable
                             if (!string.IsNullOrEmpty(inputJson))
                             {
                                 using var doc = JsonDocument.Parse(inputJson);
-                                foreach (var prop in doc.RootElement.EnumerateObject())
-                                {
-                                    args[prop.Name] = prop.Value.ValueKind == JsonValueKind.String
-                                        ? prop.Value.GetString() ?? ""
-                                        : prop.Value.GetRawText();
-                                }
+
+                                // Shared with the text-based flow and with Ollama, so the same
+                                // model answer produces the same arguments on every provider.
+                                args = ToolArgumentReader.ReadArguments(doc.RootElement);
                             }
                         }
                         catch (JsonException ex)
@@ -255,6 +254,12 @@ public class ClaudeProvider : IAiProvider, IDisposable
                 if (param.EnumValues is { Count: > 0 })
                 {
                     propDef["enum"] = param.EnumValues;
+                }
+
+                // Array parameters must declare the schema of their elements.
+                if (param.ArrayItemType is { Length: > 0 })
+                {
+                    propDef["items"] = new Dictionary<string, object> { ["type"] = param.ArrayItemType };
                 }
 
                 properties[param.Name] = propDef;

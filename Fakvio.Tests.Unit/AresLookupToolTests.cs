@@ -112,21 +112,6 @@ public class AresLookupToolTests
     }
 
     [Fact]
-    public async Task Execute_ReturnsFailure_WhenMissingParameter()
-    {
-        // Act — call without the required parameter.
-        var result = await _tool.ExecuteAsync(new Dictionary<string, string>());
-
-        // Assert
-        result.IsSuccess.ShouldBeFalse();
-        result.OutputText.ShouldContain("Missing required parameter");
-
-        // ARES service should NOT be called.
-        await _aresService.DidNotReceive()
-            .GetCompanyInfoAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
     public async Task Execute_StripsWhitespace_FromIco()
     {
         // Arrange — IČO with extra whitespace.

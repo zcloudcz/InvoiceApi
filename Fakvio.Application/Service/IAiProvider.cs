@@ -128,6 +128,15 @@ public class NativeToolParameter
     /// Example: ["new_invoice", "client_list", "invoice_list"] for navigation targets.
     /// </summary>
     public List<string>? EnumValues { get; set; }
+
+    /// <summary>
+    /// JSON Schema type of the array elements — set only when <see cref="Type"/> is "array",
+    /// null otherwise. Providers emit it as { "type": "array", "items": { "type": ... } }.
+    ///
+    /// Junior note: an array without an "items" schema is rejected by strict
+    /// function-calling APIs, so this is not optional decoration.
+    /// </summary>
+    public string? ArrayItemType { get; set; }
 }
 
 /// <summary>

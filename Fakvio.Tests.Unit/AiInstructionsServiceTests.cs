@@ -1,3 +1,4 @@
+using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.SystemConfiguration;
 using Fakvio.Domain.Entities;
 using Fakvio.Infrastructure.Data;
@@ -36,8 +37,27 @@ public class AiInstructionsServiceTests : IDisposable
         _service = new AiInstructionsService(
             _context,
             _cache,
+            [FakeTool()],
             Substitute.For<ILogger<AiInstructionsService>>());
     }
+
+    /// <summary>
+    /// One fake chat tool — enough to prove the preview renders the generated catalog
+    /// rather than a frozen list. The preview only reads name and description.
+    /// </summary>
+    private static IChatTool FakeTool()
+    {
+        var tool = Substitute.For<IChatTool>();
+        tool.ToolName.Returns("ares_lookup");
+        tool.Description.Returns("Look up a Czech company by IČO");
+        return tool;
+    }
+
+    /// <summary>
+    /// The catalog line <see cref="FakeTool"/> is expected to render. A literal, so the
+    /// expected prompt text stays independent of the production code.
+    /// </summary>
+    private const string FakeToolLine = "- ares_lookup: Look up a Czech company by IČO";
 
     public void Dispose()
     {
@@ -284,7 +304,7 @@ public class AiInstructionsServiceTests : IDisposable
         var clock = new TestClock();
         using var cache = new MemoryCache(new MemoryCacheOptions { Clock = clock });
         var service = new AiInstructionsService(
-            _context, cache, Substitute.For<ILogger<AiInstructionsService>>());
+            _context, cache, [FakeTool()], Substitute.For<ILogger<AiInstructionsService>>());
 
         await SeedConfigAsync("Original prompt", null);
         (await service.GetCachedInstructionsAsync()).CustomPrompt.ShouldBe("Original prompt");
@@ -331,7 +351,7 @@ public class AiInstructionsServiceTests : IDisposable
         var preview = await _service.GetPreviewAsync();
 
         // The preview must show the real built-in text, not a "see the source code" stub.
-        preview.FullPrompt.ShouldContainBuiltInMainBlock();
+        preview.FullPrompt.ShouldContainBuiltInMainBlock(FakeToolLine);
     }
 
     [Fact]
@@ -368,7 +388,7 @@ public class AiInstructionsServiceTests : IDisposable
 
         var preview = await _service.GetPreviewAsync();
 
-        preview.FullPrompt.ShouldContainBuiltInMainBlock();
+        preview.FullPrompt.ShouldContainBuiltInMainBlock(FakeToolLine);
     }
 
     [Fact]
