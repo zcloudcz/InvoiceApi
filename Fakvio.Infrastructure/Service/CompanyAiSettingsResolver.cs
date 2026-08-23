@@ -8,6 +8,7 @@ using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.Chat;
 using Fakvio.Infrastructure.AiProviders;
 using Fakvio.Infrastructure.Data;
+using Fakvio.Infrastructure.Service.ChatTools;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -500,16 +501,14 @@ internal sealed class AdHocClaudeProvider : IAiProvider, IDisposable
                             var inputJson = toolUse.Input.ToString();
                             if (!string.IsNullOrEmpty(inputJson))
                             {
-                                using var doc = System.Text.Json.JsonDocument.Parse(inputJson);
-                                foreach (var prop in doc.RootElement.EnumerateObject())
-                                {
-                                    args[prop.Name] = prop.Value.ValueKind == System.Text.Json.JsonValueKind.String
-                                        ? prop.Value.GetString() ?? ""
-                                        : prop.Value.GetRawText();
-                                }
+                                using var doc = JsonDocument.Parse(inputJson);
+
+                                // Same reader as the global providers — the per-company path must
+                                // not turn a JSON null into the text "null" either.
+                                args = ToolArgumentReader.ReadArguments(doc.RootElement);
                             }
                         }
-                        catch (System.Text.Json.JsonException) { }
+                        catch (JsonException) { }
                     }
                     result.ToolCalls.Add(new NativeToolCall { ToolName = toolUse.Name, Arguments = args });
                 }
@@ -916,16 +915,10 @@ internal sealed class AdHocOllamaProvider : IAiProvider
             {
                 if (toolCall.Function == null) continue;
 
-                var args = new Dictionary<string, string>();
-                if (toolCall.Function.Arguments is { } argsElement)
-                {
-                    foreach (var prop in argsElement.EnumerateObject())
-                    {
-                        args[prop.Name] = prop.Value.ValueKind == JsonValueKind.String
-                            ? prop.Value.GetString() ?? ""
-                            : prop.Value.GetRawText();
-                    }
-                }
+                // Same reader as the global providers — see AdHocClaudeProvider above.
+                Dictionary<string, string> args = toolCall.Function.Arguments is { } argsElement
+                    ? ToolArgumentReader.ReadArguments(argsElement)
+                    : [];
 
                 nativeResult.ToolCalls.Add(new NativeToolCall
                 {

@@ -140,9 +140,58 @@ public class ChatToolExecutor : IChatToolExecutor
         sb.AppendLine("Use the exact parameter names listed above.");
         sb.AppendLine("Send numbers as numbers, booleans as true or false, and arrays as JSON arrays — never quoted.");
         sb.AppendLine("Omit optional parameters you have no value for — never invent one.");
+        sb.AppendLine();
+
+        sb.AppendLine("EXAMPLES (required parameters only — replace the <placeholders> with real values):");
+        foreach (var tool in _tools.Values)
+        {
+            sb.AppendLine($"  {BuildExampleCall(tool)}");
+        }
+
+        sb.AppendLine();
         sb.Append("If no tool is needed, respond normally with text.");
 
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Renders one ready-to-copy call for the given tool, e.g.
+    /// {"action": "navigate", "parameters": {"target": "new_invoice"}}.
+    ///
+    /// Generated from the schema rather than hand-written, so an example can never
+    /// advertise a parameter the tool does not accept. Only required parameters appear —
+    /// the instructions above already tell the model to omit the optional ones.
+    /// </summary>
+    private static string BuildExampleCall(IChatTool tool)
+    {
+        var arguments = string.Join(", ", tool.Parameters
+            .Where(parameter => parameter.IsRequired)
+            .Select(parameter => $"\"{parameter.Name}\": {ExampleValue(parameter)}"));
+
+        // Plain concatenation on purpose: in an interpolated string every JSON brace would
+        // have to be doubled, which is much harder to read than this.
+        return "{\"action\": \"" + tool.ToolName + "\", \"parameters\": {" + arguments + "}}";
+    }
+
+    /// <summary>
+    /// Placeholder value for one parameter — always valid JSON of the declared type,
+    /// so a model that copies the example verbatim still produces a parsable call.
+    /// Parameters with a closed value list show a real allowed value (the best guidance
+    /// we can give); everything else shows a &lt;placeholder&gt; the model must replace.
+    /// </summary>
+    private static string ExampleValue(ChatToolParameter parameter)
+    {
+        if (parameter.AllowedValues is { Count: > 0 } allowed)
+            return $"\"{allowed[0]}\"";
+
+        return parameter.Type switch
+        {
+            ChatToolParameterType.Integer => "1",
+            ChatToolParameterType.Number => "100.50",
+            ChatToolParameterType.Boolean => "true",
+            ChatToolParameterType.ObjectArray => "[{\"<field>\": \"<value>\"}]",
+            _ => $"\"<{parameter.Name}>\""
+        };
     }
 
     /// <summary>
@@ -205,8 +254,13 @@ public class ChatToolExecutor : IChatToolExecutor
             using var doc = JsonDocument.Parse(jsonString);
             var root = doc.RootElement;
 
-            // Must have an "action" property to be a valid tool call.
-            if (!root.TryGetProperty("action", out var actionElement))
+            // Must have a STRING "action" property to be a valid tool call.
+            // The ValueKind check comes first because GetString() throws
+            // InvalidOperationException on a number/boolean/array/object — and that is not a
+            // JsonException, so it would escape the catch below and kill the whole chat turn.
+            // A model that answers {"action": 123} is simply not calling a tool.
+            if (!root.TryGetProperty("action", out var actionElement) ||
+                actionElement.ValueKind != JsonValueKind.String)
                 return null;
 
             var action = actionElement.GetString();
@@ -214,19 +268,12 @@ public class ChatToolExecutor : IChatToolExecutor
                 return null;
 
             // Extract parameters (optional — some tools might not need params).
-            var parameters = new Dictionary<string, string>();
-            if (root.TryGetProperty("parameters", out var paramsElement) &&
-                paramsElement.ValueKind == JsonValueKind.Object)
-            {
-                foreach (var prop in paramsElement.EnumerateObject())
-                {
-                    // Non-string values (numbers, booleans, arrays) keep their raw JSON text,
-                    // which is exactly what the typed validation and the tools expect.
-                    parameters[prop.Name] = prop.Value.ValueKind == JsonValueKind.String
-                        ? prop.Value.GetString() ?? string.Empty
-                        : prop.Value.GetRawText();
-                }
-            }
+            // The shared reader is what makes the text-based flow behave exactly like the
+            // native provider flows, JSON nulls included.
+            Dictionary<string, string> parameters =
+                root.TryGetProperty("parameters", out var paramsElement)
+                    ? ToolArgumentReader.ReadArguments(paramsElement)
+                    : [];
 
             _logger.LogInformation("Parsed tool call: action={Action}, parameters={Parameters}",
                 action, string.Join(", ", parameters.Select(kv => $"{kv.Key}={kv.Value}")));

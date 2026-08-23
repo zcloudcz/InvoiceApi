@@ -375,6 +375,54 @@ public class ChatToolExecutorTests
         result.Parameters.ShouldBeEmpty();
     }
 
+    [Fact]
+    public void ParseToolCall_DropsJsonNullValues_InsteadOfTurningThemIntoTheText_null()
+    {
+        // A model that has no value for a parameter often sends a JSON null literal.
+        // GetRawText() would turn that into the four-character string "null", which
+        // every downstream check (blank test, string type check, tool-side
+        // IsNullOrWhiteSpace guards) happily accepts — and "null" ends up persisted.
+        var json = """{"action": "create_invoice", "parameters": {"client_name": "Alza", "notes": null}}""";
+
+        var result = _executor.ParseToolCall(json);
+
+        result.ShouldNotBeNull();
+        result.Parameters.ShouldNotContainKey("notes");
+    }
+
+    [Fact]
+    public async Task ExecuteToolAsync_RejectsRequiredParameterSentAsJsonNull()
+    {
+        // End-to-end proof of the same defect: a required parameter sent as JSON null
+        // must be reported as missing, not silently accepted as the value "null".
+        var parsed = _executor.ParseToolCall(
+            """{"action": "ares_lookup", "parameters": {"registration_number": null}}""");
+        parsed.ShouldNotBeNull();
+
+        var result = await _executor.ExecuteToolAsync(parsed);
+
+        result.IsSuccess.ShouldBeFalse();
+        result.OutputText.ShouldContain("missing required parameter");
+        await _mockAresTool.DidNotReceive().ExecuteAsync(
+            Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData("""{"action": 123, "parameters": {}}""")]              // number
+    [InlineData("""{"action": true, "parameters": {}}""")]             // boolean
+    [InlineData("""{"action": null, "parameters": {}}""")]             // null literal
+    [InlineData("""{"action": ["ares_lookup"], "parameters": {}}""")]  // array
+    [InlineData("""{"action": {"name": "ares_lookup"}}""")]            // object
+    public void ParseToolCall_ReturnsNull_ForNonStringAction(string json)
+    {
+        // GetString() throws InvalidOperationException on a non-string element, and that
+        // is not a JsonException — it would escape the catch and kill the chat turn.
+        // A malformed action is a plain text answer, so it must simply parse as "no tool call".
+        var result = _executor.ParseToolCall(json);
+
+        result.ShouldBeNull();
+    }
+
     // ─── ExecuteToolAsync Tests ───────────────────────────────────────────
 
     [Fact]
@@ -616,6 +664,43 @@ public class ChatToolExecutorTests
         var executor = CreateExecutor(CreateTool("ping", "Does nothing"));
 
         executor.BuildToolInstructions().ShouldContain("Parameters: none");
+    }
+
+    [Fact]
+    public void BuildToolInstructions_ShowsOneExampleCallPerTool()
+    {
+        // Small models copy the example shape. Every tool needs one, and it has to be
+        // generated from the schema so it can never drift from the real parameter list.
+        var instructions = _executor.BuildToolInstructions();
+
+        instructions.ShouldContain("""{"action": "ares_lookup", "parameters": {"registration_number": "<registration_number>"}}""");
+        instructions.ShouldContain("""{"action": "create_client", "parameters": {"registration_number": "<registration_number>"}}""");
+    }
+
+    [Fact]
+    public void BuildToolInstructions_ExampleUsesFirstAllowedValue_ForRestrictedParameter()
+    {
+        var instructions = _executor.BuildToolInstructions();
+
+        instructions.ShouldContain("""{"action": "navigate", "parameters": {"target": "new_invoice"}}""");
+    }
+
+    [Fact]
+    public void BuildToolInstructions_ExampleOmitsOptionalParameters_AndLeavesNonStringsUnquoted()
+    {
+        var instructions = _executor.BuildToolInstructions();
+
+        // create_invoice requires client_name (string) + items (array); discount,
+        // send_email and copies are optional and must not appear in the example.
+        instructions.ShouldContain("""{"action": "create_invoice", "parameters": {"client_name": "<client_name>", "items": [{"<field>": "<value>"}]}}""");
+    }
+
+    [Fact]
+    public void BuildToolInstructions_ExampleForToolWithoutParameters_HasEmptyParameterObject()
+    {
+        var executor = CreateExecutor(CreateTool("ping", "Does nothing"));
+
+        executor.BuildToolInstructions().ShouldContain("""{"action": "ping", "parameters": {}}""");
     }
 
     // ─── AvailableTools Tests ─────────────────────────────────────────────

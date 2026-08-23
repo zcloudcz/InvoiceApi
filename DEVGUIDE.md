@@ -621,10 +621,15 @@ Pravidla:
 3. **Rozbité schéma spadne hlasitě.** Chybějící `Parameters` = chyba buildu (interface),
    duplicitní/prázdný název parametru, chybějící popis nebo `AllowedValues` na ne-stringu
    = `InvalidOperationException` při startu v konstruktoru `ChatToolExecutor`.
-4. **Katalog toolů nikde neduplikuj.** `BuildToolInstructions()` (textový flow),
-   `GetToolDefinitions()` (native flow) i seznam schopností v `ChatContextBuilder`
-   se generují z registrovaných `IChatTool`. Hardcoded seznam = review reject.
-5. Registrace: jeden řádek `services.AddScoped<IChatTool, MyTool>();`.
+4. **Katalog toolů nikde neduplikuj.** `BuildToolInstructions()` (textový flow — včetně
+   ukázkového volání pro každý tool), `GetToolDefinitions()` (native flow) i seznam
+   schopností v `ChatContextBuilder` se generují z registrovaných `IChatTool`.
+   Hardcoded seznam ani ručně psaná ukázka = review reject.
+5. **`null` od modelu znamená „parametr nedorazil“.** Hodnota `null` se do `parameters`
+   vůbec nepropiše (`ToolArgumentReader`, společný pro textový i native flow), takže
+   `TryGetValue` vrátí `false` a povinný parametr správně spadne na „missing“.
+   Řetězec `"null"` v hodnotě nikdy nedostaneš.
+6. Registrace: jeden řádek `services.AddScoped<IChatTool, MyTool>();`.
 
 #### Chat AI Tools matice
 

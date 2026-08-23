@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.Chat;
+using Fakvio.Infrastructure.Service.ChatTools;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -200,19 +201,12 @@ public class OllamaProvider : IAiProvider
                 if (toolCall.Function == null)
                     continue;
 
-                var args = new Dictionary<string, string>();
-
-                // Parse the function arguments — Ollama returns them as a JSON object.
-                if (toolCall.Function.Arguments is { } argsElement)
-                {
-                    foreach (var prop in argsElement.EnumerateObject())
-                    {
-                        // Convert all values to strings for compatibility with IChatTool.ExecuteAsync.
-                        args[prop.Name] = prop.Value.ValueKind == JsonValueKind.String
-                            ? prop.Value.GetString() ?? ""
-                            : prop.Value.GetRawText();
-                    }
-                }
+                // Ollama returns the function arguments as a JSON object. The shared reader
+                // converts them to the Dictionary<string, string> IChatTool.ExecuteAsync expects,
+                // identically to Claude and to the text-based flow.
+                Dictionary<string, string> args = toolCall.Function.Arguments is { } argsElement
+                    ? ToolArgumentReader.ReadArguments(argsElement)
+                    : [];
 
                 _logger.LogInformation(
                     "Ollama native tool call: {ToolName}({Args})",
