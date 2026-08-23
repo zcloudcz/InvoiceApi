@@ -1,4 +1,3 @@
-using System.Text;
 using Fakvio.Application.Service;
 using Fakvio.Domain.Enums;
 using Fakvio.Infrastructure.Data;
@@ -15,6 +14,14 @@ namespace Fakvio.Infrastructure.Service;
 /// - Current tenant stats (clients, invoices, overdue amounts)
 /// - Domain context (Czech invoicing, DPH/VAT)
 ///
+/// This class only gathers the tenant data; the prompt layout and the built-in text
+/// live in <see cref="AiSystemPrompt"/>, shared with the SysAdmin preview so the two
+/// can never drift apart.
+///
+/// The style/tools/rules block is editable by a SysAdmin — see
+/// <see cref="IAiInstructionsService"/>. Company identity and business statistics are
+/// always generated here and cannot be overridden.
+///
 /// IMPORTANT: The system prompt must clearly state that the assistant IS connected
 /// to the Fakvio system and CAN perform actions. Without this, models like Ollama
 /// respond with "I'm not connected to any system" because they don't know they have tools.
@@ -23,11 +30,13 @@ public class ChatContextBuilder : IChatContextBuilder
 {
     private readonly TenantDbContext _context;
     private readonly IReadOnlyList<IChatTool> _tools;
+    private readonly IAiInstructionsService _aiInstructions;
     private readonly ILogger<ChatContextBuilder> _logger;
 
     public ChatContextBuilder(
         TenantDbContext context,
         IEnumerable<IChatTool> tools,
+        IAiInstructionsService aiInstructions,
         ILogger<ChatContextBuilder> logger)
     {
         _context = context;
@@ -35,6 +44,7 @@ public class ChatContextBuilder : IChatContextBuilder
         // The capability list in the system prompt is generated from the registered tools,
         // so it can never drift from what the assistant can actually do.
         _tools = tools.ToList();
+        _aiInstructions = aiInstructions;
         _logger = logger;
     }
 
@@ -46,6 +56,10 @@ public class ChatContextBuilder : IChatContextBuilder
     {
         try
         {
+            // SysAdmin-editable instructions. Served from IMemoryCache on the hot path,
+            // so this normally costs no database round-trip.
+            var (customPrompt, appendix) = await _aiInstructions.GetCachedInstructionsAsync(ct);
+
             // Gather business context from the tenant database.
             // Each query is simple and fast — counts and sums only.
             var totalClients = await _context.Client
@@ -80,53 +94,21 @@ public class ChatContextBuilder : IChatContextBuilder
                 .Select(c => new { c.CompanyName, c.RegistrationNumber, c.TaxNumber })
                 .FirstOrDefaultAsync(ct);
 
-            // Build the system prompt with capabilities and business context.
-            var sb = new StringBuilder();
-            sb.AppendLine("You are Fakvio AI Assistant — connected to the Fakvio invoicing system.");
-            sb.AppendLine();
+            // Tenants without a configured issuer simply get no company block.
+            var companyBlock = issuer == null
+                ? null
+                : AiSystemPrompt.BuildCompanyBlock(
+                    issuer.CompanyName,
+                    issuer.RegistrationNumber,
+                    issuer.TaxNumber);
 
-            // Tell the AI exactly who the user's company is — critical for import_invoice tool.
-            if (issuer != null)
-            {
-                sb.AppendLine("YOUR COMPANY (the user's company — you represent this entity):");
-                sb.AppendLine($"- Name: {issuer.CompanyName}");
-                sb.AppendLine($"- IČO: {issuer.RegistrationNumber}");
-                if (!string.IsNullOrEmpty(issuer.TaxNumber))
-                    sb.AppendLine($"- DIČ: {issuer.TaxNumber}");
-                sb.AppendLine("When importing invoices: if YOUR IČO appears as the issuer (dodavatel), it's an ISSUED invoice.");
-                sb.AppendLine("If YOUR IČO appears as the recipient (odběratel), it's a RECEIVED invoice.");
-                sb.AppendLine();
-            }
+            var businessContext = AiSystemPrompt.BuildBusinessContextBlock(
+                totalClients: totalClients.ToString(),
+                openInvoices: $"{openInvoices} (total: {openInvoicesTotal:N2} CZK)",
+                overdueInvoices: overdueInvoices.ToString(),
+                paidInvoices: paidInvoicesCount.ToString());
 
-            sb.AppendLine("RESPONSE STYLE: Answer in ONE sentence maximum. No greetings, no filler, no repetition.");
-            sb.AppendLine("Just do what the user asks and confirm the result briefly.");
-            sb.AppendLine("Respond in the same language the user writes in (Czech or English).");
-            sb.AppendLine();
-            sb.AppendLine("TOOLS (use them, don't ask unnecessary questions):");
-            foreach (var tool in _tools)
-            {
-                sb.AppendLine($"- {tool.ToolName}: {tool.Description}");
-            }
-            sb.AppendLine();
-            sb.AppendLine("IMPORT RULES:");
-            sb.AppendLine("- When user pastes invoice text, extract ALL data and call import_invoice immediately.");
-            sb.AppendLine("- ALL dates (issue_date, due_date, taxable_supply_date) must be EXACTLY from the document.");
-            sb.AppendLine("- NEVER generate, guess, or use today's date. If a date is missing, pass null.");
-            sb.AppendLine("- The tool auto-determines issued/received — do NOT ask the user.");
-            sb.AppendLine("- The tool auto-finds the client by IČO — do NOT ask the user.");
-            sb.AppendLine("- If the client doesn't exist, the tool will tell you — then use create_client.");
-            sb.AppendLine();
-            sb.AppendLine("RULES:");
-            sb.AppendLine("- Use tools when asked. Never claim actions without tool confirmation.");
-            sb.AppendLine("- Don't ask about things you can determine from the data.");
-            sb.AppendLine();
-            sb.AppendLine("Current tenant business context:");
-            sb.AppendLine($"- Total active clients: {totalClients}");
-            sb.AppendLine($"- Open (unpaid) invoices: {openInvoices} (total: {openInvoicesTotal:N2} CZK)");
-            sb.AppendLine($"- Overdue invoices: {overdueInvoices}");
-            sb.AppendLine($"- Paid invoices: {paidInvoicesCount}");
-
-            return sb.ToString();
+            return AiSystemPrompt.Compose(companyBlock, customPrompt, appendix, businessContext, _tools);
         }
         catch (Exception ex)
         {

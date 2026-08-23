@@ -1,5 +1,6 @@
 using Fakvio.Application.Service;
 using Fakvio.Infrastructure.DependencyInjection;
+using Fakvio.Infrastructure.Service;
 using Fakvio.Infrastructure.Service.ChatTools;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -100,6 +101,23 @@ public class ChatToolCatalogSchemaTests
             .Select(tool => tool.GetType().Name)
             .Order()
             .ShouldBe(implementedTools, Case.Sensitive, "every registered tool must also be resolvable from the container");
+    }
+
+    [Fact]
+    public void SystemPrompt_BuiltInBlock_CarriesTheRealGeneratedToolCatalog()
+    {
+        // #159 replaced the hand-written tool list in the prompt with a catalog generated from
+        // the registered tools. Generated is not the same as verified: the tests that drive the
+        // prompt elsewhere use fake tools, so nothing else checks what the model is actually
+        // told about the eleven tools we ship.
+        //
+        // ComposePreview is the real composition path (the SysAdmin preview and the live prompt
+        // share it), so this also pins that the catalog lands inside the built-in block, in DI
+        // registration order — compared against the independent literals in
+        // BuiltInPromptAssertions, never against the tools themselves.
+        var prompt = AiSystemPrompt.ComposePreview(customPrompt: null, appendix: null, Catalog.Tools);
+
+        prompt.ShouldContainBuiltInMainBlock();
     }
 
     // ─── Startup schema validation over the real tools ────────────────────

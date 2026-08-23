@@ -679,6 +679,52 @@ Pravidla:
    Řetězec `"null"` v hodnotě nikdy nedostaneš.
 6. Registrace: jeden řádek `services.AddScoped<IChatTool, MyTool>();`.
 
+#### System prompt — složení a editovatelnost (issue #146)
+
+Prompt se skládá na jednom místě: **`AiSystemPrompt`** (`Fakvio.Infrastructure/Service/AiSystemPrompt.cs`).
+Nikde jinde se text promptu neskládá — `ChatContextBuilder` (ostrý prompt) i
+`AiInstructionsService.GetPreviewAsync` (SysAdmin náhled) volají tentýž kód, takže náhled
+nemůže odejít od reality.
+
+Pořadí bloků shora dolů:
+
+| # | Blok | Zdroj | Editovatelné |
+|---|------|-------|--------------|
+| 1 | Identity (`AiSystemPrompt.Identity`) | konstanta | ne |
+| 2 | Identita firmy (název, IČO, DIČ) | tenant DB (`Client.IsIssuer`) | ne |
+| 3 | Hlavní blok (RESPONSE STYLE / TOOLS / IMPORT RULES / RULES) | `AiSystemPrompt.BuildDefaultMainBlock(tools)` — statický text z konstant, katalog toolů generovaný z `IChatTool` — nebo `SystemConfiguration.AiSystemPromptCustom` | **ano (SysAdmin)** |
+| 4 | Dodatek | `SystemConfiguration.AiSystemPromptAppendix` | **ano (SysAdmin)** |
+| 5 | Business kontext (počty klientů a faktur) | tenant DB | ne |
+
+- Neprázdný `AiSystemPromptCustom` **nahradí celý blok 3** — včetně katalogu tools. Nový
+  chat tool se nikam nedopisuje: sekce `TOOLS:` se generuje z registrovaných `IChatTool`
+  (viz pravidlo 4 výše), takže stačí registrace v DI. Tenanti s vlastním promptem ale
+  generovaný katalog nedostanou a popis si musí doplnit sami — upozorňuje na to hint na stránce.
+- Náhled i ostrý prompt dostávají **tentýž** generovaný katalog: `AiInstructionsService`
+  si `IEnumerable<IChatTool>` injectuje jen kvůli němu (čte z nich pouze `ToolName`
+  a `Description`, nic nespouští a nesahá do tenant DB).
+- Čtení je cachované v `IMemoryCache` (klíč `AiInstructionsService.CacheKey`), s **absolutní**
+  platností 5 minut — záměrně ne sliding: sliding entry by se na vytížené instanci obnovovala
+  provozem donekonečna a nikdy neexpirovala. Zápis (PUT/DELETE) cache invaliduje, ale
+  `IMemoryCache` je **procesně lokální**, takže `Remove` zasáhne jen instanci, která zápis
+  odbavila; ostatní instance (produkce = škálovaný Azure Function App) dojedou starý prompt
+  nejvýše 5 minut. Distribuovaná cache ani invalidační kanál se vědomě nezavádějí (YAGNI) —
+  ohraničené stárnutí stačí. Texty v UI i v ADMINGUIDE musejí slíbit **do 5 minut**, ne „okamžitě".
+- Prázdný i čistě bílý (whitespace) text se v obou polích bere jako „nenastaveno"
+  (`IsNullOrWhiteSpace` v `AiInstructionsService.NullIfBlank`, `AiSystemPrompt.Compose`
+  i `AiInstructionsDto.IsCustomActive`) — jinak by prompt složený z mezer smazal celý blok 3.
+- Náhled (`GetPreviewAsync`) čte **mimo cache**, přímo z DB — aby SysAdminovi neukázal starší
+  hodnotu, kterou zrovna drží cache té instance, co request odbavila. Chat hot path cache
+  používá dál (`GetCachedInstructionsAsync`).
+- Čtecí cesty **nezapisují** do DB. Řádek `SystemConfiguration` zakládá jen zápis
+  (sdílené `SystemConfigurationStore.GetOrCreateAsync`) — jinak by každá zpráva v chatu
+  mohla vyvolat INSERT do master DB.
+- Endpointy: `GET/PUT/DELETE /api/system-configuration/ai-instructions` + `GET .../preview`,
+  všechny `[Authorize(Roles = "SysAdmin")]`. Prefix `/api/system-configuration` je už
+  v `MasterOnlyPaths` (§3.3), takže hlavička `X-Company-Id` není potřeba.
+  Functions zrcadlo: `Fakvio.Functions/HttpFunctions/AiInstructionsFunctions.cs`.
+- UI: `/ai-instructions` (`Fakvio.UI.Shared/Components/Pages/AiInstructions.razor`), SysAdmin sekce nav menu.
+
 #### Chat AI Tools matice
 
 Sloupec „Klíčové parametry" je jen orientační — závazné je schéma v příslušné třídě.
