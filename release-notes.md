@@ -43,6 +43,13 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Změny pro vývojáře
 
+- **#146** — Systémový prompt AI asistenta byl napevno zadrátovaný v kódu. SysAdmin ho teď může
+  upravit (vlastní prompt i doplněk k výchozímu) přímo v UI se živým náhledem; změna se v chatu
+  projeví do 5 minut (cache). (PR #187, `824775d`)
+- **#46** — API pro položky faktury nově rozlišuje režim DPH (`EVatRegime`) a u přenesené daňové
+  povinnosti nese kód předmětu plnění (`ReverseChargeCodeId`), včetně čtecího nested DTO. Nový
+  endpoint `GET /api/reversechargecode` vrací číselník PDP kódů pro dropdown v editoru položek.
+  Připravuje podklad pro sekce A.1/B.1 kontrolního hlášení. (PR #96, `5921db5`)
 - **#178** — Výstupy source generátorů pod `Generated/` se přestaly verzovat. Každý build
   je přepisoval a vyráběl fantomové diffy. (PR #182, `eff1f5b`)
 - **#137** — Čtyři testy připojení k databázi, které padaly v každém běhu, jsou nově za
