@@ -9,6 +9,7 @@ using Fakvio.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using ZMapper;
+using Fakvio.Contracts.Dto.ReverseChargeCode;
 
 namespace Fakvio.Infrastructure.Service;
 
@@ -34,8 +35,12 @@ public class InvoiceService : IInvoiceService
 
     /// <summary>
     /// Maps an Invoice entity to InvoiceDto using ZMapper v1.1.0.
-    /// ZMapper now handles BaseEntity (Id, CreatedAt, UpdatedAt) and nested collection Ids automatically.
-    /// Only navigation-derived properties (flattened from related entities) must be set manually.
+    /// ZMapper handles BaseEntity (Id, CreatedAt, UpdatedAt) and scalar properties automatically.
+    /// Navigation-derived properties (flattened from related entities) and nested navigation
+    /// objects (ReverseChargeCode on items) must be set manually after ZMapper runs.
+    ///
+    /// Prerequisite: the caller must have eagerly loaded InvoiceItem.ReverseChargeCode via
+    /// ThenInclude so that the navigation property is populated before this mapper runs.
     /// </summary>
     private static InvoiceDto MapToDto(Invoice entity)
     {
@@ -49,6 +54,43 @@ public class InvoiceService : IInvoiceService
         dto.CurrencyCode = entity.Currency?.Code ?? string.Empty;
         dto.CurrencySymbol = entity.Currency?.Symbol ?? string.Empty;
         dto.OriginalInvoiceNumber = entity.OriginalInvoice?.DocumentNumber;
+
+        // Populate the nested ReverseChargeCode on every line item. ZMapper copies scalar
+        // properties only, so the navigation object has to be mapped by hand here.
+        //
+        // Items are paired by Id, not by list position. Pairing by position would also be
+        // correct today — the generated ZMapper builds dto.InvoiceItem as
+        // source.InvoiceItem.Select(...).ToList(), a 1:1 order-preserving projection of the
+        // same collection — but that makes correctness here depend on a detail of generated
+        // code that nothing in this file controls. Keying on the primary key removes the
+        // coupling at identical O(n) cost. Note the guarantee is only as strong as the
+        // pairing itself: no test can distinguish the two variants from outside MapToDto.
+        //
+        // The Any() pre-check keeps the common case (an invoice with no reverse-charge line)
+        // free of the dictionary allocation — it is a cheap O(n) scan that allocates nothing.
+        if (dto.InvoiceItem.Count > 0 && entity.InvoiceItem.Any(item => item.ReverseChargeCode is not null))
+        {
+            var dtoItemsById = dto.InvoiceItem.ToDictionary(item => item.Id);
+
+            foreach (var entityItem in entity.InvoiceItem)
+            {
+                if (entityItem.ReverseChargeCode is null)
+                {
+                    continue;
+                }
+
+                // Unknown Id cannot happen for a DB-loaded graph; TryGetValue just avoids a
+                // throw if one ever did. It is not a general robustness guarantee — the
+                // ToDictionary above already requires the ids to be unique and would throw
+                // first on a graph of unsaved items that all still sit at Id == 0. Every
+                // caller of MapToDto reads through AsNoTracking with real primary keys, so
+                // that case is unreachable rather than handled.
+                if (dtoItemsById.TryGetValue(entityItem.Id, out var itemDto))
+                {
+                    itemDto.ReverseChargeCode = entityItem.ReverseChargeCode.ToReverseChargeCodeDto();
+                }
+            }
+        }
 
         return dto;
     }

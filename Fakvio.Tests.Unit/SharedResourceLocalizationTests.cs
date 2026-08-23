@@ -53,6 +53,8 @@ public class SharedResourceLocalizationTests : IDisposable
     [InlineData("Label_Email", "E-mail")]
     [InlineData("Label_Password", "Heslo")]
     [InlineData("Nav_Dashboard", "Dashboard")]
+    // Fallback text shown in the chat bubble instead of a stack trace (issue #156).
+    [InlineData("Chat_Error_Unexpected", "Zprávu se nepodařilo zpracovat. Zkuste to prosím znovu.")]
     public void Czech_Keys_ShouldReturn_CzechValues(string key, string expectedValue)
     {
         // Arrange — set Czech culture for this thread
@@ -76,6 +78,8 @@ public class SharedResourceLocalizationTests : IDisposable
     [InlineData("Label_Email", "Email")]
     [InlineData("Label_Password", "Password")]
     [InlineData("Nav_Dashboard", "Dashboard")]
+    // Fallback text shown in the chat bubble instead of a stack trace (issue #156).
+    [InlineData("Chat_Error_Unexpected", "The message could not be processed. Please try again.")]
     public void English_Keys_ShouldReturn_EnglishValues(string key, string expectedValue)
     {
         // Arrange — set English culture for this thread
@@ -130,6 +134,33 @@ public class SharedResourceLocalizationTests : IDisposable
 
         czechValue.ShouldNotBe(englishValue,
             "Czech and English should return different values for 'Btn_Login'.");
+    }
+
+    [Fact]
+    public void EpoSettingsKeys_ShouldBeTranslated_InBothCultures()
+    {
+        // The EPO settings section (issue #158) is user-facing, so every one of its
+        // labels must exist in both resource files — the UI is CZ/EN.
+        var epoKeys = new[]
+        {
+            "Epo_SettingsTitle", "Epo_SettingsInfoText",
+            "Epo_TaxOfficeCode", "Epo_TaxOfficeCodeHelper",
+            "Epo_TaxOfficeBranchCode", "Epo_TaxOfficeBranchCodeHelper",
+            "Epo_ContactPhone", "Epo_ContactEmail", "Epo_AuthorizedPersonName",
+            "EpoHeaderIncompleteAskAdmin"
+        };
+
+        foreach (var culture in new[] { "cs-CZ", "en-US" })
+        {
+            CultureInfo.CurrentUICulture = new CultureInfo(culture);
+
+            foreach (var key in epoKeys)
+            {
+                var result = _localizer[key];
+                result.ResourceNotFound.ShouldBeFalse(
+                    $"Key '{key}' is missing from the {culture} resources.");
+            }
+        }
     }
 
     [Fact]
