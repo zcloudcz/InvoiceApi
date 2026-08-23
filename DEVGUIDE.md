@@ -233,6 +233,41 @@ Functions přes `SystemConfigurationFunctions.SystemConfiguration_GetCredentialH
 
 **Pravidlo**: NIKDY neodstraňuj `PersistKeysToDbContext` ani neměň `ApplicationName`. Pokud musíš změnit ApplicationName, je to ekvivalent ztráty všech zašifrovaných dat — plánuj migrační okno.
 
+### 2.8 API klíče (SHA-256 — vědomá výjimka z §2.1)
+
+Dlouhodobý, revokovatelný credential pro strojové klienty (MCP server, curl, CI) místo 24h JWT.
+
+| Co | Kde | Detail |
+|----|-----|--------|
+| Entita | `Fakvio.Domain/Entities/ApiKey.cs` | **Master schema** (migrace `AddApiKey_v147`), FK → `User`, cascade. |
+| Service | `Fakvio.Infrastructure/Service/ApiKeyService.cs` | Generování, hash, scopes, revokace. |
+| Endpointy | `Fakvio.API/Controller/ApiKeyController.cs` + `Fakvio.Functions/HttpFunctions/ApiKeyFunctions.cs` | `GET /api/api-key`, `POST /api/api-key`, `POST /api/api-key/{id}/revoke`. Vždy jen **vlastní** klíče. |
+| Formát klíče | `fak_live_` + 43 znaků Base64Url | 32 B z `RandomNumberGenerator`. Prefix `fak_` je nosný — podle něj vybírá auth scheme selector (JWT vždy začíná `eyJ`) a poznají ho secret scannery. |
+| Hash | `ApiKeyService.ComputeHash` | `Convert.ToBase64String(SHA256.HashData(...))`, sloupec `KeyHash` s **unique indexem**. |
+| Zobrazení | `KeyPrefix` = prvních 12 znaků | Jen pro výpis a korelaci v logu, **nikdy** jako selektor. |
+| Scopes | `EApiKeyScope { Read, Write }` | Uloženo `"read"` / `"read,write"`. `write` se normalizuje na `read,write`. Efektivní oprávnění = **role ∩ scope**. |
+| Revokace | `RevokedAt` + `RevokedByUserId` | Soft — řádek zůstává kvůli auditu. |
+
+**Proč SHA-256 a ne BCrypt wf12 podle §2.1** (kompletní zdůvodnění je v komentáři u `ComputeHash`):
+adaptivní hash chrání *nízkoentropijní lidský vstup* před offline brute force, ale klíč je 32 B
+z CSPRNG; BCrypt by stál ~100 ms CPU **na každý request** (jeden AI turn = desítky tool callů);
+a protože je salted, byl by neindexovatelný — SHA-256 je deterministický, takže autentizace je
+jeden indexovaný equality dotaz. **Kdyby do `KeyHash` někdy šlo něco nízkoentropijního, tohle
+zdůvodnění padá a algoritmus se musí změnit s ním.**
+
+**Proč master schema a ne tenant:** `TenantContextMiddleware` odvozuje schéma z `CompanyId` claimu,
+který musí autentizace vyrobit dřív. V tenant schématu by vznikl kruh — potřeboval bys schéma
+k nalezení klíče a klíč k nalezení schématu. Precedent: `UserPreferences`.
+Entita proto **nemá `CompanyId`** — tenant se odvozuje z `User.CompanyId` při autentizaci, takže
+přesun uživatele mezi firmami klíče následují místo tichého stale bindingu (a SysAdmin klíč bez
+firmy je reprezentovatelný).
+
+**Raw klíč se vrací právě jednou** — v odpovědi `POST /api/api-key` (`CreatedApiKeyDto.Key`).
+Nikam se neukládá a nikdy se neloguje; do logu jde jen `KeyPrefix`.
+
+> Autentizace klíčem (scheme selector, `ApiKeyScopeMiddleware`, Functions mirror) je samostatný
+> task #236 — endpointy výše jsou zatím **JWT-only**.
+
 ---
 
 ## 3. Multi-tenant — jak data oddělujeme
@@ -263,7 +298,7 @@ Pipeline pořadí v `Fakvio.API/Program.cs`:
 4. `app.UseTenantContext()` (řádek 180) — z `CompanyId` claimu resolvuje schema name a nastaví na scoped `TenantDbContext`.
 
 **TenantContextMiddleware** (`Fakvio.API/Middleware/TenantContextMiddleware.cs`):
-- Řádek 35: `MasterOnlyPaths` — `/api/auth`, `/api/user`, `/api/company`, `/api/system-configuration`, `/api/logs`, `/api/twofactor`, `/api/cloud-storage`, `/api/email`, `/api/sysadmin/payment-matching`. **Skip** tenant kontroly.
+- Řádek 35: `MasterOnlyPaths` — `/api/auth`, `/api/user`, `/api/api-key`, `/api/company`, `/api/system-configuration`, `/api/logs`, `/api/twofactor`, `/api/cloud-storage`, `/api/email`, `/api/sysadmin/payment-matching`. **Skip** tenant kontroly.
 - Řádek 56: `SysAdminCodeTablePaths` — code-table endpointy přístupné SysAdminovi i bez `X-Company-Id` (konfigurace systémových číselníků). Patří sem **jen dual-context číselníky** (`/api/currency`, `/api/vatrate`, `/api/contenttemplate`, `/api/numbersequence/formats`), jejichž service umí sáhnout do Master i Tenant DB.
 - **Tenant-only číselník do žádného z těch dvou seznamů nepatří.** Např. `/api/reversechargecode` (issue #46) čte přes `ReverseChargeCodeService` výhradně `TenantDbContext`, takže potřebuje normální tenant resolution — data jsou sice statutární (MFČR), ale fyzicky leží v tenant schématu. Bez `X-Company-Id` proto SysAdmin tyto řádky nevidí; až #49 přidá SysAdmin CRUD, bude nutné vědomě rozhodnout, zda service překlopit na dual-context.
 - Řádek 126: `await factory.ResolveSchemaAsync(companyId)` — jediný zdroj pravdy.
