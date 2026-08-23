@@ -109,7 +109,7 @@ public class InvoiceServiceBulkTests : IDisposable
             .Returns("TEST001");
 
         // Instantiate the service under test with all dependencies.
-        _service = new InvoiceService(_context, _numberSequence, _logger);
+        _service = new InvoiceService(_context, _numberSequence, Substitute.For<ITenantReadinessService>(), _logger);
 
         // Seed reference entities that every test needs.
         SeedReferenceData();

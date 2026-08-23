@@ -55,7 +55,10 @@ public class TenantReadinessService : ITenantReadinessService
     }
 
     /// <inheritdoc />
-    public async Task<ReadinessReportDto> GetReportAsync(long? issuerId = null, CancellationToken ct = default)
+    public async Task<ReadinessReportDto> GetReportAsync(
+        long? issuerId = null,
+        EDocumentType? documentType = null,
+        CancellationToken ct = default)
     {
         var companyId = _tenantResolver.GetCurrentCompanyId()
             ?? throw new InvalidOperationException(
@@ -89,20 +92,23 @@ public class TenantReadinessService : ITenantReadinessService
         foreach (var issuer in issuers)
             AddIssuerIssues(issuer, issues);
 
-        await AddNumberSequenceIssuesAsync(issues, ct);
+        await AddNumberSequenceIssuesAsync(documentType, issues, ct);
         await AddEpoHeaderIssuesAsync(companyId, issues, ct);
 
         _logger.LogInformation(
-            "Readiness check for company {CompanyId} (issuerId={IssuerId}): {IssueCount} issue(s)",
-            companyId, issuerId, issues.Count);
+            "Readiness check for company {CompanyId} (issuerId={IssuerId}, documentType={DocumentType}): {IssueCount} issue(s)",
+            companyId, issuerId, documentType, issues.Count);
 
         return new ReadinessReportDto { Issues = issues };
     }
 
     /// <inheritdoc />
-    public async Task EnsureReadyAsync(long? issuerId = null, CancellationToken ct = default)
+    public async Task EnsureReadyAsync(
+        long? issuerId = null,
+        EDocumentType? documentType = null,
+        CancellationToken ct = default)
     {
-        var report = await GetReportAsync(issuerId, ct);
+        var report = await GetReportAsync(issuerId, documentType, ct);
 
         var blocking = report.Issues
             .Where(i => i.Severity == EReadinessSeverity.Blocking)
@@ -175,9 +181,21 @@ public class TenantReadinessService : ITenantReadinessService
     /// <summary>
     /// Every required document type needs one active default number sequence,
     /// otherwise numbering fails at the moment the document is completed.
+    ///
+    /// <paramref name="onlyDocumentType"/> narrows the check to a single type. A caller that
+    /// is issuing an invoice must not be stopped by a missing credit-note sequence — that
+    /// gap blocks credit notes, not invoices.
     /// </summary>
-    private async Task AddNumberSequenceIssuesAsync(List<ReadinessIssueDto> issues, CancellationToken ct)
+    private async Task AddNumberSequenceIssuesAsync(
+        EDocumentType? onlyDocumentType, List<ReadinessIssueDto> issues, CancellationToken ct)
     {
+        var requiredTypes = onlyDocumentType is null
+            ? RequiredSequenceTypes
+            : RequiredSequenceTypes.Where(t => t == onlyDocumentType.Value).ToArray();
+
+        if (requiredTypes.Length == 0)
+            return; // Nothing to check — e.g. proforma, which reuses the invoice sequence.
+
         var configuredTypes = await _context.NumberSequence
             .AsNoTracking()
             .Where(s => s.IsDefault && s.IsActive)
@@ -185,7 +203,7 @@ public class TenantReadinessService : ITenantReadinessService
             .Distinct()
             .ToListAsync(ct);
 
-        foreach (var documentType in RequiredSequenceTypes)
+        foreach (var documentType in requiredTypes)
         {
             if (configuredTypes.Contains(documentType))
                 continue;

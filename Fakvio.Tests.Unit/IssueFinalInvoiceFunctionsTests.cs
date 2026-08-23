@@ -391,7 +391,7 @@ public class IssueFinalInvoiceEdgeCaseTests : IDisposable
                 Arg.Any<CancellationToken>())
             .Returns(_ => (_seqCounter++).ToString());
 
-        _service = new InvoiceService(_context, _numberSequence, logger);
+        _service = new InvoiceService(_context, _numberSequence, Substitute.For<ITenantReadinessService>(), logger);
         SeedBaseData();
     }
 

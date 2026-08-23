@@ -21,15 +21,18 @@ public class InvoiceService : IInvoiceService
 {
     private readonly TenantDbContext _context;
     private readonly INumberSequenceService _numberSequenceService;
+    private readonly ITenantReadinessService _tenantReadinessService;
     private readonly ILogger<InvoiceService> _logger;
 
     public InvoiceService(
         TenantDbContext context,
         INumberSequenceService numberSequenceService,
+        ITenantReadinessService tenantReadinessService,
         ILogger<InvoiceService> logger)
     {
         _context = context;
         _numberSequenceService = numberSequenceService;
+        _tenantReadinessService = tenantReadinessService;
         _logger = logger;
     }
 
@@ -704,6 +707,17 @@ public class InvoiceService : IInvoiceService
 
         if (invoice.Status != EInvoiceStatus.Draft)
             throw new InvalidOperationException($"Invoice is already {invoice.Status}");
+
+        // Readiness gate (#206): issuing a document is the point of no return — the number is
+        // drawn from the sequence and the document becomes a tax record. Refuse it while the
+        // mandatory company settings are incomplete (address, IČO/DIČ, bank account, number
+        // sequence) instead of producing a document the customer cannot pay.
+        //
+        // Scoped deliberately: only the issuer of THIS invoice and only the document type
+        // being issued, so an unrelated gap elsewhere in the tenant does not block the user.
+        // Warnings (EPO header) never throw. Runs before any state change — see the tests.
+        await _tenantReadinessService.EnsureReadyAsync(
+            invoice.IssuerId, invoice.DocumentType, cancellationToken);
 
         _logger.LogInformation("Completing {DocumentType} {Id}", invoice.DocumentType, invoice.Id);
 
