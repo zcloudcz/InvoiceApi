@@ -248,12 +248,21 @@ Systém podporuje 4 AI poskytovatele. Nastavení per systém jsou záloha; nasta
 
 ### Dostupní poskytovatelé
 
-| Poskytovatel | Model (výchozí) | Konfigurace |
-|-------------|----------------|-------------|
-| **Claude (Anthropic)** | `claude-sonnet-4-6` | API key (šifrovaný) + model ID |
-| **OpenAI** | `gpt-4o` | API key (šifrovaný) + model ID |
-| **Gemini (Google)** | `gemini-2.0-flash` | API key (šifrovaný) + model ID |
-| **Ollama (Local)** | dle instalace | Base URL (lokální nebo sítě) + model ID |
+| Poskytovatel | Model (výchozí) | Konfigurace | Nástroje (tool calling) |
+|-------------|----------------|-------------|-------------------------|
+| **Claude (Anthropic)** | `claude-sonnet-4-6` | API key (šifrovaný) + model ID | nativní |
+| **OpenAI** | `gpt-4o` | API key (šifrovaný) + model ID | nativní |
+| **Gemini (Google)** | `gemini-2.0-flash` | API key (šifrovaný) + model ID | nativní |
+| **Ollama (Local)** | dle instalace | Base URL (lokální nebo sítě) + model ID | nativní, pokud to model umí (např. `gemma3` a `phi4` **ne**) |
+
+**Nativní nástroje** znamenají, že seznam nástrojů posílá aplikace přímo do API poskytovatele
+a model vrací strukturované volání. Je to spolehlivější než záložní textová cesta, kde model
+píše volání jako JSON do běžné odpovědi.
+
+Pokud model nástroje odmítne, aplikace se sama přepne na textovou cestu — nástroje fungují
+dál, jen méně spolehlivě a s vyšší latencí. V logu to poznáte podle varování
+„rejected native tool calling". Přechodný výpadek (rate limit, chyba sítě) přepnutí nezpůsobí,
+jen se u dané zprávy nástroje nepoužijí.
 
 ### Výchozí poskytovatel
 

@@ -1,0 +1,312 @@
+using System.ClientModel;
+using System.ClientModel.Primitives;
+using System.Net;
+using System.Text.Json;
+using Fakvio.Application.Service;
+using Fakvio.Contracts.Dto.Chat;
+using Fakvio.Infrastructure.AiProviders;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+using OpenAI;
+using OpenAI.Chat;
+using Shouldly;
+
+namespace Fakvio.Tests.Unit;
+
+/// <summary>
+/// Native function calling for OpenAI (issue #160).
+///
+/// OpenAI used to fall back to the text protocol: the model was asked to print bare JSON
+/// into its answer and a substring parser dug it out. These tests cover the request we
+/// build (tools with a JSON Schema), the response we parse (tool_calls) and the degradation
+/// rule that keeps a refusing model working.
+///
+/// Junior note: the OpenAI SDK is driven through a stubbed HTTP transport, so the tests see
+/// the real serialized request the SDK would have sent — no network, no API key needed.
+/// </summary>
+public class OpenAiNativeToolCallingTests
+{
+    private static List<NativeToolDefinition> Tools() =>
+    [
+        new()
+        {
+            Name = "create_invoice",
+            Description = "Creates an invoice.",
+            Parameters =
+            [
+                new NativeToolParameter { Name = "client_name", Type = "string", Description = "Client name" },
+                new NativeToolParameter
+                {
+                    Name = "items", Type = "array", Description = "Lines", ArrayItemType = "object"
+                }
+            ],
+            Required = ["client_name"]
+        }
+    ];
+
+    private static List<ChatMessageDto> Conversation() =>
+    [
+        new() { Role = "User", Content = "Vystav fakturu pro ACME." }
+    ];
+
+    // ─── Request building ─────────────────────────────────────────────────
+
+    [Fact]
+    public void BuildOptions_TurnsEachDefinitionIntoAFunctionTool()
+    {
+        var options = OpenAiToolCalling.BuildOptions(Tools());
+
+        options.Tools.Count.ShouldBe(1);
+        options.Tools[0].FunctionName.ShouldBe("create_invoice");
+        options.Tools[0].FunctionDescription.ShouldBe("Creates an invoice.");
+    }
+
+    /// <summary>
+    /// The parameters travel as raw JSON Schema. Arrays must carry an element schema —
+    /// OpenAI answers 400 for an array property without "items".
+    /// </summary>
+    [Fact]
+    public void BuildOptions_SendsTheSharedJsonSchemaIncludingArrayItems()
+    {
+        var options = OpenAiToolCalling.BuildOptions(Tools());
+        var schema = JsonSerializer.Deserialize<JsonElement>(options.Tools[0].FunctionParameters);
+
+        schema.GetProperty("type").GetString().ShouldBe("object");
+
+        var properties = schema.GetProperty("properties");
+        properties.GetProperty("client_name").GetProperty("type").GetString().ShouldBe("string");
+        properties.GetProperty("items").GetProperty("type").GetString().ShouldBe("array");
+        properties.GetProperty("items").GetProperty("items").GetProperty("type").GetString().ShouldBe("object");
+
+        schema.GetProperty("required")[0].GetString().ShouldBe("client_name");
+    }
+
+    // ─── Response parsing ─────────────────────────────────────────────────
+
+    [Fact]
+    public void ParseCompletion_ReadsToolCallNameAndArguments()
+    {
+        var completion = CompletionWithToolCall("""{"client_name":"ACME","total":1500.5}""");
+
+        var result = OpenAiToolCalling.ParseCompletion(completion, NullLogger.Instance);
+
+        result.HasToolCalls.ShouldBeTrue();
+        result.ToolCalls[0].ToolName.ShouldBe("create_invoice");
+        result.ToolCalls[0].Arguments["client_name"].ShouldBe("ACME");
+
+        // Numbers keep their raw JSON text — the executor parses them back.
+        result.ToolCalls[0].Arguments["total"].ShouldBe("1500.5");
+    }
+
+    /// <summary>
+    /// Same contract as every other provider: a JSON null means "the parameter did not
+    /// arrive", never the four-character text "null".
+    /// </summary>
+    [Fact]
+    public void ParseCompletion_DropsArgumentsSentAsJsonNull()
+    {
+        var completion = CompletionWithToolCall("""{"client_name":"ACME","note":null}""");
+
+        var result = OpenAiToolCalling.ParseCompletion(completion, NullLogger.Instance);
+
+        result.ToolCalls[0].Arguments.ShouldNotContainKey("note");
+    }
+
+    /// <summary>
+    /// A parameterless call arrives with an empty arguments payload. Parsing that as JSON
+    /// throws, so it has to be read as "no arguments" instead of failing the whole turn.
+    /// </summary>
+    [Fact]
+    public void ParseCompletion_WithEmptyArguments_YieldsAnEmptyArgumentMap()
+    {
+        var completion = CompletionWithToolCall("");
+
+        var result = OpenAiToolCalling.ParseCompletion(completion, NullLogger.Instance);
+
+        result.HasToolCalls.ShouldBeTrue();
+        result.ToolCalls[0].Arguments.ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// The arguments string is generated by the model, so it can arrive truncated. That must
+    /// cost the tool its parameters, not the whole turn — the executor then reports the
+    /// missing parameters back to the model, which retries.
+    /// </summary>
+    [Fact]
+    public void ParseCompletion_WithMalformedArguments_KeepsTheCallAndDropsTheParameters()
+    {
+        var completion = CompletionWithToolCall("""{"client_name":""");
+
+        var result = OpenAiToolCalling.ParseCompletion(completion, NullLogger.Instance);
+
+        result.HasToolCalls.ShouldBeTrue();
+        result.ToolCalls[0].Arguments.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void ParseCompletion_WithPlainText_ReturnsTextAndNoToolCalls()
+    {
+        var completion = OpenAIChatModelFactory.ChatCompletion(
+            content: new ChatMessageContent(ChatMessageContentPart.CreateTextPart("Dobrý den")));
+
+        var result = OpenAiToolCalling.ParseCompletion(completion, NullLogger.Instance);
+
+        result.HasToolCalls.ShouldBeFalse();
+        result.TextContent.ShouldBe("Dobrý den");
+    }
+
+    // ─── Provider behaviour ───────────────────────────────────────────────
+
+    [Fact]
+    public void OpenAiProvider_SupportsNativeToolsByDefault()
+    {
+        CreateProvider(Ok(ToolCallResponseJson())).provider.SupportsNativeTools.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task OpenAiProvider_SendsToolsAndReturnsTheParsedCall()
+    {
+        var (provider, handler) = CreateProvider(Ok(ToolCallResponseJson()));
+
+        var result = await provider.GetCompletionWithToolsAsync(Conversation(), "system", Tools());
+
+        result.ShouldNotBeNull();
+        result.ToolCalls[0].ToolName.ShouldBe("create_invoice");
+        result.ToolCalls[0].Arguments["client_name"].ShouldBe("ACME");
+        handler.LastBody.ShouldContain("\"tools\"");
+        handler.LastBody.ShouldContain("create_invoice");
+    }
+
+    /// <summary>
+    /// A definitive refusal (4xx that is not a rate limit) means the model will never accept
+    /// these tools. The provider stops offering them so ChatService switches to the text
+    /// protocol — tools keep working, just over the older path.
+    /// </summary>
+    [Fact]
+    public async Task OpenAiProvider_OnBadRequest_FallsBackAndStopsOfferingNativeTools()
+    {
+        var (provider, _) = CreateProvider(new HttpResponseMessage(HttpStatusCode.BadRequest)
+        {
+            Content = new StringContent("""{"error":{"message":"tools not supported"}}""")
+        });
+
+        var result = await provider.GetCompletionWithToolsAsync(Conversation(), null, Tools());
+
+        result.ShouldBeNull();
+        provider.SupportsNativeTools.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// A rate limit is transient — permanently downgrading the tenant over one 429 would be
+    /// worse than retrying on the next message.
+    /// </summary>
+    [Fact]
+    public async Task OpenAiProvider_OnRateLimit_FallsBackButKeepsNativeToolsEnabled()
+    {
+        var (provider, _) = CreateProvider(new HttpResponseMessage(HttpStatusCode.TooManyRequests)
+        {
+            Content = new StringContent("{}")
+        });
+
+        var result = await provider.GetCompletionWithToolsAsync(Conversation(), null, Tools());
+
+        result.ShouldBeNull();
+        provider.SupportsNativeTools.ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// The per-company provider must behave identically — it is the path a tenant with its
+    /// own OpenAI key takes, and it was the copy that historically lagged behind.
+    /// </summary>
+    [Fact]
+    public async Task AdHocOpenAiProvider_AlsoUsesNativeTools()
+    {
+        var handler = new CapturingHandler(Ok(ToolCallResponseJson()));
+        var provider = new Fakvio.Infrastructure.Service.AdHocOpenAiProvider(
+            ChatClientOver(handler), NullLogger.Instance);
+
+        provider.SupportsNativeTools.ShouldBeTrue();
+
+        var result = await provider.GetCompletionWithToolsAsync(Conversation(), "system", Tools());
+
+        result.ShouldNotBeNull();
+        result.ToolCalls[0].ToolName.ShouldBe("create_invoice");
+        handler.LastBody.ShouldContain("create_invoice");
+    }
+
+    // ─── Helpers ──────────────────────────────────────────────────────────
+
+    private static (OpenAiProvider provider, CapturingHandler handler) CreateProvider(HttpResponseMessage response)
+    {
+        var handler = new CapturingHandler(response);
+        return (new OpenAiProvider(ChatClientOver(handler), NullLogger<OpenAiProvider>.Instance), handler);
+    }
+
+    /// <summary>
+    /// Builds a real SDK ChatClient whose transport is the given stub handler.
+    /// Retries are disabled so an error-status test does not wait for SDK backoff.
+    /// </summary>
+    private static ChatClient ChatClientOver(HttpMessageHandler handler)
+    {
+        var options = new OpenAIClientOptions
+        {
+            Transport = new HttpClientPipelineTransport(new HttpClient(handler)),
+            RetryPolicy = new ClientRetryPolicy(maxRetries: 0)
+        };
+
+        return new OpenAIClient(new ApiKeyCredential("test-key"), options).GetChatClient("gpt-4o");
+    }
+
+    private static ChatCompletion CompletionWithToolCall(string argumentsJson)
+        => OpenAIChatModelFactory.ChatCompletion(
+            finishReason: ChatFinishReason.ToolCalls,
+            toolCalls:
+            [
+                ChatToolCall.CreateFunctionToolCall(
+                    id: "call_1",
+                    functionName: "create_invoice",
+                    functionArguments: BinaryData.FromString(argumentsJson))
+            ]);
+
+    private static HttpResponseMessage Ok(string json) =>
+        new(HttpStatusCode.OK) { Content = new StringContent(json) };
+
+    /// <summary>Chat Completions payload in which the model asked for one function call.</summary>
+    private static string ToolCallResponseJson() =>
+        """
+        {
+          "id": "chatcmpl-1",
+          "object": "chat.completion",
+          "created": 1700000000,
+          "model": "gpt-4o",
+          "choices": [{
+            "index": 0,
+            "finish_reason": "tool_calls",
+            "message": {
+              "role": "assistant",
+              "content": null,
+              "tool_calls": [{
+                "id": "call_1",
+                "type": "function",
+                "function": { "name": "create_invoice", "arguments": "{\"client_name\":\"ACME\"}" }
+              }]
+            }
+          }]
+        }
+        """;
+
+    private sealed class CapturingHandler(HttpResponseMessage response) : HttpMessageHandler
+    {
+        public string LastBody { get; private set; } = "";
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            LastBody = request.Content is null
+                ? ""
+                : await request.Content.ReadAsStringAsync(cancellationToken);
+
+            return response;
+        }
+    }
+}
