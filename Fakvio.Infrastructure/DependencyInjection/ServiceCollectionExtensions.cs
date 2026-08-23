@@ -288,6 +288,11 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IChatTool, AttachFileTool>();
         services.AddScoped<IChatTool, ListAttachmentsTool>();
 
+        // Reporting tools — read-only overviews (dashboard, receivables, period/client, DPH).
+        services.AddScoped<IChatTool, GetDashboardTool>();
+        services.AddScoped<IChatTool, ListInvoicesTool>();
+        services.AddScoped<IChatTool, GetVatReportTool>();
+
         services.AddScopedWithLogging<IChatToolExecutor, ChatToolExecutor>();
 
         // ── Database Logging ────────────────────────────────────────────────
