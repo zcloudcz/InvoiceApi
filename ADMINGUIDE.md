@@ -434,6 +434,16 @@ AddDataProtection().PersistKeysToDbContext<MasterDbContext>().SetApplicationName
 ```
 `SetApplicationName("Fakvio")` musí být totožné na API i Functions hostu — jinak navzájem nedešifrují.
 
+**Přesun databáze na jiný server:** key ring je nejrizikovější část celé operace —
+podle platformy, na které aplikace běžela, je sloupec `Xml` buď plaintext (přenositelný),
+nebo zašifrovaný přes DPAPI (nepřenositelný, vyžaduje ruční obnovu **všech** secretů
+včetně TOTP). Kompletní runbook včetně blokující pre-flight kontroly viz
+[`SELFHOST-DB.md`](SELFHOST-DB.md) §4.
+
+**Pozor:** `credential-health` **nekontroluje** `User.TotpSecretEncrypted`. Po ztrátě
+klíčů projde zeleně i ve chvíli, kdy se žádný uživatel s 2FA nepřihlásí — stav 2FA se
+musí ověřit zvlášť.
+
 ### OAuth (Social login)
 
 Dostupní poskytovatelé: Google, Microsoft, Facebook, Seznam.cz
