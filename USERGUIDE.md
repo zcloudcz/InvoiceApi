@@ -64,6 +64,25 @@ před vystavením první faktury. Chcete-li adresu odstranit, udělejte to tam.
 
 Dashboard zobrazuje aktuální přehled vaší firmy na jednom místě:
 
+### Připravenost k fakturaci
+
+Pokud vaší firmě chybí něco, co musí být na daňovém dokladu, uvidíte nahoře na dashboardu
+banner se seznamem chybějících položek. U každé položky je odkaz **Doplnit**, který vás
+zavede přímo na stránku, kde ji vyplníte.
+
+Banner rozlišuje dvě závažnosti:
+
+| Barva | Význam |
+|-------|--------|
+| Červená — „Než začnete fakturovat, doplňte tato nastavení" | Bez těchto údajů aplikace **odmítne vystavit fakturu** (viz [§2.3.1](#231-když-vystavení-skončí-chybou-nedokončené-nastavení-firmy)) |
+| Oranžová — „Doporučená nastavení k doplnění" | Fakturovat můžete, ale narazíte později v konkrétní funkci (typicky EPO export přiznání k DPH) |
+
+Máte-li v účtu víc vystavitelů, je u položky uvedeno, které firmy se týká.
+Když je vše vyplněné, banner se nezobrazuje vůbec.
+
+Stejný banner najdete i v detailu faktury ve stavu Draft — tam je omezený na vystavitele
+té konkrétní faktury, takže vidíte přesně to, co by vystavení zablokovalo.
+
 ### KPI karty (klikatelné — navigují na příslušný seznam)
 
 | Karta | Co zobrazuje | Navigace |
