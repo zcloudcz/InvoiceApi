@@ -65,7 +65,7 @@ public class ChatContextBuilderTests : IDisposable
     /// <summary>Sets what the (faked) readiness service reports to the builder.</summary>
     private void ReadinessIssues(params ReadinessIssueDto[] issues)
         => _readiness
-            .GetReportAsync(Arg.Any<long?>(), Arg.Any<CancellationToken>())
+            .GetReportAsync(Arg.Any<long?>(), Arg.Any<EDocumentType?>(), Arg.Any<CancellationToken>())
             .Returns(new ReadinessReportDto { Issues = [.. issues] });
 
     /// <summary>Seeds the tenant's own company (the issuer) — the source of the company block.</summary>
@@ -542,7 +542,7 @@ public class ChatContextBuilderTests : IDisposable
         // must not cost the company identity and the statistics as well.
         await SeedIssuerAsync("Issuer Co", "12345678", taxNumber: null);
         _readiness
-            .GetReportAsync(Arg.Any<long?>(), Arg.Any<CancellationToken>())
+            .GetReportAsync(Arg.Any<long?>(), Arg.Any<EDocumentType?>(), Arg.Any<CancellationToken>())
             .Returns<Task<ReadinessReportDto>>(_ => throw new InvalidOperationException("master DB down"));
 
         var prompt = await _builder.BuildSystemPromptAsync();

@@ -680,7 +680,7 @@ Implementace: `PaymentMatchingService.cs` (metoda `GetPaymentsForInvoiceAsync`).
 - Implementace: `Fakvio.Infrastructure/AiProviders/` (Anthropic, OpenAI, Gemini, Ollama).
 - API key storage: `CompanySystemSettings.AiApiKeyEncrypted` (per company) přes `CredentialProtector`.
 - SSE streaming přes `ChatController.StreamAsync`.
-- **Chat Tools**: 11 tools registrovaných v DI jako `IChatTool`, orchestrováno přes `IChatToolExecutor`.
+- **Chat Tools**: 14 tools registrovaných v DI jako `IChatTool`, orchestrováno přes `IChatToolExecutor`.
   Registrace v `ServiceCollectionExtensions.cs`; přidání nového toolu = implementace `IChatTool` + řádek v DI.
 
 #### Matice schopností providerů
@@ -930,6 +930,31 @@ Sloupec „Klíčové parametry" je jen orientační — závazné je schéma v 
 | `search_received_invoices` | `SearchReceivedInvoicesTool` | ReceivedInvoice | Search | `query` (fulltext: číslo dokladu, dodavatel, VS, částka), `limit` |
 | `attach_file` | `AttachFileTool` | Invoice / ReceivedInvoice / Client | Write (upload) | `entity_name`, `record_id`, `file_name`, `file_content_base64` (Base64 bytes), `content_type`, `description` |
 | `list_attachments` | `ListAttachmentsTool` | Invoice / ReceivedInvoice / Client | Read (list) | `entity_name`, `record_id`; vrátí jméno, velikost, datum, popis pro každý soubor |
+| `get_dashboard` | `GetDashboardTool` | Invoice / Client (agregace) | Read (souhrn) | bez parametrů; cashflow tento měsíc, počet klientů, neuhrazeno, po splatnosti, top klienti |
+| `list_invoices` | `ListInvoicesTool` | Invoice (vydaná) | Read (paged list) | `status`, `document_type`, `client_name`, `issue_date_from/to`, `overdue` |
+| `get_vat_report` | `GetVatReportTool` | VAT report (agregace) | Read (report) | `date_from`, `date_to` (obojí povinné, období podle DUZP) |
+
+##### Reporting tools (#228) — proč tři, ne šest
+
+MCP `ReportingTools` má šest metod, chat tools jen tři (`GetDashboard` a `GetVatReport` mají
+1:1 protějšek). Zbylé **čtyři nejsou mezera** — jejich schopnost už pokrývá jiný tool:
+
+| MCP metoda | Chat ekvivalent |
+|------------|-----------------|
+| `GetOverdueInvoices` | `list_invoices` s `overdue=true` |
+| `GetClientInvoices` | `list_invoices` s `client_name` (substring podle jména, ne `clientId` jako MCP — dva podobně pojmenovaní klienti se přes chat nerozliší) |
+| `GetInvoicesByDateRange` | `list_invoices` s `issue_date_from/to` |
+| `GetOverdueReceivedInvoices` | `list_received_invoices` s `overdue=true` (existující tool, sémantika `IsOverdue` u přijatých už je „Approved + po splatnosti") |
+
+Duplikovat je jako samostatné tooly by znamenalo čtyři třídy nad jedním dotazem a čtyři
+řádky navíc v katalogu, který model čte při každé zprávě.
+
+**Definice „po splatnosti" u vydaných faktur:** `list_invoices` s `overdue=true` doplní
+`Status = Completed`, pokud volající status neurčil — stejně jako `DashboardService`.
+Samotný `IsOverdue` filtr v `InvoiceService` totiž vrací i **drafty** s prošlým datem
+splatnosti, což by pohledávky nafouklo. `InvoiceFilterDto` umí jen jeden status naráz,
+takže „Completed NEBO PartiallyPaid" se musí zeptat dvěma voláními (parametr `status`
+to umožňuje).
 
 ##### `navigate` — katalog rout (#229)
 
