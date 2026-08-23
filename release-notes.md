@@ -63,6 +63,10 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Změny pro vývojáře
 
+- **#209** — Nový endpoint `GET /api/readiness` (i jako Azure Function) vrací, co ve
+  vystaviteli ještě chybí k vystavení faktury (sídlo, číselné řady, šablony) — základ pro
+  banner v UI (#215) a pro MCP/chat nástroje, které se teď mají o co opřít místo vlastní
+  logiky. (PR #266, `824aaec`)
 - **#228** — AI asistent v chatu teď umí nahlásit stav dashboardu (cashflow, neuhrazené a
   po splatnosti částky, top klienti), vypsat vydané faktury a dobropisy s filtry podle
   stavu, klienta, období nebo splatnosti a spočítat DPH report za zadané období — dřív
