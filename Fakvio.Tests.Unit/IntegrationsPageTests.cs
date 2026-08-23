@@ -173,7 +173,10 @@ public class IntegrationsPageTests : BunitContext, IAsyncLifetime
 
         // Precondition, not the assertion under test: if the dialog silently stopped
         // submitting, every reveal test below would "pass" by finding nothing.
-        _api.CreateCount.ShouldBe(1, "the create dialog did not reach the API");
+        // WaitForAssertion because the create call and the re-render that follows it are
+        // asynchronous — the click returns before the response has been handled.
+        page.WaitForAssertion(() =>
+            _api.CreateCount.ShouldBe(1, "the create dialog did not reach the API"));
     }
 
     // ── List ──────────────────────────────────────────────────────────────
@@ -229,8 +232,11 @@ public class IntegrationsPageTests : BunitContext, IAsyncLifetime
 
         await CreateKeyNamed(page, "Claude Code");
 
-        page.Markup.ShouldContain(RawKey);
-        page.Markup.ShouldContain(Localized("Integration_RawKeyWarning"));
+        page.WaitForAssertion(() =>
+        {
+            page.Markup.ShouldContain(RawKey);
+            page.Markup.ShouldContain(Localized("Integration_RawKeyWarning"));
+        });
     }
 
     /// <summary>
@@ -242,6 +248,8 @@ public class IntegrationsPageTests : BunitContext, IAsyncLifetime
     {
         var page = RenderPageWithKeys();
         await CreateKeyNamed(page, "Claude Code");
+
+        page.WaitForAssertion(() => page.Markup.ShouldContain(RawKey));
 
         page.FindAll("button")
             .First(b => b.TextContent.Contains(Localized("Integration_KeySaved")))
@@ -262,10 +270,13 @@ public class IntegrationsPageTests : BunitContext, IAsyncLifetime
 
         await CreateKeyNamed(page, "Claude Code");
 
-        page.Markup.ShouldContain(Localized("Integration_SnippetStdio"));
-        page.Markup.ShouldContain(Localized("Integration_SnippetHttp"));
-        page.Markup.ShouldContain($"\"FAKVIO_API_TOKEN\": \"{RawKey}\"");
-        page.Markup.ShouldContain($"Bearer {RawKey}");
+        page.WaitForAssertion(() =>
+        {
+            page.Markup.ShouldContain(Localized("Integration_SnippetStdio"));
+            page.Markup.ShouldContain(Localized("Integration_SnippetHttp"));
+            page.Markup.ShouldContain($"\"FAKVIO_API_TOKEN\": \"{RawKey}\"");
+            page.Markup.ShouldContain($"Bearer {RawKey}");
+        });
     }
 
     // ── Revoke ────────────────────────────────────────────────────────────
