@@ -1,31 +1,30 @@
+using System.Globalization;
+using System.Text;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using Fakvio.Application.Service;
 using Microsoft.Extensions.Logging;
 
 namespace Fakvio.Infrastructure.Service.ChatTools;
 
 /// <summary>
-/// Orchestrates chat tool detection, AI interaction, and tool execution.
+/// Orchestrates the AI chat tool catalog: prompt generation, tool-call parsing,
+/// parameter validation and dispatch to the matching IChatTool.
 ///
-/// How the "two-pass" flow works (called by ChatService):
-/// 1. DetectToolIntent() — fast regex: does the message contain an IČO + relevant keyword?
-/// 2. If yes → ChatService makes a non-streaming AI call with BuildToolInstructions() appended
-/// 3. ParseToolCall() — extracts JSON tool call from the AI response
-/// 4. ExecuteToolAsync() — dispatches to the matching IChatTool
-/// 5. ChatService makes a streaming AI call with the tool result injected
+/// Two flows exist (ChatService picks one based on the provider):
+/// - Native tool calling: GetToolDefinitions() hands a JSON Schema to the provider,
+///   the model answers with a structured tool call.
+/// - Text-based tool calling: BuildToolInstructions() is appended to the system prompt,
+///   ParseToolCall() extracts the JSON tool call from the model's plain-text answer.
 ///
-/// Why regex-based intent detection (not sending every message to the AI)?
-/// Performance: regex is ~0ms, AI call is ~500-2000ms. For 95% of messages
-/// that don't need tools, we avoid the overhead entirely.
+/// Both flows converge on ExecuteToolAsync(), which validates the parameters against
+/// the tool schema BEFORE the tool runs. Everything — prompt text, JSON Schema and
+/// validation — is derived from IChatTool.Parameters, so a tool is described in
+/// exactly one place: its own class.
 ///
 /// All registered IChatTool implementations are injected via IEnumerable{IChatTool} from DI.
-/// To add a new tool: implement IChatTool, register it in DI, and it's automatically available.
-///
-/// Junior note: This uses the "partial class" feature with [GeneratedRegex] attributes
-/// to get compiled regex at build time (faster than runtime-compiled regex).
+/// To add a new tool: implement IChatTool (including its parameter schema) and register it in DI.
 /// </summary>
-public partial class ChatToolExecutor : IChatToolExecutor
+public class ChatToolExecutor : IChatToolExecutor
 {
     private readonly Dictionary<string, IChatTool> _tools;
     private readonly ILogger<ChatToolExecutor> _logger;
@@ -37,10 +36,18 @@ public partial class ChatToolExecutor : IChatToolExecutor
         _logger = logger;
 
         // Build a case-insensitive lookup dictionary from all registered tools.
+        // ToDictionary throws on duplicate tool names — a registration mistake fails at startup.
         _tools = tools.ToDictionary(
             t => t.ToolName,
             t => t,
             StringComparer.OrdinalIgnoreCase);
+
+        // Fail fast: a tool with a broken schema breaks the whole chat silently at runtime
+        // (the model would call it with parameters nobody validates), so reject it at startup.
+        foreach (var tool in _tools.Values)
+        {
+            ValidateSchema(tool);
+        }
 
         _logger.LogInformation("ChatToolExecutor initialized with {Count} tools: {Tools}",
             _tools.Count, string.Join(", ", _tools.Keys));
@@ -51,264 +58,154 @@ public partial class ChatToolExecutor : IChatToolExecutor
     /// </summary>
     public IReadOnlyList<string> AvailableTools => _tools.Keys.ToList().AsReadOnly();
 
-    // ─── Compiled Regex Patterns ──────────────────────────────────────────
+    // ─── Schema Validation (startup) ──────────────────────────────────────
 
     /// <summary>
-    /// Matches 8-digit sequences that look like Czech IČO numbers.
-    /// Supports formats: "IČO 12345678", "ICO: 12345678", "ičo:12345678", standalone "12345678".
-    /// Word boundaries (\b) prevent matching random 8-digit substrings of longer numbers.
+    /// Verifies that a tool's parameter schema is usable before the application serves traffic.
+    /// Catches the mistakes the compiler cannot: empty or duplicated parameter names,
+    /// and enum constraints on non-string parameters (JSON Schema would silently ignore them).
     /// </summary>
-    [GeneratedRegex(@"(?:IČO|ICO|ičo|ico)[\s:]*(\d{8})\b|\b(\d{8})\b", RegexOptions.Compiled)]
-    private static partial Regex IcoPattern();
-
-    /// <summary>
-    /// Matches Czech and English keywords indicating the user wants to interact
-    /// with company/client data. Case-insensitive.
-    ///
-    /// Czech: klient, firma, ARES, založ, najdi, vyhledej, společnost, přidej, etc.
-    /// English: client, company, create, lookup, find, search, ARES, register, add, etc.
-    /// </summary>
-    [GeneratedRegex(
-        @"\b(klient[aůuy]?|firm[auy]?|založ|zaloz|zaklad|založit|zalozit|najdi|najít|najit|vyhledej|hledej|" +
-        @"ares|společnost|spolecnost|přidej|pridej|přidat|pridat|" +
-        @"client|company|create|lookup|find|search|register|add)\b",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled)]
-    private static partial Regex ToolKeywordPattern();
-
-    /// <summary>
-    /// Matches Czech and English phrases that indicate the user is asking about
-    /// received (incoming) invoices — přijaté faktury / expenses from suppliers.
-    ///
-    /// Czech: přijatá faktura, přijaté faktury, přijatou fakturu, přijatá, výdaj/ová faktura,
-    ///        dodavatel, dodavatelská faktura, faktura od ...
-    /// English: received invoice, incoming invoice, supplier invoice, expense invoice
-    ///
-    /// A standalone 8-to-15-digit number after "faktura" or "invoice" also triggers this path
-    /// because the user likely means a document number (e.g. "faktura 267708922").
-    /// </summary>
-    [GeneratedRegex(
-        @"\b(přijat[áaéeou]|prijat[áaéeou]|přijat[íi]|prijat[íi]|" +
-        @"výdaj[oová]?|vydaj[oová]?|dodavatel[sš]k[áaé]?|dodavatel[eů]?|" +
-        @"received invoice|incoming invoice|supplier invoice|expense invoice|" +
-        @"přijatou fakturu|prijatou fakturu|přijaté faktury|prijaté faktury)\b|" +
-        @"\b(faktura|fakturu|faktury|invoice)\b.{0,30}\b\d{5,15}\b",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled)]
-    private static partial Regex ReceivedInvoiceKeywordPattern();
-
-    /// <summary>
-    /// Matches Czech and English keywords indicating the user wants to navigate
-    /// somewhere in the application or open a page/form.
-    ///
-    /// Czech: otevři, ukaž, přejdi, naviguj, zobraz, jdi na, nová faktura, nový klient, dobropis, etc.
-    /// English: open, show, go to, navigate, display, new invoice, new client, new credit note, etc.
-    ///
-    /// This is a separate path from IČO + keyword detection — navigation doesn't require an IČO.
-    /// </summary>
-    [GeneratedRegex(
-        @"\b(otevři|otevri|otevřít|otevrit|ukaž|ukaz|ukázat|ukazat|přejdi|prejdi|přejít|prejit|" +
-        @"naviguj|navigovat|zobraz|zobrazit|" +
-        @"jdi na|jdi do|chci|potřebuju|potrebuju|" +
-        @"nová faktura|nova faktura|novou fakturu|nový klient|novy klient|nového klienta|noveho klienta|" +
-        @"nový dobropis|novy dobropis|" +
-        @"seznam faktur|seznam klientů|seznam klientu|přehled faktur|prehled faktur|" +
-        @"open|show|go to|navigate|display|" +
-        @"new invoice|new client|new credit note|" +
-        @"invoice list|client list)\b",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled)]
-    private static partial Regex NavigationKeywordPattern();
-
-    /// <summary>
-    /// Matches Czech and English keywords indicating the user wants to CREATE an invoice
-    /// (not just navigate to the create form). Must be combined with item/price context
-    /// to distinguish "create invoice" (tool) from "open new invoice" (navigation).
-    ///
-    /// Czech: vytvoř/udělej/vystavit fakturu, faktura za/na (with amount context)
-    /// English: create/make/generate invoice
-    ///
-    /// This pattern detects the intent to actually create a document, not just open a form.
-    /// </summary>
-    [GeneratedRegex(
-        @"\b(vytvoř|vytvor|udělej|udelej|vystavit|vystav|vytvořit|vytvorit|" +
-        @"create|make|generate|issue)\b.*\b(fakturu|faktura|faktur|invoice|dobropis|credit note)\b|" +
-        @"\b(fakturu|faktura|invoice|dobropis|credit note)\b.*\b(za|na|for)\b.*\d",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled)]
-    private static partial Regex InvoiceCreationPattern();
-
-    /// <summary>
-    /// Detects invoice import intent — user pastes invoice text or asks to import.
-    /// Matches: "importuj fakturu", "import invoice", or pasted text containing
-    /// both IČO (8 digits) and a monetary amount (common in pasted invoices).
-    /// Also triggers on long messages (>300 chars) with IČO — likely pasted invoice content.
-    /// </summary>
-    [GeneratedRegex(
-        @"\b(importuj|import|naimportuj|zaúčtuj|zauctuj|zaeviduj|přidej fakturu|pridej fakturu)\b",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled)]
-    private static partial Regex ImportKeywordPattern();
-
-    /// <summary>
-    /// Matches Czech and English keywords indicating the user wants to EXPORT/DOWNLOAD
-    /// an invoice as PDF. Covers: stáhni, exportuj, download, export, pošli PDF, etc.
-    /// </summary>
-    [GeneratedRegex(
-        @"\b(stáhni|stahni|stáhnout|stahnout|exportuj|exportovat|export|download|" +
-        @"vygeneruj|generuj|generate|" +
-        @"stáhnout pdf|stahnout pdf|pošli pdf|posli pdf|ukaž pdf|ukaz pdf)\b.*\b(fakturu?|faktur|invoice|dobropis|credit note|pdf)\b|" +
-        @"\b(fakturu?|faktur|invoice|dobropis|credit note)\b.*\b(stáhni|stahni|exportuj|download|pdf|export)\b|" +
-        @"\b(nejnovější|nejnovejsi|poslední|posledni|latest|last|recent)\b.*\b(fakturu?|faktur|invoice|dobropis)\b",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled)]
-    private static partial Regex ExportKeywordPattern();
-
-    /// <summary>
-    /// Matches Czech and English keywords indicating the user wants to ATTACH a file
-    /// to an entity or LIST existing attachments.
-    ///
-    /// Czech: přilož, nahraj soubor, přidej přílohu, zobraz přílohy, seznam příloh, atd.
-    /// English: attach file, upload file, add attachment, list attachments, show files, etc.
-    /// </summary>
-    [GeneratedRegex(
-        @"\b(přilož|priloz|přiložit|priložit|nahraj soubor|přidej přílohu|pridej prilohu|" +
-        @"zobraz přílohy|seznam příloh|seznam prilohy|přiloha|priloha|přílohy|prilohy|" +
-        @"attach|attachment|attachments|upload file|add file|list files|show files|list attachments|show attachments)\b",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled)]
-    private static partial Regex FileAttachmentKeywordPattern();
-
-    // ─── Intent Detection ─────────────────────────────────────────────────
-
-    /// <summary>
-    /// Fast check: does the user's message indicate a need for tool processing?
-    ///
-    /// Two paths can trigger tool intent:
-    /// 1. IČO pattern + tool keyword (e.g., "Najdi firmu s IČO 12345678")
-    /// 2. Navigation keyword (e.g., "Otevři novou fakturu", "Ukaž mi klienta ABC")
-    ///
-    /// Deliberately conservative — better to miss a tool call (the AI can still answer in text)
-    /// than to add ~1-2s latency to every regular message with an unnecessary first-pass AI call.
-    /// </summary>
-    public bool DetectToolIntent(string userMessage)
+    /// <exception cref="InvalidOperationException">The schema is invalid.</exception>
+    private static void ValidateSchema(IChatTool tool)
     {
-        if (string.IsNullOrWhiteSpace(userMessage))
-            return false;
+        var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        // Path 1: IČO pattern + tool keyword (for ARES lookup / client creation).
-        if (IcoPattern().IsMatch(userMessage) && ToolKeywordPattern().IsMatch(userMessage))
+        foreach (var parameter in tool.Parameters)
         {
-            _logger.LogDebug("Tool intent detected in message: IČO pattern + keyword match");
-            return true;
-        }
+            if (string.IsNullOrWhiteSpace(parameter.Name))
+                throw new InvalidOperationException(
+                    $"Chat tool '{tool.ToolName}' declares a parameter with an empty name.");
 
-        // Path 2: Navigation keyword (no IČO required).
-        if (NavigationKeywordPattern().IsMatch(userMessage))
-        {
-            _logger.LogDebug("Tool intent detected in message: navigation keyword match");
-            return true;
-        }
+            if (!seenNames.Add(parameter.Name))
+                throw new InvalidOperationException(
+                    $"Chat tool '{tool.ToolName}' declares parameter '{parameter.Name}' more than once.");
 
-        // Path 3: Invoice creation keyword + item/price context.
-        // Example: "Vytvoř fakturu pro Alza za mléko na 999,-"
-        if (InvoiceCreationPattern().IsMatch(userMessage))
-        {
-            _logger.LogDebug("Tool intent detected in message: invoice creation pattern match");
-            return true;
-        }
+            if (string.IsNullOrWhiteSpace(parameter.Description))
+                throw new InvalidOperationException(
+                    $"Chat tool '{tool.ToolName}' parameter '{parameter.Name}' has no description — " +
+                    "the model needs it to decide what to send.");
 
-        // Path 4: Import keyword or pasted invoice content (long text with IČO).
-        if (ImportKeywordPattern().IsMatch(userMessage))
-        {
-            _logger.LogDebug("Tool intent detected in message: import keyword match");
-            return true;
-        }
+            if (parameter.AllowedValues is null)
+                continue;
 
-        // Path 5: Long message with IČO — likely pasted invoice text for import.
-        if (userMessage.Length > 300 && IcoPattern().IsMatch(userMessage))
-        {
-            _logger.LogDebug("Tool intent detected in message: long text with IČO (likely pasted invoice)");
-            return true;
-        }
+            if (parameter.AllowedValues.Count == 0)
+                throw new InvalidOperationException(
+                    $"Chat tool '{tool.ToolName}' parameter '{parameter.Name}' has an empty AllowedValues list.");
 
-        // Path 6: Export/download keyword — user wants to download a PDF.
-        if (ExportKeywordPattern().IsMatch(userMessage))
-        {
-            _logger.LogDebug("Tool intent detected in message: export/download keyword match");
-            return true;
+            if (parameter.Type != ChatToolParameterType.String)
+                throw new InvalidOperationException(
+                    $"Chat tool '{tool.ToolName}' parameter '{parameter.Name}' restricts values but is " +
+                    $"of type {parameter.Type} — allowed values are only supported for string parameters.");
         }
-
-        // Path 7: Received invoice keyword — user asks about přijaté faktury / expenses.
-        if (ReceivedInvoiceKeywordPattern().IsMatch(userMessage))
-        {
-            _logger.LogDebug("Tool intent detected in message: received invoice keyword match");
-            return true;
-        }
-
-        // Path 8: File attachment keyword — user wants to attach or list files.
-        if (FileAttachmentKeywordPattern().IsMatch(userMessage))
-        {
-            _logger.LogDebug("Tool intent detected in message: file attachment keyword match");
-            return true;
-        }
-
-        return false;
     }
 
     // ─── Tool Instructions for System Prompt ──────────────────────────────
 
     /// <summary>
-    /// Builds tool instructions to append to the system prompt.
-    /// These tell the AI how to format tool calls.
+    /// Builds tool instructions to append to the system prompt (text-based flow).
+    /// The tool list and parameter lines are generated from the tool schemas,
+    /// so they can never drift from what the tools actually accept.
     ///
-    /// IMPORTANT: Instructions are kept very simple and explicit for Ollama llama3.1:8b.
-    /// Small models need clear, unambiguous instructions with examples.
+    /// IMPORTANT: instructions stay simple and explicit — small models
+    /// (Ollama llama3.1:8b) need clear, unambiguous wording.
     /// </summary>
     public string BuildToolInstructions()
     {
-        // Build the list of available tools with their descriptions.
-        var toolDescriptions = string.Join("\n", _tools.Values.Select(t =>
-            $"  - {t.ToolName}: {t.Description}\n    Parameters: {t.ParameterDescription}"));
+        var sb = new StringBuilder();
 
-        return
-            "\n\nTOOLS:\n" +
-            "You have access to these tools:\n" +
-            $"{toolDescriptions}\n\n" +
-            "WHEN TO USE TOOLS:\n" +
-            "- If the user mentions an IČO and wants to look up a company, use \"ares_lookup\".\n" +
-            "- If the user explicitly asks to create/add/register a client, use \"create_client\".\n" +
-            "- If unsure whether to look up or create, use \"ares_lookup\" first (read-only, safer).\n" +
-            "- If the user wants to open a page, navigate somewhere, or view something, use \"navigate\".\n" +
-            "  Valid targets: new_invoice, new_credit_note, client_detail, client_list, invoice_list, new_client.\n" +
-            "  If a client is mentioned, include \"client_name\" in parameters.\n" +
-            "- If the user wants to CREATE an invoice (not just open the form), use \"create_invoice\".\n" +
-            "  IMPORTANT: Use \"create_invoice\" when the user provides item details (description, price).\n" +
-            "  Use \"navigate\" with target \"new_invoice\" when the user just wants to open the form.\n" +
-            "  The items parameter must be a JSON array. Extract items from the user's message.\n" +
-            "- If the user wants to EXPORT/DOWNLOAD/PRINT an invoice as PDF, use \"export_invoice\".\n" +
-            "  Provide document_number or client_name. If neither is specified, exports the most recent invoice.\n" +
-            "- If the user asks about a RECEIVED (incoming/expense) invoice by ID or document number, use \"get_received_invoice\".\n" +
-            "  Provide id or document_number. Returns full detail including items and VAT breakdown.\n" +
-            "- If the user wants to LIST or BROWSE received invoices (with filters), use \"list_received_invoices\".\n" +
-            "  Supports status, supplier_name, date range, amount range, currency, and overdue filters.\n" +
-            "- If the user SEARCHES for received invoices by text (number, supplier, amount), use \"search_received_invoices\".\n" +
-            "  Provide a query string — matched against document number, supplier name, variable symbol, and amount.\n" +
-            "- If the user wants to ATTACH a file to an entity (invoice, received invoice, client), use \"attach_file\".\n" +
-            "  Provide entity_name (Invoice/ReceivedInvoice/Client), record_id, file_name, and file_content_base64.\n" +
-            "  file_content_base64 must be the Base64-encoded file bytes (provided by the frontend when the user drops a file).\n" +
-            "- If the user wants to LIST or SEE attachments on an entity, use \"list_attachments\".\n" +
-            "  Provide entity_name and record_id. Returns name, size, upload date, and description for each file.\n\n" +
-            "HOW TO USE TOOLS:\n" +
-            "Your ENTIRE response must be ONLY this JSON, nothing else:\n" +
-            "{\"action\": \"tool_name\", \"parameters\": {\"key\": \"value\"}}\n\n" +
-            "Examples:\n" +
-            "- Look up IČO 12345678: {\"action\": \"ares_lookup\", \"parameters\": {\"registration_number\": \"12345678\"}}\n" +
-            "- Open new invoice: {\"action\": \"navigate\", \"parameters\": {\"target\": \"new_invoice\"}}\n" +
-            "- Open new invoice for client ABC: {\"action\": \"navigate\", \"parameters\": {\"target\": \"new_invoice\", \"client_name\": \"ABC\"}}\n" +
-            "- Show client detail: {\"action\": \"navigate\", \"parameters\": {\"target\": \"client_detail\", \"client_name\": \"ABC\"}}\n" +
-            "- Open client list: {\"action\": \"navigate\", \"parameters\": {\"target\": \"client_list\"}}\n" +
-            "- Create invoice: {\"action\": \"create_invoice\", \"parameters\": {\"client_name\": \"Alza\", \"items\": \"[{\\\"description\\\": \\\"Mléko\\\", \\\"quantity\\\": 1, \\\"unit_price\\\": 999}]\"}}\n" +
-            "- Create invoice with multiple items: {\"action\": \"create_invoice\", \"parameters\": {\"client_name\": \"ABC\", \"items\": \"[{\\\"description\\\": \\\"Item 1\\\", \\\"quantity\\\": 2, \\\"unit_price\\\": 500}, {\\\"description\\\": \\\"Item 2\\\", \\\"quantity\\\": 1, \\\"unit_price\\\": 300}]\"}}\n" +
-            "- Export invoice by number: {\"action\": \"export_invoice\", \"parameters\": {\"document_number\": \"FV-2024-0001\"}}\n" +
-            "- Export latest invoice for client: {\"action\": \"export_invoice\", \"parameters\": {\"client_name\": \"Alza\"}}\n" +
-            "- Export the most recent invoice: {\"action\": \"export_invoice\", \"parameters\": {}}\n" +
-            "- List attachments for invoice 42: {\"action\": \"list_attachments\", \"parameters\": {\"entity_name\": \"Invoice\", \"record_id\": \"42\"}}\n" +
-            "- Attach file to invoice: {\"action\": \"attach_file\", \"parameters\": {\"entity_name\": \"Invoice\", \"record_id\": \"42\", \"file_name\": \"contract.pdf\", \"file_content_base64\": \"<base64>\", \"content_type\": \"application/pdf\"}}\n\n" +
-            "If no tool is needed, respond normally with text.";
+        sb.Append("\n\nTOOLS:\n");
+        sb.AppendLine("You have access to these tools:");
+
+        foreach (var tool in _tools.Values)
+        {
+            sb.AppendLine($"  - {tool.ToolName}: {tool.Description}");
+
+            if (tool.Parameters.Count == 0)
+            {
+                sb.AppendLine("    Parameters: none");
+                continue;
+            }
+
+            sb.AppendLine("    Parameters:");
+            foreach (var parameter in tool.Parameters)
+            {
+                sb.AppendLine($"      - {DescribeParameter(parameter)}");
+            }
+        }
+
+        sb.AppendLine();
+        sb.AppendLine("HOW TO USE TOOLS:");
+        sb.AppendLine("Your ENTIRE response must be ONLY this JSON, nothing else:");
+        sb.AppendLine("{\"action\": \"tool_name\", \"parameters\": {\"key\": \"value\"}}");
+        sb.AppendLine("Use the exact parameter names listed above.");
+        sb.AppendLine("Send numbers as numbers, booleans as true or false, and arrays as JSON arrays — never quoted.");
+        sb.AppendLine("Omit optional parameters you have no value for — never invent one.");
+        sb.AppendLine();
+
+        sb.AppendLine("EXAMPLES (required parameters only — replace the <placeholders> with real values):");
+        foreach (var tool in _tools.Values)
+        {
+            sb.AppendLine($"  {BuildExampleCall(tool)}");
+        }
+
+        sb.AppendLine();
+        sb.Append("If no tool is needed, respond normally with text.");
+
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Renders one ready-to-copy call for the given tool, e.g.
+    /// {"action": "navigate", "parameters": {"target": "new_invoice"}}.
+    ///
+    /// Generated from the schema rather than hand-written, so an example can never
+    /// advertise a parameter the tool does not accept. Only required parameters appear —
+    /// the instructions above already tell the model to omit the optional ones.
+    /// </summary>
+    private static string BuildExampleCall(IChatTool tool)
+    {
+        var arguments = string.Join(", ", tool.Parameters
+            .Where(parameter => parameter.IsRequired)
+            .Select(parameter => $"\"{parameter.Name}\": {ExampleValue(parameter)}"));
+
+        // Plain concatenation on purpose: in an interpolated string every JSON brace would
+        // have to be doubled, which is much harder to read than this.
+        return "{\"action\": \"" + tool.ToolName + "\", \"parameters\": {" + arguments + "}}";
+    }
+
+    /// <summary>
+    /// Placeholder value for one parameter — always valid JSON of the declared type,
+    /// so a model that copies the example verbatim still produces a parsable call.
+    /// Parameters with a closed value list show a real allowed value (the best guidance
+    /// we can give); everything else shows a &lt;placeholder&gt; the model must replace.
+    /// </summary>
+    private static string ExampleValue(ChatToolParameter parameter)
+    {
+        if (parameter.AllowedValues is { Count: > 0 } allowed)
+            return $"\"{allowed[0]}\"";
+
+        return parameter.Type switch
+        {
+            ChatToolParameterType.Integer => "1",
+            ChatToolParameterType.Number => "100.50",
+            ChatToolParameterType.Boolean => "true",
+            ChatToolParameterType.ObjectArray => "[{\"<field>\": \"<value>\"}]",
+            _ => $"\"<{parameter.Name}>\""
+        };
+    }
+
+    /// <summary>
+    /// Renders one parameter as a single instruction line, e.g.
+    /// "target (string, required, one of: new_invoice | client_list): Where to navigate".
+    /// </summary>
+    private static string DescribeParameter(ChatToolParameter parameter)
+    {
+        var requirement = parameter.IsRequired ? "required" : "optional";
+        var allowed = parameter.AllowedValues is { Count: > 0 }
+            ? $", one of: {string.Join(" | ", parameter.AllowedValues)}"
+            : string.Empty;
+
+        return $"{parameter.Name} ({parameter.Type.ToJsonSchemaType()}, {requirement}{allowed}): {parameter.Description}";
     }
 
     // ─── Parse Tool Call from AI Response ──────────────────────────────────
@@ -357,8 +254,13 @@ public partial class ChatToolExecutor : IChatToolExecutor
             using var doc = JsonDocument.Parse(jsonString);
             var root = doc.RootElement;
 
-            // Must have an "action" property to be a valid tool call.
-            if (!root.TryGetProperty("action", out var actionElement))
+            // Must have a STRING "action" property to be a valid tool call.
+            // The ValueKind check comes first because GetString() throws
+            // InvalidOperationException on a number/boolean/array/object — and that is not a
+            // JsonException, so it would escape the catch below and kill the whole chat turn.
+            // A model that answers {"action": 123} is simply not calling a tool.
+            if (!root.TryGetProperty("action", out var actionElement) ||
+                actionElement.ValueKind != JsonValueKind.String)
                 return null;
 
             var action = actionElement.GetString();
@@ -366,15 +268,12 @@ public partial class ChatToolExecutor : IChatToolExecutor
                 return null;
 
             // Extract parameters (optional — some tools might not need params).
-            var parameters = new Dictionary<string, string>();
-            if (root.TryGetProperty("parameters", out var paramsElement) &&
-                paramsElement.ValueKind == JsonValueKind.Object)
-            {
-                foreach (var prop in paramsElement.EnumerateObject())
-                {
-                    parameters[prop.Name] = prop.Value.GetString() ?? prop.Value.ToString();
-                }
-            }
+            // The shared reader is what makes the text-based flow behave exactly like the
+            // native provider flows, JSON nulls included.
+            Dictionary<string, string> parameters =
+                root.TryGetProperty("parameters", out var paramsElement)
+                    ? ToolArgumentReader.ReadArguments(paramsElement)
+                    : [];
 
             _logger.LogInformation("Parsed tool call: action={Action}, parameters={Parameters}",
                 action, string.Join(", ", parameters.Select(kv => $"{kv.Key}={kv.Value}")));
@@ -398,224 +297,41 @@ public partial class ChatToolExecutor : IChatToolExecutor
 
     /// <summary>
     /// Builds NativeToolDefinition list from all registered IChatTool instances.
-    /// Used by providers that support native tool calling (Ollama, etc.).
+    /// Used by providers that support native tool calling (Ollama, Claude, …).
     ///
-    /// Each tool's ParameterDescription is parsed into structured JSON Schema parameters.
-    /// Since IChatTool doesn't define structured parameters, we use a hardcoded mapping
-    /// for known tools. Unknown tools get a single "input" string parameter as fallback.
-    ///
-    /// Junior note: Native tool calling works much better than text-based instructions
-    /// because models are fine-tuned to produce structured tool calls. The API enforces
-    /// the parameter schema, so the model can't produce malformed output.
+    /// Junior note: native tool calling works much better than text-based instructions
+    /// because models are fine-tuned to produce structured tool calls. The provider API
+    /// enforces the JSON Schema we generate here, so the model cannot produce
+    /// malformed output — which is why the schema must carry real types, not just strings.
     /// </summary>
     public List<NativeToolDefinition> GetToolDefinitions()
     {
-        var definitions = new List<NativeToolDefinition>();
-
-        foreach (var tool in _tools.Values)
+        return _tools.Values.Select(tool => new NativeToolDefinition
         {
-            var def = new NativeToolDefinition
+            Name = tool.ToolName,
+            Description = tool.Description,
+            Parameters = tool.Parameters.Select(parameter => new NativeToolParameter
             {
-                Name = tool.ToolName,
-                Description = tool.Description
-            };
-
-            // Map known tools to structured parameters.
-            // This is a hardcoded mapping because IChatTool uses free-text ParameterDescription.
-            switch (tool.ToolName)
-            {
-                case "ares_lookup":
-                    def.Parameters = new List<NativeToolParameter>
-                    {
-                        new() { Name = "registration_number", Type = "string",
-                            Description = "Czech company registration number (IČO), exactly 8 digits" }
-                    };
-                    def.Required = new List<string> { "registration_number" };
-                    break;
-
-                case "create_client":
-                    def.Parameters = new List<NativeToolParameter>
-                    {
-                        new() { Name = "registration_number", Type = "string",
-                            Description = "Czech company registration number (IČO), exactly 8 digits. " +
-                                          "Company data will be fetched from ARES automatically." }
-                    };
-                    def.Required = new List<string> { "registration_number" };
-                    break;
-
-                case "navigate":
-                    def.Parameters = new List<NativeToolParameter>
-                    {
-                        new() { Name = "target", Type = "string",
-                            Description = "Where to navigate in the application",
-                            EnumValues = new List<string>
-                            {
-                                "new_invoice", "new_credit_note", "client_detail",
-                                "client_list", "invoice_list", "new_client"
-                            }
-                        },
-                        new() { Name = "client_name", Type = "string",
-                            Description = "Client/company name (required for client_detail, optional for new_invoice to pre-select client)" }
-                    };
-                    def.Required = new List<string> { "target" };
-                    break;
-
-                case "create_invoice":
-                    def.Parameters = new List<NativeToolParameter>
-                    {
-                        new() { Name = "client_name", Type = "string",
-                            Description = "Name of the client/company to invoice" },
-                        new() { Name = "items", Type = "string",
-                            Description = "JSON array of invoice line items. Each item has: " +
-                                          "\"description\" (string, required), \"quantity\" (number, default 1), " +
-                                          "\"unit_price\" (number, required). " +
-                                          "Example: [{\"description\": \"Web development\", \"quantity\": 10, \"unit_price\": 1500}]" },
-                        new() { Name = "currency", Type = "string",
-                            Description = "Currency code (e.g., \"CZK\", \"EUR\"). Default: CZK" },
-                        new() { Name = "notes", Type = "string",
-                            Description = "Optional notes to include on the invoice" }
-                    };
-                    def.Required = new List<string> { "client_name", "items" };
-                    break;
-
-                case "get_received_invoice":
-                    def.Parameters = new List<NativeToolParameter>
-                    {
-                        new() { Name = "id", Type = "string",
-                            Description = "Internal database ID of the received invoice" },
-                        new() { Name = "document_number", Type = "string",
-                            Description = "Document number as printed on the invoice (e.g. '267708922')" }
-                    };
-                    def.Required = new List<string>();  // at least one is required, validated inside ExecuteAsync
-                    break;
-
-                case "list_received_invoices":
-                    def.Parameters = new List<NativeToolParameter>
-                    {
-                        new() { Name = "page", Type = "string",
-                            Description = "Page number (default 1)" },
-                        new() { Name = "page_size", Type = "string",
-                            Description = "Items per page (default 10, max 50)" },
-                        new() { Name = "status", Type = "string",
-                            Description = "Filter by status",
-                            EnumValues = new List<string> { "Received", "Approved", "Paid", "Rejected" } },
-                        new() { Name = "supplier_name", Type = "string",
-                            Description = "Supplier company name (case-insensitive substring match)" },
-                        new() { Name = "issue_date_from", Type = "string",
-                            Description = "Issue date range start (YYYY-MM-DD)" },
-                        new() { Name = "issue_date_to", Type = "string",
-                            Description = "Issue date range end (YYYY-MM-DD)" },
-                        new() { Name = "min_amount", Type = "string",
-                            Description = "Minimum total amount (with VAT)" },
-                        new() { Name = "max_amount", Type = "string",
-                            Description = "Maximum total amount (with VAT)" },
-                        new() { Name = "currency", Type = "string",
-                            Description = "Currency code filter (e.g. CZK, EUR)" },
-                        new() { Name = "overdue", Type = "string",
-                            Description = "Pass 'true' to show only overdue invoices" }
-                    };
-                    def.Required = new List<string>();
-                    break;
-
-                case "search_received_invoices":
-                    def.Parameters = new List<NativeToolParameter>
-                    {
-                        new() { Name = "query", Type = "string",
-                            Description = "Free-text search — matched against document number, supplier name, variable symbol, and amount" },
-                        new() { Name = "limit", Type = "string",
-                            Description = "Max results to return (default 10, max 50)" }
-                    };
-                    def.Required = new List<string> { "query" };
-                    break;
-
-                case "attach_file":
-                    def.Parameters = new List<NativeToolParameter>
-                    {
-                        new() { Name = "entity_name", Type = "string",
-                            Description = "Target entity type",
-                            EnumValues = new List<string> { "Invoice", "ReceivedInvoice", "Client" } },
-                        new() { Name = "record_id", Type = "string",
-                            Description = "Primary key of the target entity record (numeric)" },
-                        new() { Name = "file_name", Type = "string",
-                            Description = "Original file name including extension (e.g. contract.pdf)" },
-                        new() { Name = "file_content_base64", Type = "string",
-                            Description = "File bytes encoded as Base64" },
-                        new() { Name = "content_type", Type = "string",
-                            Description = "MIME type of the file (e.g. application/pdf, image/png). Default: application/octet-stream" },
-                        new() { Name = "description", Type = "string",
-                            Description = "Optional human-readable note about the attachment" }
-                    };
-                    def.Required = new List<string> { "entity_name", "record_id", "file_name", "file_content_base64" };
-                    break;
-
-                case "list_attachments":
-                    def.Parameters = new List<NativeToolParameter>
-                    {
-                        new() { Name = "entity_name", Type = "string",
-                            Description = "Target entity type",
-                            EnumValues = new List<string> { "Invoice", "ReceivedInvoice", "Client" } },
-                        new() { Name = "record_id", Type = "string",
-                            Description = "Primary key of the target entity record (numeric)" }
-                    };
-                    def.Required = new List<string> { "entity_name", "record_id" };
-                    break;
-
-                case "import_invoice":
-                    def.Parameters = new List<NativeToolParameter>
-                    {
-                        new() { Name = "issuer_ico", Type = "string",
-                            Description = "IČO of the invoice issuer (dodavatel/vystavitel)" },
-                        new() { Name = "issuer_name", Type = "string",
-                            Description = "Company name of the invoice issuer" },
-                        new() { Name = "recipient_ico", Type = "string",
-                            Description = "IČO of the invoice recipient (odběratel/příjemce)" },
-                        new() { Name = "recipient_name", Type = "string",
-                            Description = "Company name of the invoice recipient" },
-                        new() { Name = "document_number", Type = "string",
-                            Description = "Invoice number EXACTLY as printed on the document" },
-                        new() { Name = "issue_date", Type = "string",
-                            Description = "Date of issue in YYYY-MM-DD format, EXACTLY from the invoice" },
-                        new() { Name = "due_date", Type = "string",
-                            Description = "Payment due date in YYYY-MM-DD format, EXACTLY from the invoice" },
-                        new() { Name = "taxable_supply_date", Type = "string",
-                            Description = "DUZP in YYYY-MM-DD format, EXACTLY from the invoice" },
-                        new() { Name = "variable_symbol", Type = "string",
-                            Description = "Variable symbol (variabilní symbol) for payment" },
-                        new() { Name = "bank_account", Type = "string",
-                            Description = "Bank account number" },
-                        new() { Name = "iban", Type = "string", Description = "IBAN" },
-                        new() { Name = "swift", Type = "string", Description = "SWIFT/BIC code" },
-                        new() { Name = "currency", Type = "string",
-                            Description = "ISO 4217 currency code (CZK, EUR, etc.)" },
-                        new() { Name = "items", Type = "string",
-                            Description = "JSON array of line items: [{\"description\":\"...\",\"quantity\":1,\"unit_price\":100,\"vat_rate\":21}]" },
-                        new() { Name = "notes", Type = "string", Description = "Optional notes" }
-                    };
-                    def.Required = new List<string> { "document_number", "items" };
-                    break;
-
-                default:
-                    // Fallback for unknown tools: single "input" parameter.
-                    def.Parameters = new List<NativeToolParameter>
-                    {
-                        new() { Name = "input", Type = "string",
-                            Description = tool.ParameterDescription }
-                    };
-                    def.Required = new List<string> { "input" };
-                    break;
-            }
-
-            definitions.Add(def);
-        }
-
-        return definitions;
+                Name = parameter.Name,
+                Type = parameter.Type.ToJsonSchemaType(),
+                Description = parameter.Description,
+                EnumValues = parameter.AllowedValues?.ToList(),
+                ArrayItemType = parameter.Type.ToJsonSchemaItemType()
+            }).ToList(),
+            Required = tool.Parameters
+                .Where(parameter => parameter.IsRequired)
+                .Select(parameter => parameter.Name)
+                .ToList()
+        }).ToList();
     }
 
     // ─── Tool Execution ───────────────────────────────────────────────────
 
     /// <summary>
-    /// Finds the matching tool by action name and executes it.
-    /// Returns a failure result if the requested tool is not registered.
+    /// Finds the matching tool by action name, validates the parameters against its schema
+    /// and executes it. Returns a failure result if the tool is unknown or the parameters
+    /// do not match the schema — the message goes back to the model, which can then retry
+    /// with a corrected call.
     /// </summary>
     public async Task<ChatToolResult> ExecuteToolAsync(
         ParsedToolCall toolCall,
@@ -628,6 +344,15 @@ public partial class ChatToolExecutor : IChatToolExecutor
                 toolCall.Action, string.Join(", ", _tools.Keys));
             return ChatToolResult.Failure(
                 $"Unknown tool: {toolCall.Action}. Available tools: {string.Join(", ", _tools.Keys)}");
+        }
+
+        // Central parameter validation — done once here instead of in every ExecuteAsync.
+        var validationError = ValidateParameters(tool, toolCall.Parameters);
+        if (validationError != null)
+        {
+            _logger.LogWarning("Tool {ToolName} called with invalid parameters: {Error}",
+                tool.ToolName, validationError);
+            return ChatToolResult.Failure(validationError);
         }
 
         _logger.LogInformation("Executing tool {ToolName} with parameters: {Parameters}",
@@ -648,6 +373,91 @@ public partial class ChatToolExecutor : IChatToolExecutor
             // Catch any unhandled exception from the tool to prevent the chat from crashing.
             _logger.LogError(ex, "Tool {ToolName} threw an unhandled exception", tool.ToolName);
             return ChatToolResult.Failure($"Tool execution failed: {ex.Message}");
+        }
+    }
+
+    // ─── Central Parameter Validation ─────────────────────────────────────
+
+    /// <summary>
+    /// Checks the supplied parameters against the tool's schema:
+    /// required parameters present, values inside the allowed set, values of the declared type.
+    ///
+    /// Returns null when everything is fine, otherwise a single human-readable message
+    /// listing every problem at once (the model gets one shot to fix all of them).
+    ///
+    /// Blank optional parameters are treated as "not supplied" — models like to send
+    /// empty strings for parameters they have no value for.
+    /// </summary>
+    private static string? ValidateParameters(IChatTool tool, Dictionary<string, string> parameters)
+    {
+        List<string>? errors = null;
+
+        foreach (var schema in tool.Parameters)
+        {
+            parameters.TryGetValue(schema.Name, out var rawValue);
+
+            if (string.IsNullOrWhiteSpace(rawValue))
+            {
+                if (schema.IsRequired)
+                    (errors ??= []).Add($"missing required parameter '{schema.Name}' ({schema.Description})");
+
+                continue;
+            }
+
+            var value = rawValue.Trim();
+
+            if (schema.AllowedValues is { Count: > 0 } &&
+                !schema.AllowedValues.Contains(value, StringComparer.OrdinalIgnoreCase))
+            {
+                (errors ??= []).Add(
+                    $"parameter '{schema.Name}' must be one of: {string.Join(", ", schema.AllowedValues)} (got '{value}')");
+                continue;
+            }
+
+            if (!MatchesType(value, schema.Type))
+            {
+                (errors ??= []).Add(
+                    $"parameter '{schema.Name}' must be a {schema.Type.ToJsonSchemaType()} (got '{value}')");
+            }
+        }
+
+        return errors == null
+            ? null
+            : $"Invalid parameters for tool '{tool.ToolName}': {string.Join("; ", errors)}.";
+    }
+
+    /// <summary>
+    /// Checks whether a raw value can be interpreted as the declared type.
+    /// Values always arrive as strings (that is the IChatTool contract), so numbers and
+    /// booleans are validated by parsing, and arrays by parsing their raw JSON.
+    ///
+    /// InvariantCulture on purpose: the model produces JSON numbers ("1234.56"),
+    /// never Czech-formatted ones.
+    /// </summary>
+    private static bool MatchesType(string value, ChatToolParameterType type) => type switch
+    {
+        ChatToolParameterType.String => true,
+        ChatToolParameterType.Integer => long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _),
+        ChatToolParameterType.Number => decimal.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out _),
+        ChatToolParameterType.Boolean => bool.TryParse(value, out _),
+        ChatToolParameterType.ObjectArray => IsJsonArray(value),
+        _ => true
+    };
+
+    /// <summary>
+    /// True when the text is a well-formed JSON array (the model may also send it
+    /// as a quoted string containing JSON — that arrives here already unquoted).
+    /// </summary>
+    private static bool IsJsonArray(string value)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(value);
+            return doc.RootElement.ValueKind == JsonValueKind.Array;
+        }
+        catch (JsonException)
+        {
+            return false;
         }
     }
 }

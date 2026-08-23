@@ -67,9 +67,11 @@ public record ChatToolResult
 /// and an Execute method that performs the actual work.
 ///
 /// To add a new tool:
-/// 1. Implement this interface
+/// 1. Implement this interface — including the typed <see cref="Parameters"/> schema
 /// 2. Register it as IChatTool in DI (ServiceCollectionExtensions.cs)
 /// 3. The ChatToolExecutor discovers it automatically via IEnumerable{IChatTool}
+///    and derives the system-prompt text, the native tool schema and the
+///    parameter validation from the schema — no other file needs to change.
 ///
 /// Junior note: This is the "Strategy" pattern — each tool is a different strategy
 /// for handling a specific type of user request (ARES lookup, client creation, etc.).
@@ -91,14 +93,27 @@ public interface IChatTool
     string Description { get; }
 
     /// <summary>
-    /// Description of parameters this tool expects, in a format the AI can understand.
-    /// Example: "registration_number (string, required): Czech company IČO, exactly 8 digits"
+    /// Typed schema of the parameters this tool expects.
+    ///
+    /// This is the single source of truth: the native tool-calling JSON Schema,
+    /// the text-based system-prompt instructions and the central parameter
+    /// validation are all generated from it. Return an empty list for a tool
+    /// that takes no parameters.
+    ///
+    /// Junior note: expose a <c>static readonly</c> array here — the schema is
+    /// constant per tool, so there is no reason to allocate it on every access.
     /// </summary>
-    string ParameterDescription { get; }
+    IReadOnlyList<ChatToolParameter> Parameters { get; }
 
     /// <summary>
     /// Executes the tool with the given parameters.
-    /// Parameters are a dictionary of string key-value pairs extracted from the AI's JSON response.
+    /// Parameters are a dictionary of string key-value pairs extracted from the AI's response.
+    /// Non-string values (numbers, booleans, arrays) arrive as their raw JSON text.
+    ///
+    /// Presence of required parameters, allowed values and value types are validated
+    /// centrally by <c>IChatToolExecutor.ExecuteToolAsync</c> BEFORE this method is called,
+    /// so implementations must not repeat those checks. Business rules that the schema
+    /// cannot express (e.g. "at least one of id / document_number") still belong here.
     /// </summary>
     /// <param name="parameters">Tool parameters extracted from the AI response.</param>
     /// <param name="ct">Cancellation token for async operations.</param>

@@ -1,4 +1,5 @@
 using System.Text;
+using Fakvio.Application.Service;
 
 namespace Fakvio.Infrastructure.Service;
 
@@ -15,8 +16,8 @@ namespace Fakvio.Infrastructure.Service;
 /// Prompt layout (top to bottom):
 /// 1. Identity line — always built in.
 /// 2. Company identity — from the tenant database, NOT editable.
-/// 3. Main block — the built-in <see cref="DefaultMainBlock"/>, or the SysAdmin's
-///    custom text when one is stored.
+/// 3. Main block — the built-in one from <see cref="BuildDefaultMainBlock"/>, or the
+///    SysAdmin's custom text when one is stored.
 /// 4. Appendix — optional SysAdmin text, appended after the main block.
 /// 5. Business context statistics — from the tenant database, NOT editable.
 /// </summary>
@@ -29,37 +30,18 @@ public static class AiSystemPrompt
     public const string Identity =
         "You are Fakvio AI Assistant — connected to the Fakvio invoicing system.";
 
-    /// <summary>
-    /// Built-in style / tools / rules block. A non-empty custom prompt replaces this
-    /// whole block — the SysAdmin then takes over describing the tools.
-    /// </summary>
-    public const string DefaultMainBlock = """
+    /// <summary>Opening part of the built-in main block — how the assistant should answer.</summary>
+    private const string StyleBlock = """
         RESPONSE STYLE: Answer in ONE sentence maximum. No greetings, no filler, no repetition.
         Just do what the user asks and confirm the result briefly.
         Respond in the same language the user writes in (Czech or English).
+        """;
 
-        TOOLS (use them, don't ask unnecessary questions):
-        - ares_lookup: Look up Czech company by IČO
-        - create_client: Create client from IČO (auto-fills from ARES)
-        - create_invoice: Create a new issued invoice with line items
-        - import_invoice: Import invoice from pasted text/data — auto-detects issued vs received
-          by matching IČO against the company DB, finds client automatically, preserves all dates exactly
-        - navigate: Navigate user to a page
-        - export_invoice: Export/download invoice as PDF (by document number or client name)
-        - get_received_invoice: Get FULL detail of a received (incoming) invoice by ID or document number.
-          Returns supplier info, ALL line items with quantities/prices/VAT rates, VAT breakdown totals,
-          payment info, dates, status. Use this to answer questions like
-          'proč má přijatá faktura 267708922 špatnou celkovou částku?'
-        - list_received_invoices: List/browse received invoices with filters
-          (status, supplier, date range, amount range, currency, overdue).
-        - search_received_invoices: Full-text search across received invoices
-          (document number, supplier name, variable symbol, amount).
-        - attach_file: Attach a file to an entity (Invoice, ReceivedInvoice, or Client).
-          Requires entity_name, record_id, file_name, and file_content_base64 (Base64-encoded bytes).
-          The frontend provides file_content_base64 when the user drops a file in the chat.
-        - list_attachments: List all files attached to an entity record.
-          Provide entity_name and record_id. Returns file name, size, upload date, and description.
+    /// <summary>Header of the tool catalog. The catalog itself is generated, never hand-written.</summary>
+    private const string ToolsHeader = "TOOLS (use them, don't ask unnecessary questions):";
 
+    /// <summary>Closing part of the built-in main block — the rules that follow the tool catalog.</summary>
+    private const string RulesBlock = """
         IMPORT RULES:
         - When user pastes invoice text, extract ALL data and call import_invoice immediately.
         - ALL dates (issue_date, due_date, taxable_supply_date) must be EXACTLY from the document.
@@ -72,6 +54,30 @@ public static class AiSystemPrompt
         - Use tools when asked. Never claim actions without tool confirmation.
         - Don't ask about things you can determine from the data.
         """;
+
+    /// <summary>
+    /// Builds the built-in style / tools / rules block. A non-empty custom prompt replaces
+    /// this whole block — the SysAdmin then takes over describing the tools.
+    ///
+    /// The tool catalog between the two static parts is generated from the registered
+    /// <see cref="IChatTool"/> implementations, so it can never drift from what the
+    /// assistant can actually do. Adding a tool means registering it in DI — nothing here
+    /// and no hand-maintained list anywhere else (see DEVGUIDE §4.7).
+    /// </summary>
+    public static string BuildDefaultMainBlock(IEnumerable<IChatTool> tools)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine(StyleBlock);
+        sb.AppendLine();
+
+        sb.AppendLine(ToolsHeader);
+        foreach (var tool in tools)
+            sb.AppendLine($"- {tool.ToolName}: {tool.Description}");
+        sb.AppendLine();
+
+        sb.Append(RulesBlock);
+        return sb.ToString();
+    }
 
     /// <summary>Header of the business statistics block. Also serves as a preview anchor.</summary>
     public const string BusinessContextHeader = "Current tenant business context:";
@@ -92,11 +98,13 @@ public static class AiSystemPrompt
     /// <param name="customPrompt">SysAdmin override of the main block; null/blank = built-in.</param>
     /// <param name="appendix">Optional SysAdmin text appended after the main block.</param>
     /// <param name="businessContextBlock">Business statistics block (already formatted).</param>
+    /// <param name="tools">Registered chat tools — the source of the built-in tool catalog.</param>
     public static string Compose(
         string? companyBlock,
         string? customPrompt,
         string? appendix,
-        string businessContextBlock)
+        string businessContextBlock,
+        IEnumerable<IChatTool> tools)
     {
         var sb = new StringBuilder();
         sb.AppendLine(Identity);
@@ -110,7 +118,9 @@ public static class AiSystemPrompt
 
         // A custom prompt replaces the built-in block entirely. Whitespace-only does not
         // count as custom — it would leave the prompt without any tools or rules at all.
-        sb.AppendLine(string.IsNullOrWhiteSpace(customPrompt) ? DefaultMainBlock : customPrompt.TrimEnd());
+        sb.AppendLine(string.IsNullOrWhiteSpace(customPrompt)
+            ? BuildDefaultMainBlock(tools)
+            : customPrompt.TrimEnd());
         sb.AppendLine();
 
         if (!string.IsNullOrWhiteSpace(appendix))
@@ -124,10 +134,11 @@ public static class AiSystemPrompt
     }
 
     /// <summary>
-    /// Assembles the SysAdmin preview: the same layout and the same built-in text as
-    /// the live prompt, with the tenant-specific parts replaced by placeholders.
+    /// Assembles the SysAdmin preview: the same layout, the same built-in text and the
+    /// same generated tool catalog as the live prompt, with the tenant-specific parts
+    /// replaced by placeholders.
     /// </summary>
-    public static string ComposePreview(string? customPrompt, string? appendix)
+    public static string ComposePreview(string? customPrompt, string? appendix, IEnumerable<IChatTool> tools)
     {
         var companyBlock = BuildCompanyBlock(
             companyName: PreviewPlaceholder,
@@ -140,7 +151,7 @@ public static class AiSystemPrompt
             overdueInvoices: PreviewPlaceholder,
             paidInvoices: PreviewPlaceholder);
 
-        return Compose(companyBlock, customPrompt, appendix, businessContext);
+        return Compose(companyBlock, customPrompt, appendix, businessContext, tools);
     }
 
     /// <summary>

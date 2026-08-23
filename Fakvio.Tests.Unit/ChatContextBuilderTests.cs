@@ -31,12 +31,24 @@ public class ChatContextBuilderTests : IDisposable
         _context = new TenantDbContext(options);
         _logger = Substitute.For<ILogger<ChatContextBuilder>>();
 
+        // The capability list in the prompt is generated from the registered tools,
+        // so the builder needs them — one fake tool is enough to prove the wiring.
+        var tool = Substitute.For<IChatTool>();
+        tool.ToolName.Returns("ares_lookup");
+        tool.Description.Returns("Look up a Czech company by IČO");
+
         // Default for every test: nothing stored, so the built-in block applies.
         _aiInstructions = Substitute.For<IAiInstructionsService>();
         StoredInstructions(null, null);
 
-        _builder = new ChatContextBuilder(_context, _aiInstructions, _logger);
+        _builder = new ChatContextBuilder(_context, [tool], _aiInstructions, _logger);
     }
+
+    /// <summary>
+    /// The tool catalog the fake tool above produces in the built-in block. Spelled out as
+    /// a literal so the expected prompt text stays independent of the production code.
+    /// </summary>
+    private const string FakeToolLine = "- ares_lookup: Look up a Czech company by IČO";
 
     /// <summary>Sets what the (faked) instructions service returns to the builder.</summary>
     private void StoredInstructions(string? customPrompt, string? appendix)
@@ -73,6 +85,16 @@ public class ChatContextBuilderTests : IDisposable
         // Assert — should identify as Fakvio assistant.
         prompt.ShouldContain("Fakvio AI Assistant");
         prompt.ShouldContain("invoicing");
+    }
+
+    [Fact]
+    public async Task BuildSystemPrompt_ListsRegisteredToolsFromTheirOwnMetadata()
+    {
+        // Act
+        var prompt = await _builder.BuildSystemPromptAsync();
+
+        // Assert — no hand-written tool catalog: name and description come from the tool itself.
+        prompt.ShouldContain("- ares_lookup: Look up a Czech company by IČO");
     }
 
     [Fact]
@@ -200,7 +222,7 @@ public class ChatContextBuilderTests : IDisposable
 
         prompt.ShouldNotContain("YOUR COMPANY");
         prompt.ShouldContain(AiSystemPrompt.Identity);
-        prompt.ShouldContainBuiltInMainBlock();
+        prompt.ShouldContainBuiltInMainBlock(FakeToolLine);
     }
 
     // ── SysAdmin-editable instructions ────────────────────────────────────
@@ -217,7 +239,7 @@ public class ChatContextBuilderTests : IDisposable
 
         var prompt = await _builder.BuildSystemPromptAsync();
 
-        prompt.ShouldContainBuiltInMainBlock();
+        prompt.ShouldContainBuiltInMainBlock(FakeToolLine);
     }
 
     [Fact]
@@ -255,7 +277,7 @@ public class ChatContextBuilderTests : IDisposable
         var prompt = await _builder.BuildSystemPromptAsync();
 
         prompt.ShouldContain(appendix);
-        prompt.ShouldContainBuiltInMainBlock();
+        prompt.ShouldContainBuiltInMainBlock(FakeToolLine);
     }
 
     [Fact]

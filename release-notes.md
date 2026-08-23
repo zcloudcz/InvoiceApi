@@ -43,6 +43,11 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Změny pro vývojáře
 
+- **#136** — `Fakvio.MigrationTool` a `DataIntegrityVerifier` mluvily s oběma databázemi přes
+  syrové connection stringy, takže je nešlo přepnout na Entra ID auth zavedené v #132. Nástroj
+  teď staví dva nezávislé data source factory (cíl i zdroj) a přebírá i přísnější sanitizaci
+  a izolaci `search_path` tenant schématu. Nástroj se nedeployuje, takže bez dopadu na provoz.
+  (PR #166, `1ce837d`)
 - **#146** — Systémový prompt AI asistenta byl napevno zadrátovaný v kódu. SysAdmin ho teď může
   upravit (vlastní prompt i doplněk k výchozímu) přímo v UI se živým náhledem; změna se v chatu
   projeví do 5 minut (cache). (PR #187, `824775d`)

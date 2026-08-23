@@ -35,6 +35,7 @@ Pokud máš pochybnost, **zde má pravdu DEVGUIDE.md**, ne komentáře v kódu (
 | `Fakvio.AresService` | Class lib | Klient pro ARES (CZ obchodní rejstřík) — autonomní, bez EF. |
 | `Fakvio.Tests.Unit` | xUnit | Unit testy (~756). Stack: xUnit + **NSubstitute** + **Shouldly** + EF InMemory. |
 | `Fakvio.Tests.Integration` | xUnit | Integration testy (5). `InvoiceApiFactory : WebApplicationFactory<Program>`. |
+| `Fakvio.Tests.MigrationTool` | xUnit | Testy `Fakvio.MigrationTool` proti reálnému PostgreSQL (3). Vlastní projekt kvůli izolaci procesně globálního `Npgsql.EnableLegacyTimestampBehavior`. |
 | `Fakvio.Tests.Playwright` | NUnit | E2E browser testy (~48). Czech locale, Prague TZ. |
 
 ### 1.2 Hostovací modely (důležité)
@@ -633,6 +634,70 @@ Implementace: `PaymentMatchingService.cs` (metoda `GetPaymentsForInvoiceAsync`).
 - **Chat Tools**: 11 tools registrovaných v DI jako `IChatTool`, orchestrováno přes `IChatToolExecutor`.
   Registrace v `ServiceCollectionExtensions.cs`; přidání nového toolu = implementace `IChatTool` + řádek v DI.
 
+#### Přidání nového chat toolu (POVINNÝ postup)
+
+Tool se popisuje **na jednom místě** — ve vlastní třídě. Z `IChatTool.Parameters` se generuje
+JSON Schema pro native tool calling, textové instrukce do system promptu i centrální validace
+parametrů. Žádné další soubory se needitují (kromě jednoho řádku v DI).
+
+```csharp
+public class MyTool : IChatTool
+{
+    public string ToolName => "my_tool";          // snake_case, unikátní
+    public string Description => "Co tool dělá."; // tohle vidí model
+
+    // Schéma je konstantní → static readonly, žádná alokace na každý přístup.
+    private static readonly ChatToolParameter[] Schema =
+    [
+        new()
+        {
+            Name = "invoice_id",
+            Type = ChatToolParameterType.Integer,   // String | Number | Integer | Boolean | ObjectArray
+            Description = "ID faktury",
+            IsRequired = true
+        },
+        new()
+        {
+            Name = "mode",
+            Type = ChatToolParameterType.String,
+            Description = "Režim zpracování",
+            AllowedValues = ["fast", "full"]        // jen pro String parametry
+        }
+    ];
+
+    public IReadOnlyList<ChatToolParameter> Parameters => Schema;
+
+    public Task<ChatToolResult> ExecuteAsync(Dictionary<string, string> parameters, CancellationToken ct = default)
+    {
+        // Povinné parametry, povolené hodnoty i typy už ověřil ChatToolExecutor —
+        // NEopakuj tyhle kontroly. Můžeš rovnou indexovat.
+        var invoiceId = long.Parse(parameters["invoice_id"]);
+        ...
+    }
+}
+```
+
+Pravidla:
+
+1. **`Type` volíš vědomě.** Ne všechno je `string` — čísla, booleany a pole položek mají
+   svůj typ, jinak je model posílá jako escapované řetězce ve stringu.
+2. **Validaci nepiš do `ExecuteAsync`.** Centrálně ji dělá `ChatToolExecutor.ExecuteToolAsync`
+   (povinnost, povolené hodnoty, typ) a chybu vrací modelu, který si volání opraví.
+   Do toolu patří jen pravidla, která schéma nevyjádří (např. „aspoň jeden z `id` /
+   `document_number`" v `GetReceivedInvoiceTool`).
+3. **Rozbité schéma spadne hlasitě.** Chybějící `Parameters` = chyba buildu (interface),
+   duplicitní/prázdný název parametru, chybějící popis nebo `AllowedValues` na ne-stringu
+   = `InvalidOperationException` při startu v konstruktoru `ChatToolExecutor`.
+4. **Katalog toolů nikde neduplikuj.** `BuildToolInstructions()` (textový flow — včetně
+   ukázkového volání pro každý tool), `GetToolDefinitions()` (native flow) i seznam
+   schopností v `ChatContextBuilder` se generují z registrovaných `IChatTool`.
+   Hardcoded seznam ani ručně psaná ukázka = review reject.
+5. **`null` od modelu znamená „parametr nedorazil“.** Hodnota `null` se do `parameters`
+   vůbec nepropiše (`ToolArgumentReader`, společný pro textový i native flow), takže
+   `TryGetValue` vrátí `false` a povinný parametr správně spadne na „missing“.
+   Řetězec `"null"` v hodnotě nikdy nedostaneš.
+6. Registrace: jeden řádek `services.AddScoped<IChatTool, MyTool>();`.
+
 #### System prompt — složení a editovatelnost (issue #146)
 
 Prompt se skládá na jednom místě: **`AiSystemPrompt`** (`Fakvio.Infrastructure/Service/AiSystemPrompt.cs`).
@@ -646,13 +711,17 @@ Pořadí bloků shora dolů:
 |---|------|-------|--------------|
 | 1 | Identity (`AiSystemPrompt.Identity`) | konstanta | ne |
 | 2 | Identita firmy (název, IČO, DIČ) | tenant DB (`Client.IsIssuer`) | ne |
-| 3 | Hlavní blok (RESPONSE STYLE / TOOLS / IMPORT RULES / RULES) | `AiSystemPrompt.DefaultMainBlock`, nebo `SystemConfiguration.AiSystemPromptCustom` | **ano (SysAdmin)** |
+| 3 | Hlavní blok (RESPONSE STYLE / TOOLS / IMPORT RULES / RULES) | `AiSystemPrompt.BuildDefaultMainBlock(tools)` — statický text z konstant, katalog toolů generovaný z `IChatTool` — nebo `SystemConfiguration.AiSystemPromptCustom` | **ano (SysAdmin)** |
 | 4 | Dodatek | `SystemConfiguration.AiSystemPromptAppendix` | **ano (SysAdmin)** |
 | 5 | Business kontext (počty klientů a faktur) | tenant DB | ne |
 
-- Neprázdný `AiSystemPromptCustom` **nahradí celý blok 3** — včetně popisu tools. Když
-  přidáš nový chat tool, doplň ho do `DefaultMainBlock`; tenanti s vlastním promptem si
-  popis musí doplnit sami (upozorňuje na to hint na stránce).
+- Neprázdný `AiSystemPromptCustom` **nahradí celý blok 3** — včetně katalogu tools. Nový
+  chat tool se nikam nedopisuje: sekce `TOOLS:` se generuje z registrovaných `IChatTool`
+  (viz pravidlo 4 výše), takže stačí registrace v DI. Tenanti s vlastním promptem ale
+  generovaný katalog nedostanou a popis si musí doplnit sami — upozorňuje na to hint na stránce.
+- Náhled i ostrý prompt dostávají **tentýž** generovaný katalog: `AiInstructionsService`
+  si `IEnumerable<IChatTool>` injectuje jen kvůli němu (čte z nich pouze `ToolName`
+  a `Description`, nic nespouští a nesahá do tenant DB).
 - Čtení je cachované v `IMemoryCache` (klíč `AiInstructionsService.CacheKey`), s **absolutní**
   platností 5 minut — záměrně ne sliding: sliding entry by se na vytížené instanci obnovovala
   provozem donekonečna a nikdy neexpirovala. Zápis (PUT/DELETE) cache invaliduje, ale
@@ -676,6 +745,8 @@ Pořadí bloků shora dolů:
 - UI: `/ai-instructions` (`Fakvio.UI.Shared/Components/Pages/AiInstructions.razor`), SysAdmin sekce nav menu.
 
 #### Chat AI Tools matice
+
+Sloupec „Klíčové parametry" je jen orientační — závazné je schéma v příslušné třídě.
 
 | Tool | Třída | Entita | Operace | Klíčové parametry |
 |------|-------|--------|---------|--------------------|
@@ -1242,6 +1313,32 @@ Vzor: `TenantIssuerProvisioningDatabaseTests` (provisioning issuera, issue #153)
   Skipuje se **jen** nedostupný server; cokoliv po úspěšném probe musí spadnout nahlas
   (EF balí chyby spojení do generické `InvalidOperationException`, proto probe na úrovni driveru).
 
+#### 8.2.2 Testy migračního nástroje (`Fakvio.Tests.MigrationTool`)
+
+Samostatný projekt, protože na `Fakvio.MigrationTool` do issue #136 neměl `ProjectReference`
+žádný testovací projekt — jeho kompozici (skládání jména tenant schématu, `search_path`)
+tedy nešlo připnout. Vzor: `TenantSchemaCanonicalizationTests`.
+
+- Společná fixture je v `LiveMigrationToolTest` (abstraktní base class) — schémata, obě factory,
+  konfigurace toolu, DB probes. Nová třída jen podědí a začne `SkipIfDatabaseUnavailable()`.
+  Dnes na ní stojí `TenantSchemaCanonicalizationTests`, `DataIntegrityVerifierTests`
+  a `MigrationDryRunTests`.
+- Stejný throwaway-schema pattern jako `TenantIssuerProvisioningDatabaseTests`, jen se **třemi**
+  schématy na instanci třídy (source / master / tenant). Úklid maže vše, co má v názvu GUID běhu.
+- Verifier hlásí, který check spadl, jen do loggeru — proto `RecordedLog` místo `NullLogger`;
+  bez něj je pád v CI jen „expected True, was False".
+- Test žene celý `DataMigrationService.MigrateAsync()`, ne jednotlivé helpery — jinak by se
+  kompozice minula stejně jako unit testy nad `SchemaNames.Sanitize`.
+- **Nereferencuje `Fakvio.API`** záměrně. `Npgsql.EnableLegacyTimestampBehavior` je procesně
+  globální `AppContext` přepínač, který Npgsql přečte jednou a zmrazí. V assembly, kde se bootuje
+  API host, ho přepne ten test, co běžel dřív (to je podstata #194). Tady ho nastavuje výhradně
+  fixture, takže výsledek nezávisí na pořadí testů.
+- Přepínač je tu vypnutý, tedy **jinak než ve `Fakvio.MigrationTool/Program.cs`**. Zapnutý mapuje
+  `DateTime` na `timestamp without time zone`, zatímco snapshoty migrací mají `timestamp with time
+  zone` — model pak nesedí se snapshotem a `MigrateAsync()` spadne na `PendingModelChangesWarning`.
+  Produkční cesty to tlumí přes `ConfigureWarnings` (viz `ServiceCollectionExtensions`,
+  `TenantProvisioningService`), kontexty v MigrationToolu ne.
+
 ### 8.3 E2E (`Fakvio.Tests.Playwright`)
 
 - Stack: **Microsoft.Playwright.NUnit 1.52.0 + NUnit 4.3.2**.
@@ -1259,6 +1356,7 @@ Vzor: `TenantIssuerProvisioningDatabaseTests` (provisioning issuera, issue #153)
 | EF queries, repository | Unit (InMemoryDatabase) |
 | Controller → service → DB end-to-end | Integration (`WebApplicationFactory`) |
 | FK / unique index / DDL, tenant schema | Integration proti reálnému PostgreSQL (§8.2.1) |
+| Kompozice v `Fakvio.MigrationTool` (jména schémat, `search_path`) | `Fakvio.Tests.MigrationTool` proti reálnému PostgreSQL (§8.2.2) |
 | User-visible flow (login, invoice CRUD UI) | Playwright |
 | External API (SMTP, IMAP, OAuth, ARES) | Manuálně + smoke testy |
 
@@ -1588,6 +1686,7 @@ pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. P
 | Nový projekt s `EmitCompilerGeneratedFiles` | §12 (Generated/) + `.gitignore` |
 | Nový code-table pattern (master / tenant / dual-context) | §11.2 |
 | Nový background lock klíč | §6.3 (tabulka klíčů) |
+| Nový chat tool nebo změna schématu parametrů (`IChatTool.Parameters`) | §4.7 (postup + matice) |
 | Změna observability stacku (App Insights → jiný) | §10 |
 | Nová list stránka s gridem / změna grid patternu | §7.10 (FakvioGrid) |
 | Nová/změněná funkce **viditelná uživateli** (stránka, akce, stav, export) | **USERGUIDE.md** |

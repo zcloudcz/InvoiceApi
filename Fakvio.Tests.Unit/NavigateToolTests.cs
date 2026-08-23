@@ -248,20 +248,6 @@ public class NavigateToolTests
     // ─── Error Handling Tests ────────────────────────────────────────────
 
     [Fact]
-    public async Task MissingTarget_ReturnsFailure()
-    {
-        // Arrange — no target parameter.
-        var parameters = new Dictionary<string, string>();
-
-        // Act
-        var result = await _tool.ExecuteAsync(parameters);
-
-        // Assert
-        result.IsSuccess.ShouldBeFalse();
-        result.OutputText.ShouldContain("target");
-    }
-
-    [Fact]
     public async Task UnknownTarget_ReturnsFailure()
     {
         // Arrange — invalid target value.

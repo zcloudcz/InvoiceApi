@@ -35,15 +35,22 @@ public class AiInstructionsService : IAiInstructionsService
 
     private readonly MasterDbContext _context;
     private readonly IMemoryCache _cache;
+    private readonly IReadOnlyList<IChatTool> _tools;
     private readonly ILogger<AiInstructionsService> _logger;
 
     public AiInstructionsService(
         MasterDbContext context,
         IMemoryCache cache,
+        IEnumerable<IChatTool> tools,
         ILogger<AiInstructionsService> logger)
     {
         _context = context;
         _cache = cache;
+
+        // The preview renders the same generated tool catalog as the live prompt, so it
+        // needs the registered tools too. They are only asked for their name and
+        // description here — nothing is executed and no tenant database is touched.
+        _tools = tools.ToList();
         _logger = logger;
     }
 
@@ -111,7 +118,7 @@ public class AiInstructionsService : IAiInstructionsService
         // drift away from what the AI actually receives.
         return new AiInstructionsPreviewDto
         {
-            FullPrompt = AiSystemPrompt.ComposePreview(customPrompt, appendix)
+            FullPrompt = AiSystemPrompt.ComposePreview(customPrompt, appendix, _tools)
         };
     }
 
