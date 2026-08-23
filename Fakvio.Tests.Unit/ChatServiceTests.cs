@@ -282,6 +282,65 @@ public class ChatServiceTests : IDisposable
         caught.ConversationId.ShouldBe(sendResult.ConversationId);
     }
 
+    // ─── Situational context forwarding (issue #230) ─────────────────────
+
+    /// <summary>
+    /// The route and the open record only reach the system prompt if the service hands them
+    /// to the context builder. Without this the wiring could be dropped and every prompt test
+    /// would still pass — the builder is faked here, the situation just never arrives.
+    /// </summary>
+    [Fact]
+    public async Task SendMessage_PassesTheClientSituationToTheContextBuilder()
+    {
+        var request = new SendMessageRequest
+        {
+            Message = "Change the due date",
+            CurrentRoute = "invoices/edit/42",
+            OpenEntity = "invoices #42"
+        };
+
+        await _service.SendMessageAsync(TestUserId, request);
+
+        await _contextBuilder.Received(1).BuildSystemPromptAsync(
+            "invoices/edit/42", "invoices #42", Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Same for the streaming path — that is the endpoint the chat panel actually calls,
+    /// so a forwarding gap here would hit every real user while the tested path stayed green.
+    /// </summary>
+    [Fact]
+    public async Task StreamMessage_PassesTheClientSituationToTheContextBuilder()
+    {
+        var request = new SendMessageRequest
+        {
+            Message = "Change the due date",
+            CurrentRoute = "invoices/edit/42",
+            OpenEntity = "invoices #42"
+        };
+
+        await foreach (var _ in _service.StreamMessageAsync(TestUserId, request))
+        {
+            // The faked provider streams nothing; only the context call is under test.
+        }
+
+        await _contextBuilder.Received(1).BuildSystemPromptAsync(
+            "invoices/edit/42", "invoices #42", Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Callers that send no situation (Functions, older clients) must reach the builder with
+    /// nulls — not with empty strings, which would print an empty "- Current page:" line.
+    /// </summary>
+    [Fact]
+    public async Task SendMessage_WithoutASituation_PassesNullsToTheContextBuilder()
+    {
+        await _service.SendMessageAsync(TestUserId, new SendMessageRequest { Message = "Hello" });
+
+        await _contextBuilder.Received(1).BuildSystemPromptAsync(
+            null, null, Arg.Any<CancellationToken>());
+    }
+
     // ─── StreamMessageAsync Tests ────────────────────────────────────────
 
     /// <summary>

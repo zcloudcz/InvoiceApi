@@ -344,6 +344,21 @@ public class AiInstructionsServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task GetPreviewAsync_ShowsTheSituationalBlock()
+    {
+        // The SysAdmin writes a custom prompt against the whole layout. The situational block
+        // is runtime-only, so the preview has to show its shape with placeholders — otherwise
+        // the last section of the real prompt is invisible to the person replacing it.
+        var preview = await _service.GetPreviewAsync();
+
+        preview.FullPrompt.ShouldContain(AiSystemPrompt.SituationalContextHeader);
+        preview.FullPrompt.ShouldContain($"- Today's date: {AiSystemPrompt.PreviewPlaceholder}");
+        preview.FullPrompt.ShouldContain($"- Current page: {AiSystemPrompt.PreviewPlaceholder}");
+        preview.FullPrompt.ShouldContain($"- Open record: {AiSystemPrompt.PreviewPlaceholder}");
+        preview.FullPrompt.ShouldContain($"- Setup not finished yet: {AiSystemPrompt.PreviewPlaceholder}");
+    }
+
+    [Fact]
     public async Task GetPreviewAsync_WithoutCustomPrompt_ShowsTheBuiltInBlock()
     {
         await SeedConfigAsync(null, null);

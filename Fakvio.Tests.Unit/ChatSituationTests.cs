@@ -32,6 +32,8 @@ public class ChatSituationTests
     [InlineData("invoices")]        // list page — nothing open
     [InlineData("invoices/new")]    // a new document has no id yet
     [InlineData("42")]              // a bare number is not a record on a page
+    [InlineData("invoices/42x")]    // digits plus anything else is a slug, not an id
+    [InlineData("invoices/99999999999999999999")]  // too big for long — not an id we could have issued
     [InlineData("")]
     [InlineData(null)]
     public void DescribeOpenEntity_WithoutARecordId_ReturnsNull(string? route)
