@@ -52,6 +52,10 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Změny pro vývojáře
 
+- **#208** — Registrace firmy z ARES ukládala jen název a IČO/DIČ, sídlo se zahazovalo
+  a plátcovství DPH se nikdy nenastavilo, přestože ho ARES prozradí (DIČ přítomno).
+  Adresa z ARES se teď uloží do klienta a `IsVatPayer` se odvodí z přítomnosti DIČ;
+  registrační formulář se neměnil. (PR #249, `12b301c`)
 - **#140** — Přesun produkční databáze z Azure PostgreSQL (Entra ID) na vlastní
   server dosud neměl žádný ověřený postup. Nový `SELFHOST-DB.md` runbook popisuje
   celý přesun krok za krokem: pre-flight kontroly, cutover přes `pg_dump`/`pg_restore`,
