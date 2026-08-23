@@ -983,7 +983,7 @@ v routě je nabízená. **Nová stránka v UI tedy shodí testy, dokud ji nedopl
 
 ##### Paritní tabulka chat ↔ MCP (stav k #212)
 
-Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 11 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
+Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 14 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
 a **MCP server** (`[McpServerTool]`, 36 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
 cílem story #149 je mezeru zavřít. Tabulka je jediný pravdivý seznam toho, co kde chybí;
 **každý nový tool na kterékoli straně sem přidá řádek** (viz §13).
@@ -1018,12 +1018,12 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | `MarkReceivedInvoicePaid` | **Write** | — | ❌ | #218 |
 | `DeleteReceivedInvoice` | **Destructive** | — | ❌ | #218 |
 | **Reporting** (`ReportingTools`, 6) |
-| `GetDashboard` | Read | — | ❌ | #228 |
-| `GetOverdueInvoices` | Read | — | ❌ | #228 |
-| `GetClientInvoices` | Read | — | ❌ | #228 |
-| `GetInvoicesByDateRange` | Read | — | ❌ | #228 |
-| `GetVatReport` | Read | — | ❌ | #228 |
-| `GetOverdueReceivedInvoices` | Read | — | ❌ | #228 |
+| `GetDashboard` | Read | `get_dashboard` | ✅ | |
+| `GetOverdueInvoices` | Read | `list_invoices` + `overdue=true` | ✅ | |
+| `GetClientInvoices` | Read | `list_invoices` + `client_name` | ✅ | |
+| `GetInvoicesByDateRange` | Read | `list_invoices` + `issue_date_from/to` | ✅ | |
+| `GetVatReport` | Read | `get_vat_report` | ✅ | |
+| `GetOverdueReceivedInvoices` | Read | `list_received_invoices` + `overdue=true` | ✅ | |
 | **Daně** (`TaxTools`, 5) |
 | `EstimateTax`, `CompareTaxRegimes`, `GetAnnualIncome`, `GetInsuranceAdvance`, `GetTaxConfig` | Read | — | ❌ | zatím bez tasku |
 | **Šablony** (`TemplateTools`, 3) |
@@ -1036,8 +1036,8 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | — | Upload přílohy | `attach_file` | ⬅ | |
 | — | Read | `list_attachments` | ⬅ | |
 
-**Součty:** 36 MCP toolů, 11 chat toolů. Chat pokrývá 7 MCP toolů (z toho 2 částečně),
-4 chat tooly nemají MCP protějšek. Zbývá 29 mezer.
+**Součty:** 36 MCP toolů, 14 chat toolů. Chat pokrývá 13 MCP toolů (z toho 2 částečně),
+4 chat tooly nemají MCP protějšek. Zbývá 23 mezer.
 
 Mimo obě rozhraní (jen UI / SysAdmin, plánováno v #220 / #224 / #227):
 nastavení firmy a bankovní účty, číselné řady a sazby DPH, upomínky (dunning),
@@ -1232,6 +1232,8 @@ vlastní výjimku ani vlastní tvar chyby**. Použij `ITenantReadinessService`.
 | Implementace | `Fakvio.Infrastructure/Service/TenantReadinessService.cs` | Všechna pravidla na jednom místě (inline checky, žádná FluentValidation) |
 | DTO | `Fakvio.Contracts/Dto/Readiness/` | `ReadinessReportDto`, `ReadinessIssueDto`, konstanty kódů `ReadinessCodes` |
 | Výjimka | `Fakvio.Application/Exceptions/TenantNotReadyException.cs` | Nese `Code` + `MissingFields` + `Issues` |
+| REST | `Fakvio.API/Controller/ReadinessController.cs` | `GET /api/readiness?issuerId=` — tenká obálka nad `GetReportAsync` |
+| Functions | `Fakvio.Functions/HttpFunctions/ReadinessFunctions.cs` | Zrcadlo téhož endpointu pro Azure host (dual-host pravidlo §6) |
 
 **Pravidla a jejich závažnost:**
 
@@ -1284,6 +1286,21 @@ dávky projde.
 Mapování na HTTP patří **do controlleru, ne do `GlobalExceptionMiddleware`** — Functions
 host volá metody controlleru přímo a middleware API v něm neběží; kdyby se mapovalo tam,
 Azure deploy by na tutéž situaci vrátil 500.
+
+**`GET /api/readiness`** (issue #209) — čtecí endpoint, kterým se UI ptá „co ještě chybí".
+
+| Vlastnost | Hodnota |
+|-----------|---------|
+| Autorizace | `[Authorize]` — **kterýkoli přihlášený uživatel tenanta**, ne jen SysAdmin (banner v UI vidí běžný uživatel, který to má opravit) |
+| Tenant kontext | Běžný tenant endpoint — **NEpatří do `MasterOnlyPaths`** ani do `SysAdminCodeTablePaths` v `TenantContextMiddleware` (obou hostů). SysAdmin musí impersonovat přes `X-Company-Id`. |
+| Query | `issuerId` (volitelné) — omezí report na jednoho vystavitele |
+| 200 | `ReadinessReportDto`. **Nedokončené nastavení není chyba** — je to obsah reportu. |
+| 404 | Jen když volající poslal `issuerId`, které v tenantu neexistuje |
+
+Rozdíl 200 vs. 404 je jediná logika, kterou controller přidává: služba vrací
+`ISSUER_MISSING` jak pro „tenant nemá žádného vystavitele", tak pro „tohle ID neexistuje" —
+rozlišit je umí až volající, protože to ID sám poslal. Bez `issuerId` je `ISSUER_MISSING`
+normální položka reportu (200), s `issuerId` je to 404.
 
 ---
 

@@ -577,6 +577,22 @@ Viz §2 — Správa uživatelů → 2FA. Uživatel si aktivuje sám. SysAdmin ne
 
 **NIKDY neměnit pořadí** — Impersonation musí být po Authentication (Role musí být validní).
 
+### Diagnostické endpointy (Azure Functions)
+
+| Endpoint | Přístup | K čemu |
+|----------|---------|--------|
+| `GET /api/diagnostic/health` | anonymní | Stav připojení k DB a čekající migrace. Anonymní zůstává kvůli health probe Azure. |
+| `POST /api/diagnostic/migrate` | **jen SysAdmin** | Ruční spuštění EF Core migrací (master DB + všechny tenanty). |
+| `GET /api/diagnostic/auth` | **jen SysAdmin** | Výpis stavu JWT tak, jak ho vidí worker — hlavička, claims, issuer/audience, ruční validace tokenu. |
+
+Od issue #263 vyžadují `migrate` a `auth` platný Bearer token s rolí SysAdmin — dřív byly
+anonymní, takže kdokoli mohl spustit migrace nebo si nechat vypsat konfiguraci JWT.
+Bez tokenu vrací **401**, s tokenem bez role SysAdmin **403**.
+
+Praktický důsledek pro ladění: `/api/diagnostic/auth` už nepomůže u volajícího, jehož token
+se vůbec nevaliduje (dostane 401 dřív, než se cokoli vypíše). Pro takové případy použijte
+logy Function Appu — `JwtAuthenticationMiddleware` důvod zamítnutí loguje.
+
 ---
 
 ## 10. Číselníky — systémové vs tenant kopie
