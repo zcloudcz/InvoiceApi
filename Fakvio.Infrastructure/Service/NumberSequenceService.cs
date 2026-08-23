@@ -442,9 +442,16 @@ public class NumberSequenceService : INumberSequenceService
 
     public async Task<string> GenerateNextNumberAsync(long sequenceId, DateTime issueDate, CancellationToken cancellationToken = default)
     {
+        // Last conflict seen in the loop. It is kept so the final error can carry the
+        // original EF Core exception as InnerException — callers log the whole chain,
+        // and InvoiceService uses that inner type to tell a transient collision apart
+        // from a configuration problem (missing / inactive sequence).
+        DbUpdateConcurrencyException? lastConflict = null;
+
         // Retry loop handles optimistic concurrency conflicts.
         // If another request incremented CurrentNumber between our read and write,
         // EF Core throws DbUpdateConcurrencyException and we retry with fresh data.
+        // The loop runs MaxConcurrencyRetries + 1 times: one initial attempt plus the retries.
         for (int attempt = 0; attempt <= MaxConcurrencyRetries; attempt++)
         {
             var sequence = await _tenantContext.NumberSequence
@@ -499,21 +506,30 @@ public class NumberSequenceService : INumberSequenceService
                 _logger.LogInformation("Generated number: {Number}", number);
                 return number;
             }
-            catch (DbUpdateConcurrencyException) when (attempt < MaxConcurrencyRetries)
+            // No `when (attempt < MaxConcurrencyRetries)` filter here on purpose (issue #155):
+            // with the filter, the conflict on the LAST attempt escaped this method as a raw
+            // DbUpdateConcurrencyException and the throw below became unreachable. Callers then
+            // saw a database exception instead of the explicit error, which meant HTTP 500.
+            // Now every conflict is caught; the loop simply ends and throws once, below.
+            catch (DbUpdateConcurrencyException ex)
             {
+                lastConflict = ex;
+
                 // Another request modified this sequence between our read and write.
                 // Detach the stale entity so the next iteration loads fresh data.
                 _logger.LogWarning(
-                    "Concurrency conflict on sequence {Id}, retrying (attempt {Attempt}/{Max})",
-                    sequenceId, attempt + 1, MaxConcurrencyRetries);
+                    "Concurrency conflict on sequence {Id} (attempt {Attempt}/{Max})",
+                    sequenceId, attempt + 1, MaxConcurrencyRetries + 1);
 
                 _tenantContext.Entry(sequence).State = EntityState.Detached;
             }
         }
 
-        // All retries exhausted — this should be extremely rare
+        // All attempts exhausted — this should be extremely rare.
+        // Reached only through the catch above, so lastConflict is always set here.
         throw new InvalidOperationException(
-            $"Failed to generate document number for sequence {sequenceId} after {MaxConcurrencyRetries} retries due to concurrency conflicts.");
+            $"Failed to generate document number for sequence {sequenceId} after {MaxConcurrencyRetries} retries due to concurrency conflicts.",
+            lastConflict);
     }
 
     public async Task<string> GenerateNextNumberForDocumentTypeAsync(

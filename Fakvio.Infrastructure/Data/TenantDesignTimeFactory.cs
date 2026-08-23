@@ -1,7 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.Extensions.Configuration;
 
 namespace Fakvio.Infrastructure.Data;
 
@@ -12,31 +11,21 @@ namespace Fakvio.Infrastructure.Data;
 ///   dotnet ef migrations add Init --context TenantDbContext --output-dir Migrations/Tenant --project Fakvio.Infrastructure --startup-project Fakvio.API
 ///   dotnet ef database update --context TenantDbContext --project Fakvio.Infrastructure --startup-project Fakvio.API
 ///
-/// At design time, this uses a "tenant_template" schema for generating migration files.
-/// The Schema property is set to "tenant_template" so that HasDefaultSchema() in OnModelCreating
-/// generates migration SQL targeting this template schema.
-///
 /// At runtime, each tenant gets its own schema (e.g., "tenant_42") via ITenantDbContextFactory.
+///
+/// Configuration and the data source itself come from <see cref="DesignTimeDataSource"/>,
+/// shared with <see cref="MasterDesignTimeFactory"/>.
 /// </summary>
 public class TenantDesignTimeFactory : IDesignTimeDbContextFactory<TenantDbContext>
 {
     public TenantDbContext CreateDbContext(string[] args)
     {
-        // Try to read from appsettings.json first
-        var configuration = new ConfigurationBuilder()
-            .SetBasePath(Path.Combine(Directory.GetCurrentDirectory(), "..", "Fakvio.API"))
-            .AddJsonFile("appsettings.json", optional: true)
-            .AddJsonFile("appsettings.Development.json", optional: true)
-            .Build();
-
-        // Use the shared PostgreSQL database connection string.
-        // Fallback connection string for PostgreSQL (used when appsettings not found)
-        var connectionString = configuration.GetConnectionString("DefaultConnection")
-            ?? "Host=localhost;Database=fakvio;Username=fakvio;Password=YourStrong!Passw0rd";
-
         var optionsBuilder = new DbContextOptionsBuilder<TenantDbContext>();
+
+        // The data source (not a plain connection string) is what makes `dotnet ef` work
+        // against Azure: it carries the Entra ID token provider when that auth mode is on.
         optionsBuilder.UseNpgsql(
-            connectionString,
+            DesignTimeDataSource.Root,
             b => b.MigrationsAssembly("Fakvio.Infrastructure"));
 
         // Register custom model cache key factory for schema-aware model caching

@@ -157,6 +157,46 @@ public class CorrelationIdTests : IDisposable
         Guid.TryParse(capturedCorrelationId, out _).ShouldBeTrue();
     }
 
+    /// <summary>
+    /// Characterization test: the inbound header is taken exactly as it arrives — no length limit,
+    /// no allowed character set, no format check. Anything a caller sends becomes this request's
+    /// CorrelationId, both in HttpContext.Items and in the AsyncLocal that DatabaseLogger writes
+    /// into AppLog.
+    ///
+    /// Why this matters beyond logging: since issue #156 the CorrelationId is also quoted back to
+    /// the user as the "reference ID" in chat error messages. That makes it caller-controlled text
+    /// on a user-visible path — safe while it is rendered as plain text, worth knowing about for
+    /// anything that renders those messages as rich content (PR #185 adds a markdown renderer).
+    ///
+    /// If the middleware ever starts validating the header — a reasonable change — this test is
+    /// the one that must be updated, deliberately rather than by accident.
+    /// </summary>
+    [Fact]
+    public async Task Middleware_WithArbitraryHeaderValue_AcceptsItWithoutValidation()
+    {
+        // Arrange: a value no legitimate client would send (markdown link with a javascript URL).
+        const string callerSuppliedValue = "[click here](javascript:alert(1))";
+
+        var context = new DefaultHttpContext();
+        context.Request.Headers[CorrelationIdMiddleware.HeaderName] = callerSuppliedValue;
+
+        string? capturedFromItems = null;
+        string? capturedFromAsyncLocal = null;
+        var middleware = new CorrelationIdMiddleware(ctx =>
+        {
+            capturedFromItems = ctx.Items["CorrelationId"] as string;
+            capturedFromAsyncLocal = DatabaseLoggerProvider.CurrentCorrelationId.Value;
+            return Task.CompletedTask;
+        });
+
+        // Act
+        await middleware.InvokeAsync(context);
+
+        // Assert: passed through untouched on both routes.
+        capturedFromItems.ShouldBe(callerSuppliedValue);
+        capturedFromAsyncLocal.ShouldBe(callerSuppliedValue);
+    }
+
     [Fact]
     public async Task Middleware_ClearsAsyncLocal_EvenWhenNextThrows()
     {
