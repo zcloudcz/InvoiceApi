@@ -1,0 +1,4 @@
+{
+  "_readme": "Suite baselines keyed by origin/develop SHA. Written by dev/reviewer/tester per AGENT-RULES §5b so the same SHA is not measured three times. A miss just means measure normally. Safe to prune old entries.",
+  "bb1ca70": {"unit": "2624/0/4", "integration": "105/21/3", "by": "orchestrator (from run 2026-08-23)", "at": "2026-08-23"}
+}

@@ -104,6 +104,7 @@ it, in the place the relevant role actually reads:
 | Orchestration/dispatch order | `.claude/commands/*.md` |
 | Cross-role invariant | `.claude/AGENT-RULES.md` or `BOARD-OPS.md` |
 | Environment trap every role hits | `MEMORY.md` "Známé pasti prostředí" |
+| Cost of running the flow (quota, tokens, suite time) | `BOARD-OPS.md` budget section, `AGENT-RULES.md` §5b |
 | Needs code | a GitHub issue, not a doc edit |
 
 Rules for your edits:
