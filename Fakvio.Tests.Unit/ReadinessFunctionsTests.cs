@@ -47,14 +47,14 @@ public class ReadinessFunctionsTests
     [Fact]
     public async Task Readiness_GetReport_PassesIssuerIdFromQueryToTheService()
     {
-        _readinessService.GetReportAsync(Arg.Any<long?>(), Arg.Any<CancellationToken>())
+        _readinessService.GetReportAsync(Arg.Any<long?>(), Arg.Any<EDocumentType?>(), Arg.Any<CancellationToken>())
             .Returns(new ReadinessReportDto());
 
         var result = await BuildSut().Readiness_GetReport(
             BuildRequest(authenticated: true, issuerId: "4242"));
 
         result.ShouldBeOfType<OkObjectResult>();
-        await _readinessService.Received(1).GetReportAsync(4242L, Arg.Any<CancellationToken>());
+        await _readinessService.Received(1).GetReportAsync(4242L, Arg.Any<EDocumentType?>(), Arg.Any<CancellationToken>());
     }
 
     /// <summary>
@@ -63,12 +63,12 @@ public class ReadinessFunctionsTests
     [Fact]
     public async Task Readiness_GetReport_WithoutIssuerId_PassesNull()
     {
-        _readinessService.GetReportAsync(Arg.Any<long?>(), Arg.Any<CancellationToken>())
+        _readinessService.GetReportAsync(Arg.Any<long?>(), Arg.Any<EDocumentType?>(), Arg.Any<CancellationToken>())
             .Returns(new ReadinessReportDto());
 
         await BuildSut().Readiness_GetReport(BuildRequest(authenticated: true));
 
-        await _readinessService.Received(1).GetReportAsync(null, Arg.Any<CancellationToken>());
+        await _readinessService.Received(1).GetReportAsync(null, Arg.Any<EDocumentType?>(), Arg.Any<CancellationToken>());
     }
 
     /// <summary>
@@ -78,7 +78,7 @@ public class ReadinessFunctionsTests
     [Fact]
     public async Task Readiness_GetReport_UnknownIssuerId_Returns404()
     {
-        _readinessService.GetReportAsync(Arg.Any<long?>(), Arg.Any<CancellationToken>())
+        _readinessService.GetReportAsync(Arg.Any<long?>(), Arg.Any<EDocumentType?>(), Arg.Any<CancellationToken>())
             .Returns(new ReadinessReportDto
             {
                 Issues =

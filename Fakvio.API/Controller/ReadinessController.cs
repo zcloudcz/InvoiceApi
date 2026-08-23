@@ -53,7 +53,10 @@ public class ReadinessController : ControllerBase
     {
         _logger.LogInformation("GET /api/readiness — IssuerId: {IssuerId}", issuerId);
 
-        var report = await _readinessService.GetReportAsync(issuerId, cancellationToken);
+        // Named argument for the token on purpose: GetReportAsync also takes an optional
+        // documentType between issuerId and ct. This endpoint reports on every document type,
+        // so it skips that parameter — and a positional call would silently target the wrong slot.
+        var report = await _readinessService.GetReportAsync(issuerId, ct: cancellationToken);
 
         // The service reports "there is no issuer to invoice with" as ISSUER_MISSING whether
         // the tenant has no issuer at all or the caller asked for an ID that does not exist —

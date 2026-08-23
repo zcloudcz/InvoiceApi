@@ -1,5 +1,6 @@
 using Fakvio.Application.Exceptions;
 using Fakvio.Contracts.Dto.Readiness;
+using Fakvio.Domain.Enums;
 
 namespace Fakvio.Application.Service;
 
@@ -21,8 +22,17 @@ public interface ITenantReadinessService
     /// Optional — check only this issuer. When null, every issuer of the tenant
     /// (<c>Client.IsIssuer == true</c>) is checked.
     /// </param>
+    /// <param name="documentType">
+    /// Optional — require a number sequence only for this document type. When null, every
+    /// document type the tenant must be able to issue is checked. Callers that are about to
+    /// issue one concrete document pass its type, so an unrelated missing sequence
+    /// (e.g. credit notes) does not report the tenant as unable to invoice.
+    /// </param>
     /// <param name="ct">Cancellation token.</param>
-    Task<ReadinessReportDto> GetReportAsync(long? issuerId = null, CancellationToken ct = default);
+    Task<ReadinessReportDto> GetReportAsync(
+        long? issuerId = null,
+        EDocumentType? documentType = null,
+        CancellationToken ct = default);
 
     /// <summary>
     /// Guard version of <see cref="GetReportAsync"/> for callers that must refuse the
@@ -30,6 +40,10 @@ public interface ITenantReadinessService
     /// Warnings never throw.
     /// </summary>
     /// <param name="issuerId">Optional — check only this issuer (see <see cref="GetReportAsync"/>).</param>
+    /// <param name="documentType">Optional — check only this document type (see <see cref="GetReportAsync"/>).</param>
     /// <param name="ct">Cancellation token.</param>
-    Task EnsureReadyAsync(long? issuerId = null, CancellationToken ct = default);
+    Task EnsureReadyAsync(
+        long? issuerId = null,
+        EDocumentType? documentType = null,
+        CancellationToken ct = default);
 }

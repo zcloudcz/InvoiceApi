@@ -58,6 +58,27 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Změny pro vývojáře
 
+- **#206** — Vystavení faktury nebo dobropisu (ruční i hromadné, i automatické z
+  šablony) teď nejdřív ověří, že má vystavitel vyplněné povinné údaje (adresa, IČO,
+  bankovní účet, aktivní číselné řady). Když ne, vystavení se odmítne se srozumitelnou
+  chybou a seznamem chybějících položek — doklad zůstane rozpracovaný, nespotřebuje
+  číslo z řady a nic se neuloží napůl. Chybějící EPO nastavení vystavení neblokuje,
+  jen upozorní. (PR #267, `9ac56b6`)
+- **#235** — Základ pro strojový přístup do API bez lidského uživatelského účtu
+  (SysAdmin nástroje, budoucí Remote MCP). Přibyl `ApiKey` (v master schématu — autentizace
+  ho musí najít dřív, než zná tenanta): pojmenovaný klíč se scope read/read+write a
+  volitelnou expirací, raw hodnota se vrátí jen jednou, DB drží pouze SHA-256 hash
+  (vědomá odchylka od BCrypt — klíč je 32 B z CSPRNG, adaptivní hash by jen zbytečně
+  zatížil CPU), výpis ukazuje jen prefix. Klíč lze soft-revokovat. CRUD dostupný v obou
+  hostech (API controller i ručně psaný Functions wrapper). Zatím jen správa klíčů —
+  přihlašování pomocí nich přidají navazující tasky. (PR #256, `b9b8066`)
+- **#229** — AI chat asistent uměl v aplikaci navigovat jen na 6 natvrdo napsaných
+  stránek. Nyní zná všech 28 stránek dostupných běžnému uživateli i firemnímu
+  administrátorovi (např. přehled DPH, upomínky, číselné řady, uživatelé) včetně
+  detailu konkrétního klienta — přihlašovací a čistě sysadminovské stránky zůstávají
+  mimo dosah. Katalog cílů je odvozený přímo z routovací tabulky UI, takže nová
+  stránka bez navigačního cíle spadne na testu, dokud ji někdo nedoplní.
+  (PR #262, `c8edf27`)
 - **#161** — AI asistent byl v aplikaci prakticky neviditelný: tlačítko v AppBaru
   splývalo s logem firmy, stav otevření se po refreshi nikdy nezapamatoval a nikde
   jinde na chat nevedl odkaz. Na mobilu zabíral drawer napevno celou obrazovku a

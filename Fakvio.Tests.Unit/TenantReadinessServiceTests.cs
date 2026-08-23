@@ -359,6 +359,92 @@ public class TenantReadinessServiceTests : IDisposable
     }
 
     // =========================================================================
+    // Document-type filter (the path the CompleteInvoiceAsync gate uses, #206)
+    // =========================================================================
+
+    /// <summary>
+    /// A tenant that never configured credit notes must still be able to issue invoices.
+    /// Asking about <see cref="EDocumentType.Invoice"/> therefore ignores the missing
+    /// credit-note sequence.
+    /// </summary>
+    [Fact]
+    public async Task GetReportAsync_ForInvoice_IgnoresAMissingCreditNoteSequence()
+    {
+        SeedIssuer(NewCompleteIssuer());
+        SeedSequences(EDocumentType.Invoice);
+        SeedEpoSettings(taxOfficeCode: 451, branchCode: 2017);
+
+        var report = await CreateService().GetReportAsync(documentType: EDocumentType.Invoice);
+
+        report.Issues.ShouldBeEmpty();
+        report.IsReady.ShouldBeTrue();
+    }
+
+    /// <summary>The same gap DOES block the document type that actually needs the sequence.</summary>
+    [Fact]
+    public async Task GetReportAsync_ForCreditNote_ReportsTheMissingCreditNoteSequence()
+    {
+        SeedIssuer(NewCompleteIssuer());
+        SeedSequences(EDocumentType.Invoice);
+        SeedEpoSettings(taxOfficeCode: 451, branchCode: 2017);
+
+        var report = await CreateService().GetReportAsync(documentType: EDocumentType.CreditNote);
+
+        var issue = report.Issues.ShouldHaveSingleItem();
+        issue.Code.ShouldBe(ReadinessCodes.NumberSequenceMissing);
+        issue.MissingFields.ShouldBe([nameof(EDocumentType.CreditNote)]);
+    }
+
+    /// <summary>
+    /// Characterization: proforma and tax receipts are not in the required-sequence list
+    /// (they fall back to the invoice sequence), so scoping the check to one of them checks
+    /// no sequence at all. Documented here so the empty-list branch cannot change silently.
+    /// </summary>
+    [Fact]
+    public async Task GetReportAsync_ForProforma_DoesNotRequireAnySequence()
+    {
+        SeedIssuer(NewCompleteIssuer());
+        SeedSequences(Array.Empty<EDocumentType>());   // no sequences at all
+        SeedEpoSettings(taxOfficeCode: 451, branchCode: 2017);
+
+        var report = await CreateService().GetReportAsync(documentType: EDocumentType.Proforma);
+
+        report.Issues.ShouldBeEmpty();
+    }
+
+    /// <summary>Without a document type the check stays tenant-wide — both sequences required.</summary>
+    [Fact]
+    public async Task GetReportAsync_WithoutDocumentType_StillRequiresBothSequences()
+    {
+        SeedIssuer(NewCompleteIssuer());
+        SeedSequences(EDocumentType.Invoice);
+        SeedEpoSettings(taxOfficeCode: 451, branchCode: 2017);
+
+        var report = await CreateService().GetReportAsync();
+
+        report.Issues.ShouldHaveSingleItem().MissingFields
+            .ShouldBe([nameof(EDocumentType.CreditNote)]);
+    }
+
+    /// <summary>
+    /// The guard version carries the same scope through — a credit-note gap must not throw
+    /// at a caller that is issuing an invoice.
+    /// </summary>
+    [Fact]
+    public async Task EnsureReadyAsync_ForInvoice_DoesNotThrowOnAMissingCreditNoteSequence()
+    {
+        SeedIssuer(NewCompleteIssuer());
+        SeedSequences(EDocumentType.Invoice);
+        SeedEpoSettings(taxOfficeCode: 451, branchCode: 2017);
+
+        await Should.NotThrowAsync(
+            () => CreateService().EnsureReadyAsync(documentType: EDocumentType.Invoice));
+
+        await Should.ThrowAsync<TenantNotReadyException>(
+            () => CreateService().EnsureReadyAsync(documentType: EDocumentType.CreditNote));
+    }
+
+    // =========================================================================
     // Inactive issuers — characterization of the CURRENT behaviour
     // =========================================================================
 
