@@ -39,6 +39,9 @@
     <!-- Localization — IStringLocalizer<T> for multi-language UI (cs-CZ / en-US).
          Required for AddLocalization() and resource file (.resx) resolution at runtime. -->
     <PackageReference Include="Microsoft.Extensions.Localization" Version="10.0.2" />
+    <!-- Markdown → HTML renderer for AI assistant answers (MarkdownRenderer / MarkdownView).
+         Pure managed code, works in the browser-wasm runtime. -->
+    <PackageReference Include="Markdig" Version="1.3.2" />
   </ItemGroup>
 
   <!-- Global usings — these are implicit in BlazorWebAssembly SDK but NOT in Razor SDK.

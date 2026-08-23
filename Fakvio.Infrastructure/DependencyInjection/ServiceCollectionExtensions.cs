@@ -74,8 +74,13 @@ public static class ServiceCollectionExtensions
         services.AddHttpClient<IPayliboClient, PayliboClient>();
 
         // reCAPTCHA v3 verification — validates tokens from Google's invisible captcha.
-        // When SecretKey is not configured, verification is skipped (dev mode).
-        services.AddHttpClient<ICaptchaService, CaptchaService>();
+        // The gate fails closed (issue #200): without a usable SecretKey every gated request
+        // is rejected, so running without reCAPTCHA needs an explicit Recaptcha:Enabled=false.
+        // Short timeout on purpose — fail-closed only helps if it fails fast. The default of
+        // 100 s would park every login, registration and ARES lookup for that long whenever
+        // Google is unreachable; 5 s turns the same outage into a quick, visible rejection.
+        services.AddHttpClient<ICaptchaService, CaptchaService>(
+            client => client.Timeout = TimeSpan.FromSeconds(5));
 
         // ── Core Infrastructure ─────────────────────────────────────────────
 
@@ -149,6 +154,9 @@ public static class ServiceCollectionExtensions
         services.AddScopedWithLogging<IReceivedInvoiceService, ReceivedInvoiceService>();
         services.AddScopedWithLogging<IVatReportService, VatReportService>();
         services.AddScopedWithLogging<ISystemConfigurationService, SystemConfigurationService>();
+
+        // Tenant readiness — one place that answers "is this tenant set up well enough to invoice?".
+        services.AddScopedWithLogging<ITenantReadinessService, TenantReadinessService>();
 
         // Alerts — generic business alerts (e.g., overpaid proforma) displayed on the dashboard.
         services.AddScopedWithLogging<IAlertService, AlertService>();

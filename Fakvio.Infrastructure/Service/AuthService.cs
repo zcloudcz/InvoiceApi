@@ -188,6 +188,10 @@ public class AuthService : IAuthService
         // Registered office address from ARES — stays null when the lookup fails
         // or the company was not found (all failure paths leave Address null).
         AresAddress? aresAddress = null;
+        // VAT payer flag derived by ARES from the presence of a DIČ. Stays false when the
+        // lookup fails — guessing "payer" would make the company issue invoices with VAT
+        // it does not owe. The user confirms the flag during onboarding.
+        bool isVatPayer = false;
 
         try
         {
@@ -199,6 +203,9 @@ public class AuthService : IAuthService
             registrationNumber = aresInfo.RegistrationNumber ?? request.RegistrationNumber;
             taxNumber = aresInfo.TaxNumber;
             aresAddress = aresInfo.Address;
+            // Same source of truth as CompanyController.CreateCompany — the flag is derived
+            // once, inside AresServiceImpl, so both company-creation paths agree.
+            isVatPayer = aresInfo.IsVatPayer;
         }
         catch (Exception ex)
         {
@@ -212,6 +219,7 @@ public class AuthService : IAuthService
             CompanyName = companyName,
             RegistrationNumber = registrationNumber,
             TaxNumber = taxNumber,
+            IsVatPayer = isVatPayer,
             IsIssuer = true,
             IsActive = true
         };
