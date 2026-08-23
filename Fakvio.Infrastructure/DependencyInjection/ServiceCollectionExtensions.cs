@@ -251,6 +251,13 @@ public static class ServiceCollectionExtensions
         services.AddScopedWithLogging<IChatService, ChatService>();
         services.AddScopedWithLogging<IChatContextBuilder, ChatContextBuilder>();
 
+        // Editable AI instructions — stored in SystemConfiguration, cached in IMemoryCache.
+        // ChatContextBuilder reads them from the cache on every chat message; a SysAdmin
+        // save invalidates the entry, so edits take effect on the next message.
+        // AddMemoryCache is idempotent, so calling it here is safe in every host.
+        services.AddMemoryCache();
+        services.AddScopedWithLogging<IAiInstructionsService, AiInstructionsService>();
+
         // Chat tools — each tool is registered individually as IChatTool.
         // ChatToolExecutor discovers all tools via IEnumerable<IChatTool>.
         // To add a new tool: implement IChatTool, register here, and it's automatically available.

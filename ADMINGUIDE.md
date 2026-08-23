@@ -258,6 +258,51 @@ Pole „Výchozí poskytovatel" určuje, který AI se použije když firma nemá
 
 **Hesla/klíče:** jsou šifrovány přes CredentialProtector (Data Protection API, AES-256). Po restartu bez persistovaných klíčů jsou nedešifrovatelné — viz §9.
 
+### Instrukce AI asistenta (editovatelný system prompt)
+
+**Stránka:** `/ai-instructions` (pouze SysAdmin, položka „Instrukce AI" v nav menu)
+
+Umožňuje doladit chování AI asistenta bez nasazení nové verze. Nastavení je **systémové** —
+platí pro všechny tenanty.
+
+Systémový prompt má pět bloků; editovatelné jsou dva prostřední:
+
+| # | Blok | Editovatelné |
+|---|------|--------------|
+| 1 | Úvodní věta („You are Fakvio AI Assistant…") | ne |
+| 2 | Identita firmy (název, IČO, DIČ z databáze tenanta) | ne |
+| 3 | Hlavní instrukce — styl odpovědi, seznam nástrojů, pravidla importu | **ano** |
+| 4 | Dodatek | **ano** |
+| 5 | Business kontext (počty klientů a faktur z databáze tenanta) | ne |
+
+| Pole | Chování |
+|------|---------|
+| **Vlastní instrukce** | Pokud není prázdné, **nahradí celý blok 3** — tedy i popis nástrojů. Bez popisu nástrojů je AI nemusí použít. |
+| **Dodatek** | Připojí se za blok 3 (vlastní i výchozí). Použijte, pokud chcete jen přidat pravidlo a zachovat výchozí chování. |
+
+#### Jak nastavit
+
+1. Otevřete `/ai-instructions`
+2. Chip nahoře ukazuje, jestli běží výchozí, nebo vlastní instrukce
+3. Vyplňte pole a klikněte „Uložit"
+4. „Náhled celého promptu" zobrazí složený prompt tak, jak ho AI dostane. Identita firmy
+   a statistiky jsou v náhledu zástupné (`[N/A — preview mode]`), protože náhled běží
+   v SysAdmin kontextu bez databáze tenanta. Náhled zobrazuje **uložený** stav, ne
+   rozepsané změny.
+5. „Obnovit výchozí" (s potvrzením) vymaže obě pole — AI se vrátí k vestavěným instrukcím
+
+**Kdy se změna projeví:** nejpozději do 5 minut, restart aplikace není potřeba. Prompt je
+cachovaný v paměti procesu s pevnou platností 5 minut. Uložení cache okamžitě zahodí v té
+instanci aplikace, která požadavek odbavila — tam se změna projeví hned. Běží-li aplikace
+ve více instancích (škálovaný Azure Function App), ostatní instance dojedou starý prompt
+ještě nejvýše 5 minut. Náhled čte vždy přímo z databáze, takže ukazuje
+aktuálně uložený stav bez ohledu na cache.
+
+**Pozor:** pokud vývojáři přibude nový AI nástroj, do výchozích instrukcí se doplní
+automaticky, ale do **vlastních instrukcí ne** — ty si musíte doplnit sami.
+
+---
+
 ### Azure Blob Storage
 
 Systémové úložiště souborů (přílohy faktur, exporty). Sdílený kontejner pro všechny tenanty — každý tenant má vlastní podadresář (`{CompanyId}/...`).
