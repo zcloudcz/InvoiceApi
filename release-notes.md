@@ -21,6 +21,12 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Opravy
 
+- **#200** — Ověření reCAPTCHA bylo fail-open: výpadek Googlu nebo chybějící `SecretKey`
+  bránu tiše propustily místo aby ji zablokovaly, a token se navíc nekontroloval proti
+  akci ani doméně, takže se dal token z jednoho formuláře přehrát jinam. Anonymní ARES
+  lookup navíc dával neomezeně rostoucí cache. Brána je nově fail-closed a ověřuje
+  action i hostname, cache ARES se čistí při každém zápisu. **Vyžaduje zásah v produkci**
+  (prázdný `SecretKey`/`SiteKey`) — viz ADMINGUIDE.md §9. (PR #246, `f968946`)
 - **#233** — Swagger UI i `swagger.json` byly dostupné na rootu API i mimo Development,
   takže je při nasazení na klasický App Service host mohl vidět kdokoli. Nově se
   registrují jen v Development; v Production vrátí `/` i `/swagger/v1/swagger.json` 404.
@@ -52,6 +58,15 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Změny pro vývojáře
 
+- **#161** — AI asistent byl v aplikaci prakticky neviditelný: tlačítko v AppBaru
+  splývalo s logem firmy, stav otevření se po refreshi nikdy nezapamatoval a nikde
+  jinde na chat nevedl odkaz. Na mobilu zabíral drawer napevno celou obrazovku a
+  chyběl mu CSS, takže vypadal rozbitě; markdown v odpovědích modelu (seznamy, tučné
+  písmo, tabulky) se zobrazoval jako syrový text místo naformátovaný. Nově má ikonu
+  robota na první pozici v AppBaru, položku v hlavním menu, pamatuje si otevření/zavření
+  per zařízení, je responzivní na mobilu a odpovědi renderuje jako markdown (bezpečně
+  sanitizovaný i proti odkazům typu `<javascript:…>`). Smazání konverzace teď vyžaduje
+  potvrzení. (PR #185, `64d4508`)
 - **#205** — Chybějící nastavení tenanta (adresa vystavitele, IČO, DIČ u plátce DPH,
   bankovní účet, číselná řada dokladu…) se dosud řešilo náhodně a nekonzistentně —
   jediný existující precedens byla EPO hlavička u DPH exportu. Nová

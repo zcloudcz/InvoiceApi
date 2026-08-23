@@ -597,7 +597,20 @@ místo staženého souboru se zobrazí upozornění se seznamem chybějících p
 
 ## 13. AI asistent
 
-**Přístup:** ikona AI robota v pravém horním rohu hlavní navigace → otevře se boční panel (Chat Drawer)
+**Přístup:** dvě cesty ke stejnému panelu:
+
+- ikona robota (🤖) v horní liště — první ikona vpravo od názvu aplikace,
+- položka **AI asistent** v hlavním menu vlevo (hned pod Přehledem).
+
+Obojí otevře/zavře boční panel (Chat Drawer) na pravé straně.
+
+**Panel si pamatuje, jestli byl otevřený.** Pokud ho necháte otevřený a stránku znovu
+načtete, otevře se sám. Stav se pamatuje pro daný prohlížeč a zařízení — na mobilu tedy
+můžete mít panel zavřený, i když ho na počítači necháváte otevřený.
+
+**Na mobilu** panel zabírá celou šířku displeje. Zavřete ho křížkem vpravo nahoře v panelu
+nebo klepnutím mimo panel. Plocha pro přetažení souboru se na telefonu nezobrazuje —
+soubor připojíte tlačítkem se sponkou vedle textového pole.
 
 ### Co AI asistent umí
 
@@ -613,10 +626,22 @@ AI asistent zná kontext vaší firmy a umí odpovídat na otázky i provádět 
 
 ### Jak používat
 
-1. Klikněte na ikonu AI v pravém horním rohu
+1. Klikněte na ikonu robota v horní liště nebo na **AI asistent** v menu
 2. V panelu napište dotaz v přirozeném jazyce (česky nebo anglicky)
 3. Odpověď se zobrazuje streamovaně (postupně, token po tokenu)
 4. Konverzace se ukládají — historii konverzací zobrazíte tlačítkem hodiny (History)
+5. Konverzaci smažete ikonou koše v historii. Aplikace se vždy zeptá na potvrzení —
+   smazanou konverzaci nelze obnovit.
+
+### Formátování odpovědí
+
+Odpovědi asistenta se zobrazují naformátované: nadpisy, tučné písmo, odrážkové
+a číslované seznamy, tabulky i bloky kódu. Text tedy neuvidíte jako „syrové" znaky
+(`**tučně**`, `| sloupec |`), ale jako hotové formátování.
+
+Odkazy v odpovědi vedou buď do aplikace, nebo na web. Z bezpečnostních důvodů jsou
+odkazy s neobvyklým cílem zneškodněny (kliknutí na ně nic neudělá) a případné HTML
+z odpovědi se vypíše jako text, nikdy se nespustí.
 
 ### Výběr AI poskytovatele
 

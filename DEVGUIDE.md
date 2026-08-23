@@ -1340,10 +1340,40 @@ v `wwwroot\css\app.css`, sekce „Responsive / mobile").
 | Grid sloupce | sekundární sloupce (datumy, kódy, města) označ `HideSmall="true"` — MudBlazor razítkuje `mud-table-cell-hide` na header/filter/body buňky, app.css je pod 600px skryje. Ponech identifikaci + částku + stav + akce. Nebojuje s persistencí ani column menu (čisté CSS). |
 | Dialogy | pod 600px automaticky fullscreen (CSS). Opt-out: `dialog-keep-size`. |
 | AppBar | title text, jméno uživatele, dark-mode a logout ikona se na xs skrývají (logout je v profil menu); tříd `appbar-*` se nedotýkej bez přeměření na 375px |
+| Drawery s pevnou šířkou | `Width="…"` na `MudDrawer` **nech** (z něj `MudDrawerContainer` počítá offset hlavního obsahu) a pod 600px ho přebij CSS třídou s `width: 100vw !important` — viz `.chat-drawer` v app.css. Pravidlo na CSS proměnnou `--mud-drawer-width` nestačí, MudBlazor ji píše inline. |
 
 **Ověření:** Playwright `Tests\Navigation\MobileLayoutTests.cs` (viewport 375×812 —
-overflow, ikonová tlačítka, AppBar, skryté sloupce). Při změně layoutu je pusť
-proti běžícímu stacku.
+overflow, ikonová tlačítka, AppBar, skryté sloupce, šířka chat draweru). Při změně
+layoutu je pusť proti běžícímu stacku.
+
+### 7.12 Markdown rendering (`MarkdownView` / `MarkdownRenderer`)
+
+Odpovědi AI asistenta chodí jako markdown. Renderují se přes:
+
+| Vrstva | Soubor | Role |
+|--------|--------|------|
+| Logika | `Services\MarkdownRenderer.cs` | `ToSafeHtml(string?)` — markdown → sanitizované HTML. Čistá statická funkce, unit-testovatelná bez bUnitu. |
+| Komponenta | `Components\Shared\MarkdownView.razor` | Obalí výsledek do `MarkupString` a `.markdown-body` (styly v app.css). |
+
+Pravidla:
+- **Veškerý markdown z modelu jde přes `MarkdownView`**, nikdy ne přímo přes
+  `(MarkupString)` — obsah je neověřený vstup (umí ho ovlivnit text faktury,
+  e-mailu nebo přiloženého PDF).
+- Pipeline je záměrně **bez `UseAdvancedExtensions()`** — ten balík zapíná generic
+  attributes (`{...}`), kterými by šlo do HTML propašovat libovolný atribut.
+  Zapnuté jsou jen `UsePipeTables` + `UseEmphasisExtras` + `UseAutoLinks`.
+- Dvě obranné vrstvy: `DisableHtml()` (raw HTML se escapuje) a whitelist schémat
+  odkazů (`http`, `https`, `mailto`, relativní); `javascript:`/`data:` se přepíše
+  na `#`. Testy: `Fakvio.Tests.Unit\MarkdownRendererTests.cs`.
+- **Odkaz má v Markdigu dva typy uzlů**, sanitizovat se musí oba: `LinkInline`
+  (`[text](url)`, obrázky i reference definice) a `AutolinkInline`
+  (`<https://…>`, `<user@example.com>`). U `AutolinkInline` je text totožný s URL,
+  takže se závadný uzel nepřepisuje na `#`, ale nahrazuje `LiteralInline`
+  (jinak by zmizel i text). Přidáváš-li do pipeline další extension, ověř,
+  jaké uzly emituje — nový typ uzlu = nová díra.
+- **Uživatelský vstup se markdownem NErenderuje** — uživatel psal literální text
+  (`ChatMessageBubble` proto větví podle role zprávy).
+- Balíček: `Markdig` (v `Fakvio.UI.Shared`), čistě managed, funguje v browser-wasm.
 
 ---
 
