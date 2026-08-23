@@ -120,7 +120,8 @@ public class NavigateTool : IChatTool
         new("user_list", "/users", "user list"),
         new("preferences", "/preferences", "user preferences"),
         new("two_factor_settings", "/profile/two-factor", "two-factor authentication settings"),
-        new("notifications", "/notifications", "notification list")
+        new("notifications", "/notifications", "notification list"),
+        new("integrations", "/settings/integrations", "integrations and API keys for AI clients")
     ];
 
     /// <summary>Lookup built once from <see cref="Routes"/> — the switch below is a dictionary hit.</summary>
