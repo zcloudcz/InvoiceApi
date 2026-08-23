@@ -58,6 +58,12 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Změny pro vývojáře
 
+- **#206** — Vystavení faktury nebo dobropisu (ruční i hromadné, i automatické z
+  šablony) teď nejdřív ověří, že má vystavitel vyplněné povinné údaje (adresa, IČO,
+  bankovní účet, aktivní číselné řady). Když ne, vystavení se odmítne se srozumitelnou
+  chybou a seznamem chybějících položek — doklad zůstane rozpracovaný, nespotřebuje
+  číslo z řady a nic se neuloží napůl. Chybějící EPO nastavení vystavení neblokuje,
+  jen upozorní. (PR #267, `9ac56b6`)
 - **#235** — Základ pro strojový přístup do API bez lidského uživatelského účtu
   (SysAdmin nástroje, budoucí Remote MCP). Přibyl `ApiKey` (v master schématu — autentizace
   ho musí najít dřív, než zná tenanta): pojmenovaný klíč se scope read/read+write a

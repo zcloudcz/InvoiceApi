@@ -62,7 +62,7 @@ public class GenerateDocumentNumberTests : IDisposable
                 Arg.Any<CancellationToken>())
             .Returns("SEQ2026001");
 
-        _service = new InvoiceService(_context, _numberSequence, Substitute.For<ILogger<InvoiceService>>());
+        _service = new InvoiceService(_context, _numberSequence, Substitute.For<ITenantReadinessService>(), Substitute.For<ILogger<InvoiceService>>());
 
         SeedSharedEntities();
     }

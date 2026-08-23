@@ -1025,7 +1025,7 @@ vlastní výjimku ani vlastní tvar chyby**. Použij `ITenantReadinessService`.
 
 | Vrstva | Kde | Co dělá |
 |--------|-----|---------|
-| Interface | `Fakvio.Application/Service/ITenantReadinessService.cs` | `GetReportAsync(issuerId?)` = report; `EnsureReadyAsync(issuerId?)` = guard, který hodí výjimku |
+| Interface | `Fakvio.Application/Service/ITenantReadinessService.cs` | `GetReportAsync(issuerId?, documentType?)` = report; `EnsureReadyAsync(issuerId?, documentType?)` = guard, který hodí výjimku |
 | Implementace | `Fakvio.Infrastructure/Service/TenantReadinessService.cs` | Všechna pravidla na jednom místě (inline checky, žádná FluentValidation) |
 | DTO | `Fakvio.Contracts/Dto/Readiness/` | `ReadinessReportDto`, `ReadinessIssueDto`, konstanty kódů `ReadinessCodes` |
 | Výjimka | `Fakvio.Application/Exceptions/TenantNotReadyException.cs` | Nese `Code` + `MissingFields` + `Issues` |
@@ -1039,7 +1039,7 @@ vlastní výjimku ani vlastní tvar chyby**. Použij `ITenantReadinessService`.
 | `ISSUER_REGISTRATION_NUMBER_MISSING` | Blocking | prázdné IČO | `/my-company` |
 | `ISSUER_TAX_NUMBER_MISSING` | Blocking | `IsVatPayer = true` a prázdné DIČ | `/my-company` |
 | `ISSUER_BANK_ACCOUNT_MISSING` | Blocking | žádný účet s vyplněným číslem | `/my-company` |
-| `NUMBER_SEQUENCE_MISSING` | Blocking | chybí aktivní default řada pro `Invoice` / `CreditNote` (`MissingFields` nese typ dokladu) | `/number-sequences` |
+| `NUMBER_SEQUENCE_MISSING` | Blocking | chybí aktivní default řada pro `Invoice` / `CreditNote` (`MissingFields` nese typ dokladu). S parametrem `documentType` se kontroluje jen ta jedna řada | `/number-sequences` |
 | `EPO_HEADER_INCOMPLETE` | Warning | `CompanySystemSettings.EpoTaxOfficeCode` / `EpoTaxOfficeBranchCode` není vyplněné | `/company-settings` |
 
 **Konvence, které musíš dodržet, když přidáváš pravidlo:**
@@ -1063,6 +1063,24 @@ vlastní výjimku ani vlastní tvar chyby**. Použij `ITenantReadinessService`.
 { "code": "TENANT_NOT_READY", "message": "...", "missingFields": ["RegistrationNumber"],
   "issues": [ { "code": "...", "severity": 1, "missingFields": [...], "fixRoute": "/my-company" } ] }
 ```
+
+**Kde je guard zapojený (stav k #206):**
+
+| Místo | Volání | Poznámka |
+|-------|--------|----------|
+| `InvoiceService.CompleteInvoiceAsync` | `EnsureReadyAsync(invoice.IssuerId, invoice.DocumentType, ct)` | Jediný gate na vystavení dokladu. Běží **až po** guardech „faktura neexistuje" / „už je vystavená" a **před** jakoukoli změnou stavu — odmítnutá faktura zůstane Draft a nespotřebuje číslo z řady. |
+| `InvoiceController.CompleteInvoice` | `catch (TenantNotReadyException)` → 400 | Tvar odpovědi viz výše. |
+| `InvoiceTemplateController.CreateInvoiceFromTemplate` | `catch (TenantNotReadyException)` → 400 | Nastane jen s `AutoComplete = true`; draft už je v tu chvíli založený a zůstane. |
+
+Gate je schválně **v servisu, ne v controlleru** — přes `CompleteInvoiceAsync` vede každá
+cesta k vystavení (REST, Azure Functions wrapper, `BulkCompleteAsync`, auto-complete ze
+šablony, MCP nástroj přes REST). Kdyby seděl v controlleru, hromadné vystavení a šablony by
+ho obešly. `BulkCompleteAsync` výjimku chytá na položku a hlásí ji v `Errors` — zbytek
+dávky projde.
+
+Mapování na HTTP patří **do controlleru, ne do `GlobalExceptionMiddleware`** — Functions
+host volá metody controlleru přímo a middleware API v něm neběží; kdyby se mapovalo tam,
+Azure deploy by na tutéž situaci vrátil 500.
 
 ---
 
@@ -1848,7 +1866,7 @@ pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. P
 | Změna Data Protection persistence / ApplicationName | §2.7 |
 | Nová seed migrace s hardcoded Id | §12 (non-idempotent seed) |
 | Nový projekt s `EmitCompilerGeneratedFiles` | §12 (Generated/) + `.gitignore` |
-| Nové readiness pravidlo / nový readiness kód | §4.12 (tabulka pravidel!) |
+| Nové readiness pravidlo / nový readiness kód / nový readiness gate | §4.12 (tabulka pravidel + tabulka zapojení!) |
 | Nový code-table pattern (master / tenant / dual-context) | §11.2 |
 | Nový background lock klíč | §6.3 (tabulka klíčů) |
 | Nový chat tool nebo změna schématu parametrů (`IChatTool.Parameters`) | §4.7 (postup + matice) |
