@@ -83,12 +83,32 @@ Stop. Do not create a duplicate.
 
 Default case: develop has commits master does not.
 
-1. Compose a release title from the date and short summary of what
-   merged since last release:
+1. Compose a release title from the date, and take the body from
+   `release-notes.md` rather than from raw commit subjects:
 
        TITLE="Release: $(date +%Y-%m-%d)"
-       BODY=$(gh api repos/$OWNER_REPO/compare/master...$INTEGRATION \
-              --jq '.commits | map("- " + (.commit.message | split("\n")[0])) | .[]')
+
+   `agent-ops` wrote one reader-facing line per merged task under
+   `## Nevydáno` (see `.claude/agents/agent-ops.md` Step 2a). That section
+   **is** the release body — it says what changed and why it matters, which
+   commit subjects do not. Use the raw compare output only as a cross-check:
+
+       gh api repos/$OWNER_REPO/compare/master...$INTEGRATION \
+         --jq '.commits | map("- " + (.commit.message | split("\n")[0])) | .[]'
+
+   If a merged task has no line under `## Nevydáno`, that is a gap in the
+   record — say so in the PR body and name the issue, rather than silently
+   filling it in from the commit subject.
+
+1b. **Roll the notes over on the same branch, before opening the PR.**
+   In `release-notes.md`, rename `## Nevydáno` to `## <verze> — <YYYY-MM-DD>`
+   and insert a fresh empty `## Nevydáno` above it. Commit as:
+
+       chore(release-notes): close <verze>
+
+   Without this the unreleased section grows forever and stops meaning
+   anything. Do it before the PR is opened so the released state is part
+   of the release itself.
 
 2. Open the release PR:
 

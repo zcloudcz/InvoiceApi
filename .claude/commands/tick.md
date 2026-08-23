@@ -84,6 +84,13 @@ a loop. Same outcomes, no waiting between testers. `/ticks` invokes
 
 Skip rules:
 
+- **Not in an active theme.** A card is eligible only if it carries a
+  `theme:*` label named in `$AGENTIC_FOCUS`, or the label
+  `focus:override`. Everything else is skipped — silently, without
+  moving, closing or relabelling it. See BOARD-OPS.md -> "Focus".
+  Among eligible cards, theme order in `$AGENTIC_FOCUS` outranks
+  `type:bug` and age; `focus:override` sorts last.
+
 - Cards in `Blocked` (label `blocked:question`) are skipped — a human
   must answer and re-queue them. Same applies to stories in `Analysis`
   with `blocked:question`.

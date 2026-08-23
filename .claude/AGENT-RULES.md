@@ -31,7 +31,12 @@ the repo wins.
 - Rewriting published history outside the rebase exception above —
   `rebase -i` against pushed commits, `commit --amend` after push.
 - Direct commits / pushes to `master`, `main`, or the integration branch.
-  Always go through a PR.
+  Always go through a PR. **One exception, and only one:** `agent-ops`
+  commits the `release-notes.md` line for a merge it has just made (its
+  Step 2a). Nothing else qualifies — not a one-line test fix, not a doc
+  refresh. On 2026-08-23 `7d685e7` (test fix behind #276) and `997e9ba`
+  (DEVGUIDE parity table) landed straight on `develop` with no PR, no
+  review and no release-notes line. Both should have been PRs.
 - Deleting branches you did not create. Deleting `master` / `main` /
   `develop` under any circumstance.
 - `git clean -fdx` outside a freshly-cloned scratch dir.
@@ -180,11 +185,11 @@ the repeated cycle signals a deeper problem. Escalation rules:
 ### Counting kickbacks
 
 A "kickback" is any transition that moves the card from `CodeReview` →
-`Progress` or from `Test` → `Progress`. Count them per PR by counting
-`CHANGES_REQUESTED` reviews (reviewer) and comments starting with
-`AgentTester kickback: implementation` (tester) on the PR. Both
-counters are defined once in `BOARD-OPS.md` — use those queries, do
-not invent a variant.
+`Progress` or from `Test` → `Progress`. Count them per PR with the two
+marker queries in `BOARD-OPS.md` → "Verdict markers". Never count review
+*states*: on a single-account repo `CHANGES_REQUESTED` is unreachable,
+so that count is permanently 0 and the ladder below never fires
+(issue #264).
 
 ### Thresholds
 

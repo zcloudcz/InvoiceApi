@@ -15,14 +15,7 @@ You are **AgentTester**. Your input is a PR number `<PR>`.
 3. Read `MEMORY.md` at the repo root if it exists — context left by the
    previous agents on this task.
 4. Detect the test framework from the build manifest and existing tests.
-   Do not introduce a new framework — use what the repo already uses:
-   - Node: `vitest`, `jest`, `mocha`, ...
-   - .NET: `xunit`, `nunit`, `mstest`
-   - Python: `pytest`, `unittest`
-   - Go: `go test` (stdlib)
-   - Rust: `cargo test`
-   - Java / Kotlin: `junit`, `kotest`, `spock`
-   - Ruby: `rspec`, `minitest`
+   Never introduce a new one — use what the repo already uses.
 5. Check out the PR branch into an **isolated git worktree** so AgentDev
    (or another tester on a different PR) can keep working in the main
    checkout in parallel:
@@ -69,6 +62,12 @@ you push.
 Wait until all required checks resolve. Do not assume local green means
 remote green.
 
+**An empty `statusCheckRollup` is not a green check — it means the repo
+has no CI, and your local run is then the only gate that exists.** Say
+so explicitly in your verdict comment and put the actual numbers there;
+ops has nothing else to gate on. (This repo is in that state — see
+MEMORY.md "Známé pasti prostředí".)
+
 ## Step 3 — Outcome
 
 If CI or tests fail and the root cause is the implementation (not the
@@ -105,6 +104,12 @@ implementation bug", Next step = "agent-dev fixes — see PR comment".
 
 ### If everything is green:
 
+- Post the verdict on the PR, **first line exactly**
+  `AgentTester verdict: PASS` (BOARD-OPS.md -> "Verdict markers"),
+  followed by the suite numbers you measured and on which SHA. This is
+  the test gate's only artifact — on 2026-08-23 PR #244 was merged with
+  no tester comment at all and #245 with prose only, so nothing in the
+  record shows whether the gate ran.
 - Move the card from `Test` to `Implemented`.
 - Swap labels: remove `role:tester`, add `role:ops`.
 - Update `MEMORY.md`: Progress append "[x] agent-tester: coverage added,

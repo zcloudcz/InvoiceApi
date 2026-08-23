@@ -50,14 +50,19 @@ Evaluate the diff on these dimensions, in order:
 
 ### Kickback escalation (per AGENT-RULES §10)
 
-Count prior kickbacks:
+Post **both** verdicts as reviews on the PR (`gh pr review`), never as
+`gh pr comment` — those are two separate collections and a marker in the
+other one is invisible to ops and to the counter. Count prior kickbacks
+with the canonical query, BOARD-OPS.md -> "Verdict markers":
 
-    KICKBACK_COUNT=$(gh api "repos/:owner/:repo/pulls/${PR}/reviews" \
-      --jq '[.[] | select(.state=="CHANGES_REQUESTED")] | length')
+    KICKBACK_COUNT=$(gh api "repos/:owner/:repo/pulls/${PR}/reviews" --paginate \
+      --jq '[.[] | select(.body | startswith("AgentReviewer verdict: CHANGES REQUESTED"))] | length')
 
-**Any blocking finding → request changes:**
+**Any blocking finding → request changes.** `--request-changes` is
+rejected on a self-PR, so use the marker form; first line exact:
 
-    gh pr review <PR> --request-changes -b "<numbered findings with file:line>"
+    gh pr review <PR> --comment -b "AgentReviewer verdict: CHANGES REQUESTED
+    <numbered findings with file:line>"
 
 Then apply escalation:
 
@@ -78,13 +83,8 @@ PR #<PR>".
 
 ### If the change is acceptable:
 
-    gh pr review <PR> --approve -b "LGTM — matches CLAUDE.md conventions and AGENT-RULES §9 standards."
-
-On a single-account repo GitHub returns an error here (a PR author
-cannot approve their own PR). In that case record the verdict as a
-review comment instead, first line exactly as shown, so agent-ops can
-gate on it (convention: BOARD-OPS.md "Review gate on single-account
-repos"):
+Same collection, same marker shape (`--approve` is rejected on a
+self-PR too):
 
     gh pr review <PR> --comment -b "AgentReviewer verdict: APPROVED
     <rest of the review>"

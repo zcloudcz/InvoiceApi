@@ -29,6 +29,52 @@ running tick (if any). When the user asks why a card has not advanced,
 or what the last automated tick did, grep this log file for the most
 recent `START` / `END` block.
 
+## Focus — themes, and priority between them
+
+`priority:*` ranks one card against another. It says nothing about
+whether the card is part of what the project is trying to finish right
+now, so a board drain will happily spend a day on high-priority work
+nobody asked for. That happened on 2026-08-22: of 19 issues opened
+during a drain, one belonged to an active priority.
+
+**A theme is a `theme:*` label.** Active themes and their relative
+priority are one ordered list in `.claude/settings.json`:
+
+    "AGENTIC_FOCUS": "db-switch,ai-first"
+
+Earlier in the list wins. A theme that is not listed is **parked** — its
+cards stay on the board and stay visible, they are simply not pulled.
+
+### Eligibility
+
+A card may be picked up by `/tick`, `/ticks`, `/tick-devs`,
+`/tick-tests` or `/pickup-task` only if it carries either:
+
+- a `theme:*` label naming an active theme, **or**
+- the label `focus:override` — a deliberate, human-approved exception
+  for something outside the themes that still has to be done now.
+
+Everything else is skipped. This is a **skip rule, not a status**: do
+not move, close or relabel a parked card, and do not report it as
+blocked. It is simply not this week's work.
+
+### Ordering among eligible cards
+
+1. Theme position in `AGENTIC_FOCUS` (earlier first). `focus:override`
+   sorts after all active themes — it is an exception, not a priority.
+2. Then the existing rules below: `type:bug` first, then oldest by
+   `createdAt`.
+
+### Who assigns a theme
+
+`agent-analyst` labels every sub-issue it creates with the parent
+story's theme. A standalone bug filed mid-flight has no parent, so it
+gets a theme only if it plainly belongs to one; otherwise it stays
+unthemed and parked until a human decides. **Agents do not add
+`focus:override` to their own findings** — that label is the owner's
+call, and letting an agent grant itself an exception would restore
+exactly the drift this rule exists to stop.
+
 ## Task priority — bugs jump the queue
 
 `type:bug` outranks every other priority signal. Whenever multiple cards
@@ -182,27 +228,43 @@ Rules:
 - If `MEMORY.md` does not exist when you first need it, create it with
   these headings populated for the current task.
 
-## Counting tester kickbacks — the marker line
+## Verdict markers — the load-bearing first lines
 
-`agent-tester` gates its escalation ladder on how many times it has
-already handed this PR back. Unlike the reviewer it cannot count review
-states (it posts plain comments), and unlike the rebase loop it applies
-no distinguishing label — `role:dev` is also applied by pickup and by
-reviewer kickbacks, so counting that label's events over-counts.
+Every role verdict is a **fixed first line** on a PR comment or review.
+Those lines are the only machine-readable record of the review and test
+gates: `role:*` labels are also set by pickup and by warden, board moves
+fail whenever the GraphQL quota is out, and on a single-account repo
+GitHub refuses formal `APPROVE` / `REQUEST_CHANGES`, so `reviewDecision`
+and `state=="CHANGES_REQUESTED"` are permanently useless here.
 
-So the tester's kickback comment carries a fixed marker as its **first
-line**, exactly:
+Reword the rest of the body freely. Never the first line.
 
-    AgentTester kickback: implementation
+| Marker (exact first line) | Posted by | Where |
+|---|---|---|
+| `AgentReviewer verdict: APPROVED` | agent-reviewer | `gh pr review --comment` |
+| `AgentReviewer verdict: CHANGES REQUESTED` | agent-reviewer | `gh pr review --comment` |
+| `AgentTester verdict: PASS` | agent-tester | `gh pr comment` |
+| `AgentTester kickback: implementation` | agent-tester | `gh pr comment` |
 
-Every tester kickback comment must start with that line — including the
-2nd-round diagnostic and the 3rd-round escalation summary. The line is
-load-bearing: it is the counter. Reword the rest of the comment freely,
-never this line.
+**The collection is part of the convention.** Reviews
+(`pulls/<PR>/reviews`) and issue comments (`issues/<PR>/comments`) are
+separate collections and neither query sees the other. Reviewer markers
+live in reviews, tester markers in comments — always. On 2026-08-23 the
+reviewer used both at random (reviews on #244/#256/#258/#259/#273/#277/
+#280/#284, comments on #246/#260/#278/#281) and ops looking in the wrong
+one on #260 nearly read a merged approval as missing.
+
+Counters — use these, do not invent a variant:
+
+    KICKBACK_COUNT=$(gh api "repos/:owner/:repo/pulls/${PR}/reviews" --paginate \
+      --jq '[.[] | select(.body | startswith("AgentReviewer verdict: CHANGES REQUESTED"))] | length')
 
     TESTER_KICKBACKS=$(gh api "repos/:owner/:repo/issues/${PR}/comments" \
       --paginate \
       --jq '[.[] | select(.body | startswith("AgentTester kickback: implementation"))] | length')
+
+Both counters cover the 2nd-round diagnostic and the 3rd-round
+escalation summary too — those carry the same first line.
 
 ## Counting rebase rounds — one canonical query
 
@@ -248,20 +310,16 @@ form above.
 
 ## Review gate on single-account repos
 
-GitHub refuses a PR approval from the PR's own author. When the whole
-agentic flow runs under one account (author == token account), a formal
-`reviewDecision == "APPROVED"` is therefore impossible. Convention:
+GitHub refuses a PR approval from the PR's own author, so with one
+account `reviewDecision == "APPROVED"` is impossible and the markers
+above carry the gate instead. If the repo ever gains a second
+(bot/machine) review account, drop the convention and require the
+formal approval again.
 
-- `agent-reviewer` submits the passing review as a **comment** whose
-  first line is exactly `AgentReviewer verdict: APPROVED`.
-- `agent-ops` accepts such a review as satisfying the approval gate.
-- Autonomy: with `AGENTIC_AUTO_MERGE=true`, agents act on passed gates
-  without asking for extra confirmation — the env flags in
-  `.claude/settings.json` ARE the human authorization. Agents ask only
-  when a gate genuinely fails or a rule conflict has no defined path.
-
-If the repo ever gains a second (bot/machine) review account, drop this
-convention and require the formal approval again.
+Autonomy: with `AGENTIC_AUTO_MERGE=true`, agents act on passed gates
+without asking for extra confirmation — the env flags in
+`.claude/settings.json` ARE the human authorization. Agents ask only
+when a gate genuinely fails or a rule conflict has no defined path.
 
 ## Integration branch model
 
