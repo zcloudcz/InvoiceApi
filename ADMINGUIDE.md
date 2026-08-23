@@ -277,7 +277,7 @@ Pole „Výchozí poskytovatel" určuje, který AI se použije když firma nemá
 Umožňuje doladit chování AI asistenta bez nasazení nové verze. Nastavení je **systémové** —
 platí pro všechny tenanty.
 
-Systémový prompt má pět bloků; editovatelné jsou dva prostřední:
+Systémový prompt má šest bloků; editovatelné jsou dva prostřední:
 
 | # | Blok | Editovatelné |
 |---|------|--------------|
@@ -286,6 +286,7 @@ Systémový prompt má pět bloků; editovatelné jsou dva prostřední:
 | 3 | Hlavní instrukce — styl odpovědi, seznam nástrojů, pravidla importu | **ano** |
 | 4 | Dodatek | **ano** |
 | 5 | Business kontext (počty klientů a faktur z databáze tenanta) | ne |
+| 6 | Situační kontext (dnešní datum, otevřená stránka a doklad, chybějící nastavení tenanta) | ne |
 
 | Pole | Chování |
 |------|---------|
@@ -297,9 +298,10 @@ Systémový prompt má pět bloků; editovatelné jsou dva prostřední:
 1. Otevřete `/ai-instructions`
 2. Chip nahoře ukazuje, jestli běží výchozí, nebo vlastní instrukce
 3. Vyplňte pole a klikněte „Uložit"
-4. „Náhled celého promptu" zobrazí složený prompt tak, jak ho AI dostane. Identita firmy
-   a statistiky jsou v náhledu zástupné (`[N/A — preview mode]`), protože náhled běží
-   v SysAdmin kontextu bez databáze tenanta. Náhled zobrazuje **uložený** stav, ne
+4. „Náhled celého promptu" zobrazí složený prompt tak, jak ho AI dostane. Identita firmy,
+   statistiky i situační kontext jsou v náhledu zástupné (`[N/A — preview mode]`): první dvě
+   proto, že náhled běží v SysAdmin kontextu bez databáze tenanta, situační kontext proto,
+   že vzniká až u konkrétní zprávy uživatele. Náhled zobrazuje **uložený** stav, ne
    rozepsané změny.
 5. „Obnovit výchozí" (s potvrzením) vymaže obě pole — AI se vrátí k vestavěným instrukcím
 

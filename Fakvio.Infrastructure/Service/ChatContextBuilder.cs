@@ -1,4 +1,5 @@
 using Fakvio.Application.Service;
+using Fakvio.Contracts.Dto.Readiness;
 using Fakvio.Domain.Enums;
 using Fakvio.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -31,12 +32,14 @@ public class ChatContextBuilder : IChatContextBuilder
     private readonly TenantDbContext _context;
     private readonly IReadOnlyList<IChatTool> _tools;
     private readonly IAiInstructionsService _aiInstructions;
+    private readonly ITenantReadinessService _readiness;
     private readonly ILogger<ChatContextBuilder> _logger;
 
     public ChatContextBuilder(
         TenantDbContext context,
         IEnumerable<IChatTool> tools,
         IAiInstructionsService aiInstructions,
+        ITenantReadinessService readiness,
         ILogger<ChatContextBuilder> logger)
     {
         _context = context;
@@ -45,6 +48,7 @@ public class ChatContextBuilder : IChatContextBuilder
         // so it can never drift from what the assistant can actually do.
         _tools = tools.ToList();
         _aiInstructions = aiInstructions;
+        _readiness = readiness;
         _logger = logger;
     }
 
@@ -52,7 +56,13 @@ public class ChatContextBuilder : IChatContextBuilder
     /// Queries tenant database for business statistics and builds a system prompt.
     /// Uses AsNoTracking for read-only queries (better performance).
     /// </summary>
-    public async Task<string> BuildSystemPromptAsync(CancellationToken ct = default)
+    /// <param name="currentRoute">Route the client reported, or null when it sent none.</param>
+    /// <param name="openEntity">Record open on that route, or null.</param>
+    /// <param name="ct">Cancellation token.</param>
+    public async Task<string> BuildSystemPromptAsync(
+        string? currentRoute = null,
+        string? openEntity = null,
+        CancellationToken ct = default)
     {
         try
         {
@@ -108,7 +118,14 @@ public class ChatContextBuilder : IChatContextBuilder
                 overdueInvoices: overdueInvoices.ToString(),
                 paidInvoices: paidInvoicesCount.ToString());
 
-            return AiSystemPrompt.Compose(companyBlock, customPrompt, appendix, businessContext, _tools);
+            var situationalContext = AiSystemPrompt.BuildSituationalContextBlock(
+                today: FormatToday(),
+                currentPage: Sanitize(currentRoute, MaxRouteLength),
+                openEntity: Sanitize(openEntity, MaxOpenEntityLength),
+                setupGaps: await DescribeSetupGapsAsync(ct));
+
+            return AiSystemPrompt.Compose(
+                companyBlock, customPrompt, appendix, businessContext, _tools, situationalContext);
         }
         catch (Exception ex)
         {
@@ -123,5 +140,69 @@ public class ChatContextBuilder : IChatContextBuilder
                    "\nBe concise and professional. " +
                    "Respond in the same language the user writes in (Czech or English).";
         }
+    }
+
+    /// <summary>Caps mirroring the <c>SendMessageRequest</c> limits — see <see cref="Sanitize"/>.</summary>
+    private const int MaxRouteLength = 200;
+    private const int MaxOpenEntityLength = 100;
+
+    /// <summary>
+    /// Today's date as the model sees it. UTC, like every other timestamp in this app
+    /// (overdue detection above included) — the app has no per-tenant time zone.
+    /// The weekday is spelled out because "by Friday" questions are common and a model
+    /// cannot reliably derive it from the date alone.
+    /// </summary>
+    private static string FormatToday()
+    {
+        var today = DateTime.UtcNow;
+        return $"{today:yyyy-MM-dd} ({today.DayOfWeek})";
+    }
+
+    /// <summary>
+    /// Trims client-supplied text before it is pasted into the system prompt: line breaks out
+    /// (a newline would let a crafted route forge its own prompt section) and a hard length cap.
+    /// The DTO carries the same limits, but the Functions host deserializes the request itself
+    /// and runs no model validation — so the guard has to sit here too, where the value is used.
+    /// </summary>
+    private static string? Sanitize(string? value, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var singleLine = value.ReplaceLineEndings(" ").Trim();
+        return singleLine.Length <= maxLength ? singleLine : singleLine[..maxLength];
+    }
+
+    /// <summary>
+    /// Lists what still blocks the tenant from invoicing, or null when nothing does.
+    /// The assistant uses it to guide a fresh tenant instead of failing at the last step.
+    ///
+    /// The rules are NOT re-implemented here — <see cref="ITenantReadinessService"/> owns them
+    /// (issue #148). Only blocking issues make it into the prompt; warnings would be noise the
+    /// model has no action for. The code plus its fix route is enough for the assistant to send
+    /// the user to the right page; the field-level detail belongs to the UI banner.
+    /// </summary>
+    private async Task<string?> DescribeSetupGapsAsync(CancellationToken ct)
+    {
+        ReadinessReportDto report;
+        try
+        {
+            report = await _readiness.GetReportAsync(ct: ct);
+        }
+        catch (Exception ex)
+        {
+            // Readiness is the only part of the prompt that touches the master database.
+            // Losing it must not cost the company identity and the statistics as well, so it
+            // is caught here instead of falling through to the degraded fallback prompt.
+            _logger.LogWarning(ex, "Readiness check failed while building the chat context");
+            return null;
+        }
+
+        var blocking = report.Issues
+            .Where(i => i.Severity == EReadinessSeverity.Blocking)
+            .Select(i => $"{i.Code} (fix at {i.FixRoute})")
+            .ToList();
+
+        return blocking.Count == 0 ? null : string.Join("; ", blocking);
     }
 }
