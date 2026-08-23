@@ -187,6 +187,34 @@ public class NativeToolSchemaTests
         properties.GetProperty("items").GetProperty("items").GetProperty("type").GetString().ShouldBe("object");
     }
 
+    /// <summary>
+    /// Claude takes the schema as <c>Tool.InputSchema</c>, which the SDK types as a plain
+    /// object — so nothing but serialization proves our dictionary survives the trip. This
+    /// serializes the very Tool the provider builds and checks the wire shape Anthropic
+    /// documents: snake_case <c>input_schema</c> carrying the shared JSON Schema.
+    /// </summary>
+    [Fact]
+    public void ClaudeTool_CarriesTheSharedJsonSchemaAsInputSchemaOnTheWire()
+    {
+        var tool = new Anthropic.Tool
+        {
+            Name = "create_invoice",
+            Description = "Creates an invoice.",
+            InputSchema = NativeToolSchema.BuildJsonSchema(SampleTool())
+        };
+
+        var wire = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(tool));
+        var schema = wire.GetProperty("input_schema");
+
+        wire.GetProperty("name").GetString().ShouldBe("create_invoice");
+        schema.GetProperty("type").GetString().ShouldBe("object");
+
+        var properties = schema.GetProperty("properties");
+        properties.GetProperty("client_name").GetProperty("type").GetString().ShouldBe("string");
+        properties.GetProperty("items").GetProperty("items").GetProperty("type").GetString().ShouldBe("object");
+        schema.GetProperty("required")[0].GetString().ShouldBe("client_name");
+    }
+
     private static Dictionary<string, Dictionary<string, object>> Properties(Dictionary<string, object> schema)
         => ((Dictionary<string, object>)schema["properties"])
             .ToDictionary(kv => kv.Key, kv => (Dictionary<string, object>)kv.Value);

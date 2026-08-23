@@ -180,40 +180,63 @@ public class GeminiNativeToolCallingTests
     }
 
     /// <summary>
-    /// A definitive refusal (4xx that is not a rate limit) means the model will never accept
-    /// these tools. The provider stops offering them so ChatService switches to the text
-    /// protocol — tools keep working, just over the older path.
+    /// Every failure degrades this message to the text flow, but only a definitive refusal of
+    /// the tools themselves may latch native calling off — the latch lives until the process
+    /// restarts and the singleton provider is shared by all tenants.
+    ///
+    /// Junior note: 400 is on both sides of the line. "function calling is not enabled" is
+    /// permanent, an oversized request is just a long conversation (the history is sent whole)
+    /// and says nothing about tools; an invalid key (401/403) breaks the text path just the
+    /// same, so latching would only outlive the fix.
     /// </summary>
-    [Fact]
-    public async Task GeminiProvider_OnBadRequest_FallsBackAndStopsOfferingNativeTools()
+    [Theory]
+    // Definitive refusals — latch off.
+    [InlineData(HttpStatusCode.BadRequest,
+        """{"error":{"message":"Function calling is not enabled for models/gemini-1.0-pro"}}""", false)]
+    [InlineData(HttpStatusCode.NotFound,
+        """{"error":{"message":"models/gemini-x is not found for API version v1beta"}}""", false)]
+    // Everything else — fall back for this message only.
+    [InlineData(HttpStatusCode.BadRequest,
+        """{"error":{"message":"The input token count exceeds the maximum"}}""", true)]
+    [InlineData(HttpStatusCode.Unauthorized, """{"error":{"message":"API key not valid"}}""", true)]
+    [InlineData(HttpStatusCode.Forbidden,
+        """{"error":{"message":"Permission denied on resource project"}}""", true)]
+    [InlineData(HttpStatusCode.RequestTimeout, "{}", true)]
+    [InlineData(HttpStatusCode.RequestEntityTooLarge, "{}", true)]
+    [InlineData(HttpStatusCode.TooManyRequests, "{}", true)]
+    [InlineData(HttpStatusCode.InternalServerError, "{}", true)]
+    public async Task GeminiProvider_LatchesNativeToolsOff_OnlyWhenTheToolsThemselvesAreRefused(
+        HttpStatusCode status, string body, bool stillSupportsNativeTools)
     {
-        var (provider, _) = CreateProvider(new HttpResponseMessage(HttpStatusCode.BadRequest)
+        var (provider, _) = CreateProvider(new HttpResponseMessage(status)
         {
-            Content = new StringContent("""{"error":{"message":"Function calling is not enabled"}}""")
+            Content = new StringContent(body)
         });
 
         var result = await provider.GetCompletionWithToolsAsync(Conversation(), null, Tools());
 
         result.ShouldBeNull();
-        provider.SupportsNativeTools.ShouldBeFalse();
+        provider.SupportsNativeTools.ShouldBe(stillSupportsNativeTools);
     }
 
     /// <summary>
-    /// A rate limit is transient — permanently downgrading the tenant over one 429 would be
-    /// worse than retrying on the next message.
+    /// The latch is per provider instance. If the flag ever became static, one tenant's
+    /// unsupported model would silently downgrade every other tenant — and nothing else in
+    /// the suite would notice.
     /// </summary>
     [Fact]
-    public async Task GeminiProvider_OnRateLimit_FallsBackButKeepsNativeToolsEnabled()
+    public async Task GeminiProvider_LatchIsPerInstance_AndDoesNotLeakToOtherProviders()
     {
-        var (provider, _) = CreateProvider(new HttpResponseMessage(HttpStatusCode.TooManyRequests)
+        var (refused, _) = CreateProvider(new HttpResponseMessage(HttpStatusCode.NotFound)
         {
-            Content = new StringContent("{}")
+            Content = new StringContent("""{"error":{"message":"models/gemini-x is not found"}}""")
         });
+        var (healthy, _) = CreateProvider(Ok(FunctionCallResponse("""{"client_name":"ACME"}""")));
 
-        var result = await provider.GetCompletionWithToolsAsync(Conversation(), null, Tools());
+        await refused.GetCompletionWithToolsAsync(Conversation(), null, Tools());
 
-        result.ShouldBeNull();
-        provider.SupportsNativeTools.ShouldBeTrue();
+        refused.SupportsNativeTools.ShouldBeFalse();
+        healthy.SupportsNativeTools.ShouldBeTrue();
     }
 
     [Fact]

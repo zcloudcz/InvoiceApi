@@ -25,7 +25,10 @@ internal static class OpenAiToolCalling
     /// </summary>
     public static ChatCompletionOptions BuildOptions(List<NativeToolDefinition> tools)
     {
-        var options = new ChatCompletionOptions();
+        // ChatService executes a single tool call per turn (it reads ToolCalls[0]), so asking
+        // for parallel calls would silently drop the extra ones. Better to have the model
+        // pick one and come back for the next in the following turn.
+        var options = new ChatCompletionOptions { AllowParallelToolCalls = false };
 
         foreach (var tool in tools)
         {
@@ -42,9 +45,10 @@ internal static class OpenAiToolCalling
     /// Sends the conversation with tool definitions attached.
     ///
     /// Returns null when the call could not be completed — the caller then degrades to the
-    /// text-based flow. When OpenAI refuses the request outright (a 4xx that is not a rate
-    /// limit, e.g. a model without function calling), <paramref name="disableNativeTools"/>
-    /// is invoked so the provider stops paying for a doomed extra round trip on every message.
+    /// text-based flow. When OpenAI refuses the tools outright (see
+    /// <see cref="NativeToolRefusal"/>, e.g. a model without function calling),
+    /// <paramref name="disableNativeTools"/> is invoked so the provider stops paying for a
+    /// doomed extra round trip on every message.
     /// </summary>
     public static async Task<NativeToolCallResult?> CompleteWithToolsAsync(
         ChatClient chatClient,
@@ -65,9 +69,12 @@ internal static class OpenAiToolCalling
         }
         catch (ClientResultException ex)
         {
-            // 4xx (except 429 "too many requests") means OpenAI will keep refusing this
-            // request shape — retrying native tools every message only doubles latency.
-            if (ex.Status is >= 400 and < 500 && ex.Status != 429)
+            // Only a definitive refusal latches the provider onto the text protocol — see
+            // NativeToolRefusal for why the whole 4xx range would be too wide. The SDK
+            // repeats the service error body in the exception message, which is what the
+            // predicate reads; if a future SDK stopped doing that we would simply keep
+            // retrying natively, never latch by mistake.
+            if (NativeToolRefusal.IsPermanent(ex.Status, ex.Message))
             {
                 logger.LogWarning(ex,
                     "OpenAI rejected native tool calling ({Status}). " +

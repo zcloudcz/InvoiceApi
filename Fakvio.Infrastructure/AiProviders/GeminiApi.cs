@@ -103,9 +103,10 @@ internal static class GeminiApi
     /// Sends the conversation to Gemini with native function declarations attached.
     ///
     /// Returns null when the call could not be completed — the caller then degrades to the
-    /// text-based flow. When Gemini refuses the request outright (a 4xx that is not a rate
-    /// limit, e.g. a model that has no function calling), <paramref name="disableNativeTools"/>
-    /// is invoked so the provider stops paying for a doomed extra round trip on every message.
+    /// text-based flow. When Gemini refuses the tools outright (see
+    /// <see cref="NativeToolRefusal"/>, e.g. a model that has no function calling),
+    /// <paramref name="disableNativeTools"/> is invoked so the provider stops paying for a
+    /// doomed extra round trip on every message.
     /// </summary>
     public static async Task<NativeToolCallResult?> CompleteWithToolsAsync(
         HttpClient httpClient,
@@ -134,9 +135,9 @@ internal static class GeminiApi
             {
                 var statusCode = (int)response.StatusCode;
 
-                // 4xx (except 429 "too many requests") means Gemini will keep refusing this
-                // request shape — retrying native tools every message only doubles latency.
-                if (statusCode is >= 400 and < 500 && statusCode != 429)
+                // Only a definitive refusal latches the provider onto the text protocol — see
+                // NativeToolRefusal for why the whole 4xx range would be too wide.
+                if (NativeToolRefusal.IsPermanent(statusCode, responseText))
                 {
                     logger.LogWarning(
                         "Gemini model {Model} rejected native tool calling ({Status}). " +

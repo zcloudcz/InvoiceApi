@@ -705,11 +705,24 @@ stejně u všech providerů — stejná odpověď modelu tedy nikdy nedopadne ji
 jakého providera má tenant nastaveného.
 
 **Degradace, když nativní volání selže:** provider vrátí `null` a `ChatService` dojede
-zbytek zprávy bez nástrojů. Když API tools odmítne natvrdo (4xx mimo 429), provider si
-`SupportsNativeTools` navíc sám vypne a od další zprávy jede textový tool protokol
-(`BuildToolInstructions()` + `ParseToolCall()`) — nástroje fungují dál, jen po staré cestě.
-Přechodné chyby (429, 5xx, síť) nevypínají nic; jedna špatná minuta nesmí tenanta
-degradovat natrvalo.
+zbytek zprávy bez nástrojů. Když API **odmítne samotné nástroje**, provider si navíc vypne
+`SupportsNativeTools` a od další zprávy jede textový tool protokol (`BuildToolInstructions()`
++ `ParseToolCall()`) — nástroje fungují dál, jen po staré cestě.
+
+Co je „odmítnutí nástrojů", rozhoduje **jediné místo — `NativeToolRefusal.IsPermanent`**:
+**404** (model pro tenhle klíč neexistuje) a **400, jehož tělo zmiňuje `tool`/`function`**.
+Nic jiného nevypíná, protože vypnutí drží až do restartu procesu a singleton provider
+sdílejí všichni tenanti:
+
+- **401/403** (expirovaný nebo rotovaný klíč) — textová cesta jede přes stejný klíč a padá
+  taky, takže vypnutím se nic nezíská, jen degradace přežije opravu klíče.
+- **400 `context_length_exceeded`** — `ChatService.GetConversationHistoryAsync` posílá celou
+  historii bez okna, takže to spolehlivě vyrobí dost dlouhá konverzace. O podpoře nástrojů
+  to neříká nic.
+- **408/413, 429, 5xx, síť** — přechodné; jedna špatná minuta nesmí tenanta degradovat natrvalo.
+
+Kdo přidává providera: latch **nesmí být `static`** (jinak jeden tenant degraduje všechny)
+a podmínku pište přes `NativeToolRefusal`, ne vlastní rozsah stavových kódů.
 
 **Každý provider existuje dvakrát** — singleton v `AiProviders/` a per-firma `AdHoc*`
 v `CompanyAiSettingsResolver`. Změna se dělá **vždy na obou**, a nejlépe tak, že obě

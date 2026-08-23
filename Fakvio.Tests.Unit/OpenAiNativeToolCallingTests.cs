@@ -59,6 +59,9 @@ public class OpenAiNativeToolCallingTests
         options.Tools.Count.ShouldBe(1);
         options.Tools[0].FunctionName.ShouldBe("create_invoice");
         options.Tools[0].FunctionDescription.ShouldBe("Creates an invoice.");
+
+        // ChatService runs one tool call per turn, so parallel calls would be dropped.
+        options.AllowParallelToolCalls.ShouldBe(false);
     }
 
     /// <summary>
@@ -178,40 +181,61 @@ public class OpenAiNativeToolCallingTests
     }
 
     /// <summary>
-    /// A definitive refusal (4xx that is not a rate limit) means the model will never accept
-    /// these tools. The provider stops offering them so ChatService switches to the text
-    /// protocol — tools keep working, just over the older path.
+    /// Every failure degrades this message to the text flow, but only a definitive refusal of
+    /// the tools themselves may latch native calling off — the latch lives until the process
+    /// restarts and the singleton provider is shared by all tenants.
+    ///
+    /// Junior note: 400 is on both sides of the line. "no function calling" is permanent,
+    /// "context_length_exceeded" is just a long conversation (the history is sent whole) and
+    /// says nothing about tools; an expired key (401/403) breaks the text path just the same,
+    /// so latching would only outlive the fix.
     /// </summary>
-    [Fact]
-    public async Task OpenAiProvider_OnBadRequest_FallsBackAndStopsOfferingNativeTools()
+    [Theory]
+    // Definitive refusals — latch off.
+    [InlineData(HttpStatusCode.BadRequest, """{"error":{"message":"tools not supported"}}""", false)]
+    [InlineData(HttpStatusCode.BadRequest, """{"error":{"message":"Function calling is not enabled"}}""", false)]
+    [InlineData(HttpStatusCode.NotFound, """{"error":{"message":"The model does not exist"}}""", false)]
+    // Everything else — fall back for this message only.
+    [InlineData(HttpStatusCode.BadRequest,
+        """{"error":{"code":"context_length_exceeded","message":"maximum context length"}}""", true)]
+    [InlineData(HttpStatusCode.Unauthorized, """{"error":{"message":"Incorrect API key provided"}}""", true)]
+    [InlineData(HttpStatusCode.Forbidden, """{"error":{"message":"Country not supported"}}""", true)]
+    [InlineData(HttpStatusCode.RequestTimeout, "{}", true)]
+    [InlineData(HttpStatusCode.RequestEntityTooLarge, "{}", true)]
+    [InlineData(HttpStatusCode.TooManyRequests, "{}", true)]
+    [InlineData(HttpStatusCode.InternalServerError, "{}", true)]
+    public async Task OpenAiProvider_LatchesNativeToolsOff_OnlyWhenTheToolsThemselvesAreRefused(
+        HttpStatusCode status, string body, bool stillSupportsNativeTools)
     {
-        var (provider, _) = CreateProvider(new HttpResponseMessage(HttpStatusCode.BadRequest)
+        var (provider, _) = CreateProvider(new HttpResponseMessage(status)
         {
-            Content = new StringContent("""{"error":{"message":"tools not supported"}}""")
+            Content = new StringContent(body)
         });
 
         var result = await provider.GetCompletionWithToolsAsync(Conversation(), null, Tools());
 
         result.ShouldBeNull();
-        provider.SupportsNativeTools.ShouldBeFalse();
+        provider.SupportsNativeTools.ShouldBe(stillSupportsNativeTools);
     }
 
     /// <summary>
-    /// A rate limit is transient — permanently downgrading the tenant over one 429 would be
-    /// worse than retrying on the next message.
+    /// The latch is per provider instance. If the flag ever became static, one tenant's
+    /// unsupported model would silently downgrade every other tenant — and nothing else in
+    /// the suite would notice.
     /// </summary>
     [Fact]
-    public async Task OpenAiProvider_OnRateLimit_FallsBackButKeepsNativeToolsEnabled()
+    public async Task OpenAiProvider_LatchIsPerInstance_AndDoesNotLeakToOtherProviders()
     {
-        var (provider, _) = CreateProvider(new HttpResponseMessage(HttpStatusCode.TooManyRequests)
+        var (refused, _) = CreateProvider(new HttpResponseMessage(HttpStatusCode.NotFound)
         {
-            Content = new StringContent("{}")
+            Content = new StringContent("""{"error":{"message":"The model does not exist"}}""")
         });
+        var (healthy, _) = CreateProvider(Ok(ToolCallResponseJson()));
 
-        var result = await provider.GetCompletionWithToolsAsync(Conversation(), null, Tools());
+        await refused.GetCompletionWithToolsAsync(Conversation(), null, Tools());
 
-        result.ShouldBeNull();
-        provider.SupportsNativeTools.ShouldBeTrue();
+        refused.SupportsNativeTools.ShouldBeFalse();
+        healthy.SupportsNativeTools.ShouldBeTrue();
     }
 
     /// <summary>
