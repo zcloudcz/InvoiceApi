@@ -472,6 +472,33 @@ Systémové šablony (typ = System) jsou sdílené a slouží jako výchozí pro
 - Expirace: konfigurovatelná (výchozí 24 h), ClockSkew=Zero
 - Konfigurace: `JwtSettings:*` v appsettings / env
 
+### API klíče (`fak_live_…`)
+
+Vedle JWT přijímá aplikace i dlouhodobé API klíče — pro strojové klienty (MCP server, CI,
+curl). Posílají se ve stejné hlavičce: `Authorization: Bearer fak_live_…`.
+
+- Klíč je **osobní credential uživatele**, ne firemní. Tenant se odvozuje z firmy vlastníka.
+- V DB je jen SHA-256 hash + prvních 12 znaků na zobrazení; **raw klíč se ukládá nikam** a do
+  logu jde vždy jen prefix. Ztracený klíč nejde obnovit, jen zrušit a vydat nový.
+- Funguje **shodně na API i na Azure Functions hostu**.
+
+**Co SysAdmina zajímá provozně:**
+
+| Situace | Chování |
+|---------|---------|
+| Klíč revokovaný / expirovaný / neznámý | **401**, důvod se volajícímu neřekne (je v logu jako `API key authentication failed: …` s prefixem klíče) |
+| **Deaktivace uživatele** (`IsActive = false`) | Okamžitě přestanou fungovat **i všechny jeho API klíče**. Toto je správný postup při odchodu člověka — samostatné rušení klíčů netřeba. |
+| Smazání uživatele | Klíče mizí s ním (FK cascade). |
+| Klíč s rozsahem `read` | Na jakýkoli zápis (POST/PUT/PATCH/DELETE) vrací **403**. Výjimka jsou výpočtové endpointy, dnes jen `POST /api/tax/estimate`. |
+| Klíč s rozsahem `read,write` | Smí měnit data — ale **nikdy víc, než smí role vlastníka** (platí `role ∩ scope`). |
+| Správa klíčů klíčem | Zakázáno. `GET/POST /api/api-key` a revokace jdou jen s přihlášením (JWT). Klíčem lze volat jen `GET /api/api-key/me`. |
+
+**SysAdmin klíč a impersonace:** klíč nese roli vlastníka, takže klíč vydaný SysAdminem
+umí `X-Company-Id` impersonaci úplně stejně jako jeho přihlášení (viz §11). Bez té hlavičky
+takový klíč na tenant endpointy nedosáhne (403) — stejně jako SysAdmin bez impersonace.
+Je to tedy **plnohodnotný SysAdmin credential s dlouhou platností**: vydávejte ho uvážlivě,
+raději s vyplněnou expirací a rozsahem `read`.
+
 ### Data Protection (CredentialProtector)
 
 - Šifruje: SMTP hesla, IMAP hesla, AI API klíče uložené v DB
