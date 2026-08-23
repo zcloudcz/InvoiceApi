@@ -282,6 +282,13 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IChatTool, ListReceivedInvoicesTool>();
         services.AddScoped<IChatTool, SearchReceivedInvoicesTool>();
 
+        // …and act on them: record a new one and walk it through its lifecycle.
+        // Only the delete is confirmable (IConfirmableChatTool) — see DEVGUIDE §4.7.
+        services.AddScoped<IChatTool, CreateReceivedInvoiceTool>();
+        services.AddScoped<IChatTool, ApproveReceivedInvoiceTool>();
+        services.AddScoped<IChatTool, MarkReceivedInvoicePaidTool>();
+        services.AddScoped<IChatTool, DeleteReceivedInvoiceTool>();
+
         // File attachment tools — let the agent attach files to entities and list existing attachments.
         services.AddScoped<IChatTool, AttachFileTool>();
         services.AddScoped<IChatTool, ListAttachmentsTool>();

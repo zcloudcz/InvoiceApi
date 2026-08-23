@@ -680,7 +680,7 @@ Implementace: `PaymentMatchingService.cs` (metoda `GetPaymentsForInvoiceAsync`).
 - Implementace: `Fakvio.Infrastructure/AiProviders/` (Anthropic, OpenAI, Gemini, Ollama).
 - API key storage: `CompanySystemSettings.AiApiKeyEncrypted` (per company) přes `CredentialProtector`.
 - SSE streaming přes `ChatController.StreamAsync`.
-- **Chat Tools**: 14 tools registrovaných v DI jako `IChatTool`, orchestrováno přes `IChatToolExecutor`.
+- **Chat Tools**: 18 tools registrovaných v DI jako `IChatTool`, orchestrováno přes `IChatToolExecutor`.
   Registrace v `ServiceCollectionExtensions.cs`; přidání nového toolu = implementace `IChatTool` + řádek v DI.
 
 #### Přidání nového chat toolu (POVINNÝ postup)
@@ -894,6 +894,10 @@ Sloupec „Klíčové parametry" je jen orientační — závazné je schéma v 
 | `get_received_invoice` | `GetReceivedInvoiceTool` | ReceivedInvoice | Read (detail) | `id` nebo `document_number`; vrátí položky, DPH, celkové částky, cross-check |
 | `list_received_invoices` | `ListReceivedInvoicesTool` | ReceivedInvoice | Read (paged list) | `status`, `supplier_name`, `issue_date_from/to`, `min/max_amount`, `currency`, `overdue` |
 | `search_received_invoices` | `SearchReceivedInvoicesTool` | ReceivedInvoice | Search | `query` (fulltext: číslo dokladu, dodavatel, VS, částka), `limit` |
+| `create_received_invoice` | `CreateReceivedInvoiceTool` | ReceivedInvoice | Create | `supplier_name`, `items` (JSON), `document_number`, `issue_date`, `due_date`, `taxable_supply_date`, `variable_symbol`, `currency`, `notes` |
+| `approve_received_invoice` | `ApproveReceivedInvoiceTool` | ReceivedInvoice | **Write** (Received → Approved) | `id` nebo `document_number` |
+| `mark_received_invoice_paid` | `MarkReceivedInvoicePaidTool` | ReceivedInvoice | **Write** (Approved → Paid) | `id` nebo `document_number`, `paid_at` |
+| `delete_received_invoice` | `DeleteReceivedInvoiceTool` | ReceivedInvoice | **Destruktivní, za `confirm`** | `id` nebo `document_number` |
 | `attach_file` | `AttachFileTool` | Invoice / ReceivedInvoice / Client | Write (upload) | `entity_name`, `record_id`, `file_name`, `file_content_base64` (Base64 bytes), `content_type`, `description` |
 | `list_attachments` | `ListAttachmentsTool` | Invoice / ReceivedInvoice / Client | Read (list) | `entity_name`, `record_id`; vrátí jméno, velikost, datum, popis pro každý soubor |
 | `get_dashboard` | `GetDashboardTool` | Invoice / Client (agregace) | Read (souhrn) | bez parametrů; cashflow tento měsíc, počet klientů, neuhrazeno, po splatnosti, top klienti |
@@ -922,6 +926,38 @@ splatnosti, což by pohledávky nafouklo. `InvoiceFilterDto` umí jen jeden stat
 takže „Completed NEBO PartiallyPaid" se musí zeptat dvěma voláními (parametr `status`
 to umožňuje).
 
+##### Přijaté faktury — zápisy (#218): co je za `confirm` a co ne
+
+Čtyři zápisové tooly nad `IReceivedInvoiceService`. **Za potvrzovacím gate visí jediný z nich:**
+
+| Tool | Gate | Proč |
+|------|------|------|
+| `create_received_invoice` | ne | Přidává záznam. Když se model splete, jde smazat — a existující `create_invoice` / `import_invoice` gate taky nemají, takže by chat byl nekonzistentní sám se sebou. |
+| `approve_received_invoice` | ne | Posun o jeden krok po cestě, kterou hlídá servis (jen `Received`), a asistent ho ve stejném tahu ohlásí. |
+| `mark_received_invoice_paid` | ne | Totéž (jen `Approved`). |
+| `delete_received_invoice` | **ano** (`IConfirmableChatTool`) | Jediná operace, kde „model si to špatně vyložil" stojí uživatele data. Zrcadlí MCP `DeleteReceivedInvoice`; default otázky 2 ze story #149. |
+
+Gate **není** autorizační hranice (viz §4.7 výše) — mazání přijaté faktury uživatel smí i z UI,
+gate jen brání tomu, aby to asistent udělal potichu.
+
+Společná je resoluce „která faktura?" (`ReceivedInvoiceLookup`): `id` má přednost před
+`document_number`, číslo dokladu se hledá jako substring. **Víc než jedna shoda = chyba**, ne
+volba první — u zápisu by „první shoda" schválila nebo smazala doklad, který uživatel nejmenoval.
+`GetReceivedInvoiceTool` (čtení) si první shodu bere dál; ukázat detail cizí faktury nic nerozbije.
+
+**`create_received_invoice` vs `import_invoice`** — obojí umí založit přijatou fakturu, popisy
+toolů ten rozdíl musí říct modelu, ne až člověku:
+
+| | `create_received_invoice` | `import_invoice` |
+|---|---|---|
+| Vstup | pole, která uživatel nadiktuje | text reálného dokladu (paste, OCR, příloha) |
+| Druh dokladu | vždy přijatá | vydaná/přijatá podle IČO |
+| Dodavatel | podle jména, musí sedět na jednoho klienta | podle IČO, jméno jako fallback |
+| Data | volitelná, co chybí doplní servis | přesně z dokladu, nikdy se nedomýšlí |
+
+Neexponované proti `CreateReceivedInvoiceDto`: `bank_account`, `iban`, `swift`, `payment_method`,
+`received_date`. Nikdo je do chatu nediktuje — kdo má doklad v ruce, jde přes `import_invoice`.
+
 ##### `navigate` — katalog rout (#229)
 
 `NavigateTool.Routes` je jediný zdroj pravdy: z něj se odvozuje jak `AllowedValues`
@@ -947,9 +983,9 @@ anonymní nebo SysAdmin-only stránku, (c) každá tenant-facing stránka bez pa
 v routě je nabízená. **Nová stránka v UI tedy shodí testy, dokud ji nedoplníš do
 `Routes`** — nebo ji v tom testu explicitně nevyloučíš s odůvodněním.
 
-##### Paritní tabulka chat ↔ MCP (stav k #212)
+##### Paritní tabulka chat ↔ MCP (stav k #218)
 
-Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 14 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
+Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 18 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
 a **MCP server** (`[McpServerTool]`, 36 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
 cílem story #149 je mezeru zavřít. Tabulka je jediný pravdivý seznam toho, co kde chybí;
 **každý nový tool na kterékoli straně sem přidá řádek** (viz §13).
@@ -979,10 +1015,10 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | **Přijaté faktury** (`ReceivedInvoiceTools`, 6) |
 | `GetReceivedInvoice` | Read | `get_received_invoice` | ✅ | |
 | `ListReceivedInvoices` | Read | `list_received_invoices` | ✅ | |
-| `CreateReceivedInvoice` | Create | `import_invoice` (auto-detekce vydaná/přijatá) | ◐ | #218 |
-| `ApproveReceivedInvoice` | **Write** | — | ❌ | #218 |
-| `MarkReceivedInvoicePaid` | **Write** | — | ❌ | #218 |
-| `DeleteReceivedInvoice` | **Destructive** | — | ❌ | #218 |
+| `CreateReceivedInvoice` | Create | `create_received_invoice` (diktovaná data) · `import_invoice` (z dokladu) | ✅ | |
+| `ApproveReceivedInvoice` | **Write** | `approve_received_invoice` | ✅ | |
+| `MarkReceivedInvoicePaid` | **Write** | `mark_received_invoice_paid` (+ `paid_at`, MCP neumí) | ✅ | |
+| `DeleteReceivedInvoice` | **Destructive** | `delete_received_invoice` (za `confirm`) | ✅ | |
 | **Reporting** (`ReportingTools`, 6) |
 | `GetDashboard` | Read | `get_dashboard` | ✅ | |
 | `GetOverdueInvoices` | Read | `list_invoices` + `overdue=true` | ✅ | |
@@ -1002,8 +1038,9 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | — | Upload přílohy | `attach_file` | ⬅ | |
 | — | Read | `list_attachments` | ⬅ | |
 
-**Součty:** 36 MCP toolů, 14 chat toolů. Chat pokrývá 13 MCP toolů (z toho 2 částečně),
-4 chat tooly nemají MCP protějšek. Zbývá 23 mezer.
+**Součty:** 36 MCP toolů, 18 chat toolů. Chat pokrývá 16 MCP toolů (z toho 1 částečně —
+`ExportInvoicePdf`, chat neumí ISDOC), 4 chat tooly nemají MCP protějšek. Zbývá 20 mezer
+(klienti 4, vydané faktury 8, daně 5, šablony 3).
 
 Mimo obě rozhraní (jen UI / SysAdmin, plánováno v #220 / #224 / #227):
 nastavení firmy a bankovní účty, číselné řady a sazby DPH, upomínky (dunning),
