@@ -768,12 +768,37 @@ Sloupec „Klíčové parametry" je jen orientační — závazné je schéma v 
 | `create_invoice` | `CreateInvoiceTool` | Invoice (vydaná) | Create | `client_name`, `items` (JSON), `currency`, `notes` |
 | `import_invoice` | `ImportInvoiceTool` | Invoice / ReceivedInvoice | Create | vydaná vs přijatá auto-detekce z IČO; `document_number`, `items`, data atd. |
 | `export_invoice` | `ExportInvoiceTool` | Invoice (vydaná) | Read → Download | `document_number`, `client_name` |
-| `navigate` | `NavigateTool` | — | Navigation | `target` (new\_invoice, client\_list, …), `client_name` |
+| `navigate` | `NavigateTool` | — | Navigation | `target` (uzavřený výčet **všech tenant-facing stránek**, viz níže), `client_name` |
 | `get_received_invoice` | `GetReceivedInvoiceTool` | ReceivedInvoice | Read (detail) | `id` nebo `document_number`; vrátí položky, DPH, celkové částky, cross-check |
 | `list_received_invoices` | `ListReceivedInvoicesTool` | ReceivedInvoice | Read (paged list) | `status`, `supplier_name`, `issue_date_from/to`, `min/max_amount`, `currency`, `overdue` |
 | `search_received_invoices` | `SearchReceivedInvoicesTool` | ReceivedInvoice | Search | `query` (fulltext: číslo dokladu, dodavatel, VS, částka), `limit` |
 | `attach_file` | `AttachFileTool` | Invoice / ReceivedInvoice / Client | Write (upload) | `entity_name`, `record_id`, `file_name`, `file_content_base64` (Base64 bytes), `content_type`, `description` |
 | `list_attachments` | `ListAttachmentsTool` | Invoice / ReceivedInvoice / Client | Read (list) | `entity_name`, `record_id`; vrátí jméno, velikost, datum, popis pro každý soubor |
+
+##### `navigate` — katalog rout (#229)
+
+`NavigateTool.Routes` je jediný zdroj pravdy: z něj se odvozuje jak `AllowedValues`
+parametru `target` (co model smí poslat), tak URL, na kterou Blazor klient přejde.
+Target bez routy (nebo naopak) proto nemůže vzniknout. Přidání stránky do aplikace
+= přidání jednoho řádku do `Routes`.
+
+Co v katalogu **záměrně není**:
+
+| Vynecháno | Proč |
+|-----------|------|
+| Auth flow (`/login`, `/register`, `/set-password`, `/verify-email`, callbacky) | Asistent běží v session přihlášeného uživatele — navigace ven z aplikace. |
+| SysAdmin-only stránky (`/logs`, `/system-settings`, `/companies`, `/company-settings`, `/currencies`, `/ai-instructions`, `/send-email`, `/sysadmin/*`) | Tenant uživatel by dostal jen „access denied". |
+| Routy s parametrem (`/invoices/{id}`, `/payments/{id}`, `/received-invoices/{id}`, detaily šablon) | Potřebují nejdřív dohledat entitu; dnes existuje jen resoluce klienta (target `client_detail` → `/clients/{id}`). |
+
+Stránky s `[Authorize(Roles = "Admin,SysAdmin")]` (`/users`, `/tax-configs`) v katalogu
+**jsou** — `Admin` je tenantová role.
+
+Hlídá to `NavigateToolRouteCatalogTests`: čte reálnou routovací tabulku reflexí
+(`RouteAttribute` + `AuthorizeAttribute` na zkompilovaných stránkách `Fakvio.UI.Shared`)
+a tvrdí, že (a) každý nabízený target vede na existující routu, (b) žádný nevede na
+anonymní nebo SysAdmin-only stránku, (c) každá tenant-facing stránka bez parametru
+v routě je nabízená. **Nová stránka v UI tedy shodí testy, dokud ji nedoplníš do
+`Routes`** — nebo ji v tom testu explicitně nevyloučíš s odůvodněním.
 
 ##### Co zatím NENÍ pokryto chat tools (jen MCP Server)
 - Reminders (dunning) — přístupné přes SysAdmin UI, ne přes chat
@@ -1793,6 +1818,7 @@ pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. P
 | Nový chat tool nebo změna schématu parametrů (`IChatTool.Parameters`) | §4.7 (postup + matice) |
 | Změna observability stacku (App Insights → jiný) | §10 |
 | Nová list stránka s gridem / změna grid patternu | §7.10 (FakvioGrid) |
+| Nová tenant-facing stránka (`@page`) | §4.7 (`NavigateTool.Routes` — jinak spadne `NavigateToolRouteCatalogTests`) |
 | Nová/změněná funkce **viditelná uživateli** (stránka, akce, stav, export) | **USERGUIDE.md** |
 | Nová/změněná funkce **viditelná SysAdminovi** (nastavení, provider, log, provisioning) | **ADMINGUIDE.md** |
 
