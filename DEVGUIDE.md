@@ -35,6 +35,7 @@ Pokud máš pochybnost, **zde má pravdu DEVGUIDE.md**, ne komentáře v kódu (
 | `Fakvio.AresService` | Class lib | Klient pro ARES (CZ obchodní rejstřík) — autonomní, bez EF. |
 | `Fakvio.Tests.Unit` | xUnit | Unit testy (~756). Stack: xUnit + **NSubstitute** + **Shouldly** + EF InMemory. |
 | `Fakvio.Tests.Integration` | xUnit | Integration testy (5). `InvoiceApiFactory : WebApplicationFactory<Program>`. |
+| `Fakvio.Tests.MigrationTool` | xUnit | Testy `Fakvio.MigrationTool` proti reálnému PostgreSQL (3). Vlastní projekt kvůli izolaci procesně globálního `Npgsql.EnableLegacyTimestampBehavior`. |
 | `Fakvio.Tests.Playwright` | NUnit | E2E browser testy (~48). Czech locale, Prague TZ. |
 
 ### 1.2 Hostovací modely (důležité)
@@ -1224,6 +1225,32 @@ Vzor: `TenantIssuerProvisioningDatabaseTests` (provisioning issuera, issue #153)
   Skipuje se **jen** nedostupný server; cokoliv po úspěšném probe musí spadnout nahlas
   (EF balí chyby spojení do generické `InvalidOperationException`, proto probe na úrovni driveru).
 
+#### 8.2.2 Testy migračního nástroje (`Fakvio.Tests.MigrationTool`)
+
+Samostatný projekt, protože na `Fakvio.MigrationTool` do issue #136 neměl `ProjectReference`
+žádný testovací projekt — jeho kompozici (skládání jména tenant schématu, `search_path`)
+tedy nešlo připnout. Vzor: `TenantSchemaCanonicalizationTests`.
+
+- Společná fixture je v `LiveMigrationToolTest` (abstraktní base class) — schémata, obě factory,
+  konfigurace toolu, DB probes. Nová třída jen podědí a začne `SkipIfDatabaseUnavailable()`.
+  Dnes na ní stojí `TenantSchemaCanonicalizationTests`, `DataIntegrityVerifierTests`
+  a `MigrationDryRunTests`.
+- Stejný throwaway-schema pattern jako `TenantIssuerProvisioningDatabaseTests`, jen se **třemi**
+  schématy na instanci třídy (source / master / tenant). Úklid maže vše, co má v názvu GUID běhu.
+- Verifier hlásí, který check spadl, jen do loggeru — proto `RecordedLog` místo `NullLogger`;
+  bez něj je pád v CI jen „expected True, was False".
+- Test žene celý `DataMigrationService.MigrateAsync()`, ne jednotlivé helpery — jinak by se
+  kompozice minula stejně jako unit testy nad `SchemaNames.Sanitize`.
+- **Nereferencuje `Fakvio.API`** záměrně. `Npgsql.EnableLegacyTimestampBehavior` je procesně
+  globální `AppContext` přepínač, který Npgsql přečte jednou a zmrazí. V assembly, kde se bootuje
+  API host, ho přepne ten test, co běžel dřív (to je podstata #194). Tady ho nastavuje výhradně
+  fixture, takže výsledek nezávisí na pořadí testů.
+- Přepínač je tu vypnutý, tedy **jinak než ve `Fakvio.MigrationTool/Program.cs`**. Zapnutý mapuje
+  `DateTime` na `timestamp without time zone`, zatímco snapshoty migrací mají `timestamp with time
+  zone` — model pak nesedí se snapshotem a `MigrateAsync()` spadne na `PendingModelChangesWarning`.
+  Produkční cesty to tlumí přes `ConfigureWarnings` (viz `ServiceCollectionExtensions`,
+  `TenantProvisioningService`), kontexty v MigrationToolu ne.
+
 ### 8.3 E2E (`Fakvio.Tests.Playwright`)
 
 - Stack: **Microsoft.Playwright.NUnit 1.52.0 + NUnit 4.3.2**.
@@ -1241,6 +1268,7 @@ Vzor: `TenantIssuerProvisioningDatabaseTests` (provisioning issuera, issue #153)
 | EF queries, repository | Unit (InMemoryDatabase) |
 | Controller → service → DB end-to-end | Integration (`WebApplicationFactory`) |
 | FK / unique index / DDL, tenant schema | Integration proti reálnému PostgreSQL (§8.2.1) |
+| Kompozice v `Fakvio.MigrationTool` (jména schémat, `search_path`) | `Fakvio.Tests.MigrationTool` proti reálnému PostgreSQL (§8.2.2) |
 | User-visible flow (login, invoice CRUD UI) | Playwright |
 | External API (SMTP, IMAP, OAuth, ARES) | Manuálně + smoke testy |
 
