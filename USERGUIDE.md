@@ -610,6 +610,12 @@ AI asistent zná kontext vaší firmy a umí odpovídat na otázky i provádět 
 | Obecné dotazy | Odpovídat na otázky o funkcích aplikace |
 | Navigace | Přesměrovat vás na příslušnou stránku |
 
+Asistent navíc ví, **kde právě stojíte** — jakou stránku máte otevřenou a jestli je na ní
+konkrétní doklad — a zná dnešní datum. Můžete se tedy ptát „kdy je tahle faktura splatná"
+místo toho, abyste číslo dokladu opisovali. Pokud vaší firmě ještě něco chybí k vystavení
+faktury (vyplněná vlastní firma, číselná řada, PDF šablona), asistent to ví a poradí,
+co doplnit.
+
 ### Jak používat
 
 1. Klikněte na ikonu AI v pravém horním rohu

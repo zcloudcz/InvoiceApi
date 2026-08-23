@@ -708,6 +708,7 @@ Pořadí bloků shora dolů:
 | 3 | Hlavní blok (RESPONSE STYLE / TOOLS / IMPORT RULES / RULES) | `AiSystemPrompt.BuildDefaultMainBlock(tools)` — statický text z konstant, katalog toolů generovaný z `IChatTool` — nebo `SystemConfiguration.AiSystemPromptCustom` | **ano (SysAdmin)** |
 | 4 | Dodatek | `SystemConfiguration.AiSystemPromptAppendix` | **ano (SysAdmin)** |
 | 5 | Business kontext (počty klientů a faktur) | tenant DB | ne |
+| 6 | Situační kontext (dnešek, stránka, otevřený záznam, chybějící nastavení) | request + tenant DB | ne |
 
 - Neprázdný `AiSystemPromptCustom` **nahradí celý blok 3** — včetně katalogu tools. Nový
   chat tool se nikam nedopisuje: sekce `TOOLS:` se generuje z registrovaných `IChatTool`
@@ -737,6 +738,31 @@ Pořadí bloků shora dolů:
   v `MasterOnlyPaths` (§3.3), takže hlavička `X-Company-Id` není potřeba.
   Functions zrcadlo: `Fakvio.Functions/HttpFunctions/AiInstructionsFunctions.cs`.
 - UI: `/ai-instructions` (`Fakvio.UI.Shared/Components/Pages/AiInstructions.razor`), SysAdmin sekce nav menu.
+
+#### Situační kontext (blok 6, issue #230)
+
+Poslední blok promptu říká modelu, *kdy a kde* uživatel stojí — bez něj se „oprav tuhle
+fakturu" nebo „splatnost do pátku" nedá vyhodnotit:
+
+| Řádek | Zdroj | Chybí když |
+|-------|-------|------------|
+| `Today's date` | `DateTime.UtcNow` (UTC jako všude jinde, app nemá per-tenant timezone) | nikdy |
+| `Current page` | `SendMessageRequest.CurrentRoute` | klient routu neposlal (Functions, starší klient) |
+| `Open record` | `SendMessageRequest.OpenEntity` | stránka nezobrazuje jeden záznam (přehledy, dashboard) |
+| `Setup not finished yet` | tenant DB (issuer, číselná řada faktur, aktivní InvoicePdf šablona) | tenant je nastavený |
+
+- Řádek bez hodnoty se **vynechá celý** (stejně jako `- DIČ:`) — prázdný popisek jen svádí
+  model k tomu, aby si hodnotu domyslel.
+- Routu i otevřený záznam plní **klient** (`ChatSituation.NormalizeRoute` /
+  `DescribeOpenEntity` v `Fakvio.UI.Shared/Components/Chat/`, volané z `ChatPanel`).
+  Pravidlo „poslední segment je číslo ⇒ na stránce je jeden záznam" je záměrně generické:
+  žádná tabulka rout, nová detailní stránka funguje bez zásahu, a mapování intent → route
+  zůstává na `NavigateTool`. Query string se zahazuje (filtry a stránkování modelu nic neříkají).
+- Obě hodnoty jdou do promptu z requestu, takže je `ChatContextBuilder.Sanitize` zkracuje
+  a zbavuje konců řádků — jinak by šitá route mohla podvrhnout vlastní sekci promptu.
+  Limity v DTO to nezachytí: Functions host request deserializuje sám, bez model validace.
+- Náhled pro SysAdmina blok ukazuje také, s `PreviewPlaceholder` místo živých hodnot —
+  vlastní prompt se píše proti celému layoutu, ne proti jeho polovině.
 
 #### Chat AI Tools matice
 

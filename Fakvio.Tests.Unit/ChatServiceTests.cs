@@ -58,7 +58,7 @@ public class ChatServiceTests : IDisposable
         // Mock context builder — returns a simple system prompt.
         _contextBuilder = Substitute.For<IChatContextBuilder>();
         _contextBuilder
-            .BuildSystemPromptAsync(Arg.Any<CancellationToken>())
+            .BuildSystemPromptAsync(Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns("You are a test assistant.");
 
         // Mock tool executor — by default it parses no tool call,

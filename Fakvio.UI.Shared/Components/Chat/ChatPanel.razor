@@ -228,6 +228,10 @@
 
         try
         {
+            // Where the user is standing right now — the server folds it into the system prompt
+            // so the assistant can resolve "tuhle fakturu" without asking which one.
+            var route = ChatSituation.NormalizeRoute(Navigation.ToBaseRelativePath(Navigation.Uri));
+
             // Build the request — include attached PDF content or image base64 if present.
             var request = new SendMessageRequest
             {
@@ -236,7 +240,9 @@
                 Provider = _selectedProvider,
                 AttachedFileContent = _attachedFileContent,
                 AttachedFileName = _attachedFileName,
-                AttachedImageBase64 = _attachedImageBase64
+                AttachedImageBase64 = _attachedImageBase64,
+                CurrentRoute = route,
+                OpenEntity = ChatSituation.DescribeOpenEntity(route)
             };
 
             // Clear all attachment state after sending — the content is now part of the request.

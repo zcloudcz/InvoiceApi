@@ -52,7 +52,13 @@ public class ChatContextBuilder : IChatContextBuilder
     /// Queries tenant database for business statistics and builds a system prompt.
     /// Uses AsNoTracking for read-only queries (better performance).
     /// </summary>
-    public async Task<string> BuildSystemPromptAsync(CancellationToken ct = default)
+    /// <param name="currentRoute">Route the client reported, or null when it sent none.</param>
+    /// <param name="openEntity">Record open on that route, or null.</param>
+    /// <param name="ct">Cancellation token.</param>
+    public async Task<string> BuildSystemPromptAsync(
+        string? currentRoute = null,
+        string? openEntity = null,
+        CancellationToken ct = default)
     {
         try
         {
@@ -108,7 +114,14 @@ public class ChatContextBuilder : IChatContextBuilder
                 overdueInvoices: overdueInvoices.ToString(),
                 paidInvoices: paidInvoicesCount.ToString());
 
-            return AiSystemPrompt.Compose(companyBlock, customPrompt, appendix, businessContext, _tools);
+            var situationalContext = AiSystemPrompt.BuildSituationalContextBlock(
+                today: FormatToday(),
+                currentPage: Sanitize(currentRoute, MaxRouteLength),
+                openEntity: Sanitize(openEntity, MaxOpenEntityLength),
+                setupGaps: await DescribeSetupGapsAsync(hasIssuer: issuer != null, ct));
+
+            return AiSystemPrompt.Compose(
+                companyBlock, customPrompt, appendix, businessContext, _tools, situationalContext);
         }
         catch (Exception ex)
         {
@@ -123,5 +136,65 @@ public class ChatContextBuilder : IChatContextBuilder
                    "\nBe concise and professional. " +
                    "Respond in the same language the user writes in (Czech or English).";
         }
+    }
+
+    /// <summary>Caps mirroring the <c>SendMessageRequest</c> limits — see <see cref="Sanitize"/>.</summary>
+    private const int MaxRouteLength = 200;
+    private const int MaxOpenEntityLength = 100;
+
+    /// <summary>
+    /// Today's date as the model sees it. UTC, like every other timestamp in this app
+    /// (overdue detection above included) — the app has no per-tenant time zone.
+    /// The weekday is spelled out because "by Friday" questions are common and a model
+    /// cannot reliably derive it from the date alone.
+    /// </summary>
+    private static string FormatToday()
+    {
+        var today = DateTime.UtcNow;
+        return $"{today:yyyy-MM-dd} ({today.DayOfWeek})";
+    }
+
+    /// <summary>
+    /// Trims client-supplied text before it is pasted into the system prompt: line breaks out
+    /// (a newline would let a crafted route forge its own prompt section) and a hard length cap.
+    /// The DTO carries the same limits, but the Functions host deserializes the request itself
+    /// and runs no model validation — so the guard has to sit here too, where the value is used.
+    /// </summary>
+    private static string? Sanitize(string? value, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var singleLine = value.ReplaceLineEndings(" ").Trim();
+        return singleLine.Length <= maxLength ? singleLine : singleLine[..maxLength];
+    }
+
+    /// <summary>
+    /// Lists what still blocks the tenant from issuing an invoice, or null when nothing does.
+    /// The assistant uses it to guide a fresh tenant instead of failing at the last step —
+    /// and to stop offering "create an invoice" before that can possibly work.
+    ///
+    /// Two EXISTS queries; they only run for the prompt, so keep it at that.
+    /// </summary>
+    private async Task<string?> DescribeSetupGapsAsync(bool hasIssuer, CancellationToken ct)
+    {
+        var gaps = new List<string>();
+
+        if (!hasIssuer)
+            gaps.Add("the user's own company (issuer) is not set up");
+
+        var hasInvoiceSequence = await _context.NumberSequence
+            .AsNoTracking()
+            .AnyAsync(s => s.DocumentType == EDocumentType.Invoice && s.IsActive, ct);
+        if (!hasInvoiceSequence)
+            gaps.Add("no invoice numbering series exists");
+
+        var hasInvoiceTemplate = await _context.ContentTemplate
+            .AsNoTracking()
+            .AnyAsync(t => t.TemplateType == EContentTemplateType.InvoicePdf && t.IsActive, ct);
+        if (!hasInvoiceTemplate)
+            gaps.Add("no invoice PDF template exists");
+
+        return gaps.Count == 0 ? null : string.Join("; ", gaps);
     }
 }
