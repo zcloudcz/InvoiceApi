@@ -768,7 +768,7 @@ fakturu" nebo „splatnost do pátku" nedá vyhodnotit:
 | `Today's date` | `DateTime.UtcNow` (UTC jako všude jinde, app nemá per-tenant timezone) | nikdy |
 | `Current page` | `SendMessageRequest.CurrentRoute` | klient routu neposlal (Functions, starší klient) |
 | `Open record` | `SendMessageRequest.OpenEntity` | stránka nezobrazuje jeden záznam (přehledy, dashboard) |
-| `Setup not finished yet` | tenant DB (issuer, číselná řada faktur, aktivní InvoicePdf šablona) | tenant je nastavený |
+| `Setup not finished yet` | `ITenantReadinessService.GetReportAsync` — jen **blocking** nálezy, formát `CODE (fix at /route)` | tenant je nastavený nebo jsou nálezy jen warning |
 
 - Řádek bez hodnoty se **vynechá celý** (stejně jako `- DIČ:`) — prázdný popisek jen svádí
   model k tomu, aby si hodnotu domyslel.
@@ -780,6 +780,11 @@ fakturu" nebo „splatnost do pátku" nedá vyhodnotit:
 - Obě hodnoty jdou do promptu z requestu, takže je `ChatContextBuilder.Sanitize` zkracuje
   a zbavuje konců řádků — jinak by šitá route mohla podvrhnout vlastní sekci promptu.
   Limity v DTO to nezachytí: Functions host request deserializuje sám, bez model validace.
+- Pravidla připravenosti se tu **neduplikují** — vlastní je `ITenantReadinessService`
+  (issue #148). Warningy do promptu nejdou (model s nimi nemá co dělat) a detail chybějících
+  polí zůstává v UI banneru; modelu stačí kód a stránka, kam uživatele poslat.
+  Readiness je jediná část promptu, která sahá do master DB, takže se volá ve vlastním
+  `try/catch`: její výpadek smaže jen tenhle řádek, ne identitu firmy a statistiky.
 - Náhled pro SysAdmina blok ukazuje také, s `PreviewPlaceholder` místo živých hodnot —
   vlastní prompt se píše proti celému layoutu, ne proti jeho polovině.
 

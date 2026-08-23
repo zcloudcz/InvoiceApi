@@ -1,4 +1,5 @@
 using Fakvio.Application.Service;
+using Fakvio.Contracts.Dto.Readiness;
 using Fakvio.Domain.Entities;
 using Fakvio.Domain.Enums;
 using Fakvio.Infrastructure.Data;
@@ -19,6 +20,7 @@ public class ChatContextBuilderTests : IDisposable
 {
     private readonly TenantDbContext _context;
     private readonly IAiInstructionsService _aiInstructions;
+    private readonly ITenantReadinessService _readiness;
     private readonly ChatContextBuilder _builder;
     private readonly ILogger<ChatContextBuilder> _logger;
 
@@ -41,7 +43,11 @@ public class ChatContextBuilderTests : IDisposable
         _aiInstructions = Substitute.For<IAiInstructionsService>();
         StoredInstructions(null, null);
 
-        _builder = new ChatContextBuilder(_context, [tool], _aiInstructions, _logger);
+        // Default for every test: the tenant is fully set up, so no setup-gap line appears.
+        _readiness = Substitute.For<ITenantReadinessService>();
+        ReadinessIssues();
+
+        _builder = new ChatContextBuilder(_context, [tool], _aiInstructions, _readiness, _logger);
     }
 
     /// <summary>
@@ -55,6 +61,12 @@ public class ChatContextBuilderTests : IDisposable
         => _aiInstructions
             .GetCachedInstructionsAsync(Arg.Any<CancellationToken>())
             .Returns((customPrompt, appendix));
+
+    /// <summary>Sets what the (faked) readiness service reports to the builder.</summary>
+    private void ReadinessIssues(params ReadinessIssueDto[] issues)
+        => _readiness
+            .GetReportAsync(Arg.Any<long?>(), Arg.Any<CancellationToken>())
+            .Returns(new ReadinessReportDto { Issues = [.. issues] });
 
     /// <summary>Seeds the tenant's own company (the issuer) — the source of the company block.</summary>
     private async Task SeedIssuerAsync(string companyName, string registrationNumber, string? taxNumber)
@@ -335,33 +347,6 @@ public class ChatContextBuilderTests : IDisposable
 
     // ── Situational context (issue #230) ──────────────────────────────────
 
-    /// <summary>Seeds the pieces a tenant needs before it can issue an invoice.</summary>
-    private async Task SeedInvoiceSetupAsync(bool numberSequence = true, bool pdfTemplate = true)
-    {
-        if (numberSequence)
-        {
-            _context.NumberSequence.Add(new NumberSequence
-            {
-                Name = "Main invoice sequence",
-                DocumentType = EDocumentType.Invoice,
-                IsActive = true
-            });
-        }
-
-        if (pdfTemplate)
-        {
-            _context.ContentTemplate.Add(new ContentTemplate
-            {
-                Name = "Default Invoice PDF",
-                HtmlBody = "<html></html>",
-                TemplateType = EContentTemplateType.InvoicePdf,
-                IsActive = true
-            });
-        }
-
-        await _context.SaveChangesAsync();
-    }
-
     [Fact]
     public async Task BuildSystemPrompt_TellsTheModelWhatDayItIs()
     {
@@ -429,21 +414,25 @@ public class ChatContextBuilderTests : IDisposable
     }
 
     [Fact]
-    public async Task BuildSystemPrompt_OnAFreshTenant_ListsEverythingThatBlocksInvoicing()
+    public async Task BuildSystemPrompt_OnAFreshTenant_ListsWhatBlocksInvoicing()
     {
-        // Nothing seeded: no issuer, no numbering series, no PDF template.
+        // The rules live in ITenantReadinessService (issue #148); the builder only relays
+        // the blocking findings, each with the page the user fixes it on.
+        ReadinessIssues(
+            Blocking(ReadinessCodes.IssuerMissing, "/my-company"),
+            Blocking(ReadinessCodes.NumberSequenceMissing, "/number-sequences"));
+
         var prompt = await _builder.BuildSystemPromptAsync();
 
         prompt.ShouldContain(
-            "- Setup not finished yet: the user's own company (issuer) is not set up; "
-            + "no invoice numbering series exists; no invoice PDF template exists");
+            "- Setup not finished yet: ISSUER_MISSING (fix at /my-company); "
+            + "NUMBER_SEQUENCE_MISSING (fix at /number-sequences)");
     }
 
     [Fact]
     public async Task BuildSystemPrompt_OnAConfiguredTenant_ReportsNoSetupGaps()
     {
-        await SeedIssuerAsync("Issuer Co", "12345678", taxNumber: null);
-        await SeedInvoiceSetupAsync();
+        ReadinessIssues();
 
         var prompt = await _builder.BuildSystemPromptAsync();
 
@@ -451,61 +440,62 @@ public class ChatContextBuilderTests : IDisposable
     }
 
     [Fact]
-    public async Task BuildSystemPrompt_WithIssuerButNoNumberingSeries_NamesOnlyTheMissingPiece()
+    public async Task BuildSystemPrompt_WithWarningsOnly_ReportsNoSetupGaps()
     {
-        await SeedIssuerAsync("Issuer Co", "12345678", taxNumber: null);
-        await SeedInvoiceSetupAsync(numberSequence: false);
+        // A warning is not a blocker — the user can invoice, so it is noise the model has
+        // no action for.
+        ReadinessIssues(new ReadinessIssueDto
+        {
+            Code = ReadinessCodes.IssuerBankAccountMissing,
+            Severity = EReadinessSeverity.Warning,
+            FixRoute = "/my-company"
+        });
 
         var prompt = await _builder.BuildSystemPromptAsync();
 
-        prompt.ShouldContain("- Setup not finished yet: no invoice numbering series exists");
-        prompt.ShouldNotContain("(issuer) is not set up");
-        prompt.ShouldNotContain("no invoice PDF template exists");
+        prompt.ShouldNotContain("- Setup not finished yet:");
+        prompt.ShouldNotContain(ReadinessCodes.IssuerBankAccountMissing);
     }
 
     [Fact]
-    public async Task BuildSystemPrompt_WithInactiveSetup_StillReportsTheGaps()
+    public async Task BuildSystemPrompt_WithMixedFindings_KeepsOnlyTheBlockingOnes()
     {
-        // A deactivated sequence or template cannot be used for a new document, so from the
-        // assistant's point of view it is missing.
-        await SeedIssuerAsync("Issuer Co", "12345678", taxNumber: null);
-        _context.NumberSequence.Add(new NumberSequence
-        {
-            Name = "Retired sequence",
-            DocumentType = EDocumentType.Invoice,
-            IsActive = false
-        });
-        _context.ContentTemplate.Add(new ContentTemplate
-        {
-            Name = "Retired template",
-            HtmlBody = "<html></html>",
-            TemplateType = EContentTemplateType.InvoicePdf,
-            IsActive = false
-        });
-        await _context.SaveChangesAsync();
+        ReadinessIssues(
+            Blocking(ReadinessCodes.IssuerMissing, "/my-company"),
+            new ReadinessIssueDto
+            {
+                Code = ReadinessCodes.IssuerBankAccountMissing,
+                Severity = EReadinessSeverity.Warning,
+                FixRoute = "/my-company"
+            });
 
         var prompt = await _builder.BuildSystemPromptAsync();
 
-        prompt.ShouldContain(
-            "- Setup not finished yet: no invoice numbering series exists; no invoice PDF template exists");
+        prompt.ShouldContain("- Setup not finished yet: ISSUER_MISSING (fix at /my-company)");
+        prompt.ShouldNotContain(ReadinessCodes.IssuerBankAccountMissing);
     }
 
     [Fact]
-    public async Task BuildSystemPrompt_WithCreditNoteSequenceOnly_StillMissesTheInvoiceSeries()
+    public async Task BuildSystemPrompt_WhenTheReadinessCheckFails_KeepsTheRestOfThePrompt()
     {
-        // Numbering is per document type — a credit note series does not number invoices.
-        _context.NumberSequence.Add(new NumberSequence
-        {
-            Name = "Credit notes",
-            DocumentType = EDocumentType.CreditNote,
-            IsActive = true
-        });
-        await _context.SaveChangesAsync();
+        // Readiness is the only part of the prompt that reads the master database. Losing it
+        // must not cost the company identity and the statistics as well.
+        await SeedIssuerAsync("Issuer Co", "12345678", taxNumber: null);
+        _readiness
+            .GetReportAsync(Arg.Any<long?>(), Arg.Any<CancellationToken>())
+            .Returns<Task<ReadinessReportDto>>(_ => throw new InvalidOperationException("master DB down"));
 
         var prompt = await _builder.BuildSystemPromptAsync();
 
-        prompt.ShouldContain("no invoice numbering series exists");
+        prompt.ShouldContain("- Name: Issuer Co");
+        prompt.ShouldContain(AiSystemPrompt.BusinessContextHeader);
+        prompt.ShouldContain(AiSystemPrompt.SituationalContextHeader);
+        prompt.ShouldNotContain("- Setup not finished yet:");
     }
+
+    /// <summary>One blocking readiness finding — the shape the builder relays.</summary>
+    private static ReadinessIssueDto Blocking(string code, string fixRoute)
+        => new() { Code = code, Severity = EReadinessSeverity.Blocking, FixRoute = fixRoute };
 
     [Fact]
     public async Task BuildSystemPrompt_PlacesTheSituationalBlockLast()

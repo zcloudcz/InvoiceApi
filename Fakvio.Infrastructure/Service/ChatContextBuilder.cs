@@ -1,4 +1,5 @@
 using Fakvio.Application.Service;
+using Fakvio.Contracts.Dto.Readiness;
 using Fakvio.Domain.Enums;
 using Fakvio.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -31,12 +32,14 @@ public class ChatContextBuilder : IChatContextBuilder
     private readonly TenantDbContext _context;
     private readonly IReadOnlyList<IChatTool> _tools;
     private readonly IAiInstructionsService _aiInstructions;
+    private readonly ITenantReadinessService _readiness;
     private readonly ILogger<ChatContextBuilder> _logger;
 
     public ChatContextBuilder(
         TenantDbContext context,
         IEnumerable<IChatTool> tools,
         IAiInstructionsService aiInstructions,
+        ITenantReadinessService readiness,
         ILogger<ChatContextBuilder> logger)
     {
         _context = context;
@@ -45,6 +48,7 @@ public class ChatContextBuilder : IChatContextBuilder
         // so it can never drift from what the assistant can actually do.
         _tools = tools.ToList();
         _aiInstructions = aiInstructions;
+        _readiness = readiness;
         _logger = logger;
     }
 
@@ -118,7 +122,7 @@ public class ChatContextBuilder : IChatContextBuilder
                 today: FormatToday(),
                 currentPage: Sanitize(currentRoute, MaxRouteLength),
                 openEntity: Sanitize(openEntity, MaxOpenEntityLength),
-                setupGaps: await DescribeSetupGapsAsync(hasIssuer: issuer != null, ct));
+                setupGaps: await DescribeSetupGapsAsync(ct));
 
             return AiSystemPrompt.Compose(
                 companyBlock, customPrompt, appendix, businessContext, _tools, situationalContext);
@@ -170,31 +174,35 @@ public class ChatContextBuilder : IChatContextBuilder
     }
 
     /// <summary>
-    /// Lists what still blocks the tenant from issuing an invoice, or null when nothing does.
-    /// The assistant uses it to guide a fresh tenant instead of failing at the last step —
-    /// and to stop offering "create an invoice" before that can possibly work.
+    /// Lists what still blocks the tenant from invoicing, or null when nothing does.
+    /// The assistant uses it to guide a fresh tenant instead of failing at the last step.
     ///
-    /// Two EXISTS queries; they only run for the prompt, so keep it at that.
+    /// The rules are NOT re-implemented here — <see cref="ITenantReadinessService"/> owns them
+    /// (issue #148). Only blocking issues make it into the prompt; warnings would be noise the
+    /// model has no action for. The code plus its fix route is enough for the assistant to send
+    /// the user to the right page; the field-level detail belongs to the UI banner.
     /// </summary>
-    private async Task<string?> DescribeSetupGapsAsync(bool hasIssuer, CancellationToken ct)
+    private async Task<string?> DescribeSetupGapsAsync(CancellationToken ct)
     {
-        var gaps = new List<string>();
+        ReadinessReportDto report;
+        try
+        {
+            report = await _readiness.GetReportAsync(ct: ct);
+        }
+        catch (Exception ex)
+        {
+            // Readiness is the only part of the prompt that touches the master database.
+            // Losing it must not cost the company identity and the statistics as well, so it
+            // is caught here instead of falling through to the degraded fallback prompt.
+            _logger.LogWarning(ex, "Readiness check failed while building the chat context");
+            return null;
+        }
 
-        if (!hasIssuer)
-            gaps.Add("the user's own company (issuer) is not set up");
+        var blocking = report.Issues
+            .Where(i => i.Severity == EReadinessSeverity.Blocking)
+            .Select(i => $"{i.Code} (fix at {i.FixRoute})")
+            .ToList();
 
-        var hasInvoiceSequence = await _context.NumberSequence
-            .AsNoTracking()
-            .AnyAsync(s => s.DocumentType == EDocumentType.Invoice && s.IsActive, ct);
-        if (!hasInvoiceSequence)
-            gaps.Add("no invoice numbering series exists");
-
-        var hasInvoiceTemplate = await _context.ContentTemplate
-            .AsNoTracking()
-            .AnyAsync(t => t.TemplateType == EContentTemplateType.InvoicePdf && t.IsActive, ct);
-        if (!hasInvoiceTemplate)
-            gaps.Add("no invoice PDF template exists");
-
-        return gaps.Count == 0 ? null : string.Join("; ", gaps);
+        return blocking.Count == 0 ? null : string.Join("; ", blocking);
     }
 }

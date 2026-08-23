@@ -626,9 +626,9 @@ AI asistent zná kontext vaší firmy a umí odpovídat na otázky i provádět 
 
 Asistent navíc ví, **kde právě stojíte** — jakou stránku máte otevřenou a jestli je na ní
 konkrétní doklad — a zná dnešní datum. Můžete se tedy ptát „kdy je tahle faktura splatná"
-místo toho, abyste číslo dokladu opisovali. Pokud vaší firmě ještě něco chybí k vystavení
-faktury (vyplněná vlastní firma, číselná řada, PDF šablona), asistent to ví a poradí,
-co doplnit.
+místo toho, abyste číslo dokladu opisovali. Pokud vám ještě něco chybí k vystavení faktury
+(vyplněná vlastní firma, adresa, číselná řada), asistent to ví a nasměruje vás na stránku,
+kde se to doplní.
 
 ### Jak používat
 
