@@ -680,7 +680,7 @@ Implementace: `PaymentMatchingService.cs` (metoda `GetPaymentsForInvoiceAsync`).
 - Implementace: `Fakvio.Infrastructure/AiProviders/` (Anthropic, OpenAI, Gemini, Ollama).
 - API key storage: `CompanySystemSettings.AiApiKeyEncrypted` (per company) přes `CredentialProtector`.
 - SSE streaming přes `ChatController.StreamAsync`.
-- **Chat Tools**: 14 tools registrovaných v DI jako `IChatTool`, orchestrováno přes `IChatToolExecutor`.
+- **Chat Tools**: 19 tools registrovaných v DI jako `IChatTool`, orchestrováno přes `IChatToolExecutor`.
   Registrace v `ServiceCollectionExtensions.cs`; přidání nového toolu = implementace `IChatTool` + řádek v DI.
 
 #### Přidání nového chat toolu (POVINNÝ postup)
@@ -783,7 +783,7 @@ Co dělá `ChatToolExecutor` (`Fakvio.Infrastructure/Service/ChatTools/`) automa
 | Schéma | Do `Parameters` doplní volitelný `confirm` (boolean) — v textových instrukcích i v native JSON Schema. Tool si ho nesmí deklarovat sám. |
 | Volání bez `confirm: true` | `ExecuteAsync` se **vůbec nezavolá**. Spustí se `BuildPreviewAsync` a k výsledku se připojí `ChatToolConfirmation.PreviewSuffix`. |
 | Neparsovatelná hodnota (`"ano"`, `"1"`) | Centrální validace ji odmítne jako ne-boolean; nespustí se ani zápis, ani náhled (fail-closed). |
-| Neúspěšný náhled | Vrátí se jako obyčejná chyba — model není vyzván k `confirm: true`. |
+| Neúspěšný náhled | Vrátí se jako obyčejná chyba (model **není** vyzván k `confirm: true` — jinak by šel rovnou do téže chyby, ale se zápisem), zároveň ale s `RequiresConfirmation = true`: `ExecuteAsync` neběžel. Framing proto říká „tool NEBYL spuštěn, náhled se nepodařilo připravit". Totéž platí, když `BuildPreviewAsync` vyhodí výjimku (#217). |
 | `UiAction` u náhledu | Zahodí se (`UiAction = null`). Jinak by prohlížeč přenavigoval dřív, než uživatel cokoli potvrdil. UI akci vracej až z `ExecuteAsync`. |
 | Odpověď modelu | Všechny čtyři tool cesty (text/native × streaming/non-streaming) skládají druhý průchod přes `ChatService.DescribeToolResult` + `BuildToolResultInstruction`; u náhledu říkají „tool NEBYL spuštěn". Framing tedy nezávisí na textu, který dodá tool. |
 | `confirm` v parametrech | Neodfiltruje se — dojde i do `BuildPreviewAsync`, i do `ExecuteAsync`. Čti parametry přes `TryGetValue` a `confirm` prostě ignoruj. |
@@ -801,6 +801,14 @@ se spolehnout na snímek z náhledu.
 Zdroj pravdy o mechanismu: `Fakvio.Application/Service/IConfirmableChatTool.cs`
 (interface + `ChatToolConfirmation`). Read-only tool zůstává na `IChatTool` —
 potvrzovat čtení je jen otravné.
+
+**Referenční implementace: `DeleteInvoiceTool` / `CompleteInvoiceTool` (#217).** Vzor, který
+kopíruj: (1) jedna privátní `LoadXAsync`, která dohledá záznam **a ověří stavovou podmínku**,
+volaná z `BuildPreviewAsync` i z `ExecuteAsync` — náhled tak nikdy neslíbí něco, co zápis
+odmítne, a zápis se nespoléhá na snímek z náhledu; (2) chybějící záznam nebo špatný stav =
+`Failure` už z náhledu (uživatel se dozví „nejde to" místo aby to potvrzoval); (3) tool
+nenabídne víc, než co uživatel zvládne bez chatu — proto `delete_invoice` maže jen koncepty,
+i když servis umí i poslední vydaný doklad.
 
 #### System prompt — složení a editovatelnost (issue #146)
 
@@ -889,7 +897,7 @@ Sloupec „Klíčové parametry" je jen orientační — závazné je schéma v 
 | `create_client` | `CreateClientTool` | Client | Create | `registration_number` (IČO) — data z ARES |
 | `create_invoice` | `CreateInvoiceTool` | Invoice (vydaná) | Create | `client_name`, `items` (JSON), `currency`, `notes` |
 | `import_invoice` | `ImportInvoiceTool` | Invoice / ReceivedInvoice | Create | vydaná vs přijatá auto-detekce z IČO; `document_number`, `items`, data atd. |
-| `export_invoice` | `ExportInvoiceTool` | Invoice (vydaná) | Read → Download | `document_number`, `client_name` |
+| `export_invoice` | `ExportInvoiceTool` | Invoice (vydaná) | Read → Download | `document_number`, `client_name`, `format` (`pdf` \| `isdoc`) |
 | `navigate` | `NavigateTool` | — | Navigation | `target` (uzavřený výčet **všech tenant-facing stránek**, viz níže), `client_name` |
 | `get_received_invoice` | `GetReceivedInvoiceTool` | ReceivedInvoice | Read (detail) | `id` nebo `document_number`; vrátí položky, DPH, celkové částky, cross-check |
 | `list_received_invoices` | `ListReceivedInvoicesTool` | ReceivedInvoice | Read (paged list) | `status`, `supplier_name`, `issue_date_from/to`, `min/max_amount`, `currency`, `overdue` |
@@ -899,6 +907,11 @@ Sloupec „Klíčové parametry" je jen orientační — závazné je schéma v 
 | `get_dashboard` | `GetDashboardTool` | Invoice / Client (agregace) | Read (souhrn) | bez parametrů; cashflow tento měsíc, počet klientů, neuhrazeno, po splatnosti, top klienti |
 | `list_invoices` | `ListInvoicesTool` | Invoice (vydaná) | Read (paged list) | `status`, `document_type`, `client_name`, `issue_date_from/to`, `overdue` |
 | `get_vat_report` | `GetVatReportTool` | VAT report (agregace) | Read (report) | `date_from`, `date_to` (obojí povinné, období podle DUZP) |
+| `get_invoice` | `GetInvoiceTool` | Invoice (vydaná) | Read (detail) | `id` nebo `document_number`; vrátí položky, DPH, platební údaje |
+| `complete_invoice` | `CompleteInvoiceTool` | Invoice (vydaná) | **Write** (confirm) | `id` nebo `document_number`; jen Draft |
+| `mark_invoice_paid` | `MarkInvoicePaidTool` | Invoice (vydaná) | **Write** (confirm) | `id` nebo `document_number`; jen Completed |
+| `send_invoice_email` | `SendInvoiceEmailTool` | Invoice (vydaná) | **Write** (confirm) | `id` nebo `document_number` + `recipient_email` |
+| `delete_invoice` | `DeleteInvoiceTool` | Invoice (vydaná) | **Destructive** (confirm) | `id` nebo `document_number`; jen Draft (soft delete) |
 
 ##### Reporting tools (#228) — proč tři, ne šest
 
@@ -947,9 +960,9 @@ anonymní nebo SysAdmin-only stránku, (c) každá tenant-facing stránka bez pa
 v routě je nabízená. **Nová stránka v UI tedy shodí testy, dokud ji nedoplníš do
 `Routes`** — nebo ji v tom testu explicitně nevyloučíš s odůvodněním.
 
-##### Paritní tabulka chat ↔ MCP (stav k #212)
+##### Paritní tabulka chat ↔ MCP (stav k #217)
 
-Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 11 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
+Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 19 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
 a **MCP server** (`[McpServerTool]`, 36 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
 cílem story #149 je mezeru zavřít. Tabulka je jediný pravdivý seznam toho, co kde chybí;
 **každý nový tool na kterékoli straně sem přidá řádek** (viz §13).
@@ -967,15 +980,15 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | `GetIssuer` | Read | — | ❌ | #222 |
 | **Vydané faktury** (`InvoiceTools`, 10) |
 | `CreateInvoice` | Create | `create_invoice` | ✅ | |
-| `ExportInvoicePdf` | Read → download | `export_invoice` | ◐ (chat neumí ISDOC) | #217 |
-| `ListInvoices` | Read | — | ❌ | #217 |
-| `GetInvoice` | Read | — | ❌ | #217 |
-| `FindInvoiceByNumber` | Read | — | ❌ | #217 |
-| `CompleteInvoice` | **Write** | — | ❌ | #217 |
-| `MarkInvoicePaid` | **Write** | — | ❌ | #217 |
-| `SendInvoiceEmail` | **Write** (odešle e-mail) | — | ❌ | #217 |
-| `ExportInvoiceIsdoc` | Read → download | — | ❌ | #217 |
-| `DeleteInvoice` | **Destructive** | — | ❌ | #217 |
+| `ExportInvoicePdf` | Read → download | `export_invoice` (`format=pdf`, default) | ✅ | |
+| `ListInvoices` | Read | `list_invoices` | ✅ | |
+| `GetInvoice` | Read | `get_invoice` (`id`) | ✅ | |
+| `FindInvoiceByNumber` | Read | `get_invoice` (`document_number`) | ✅ | |
+| `CompleteInvoice` | **Write** | `complete_invoice` (confirm) | ✅ | |
+| `MarkInvoicePaid` | **Write** | `mark_invoice_paid` (confirm) | ✅ | |
+| `SendInvoiceEmail` | **Write** (odešle e-mail) | `send_invoice_email` (confirm) | ✅ | |
+| `ExportInvoiceIsdoc` | Read → download | `export_invoice` (`format=isdoc`) | ✅ | |
+| `DeleteInvoice` | **Destructive** | `delete_invoice` (confirm, jen Draft) | ✅ | |
 | **Přijaté faktury** (`ReceivedInvoiceTools`, 6) |
 | `GetReceivedInvoice` | Read | `get_received_invoice` | ✅ | |
 | `ListReceivedInvoices` | Read | `list_received_invoices` | ✅ | |
@@ -984,12 +997,12 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | `MarkReceivedInvoicePaid` | **Write** | — | ❌ | #218 |
 | `DeleteReceivedInvoice` | **Destructive** | — | ❌ | #218 |
 | **Reporting** (`ReportingTools`, 6) |
-| `GetDashboard` | Read | — | ❌ | #228 |
-| `GetOverdueInvoices` | Read | — | ❌ | #228 |
-| `GetClientInvoices` | Read | — | ❌ | #228 |
-| `GetInvoicesByDateRange` | Read | — | ❌ | #228 |
-| `GetVatReport` | Read | — | ❌ | #228 |
-| `GetOverdueReceivedInvoices` | Read | — | ❌ | #228 |
+| `GetDashboard` | Read | `get_dashboard` | ✅ | |
+| `GetOverdueInvoices` | Read | `list_invoices` (`overdue=true`) | ✅ | |
+| `GetClientInvoices` | Read | `list_invoices` (`client_name`) | ✅ | |
+| `GetInvoicesByDateRange` | Read | `list_invoices` (`issue_date_from/to`) | ✅ | |
+| `GetVatReport` | Read | `get_vat_report` | ✅ | |
+| `GetOverdueReceivedInvoices` | Read | `list_received_invoices` (`overdue=true`) | ✅ | |
 | **Daně** (`TaxTools`, 5) |
 | `EstimateTax`, `CompareTaxRegimes`, `GetAnnualIncome`, `GetInsuranceAdvance`, `GetTaxConfig` | Read | — | ❌ | zatím bez tasku |
 | **Šablony** (`TemplateTools`, 3) |
@@ -1002,8 +1015,16 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | — | Upload přílohy | `attach_file` | ⬅ | |
 | — | Read | `list_attachments` | ⬅ | |
 
-**Součty:** 36 MCP toolů, 11 chat toolů. Chat pokrývá 7 MCP toolů (z toho 2 částečně),
-4 chat tooly nemají MCP protějšek. Zbývá 29 mezer.
+**Součty:** 36 MCP toolů, 19 chat toolů. Chat pokrývá 21 MCP toolů (z toho 1 částečně —
+`CreateReceivedInvoice`), 4 chat tooly nemají MCP protějšek. Zbývá 15 mezer:
+klienti (4, #222), přijaté faktury (3, #218), daně (5, zatím bez tasku), šablony (3, #225).
+
+**Vydané faktury jsou po #217 pokryté celé.** Jeden rozdíl proti MCP je záměrný:
+`delete_invoice` maže **jen koncepty**, i když servis umí smazat i poslední vydaný doklad
+(#217 — gate není autorizační hranice, viz níže). MCP `DeleteInvoice` slibuje totéž.
+Druhý rozdíl je konsolidace: `get_invoice` zastupuje `GetInvoice` i `FindInvoiceByNumber`
+a `export_invoice` obě exportní metody — model si nemá vybírat mezi tooly, které se liší
+jen vyhledávacím klíčem nebo příponou souboru.
 
 Mimo obě rozhraní (jen UI / SysAdmin, plánováno v #220 / #224 / #227):
 nastavení firmy a bankovní účty, číselné řady a sazby DPH, upomínky (dunning),

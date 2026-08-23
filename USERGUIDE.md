@@ -647,12 +647,33 @@ AI asistent zná kontext vaší firmy a umí odpovídat na otázky i provádět 
 
 | Oblast | Co umí |
 |--------|--------|
-| Faktury | Vyhledat fakturu, zobrazit detail, vypsat seznam faktur podle kritérií |
+| Faktury | Vyhledat fakturu, zobrazit detail, vypsat seznam faktur podle kritérií, stáhnout PDF nebo ISDOC |
+| Faktury — změny | Vystavit koncept, označit vydanou fakturu jako zaplacenou, odeslat ji e-mailem, smazat koncept. **Každou takovou změnu si nejdřív necháte odsouhlasit** — viz níže |
 | Klienti | Vyhledat klienta, zobrazit detail |
 | Přijaté faktury | Vyhledat, vypsat seznam |
 | Přehledy a reporty | Shrnout dashboard, vypsat faktury po splatnosti, faktury za období nebo pro konkrétního klienta, spočítat DPH za období |
 | Obecné dotazy | Odpovídat na otázky o funkcích aplikace |
 | Navigace | Otevřít libovolnou stránku aplikace — faktury, přijaté faktury, klienty, platby, šablony, DPH a daně, upomínky i nastavení („Otevři DPH přiznání", „Založ novou fakturu pro klienta XYZ"). Stránky správce systému a přihlašovací obrazovky asistent neotevírá. |
+
+### Než asistent něco změní, zeptá se
+
+Dotazy asistent zodpoví rovnou. Ale všechno, co **mění data** — vystavení konceptu, označení
+faktury jako zaplacené, odeslání e-mailu, smazání konceptu — proběhne na dvě fáze:
+
+1. Napíšete, co chcete („Vystav koncept FAK-2026-001").
+2. Asistent **nic neudělá** a napíše, co by se stalo („Vystavím fakturu FAK-2026-001 pro
+   Alza.cz, 12 100,00 Kč: stav Koncept → Vystaveno…").
+3. Teprve když odpovíte, že souhlasíte, akci provede a potvrdí výsledek.
+
+Když akce provést nejde, dozvíte se to už v tom druhém kroku — například „faktura je už
+zaplacená, vystavit lze jen koncept". Potvrzovat tedy nemusíte nic, co by stejně selhalo.
+
+Dvě omezení, která jsou v aplikaci schválně:
+
+- **Smazat umí asistent jen koncept** (a jde o smazání do koše — koncept obnovíte na stránce
+  Faktury). Vydaný doklad má číslo z číselné řady, ten smažete jen ručně v přehledu faktur.
+- **U odeslání e-mailem musíte říct adresu příjemce.** Asistent ji sám neuhodne, a v náhledu
+  ji uvidíte dřív, než e-mail odejde.
 
 Asistent navíc ví, **kde právě stojíte** — jakou stránku máte otevřenou a jestli je na ní
 konkrétní doklad — a zná dnešní datum. Můžete se tedy ptát „kdy je tahle faktura splatná"
@@ -694,6 +715,10 @@ jinak, než jste zvyklí, je pravděpodobně upravené systémové nastavení �
 - „Jaký je celkový obrat za Q1 2026?"
 - „Najdi fakturu číslo FAK-2026-001"
 - „Kolik mám nesplacených faktur?"
+- „Vystav koncept faktury FAK-2026-014"
+- „Označ fakturu FAK-2026-003 jako zaplacenou"
+- „Pošli fakturu FAK-2026-003 na ucetni@alza.cz"
+- „Stáhni fakturu FAK-2026-003 jako ISDOC"
 
 ### Když se odpověď nepodaří vygenerovat
 

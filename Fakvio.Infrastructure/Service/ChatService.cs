@@ -308,7 +308,7 @@ public class ChatService : IChatService
                 // Accumulate tool results so AI has full context. Same wording as every other
                 // tool flow — a preview is announced as "was NOT executed" here as well.
                 toolResultsLog.AppendLine(DescribeToolResult(nativeToolCall.ToolName, toolResult));
-                lastResultNeedsConfirmation = toolResult.RequiresConfirmation;
+                lastResultNeedsConfirmation = AwaitsConfirmation(toolResult);
 
                 // If the tool SUCCEEDED → stop the loop. Don't let AI call more tools
                 // because it tends to re-call the same tool and create duplicates.
@@ -543,18 +543,34 @@ public class ChatService : IChatService
     /// </summary>
     private static string BuildToolResultPrompt(string systemPrompt, string toolName, ChatToolResult result)
         => systemPrompt + "\n\n" + DescribeToolResult(toolName, result)
-           + "\n\n" + BuildToolResultInstruction(result.RequiresConfirmation);
+           + "\n\n" + BuildToolResultInstruction(AwaitsConfirmation(result));
 
     /// <summary>
     /// Renders one tool result for the second-pass prompt. The native streaming flow accumulates
     /// several of these into one log, the other flows use exactly one — either way the sentence
     /// that says whether the tool actually ran comes from here, never from the tool's own text.
+    ///
+    /// Three outcomes, because "did it run" and "did it work" are different questions (#217):
+    /// a preview that could not even be built also changed nothing, so it must not be announced
+    /// as an executed tool that happened to fail.
     /// </summary>
     private static string DescribeToolResult(string toolName, ChatToolResult result)
-        => result.RequiresConfirmation
-            ? $"Tool '{toolName}' was NOT executed — nothing has been changed. " +
-              $"It returned a preview of the change:\n{result.OutputText}"
-            : $"Tool '{toolName}' was executed. Result:\n{result.OutputText}";
+        => (result.RequiresConfirmation, result.IsSuccess) switch
+        {
+            (true, true) => $"Tool '{toolName}' was NOT executed — nothing has been changed. " +
+                            $"It returned a preview of the change:\n{result.OutputText}",
+            (true, false) => $"Tool '{toolName}' was NOT executed — nothing has been changed. " +
+                             $"The preview of the change could not be prepared:\n{result.OutputText}",
+            _ => $"Tool '{toolName}' was executed. Result:\n{result.OutputText}"
+        };
+
+    /// <summary>
+    /// True only when there is something the user can actually approve: the tool was held back
+    /// by the confirm gate AND its preview succeeded. A preview that failed is held back too,
+    /// but asking the user to confirm an error would send the model in a circle.
+    /// </summary>
+    private static bool AwaitsConfirmation(ChatToolResult result)
+        => result.RequiresConfirmation && result.IsSuccess;
 
     /// <summary>
     /// Closing instruction of the second-pass prompt — the last thing the model reads, so it has

@@ -42,8 +42,15 @@ public record ChatToolResult
     public ChatUiAction? UiAction { get; init; }
 
     /// <summary>
-    /// True when this is a PREVIEW of a confirmable tool (see <see cref="IConfirmableChatTool"/>):
-    /// the tool did NOT run and nothing was written. Set centrally by the executor, never by a tool.
+    /// True when the confirm gate stopped a confirmable tool (see <see cref="IConfirmableChatTool"/>):
+    /// <see cref="IChatTool.ExecuteAsync"/> did NOT run and nothing was written. Set centrally by
+    /// the executor, never by a tool.
+    ///
+    /// It says nothing about whether the preview itself succeeded — combine it with
+    /// <see cref="IsSuccess"/>:
+    ///   true  + success → a preview is on offer, the user can approve it,
+    ///   true  + failure → the preview could not even be prepared (record not found, tool threw),
+    ///   false           → the tool really ran, successfully or not.
     ///
     /// ChatService uses it so the follow-up prompt cannot tell the model the tool "was executed" —
     /// which would make the assistant report a change that never happened.

@@ -875,11 +875,15 @@ public class ChatToolExecutorTests
             Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>());
     }
 
+    /// <summary>
+    /// A failed preview is a failure the model must not be invited to retry with confirm=true
+    /// (that would walk straight into the same error, but writing this time) — and at the same
+    /// time it is NOT an execution: <c>ExecuteAsync</c> never ran, so RequiresConfirmation stays
+    /// true and ChatService says "was NOT executed" (issue #217).
+    /// </summary>
     [Fact]
-    public async Task ExecuteToolAsync_KeepsFailedPreviewAsPlainFailure()
+    public async Task ExecuteToolAsync_KeepsFailedPreviewAsAFailure_ButStillMarksItAsNotExecuted()
     {
-        // Nothing to confirm when the preview itself failed — inviting the model to retry
-        // with confirm=true would send it straight into the same error, but writing this time.
         var tool = CreateConfirmableTool();
         tool.BuildPreviewAsync(Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>())
             .Returns(ChatToolResult.Failure("Setting 'value' not found."));
@@ -888,19 +892,40 @@ public class ChatToolExecutorTests
         var result = await executor.ExecuteToolAsync(ConfirmableCall(confirm: null));
 
         result.IsSuccess.ShouldBeFalse();
-        result.RequiresConfirmation.ShouldBeFalse();
+        result.RequiresConfirmation.ShouldBeTrue();
         result.OutputText.ShouldNotContain("NOTHING HAS BEEN CHANGED YET");
+        await tool.DidNotReceive().ExecuteAsync(
+            Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
     public async Task ExecuteToolAsync_ReturnsFailure_WhenPreviewThrows()
     {
+        // Same reasoning as above: a preview that blew up wrote nothing either, so the failure
+        // must carry "not executed" — the catch block cannot report it as a completed call.
         var tool = CreateConfirmableTool();
         tool.BuildPreviewAsync(Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>())
             .Returns<Task<ChatToolResult>>(_ => throw new InvalidOperationException("DB down"));
         var executor = CreateExecutor(tool);
 
         var result = await executor.ExecuteToolAsync(ConfirmableCall(confirm: null));
+
+        result.IsSuccess.ShouldBeFalse();
+        result.RequiresConfirmation.ShouldBeTrue();
+        result.ErrorMessage.ShouldContain("DB down");
+    }
+
+    [Fact]
+    public async Task ExecuteToolAsync_ThrowingWriteStaysAnExecution()
+    {
+        // The mirror image of the test above: an approved call that threw DID run, so it must
+        // not be dressed up as "nothing happened" — the write may well have been partially done.
+        var tool = CreateConfirmableTool();
+        tool.ExecuteAsync(Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>())
+            .Returns<Task<ChatToolResult>>(_ => throw new InvalidOperationException("DB down"));
+        var executor = CreateExecutor(tool);
+
+        var result = await executor.ExecuteToolAsync(ConfirmableCall(confirm: "true"));
 
         result.IsSuccess.ShouldBeFalse();
         result.RequiresConfirmation.ShouldBeFalse();

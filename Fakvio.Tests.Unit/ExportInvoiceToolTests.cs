@@ -320,4 +320,60 @@ public class ExportInvoiceToolTests
         await _clientService.DidNotReceive()
             .GetAllClientsAsync(Arg.Any<bool>(), Arg.Any<CancellationToken>());
     }
+
+    // ─── Export format (issue #217 — MCP parity with ExportInvoiceIsdoc) ──
+
+    /// <summary>
+    /// The format decides three things at once — endpoint, file extension and MIME type — so
+    /// they are asserted together: an .isdoc downloaded from the PDF endpoint is a corrupt file
+    /// with a plausible name.
+    /// </summary>
+    [Theory]
+    [InlineData("isdoc", "/api/invoice/42/isdoc", "Invoice_FV-2024-0001.isdoc", "application/xml")]
+    [InlineData("pdf", "/api/invoice/42/pdf", "Invoice_FV-2024-0001.pdf", "application/pdf")]
+    public async Task ExportFormat_ChoosesTheEndpointFileNameAndMimeType(
+        string format, string expectedUrl, string expectedFileName, string expectedMimeType)
+    {
+        _invoiceService.GetInvoiceByDocumentNumberAsync("FV-2024-0001", Arg.Any<CancellationToken>())
+            .Returns(new InvoiceDto
+            {
+                Id = 42,
+                DocumentNumber = "FV-2024-0001",
+                DocumentType = EDocumentType.Invoice,
+                ClientName = "Test s.r.o."
+            });
+
+        var result = await _tool.ExecuteAsync(new Dictionary<string, string>
+        {
+            ["document_number"] = "FV-2024-0001",
+            ["format"] = format
+        });
+
+        result.IsSuccess.ShouldBeTrue();
+        result.UiAction.ShouldNotBeNull();
+        result.UiAction.Url.ShouldBe(expectedUrl);
+        result.UiAction.Parameters!["fileName"].ShouldBe(expectedFileName);
+        result.UiAction.Parameters["mimeType"].ShouldBe(expectedMimeType);
+    }
+
+    [Fact]
+    public async Task ExportFormat_DefaultsToPdf_WhenTheModelSendsNone()
+    {
+        _invoiceService.GetInvoiceByDocumentNumberAsync("FV-2024-0001", Arg.Any<CancellationToken>())
+            .Returns(new InvoiceDto
+            {
+                Id = 42,
+                DocumentNumber = "FV-2024-0001",
+                DocumentType = EDocumentType.Invoice,
+                ClientName = "Test s.r.o."
+            });
+
+        var result = await _tool.ExecuteAsync(new Dictionary<string, string>
+        {
+            ["document_number"] = "FV-2024-0001"
+        });
+
+        result.UiAction!.Url.ShouldBe("/api/invoice/42/pdf");
+        result.OutputText.ShouldContain("as PDF");
+    }
 }

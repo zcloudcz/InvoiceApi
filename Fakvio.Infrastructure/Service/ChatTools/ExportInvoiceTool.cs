@@ -6,15 +6,15 @@ using Microsoft.Extensions.Logging;
 namespace Fakvio.Infrastructure.Service.ChatTools;
 
 /// <summary>
-/// Chat tool that exports (downloads) an invoice or credit note as a PDF file.
+/// Chat tool that exports (downloads) an invoice or credit note as a PDF or ISDOC file.
 /// When a user says "Export invoice FV-2024-0001" or "Download PDF for client ABC",
 /// this tool:
 /// 1. Finds the invoice by document number or by client name (most recent)
-/// 2. Returns a ChatUiAction of type "download" with the PDF endpoint URL
-/// 3. The Blazor client fetches the PDF bytes and triggers a browser download via JS interop
+/// 2. Returns a ChatUiAction of type "download" with the export endpoint URL
+/// 3. The Blazor client fetches the bytes and triggers a browser download via JS interop
 ///
-/// Junior note: This tool does NOT generate the PDF itself — it only resolves the invoice
-/// and returns the API endpoint URL. The actual PDF generation happens when the Blazor
+/// Junior note: This tool does NOT generate the file itself — it only resolves the invoice
+/// and returns the API endpoint URL. The actual PDF / ISDOC generation happens when the Blazor
 /// client calls that endpoint. This keeps the tool lightweight and fast.
 /// </summary>
 public class ExportInvoiceTool : IChatTool
@@ -36,12 +36,17 @@ public class ExportInvoiceTool : IChatTool
     public string ToolName => "export_invoice";
 
     public string Description =>
-        "Export/download an invoice or credit note as a PDF file. " +
+        "Export/download an invoice or credit note as a PDF or ISDOC file (ISDOC is the Czech " +
+        "electronic invoice standard imported by Pohoda, Money S3 and Helios). " +
         "Finds the document by number, by client name (most recent), or exports the most recent invoice if no parameters given.";
+
+    /// <summary>Export formats, spelled the way the model must send them.</summary>
+    private const string PdfFormat = "pdf";
+    private const string IsdocFormat = "isdoc";
 
     /// <summary>
     /// Parameter schema — static because it never changes per instance.
-    /// Both parameters are optional on purpose: with neither, the most recent invoice is exported.
+    /// All parameters are optional on purpose: with none, the most recent invoice is exported as PDF.
     /// </summary>
     private static readonly ChatToolParameter[] Schema =
     [
@@ -56,6 +61,13 @@ public class ExportInvoiceTool : IChatTool
             Name = "client_name",
             Type = ChatToolParameterType.String,
             Description = "Client name — exports the most recent invoice for this client"
+        },
+        new()
+        {
+            Name = "format",
+            Type = ChatToolParameterType.String,
+            Description = "File format to download (default pdf). Use isdoc for import into accounting software.",
+            AllowedValues = [PdfFormat, IsdocFormat]
         }
     ];
 
@@ -72,31 +84,38 @@ public class ExportInvoiceTool : IChatTool
         parameters.TryGetValue("document_number", out var documentNumber);
         parameters.TryGetValue("client_name", out var clientName);
 
+        // The executor validated the value against AllowedValues but dispatches it raw, so it
+        // is trimmed and lower-cased here; anything absent means the usual PDF (#268).
+        var format = parameters.TryGetValue("format", out var rawFormat)
+                     && rawFormat.Trim().Equals(IsdocFormat, StringComparison.OrdinalIgnoreCase)
+            ? IsdocFormat
+            : PdfFormat;
+
         _logger.LogInformation(
-            "ExportInvoiceTool: document_number={DocNum}, client_name={Client}",
-            documentNumber, clientName);
+            "ExportInvoiceTool: document_number={DocNum}, client_name={Client}, format={Format}",
+            documentNumber, clientName, format);
 
         // --- Path 1: Find by document number ---
         if (!string.IsNullOrWhiteSpace(documentNumber))
         {
-            return await ExportByDocumentNumberAsync(documentNumber.Trim(), ct);
+            return await ExportByDocumentNumberAsync(documentNumber.Trim(), format, ct);
         }
 
         // --- Path 2: Find by client name (most recent invoice) ---
         if (!string.IsNullOrWhiteSpace(clientName))
         {
-            return await ExportByClientNameAsync(clientName.Trim(), ct);
+            return await ExportByClientNameAsync(clientName.Trim(), format, ct);
         }
 
         // --- Path 3: No parameters — export the most recent invoice ---
-        return await ExportMostRecentAsync(ct);
+        return await ExportMostRecentAsync(format, ct);
     }
 
     /// <summary>
     /// Finds an invoice by its document number and returns a download action.
     /// </summary>
     private async Task<ChatToolResult> ExportByDocumentNumberAsync(
-        string documentNumber, CancellationToken ct)
+        string documentNumber, string format, CancellationToken ct)
     {
         var invoice = await _invoiceService.GetInvoiceByDocumentNumberAsync(documentNumber, ct);
         if (invoice == null)
@@ -106,13 +125,13 @@ public class ExportInvoiceTool : IChatTool
         }
 
         return BuildDownloadResult(invoice.Id, invoice.DocumentNumber ?? documentNumber,
-            invoice.DocumentType, invoice.ClientName ?? "");
+            invoice.DocumentType, invoice.ClientName ?? "", format);
     }
 
     /// <summary>
     /// Exports the most recent invoice in the system (no filter).
     /// </summary>
-    private async Task<ChatToolResult> ExportMostRecentAsync(CancellationToken ct)
+    private async Task<ChatToolResult> ExportMostRecentAsync(string format, CancellationToken ct)
     {
         var invoices = await _invoiceService.GetAllInvoicesAsync(null, null, null, null, ct);
         var latest = invoices
@@ -127,7 +146,8 @@ public class ExportInvoiceTool : IChatTool
         return BuildDownloadResult(latest.Id,
             latest.DocumentNumber ?? latest.Id.ToString(),
             latest.DocumentType,
-            latest.ClientName ?? "");
+            latest.ClientName ?? "",
+            format);
     }
 
     /// <summary>
@@ -135,7 +155,7 @@ public class ExportInvoiceTool : IChatTool
     /// Searches clients by name (case-insensitive substring match), then gets their latest invoice.
     /// </summary>
     private async Task<ChatToolResult> ExportByClientNameAsync(
-        string clientName, CancellationToken ct)
+        string clientName, string format, CancellationToken ct)
     {
         // Search for clients matching the name
         var clients = await _clientService.GetAllClientsAsync(false, ct);
@@ -175,30 +195,38 @@ public class ExportInvoiceTool : IChatTool
         return BuildDownloadResult(latestInvoice.Id,
             latestInvoice.DocumentNumber ?? latestInvoice.Id.ToString(),
             latestInvoice.DocumentType,
-            latestInvoice.ClientName ?? clientName);
+            latestInvoice.ClientName ?? clientName,
+            format);
     }
 
     /// <summary>
-    /// Builds a ChatToolResult with a download action pointing to the invoice PDF endpoint.
-    /// Uses localized-friendly file naming (Invoice/CreditNote prefix).
+    /// Builds a ChatToolResult with a download action pointing to the export endpoint of the
+    /// requested format. Uses localized-friendly file naming (Invoice/CreditNote prefix).
+    ///
+    /// Both endpoints share the same shape (<c>/api/invoice/{id}/{format}</c>) and the file
+    /// extension equals the format, so one line covers PDF and ISDOC.
     /// </summary>
     private static ChatToolResult BuildDownloadResult(
-        long invoiceId, string documentNumber, EDocumentType documentType, string clientName)
+        long invoiceId, string documentNumber, EDocumentType documentType, string clientName, string format)
     {
-        // Build the API endpoint URL for PDF download
-        var pdfUrl = $"/api/invoice/{invoiceId}/pdf";
+        // Build the API endpoint URL for the download
+        var downloadUrl = $"/api/invoice/{invoiceId}/{format}";
 
         // Build a descriptive file name
         var typePrefix = documentType == EDocumentType.CreditNote ? "CreditNote" : "Invoice";
-        var fileName = $"{typePrefix}_{documentNumber}.pdf";
+        var fileName = $"{typePrefix}_{documentNumber}.{format}";
 
         var description = documentType == EDocumentType.CreditNote ? "credit note" : "invoice";
         var outputText = $"Exporting {description} {documentNumber}" +
                          (string.IsNullOrEmpty(clientName) ? "" : $" for {clientName}") +
-                         " as PDF.";
+                         $" as {format.ToUpperInvariant()}.";
+
+        // The MIME type must match the format — the client hands it to the browser, and an
+        // .isdoc announced as application/pdf is a PDF reader waiting to fail on XML.
+        var mimeType = format == IsdocFormat ? "application/xml" : "application/pdf";
 
         return ChatToolResult.SuccessWithAction(
             outputText,
-            ChatUiAction.Download(pdfUrl, fileName));
+            ChatUiAction.Download(downloadUrl, fileName, mimeType));
     }
 }

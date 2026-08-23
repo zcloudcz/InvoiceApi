@@ -720,19 +720,16 @@ public class ChatServiceTests : IDisposable
     }
 
     /// <summary>
-    /// KNOWN GAP, characterised on purpose — assigned to issue #217, not fixed here.
+    /// The gap this test characterised is CLOSED (issue #217): the expectation was updated,
+    /// the test kept.
     ///
-    /// When <c>BuildPreviewAsync</c> itself fails, the executor returns that failure unchanged,
-    /// so <c>RequiresConfirmation</c> stays false and the prompt announces the tool "was
-    /// executed" — about something that never ran. Harmless today (the payload is the error
-    /// text, and no production tool is confirmable yet), but #217 must add the third branch
-    /// "the preview could not be prepared".
-    ///
-    /// When it does, this test goes red. That is the point: update the expectation, do not
-    /// delete the test.
+    /// When <c>BuildPreviewAsync</c> itself fails, nothing ran — no preview, no write. The
+    /// prompt used to announce the tool "was executed" about it; now it says the tool was NOT
+    /// executed and that the preview could not be prepared, while still NOT inviting the model
+    /// to retry with confirm=true (there is nothing to approve).
     /// </summary>
     [Fact]
-    public async Task SendMessage_ThroughTheRealExecutor_StillSaysExecuted_WhenThePreviewFailed()
+    public async Task SendMessage_ThroughTheRealExecutor_SaysNotExecuted_WhenThePreviewFailed()
     {
         var tool = CreateConfirmableTool();
         tool.BuildPreviewAsync(Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>())
@@ -752,8 +749,11 @@ public class ChatServiceTests : IDisposable
         await _mockProvider.Received(1).GetCompletionAsync(
             Arg.Any<List<ChatMessageDto>>(),
             Arg.Is<string?>(prompt => prompt != null
-                                      && prompt.Contains($"Tool '{ConfirmableToolName}' was executed")
+                                      && prompt.Contains($"Tool '{ConfirmableToolName}' was NOT executed")
+                                      && prompt.Contains("preview of the change could not be prepared")
                                       && prompt.Contains("Error: Numbering sequence not found.")
+                                      // Nothing to approve — the closing instruction must not ask for it.
+                                      && !prompt.Contains("ask them to confirm")
                                       && !prompt.Contains("NOTHING HAS BEEN CHANGED YET")),
             Arg.Any<CancellationToken>());
     }

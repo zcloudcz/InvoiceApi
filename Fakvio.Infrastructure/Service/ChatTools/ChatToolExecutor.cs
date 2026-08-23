@@ -388,23 +388,34 @@ public class ChatToolExecutor : IChatToolExecutor
             tool.ToolName,
             string.Join(", ", toolCall.Parameters.Select(kv => $"{kv.Key}={kv.Value}")));
 
+        // ── Confirm gate ──────────────────────────────────────────────────
+        // A data-changing tool runs ONLY with the user's explicit approval. Without it the
+        // tool's ExecuteAsync is never reached — the user sees a preview instead. Central on
+        // purpose: a per-tool check is one forgotten `if` away from a silent overwrite.
+        //
+        // The decision is taken before the try block so the catch below also knows which path
+        // it is reporting on: an exception out of BuildPreviewAsync means the tool did not run
+        // either, and saying "was executed" about it would be just as untrue as for a preview
+        // that returned a failure.
+        var confirmable = tool as IConfirmableChatTool;
+        var awaitingConfirmation = confirmable is not null
+                                   && !ChatToolConfirmation.IsConfirmed(toolCall.Parameters);
+
         try
         {
-            // ── Confirm gate ──────────────────────────────────────────────
-            // A data-changing tool runs ONLY with the user's explicit approval. Without it the
-            // tool's ExecuteAsync is never reached — the user sees a preview instead. Central on
-            // purpose: a per-tool check is one forgotten `if` away from a silent overwrite.
-            if (tool is IConfirmableChatTool confirmable &&
-                !ChatToolConfirmation.IsConfirmed(toolCall.Parameters))
+            if (awaitingConfirmation)
             {
                 _logger.LogInformation(
                     "Tool {ToolName} requires confirmation — returning preview, nothing was written",
                     tool.ToolName);
 
-                var preview = await confirmable.BuildPreviewAsync(toolCall.Parameters, ct);
+                var preview = await confirmable!.BuildPreviewAsync(toolCall.Parameters, ct);
 
-                // A preview that failed (record not found, …) stays a plain failure — there is
-                // nothing to confirm, so the model must not be invited to retry with confirm=true.
+                // Both outcomes carry RequiresConfirmation = true, because both mean the same
+                // fact: ExecuteAsync did not run. Only the successful one is offered for
+                // approval — a failed preview (record not found, …) stays a plain failure, so
+                // the model is not invited to retry with confirm=true straight into the same
+                // error, but writing this time.
                 //
                 // UiAction is dropped on purpose: ChatService forwards it to the browser as soon
                 // as the tool returns, so a preview that carried one would navigate the user
@@ -416,7 +427,7 @@ public class ChatToolExecutor : IChatToolExecutor
                         UiAction = null,
                         OutputText = preview.OutputText + ChatToolConfirmation.PreviewSuffix
                     }
-                    : preview;
+                    : preview with { RequiresConfirmation = true, UiAction = null };
             }
 
             var result = await tool.ExecuteAsync(toolCall.Parameters, ct);
@@ -430,7 +441,8 @@ public class ChatToolExecutor : IChatToolExecutor
         {
             // Catch any unhandled exception from the tool to prevent the chat from crashing.
             _logger.LogError(ex, "Tool {ToolName} threw an unhandled exception", tool.ToolName);
-            return ChatToolResult.Failure($"Tool execution failed: {ex.Message}");
+            return ChatToolResult.Failure($"Tool execution failed: {ex.Message}")
+                with { RequiresConfirmation = awaitingConfirmation };
         }
     }
 
