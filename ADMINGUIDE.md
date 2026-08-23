@@ -239,6 +239,38 @@ Záložní SMTP nastavení pro firmy bez vlastního SMTP. Viz §3 — SMTP prior
 
 **Upozornění:** Klíče JWT (`JwtSettings:Secret`) jsou pouze v `appsettings.json` nebo env proměnných — nelze je nastavit přes UI z bezpečnostních důvodů.
 
+### Databáze — připojení a autentizace
+
+Kde aplikace hledá databázi a **jak se k ní přihlašuje**. Přes UI nastavit nelze — jde
+o konfiguraci, kterou proces čte při startu. V Azure to jsou App Settings, jinde env
+proměnné nebo `appsettings.json`. Azure/env zápis používá dvojité podtržítko
+(`Database__AuthMode`), v `appsettings.json` je to dvojtečka (`Database:AuthMode`).
+
+| Klíč | Výchozí | Popis |
+|------|---------|-------|
+| `ConnectionStrings__DefaultConnection` | — | PostgreSQL connection string. **Povinný** (bez něj proces nenaběhne). |
+| `Database__ConnectionString` | — | Alternativa k předchozímu. Má **přednost**, pokud je vyplněná. |
+| `Database__AuthMode` | `Password` | `Password` = heslo z connection stringu (vlastní PostgreSQL). `AzureEntraId` = token z Entra ID přes managed identity (Azure Database for PostgreSQL). Nerozlišují se velká/malá písmena. |
+| `UseAzureAdAuthentication` | — | **Legacy** bool z doby před `Database__AuthMode`. `true` = `AzureEntraId`, `false` = `Password`. V žádném souboru v repu už není; může přijít jen z App Settings / env. Použije se, jen když `Database__AuthMode` chybí. |
+| `Database__EntraIdTokenScope` | `https://ossrdbms-aad.database.windows.net/.default` | OAuth scope pro token. Měnit jen v suverénních cloudech (Azure Government, Azure China). |
+| `Database__TokenRefreshMinutes` | `55` | Jak často se obnovuje Entra ID token (platnost je 60 min). |
+| `Database__TokenFailureRetrySeconds` | `10` | Prodleva před dalším pokusem po neúspěšném získání tokenu. |
+| `Database__MaxRetryCount` / `Database__MaxRetryDelaySeconds` | `3` / `5` | Automatické opakování při přechodných chybách PostgreSQL. |
+| `Database__SchemaDataSourceMaxPoolSize` | `4` | Strop poolu pro pomocná spojení do tenant schémat (provisioning, migrace). Drží celkový počet spojení pod kontrolou tam, kde `max_connections` je defaultních 100. |
+| `Database__AllowPasswordlessConnectionString` | `false` | Povolí connection string bez hesla v režimu `Password` (peer auth, `.pgpass`, unixový socket). Jinak to aplikace považuje za překlep a při startu spadne. |
+
+**Precedence režimu:** `Database__AuthMode` → `UseAzureAdAuthentication` → `Password`.
+Jsou-li nastavené oba klíče a **neshodují se**, aplikace při startu spadne s hláškou, která
+jmenuje oba — to je záměr, aby postupné vyřazení legacy klíče bylo ověřitelné.
+
+**Kontrola připojení:** `GET /api/diagnostic/health` (jen SysAdmin) vrací `authMode`
+a `authModeSource` — tedy co proces **skutečně** vyhodnotil, a který klíč vyhrál. Postup
+přepnutí režimu i podoba startovního logu (pro případ, že je databáze nedostupná) jsou v §13.
+
+**Nezaměňovat s přesunem dat:** změna těchto klíčů jen přepne způsob přihlášení. Celý přesun
+databáze na vlastní server (dump, restore, Data Protection key ring, ověření) má vlastní
+runbook — [`SELFHOST-DB.md`](SELFHOST-DB.md).
+
 ---
 
 ## 5. AI poskytovatelé
@@ -720,7 +752,7 @@ info: Fakvio.Infrastructure.Database[0]
       Startup: database auth mode Password (source: Database:AuthMode)
 ```
 
-**Přepnutí režimu autentizace k DB** (Azure App Settings):
+**Přepnutí režimu autentizace k DB** (Azure App Settings; kompletní seznam klíčů viz §4):
 
 1. Přidejte `Database__AuthMode` = `AzureEntraId` nebo `Password`. Starý klíč
    `UseAzureAdAuthentication` může chvíli zůstat, ale **musí souhlasit** — při rozporu

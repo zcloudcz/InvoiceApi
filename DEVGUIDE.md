@@ -395,13 +395,13 @@ context.InstanceServices       ← Functions Worker scope (kde žije Function cl
 
 ### 3.5 Provisioning nového tenanta
 
-`Fakvio.Infrastructure/Service/TenantProvisioningService.cs:51-165` `ProvisionTenantAsync`:
+`Fakvio.Infrastructure/Service/TenantProvisioningService.cs:62-192` `ProvisionTenantAsync`:
 
 1. Načti `CompanySystemSettings` z master DB (musí už existovat).
 2. Načti issuer Company z master DB.
-3. **`CREATE SCHEMA tenant_{companyId}`** (řádek 101).
-4. **Apply EF migrations** na nové schéma (řádek 108) — `Database.MigrateAsync()` s `Schema` setnutým.
-5. **Copy code tables** z master → tenant: VatRate, Currency, NumberSequenceFormat, ContentTemplate (řádek 114).
+3. **`CREATE SCHEMA tenant_{companyId}`** — `CreateSchemaAsync`.
+4. **Apply EF migrations** na nové schéma — `Database.MigrateAsync()` nad kontextem z `CreateTenantContext`.
+5. **Copy code tables** z master → tenant: VatRate, Currency, NumberSequenceFormat, ContentTemplate — `CopyCodeTablesAsync`.
 6. Create issuer record v tenant schématu.
 7. Create default NumberSequence pro **všechny 4 typy**: Invoice (`INV`), CreditNote (`CN`), Proforma (`PF-`), TaxReceiptForAdvance (`DPP-`) — viz `CreateDefaultNumberSequencesAsync` (#26).
 8. Mark `IsProvisioned=true, IsActive=true, ProvisionedAt=UtcNow` v master DB.
@@ -420,7 +420,36 @@ běh nechává `IsProvisioned=false`. Opravu schématu **už provisionovaného**
 `MigrateTenantAsync`, ne opakovaný provisioning. Regresní test proti reálné DB:
 `Fakvio.Tests.Integration/TenantReprovisioningDatabaseTests.cs`.
 
-**Schema permissions**: `EnsureSchemaPermissionsAsync()` (řádek 337-344) — `GRANT ALL ON ALL TABLES IN SCHEMA` + `ALTER DEFAULT PRIVILEGES`. Použij `NpgsqlDataSource`, ne raw connection string — funguje s Azure AD/Managed Identity tokens automaticky.
+**Schema permissions**: `EnsureSchemaPermissionsAsync()` (`TenantProvisioningService.cs:371`) — `GRANT ALL ON ALL TABLES IN SCHEMA` + `ALTER DEFAULT PRIVILEGES`. Použij `NpgsqlDataSource`, ne raw connection string — funguje s Azure AD/Managed Identity tokens automaticky.
+
+#### `INpgsqlDataSourceFactory` — kdo vlastní data sources
+
+`Fakvio.Infrastructure/Data/NpgsqlDataSourceFactory.cs`. Jediné místo, kde v aplikaci vzniká
+`NpgsqlDataSource`, a jediné místo, kde se rozhoduje mezi heslem a Entra ID tokenem
+(`BuildDataSource`, §9.5). Provisioning a MigrationTool si ho berou přes DI.
+
+| Člen | K čemu |
+|------|--------|
+| `Root` | Sdílený data source pro request path (`MasterDbContext`, `TenantDbContext`, `AdvisoryLock`, IMAP poll, log flush…). Staví se **eagerly v konstruktoru**, aby špatný connection string spadl při startu, ne na prvním requestu. |
+| `GetForSchema(schema, includePublicInSearchPath = true)` | Data source se `search_path` na tenant schéma — jen pro provisioning a migrace. Cachovaný per `(schéma, flag)`, opakované volání vrací **tutéž** instanci. |
+| `Evict(schema)` | Zahodí a disposne cache pro schéma. Volat po `DROP SCHEMA`, jinak by pooled connection mohla ožít proti neexistujícímu schématu. |
+
+**Pravidlo vlastnictví — volající NIKDY nedisposuje, co dostal z factory.** Ani `Root`, ani
+výstup `GetForSchema`. Factory vlastní každý `NpgsqlDataSource`, který vyrobila, a disposne
+je všechny ve svém `Dispose`/`DisposeAsync`. Proto je `CreateTenantContext`
+(`TenantProvisioningService.cs:620`) bez `await using` — předchozí kód si tam stavěl nový
+`NpgsqlDataSource` na každé volání a zahazoval ho, což leakovalo connection pool (a v Entra
+ID režimu i timer na refresh tokenu) per provisioning.
+
+Důsledek pro DI (`ServiceCollectionExtensions.cs:442`): factory je registrovaná
+**delegátem** (`_ => factory`), ne hotovou instancí — kontejner disposne jen singletony,
+které sám „vytvořil", a to platí pro delegát, ne pro předanou instanci. `Root` je vedle toho
+registrovaný jako hotová instance schválně: devět existujících konzumentů si injektuje
+`NpgsqlDataSource` přímo a nesmí ho disposnout.
+
+V krátkých procesech se factory záměrně nedisposuje vůbec — `DesignTimeDataSource`
+(`dotnet ef`) ji parkuje ve statickém `Lazy<T>`, protože DbContext předaný EF Core přežije
+`CreateDbContext` a dál data source používá.
 
 ### 3.6 Azure SQL provisioning (alternativní deploy)
 
@@ -1330,7 +1359,7 @@ normální položka reportu (200), s `issuerId` je to 404.
 |------|----------|
 | Concurrency | **`uint RowVersion` + `IsConcurrencyToken()` + `ValueGeneratedOnAddOrUpdate()`** mapováno na `xmin` system column. **NE** `UseXminAsConcurrencyToken()` (removed v Npgsql 10.x). |
 | Filtered indexes | `HasFilter("\"ColumnName\" IS NOT NULL")` — **double quotes** (PostgreSQL), NE square brackets (SQL Server). |
-| Schema-per-tenant | `HasDefaultSchema(Schema)` v `OnModelCreating`. |
+| Schema-per-tenant | `HasDefaultSchema(Schema)` v `OnModelCreating`. Výjimka: provisioning a MigrationTool cílí schéma přes `search_path` z `INpgsqlDataSourceFactory.GetForSchema` (§3.5) — viz asymetrie v §5.2. |
 | Provider | `Npgsql.EntityFrameworkCore.PostgreSQL` 10.0.0. |
 | EF Core verze | 10.0.1. Pozor na MSB3277 warning kvůli Relational 10.0.0 ↔ 10.0.1 mismatch — funguje, jen warn. |
 
@@ -1339,6 +1368,25 @@ normální položka reportu (200), s `issuerId` je to 404.
 - Dvě sady — pro Master a Tenant DbContext.
 - **Tenant migrations** se aplikují **lazy** při prvním access tenanta (`TenantContextMiddleware` → `factory.EnsureMigratedAsync`).
 - **Master migrations** se aplikují při startu API (Program.cs, dev only) nebo přes `Fakvio.MigrationTool`.
+
+**Asymetrie `search_path` — NESJEDNOCOVAT.** Migrační SQL používá nekvalifikovaná jména
+tabulek, takže o cílovém schématu rozhoduje `search_path` data source
+(`INpgsqlDataSourceFactory.GetForSchema`, §3.5). Dva volající ho nastavují **jinak, a je to
+záměr**:
+
+| Volající | `includePublicInSearchPath` | `search_path` |
+|----------|------------------------------|---------------|
+| `TenantProvisioningService.CreateTenantContext` (`:634`) | `true` (default) | `"tenant_x", public` |
+| `DataMigrationService` (`:432`), `DataIntegrityVerifier` (`:104`) | **`false`** (explicitně) | `"tenant_x"` |
+
+Provisioning `public` potřebuje — sdílené extensions a funkce. MigrationTool ho mít **nesmí**:
+jeho `TenantDbContext` se staví bez explicitního `Schema` a spoléhá čistě na `search_path`.
+S `public` v cestě by tabulka, která v ještě nezmigrovaném tenant schématu chybí, tiše
+spadla na **master** tabulku v `public` místo aby selhala — a migrovaná tenant data by se
+zapsala do master schématu. Tichá ztráta izolace, žádná chybová hláška.
+
+Kdyby někdo „uklidil" ten druhý parametr jako duplicitu, přesně tohle je následek. Pravidlo
+je připnuté i v XML dokumentaci `INpgsqlDataSourceFactory.GetForSchema`.
 
 ### 5.3 ZMapper (source-generated mapping)
 
@@ -1837,7 +1885,9 @@ dotnet test Fakvio.Tests.Unit --filter "FullyQualifiedName~DatabaseConnectivityS
 
 **Klíčové config sekce**:
 - `ConnectionStrings:DefaultConnection` — PostgreSQL.
-- `Database:AuthMode` — `Password` | `AzureEntraId`, viz §9.5.
+- `Database:AuthMode` — `Password` | `AzureEntraId`. Legacy fallback: globální bool
+  `UseAzureAdAuthentication`. Precedence je `Database:AuthMode` → legacy bool → `Password`;
+  když jsou přítomné oba a nesouhlasí, aplikace při startu spadne. Detaily §9.5.
 - `JwtSettings:*` — viz §2.2.
 - `OAuth:*` — viz §2.4.
 - `SmtpSettings:*` — fallback SMTP (per-company se bere z `CompanySystemSettings`).
@@ -1884,6 +1934,54 @@ Kde co je nastavené:
 | `Fakvio.Functions/local.settings.json` | `Database__AuthMode = Password` (lokální Docker) |
 | `Fakvio.MigrationTool/appsettings.json` | `Database` i `SourceDatabase` = `Password` |
 
+Ostatní klíče sekce `Database` (`EntraIdTokenScope`, `TokenRefreshMinutes`,
+`SchemaDataSourceMaxPoolSize`, …) mají použitelné defaulty a jsou vypsané v ADMINGUIDE §4.
+
+**Validace (`DatabaseOptions.Validate`, volá se hned po `Resolve` v `AddDatabaseContexts`)**
+
+Fail-fast při startu, ne opakní Npgsql chyba na prvním requestu:
+
+| Pravidlo | Kdy spadne |
+|----------|-----------|
+| Connection string musí existovat | Není ani `Database:ConnectionString`, ani `ConnectionStrings:DefaultConnection` (chyba padá už z `Resolve`). |
+| Connection string musí být parsovatelný | `NpgsqlConnectionStringBuilder` ho odmítne. |
+| `AzureEntraId` ⇒ **žádné** `Password` | Token se dodává za běhu; statické heslo vedle `UsePeriodicPasswordProvider` končí opakní `NotSupportedException`. |
+| `AzureEntraId` ⇒ **musí** být `Username` | Jméno Entra principalu (managed identity nebo `user@tenant.onmicrosoft.com`). |
+| `Password` ⇒ musí být `Password` nebo `Passfile` | Escape hatch: unixový socket (`Host` začíná `/`) nebo `Database:AllowPasswordlessConnectionString = true` (peer auth, `.pgpass`). |
+| Číselné klíče > 0 | `TokenRefreshMinutes`, `TokenFailureRetrySeconds`, `MaxRetryCount`, `MaxRetryDelaySeconds`, `SchemaDataSourceMaxPoolSize`. |
+
+Každá chyba z prvních pěti pravidel končí větou, která jmenuje **zdroj** režimu — bez toho
+bys věděl co je špatně, ale ne který klíč editovat (ve výpisu je to jeden řádek, tady
+zalomený):
+
+```text
+Database auth mode is 'AzureEntraId' but the connection string contains a 'Password'.
+Remove it — the access token is provided at runtime instead.
+Auth mode 'AzureEntraId' was resolved from 'Database:AuthMode'.
+```
+
+Neznámá hodnota `AuthMode` má vlastní hlášku, která vyjmenuje povolené hodnoty; konflikt
+nového a legacy klíče jmenuje oba (viz výše).
+
+**Přepnutí devu na lokální PostgreSQL**
+
+1. `docker compose up -d` (služba `db`: user `fakvio`, heslo `fakvio_dev`, databáze `fakvio`).
+2. V `Fakvio.API/appsettings.Development.json` prohoď zakomentované řádky — **oba**:
+   `ConnectionStrings:DefaultConnection` na `Host=localhost;…` a `Database:AuthMode` na
+   `Password`. Musí sedět k sobě: Azure connection string nemá heslo, takže s `Password`
+   režimem neprojde validací, a naopak.
+3. Migrace se aplikují při startu API samy; `Fakvio.Functions` už na lokální Docker míří
+   (`local.settings.json`, `Database__AuthMode = Password`).
+4. Ověř přes health endpoint níž — `authMode` musí být `Password`.
+
+Bez editace souborů to jde i přes env proměnné (mají vyšší precedenci, §9.2), což je
+i způsob, jak to dělá smoke test v §8.5:
+
+```powershell
+$env:ConnectionStrings__DefaultConnection = "Host=localhost;Port=5432;Database=fakvio;Username=fakvio;Password=fakvio_dev"
+$env:Database__AuthMode = "Password"
+```
+
 **Ověření za běhu** — `GET /api/diagnostic/health`, **SysAdmin only**:
 
 ```bash
@@ -1907,6 +2005,13 @@ Logika žije v `Fakvio.API/Controller/DiagnosticController.cs`;
 controller volá (a inlinuje `[Authorize(Roles = "SysAdmin")]`, protože MVC filtry ve
 Functions neběží). Oba hostitelé tedy hlásí totéž. `/api/diagnostic` je v `MasterOnlyPaths`
 obou `TenantContextMiddleware` — SysAdmin ho musí zavolat i bez impersonace firmy.
+
+Protože endpoint od #138 vyžaduje token, **nesmí být nastavený jako anonymní health probe**
+Azure App Service / Function Appu — bez tokenu vrací 401. Viz ADMINGUIDE §9.
+
+**Přesun celé databáze pryč z Azure** (dump, restore, key ring, přepnutí režimu v produkci)
+je runbook pro provozáka, ne pro vývojáře: [`SELFHOST-DB.md`](SELFHOST-DB.md). Provozní
+pohled na tyto dva klíče a jejich ověření je v ADMINGUIDE §4 a §13.
 
 ---
 
