@@ -141,7 +141,8 @@ public class ChatService : IChatService
 
         // Build context and get AI response.
         var provider = await ResolveProviderAsync(request.Provider, ct);
-        var systemPrompt = await _contextBuilder.BuildSystemPromptAsync(ct);
+        var systemPrompt = await _contextBuilder.BuildSystemPromptAsync(
+            request.CurrentRoute, request.OpenEntity, ct);
         var history = await GetConversationHistoryAsync(conversation.Id, ct);
 
         // If an image is attached, set the transient Images property on the last user message.
@@ -248,7 +249,8 @@ public class ChatService : IChatService
 
         // Build context and start streaming.
         var provider = await ResolveProviderAsync(request.Provider, ct);
-        var systemPrompt = await _contextBuilder.BuildSystemPromptAsync(ct);
+        var systemPrompt = await _contextBuilder.BuildSystemPromptAsync(
+            request.CurrentRoute, request.OpenEntity, ct);
         var history = await GetConversationHistoryAsync(conversation.Id, ct);
 
         // If an image is attached, set the transient Images property on the last user message.
