@@ -178,6 +178,39 @@ public class CaptchaServiceTests
         result.ShouldBeTrue();
     }
 
+    // ── The outbound request itself ───────────────────────────────────────────
+
+    /// <summary>
+    /// THE BUG (found in review of this PR): the token was interpolated straight into the
+    /// siteverify query string. The token is whatever the caller puts in the X-Captcha-Token
+    /// header, so a raw '&amp;' appended a second secret/response pair — and with last-wins
+    /// parsing on Google's side the attacker would get their OWN token verified against
+    /// their OWN secret, answered with action "login". Every check in VerifyAsync would
+    /// then pass on data the attacker chose.
+    ///
+    /// Google's documented form is a POST with form fields, which encodes the values and
+    /// also keeps the secret out of URLs (logs, proxies, browser history of any middlebox).
+    /// </summary>
+    [Fact]
+    public async Task Verify_TokenWithQueryDelimiters_CannotSmuggleItsOwnParametersIntoTheRequest()
+    {
+        const string forgedToken = "aaa&secret=attacker-secret&response=attacker-token#rest";
+        var handler = new CapturingHttpMessageHandler(SiteVerifyOk());
+        var service = CreateService(handler);
+
+        await service.VerifyAsync(forgedToken, ExpectedAction);
+
+        handler.LastRequest.ShouldNotBeNull().Method.ShouldBe(HttpMethod.Post);
+        handler.LastRequest!.RequestUri!.Query
+            .ShouldBeEmpty("nothing — least of all the secret — belongs in the siteverify URL");
+
+        // The whole token must arrive as exactly one value of exactly one field.
+        ParseForm(handler.LastBody).ShouldBe([
+            new KeyValuePair<string, string>("secret", SecretKey),
+            new KeyValuePair<string, string>("response", forgedToken)
+        ]);
+    }
+
     // ── Pre-existing rules that must keep working ─────────────────────────────
 
     [Fact]
@@ -253,12 +286,48 @@ public class CaptchaServiceTests
         Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json")
     };
 
+    /// <summary>
+    /// Decodes an application/x-www-form-urlencoded body into ordered key/value pairs.
+    /// Order and count matter here — a smuggled second "secret" field must show up as an
+    /// extra pair, not get silently merged away by a dictionary.
+    /// </summary>
+    private static List<KeyValuePair<string, string>> ParseForm(string body) =>
+        body.Length == 0
+            ? []
+            : body.Split('&')
+                .Select(field => field.Split('=', 2))
+                .Select(parts => new KeyValuePair<string, string>(
+                    Uri.UnescapeDataString(parts[0]),
+                    Uri.UnescapeDataString(parts.Length > 1 ? parts[1] : "")))
+                .ToList();
+
     /// <summary>HttpMessageHandler stub returning a fixed response for any request.</summary>
     private sealed class StubHttpMessageHandler(HttpResponseMessage response) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
             => Task.FromResult(response);
+    }
+
+    /// <summary>
+    /// HttpMessageHandler stub that records the request it was given before answering.
+    /// The body is read here on purpose — HttpClient disposes the request content
+    /// as soon as SendAsync returns.
+    /// </summary>
+    private sealed class CapturingHttpMessageHandler(HttpResponseMessage response) : HttpMessageHandler
+    {
+        public HttpRequestMessage? LastRequest { get; private set; }
+        public string LastBody { get; private set; } = "";
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            LastRequest = request;
+            LastBody = request.Content is null
+                ? ""
+                : await request.Content.ReadAsStringAsync(cancellationToken);
+            return response;
+        }
     }
 
     /// <summary>HttpMessageHandler stub throwing the given exception on every request.</summary>

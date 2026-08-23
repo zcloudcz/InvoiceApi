@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Text.Json.Serialization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -49,6 +50,8 @@ public class CaptchaService : ICaptchaService
     // 0.5 is a reasonable default — adjust based on traffic patterns.
     private const double MinScore = 0.5;
 
+    private const string SiteVerifyUrl = "https://www.google.com/recaptcha/api/siteverify";
+
     public CaptchaService(HttpClient httpClient, IConfiguration configuration, ILogger<CaptchaService> logger)
     {
         _httpClient = httpClient;
@@ -93,9 +96,21 @@ public class CaptchaService : ICaptchaService
         try
         {
             // Call Google's siteverify API — server-to-server, secret key never exposed to client.
-            var response = await _httpClient.PostAsync(
-                $"https://www.google.com/recaptcha/api/siteverify?secret={_secretKey}&response={token}",
-                null);
+            //
+            // The parameters go in a form body, which is the shape Google documents, and NOT
+            // in the query string. The token arrives from the X-Captcha-Token header, so it is
+            // fully attacker-controlled: concatenated into a URL, a plain '&' in it would append
+            // a second "secret"/"response" pair. Whichever pair Google then honours, the caller
+            // gets to choose the secret their own token is verified against — and the answer
+            // would carry whatever action they asked for, defeating the check below.
+            // FormUrlEncodedContent escapes both values, so the token can only ever be one value
+            // of one field. Keeping the secret out of the URL also keeps it out of logs and proxies.
+            using var form = new FormUrlEncodedContent([
+                new KeyValuePair<string, string>("secret", _secretKey),
+                new KeyValuePair<string, string>("response", token)
+            ]);
+
+            var response = await _httpClient.PostAsync(SiteVerifyUrl, form);
 
             if (!response.IsSuccessStatusCode)
             {
@@ -162,6 +177,10 @@ public class CaptchaService : ICaptchaService
         public double Score { get; set; }
         public string? Action { get; set; }
         public string? Hostname { get; set; }
+
+        // Google spells this field "error-codes"; the hyphen means the default
+        // case-insensitive name matching never binds it (the log stayed empty).
+        [JsonPropertyName("error-codes")]
         public string[]? ErrorCodes { get; set; }
     }
 }

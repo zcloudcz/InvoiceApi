@@ -111,10 +111,52 @@ public class AresCacheExpirySweepTests : IDisposable
         rows[0].CompanyName.ShouldBe("Nová firma");
     }
 
+    /// <summary>
+    /// THE BUG (found in review of PR #246): the sweep shared one SaveChanges with the cache
+    /// write. Two requests that pick the same expired batch race each other — the loser's
+    /// DELETE matches zero rows, EF reports DbUpdateConcurrencyException, and because the
+    /// new cache row was in the same save, the loser lost its own insert too. Nothing is
+    /// visible from outside: AresServiceImpl.CacheResult swallows it as a Warning, so a
+    /// burst of lookups would quietly stop caching.
+    ///
+    /// The failing context stands in for the lost race: it rejects any save that carries
+    /// deletes, which is exactly what the database does to the loser.
+    /// </summary>
+    [Fact]
+    public async Task SaveCache_SweepLosesTheConcurrencyRace_StillKeepsTheNewEntry()
+    {
+        var databaseName = Guid.NewGuid().ToString();
+        using var master = new SweepLosesTheRaceDbContext(
+            new DbContextOptionsBuilder<MasterDbContext>().UseInMemoryDatabase(databaseName).Options);
+        using var tenant = new TenantDbContext(
+            new DbContextOptionsBuilder<TenantDbContext>().UseInMemoryDatabase(databaseName + "-tenant").Options);
+
+        var sut = new AresCacheRepository(
+            tenant, master,
+            Substitute.For<ITenantResolver>(),
+            Substitute.For<ILogger<AresCacheRepository>>());
+
+        master.AresCache.Add(Row("11111111", expiresAt: DateTime.UtcNow.AddHours(-2)));
+        await master.SaveChangesAsync(); // no deletes yet, so this save is allowed through
+
+        await Should.NotThrowAsync(() => sut.SaveCacheAsync(Entry("33333333", DateTime.UtcNow.AddDays(30))));
+
+        master.RejectedSaves.ShouldBe(1, "the sweep has to be a save of its own, separate from the insert");
+
+        var remaining = await master.AresCache.Select(x => x.RegistrationNumber).ToListAsync();
+        remaining.ShouldContain("33333333", "a lost sweep race must not cost the caller its cache entry");
+
+        master.ChangeTracker.Entries().Any(e => e.State == EntityState.Deleted)
+            .ShouldBeFalse("rows left in Deleted state would fail every later save in the same request scope");
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private void Seed(string registrationNumber, DateTime expiresAt, string? companyName = null)
-        => _master.AresCache.Add(new Fakvio.Domain.Entities.AresCache
+        => _master.AresCache.Add(Row(registrationNumber, expiresAt, companyName));
+
+    private static Fakvio.Domain.Entities.AresCache Row(
+        string registrationNumber, DateTime expiresAt, string? companyName = null) => new()
         {
             RegistrationNumber = registrationNumber,
             JsonData = "{}",
@@ -122,7 +164,29 @@ public class AresCacheExpirySweepTests : IDisposable
             ExpiresAt = expiresAt,
             IsSuccessful = true,
             CompanyName = companyName
-        });
+        };
+
+    /// <summary>
+    /// MasterDbContext that refuses any save carrying deleted rows — the deterministic
+    /// stand-in for losing the sweep race against a concurrent writer (the real database
+    /// answers a DELETE that matches nothing with DbUpdateConcurrencyException).
+    /// </summary>
+    private sealed class SweepLosesTheRaceDbContext(DbContextOptions<MasterDbContext> options)
+        : MasterDbContext(options)
+    {
+        public int RejectedSaves { get; private set; }
+
+        public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+        {
+            if (ChangeTracker.Entries().Any(e => e.State == EntityState.Deleted))
+            {
+                RejectedSaves++;
+                throw new DbUpdateConcurrencyException("another writer already deleted these rows");
+            }
+
+            return base.SaveChangesAsync(cancellationToken);
+        }
+    }
 
     private static AresCacheEntry Entry(
         string registrationNumber, DateTime expiresAt, string? companyName = null) => new()
