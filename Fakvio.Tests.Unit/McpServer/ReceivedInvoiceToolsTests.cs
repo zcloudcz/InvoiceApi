@@ -108,10 +108,12 @@ public class ReceivedInvoiceToolsTests
         await ReceivedInvoiceTools.ListReceivedInvoices(_api, page: 3, pageSize: 500);
 
         // Assert: page passes through untouched, pageSize is clamped.
-        // Junior note: the clamp is asserted as an end-to-end contract, not as a
-        // test of the tool's own Math.Min — PaginationParams.PageSize clamps to 100
-        // in its setter as well, so the two guards overlap. Deleting the tool's
-        // Math.Min would keep this test green; deleting the setter guard would not.
+        // Junior note: the clamp is asserted as an end-to-end contract, not as a test
+        // of the tool's own Math.Min — PaginationParams.PageSize clamps to 100 in its
+        // setter as well, so the two guards are fully redundant on this path: deleting
+        // either one on its own keeps this test green, only removing both makes it fail.
+        // The setter is pinned separately by PaginationParamsTests, so a regression there
+        // is caught by that suite, not by this one.
         await _api.Received(1).GetReceivedInvoicesPagedAsync(
             Arg.Is<ReceivedInvoiceFilterDto>(f => f.PageSize == 100 && f.Page == 3),
             Arg.Any<CancellationToken>());
