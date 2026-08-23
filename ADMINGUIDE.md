@@ -20,6 +20,7 @@
 10. [Číselníky — systémové vs tenant kopie](#10-číselníky--systémové-vs-tenant-kopie)
 11. [Impersonace tenant firmy](#11-impersonace-tenant-firmy)
 12. [Odesílání testovacího emailu](#12-odesílání-testovacího-emailu)
+13. [Diagnostika nasazení (health endpoint)](#13-diagnostika-nasazení-health-endpoint)
 
 ---
 
@@ -599,13 +600,19 @@ Viz §2 — Správa uživatelů → 2FA. Uživatel si aktivuje sám. SysAdmin ne
 
 | Endpoint | Přístup | K čemu |
 |----------|---------|--------|
-| `GET /api/diagnostic/health` | anonymní | Stav připojení k DB a čekající migrace. Anonymní zůstává kvůli health probe Azure. |
+| `GET /api/diagnostic/health` | **jen SysAdmin** | Režim autentizace k DB, stav připojení a čekající migrace. Podrobně §13. |
 | `POST /api/diagnostic/migrate` | **jen SysAdmin** | Ruční spuštění EF Core migrací (master DB + všechny tenanty). |
 | `GET /api/diagnostic/auth` | **jen SysAdmin** | Výpis stavu JWT tak, jak ho vidí worker — hlavička, claims, issuer/audience, ruční validace tokenu. |
 
 Od issue #263 vyžadují `migrate` a `auth` platný Bearer token s rolí SysAdmin — dřív byly
 anonymní, takže kdokoli mohl spustit migrace nebo si nechat vypsat konfiguraci JWT.
-Bez tokenu vrací **401**, s tokenem bez role SysAdmin **403**.
+Od issue #138 platí totéž i pro `health`: vypisuje režim autentizace k databázi, cílový
+server a jména migrací, což je pro útočníka stejně cenné. Bez tokenu vrací všechny tři
+**401**, s tokenem bez role SysAdmin **403**.
+
+**Dopad na health probe:** `health` už není použitelný jako anonymní liveness probe Azure —
+probe bez tokenu dostane 401. Nastavte probe na jiný anonymní endpoint, nebo ji berte tak,
+že 401 znamená „proces běží a odpovídá" (což pro liveness stačí; readiness ne).
 
 Praktický důsledek pro ladění: `/api/diagnostic/auth` už nepomůže u volajícího, jehož token
 se vůbec nevaliduje (dostane 401 dřív, než se cokoli vypíše). Pro takové případy použijte
@@ -681,6 +688,51 @@ Systém použije SMTP dle priority (viz §3 — SMTP priority).
 
 ---
 
+## 13. Diagnostika nasazení (health endpoint)
+
+`GET /api/diagnostic/health` — **jen SysAdmin** (Bearer token). Odpovídá stejně na obou
+hostitelích (Fakvio.API i Azure Functions), protože oba volají tentýž kód.
+
+K čemu to je: po změně konfigurace databáze (typicky Azure App Settings) potřebujete vidět,
+**co běžící proces skutečně vyhodnotil** — ne co si myslíte, že je v konfiguraci.
+
+```bash
+curl -s -H "Authorization: Bearer <sysadmin-jwt>"   https://<host>/api/diagnostic/health | jq '{authMode, authModeSource, masterDbCanConnect}'
+```
+
+| Pole | Význam |
+|------|--------|
+| `authMode` | `Password` (heslo z connection stringu) nebo `AzureEntraId` (token z Entra ID). |
+| `authModeSource` | Který klíč vyhrál: `Database:AuthMode` (nový), `UseAzureAdAuthentication (legacy)` nebo `default` (nikde nic nastaveno = `Password`). |
+| `masterConnectionServer` | Host, databáze a uživatel — **nikdy heslo ani token**. |
+| `masterDbCanConnect`, `masterDbPendingMigrations` | Dostupnost master DB a počet nenasazených migrací. |
+| `databaseConnected` / `databaseReady` | Souhrnné vlajky pro monitoring. `databaseReady` = připojeno **a** žádné čekající migrace. |
+
+HTTP **200** = databáze odpovídá, **503** = neodpovídá (monitoring může jet jen podle status
+kódu). Při 503 se `authMode`/`authModeSource` hlásí dál — právě tehdy jsou nejužitečnější.
+
+**Když je databáze úplně nedostupná**, endpoint nepomůže — přihlášení SysAdmina samo potřebuje
+master DB. Tentýž údaj proto oba hostitelé vypisují do logu hned po startu (Azure: Log stream /
+Application Insights), ještě před prvním dotazem do databáze:
+
+```text
+info: Fakvio.Infrastructure.Database[0]
+      Startup: database auth mode Password (source: Database:AuthMode)
+```
+
+**Přepnutí režimu autentizace k DB** (Azure App Settings):
+
+1. Přidejte `Database__AuthMode` = `AzureEntraId` nebo `Password`. Starý klíč
+   `UseAzureAdAuthentication` může chvíli zůstat, ale **musí souhlasit** — při rozporu
+   aplikace při startu spadne s hláškou, která oba klíče jmenuje.
+2. Restart → `curl` výše. `authModeSource` musí hlásit `Database:AuthMode`.
+3. Teprve pak smažte `UseAzureAdAuthentication`.
+
+Chyba při startu (např. heslo v connection stringu při `AzureEntraId`) vždy dopoví, **odkud**
+se režim vzal — podle toho víte, který klíč opravit.
+
+---
+
 ## Rychlá reference — SysAdmin navigace
 
 | Co chcete udělat | Kde |
@@ -698,3 +750,4 @@ Systém použije SMTP dle priority (viz §3 — SMTP priority).
 | Daňové konfigurace (OSVČ) | `/tax-configs` |
 | Test emailu | `/send-email` |
 | Dashboard SysAdmin | `/` (bez impersonace) |
+| Diagnostika DB / auth režimu | `GET /api/diagnostic/health` (jen API, bez UI) |

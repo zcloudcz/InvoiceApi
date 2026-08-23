@@ -524,13 +524,22 @@ Až když 3.1–3.3 prošly. Připojovací řetězec a **obě** konfigurační k
 Po startu ověř:
 
 ```bash
-curl -s https://<app>/api/diagnostic/health | jq '{authMode, authModeSource, masterDbCanConnect}'
+curl -s -H "Authorization: Bearer <sysadmin-jwt>"   https://<app>/api/diagnostic/health | jq '{authMode, authModeSource, masterDbCanConnect}'
 ```
 
-> **Endpoint `/api/diagnostic/health` přidává task #138** — dokud není mergnutý,
-> tenhle `curl` vrátí 404 a `authMode` se dá ověřit jen ze startup logu.
-> Tvary polí (`authMode` / `authModeSource` / `masterDbCanConnect`) odpovídají
-> zadání #138.
+> Endpoint je **SysAdmin only** (#138) — bez tokenu vrací 401. Token získáš stejně jako
+> pro `credential-health` níž. Když je databáze nedostupná a login tedy neprojde,
+> `authMode` se dá přečíst ze **startup logu** — oba hosty ho vypíšou hned po startu,
+> kategorie `Fakvio.Infrastructure.Database`:
+>
+> ```text
+> info: Fakvio.Infrastructure.Database[0]
+>       Startup: database auth mode Password (source: Database:AuthMode)
+> ```
+>
+> Řádek jde ven před prvním sáhnutím do databáze, takže je k dispozici i když je DB dole
+> (v Azure: Log stream / Application Insights, lokálně stdout procesu). Připojovací řetězec
+> v logu nikdy není — jen mód a zdrojový klíč.
 
 **Očekávaný výsledek:**
 ```json
@@ -720,9 +729,10 @@ az functionapp restart --name <function-app-name> --resource-group <rg>
 **Očekávaný výsledek:** health hlásí `"authMode": "AzureEntraId"` a
 `"masterDbCanConnect": true`.
 
-> **Obě klíče se vrací společně.** Když se revertuje jen jeden,
+> **Dokud App Settings nesou oba klíče, vrací se společně.** Když se revertuje jen jeden,
 > `DatabaseOptions.Resolve` hodí `Conflicting database auth mode configuration`
-> a aplikace nenaběhne vůbec — viz [část 7](#konfigurační-klíče--vždy-obě-najednou).
+> a aplikace nenaběhne vůbec — viz
+> [část 7](#konfigurační-klíče--nový-klíč-stačí-legacy-nesmí-odporovat).
 
 ### Point of no return
 
@@ -848,11 +858,13 @@ Dvojité podtržítko `__` je oddělovač sekcí v .NET konfiguraci —
 > [části 6.2](#62-ssl-mode--npgsql-8-validuje-certifikát) — sedí na DB ve stejné
 > privátní síti. Pokud spojení jde přes veřejnou síť, vyber z té tabulky výš.
 
-### Konfigurační klíče — vždy **obě** najednou
+### Konfigurační klíče — nový klíč stačí, legacy nesmí odporovat
 
-`Database:AuthMode` je nový klíč; `UseAzureAdAuthentication` je **legacy bool,
-který je zapečený v `Fakvio.API/appsettings.json:13` s hodnotou `true`**.
-Nastavením proměnné prostředí ho tedy nelze „nenastavit" — appsettings ho dodá vždy.
+`Database:AuthMode` je nový klíč; `UseAzureAdAuthentication` je **legacy bool**.
+Od #138 už legacy klíč **není v žádném commitnutém config souboru** — v `appsettings.json`
+je nově `Database:AuthMode`. Do konfigurace se tedy dostane jen tehdy, když ho někdo
+explicitně nastaví (Azure App Settings, proměnná prostředí). Produkce ho v fázi 1 pořád
+nese, proto pravidlo níž platí dál.
 
 `DatabaseOptions.Resolve` (`Fakvio.Infrastructure/Data/DatabaseOptions.cs:161-199`)
 řeší kombinace takto:
@@ -861,7 +873,7 @@ Nastavením proměnné prostředí ho tedy nelze „nenastavit" — appsettings 
 |---|---|---|
 | `Password` | `false` | ✅ Password, `authModeSource = "Database:AuthMode"` |
 | `AzureEntraId` | `true` | ✅ AzureEntraId, `authModeSource = "Database:AuthMode"` |
-| `Password` | `true` (z appsettings) | ❌ **`InvalidOperationException` při startu** |
+| `Password` | `true` (z App Settings) | ❌ **`InvalidOperationException` při startu** |
 | `AzureEntraId` | `false` | ❌ **`InvalidOperationException` při startu** |
 | nenastaveno | `true` / `false` | ✅ podle legacy, `authModeSource = "UseAzureAdAuthentication (legacy)"` |
 
@@ -875,16 +887,17 @@ Delete the legacy 'UseAzureAdAuthentication' key once 'Database:AuthMode' is con
 
 To je **záměrný fail-fast** — brání tichému rozjetí konfigurace. Praktický důsledek:
 
-- **při přepnutí na vlastní server nastav obě proměnné** (`Database__AuthMode=Password`
-  **i** `UseAzureAdAuthentication=false`),
-- **při rollbacku vrať obě** zpět,
-- **až bude nový klíč ověřený v provozu**, legacy klíč smaž z appsettings i z app
-  settings — od té chvíle stačí `Database:AuthMode`.
+- **při přepnutí na vlastní server nastav `Database__AuthMode=Password`**; pokud cílové
+  prostředí legacy klíč ještě nese (produkce ano), nastav i `UseAzureAdAuthentication=false`,
+  jinak start spadne na konfliktu,
+- **při rollbacku vrať zpět obojí**, co jsi nastavil,
+- **až bude nový klíč ověřený v provozu**, legacy klíč smaž z App Settings — z commitnutých
+  configů ho odstranilo #138, takže od té chvíle stačí `Database:AuthMode`.
 
 Kontrola, co aplikace skutečně vyhodnotila:
 
 ```bash
-curl -s https://<app>/api/diagnostic/health | jq '{authMode, authModeSource}'
+curl -s -H "Authorization: Bearer <sysadmin-jwt>"   https://<app>/api/diagnostic/health | jq '{authMode, authModeSource}'
 ```
 
 ### Varování: jakýkoli nový host musí nastavit dvě věci

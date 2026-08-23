@@ -1,6 +1,6 @@
 // ============================================================================
-// DiagnosticFunctionsPipelineTests — SysAdmin gate on the diagnostic endpoints
-// verified through the REAL Functions worker pipeline (issue #263).
+// DiagnosticFunctionsPipelineTests — SysAdmin gate on all three diagnostic endpoints
+// verified through the REAL Functions worker pipeline (issues #263 and #138).
 //
 // DiagnosticFunctionsTests hands the function a DefaultHttpContext whose User
 // is already populated. That proves the guard, but not the wiring: in the
@@ -8,7 +8,7 @@
 // HttpContext.User is only ever set by JwtAuthenticationMiddleware — and that
 // middleware runs for every route, with no path allowlist. If it stopped
 // validating tokens, the hand-built tests would stay green while production
-// handed the migrate/auth payload to anyone.
+// handed the health/migrate/auth payload to anyone.
 //
 // So these tests drive the actual chain:
 //   Authorization header → JwtAuthenticationMiddleware.Invoke(...) → function
@@ -24,6 +24,7 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using Fakvio.API.Controller;
 using Fakvio.Functions.HttpFunctions;
 using Fakvio.Functions.Middleware;
 using Fakvio.Infrastructure.Data;
@@ -41,9 +42,9 @@ using Shouldly;
 namespace Fakvio.Tests.Unit;
 
 /// <summary>
-/// End-to-end (in-process) tests of the /api/diagnostic/migrate and
-/// /api/diagnostic/auth authorization gate, driven by the JWT middleware
-/// instead of a hand-built ClaimsPrincipal.
+/// End-to-end (in-process) tests of the /api/diagnostic/health,
+/// /api/diagnostic/migrate and /api/diagnostic/auth authorization gate, driven by
+/// the JWT middleware instead of a hand-built ClaimsPrincipal.
 /// </summary>
 public class DiagnosticFunctionsPipelineTests : IDisposable
 {
@@ -57,6 +58,7 @@ public class DiagnosticFunctionsPipelineTests : IDisposable
 
     private readonly ServiceProvider _serviceProvider;
     private readonly IConfiguration _configuration;
+    private readonly MasterDbContext _masterDb;
     private readonly DiagnosticFunctions _sut;
     private readonly JwtAuthenticationMiddleware _jwtMiddleware;
 
@@ -77,9 +79,20 @@ public class DiagnosticFunctionsPipelineTests : IDisposable
             options.UseInMemoryDatabase($"DiagnosticPipelineTest_{Guid.NewGuid()}"));
         _serviceProvider = services.BuildServiceProvider();
 
+        // Since #138 the function also takes DiagnosticController, because Health is a thin
+        // wrapper over it. Only the Health cases reach the controller; an InMemory context is
+        // enough for them, because the gate — not the probe result — is what is under test.
+        _masterDb = new MasterDbContext(new DbContextOptionsBuilder<MasterDbContext>()
+            .UseInMemoryDatabase($"DiagnosticPipelineController_{Guid.NewGuid()}")
+            .Options);
+
         _sut = new DiagnosticFunctions(
             _serviceProvider,
             _configuration,
+            new DiagnosticController(
+                _masterDb,
+                DatabaseOptions.Resolve(_configuration),
+                Substitute.For<ILogger<DiagnosticController>>()),
             Substitute.For<ILogger<DiagnosticFunctions>>());
 
         _jwtMiddleware = new JwtAuthenticationMiddleware(
@@ -89,8 +102,49 @@ public class DiagnosticFunctionsPipelineTests : IDisposable
 
     public void Dispose()
     {
+        _masterDb.Dispose();
         _serviceProvider.Dispose();
         GC.SuppressFinalize(this);
+    }
+
+    // ─── Health ─────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Health_WithoutAuthorizationHeader_IsRejectedAsAnonymous()
+    {
+        var result = await CallThroughPipelineAsync(authorizationHeader: null, InvokeHealthAsync);
+
+        result.ShouldBeOfType<UnauthorizedResult>();
+    }
+
+    [Fact]
+    public async Task Health_WithRegularUserToken_IsForbidden()
+    {
+        var header = BearerHeader(CreateToken(RegularUserRole));
+
+        var result = await CallThroughPipelineAsync(header, InvokeHealthAsync);
+
+        result.ShouldBeOfType<ForbidResult>();
+    }
+
+    /// <summary>
+    /// Health is a thin wrapper over DiagnosticController, so the SysAdmin token has to
+    /// survive the middleware AND the delegation. The InMemory provider answers
+    /// CanConnect, so the controller reports a connected database — asserting that flag
+    /// (not just a 200) proves the caller received the real controller payload rather
+    /// than an empty OK.
+    /// </summary>
+    [Fact]
+    public async Task Health_WithSysAdminToken_ReturnsTheControllerPayload()
+    {
+        var header = BearerHeader(CreateToken(SysAdminRole));
+
+        var result = await CallThroughPipelineAsync(header, InvokeHealthAsync);
+
+        var payload = ShouldBeDiagnosticPayload(result);
+        payload["databaseConnected"].ShouldBe(true);
+        payload.ShouldContainKey("authMode");
+        payload.ShouldContainKey("authModeSource");
     }
 
     // ─── Migrate ────────────────────────────────────────────────────────────
@@ -221,7 +275,9 @@ public class DiagnosticFunctionsPipelineTests : IDisposable
         Func<HttpRequest, Task<IActionResult>> endpoint)
     {
         var httpContext = new DefaultHttpContext();
-        httpContext.Request.Path = "/api/diagnostic/auth";
+        // The middleware has no path allowlist — it only echoes the path into its log
+        // messages — so one fixed path serves every endpoint under test.
+        httpContext.Request.Path = "/api/diagnostic";
         if (authorizationHeader != null)
             httpContext.Request.Headers["Authorization"] = authorizationHeader;
 
@@ -255,6 +311,8 @@ public class DiagnosticFunctionsPipelineTests : IDisposable
 
         return functionContext;
     }
+
+    private Task<IActionResult> InvokeHealthAsync(HttpRequest request) => _sut.Health(request);
 
     private Task<IActionResult> InvokeMigrateAsync(HttpRequest request) => _sut.Migrate(request);
 

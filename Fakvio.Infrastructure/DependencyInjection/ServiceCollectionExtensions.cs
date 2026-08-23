@@ -349,6 +349,39 @@ public static class ServiceCollectionExtensions
     }
 
     /// <summary>
+    /// Writes the resolved database auth mode to the host log. Call it from BOTH hosts right
+    /// after Build() and before any database work (Fakvio.API and Fakvio.Functions Program.cs).
+    ///
+    /// Why this exists: the health endpoint that reports the same two values is SysAdmin-only,
+    /// and signing in needs the master database (that is where users live). So in the one
+    /// scenario where the auth mode matters most — the database is unreachable — the endpoint
+    /// cannot answer, while the process itself starts up fine (Resolve/Validate never connect).
+    /// This log line is then the only place an operator can read which mode the process picked
+    /// and which configuration key won. SELFHOST-DB.md points at it.
+    ///
+    /// SECURITY: mode and source only. The connection string must never reach a log — in
+    /// Password mode it carries the password.
+    /// </summary>
+    /// <param name="services">The built application service provider.</param>
+    public static void LogDatabaseAuthMode(this IServiceProvider services)
+    {
+        var options = services.GetRequiredService<DatabaseOptions>();
+
+        services.GetRequiredService<ILoggerFactory>()
+            .CreateLogger(DatabaseAuthModeLogCategory)
+            .LogInformation(
+                "Startup: database auth mode {AuthMode} (source: {AuthModeSource})",
+                options.AuthMode,
+                options.AuthModeSource);
+    }
+
+    /// <summary>
+    /// Log category of the startup line above. Named rather than derived from a type so an
+    /// operator can filter on it and so the runbook can quote it verbatim.
+    /// </summary>
+    private const string DatabaseAuthModeLogCategory = "Fakvio.Infrastructure.Database";
+
+    /// <summary>
     /// Registers MasterDbContext and TenantDbContext with the PostgreSQL (Npgsql) provider.
     /// Single database, schema-per-tenant isolation:
     /// - MasterDbContext uses the "public" schema (default PostgreSQL schema)
@@ -377,7 +410,13 @@ public static class ServiceCollectionExtensions
         // INpgsqlDataSourceFactory XML doc for the ownership rule.
         var factory = new NpgsqlDataSourceFactory(options);
 
-        services.Configure<DatabaseOptions>(configuration.GetSection("Database"));
+        // The resolved instance is the ONLY registration on purpose. A
+        // services.Configure<DatabaseOptions>(configuration.GetSection("Database")) used to sit
+        // here as well, and it was a trap: IOptions<DatabaseOptions> would re-bind the raw
+        // section, so in production (where the mode comes from the legacy
+        // "UseAzureAdAuthentication" key) it reported Password while this singleton — the one
+        // that actually built the data source — said AzureEntraId. Injecting DatabaseOptions
+        // directly is what the diagnostic health endpoint relies on.
         services.AddSingleton(options);
 
         // Registered with a FACTORY DELEGATE (`_ => factory`), not a bare instance

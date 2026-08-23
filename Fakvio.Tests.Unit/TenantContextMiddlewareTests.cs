@@ -178,6 +178,7 @@ public class TenantContextMiddlewareTests : IDisposable
     [InlineData("/api/twofactor/setup")]
     [InlineData("/api/cloud-storage/connect")]
     [InlineData("/api/email/send")]
+    [InlineData("/api/diagnostic/health")]
     [InlineData("/swagger")]
     [InlineData("/swagger/v1/swagger.json")]
     [InlineData("/health")]
