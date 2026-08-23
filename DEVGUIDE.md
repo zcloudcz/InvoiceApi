@@ -715,9 +715,9 @@ Pravidla:
 
 #### Zápisový tool — potvrzovací krok (POVINNÝ, issue #212)
 
-Model nesmí přepsat data bez vědomí uživatele. Vzor je **konverzační**: tool se nejdřív
-zavolá bez potvrzení a vrátí náhled, teprve po souhlasu uživatele se zavolá znovu
-s `confirm: true`. Žádná změna UI, funguje u všech čtyř providerů.
+Asistent nemá ohlásit změnu, kterou uživatel neviděl přicházet. Vzor je **konverzační**:
+tool se nejdřív zavolá bez potvrzení a vrátí náhled, teprve po souhlasu uživatele se zavolá
+znovu s `confirm: true`. Žádná změna UI, funguje u všech čtyř providerů.
 
 ```csharp
 public class UpdateNumberSequenceTool : IConfirmableChatTool   // místo IChatTool
@@ -748,7 +748,19 @@ Co dělá `ChatToolExecutor` (`Fakvio.Infrastructure/Service/ChatTools/`) automa
 | Volání bez `confirm: true` | `ExecuteAsync` se **vůbec nezavolá**. Spustí se `BuildPreviewAsync` a k výsledku se připojí `ChatToolConfirmation.PreviewSuffix`. |
 | Neparsovatelná hodnota (`"ano"`, `"1"`) | Centrální validace ji odmítne jako ne-boolean; nespustí se ani zápis, ani náhled (fail-closed). |
 | Neúspěšný náhled | Vrátí se jako obyčejná chyba — model není vyzván k `confirm: true`. |
-| Odpověď modelu | `ChatService.BuildToolResultPrompt` u náhledu říká „tool NEBYL spuštěn", takže asistent nemůže ohlásit změnu, která se nestala. |
+| `UiAction` u náhledu | Zahodí se (`UiAction = null`). Jinak by prohlížeč přenavigoval dřív, než uživatel cokoli potvrdil. UI akci vracej až z `ExecuteAsync`. |
+| Odpověď modelu | Všechny čtyři tool cesty (text/native × streaming/non-streaming) skládají druhý průchod přes `ChatService.DescribeToolResult` + `BuildToolResultInstruction`; u náhledu říkají „tool NEBYL spuštěn". Framing tedy nezávisí na textu, který dodá tool. |
+| `confirm` v parametrech | Neodfiltruje se — dojde i do `BuildPreviewAsync`, i do `ExecuteAsync`. Čti parametry přes `TryGetValue` a `confirm` prostě ignoruj. |
+
+**Co gate NENÍ: autorizační hranice.** Server si souhlas nikde nepamatuje — kroky „náhled" a
+„potvrzení" drží pohromadě jen znění promptu. Model, který pošle `confirm: true` rovnou v prvním
+volání, zapíše okamžitě. Je to **UX tok** proti tichým změnám, ne oprávnění; autorizace zůstává
+tam, kde byla — na API endpointech a v tenant scope. Destruktivní tool (mazání) proto za tímhle
+gate smí viset jen tehdy, když by ho uživatel směl zavolat i bez chatu.
+
+Obě volání navíc **nejsou nijak spárovaná**: mezi náhledem a zápisem může být N uživatelských
+tahů a executor nekoreluje nic. `ExecuteAsync` si musí předpoklady ověřit **znovu sám** a nesmí
+se spolehnout na snímek z náhledu.
 
 Zdroj pravdy o mechanismu: `Fakvio.Application/Service/IConfirmableChatTool.cs`
 (interface + `ChatToolConfirmation`). Read-only tool zůstává na `IChatTool` —

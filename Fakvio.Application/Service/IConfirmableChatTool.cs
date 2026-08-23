@@ -15,6 +15,16 @@ namespace Fakvio.Application.Service;
 /// Implementations therefore never check the flag themselves: the gate lives in the executor,
 /// so it cannot be forgotten in a single tool. See DEVGUIDE §4.7.
 ///
+/// What the gate is NOT: an authorization boundary. Nothing on the server records that the user
+/// approved anything — steps 3 and 4 are held together by the prompt alone, and a model that
+/// sends <c>confirm: true</c> already on the first call writes immediately. It is a UX flow that
+/// keeps the assistant from changing data silently, not a permission check; authorization stays
+/// where it always was, in the API endpoints and the tenant scope the tool runs under.
+///
+/// The two calls are also NOT paired: the executor correlates nothing, and the user may say
+/// several other things in between. <see cref="IChatTool.ExecuteAsync"/> must therefore re-check
+/// its own preconditions and never assume the snapshot from the preview still holds.
+///
 /// Junior note: the <c>confirm</c> parameter is NOT declared in <see cref="IChatTool.Parameters"/>.
 /// The executor appends it to the schema of every confirmable tool
 /// (<see cref="ChatToolConfirmation.EffectiveParameters"/>), so the prompt text, the native
@@ -33,6 +43,10 @@ public interface IConfirmableChatTool : IChatTool
     ///
     /// Do not add "confirm?" boilerplate to the text — the executor appends
     /// <see cref="ChatToolConfirmation.PreviewSuffix"/> to every successful preview.
+    ///
+    /// A preview must not move the UI either: the executor clears
+    /// <see cref="ChatToolResult.UiAction"/> on it, because the browser would navigate before
+    /// the user had confirmed anything. Return the UI action from ExecuteAsync instead.
     /// </summary>
     /// <param name="parameters">The same parameters that would be passed to ExecuteAsync.</param>
     /// <param name="ct">Cancellation token.</param>

@@ -1,4 +1,5 @@
 using Fakvio.Application.Service;
+using Fakvio.Contracts.Dto.Chat;
 using Fakvio.Infrastructure.Service.ChatTools;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
@@ -776,6 +777,26 @@ public class ChatToolExecutorTests
         result.RequiresConfirmation.ShouldBeTrue();
         result.OutputText.ShouldContain("would change from FA-2025 to FA-2026");
         result.OutputText.ShouldContain("NOTHING HAS BEEN CHANGED YET");
+    }
+
+    /// <summary>
+    /// Review round 1 (S1): a preview must not move the UI. ChatService hands UiAction straight
+    /// to the browser, so a preview carrying one would navigate the user to a record that the
+    /// unconfirmed tool has not created or changed yet.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteToolAsync_DropsUiAction_FromAPreview()
+    {
+        var tool = CreateConfirmableTool();
+        tool.BuildPreviewAsync(Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>())
+            .Returns(ChatToolResult.SuccessWithAction(
+                "Numbering would change.", ChatUiAction.Navigate("/settings/numbering")));
+        var executor = CreateExecutor(tool);
+
+        var result = await executor.ExecuteToolAsync(ConfirmableCall(confirm: null));
+
+        result.RequiresConfirmation.ShouldBeTrue();
+        result.UiAction.ShouldBeNull();
     }
 
     [Theory]

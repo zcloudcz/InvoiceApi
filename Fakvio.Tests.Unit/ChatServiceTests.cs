@@ -450,6 +450,75 @@ public class ChatServiceTests : IDisposable
             Arg.Any<CancellationToken>());
     }
 
+    /// <summary>
+    /// Issue #212, review round 1 (B1): the same guarantee on the **native + streaming** path.
+    /// That is the flow the chat drawer really runs on Claude (`SupportsNativeTools = true`),
+    /// and it composes its own second-pass prompt out of an accumulated tool log — so the
+    /// preview framing has to be wired in there too. Without it the framing depended purely on
+    /// <c>ChatToolConfirmation.PreviewSuffix</c> inside the tool's own output text, which is
+    /// exactly the coupling <c>RequiresConfirmation</c> exists to remove.
+    /// </summary>
+    [Fact]
+    public async Task StreamMessage_NativeTools_TellsModelNothingChanged_WhenToolOnlyReturnedAPreview()
+    {
+        // Arrange — provider with native tool calling, model asks for a confirmable tool.
+        _mockProvider.SupportsNativeTools.Returns(true);
+        _toolExecutor.GetToolDefinitions().Returns(
+            [new NativeToolDefinition { Name = "update_settings", Description = "Změní číslování" }]);
+        _mockProvider
+            .GetCompletionWithToolsAsync(
+                Arg.Any<List<ChatMessageDto>>(), Arg.Any<string?>(),
+                Arg.Any<List<NativeToolDefinition>>(), Arg.Any<CancellationToken>())
+            .Returns(new NativeToolCallResult
+            {
+                ToolCalls =
+                [
+                    new NativeToolCall
+                    {
+                        ToolName = "update_settings",
+                        Arguments = new Dictionary<string, string> { ["value"] = "FA-2026" }
+                    }
+                ]
+            });
+
+        // The executor's confirm gate produced a preview — nothing was written.
+        _toolExecutor.ExecuteToolAsync(Arg.Any<ParsedToolCall>(), Arg.Any<CancellationToken>())
+            .Returns(ChatToolResult.Success("Numbering would change to FA-2026.") with
+            {
+                RequiresConfirmation = true
+            });
+
+        // Capture the second-pass prompt the final streamed answer is generated from.
+        string? secondPassPrompt = null;
+        _mockProvider
+            .StreamCompletionAsync(Arg.Any<List<ChatMessageDto>>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                secondPassPrompt = call.ArgAt<string?>(1);
+                return SingleChunkStream("ok");
+            });
+
+        // Act
+        await foreach (var _ in _service.StreamMessageAsync(TestUserId,
+                           new SendMessageRequest { Message = "Změň číslování na FA-2026" }))
+        {
+            // Chunks themselves are irrelevant here — the prompt behind them is what is asserted.
+        }
+
+        // Assert — the model must be told the tool did NOT run.
+        secondPassPrompt.ShouldNotBeNull();
+        secondPassPrompt.ShouldContain("was NOT executed");
+        secondPassPrompt.ShouldContain("nothing has been changed");
+        secondPassPrompt.ShouldContain("ask them to confirm");
+    }
+
+    /// <summary>Minimal IAsyncEnumerable stand-in for a provider stream.</summary>
+    private static async IAsyncEnumerable<string> SingleChunkStream(string chunk)
+    {
+        yield return chunk;
+        await Task.CompletedTask;
+    }
+
     [Fact]
     public async Task SendMessage_FallsBackToRegularFlow_WhenToolCallNotParsed()
     {

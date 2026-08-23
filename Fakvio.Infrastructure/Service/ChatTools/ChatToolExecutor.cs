@@ -405,10 +405,15 @@ public class ChatToolExecutor : IChatToolExecutor
 
                 // A preview that failed (record not found, …) stays a plain failure — there is
                 // nothing to confirm, so the model must not be invited to retry with confirm=true.
+                //
+                // UiAction is dropped on purpose: ChatService forwards it to the browser as soon
+                // as the tool returns, so a preview that carried one would navigate the user
+                // before they confirmed anything. Only a real execution may move the UI.
                 return preview.IsSuccess
                     ? preview with
                     {
                         RequiresConfirmation = true,
+                        UiAction = null,
                         OutputText = preview.OutputText + ChatToolConfirmation.PreviewSuffix
                     }
                     : preview;
