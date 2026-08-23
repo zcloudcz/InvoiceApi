@@ -1235,6 +1235,8 @@ vlastní výjimku ani vlastní tvar chyby**. Použij `ITenantReadinessService`.
 | Implementace | `Fakvio.Infrastructure/Service/TenantReadinessService.cs` | Všechna pravidla na jednom místě (inline checky, žádná FluentValidation) |
 | DTO | `Fakvio.Contracts/Dto/Readiness/` | `ReadinessReportDto`, `ReadinessIssueDto`, konstanty kódů `ReadinessCodes` |
 | Výjimka | `Fakvio.Application/Exceptions/TenantNotReadyException.cs` | Nese `Code` + `MissingFields` + `Issues` |
+| REST | `Fakvio.API/Controller/ReadinessController.cs` | `GET /api/readiness?issuerId=` — tenká obálka nad `GetReportAsync` |
+| Functions | `Fakvio.Functions/HttpFunctions/ReadinessFunctions.cs` | Zrcadlo téhož endpointu pro Azure host (dual-host pravidlo §6) |
 
 **Pravidla a jejich závažnost:**
 
@@ -1287,6 +1289,21 @@ dávky projde.
 Mapování na HTTP patří **do controlleru, ne do `GlobalExceptionMiddleware`** — Functions
 host volá metody controlleru přímo a middleware API v něm neběží; kdyby se mapovalo tam,
 Azure deploy by na tutéž situaci vrátil 500.
+
+**`GET /api/readiness`** (issue #209) — čtecí endpoint, kterým se UI ptá „co ještě chybí".
+
+| Vlastnost | Hodnota |
+|-----------|---------|
+| Autorizace | `[Authorize]` — **kterýkoli přihlášený uživatel tenanta**, ne jen SysAdmin (banner v UI vidí běžný uživatel, který to má opravit) |
+| Tenant kontext | Běžný tenant endpoint — **NEpatří do `MasterOnlyPaths`** ani do `SysAdminCodeTablePaths` v `TenantContextMiddleware` (obou hostů). SysAdmin musí impersonovat přes `X-Company-Id`. |
+| Query | `issuerId` (volitelné) — omezí report na jednoho vystavitele |
+| 200 | `ReadinessReportDto`. **Nedokončené nastavení není chyba** — je to obsah reportu. |
+| 404 | Jen když volající poslal `issuerId`, které v tenantu neexistuje |
+
+Rozdíl 200 vs. 404 je jediná logika, kterou controller přidává: služba vrací
+`ISSUER_MISSING` jak pro „tenant nemá žádného vystavitele", tak pro „tohle ID neexistuje" —
+rozlišit je umí až volající, protože to ID sám poslal. Bez `issuerId` je `ISSUER_MISSING`
+normální položka reportu (200), s `issuerId` je to 404.
 
 ---
 
