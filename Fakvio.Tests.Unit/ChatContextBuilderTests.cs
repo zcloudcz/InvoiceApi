@@ -44,6 +44,20 @@ public class ChatContextBuilderTests : IDisposable
             .GetCachedInstructionsAsync(Arg.Any<CancellationToken>())
             .Returns((customPrompt, appendix));
 
+    /// <summary>Seeds the tenant's own company (the issuer) — the source of the company block.</summary>
+    private async Task SeedIssuerAsync(string companyName, string registrationNumber, string? taxNumber)
+    {
+        _context.Client.Add(new Client
+        {
+            CompanyName = companyName,
+            RegistrationNumber = registrationNumber,
+            TaxNumber = taxNumber,
+            IsIssuer = true,
+            IsActive = true
+        });
+        await _context.SaveChangesAsync();
+    }
+
     public void Dispose()
     {
         _context.Database.EnsureDeleted();
@@ -133,6 +147,60 @@ public class ChatContextBuilderTests : IDisposable
         prompt.ShouldContain("Total active clients: 0");
         prompt.ShouldContain("Open (unpaid) invoices: 0");
         prompt.ShouldContain("Overdue invoices: 0");
+    }
+
+    // ── Company identity block ────────────────────────────────────────────
+
+    [Fact]
+    public async Task BuildSystemPrompt_WithIssuer_StatesWhichCompanyIsUs()
+    {
+        // import_invoice decides "issued vs received" by matching IČO against this block.
+        // If any of these lines goes missing, the AI files incoming invoices as outgoing.
+        await SeedIssuerAsync("Issuer Co", "12345678", taxNumber: null);
+
+        var prompt = await _builder.BuildSystemPromptAsync();
+
+        prompt.ShouldContain("YOUR COMPANY (the user's company — you represent this entity):");
+        prompt.ShouldContain("- Name: Issuer Co");
+        prompt.ShouldContain("- IČO: 12345678");
+        prompt.ShouldContain(
+            "When importing invoices: if YOUR IČO appears as the issuer (dodavatel), it's an ISSUED invoice.");
+        prompt.ShouldContain(
+            "If YOUR IČO appears as the recipient (odběratel), it's a RECEIVED invoice.");
+    }
+
+    [Fact]
+    public async Task BuildSystemPrompt_WithVatRegisteredIssuer_IncludesTheTaxNumber()
+    {
+        await SeedIssuerAsync("Issuer Co", "12345678", taxNumber: "CZ12345678");
+
+        var prompt = await _builder.BuildSystemPromptAsync();
+
+        prompt.ShouldContain("- DIČ: CZ12345678");
+    }
+
+    [Fact]
+    public async Task BuildSystemPrompt_WithIssuerWithoutTaxNumber_OmitsTheDicLineEntirely()
+    {
+        // A non-VAT-payer has no DIČ; an empty "- DIČ: " line would invite the AI to
+        // invent one when it fills in an imported invoice.
+        await SeedIssuerAsync("Small Trader", "87654321", taxNumber: null);
+
+        var prompt = await _builder.BuildSystemPromptAsync();
+
+        prompt.ShouldNotContain("- DIČ:");
+    }
+
+    [Fact]
+    public async Task BuildSystemPrompt_WithoutIssuer_OmitsTheCompanyBlock()
+    {
+        // A tenant that has not configured its own company yet still gets a usable prompt,
+        // just without the "this is us" section — no placeholders, no empty labels.
+        var prompt = await _builder.BuildSystemPromptAsync();
+
+        prompt.ShouldNotContain("YOUR COMPANY");
+        prompt.ShouldContain(AiSystemPrompt.Identity);
+        prompt.ShouldContainBuiltInMainBlock();
     }
 
     // ── SysAdmin-editable instructions ────────────────────────────────────
