@@ -29,15 +29,78 @@ running tick (if any). When the user asks why a card has not advanced,
 or what the last automated tick did, grep this log file for the most
 recent `START` / `END` block.
 
-## Find the oldest item in a given status column
+## Focus — themes, and priority between them
+
+`priority:*` ranks one card against another. It says nothing about
+whether the card is part of what the project is trying to finish right
+now, so a board drain will happily spend a day on high-priority work
+nobody asked for. That happened on 2026-08-22: of 19 issues opened
+during a drain, one belonged to an active priority.
+
+**A theme is a `theme:*` label.** Active themes and their relative
+priority are one ordered list in `.claude/settings.json`:
+
+    "AGENTIC_FOCUS": "db-switch,ai-first"
+
+Earlier in the list wins. A theme that is not listed is **parked** — its
+cards stay on the board and stay visible, they are simply not pulled.
+
+### Eligibility
+
+A card may be picked up by `/tick`, `/ticks`, `/tick-devs`,
+`/tick-tests` or `/pickup-task` only if it carries either:
+
+- a `theme:*` label naming an active theme, **or**
+- the label `focus:override` — a deliberate, human-approved exception
+  for something outside the themes that still has to be done now.
+
+Everything else is skipped. This is a **skip rule, not a status**: do
+not move, close or relabel a parked card, and do not report it as
+blocked. It is simply not this week's work.
+
+### Ordering among eligible cards
+
+1. Theme position in `AGENTIC_FOCUS` (earlier first). `focus:override`
+   sorts after all active themes — it is an exception, not a priority.
+2. Then the existing rules below: `type:bug` first, then oldest by
+   `createdAt`.
+
+### Who assigns a theme
+
+`agent-analyst` labels every sub-issue it creates with the parent
+story's theme. A standalone bug filed mid-flight has no parent, so it
+gets a theme only if it plainly belongs to one; otherwise it stays
+unthemed and parked until a human decides. **Agents do not add
+`focus:override` to their own findings** — that label is the owner's
+call, and letting an agent grant itself an exception would restore
+exactly the drift this rule exists to stop.
+
+## Task priority — bugs jump the queue
+
+`type:bug` outranks every other priority signal. Whenever multiple cards
+are eligible for the same action (same status column, same role label,
+same `/tick` priority level), pick the `type:bug` card first regardless
+of `createdAt` or `priority:*`. Within `type:bug` cards, oldest-first;
+within non-bug cards, oldest-first. `priority:high` only breaks ties
+*after* `type:bug` has been applied.
+
+Applies to: `/pickup-task`, `/tick`, `/tick-tests`, `/tick-stories`, and
+any agent that picks "the next" item from a column. A `type:bug` story
+in `StoryNew` is also claimed first by the analyst.
+
+## Find the oldest item in a given status column (bugs first)
 
     gh project item-list "$AGENTIC_PROJECT_NUMBER" \
         --owner "$AGENTIC_PROJECT_OWNER" --format json --limit 200 \
       | jq -r --arg S "Backlog" '
           .items
           | map(select(.status == $S))
-          | sort_by(.createdAt)
+          | sort_by([(.labels | index("type:bug") | not), .createdAt])
           | .[0] // empty'
+
+The compound sort key puts `type:bug` cards (where `index("type:bug")`
+is non-null, so `| not` is `false`) ahead of non-bug cards, then
+`createdAt` ascending within each group.
 
 ## Resolve the IDs needed to move a card
 
@@ -88,55 +151,32 @@ in any target repo, regardless of plugin availability.
 
 ### List sub-issues of a story
 
-MCP (preferred):
-
     mcp__plugin_github_github__issue_read
       method: "get_sub_issues", owner: "$OWNER", repo: "$REPO",
       issue_number: <S>, perPage: 100
+    # Fallback: gh api repos/:owner/:repo/issues/<S>/sub_issues
 
-`gh` fallback:
+### Count still-open children
 
-    gh api repos/:owner/:repo/issues/<S>/sub_issues
-
-### Count still-open children (used by agent-ops for last-child detection)
-
-MCP: filter the `get_sub_issues` response in code, keep entries with
-`state == "open"`, take its length.
-
-`gh` fallback:
-
-    gh api repos/:owner/:repo/issues/<S>/sub_issues \
-      --jq '[.[] | select(.state=="open")] | length'
+Filter `get_sub_issues` response for `state == "open"`, take length.
+Fallback: `gh api repos/:owner/:repo/issues/<S>/sub_issues --jq '[.[] | select(.state=="open")] | length'`
 
 ### Find the parent of an issue
 
-The MCP plugin does not expose a parent lookup. `agent-ops` reads the
-parent number from the `Parent story:` line in `MEMORY.md` instead.
-If that is unavailable:
-
-    gh api repos/:owner/:repo/issues/<N>/parent_issue --jq '.number' 2>/dev/null
+Read `Parent story:` line from `MEMORY.md`. Fallback: `gh api repos/:owner/:repo/issues/<N>/parent_issue --jq '.number'`
 
 ### Add a child to a parent
-
-MCP (preferred):
 
     mcp__plugin_github_github__sub_issue_write
       method: "add", owner: "$OWNER", repo: "$REPO",
       issue_number: <S>, sub_issue_id: <CHILD_ID>
 
-`sub_issue_id` is the **internal numeric `id`** of the child issue, not
-its issue number. The `issue_write` MCP call returns it on `create`.
+`sub_issue_id` is the **internal numeric `id`** (not the issue number).
+Fallback: `gh api -X POST repos/:owner/:repo/issues/<S>/sub_issues -F sub_issue_id="$CHILD_ID"` (typed `-F` required — string `-f` gets 422 "not of type integer")
 
-`gh` fallback:
+## Worktree isolation → see agent-dev Step 2a/2c and agent-tester Step 0/4
 
-    PARENT_ID=$(gh api repos/:owner/:repo/issues/<S>   --jq '.id')
-    CHILD_ID=$(gh api  repos/:owner/:repo/issues/<NEW> --jq '.id')
-    gh api -X POST repos/:owner/:repo/issues/<S>/sub_issues \
-           -f sub_issue_id="$CHILD_ID"
-
-Note: if the target GitHub instance has no sub-issues feature at all,
-fall back to a `Parent story: #<S>` line in the body and a checklist on
-the parent — agents should still parse the body for parent linkage.
+## Parallel-dev labels → see agent-analyst Step 3 and AGENT-RULES §7
 
 ## MEMORY.md format
 
@@ -187,6 +227,99 @@ Rules:
 - Same language as the repo's code comments (per root `CLAUDE.md`).
 - If `MEMORY.md` does not exist when you first need it, create it with
   these headings populated for the current task.
+
+## Verdict markers — the load-bearing first lines
+
+Every role verdict is a **fixed first line** on a PR comment or review.
+Those lines are the only machine-readable record of the review and test
+gates: `role:*` labels are also set by pickup and by warden, board moves
+fail whenever the GraphQL quota is out, and on a single-account repo
+GitHub refuses formal `APPROVE` / `REQUEST_CHANGES`, so `reviewDecision`
+and `state=="CHANGES_REQUESTED"` are permanently useless here.
+
+Reword the rest of the body freely. Never the first line.
+
+| Marker (exact first line) | Posted by | Where |
+|---|---|---|
+| `AgentReviewer verdict: APPROVED` | agent-reviewer | `gh pr review --comment` |
+| `AgentReviewer verdict: CHANGES REQUESTED` | agent-reviewer | `gh pr review --comment` |
+| `AgentTester verdict: PASS` | agent-tester | `gh pr comment` |
+| `AgentTester kickback: implementation` | agent-tester | `gh pr comment` |
+
+**The collection is part of the convention.** Reviews
+(`pulls/<PR>/reviews`) and issue comments (`issues/<PR>/comments`) are
+separate collections and neither query sees the other. Reviewer markers
+live in reviews, tester markers in comments — always. On 2026-08-23 the
+reviewer used both at random (reviews on #244/#256/#258/#259/#273/#277/
+#280/#284, comments on #246/#260/#278/#281) and ops looking in the wrong
+one on #260 nearly read a merged approval as missing.
+
+Counters — use these, do not invent a variant:
+
+    KICKBACK_COUNT=$(gh api "repos/:owner/:repo/pulls/${PR}/reviews" --paginate \
+      --jq '[.[] | select(.body | startswith("AgentReviewer verdict: CHANGES REQUESTED"))] | length')
+
+    TESTER_KICKBACKS=$(gh api "repos/:owner/:repo/issues/${PR}/comments" \
+      --paginate \
+      --jq '[.[] | select(.body | startswith("AgentTester kickback: implementation"))] | length')
+
+Both counters cover the 2nd-round diagnostic and the 3rd-round
+escalation summary too — those carry the same first line.
+
+## Counting rebase rounds — one canonical query
+
+`agent-dev`, `agent-ops` and `agent-warden` all gate on "has this PR
+been through the rebase loop twice already?". They must count the same
+thing, or one of them escalates while another keeps looping.
+
+The count is **how many times the `needs:rebase` label has been applied**
+to the PR. `agent-ops` Step 1b applies it on every kickback, so the
+label-event log is an exact, wording-independent record:
+
+    REBASE_ROUNDS=$(gh api "repos/:owner/:repo/issues/${PR}/events" \
+      --paginate \
+      --jq '[.[] | select(.event=="labeled" and .label.name=="needs:rebase")] | length')
+
+Threshold, identical for all three roles: `REBASE_ROUNDS >= 2` means the
+loop has run twice and must not run a third time — escalate with
+`dev:blocked` + `needs:human` instead.
+
+Never count comment bodies for this. Comment wording drifts; a reworded
+template silently zeroes the counter and the escalation never fires.
+
+## Role runners — which subagent_type actually executes a role
+
+Most roles are dispatched as themselves: `subagent_type: "agent-dev"`,
+`"agent-tester"`, `"agent-ops"`, `"agent-analyst"`, `"agent-warden"`.
+
+**`agent-reviewer` is the exception.** It carries no `model:` in its
+frontmatter because it does not run on its own. Dispatch it as:
+
+    Agent(subagent_type: "hydra",
+          prompt: "<contents of .claude/agents/agent-reviewer.md as your
+                   instruction set> ... review PR #<PR>")
+
+`hydra` is a user-global agent that delegates the actual review to the
+Codex plugin and filters its feedback before reporting. The model comes
+from hydra's own definition.
+
+A caller that dispatches `subagent_type: "agent-reviewer"` literally
+still works, but silently bypasses the Codex second opinion — which is
+the whole point of the reviewer role. Every dispatch site must use the
+form above.
+
+## Review gate on single-account repos
+
+GitHub refuses a PR approval from the PR's own author, so with one
+account `reviewDecision == "APPROVED"` is impossible and the markers
+above carry the gate instead. If the repo ever gains a second
+(bot/machine) review account, drop the convention and require the
+formal approval again.
+
+Autonomy: with `AGENTIC_AUTO_MERGE=true`, agents act on passed gates
+without asking for extra confirmation — the env flags in
+`.claude/settings.json` ARE the human authorization. Agents ask only
+when a gate genuinely fails or a rule conflict has no defined path.
 
 ## Integration branch model
 
@@ -250,6 +383,8 @@ Task flow (sub-issues created from a story, or standalone backlog items):
                                  Implemented cards to Approved
     any         -> Blocked     : agent-dev when it must ask a question, label +blocked:question
     Blocked     -> ToDo        : human after answering (manual)
+    Implemented -> Progress    : agent-ops on merge conflict, +needs:rebase, label -> role:dev
+                                 (parallel-dev rebase loop; PR stays open)
 
 Story flow (a `type:story` issue, before and around its task children):
 

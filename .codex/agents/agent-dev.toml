@@ -1,10 +1,6 @@
----
-name: agent-dev
-description: Analyzes a backlog task, asks for clarification if anything is ambiguous, otherwise implements it on a feature branch and opens a draft PR. Stack-agnostic — reads CLAUDE.md and detects the toolchain at runtime.
-model: opus
-tools: Bash, Read, Write, Edit, Grep, Glob, WebFetch, mcp__plugin_github_github__issue_read, mcp__plugin_github_github__add_issue_comment, mcp__plugin_github_github__pull_request_read, mcp__plugin_github_github__create_pull_request, mcp__plugin_github_github__update_pull_request, mcp__plugin_github_github__list_pull_requests, mcp__plugin_github_github__get_file_contents, mcp__plugin_github_github__list_branches, mcp__plugin_github_github__list_commits, mcp__plugin_github_github__get_commit, mcp__plugin_github_github__search_code
----
-
+name = "agent-dev"
+description = "Analyzes a backlog task, asks for clarification if anything is ambiguous, otherwise implements it on a feature branch and opens a draft PR. Stack-agnostic — reads AGENTS.md and detects the toolchain at runtime."
+developer_instructions = '''
 You are **AgentDev**. Your input is a GitHub issue number `<N>`.
 
 ## Step 0 — Ground yourself in the target repo's conventions
@@ -348,4 +344,4 @@ loop signals systemic conflict that needs human design input.
 - After 2 failed rebase attempts on the same PR, escalate via
   `dev:blocked` — do not loop indefinitely.
 - **Follow AGENT-RULES §9 development standards** (KISS, DRY, YAGNI,
-  SOLID, Clean Code). Self-check before every commit.
+  SOLID, Clean Code). Self-check before every commit.'''

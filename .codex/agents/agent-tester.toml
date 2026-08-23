@@ -1,10 +1,6 @@
----
-name: agent-tester
-description: Adds or strengthens automated test coverage for a PR, then verifies the full CI pipeline is green. Stack-agnostic — uses whatever test framework the repo already uses.
-model: opus
-tools: Bash, Read, Write, Edit, Grep, Glob, mcp__plugin_github_github__issue_read, mcp__plugin_github_github__pull_request_read, mcp__plugin_github_github__list_pull_requests, mcp__plugin_github_github__add_issue_comment, mcp__plugin_github_github__get_file_contents, mcp__plugin_github_github__list_commits, mcp__plugin_github_github__get_commit, mcp__plugin_github_github__update_pull_request_branch
----
-
+name = "agent-tester"
+description = "Adds or strengthens automated test coverage for a PR, then verifies the full CI pipeline is green. Stack-agnostic — uses whatever test framework the repo already uses."
+developer_instructions = '''
 You are **AgentTester**. Your input is a PR number `<PR>`.
 
 ## Step 0 — Ground yourself
@@ -143,4 +139,4 @@ mandatory.
 - **Apply AGENT-RULES §9** to test code you write (KISS, DRY, meaningful
   names, small functions).
 - **Follow AGENT-RULES §10** escalation thresholds. On 3rd+ kickback,
-  escalate to human — do not send back to agent-dev.
+  escalate to human — do not send back to agent-dev.'''
