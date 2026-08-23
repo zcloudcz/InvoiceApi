@@ -21,6 +21,12 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Opravy
 
+- **#200** — Ověření reCAPTCHA bylo fail-open: výpadek Googlu nebo chybějící `SecretKey`
+  bránu tiše propustily místo aby ji zablokovaly, a token se navíc nekontroloval proti
+  akci ani doméně, takže se dal token z jednoho formuláře přehrát jinam. Anonymní ARES
+  lookup navíc dával neomezeně rostoucí cache. Brána je nově fail-closed a ověřuje
+  action i hostname, cache ARES se čistí při každém zápisu. **Vyžaduje zásah v produkci**
+  (prázdný `SecretKey`/`SiteKey`) — viz ADMINGUIDE.md §9. (PR #246, `f968946`)
 - **#233** — Swagger UI i `swagger.json` byly dostupné na rootu API i mimo Development,
   takže je při nasazení na klasický App Service host mohl vidět kdokoli. Nově se
   registrují jen v Development; v Production vrátí `/` i `/swagger/v1/swagger.json` 404.
@@ -52,6 +58,38 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Změny pro vývojáře
 
+- **#161** — AI asistent byl v aplikaci prakticky neviditelný: tlačítko v AppBaru
+  splývalo s logem firmy, stav otevření se po refreshi nikdy nezapamatoval a nikde
+  jinde na chat nevedl odkaz. Na mobilu zabíral drawer napevno celou obrazovku a
+  chyběl mu CSS, takže vypadal rozbitě; markdown v odpovědích modelu (seznamy, tučné
+  písmo, tabulky) se zobrazoval jako syrový text místo naformátovaný. Nově má ikonu
+  robota na první pozici v AppBaru, položku v hlavním menu, pamatuje si otevření/zavření
+  per zařízení, je responzivní na mobilu a odpovědi renderuje jako markdown (bezpečně
+  sanitizovaný i proti odkazům typu `<javascript:…>`). Smazání konverzace teď vyžaduje
+  potvrzení. (PR #185, `64d4508`)
+- **#205** — Chybějící nastavení tenanta (adresa vystavitele, IČO, DIČ u plátce DPH,
+  bankovní účet, číselná řada dokladu…) se dosud řešilo náhodně a nekonzistentně —
+  jediný existující precedens byla EPO hlavička u DPH exportu. Nová
+  `ITenantReadinessService` na jednom místě odpoví, jestli tenant má dost nastavení
+  na fakturaci, s výčtem konkrétních chybějících položek a odkazem, kde je doplnit;
+  je to základ, na kterém teď staví gate ve vystavování faktur (#206), REST endpoint
+  (#209), chat/MCP nástroj (#211) a UI karta (#215). (PR #251, `6b978cf`)
+- **#234** — MCP server (`fakvio-mcp`, 36 nástrojů pro AI klienty typu Claude Code/Desktop)
+  neměl žádnou dokumentaci, takže napojení vlastního AI klienta vyžadovalo číst zdrojový
+  kód. Nový `Fakvio.McpServer/README.md` popisuje build, spuštění, získání JWT tokenu
+  a napojení klienta; `.mcp.json.sample` je copy-paste vzor konfigurace (reálný `.mcp.json`
+  nese token v plaintextu, verzuje se jen vzor). DEVGUIDE §4.9 opraveno z 21 na
+  aktuálních 36 nástrojů, USERGUIDE dostal novou kapitolu 20 pro koncového uživatele.
+  (PR #250, `4dd6d6a`)
+- **#232** — Šest AI/MCP nástrojů pro přijaté faktury (výpis, detail, založení, schválení,
+  označení uhrazeno, smazání) nemělo jediný test, takže regrese v chování AI asistenta
+  by prošla nepovšimnutá. Nově 21 mutačně ověřených testů; vedlejším zjištěním je
+  nekrytý `PaginationParams` — základní třída všech stránkovaných filtrů v repu —
+  který teď dostal vlastní 8 testů na clamping stránky/velikosti. (PR #248, `4f0d2a1`)
+- **#208** — Registrace firmy z ARES ukládala jen název a IČO/DIČ, sídlo se zahazovalo
+  a plátcovství DPH se nikdy nenastavilo, přestože ho ARES prozradí (DIČ přítomno).
+  Adresa z ARES se teď uloží do klienta a `IsVatPayer` se odvodí z přítomnosti DIČ;
+  registrační formulář se neměnil. (PR #249, `12b301c`)
 - **#140** — Přesun produkční databáze z Azure PostgreSQL (Entra ID) na vlastní
   server dosud neměl žádný ověřený postup. Nový `SELFHOST-DB.md` runbook popisuje
   celý přesun krok za krokem: pre-flight kontroly, cutover přes `pg_dump`/`pg_restore`,

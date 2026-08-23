@@ -62,9 +62,10 @@ public class AuthController : ControllerBase
         try
         {
             // Validate reCAPTCHA v3 token (sent via X-Captcha-Token header from Blazor UI).
-            // When SecretKey is not configured, verification is skipped (dev mode).
+            // The action must match the one Login.razor passes to grecaptcha.execute(),
+            // otherwise a token minted on another page would be accepted here.
             var captchaToken = Request.Headers["X-Captcha-Token"].FirstOrDefault();
-            if (!await _captchaService.VerifyAsync(captchaToken))
+            if (!await _captchaService.VerifyAsync(captchaToken, "login"))
             {
                 _logger.LogWarning("reCAPTCHA verification failed for login: {Email}", loginRequest.Email);
                 return BadRequest(new { message = "CAPTCHA verification failed. Please try again." });
@@ -107,9 +108,9 @@ public class AuthController : ControllerBase
     {
         try
         {
-            // Validate reCAPTCHA v3 token
+            // Validate reCAPTCHA v3 token — action must match Register.razor's grecaptcha.execute("register").
             var captchaToken = Request.Headers["X-Captcha-Token"].FirstOrDefault();
-            if (!await _captchaService.VerifyAsync(captchaToken))
+            if (!await _captchaService.VerifyAsync(captchaToken, "register"))
             {
                 _logger.LogWarning("reCAPTCHA verification failed for registration: {Email}", request.Email);
                 return BadRequest(new { message = "CAPTCHA verification failed. Please try again." });
@@ -174,9 +175,11 @@ public class AuthController : ControllerBase
         string registrationNumber,
         CancellationToken cancellationToken = default)
     {
-        // Validate reCAPTCHA v3 token (skipped when no secret key is configured — dev mode).
+        // Validate reCAPTCHA v3 token — action must match Register.razor's grecaptcha.execute("ares").
+        // This endpoint proxies an external registry, so a token issued for another action
+        // (e.g. the registration form itself) must not open it.
         var captchaToken = Request.Headers["X-Captcha-Token"].FirstOrDefault();
-        if (!await _captchaService.VerifyAsync(captchaToken))
+        if (!await _captchaService.VerifyAsync(captchaToken, "ares"))
         {
             _logger.LogWarning("reCAPTCHA verification failed for anonymous ARES lookup");
             return BadRequest(new { message = "CAPTCHA verification failed. Please try again." });
@@ -228,11 +231,15 @@ public class AuthController : ControllerBase
     /// <summary>
     /// A Czech IČO is exactly 8 digits. Same rule as AresServiceImpl — checked here too
     /// so that garbage input is rejected before any outbound call is made.
+    ///
+    /// ASCII '0'-'9' only, NOT char.IsDigit (issue #200): char.IsDigit accepts every
+    /// Unicode decimal digit, so eight Arabic-Indic digits used to pass this guard,
+    /// reach the registry, and add another key to the shared ARES cache.
     /// </summary>
     private static bool IsValidRegistrationNumber(string? registrationNumber)
         => !string.IsNullOrWhiteSpace(registrationNumber)
            && registrationNumber.Length == 8
-           && registrationNumber.All(char.IsDigit);
+           && registrationNumber.All(c => c is >= '0' and <= '9');
 
     // ─── Email Verification ──────────────────────────────────────────────────
 
