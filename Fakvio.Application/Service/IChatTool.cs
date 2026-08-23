@@ -42,6 +42,15 @@ public record ChatToolResult
     public ChatUiAction? UiAction { get; init; }
 
     /// <summary>
+    /// True when this is a PREVIEW of a confirmable tool (see <see cref="IConfirmableChatTool"/>):
+    /// the tool did NOT run and nothing was written. Set centrally by the executor, never by a tool.
+    ///
+    /// ChatService uses it so the follow-up prompt cannot tell the model the tool "was executed" —
+    /// which would make the assistant report a change that never happened.
+    /// </summary>
+    public bool RequiresConfirmation { get; init; }
+
+    /// <summary>
     /// Factory method for successful results (no UI action).
     /// </summary>
     public static ChatToolResult Success(string outputText)

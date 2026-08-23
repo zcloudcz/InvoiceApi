@@ -653,6 +653,12 @@ AI asistent zná kontext vaší firmy a umí odpovídat na otázky i provádět 
 | Obecné dotazy | Odpovídat na otázky o funkcích aplikace |
 | Navigace | Otevřít libovolnou stránku aplikace — faktury, přijaté faktury, klienty, platby, šablony, DPH a daně, upomínky i nastavení („Otevři DPH přiznání", „Založ novou fakturu pro klienta XYZ"). Stránky správce systému a přihlašovací obrazovky asistent neotevírá. |
 
+Asistent navíc ví, **kde právě stojíte** — jakou stránku máte otevřenou a jestli je na ní
+konkrétní doklad — a zná dnešní datum. Můžete se tedy ptát „kdy je tahle faktura splatná"
+místo toho, abyste číslo dokladu opisovali. Pokud vám ještě něco chybí k vystavení faktury
+(vyplněná vlastní firma, adresa, číselná řada), asistent to ví a nasměruje vás na stránku,
+kde se to doplní.
+
 ### Jak používat
 
 1. Klikněte na ikonu robota v horní liště nebo na **AI asistent** v menu

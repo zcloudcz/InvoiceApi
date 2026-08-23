@@ -780,6 +780,61 @@ Pravidla:
    `TryGetValue` vrátí `false` a povinný parametr správně spadne na „missing“.
    Řetězec `"null"` v hodnotě nikdy nedostaneš.
 6. Registrace: jeden řádek `services.AddScoped<IChatTool, MyTool>();`.
+7. **Zápisový tool = `IConfirmableChatTool`.** Cokoli, co mění nebo maže data, musí projít
+   potvrzovacím krokem (viz níže). Nový zápisový tool bez něj = review reject.
+
+#### Zápisový tool — potvrzovací krok (POVINNÝ, issue #212)
+
+Asistent nemá ohlásit změnu, kterou uživatel neviděl přicházet. Vzor je **konverzační**:
+tool se nejdřív zavolá bez potvrzení a vrátí náhled, teprve po souhlasu uživatele se zavolá
+znovu s `confirm: true`. Žádná změna UI, funguje u všech čtyř providerů.
+
+```csharp
+public class UpdateNumberSequenceTool : IConfirmableChatTool   // místo IChatTool
+{
+    // ToolName / Description / Parameters / ExecuteAsync — beze změny.
+    // POZOR: parametr "confirm" NEDEKLARUJ, přidá ho executor sám
+    // (jinak InvalidOperationException při startu).
+
+    public async Task<ChatToolResult> BuildPreviewAsync(
+        Dictionary<string, string> parameters, CancellationToken ct = default)
+    {
+        var current = await _repository.GetAsync(parameters["id"], ct);
+        if (current is null)
+            return ChatToolResult.Failure("Číselná řada nenalezena.");   // není co potvrzovat
+
+        // Jen popiš změnu. Nic nezapisuj. Žádné "potvrď prosím" — to doplní executor.
+        return ChatToolResult.Success(
+            $"Číslování se změní z '{current.Pattern}' na '{parameters["pattern"]}'.");
+    }
+}
+```
+
+Co dělá `ChatToolExecutor` (`Fakvio.Infrastructure/Service/ChatTools/`) automaticky:
+
+| Krok | Chování |
+|------|---------|
+| Schéma | Do `Parameters` doplní volitelný `confirm` (boolean) — v textových instrukcích i v native JSON Schema. Tool si ho nesmí deklarovat sám. |
+| Volání bez `confirm: true` | `ExecuteAsync` se **vůbec nezavolá**. Spustí se `BuildPreviewAsync` a k výsledku se připojí `ChatToolConfirmation.PreviewSuffix`. |
+| Neparsovatelná hodnota (`"ano"`, `"1"`) | Centrální validace ji odmítne jako ne-boolean; nespustí se ani zápis, ani náhled (fail-closed). |
+| Neúspěšný náhled | Vrátí se jako obyčejná chyba — model není vyzván k `confirm: true`. |
+| `UiAction` u náhledu | Zahodí se (`UiAction = null`). Jinak by prohlížeč přenavigoval dřív, než uživatel cokoli potvrdil. UI akci vracej až z `ExecuteAsync`. |
+| Odpověď modelu | Všechny čtyři tool cesty (text/native × streaming/non-streaming) skládají druhý průchod přes `ChatService.DescribeToolResult` + `BuildToolResultInstruction`; u náhledu říkají „tool NEBYL spuštěn". Framing tedy nezávisí na textu, který dodá tool. |
+| `confirm` v parametrech | Neodfiltruje se — dojde i do `BuildPreviewAsync`, i do `ExecuteAsync`. Čti parametry přes `TryGetValue` a `confirm` prostě ignoruj. |
+
+**Co gate NENÍ: autorizační hranice.** Server si souhlas nikde nepamatuje — kroky „náhled" a
+„potvrzení" drží pohromadě jen znění promptu. Model, který pošle `confirm: true` rovnou v prvním
+volání, zapíše okamžitě. Je to **UX tok** proti tichým změnám, ne oprávnění; autorizace zůstává
+tam, kde byla — na API endpointech a v tenant scope. Destruktivní tool (mazání) proto za tímhle
+gate smí viset jen tehdy, když by ho uživatel směl zavolat i bez chatu.
+
+Obě volání navíc **nejsou nijak spárovaná**: mezi náhledem a zápisem může být N uživatelských
+tahů a executor nekoreluje nic. `ExecuteAsync` si musí předpoklady ověřit **znovu sám** a nesmí
+se spolehnout na snímek z náhledu.
+
+Zdroj pravdy o mechanismu: `Fakvio.Application/Service/IConfirmableChatTool.cs`
+(interface + `ChatToolConfirmation`). Read-only tool zůstává na `IChatTool` —
+potvrzovat čtení je jen otravné.
 
 #### System prompt — složení a editovatelnost (issue #146)
 
@@ -797,6 +852,7 @@ Pořadí bloků shora dolů:
 | 3 | Hlavní blok (RESPONSE STYLE / TOOLS / IMPORT RULES / RULES) | `AiSystemPrompt.BuildDefaultMainBlock(tools)` — statický text z konstant, katalog toolů generovaný z `IChatTool` — nebo `SystemConfiguration.AiSystemPromptCustom` | **ano (SysAdmin)** |
 | 4 | Dodatek | `SystemConfiguration.AiSystemPromptAppendix` | **ano (SysAdmin)** |
 | 5 | Business kontext (počty klientů a faktur) | tenant DB | ne |
+| 6 | Situační kontext (dnešek, stránka, otevřený záznam, chybějící nastavení) | request + tenant DB | ne |
 
 - Neprázdný `AiSystemPromptCustom` **nahradí celý blok 3** — včetně katalogu tools. Nový
   chat tool se nikam nedopisuje: sekce `TOOLS:` se generuje z registrovaných `IChatTool`
@@ -826,6 +882,36 @@ Pořadí bloků shora dolů:
   v `MasterOnlyPaths` (§3.3), takže hlavička `X-Company-Id` není potřeba.
   Functions zrcadlo: `Fakvio.Functions/HttpFunctions/AiInstructionsFunctions.cs`.
 - UI: `/ai-instructions` (`Fakvio.UI.Shared/Components/Pages/AiInstructions.razor`), SysAdmin sekce nav menu.
+
+#### Situační kontext (blok 6, issue #230)
+
+Poslední blok promptu říká modelu, *kdy a kde* uživatel stojí — bez něj se „oprav tuhle
+fakturu" nebo „splatnost do pátku" nedá vyhodnotit:
+
+| Řádek | Zdroj | Chybí když |
+|-------|-------|------------|
+| `Today's date` | `DateTime.UtcNow` (UTC jako všude jinde, app nemá per-tenant timezone) | nikdy |
+| `Current page` | `SendMessageRequest.CurrentRoute` | klient routu neposlal (Functions, starší klient) |
+| `Open record` | `SendMessageRequest.OpenEntity` | stránka nezobrazuje jeden záznam (přehledy, dashboard) |
+| `Setup not finished yet` | `ITenantReadinessService.GetReportAsync` — jen **blocking** nálezy, formát `CODE (fix at /route)` | tenant je nastavený nebo jsou nálezy jen warning |
+
+- Řádek bez hodnoty se **vynechá celý** (stejně jako `- DIČ:`) — prázdný popisek jen svádí
+  model k tomu, aby si hodnotu domyslel.
+- Routu i otevřený záznam plní **klient** (`ChatSituation.NormalizeRoute` /
+  `DescribeOpenEntity` v `Fakvio.UI.Shared/Components/Chat/`, volané z `ChatPanel`).
+  Pravidlo „poslední segment je číslo ⇒ na stránce je jeden záznam" je záměrně generické:
+  žádná tabulka rout, nová detailní stránka funguje bez zásahu, a mapování intent → route
+  zůstává na `NavigateTool`. Query string se zahazuje (filtry a stránkování modelu nic neříkají).
+- Obě hodnoty jdou do promptu z requestu, takže je `ChatContextBuilder.Sanitize` zkracuje
+  a zbavuje konců řádků — jinak by šitá route mohla podvrhnout vlastní sekci promptu.
+  Limity v DTO to nezachytí: Functions host request deserializuje sám, bez model validace.
+- Pravidla připravenosti se tu **neduplikují** — vlastní je `ITenantReadinessService`
+  (issue #148). Warningy do promptu nejdou (model s nimi nemá co dělat) a detail chybějících
+  polí zůstává v UI banneru; modelu stačí kód a stránka, kam uživatele poslat.
+  Readiness je jediná část promptu, která sahá do master DB, takže se volá ve vlastním
+  `try/catch`: její výpadek smaže jen tenhle řádek, ne identitu firmy a statistiky.
+- Náhled pro SysAdmina blok ukazuje také, s `PreviewPlaceholder` místo živých hodnot —
+  vlastní prompt se píše proti celému layoutu, ne proti jeho polovině.
 
 #### Chat AI Tools matice
 
@@ -870,10 +956,67 @@ anonymní nebo SysAdmin-only stránku, (c) každá tenant-facing stránka bez pa
 v routě je nabízená. **Nová stránka v UI tedy shodí testy, dokud ji nedoplníš do
 `Routes`** — nebo ji v tom testu explicitně nevyloučíš s odůvodněním.
 
-##### Co zatím NENÍ pokryto chat tools (jen MCP Server)
-- Reminders (dunning) — přístupné přes SysAdmin UI, ne přes chat
-- PaymentMatch / BankTransaction — přístupné přes SysAdmin UI
-- NumberSequence, BankAccount, VatRate, Currency, ContentTemplate — read-only přes MCP server (`Fakvio.McpServer`)
+##### Paritní tabulka chat ↔ MCP (stav k #212)
+
+Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 11 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
+a **MCP server** (`[McpServerTool]`, 36 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
+cílem story #149 je mezeru zavřít. Tabulka je jediný pravdivý seznam toho, co kde chybí;
+**každý nový tool na kterékoli straně sem přidá řádek** (viz §13).
+
+Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nemá)
+
+| MCP tool | Operace | Chat ekvivalent | Stav | Doplní |
+|----------|---------|-----------------|------|--------|
+| **Klienti** (`ClientTools`, 6) |
+| `LookupAres` | Read (ARES) | `ares_lookup` | ✅ | |
+| `CreateClient` | Create | `create_client` | ✅ | |
+| `ListClients` | Read | — | ❌ | #222 |
+| `GetClient` | Read | — | ❌ | #222 |
+| `UpdateClient` | **Write** | — | ❌ | #222 |
+| `GetIssuer` | Read | — | ❌ | #222 |
+| **Vydané faktury** (`InvoiceTools`, 10) |
+| `CreateInvoice` | Create | `create_invoice` | ✅ | |
+| `ExportInvoicePdf` | Read → download | `export_invoice` | ◐ (chat neumí ISDOC) | #217 |
+| `ListInvoices` | Read | — | ❌ | #217 |
+| `GetInvoice` | Read | — | ❌ | #217 |
+| `FindInvoiceByNumber` | Read | — | ❌ | #217 |
+| `CompleteInvoice` | **Write** | — | ❌ | #217 |
+| `MarkInvoicePaid` | **Write** | — | ❌ | #217 |
+| `SendInvoiceEmail` | **Write** (odešle e-mail) | — | ❌ | #217 |
+| `ExportInvoiceIsdoc` | Read → download | — | ❌ | #217 |
+| `DeleteInvoice` | **Destructive** | — | ❌ | #217 |
+| **Přijaté faktury** (`ReceivedInvoiceTools`, 6) |
+| `GetReceivedInvoice` | Read | `get_received_invoice` | ✅ | |
+| `ListReceivedInvoices` | Read | `list_received_invoices` | ✅ | |
+| `CreateReceivedInvoice` | Create | `import_invoice` (auto-detekce vydaná/přijatá) | ◐ | #218 |
+| `ApproveReceivedInvoice` | **Write** | — | ❌ | #218 |
+| `MarkReceivedInvoicePaid` | **Write** | — | ❌ | #218 |
+| `DeleteReceivedInvoice` | **Destructive** | — | ❌ | #218 |
+| **Reporting** (`ReportingTools`, 6) |
+| `GetDashboard` | Read | — | ❌ | #228 |
+| `GetOverdueInvoices` | Read | — | ❌ | #228 |
+| `GetClientInvoices` | Read | — | ❌ | #228 |
+| `GetInvoicesByDateRange` | Read | — | ❌ | #228 |
+| `GetVatReport` | Read | — | ❌ | #228 |
+| `GetOverdueReceivedInvoices` | Read | — | ❌ | #228 |
+| **Daně** (`TaxTools`, 5) |
+| `EstimateTax`, `CompareTaxRegimes`, `GetAnnualIncome`, `GetInsuranceAdvance`, `GetTaxConfig` | Read | — | ❌ | zatím bez tasku |
+| **Šablony** (`TemplateTools`, 3) |
+| `ListTemplates` | Read | — | ❌ | #225 |
+| `GetTemplate` | Read | — | ❌ | #225 |
+| `CreateInvoiceFromTemplate` | Create | — | ❌ | #225 |
+| **Jen chat (MCP nemá)** |
+| — | Search | `search_received_invoices` | ⬅ | |
+| — | Navigace UI | `navigate` | ⬅ | |
+| — | Upload přílohy | `attach_file` | ⬅ | |
+| — | Read | `list_attachments` | ⬅ | |
+
+**Součty:** 36 MCP toolů, 11 chat toolů. Chat pokrývá 7 MCP toolů (z toho 2 částečně),
+4 chat tooly nemají MCP protějšek. Zbývá 29 mezer.
+
+Mimo obě rozhraní (jen UI / SysAdmin, plánováno v #220 / #224 / #227):
+nastavení firmy a bankovní účty, číselné řady a sazby DPH, upomínky (dunning),
+PaymentMatch / BankTransaction.
 
 ### 4.8 In-app notifikace (per-user)
 
@@ -930,6 +1073,7 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
 - Žádný přístup k DB — všechno jde přes `IFakvioApiClient` → HTTP na `Fakvio.API`, takže autorizace i tenant izolace platí beze změny.
 - **36 tools**: 10 invoice + 6 client + 6 received invoice + 6 reporting + 5 tax + 3 template (po jednom souboru v `Tools/`).
   Ruční číslo v dokumentaci stárne; zdroj pravdy je `grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs`.
+  Porovnání s chat tooly (co MCP umí a chat ještě ne): paritní tabulka v §4.7.
 - Konfigurace v Claude Desktop / Claude Code: spustí `fakvio-mcp` jako subprocess se stdio piping. Vzor v `.mcp.json.sample` (kořen repa).
 - Detaily (build, získání tokenu, seznam nástrojů, postup přidání nástroje): `Fakvio.McpServer/README.md`.
 
@@ -1903,7 +2047,8 @@ pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. P
 | Nové readiness pravidlo / nový readiness kód / nový readiness gate | §4.12 (tabulka pravidel + tabulka zapojení!) |
 | Nový code-table pattern (master / tenant / dual-context) | §11.2 |
 | Nový background lock klíč | §6.3 (tabulka klíčů) |
-| Nový chat tool nebo změna schématu parametrů (`IChatTool.Parameters`) | §4.7 (postup + matice) |
+| Nový chat tool nebo změna schématu parametrů (`IChatTool.Parameters`) | §4.7 (postup + matice + **paritní tabulka**) |
+| Nový MCP tool (`[McpServerTool]`) | §4.9 (počty) + §4.7 (paritní tabulka) |
 | Nový AI provider nebo změna jeho schopností (tools, obrázky) | §4.7 (matice schopností providerů) |
 | Změna observability stacku (App Insights → jiný) | §10 |
 | Nová list stránka s gridem / změna grid patternu | §7.10 (FakvioGrid) |
