@@ -72,7 +72,6 @@ public class DiagnosticControllerTests : IDisposable
             // rules instead of hand-setting AuthMode/AuthModeSource (AuthModeSource has no
             // public setter precisely so it cannot be faked).
             DatabaseOptions.Resolve(configuration),
-            configuration,
             Substitute.For<ILogger<DiagnosticController>>());
 
     private static Dictionary<string, object> Payload(IActionResult result, int expectedStatusCode)
@@ -239,19 +238,49 @@ public class DiagnosticControllerTests : IDisposable
     }
 
     /// <summary>
-    /// No connection string configured at all → reported as not configured, and no masked
-    /// server field is invented.
+    /// The connection string may come from "Database:ConnectionString" instead of the classic
+    /// "ConnectionStrings:DefaultConnection" — and in DatabaseOptions.Resolve the section key
+    /// WINS. The payload must therefore describe the string the process actually connected
+    /// with, not whichever key the controller happens to look at: reading DefaultConnection
+    /// directly used to report "not configured" next to "canConnect: true".
     /// </summary>
     [Fact]
-    public async Task Health_WithoutAConnectionString_ReportsItAsNotConfigured()
+    public async Task Health_WithTheConnectionStringOnlyInTheDatabaseSection_ReportsThatString()
     {
-        // Arrange — DatabaseOptions.Resolve would throw without a connection string, so the
-        // options carry one while the configuration the controller reads does not. That is
-        // not artificial: the string can come from "Database:ConnectionString" instead.
+        // Arrange — only the section key exists; ConnectionStrings:DefaultConnection is absent.
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Database:ConnectionString"] =
+                    "Host=section-host;Database=section-db;Username=section-user;Password=fakvio_dev"
+            })
+            .Build();
+        var sut = CreateSut(configuration);
+
+        // Act
+        var data = Payload(await sut.Health(), StatusCodes.Status200OK);
+
+        // Assert — configured, and the masked server names the section string's host/db/user.
+        data["masterConnectionConfigured"].ShouldBe(true);
+        data["masterConnectionServer"]
+            .ShouldBe("Host=section-host; Database=section-db; Username=section-user");
+        // Same guarantee as the leak test: a different source must not become a new leak path.
+        JsonSerializer.Serialize(data).ShouldNotContain("fakvio_dev");
+    }
+
+    /// <summary>
+    /// Defensive branch: options without a connection string → reported as not configured, no
+    /// masked server field invented. DatabaseOptions.Resolve cannot produce this state (it
+    /// throws instead), so the options are hand-built here; the guard exists because
+    /// ConnectionString is nullable and a null must not crash the health endpoint.
+    /// </summary>
+    [Fact]
+    public async Task Health_WhenTheResolvedOptionsCarryNoConnectionString_ReportsItAsNotConfigured()
+    {
+        // Arrange
         var sut = new DiagnosticController(
             _masterDb,
-            DatabaseOptions.Resolve(BuildConfiguration()),
-            new ConfigurationBuilder().Build(),
+            new DatabaseOptions { ConnectionString = null },
             Substitute.For<ILogger<DiagnosticController>>());
 
         // Act

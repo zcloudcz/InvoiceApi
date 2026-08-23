@@ -30,18 +30,15 @@ public class DiagnosticController : ControllerBase
 {
     private readonly MasterDbContext _masterDb;
     private readonly DatabaseOptions _databaseOptions;
-    private readonly IConfiguration _configuration;
     private readonly ILogger<DiagnosticController> _logger;
 
     public DiagnosticController(
         MasterDbContext masterDb,
         DatabaseOptions databaseOptions,
-        IConfiguration configuration,
         ILogger<DiagnosticController> logger)
     {
         _masterDb = masterDb;
         _databaseOptions = databaseOptions;
-        _configuration = configuration;
         _logger = logger;
     }
 
@@ -60,7 +57,13 @@ public class DiagnosticController : ControllerBase
         var result = new Dictionary<string, object>();
 
         // Connection string: presence + masked form only. Never the raw value.
-        var masterConn = _configuration.GetConnectionString("DefaultConnection");
+        //
+        // Taken from the SAME resolved DatabaseOptions the data source was built from, not
+        // from IConfiguration. Reading "ConnectionStrings:DefaultConnection" directly used to
+        // let the payload contradict itself: "Database:ConnectionString" wins in
+        // DatabaseOptions.Resolve, so a deployment configured only through that key reported
+        // masterConnectionConfigured=false right next to masterDbCanConnect=true.
+        var masterConn = _databaseOptions.ConnectionString;
         result["masterConnectionConfigured"] = !string.IsNullOrEmpty(masterConn);
         if (!string.IsNullOrEmpty(masterConn))
         {

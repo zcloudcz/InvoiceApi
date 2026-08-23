@@ -660,6 +660,15 @@ curl -s -H "Authorization: Bearer <sysadmin-jwt>"   https://<host>/api/diagnosti
 HTTP **200** = databáze odpovídá, **503** = neodpovídá (monitoring může jet jen podle status
 kódu). Při 503 se `authMode`/`authModeSource` hlásí dál — právě tehdy jsou nejužitečnější.
 
+**Když je databáze úplně nedostupná**, endpoint nepomůže — přihlášení SysAdmina samo potřebuje
+master DB. Tentýž údaj proto oba hostitelé vypisují do logu hned po startu (Azure: Log stream /
+Application Insights), ještě před prvním dotazem do databáze:
+
+```text
+info: Fakvio.Infrastructure.Database[0]
+      Startup: database auth mode Password (source: Database:AuthMode)
+```
+
 **Přepnutí režimu autentizace k DB** (Azure App Settings):
 
 1. Přidejte `Database__AuthMode` = `AzureEntraId` nebo `Password`. Starý klíč

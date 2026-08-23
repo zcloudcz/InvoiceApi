@@ -71,7 +71,6 @@ public class DiagnosticFunctionsTests : IDisposable
             new DiagnosticController(
                 _masterDb,
                 DatabaseOptions.Resolve(_configuration),
-                _configuration,
                 Substitute.For<ILogger<DiagnosticController>>()),
             _logger);
 

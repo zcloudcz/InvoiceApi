@@ -116,6 +116,12 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
+// Startup breadcrumb: which database auth mode won, and from which config key. Logged
+// BEFORE the migrations below, because that is the step that fails when the database is
+// unreachable — and an unreachable database also means no SysAdmin login and therefore no
+// /api/diagnostic/health to ask instead. See LogDatabaseAuthMode + SELFHOST-DB.md §3.4.
+app.Services.LogDatabaseAuthMode();
+
 // ── Startup migrations ──────────────────────────────────────────────────────
 // Apply database migrations automatically on startup.
 // Step 1: Migrate the master database (Users, Companies, CompanySystemSettings, code tables).

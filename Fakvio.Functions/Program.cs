@@ -134,6 +134,12 @@ var host = new HostBuilder()
     })
     .Build();
 
+// Startup breadcrumb: which database auth mode won, and from which config key. Same line as
+// the API host (LogDatabaseAuthMode), logged before any database work — when the database is
+// down, /api/diagnostic/health cannot answer (SysAdmin login needs the master DB), so this is
+// the only place the mode can be read. See SELFHOST-DB.md §3.4.
+host.Services.LogDatabaseAuthMode();
+
 // ── Startup database migration (master DB only) ───────────────────────────
 // Step 1: Migrate master DB (Users, Companies, SystemSettings, code tables).
 // Step 2: Tenant migrations are handled LAZILY by ITenantDbContextFactory.EnsureMigratedAsync

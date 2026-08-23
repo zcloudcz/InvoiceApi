@@ -1575,7 +1575,15 @@ curl -s -H "Authorization: Bearer <sysadmin-jwt>"   http://localhost:5099/api/di
 
 Vrací `authMode` + `authModeSource` (který klíč vyhrál), stav master DB a migrací.
 200 = DB odpovídá, 503 = neodpovídá. Connection string jde ven **jen maskovaný**
-(host/db/user, nikdy heslo).
+(host/db/user, nikdy heslo). Pole o připojovacím řetězci se čtou z **téhož** rozřešeného
+singletonu `DatabaseOptions` jako `authMode` — kdyby se braly z `IConfiguration`, payload
+by si při konfiguraci přes `Database:ConnectionString` protiřečil.
+
+Endpoint je SysAdmin-only, takže při **nedostupné DB** (= nejde se přihlásit) na něj nedosáhneš.
+Pro ten případ oba hosty logují týž údaj hned po `Build()`, před prvním sáhnutím do DB —
+`IServiceProvider.LogDatabaseAuthMode()` (`ServiceCollectionExtensions`), kategorie
+`Fakvio.Infrastructure.Database`. Pinnuto v `DatabaseAuthModeStartupLogTests` včetně toho,
+že se do logu nikdy nedostane connection string.
 
 Logika žije v `Fakvio.API/Controller/DiagnosticController.cs`;
 `Fakvio.Functions/HttpFunctions/DiagnosticFunctions.Health` je tenká obálka, která ten

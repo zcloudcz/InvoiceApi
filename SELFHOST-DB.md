@@ -529,7 +529,17 @@ curl -s -H "Authorization: Bearer <sysadmin-jwt>"   https://<app>/api/diagnostic
 
 > Endpoint je **SysAdmin only** (#138) — bez tokenu vrací 401. Token získáš stejně jako
 > pro `credential-health` níž. Když je databáze nedostupná a login tedy neprojde,
-> `authMode` se dá přečíst ze startup logu.
+> `authMode` se dá přečíst ze **startup logu** — oba hosty ho vypíšou hned po startu,
+> kategorie `Fakvio.Infrastructure.Database`:
+>
+> ```text
+> info: Fakvio.Infrastructure.Database[0]
+>       Startup: database auth mode Password (source: Database:AuthMode)
+> ```
+>
+> Řádek jde ven před prvním sáhnutím do databáze, takže je k dispozici i když je DB dole
+> (v Azure: Log stream / Application Insights, lokálně stdout procesu). Připojovací řetězec
+> v logu nikdy není — jen mód a zdrojový klíč.
 
 **Očekávaný výsledek:**
 ```json
