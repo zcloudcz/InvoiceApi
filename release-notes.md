@@ -58,6 +58,10 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Změny pro vývojáře
 
+- **#228** — AI asistent v chatu teď umí nahlásit stav dashboardu (cashflow, neuhrazené a
+  po splatnosti částky, top klienti), vypsat vydané faktury a dobropisy s filtry podle
+  stavu, klienta, období nebo splatnosti a spočítat DPH report za zadané období — dřív
+  musel uživatel tyhle přehledy hledat v UI ručně. (PR #259, `c3c591f`)
 - **#212** — Zápisové nástroje AI chatu (zatím žádný neexistuje, ale #217/#218/#220/#222/
   #224/#225/#227 na tomhle základu staví) budou mít jednotný potvrzovací mechanismus: bez
   parametru `confirm: true` se zápis vůbec nespustí a model dostane jen náhled toho, co by
