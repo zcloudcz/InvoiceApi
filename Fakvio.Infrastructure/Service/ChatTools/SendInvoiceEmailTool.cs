@@ -1,5 +1,6 @@
 using System.Net.Mail;
 using Fakvio.Application.Service;
+using Fakvio.Contracts.Dto.Invoice;
 using Microsoft.Extensions.Logging;
 
 namespace Fakvio.Infrastructure.Service.ChatTools;
@@ -98,7 +99,7 @@ public class SendInvoiceEmailTool : IConfirmableChatTool
     /// the schema can only say "string" — and an unsendable address must fail before the PDF
     /// is generated, not inside the SMTP client.
     /// </summary>
-    private async Task<(Contracts.Dto.Invoice.InvoiceDto? Invoice, string? Recipient, string? Error)> LoadSendableAsync(
+    private async Task<(InvoiceDto? Invoice, string? Recipient, string? Error)> LoadSendableAsync(
         Dictionary<string, string> parameters, CancellationToken ct)
     {
         // Required by the schema, so it is present — but the executor dispatches the raw value.
