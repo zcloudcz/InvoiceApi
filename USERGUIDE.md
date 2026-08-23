@@ -45,6 +45,11 @@
 Sídlo se uloží k vaší firmě jako primární adresa a používá se jako blok vystavitele
 na fakturách (PDF). Změnit ho lze později v „Nastavení firmy".
 
+**Plátcovství DPH se odvodí z ARES:** má-li vaše firma v registru DIČ, založí se rovnou
+jako plátce DPH (a DIČ se uloží). Bez DIČ v ARES — nebo když je registr nedostupný —
+vznikne firma jako neplátce. DIČ v registru ale není právní záruka plátcovství, proto si
+nastavení po přihlášení zkontrolujte v „Nastavení firmy"; tam ho lze kdykoli přepnout.
+
 **Pozor na jednu výjimku:** když ulici, PSČ i město **úplně vymažete**, systém to bere
 jako „nevyplněno" a doplní adresu z ARES. Firma bez adresy vznikne jen tehdy, když ji
 nemá ani ARES (nebo je registr nedostupný) — pak ji doplňte v „Nastavení firmy"
