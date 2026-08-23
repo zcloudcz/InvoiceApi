@@ -716,4 +716,243 @@ public class ChatToolExecutorTests
         tools.ShouldContain("navigate");
         tools.ShouldContain("create_invoice");
     }
+
+    // ─── Confirm gate (issue #212) ────────────────────────────────────────
+    //
+    // The money path: a tool that changes data must not run until the user has approved it.
+    // Everything below is about proving that ExecuteAsync is NOT reached, not just that some
+    // preview text came back — a gate that returns a preview AND writes is the worst outcome.
+
+    /// <summary>
+    /// A data-changing tool: preview says what would change, execution says it changed.
+    /// Both are recorded by NSubstitute, so the tests can assert which one ran.
+    /// </summary>
+    private static IConfirmableChatTool CreateConfirmableTool(string name = "update_settings")
+    {
+        var tool = Substitute.For<IConfirmableChatTool>();
+        tool.ToolName.Returns(name);
+        tool.Description.Returns("Changes a company setting");
+        tool.Parameters.Returns(new[]
+        {
+            new ChatToolParameter
+            {
+                Name = "value",
+                Type = ChatToolParameterType.String,
+                Description = "New value",
+                IsRequired = true
+            }
+        });
+        tool.BuildPreviewAsync(Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>())
+            .Returns(ChatToolResult.Success("Invoice numbering would change from FA-2025 to FA-2026."));
+        tool.ExecuteAsync(Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>())
+            .Returns(ChatToolResult.Success("Setting saved."));
+        return tool;
+    }
+
+    private static ParsedToolCall ConfirmableCall(string? confirm)
+    {
+        var parameters = new Dictionary<string, string> { ["value"] = "FA-2026" };
+        if (confirm != null)
+            parameters["confirm"] = confirm;
+
+        return new ParsedToolCall { Action = "update_settings", Parameters = parameters };
+    }
+
+    [Fact]
+    public async Task ExecuteToolAsync_DoesNotWrite_WhenConfirmIsMissing()
+    {
+        var tool = CreateConfirmableTool();
+        var executor = CreateExecutor(tool);
+
+        var result = await executor.ExecuteToolAsync(ConfirmableCall(confirm: null));
+
+        // The whole point: the tool's write path was never entered.
+        await tool.DidNotReceive().ExecuteAsync(
+            Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>());
+        await tool.Received(1).BuildPreviewAsync(
+            Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>());
+
+        result.IsSuccess.ShouldBeTrue();
+        result.RequiresConfirmation.ShouldBeTrue();
+        result.OutputText.ShouldContain("would change from FA-2025 to FA-2026");
+        result.OutputText.ShouldContain("NOTHING HAS BEEN CHANGED YET");
+    }
+
+    [Theory]
+    [InlineData("false")]
+    [InlineData("False")]
+    [InlineData("FALSE")]
+    public async Task ExecuteToolAsync_DoesNotWrite_WhenConfirmIsFalse(string confirm)
+    {
+        var tool = CreateConfirmableTool();
+        var executor = CreateExecutor(tool);
+
+        var result = await executor.ExecuteToolAsync(ConfirmableCall(confirm));
+
+        await tool.DidNotReceive().ExecuteAsync(
+            Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>());
+        result.RequiresConfirmation.ShouldBeTrue();
+    }
+
+    [Theory]
+    [InlineData("yes")]
+    [InlineData("1")]
+    [InlineData("ano")]
+    public async Task ExecuteToolAsync_DoesNotWrite_WhenConfirmIsNotABoolean(string confirm)
+    {
+        // Fail closed: an unparsable flag is rejected by the schema validation, so neither the
+        // write nor the preview runs. The model gets a message and can send a proper boolean.
+        var tool = CreateConfirmableTool();
+        var executor = CreateExecutor(tool);
+
+        var result = await executor.ExecuteToolAsync(ConfirmableCall(confirm));
+
+        await tool.DidNotReceive().ExecuteAsync(
+            Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>());
+        result.IsSuccess.ShouldBeFalse();
+        result.ErrorMessage.ShouldContain("confirm");
+        result.ErrorMessage.ShouldContain("boolean");
+    }
+
+    [Theory]
+    [InlineData("true")]
+    [InlineData("True")]
+    [InlineData("TRUE")]
+    public async Task ExecuteToolAsync_Writes_WhenConfirmed(string confirm)
+    {
+        var tool = CreateConfirmableTool();
+        var executor = CreateExecutor(tool);
+
+        var result = await executor.ExecuteToolAsync(ConfirmableCall(confirm));
+
+        await tool.Received(1).ExecuteAsync(
+            Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>());
+        await tool.DidNotReceive().BuildPreviewAsync(
+            Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>());
+
+        result.IsSuccess.ShouldBeTrue();
+        result.RequiresConfirmation.ShouldBeFalse();
+        result.OutputText.ShouldBe("Setting saved.");
+    }
+
+    [Fact]
+    public async Task ExecuteToolAsync_ValidatesParametersBeforePreview()
+    {
+        // A preview built from parameters nobody validated would report a change the write
+        // path could never perform. Validation therefore comes first — for both paths.
+        var tool = CreateConfirmableTool();
+        var executor = CreateExecutor(tool);
+
+        var result = await executor.ExecuteToolAsync(
+            new ParsedToolCall { Action = "update_settings", Parameters = new Dictionary<string, string>() });
+
+        result.IsSuccess.ShouldBeFalse();
+        result.ErrorMessage.ShouldContain("missing required parameter 'value'");
+        await tool.DidNotReceive().BuildPreviewAsync(
+            Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>());
+        await tool.DidNotReceive().ExecuteAsync(
+            Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ExecuteToolAsync_KeepsFailedPreviewAsPlainFailure()
+    {
+        // Nothing to confirm when the preview itself failed — inviting the model to retry
+        // with confirm=true would send it straight into the same error, but writing this time.
+        var tool = CreateConfirmableTool();
+        tool.BuildPreviewAsync(Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>())
+            .Returns(ChatToolResult.Failure("Setting 'value' not found."));
+        var executor = CreateExecutor(tool);
+
+        var result = await executor.ExecuteToolAsync(ConfirmableCall(confirm: null));
+
+        result.IsSuccess.ShouldBeFalse();
+        result.RequiresConfirmation.ShouldBeFalse();
+        result.OutputText.ShouldNotContain("NOTHING HAS BEEN CHANGED YET");
+    }
+
+    [Fact]
+    public async Task ExecuteToolAsync_ReturnsFailure_WhenPreviewThrows()
+    {
+        var tool = CreateConfirmableTool();
+        tool.BuildPreviewAsync(Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>())
+            .Returns<Task<ChatToolResult>>(_ => throw new InvalidOperationException("DB down"));
+        var executor = CreateExecutor(tool);
+
+        var result = await executor.ExecuteToolAsync(ConfirmableCall(confirm: null));
+
+        result.IsSuccess.ShouldBeFalse();
+        result.RequiresConfirmation.ShouldBeFalse();
+        result.ErrorMessage.ShouldContain("DB down");
+    }
+
+    [Fact]
+    public async Task ExecuteToolAsync_LeavesNonConfirmableToolsAlone()
+    {
+        // Read-only tools must not grow a confirmation step.
+        var result = await _executor.ExecuteToolAsync(new ParsedToolCall
+        {
+            Action = "ares_lookup",
+            Parameters = new Dictionary<string, string> { ["registration_number"] = "12345678" }
+        });
+
+        result.RequiresConfirmation.ShouldBeFalse();
+        await _mockAresTool.Received(1).ExecuteAsync(
+            Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public void Constructor_Throws_WhenToolDeclaresTheReservedConfirmParameter()
+    {
+        var brokenTool = CreateTool("broken", "Broken tool",
+            new ChatToolParameter
+            {
+                Name = "Confirm",
+                Type = ChatToolParameterType.Boolean,
+                Description = "Hand-rolled confirmation"
+            });
+
+        var ex = Should.Throw<InvalidOperationException>(() => CreateExecutor(brokenTool));
+        ex.Message.ShouldContain("IConfirmableChatTool");
+    }
+
+    [Fact]
+    public void GetToolDefinitions_AddsOptionalConfirmFlag_ToConfirmableToolsOnly()
+    {
+        var executor = CreateExecutor(CreateConfirmableTool(), _mockAresTool);
+
+        var confirmable = executor.GetToolDefinitions().Single(d => d.Name == "update_settings");
+        var readOnly = executor.GetToolDefinitions().Single(d => d.Name == "ares_lookup");
+
+        var confirmParameter = confirmable.Parameters.Single(p => p.Name == "confirm");
+        confirmParameter.Type.ShouldBe("boolean");
+        confirmable.Required.ShouldNotContain("confirm",
+            "a required flag would force the model to send it on the first call too");
+
+        readOnly.Parameters.ShouldNotContain(p => p.Name == "confirm");
+    }
+
+    [Fact]
+    public void BuildToolInstructions_ExplainsTheTwoStepConfirmFlow_WhenAConfirmableToolExists()
+    {
+        var instructions = CreateExecutor(CreateConfirmableTool()).BuildToolInstructions();
+
+        instructions.ShouldContain("confirm (boolean, optional)");
+        instructions.ShouldContain("call them WITHOUT it first");
+    }
+
+    [Fact]
+    public void BuildToolInstructions_ExampleForConfirmableTool_OmitsConfirm()
+    {
+        // The example is the first call, which must be the preview one.
+        var instructions = CreateExecutor(CreateConfirmableTool()).BuildToolInstructions();
+
+        instructions.ShouldContain("""{"action": "update_settings", "parameters": {"value": "<value>"}}""");
+    }
+
+    [Fact]
+    public void BuildToolInstructions_SaysNothingAboutConfirm_WhenNoToolIsConfirmable()
+    {
+        _executor.BuildToolInstructions().ShouldNotContain("confirm");
+    }
 }

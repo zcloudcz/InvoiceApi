@@ -419,6 +419,38 @@ public class ChatServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task SendMessage_TellsModelNothingChanged_WhenToolOnlyReturnedAPreview()
+    {
+        // Issue #212: a confirmable tool that was called without approval did NOT run.
+        // If the second-pass prompt still said "was executed", the assistant would happily
+        // report a change that never happened — the exact failure the confirm gate prevents.
+        _toolExecutor.BuildToolInstructions().Returns("\nTOOLS: ...");
+        _toolExecutor.ParseToolCall(Arg.Any<string>()).Returns(
+            new ParsedToolCall
+            {
+                Action = "update_settings",
+                Parameters = new Dictionary<string, string> { ["value"] = "FA-2026" }
+            });
+        _toolExecutor.ExecuteToolAsync(Arg.Any<ParsedToolCall>(), Arg.Any<CancellationToken>())
+            .Returns(ChatToolResult.Success("Numbering would change to FA-2026.") with
+            {
+                RequiresConfirmation = true
+            });
+
+        var request = new SendMessageRequest { Message = "Změň číslování na FA-2026" };
+
+        await _service.SendMessageAsync(TestUserId, request);
+
+        // Second pass must be framed as a preview awaiting approval.
+        await _mockProvider.Received(1).GetCompletionAsync(
+            Arg.Any<List<ChatMessageDto>>(),
+            Arg.Is<string?>(prompt => prompt != null
+                                      && prompt.Contains("was NOT executed")
+                                      && prompt.Contains("ask them to confirm")),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task SendMessage_FallsBackToRegularFlow_WhenToolCallNotParsed()
     {
         // Arrange — tool instructions are sent, but the AI doesn't produce a tool call.

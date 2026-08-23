@@ -691,6 +691,49 @@ Pravidla:
    `TryGetValue` vrátí `false` a povinný parametr správně spadne na „missing“.
    Řetězec `"null"` v hodnotě nikdy nedostaneš.
 6. Registrace: jeden řádek `services.AddScoped<IChatTool, MyTool>();`.
+7. **Zápisový tool = `IConfirmableChatTool`.** Cokoli, co mění nebo maže data, musí projít
+   potvrzovacím krokem (viz níže). Nový zápisový tool bez něj = review reject.
+
+#### Zápisový tool — potvrzovací krok (POVINNÝ, issue #212)
+
+Model nesmí přepsat data bez vědomí uživatele. Vzor je **konverzační**: tool se nejdřív
+zavolá bez potvrzení a vrátí náhled, teprve po souhlasu uživatele se zavolá znovu
+s `confirm: true`. Žádná změna UI, funguje u všech čtyř providerů.
+
+```csharp
+public class UpdateNumberSequenceTool : IConfirmableChatTool   // místo IChatTool
+{
+    // ToolName / Description / Parameters / ExecuteAsync — beze změny.
+    // POZOR: parametr "confirm" NEDEKLARUJ, přidá ho executor sám
+    // (jinak InvalidOperationException při startu).
+
+    public async Task<ChatToolResult> BuildPreviewAsync(
+        Dictionary<string, string> parameters, CancellationToken ct = default)
+    {
+        var current = await _repository.GetAsync(parameters["id"], ct);
+        if (current is null)
+            return ChatToolResult.Failure("Číselná řada nenalezena.");   // není co potvrzovat
+
+        // Jen popiš změnu. Nic nezapisuj. Žádné "potvrď prosím" — to doplní executor.
+        return ChatToolResult.Success(
+            $"Číslování se změní z '{current.Pattern}' na '{parameters["pattern"]}'.");
+    }
+}
+```
+
+Co dělá `ChatToolExecutor` (`Fakvio.Infrastructure/Service/ChatTools/`) automaticky:
+
+| Krok | Chování |
+|------|---------|
+| Schéma | Do `Parameters` doplní volitelný `confirm` (boolean) — v textových instrukcích i v native JSON Schema. Tool si ho nesmí deklarovat sám. |
+| Volání bez `confirm: true` | `ExecuteAsync` se **vůbec nezavolá**. Spustí se `BuildPreviewAsync` a k výsledku se připojí `ChatToolConfirmation.PreviewSuffix`. |
+| Neparsovatelná hodnota (`"ano"`, `"1"`) | Centrální validace ji odmítne jako ne-boolean; nespustí se ani zápis, ani náhled (fail-closed). |
+| Neúspěšný náhled | Vrátí se jako obyčejná chyba — model není vyzván k `confirm: true`. |
+| Odpověď modelu | `ChatService.BuildToolResultPrompt` u náhledu říká „tool NEBYL spuštěn", takže asistent nemůže ohlásit změnu, která se nestala. |
+
+Zdroj pravdy o mechanismu: `Fakvio.Application/Service/IConfirmableChatTool.cs`
+(interface + `ChatToolConfirmation`). Read-only tool zůstává na `IChatTool` —
+potvrzovat čtení je jen otravné.
 
 #### System prompt — složení a editovatelnost (issue #146)
 
@@ -756,10 +799,67 @@ Sloupec „Klíčové parametry" je jen orientační — závazné je schéma v 
 | `attach_file` | `AttachFileTool` | Invoice / ReceivedInvoice / Client | Write (upload) | `entity_name`, `record_id`, `file_name`, `file_content_base64` (Base64 bytes), `content_type`, `description` |
 | `list_attachments` | `ListAttachmentsTool` | Invoice / ReceivedInvoice / Client | Read (list) | `entity_name`, `record_id`; vrátí jméno, velikost, datum, popis pro každý soubor |
 
-##### Co zatím NENÍ pokryto chat tools (jen MCP Server)
-- Reminders (dunning) — přístupné přes SysAdmin UI, ne přes chat
-- PaymentMatch / BankTransaction — přístupné přes SysAdmin UI
-- NumberSequence, BankAccount, VatRate, Currency, ContentTemplate — read-only přes MCP server (`Fakvio.McpServer`)
+##### Paritní tabulka chat ↔ MCP (stav k #212)
+
+Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 11 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
+a **MCP server** (`[McpServerTool]`, 36 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
+cílem story #149 je mezeru zavřít. Tabulka je jediný pravdivý seznam toho, co kde chybí;
+**každý nový tool na kterékoli straně sem přidá řádek** (viz §13).
+
+Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nemá)
+
+| MCP tool | Operace | Chat ekvivalent | Stav | Doplní |
+|----------|---------|-----------------|------|--------|
+| **Klienti** (`ClientTools`, 6) |
+| `LookupAres` | Read (ARES) | `ares_lookup` | ✅ | |
+| `CreateClient` | Create | `create_client` | ✅ | |
+| `ListClients` | Read | — | ❌ | #222 |
+| `GetClient` | Read | — | ❌ | #222 |
+| `UpdateClient` | **Write** | — | ❌ | #222 |
+| `GetIssuer` | Read | — | ❌ | #222 |
+| **Vydané faktury** (`InvoiceTools`, 10) |
+| `CreateInvoice` | Create | `create_invoice` | ✅ | |
+| `ExportInvoicePdf` | Read → download | `export_invoice` | ◐ (chat neumí ISDOC) | #217 |
+| `ListInvoices` | Read | — | ❌ | #217 |
+| `GetInvoice` | Read | — | ❌ | #217 |
+| `FindInvoiceByNumber` | Read | — | ❌ | #217 |
+| `CompleteInvoice` | **Write** | — | ❌ | #217 |
+| `MarkInvoicePaid` | **Write** | — | ❌ | #217 |
+| `SendInvoiceEmail` | **Write** (odešle e-mail) | — | ❌ | #217 |
+| `ExportInvoiceIsdoc` | Read → download | — | ❌ | #217 |
+| `DeleteInvoice` | **Destructive** | — | ❌ | #217 |
+| **Přijaté faktury** (`ReceivedInvoiceTools`, 6) |
+| `GetReceivedInvoice` | Read | `get_received_invoice` | ✅ | |
+| `ListReceivedInvoices` | Read | `list_received_invoices` | ✅ | |
+| `CreateReceivedInvoice` | Create | `import_invoice` (auto-detekce vydaná/přijatá) | ◐ | #218 |
+| `ApproveReceivedInvoice` | **Write** | — | ❌ | #218 |
+| `MarkReceivedInvoicePaid` | **Write** | — | ❌ | #218 |
+| `DeleteReceivedInvoice` | **Destructive** | — | ❌ | #218 |
+| **Reporting** (`ReportingTools`, 6) |
+| `GetDashboard` | Read | — | ❌ | #228 |
+| `GetOverdueInvoices` | Read | — | ❌ | #228 |
+| `GetClientInvoices` | Read | — | ❌ | #228 |
+| `GetInvoicesByDateRange` | Read | — | ❌ | #228 |
+| `GetVatReport` | Read | — | ❌ | #228 |
+| `GetOverdueReceivedInvoices` | Read | — | ❌ | #228 |
+| **Daně** (`TaxTools`, 5) |
+| `EstimateTax`, `CompareTaxRegimes`, `GetAnnualIncome`, `GetInsuranceAdvance`, `GetTaxConfig` | Read | — | ❌ | zatím bez tasku |
+| **Šablony** (`TemplateTools`, 3) |
+| `ListTemplates` | Read | — | ❌ | #225 |
+| `GetTemplate` | Read | — | ❌ | #225 |
+| `CreateInvoiceFromTemplate` | Create | — | ❌ | #225 |
+| **Jen chat (MCP nemá)** |
+| — | Search | `search_received_invoices` | ⬅ | |
+| — | Navigace UI | `navigate` | ⬅ | #229 (rozšíření rout) |
+| — | Upload přílohy | `attach_file` | ⬅ | |
+| — | Read | `list_attachments` | ⬅ | |
+
+**Součty:** 36 MCP toolů, 11 chat toolů. Chat pokrývá 7 MCP toolů (z toho 2 částečně),
+4 chat tooly nemají MCP protějšek. Zbývá 29 mezer.
+
+Mimo obě rozhraní (jen UI / SysAdmin, plánováno v #220 / #224 / #227):
+nastavení firmy a bankovní účty, číselné řady a sazby DPH, upomínky (dunning),
+PaymentMatch / BankTransaction.
 
 ### 4.8 In-app notifikace (per-user)
 
@@ -812,7 +912,9 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
 
 - Standalone .NET tool (PackAsTool), stdio transport.
 - Auth: `FAKVIO_API_TOKEN` env var (JWT bearer).
-- 21 tools: 8 invoice + 6 client + 3 template + 4 reporting.
+- 36 tools: 10 invoice (`InvoiceTools`) + 6 client (`ClientTools`) + 6 received invoice
+  (`ReceivedInvoiceTools`) + 6 reporting (`ReportingTools`) + 5 tax (`TaxTools`) + 3 template
+  (`TemplateTools`). Porovnání s chat tooly: paritní tabulka v §4.7.
 - Konfigurace v Claude Desktop / Claude Code: spustí `fakvio-mcp-server` jako subprocess se stdio piping.
 
 ### 4.10 Invoice by Email (IMAP → auto-import)
@@ -1681,7 +1783,8 @@ pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. P
 | Nový projekt s `EmitCompilerGeneratedFiles` | §12 (Generated/) + `.gitignore` |
 | Nový code-table pattern (master / tenant / dual-context) | §11.2 |
 | Nový background lock klíč | §6.3 (tabulka klíčů) |
-| Nový chat tool nebo změna schématu parametrů (`IChatTool.Parameters`) | §4.7 (postup + matice) |
+| Nový chat tool nebo změna schématu parametrů (`IChatTool.Parameters`) | §4.7 (postup + matice + **paritní tabulka**) |
+| Nový MCP tool (`[McpServerTool]`) | §4.9 (počty) + §4.7 (paritní tabulka) |
 | Změna observability stacku (App Insights → jiný) | §10 |
 | Nová list stránka s gridem / změna grid patternu | §7.10 (FakvioGrid) |
 | Nová/změněná funkce **viditelná uživateli** (stránka, akce, stav, export) | **USERGUIDE.md** |

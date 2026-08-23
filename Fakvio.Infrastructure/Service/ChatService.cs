@@ -186,10 +186,7 @@ public class ChatService : IChatService
                 _pendingUiAction = toolResult.UiAction;
 
                 // Second pass: AI call with tool result injected into the system prompt.
-                var resultPrompt = systemPrompt +
-                    $"\n\nTool '{toolCall.Action}' was executed. Result:\n{toolResult.OutputText}\n\n" +
-                    "Now respond to the user in a friendly, concise way based on the tool result above. " +
-                    "Include the key information from the result. Respond in the same language as the user.";
+                var resultPrompt = BuildToolResultPrompt(systemPrompt, toolCall.Action, toolResult);
 
                 responseText = await provider.GetCompletionAsync(history, resultPrompt, ct);
             }
@@ -426,10 +423,7 @@ public class ChatService : IChatService
                 _pendingUiAction = toolResult.UiAction;
 
                 // Second pass: stream the final response with tool result in the system prompt.
-                var resultPrompt = systemPrompt +
-                    $"\n\nTool '{toolCall.Action}' was executed. Result:\n{toolResult.OutputText}\n\n" +
-                    "Now respond to the user in a friendly, concise way based on the tool result above. " +
-                    "Include the key information from the result. Respond in the same language as the user.";
+                var resultPrompt = BuildToolResultPrompt(systemPrompt, toolCall.Action, toolResult);
 
                 var toolFullResponse = new StringBuilder();
 
@@ -531,6 +525,29 @@ public class ChatService : IChatService
     // ─── Private helpers ────────────────────────────────────────────────
 
     /// <summary>
+    /// Builds the second-pass system prompt that turns a raw tool result into an answer.
+    /// Shared by all tool flows (streaming / non-streaming, native / text-based) so the
+    /// model is framed identically no matter which provider the tenant uses.
+    ///
+    /// The distinction that matters: a confirmable tool that was called without approval
+    /// only produced a PREVIEW (see <see cref="IConfirmableChatTool"/>). Telling the model it
+    /// "was executed" would make the assistant announce a change that never happened.
+    /// </summary>
+    private static string BuildToolResultPrompt(string systemPrompt, string toolName, ChatToolResult result)
+    {
+        var framing = result.RequiresConfirmation
+            ? $"\n\nTool '{toolName}' was NOT executed — nothing has been changed. " +
+              $"It returned a preview of the change:\n{result.OutputText}\n\n" +
+              "Show the user what would change and ask them to confirm. " +
+              "Do NOT claim the change is done. Respond in the same language as the user."
+            : $"\n\nTool '{toolName}' was executed. Result:\n{result.OutputText}\n\n" +
+              "Now respond to the user in a friendly, concise way based on the tool result above. " +
+              "Include the key information from the result. Respond in the same language as the user.";
+
+        return systemPrompt + framing;
+    }
+
+    /// <summary>
     /// Handles the non-streaming native tool calling flow.
     /// Sends tool definitions to the provider, executes any tool calls,
     /// and returns the final AI response text.
@@ -571,10 +588,7 @@ public class ChatService : IChatService
             _pendingUiAction = toolResult.UiAction;
 
             // Second pass: AI generates a natural-language response using the tool result.
-            var resultPrompt = systemPrompt +
-                $"\n\nTool '{nativeToolCall.ToolName}' was executed. Result:\n{toolResult.OutputText}\n\n" +
-                "Now respond to the user in a friendly, concise way based on the tool result above. " +
-                "Include the key information from the result. Respond in the same language as the user.";
+            var resultPrompt = BuildToolResultPrompt(systemPrompt, nativeToolCall.ToolName, toolResult);
 
             return await provider.GetCompletionAsync(history, resultPrompt, ct);
         }
