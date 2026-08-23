@@ -183,8 +183,15 @@ public class FakvioFactory : WebApplicationFactory<Program>
     /// </summary>
     /// <param name="email">Email to register the user under (must be unique in the test DB)</param>
     /// <param name="userId">Explicit ID to avoid collisions with seed data (seed admin = 1)</param>
+    /// <param name="companyId">
+    /// Optional tenant the user belongs to. Left null the user has no company at all, which is
+    /// what the [Authorize(Roles = "SysAdmin")] tests want. Pass a company ID to get a real
+    /// tenant user: AuthService bakes a "CompanyId" claim into the JWT, so TenantContextMiddleware
+    /// resolves the tenant from the token instead of from SysAdmin's X-Company-Id header.
+    /// The company (and its provisioned CompanySystemSettings row) must already be seeded.
+    /// </param>
     /// <returns>The plain-text password to pass to AuthHelper.LoginAsync()</returns>
-    public string SeedRegularUser(string email, long userId = 100)
+    public string SeedRegularUser(string email, long userId = 100, long? companyId = null)
     {
         const string plainTextPassword = "TestUser123";
         // Use cost factor 4 (minimum) for speed in tests — production uses 12.
@@ -206,7 +213,7 @@ public class FakvioFactory : WebApplicationFactory<Program>
                 FirstName = "Regular",
                 LastName = "User",
                 Role = Fakvio.Domain.Enums.EUserRole.User,
-                CompanyId = null,
+                CompanyId = companyId,
                 IsActive = true,
                 IsEmailVerified = true,  // pre-verified so login doesn't require email step
                 ExternalProvider = Fakvio.Domain.Enums.EExternalProvider.None

@@ -21,6 +21,11 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Opravy
 
+- **#263** — Diagnostické endpointy Azure Functions (`/api/diagnostic/migrate`,
+  `/api/diagnostic/auth`) byly dostupné bez přihlášení: kdokoli mohl vzdáleně spustit
+  DB migrace nebo si vypsat JWT konfiguraci (issuer, audience, délku secretu, claims).
+  Oba teď vyžadují přihlášeného SysAdmina — bez tokenu 401, s tokenem bez role 403.
+  (PR #270, `4f766df`)
 - **#200** — Ověření reCAPTCHA bylo fail-open: výpadek Googlu nebo chybějící `SecretKey`
   bránu tiše propustily místo aby ji zablokovaly, a token se navíc nekontroloval proti
   akci ani doméně, takže se dal token z jednoho formuláře přehrát jinam. Anonymní ARES
@@ -58,6 +63,14 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Změny pro vývojáře
 
+- **#209** — Nový endpoint `GET /api/readiness` (i jako Azure Function) vrací, co ve
+  vystaviteli ještě chybí k vystavení faktury (sídlo, číselné řady, šablony) — základ pro
+  banner v UI (#215) a pro MCP/chat nástroje, které se teď mají o co opřít místo vlastní
+  logiky. (PR #266, `824aaec`)
+- **#228** — AI asistent v chatu teď umí nahlásit stav dashboardu (cashflow, neuhrazené a
+  po splatnosti částky, top klienti), vypsat vydané faktury a dobropisy s filtry podle
+  stavu, klienta, období nebo splatnosti a spočítat DPH report za zadané období — dřív
+  musel uživatel tyhle přehledy hledat v UI ručně. (PR #259, `c3c591f`)
 - **#212** — Zápisové nástroje AI chatu (zatím žádný neexistuje, ale #217/#218/#220/#222/
   #224/#225/#227 na tomhle základu staví) budou mít jednotný potvrzovací mechanismus: bez
   parametru `confirm: true` se zápis vůbec nespustí a model dostane jen náhled toho, co by
