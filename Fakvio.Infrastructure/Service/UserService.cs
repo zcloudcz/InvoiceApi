@@ -500,6 +500,11 @@ public class UserService : IUserService
 
         // Trigger tenant database provisioning after password is set (for self-registered users).
         // Provisioning creates the PostgreSQL schema, applies migrations, copies code tables, etc.
+        //
+        // Invited colleagues of an established company run through here too, and for them the
+        // call is a no-op: since issue #192 the provisioning service returns immediately for a
+        // company that is already provisioned, instead of re-running the pipeline and re-seeding
+        // the tenant code tables underneath documents that already reference them.
         try
         {
             _logger.LogInformation(
@@ -511,13 +516,6 @@ public class UserService : IUserService
             _logger.LogInformation(
                 "Tenant provisioning SUCCEEDED for CompanyId={CompanyId}, user={Email}",
                 user.CompanyId.Value, user.Email);
-        }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("already provisioned"))
-        {
-            // Already provisioned — this is fine (idempotent, e.g. SysAdmin provisioned first).
-            _logger.LogInformation(
-                "Tenant already provisioned for CompanyId={CompanyId} — skipping",
-                user.CompanyId.Value);
         }
         catch (Exception ex)
         {

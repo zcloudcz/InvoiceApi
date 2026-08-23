@@ -44,9 +44,12 @@ public class TestTenantProvisioningService : ITenantProvisioningService
                 $"CompanySystemSettings not found for company {companyId}. " +
                 "Create settings first via POST /api/company/settings.");
 
+        // Already provisioned → report success and change nothing, mirroring the real
+        // service since issue #192. The double must not keep alive a behaviour production
+        // no longer has: re-provisioning an established tenant is exactly the destructive
+        // path that fix removed.
         if (settings.IsProvisioned)
-            throw new InvalidOperationException(
-                $"Company {companyId} is already provisioned.");
+            return true;
 
         // Mark as provisioned and active — this is all the test needs
         settings.IsProvisioned = true;

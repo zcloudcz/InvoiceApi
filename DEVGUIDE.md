@@ -298,7 +298,19 @@ context.InstanceServices       ← Functions Worker scope (kde žije Function cl
 7. Create default NumberSequence pro **všechny 4 typy**: Invoice (`INV`), CreditNote (`CN`), Proforma (`PF-`), TaxReceiptForAdvance (`DPP-`) — viz `CreateDefaultNumberSequencesAsync` (#26).
 8. Mark `IsProvisioned=true, IsActive=true, ProvisionedAt=UtcNow` v master DB.
 
-**Idempotentní** (řádky 76-82) — bezpečné re-provision po částečné chybě.
+**Guard na `IsProvisioned` (#192)**: je-li firma už provisionovaná, metoda hned vrací `true`
+a **nedělá nic**. Není to optimalizace, ale oprava datové ztráty — krok 5 dělá
+`DELETE FROM "tenant_x"."VatRate"` + `ALTER SEQUENCE … RESTART WITH 1` (totéž pro `Currency`,
+`NumberSequenceFormat`, `ContentTemplate`), a na mazané řádky vedou FK z `Invoice.CurrencyId`,
+`ReceivedInvoice.CurrencyId`, `InvoiceItem.VatRateId`, `ReceivedInvoiceItem.VatRateId`,
+`Client.PreferredCurrencyId`. Volají to čtyři místa (`UserService.SetPasswordAsync`,
+`AuthService.VerifyEmail`, `CompanyController`, `AzureOperationController`), proto guard
+sedí ve službě, ne u volajících.
+
+**Retry po částečné chybě** funguje dál: příznak se zapisuje až v kroku 8, takže nedoběhnutý
+běh nechává `IsProvisioned=false`. Opravu schématu **už provisionovaného** tenanta dělá
+`MigrateTenantAsync`, ne opakovaný provisioning. Regresní test proti reálné DB:
+`Fakvio.Tests.Integration/TenantReprovisioningDatabaseTests.cs`.
 
 **Schema permissions**: `EnsureSchemaPermissionsAsync()` (řádek 337-344) — `GRANT ALL ON ALL TABLES IN SCHEMA` + `ALTER DEFAULT PRIVILEGES`. Použij `NpgsqlDataSource`, ne raw connection string — funguje s Azure AD/Managed Identity tokens automaticky.
 

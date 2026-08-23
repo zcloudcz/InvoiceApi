@@ -144,7 +144,19 @@ Provisioning provede:
 5. Vytvoří výchozí číselné řady pro 4 typy dokladů (INV, CN-, PF-, DPP-)
 6. Označí firmu jako IsProvisioned=true, IsActive=true
 
-**Idempotentní** — bezpečné spustit opakovaně při chybě.
+**Kdy provisioning proběhne a kdy ne**
+
+- **Firma ve stavu Not provisioned** (`IsProvisioned=false`) — proběhne celý postup 1-6.
+  Sem patří i opakování po chybě: příznak se nastavuje až v kroku 6, takže po neúspěšném
+  běhu firma zůstává „nedoprovisionovaná" a další spuštění projde znovu všechny kroky.
+- **Firma ve stavu Provisioned** (`IsProvisioned=true`) — **neproběhne nic**. Tlačítko
+  „Provision" i automatické spuštění při nastavení hesla skončí bez zásahu do tenant
+  schématu a nahlásí úspěch. Důvod: krok 3 číselníky nejdřív smaže a teprve pak nakopíruje
+  znovu. U firmy, která už fakturuje, na mazané sazby DPH a měny vedou cizí klíče z faktur,
+  takže opakovaný běh by buď spadl, nebo (hůř, protože tiše) přečísloval sazby a měny pod
+  už vystavenými doklady.
+- **Oprava schématu už provisionované firmy** se dělá migrací (`MigrateTenantAsync`), ne
+  opakovaným provisioningem.
 
 **Krok 5 je povinný.** Pokud v tenant schématu není žádný aktivní formát číselné řady
 (`NumberSequenceFormat`), provisioning v kroku 5 selže s chybou a firma zůstane
@@ -501,7 +513,7 @@ Při provisioningu se **kopírují** do schématu tenanta:
 2. Otevřete `/vat-rates`
 3. „+ Nová sazba" → vyplňte název, procento, platnost
 4. Uložte
-5. **Nová sazba se automaticky nezobrazí u existujících tenantů.** Pro propagaci do tenanta je potřeba manuálně provisionovat nebo přidat migraci (konzultujte vývojový tým).
+5. **Nová sazba se automaticky nezobrazí u existujících tenantů.** Opakovaný provisioning ji tam nedostane — u provisionované firmy se nespustí (viz „Kdy provisioning proběhne a kdy ne"). Do existujícího tenanta se sazba propaguje migrací (konzultujte vývojový tým).
 
 ---
 

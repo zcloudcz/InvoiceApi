@@ -464,16 +464,22 @@ public class UserInvitationTests : IDisposable
 
     /// <summary>
     /// The mirror image of the failure case, and the reason readiness must be read rather
-    /// than inferred: an established company is provisioned once, but every later invited
-    /// colleague runs SetPasswordAsync and so re-runs the whole provisioning pipeline over
-    /// a tenant that already holds data. That re-run can well throw (see the follow-up on
-    /// the re-seed of the code tables) without anything being wrong with the workspace.
+    /// than inferred: an invited colleague of an established company must be told "ready",
+    /// otherwise the warning added for issue #152 would fire for every second and further
+    /// user of every healthy company.
     ///
-    /// Such a user must still be told "ready" — otherwise the warning added for issue #152
-    /// would fire for every second and further user of every healthy company.
+    /// Reformulated for issue #192. The original version pinned that readiness survives the
+    /// provisioning RE-RUN throwing over the existing data — that re-run no longer happens,
+    /// because TenantProvisioningService now returns early for a provisioned company
+    /// (see TenantProvisioningServiceTests and the real-database
+    /// Fakvio.Tests.Integration/TenantReprovisioningDatabaseTests).
+    ///
+    /// The failing stub is kept deliberately: it now stands for "whatever the provisioning
+    /// call does, up to and including failing", and pins that the answer comes from the
+    /// persisted flag rather than from the outcome of that call.
     /// </summary>
     [Fact]
-    public async Task SetPasswordAsync_AlreadyProvisionedCompany_ReportsWorkspaceReady_EvenWhenTheReRunThrows()
+    public async Task SetPasswordAsync_AlreadyProvisionedCompany_ReportsWorkspaceReady_FromThePersistedFlag()
     {
         // Arrange - the tenant was provisioned long ago ...
         var settings = await _context.CompanySystemSettings.FirstAsync(s => s.CompanyId == SeededCompanyId);
@@ -481,7 +487,8 @@ public class UserInvitationTests : IDisposable
         settings.ProvisionedAt = DateTime.UtcNow.AddDays(-30);
         await _context.SaveChangesAsync();
 
-        // ... and the re-run triggered by this invitation fails over the existing data
+        // ... and the provisioning call is made to fail, so that a "ready" answer can only
+        // have come from the persisted flag
         _provisioningService
             .ProvisionTenantAsync(SeededCompanyId, Arg.Any<CancellationToken>())
             .Returns<Task<bool>>(_ => throw new InvalidOperationException(
@@ -524,17 +531,16 @@ public class UserInvitationTests : IDisposable
     }
 
     /// <summary>
-    /// The invitation token is single-use, and this is what bounds the blast radius of the
-    /// re-provisioning bug tracked as #192: a user who submits the set-password form twice
-    /// (double click, browser retry, refresh) must not run the provisioning pipeline twice
-    /// over an established tenant, where step 5 deletes and re-seeds the code tables.
-    ///
+    /// The invitation token is single-use: a user who submits the set-password form twice
+    /// (double click, browser retry, refresh) must not run the provisioning pipeline twice.
     /// Once the first submit has committed, the token is gone, so the replay is rejected
-    /// before anything touches the tenant schema. What this test deliberately does NOT
-    /// cover is the genuinely concurrent case — two submits interleaving before either
-    /// SaveChangesAsync lands, where the read-then-update in SetPasswordAsync has no
-    /// atomicity and both callers do provision. That race belongs to #192 together with
-    /// the destructive re-run it feeds; here only the sequential guarantee is pinned.
+    /// before anything else happens.
+    ///
+    /// The read-then-update in SetPasswordAsync still has no atomicity, so two genuinely
+    /// concurrent submits can both get past the token check. Since issue #192 that race is
+    /// no longer destructive — provisioning returns immediately for a company that is
+    /// already provisioned, so neither caller re-seeds the tenant code tables. What is
+    /// pinned here is only the sequential guarantee: exactly one provisioning call.
     /// </summary>
     [Fact]
     public async Task SetPasswordAsync_TokenReplayedAfterTheFirstSubmit_DoesNotProvisionASecondTime()
