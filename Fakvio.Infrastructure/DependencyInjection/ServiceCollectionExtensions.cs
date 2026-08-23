@@ -149,6 +149,9 @@ public static class ServiceCollectionExtensions
         services.AddScopedWithLogging<IVatReportService, VatReportService>();
         services.AddScopedWithLogging<ISystemConfigurationService, SystemConfigurationService>();
 
+        // Tenant readiness — one place that answers "is this tenant set up well enough to invoice?".
+        services.AddScopedWithLogging<ITenantReadinessService, TenantReadinessService>();
+
         // Alerts — generic business alerts (e.g., overpaid proforma) displayed on the dashboard.
         services.AddScopedWithLogging<IAlertService, AlertService>();
 

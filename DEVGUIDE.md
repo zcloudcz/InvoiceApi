@@ -851,6 +851,52 @@ dotnet test Fakvio.Tests.Integration --filter "FullyQualifiedName~EpoSandboxSmok
 ```
 Gate: env `RUN_EPO_SANDBOX_TESTS=true`. Sandbox: `https://adisepo.mfcr.cz/adis/jepo/epo/ePodani/podani.faces`.
 
+### 4.12 Tenant readiness (POVINNÝ pattern pro "chybí nastavení")
+
+Když operace nesmí proběhnout, protože tenant nemá dokončené nastavení, **nezakládej
+vlastní výjimku ani vlastní tvar chyby**. Použij `ITenantReadinessService`.
+
+| Vrstva | Kde | Co dělá |
+|--------|-----|---------|
+| Interface | `Fakvio.Application/Service/ITenantReadinessService.cs` | `GetReportAsync(issuerId?)` = report; `EnsureReadyAsync(issuerId?)` = guard, který hodí výjimku |
+| Implementace | `Fakvio.Infrastructure/Service/TenantReadinessService.cs` | Všechna pravidla na jednom místě (inline checky, žádná FluentValidation) |
+| DTO | `Fakvio.Contracts/Dto/Readiness/` | `ReadinessReportDto`, `ReadinessIssueDto`, konstanty kódů `ReadinessCodes` |
+| Výjimka | `Fakvio.Application/Exceptions/TenantNotReadyException.cs` | Nese `Code` + `MissingFields` + `Issues` |
+
+**Pravidla a jejich závažnost:**
+
+| Kód | Závažnost | Podmínka | Fix route |
+|-----|-----------|----------|-----------|
+| `ISSUER_MISSING` | Blocking | tenant nemá žádného `Client.IsIssuer = true` (nebo zadané `issuerId` neexistuje) | `/my-company` |
+| `ISSUER_ADDRESS_INCOMPLETE` | Blocking | vystavitel nemá adresu, nebo primární adrese chybí Street/City/PostalCode/Country | `/my-company` |
+| `ISSUER_REGISTRATION_NUMBER_MISSING` | Blocking | prázdné IČO | `/my-company` |
+| `ISSUER_TAX_NUMBER_MISSING` | Blocking | `IsVatPayer = true` a prázdné DIČ | `/my-company` |
+| `ISSUER_BANK_ACCOUNT_MISSING` | Blocking | žádný účet s vyplněným číslem | `/my-company` |
+| `NUMBER_SEQUENCE_MISSING` | Blocking | chybí aktivní default řada pro `Invoice` / `CreditNote` (`MissingFields` nese typ dokladu) | `/number-sequences` |
+| `EPO_HEADER_INCOMPLETE` | Warning | `CompanySystemSettings.EpoTaxOfficeCode` / `EpoTaxOfficeBranchCode` není vyplněné | `/company-settings` |
+
+**Konvence, které musíš dodržet, když přidáváš pravidlo:**
+
+- Pravidlo patří **do `TenantReadinessService`**, ne do volajícího servisu — jinak se ta
+  samá kontrola rozleze po kódu a odpovědi se rozejdou.
+- Nový kód přidej jako konstantu do `ReadinessCodes`. UI ho používá jako lokalizační klíč,
+  takže se nesmí lišit o písmeno.
+- `FixRoute` je **relativní UI routa** (`@page` v `Fakvio.UI.Shared/Components/Pages`).
+  API nikdy nestaví absolutní URL.
+- Blocking = operaci je nutné odmítnout. Warning = uživatel narazí až v konkrétní featuře
+  (EPO), běžné fakturaci to nebrání — `IsReady` warningy ignoruje.
+- Pravidlo vázané na vystavitele plní `IssuerId` + `IssuerName` (multi-issuer tenant),
+  tenant-wide pravidlo je nechává `null`.
+- Pravidlo pokrývají unit testy v obou směrech (`TenantReadinessServiceTests`).
+
+**Tvar chyby na API** — zobecňuje EPO precedens, takže UI má jedno zpracování:
+
+```jsonc
+// 400 Bad Request
+{ "code": "TENANT_NOT_READY", "message": "...", "missingFields": ["RegistrationNumber"],
+  "issues": [ { "code": "...", "severity": 1, "missingFields": [...], "fixRoute": "/my-company" } ] }
+```
+
 ---
 
 ## 5. Datová vrstva
@@ -1561,6 +1607,7 @@ pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. P
 | Změna Data Protection persistence / ApplicationName | §2.7 |
 | Nová seed migrace s hardcoded Id | §12 (non-idempotent seed) |
 | Nový projekt s `EmitCompilerGeneratedFiles` | §12 (Generated/) + `.gitignore` |
+| Nové readiness pravidlo / nový readiness kód | §4.12 (tabulka pravidel!) |
 | Nový code-table pattern (master / tenant / dual-context) | §11.2 |
 | Nový background lock klíč | §6.3 (tabulka klíčů) |
 | Změna observability stacku (App Insights → jiný) | §10 |
