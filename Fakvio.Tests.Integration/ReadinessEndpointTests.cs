@@ -26,6 +26,10 @@ namespace Fakvio.Tests.Integration;
 ///     a 404 is the controller's one job (see ReadinessController.GetReport).
 ///   - A tenant with no issuer at all and NO issuerId filter still gets 200 + ISSUER_MISSING —
 ///     the pair that pins the 404 to the filtered case only.
+///   - An ordinary User-role member of the tenant (not SysAdmin impersonating one) gets the
+///     same 200 + report and the same 404 — this is the identity the #215 banner runs under.
+///   - A non-numeric <c>?issuerId=</c> → 400 from MVC model binding (characterization; the
+///     Functions host answers 200 for the same URL — see the note on that test).
 ///
 /// Uses FakvioFactory (WebApplicationFactory + InMemoryDatabase) — no real database.
 /// Seeding runs in its own DI scope which is disposed before the request, so EF's change
@@ -49,6 +53,11 @@ public class ReadinessEndpointTests : IClassFixture<FakvioFactory>
     // An ID that is never seeded — the 404 case.
     private const long UnknownIssuerId = 999999L;
 
+    // The ordinary tenant user (the readiness banner's identity). A unique email and ID keep it
+    // from colliding with the User-role account SysAdminRoleAuthorizationTests seeds.
+    private const string RegularUserEmail = "readiness-tenant-user@example.com";
+    private const long RegularUserId = 6011L;
+
     public ReadinessEndpointTests(FakvioFactory factory)
     {
         _factory = factory;
@@ -67,6 +76,69 @@ public class ReadinessEndpointTests : IClassFixture<FakvioFactory>
 
         response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized,
             "GET /api/readiness must require authentication ([Authorize] on the controller).");
+    }
+
+    /// <summary>
+    /// The other authorization tests here authenticate as SysAdmin impersonating the tenant.
+    /// The endpoint's actual consumer is the settings banner (#215), which runs as an ordinary
+    /// User-role account whose tenant comes from the JWT <c>CompanyId</c> claim instead of the
+    /// <c>X-Company-Id</c> impersonation header — a different branch of TenantContextMiddleware
+    /// and a different authorization outcome.
+    ///
+    /// Without this test, tightening <c>[Authorize]</c> to <c>[Authorize(Roles = "SysAdmin")]</c>
+    /// would leave the whole suite green while the banner started getting 403.
+    /// </summary>
+    [Fact]
+    public async Task GetReport_AsRegularTenantUser_Returns200WithTenantReport()
+    {
+        SeedAll();
+        var client = await CreateRegularTenantUserClientAsync();
+
+        var response = await client.GetAsync("/api/readiness");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK,
+            "The readiness banner runs as an ordinary tenant user — this endpoint must not be SysAdmin-only.");
+
+        var report = await response.Content.ReadFromJsonAsync<ReadinessReportDto>();
+        report.ShouldNotBeNull();
+        report.Issues.ShouldContain(
+            i => i.Code == ReadinessCodes.IssuerBankAccountMissing && i.IssuerId == IncompleteIssuerId,
+            "A regular user must get their tenant's real report, not an empty one from a missing tenant context.");
+    }
+
+    /// <summary>
+    /// Same 404-vs-200 split as above, seen by the endpoint's real consumer: the banner passes an
+    /// issuerId of its own, so the regular-user path must reach the controller's 404 mapping too
+    /// and not be short-circuited earlier by the tenant middleware.
+    /// </summary>
+    [Fact]
+    public async Task GetReport_AsRegularTenantUser_WithUnknownIssuerId_Returns404()
+    {
+        SeedAll();
+        var client = await CreateRegularTenantUserClientAsync();
+
+        var response = await client.GetAsync($"/api/readiness?issuerId={UnknownIssuerId}");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+    }
+
+    /// <summary>
+    /// Characterizes the API half of a host divergence found in review (PR #266, note N2):
+    /// MVC model binding rejects a non-numeric issuerId with 400, while the Azure Functions
+    /// wrapper parses the query string by hand and falls back to "report the whole tenant"
+    /// (<c>ReadinessFunctionsTests.Readiness_GetReport_UnparsableIssuerId_SilentlyReportsWholeTenant</c>).
+    /// Both halves are pinned so whoever fixes the generator sees exactly which side moves.
+    /// </summary>
+    [Fact]
+    public async Task GetReport_WithUnparsableIssuerId_Returns400()
+    {
+        SeedAll();
+        var client = await CreateImpersonatingClientAsync();
+
+        var response = await client.GetAsync("/api/readiness?issuerId=abc");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest,
+            "A non-numeric issuerId is a malformed request, not a request for every issuer.");
     }
 
     // ── 200: report shape ─────────────────────────────────────────────────────
@@ -189,6 +261,22 @@ public class ReadinessEndpointTests : IClassFixture<FakvioFactory>
         var login = await AuthHelper.LoginAsSysAdminAsync(client);
         AuthHelper.SetAuthToken(client, login.Token);
         AuthHelper.SetImpersonation(client, TestCompanyId);
+        return client;
+    }
+
+    /// <summary>
+    /// Creates an HttpClient authenticated as an ordinary User-role member of TestCompanyId —
+    /// the endpoint's real consumer. Deliberately sets NO impersonation header: the tenant must
+    /// be resolved from the JWT "CompanyId" claim that AuthService bakes in at login.
+    /// Call after SeedAll(), which provides the company the user belongs to.
+    /// </summary>
+    private async Task<HttpClient> CreateRegularTenantUserClientAsync()
+    {
+        var password = _factory.SeedRegularUser(RegularUserEmail, RegularUserId, TestCompanyId);
+
+        var client = _factory.CreateClient();
+        var login = await AuthHelper.LoginAsync(client, RegularUserEmail, password);
+        AuthHelper.SetAuthToken(client, login.Token);
         return client;
     }
 

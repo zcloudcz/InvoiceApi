@@ -54,7 +54,11 @@ public class ReadinessFunctionsTests
             BuildRequest(authenticated: true, issuerId: "4242"));
 
         result.ShouldBeOfType<OkObjectResult>();
-        await _readinessService.Received(1).GetReportAsync(4242L, Arg.Any<EDocumentType?>(), Arg.Any<CancellationToken>());
+        // The middle argument is asserted as a literal null, not Arg.Any: this endpoint reports
+        // across ALL document types on purpose (see ReadinessController.GetReport). A positional
+        // call that let an EDocumentType slip into that slot would narrow the report silently,
+        // and Arg.Any would not notice.
+        await _readinessService.Received(1).GetReportAsync(4242L, null, Arg.Any<CancellationToken>());
     }
 
     /// <summary>
@@ -68,7 +72,39 @@ public class ReadinessFunctionsTests
 
         await BuildSut().Readiness_GetReport(BuildRequest(authenticated: true));
 
-        await _readinessService.Received(1).GetReportAsync(null, Arg.Any<EDocumentType?>(), Arg.Any<CancellationToken>());
+        // Literal null in the documentType slot for the same reason as above — all document types.
+        await _readinessService.Received(1).GetReportAsync(null, null, Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// CHARACTERIZATION TEST — pins current, knowingly divergent behavior. It asserts what the
+    /// code does today, not what it should do (PR #266 review note N2).
+    ///
+    /// The wrapper parses <c>?issuerId=</c> with a hand-rolled <c>long.TryParse</c>, so a
+    /// non-numeric value collapses to null: the Functions host answers a malformed request with
+    /// 200 and a report for the WHOLE tenant. The API host returns 400 for the very same URL
+    /// (<c>ReadinessEndpointTests.GetReport_WithUnparsableIssuerId_Returns400</c>).
+    ///
+    /// This is not a defect of this endpoint. Fakvio.Functions.Generator emits the same
+    /// <c>TryParse(...) ? parsed : null</c> for every optional query parameter, at roughly 30
+    /// call sites (root: <c>CodeEmitter.EmitParameterExtraction</c>), so hand-fixing it here
+    /// would desynchronize the wrapper from its generator — the one thing the wrappers must not do.
+    ///
+    /// When the generator starts rejecting unparsable values, this test goes red BY DESIGN.
+    /// That red is the signal to flip the expectation to 400, not to delete the test.
+    /// </summary>
+    [Fact]
+    public async Task Readiness_GetReport_UnparsableIssuerId_SilentlyReportsWholeTenant()
+    {
+        _readinessService.GetReportAsync(Arg.Any<long?>(), Arg.Any<EDocumentType?>(), Arg.Any<CancellationToken>())
+            .Returns(new ReadinessReportDto());
+
+        var result = await BuildSut().Readiness_GetReport(
+            BuildRequest(authenticated: true, issuerId: "abc"));
+
+        result.ShouldBeOfType<OkObjectResult>(
+            "Documented host divergence: the Functions wrapper does not reject a malformed issuerId.");
+        await _readinessService.Received(1).GetReportAsync(null, null, Arg.Any<CancellationToken>());
     }
 
     /// <summary>
