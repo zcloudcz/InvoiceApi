@@ -71,6 +71,24 @@ public class ReportingChatToolTests
         return (new ListInvoicesTool(service, tenantResolver, Substitute.For<ILogger<ListInvoicesTool>>()), service);
     }
 
+    /// <summary>
+    /// Builds a GetDashboardTool over mocks and hands back the service so the test can assert
+    /// on what it was called with.
+    /// </summary>
+    private static (GetDashboardTool Tool, IDashboardService Service) CreateDashboardTool(
+        DashboardDto? dashboard = null,
+        long? companyId = 42)
+    {
+        var service = Substitute.For<IDashboardService>();
+        service.GetDashboardAsync(Arg.Any<long?>(), Arg.Any<CancellationToken>())
+            .Returns(dashboard ?? new DashboardDto());
+
+        var tenantResolver = Substitute.For<ITenantResolver>();
+        tenantResolver.GetCurrentCompanyId().Returns(companyId);
+
+        return (new GetDashboardTool(service, tenantResolver, Substitute.For<ILogger<GetDashboardTool>>()), service);
+    }
+
     /// <summary>Captures the filter the tool passed to the service.</summary>
     private static InvoiceFilterDto CapturedFilter(IInvoiceService service)
         => (InvoiceFilterDto)service.ReceivedCalls()
@@ -202,6 +220,30 @@ public class ReportingChatToolTests
         result.OutputText.ShouldNotContain("Recent invoices:");
         result.OutputText.ShouldNotContain("Top clients by revenue:");
         result.OutputText.ShouldNotContain("Invoice count by status:");
+    }
+
+    /// <summary>
+    /// The top-clients section must be rendered from <c>InvoiceTotalByClient</c>, and this test
+    /// uses a client that appears NOWHERE else in the dashboard to prove it. The sibling test
+    /// above asserts on "Alza.cz", which is also the default client of every invoice row, so it
+    /// would stay green even if the whole section disappeared — "kdo jsou moji největší klienti"
+    /// is one of the questions this tool exists for, so it gets its own unambiguous check.
+    /// </summary>
+    [Fact]
+    public async Task GetDashboardTool_TopClients_AreRenderedFromTheirOwnSection()
+    {
+        var (tool, _) = CreateDashboardTool(new DashboardDto
+        {
+            // Deliberately NOT the BuildInvoice default client, and no invoice lists at all.
+            InvoiceTotalByClient = new Dictionary<string, decimal> { ["Největší Odběratel a.s."] = 250000m },
+            RecentInvoices = [BuildInvoice()]
+        });
+
+        var result = await tool.ExecuteAsync([]);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.OutputText.ShouldContain("Top clients by revenue:");
+        result.OutputText.ShouldContain("Největší Odběratel a.s.");
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -371,6 +413,7 @@ public class ReportingChatToolTests
 
         var result = await tool.ExecuteAsync(new Dictionary<string, string> { ["overdue"] = rawValue });
 
+        result.IsSuccess.ShouldBeTrue();
         result.OutputText.ShouldContain("Overdue issued invoices");
 
         var filter = CapturedFilter(service);
@@ -403,6 +446,8 @@ public class ReportingChatToolTests
     /// </summary>
     [Theory]
     [InlineData("500", 50)]
+    [InlineData("51", 50)]   // one over the cap
+    [InlineData("50", 50)]   // exactly the cap — must pass through untouched
     [InlineData("0", 10)]
     [InlineData("-3", 10)]
     public async Task ListInvoicesTool_PageSize_IsClampedToSaneValues(string requested, int expected)
@@ -455,6 +500,129 @@ public class ReportingChatToolTests
         result.OutputText.ShouldContain("ID=2");
         result.OutputText.ShouldContain("CreditNote");
         result.OutputText.ShouldContain("2026-03-15");   // due date, ISO regardless of culture
+    }
+
+    /// <summary>
+    /// Every value the schema advertises has to end up as the corresponding filter — and as the
+    /// SAME enum member the model asked for. The executor only checks a parameter against
+    /// <c>AllowedValues</c>; if one of those strings does not match an enum name, the tool's
+    /// <c>Enum.TryParse</c> quietly fails and the filter vanishes — the model asks for credit
+    /// notes and is handed every document there is, with nothing in the output saying so.
+    ///
+    /// Driven off the tool's own schema, so a value added there without a matching enum member
+    /// fails here instead of at runtime. Comparing the enum NAME (not just "is not null") also
+    /// catches a numeric string slipping into the list: <c>Enum.TryParse("2")</c> succeeds.
+    /// </summary>
+    public static TheoryData<string, string> AdvertisedEnumFilterValues
+    {
+        get
+        {
+            var data = new TheoryData<string, string>();
+            var enumFilters = CreateListTool().Tool.Parameters
+                .Where(parameter => parameter.AllowedValues is { Count: > 0 });
+
+            foreach (var parameter in enumFilters)
+            {
+                foreach (var allowedValue in parameter.AllowedValues!)
+                    data.Add(parameter.Name, allowedValue);
+            }
+
+            return data;
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(AdvertisedEnumFilterValues))]
+    public async Task ListInvoicesTool_EveryAdvertisedEnumValue_ReachesTheFilter(
+        string parameterName,
+        string advertisedValue)
+    {
+        var (tool, service) = CreateListTool();
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, string> { [parameterName] = advertisedValue });
+
+        result.IsSuccess.ShouldBeTrue();
+
+        var filter = CapturedFilter(service);
+        var appliedValue = parameterName == "status"
+            ? filter.Status?.ToString()
+            : filter.DocumentType?.ToString();
+
+        appliedValue.ShouldBe(advertisedValue, StringCompareShould.IgnoreCase);
+    }
+
+    /// <summary>
+    /// The pagination header is the only place the model learns there is more data — an
+    /// off-by-one there turns "page 3/3" into "page 3/2" and the model either stops early or
+    /// keeps asking for pages that do not exist.
+    /// </summary>
+    [Theory]
+    [InlineData(25, 3, "page 3/3, total: 25")]   // partial last page — needs the rounding up
+    [InlineData(20, 2, "page 2/2, total: 20")]   // exact multiple — must NOT invent a page
+    [InlineData(0, 1, "page 1/1, total: 0")]     // empty tenant — never "page 1/0"
+    public async Task ListInvoicesTool_PageHeader_ReportsTheCalculatedPageCount(
+        int totalCount,
+        int pageNumber,
+        string expectedHeader)
+    {
+        const int pageSize = 10;
+        List<InvoiceDto> items = totalCount == 0 ? [] : [BuildInvoice()];
+
+        var (tool, _) = CreateListTool(new PagedResult<InvoiceDto>(items, totalCount, pageNumber, pageSize));
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, string>
+        {
+            ["page"] = pageNumber.ToString(),
+            ["page_size"] = pageSize.ToString()
+        });
+
+        result.OutputText.ShouldContain(expectedHeader);
+    }
+
+    /// <summary>
+    /// CHARACTERIZATION of an asymmetry, not an endorsement of it (flagged in review round 2).
+    ///
+    /// <c>get_vat_report</c> rejects a reversed period; <c>list_invoices</c> does not, so
+    /// from &gt; to reaches the service and comes back as an empty page. The model then reports
+    /// "za březen jste nevystavili žádnou fakturu" for what was really a swapped-argument bug.
+    /// It is milder than the VAT case (an empty list is less believable than a plausible tax
+    /// figure), which is why it is a gap and not a blocker.
+    ///
+    /// If the guard is ever added, this test goes red — replace it with the rejection assertions
+    /// from <see cref="GetVatReportTool_ReversedPeriod_FailsWithoutQueryingTheService"/>.
+    /// </summary>
+    [Fact]
+    public async Task ListInvoicesTool_ReversedIssueDateRange_IsPassedThroughUnvalidated()
+    {
+        var (tool, service) = CreateListTool();
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, string>
+        {
+            ["issue_date_from"] = "2026-03-31",
+            ["issue_date_to"] = "2026-01-01"
+        });
+
+        result.IsSuccess.ShouldBeTrue();
+
+        var filter = CapturedFilter(service);
+        filter.IssueDateFrom.ShouldBe(new DateTime(2026, 3, 31, 0, 0, 0, DateTimeKind.Utc));
+        filter.IssueDateTo.ShouldBe(new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+    }
+
+    /// <summary>
+    /// A client name that is only whitespace is no filter at all. Passing " " through would
+    /// hand the service a substring match on a space, which matches almost every company name
+    /// with two words in it — and matches nothing on the ones without.
+    /// </summary>
+    [Fact]
+    public async Task ListInvoicesTool_BlankClientName_IsTreatedAsNoFilter()
+    {
+        var (tool, service) = CreateListTool();
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, string> { ["client_name"] = "   " });
+
+        result.IsSuccess.ShouldBeTrue();
+        CapturedFilter(service).ClientName.ShouldBeNull();
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -614,5 +782,63 @@ public class ReportingChatToolTests
         result.OutputText.ShouldContain("Excess deduction (refund)");
         result.OutputText.ShouldNotContain("Tax liability (to pay)");
         result.OutputText.ShouldNotContain("-15");
+    }
+
+    /// <summary>
+    /// The period is inclusive on both ends, so from == to is a legitimate one-day report
+    /// ("kolik DPH mi vzniklo 15. března"). The reversed-period guard must be a strict
+    /// comparison — turning it into >= would reject the single-day case as an error.
+    /// </summary>
+    [Fact]
+    public async Task GetVatReportTool_SingleDayPeriod_IsAccepted()
+    {
+        var (tool, service) = CreateVatTool();
+        var singleDay = new DateTime(2026, 3, 15, 0, 0, 0, DateTimeKind.Utc);
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, string>
+        {
+            ["date_from"] = "2026-03-15",
+            ["date_to"] = "2026-03-15"
+        });
+
+        result.IsSuccess.ShouldBeTrue();
+        await service.Received(1).GetReportAsync(singleDay, singleDay, Arg.Any<CancellationToken>());
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  Cross-cutting: cancellation
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// All three tools must hand the caller's token down to the service they wrap. A chat turn
+    /// that the user abandons cancels the whole tool loop; a tool that swallows the token
+    /// (passing <c>default</c> instead) keeps a report query running against the database after
+    /// nobody is waiting for the answer — invisible in every other test, because they all match
+    /// the token with <c>Arg.Any</c>.
+    ///
+    /// One test for the three tools on purpose: it is one rule, and asserting it per tool would
+    /// be the same eight lines three times.
+    /// </summary>
+    [Fact]
+    public async Task EveryReportingTool_PassesTheCallersCancellationTokenToItsService()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var token = cancellation.Token;
+
+        var (dashboardTool, dashboardService) = CreateDashboardTool();
+        var (listTool, invoiceService) = CreateListTool();
+        var (vatTool, vatService) = CreateVatTool();
+
+        await dashboardTool.ExecuteAsync([], token);
+        await listTool.ExecuteAsync([], token);
+        await vatTool.ExecuteAsync(new Dictionary<string, string>
+        {
+            ["date_from"] = "2026-01-01",
+            ["date_to"] = "2026-03-31"
+        }, token);
+
+        await dashboardService.Received(1).GetDashboardAsync(Arg.Any<long?>(), token);
+        await invoiceService.Received(1).GetInvoicesPagedAsync(Arg.Any<InvoiceFilterDto>(), token);
+        await vatService.Received(1).GetReportAsync(Arg.Any<DateTime>(), Arg.Any<DateTime>(), token);
     }
 }
