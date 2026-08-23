@@ -262,6 +262,47 @@ public class NavigateToolTests
     }
 
     [Fact]
+    public async Task ClientName_OnATargetThatCannotPreselectAClient_IsIgnored()
+    {
+        // Only the invoice / credit note forms understand ?clientId=. Everywhere else a name
+        // the model volunteered must not trigger a lookup, and must not end up in the URL.
+        var parameters = new Dictionary<string, string>
+        {
+            ["target"] = "client_list",
+            ["client_name"] = "Test s.r.o."
+        };
+
+        var result = await _tool.ExecuteAsync(parameters);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.UiAction!.Url.ShouldBe("/clients");
+        await _clientService.DidNotReceive().GetClientsPagedAsync(
+            Arg.Any<ClientFilterDto>(), Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData("system_settings")]
+    [InlineData("logs")]
+    [InlineData("companies")]
+    public async Task SysAdminTarget_IsRejectedBeforeTheToolRuns(string target)
+    {
+        // SysAdmin pages are deliberately absent from the catalog (issue #229). The executor's
+        // central AllowedValues check is what stops the model from asking for them, so this
+        // goes through the executor rather than calling the tool directly.
+        var executor = new ChatToolExecutor([_tool], Substitute.For<ILogger<ChatToolExecutor>>());
+        var call = executor.ParseToolCall(
+            $"{{\"action\": \"navigate\", \"parameters\": {{\"target\": \"{target}\"}}}}");
+
+        call.ShouldNotBeNull();
+        var result = await executor.ExecuteToolAsync(call);
+
+        result.IsSuccess.ShouldBeFalse();
+        result.OutputText.ShouldContain(target);
+        await _clientService.DidNotReceive().GetClientsPagedAsync(
+            Arg.Any<ClientFilterDto>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task ClientSearch_ExcludesIssuers()
     {
         // Arrange — verify that the search filter excludes issuers.
