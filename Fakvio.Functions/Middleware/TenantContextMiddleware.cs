@@ -51,6 +51,7 @@ public class TenantContextMiddleware : IFunctionsWorkerMiddleware
     [
         "/api/auth",
         "/api/user",
+        "/api/api-key",             // API keys live in master DB (auth must resolve them before the tenant is known)
         "/api/company",
         "/api/system-configuration",
         "/api/dashboard/sysadmin",

@@ -142,6 +142,7 @@ public static class ServiceCollectionExtensions
         services.AddScopedWithLogging<IAuthService, AuthService>();
         services.AddScopedWithLogging<IUserService, UserService>();
         services.AddScopedWithLogging<IUserPreferencesService, UserPreferencesService>();
+        services.AddScopedWithLogging<IApiKeyService, ApiKeyService>();
         services.AddScopedWithLogging<ICurrencyService, CurrencyService>();
         services.AddScopedWithLogging<IInvoiceTemplateService, InvoiceTemplateService>();
         services.AddScopedWithLogging<IPdfExportService, PdfExportService>();
