@@ -1,0 +1,303 @@
+@page "/ai-instructions"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "SysAdmin")]
+@using Fakvio.Contracts.Dto.SystemConfiguration
+@inject AiInstructionsApiService AiService
+@inject ISnackbar Snackbar
+@inject IStringLocalizer<SharedResource> L
+@inject ILogger<AiInstructions> _logger
+@inject IDialogService DialogService
+
+<PageTitle>@L["AiInstructions_Title"] - Fakvio</PageTitle>
+
+<MudText Typo="Typo.h3" GutterBottom="true">@L["AiInstructions_Title"]</MudText>
+<MudText Class="mb-6" Color="Color.Secondary">@L["AiInstructions_Subtitle"]</MudText>
+
+@if (_loading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-4" />
+}
+else
+{
+    @* Toolbar: current state on the left, actions on the right. *@
+    <div class="d-flex flex-wrap align-center gap-2 mb-4">
+        @if (_instructions?.IsCustomActive == true)
+        {
+            <MudChip T="string" Color="Color.Warning" Icon="@Icons.Material.Filled.Edit" Size="Size.Small">
+                @L["AiInstructions_UsingCustom"]
+            </MudChip>
+        }
+        else
+        {
+            <MudChip T="string" Color="Color.Success" Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small">
+                @L["AiInstructions_UsingDefault"]
+            </MudChip>
+        }
+
+        <MudSpacer />
+
+        @* Renders the prompt exactly as the AI receives it, except for tenant data. *@
+        <MudButton Variant="Variant.Outlined"
+                   StartIcon="@Icons.Material.Filled.Preview"
+                   OnClick="ShowPreview"
+                   Disabled="_saving || _loadingPreview">
+            @if (_loadingPreview)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            @L["AiInstructions_Preview"]
+        </MudButton>
+
+        <MudButton Variant="Variant.Outlined"
+                   Color="Color.Warning"
+                   StartIcon="@Icons.Material.Filled.RestartAlt"
+                   OnClick="ConfirmReset"
+                   Disabled="_saving">
+            @L["AiInstructions_ResetToDefault"]
+        </MudButton>
+
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.Save"
+                   OnClick="Save"
+                   Disabled="_saving">
+            @if (_saving)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            @L["Btn_Save"]
+        </MudButton>
+    </div>
+
+    <MudGrid>
+        @* Custom instructions — replace the built-in style/tools/rules block. *@
+        <MudItem xs="12">
+            <MudCard Elevation="2" Class="mb-4">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">
+                            <MudIcon Icon="@Icons.Material.Filled.SmartToy" Class="mr-2" />
+                            @L["AiInstructions_CustomPromptLabel"]
+                        </MudText>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    <MudTextField @bind-Value="_editDto.CustomPrompt"
+                                  Lines="15"
+                                  Variant="Variant.Outlined"
+                                  Placeholder="@L["AiInstructions_CustomPromptPlaceholder"].Value"
+                                  HelperText="@L["AiInstructions_CustomPromptHint"].Value"
+                                  Class="mb-0"
+                                  Style="font-family: monospace; font-size: 13px;" />
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+
+        @* Appendix — extra rules appended after the main block. *@
+        <MudItem xs="12">
+            <MudCard Elevation="2" Class="mb-4">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">
+                            <MudIcon Icon="@Icons.Material.Filled.PostAdd" Class="mr-2" />
+                            @L["AiInstructions_AppendixLabel"]
+                        </MudText>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    <MudTextField @bind-Value="_editDto.Appendix"
+                                  Lines="8"
+                                  Variant="Variant.Outlined"
+                                  Placeholder="@L["AiInstructions_AppendixPlaceholder"].Value"
+                                  HelperText="@L["AiInstructions_AppendixHint"].Value"
+                                  Class="mb-0"
+                                  Style="font-family: monospace; font-size: 13px;" />
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+
+    @* Preview is rendered inline rather than in a dialog, so it can stay open while editing. *@
+    @if (_showPreview && _previewText != null)
+    {
+        <MudCard Elevation="4" Class="mb-4" Style="border: 2px solid var(--mud-palette-primary);">
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h6">
+                        <MudIcon Icon="@Icons.Material.Filled.Preview" Class="mr-2" />
+                        @L["AiInstructions_PreviewTitle"]
+                    </MudText>
+                </CardHeaderContent>
+                <CardHeaderActions>
+                    <MudIconButton Icon="@Icons.Material.Filled.Close" OnClick="ClosePreview" />
+                </CardHeaderActions>
+            </MudCardHeader>
+            <MudCardContent>
+                <MudAlert Severity="Severity.Info" Class="mb-3">
+                    @L["AiInstructions_PreviewNote"]
+                </MudAlert>
+                <pre style="white-space: pre-wrap; font-family: monospace; font-size: 12px; background: var(--mud-palette-background-grey); padding: 16px; border-radius: 4px; overflow-x: auto;">@_previewText</pre>
+            </MudCardContent>
+        </MudCard>
+    }
+
+    @* Blocks interaction while a save or reset is in flight. *@
+    <MudOverlay Visible="_saving" DarkBackground="true" Absolute="false" ZIndex="9999">
+        <MudProgressCircular Color="Color.Primary" Indeterminate="true" Size="Size.Large" />
+    </MudOverlay>
+}
+
+@code {
+    private AiInstructionsDto? _instructions;
+    private UpdateAiInstructionsDto _editDto = new();
+    private bool _loading = true;
+    private bool _saving;
+    private bool _loadingPreview;
+    private bool _showPreview;
+    private string? _previewText;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadInstructionsAsync();
+    }
+
+    /// <summary>Loads the stored instructions and fills the edit form.</summary>
+    private async Task LoadInstructionsAsync()
+    {
+        try
+        {
+            _loading = true;
+            _instructions = await AiService.GetAsync();
+            _editDto = new UpdateAiInstructionsDto
+            {
+                CustomPrompt = _instructions?.CustomPrompt,
+                Appendix = _instructions?.Appendix
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to load AI instructions");
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    /// <summary>Saves the edited instructions.</summary>
+    private async Task Save()
+    {
+        _saving = true;
+        StateHasChanged();
+        try
+        {
+            var result = await AiService.UpdateAsync(_editDto);
+            if (result == null)
+            {
+                Snackbar.Add(L["Msg_Error"].Value, Severity.Error);
+                return;
+            }
+
+            _instructions = result;
+            // Re-sync the form with what was actually stored (empty text is normalized to null).
+            _editDto = new UpdateAiInstructionsDto
+            {
+                CustomPrompt = result.CustomPrompt,
+                Appendix = result.Appendix
+            };
+            Snackbar.Add(L["AiInstructions_SaveSuccess"].Value, Severity.Success);
+
+            if (_showPreview)
+                await LoadPreviewAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to save AI instructions");
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    /// <summary>
+    /// Asks before resetting — a reset discards text that can take a long time to write.
+    /// </summary>
+    private async Task ConfirmReset()
+    {
+        var confirmed = await DialogService.ShowMessageBox(
+            L["AiInstructions_ResetToDefault"].Value,
+            L["AiInstructions_ResetConfirm"].Value,
+            yesText: L["Btn_Confirm"].Value,
+            cancelText: L["Btn_Cancel"].Value);
+
+        if (confirmed == true)
+            await ResetAsync();
+    }
+
+    /// <summary>Clears both parts so the built-in defaults apply again.</summary>
+    private async Task ResetAsync()
+    {
+        _saving = true;
+        StateHasChanged();
+        try
+        {
+            if (!await AiService.ResetToDefaultAsync())
+            {
+                Snackbar.Add(L["Msg_Error"].Value, Severity.Error);
+                return;
+            }
+
+            await LoadInstructionsAsync();
+            ClosePreview();
+            Snackbar.Add(L["AiInstructions_ResetSuccess"].Value, Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to reset AI instructions");
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    /// <summary>Opens the preview panel and loads its content.</summary>
+    private async Task ShowPreview()
+    {
+        _showPreview = true;
+        await LoadPreviewAsync();
+    }
+
+    private void ClosePreview()
+    {
+        _showPreview = false;
+        _previewText = null;
+    }
+
+    /// <summary>
+    /// Fetches the rendered prompt. Note it reflects the STORED text, not unsaved edits —
+    /// the prompt is assembled on the server from the database.
+    /// </summary>
+    private async Task LoadPreviewAsync()
+    {
+        _loadingPreview = true;
+        StateHasChanged();
+        try
+        {
+            var preview = await AiService.GetPreviewAsync();
+            _previewText = preview?.FullPrompt;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to load AI instructions preview");
+            _previewText = $"{L["Msg_Error"].Value}: {ex.Message}";
+        }
+        finally
+        {
+            _loadingPreview = false;
+        }
+    }
+}
