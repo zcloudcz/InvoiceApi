@@ -58,7 +58,7 @@ Edit `Fakvio.BlazorUI/wwwroot/appsettings.json`:
 }
 ```
 
-For MAUI app, edit `Fakvio.MauiApp/wwwroot/appsettings.json` the same way.
+This file is the **only** way the site key reaches the browser: it is served verbatim from GitHub Pages, so the value has to be committed and the Pages deploy re-run (`blazorui-deploy.yml`, push to `master` or manual dispatch). That is safe — the site key is public by design, it is visible in the page source of every site using reCAPTCHA. The secret key never goes here.
 
 ## 3. Configure the backend (Secret Key)
 
@@ -77,20 +77,29 @@ Edit `Fakvio.API/appsettings.json`:
 
 ### Option B: Azure App Settings (production)
 
-Set these as application settings in Azure Portal (or via CLI):
+Set this as an application setting in Azure Portal (or via CLI), on the **API and the Function App**:
 
 ```
-Recaptcha__SiteKey = 6LdXXXXX...
 Recaptcha__SecretKey = 6LdXXXXX...
 ```
 
 Azure Functions use the same double-underscore notation for nested config.
 
-## 4. Local development (no keys)
+`Recaptcha__SiteKey` in App Settings does **nothing** — the server never reads the site key. The site key reaches the browser only through step 2 above (committed into `Fakvio.BlazorUI/wwwroot/appsettings.json` and published by the Pages deploy), because `blazorui-deploy.yml` publishes that file verbatim and static Pages have no App Settings.
 
-When `Recaptcha:SecretKey` is **empty** (default), verification is **skipped** on the backend. The frontend also skips token generation when `SiteKey` is empty.
+**Turning the gate on in production therefore takes both steps.** With `SecretKey` set but the site key still empty, the browser sends no `X-Captcha-Token`, and the fail-closed gate answers 400 to login, registration and the ARES lookup for every user. See ADMINGUIDE §9 for the two supported deployment variants.
 
-This means you can develop and test locally without any reCAPTCHA keys — login and registration work normally.
+## 4. Running without keys (local development)
+
+Since issue #200 the gate **fails closed**: an empty `Recaptcha:SecretKey` no longer means "skip verification", it means "reject every gated request". Running without reCAPTCHA is now explicit:
+
+```json
+{ "Recaptcha": { "Enabled": false } }
+```
+
+Already set in `Fakvio.API/appsettings.Development.json`, `Fakvio.Functions/local.settings.json` (`Recaptcha__Enabled`) and in the integration-test host. With `Enabled: false` no token is required and no call to Google is made, so login and registration work normally without any keys.
+
+**Never set `Enabled: false` in production** unless you knowingly want the three anonymous endpoints unprotected — there is no rate limiting behind them.
 
 ## 5. Protected endpoints
 
@@ -98,8 +107,9 @@ This means you can develop and test locally without any reCAPTCHA keys — login
 |----------|--------|--------|
 | `POST /api/auth/login` | `login` | `X-Captcha-Token` |
 | `POST /api/auth/register` | `register` | `X-Captcha-Token` |
+| `GET /api/auth/ares/{ico}` | `ares` | `X-Captcha-Token` |
 
-Both endpoints read the token from the `X-Captcha-Token` HTTP header. If the token is missing or invalid (and SecretKey is configured), the request is rejected with 400 Bad Request.
+All three read the token from the `X-Captcha-Token` HTTP header. A missing or invalid token means 400 Bad Request — and so does a token issued for a different action, a token from a host outside `Recaptcha:AllowedHostnames` (when that list is configured), a missing `SecretKey`, and an outage at Google. Anything the server cannot positively verify is rejected.
 
 ## 6. Score threshold
 

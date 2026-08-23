@@ -234,6 +234,25 @@ Functions přes `SystemConfigurationFunctions.SystemConfiguration_GetCredentialH
 
 **Pravidlo**: NIKDY neodstraňuj `PersistKeysToDbContext` ani neměň `ApplicationName`. Pokud musíš změnit ApplicationName, je to ekvivalent ztráty všech zašifrovaných dat — plánuj migrační okno.
 
+### 2.8 reCAPTCHA gate (issue #200)
+
+`CaptchaService` (`Fakvio.Infrastructure/Service/CaptchaService.cs`) je **jediná** ochrana před zneužitím u tří anonymních endpointů — `/api/auth/login`, `/api/auth/register` a ARES proxy `/api/auth/ares/{ico}`. Rate limiting v repu **není** (a nesmí být middleware — Functions host ho neprovede, viz §11.3).
+
+**Fail closed.** Cokoli zabrání kladnému ověření (výjimka, HTTP chyba od Googlu, chybějící `SecretKey`) znamená **odmítnutí** požadavku. Dřív se v těchto případech vracelo `true`, takže výpadek Googlu bránu úplně vypnul.
+
+| Config klíč | Default | Význam |
+|-------------|---------|--------|
+| `Recaptcha:Enabled` | `true` | `false` = brána se přeskočí bez jakéhokoli odchozího volání. **Jediný** povolený způsob, jak běžet bez reCAPTCHA (lokální dev, testy). |
+| `Recaptcha:SecretKey` | `""` | Prázdný + `Enabled=true` ⇒ všechny brány vracejí 400. Čte ho jen server. |
+| `Recaptcha:SiteKey` | `""` | Čte ho jen klient (`Fakvio.BlazorUI/wwwroot/appsettings.json`). Prázdný ⇒ stránka token nevyžádá a hlavička nedorazí, takže zapnutá brána vrátí 400 i pro legitimního uživatele. Zapnout bránu proto znamená nastavit `SecretKey` **i** `SiteKey` (§9.3, ADMINGUIDE §9). |
+| `Recaptcha:AllowedHostnames` | `[]` | Hosty, na kterých se site key používá. Prázdné = kontrola hostname se přeskočí (site key má doménový whitelist už v reCAPTCHA konzoli). |
+
+**Action binding.** `VerifyAsync(token, expectedAction)` — druhý argument musí být stejný řetězec, jaký Blazor stránka předá `grecaptcha.execute()`. Token je na akci vázaný, takže bez porovnání by token z registračního formuláře otevřel i login a ARES proxy.
+
+**Kde je escape hatch nastavený**: `appsettings.Development.json`, `Fakvio.Functions/local.settings.json` (`Recaptcha__Enabled`), `FakvioFactory` v integračních testech (`builder.UseSetting`). Testy, které testují **samotnou bránu**, místo toho substituují `ICaptchaService`.
+
+**AresCache TTL.** ARES proxy je anonymní, takže počet klíčů v `AresCache` volí volající. `AresCacheRepository.SaveCacheAsync` proto při každém zápisu smaže dávku expirovaných řádků (`ExpiredSweepBatchSize`, index na `ExpiresAt`). Záměrně **není** periodická úloha (§6) — řádky vznikají jen na zápisové cestě, takže tabulka neroste, když se nezapisuje, a úklid nepotřebuje dvojici BackgroundService + `[TimerTrigger]` ani průchod všemi tenant schématy. Neúspěšné lookupy expirují za 1 hodinu (`AresServiceImpl.FailureCacheExpiration`), takže enumerace uklízí sama po sobě.
+
 ---
 
 ## 3. Multi-tenant — jak data oddělujeme
@@ -1475,12 +1494,15 @@ dotnet test Fakvio.Tests.Unit --filter "FullyQualifiedName~DatabaseConnectivityS
 - `OAuth:*` — viz §2.4.
 - `SmtpSettings:*` — fallback SMTP (per-company se bere z `CompanySystemSettings`).
 - `CorsSettings:AllowedOrigins` — array. Načteno v `Program.cs:90`.
+- `Recaptcha:*` — viz §2.8. **Pozor**: brána je fail-closed, takže prostředí bez `SecretKey` musí mít `Recaptcha:Enabled=false`, jinak login i registrace vracejí 400. Zapnout ji znamená nastavit **dvě** věci — `SecretKey` na serveru **a** `SiteKey` v klientovi (§9.3); server sám nestačí, viz ADMINGUIDE §9.
 
 ### 9.3 BlazorUI WASM deploy
 
 - Hostováno na **GitHub Pages** s custom doménou (`CNAME` v repu).
 - API endpoint v `Fakvio.BlazorUI/wwwroot/appsettings.json` (`ApiSettings:BaseUrl`) — production URL Azure Function Appu.
 - Service worker pro PWA — pozor na cache invalidation při deployi.
+- **Celý `wwwroot/appsettings.json` se publikuje tak, jak je v repu** — `blazorui-deploy.yml` v něm nic nesubstituuje a Pages nemají App Settings. Cokoli má klient znát (`ApiSettings:BaseUrl`, `Recaptcha:SiteKey`) musí být commitnuté a nasazené novým buildem. Platí to jen pro **veřejné** hodnoty; secret ve `wwwroot` = secret zveřejněný.
+- Prázdný `Recaptcha:SiteKey` znamená, že klient token neposílá, a fail-closed brána (§2.8) pak odmítne login, registraci i ARES. Varianty nasazení viz ADMINGUIDE §9.
 
 ### 9.4 Functions deploy (Azure)
 
@@ -1622,12 +1644,18 @@ pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. P
       z těch seznamů; endpoint jede standardní tenant resolution (§3.3)
 2. JWT Authorize?
    ├─ Public (login, password reset, ARES lookup pro registraci) → [AllowAnonymous]
-   │   └─ POVINNĚ: captcha gate (X-Captcha-Token → ICaptchaService.VerifyAsync),
+   │   └─ POVINNĚ: captcha gate (X-Captcha-Token → ICaptchaService.VerifyAsync(token, action)),
    │      validace vstupu v controlleru a co nejužší DTO. NEdávej [AllowAnonymous]
    │      na tenant-scoped controller — vznikne otevřená proxy.
    │      Vzor: AuthController.FetchFromAres (GET /api/auth/ares/{ico}).
    │      Rate-limit middleware NEpoužívej — Functions host ho neprovede;
    │      captcha + cache-first lookup fungují v obou hostitelích.
+   │      `action` je druhý argument VerifyAsync a musí být stejný řetězec, jaký
+   │      stránka předává `grecaptcha.execute()` ("login", "register", "ares").
+   │      Token je na akci vázaný — bez shody by token z registračního formuláře
+   │      otevřel i ostatní brány.
+   │      Validuj ASCII, ne Unicode: `c is >= '0' and <= '9'`, NE `char.IsDigit`
+   │      (ten propustí arabsko-indické číslice — issue #200).
    ├─ Tenant user → [Authorize] (default)
    └─ SysAdmin only → [Authorize(Roles="SysAdmin")]
 3. Tenant kontext potřebný?
