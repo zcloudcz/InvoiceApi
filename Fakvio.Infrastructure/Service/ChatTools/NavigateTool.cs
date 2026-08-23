@@ -7,19 +7,18 @@ namespace Fakvio.Infrastructure.Service.ChatTools;
 
 /// <summary>
 /// Chat tool that handles navigation requests within the Fakvio application.
-/// When a user says "Open new invoice for client ABC" or "Show me client XYZ",
+/// When a user says "Open new invoice for client ABC" or "Show me the VAT report",
 /// this tool:
-/// 1. Identifies the target page (invoice, client, etc.)
-/// 2. Resolves entity references (finds client by name → gets ID)
+/// 1. Maps the requested target onto an application route
+/// 2. Resolves entity references where needed (finds client by name → gets ID)
 /// 3. Returns a ChatToolResult with a UiAction that the Blazor client executes
 ///
-/// Supported navigation targets:
-/// - new_invoice:      /invoices/create (optionally with ?clientId=X)
-/// - new_credit_note:  /invoices/create?type=CreditNote (optionally with ?clientId=X)
-/// - client_detail:    /clients/{id} (requires client_name to resolve ID)
-/// - client_list:      /clients
-/// - invoice_list:     /invoices
-/// - new_client:       /clients/create
+/// The offered targets are the <see cref="Routes"/> catalog below plus
+/// <c>client_detail</c>. The catalog covers every tenant-facing page of the app;
+/// auth-flow pages (/login, /register, …) and SysAdmin-only pages (/logs,
+/// /system-settings, /companies, /sysadmin/*, …) are deliberately left out — the
+/// assistant runs in a tenant user's session and must not send them somewhere they
+/// would only get an "access denied".
 ///
 /// Junior note: This tool doesn't navigate directly — it returns a ChatUiAction
 /// that the Blazor client (ChatPanel) interprets and executes via NavigationManager.
@@ -39,11 +38,102 @@ public class NavigateTool : IChatTool
     public string ToolName => "navigate";
 
     public string Description =>
-        "Navigates the user to a page in the application. " +
-        "Can open new invoice, new credit note, show client detail, " +
-        "open client list, invoice list, or new client form. " +
+        "Navigates the user to a page in the application — documents, clients, payments, " +
+        "templates, taxes, reminders or settings. " +
         "If a client name is mentioned, it finds the client first. " +
-        "Opens forms only — it never creates a document.";
+        "Opens pages and forms only — it never creates a document.";
+
+    /// <summary>
+    /// One navigation target: the value the model sends, the URL the Blazor client opens,
+    /// and a label used in the sentence shown back to the user ("Opening {label}.").
+    /// </summary>
+    /// <param name="Target">Enum value offered to the model, snake_case.</param>
+    /// <param name="Url">Application route, exactly as declared by the page's <c>@page</c>.</param>
+    /// <param name="Label">Lower-case noun phrase describing the page.</param>
+    private sealed record NavigationRoute(string Target, string Url, string Label);
+
+    /// <summary>
+    /// Target that has no fixed URL — the page id comes from resolving a client by name,
+    /// so it is handled separately in <see cref="ExecuteAsync"/>.
+    /// </summary>
+    private const string ClientDetailTarget = "client_detail";
+
+    /// <summary>
+    /// The two document forms that accept an optional client pre-selection
+    /// (<c>?clientId=…</c>); every other target ignores <c>client_name</c>.
+    /// </summary>
+    private const string NewInvoiceTarget = "new_invoice";
+    private const string NewCreditNoteTarget = "new_credit_note";
+
+    /// <summary>
+    /// Catalog of every tenant-facing route the assistant may open, grouped by area.
+    ///
+    /// This is the single source of truth: the allowed values advertised to the model and
+    /// the URL the client navigates to both come from here, so a target can never be
+    /// offered without a route (or vice versa). Order matters only cosmetically — the
+    /// generated prompt example uses the first value, hence <c>new_invoice</c> first.
+    ///
+    /// Routes with a path parameter (/invoices/{id}, /payments/{id}, …) are NOT here:
+    /// they need an entity resolved first, and only client resolution exists today.
+    /// </summary>
+    private static readonly NavigationRoute[] Routes =
+    [
+        // Issued documents
+        new(NewInvoiceTarget, "/invoices/create", "new invoice form"),
+        new(NewCreditNoteTarget, "/invoices/create?type=CreditNote", "new credit note form"),
+        new("invoice_list", "/invoices", "invoice list"),
+        new("invoice_import", "/invoices/import", "invoice import"),
+
+        // Received documents
+        new("new_received_invoice", "/received-invoices/create", "new received invoice form"),
+        new("received_invoice_list", "/received-invoices", "received invoice list"),
+        new("received_invoice_import", "/received-invoices/import", "received invoice import"),
+        new("invoice_emails", "/invoice-emails", "inbound invoice e-mails"),
+
+        // Clients
+        new("new_client", "/clients/create", "new client form"),
+        new("client_list", "/clients", "client list"),
+
+        // Payments
+        new("payment_list", "/payments", "payment list"),
+
+        // Templates
+        new("invoice_template_list", "/invoice-templates", "invoice template list"),
+        new("new_invoice_template", "/invoice-templates/create", "new invoice template form"),
+        new("content_template_list", "/content-templates", "content template list"),
+        new("new_content_template", "/content-templates/create", "new content template form"),
+
+        // Taxes and VAT
+        new("vat_report", "/vat-report", "VAT report"),
+        new("vat_rate_list", "/vat-rates", "VAT rate list"),
+        new("tax_estimation", "/tax-estimation", "tax estimation"),
+        new("tax_year_configs", "/tax-configs", "tax year configuration"),
+
+        // Reminders (dunning)
+        new("reminder_list", "/reminders", "reminder list"),
+        new("reminder_settings", "/reminders/settings", "reminder settings"),
+
+        // Company and user settings
+        new("dashboard", "/", "dashboard"),
+        new("my_company", "/my-company", "my company page"),
+        new("number_sequences", "/number-sequences", "number sequence settings"),
+        new("user_list", "/users", "user list"),
+        new("preferences", "/preferences", "user preferences"),
+        new("two_factor_settings", "/profile/two-factor", "two-factor authentication settings"),
+        new("notifications", "/notifications", "notification list")
+    ];
+
+    /// <summary>Lookup built once from <see cref="Routes"/> — the switch below is a dictionary hit.</summary>
+    private static readonly Dictionary<string, NavigationRoute> RouteByTarget =
+        Routes.ToDictionary(route => route.Target, StringComparer.Ordinal);
+
+    /// <summary>
+    /// Everything the model may send as <c>target</c>. Derived from the catalog so the
+    /// enum and the routing table cannot drift apart; <c>client_detail</c> is appended
+    /// because it is the one target resolved from a name instead of a fixed URL.
+    /// </summary>
+    private static readonly string[] AllowedTargets =
+        [.. Routes.Select(route => route.Target), ClientDetailTarget];
 
     /// <summary>
     /// Parameter schema — static because it never changes per instance.
@@ -56,13 +146,9 @@ public class NavigateTool : IChatTool
         {
             Name = "target",
             Type = ChatToolParameterType.String,
-            Description = "Where to navigate in the application",
+            Description = "Which page of the application to open",
             IsRequired = true,
-            AllowedValues =
-            [
-                "new_invoice", "new_credit_note", "client_detail",
-                "client_list", "invoice_list", "new_client"
-            ]
+            AllowedValues = AllowedTargets
         },
         new()
         {
@@ -80,7 +166,7 @@ public class NavigateTool : IChatTool
         CancellationToken ct = default)
     {
         // Presence and allowed value of "target" are guaranteed by ChatToolExecutor's
-        // central validation — the switch below only maps a known target to a route.
+        // central validation — the code below only maps a known target to a route.
         var target = parameters["target"].Trim().ToLowerInvariant();
 
         // Extract optional client_name for client resolution.
@@ -90,59 +176,37 @@ public class NavigateTool : IChatTool
         _logger.LogInformation("NavigateTool executing: target={Target}, client_name={ClientName}",
             target, clientName ?? "(none)");
 
-        return target switch
+        if (target == ClientDetailTarget)
+            return await HandleClientDetail(clientName, ct);
+
+        if (!RouteByTarget.TryGetValue(target, out var route))
         {
-            "new_invoice" => await HandleNewInvoice(clientName, ct),
-            "new_credit_note" => await HandleNewCreditNote(clientName, ct),
-            "client_detail" => await HandleClientDetail(clientName, ct),
-            "client_list" => SuccessNav("Opening client list.", "/clients"),
-            "invoice_list" => SuccessNav("Opening invoice list.", "/invoices"),
-            "new_client" => SuccessNav("Opening new client form.", "/clients/create"),
-            _ => ChatToolResult.Failure(
-                $"Unknown target: '{target}'. Must be one of: " +
-                "new_invoice, new_credit_note, client_detail, client_list, invoice_list, new_client.")
-        };
+            // Unreachable through the executor (it rejects values outside AllowedTargets),
+            // but the tool is also called directly, so it answers instead of throwing.
+            return ChatToolResult.Failure(
+                $"Unknown target: '{target}'. Must be one of: {string.Join(", ", AllowedTargets)}.");
+        }
+
+        // Only the two document forms understand ?clientId= — anywhere else the name is
+        // just extra context the model volunteered and there is nothing to resolve.
+        var preselectsClient = target is NewInvoiceTarget or NewCreditNoteTarget;
+        if (!preselectsClient || string.IsNullOrWhiteSpace(clientName))
+            return SuccessNav($"Opening {route.Label}.", route.Url);
+
+        var clientResult = await ResolveClientAsync(clientName, ct);
+        if (clientResult.Error != null)
+            return clientResult.Error;
+
+        // The credit note route already carries ?type=CreditNote, the invoice route carries
+        // nothing — pick the separator from the URL instead of hard-coding it per target.
+        var separator = route.Url.Contains('?') ? '&' : '?';
+
+        return SuccessNav(
+            $"Opening {route.Label} for client '{clientResult.Client!.CompanyName}'.",
+            $"{route.Url}{separator}clientId={clientResult.Client.Id}");
     }
 
     // ─── Private helpers ─────────────────────────────────────────────────
-
-    /// <summary>
-    /// Handles "new_invoice" target — optionally with client pre-selection.
-    /// </summary>
-    private async Task<ChatToolResult> HandleNewInvoice(string? clientName, CancellationToken ct)
-    {
-        if (string.IsNullOrWhiteSpace(clientName))
-        {
-            return SuccessNav("Opening new invoice form.", "/invoices/create");
-        }
-
-        var clientResult = await ResolveClientAsync(clientName, ct);
-        if (clientResult.Error != null)
-            return clientResult.Error;
-
-        return SuccessNav(
-            $"Opening new invoice for client '{clientResult.Client!.CompanyName}'.",
-            $"/invoices/create?clientId={clientResult.Client.Id}");
-    }
-
-    /// <summary>
-    /// Handles "new_credit_note" target — optionally with client pre-selection.
-    /// </summary>
-    private async Task<ChatToolResult> HandleNewCreditNote(string? clientName, CancellationToken ct)
-    {
-        if (string.IsNullOrWhiteSpace(clientName))
-        {
-            return SuccessNav("Opening new credit note form.", "/invoices/create?type=CreditNote");
-        }
-
-        var clientResult = await ResolveClientAsync(clientName, ct);
-        if (clientResult.Error != null)
-            return clientResult.Error;
-
-        return SuccessNav(
-            $"Opening new credit note for client '{clientResult.Client!.CompanyName}'.",
-            $"/invoices/create?type=CreditNote&clientId={clientResult.Client.Id}");
-    }
 
     /// <summary>
     /// Handles "client_detail" target — requires client name to resolve ID.
