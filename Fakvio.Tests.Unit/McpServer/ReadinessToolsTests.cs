@@ -93,6 +93,21 @@ public class ReadinessToolsTests
     }
 
     [Fact]
+    public async Task GetReadiness_PassesTheCallersCancellationTokenToTheApi()
+    {
+        // The MCP host cancels a tool call when the user aborts the turn. A tool that swallows
+        // the token keeps the HTTP call alive on a conversation nobody is listening to any more.
+        _api.GetReadinessAsync(Arg.Any<long?>(), Arg.Any<CancellationToken>())
+            .Returns(new ReadinessReportDto());
+        using var cts = new CancellationTokenSource();
+
+        await ReadinessTools.GetReadiness(_api, issuerId: 42, ct: cts.Token);
+
+        // Asserted on the exact token, not Arg.Any — that is what makes `default` a failure.
+        await _api.Received(1).GetReadinessAsync(42L, cts.Token);
+    }
+
+    [Fact]
     public async Task GetReadiness_UnknownIssuerId_ReturnsJsonError()
     {
         // The client turns the API's 404 into null; the tool must name the reason instead
@@ -105,6 +120,25 @@ public class ReadinessToolsTests
         var root = JsonDocument.Parse(json).RootElement;
         root.GetProperty("error").GetString().ShouldContain("999");
         root.TryGetProperty("isReady", out _).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task GetReadiness_NullReportWithoutIssuerId_StillBlamesAMissingIssuer()
+    {
+        // Characterization, not endorsement. The null branch is written for "that issuerId is
+        // not in the tenant", but it does not check that an issuerId was actually asked for,
+        // so a tenant-wide null renders an empty ID and a diagnosis about an issuer nobody
+        // named. Unreachable today — the client only maps 404 to null when an issuerId was
+        // given (see FakvioApiClientTests.GetReadinessAsync_TenantWide404_Throws_*). This test
+        // exists so that if that contract ever loosens, the wrong message shows up here first
+        // instead of in front of a user.
+        _api.GetReadinessAsync(Arg.Any<long?>(), Arg.Any<CancellationToken>())
+            .Returns((ReadinessReportDto?)null);
+
+        var json = await ReadinessTools.GetReadiness(_api);
+
+        JsonDocument.Parse(json).RootElement.GetProperty("error").GetString()
+            .ShouldBe("Issuer with ID  not found.");
     }
 
     [Fact]

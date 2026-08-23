@@ -123,7 +123,9 @@ public class GetReadinessToolTests
 
         var result = await _sut.ExecuteAsync([]);
 
-        result.OutputText.ShouldContain("usable");
+        // The "usable" headline counts on its own branch — saying "0 setting(s) are still
+        // incomplete" and then listing one is the kind of contradiction the model repeats.
+        result.OutputText.ShouldContain("usable, but 1 setting(s) are still incomplete");
         result.OutputText.ShouldContain("[WARNING] EPO_HEADER_INCOMPLETE");
         result.OutputText.ShouldContain("Warnings do not block invoicing");
         result.OutputText.ShouldNotContain("BLOCKING");
