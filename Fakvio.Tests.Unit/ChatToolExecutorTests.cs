@@ -976,4 +976,79 @@ public class ChatToolExecutorTests
     {
         _executor.BuildToolInstructions().ShouldNotContain("confirm");
     }
+
+    // ─── Confirm gate — the wire format the model actually sends ──────────
+    //
+    // Every test above hands the gate a ready-made ParsedToolCall with the string "true".
+    // A real model never does that: it emits JSON, and ToolArgumentReader turns that JSON
+    // into the string dictionary the gate reads. If those two ends ever disagree on how a
+    // JSON boolean looks, the gate silently stops recognising approvals — the tool would
+    // either become impossible to confirm, or (worse) start writing on a value it should
+    // have rejected. These tests therefore go in through ParseToolCall, not around it.
+
+    /// <summary>
+    /// One model answer → one decision. <paramref name="expectExecution"/> false means the
+    /// user must still see a preview; the tool's write path stays untouched either way unless
+    /// the answer carried an explicit boolean true.
+    /// </summary>
+    [Theory]
+    [InlineData("""{"action": "update_settings", "parameters": {"value": "FA-2026", "confirm": true}}""", true)]
+    [InlineData("""{"action": "update_settings", "parameters": {"value": "FA-2026", "confirm": false}}""", false)]
+    [InlineData("""{"action": "update_settings", "parameters": {"value": "FA-2026", "confirm": null}}""", false)]
+    [InlineData("""{"action": "update_settings", "parameters": {"value": "FA-2026"}}""", false)]
+    public async Task ParsedToolCall_ConfirmFlag_DecidesWhetherTheToolRuns(
+        string modelResponse, bool expectExecution)
+    {
+        var tool = CreateConfirmableTool();
+        var executor = CreateExecutor(tool);
+
+        var toolCall = executor.ParseToolCall(modelResponse);
+        toolCall.ShouldNotBeNull();
+        var result = await executor.ExecuteToolAsync(toolCall);
+
+        // A JSON null is dropped by ToolArgumentReader, so it must land on the preview branch —
+        // not on a validation error the model would then have to recover from.
+        result.IsSuccess.ShouldBeTrue();
+        result.RequiresConfirmation.ShouldBe(!expectExecution);
+
+        await tool.Received(expectExecution ? 1 : 0).ExecuteAsync(
+            Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>());
+        await tool.Received(expectExecution ? 0 : 1).BuildPreviewAsync(
+            Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ParsedToolCall_QuotedConfirmFlag_IsAcceptedLikeTheBooleanOne()
+    {
+        // Small models quote everything. The gate parses the text, so "true" and true mean the
+        // same thing — pinned here so a stricter reader cannot make approvals unrecognisable.
+        var tool = CreateConfirmableTool();
+        var executor = CreateExecutor(tool);
+
+        var toolCall = executor.ParseToolCall(
+            """{"action": "update_settings", "parameters": {"value": "FA-2026", "confirm": "true"}}""");
+        toolCall.ShouldNotBeNull();
+        await executor.ExecuteToolAsync(toolCall);
+
+        await tool.Received(1).ExecuteAsync(
+            Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public void BuildToolInstructions_StillAdvertisesConfirm_WhenTheToolHasNoOwnParameters()
+    {
+        // A confirmable tool need not take anything else ("close the accounting period").
+        // The parameter list is then made up entirely of the injected confirm flag — if the
+        // instructions short-circuited to "Parameters: none" the model could never approve it,
+        // and the tool would be permanently stuck on its own preview.
+        var tool = Substitute.For<IConfirmableChatTool>();
+        tool.ToolName.Returns("close_period");
+        tool.Description.Returns("Closes the accounting period");
+        tool.Parameters.Returns([]);
+
+        var instructions = CreateExecutor(tool).BuildToolInstructions();
+
+        instructions.ShouldNotContain("Parameters: none");
+        instructions.ShouldContain("confirm (boolean, optional)");
+    }
 }
