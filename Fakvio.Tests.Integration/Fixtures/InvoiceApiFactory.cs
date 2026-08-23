@@ -19,8 +19,14 @@ namespace Fakvio.Tests.Integration.Fixtures;
 /// 2. Replace TenantProvisioningService with a test double (no CREATE DATABASE)
 /// 3. Remove background services (LogFlushService, LogCleanupService) that need real SQL
 /// 4. Remove DatabaseLoggerProvider (needs LogFlushService to drain its queue)
-/// 5. Set environment to "Testing" so the migration block in Program.cs is skipped
+/// 5. Set environment to "Testing" so the host behaves neither like Development
+///    (no Swagger) nor like Production, and so appsettings.Testing.json applies
 /// 6. Configure JWT with known test values so we can generate valid tokens
+///
+/// Note: the startup migration block in Program.cs is skipped because of point 1,
+/// not point 5 — it checks Database.IsRelational(), and the InMemory provider is
+/// not relational. That is what lets a test override the environment (see
+/// SwaggerEnvironmentTests) without MigrateAsync() blowing up on startup.
 ///
 /// After building the host, it calls EnsureCreated() on both DbContexts
 /// so that the InMemoryDatabase has the schema (tables) ready and seed data populated.
@@ -41,8 +47,11 @@ public class FakvioFactory : WebApplicationFactory<Program>
     /// </summary>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        // Set environment to "Testing" — the migration block in Program.cs checks for this
-        // and skips MigrateAsync() which would fail on InMemoryDatabase.
+        // Set environment to "Testing" — picks up appsettings.Testing.json and keeps the host
+        // out of Development-only branches (Swagger). It does NOT drive the startup migration
+        // block any more: that one checks Database.IsRelational(), so MigrateAsync() is skipped
+        // purely because the DbContexts below use the InMemory provider. Tests are therefore
+        // free to override the environment via WithWebHostBuilder(b => b.UseEnvironment(...)).
         builder.UseEnvironment("Testing");
 
         builder.ConfigureServices(services =>
