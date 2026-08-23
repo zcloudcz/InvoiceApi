@@ -5,9 +5,14 @@
 // - GET /api/diagnostic/health → checks DB connectivity and migration status
 // - POST /api/diagnostic/migrate → manually triggers database migrations
 //
-// Both endpoints are anonymous (no auth required) so you can call them
-// directly from a browser or curl to debug Azure deployment issues.
-// IMPORTANT: Consider adding auth or removing these in production.
+// - GET /api/diagnostic/auth → dumps the JWT state as the worker sees it
+//
+// Health is anonymous so Azure probes can call it. Migrate and Auth are
+// SysAdmin-only: migrate mutates the database, and auth echoes the JWT
+// configuration (issuer, audience, secret length) plus every claim — both
+// are attacker gold if left open. The role check is inlined in each function
+// because Azure Functions does not run the MVC [Authorize] filter pipeline;
+// AuthorizationLevel.Anonymous on the trigger only disables the host key.
 // ============================================================================
 
 using System.IdentityModel.Tokens.Jwt;
@@ -129,13 +134,21 @@ public class DiagnosticFunctions
     }
 
     /// <summary>
-    /// Manually triggers database migrations.
+    /// Manually triggers database migrations. SysAdmin only — it writes to the schema.
     /// Call: POST https://your-function-app.azurewebsites.net/api/diagnostic/migrate
     /// </summary>
     [Function("Diagnostic_Migrate")]
     public async Task<IActionResult> Migrate(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "api/diagnostic/migrate")] HttpRequest req)
     {
+        // Authorization check: [Authorize(Roles = "SysAdmin")]
+        if (req.HttpContext.User.Identity?.IsAuthenticated != true)
+            return new UnauthorizedResult();
+
+        // Role check: user must be in one of [SysAdmin]
+        if (!req.HttpContext.User.IsInRole("SysAdmin"))
+            return new ForbidResult();
+
         var result = new Dictionary<string, object>();
 
         try
@@ -187,13 +200,23 @@ public class DiagnosticFunctions
     /// Auth diagnostic — dumps the full authentication state as seen by the function.
     /// This helps debug JWT middleware issues: shows Authorization header presence,
     /// whether HttpContext.User is authenticated, all claims, and manual JWT validation.
+    /// SysAdmin only — the payload contains the JWT configuration and every claim,
+    /// so an anonymous caller gets 401 and no diagnostic data at all.
     /// Call: GET https://your-function-app.azurewebsites.net/api/diagnostic/auth
-    /// Pass your Bearer token in the Authorization header to test validation.
+    /// Pass a SysAdmin Bearer token in the Authorization header.
     /// </summary>
     [Function("Diagnostic_Auth")]
     public IActionResult AuthDiagnostic(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/diagnostic/auth")] HttpRequest req)
     {
+        // Authorization check: [Authorize(Roles = "SysAdmin")]
+        if (req.HttpContext.User.Identity?.IsAuthenticated != true)
+            return new UnauthorizedResult();
+
+        // Role check: user must be in one of [SysAdmin]
+        if (!req.HttpContext.User.IsInRole("SysAdmin"))
+            return new ForbidResult();
+
         var result = new Dictionary<string, object>();
 
         // 1. Check what the function sees on HttpContext.User (set by JWT middleware)
