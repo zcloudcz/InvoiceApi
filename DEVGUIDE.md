@@ -1189,8 +1189,14 @@ Samostatný projekt, protože na `Fakvio.MigrationTool` do issue #136 neměl `Pr
 žádný testovací projekt — jeho kompozici (skládání jména tenant schématu, `search_path`)
 tedy nešlo připnout. Vzor: `TenantSchemaCanonicalizationTests`.
 
+- Společná fixture je v `LiveMigrationToolTest` (abstraktní base class) — schémata, obě factory,
+  konfigurace toolu, DB probes. Nová třída jen podědí a začne `SkipIfDatabaseUnavailable()`.
+  Dnes na ní stojí `TenantSchemaCanonicalizationTests`, `DataIntegrityVerifierTests`
+  a `MigrationDryRunTests`.
 - Stejný throwaway-schema pattern jako `TenantIssuerProvisioningDatabaseTests`, jen se **třemi**
   schématy na instanci třídy (source / master / tenant). Úklid maže vše, co má v názvu GUID běhu.
+- Verifier hlásí, který check spadl, jen do loggeru — proto `RecordedLog` místo `NullLogger`;
+  bez něj je pád v CI jen „expected True, was False".
 - Test žene celý `DataMigrationService.MigrateAsync()`, ne jednotlivé helpery — jinak by se
   kompozice minula stejně jako unit testy nad `SchemaNames.Sanitize`.
 - **Nereferencuje `Fakvio.API`** záměrně. `Npgsql.EnableLegacyTimestampBehavior` je procesně
