@@ -58,6 +58,13 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Změny pro vývojáře
 
+- **#212** — Zápisové nástroje AI chatu (zatím žádný neexistuje, ale #217/#218/#220/#222/
+  #224/#225/#227 na tomhle základu staví) budou mít jednotný potvrzovací mechanismus: bez
+  parametru `confirm: true` se zápis vůbec nespustí a model dostane jen náhled toho, co by
+  se stalo. Gate je centrální (`ChatToolExecutor`), takže funguje stejně napříč všemi
+  4 AI providery i textovým i nativním tool-calling flow — implementátor jednotlivého
+  nástroje ho nemusí řešit sám. DEVGUIDE §4.7 dostal i paritní tabulku chat ↔ MCP nástrojů,
+  aby bylo vidět, kolik nástrojů z MCP serveru chat ještě nepokrývá. (PR #258, `b91a94c`)
 - **#230** — AI asistent v chatu dosud odpovídal bez ponětí, kde uživatel zrovna je:
   neznal dnešní datum, aktuální stránku ani otevřený doklad, a o nedokončeném nastavení
   firmy (chybějící sídlo, číselné řady, šablony) nevěděl vůbec. Prompt teď dostává
