@@ -5,6 +5,7 @@ using Fakvio.Domain.Enums;
 using Fakvio.Infrastructure.Data;
 using Fakvio.Infrastructure.Service;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
 using Shouldly;
@@ -146,12 +147,23 @@ public class ApiKeyDatabaseConstraintTests : IAsyncLifetime
     /// the search path EF would read that history, conclude every migration is already
     /// applied, and leave the throwaway schema empty.
     ///
+    /// PendingModelChangesWarning is downgraded exactly as
+    /// <c>ServiceCollectionExtensions.AddDatabaseContexts</c> does it for the production
+    /// MasterDbContext. Without it this class is order-dependent: the API host that the
+    /// WebApplicationFactory-based tests boot sets the process-wide
+    /// <c>Npgsql.EnableLegacyTimestampBehavior</c> switch, which changes the store type
+    /// DateTime maps to — so a model built after one of those classes ran no longer matches
+    /// the migration snapshot and MigrateAsync throws. Production suppresses the same
+    /// warning for the same MigrateAsync call, so suppressing it here keeps the test on the
+    /// production code path rather than papering over a defect.
+    ///
     /// A fresh context per call means assertions read from the database, not from a change
     /// tracker that still holds the objects the arrange step just wrote.
     /// </summary>
     private MasterDbContext CreateMasterContext()
         => new(new DbContextOptionsBuilder<MasterDbContext>()
             .UseNpgsql(_dataSourceFactory!.GetForSchema(_schemaName, includePublicInSearchPath: false))
+            .ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning))
             .Options);
 
     // ─── Arrange helpers ──────────────────────────────────────────────────────
