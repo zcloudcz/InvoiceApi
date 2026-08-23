@@ -7,6 +7,7 @@ using Fakvio.Contracts.Dto.Dashboard;
 using Fakvio.Contracts.Dto.Email;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Contracts.Dto.InvoiceTemplate;
+using Fakvio.Contracts.Dto.Readiness;
 using Fakvio.Contracts.Dto.ReceivedInvoice;
 using Fakvio.Contracts.Dto.Tax;
 using Fakvio.Contracts.Dto.VatReport;
@@ -324,6 +325,23 @@ public class FakvioApiClient : IFakvioApiClient
             return null;
         await EnsureSuccessAsync(response, ct);
         return await response.Content.ReadFromJsonAsync<TaxYearConfigDto>(JsonOptions, ct);
+    }
+
+    // ── Readiness endpoints ────────────────────────────────────────────
+
+    public async Task<ReadinessReportDto?> GetReadinessAsync(long? issuerId = null, CancellationToken ct = default)
+    {
+        // No issuerId → the whole tenant is checked, which is what the API does without the filter.
+        var query = issuerId.HasValue ? $"?issuerId={issuerId.Value}" : string.Empty;
+        var response = await _http.GetAsync($"api/readiness{query}", ct);
+
+        // 404 only ever means "that issuerId is not in this tenant" — an unfinished setup
+        // comes back as a normal 200 with issues.
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return null;
+
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadFromJsonAsync<ReadinessReportDto>(JsonOptions, ct);
     }
 
     // ── Query string builders ────────────────────────────────────────────

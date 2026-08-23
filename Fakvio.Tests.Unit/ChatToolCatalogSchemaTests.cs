@@ -16,7 +16,7 @@ namespace Fakvio.Tests.Unit;
 ///
 /// Why this exists next to <see cref="ChatToolExecutorTests"/>: those tests describe the
 /// executor's behaviour using NSubstitute mocks, so they prove the rules are enforced but
-/// never touch a single shipped tool. Nothing checked that the eleven tools we actually
+/// never touch a single shipped tool. Nothing checked that the tools we actually
 /// ship satisfy those rules — a tool with a broken schema would only blow up at startup in
 /// production, and a tool that is never registered would be silently invisible to the model.
 ///
@@ -109,7 +109,7 @@ public class ChatToolCatalogSchemaTests
         // #159 replaced the hand-written tool list in the prompt with a catalog generated from
         // the registered tools. Generated is not the same as verified: the tests that drive the
         // prompt elsewhere use fake tools, so nothing else checks what the model is actually
-        // told about the eleven tools we ship.
+        // told about the tools we ship.
         //
         // ComposePreview is the real composition path (the SysAdmin preview and the live prompt
         // share it), so this also pins that the catalog lands inside the built-in block, in DI

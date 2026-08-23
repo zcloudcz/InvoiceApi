@@ -47,7 +47,7 @@ internal static class BuiltInPromptAssertions
     ];
 
     /// <summary>
-    /// The catalog the eleven shipped tools are expected to render, in DI registration order
+    /// The catalog the shipped tools are expected to render, in DI registration order
     /// (<c>ServiceCollectionExtensions</c>). Each line is <c>- {ToolName}: {Description}</c>
     /// with the description written out as one line. This is the independent copy: when a tool
     /// description changes, it has to be changed here too, deliberately. That is the point.
@@ -64,7 +64,8 @@ internal static class BuiltInPromptAssertions
         "- list_received_invoices: List received (incoming/expense) invoices with optional filtering by status, supplier name, date range, amount range, or currency. Returns paged results with totals.",
         "- search_received_invoices: Full-text search across received (incoming/expense) invoices. Searches by document number, supplier name, variable symbol, or amount. Use this when the user provides a number or name without specifying which field.",
         "- attach_file: Attach a file to an entity (Invoice, ReceivedInvoice, or Client). The file content must be provided as a Base64-encoded string — the frontend supplies it when the user drops a file into the chat. Returns the attachment ID, file name, and size upon success.",
-        "- list_attachments: List all file attachments for an entity record (Invoice, ReceivedInvoice, or Client). Returns file name, size, upload date, and optional description for each attachment."
+        "- list_attachments: List all file attachments for an entity record (Invoice, ReceivedInvoice, or Client). Returns file name, size, upload date, and optional description for each attachment.",
+        "- get_readiness: Checks whether the company setup is complete enough to issue invoices. Returns every missing setting with its severity (blocking or warning), the empty fields and the page where the user fixes it. Read-only — use it when the user asks what is still missing, or when an invoice was refused because the setup is incomplete."
     ];
 
     /// <summary>The static lines below the generated tool catalog, verbatim.</summary>

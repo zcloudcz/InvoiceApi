@@ -7,6 +7,7 @@ using Fakvio.Contracts.Dto.Dashboard;
 using Fakvio.Contracts.Dto.Email;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Contracts.Dto.InvoiceTemplate;
+using Fakvio.Contracts.Dto.Readiness;
 using Fakvio.Domain.Enums;
 using Fakvio.McpServer.Client;
 using Shouldly;
@@ -320,6 +321,65 @@ public class FakvioApiClientTests : IDisposable
         result.InvoicesDueThisMonthCount.ShouldBe(15);
         result.TotalClients.ShouldBe(42);
         result.UnpaidAmount.ShouldBe(150000m);
+    }
+
+    // ── Readiness tests ────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetReadinessAsync_NoIssuerId_CallsEndpointWithoutQueryString()
+    {
+        _handler.SetupResponse(HttpStatusCode.OK, new ReadinessReportDto());
+
+        await _sut.GetReadinessAsync();
+
+        var url = _handler.LastRequestUri?.ToString() ?? "";
+        url.ShouldEndWith("api/readiness");
+    }
+
+    [Fact]
+    public async Task GetReadinessAsync_WithIssuerId_AppendsItAsQueryParameter()
+    {
+        _handler.SetupResponse(HttpStatusCode.OK, new ReadinessReportDto());
+
+        await _sut.GetReadinessAsync(42);
+
+        _handler.LastRequestUri?.ToString().ShouldContain("api/readiness?issuerId=42");
+    }
+
+    [Fact]
+    public async Task GetReadinessAsync_IncompleteSetup_ReturnsReportWithIssues()
+    {
+        // An unfinished setup is a normal 200 — the report is the answer, not an error.
+        _handler.SetupResponse(HttpStatusCode.OK, new ReadinessReportDto
+        {
+            Issues =
+            [
+                new ReadinessIssueDto
+                {
+                    Code = "ISSUER_MISSING",
+                    Severity = EReadinessSeverity.Blocking,
+                    MissingFields = ["Issuer"],
+                    FixRoute = "/my-company"
+                }
+            ]
+        });
+
+        var result = await _sut.GetReadinessAsync();
+
+        result.ShouldNotBeNull();
+        result.IsReady.ShouldBeFalse();
+        result.Issues.Single().FixRoute.ShouldBe("/my-company");
+    }
+
+    [Fact]
+    public async Task GetReadinessAsync_ReturnsNull_WhenIssuerNotFound()
+    {
+        // 404 is reserved for "this issuerId is not in the tenant" (see ReadinessController).
+        _handler.SetupResponse(HttpStatusCode.NotFound, new { message = "Not found" });
+
+        var result = await _sut.GetReadinessAsync(999);
+
+        result.ShouldBeNull();
     }
 
     // ── Error handling tests ───────────────────────────────────────────

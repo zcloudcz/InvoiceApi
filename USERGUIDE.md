@@ -651,6 +651,7 @@ AI asistent zná kontext vaší firmy a umí odpovídat na otázky i provádět 
 | Klienti | Vyhledat klienta, zobrazit detail |
 | Přijaté faktury | Vyhledat, vypsat seznam |
 | Obecné dotazy | Odpovídat na otázky o funkcích aplikace |
+| Nastavení firmy | Zkontrolovat, jestli máte vyplněné vše potřebné k vystavení faktury („Můžu už fakturovat?", „Co mi ještě chybí?"). Vypíše, co chybí, jestli to fakturaci brání, nebo jen omezuje jednu funkci, a na které stránce se to doplní. Nic sám nemění. |
 | Navigace | Otevřít libovolnou stránku aplikace — faktury, přijaté faktury, klienty, platby, šablony, DPH a daně, upomínky i nastavení („Otevři DPH přiznání", „Založ novou fakturu pro klienta XYZ"). Stránky správce systému a přihlašovací obrazovky asistent neotevírá. |
 
 ### Jak používat
@@ -687,6 +688,7 @@ jinak, než jste zvyklí, je pravděpodobně upravené systémové nastavení �
 - „Jaký je celkový obrat za Q1 2026?"
 - „Najdi fakturu číslo FAK-2026-001"
 - „Kolik mám nesplacených faktur?"
+- „Můžu už fakturovat? Co mi ještě chybí v nastavení?"
 
 ### Když se odpověď nepodaří vygenerovat
 
