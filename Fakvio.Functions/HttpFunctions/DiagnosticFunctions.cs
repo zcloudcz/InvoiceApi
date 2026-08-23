@@ -4,7 +4,6 @@
 // These endpoints help diagnose deployment issues:
 // - GET /api/diagnostic/health → checks DB connectivity and migration status
 // - POST /api/diagnostic/migrate → manually triggers database migrations
-//
 // - GET /api/diagnostic/auth → dumps the JWT state as the worker sees it
 //
 // Health is anonymous so Azure probes can call it. Migrate and Auth are
