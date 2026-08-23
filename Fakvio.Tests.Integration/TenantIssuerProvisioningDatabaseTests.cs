@@ -31,6 +31,9 @@ namespace Fakvio.Tests.Integration;
 /// database is started with <c>docker compose up -d</c>. Override the connection with
 /// the <c>FAKVIO_TEST_POSTGRES</c> environment variable.
 /// </summary>
+// Shares one xUnit collection with the other real-schema test classes so they never issue
+// tenant DDL against the same PostgreSQL concurrently — see RealPostgreSqlCollection.
+[Collection(RealPostgreSqlCollection.Name)]
 public class TenantIssuerProvisioningDatabaseTests : IAsyncLifetime
 {
     /// <summary>Matches docker-compose.yml — the local dev PostgreSQL.</summary>

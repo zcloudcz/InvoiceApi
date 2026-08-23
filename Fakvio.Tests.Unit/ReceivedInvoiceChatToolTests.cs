@@ -349,21 +349,6 @@ public class ReceivedInvoiceChatToolTests
     // ═══════════════════════════════════════════════════════════════════════
 
     /// <summary>
-    /// SearchReceivedInvoicesTool — returns failure when query parameter is missing.
-    /// </summary>
-    [Fact]
-    public async Task SearchReceivedInvoicesTool_MissingQuery_ReturnsFailure()
-    {
-        var service = Substitute.For<IReceivedInvoiceService>();
-        var tool = new SearchReceivedInvoicesTool(service, Substitute.For<ILogger<SearchReceivedInvoicesTool>>());
-
-        var result = await tool.ExecuteAsync(new Dictionary<string, string>());
-
-        result.IsSuccess.ShouldBeFalse();
-        result.ErrorMessage.ShouldContain("query");
-    }
-
-    /// <summary>
     /// SearchReceivedInvoicesTool — forwards query to GetPagedAsync with Search filter.
     /// </summary>
     [Fact]
@@ -496,32 +481,4 @@ public class ReceivedInvoiceChatToolTests
     //  DetectToolIntent — received invoice regex path
     // ═══════════════════════════════════════════════════════════════════════
 
-    /// <summary>
-    /// ChatToolExecutor.DetectToolIntent returns true for received-invoice keywords.
-    /// These messages must trigger the intent detection so the tool instructions
-    /// are appended to the system prompt for the first AI pass.
-    /// </summary>
-    [Theory]
-    [InlineData("přijatá faktura 267708922")]
-    [InlineData("Ukaž mi přijatou fakturu č. 2024-0051")]
-    [InlineData("received invoice 12345")]
-    [InlineData("supplier invoice from Alza")]
-    [InlineData("Přijaté faktury od dodavatele")]
-    [InlineData("faktura 267708922")]
-    [InlineData("incoming invoice 99887766")]
-    public void DetectToolIntent_ReturnsTrue_ForReceivedInvoiceKeywords(string message)
-    {
-        var logger = Substitute.For<ILogger<Infrastructure.Service.ChatTools.ChatToolExecutor>>();
-
-        // Minimal tool list — we only need DetectToolIntent to work.
-        var mockTool = Substitute.For<IChatTool>();
-        mockTool.ToolName.Returns("get_received_invoice");
-        mockTool.Description.Returns("Get received invoice");
-        mockTool.ParameterDescription.Returns("id or document_number");
-
-        var executor = new Infrastructure.Service.ChatTools.ChatToolExecutor(
-            new List<IChatTool> { mockTool }, logger);
-
-        executor.DetectToolIntent(message).ShouldBeTrue();
-    }
 }

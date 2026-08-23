@@ -42,28 +42,46 @@ public class NavigateTool : IChatTool
         "Navigates the user to a page in the application. " +
         "Can open new invoice, new credit note, show client detail, " +
         "open client list, invoice list, or new client form. " +
-        "If a client name is mentioned, it finds the client first.";
+        "If a client name is mentioned, it finds the client first. " +
+        "Opens forms only — it never creates a document.";
 
-    public string ParameterDescription =>
-        "target (string, required): One of: new_invoice, new_credit_note, " +
-        "client_detail, client_list, invoice_list, new_client. " +
-        "client_name (string, optional): Client name to search for " +
-        "(used with new_invoice, new_credit_note, or client_detail to find the client).";
+    /// <summary>
+    /// Parameter schema — static because it never changes per instance.
+    /// AllowedValues make the model pick a real target instead of inventing one;
+    /// unknown targets are rejected centrally before this tool runs.
+    /// </summary>
+    private static readonly ChatToolParameter[] Schema =
+    [
+        new()
+        {
+            Name = "target",
+            Type = ChatToolParameterType.String,
+            Description = "Where to navigate in the application",
+            IsRequired = true,
+            AllowedValues =
+            [
+                "new_invoice", "new_credit_note", "client_detail",
+                "client_list", "invoice_list", "new_client"
+            ]
+        },
+        new()
+        {
+            Name = "client_name",
+            Type = ChatToolParameterType.String,
+            Description = "Client/company name — required for client_detail, optional for " +
+                          "new_invoice and new_credit_note to pre-select the client"
+        }
+    ];
+
+    public IReadOnlyList<ChatToolParameter> Parameters => Schema;
 
     public async Task<ChatToolResult> ExecuteAsync(
         Dictionary<string, string> parameters,
         CancellationToken ct = default)
     {
-        // Extract the target parameter (required).
-        if (!parameters.TryGetValue("target", out var target) ||
-            string.IsNullOrWhiteSpace(target))
-        {
-            return ChatToolResult.Failure(
-                "Missing 'target' parameter. Must be one of: " +
-                "new_invoice, new_credit_note, client_detail, client_list, invoice_list, new_client.");
-        }
-
-        target = target.Trim().ToLowerInvariant();
+        // Presence and allowed value of "target" are guaranteed by ChatToolExecutor's
+        // central validation — the switch below only maps a known target to a route.
+        var target = parameters["target"].Trim().ToLowerInvariant();
 
         // Extract optional client_name for client resolution.
         parameters.TryGetValue("client_name", out var clientName);
