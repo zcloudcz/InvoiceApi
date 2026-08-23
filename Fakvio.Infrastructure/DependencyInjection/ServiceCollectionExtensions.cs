@@ -1,6 +1,7 @@
 ﻿using AresService;
 using Fakvio.Application.Service;
 using Fakvio.Infrastructure.AiProviders;
+using Fakvio.Infrastructure.Authentication;
 using Fakvio.Infrastructure.Data;
 using Fakvio.Infrastructure.Logging;
 using Fakvio.Infrastructure.Repository;
@@ -143,6 +144,7 @@ public static class ServiceCollectionExtensions
         services.AddScopedWithLogging<IUserService, UserService>();
         services.AddScopedWithLogging<IUserPreferencesService, UserPreferencesService>();
         services.AddScopedWithLogging<IApiKeyService, ApiKeyService>();
+        services.AddScopedWithLogging<IApiKeyAuthenticator, ApiKeyAuthenticator>();
         services.AddScopedWithLogging<ICurrencyService, CurrencyService>();
         services.AddScopedWithLogging<IInvoiceTemplateService, InvoiceTemplateService>();
         services.AddScopedWithLogging<IPdfExportService, PdfExportService>();

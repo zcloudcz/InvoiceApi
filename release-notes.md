@@ -63,6 +63,11 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Změny pro vývojáře
 
+- **#236** — Integrace (MCP server, budoucí externí nástroje) se teď mohou přihlásit
+  API klíčem místo běžného uživatelského přihlášení: klíč se pošle v hlavičce
+  `Authorization: ApiKey <klíč>` a nese vlastní scope (které akce smí), takže
+  nevyžaduje sdílené heslo ani plný přístup uživatele. Funguje shodně v API
+  hostu i v Azure Functions. (PR #275, `bd4ffb3`)
 - **#209** — Nový endpoint `GET /api/readiness` (i jako Azure Function) vrací, co ve
   vystaviteli ještě chybí k vystavení faktury (sídlo, číselné řady, šablony) — základ pro
   banner v UI (#215) a pro MCP/chat nástroje, které se teď mají o co opřít místo vlastní
