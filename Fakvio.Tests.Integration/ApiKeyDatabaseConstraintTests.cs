@@ -2,6 +2,7 @@ using System.Net.Sockets;
 using Fakvio.Contracts.Dto.ApiKey;
 using Fakvio.Domain.Entities;
 using Fakvio.Domain.Enums;
+using Fakvio.Infrastructure.Authentication;
 using Fakvio.Infrastructure.Data;
 using Fakvio.Infrastructure.Service;
 using Microsoft.EntityFrameworkCore;
@@ -14,8 +15,8 @@ using ApiKeyEntity = Fakvio.Domain.Entities.ApiKey;
 namespace Fakvio.Tests.Integration;
 
 /// <summary>
-/// Integration tests for issue #235 — the <c>ApiKey</c> table against a REAL PostgreSQL
-/// schema instead of an InMemory store.
+/// Integration tests for issues #235 and #236 — the <c>ApiKey</c> table against a REAL
+/// PostgreSQL schema instead of an InMemory store.
 ///
 /// Why the real database matters here: <c>Fakvio.Tests.Unit/ApiKeyServiceTests</c> runs on
 /// InMemory, which has no unique indexes, no column length limits and no foreign keys. It
@@ -28,6 +29,9 @@ namespace Fakvio.Tests.Integration;
 ///   On InMemory an over-long name is stored as-is, so the guard looks decorative.
 /// * <c>FK_ApiKey_User_UserId ON DELETE CASCADE</c> — the reason keys need no separate
 ///   cleanup when a user is removed. On InMemory nothing cascades.
+/// * <c>ExpiresAt</c> comes back from a <c>timestamp with time zone</c> column with a
+///   DateTimeKind the code must not assume (#236). InMemory round-trips the kind verbatim
+///   and therefore cannot show the mismatch the expiry check has to survive.
 ///
 /// The schema is built by running the real master migrations (including
 /// <c>AddApiKey_v147</c>) into a throwaway schema, so what the tests hit is the DDL that
@@ -499,6 +503,81 @@ public class ApiKeyDatabaseConstraintTests : IAsyncLifetime
 
         await using var readContext = CreateMasterContext();
         (await readContext.ApiKey.SingleAsync()).RevokedAt.ShouldBeNull();
+    }
+
+    // ─── Expiry across the driver boundary (issue #236) ───────────────────────
+
+    /// <summary>
+    /// Pins the fact the expiry check is built on: with
+    /// <c>Npgsql.EnableLegacyTimestampBehavior</c> — switched on process-wide by both hosts —
+    /// a <c>timestamp with time zone</c> column does NOT come back as a UTC DateTime. It
+    /// comes back converted to the server's local time with <see cref="DateTimeKind.Local"/>.
+    ///
+    /// Nothing in an InMemory test can show this, and it is the whole reason
+    /// <c>ApiKeyAuthenticator</c> normalizes before comparing: a raw
+    /// <c>ExpiresAt &lt;= DateTime.UtcNow</c> would be wrong by the local UTC offset, and east
+    /// of Greenwich wrong in the dangerous direction — an expired key would keep working.
+    /// </summary>
+    [SkippableFact]
+    public async Task ExpiresAt_ComesBackFromPostgres_WithTheKindTheLegacySwitchDictates()
+    {
+        Skip.IfNot(_databaseAvailable, SkipReason);
+
+        var key = BuildApiKey("kind-round-trip-hash");
+        key.ExpiresAt = DateTime.UtcNow.AddHours(1);
+        await InsertApiKeyAsync(key);
+
+        await using var context = CreateMasterContext();
+        var stored = await context.ApiKey.AsNoTracking().SingleAsync(k => k.KeyHash == "kind-round-trip-hash");
+
+        // Production always takes the Local branch — both hosts set the switch at startup.
+        // Which branch THIS process is in depends on whether a WebApplicationFactory-based
+        // class already booted the API host (see CreateMasterContext), so read the switch
+        // instead of pretending the answer is fixed. Either way the point stands: the kind
+        // that comes back is not something the expiry comparison may assume.
+        AppContext.TryGetSwitch("Npgsql.EnableLegacyTimestampBehavior", out var legacyTimestamps);
+        stored.ExpiresAt!.Value.Kind.ShouldBe(legacyTimestamps ? DateTimeKind.Local : DateTimeKind.Utc);
+    }
+
+    /// <summary>
+    /// The security assertion behind the test above: an expired key does not authenticate,
+    /// against a real PostgreSQL round-trip. On a machine east of UTC this test fails
+    /// outright if the comparison stops normalizing the kind.
+    /// </summary>
+    [SkippableFact]
+    public async Task ExpiredKey_IsRejected_AfterARealPostgresRoundTrip()
+    {
+        Skip.IfNot(_databaseAvailable, SkipReason);
+
+        var rawKey = "fak_live_" + new string('E', 43);
+        var key = BuildApiKey(ApiKeyService.ComputeHash(rawKey), name: "Expired key");
+        key.ExpiresAt = DateTime.UtcNow.AddMinutes(-1);
+        await InsertApiKeyAsync(key);
+
+        await using var context = CreateMasterContext();
+        var authenticator = new ApiKeyAuthenticator(context, NullLogger<ApiKeyAuthenticator>.Instance);
+
+        (await authenticator.AuthenticateAsync(rawKey)).ShouldBeNull();
+    }
+
+    /// <summary>
+    /// Boundary companion: normalizing the kind must not retire a live key early either.
+    /// West of UTC an un-normalized comparison fails in this direction instead.
+    /// </summary>
+    [SkippableFact]
+    public async Task LiveKey_IsAccepted_AfterARealPostgresRoundTrip()
+    {
+        Skip.IfNot(_databaseAvailable, SkipReason);
+
+        var rawKey = "fak_live_" + new string('L', 43);
+        var key = BuildApiKey(ApiKeyService.ComputeHash(rawKey), name: "Live key");
+        key.ExpiresAt = DateTime.UtcNow.AddMinutes(1);
+        await InsertApiKeyAsync(key);
+
+        await using var context = CreateMasterContext();
+        var authenticator = new ApiKeyAuthenticator(context, NullLogger<ApiKeyAuthenticator>.Instance);
+
+        (await authenticator.AuthenticateAsync(rawKey)).ShouldNotBeNull();
     }
 
     // ─── Catalog helpers ──────────────────────────────────────────────────────
