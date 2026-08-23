@@ -359,6 +359,89 @@ public class TenantReadinessServiceTests : IDisposable
     }
 
     // =========================================================================
+    // Inactive issuers — characterization of the CURRENT behaviour
+    // =========================================================================
+
+    /// <summary>
+    /// The issuer query deliberately does NOT filter on <c>IsActive</c>: a deactivated issuer
+    /// is still evaluated. This is what the readiness consumers rely on — they hand in an
+    /// issuer id and expect an answer about THAT issuer, not "no issuer at all".
+    ///
+    /// The rest of the repo is inconsistent here (VatReportService and DashboardController do
+    /// filter), so this is a characterization test: if anyone ever adds <c>&amp;&amp; c.IsActive</c>
+    /// to the query, the change stops being silent and fails here instead.
+    /// </summary>
+    [Fact]
+    public async Task GetReportAsync_InactiveIssuer_IsStillChecked()
+    {
+        var inactive = NewCompleteIssuer(SecondIssuerId, "Pozastavená firma s.r.o.");
+        inactive.IsActive = false;
+        inactive.RegistrationNumber = "";
+        SeedIssuer(NewCompleteIssuer());
+        SeedIssuer(inactive);
+        SeedSequences(EDocumentType.Invoice, EDocumentType.CreditNote);
+        SeedEpoSettings(taxOfficeCode: 451, branchCode: 2017);
+
+        var report = await CreateService().GetReportAsync();
+
+        var issue = report.Issues.ShouldHaveSingleItem();
+        issue.Code.ShouldBe(ReadinessCodes.IssuerRegistrationNumberMissing);
+        issue.IssuerId.ShouldBe(SecondIssuerId);
+    }
+
+    /// <summary>
+    /// Same rule seen through the explicit issuer filter — the path #206 uses. Asking about an
+    /// inactive issuer must report that issuer's real problems, not degrade to ISSUER_MISSING.
+    /// </summary>
+    [Fact]
+    public async Task GetReportAsync_WithIdOfAnInactiveIssuer_ReportsItsOwnIssues()
+    {
+        var inactive = NewCompleteIssuer(SecondIssuerId, "Pozastavená firma s.r.o.");
+        inactive.IsActive = false;
+        inactive.BankAccount.Clear();
+        SeedIssuer(NewCompleteIssuer());
+        SeedIssuer(inactive);
+        SeedSequences(EDocumentType.Invoice, EDocumentType.CreditNote);
+        SeedEpoSettings(taxOfficeCode: 451, branchCode: 2017);
+
+        var report = await CreateService().GetReportAsync(SecondIssuerId);
+
+        var issue = report.Issues.ShouldHaveSingleItem();
+        issue.Code.ShouldBe(ReadinessCodes.IssuerBankAccountMissing);
+        issue.IssuerId.ShouldBe(SecondIssuerId);
+    }
+
+    // =========================================================================
+    // Tenant isolation of the master-database read
+    // =========================================================================
+
+    /// <summary>
+    /// The EPO settings live in the SHARED master database, one row per company — the one
+    /// query in this service that can leak across tenants. It must match on
+    /// <c>CompanyId</c> and never fall back to "whatever row is there".
+    ///
+    /// Shape of the test: another company has COMPLETE settings, our company has no row at
+    /// all. So the answer differs whichever row a broken query happens to return first —
+    /// the assertion does not depend on the in-memory provider's row order.
+    /// </summary>
+    [Fact]
+    public async Task GetReportAsync_EpoSettingsOfAnotherCompany_AreNeverRead()
+    {
+        const long foreignCompanyId = 99L;
+        SeedIssuer(NewCompleteIssuer());
+        SeedSequences(EDocumentType.Invoice, EDocumentType.CreditNote);
+        SeedEpoSettings(taxOfficeCode: 451, branchCode: 2017, companyId: foreignCompanyId, id: 2);
+
+        var issue = await SingleIssueAsync(ReadinessCodes.EpoHeaderIncomplete);
+
+        issue.Severity.ShouldBe(EReadinessSeverity.Warning);
+        issue.MissingFields.ShouldBe([
+            nameof(CompanySystemSettings.EpoTaxOfficeCode),
+            nameof(CompanySystemSettings.EpoTaxOfficeBranchCode)
+        ]);
+    }
+
+    // =========================================================================
     // EnsureReadyAsync + TenantNotReadyException
     // =========================================================================
 
@@ -475,13 +558,19 @@ public class TenantReadinessServiceTests : IDisposable
             }
         });
 
-    private void SeedEpoSettings(int? taxOfficeCode, int? branchCode)
+    /// <summary>
+    /// Seeds one master-DB settings row. <paramref name="companyId"/> defaults to the tenant
+    /// under test; tenant-isolation tests pass a foreign company (and a distinct
+    /// <paramref name="id"/>, because the primary key is shared across companies).
+    /// </summary>
+    private void SeedEpoSettings(int? taxOfficeCode, int? branchCode,
+        long companyId = CompanyId, long id = 1)
     {
         using var context = NewContext<MasterDbContext>(_masterDbName);
         context.CompanySystemSettings.Add(new CompanySystemSettings
         {
-            Id = 1,
-            CompanyId = CompanyId,
+            Id = id,
+            CompanyId = companyId,
             SchemaName = "tenant_test",
             EpoTaxOfficeCode = taxOfficeCode,
             EpoTaxOfficeBranchCode = branchCode
