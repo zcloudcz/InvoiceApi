@@ -9,8 +9,9 @@ namespace Fakvio.Infrastructure.AiProviders;
 /// Why this exists: Claude, Ollama, OpenAI and Gemini all want the same shape
 /// (<c>{ "type": "object", "properties": { ... }, "required": [ ... ] }</c>), and each of
 /// them exists twice — once as a singleton provider and once as an ad-hoc, per-company one
-/// (<c>CompanyAiSettingsResolver</c>). Eight hand-written copies of the same loop is eight
-/// places to forget the <c>items</c> keyword; this is the single source of truth instead.
+/// (<c>CompanyAiSettingsResolver</c>). Claude and Ollama had four hand-written copies of the
+/// same loop between them, and two of those had already forgotten the <c>items</c> keyword;
+/// OpenAI and Gemini would have added four more. This is the single source of truth instead.
 ///
 /// Junior note: the schema is only ever built from <c>IChatToolExecutor.GetToolDefinitions()</c>,
 /// which derives it from <c>IChatTool.Parameters</c>. No provider re-derives types on its own —

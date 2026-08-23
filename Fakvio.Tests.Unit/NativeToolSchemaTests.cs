@@ -11,7 +11,7 @@ namespace Fakvio.Tests.Unit;
 /// <summary>
 /// Tests for the single schema translator every provider uses (issue #160).
 ///
-/// Before this existed, each of the eight provider implementations (four providers ×
+/// Before this existed, the four implementations that had native tools (Claude and Ollama ×
 /// singleton + per-company ad-hoc) built the JSON Schema by hand, and two of those copies
 /// had already lost the "items" keyword for array parameters. These tests pin the shape,
 /// so a regression shows up here instead of as a 400 from a live API.
