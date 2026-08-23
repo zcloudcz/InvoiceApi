@@ -66,6 +66,27 @@ public static class MarkdownRenderer
                 link.Url = BlockedUrlPlaceholder;
         }
 
+        // CommonMark's second link syntax — <scheme:rest> — parses into AutolinkInline,
+        // a different node type that the loop above never sees. Without this pass
+        // "<javascript:alert(1)>" would reach the DOM as a live anchor.
+        //
+        // ToList() is mandatory: Descendants() is a lazy tree walk and ReplaceBy()
+        // mutates the tree underneath it.
+        foreach (var autolink in document.Descendants<AutolinkInline>().ToList())
+        {
+            // E-mail autolinks (<user@example.com>) carry a bare address in Url and
+            // Markdig prefixes "mailto:" only while rendering — judging that raw value
+            // by IsSafeUrl would be wrong, and mailto: is whitelisted anyway.
+            if (autolink.IsEmail || IsSafeUrl(autolink.Url))
+                continue;
+
+            // Unlike LinkInline there is no separate link text to preserve: the anchor
+            // text IS the URL. Setting Url = "#" would therefore also erase the text,
+            // so the whole node is downgraded to plain text instead. The literal is
+            // HTML-escaped on render like any other text content.
+            autolink.ReplaceBy(new LiteralInline(autolink.Url));
+        }
+
         return Markdig.Markdown.ToHtml(document, Pipeline);
     }
 
@@ -88,8 +109,12 @@ public static class MarkdownRenderer
                 return true;
         }
 
-        // No scheme at all → relative URL, safe. A colon before the first slash means
-        // some other scheme is in play (javascript:, data:, vbscript:, file:, …).
+        // No colon at all → no scheme, so the browser resolves it against the current
+        // origin. That covers "/invoices/1" but also the protocol-relative "//host/x",
+        // which points off-site — harmless here, because http/https links are allowed
+        // by design anyway, and no scheme means no script execution.
+        // A colon before the first slash, on the other hand, means some other scheme is
+        // in play (javascript:, data:, vbscript:, file:, …) → reject.
         var colon = trimmed.IndexOf(':');
         if (colon < 0)
             return true;

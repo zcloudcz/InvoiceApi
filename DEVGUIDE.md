@@ -1094,6 +1094,12 @@ Pravidla:
 - Dvě obranné vrstvy: `DisableHtml()` (raw HTML se escapuje) a whitelist schémat
   odkazů (`http`, `https`, `mailto`, relativní); `javascript:`/`data:` se přepíše
   na `#`. Testy: `Fakvio.Tests.Unit\MarkdownRendererTests.cs`.
+- **Odkaz má v Markdigu dva typy uzlů**, sanitizovat se musí oba: `LinkInline`
+  (`[text](url)`, obrázky i reference definice) a `AutolinkInline`
+  (`<https://…>`, `<user@example.com>`). U `AutolinkInline` je text totožný s URL,
+  takže se závadný uzel nepřepisuje na `#`, ale nahrazuje `LiteralInline`
+  (jinak by zmizel i text). Přidáváš-li do pipeline další extension, ověř,
+  jaké uzly emituje — nový typ uzlu = nová díra.
 - **Uživatelský vstup se markdownem NErenderuje** — uživatel psal literální text
   (`ChatMessageBubble` proto větví podle role zprávy).
 - Balíček: `Markdig` (v `Fakvio.UI.Shared`), čistě managed, funguje v browser-wasm.

@@ -147,6 +147,61 @@ public class MarkdownRendererTests
         html.ShouldContain("src=\"#\"");
     }
 
+    // ─── Angle-bracket autolinks ─────────────────────────────────────────────
+    // CommonMark has a second link syntax: <scheme:rest> renders as a live anchor.
+    // Markdig parses it into AutolinkInline, a *different* node type than the
+    // [text](url) form (LinkInline) — so it needs its own sanitisation pass.
+
+    [Theory]
+    [InlineData("javascript:alert(1)")]
+    [InlineData("JavaScript:alert(1)")]
+    [InlineData("vbscript:msgbox(1)")]
+    [InlineData("data:text/html;base64,PHNjcmlwdD4=")]
+    [InlineData("file:///etc/passwd")]
+    public void ToSafeHtml_DangerousAngleBracketAutolink_IsNotALink(string url)
+    {
+        var html = MarkdownRenderer.ToSafeHtml($"<{url}>");
+
+        // The URL stays readable as plain text, but there is no anchor to click.
+        html.ShouldNotContain("<a ");
+        html.ShouldNotContain("href");
+        html.ShouldContain(url);
+    }
+
+    [Fact]
+    public void ToSafeHtml_DangerousAutolinkInsideTable_IsNotALink()
+    {
+        // Regression guard: the sanitisation must walk the whole document tree,
+        // not just top-level paragraphs.
+        var markdown = """
+            > Poznámka: <javascript:alert(1)>
+            """;
+
+        var html = MarkdownRenderer.ToSafeHtml(markdown);
+
+        html.ShouldContain("<blockquote>");
+        html.ShouldNotContain("<a ");
+        html.ShouldNotContain("href");
+    }
+
+    [Fact]
+    public void ToSafeHtml_HttpsAngleBracketAutolink_StaysLive()
+    {
+        var html = MarkdownRenderer.ToSafeHtml("Zdroj: <https://ares.gov.cz>");
+
+        html.ShouldContain("href=\"https://ares.gov.cz\"");
+    }
+
+    [Fact]
+    public void ToSafeHtml_EmailAngleBracketAutolink_StaysLive()
+    {
+        // Markdig renders e-mail autolinks with an implicit "mailto:" prefix — the
+        // raw Url has no scheme at all, so it must not be judged by IsSafeUrl.
+        var html = MarkdownRenderer.ToSafeHtml("<ucetni@example.com>");
+
+        html.ShouldContain("href=\"mailto:ucetni@example.com\"");
+    }
+
     [Fact]
     public void ToSafeHtml_PlainTextWithAngleBrackets_IsEscaped()
     {

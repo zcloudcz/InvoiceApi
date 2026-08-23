@@ -152,8 +152,9 @@
             <Authorized>
                 @if (_hasTenantContext)
                 {
-                    @* Open/OpenChanged instead of @bind-Open: every state change (including the
-                       user tapping the overlay on a phone) must also be persisted.
+                    @* Open/OpenChanged instead of @bind-Open: @bind would keep the field in
+                       sync (overlay taps included) but gives no hook for the side effect —
+                       every state change must also be written to localStorage.
                        Width stays a parameter — MudDrawerContainer derives the main-content
                        offset from it; the phone override lives in app.css (.chat-drawer). *@
                     <MudDrawer Open="_chatOpen" OpenChanged="SetChatOpenAsync" Anchor="Anchor.End"
@@ -369,6 +370,10 @@
         _hasTenantContext = companyId.HasValue;
         if (!_hasTenantContext)
         {
+            // Deliberately the field only, not SetChatOpenAsync: the drawer is being
+            // hidden because the tenant context is gone, not because the user closed it.
+            // The stored preference must survive so the panel comes back open on the
+            // next impersonation.
             _chatOpen = false;
         }
 

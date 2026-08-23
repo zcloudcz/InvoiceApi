@@ -55,7 +55,10 @@
     public ChatMessageDto Message { get; set; } = null!;
 
     /// <summary>
-    /// Whether this is a user message (right-aligned) or assistant message (left-aligned).
+    /// Whether this is a user message (right-aligned, plain text) or an assistant
+    /// message (left-aligned, markdown). Compared case-insensitively: the value comes
+    /// from the API as a string, and a drift to "user" would silently start rendering
+    /// the user's own text as markdown.
     /// </summary>
-    private bool IsUser => Message.Role == "User";
+    private bool IsUser => string.Equals(Message.Role, "User", StringComparison.OrdinalIgnoreCase);
 }
