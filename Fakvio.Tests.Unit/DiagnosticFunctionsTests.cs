@@ -268,8 +268,15 @@ public class DiagnosticFunctionsTests : IDisposable
 
         // The InMemory provider cannot actually migrate — the function catches that
         // and still answers 200 with a diagnostic payload. What matters here is that
-        // the request got past the auth gate instead of being rejected.
-        result.ShouldBeOfType<OkObjectResult>();
+        // the request got past the auth gate instead of being rejected, and that the
+        // caller really receives the migration report (an empty 200 would be a
+        // silently broken endpoint).
+        var okResult = result.ShouldBeOfType<OkObjectResult>();
+        var data = okResult.Value.ShouldBeOfType<Dictionary<string, object>>();
+
+        data.ShouldContainKey("masterMigrateSuccess");
+        data.ShouldContainKey("timestamp");
+        data["timestamp"].ShouldBeOfType<DateTime>();
     }
 
     [Fact]
