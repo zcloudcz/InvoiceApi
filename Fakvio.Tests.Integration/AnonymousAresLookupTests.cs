@@ -36,7 +36,8 @@ namespace Fakvio.Tests.Integration;
 ///   - it returns the registered office the form needs,
 ///   - the tenant-scoped ClientController endpoint stays behind [Authorize],
 ///   - malformed input never reaches the public ARES registry,
-///   - the reCAPTCHA gate is really in front of the endpoint,
+///   - the reCAPTCHA gate is really in front of the endpoint, and the token is verified
+///     against the "ares" action (issue #200),
 ///   - no registry or exception detail is ever echoed to the anonymous caller.
 ///
 /// The registry itself is substituted — these tests must not depend on the network.
@@ -68,6 +69,7 @@ public class AnonymousAresLookupTests : IClassFixture<AnonymousAresLookupTests.A
     private const string GenericLookupFailureBody = """{"message":"Company not found in ARES."}""";
     private const string GenericServerErrorBody = """{"message":"An error occurred during the ARES lookup."}""";
     private const string CaptchaFailureBody = """{"message":"CAPTCHA verification failed. Please try again."}""";
+    private const string MalformedInputBody = """{"message":"Registration number must be exactly 8 digits."}""";
 
     public AnonymousAresLookupTests(AresStubFactory factory)
     {
@@ -77,7 +79,7 @@ public class AnonymousAresLookupTests : IClassFixture<AnonymousAresLookupTests.A
         // captcha starts out permissive and with an empty call log, whatever the
         // previous test in this class did to it.
         _factory.Captcha.ClearSubstitute();
-        _factory.Captcha.VerifyAsync(Arg.Any<string?>()).Returns(true);
+        _factory.Captcha.VerifyAsync(Arg.Any<string?>(), Arg.Any<string>()).Returns(true);
     }
 
     /// <summary>
@@ -261,7 +263,7 @@ public class AnonymousAresLookupTests : IClassFixture<AnonymousAresLookupTests.A
     [Fact]
     public async Task AuthAresEndpoint_CaptchaRejectsToken_ReturnsBadRequestWithoutCallingRegistry()
     {
-        _factory.Captcha.VerifyAsync(Arg.Any<string?>()).Returns(false);
+        _factory.Captcha.VerifyAsync(Arg.Any<string?>(), Arg.Any<string>()).Returns(false);
 
         var client = _factory.CreateClient();
 
@@ -277,9 +279,13 @@ public class AnonymousAresLookupTests : IClassFixture<AnonymousAresLookupTests.A
     /// <summary>
     /// The token the browser sends must be the one that gets verified. A gate that always
     /// verifies null would pass the test above and still be useless in production.
+    ///
+    /// The expected action is pinned too (issue #200): the token must have been issued for
+    /// "ares" — the same string Register.razor passes to grecaptcha.execute() — otherwise a
+    /// token minted on the registration form itself would open the registry proxy.
     /// </summary>
     [Fact]
-    public async Task AuthAresEndpoint_ForwardsCaptchaTokenHeaderToVerifier()
+    public async Task AuthAresEndpoint_ForwardsCaptchaTokenHeaderAndAresActionToVerifier()
     {
         const string browserToken = "token-from-grecaptcha-execute";
 
@@ -293,44 +299,33 @@ public class AnonymousAresLookupTests : IClassFixture<AnonymousAresLookupTests.A
 
         await client.SendAsync(request);
 
-        await _factory.Captcha.Received(1).VerifyAsync(browserToken);
+        await _factory.Captcha.Received(1).VerifyAsync(browserToken, "ares");
     }
 
-    // ── Known gap, deliberately characterized rather than fixed ──────────────
+    // ── The former known gap, now closed (issue #200) ────────────────────────
 
     /// <summary>
-    /// KNOWN GAP (AuthController.cs, IsValidRegistrationNumber): the guard uses
-    /// char.IsDigit, which is true for every Unicode decimal digit, not just '0'-'9'.
-    /// So eight Arabic-Indic digits pass validation and DO reach the outbound registry
-    /// call, contradicting the endpoint's own doc comment ("a malformed IČO never leaves
-    /// our host") and widening the key space of the shared AresCache well beyond 10^8.
+    /// THE BUG: IsValidRegistrationNumber used char.IsDigit, which is true for every
+    /// Unicode decimal digit, not just '0'-'9'. Eight Arabic-Indic digits therefore passed
+    /// validation and reached the outbound registry call, contradicting the endpoint's own
+    /// doc comment ("a malformed IČO never leaves our host") and widening the key space of
+    /// the shared AresCache well beyond 10^8 — which matters now that the endpoint is
+    /// anonymous and the cache is the thing being grown.
     ///
-    /// This test asserts the CURRENT behaviour on purpose. Impact is low (one 404 and one
-    /// cache row per attempt) and the reviewer judged the two-character fix
-    /// — c is >= '0' and <= '9' — not worth another round. When it does get fixed, this
-    /// test fails and becomes the DidNotReceive assertion above it.
+    /// This test used to assert the opposite (characterizing the gap); it was flipped when
+    /// the guard was narrowed to ASCII digits.
     /// </summary>
     [Fact]
-    public async Task AuthAresEndpoint_NonAsciiDigits_StillReachTheRegistry_KnownGap()
+    public async Task AuthAresEndpoint_NonAsciiDigits_RejectedBeforeReachingTheRegistry()
     {
-        _factory.Ares
-            .GetCompanyInfoAsync(NonAsciiDigitsIco, Arg.Any<CancellationToken>())
-            .Returns(new AresCompanyInfo
-            {
-                RegistrationNumber = NonAsciiDigitsIco,
-                IsSuccessful = false,
-                ErrorMessage = "Company not found in registry (HTTP NotFound)"
-            });
-
         var client = _factory.CreateClient();
 
         var response = await client.GetAsync($"/api/auth/ares/{NonAsciiDigitsIco}");
         var body = await response.Content.ReadAsStringAsync();
 
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
-        body.ShouldBe(GenericLookupFailureBody,
-            "the input passed the 8-digit guard and failed later, at the registry");
-        await _factory.Ares.Received(1)
+        body.ShouldBe(MalformedInputBody, "the guard rejects anything that is not ASCII 0-9");
+        await _factory.Ares.DidNotReceive()
             .GetCompanyInfoAsync(NonAsciiDigitsIco, Arg.Any<CancellationToken>());
     }
 
@@ -345,9 +340,10 @@ public class AnonymousAresLookupTests : IClassFixture<AnonymousAresLookupTests.A
         public IAresService Ares { get; } = Substitute.For<IAresService>();
 
         /// <summary>
-        /// The substituted captcha gate. The real CaptchaService silently returns true
-        /// when no secret key is configured, which is the case in tests — substituting it
-        /// is the only way to tell "the gate passed me" from "the gate is not there".
+        /// The substituted captcha gate. The test host sets "Recaptcha:Enabled": false
+        /// (see FakvioFactory), so the real CaptchaService would return true for every
+        /// token — substituting it is the only way to tell "the gate passed me" from
+        /// "the gate is not there".
         /// Reset by the test class constructor before every test.
         /// </summary>
         public ICaptchaService Captcha { get; } = Substitute.For<ICaptchaService>();

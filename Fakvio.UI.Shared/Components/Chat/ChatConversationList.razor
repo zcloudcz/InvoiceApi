@@ -3,7 +3,9 @@
 
 @*
     Sidebar list of chat conversations.
-    Clicking a conversation loads it. The delete button removes it.
+    Clicking a conversation loads it. The delete button raises OnDeleteConversation —
+    the confirmation dialog is the parent's job (ChatPanel), this component stays
+    presentational.
     Shows "New conversation" button at the top.
 *@
 
@@ -49,7 +51,7 @@
                                        Size="Size.Small"
                                        Color="Color.Error"
                                        OnClick="@(() => OnDeleteConversation.InvokeAsync(conv.Id))"
-                                       title="@L["Chat_DeleteConfirm"]" />
+                                       title="@L["Btn_Delete"]" />
                     </div>
                 </MudListItem>
             }

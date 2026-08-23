@@ -23,6 +23,13 @@ public class AresCacheRepository : IAresCacheRepository
     private readonly ILogger<AresCacheRepository> _logger;
 
     /// <summary>
+    /// How many expired rows one write may delete. Deletion is indexed (AresCache has an
+    /// index on ExpiresAt) but the cap keeps a single lookup from paying for a huge
+    /// backlog left by an earlier burst.
+    /// </summary>
+    private const int ExpiredSweepBatchSize = 200;
+
+    /// <summary>
     /// True when no tenant is available — use MasterDbContext.
     /// False when a tenant is set — use TenantDbContext.
     /// </summary>
@@ -143,8 +150,77 @@ public class AresCacheRepository : IAresCacheRepository
             _logger.LogDebug("Created new cache entry for IČO {RegistrationNumber}", cacheEntry.RegistrationNumber);
         }
 
+        // The cache entry is committed first and on its own. The sweep below is opportunistic
+        // housekeeping and may lose a race with a concurrent writer — it must not be able to
+        // take this write down with it (see RemoveExpiredEntriesAsync).
         await ActiveContext.SaveChangesAsync(cancellationToken);
 
+        await RemoveExpiredEntriesAsync(cacheEntry.RegistrationNumber, cancellationToken);
+
         _logger.LogInformation("Successfully saved cache for IČO {RegistrationNumber}", cacheEntry.RegistrationNumber);
+    }
+
+    /// <summary>
+    /// Deletes cache rows whose TTL has passed (issue #200).
+    ///
+    /// WHY HERE AND NOT IN A SCHEDULED JOB
+    /// Rows are only ever created by SaveCacheAsync, so sweeping on the write path means
+    /// the table cannot grow while nothing writes to it — and it needs no BackgroundService
+    /// plus [TimerTrigger] pair (see CLAUDE.md → "API + Functions duplication"), which
+    /// would have to be duplicated for both hosts and would still run against every
+    /// tenant schema separately. The caller pays for its own garbage: the anonymous
+    /// endpoint that makes this table enumerable is also the one cleaning it up.
+    ///
+    /// The row being written is excluded — a refresh of an entry that has just expired
+    /// must keep the new value, not delete it.
+    ///
+    /// WHY ITS OWN SaveChanges
+    /// Two requests can pick the same expired batch. The loser's DELETE then matches no rows
+    /// and EF raises DbUpdateConcurrencyException. Sharing a save with the cache write would
+    /// make the loser drop its own new row as well — silently, because AresServiceImpl
+    /// treats a failed cache write as a Warning. Housekeeping is allowed to lose; the write
+    /// that the caller actually asked for is not.
+    ///
+    /// The batch is capped so a single write never turns into an unbounded DELETE.
+    /// ponytail: capped sweep on the write path; if the expired backlog ever outgrows
+    /// the batch (it shrinks by one batch per write, grows by one row per write), move
+    /// this to a scheduled job.
+    /// </summary>
+    private async Task RemoveExpiredEntriesAsync(
+        string currentRegistrationNumber,
+        CancellationToken cancellationToken)
+    {
+        var now = DateTime.UtcNow;
+
+        var expired = await CacheSet
+            .Where(x => x.ExpiresAt < now && x.RegistrationNumber != currentRegistrationNumber)
+            .Take(ExpiredSweepBatchSize)
+            .ToListAsync(cancellationToken);
+
+        if (expired.Count == 0)
+            return;
+
+        CacheSet.RemoveRange(expired);
+
+        try
+        {
+            await ActiveContext.SaveChangesAsync(cancellationToken);
+
+            _logger.LogInformation("Removed {Count} expired ARES cache entries (context: {Context})",
+                expired.Count, IsMasterContext ? "Master" : "Tenant");
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            // Someone else swept the same batch first. The rows are gone either way, which is
+            // all the sweep wanted — nothing to retry, nothing to report upwards.
+            _logger.LogWarning(ex,
+                "Expired ARES cache sweep lost a race with a concurrent writer — the rows were already removed");
+
+            // A failed save leaves the rows marked Deleted in the change tracker, and the
+            // context is shared for the rest of the request. Detaching keeps the next save
+            // (any repository, same scope) from replaying this failure.
+            foreach (var row in expired)
+                ActiveContext.Entry(row).State = EntityState.Detached;
+        }
     }
 }

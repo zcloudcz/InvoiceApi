@@ -16,12 +16,16 @@ using Shouldly;
 namespace Fakvio.Tests.Unit;
 
 /// <summary>
-/// Regression tests for issue #157 — the registered office address returned by ARES
-/// was fetched during self-registration and then thrown away.
+/// Regression tests for what self-registration takes over from the ARES lookup.
+///
+/// Issue #157 — the registered office address was fetched and then thrown away.
+/// Issue #208 — the VAT payer flag was never derived, so every self-registered
+/// company started as a non-payer even when ARES knew its DIČ.
 ///
 /// The chain under test is:
-///   1. <see cref="AuthService.RegisterAsync"/> — must persist the address on the
-///      master <see cref="Client"/> (the issuer record of the new company).
+///   1. <see cref="AuthService.RegisterAsync"/> — must persist the address and the
+///      VAT payer flag on the master <see cref="Client"/> (the issuer record of the
+///      new company).
 ///   2. TenantProvisioningService.CreateIssuerInTenantAsync — must copy that address
 ///      into the freshly provisioned tenant schema, so PDF invoices have a complete
 ///      issuer block.
@@ -93,14 +97,34 @@ public class RegistrationAresAddressTests : IDisposable
     /// lookup that contains a registered office address.
     /// </summary>
     private void ArrangeAresWithAddress(string registrationNumber)
+        => ArrangeAresWithAddress(registrationNumber, taxNumber: "CZ" + registrationNumber);
+
+    /// <summary>
+    /// Same as above, but lets a test choose whether the registry knows a DIČ.
+    /// <c>null</c> models a company that is not registered for VAT.
+    ///
+    /// AresServiceImpl.ParseAresResponse derives the VAT payer flag from the presence of the
+    /// "dic" element, so the double mirrors that rule — it cannot drift into asserting a
+    /// combination the real registry never produces.
+    /// </summary>
+    private void ArrangeAresWithAddress(string registrationNumber, string? taxNumber)
+        => ArrangeAres(registrationNumber, taxNumber, isVatPayer: !string.IsNullOrEmpty(taxNumber));
+
+    /// <summary>
+    /// Full control over the registry answer — including a flag that contradicts the DIČ,
+    /// which the real ARES never returns. Only the delegation test below needs that freedom;
+    /// every other test goes through <see cref="ArrangeAresWithAddress(string, string?)"/>,
+    /// which keeps the double faithful to the registry.
+    /// </summary>
+    private void ArrangeAres(string registrationNumber, string? taxNumber, bool isVatPayer)
     {
         _aresService.GetCompanyInfoAsync(registrationNumber, Arg.Any<CancellationToken>())
             .Returns(new AresCompanyInfo
             {
                 RegistrationNumber = registrationNumber,
                 CompanyName = "ARES Corp s.r.o.",
-                TaxNumber = "CZ" + registrationNumber,
-                IsVatPayer = true,
+                TaxNumber = taxNumber,
+                IsVatPayer = isVatPayer,
                 IsSuccessful = true,
                 FetchedAt = DateTime.UtcNow,
                 Address = new AresAddress
@@ -112,6 +136,27 @@ public class RegistrationAresAddressTests : IDisposable
                 }
             });
     }
+
+    /// <summary>
+    /// The registry is down (or the request times out) — the lookup throws.
+    /// </summary>
+    private void ArrangeAresUnreachable(string registrationNumber)
+        => _aresService.GetCompanyInfoAsync(registrationNumber, Arg.Any<CancellationToken>())
+            .Returns<AresCompanyInfo>(_ => throw new HttpRequestException("ARES unreachable"));
+
+    /// <summary>
+    /// The registry answered, but does not know the IČO — typically a typo in the form.
+    /// The answer carries no company data at all, so every derived field keeps its default.
+    /// </summary>
+    private void ArrangeAresCompanyNotFound(string registrationNumber)
+        => _aresService.GetCompanyInfoAsync(registrationNumber, Arg.Any<CancellationToken>())
+            .Returns(new AresCompanyInfo
+            {
+                RegistrationNumber = registrationNumber,
+                IsSuccessful = false,
+                ErrorMessage = "Company not found in registry (HTTP NotFound)",
+                FetchedAt = DateTime.UtcNow
+            });
 
     /// <summary>
     /// Builds a minimal valid registration request. Address fields stay empty
@@ -142,6 +187,25 @@ public class RegistrationAresAddressTests : IDisposable
     /// </summary>
     private static Task InvokeCreateIssuerInTenantAsync(TenantDbContext tenantContext, Client masterCompany) =>
         (Task)_createIssuerInTenant.Invoke(null, [tenantContext, masterCompany, CancellationToken.None])!;
+
+    /// <summary>
+    /// Runs provisioning step 6 against a fresh in-memory tenant schema and returns the issuer
+    /// it created, addresses included. The entities are fully materialised before the context
+    /// is disposed, so the caller can assert on them afterwards.
+    /// </summary>
+    private static async Task<Client> ProvisionTenantIssuerAsync(Client masterIssuer)
+    {
+        var tenantOptions = new DbContextOptionsBuilder<TenantDbContext>()
+            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .Options;
+        using var tenantContext = new TenantDbContext(tenantOptions);
+
+        await InvokeCreateIssuerInTenantAsync(tenantContext, masterIssuer);
+
+        return await tenantContext.Client
+            .Include(c => c.Address)
+            .FirstAsync(c => c.IsIssuer);
+    }
 
     // ─── Registration stores the ARES address ────────────────────────────────
 
@@ -229,8 +293,7 @@ public class RegistrationAresAddressTests : IDisposable
     public async Task Register_AresFails_AndNoManualAddress_CreatesIssuerWithoutAddress()
     {
         const string ico = "32345678";
-        _aresService.GetCompanyInfoAsync(ico, Arg.Any<CancellationToken>())
-            .Returns<AresCompanyInfo>(_ => throw new HttpRequestException("ARES unreachable"));
+        ArrangeAresUnreachable(ico);
 
         await _service.RegisterAsync(BuildRequest(ico), "https://app.example.com");
 
@@ -245,21 +308,112 @@ public class RegistrationAresAddressTests : IDisposable
     public async Task Register_AresLookupUnsuccessful_DoesNotCreateEmptyAddress()
     {
         const string ico = "42345678";
-        _aresService.GetCompanyInfoAsync(ico, Arg.Any<CancellationToken>())
-            .Returns(new AresCompanyInfo
-            {
-                RegistrationNumber = ico,
-                IsSuccessful = false,
-                ErrorMessage = "Company not found in registry (HTTP NotFound)",
-                FetchedAt = DateTime.UtcNow
-            });
+        ArrangeAresCompanyNotFound(ico);
 
         await _service.RegisterAsync(BuildRequest(ico), "https://app.example.com");
 
         (await LoadIssuerAsync(ico)).Address.ShouldBeEmpty();
     }
 
-    // ─── Registration → provisioning: the address reaches the tenant ─────────
+    // ─── Registration derives the VAT payer flag (#208) ──────────────────────
+
+    /// <summary>
+    /// The reproducing test for #208: ARES returned a DIČ, so the company is registered
+    /// for VAT and the issuer must be created as a VAT payer. Previously the flag was
+    /// never assigned, so every self-registered company defaulted to a non-payer and its
+    /// invoices came out without VAT until someone noticed and fixed it by hand.
+    /// </summary>
+    [Fact]
+    public async Task Register_AresReturnsTaxNumber_MarksIssuerAsVatPayer()
+    {
+        const string ico = "62345678";
+        ArrangeAresWithAddress(ico);
+
+        await _service.RegisterAsync(BuildRequest(ico), "https://app.example.com");
+
+        var issuer = await LoadIssuerAsync(ico);
+        issuer.TaxNumber.ShouldBe("CZ" + ico);
+        issuer.IsVatPayer.ShouldBeTrue("ARES returned a DIČ, so the company is a VAT payer.");
+    }
+
+    /// <summary>
+    /// The other branch: the company exists in ARES but has no DIČ, so it is not
+    /// registered for VAT. The flag must stay false (the onboarding assistant asks the
+    /// user to confirm it — a DIČ is strong evidence, not a legal guarantee).
+    /// </summary>
+    [Fact]
+    public async Task Register_AresReturnsNoTaxNumber_LeavesIssuerAsNonVatPayer()
+    {
+        const string ico = "72345678";
+        ArrangeAresWithAddress(ico, taxNumber: null);
+
+        await _service.RegisterAsync(BuildRequest(ico), "https://app.example.com");
+
+        var issuer = await LoadIssuerAsync(ico);
+        issuer.TaxNumber.ShouldBeNull();
+        issuer.IsVatPayer.ShouldBeFalse("no DIČ in ARES means the company is not a VAT payer.");
+    }
+
+    /// <summary>
+    /// ARES is unreachable — registration still succeeds and must not guess. A company
+    /// wrongly flagged as a VAT payer would start issuing invoices with VAT it does not owe.
+    /// </summary>
+    [Fact]
+    public async Task Register_AresFails_LeavesIssuerAsNonVatPayer()
+    {
+        const string ico = "82345678";
+        ArrangeAresUnreachable(ico);
+
+        await _service.RegisterAsync(BuildRequest(ico), "https://app.example.com");
+
+        (await LoadIssuerAsync(ico)).IsVatPayer.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// The registry answered "company not found" (a mistyped IČO). The answer carries no DIČ
+    /// and no flag, and registration must not turn that emptiness into a VAT payer — the same
+    /// fail-safe as the unreachable-registry case, but down a different code path: no exception
+    /// is thrown, so <c>aresInfo.IsVatPayer</c> is actually read and copied.
+    /// </summary>
+    [Fact]
+    public async Task Register_AresLookupUnsuccessful_LeavesIssuerAsNonVatPayer()
+    {
+        const string ico = "92345678";
+        ArrangeAresCompanyNotFound(ico);
+
+        await _service.RegisterAsync(BuildRequest(ico), "https://app.example.com");
+
+        var issuer = await LoadIssuerAsync(ico);
+        issuer.TaxNumber.ShouldBeNull();
+        issuer.IsVatPayer.ShouldBeFalse("an unknown IČO is no evidence of VAT registration.");
+    }
+
+    /// <summary>
+    /// Pins the DELEGATION, not the outcome: registration copies the flag ARES computed, it does
+    /// not re-derive one from the DIČ. Both here are deliberately contradictory answers the real
+    /// registry never sends — that is the point. As long as the double keeps flag and DIČ aligned,
+    /// an implementation that recomputed <c>!string.IsNullOrEmpty(taxNumber)</c> locally would pass
+    /// every other test in this file, and the "derived in exactly one place" invariant of #208
+    /// (<c>AresServiceImpl.ParseAresResponse</c>, shared with <c>CompanyController.CreateCompany</c>)
+    /// would rot unnoticed. Feed the two apart and only a genuine copy survives.
+    /// </summary>
+    [Theory]
+    [InlineData(true, null)]                // registry says "payer" although it exposes no DIČ
+    [InlineData(false, "CZ12345678")]       // registry says "not a payer" although a DIČ is present
+    public async Task Register_AresFlagContradictsTaxNumber_IssuerFollowsTheFlag(
+        bool aresIsVatPayer, string? taxNumber)
+    {
+        const string ico = "12345679";
+        ArrangeAres(ico, taxNumber, aresIsVatPayer);
+
+        await _service.RegisterAsync(BuildRequest(ico), "https://app.example.com");
+
+        (await LoadIssuerAsync(ico)).IsVatPayer.ShouldBe(
+            aresIsVatPayer,
+            "registration must copy aresInfo.IsVatPayer, never compute its own answer from the DIČ.");
+    }
+
+    // ─── Registration → provisioning: the ARES data reaches the tenant ───────
 
     /// <summary>
     /// Full acceptance criterion of #157: after registration AND tenant provisioning,
@@ -273,24 +427,34 @@ public class RegistrationAresAddressTests : IDisposable
         ArrangeAresWithAddress(ico);
 
         await _service.RegisterAsync(BuildRequest(ico), "https://app.example.com");
-        var masterIssuer = await LoadIssuerAsync(ico);
 
-        // Provisioning step 6 — copy the issuer into the (here in-memory) tenant schema.
-        var tenantOptions = new DbContextOptionsBuilder<TenantDbContext>()
-            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
-            .Options;
-        using var tenantContext = new TenantDbContext(tenantOptions);
-
-        await InvokeCreateIssuerInTenantAsync(tenantContext, masterIssuer);
-
-        var tenantIssuer = await tenantContext.Client
-            .Include(c => c.Address)
-            .FirstAsync(c => c.IsIssuer);
+        var tenantIssuer = await ProvisionTenantIssuerAsync(await LoadIssuerAsync(ico));
 
         var address = tenantIssuer.Address.ShouldHaveSingleItem();
         address.Street.ShouldBe("Hlavní 123");
         address.City.ShouldBe("Praha");
         address.PostalCode.ShouldBe("120 00");
         address.Country.ShouldBe("Česká republika");
+    }
+
+    /// <summary>
+    /// Same chain for #208: invoices are issued from the issuer record inside the TENANT schema,
+    /// so a VAT payer flag that stops at the master database changes nothing a user would see.
+    /// Provisioning already copied the flag before this issue, and nothing asserted it — this
+    /// test closes the last leg between "ARES knows the DIČ" and "the new company invoices with VAT".
+    /// </summary>
+    [Fact]
+    public async Task RegisterThenProvision_IssuerInTenantIsVatPayer()
+    {
+        const string ico = "52345679";
+        ArrangeAresWithAddress(ico);
+
+        await _service.RegisterAsync(BuildRequest(ico), "https://app.example.com");
+
+        var tenantIssuer = await ProvisionTenantIssuerAsync(await LoadIssuerAsync(ico));
+
+        tenantIssuer.TaxNumber.ShouldBe("CZ" + ico);
+        tenantIssuer.IsVatPayer.ShouldBeTrue(
+            "the VAT payer flag must survive provisioning into the tenant schema.");
     }
 }

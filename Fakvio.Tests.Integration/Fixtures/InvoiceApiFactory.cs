@@ -103,6 +103,13 @@ public class FakvioFactory : WebApplicationFactory<Program>
         builder.UseSetting("JwtSettings:Issuer", "Fakvio.Tests");
         builder.UseSetting("JwtSettings:Audience", "Fakvio.Tests.Client");
 
+        // ── Switch the reCAPTCHA gate off explicitly ─────────────────────────
+        // The gate fails closed since issue #200: enabled + no secret key = every gated
+        // request is rejected. The test host has no keys, so it must opt out the same way
+        // local development does. Tests that are ABOUT the gate substitute ICaptchaService
+        // instead (see AnonymousAresLookupTests.AresStubFactory).
+        builder.UseSetting("Recaptcha:Enabled", "false");
+
         // ── Configure database auth mode for AddDatabaseContexts ──────────────
         // AddDatabaseContexts now builds its NpgsqlDataSource singleton EAGERLY (inside
         // DatabaseOptions.Validate() + the NpgsqlDataSourceFactory constructor), before any

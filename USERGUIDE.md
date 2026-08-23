@@ -28,6 +28,7 @@
 17. [Notifikace](#17-notifikace)
 18. [Příjem faktur emailem](#18-příjem-faktur-emailem)
 19. [Nastavení hesla a první přihlášení](#19-nastavení-hesla-a-první-přihlášení)
+20. [Napojení vlastního AI klienta (MCP server)](#20-napojení-vlastního-ai-klienta-mcp-server)
 
 ---
 
@@ -44,6 +45,11 @@
 
 Sídlo se uloží k vaší firmě jako primární adresa a používá se jako blok vystavitele
 na fakturách (PDF). Změnit ho lze později v „Nastavení firmy".
+
+**Plátcovství DPH se odvodí z ARES:** má-li vaše firma v registru DIČ, založí se rovnou
+jako plátce DPH (a DIČ se uloží). Bez DIČ v ARES — nebo když je registr nedostupný —
+vznikne firma jako neplátce. DIČ v registru ale není právní záruka plátcovství, proto si
+nastavení po přihlášení zkontrolujte v „Nastavení firmy"; tam ho lze kdykoli přepnout.
 
 **Pozor na jednu výjimku:** když ulici, PSČ i město **úplně vymažete**, systém to bere
 jako „nevyplněno" a doplní adresu z ARES. Firma bez adresy vznikne jen tehdy, když ji
@@ -591,7 +597,20 @@ místo staženého souboru se zobrazí upozornění se seznamem chybějících p
 
 ## 13. AI asistent
 
-**Přístup:** ikona AI robota v pravém horním rohu hlavní navigace → otevře se boční panel (Chat Drawer)
+**Přístup:** dvě cesty ke stejnému panelu:
+
+- ikona robota (🤖) v horní liště — první ikona vpravo od názvu aplikace,
+- položka **AI asistent** v hlavním menu vlevo (hned pod Přehledem).
+
+Obojí otevře/zavře boční panel (Chat Drawer) na pravé straně.
+
+**Panel si pamatuje, jestli byl otevřený.** Pokud ho necháte otevřený a stránku znovu
+načtete, otevře se sám. Stav se pamatuje pro daný prohlížeč a zařízení — na mobilu tedy
+můžete mít panel zavřený, i když ho na počítači necháváte otevřený.
+
+**Na mobilu** panel zabírá celou šířku displeje. Zavřete ho křížkem vpravo nahoře v panelu
+nebo klepnutím mimo panel. Plocha pro přetažení souboru se na telefonu nezobrazuje —
+soubor připojíte tlačítkem se sponkou vedle textového pole.
 
 ### Co AI asistent umí
 
@@ -607,10 +626,22 @@ AI asistent zná kontext vaší firmy a umí odpovídat na otázky i provádět 
 
 ### Jak používat
 
-1. Klikněte na ikonu AI v pravém horním rohu
+1. Klikněte na ikonu robota v horní liště nebo na **AI asistent** v menu
 2. V panelu napište dotaz v přirozeném jazyce (česky nebo anglicky)
 3. Odpověď se zobrazuje streamovaně (postupně, token po tokenu)
 4. Konverzace se ukládají — historii konverzací zobrazíte tlačítkem hodiny (History)
+5. Konverzaci smažete ikonou koše v historii. Aplikace se vždy zeptá na potvrzení —
+   smazanou konverzaci nelze obnovit.
+
+### Formátování odpovědí
+
+Odpovědi asistenta se zobrazují naformátované: nadpisy, tučné písmo, odrážkové
+a číslované seznamy, tabulky i bloky kódu. Text tedy neuvidíte jako „syrové" znaky
+(`**tučně**`, `| sloupec |`), ale jako hotové formátování.
+
+Odkazy v odpovědi vedou buď do aplikace, nebo na web. Z bezpečnostních důvodů jsou
+odkazy s neobvyklým cílem zneškodněny (kliknutí na ně nic neudělá) a případné HTML
+z odpovědi se vypíše jako text, nikdy se nespustí.
 
 ### Výběr AI poskytovatele
 
@@ -943,3 +974,54 @@ Výsledek uvidíte přímo na stránce:
 
 Oranžové hlášení nikdy neznamená, že musíte zakládat účet znovu — heslo zůstává
 platné a po dokončení přípravy se přihlásíte stejnými údaji.
+
+---
+
+## 20. Napojení vlastního AI klienta (MCP server)
+
+Kromě vestavěného [AI asistenta](#13-ai-asistent) umí Fakvio pracovat i s AI
+aplikací, kterou už používáte na svém počítači (např. Claude Desktop nebo
+Claude Code). Napojení zajišťuje **MCP server** — malý program, který běží
+u vás lokálně a překládá požadavky AI na volání Fakvia.
+
+**V čem se to liší od AI asistenta v aplikaci:**
+
+| | AI asistent v aplikaci | MCP server |
+|---|---|---|
+| Kde se ovládá | Panel v pravém horním rohu Fakvia | Vaše AI aplikace na počítači |
+| Instalace | Žádná | Nutná (program + konfigurační soubor) |
+| Rozsah akcí | Vyhledávání a přehledy | 36 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové výpočty, šablony |
+
+### Co je potřeba
+
+1. **Nainstalovaný MCP server** na vašem počítači. Instalaci a nastavení
+   provádí správce systému — technický postup je v souboru
+   `Fakvio.McpServer/README.md`.
+2. **Přístupový token** (JWT) vašeho účtu. Token zastupuje vaše přihlášení,
+   proto má AI přesně stejná oprávnění, jaká máte vy — nic víc.
+3. **Zápis do konfigurace AI aplikace** — vzor je v souboru
+   `.mcp.json.sample`; do něj se doplní adresa Fakvia a token.
+
+### Co s tím AI zvládne
+
+| Oblast | Příklady |
+|--------|---------|
+| Vydané faktury | Vypsat, najít podle čísla, vystavit novou, dokončit, označit jako uhrazenou, odeslat emailem, stáhnout PDF nebo ISDOC, smazat koncept |
+| Klienti | Vypsat, zobrazit detail, založit, upravit, dohledat firmu v ARES |
+| Přijaté faktury | Vypsat, zobrazit, zadat novou, schválit, označit jako uhrazenou, smazat |
+| Přehledy | Dashboard, faktury po splatnosti, faktury klienta, faktury za období, přehled DPH |
+| Daně | Odhad daně, porovnání daňových režimů, roční příjmy, zálohy na pojistné |
+| Šablony | Vypsat, zobrazit, vystavit fakturu ze šablony |
+
+Příklady zadání: „Vystav fakturu pro klienta XYZ na 15 000 Kč za konzultace“,
+„Stáhni mi PDF faktury FAK-2026-001“, „Kolik mám letos zaplatit na zálohách?“
+
+### Bezpečnost — čtěte, než token někam vložíte
+
+- Token **je uložen v konfiguračním souboru v čitelné podobě**. Kdo se dostane
+  k souboru, dostane se k vašemu účtu. Nesdílejte ho a neposílejte emailem.
+- Token **platí 24 hodin**. Po vypršení začne AI hlásit chyby — stačí vložit nový.
+- AI může data i **měnit a mazat** (vystavit fakturu, smazat koncept). Než akci
+  potvrdíte, přečtěte si, co se chystá udělat.
+- Napojení nefunguje přes internetový prohlížeč — server běží na vašem
+  počítači a připojuje se na stejné Fakvio, do kterého se hlásíte v UI.
