@@ -72,6 +72,13 @@ public class ChatToolExecutor : IChatToolExecutor
 
         foreach (var parameter in tool.Parameters)
         {
+            // 'confirm' is appended by the confirm gate itself (ChatToolConfirmation) — a tool
+            // that also declares it would produce a duplicated, self-contradicting schema.
+            if (string.Equals(parameter.Name, ChatToolConfirmation.ParameterName, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException(
+                    $"Chat tool '{tool.ToolName}' declares the reserved parameter " +
+                    $"'{ChatToolConfirmation.ParameterName}' — implement IConfirmableChatTool instead.");
+
             if (string.IsNullOrWhiteSpace(parameter.Name))
                 throw new InvalidOperationException(
                     $"Chat tool '{tool.ToolName}' declares a parameter with an empty name.");
@@ -120,14 +127,15 @@ public class ChatToolExecutor : IChatToolExecutor
         {
             sb.AppendLine($"  - {tool.ToolName}: {tool.Description}");
 
-            if (tool.Parameters.Count == 0)
+            var parameters = ChatToolConfirmation.EffectiveParameters(tool);
+            if (parameters.Count == 0)
             {
                 sb.AppendLine("    Parameters: none");
                 continue;
             }
 
             sb.AppendLine("    Parameters:");
-            foreach (var parameter in tool.Parameters)
+            foreach (var parameter in parameters)
             {
                 sb.AppendLine($"      - {DescribeParameter(parameter)}");
             }
@@ -140,6 +148,17 @@ public class ChatToolExecutor : IChatToolExecutor
         sb.AppendLine("Use the exact parameter names listed above.");
         sb.AppendLine("Send numbers as numbers, booleans as true or false, and arrays as JSON arrays — never quoted.");
         sb.AppendLine("Omit optional parameters you have no value for — never invent one.");
+
+        // Only emitted when something can actually be confirmed — a rule about a parameter
+        // no registered tool has would just be noise for a small model.
+        if (_tools.Values.Any(tool => tool is IConfirmableChatTool))
+        {
+            sb.AppendLine(
+                $"Tools with a '{ChatToolConfirmation.ParameterName}' parameter change data: call them WITHOUT it first, " +
+                $"show the returned preview to the user, and repeat the same call with " +
+                $"\"{ChatToolConfirmation.ParameterName}\": true only after the user approves.");
+        }
+
         sb.AppendLine();
 
         sb.AppendLine("EXAMPLES (required parameters only — replace the <placeholders> with real values):");
@@ -306,22 +325,29 @@ public class ChatToolExecutor : IChatToolExecutor
     /// </summary>
     public List<NativeToolDefinition> GetToolDefinitions()
     {
-        return _tools.Values.Select(tool => new NativeToolDefinition
+        return _tools.Values.Select(tool =>
         {
-            Name = tool.ToolName,
-            Description = tool.Description,
-            Parameters = tool.Parameters.Select(parameter => new NativeToolParameter
+            // Includes the confirm flag for confirmable tools — a provider with a strict schema
+            // would otherwise reject the very call that carries the user's approval.
+            var parameters = ChatToolConfirmation.EffectiveParameters(tool);
+
+            return new NativeToolDefinition
             {
-                Name = parameter.Name,
-                Type = parameter.Type.ToJsonSchemaType(),
-                Description = parameter.Description,
-                EnumValues = parameter.AllowedValues?.ToList(),
-                ArrayItemType = parameter.Type.ToJsonSchemaItemType()
-            }).ToList(),
-            Required = tool.Parameters
-                .Where(parameter => parameter.IsRequired)
-                .Select(parameter => parameter.Name)
-                .ToList()
+                Name = tool.ToolName,
+                Description = tool.Description,
+                Parameters = parameters.Select(parameter => new NativeToolParameter
+                {
+                    Name = parameter.Name,
+                    Type = parameter.Type.ToJsonSchemaType(),
+                    Description = parameter.Description,
+                    EnumValues = parameter.AllowedValues?.ToList(),
+                    ArrayItemType = parameter.Type.ToJsonSchemaItemType()
+                }).ToList(),
+                Required = parameters
+                    .Where(parameter => parameter.IsRequired)
+                    .Select(parameter => parameter.Name)
+                    .ToList()
+            };
         }).ToList();
     }
 
@@ -332,6 +358,9 @@ public class ChatToolExecutor : IChatToolExecutor
     /// and executes it. Returns a failure result if the tool is unknown or the parameters
     /// do not match the schema — the message goes back to the model, which can then retry
     /// with a corrected call.
+    ///
+    /// A tool implementing <see cref="IConfirmableChatTool"/> only executes when the call
+    /// carries <c>confirm: true</c>; otherwise its preview is returned and nothing is written.
     /// </summary>
     public async Task<ChatToolResult> ExecuteToolAsync(
         ParsedToolCall toolCall,
@@ -361,6 +390,35 @@ public class ChatToolExecutor : IChatToolExecutor
 
         try
         {
+            // ── Confirm gate ──────────────────────────────────────────────
+            // A data-changing tool runs ONLY with the user's explicit approval. Without it the
+            // tool's ExecuteAsync is never reached — the user sees a preview instead. Central on
+            // purpose: a per-tool check is one forgotten `if` away from a silent overwrite.
+            if (tool is IConfirmableChatTool confirmable &&
+                !ChatToolConfirmation.IsConfirmed(toolCall.Parameters))
+            {
+                _logger.LogInformation(
+                    "Tool {ToolName} requires confirmation — returning preview, nothing was written",
+                    tool.ToolName);
+
+                var preview = await confirmable.BuildPreviewAsync(toolCall.Parameters, ct);
+
+                // A preview that failed (record not found, …) stays a plain failure — there is
+                // nothing to confirm, so the model must not be invited to retry with confirm=true.
+                //
+                // UiAction is dropped on purpose: ChatService forwards it to the browser as soon
+                // as the tool returns, so a preview that carried one would navigate the user
+                // before they confirmed anything. Only a real execution may move the UI.
+                return preview.IsSuccess
+                    ? preview with
+                    {
+                        RequiresConfirmation = true,
+                        UiAction = null,
+                        OutputText = preview.OutputText + ChatToolConfirmation.PreviewSuffix
+                    }
+                    : preview;
+            }
+
             var result = await tool.ExecuteAsync(toolCall.Parameters, ct);
 
             _logger.LogInformation("Tool {ToolName} completed: IsSuccess={IsSuccess}",
@@ -392,7 +450,7 @@ public class ChatToolExecutor : IChatToolExecutor
     {
         List<string>? errors = null;
 
-        foreach (var schema in tool.Parameters)
+        foreach (var schema in ChatToolConfirmation.EffectiveParameters(tool))
         {
             parameters.TryGetValue(schema.Name, out var rawValue);
 
