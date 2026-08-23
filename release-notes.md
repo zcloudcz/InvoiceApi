@@ -21,6 +21,11 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Opravy
 
+- **#192** — Pozvání dalšího uživatele do už zavedené firmy znovu spouštělo provisioning
+  tenanta, který u živého tenanta mazal a přečísloval sazby DPH, měny, číselné řady
+  šablon i obsahové šablony — vystavené doklady tak mohly tiše ztratit vazbu na svou
+  původní sazbu DPH nebo měnu. Nastavení hesla pozvaného uživatele už provisioning
+  zavedené firmy nespouští. (PR #245, `074229d`)
 - **#157** — Při registraci nové firmy se adresa dohledaná v ARES nikam neuložila —
   firma vznikla bez sídla a vystavitel v tenantu neměl adresu vůbec, takže PDF faktury
   měl prázdný blok vystavitele. Adresa z ARES se teď uloží a propíše do tenanta;
