@@ -52,6 +52,11 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Změny pro vývojáře
 
+- **#232** — Šest AI/MCP nástrojů pro přijaté faktury (výpis, detail, založení, schválení,
+  označení uhrazeno, smazání) nemělo jediný test, takže regrese v chování AI asistenta
+  by prošla nepovšimnutá. Nově 21 mutačně ověřených testů; vedlejším zjištěním je
+  nekrytý `PaginationParams` — základní třída všech stránkovaných filtrů v repu —
+  který teď dostal vlastní 8 testů na clamping stránky/velikosti. (PR #248, `4f0d2a1`)
 - **#208** — Registrace firmy z ARES ukládala jen název a IČO/DIČ, sídlo se zahazovalo
   a plátcovství DPH se nikdy nenastavilo, přestože ho ARES prozradí (DIČ přítomno).
   Adresa z ARES se teď uloží do klienta a `IsVatPayer` se odvodí z přítomnosti DIČ;
