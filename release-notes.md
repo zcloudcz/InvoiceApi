@@ -52,6 +52,13 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Změny pro vývojáře
 
+- **#234** — MCP server (`fakvio-mcp`, 36 nástrojů pro AI klienty typu Claude Code/Desktop)
+  neměl žádnou dokumentaci, takže napojení vlastního AI klienta vyžadovalo číst zdrojový
+  kód. Nový `Fakvio.McpServer/README.md` popisuje build, spuštění, získání JWT tokenu
+  a napojení klienta; `.mcp.json.sample` je copy-paste vzor konfigurace (reálný `.mcp.json`
+  nese token v plaintextu, verzuje se jen vzor). DEVGUIDE §4.9 opraveno z 21 na
+  aktuálních 36 nástrojů, USERGUIDE dostal novou kapitolu 20 pro koncového uživatele.
+  (PR #250, `4dd6d6a`)
 - **#232** — Šest AI/MCP nástrojů pro přijaté faktury (výpis, detail, založení, schválení,
   označení uhrazeno, smazání) nemělo jediný test, takže regrese v chování AI asistenta
   by prošla nepovšimnutá. Nově 21 mutačně ověřených testů; vedlejším zjištěním je
