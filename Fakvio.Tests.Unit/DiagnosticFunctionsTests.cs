@@ -9,8 +9,12 @@
 //
 // Uses InMemoryDatabase to simulate a working DB, and NSubstitute
 // to simulate a failing DB scenario (CanConnectAsync returns false).
+//
+// Also covers the SysAdmin gate on /api/diagnostic/migrate and
+// /api/diagnostic/auth (401 anonymous, 403 non-SysAdmin, 200 SysAdmin).
 // ============================================================================
 
+using System.Security.Claims;
 using Fakvio.Functions.HttpFunctions;
 using Fakvio.Infrastructure.Data;
 using Microsoft.AspNetCore.Http;
@@ -204,5 +208,112 @@ public class DiagnosticFunctionsTests : IDisposable
 
         data["masterConnectionConfigured"].ShouldBe(false);
         data["tenantTemplateConnectionConfigured"].ShouldBe(false);
+    }
+
+    // ─── Authorization gating (issue #263) ──────────────────────────────────
+    //
+    // /api/diagnostic/migrate writes to the database schema and
+    // /api/diagnostic/auth echoes the JWT configuration plus every claim,
+    // so both are SysAdmin-only. The trigger stays AuthorizationLevel.Anonymous
+    // (that flag only controls the Functions host key) — the JWT role check is
+    // inlined in the function, exactly like the generated wrappers do it.
+
+    /// <summary>
+    /// Builds an HttpRequest whose HttpContext.User mirrors what
+    /// JwtAuthenticationMiddleware would set for the given caller.
+    /// </summary>
+    private static HttpRequest BuildRequest(bool authenticated, bool sysAdmin = false)
+    {
+        var ctx = new DefaultHttpContext();
+
+        if (authenticated)
+        {
+            var claims = new List<Claim> { new("UserId", "42") };
+            if (sysAdmin)
+                claims.Add(new Claim(ClaimTypes.Role, "SysAdmin"));
+
+            // A non-empty authenticationType is what makes IsAuthenticated true.
+            ctx.User = new ClaimsPrincipal(new ClaimsIdentity(claims, "TestAuth"));
+        }
+
+        return ctx.Request;
+    }
+
+    [Fact]
+    public async Task Migrate_Anonymous_Returns401()
+    {
+        var sut = new DiagnosticFunctions(_serviceProvider, _configuration, _logger);
+
+        var result = await sut.Migrate(BuildRequest(authenticated: false));
+
+        result.ShouldBeOfType<UnauthorizedResult>();
+    }
+
+    [Fact]
+    public async Task Migrate_AuthenticatedNonSysAdmin_Returns403()
+    {
+        var sut = new DiagnosticFunctions(_serviceProvider, _configuration, _logger);
+
+        var result = await sut.Migrate(BuildRequest(authenticated: true, sysAdmin: false));
+
+        result.ShouldBeOfType<ForbidResult>();
+    }
+
+    [Fact]
+    public async Task Migrate_SysAdmin_PassesTheAuthGate()
+    {
+        var sut = new DiagnosticFunctions(_serviceProvider, _configuration, _logger);
+
+        var result = await sut.Migrate(BuildRequest(authenticated: true, sysAdmin: true));
+
+        // The InMemory provider cannot actually migrate — the function catches that
+        // and still answers 200 with a diagnostic payload. What matters here is that
+        // the request got past the auth gate instead of being rejected, and that the
+        // caller really receives the migration report (an empty 200 would be a
+        // silently broken endpoint).
+        var okResult = result.ShouldBeOfType<OkObjectResult>();
+        var data = okResult.Value.ShouldBeOfType<Dictionary<string, object>>();
+
+        data.ShouldContainKey("masterMigrateSuccess");
+        data.ShouldContainKey("timestamp");
+        data["timestamp"].ShouldBeOfType<DateTime>();
+    }
+
+    [Fact]
+    public void AuthDiagnostic_Anonymous_Returns401AndLeaksNothing()
+    {
+        var sut = new DiagnosticFunctions(_serviceProvider, _configuration, _logger);
+
+        var result = sut.AuthDiagnostic(BuildRequest(authenticated: false));
+
+        // UnauthorizedResult carries no body at all, so the JWT secret length,
+        // issuer/audience and claim dump can no longer reach an anonymous caller.
+        result.ShouldBeOfType<UnauthorizedResult>();
+    }
+
+    [Fact]
+    public void AuthDiagnostic_AuthenticatedNonSysAdmin_Returns403()
+    {
+        var sut = new DiagnosticFunctions(_serviceProvider, _configuration, _logger);
+
+        var result = sut.AuthDiagnostic(BuildRequest(authenticated: true, sysAdmin: false));
+
+        result.ShouldBeOfType<ForbidResult>();
+    }
+
+    [Fact]
+    public void AuthDiagnostic_SysAdmin_StillReturnsFullDiagnosticPayload()
+    {
+        var sut = new DiagnosticFunctions(_serviceProvider, _configuration, _logger);
+
+        var result = sut.AuthDiagnostic(BuildRequest(authenticated: true, sysAdmin: true));
+
+        var okResult = result.ShouldBeOfType<OkObjectResult>();
+        var data = okResult.Value.ShouldBeOfType<Dictionary<string, object>>();
+
+        // The endpoint keeps its diagnostic value for the one role allowed to use it.
+        data["isInRole_SysAdmin"].ShouldBe(true);
+        data.ShouldContainKey("claims");
+        data.ShouldContainKey("jwtSecretLength");
     }
 }
