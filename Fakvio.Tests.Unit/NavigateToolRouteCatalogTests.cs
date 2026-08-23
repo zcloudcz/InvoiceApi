@@ -98,7 +98,9 @@ public class NavigateToolRouteCatalogTests
 
         missing.ShouldBeEmpty(
             "every tenant-facing page must be reachable through the navigate tool — add a target " +
-            "to NavigateTool.Routes for each route listed here, or exclude the page here with a reason");
+            "to NavigateTool.Routes for each route listed here. The only pages this test lets " +
+            "through are the ones filtered above: anonymous or SysAdmin-only pages, and routes " +
+            "with a path parameter");
     }
 
     [Fact]
