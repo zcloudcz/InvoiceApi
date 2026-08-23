@@ -82,7 +82,46 @@ public class CaptchaServiceTests
         result.ShouldBeFalse();
     }
 
+    /// <summary>
+    /// Anything that is not valid JSON (a captive portal, a proxy error page, a truncated
+    /// body) must be treated like every other unverifiable answer: rejected. Without this
+    /// the deserialization exception is the only thing standing between a broken response
+    /// and the catch block, and a catch block is exactly what used to fail open.
+    /// </summary>
+    [Fact]
+    public async Task Verify_GoogleReturnsSomethingThatIsNotJson_Rejects()
+    {
+        var service = CreateService(new StubHttpMessageHandler(Json("<html>proxy error</html>")));
+
+        var result = await service.VerifyAsync(Token, ExpectedAction);
+
+        result.ShouldBeFalse("an answer we cannot read is not a positive verification");
+    }
+
     // ── Explicit local-development escape hatch ───────────────────────────────
+
+    /// <summary>
+    /// Secure by default: Recaptcha:Enabled is read with a default of TRUE, so an
+    /// environment that never heard of the flag still gets a verified gate. If the
+    /// default ever flipped, every deployment that predates issue #200 — none of them
+    /// have the flag — would come up with no captcha at all and no error to show for it.
+    ///
+    /// Asserting the outbound call (not just the result) is what pins this down: with a
+    /// default of false the service would answer true without ever asking Google.
+    /// </summary>
+    [Fact]
+    public async Task Verify_EnabledFlagAbsentFromConfiguration_StillVerifiesWithGoogle()
+    {
+        var settings = Settings();
+        settings.Remove("Recaptcha:Enabled");
+        var handler = new CapturingHttpMessageHandler(SiteVerifyOk());
+
+        var result = await CreateService(handler, settings).VerifyAsync(Token, ExpectedAction);
+
+        handler.LastRequest.ShouldNotBeNull("the gate must default to ON, not to skipped");
+        result.ShouldBeTrue();
+    }
+
 
     /// <summary>
     /// Local development and the integration test host have no reCAPTCHA keys. They
@@ -127,6 +166,40 @@ public class CaptchaServiceTests
         var result = await service.VerifyAsync(Token, expectedAction: "ares");
 
         result.ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// The comparison is Ordinal on purpose, so "Login" is not "login". The action is an
+    /// exact string agreed between one Blazor page and one endpoint; a loose comparison
+    /// would widen that agreement for no benefit, and grecaptcha echoes back exactly what
+    /// the page asked for — a differently-cased action means a different page.
+    /// </summary>
+    [Fact]
+    public async Task Verify_ActionDiffersOnlyInCase_Rejects()
+    {
+        var service = CreateService(new StubHttpMessageHandler(SiteVerifyOk(action: "Login")));
+
+        var result = await service.VerifyAsync(Token, expectedAction: "login");
+
+        result.ShouldBeFalse("the action check is an exact, ordinal match");
+    }
+
+    /// <summary>
+    /// A "successful" payload with the action or hostname field missing is not something
+    /// Google sends today, but the checks must not silently pass on a null: a null action
+    /// equals no expected action, and a null hostname is on no allow-list. Both are the
+    /// same fail-closed rule as everywhere else in this file.
+    /// </summary>
+    [Theory]
+    [InlineData("""{"success":true,"score":0.9,"hostname":"fakvio.cz"}""")]
+    [InlineData("""{"success":true,"score":0.9,"action":"login"}""")]
+    public async Task Verify_SuccessfulPayloadMissingActionOrHostname_Rejects(string payload)
+    {
+        var service = CreateService(new StubHttpMessageHandler(Json(payload)));
+
+        var result = await service.VerifyAsync(Token, ExpectedAction);
+
+        result.ShouldBeFalse("a field we cannot compare is not a field that matched");
     }
 
     // ── Hostname binding ──────────────────────────────────────────────────────
@@ -213,15 +286,25 @@ public class CaptchaServiceTests
 
     // ── Pre-existing rules that must keep working ─────────────────────────────
 
-    [Fact]
-    public async Task Verify_EmptyToken_Rejects()
+    /// <summary>
+    /// A blank token is rejected before any outbound call — the throwing handler proves it.
+    /// Whitespace counts as blank: the header arrives verbatim from the browser, and " "
+    /// is not a token Google would ever have issued.
+    /// </summary>
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task Verify_BlankToken_RejectsWithoutCallingGoogle(string? blankToken)
     {
-        var service = CreateService(
-            new ThrowingHttpMessageHandler(new InvalidOperationException("must not be called")));
+        // A capturing handler, not a throwing one: a thrown exception ends up in the catch
+        // block and returns false too, which would make the assertion pass either way.
+        var handler = new CapturingHttpMessageHandler(SiteVerifyOk());
 
-        var result = await service.VerifyAsync("", ExpectedAction);
+        var result = await CreateService(handler).VerifyAsync(blankToken, ExpectedAction);
 
         result.ShouldBeFalse();
+        handler.LastRequest.ShouldBeNull("a blank token is not worth an outbound call");
     }
 
     [Fact]
@@ -232,6 +315,21 @@ public class CaptchaServiceTests
         var result = await service.VerifyAsync(Token, ExpectedAction);
 
         result.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// The threshold itself passes (the rule is "below 0.5 is a bot", not "0.5 is a bot").
+    /// reCAPTCHA v3 hands out 0.5 to plenty of ordinary humans on unusual networks, so the
+    /// difference between &lt; and &lt;= here is a difference in who can log in at all.
+    /// </summary>
+    [Fact]
+    public async Task Verify_ScoreExactlyAtThreshold_Passes()
+    {
+        var service = CreateService(new StubHttpMessageHandler(SiteVerifyOk(score: 0.5)));
+
+        var result = await service.VerifyAsync(Token, ExpectedAction);
+
+        result.ShouldBeTrue("0.5 is the minimum accepted score, not the first rejected one");
     }
 
     [Fact]
