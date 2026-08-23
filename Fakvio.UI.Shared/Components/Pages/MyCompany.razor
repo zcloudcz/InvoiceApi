@@ -759,9 +759,11 @@ else
         try
         {
             _loading = true;
+            // Clear the error from any previous attempt. Without this the page would stay
+            // stuck on the error banner even after a later load succeeded — LoadCompany() is
+            // re-run by CancelEditing() and by the refresh after a successful save.
+            _errorMessage = null;
             _company = await ClientService.GetIssuerAsync();
-            _savedAdvanceTaxReceiptMode = await ClientService.GetAdvanceTaxReceiptModeAsync();
-            _advanceTaxReceiptMode = _savedAdvanceTaxReceiptMode;
         }
         catch (Exception ex)
         {
@@ -772,6 +774,34 @@ else
         finally
         {
             _loading = false;
+        }
+
+        await LoadAdvanceTaxReceiptMode();
+    }
+
+    /// <summary>
+    /// Loads the tenant's advance-tax-receipt mode.
+    ///
+    /// Deliberately isolated from <see cref="LoadCompany"/>'s try/catch: this is a secondary
+    /// setting, and ApiClientBase.GetAsync throws on every non-success response — including
+    /// the 404 the endpoint returns for an issuer that has no billing settings yet. Sharing a
+    /// catch with GetIssuerAsync() would let a missing optional setting blank the whole page.
+    /// Same tolerant approach as LoadSmtpSettings/LoadAiSettings.
+    /// </summary>
+    private async Task LoadAdvanceTaxReceiptMode()
+    {
+        if (_company == null) return;
+
+        try
+        {
+            _savedAdvanceTaxReceiptMode = await ClientService.GetAdvanceTaxReceiptModeAsync();
+            _advanceTaxReceiptMode = _savedAdvanceTaxReceiptMode;
+        }
+        catch
+        {
+            // Setting unavailable — keep the last known value so the select still renders.
+            // Leaving both fields untouched also means SaveCompany() will not fire a spurious
+            // PUT, because it only writes when the value actually changed.
         }
     }
 
