@@ -63,6 +63,11 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Změny pro vývojáře
 
+- **#138** — Health endpoint teď hlásí, jaký režim přihlášení k databázi (`authMode`,
+  `authModeSource`) skutečně používá — v obou hostech, API i Azure Functions, poprvé
+  stejně (API dosud žádný health endpoint nemělo). Umožňuje ověřit rollout přepínatelné
+  DB autentizace bez čtení connection stringu; secret se do odpovědi nikdy nedostane.
+  (PR #260, `17475ad`)
 - **#236** — Integrace (MCP server, budoucí externí nástroje) se teď mohou přihlásit
   API klíčem místo běžného uživatelského přihlášení: klíč se pošle v hlavičce
   `Authorization: ApiKey <klíč>` a nese vlastní scope (které akce smí), takže
