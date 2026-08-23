@@ -191,59 +191,43 @@ public class ApiKeyAuthenticatorTests : IDisposable
         (await _authenticator.AuthenticateAsync(created.Key)).ShouldBeNull();
     }
 
-    [Fact]
-    public async Task ExpiredKey_WithUnspecifiedKind_IsRejected()
+    /// <summary>
+    /// The contract of the Kind normalization, stated once for all three representations
+    /// a provider can hand back: whichever one the deadline arrives in, the accept/reject
+    /// decision must depend on the INSTANT it denotes and on nothing else.
+    ///
+    /// Both directions matter and they fail differently. Reading the deadline as later
+    /// than it is keeps a revoked-by-time key alive (CEST: two extra hours). Reading it
+    /// as earlier retires a live key without warning (any zone west of Greenwich).
+    ///
+    /// Note on hosts with a zero UTC offset (a CI runner is normally one): there, local
+    /// time IS UTC, so the Local rows carry the same ticks as the Utc rows and stop
+    /// discriminating between converting the value and merely relabelling it. That is not
+    /// a gap in the test — with a zero offset the two are the same operation, and the bug
+    /// the conversion prevents cannot occur. The rows are written against
+    /// TimeZoneInfo.Local rather than against DateTime.Now so the value under test is
+    /// stated explicitly instead of inherited from the ambient clock.
+    /// </summary>
+    [Theory]
+    [InlineData(DateTimeKind.Utc, -1, false)]
+    [InlineData(DateTimeKind.Unspecified, -1, false)]
+    [InlineData(DateTimeKind.Local, -1, false)]
+    [InlineData(DateTimeKind.Utc, 1, true)]
+    [InlineData(DateTimeKind.Unspecified, 1, true)]
+    [InlineData(DateTimeKind.Local, 1, true)]
+    public async Task ExpiryIsJudgedByTheInstant_WhicheverKindTheProviderAttached(
+        DateTimeKind storedKind, int minutesFromDeadline, bool expectedUsable)
     {
         var created = await CreateKeyAsync(expiresAt: DateTime.UtcNow.AddHours(1));
 
-        // A DateTime that lost its Kind (JSON round-trip, some providers) must still be
-        // read as UTC — the repo stores UTC wall-clock everywhere
-        // (MasterDbContext.NormalizeDateTimesToUtc). Converting it instead of relabelling
-        // it would shift the deadline by the local offset.
-        await ExpireKeyAsync(created.Id,
-            DateTime.SpecifyKind(DateTime.UtcNow.AddMinutes(-1), DateTimeKind.Unspecified));
+        var instant = DateTime.UtcNow.AddMinutes(minutesFromDeadline);
+        var stored = AsStoredBy(storedKind, instant);
+        SetTrackedExpiresAt(created.Id, stored);
 
-        (await _authenticator.AuthenticateAsync(created.Key)).ShouldBeNull();
-    }
+        var principal = await _authenticator.AuthenticateAsync(created.Key);
 
-    [Fact]
-    public async Task KeyExpiringInTheFuture_IsStillAccepted_AfterKindNormalization()
-    {
-        var created = await CreateKeyAsync(expiresAt: DateTime.UtcNow.AddHours(1));
-
-        // Boundary companion to the test above: normalizing must not expire a live key
-        // early either (an off-by-an-offset in the other direction).
-        await ExpireKeyAsync(created.Id,
-            DateTime.SpecifyKind(DateTime.UtcNow.AddMinutes(1), DateTimeKind.Unspecified));
-
-        (await _authenticator.AuthenticateAsync(created.Key)).ShouldNotBeNull();
-    }
-
-    [Fact]
-    public async Task ExpiredKey_ReadBackAsLocalKind_IsStillRejected()
-    {
-        var created = await CreateKeyAsync(expiresAt: DateTime.UtcNow.AddHours(1));
-
-        // Simulates what Npgsql hands back under EnableLegacyTimestampBehavior (both hosts
-        // switch it on): the correct instant, converted to local time, Kind = Local.
-        // Comparing that against DateTime.UtcNow without normalizing is off by the local
-        // offset — in CEST it would keep an expired key alive for another two hours.
-        var expiredInstant = DateTime.UtcNow.AddMinutes(-1);
-        SetTrackedExpiresAt(created.Id, expiredInstant.ToLocalTime());
-
-        (await _authenticator.AuthenticateAsync(created.Key)).ShouldBeNull();
-    }
-
-    [Fact]
-    public async Task LiveKey_ReadBackAsLocalKind_IsStillAccepted()
-    {
-        var created = await CreateKeyAsync(expiresAt: DateTime.UtcNow.AddHours(1));
-
-        // The other direction: west of UTC an un-normalized comparison retires a live key
-        // early instead. One minute of remaining life must survive the conversion.
-        SetTrackedExpiresAt(created.Id, DateTime.UtcNow.AddMinutes(1).ToLocalTime());
-
-        (await _authenticator.AuthenticateAsync(created.Key)).ShouldNotBeNull();
+        (principal is not null).ShouldBe(expectedUsable,
+            $"ExpiresAt read back as {stored:O} (Kind = {stored.Kind})");
     }
 
     [Fact]
@@ -304,6 +288,24 @@ public class ApiKeyAuthenticatorTests : IDisposable
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Renders one instant the way each provider hands it back:
+    /// - Utc — Npgsql with the modern timestamptz mapping, and every value the write path
+    ///   stamped itself;
+    /// - Unspecified — a value that lost its Kind (EF InMemory, a JSON round-trip). The
+    ///   repo stores UTC wall-clock everywhere (MasterDbContext.NormalizeDateTimesToUtc),
+    ///   so the ticks are the UTC ones and only the label is missing;
+    /// - Local — Npgsql under EnableLegacyTimestampBehavior, which both hosts switch on:
+    ///   the instant CONVERTED into the host's zone. Built from the zone's offset rather
+    ///   than DateTime.ToLocalTime() so the test says which value it means.
+    /// </summary>
+    private static DateTime AsStoredBy(DateTimeKind kind, DateTime instant) => kind switch
+    {
+        DateTimeKind.Utc => instant,
+        DateTimeKind.Unspecified => DateTime.SpecifyKind(instant, DateTimeKind.Unspecified),
+        _ => DateTime.SpecifyKind(instant + TimeZoneInfo.Local.GetUtcOffset(instant), DateTimeKind.Local)
+    };
 
     /// <summary>
     /// Rewrites ExpiresAt directly. Bypasses CreateAsync on purpose — the service refuses

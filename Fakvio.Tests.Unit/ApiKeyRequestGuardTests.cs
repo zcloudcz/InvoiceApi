@@ -75,6 +75,40 @@ public class ApiKeyRequestGuardTests
             .ShouldNotBeNull();
     }
 
+    // ─── How the scope string is parsed ──────────────────────────────────────
+
+    [Theory]
+    [InlineData("read,writer")]            // a scope whose name merely starts with "write"
+    [InlineData("read,readwrite-preview")] // ...or contains it
+    [InlineData("read,rewrite")]
+    public void ScopeThatOnlyContainsTheWordWrite_DoesNotGrantWrite(string scopes)
+    {
+        // The scope string is split on ',' instead of substring-matched precisely so that
+        // adding a scope with "write" in its name cannot hand out write access by accident.
+        ApiKeyRequestGuard.GetDenialReason(Principal(scopes), "POST", "/api/invoice")
+            .ShouldNotBeNull();
+    }
+
+    [Theory]
+    [InlineData("read, write")] // whitespace around the separator
+    [InlineData("write,read")]  // order is irrelevant
+    [InlineData("READ,WRITE")]  // stored casing must not decide permissions
+    public void WriteScope_IsRecognisedRegardlessOfSpacingCaseAndOrder(string scopes)
+    {
+        ApiKeyRequestGuard.GetDenialReason(Principal(scopes), "POST", "/api/invoice")
+            .ShouldBeNull();
+    }
+
+    [Fact]
+    public void EmptyScopeClaim_IsStillAKey_AndGrantsNothingBeyondReading()
+    {
+        // An empty claim value is not a missing claim: the request came from a key, so the
+        // rules apply. Treating "no scopes" as "not an API key" would make such a key
+        // unrestricted — the one mistake in this file that fails open.
+        ApiKeyRequestGuard.GetDenialReason(Principal(""), "POST", "/api/invoice").ShouldNotBeNull();
+        ApiKeyRequestGuard.GetDenialReason(Principal(""), "GET", "/api/invoice/paged").ShouldBeNull();
+    }
+
     // ─── SafeMethodOverridePaths ─────────────────────────────────────────────
 
     [Fact]
@@ -120,6 +154,27 @@ public class ApiKeyRequestGuardTests
         // The one exception: /me only reports back the principal.
         ApiKeyRequestGuard.GetDenialReason(Principal(ReadOnly), "GET", "/api/api-key/me")
             .ShouldBeNull();
+    }
+
+    [Theory]
+    [InlineData("POST", "/API/Api-Key")]
+    [InlineData("POST", "/Api/Api-Key/7/Revoke")]
+    public void ManagementLockout_SurvivesPathCasing(string method, string path)
+    {
+        // Routing matches paths case-insensitively, so a lockout that only recognises the
+        // lower-case spelling could be walked around by shouting at it.
+        ApiKeyRequestGuard.GetDenialReason(Principal(ReadWrite), method, path)
+            .ShouldNotBeNull();
+    }
+
+    [Theory]
+    [InlineData("/api/api-keys")]     // sibling route: refused rather than assumed harmless
+    [InlineData("/api/api-key/meta")] // /me is an exact match, not a prefix
+    [InlineData("/api/api-key/me/")]  // known quirk: the trailing slash is a different path
+    public void OnlyTheExactSelfDescribePathEscapesTheLockout(string path)
+    {
+        ApiKeyRequestGuard.GetDenialReason(Principal(ReadOnly), "GET", path)
+            .ShouldNotBeNull();
     }
 
     // ─── JWT is untouched ────────────────────────────────────────────────────

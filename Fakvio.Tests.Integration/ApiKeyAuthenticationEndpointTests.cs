@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using Fakvio.Contracts.Dto.ApiKey;
+using Fakvio.Contracts.Dto.Auth;
 using Fakvio.Contracts.Dto.Client;
 using Fakvio.Contracts.Dto.CompanySettings;
 using Fakvio.Infrastructure.Data;
@@ -249,6 +250,28 @@ public class ApiKeyAuthenticationEndpointTests : IClassFixture<FakvioFactory>
         AuthHelper.SetAuthToken(client, "not-a-token-at-all");
 
         (await client.GetAsync("/api/client")).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task DeadKey_DoesNotBreakAnAnonymousEndpoint()
+    {
+        // Locates the 401 the tests above see. The handler runs on this request too (the
+        // selector forwards any "fak_" bearer to it) and refuses the key — yet the request
+        // is served. So the 401 is produced by the authorization challenge on a PROTECTED
+        // endpoint, not by the handler: all the handler decides is whether a principal
+        // exists. That is the same fail-closed-but-not-fail-loud behaviour the Functions
+        // host spells out in ApiKeyAuthenticationMiddleware, and it is what keeps a client
+        // with a stale key in its config able to log in and fetch a fresh one.
+        var client = _factory.CreateClient();
+        AuthHelper.SetAuthToken(client, "fak_live_" + new string('A', 43));
+
+        var response = await client.PostAsJsonAsync("/api/auth/login", new LoginRequest
+        {
+            Email = TenantUserEmail,
+            Password = _tenantUserPassword
+        });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
     }
 
     // ─── Scopes ──────────────────────────────────────────────────────────────
