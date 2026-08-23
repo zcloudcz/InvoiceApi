@@ -104,6 +104,40 @@ the repo wins.
 - Never paste tokens into PRs, issues, commits, or comments.
 - If a secret is needed, ask the user — do not invent or harvest one.
 
+## 5b. Measuring the suite — do not pay twice for the same number
+
+Dev, reviewer and tester each measure a baseline and a merged tree, so one
+PR costs six full-suite runs — and reviewer and tester routinely measure
+the **same `develop` SHA**. Suite output is read into context, so this is
+a real cost, not just wall-clock.
+
+**Before measuring a baseline, check the cache:**
+
+    SHA=$(git rev-parse origin/develop)
+    jq -r --arg s "$SHA" '.[$s] // empty' .claude/baseline-cache.json
+
+A hit means someone already measured that exact SHA — reuse it, cite the
+SHA in your report, and measure only the merged tree. A miss means the
+branch moved; measure normally and append your result:
+
+    {"<develop-sha>": {"unit": "2624/0/4", "integration": "105/21/3",
+                       "by": "agent-tester #278", "at": "<ISO>"}}
+
+Never reuse a number for a different SHA, and never trust a cached entry
+over your own eyes if something looks wrong — the cache is a shortcut,
+not an authority. If the file does not exist, create it.
+
+**Mutation sweeps run targeted, not full.** A twelve-mutant sweep does not
+need twelve runs of the whole suite; `dotnet test --filter` on the classes
+that can possibly detect the mutation gives the same evidence. Report which
+filter you used, so the next reader knows what the number covers.
+
+Two traps that make any of these numbers a lie — both cost a full round
+today, both are in `MEMORY.md` under "Známé pasti prostředí": `dotnet test`
+can exit 0 while printing `error CS`, and restoring a mutated file with
+`mv`/`cp` can leave MSBuild measuring a stale binary. Build separately,
+restore with `git checkout --`.
+
 ## 6. Irreversible actions — always confirm
 
 Even when permissions allow it, **stop and ask the user** before:

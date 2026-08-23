@@ -102,10 +102,51 @@ The compound sort key puts `type:bug` cards (where `index("type:bug")`
 is non-null, so `| not` is `false`) ahead of non-bug cards, then
 `createdAt` ascending within each group.
 
+## Budget: GraphQL is the scarce resource, REST is not
+
+Projects v2 exists **only** in GraphQL, which has its own 5000 points/hour
+shared by every agent. On 2026-08-23 that quota ran out repeatedly, each
+time for 20-40 minutes, while the separate REST quota never dropped below
+~4900. Cards then sit in the wrong column while the code is already pushed.
+
+The asymmetry that matters: **reads are expensive, writes are cheap.**
+`item-list --limit 200` costs tens of points; one
+`updateProjectV2ItemFieldValue` costs one to three. So:
+
+1. **Never look up what the dispatch already told you.** An agent handed
+   its item/project/field/option ids must not call `item-list` or
+   `field-list` at all. Orchestrators: put the ids in the prompt.
+2. **Prefer REST wherever a REST route exists** — labels, comments, issue
+   state, PR creation, gates. `gh issue edit`, `gh pr comment`,
+   `gh pr review` and `gh pr ready` go through GraphQL; the matching
+   `gh api repos/:owner/:repo/...` calls do not. (`gh pr edit --add-label`
+   also fails on a missing `read:org` scope here — REST is the way.)
+3. **Batch writes into one mutation with aliases** when moving several
+   cards: `mutation { m1: updateProjectV2ItemFieldValue(...){...}
+   m2: ... }`. Nine cards for the price of roughly one.
+4. **One attempt, then record and move on.** If a board write fails on
+   the quota, do NOT retry in a loop and do NOT block your real work.
+   State the intended transition in your report and in `MEMORY.md`; the
+   orchestrator or `/tick-warden` reconciles after the reset. Check
+   `gh api rate_limit --jq '.resources.graphql'` before a batch — below
+   ~1500 remaining, expect failures.
+
+Status option ids for this repo (verified 2026-08-23 — use these instead
+of calling `field-list`):
+
+    project PVT_kwHOA0sUmM4BVxTj   Status field PVTSSF_lAHOA0sUmM4BVxTjzhRKsGI
+    StoryNew a522063b | Analysis 05bfe875 | Decomposed 53feb57e
+    Backlog  8dfb317f | ToDo     8fe25f04 | Progress   523b90b0
+    CodeReview 23782cfd | Test   259268f3 | Implemented 1f3f5afd
+    Approved 7cf2fcd3 | Blocked 28e9b1dd
+
+If a mutation returns `The single select option Id does not belong to the
+field`, the map above is stale — re-resolve it once and update this block.
+
 ## Resolve the IDs needed to move a card
 
-Project node id + Status field id + option ids (one-time per session;
-cache in shell variables):
+Only when the dispatch did not give them to you, and only once per
+session (cache in shell variables — see the budget section above):
 
     gh project view "$AGENTIC_PROJECT_NUMBER" \
         --owner "$AGENTIC_PROJECT_OWNER" --format json \
