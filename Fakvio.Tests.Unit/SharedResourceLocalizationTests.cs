@@ -95,6 +95,29 @@ public class SharedResourceLocalizationTests : IDisposable
         result.Value.ShouldBe(expectedValue);
     }
 
+    /// <summary>
+    /// Issue #152 — English wording of the two keys the set-password page shows when the
+    /// workspace could not be provisioned.
+    ///
+    /// The Czech side is already covered by SetPasswordPageTests, which renders the page in
+    /// the default culture. English has no such cover, and a key that is missing from
+    /// SharedResource.en.resx silently falls back to the Czech neutral resource with
+    /// ResourceNotFound = false — so only asserting the English text catches a translation
+    /// that was never written.
+    ///
+    /// Deliberately a separate theory instead of two more rows on
+    /// <see cref="English_Keys_ShouldReturn_EnglishValues"/>: that InlineData list is a
+    /// standing merge-conflict anchor, because every PR that adds a key appends to it.
+    /// The assertions themselves are not duplicated — this only supplies the data.
+    /// </summary>
+    [Theory]
+    [InlineData("SetPassword_WorkspaceNotReady",
+        "Your password has been set, but your workspace could not be prepared.")]
+    [InlineData("SetPassword_WorkspaceNotReadyHint",
+        "Logging in will not work yet. An administrator will finish the setup — please try again later or contact support.")]
+    public void SetPasswordWorkspaceKeys_ShouldReturn_EnglishValues(string key, string expectedValue)
+        => English_Keys_ShouldReturn_EnglishValues(key, expectedValue);
+
     // ── General localization health checks ────────────────────────────────
 
     [Fact]
