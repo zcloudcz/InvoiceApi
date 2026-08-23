@@ -89,6 +89,7 @@ public class InvoiceServiceNestedReverseChargeCodeTests : IDisposable
         _service = new InvoiceService(
             _context,
             Substitute.For<INumberSequenceService>(),
+            Substitute.For<ITenantReadinessService>(),
             Substitute.For<ILogger<InvoiceService>>());
 
         SeedTestData();

@@ -48,7 +48,7 @@ public class InvoiceServiceReverseChargeUpdateTests : IDisposable
                 Arg.Any<CancellationToken>())
             .Returns("INV-2026-001");
 
-        _service = new InvoiceService(_context, numberSequence, logger);
+        _service = new InvoiceService(_context, numberSequence, Substitute.For<ITenantReadinessService>(), logger);
 
         SeedTestData();
     }

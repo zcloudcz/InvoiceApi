@@ -157,6 +157,35 @@ Grid zobrazuje vydané faktury s těmito sloupci:
 | Tři tečky | Sekundární akce (Vytvořit šablonu) | vždy |
 | Obnovit | Obnovit smazanou fakturu | pouze Deleted |
 
+### 2.3.1 Když vystavení skončí chybou „nedokončené nastavení firmy"
+
+Fakturu lze vystavit (Draft → Issued) jen tehdy, když má **vystavitel dané faktury**
+vyplněné vše, co na daňovém dokladu musí být. Dokud něco chybí, aplikace vystavení
+**odmítne** a v chybové hlášce uvede, co chybí. Podle označení v hlášce najdete
+v tabulce, kam pro nápravu jít:
+
+| V hlášce uvidíte | Co chybí | Kde to doplníte |
+|------------------|----------|-----------------|
+| `ISSUER_ADDRESS_INCOMPLETE` | Adresa vystavitele (ulice, město, PSČ, země) | Nastavení firmy (`/my-company`) |
+| `ISSUER_REGISTRATION_NUMBER_MISSING` | IČO | Nastavení firmy |
+| `ISSUER_TAX_NUMBER_MISSING` | DIČ — jen pokud jste plátce DPH | Nastavení firmy |
+| `ISSUER_BANK_ACCOUNT_MISSING` | Bankovní účet | Nastavení firmy |
+| `NUMBER_SEQUENCE_MISSING` | Aktivní výchozí číselná řada pro daný typ dokladu | Číselné řady (`/number-sequences`) |
+| `ISSUER_MISSING` | Vystavitel není v účtu vůbec založený | Nastavení firmy |
+
+Co je dobré vědět:
+
+- Kontroluje se **vystavitel té konkrétní faktury**. Máte-li v účtu víc vystavitelů,
+  nedokončený vystavitel blokuje jen své vlastní doklady.
+- Kontroluje se jen typ dokladu, který právě vystavujete — chybějící řada dobropisů
+  nebrání vystavení běžné faktury.
+- Nevyplněná hlavička EPO (podání DPH) je jen upozornění a **fakturaci nebrání**.
+- Odmítnutá faktura zůstane beze změny ve stavu Draft a nespotřebuje číslo z číselné
+  řady. Po doplnění údajů akci prostě zopakujte.
+- Totéž platí pro hromadné vystavení (u odmítnutých faktur uvidíte důvod v souhrnu
+  výsledku, zbytek dávky se vystaví) i pro vytvoření faktury ze šablony se zapnutým
+  automatickým vystavením — tam se faktura vytvoří jako Draft a jen se nevystaví.
+
 ### 2.4 Vytvoření nové faktury
 
 **Tlačítko:** „Nová faktura" na stránce `/invoices`

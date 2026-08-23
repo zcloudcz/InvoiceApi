@@ -75,7 +75,7 @@ public class InvoiceServiceCopyTests : IDisposable
                 Arg.Any<long>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
             .Returns(MockDocumentNumber);
 
-        _service = new InvoiceService(_context, _numberSequence, _logger);
+        _service = new InvoiceService(_context, _numberSequence, Substitute.For<ITenantReadinessService>(), _logger);
 
         SeedReferenceData();
     }

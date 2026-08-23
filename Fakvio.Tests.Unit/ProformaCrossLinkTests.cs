@@ -43,7 +43,7 @@ public class ProformaCrossLinkTests : IDisposable
         _context = new TenantDbContext(options);
         var logger = Substitute.For<ILogger<InvoiceService>>();
         var numberSequence = Substitute.For<INumberSequenceService>();
-        _service = new InvoiceService(_context, numberSequence, logger);
+        _service = new InvoiceService(_context, numberSequence, Substitute.For<ITenantReadinessService>(), logger);
 
         SeedTestData();
     }
