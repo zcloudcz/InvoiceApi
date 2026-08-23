@@ -13,12 +13,14 @@ namespace Fakvio.Infrastructure.Service.ChatTools;
 /// The invoice is identified by <c>id</c> or <c>document_number</c>
 /// (see <see cref="ReceivedInvoiceLookup"/>).
 ///
-/// Junior note: this tool writes, but it is NOT behind the confirm gate — the status rule in
-/// <see cref="IReceivedInvoiceService.ApproveAsync"/> only lets a freshly received invoice
-/// through, the change is small and the assistant reports it in the same turn. The gate is
-/// reserved for the destructive delete (issue #218, DEVGUIDE §4.7).
+/// It changes data, so it goes through the confirm gate (<see cref="IConfirmableChatTool"/>,
+/// DEVGUIDE §4.7 rule 7): the first call only names the invoice that would be approved.
+///
+/// Junior note on why approving in particular is worth a question: it is irreversible. There is
+/// no un-approve, and <see cref="IReceivedInvoiceService.DeleteAsync"/> refuses an approved
+/// invoice — so a misread "schval to" both changes the state and closes the way back.
 /// </summary>
-public class ApproveReceivedInvoiceTool : IChatTool
+public class ApproveReceivedInvoiceTool : IConfirmableChatTool
 {
     private readonly IReceivedInvoiceService _receivedInvoiceService;
     private readonly ILogger<ApproveReceivedInvoiceTool> _logger;
@@ -39,10 +41,29 @@ public class ApproveReceivedInvoiceTool : IChatTool
 
     public IReadOnlyList<ChatToolParameter> Parameters => ReceivedInvoiceLookup.IdentityParameters;
 
+    /// <summary>
+    /// Names the invoice that would be approved, so the user confirms a concrete document.
+    /// Reads only — the executor appends the "confirm?" wording itself.
+    /// </summary>
+    public async Task<ChatToolResult> BuildPreviewAsync(
+        Dictionary<string, string> parameters,
+        CancellationToken ct = default)
+    {
+        var resolution = await ReceivedInvoiceLookup.ResolveAsync(_receivedInvoiceService, parameters, ct);
+        if (resolution.Error is not null)
+            return resolution.Error;
+
+        return ChatToolResult.Success(
+            "This would approve the received invoice for payment (status → Approved):\n" +
+            ReceivedInvoiceLookup.Describe(resolution.Invoice!));
+    }
+
     public async Task<ChatToolResult> ExecuteAsync(
         Dictionary<string, string> parameters,
         CancellationToken ct = default)
     {
+        // Resolved again, deliberately: preview and execution are two independent calls with the
+        // user's turns in between (see IConfirmableChatTool), so nothing from the preview is reused.
         var resolution = await ReceivedInvoiceLookup.ResolveAsync(_receivedInvoiceService, parameters, ct);
         if (resolution.Error is not null)
             return resolution.Error;

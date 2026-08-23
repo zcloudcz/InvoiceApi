@@ -1,4 +1,5 @@
 using Fakvio.Application.Service;
+using Fakvio.Contracts.Dto.ReceivedInvoice;
 using Microsoft.Extensions.Logging;
 
 namespace Fakvio.Infrastructure.Service.ChatTools;
@@ -14,10 +15,11 @@ namespace Fakvio.Infrastructure.Service.ChatTools;
 /// (see <see cref="ReceivedInvoiceLookup"/>). <c>paid_at</c> exists because expenses are
 /// usually recorded after the fact — the API endpoint takes the same optional date.
 ///
-/// Junior note: not behind the confirm gate, for the same reason as the approve tool —
-/// see <see cref="ApproveReceivedInvoiceTool"/>.
+/// It changes data, so it goes through the confirm gate (<see cref="IConfirmableChatTool"/>,
+/// DEVGUIDE §4.7 rule 7) — same as the approve tool, and for the same reason: there is no
+/// un-pay either.
 /// </summary>
-public class MarkReceivedInvoicePaidTool : IChatTool
+public class MarkReceivedInvoicePaidTool : IConfirmableChatTool
 {
     private readonly IReceivedInvoiceService _receivedInvoiceService;
     private readonly ILogger<MarkReceivedInvoicePaidTool> _logger;
@@ -50,20 +52,35 @@ public class MarkReceivedInvoicePaidTool : IChatTool
 
     public IReadOnlyList<ChatToolParameter> Parameters => Schema;
 
+    /// <summary>
+    /// Names the invoice and the payment date that would be recorded. The date matters here:
+    /// approving "mark it paid" without seeing which day is approving a VAT period blindly.
+    /// </summary>
+    public async Task<ChatToolResult> BuildPreviewAsync(
+        Dictionary<string, string> parameters,
+        CancellationToken ct = default)
+    {
+        var (paidAt, invoice, error) = await LoadAsync(parameters, ct);
+        if (invoice is null)
+            return error!;
+
+        var whenPaid = paidAt is null ? "today" : ChatToolDates.Format(paidAt);
+
+        return ChatToolResult.Success(
+            $"This would mark the received invoice as paid on {whenPaid} (status → Paid):\n" +
+            ReceivedInvoiceLookup.Describe(invoice));
+    }
+
     public async Task<ChatToolResult> ExecuteAsync(
         Dictionary<string, string> parameters,
         CancellationToken ct = default)
     {
-        // Read the date first: an unreadable one must stop the write, not quietly become today —
-        // that would file the payment into the wrong day and the wrong VAT period.
-        if (!ChatToolDates.TryParseOptional(parameters, "paid_at", out var paidAt, out var dateError))
-            return ChatToolResult.Failure(dateError!);
+        // Re-read and re-resolve: preview and execution are two independent calls with the user's
+        // turns in between (see IConfirmableChatTool), so nothing from the preview is reused.
+        var (paidAt, invoice, error) = await LoadAsync(parameters, ct);
+        if (invoice is null)
+            return error!;
 
-        var resolution = await ReceivedInvoiceLookup.ResolveAsync(_receivedInvoiceService, parameters, ct);
-        if (resolution.Error is not null)
-            return resolution.Error;
-
-        var invoice = resolution.Invoice!;
         _logger.LogInformation(
             "MarkReceivedInvoicePaidTool: marking received invoice {Id} as paid, paid_at={PaidAt}",
             invoice.Id, paidAt);
@@ -83,5 +100,25 @@ public class MarkReceivedInvoicePaidTool : IChatTool
             _logger.LogInformation("MarkReceivedInvoicePaidTool: refused by business rule — {Reason}", ex.Message);
             return ChatToolResult.Failure(ex.Message);
         }
+    }
+
+    /// <summary>
+    /// The reading half both calls share: the payment date and the invoice it belongs to.
+    /// Returns a null invoice together with the failure to return, never both or neither.
+    /// </summary>
+    private async Task<(DateTime? PaidAt, ReceivedInvoiceDto? Invoice, ChatToolResult? Error)> LoadAsync(
+        Dictionary<string, string> parameters,
+        CancellationToken ct)
+    {
+        // Date first: an unreadable one must stop the write, not quietly become today —
+        // that would file the payment into the wrong day and the wrong VAT period.
+        if (!ChatToolDates.TryParseOptional(parameters, "paid_at", out var paidAt, out var dateError))
+            return (null, null, ChatToolResult.Failure(dateError!));
+
+        var resolution = await ReceivedInvoiceLookup.ResolveAsync(_receivedInvoiceService, parameters, ct);
+
+        return resolution.Error is not null
+            ? (null, null, resolution.Error)
+            : (paidAt, resolution.Invoice, null);
     }
 }

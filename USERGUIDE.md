@@ -649,7 +649,7 @@ AI asistent zná kontext vaší firmy a umí odpovídat na otázky i provádět 
 |--------|--------|
 | Faktury | Vyhledat fakturu, zobrazit detail, vypsat seznam faktur podle kritérií |
 | Klienti | Vyhledat klienta, zobrazit detail |
-| Přijaté faktury | Vyhledat, vypsat seznam, **zaevidovat novou**, **schválit k proplacení**, **označit jako zaplacenou**, **smazat** (mazání se vždy nejdřív zeptá — viz níže) |
+| Přijaté faktury | Vyhledat, vypsat seznam, **zaevidovat novou**, **schválit k proplacení**, **označit jako zaplacenou**, **smazat** (každá z těchto čtyř změn se vždy nejdřív zeptá — viz níže) |
 | Přehledy a reporty | Shrnout dashboard, vypsat faktury po splatnosti, faktury za období nebo pro konkrétního klienta, spočítat DPH za období |
 | Obecné dotazy | Odpovídat na otázky o funkcích aplikace |
 | Navigace | Otevřít libovolnou stránku aplikace — faktury, přijaté faktury, klienty, platby, šablony, DPH a daně, upomínky i nastavení („Otevři DPH přiznání", „Založ novou fakturu pro klienta XYZ"). Stránky správce systému a přihlašovací obrazovky asistent neotevírá. |
@@ -662,15 +662,23 @@ kde se to doplní.
 
 ### Když asistent něco mění (přijaté faktury)
 
-Asistent umí přijatou fakturu **zaevidovat, schválit a označit jako zaplacenou** rovnou —
-odpoví, co udělal, a nová faktura se navíc rovnou otevře. U evidence nové faktury musí
-dodavatel odpovídat právě jednomu vašemu klientovi; když jich jméno sedne víc, asistent
-je vypíše a zeptá se, který myslíte. Stejně to platí i pro číslo dokladu: pokud odpovídá
-víc fakturám, asistent se zeptá místo toho, aby hádal.
+**Asistent se nejdřív vždycky zeptá.** Ať chcete přijatou fakturu zaevidovat, schválit,
+označit za zaplacenou nebo smazat, první odpověď je jen náhled toho, co by se stalo — a
+nezmění se nic. Teprve když odpovíte, že souhlasíte, asistent změnu provede. Když souhlas
+nedáte, nestane se nic.
 
-**Mazání se vždy nejdřív zeptá.** Když napíšete „smaž přijatou fakturu 267708922",
-asistent nejdřív ukáže, které faktury se to týká (číslo, dodavatel, částka, stav) a nic
-nesmaže. Teprve když odpovíte, že souhlasíte, ji smaže. Když souhlas nedáte, nestane se nic.
+Náhled vám ukáže konkrétní údaje, ne jen „provedu to":
+
+| Napíšete | Asistent ukáže |
+|----------|----------------|
+| „Zaeviduj přijatou fakturu od Alzy, 2 tonery po 1500" | dodavatele, počet položek, částku bez DPH a splatnost |
+| „Schval přijatou fakturu 267708922" | o kterou fakturu jde (číslo, dodavatel, částka, stav) |
+| „Přijatou fakturu 267708922 jsme zaplatili 15.4." | tutéž fakturu **a datum úhrady** |
+| „Smaž přijatou fakturu 267708922" | fakturu, která by zmizela |
+
+U evidence nové faktury musí dodavatel odpovídat právě jednomu vašemu klientovi; když jich
+jméno sedne víc, asistent je vypíše a zeptá se, který myslíte. Stejně to platí i pro číslo
+dokladu: pokud odpovídá víc fakturám, asistent se zeptá místo toho, aby hádal.
 
 Pravidla aplikace platí i pro asistenta: schválit jde jen fakturu ve stavu *Přijatá*,
 zaplatit jen *Schválenou* a smazat jen *Přijatou* nebo *Zamítnutou*. Když to nesedí,

@@ -946,9 +946,9 @@ Sloupec „Klíčové parametry" je jen orientační — závazné je schéma v 
 | `get_received_invoice` | `GetReceivedInvoiceTool` | ReceivedInvoice | Read (detail) | `id` nebo `document_number`; vrátí položky, DPH, celkové částky, cross-check |
 | `list_received_invoices` | `ListReceivedInvoicesTool` | ReceivedInvoice | Read (paged list) | `status`, `supplier_name`, `issue_date_from/to`, `min/max_amount`, `currency`, `overdue` |
 | `search_received_invoices` | `SearchReceivedInvoicesTool` | ReceivedInvoice | Search | `query` (fulltext: číslo dokladu, dodavatel, VS, částka), `limit` |
-| `create_received_invoice` | `CreateReceivedInvoiceTool` | ReceivedInvoice | Create | `supplier_name`, `items` (JSON), `document_number`, `issue_date`, `due_date`, `taxable_supply_date`, `variable_symbol`, `currency`, `notes` |
-| `approve_received_invoice` | `ApproveReceivedInvoiceTool` | ReceivedInvoice | **Write** (Received → Approved) | `id` nebo `document_number` |
-| `mark_received_invoice_paid` | `MarkReceivedInvoicePaidTool` | ReceivedInvoice | **Write** (Approved → Paid) | `id` nebo `document_number`, `paid_at` |
+| `create_received_invoice` | `CreateReceivedInvoiceTool` | ReceivedInvoice | **Create, za `confirm`** | `supplier_name`, `items` (JSON), `document_number`, `issue_date`, `due_date`, `taxable_supply_date`, `variable_symbol`, `currency`, `notes` |
+| `approve_received_invoice` | `ApproveReceivedInvoiceTool` | ReceivedInvoice | **Write, za `confirm`** (Received → Approved) | `id` nebo `document_number` |
+| `mark_received_invoice_paid` | `MarkReceivedInvoicePaidTool` | ReceivedInvoice | **Write, za `confirm`** (Approved → Paid) | `id` nebo `document_number`, `paid_at` |
 | `delete_received_invoice` | `DeleteReceivedInvoiceTool` | ReceivedInvoice | **Destruktivní, za `confirm`** | `id` nebo `document_number` |
 | `attach_file` | `AttachFileTool` | Invoice / ReceivedInvoice / Client | Write (upload) | `entity_name`, `record_id`, `file_name`, `file_content_base64` (Base64 bytes), `content_type`, `description` |
 | `list_attachments` | `ListAttachmentsTool` | Invoice / ReceivedInvoice / Client | Read (list) | `entity_name`, `record_id`; vrátí jméno, velikost, datum, popis pro každý soubor |
@@ -978,19 +978,28 @@ splatnosti, což by pohledávky nafouklo. `InvoiceFilterDto` umí jen jeden stat
 takže „Completed NEBO PartiallyPaid" se musí zeptat dvěma voláními (parametr `status`
 to umožňuje).
 
-##### Přijaté faktury — zápisy (#218): co je za `confirm` a co ne
+##### Přijaté faktury — zápisy (#218)
 
-Čtyři zápisové tooly nad `IReceivedInvoiceService`. **Za potvrzovacím gate visí jediný z nich:**
+Čtyři zápisové tooly nad `IReceivedInvoiceService`. Podle pravidla 7 výše je **všechny čtyři**
+`IConfirmableChatTool` — první volání jen ukáže náhled, teprve druhé s `confirm: true` zapíše.
+Čtecí trojice (`get_` / `list_` / `search_received_invoices`) gate nemá.
 
-| Tool | Gate | Proč |
-|------|------|------|
-| `create_received_invoice` | ne | Přidává záznam. Když se model splete, jde smazat — a existující `create_invoice` / `import_invoice` gate taky nemají, takže by chat byl nekonzistentní sám se sebou. |
-| `approve_received_invoice` | ne | Posun o jeden krok po cestě, kterou hlídá servis (jen `Received`), a asistent ho ve stejném tahu ohlásí. |
-| `mark_received_invoice_paid` | ne | Totéž (jen `Approved`). |
-| `delete_received_invoice` | **ano** (`IConfirmableChatTool`) | Jediná operace, kde „model si to špatně vyložil" stojí uživatele data. Zrcadlí MCP `DeleteReceivedInvoice`; default otázky 2 ze story #149. |
+Co má náhled říct, aby uživatel schvaloval konkrétní věc a ne slovo:
 
-Gate **není** autorizační hranice (viz §4.7 výše) — mazání přijaté faktury uživatel smí i z UI,
-gate jen brání tomu, aby to asistent udělal potichu.
+| Tool | Náhled |
+|------|--------|
+| `create_received_invoice` | dodavatel, počet položek, částka **bez DPH**, splatnost |
+| `approve_received_invoice` | popis faktury + cílový stav `Approved` |
+| `mark_received_invoice_paid` | popis faktury + **datum úhrady** (dopadá do období DPH) |
+| `delete_received_invoice` | popis faktury, která zmizí |
+
+Náhled u `create` je záměrně bez DPH: součet položek je přesný, kdežto celkovou částku s DPH
+zaokrouhluje `ReceivedInvoiceService` a náhled by mohl ukázat číslo, kterému uložená faktura
+odporuje. Sdílená příprava DTO (`PrepareAsync`) je jedna metoda pro náhled i zápis, aby náhled
+nemohl popisovat něco jiného, než co se pak uloží.
+
+Gate **není** autorizační hranice (viz §4.7 výše) — všechny čtyři operace uživatel smí i z UI,
+gate jen brání tomu, aby je asistent udělal potichu.
 
 Společná je resoluce „která faktura?" (`ReceivedInvoiceLookup`): `id` má přednost před
 `document_number`, číslo dokladu se hledá jako substring. **Víc než jedna shoda = chyba**, ne
@@ -1070,7 +1079,7 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | `CreateReceivedInvoice` | Create | `create_received_invoice` (diktovaná data) · `import_invoice` (z dokladu) | ✅ | |
 | `ApproveReceivedInvoice` | **Write** | `approve_received_invoice` | ✅ | |
 | `MarkReceivedInvoicePaid` | **Write** | `mark_received_invoice_paid` (+ `paid_at`, MCP neumí) | ✅ | |
-| `DeleteReceivedInvoice` | **Destructive** | `delete_received_invoice` (za `confirm`) | ✅ | |
+| `DeleteReceivedInvoice` | **Destructive** | `delete_received_invoice` | ✅ | |
 | **Reporting** (`ReportingTools`, 6) |
 | `GetDashboard` | Read | `get_dashboard` | ✅ | |
 | `GetOverdueInvoices` | Read | `list_invoices` + `overdue=true` | ✅ | |

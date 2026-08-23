@@ -285,7 +285,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IChatTool, SearchReceivedInvoicesTool>();
 
         // …and act on them: record a new one and walk it through its lifecycle.
-        // Only the delete is confirmable (IConfirmableChatTool) — see DEVGUIDE §4.7.
+        // All four write, so all four are IConfirmableChatTool — see DEVGUIDE §4.7 rule 7.
         services.AddScoped<IChatTool, CreateReceivedInvoiceTool>();
         services.AddScoped<IChatTool, ApproveReceivedInvoiceTool>();
         services.AddScoped<IChatTool, MarkReceivedInvoicePaidTool>();

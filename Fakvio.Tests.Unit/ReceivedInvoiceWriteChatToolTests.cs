@@ -287,19 +287,31 @@ public class ReceivedInvoiceWriteChatToolTests
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    //  delete_received_invoice — the confirmable one
+    //  The confirm gate — all four writes are behind it
     // ═══════════════════════════════════════════════════════════════════════
 
+    /// <summary>
+    /// DEVGUIDE §4.7 rule 7: every NEW write tool is <see cref="IConfirmableChatTool"/>.
+    /// Pinned as one test over all seven received-invoice tools, because the value is the
+    /// contrast — writes ask, reads do not. A future tool that quietly drops the gate
+    /// (or a read tool that grows one) fails here.
+    /// </summary>
     [Fact]
-    public void Delete_IsTheOnlyConfirmableToolOfTheFour()
+    public void AllFourWriteTools_AreConfirmable_AndTheReadOnesAreNot()
     {
         var service = Substitute.For<IReceivedInvoiceService>();
 
+        BuildCreateTool(service).ShouldBeAssignableTo<IConfirmableChatTool>();
+        BuildApproveTool(service).ShouldBeAssignableTo<IConfirmableChatTool>();
+        BuildMarkPaidTool(service).ShouldBeAssignableTo<IConfirmableChatTool>();
         BuildDeleteTool(service).ShouldBeAssignableTo<IConfirmableChatTool>();
 
-        // The other three are deliberately plain writes (see DEVGUIDE §4.7 / issue #218).
-        BuildApproveTool(service).ShouldNotBeAssignableTo<IConfirmableChatTool>();
-        BuildMarkPaidTool(service).ShouldNotBeAssignableTo<IConfirmableChatTool>();
+        new GetReceivedInvoiceTool(service, Substitute.For<ILogger<GetReceivedInvoiceTool>>())
+            .ShouldNotBeAssignableTo<IConfirmableChatTool>();
+        new ListReceivedInvoicesTool(service, Substitute.For<IClientService>(), Substitute.For<ILogger<ListReceivedInvoicesTool>>())
+            .ShouldNotBeAssignableTo<IConfirmableChatTool>();
+        new SearchReceivedInvoicesTool(service, Substitute.For<ILogger<SearchReceivedInvoicesTool>>())
+            .ShouldNotBeAssignableTo<IConfirmableChatTool>();
     }
 
     [Fact]
@@ -423,31 +435,132 @@ public class ReceivedInvoiceWriteChatToolTests
         await service.Received(1).DeleteAsync(7, Arg.Any<CancellationToken>());
     }
 
+    // ─── approve / mark-paid / create through the same executor ───────────
+
     /// <summary>
-    /// The three non-confirmable writes go straight through the same executor — pinning the
-    /// decision that only the destructive one is gated (issue #218 acceptance criteria).
+    /// Approving is irreversible — there is no un-approve, and an approved invoice can no longer
+    /// be deleted either. So the first call must only describe the change.
     /// </summary>
     [Fact]
-    public async Task Approve_CalledThroughTheExecutor_RunsWithoutAskingForConfirmation()
+    public async Task Approve_CalledThroughTheExecutorWithoutConfirm_PreviewsAndApprovesNothing()
+    {
+        var service = Substitute.For<IReceivedInvoiceService>();
+        service.GetByIdAsync(7, Arg.Any<CancellationToken>()).Returns(BuildInvoice());
+
+        var result = await ExecuteThroughExecutorAsync(
+            BuildApproveTool(service), "approve_received_invoice", new() { ["id"] = "7" });
+
+        result.RequiresConfirmation.ShouldBeTrue();
+        result.OutputText.ShouldContain("FP-2026-0042");
+        result.OutputText.ShouldContain("NOTHING HAS BEEN CHANGED YET");
+        await service.DidNotReceive().ApproveAsync(Arg.Any<long>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Approve_CalledThroughTheExecutorWithConfirm_ActuallyApproves()
     {
         var service = Substitute.For<IReceivedInvoiceService>();
         service.GetByIdAsync(7, Arg.Any<CancellationToken>()).Returns(BuildInvoice());
         service.ApproveAsync(7, Arg.Any<CancellationToken>())
             .Returns(BuildInvoice(status: EReceivedInvoiceStatus.Approved));
 
-        var executor = new ChatToolExecutor(
-            [BuildApproveTool(service)],
-            Substitute.For<ILogger<ChatToolExecutor>>());
-
-        var result = await executor.ExecuteToolAsync(new ParsedToolCall
-        {
-            Action = "approve_received_invoice",
-            Parameters = new Dictionary<string, string> { ["id"] = "7" }
-        });
+        var result = await ExecuteThroughExecutorAsync(
+            BuildApproveTool(service), "approve_received_invoice",
+            new() { ["id"] = "7", ["confirm"] = "true" });
 
         result.IsSuccess.ShouldBeTrue();
         result.RequiresConfirmation.ShouldBeFalse();
         await service.Received(1).ApproveAsync(7, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task MarkPaid_CalledThroughTheExecutorWithoutConfirm_PreviewsAndPaysNothing()
+    {
+        var service = Substitute.For<IReceivedInvoiceService>();
+        service.GetByIdAsync(7, Arg.Any<CancellationToken>())
+            .Returns(BuildInvoice(status: EReceivedInvoiceStatus.Approved));
+
+        var result = await ExecuteThroughExecutorAsync(
+            BuildMarkPaidTool(service), "mark_received_invoice_paid",
+            new() { ["id"] = "7", ["paid_at"] = "2026-04-15" });
+
+        result.RequiresConfirmation.ShouldBeTrue();
+        // The preview has to name the date, otherwise the user approves a day they never saw.
+        result.OutputText.ShouldContain("2026-04-15");
+        await service.DidNotReceive().MarkAsPaidAsync(
+            Arg.Any<long>(), Arg.Any<DateTime?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task MarkPaid_CalledThroughTheExecutorWithConfirm_ActuallyPays()
+    {
+        var service = Substitute.For<IReceivedInvoiceService>();
+        service.GetByIdAsync(7, Arg.Any<CancellationToken>())
+            .Returns(BuildInvoice(status: EReceivedInvoiceStatus.Approved));
+        service.MarkAsPaidAsync(7, Arg.Any<DateTime?>(), Arg.Any<CancellationToken>())
+            .Returns(BuildInvoice(status: EReceivedInvoiceStatus.Paid));
+
+        var result = await ExecuteThroughExecutorAsync(
+            BuildMarkPaidTool(service), "mark_received_invoice_paid",
+            new() { ["id"] = "7", ["confirm"] = "true" });
+
+        result.IsSuccess.ShouldBeTrue();
+        result.RequiresConfirmation.ShouldBeFalse();
+        await service.Received(1).MarkAsPaidAsync(7, Arg.Any<DateTime?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Create_CalledThroughTheExecutorWithoutConfirm_PreviewsAndCreatesNothing()
+    {
+        var service = Substitute.For<IReceivedInvoiceService>();
+
+        var result = await ExecuteThroughExecutorAsync(
+            BuildCreateTool(service), "create_received_invoice",
+            new() { ["supplier_name"] = "Alza", ["items"] = OneItem });
+
+        result.RequiresConfirmation.ShouldBeTrue();
+        result.OutputText.ShouldContain("Alza.cz a.s.");
+        // Item count and amount, so the user approves a number and not just a supplier name.
+        result.OutputText.ShouldContain("1 item");
+        // 2 × 1500 excluding VAT. Formatted through the same "N2" the tool uses, so the
+        // assertion does not depend on the culture the test host happens to run under.
+        result.OutputText.ShouldContain(3000m.ToString("N2"));
+        // A preview must not move the browser — the record does not exist yet.
+        result.UiAction.ShouldBeNull();
+        await service.DidNotReceive().CreateAsync(
+            Arg.Any<CreateReceivedInvoiceDto>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Create_CalledThroughTheExecutorWithConfirm_ActuallyCreates()
+    {
+        var service = Substitute.For<IReceivedInvoiceService>();
+        service.CreateAsync(Arg.Any<CreateReceivedInvoiceDto>(), Arg.Any<CancellationToken>())
+            .Returns(BuildInvoice(id: 7));
+
+        var result = await ExecuteThroughExecutorAsync(
+            BuildCreateTool(service), "create_received_invoice",
+            new() { ["supplier_name"] = "Alza", ["items"] = OneItem, ["confirm"] = "true" });
+
+        result.IsSuccess.ShouldBeTrue();
+        result.RequiresConfirmation.ShouldBeFalse();
+        result.UiAction!.Url.ShouldBe("/received-invoices/7");
+        await service.Received(1).CreateAsync(
+            Arg.Any<CreateReceivedInvoiceDto>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Runs one tool through the production <see cref="ChatToolExecutor"/> — the only way to prove
+    /// the gate actually applies to THIS tool, since the gate itself lives in the executor (#212).
+    /// </summary>
+    private static Task<ChatToolResult> ExecuteThroughExecutorAsync(
+        IChatTool tool,
+        string action,
+        Dictionary<string, string> parameters)
+    {
+        var executor = new ChatToolExecutor([tool], Substitute.For<ILogger<ChatToolExecutor>>());
+
+        return executor.ExecuteToolAsync(new ParsedToolCall { Action = action, Parameters = parameters });
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -639,6 +752,9 @@ public class ReceivedInvoiceWriteChatToolTests
     [InlineData("[]", "at least one")]
     [InlineData("""[{"quantity": 1, "unit_price": 100}]""", "description")]
     [InlineData("""[{"description": "Toner"}]""", "unit_price")]
+    // A JSON array of nulls passes the executor's "is it an array?" check, so the tool has to
+    // answer it itself — like CreateInvoiceTool does — instead of dereferencing a null item.
+    [InlineData("[null]", "Item #1")]
     public async Task Create_WithUnusableItems_RefusesAndCreatesNothing(string itemsJson, string expectedHint)
     {
         var service = Substitute.For<IReceivedInvoiceService>();

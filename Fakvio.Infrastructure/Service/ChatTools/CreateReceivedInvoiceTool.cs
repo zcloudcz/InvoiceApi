@@ -24,11 +24,12 @@ namespace Fakvio.Infrastructure.Service.ChatTools;
 ///
 /// So: a document in hand goes through import, a spoken expense through this tool.
 ///
-/// Junior note: this tool writes, but it is not behind the confirm gate — creating a record is
-/// additive and reversible (it can be deleted), and the existing <c>create_invoice</c> and
-/// <c>import_invoice</c> are not gated either. Only the destructive delete is (DEVGUIDE §4.7).
+/// It writes, so it goes through the confirm gate (<see cref="IConfirmableChatTool"/>,
+/// DEVGUIDE §4.7 rule 7): the first call only describes the expense that would be recorded.
+/// Dictated data is exactly where a model mishears a supplier or a price, so the preview shows
+/// the numbers, not just the intent.
 /// </summary>
-public class CreateReceivedInvoiceTool : IChatTool
+public class CreateReceivedInvoiceTool : IConfirmableChatTool
 {
     private readonly IReceivedInvoiceService _receivedInvoiceService;
     private readonly IClientService _clientService;
@@ -124,68 +125,47 @@ public class CreateReceivedInvoiceTool : IChatTool
     public IReadOnlyList<ChatToolParameter> Parameters => Schema;
 
     /// <summary>
-    /// Resolves supplier, currency, VAT rate and items, then hands a complete DTO to the service.
-    /// Everything that can be wrong is checked BEFORE the write, so a rejected call never leaves
-    /// a half-recorded expense behind.
+    /// Describes the expense that would be recorded: supplier, item count and the total the user
+    /// can check against the document in front of them.
+    ///
+    /// Junior note on the amount: it is the total EXCLUDING VAT, which is simply the sum of the
+    /// line items. The VAT total and its rounding are <c>ReceivedInvoiceService</c>'s job, and a
+    /// preview that recomputed them here could show a number the saved invoice then contradicts.
+    /// </summary>
+    public async Task<ChatToolResult> BuildPreviewAsync(
+        Dictionary<string, string> parameters,
+        CancellationToken ct = default)
+    {
+        var prepared = await PrepareAsync(parameters, ct);
+        if (prepared.Error is not null)
+            return prepared.Error;
+
+        var dto = prepared.Dto!;
+        var total = dto.Items.Sum(item => item.Quantity * item.UnitPrice);
+        var itemWord = dto.Items.Count == 1 ? "item" : "items";
+
+        return ChatToolResult.Success(
+            $"This would record a received invoice from {prepared.SupplierName}" +
+            $"{(dto.DocumentNumber is null ? string.Empty : $" ({dto.DocumentNumber})")}: " +
+            $"{dto.Items.Count} {itemWord}, {total:N2} {prepared.CurrencyCode} excluding VAT, " +
+            $"due {ChatToolDates.Format(dto.DueDate)}.");
+    }
+
+    /// <summary>
+    /// Records the expense. Everything that can be wrong is checked BEFORE the write, so a
+    /// rejected call never leaves a half-recorded expense behind.
     /// </summary>
     public async Task<ChatToolResult> ExecuteAsync(
         Dictionary<string, string> parameters,
         CancellationToken ct = default)
     {
-        // Required parameters are guaranteed present (and 'items' is guaranteed to be a JSON
-        // array) by the executor's central validation — see IChatTool.ExecuteAsync.
-        var supplierName = parameters["supplier_name"].Trim();
-        var itemsJson = parameters["items"];
+        // Prepared again, deliberately: preview and execution are two independent calls with the
+        // user's turns in between (see IConfirmableChatTool), so nothing from the preview is reused.
+        var prepared = await PrepareAsync(parameters, ct);
+        if (prepared.Error is not null)
+            return prepared.Error;
 
-        _logger.LogInformation(
-            "CreateReceivedInvoiceTool executing: supplier_name={Supplier}, items={Items}",
-            supplierName, itemsJson);
-
-        // ── Dates: read them first, they are the cheapest thing to reject ──
-        if (!ChatToolDates.TryParseOptional(parameters, "issue_date", out var issueDate, out var dateError) ||
-            !ChatToolDates.TryParseOptional(parameters, "due_date", out var dueDate, out dateError) ||
-            !ChatToolDates.TryParseOptional(parameters, "taxable_supply_date", out var taxableSupplyDate, out dateError))
-        {
-            // A date the tool cannot read must never be dropped silently: the expense would land
-            // in the wrong VAT period and nothing in the answer would say so.
-            return ChatToolResult.Failure(dateError!);
-        }
-
-        // ── Supplier ───────────────────────────────────────────────────────
-        var supplier = await ResolveSupplierAsync(supplierName, ct);
-        if (supplier.Error is not null)
-            return supplier.Error;
-
-        // ── Currency ───────────────────────────────────────────────────────
-        var currencyCode = GetOptional(parameters, "currency")?.ToUpperInvariant() ?? DefaultCurrencyCode;
-        var currency = await _currencyService.GetCurrencyByCodeAsync(currencyCode, ct);
-        if (currency is null)
-        {
-            return ChatToolResult.Failure(
-                $"Currency '{currencyCode}' not found or not active. Check the available currencies in Settings.");
-        }
-
-        // ── Items ──────────────────────────────────────────────────────────
-        var defaultVatRate = await _vatRateService.GetDefaultStandardRateAsync(ct);
-        var items = ParseItems(itemsJson, defaultVatRate);
-        if (items.Error is not null)
-            return items.Error;
-
-        // ── Write ──────────────────────────────────────────────────────────
-        var dto = new CreateReceivedInvoiceDto
-        {
-            SupplierId = supplier.Client!.Id,
-            CurrencyId = currency.Id,
-            DocumentNumber = GetOptional(parameters, "document_number"),
-            IssueDate = issueDate,
-            DueDate = dueDate,
-            // Left to the service when the user did not say: it falls back to the issue date,
-            // which is the right default for DUZP far more often than "today" would be.
-            TaxableSupplyDate = taxableSupplyDate,
-            VariableSymbol = GetOptional(parameters, "variable_symbol"),
-            Notes = GetOptional(parameters, "notes"),
-            Items = items.Items!
-        };
+        var dto = prepared.Dto!;
 
         try
         {
@@ -204,6 +184,78 @@ public class CreateReceivedInvoiceTool : IChatTool
             _logger.LogInformation("CreateReceivedInvoiceTool: refused by business rule — {Reason}", ex.Message);
             return ChatToolResult.Failure(ex.Message);
         }
+    }
+
+    /// <summary>
+    /// The reading half both calls share: resolves supplier, currency, VAT rate and items into a
+    /// ready-to-save DTO. Kept in one place so the preview can never describe something other
+    /// than what the write would do.
+    /// </summary>
+    private async Task<Preparation> PrepareAsync(
+        Dictionary<string, string> parameters,
+        CancellationToken ct)
+    {
+        // Required parameters are guaranteed present (and 'items' is guaranteed to be a JSON
+        // array) by the executor's central validation — see IChatTool.ExecuteAsync.
+        var supplierName = parameters["supplier_name"].Trim();
+        var itemsJson = parameters["items"];
+
+        _logger.LogInformation(
+            "CreateReceivedInvoiceTool preparing: supplier_name={Supplier}, items={Items}",
+            supplierName, itemsJson);
+
+        // ── Dates: read them first, they are the cheapest thing to reject ──
+        if (!ChatToolDates.TryParseOptional(parameters, "issue_date", out var issueDate, out var dateError) ||
+            !ChatToolDates.TryParseOptional(parameters, "due_date", out var dueDate, out dateError) ||
+            !ChatToolDates.TryParseOptional(parameters, "taxable_supply_date", out var taxableSupplyDate, out dateError))
+        {
+            // A date the tool cannot read must never be dropped silently: the expense would land
+            // in the wrong VAT period and nothing in the answer would say so.
+            return Preparation.Failed(dateError!);
+        }
+
+        // ── Supplier ───────────────────────────────────────────────────────
+        var supplier = await ResolveSupplierAsync(supplierName, ct);
+        if (supplier.Error is not null)
+            return new Preparation { Error = supplier.Error };
+
+        // ── Currency ───────────────────────────────────────────────────────
+        var currencyCode = GetOptional(parameters, "currency")?.ToUpperInvariant() ?? DefaultCurrencyCode;
+        var currency = await _currencyService.GetCurrencyByCodeAsync(currencyCode, ct);
+        if (currency is null)
+        {
+            return Preparation.Failed(
+                $"Currency '{currencyCode}' not found or not active. Check the available currencies in Settings.");
+        }
+
+        // ── Items ──────────────────────────────────────────────────────────
+        var defaultVatRate = await _vatRateService.GetDefaultStandardRateAsync(ct);
+        var items = ParseItems(itemsJson, defaultVatRate);
+        if (items.Error is not null)
+            return new Preparation { Error = items.Error };
+
+        // ── The complete, ready-to-save expense ────────────────────────────
+        var dto = new CreateReceivedInvoiceDto
+        {
+            SupplierId = supplier.Client!.Id,
+            CurrencyId = currency.Id,
+            DocumentNumber = GetOptional(parameters, "document_number"),
+            IssueDate = issueDate,
+            DueDate = dueDate,
+            // Left to the service when the user did not say: it falls back to the issue date,
+            // which is the right default for DUZP far more often than "today" would be.
+            TaxableSupplyDate = taxableSupplyDate,
+            VariableSymbol = GetOptional(parameters, "variable_symbol"),
+            Notes = GetOptional(parameters, "notes"),
+            Items = items.Items!
+        };
+
+        return new Preparation
+        {
+            Dto = dto,
+            SupplierName = supplier.Client!.CompanyName,
+            CurrencyCode = currencyCode
+        };
     }
 
     // ─── Private helpers ─────────────────────────────────────────────────
@@ -284,6 +336,12 @@ public class CreateReceivedInvoiceTool : IChatTool
             var raw = rawItems[index];
             var position = index + 1;
 
+            // "[null]" is a valid JSON array, so the executor's array check lets it through and
+            // the deserializer happily produces a list with a null element. Answered here the way
+            // CreateInvoiceTool answers it, instead of letting the model read an NRE.
+            if (raw is null)
+                return ItemParseResult.Failed($"Item #{position} is empty.");
+
             if (string.IsNullOrWhiteSpace(raw.Description))
                 return ItemParseResult.Failed($"Item #{position} is missing 'description'.");
 
@@ -345,6 +403,23 @@ public class CreateReceivedInvoiceTool : IChatTool
 
         public static SupplierResolution Failed(string message)
             => new() { Error = ChatToolResult.Failure(message) };
+    }
+
+    /// <summary>
+    /// Everything both the preview and the write need: the DTO, plus the two resolved names the
+    /// preview wants to show. Exactly one of <see cref="Dto"/> and <see cref="Error"/> is set.
+    /// </summary>
+    private sealed record Preparation
+    {
+        public CreateReceivedInvoiceDto? Dto { get; init; }
+
+        public string? SupplierName { get; init; }
+
+        public string? CurrencyCode { get; init; }
+
+        public ChatToolResult? Error { get; init; }
+
+        public static Preparation Failed(string message) => new() { Error = ChatToolResult.Failure(message) };
     }
 
     private sealed record ItemParseResult
