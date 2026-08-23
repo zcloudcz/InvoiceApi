@@ -239,6 +239,25 @@ public class GeminiNativeToolCallingTests
         healthy.SupportsNativeTools.ShouldBeTrue();
     }
 
+    /// <summary>
+    /// Gemini reports an invalid API key as <b>400</b>, not 401 — the 401 row of the theory
+    /// above therefore covers a status Gemini never actually sends. This is the real payload,
+    /// and it must not latch: the text-based tool path uses the very same key, so the latch
+    /// would buy nothing and would outlive the fixed key.
+    /// </summary>
+    [Fact]
+    public async Task GeminiProvider_WhenAnInvalidKeyIsReportedAs400_DoesNotLatchNativeToolsOff()
+    {
+        var (provider, _) = CreateProvider(Refusal(
+            HttpStatusCode.BadRequest,
+            """{"error":{"code":400,"message":"API key not valid. Please pass a valid API key.","status":"INVALID_ARGUMENT"}}"""));
+
+        var result = await provider.GetCompletionWithToolsAsync(Conversation(), null, Tools());
+
+        result.ShouldBeNull();
+        provider.SupportsNativeTools.ShouldBeTrue();
+    }
+
     [Fact]
     public async Task GeminiProvider_OnTransportFailure_FallsBackWithoutThrowing()
     {
@@ -271,6 +290,84 @@ public class GeminiNativeToolCallingTests
         handler.LastBody.ShouldContain("functionDeclarations");
     }
 
+    // ─── What the operator sees in the log ────────────────────────────────
+
+    /// <summary>
+    /// ADMINGUIDE §5 tells the operator the fallback is recognisable in the log by the
+    /// warning "rejected native tool calling". That promise is only worth anything if the
+    /// wording, the model and the status are really there — pin all three.
+    /// </summary>
+    [Fact]
+    public async Task GeminiProvider_OnLatch_LogsTheWarningTheAdminGuidePromises()
+    {
+        var logger = new RecordingLogger<GeminiProvider>();
+        var provider = ProviderWith(logger, Refusal(HttpStatusCode.NotFound, ModelNotFoundBody));
+
+        await provider.GetCompletionWithToolsAsync(Conversation(), null, Tools());
+
+        var warning = logger.Warnings.ShouldHaveSingleItem();
+        warning.Message.ShouldContain("rejected native tool calling");
+        warning.Message.ShouldContain("gemini-2.0-flash");
+        warning.Message.ShouldContain("404");
+    }
+
+    /// <summary>
+    /// The other half of the same promise: a fallback that lasts one message must NOT carry
+    /// the latch wording, or the operator would read a permanent downgrade into a rate limit.
+    /// </summary>
+    [Fact]
+    public async Task GeminiProvider_OnPerMessageFallback_LogsAWarningWithoutTheLatchWording()
+    {
+        var logger = new RecordingLogger<GeminiProvider>();
+        var provider = ProviderWith(logger, Refusal(HttpStatusCode.TooManyRequests, "{}"));
+
+        await provider.GetCompletionWithToolsAsync(Conversation(), null, Tools());
+
+        var warning = logger.Warnings.ShouldHaveSingleItem();
+        warning.Message.ShouldNotContain("rejected native tool calling");
+        warning.Message.ShouldContain("falling back for this message");
+    }
+
+    /// <summary>
+    /// Characterisation, not endorsement: on a latch Gemini logs the status and drops the
+    /// response body. The operator learns THAT the switch happened and on which status, never
+    /// WHICH complaint triggered it — unlike the OpenAI path, which attaches the SDK exception
+    /// (see <c>OpenAiNativeToolCallingTests</c>). Change this test only together with a
+    /// deliberate decision about how much of a provider error body may reach the log.
+    /// </summary>
+    [Fact]
+    public async Task GeminiProvider_OnLatch_DoesNotLogTheProviderErrorBody()
+    {
+        var logger = new RecordingLogger<GeminiProvider>();
+        var provider = ProviderWith(logger, Refusal(HttpStatusCode.BadRequest, FunctionCallingDisabledBody));
+
+        await provider.GetCompletionWithToolsAsync(Conversation(), null, Tools());
+
+        logger.Warnings.ShouldHaveSingleItem()
+            .FullText.ShouldNotContain("Function calling is not enabled");
+    }
+
+    // ─── Assumption behind latching on 404 ────────────────────────────────
+
+    /// <summary>
+    /// Latching on a bare 404 is only defensible because the Gemini endpoint is a literal in
+    /// <see cref="GeminiApi"/>: a 404 can therefore mean "no such model", never "the operator
+    /// mistyped a base URL". This test exists to fail the day the host becomes configurable —
+    /// at that point <c>NativeToolRefusal</c>'s 404 rule has to be revisited, not this test.
+    /// </summary>
+    [Fact]
+    public async Task GeminiProvider_AlwaysCallsTheHardcodedGoogleEndpoint()
+    {
+        var (provider, handler) = CreateProvider(Ok(FunctionCallResponse("""{"client_name":"ACME"}""")));
+
+        await provider.GetCompletionWithToolsAsync(Conversation(), null, Tools());
+
+        // The query string carries the API key, so only the path is asserted.
+        handler.LastUri.ShouldNotBeNull();
+        handler.LastUri.GetLeftPart(UriPartial.Path).ShouldBe(
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent");
+    }
+
     // ─── Helpers ──────────────────────────────────────────────────────────
 
     private static (GeminiProvider provider, CapturingHandler handler) CreateProvider(HttpResponseMessage response)
@@ -281,6 +378,19 @@ public class GeminiNativeToolCallingTests
 
         return (provider, handler);
     }
+
+    /// <summary>Same provider, but with a logger the test can read back.</summary>
+    private static GeminiProvider ProviderWith(RecordingLogger<GeminiProvider> logger, HttpResponseMessage response)
+        => new(new HttpClient(new CapturingHandler(response)), Settings(), logger);
+
+    private static HttpResponseMessage Refusal(HttpStatusCode status, string body) =>
+        new(status) { Content = new StringContent(body) };
+
+    private const string ModelNotFoundBody =
+        """{"error":{"message":"models/gemini-x is not found for API version v1beta"}}""";
+
+    private const string FunctionCallingDisabledBody =
+        """{"error":{"message":"Function calling is not enabled for models/gemini-1.0-pro"}}""";
 
     private static IOptions<AiSettings> Settings() => Options.Create(new AiSettings
     {
@@ -303,9 +413,12 @@ public class GeminiNativeToolCallingTests
     {
         public string LastBody { get; private set; } = "";
 
+        public Uri? LastUri { get; private set; }
+
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
         {
+            LastUri = request.RequestUri;
             LastBody = request.Content is null
                 ? ""
                 : await request.Content.ReadAsStringAsync(cancellationToken);

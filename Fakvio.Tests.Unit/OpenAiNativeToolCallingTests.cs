@@ -239,6 +239,87 @@ public class OpenAiNativeToolCallingTests
     }
 
     /// <summary>
+    /// New surface created by <c>AllowParallelToolCalls = false</c>: models that support tools
+    /// but reject that one parameter (the o1 reasoning family) answer 400 with the parameter
+    /// name in the message. "parallel_tool_calls" contains "tool", so the predicate reads it as
+    /// a definitive refusal and latches.
+    ///
+    /// Characterisation, and the latch is arguably right: the flag is sent on every native
+    /// call, so the 400 would repeat forever — retrying natively would just burn a round trip
+    /// per message. The cost is honest and worth writing down: a model that CAN call functions
+    /// is pushed onto the text protocol until the process restarts. Fixing that means not
+    /// sending the flag to such models, not widening the predicate.
+    /// </summary>
+    [Fact]
+    public async Task OpenAiProvider_WhenTheModelRejectsTheParallelToolCallsParameter_LatchesNativeToolsOff()
+    {
+        var (provider, _) = CreateProvider(Refusal(
+            HttpStatusCode.BadRequest,
+            """
+            {"error":{"message":"Unsupported parameter: 'parallel_tool_calls' is not supported with this model.",
+            "type":"invalid_request_error","param":"parallel_tool_calls","code":"unsupported_parameter"}}
+            """));
+
+        var result = await provider.GetCompletionWithToolsAsync(Conversation(), null, Tools());
+
+        result.ShouldBeNull();
+        provider.SupportsNativeTools.ShouldBeFalse();
+    }
+
+    // ─── What the operator sees in the log ────────────────────────────────
+
+    /// <summary>
+    /// ADMINGUIDE §5 promises the operator can spot the fallback in the log by the warning
+    /// "rejected native tool calling". Pin the wording and the status.
+    /// </summary>
+    [Fact]
+    public async Task OpenAiProvider_OnLatch_LogsTheWarningTheAdminGuidePromises()
+    {
+        var logger = new RecordingLogger<OpenAiProvider>();
+        var provider = ProviderWith(logger, Refusal(HttpStatusCode.NotFound, ModelNotFoundBody));
+
+        await provider.GetCompletionWithToolsAsync(Conversation(), null, Tools());
+
+        var warning = logger.Warnings.ShouldHaveSingleItem();
+        warning.Message.ShouldContain("rejected native tool calling");
+        warning.Message.ShouldContain("404");
+    }
+
+    /// <summary>
+    /// Unlike the Gemini path, OpenAI attaches the SDK exception — which repeats the service
+    /// error body — so the operator sees WHICH complaint caused the latch, not only that one
+    /// happened. Losing that attachment would quietly halve the diagnostic value of the line
+    /// the guide points at, hence the test.
+    /// </summary>
+    [Fact]
+    public async Task OpenAiProvider_OnLatch_KeepsTheProviderErrorBodyInTheLog()
+    {
+        var logger = new RecordingLogger<OpenAiProvider>();
+        var provider = ProviderWith(logger, Refusal(HttpStatusCode.NotFound, ModelNotFoundBody));
+
+        await provider.GetCompletionWithToolsAsync(Conversation(), null, Tools());
+
+        logger.Warnings.ShouldHaveSingleItem().FullText.ShouldContain("The model `gpt-9` does not exist");
+    }
+
+    /// <summary>
+    /// A fallback that lasts one message must not carry the latch wording, or the operator
+    /// would read a permanent downgrade into a rate limit.
+    /// </summary>
+    [Fact]
+    public async Task OpenAiProvider_OnPerMessageFallback_LogsAWarningWithoutTheLatchWording()
+    {
+        var logger = new RecordingLogger<OpenAiProvider>();
+        var provider = ProviderWith(logger, Refusal(HttpStatusCode.TooManyRequests, "{}"));
+
+        await provider.GetCompletionWithToolsAsync(Conversation(), null, Tools());
+
+        var warning = logger.Warnings.ShouldHaveSingleItem();
+        warning.Message.ShouldNotContain("rejected native tool calling");
+        warning.Message.ShouldContain("falling back for this message");
+    }
+
+    /// <summary>
     /// The per-company provider must behave identically — it is the path a tenant with its
     /// own OpenAI key takes, and it was the copy that historically lagged behind.
     /// </summary>
@@ -265,6 +346,16 @@ public class OpenAiNativeToolCallingTests
         var handler = new CapturingHandler(response);
         return (new OpenAiProvider(ChatClientOver(handler), NullLogger<OpenAiProvider>.Instance), handler);
     }
+
+    /// <summary>Same provider, but with a logger the test can read back.</summary>
+    private static OpenAiProvider ProviderWith(RecordingLogger<OpenAiProvider> logger, HttpResponseMessage response)
+        => new(ChatClientOver(new CapturingHandler(response)), logger);
+
+    private static HttpResponseMessage Refusal(HttpStatusCode status, string body) =>
+        new(status) { Content = new StringContent(body) };
+
+    private const string ModelNotFoundBody =
+        """{"error":{"message":"The model `gpt-9` does not exist","type":"invalid_request_error"}}""";
 
     /// <summary>
     /// Builds a real SDK ChatClient whose transport is the given stub handler.
