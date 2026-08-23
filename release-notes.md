@@ -58,6 +58,14 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Změny pro vývojáře
 
+- **#235** — Základ pro strojový přístup do API bez lidského uživatelského účtu
+  (SysAdmin nástroje, budoucí Remote MCP). Přibyl `ApiKey` (v master schématu — autentizace
+  ho musí najít dřív, než zná tenanta): pojmenovaný klíč se scope read/read+write a
+  volitelnou expirací, raw hodnota se vrátí jen jednou, DB drží pouze SHA-256 hash
+  (vědomá odchylka od BCrypt — klíč je 32 B z CSPRNG, adaptivní hash by jen zbytečně
+  zatížil CPU), výpis ukazuje jen prefix. Klíč lze soft-revokovat. CRUD dostupný v obou
+  hostech (API controller i ručně psaný Functions wrapper). Zatím jen správa klíčů —
+  přihlašování pomocí nich přidají navazující tasky. (PR #256, `b9b8066`)
 - **#229** — AI chat asistent uměl v aplikaci navigovat jen na 6 natvrdo napsaných
   stránek. Nyní zná všech 28 stránek dostupných běžnému uživateli i firemnímu
   administrátorovi (např. přehled DPH, upomínky, číselné řady, uživatelé) včetně
