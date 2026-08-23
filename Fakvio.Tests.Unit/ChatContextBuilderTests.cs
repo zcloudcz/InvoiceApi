@@ -1,4 +1,4 @@
-﻿using Fakvio.Application.Service;
+using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.Readiness;
 using Fakvio.Domain.Entities;
 using Fakvio.Domain.Enums;
