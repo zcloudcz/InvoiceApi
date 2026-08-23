@@ -117,11 +117,10 @@ public class FakvioFactory : WebApplicationFactory<Program>
         builder.UseSetting("ConnectionStrings:DefaultConnection", "Host=localhost;Port=5432;Database=fakvio;Username=fakvio;Password=fakvio_dev");
         builder.UseSetting("Database:AuthMode", "Password");
 
-        // The legacy flag must also be overridden to agree with the new key — DatabaseOptions.Resolve
-        // throws on a genuine mismatch between "Database:AuthMode" and "UseAzureAdAuthentication"
-        // (appsettings.json has it hardcoded to true for the Azure host), and there is no
-        // appsettings.Testing.json to override it for the "Testing" environment this factory uses.
-        builder.UseSetting("UseAzureAdAuthentication", "false");
+        // The legacy "UseAzureAdAuthentication" bool needs no override any more: #138 removed it
+        // from the committed appsettings files, so there is nothing left for this Password-mode
+        // override to disagree with. DatabaseOptions.Resolve still throws on a genuine mismatch,
+        // which would now only come from a stray environment variable on the build machine.
     }
 
     /// <summary>

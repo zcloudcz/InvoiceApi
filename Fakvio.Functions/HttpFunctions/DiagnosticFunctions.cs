@@ -2,21 +2,27 @@
 // DiagnosticFunctions — Health check and manual migration trigger for Azure.
 //
 // These endpoints help diagnose deployment issues:
-// - GET /api/diagnostic/health → checks DB connectivity and migration status
-// - POST /api/diagnostic/migrate → manually triggers database migrations
+// - GET /api/diagnostic/health → auth mode, DB connectivity and migration status [SysAdmin]
+// - POST /api/diagnostic/migrate → manually triggers database migrations [anonymous]
+// - GET /api/diagnostic/auth → dumps the JWT state as the worker sees it [anonymous]
 //
-// Both endpoints are anonymous (no auth required) so you can call them
-// directly from a browser or curl to debug Azure deployment issues.
-// IMPORTANT: Consider adding auth or removing these in production.
+// Health is a THIN WRAPPER over Fakvio.API DiagnosticController — same payload in both
+// hosts, written once (CLAUDE.md, "API + Functions duplication"). It follows the shape
+// the generator emits for every other controller, including the inlined [Authorize]
+// check, because Azure Functions does not run the MVC filter pipeline.
+//
+// Migrate and Auth have no controller counterpart and stay hand-written here.
+// WARNING: re-running Fakvio.Functions.Generator would emit its own DiagnosticFunctions
+// for DiagnosticController and overwrite this file — keep Migrate/Auth if that happens.
 // ============================================================================
 
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using Fakvio.API.Controller;
 using Fakvio.Application.Service;
+using Fakvio.Functions.Generated;
 using Fakvio.Infrastructure.Data;
-// PostgreSQL: Using Npgsql instead of Microsoft.Data.SqlClient for connection string parsing
-using Npgsql;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
@@ -36,96 +42,48 @@ public class DiagnosticFunctions
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly IConfiguration _configuration;
+    private readonly DiagnosticController _controller;
     private readonly ILogger<DiagnosticFunctions> _logger;
 
     public DiagnosticFunctions(
         IServiceProvider serviceProvider,
         IConfiguration configuration,
+        DiagnosticController controller,
         ILogger<DiagnosticFunctions> logger)
     {
         _serviceProvider = serviceProvider;
         _configuration = configuration;
+        _controller = controller;
         _logger = logger;
     }
 
     /// <summary>
-    /// Health check — tests database connectivity and reports migration status.
+    /// Health check — reports the resolved database auth mode plus master DB connectivity
+    /// and migration status. Thin wrapper: the payload is built by DiagnosticController so
+    /// both hosts answer identically.
     /// Call: GET https://your-function-app.azurewebsites.net/api/diagnostic/health
     /// </summary>
     [Function("Diagnostic_Health")]
     public async Task<IActionResult> Health(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/diagnostic/health")] HttpRequest req)
     {
-        var result = new Dictionary<string, object>();
+        // Wire up the controller's HttpContext so it can access User claims, Request, etc.
+        _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
 
-        // Check connection strings (masked)
-        // PostgreSQL: Changed from "MasterConnection" to "DefaultConnection" for PostgreSQL migration
-        var masterConn = _configuration.GetConnectionString("DefaultConnection");
-        var tenantConn = _configuration.GetConnectionString("TenantTemplateConnection");
-        result["masterConnectionConfigured"] = !string.IsNullOrEmpty(masterConn);
-        result["tenantTemplateConnectionConfigured"] = !string.IsNullOrEmpty(tenantConn);
+        // Authorization check: [Authorize(Roles = "SysAdmin")] on DiagnosticController.
+        // AuthorizationLevel.Anonymous above only disables the Functions host key — the JWT
+        // check has to be inlined here because the MVC filter pipeline does not run.
+        if (req.HttpContext.User.Identity?.IsAuthenticated != true)
+            return new UnauthorizedResult();
 
-        if (!string.IsNullOrEmpty(masterConn))
-        {
-            result["masterConnectionServer"] = MaskConnectionString(masterConn);
-        }
+        // Role check: user must be in one of [SysAdmin]
+        if (!req.HttpContext.User.IsInRole("SysAdmin"))
+            return new ForbidResult();
 
-        // Test Master DB connection
-        try
-        {
-            using var scope = _serviceProvider.CreateScope();
-            var masterDb = scope.ServiceProvider.GetRequiredService<MasterDbContext>();
+        var ct = req.HttpContext.RequestAborted;
 
-            // Test raw connection
-            var canConnect = await masterDb.Database.CanConnectAsync();
-            result["masterDbCanConnect"] = canConnect;
-
-            if (canConnect)
-            {
-                // Check pending migrations
-                var pending = await masterDb.Database.GetPendingMigrationsAsync();
-                var applied = await masterDb.Database.GetAppliedMigrationsAsync();
-                result["masterDbAppliedMigrations"] = applied.Count();
-                result["masterDbPendingMigrations"] = pending.Count();
-                result["masterDbPendingMigrationNames"] = pending.ToList();
-
-                // Check if key tables exist
-                try
-                {
-                    var userCount = await masterDb.User.CountAsync();
-                    result["masterDbUserCount"] = userCount;
-                }
-                catch (Exception ex)
-                {
-                    result["masterDbUserTableError"] = ex.Message;
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            result["masterDbError"] = ex.Message;
-            _logger.LogError(ex, "Health check: Master DB connection failed");
-        }
-
-        // Top-level flag: true only when we can actually connect to the database
-        // and there are no pending migrations. This is the single field to check
-        // in monitoring dashboards or Azure health probes.
-        var isConnected = result.TryGetValue("masterDbCanConnect", out var canConn) && canConn is true;
-        var hasPending = result.TryGetValue("masterDbPendingMigrations", out var pendingCount) && pendingCount is int p && p > 0;
-        result["databaseConnected"] = isConnected;
-        result["databaseReady"] = isConnected && !hasPending;
-
-        result["timestamp"] = DateTime.UtcNow;
-        result["environment"] = Environment.GetEnvironmentVariable("AZURE_FUNCTIONS_ENVIRONMENT") ?? "unknown";
-
-        // Return 503 Service Unavailable when database is not reachable,
-        // so Azure health probes and monitoring tools can detect the issue.
-        if (!isConnected)
-        {
-            return new ObjectResult(result) { StatusCode = 503 };
-        }
-
-        return new OkObjectResult(result);
+        // Call the controller action and normalize the response
+        return FunctionResultHelper.Normalize(await _controller.Health(ct));
     }
 
     /// <summary>
@@ -314,27 +272,4 @@ public class DiagnosticFunctions
         return new OkObjectResult(result);
     }
 
-    /// <summary>
-    /// Masks sensitive parts of a connection string for safe display.
-    /// Shows server/host and database name, hides password.
-    /// PostgreSQL: Uses NpgsqlConnectionStringBuilder instead of SqlConnectionStringBuilder.
-    /// Property mapping: DataSource → Host, InitialCatalog → Database, UserID → Username.
-    /// </summary>
-    private static string MaskConnectionString(string connectionString)
-    {
-        try
-        {
-            // PostgreSQL: NpgsqlConnectionStringBuilder parses PostgreSQL connection strings.
-            // Property names differ from SQL Server:
-            //   SQL Server DataSource    → PostgreSQL Host
-            //   SQL Server InitialCatalog → PostgreSQL Database
-            //   SQL Server UserID        → PostgreSQL Username
-            var builder = new NpgsqlConnectionStringBuilder(connectionString);
-            return $"Host={builder.Host}; Database={builder.Database}; Username={builder.Username}";
-        }
-        catch
-        {
-            return "(unable to parse)";
-        }
-    }
 }

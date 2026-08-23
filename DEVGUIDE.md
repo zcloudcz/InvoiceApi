@@ -1387,7 +1387,7 @@ a že jde dotázat `public` schéma.
 $env:FAKVIO_DB_SMOKE = "1"
 $env:ConnectionStrings__DefaultConnection = "Host=localhost;Port=5432;Database=fakvio;Username=fakvio;Password=fakvio_dev"
 $env:Database__AuthMode = "Password"
-$env:UseAzureAdAuthentication = "false"   # legacy klíč musí souhlasit, jinak Resolve hodí conflict
+# $env:UseAzureAdAuthentication = "false"  # jen když ti ho prostředí nastavuje — v appsettings už není (#138)
 dotnet test Fakvio.Tests.Unit --filter "FullyQualifiedName~DatabaseConnectivitySmokeTests"
 ```
 
@@ -1421,6 +1421,7 @@ dotnet test Fakvio.Tests.Unit --filter "FullyQualifiedName~DatabaseConnectivityS
 
 **Klíčové config sekce**:
 - `ConnectionStrings:DefaultConnection` — PostgreSQL.
+- `Database:AuthMode` — `Password` | `AzureEntraId`, viz §9.5.
 - `JwtSettings:*` — viz §2.2.
 - `OAuth:*` — viz §2.4.
 - `SmtpSettings:*` — fallback SMTP (per-company se bere z `CompanySystemSettings`).
@@ -1439,6 +1440,46 @@ dotnet test Fakvio.Tests.Unit --filter "FullyQualifiedName~DatabaseConnectivityS
 - DB connection: `ConnectionStrings:DefaultConnection` z Function App settings.
 - Managed Identity pro DB + Key Vault (pokud nasazeno).
 - Cold start: prvních ~3-5 sec request nemá tenant context cached → mírně pomalejší.
+
+### 9.5 Autentizace k databázi (`Database:AuthMode`) + health endpoint
+
+Režim autentizace k PostgreSQL řeší `DatabaseOptions.Resolve` (Fakvio.Infrastructure/Data).
+Precedence:
+
+1. `Database:AuthMode` — `Password` nebo `AzureEntraId` (case-insensitive).
+2. `UseAzureAdAuthentication` (legacy bool) — **jen** pro sekci `Database`, ne pro
+   `SourceDatabase` v MigrationToolu.
+3. Default `Password`.
+
+Když jsou přítomné oba klíče a **nesouhlasí**, `Resolve` hodí výjimku už při startu a jmenuje
+oba. Legacy klíč **není v žádném commitnutém config souboru** (odstraněn v #138) — může přijít
+už jen z prostředí (Azure App Settings, env var). Pravidlo o konfliktu zůstává, aby fáze 2
+rolloutu (smazání legacy klíče z App Settings) byla ověřitelná.
+
+Kde co je nastavené:
+
+| Soubor | Hodnota |
+|--------|---------|
+| `Fakvio.API/appsettings.json` | `Database:AuthMode = AzureEntraId` (Azure connection string bez hesla) |
+| `Fakvio.API/appsettings.Development.json` | `AzureEntraId`; vedle je **zakomentovaný** `Password` — přepnutí na lokální Docker = odkomentovat dva řádky (conn string + AuthMode) |
+| `Fakvio.Functions/local.settings.json` | `Database__AuthMode = Password` (lokální Docker) |
+| `Fakvio.MigrationTool/appsettings.json` | `Database` i `SourceDatabase` = `Password` |
+
+**Ověření za běhu** — `GET /api/diagnostic/health`, **SysAdmin only**:
+
+```bash
+curl -s -H "Authorization: Bearer <sysadmin-jwt>"   http://localhost:5099/api/diagnostic/health | jq '{authMode, authModeSource, masterDbCanConnect}'
+```
+
+Vrací `authMode` + `authModeSource` (který klíč vyhrál), stav master DB a migrací.
+200 = DB odpovídá, 503 = neodpovídá. Connection string jde ven **jen maskovaný**
+(host/db/user, nikdy heslo).
+
+Logika žije v `Fakvio.API/Controller/DiagnosticController.cs`;
+`Fakvio.Functions/HttpFunctions/DiagnosticFunctions.Health` je tenká obálka, která ten
+controller volá (a inlinuje `[Authorize(Roles = "SysAdmin")]`, protože MVC filtry ve
+Functions neběží). Oba hostitelé tedy hlásí totéž. `/api/diagnostic` je v `MasterOnlyPaths`
+obou `TenantContextMiddleware` — SysAdmin ho musí zavolat i bez impersonace firmy.
 
 ---
 
@@ -1676,6 +1717,7 @@ pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. P
 | Nový email/PDF placeholder | §4.3 (typy) |
 | Nový hostovací model (např. native API workflow) | §1.2 + §9.1 |
 | Změna config zdroje (Key Vault, App Configuration) | §9.2 |
+| Změna tvaru konfigurace DB autentizace nebo obsahu health endpointu | §9.5 |
 | Změna Data Protection persistence / ApplicationName | §2.7 |
 | Nová seed migrace s hardcoded Id | §12 (non-idempotent seed) |
 | Nový projekt s `EmitCompilerGeneratedFiles` | §12 (Generated/) + `.gitignore` |

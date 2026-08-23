@@ -361,7 +361,13 @@ public static class ServiceCollectionExtensions
         // INpgsqlDataSourceFactory XML doc for the ownership rule.
         var factory = new NpgsqlDataSourceFactory(options);
 
-        services.Configure<DatabaseOptions>(configuration.GetSection("Database"));
+        // The resolved instance is the ONLY registration on purpose. A
+        // services.Configure<DatabaseOptions>(configuration.GetSection("Database")) used to sit
+        // here as well, and it was a trap: IOptions<DatabaseOptions> would re-bind the raw
+        // section, so in production (where the mode comes from the legacy
+        // "UseAzureAdAuthentication" key) it reported Password while this singleton — the one
+        // that actually built the data source — said AzureEntraId. Injecting DatabaseOptions
+        // directly is what the diagnostic health endpoint relies on.
         services.AddSingleton(options);
 
         // Registered with a FACTORY DELEGATE (`_ => factory`), not a bare instance
