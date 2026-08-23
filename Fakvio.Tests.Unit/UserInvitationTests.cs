@@ -265,6 +265,12 @@ public class UserInvitationTests : IDisposable
         var dbUser = await _context.User.FirstOrDefaultAsync(u => u.Email == "expired@test.com");
         dbUser!.PasswordHash.ShouldBe("HASH:temporary");
         dbUser.IsInvitationPending.ShouldBeTrue();
+
+        // And nothing touched the tenant schema. The order of the guards is a behavioural
+        // guarantee, not an implementation detail: provisioning is destructive on an already
+        // established company (#192), so a long-dead invitation link must never reach it.
+        await _provisioningService.DidNotReceive()
+            .ProvisionTenantAsync(Arg.Any<long>(), Arg.Any<CancellationToken>());
     }
 
     /// <summary>
@@ -515,6 +521,46 @@ public class UserInvitationTests : IDisposable
         // Assert
         result.PasswordSet.ShouldBeTrue();
         result.WorkspaceReady.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// The invitation token is single-use, and this is what bounds the blast radius of the
+    /// re-provisioning bug tracked as #192: a user who submits the set-password form twice
+    /// (double click, browser retry, refresh) must not run the provisioning pipeline twice
+    /// over an established tenant, where step 5 deletes and re-seeds the code tables.
+    ///
+    /// Once the first submit has committed, the token is gone, so the replay is rejected
+    /// before anything touches the tenant schema. What this test deliberately does NOT
+    /// cover is the genuinely concurrent case — two submits interleaving before either
+    /// SaveChangesAsync lands, where the read-then-update in SetPasswordAsync has no
+    /// atomicity and both callers do provision. That race belongs to #192 together with
+    /// the destructive re-run it feeds; here only the sequential guarantee is pinned.
+    /// </summary>
+    [Fact]
+    public async Task SetPasswordAsync_TokenReplayedAfterTheFirstSubmit_DoesNotProvisionASecondTime()
+    {
+        // Arrange — an established company, so a second provisioning run would be the
+        // destructive one: it re-seeds the code tables under existing documents.
+        var settings = await _context.CompanySystemSettings.FirstAsync(s => s.CompanyId == SeededCompanyId);
+        settings.IsProvisioned = true;
+        await _context.SaveChangesAsync();
+
+        var token = await SeedInvitedUserAsync("replay@test.com", companyId: SeededCompanyId);
+        var dto = new SetPasswordDto { Token = token, NewPassword = "MySecurePassword123" };
+
+        // Act — the same token is submitted twice, one submit after the other
+        var firstResult = await _userService.SetPasswordAsync(dto);
+        var replayResult = await _userService.SetPasswordAsync(dto);
+
+        // Assert — the first submit works on a ready workspace, the replay is rejected
+        firstResult.PasswordSet.ShouldBeTrue();
+        firstResult.WorkspaceReady.ShouldBeTrue();
+        replayResult.PasswordSet.ShouldBeFalse();
+        replayResult.WorkspaceReady.ShouldBeFalse();
+
+        // Assert — and, the point of the test, the tenant was provisioned exactly once
+        await _provisioningService.Received(1)
+            .ProvisionTenantAsync(SeededCompanyId, Arg.Any<CancellationToken>());
     }
 
     /// <summary>

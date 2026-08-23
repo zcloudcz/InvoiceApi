@@ -59,8 +59,22 @@ public class SetPasswordPageTests : BunitContext, IAsyncLifetime
     /// answering the set-password call with the given readiness flag.
     /// </summary>
     private IRenderedComponent<SetPassword> RenderPageWhereApiReports(bool workspaceReady)
+        => RenderPage(workspaceReady, HttpStatusCode.OK);
+
+    /// <summary>
+    /// Renders the page for a valid invitation link where the set-password call itself
+    /// answers with an HTTP error instead of a result.
+    /// </summary>
+    private IRenderedComponent<SetPassword> RenderPageWhereApiFailsWith(HttpStatusCode status)
+        => RenderPage(workspaceReady: true, setPasswordStatus: status);
+
+    /// <summary>
+    /// Renders the page for an invitation link whose token validates, with the API
+    /// answering the set-password call with the given status and readiness flag.
+    /// </summary>
+    private IRenderedComponent<SetPassword> RenderPage(bool workspaceReady, HttpStatusCode setPasswordStatus)
     {
-        RegisterUserApiServiceAnswering(workspaceReady);
+        RegisterUserApiServiceAnswering(workspaceReady, setPasswordStatus);
 
         // The token arrives as a query parameter ([SupplyParameterFromQuery]),
         // so the page has to be reached through the URL, not through a parameter.
@@ -74,9 +88,9 @@ public class SetPasswordPageTests : BunitContext, IAsyncLifetime
     /// Registers a real UserApiService over a stubbed handler: the token always validates,
     /// and set-password always answers 200 with PasswordSet = true and the given readiness.
     /// </summary>
-    private void RegisterUserApiServiceAnswering(bool workspaceReady)
+    private void RegisterUserApiServiceAnswering(bool workspaceReady, HttpStatusCode setPasswordStatus)
     {
-        var handler = new SetPasswordApiStub(workspaceReady);
+        var handler = new SetPasswordApiStub(workspaceReady, setPasswordStatus);
         var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://test.local") };
 
         var factory = Substitute.For<IHttpClientFactory>();
@@ -162,21 +176,44 @@ public class SetPasswordPageTests : BunitContext, IAsyncLifetime
     }
 
     /// <summary>
+    /// Characterization of a known gap, shown where it reaches the user.
+    ///
+    /// UserApiService turns every non-2xx into PasswordSet = false, so a server fault is
+    /// rendered as "the token may have expired" and sends the user off to ask for a new
+    /// invitation for a token that was never the problem. Pinned rather than fixed: the
+    /// residual window is narrow (see UserApiServiceTests) and separating server faults
+    /// from token faults is a change of its own, which must turn this test red.
+    /// </summary>
+    [Fact]
+    public void SetPassword_ServerFault_IsShownAsAnExpiredToken_KnownGap()
+    {
+        var page = RenderPageWhereApiFailsWith(HttpStatusCode.InternalServerError);
+
+        SubmitPassword(page);
+
+        page.Markup.ShouldContain(Localized("SetPassword_SetFailed"));
+        page.Markup.ShouldNotContain(Localized("SetPassword_SuccessMessage"));
+    }
+
+    /// <summary>
     /// HttpMessageHandler stub for the two anonymous endpoints the page calls:
     /// the invitation token always validates, set-password reports the configured readiness.
     /// </summary>
-    private sealed class SetPasswordApiStub(bool workspaceReady) : HttpMessageHandler
+    private sealed class SetPasswordApiStub(bool workspaceReady, HttpStatusCode setPasswordStatus)
+        : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            var path = request.RequestUri!.AbsolutePath;
+            // Token validation always succeeds — only the set-password call carries the
+            // configured status, so a fault test still reaches the password form.
+            var isTokenValidation = request.RequestUri!.AbsolutePath.EndsWith("/validate-invitation");
 
-            var body = path.EndsWith("/validate-invitation")
+            var body = isTokenValidation
                 ? new { isValid = true }
                 : (object)new { passwordSet = true, workspaceReady };
 
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            return Task.FromResult(new HttpResponseMessage(isTokenValidation ? HttpStatusCode.OK : setPasswordStatus)
             {
                 Content = new StringContent(
                     JsonSerializer.Serialize(body, new JsonSerializerOptions

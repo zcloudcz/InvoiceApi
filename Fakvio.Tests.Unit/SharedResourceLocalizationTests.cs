@@ -76,6 +76,14 @@ public class SharedResourceLocalizationTests : IDisposable
     [InlineData("Label_Email", "Email")]
     [InlineData("Label_Password", "Password")]
     [InlineData("Nav_Dashboard", "Dashboard")]
+    // Issue #152 — the Czech side of these two keys is already covered by SetPasswordPageTests,
+    // which renders the page in the default culture. English has no such cover, and a key
+    // missing from SharedResource.en.resx falls back to the Czech neutral resource silently,
+    // so only asserting the English text catches a translation that was never written.
+    [InlineData("SetPassword_WorkspaceNotReady",
+        "Your password has been set, but your workspace could not be prepared.")]
+    [InlineData("SetPassword_WorkspaceNotReadyHint",
+        "Logging in will not work yet. An administrator will finish the setup — please try again later or contact support.")]
     public void English_Keys_ShouldReturn_EnglishValues(string key, string expectedValue)
     {
         // Arrange — set English culture for this thread

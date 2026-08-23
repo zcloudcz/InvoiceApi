@@ -129,6 +129,37 @@ public class UserApiServiceTests
         result.WorkspaceReady.ShouldBeFalse();
     }
 
+    /// <summary>
+    /// Characterization test for a known gap, not an endorsement of it.
+    ///
+    /// UserApiService.SetPasswordAsync collapses every non-2xx answer into
+    /// PasswordSet = false, and the page renders that as SetPassword_SetFailed —
+    /// "the token may have expired, ask for a new invitation". For a 500 or a 502 that
+    /// advice is wrong: the token was fine, the server was not.
+    ///
+    /// The gap is narrow by construction. The only realistic 500 after the password was
+    /// already committed — an unreadable provisioning state — is handled inside
+    /// UserService, which reports WorkspaceReady = false instead of throwing. What is left
+    /// are failures before the password is saved (where the message is truthful) and
+    /// infrastructure faults between the browser and the API.
+    ///
+    /// Pinned here so the collapse is visible and cannot be widened unnoticed. Splitting
+    /// server faults away from token faults is a deliberate change and must turn this red.
+    /// </summary>
+    [Theory]
+    [InlineData(HttpStatusCode.InternalServerError)]
+    [InlineData(HttpStatusCode.BadGateway)]
+    [InlineData(HttpStatusCode.ServiceUnavailable)]
+    public async Task SetPasswordAsync_ServerFault_IsReportedAsIfTheTokenFailed_KnownGap(HttpStatusCode status)
+    {
+        var svc = CreateService(JsonResponse(status, new { message = "whatever the server said" }));
+
+        var result = await svc.SetPasswordAsync(AnyRequest);
+
+        result.PasswordSet.ShouldBeFalse();
+        result.WorkspaceReady.ShouldBeFalse();
+    }
+
     /// <summary>HttpMessageHandler stub returning a fixed response for any request.</summary>
     private sealed class StubHttpMessageHandler(HttpResponseMessage response) : HttpMessageHandler
     {
