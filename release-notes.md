@@ -58,6 +58,15 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Změny pro vývojáře
 
+- **#161** — AI asistent byl v aplikaci prakticky neviditelný: tlačítko v AppBaru
+  splývalo s logem firmy, stav otevření se po refreshi nikdy nezapamatoval a nikde
+  jinde na chat nevedl odkaz. Na mobilu zabíral drawer napevno celou obrazovku a
+  chyběl mu CSS, takže vypadal rozbitě; markdown v odpovědích modelu (seznamy, tučné
+  písmo, tabulky) se zobrazoval jako syrový text místo naformátovaný. Nově má ikonu
+  robota na první pozici v AppBaru, položku v hlavním menu, pamatuje si otevření/zavření
+  per zařízení, je responzivní na mobilu a odpovědi renderuje jako markdown (bezpečně
+  sanitizovaný i proti odkazům typu `<javascript:…>`). Smazání konverzace teď vyžaduje
+  potvrzení. (PR #185, `64d4508`)
 - **#205** — Chybějící nastavení tenanta (adresa vystavitele, IČO, DIČ u plátce DPH,
   bankovní účet, číselná řada dokladu…) se dosud řešilo náhodně a nekonzistentně —
   jediný existující precedens byla EPO hlavička u DPH exportu. Nová
