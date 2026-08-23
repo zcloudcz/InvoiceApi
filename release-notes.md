@@ -43,6 +43,11 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Změny pro vývojáře
 
+- **#140** — Přesun produkční databáze z Azure PostgreSQL (Entra ID) na vlastní
+  server dosud neměl žádný ověřený postup. Nový `SELFHOST-DB.md` runbook popisuje
+  celý přesun krok za krokem: pre-flight kontroly, cutover přes `pg_dump`/`pg_restore`,
+  ověření dat po schématech i migrace Data Protection key ringu, a rollback zpět na
+  Azure, kdyby přesun nevyšel. (PR #244, `e68281a`)
 - **#159** — Popis parametrů chat nástrojů pro AI asistenta byl natvrdo zadrátovaný `switch`
   podle názvu nástroje; nástroj, na který se ve switchi zapomnělo, tiše dostal jediný
   parametr `input` a nefungoval bez jakékoli chybové hlášky. Popis parametrů je teď
