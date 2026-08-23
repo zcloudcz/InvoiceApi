@@ -64,12 +64,12 @@ public class DiagnosticFunctionsTests : IDisposable
         GC.SuppressFinalize(this);
     }
 
-    private DiagnosticFunctions CreateSut() =>
+    private DiagnosticFunctions CreateSut(MasterDbContext? masterDb = null) =>
         new(
             _serviceProvider,
             _configuration,
             new DiagnosticController(
-                _masterDb,
+                masterDb ?? _masterDb,
                 DatabaseOptions.Resolve(_configuration),
                 Substitute.For<ILogger<DiagnosticController>>()),
             _logger);
@@ -135,5 +135,35 @@ public class DiagnosticFunctionsTests : IDisposable
         data["authModeSource"].ShouldBe("Database:AuthMode");
         data["databaseConnected"].ShouldBe(true);
         data.ShouldNotContainKey("tenantTemplateConnectionConfigured");
+    }
+
+    /// <summary>
+    /// Unreachable database → the controller answers 503, and the wrapper must hand that
+    /// status through untouched: ADMINGUIDE tells monitoring it may watch the status code
+    /// alone, in BOTH hosts. The hand-written function this one replaced always returned
+    /// OkObjectResult, which would report a dead database as healthy.
+    ///
+    /// Port 1 on the loopback interface refuses instantly — deterministic, no DNS, no wait.
+    /// </summary>
+    [Fact]
+    public async Task Health_WhenTheDatabaseIsUnreachable_PropagatesThe503FromTheController()
+    {
+        // Arrange
+        using var unreachableDb = new MasterDbContext(new DbContextOptionsBuilder<MasterDbContext>()
+            .UseNpgsql("Host=127.0.0.1;Port=1;Database=fakvio;Username=fakvio;Password=fakvio_dev;Timeout=2")
+            .Options);
+
+        // Act
+        var result = await CreateSut(unreachableDb).Health(RequestFrom(UserInRole("SysAdmin")));
+
+        // Assert — a plain ObjectResult carrying 503, not an OkObjectResult
+        var objectResult = result.ShouldBeOfType<ObjectResult>();
+        objectResult.StatusCode.ShouldBe(StatusCodes.Status503ServiceUnavailable);
+
+        // The diagnostic fields survive the failure path too — that is when they matter most.
+        var data = objectResult.Value.ShouldBeOfType<Dictionary<string, object>>();
+        data["authMode"].ShouldBe("Password");
+        data["authModeSource"].ShouldBe("Database:AuthMode");
+        data["databaseConnected"].ShouldBe(false);
     }
 }

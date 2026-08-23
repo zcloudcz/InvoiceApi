@@ -203,7 +203,8 @@ public class DiagnosticControllerTests : IDisposable
         using var unreachableDb = new MasterDbContext(new DbContextOptionsBuilder<MasterDbContext>()
             .UseNpgsql("Host=127.0.0.1;Port=1;Database=fakvio;Username=fakvio;Password=fakvio_dev;Timeout=2")
             .Options);
-        var sut = CreateSut(BuildConfiguration(), unreachableDb);
+        var sut = CreateSut(
+            BuildConfiguration(("Database:AuthMode", "AzureEntraId")), unreachableDb);
 
         // Act
         var data = Payload(await sut.Health(), StatusCodes.Status503ServiceUnavailable);
@@ -211,10 +212,11 @@ public class DiagnosticControllerTests : IDisposable
         // Assert
         data["databaseConnected"].ShouldBe(false);
         data["databaseReady"].ShouldBe(false);
-        // The auth mode is still reported — knowing HOW the process tried to authenticate is
-        // exactly what an operator needs while the database is down.
-        data.ShouldContainKey("authMode");
-        data.ShouldContainKey("authModeSource");
+        // The auth mode is still reported, with its real values — a wrong auth mode is a prime
+        // suspect for the database being unreachable, so this is the response that needs the
+        // two fields most. ADMINGUIDE promises them at 503 explicitly.
+        data["authMode"].ShouldBe("AzureEntraId");
+        data["authModeSource"].ShouldBe("Database:AuthMode");
     }
 
     // ── Payload cleanup (AC of #138) ─────────────────────────────────────────
