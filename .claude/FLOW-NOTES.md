@@ -61,8 +61,11 @@ Varianty, od nejlevnější:
    synchronizované jednou na konci drainu.
 5. Vlastní board (soubor/SQLite v repu).
 
-**Doporučení:** 1-3 hned (hodiny, jen `BOARD-OPS.md` + dispatch prompty),
-4 až se to usadí (den, ale téma kvóty tím zmizí úplně).
+**ROZHODNUTO 2026-08-23 (owner): jde se variantou 4.** Status bude label,
+Projects v2 zůstane read-only zrcadlo pro člověka. Zadáno jako story **#288**
+(`focus:override`, aby ji board vůbec vytáhl — viz #287). Body 1-3 mezitím
+platí a jsou zakódované v `BOARD-OPS.md` sekci „Budget: GraphQL is the scarce
+resource" a v `AGENT-RULES.md` §5b; po dokončení #288 část z nich zanikne.
 
 **Variantu 5 nestavět** — ne kvůli složitosti, ale protože varianta 4 dá totéž bez
 jediného řádku nové infrastruktury, a vlastní stav by přinesl přesně ten problém,
