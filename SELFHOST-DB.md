@@ -34,15 +34,38 @@ export PGPASSWORD_SRC="$(az account get-access-token \
   --resource-type oss-rdbms --query accessToken -o tsv)"
 export SRC="host=zcloudpostgresql.postgres.database.azure.com port=5432 dbname=postgres user=zahalos_seznam.cz#EXT#@zahalosseznam.onmicrosoft.com sslmode=require"
 
-# Cíl — vlastní server. Heslo doplň, roli zakládáme v kroku 2.3.
-export DST="host=novy-db-server.example.cz port=5432 dbname=fakvio user=fakvio password=*** sslmode=prefer"
+# Cíl — administrativní připojení. Role `fakvio` ani databáze `fakvio` zatím
+# NEEXISTUJÍ (zakládají se až v kroku 2.4), takže se všude až do 2.4 připojujeme
+# jako superuser do údržbové databáze `postgres`.
+export DST_ADMIN="host=novy-db-server.example.cz port=5432 dbname=postgres user=postgres sslmode=prefer"
+
+# Cíl — aplikační připojení. Definuje se AŽ V KROKU 2.4, po založení role a DB.
+# Tady je jen pro představu, jak bude vypadat:
+#   export DST="host=novy-db-server.example.cz port=5432 dbname=fakvio user=fakvio password=*** sslmode=prefer"
 
 export WORKDIR="$HOME/fakvio-migrace-$(date +%Y%m%d)"
 mkdir -p "$WORKDIR"
+
+# `psql` po chybě defaultně pokračuje dál a skončí s exit code 0 — u runbooku,
+# jehož nejdůležitější kontrolou je `diff`, by to znamenalo „zelenou" na dvojici
+# prázdných souborů. Zapneme ON_ERROR_STOP jednou pro všechna volání `psql` níže.
+export PSQLRC="$WORKDIR/psqlrc"
+printf '\\set ON_ERROR_STOP on\n' > "$PSQLRC"
+
+# Roury typu `psql … | sort > soubor` jinak vracejí exit code posledního článku.
+set -o pipefail
 ```
 
 > `psql "$SRC"` proti Azure vyžaduje `PGPASSWORD="$PGPASSWORD_SRC"` — token má
 > **platnost ~60 minut**, u dlouhého dumpu si ho obnov znovu.
+>
+> **Heslo v conninfo řetězci:** mezera, `'` nebo `\` v hesle parsování rozbijí.
+> Buď hodnotu obal apostrofy (`password='he slo'`), nebo heslo do conninfo vůbec
+> nedávej a použij `PGPASSFILE` / proměnnou `PGPASSWORD`.
+>
+> Runbook se pouští **příkaz po příkazu** a u každého se kontroluje očekávaný
+> výsledek — proto tu není `set -e`; ten by v interaktivním shellu při první
+> chybě zavřel celé sezení.
 
 ---
 
@@ -55,7 +78,7 @@ nim diffuje.
 
 ```bash
 PGPASSWORD="$PGPASSWORD_SRC" psql "$SRC" -Atc "SHOW server_version;"
-psql "$DST" -Atc "SHOW server_version;"
+psql "$DST_ADMIN" -Atc "SHOW server_version;"
 ```
 
 **Očekávaný výsledek:** verze cíle je stejná nebo vyšší. `pg_restore` z novější verze
@@ -70,10 +93,15 @@ PGPASSWORD="$PGPASSWORD_SRC" psql "$SRC" -Atc \
 ```
 
 **Očekávaný výsledek:** typicky jen `plpgsql|1.0`. Cokoli navíc (`uuid-ossp`,
-`pg_trgm`, `citext`, …) musí být na cíli nainstalované **před** restore:
+`pg_trgm`, `citext`, …) musí být na cíli nainstalované **před** restore. Samotná
+instalace je až v [kroku 2.4](#24-příprava-cíle--role-databáze-extensions) — cílová
+databáze `fakvio` v tuhle chvíli ještě neexistuje. Tady jen ověř, že balíček
+příslušné extension je na serveru vůbec k dispozici:
 
 ```bash
-psql "$DST" -c 'CREATE EXTENSION IF NOT EXISTS "uuid-ossp";'   # jen pokud je v seznamu
+psql "$DST_ADMIN" -Atc \
+  "SELECT name, default_version FROM pg_available_extensions ORDER BY 1;" \
+  | grep -E 'uuid-ossp|pg_trgm|citext'   # jen ty ze seznamu výše
 ```
 
 Azure-specifické extensions (`azure_sys`, `pg_stat_statements` v Azure variantě)
@@ -99,7 +127,7 @@ krok 2.5.
 
 ```bash
 PGPASSWORD="$PGPASSWORD_SRC" psql "$SRC" -Atc "SHOW timezone;"
-psql "$DST" -Atc "SHOW timezone;"
+psql "$DST_ADMIN" -Atc "SHOW timezone;"
 ```
 
 **Očekávaný výsledek:** **obojí `UTC`.** Azure Flexible Server má `UTC` defaultně,
@@ -127,15 +155,29 @@ SELECT string_agg(
 FROM pg_tables
 WHERE schemaname = 'public' OR schemaname LIKE 'tenant\_%';
 " > "$WORKDIR/rowcounts.sql"
-echo " ORDER BY 1,2;" >> "$WORKDIR/rowcounts.sql"
+echo ";" >> "$WORKDIR/rowcounts.sql"
 
 PGPASSWORD="$PGPASSWORD_SRC" psql "$SRC" -Atf "$WORKDIR/rowcounts.sql" \
-  > "$WORKDIR/rowcounts-baseline.txt"
+  | LC_ALL=C sort > "$WORKDIR/rowcounts-baseline.txt"
 wc -l "$WORKDIR/rowcounts-baseline.txt"
 ```
 
 **Očekávaný výsledek:** neprázdný soubor, řádky ve tvaru
 `public|Users|37`. Počet řádků = počet tabulek napříč všemi schématy.
+
+> ### Proč `LC_ALL=C sort` a ne `ORDER BY` v dotazu
+>
+> Každý server řadí text podle **své** default collation (`datcollate`). Azure
+> Flexible Server jede typicky `en_US.utf8`, čerstvě nainstalovaný vlastní box
+> `C.UTF-8` nebo `cs_CZ.UTF-8`. Identifikátory Fakvia (`"Users"`,
+> `"__EFMigrationsHistory"`, `tenant_1` vs. `tenant_10`) se pod těmito collation
+> řadí **jinak** — dva soubory s identickými daty by pak `diff` nahlásil jako
+> rozdíl a runbook by operátora zastavil uprostřed zdravého cutoveru.
+> Řazení proto dělá až `sort` na klientovi, se stejnou (bajtovou) collation pro
+> oba soubory. `ORDER BY 1 COLLATE "C"` řešení **není** — na ordinálu spadne na
+> `collations are not supported by type integer`.
+>
+> Stejný `LC_ALL=C sort` se ze stejného důvodu používá i v částech 2.2 a 3.
 
 > Baseline z pre-flightu je jen orientační (data se mezitím mění). **Závazný** je
 > ten, který se pořídí v kroku 2.1 po zastavení aplikace.
@@ -206,10 +248,18 @@ Teprve při nule pořiď **závazný baseline** row counts:
 
 ```bash
 PGPASSWORD="$PGPASSWORD_SRC" psql "$SRC" -Atf "$WORKDIR/rowcounts.sql" \
-  > "$WORKDIR/rowcounts-source.txt"
+  | LC_ALL=C sort > "$WORKDIR/rowcounts-source.txt"
 ```
 
+> Kontrola na nulu není bariéra zápisu — klient se stihne připojit zpět mezi ní,
+> baselinem a dumpem. Jediní writeři jsou dvě Azure app zastavené v 2.1, takže
+> stačí **dotaz na `pg_stat_activity` zopakovat těsně před `pg_dump`** (krok 2.3).
+> Kdo chce tvrdou bariéru, přidá jako superuser
+> `REVOKE CONNECT ON DATABASE postgres FROM PUBLIC;` a po dumpu ji vrátí.
+
 ### 2.3 Dump
+
+Ještě jednou zopakuj kontrolu writerů z 2.2 (musí být pořád `0`) a hned pak dumpuj:
 
 ```bash
 PGPASSWORD="$PGPASSWORD_SRC" pg_dump \
@@ -220,7 +270,6 @@ PGPASSWORD="$PGPASSWORD_SRC" pg_dump \
   --format=custom \
   --no-owner \
   --no-privileges \
-  --no-acl \
   --exclude-schema=azure_sys \
   --exclude-schema=azure_maintenance \
   --verbose \
@@ -234,10 +283,12 @@ nenulovou velikost. Kontrola obsahu bez rozbalování:
 pg_restore --list "$WORKDIR/fakvio.dump" | grep -c "TABLE DATA"
 ```
 
-vrátí počet tabulek s daty (musí odpovídat `wc -l "$WORKDIR/rowcounts-source.txt"`
-mínus prázdné tabulky).
+**Očekávaný výsledek:** číslo se rovná `wc -l "$WORKDIR/rowcounts-source.txt"`.
+Custom-format dump vyrábí položku `TABLE DATA` i pro tabulku s nula řádky, takže
+se **nic neodečítá** — každá tabulka má právě jednu položku. Nižší číslo znamená,
+že se nějaká tabulka do dumpu nedostala.
 
-> **`--no-owner --no-privileges --no-acl` jsou povinné, ne kosmetické.**
+> **`--no-owner --no-privileges` jsou povinné, ne kosmetické.**
 > Všechny owner a ACL záznamy v Azure dumpu odkazují na Entra principaly
 > (`…#EXT#@…`), které na vlastním serveru **nemohou existovat**. Bez těchto flagů
 > `pg_restore` skončí sérií `role "…#EXT#@…" does not exist`.
@@ -248,16 +299,32 @@ mínus prázdné tabulky).
 Zálohu si hned odlož na druhé místo (viz [část 5](#5-rollback)):
 
 ```bash
-sha256sum "$WORKDIR/fakvio.dump" | tee "$WORKDIR/fakvio.dump.sha256"
-cp "$WORKDIR/fakvio.dump" /mnt/zaloha/  # nebo jiné nezávislé úložiště
+# Součet se počítá z adresáře dumpu, aby v .sha256 byla RELATIVNÍ cesta —
+# jinak `sha256sum -c` na kopii ověří pořád originál, ne kopii.
+( cd "$WORKDIR" && sha256sum fakvio.dump > fakvio.dump.sha256 && cat fakvio.dump.sha256 )
+cp "$WORKDIR"/fakvio.dump{,.sha256} /mnt/zaloha/   # nebo jiné nezávislé úložiště
+( cd /mnt/zaloha && sha256sum -c fakvio.dump.sha256 )
 ```
 
+**Očekávaný výsledek:** `fakvio.dump: OK` — a to **v adresáři kopie**, ne v `$WORKDIR`.
+
 ### 2.4 Příprava cíle — role, databáze, extensions
+
+Nejdřív ověř, že cílová databáze ještě **neexistuje** — restore do neprázdné DB
+sice `--exit-on-error` shodí, ale až na prvním duplicitním objektu, tedy po
+částečném zápisu:
+
+```bash
+psql "$DST_ADMIN" -Atc "SELECT datname FROM pg_database WHERE datname = 'fakvio';"
+```
+
+**Očekávaný výsledek: prázdný výstup.** Když něco vypíše, rozhodni se, jestli
+databázi zahodit (`DROP DATABASE fakvio`), nebo restore přesměrovat jinam.
 
 Jako superuser na novém serveru:
 
 ```bash
-psql "host=novy-db-server.example.cz port=5432 dbname=postgres user=postgres" <<'SQL'
+psql "$DST_ADMIN" <<'SQL'
 CREATE ROLE fakvio WITH LOGIN PASSWORD 'ZMEN_ME';
 CREATE DATABASE fakvio OWNER fakvio;
 SQL
@@ -265,11 +332,17 @@ SQL
 
 **Očekávaný výsledek:** `CREATE ROLE`, `CREATE DATABASE`.
 
-PostgreSQL 15+ navíc — bez tohoto grantu spadne provisioning nové firmy
-(viz [riziko 6.1](#61-vlastnictví-schémat-a-granty-psané-pro-entra-principaly)):
+`OWNER fakvio` není detail — vlastník databáze má `CREATE` (a tedy i `CREATE SCHEMA`)
+implicitně, což je přesně to právo, které potřebuje provisioning dalších tenantů
+(viz [riziko 6.1](#61-vlastnictví-schémat-a-granty-psané-pro-entra-principaly)).
+Kdybys databázi zakládal pod jiným vlastníkem, doplň
+`GRANT CREATE ON DATABASE fakvio TO fakvio;` ručně.
+
+**Teprve teď** dává smysl aplikační conninfo — role i databáze existují:
 
 ```bash
-psql "$DST" -c 'GRANT CREATE ON DATABASE fakvio TO fakvio;'
+export DST="host=novy-db-server.example.cz port=5432 dbname=fakvio user=fakvio password='ZMEN_ME' sslmode=prefer"
+psql "$DST" -Atc "SELECT current_user, current_database();"   # očekávané: fakvio|fakvio
 ```
 
 Extensions ze seznamu z kroku 1.2 (jako superuser, do DB `fakvio`):
@@ -290,14 +363,21 @@ pg_restore \
   --exit-on-error \
   --verbose \
   "$WORKDIR/fakvio.dump" 2>&1 | tee "$WORKDIR/restore.log"
+echo "pg_restore exit code: ${PIPESTATUS[0]}"
 ```
 
-**Očekávaný výsledek:** exit code 0 a **žádný řádek `error`** v logu.
-`--exit-on-error` je záměrné: tichý částečný restore je horší než hlasité selhání.
+**Očekávaný výsledek: `pg_restore exit code: 0`.** Bez `${PIPESTATUS[0]}` (nebo
+`set -o pipefail` z bloku proměnných) by `$?` byl stav `tee`, tedy vždycky 0.
+`--exit-on-error` je záměrné: tichý částečný restore je horší než hlasité selhání
+— a zároveň dělá z exit code jedinou potřebnou kontrolu.
 
 ```bash
-grep -ci "error" "$WORKDIR/restore.log"   # očekávané: 0
+grep -c "^pg_restore: error" "$WORKDIR/restore.log"   # očekávané: 0
 ```
+
+> Grepuje se **prefix `pg_restore: error`**, ne slovo „error" kdekoli na řádku:
+> `--verbose` vypisuje jména objektů a tabulka jménem `ErrorLogs` by jinak
+> shodila zdravý restore.
 
 ### 2.6 Srovnat vlastnictví schémat
 
@@ -354,13 +434,19 @@ Tím se zároveň prokáže, že na cíli žádná tabulka nechybí — kdyby ch
 dotaz na ni spadne na `relation … does not exist`.
 
 ```bash
-psql "$DST" -Atf "$WORKDIR/rowcounts.sql" > "$WORKDIR/rowcounts-target.txt"
+psql "$DST" -Atf "$WORKDIR/rowcounts.sql" \
+  | LC_ALL=C sort > "$WORKDIR/rowcounts-target.txt"
 diff "$WORKDIR/rowcounts-source.txt" "$WORKDIR/rowcounts-target.txt" \
   && echo "OK — row counts sedí"
 ```
 
 **Očekávaný výsledek:** `diff` **prázdný**, vypíše se `OK — row counts sedí`.
 Jakýkoli řádek na výstupu = **stop**, nepokračovat.
+
+> Oba soubory jsou seřazené `LC_ALL=C sort` (viz [poznámku ke collation](#proč-lc_allc-sort-a-ne-order-by-v-dotazu)),
+> takže rozdílné default collation obou serverů nemůžou vyrobit falešný mismatch.
+> Zkontroluj taky, že soubory nejsou **prázdné** (`wc -l`) — prázdný vstup by
+> `diff` odbavil jako shodu.
 
 ### 3.2 `__EFMigrationsHistory` v **každém** schématu
 
@@ -378,25 +464,31 @@ SELECT string_agg(
 FROM information_schema.tables
 WHERE table_name = '__EFMigrationsHistory';
 " > "$WORKDIR/migrations.sql"
-echo " ORDER BY 1,2;" >> "$WORKDIR/migrations.sql"
+echo ";" >> "$WORKDIR/migrations.sql"
 
 PGPASSWORD="$PGPASSWORD_SRC" psql "$SRC" -Atf "$WORKDIR/migrations.sql" \
-  > "$WORKDIR/migrations-source.txt"
-psql "$DST" -Atf "$WORKDIR/migrations.sql" > "$WORKDIR/migrations-target.txt"
+  | LC_ALL=C sort > "$WORKDIR/migrations-source.txt"
+psql "$DST" -Atf "$WORKDIR/migrations.sql" \
+  | LC_ALL=C sort > "$WORKDIR/migrations-target.txt"
 
 diff "$WORKDIR/migrations-source.txt" "$WORKDIR/migrations-target.txt" \
   && echo "OK — migrační historie sedí"
 ```
 
-**Očekávaný výsledek:** `diff` **prázdný**.
+**Očekávaný výsledek:** `diff` **prázdný** a oba soubory neprázdné
+(řazení opět klientské, viz [poznámku ke collation](#proč-lc_allc-sort-a-ne-order-by-v-dotazu)).
 
-Nezávislá kontrola počtu schémat (chytne schéma, které se do dumpu nedostalo):
+Nezávislá kontrola počtu schémat (chytne schéma, které se do dumpu nedostalo).
+Čte se z `pg_class`, ne z `information_schema` — to ukazuje jen objekty viditelné
+pro aktuální roli, takže by kontrola závisela na grantech místo na datech:
 
 ```bash
 psql "$DST" -Atc "
 SELECT
-  (SELECT count(*) FROM information_schema.tables
-   WHERE table_name = '__EFMigrationsHistory')                       AS historii,
+  (SELECT count(*) FROM pg_class c
+   JOIN pg_namespace n ON n.oid = c.relnamespace
+   WHERE c.relname = '__EFMigrationsHistory' AND c.relkind = 'r'
+     AND (n.nspname = 'public' OR n.nspname LIKE 'tenant\_%'))       AS historii,
   (SELECT count(*) FROM public.\"CompanySystemSettings\"
    WHERE \"IsProvisioned\") + 1                                      AS ocekavano;"
 ```
@@ -408,20 +500,21 @@ SELECT
 ```bash
 PGPASSWORD="$PGPASSWORD_SRC" psql "$SRC" -Atc "
 SELECT schemaname, sequencename, last_value FROM pg_sequences
-WHERE schemaname = 'public' OR schemaname LIKE 'tenant\_%'
-ORDER BY 1,2;" > "$WORKDIR/sequences-source.txt"
+WHERE schemaname = 'public' OR schemaname LIKE 'tenant\_%';" \
+  | LC_ALL=C sort > "$WORKDIR/sequences-source.txt"
 
 psql "$DST" -Atc "
 SELECT schemaname, sequencename, last_value FROM pg_sequences
-WHERE schemaname = 'public' OR schemaname LIKE 'tenant\_%'
-ORDER BY 1,2;" > "$WORKDIR/sequences-target.txt"
+WHERE schemaname = 'public' OR schemaname LIKE 'tenant\_%';" \
+  | LC_ALL=C sort > "$WORKDIR/sequences-target.txt"
 
 diff "$WORKDIR/sequences-source.txt" "$WORKDIR/sequences-target.txt" \
   && echo "OK — sekvence sedí"
 ```
 
-**Očekávaný výsledek:** `diff` prázdný. Kdyby `last_value` na cíli zaostávalo,
-první insert spadne na duplicitní primární klíč.
+**Očekávaný výsledek:** `diff` prázdný (řazení opět klientské, viz
+[poznámku ke collation](#proč-lc_allc-sort-a-ne-order-by-v-dotazu)). Kdyby
+`last_value` na cíli zaostávalo, první insert spadne na duplicitní primární klíč.
 
 ### 3.4 Teprve teď přepnout aplikaci
 
@@ -433,6 +526,11 @@ Po startu ověř:
 ```bash
 curl -s https://<app>/api/diagnostic/health | jq '{authMode, authModeSource, masterDbCanConnect}'
 ```
+
+> **Endpoint `/api/diagnostic/health` přidává task #138** — dokud není mergnutý,
+> tenhle `curl` vrátí 404 a `authMode` se dá ověřit jen ze startup logu.
+> Tvary polí (`authMode` / `authModeSource` / `masterDbCanConnect`) odpovídají
+> zadání #138.
 
 **Očekávaný výsledek:**
 ```json
@@ -520,7 +618,7 @@ nikde jinde než na původním stroji pod původním účtem. Všechny secrety z
 `CredentialProtector`em jsou po přesunu **ztracené** a musí se zadat ručně.
 
 > **Selhání je tiché.** `CredentialProtector.Decrypt`
-> (`Fakvio.Infrastructure/Service/CredentialProtector.cs:67`) chytá
+> (`Fakvio.Infrastructure/Service/CredentialProtector.cs:69`) chytá
 > `CryptographicException` a vrací vstupní ciphertext jako „legacy plaintext".
 > Aplikace tedy nastartuje, UI vypadá funkčně, přehledy jedou — a rozbije se až
 > ve chvíli, kdy někdo pošle e-mail, spustí IMAP poll nebo zavolá AI. Proto je
@@ -537,12 +635,12 @@ ověřit a SysAdmin nemá UI pro force-reset cizí 2FA (viz `ADMINGUIDE.md` §9)
 ```bash
 PGPASSWORD="$PGPASSWORD_SRC" psql "$SRC" -Atc '
 SELECT count(*) FROM public."Users"
-WHERE "Role" = 2 AND "IsActive" = true
-  AND ("TwoFactorEnabled" = false OR "TwoFactorEnabled" IS NULL);'
+WHERE "Role" = 2 AND "IsActive" = true AND "TwoFactorEnabled" = false;'
 ```
 
-`"Role" = 2` je `EUserRole.SysAdmin` (`Fakvio.Domain/Enums/EUserRole.cs:22`,
-ukládá se jako `int`).
+`"Role" = 2` je `EUserRole.SysAdmin` (`Fakvio.Domain/Enums/EUserRole.cs:23`,
+ukládá se jako `int`). `"TwoFactorEnabled"` je non-nullable `bool`
+(`Fakvio.Domain/Entities/User.cs:132`), takže větev `IS NULL` je zbytečná.
 
 **Očekávaný výsledek: `>= 1`.** Když vyjde `0`, **cutover se nesmí provést** —
 nikdo by se po něm nedostal do administrace. Náprava před cutoverem: založit
@@ -559,8 +657,8 @@ WHERE "TotpSecretEncrypted" IS NOT NULL AND "IsActive" = true;'
 ### 4.3 Seznam ručně obnovovaných secretů (jen větev B)
 
 Autoritativní zdroj je `SystemConfigurationService.CheckCredentialHealthAsync`
-(`Fakvio.Infrastructure/Service/SystemConfigurationService.cs:274-327`) — endpoint
-`credential-health` kontroluje přesně tato pole:
+(`Fakvio.Infrastructure/Service/SystemConfigurationService.cs:253-306`, samotný výčet
+polí `:260-295`) — endpoint `credential-health` kontroluje přesně tato pole:
 
 | Entita | Pole | Kde se obnovuje |
 |---|---|---|
@@ -642,8 +740,12 @@ Mezi 1 a 3 drž aplikaci v maintenance režimu / nepublikovanou.
 ### Po cutoveru
 
 - **Azure server nechat běžet ještě 2 týdny.** Nemazat, nevypínat, nezmenšovat.
-- **Dump držet na dvou nezávislých místech** (kontrolní součet z kroku 2.3
-  ověřit na obou: `sha256sum -c "$WORKDIR/fakvio.dump.sha256"`).
+- **Dump držet na dvou nezávislých místech** a kontrolní součet z kroku 2.3
+  ověřit **v adresáři každé kopie zvlášť** — jinak se pořád kontroluje originál:
+  ```bash
+  ( cd "$WORKDIR"   && sha256sum -c fakvio.dump.sha256 )
+  ( cd /mnt/zaloha  && sha256sum -c fakvio.dump.sha256 )
+  ```
 - Teprve po dvou týdnech bezproblémového provozu řešit vyřazení Azure serveru.
 
 ---
@@ -663,8 +765,11 @@ někdo založí novou firmu, klidně za měsíc.
 
 **Prevence:** krok 2.6 (`ALTER SCHEMA … OWNER TO fakvio`) + jeho kontrola.
 
-**PostgreSQL 15+ navíc:** `public` už není world-writable a `CREATE SCHEMA`
-vyžaduje `GRANT CREATE ON DATABASE` (krok 2.4).
+**PostgreSQL 15+ — co se doopravdy změnilo:** roli `PUBLIC` bylo odebráno právo
+`CREATE` na **schématu `public`**. Právo na `CREATE SCHEMA` se ale vždycky bralo
+z **databáze**, a tam se nic nezměnilo — vlastník DB ho má implicitně. Dokud je
+`fakvio` vlastníkem databáze (krok 2.4), žádný extra grant potřeba není. Zápis do
+schématu `public` řeší krok 2.6, který ho převede na `fakvio`.
 
 **Smoke test hned po cutoveru:** založ testovací firmu přes UI, ověř, že vznikne
 `tenant_{id}` schéma, a firmu zase smaž.
@@ -701,6 +806,11 @@ Azure Flexible Server. Fakvio drží **jeden data source na tenant schéma**
 hosty × instance × (Root Maximum Pool Size + počet aktivních tenantů × 4)
 ```
 
+`4` je `DatabaseOptions.SchemaDataSourceMaxPoolSize`
+(`Fakvio.Infrastructure/Data/DatabaseOptions.cs:86`), konfigurovatelné klíčem
+`Database:SchemaDataSourceMaxPoolSize`. Protože `MinPoolSize` je 0, je to **strop**,
+ne ustálený stav — nečinný tenant spojení nedrží. Vzorec tedy počítá špičku.
+
 Projeví se to tiše — pod nízkým provozem nic, pod špičkou náhlé
 `connection pool exhausted` nebo `too many clients already`.
 
@@ -733,6 +843,10 @@ ConnectionStrings__DefaultConnection=Host=novy-db-server.example.cz;Port=5432;Da
 
 Dvojité podtržítko `__` je oddělovač sekcí v .NET konfiguraci —
 `Database__AuthMode` odpovídá klíči `Database:AuthMode`.
+
+> `Ssl Mode=Prefer` v příkladu je **nejslabší** volba z tabulky v
+> [části 6.2](#62-ssl-mode--npgsql-8-validuje-certifikát) — sedí na DB ve stejné
+> privátní síti. Pokud spojení jde přes veřejnou síť, vyber z té tabulky výš.
 
 ### Konfigurační klíče — vždy **obě** najednou
 
