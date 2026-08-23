@@ -142,6 +142,7 @@ public static class ServiceCollectionExtensions
         services.AddScopedWithLogging<IAuthService, AuthService>();
         services.AddScopedWithLogging<IUserService, UserService>();
         services.AddScopedWithLogging<IUserPreferencesService, UserPreferencesService>();
+        services.AddScopedWithLogging<IApiKeyService, ApiKeyService>();
         services.AddScopedWithLogging<ICurrencyService, CurrencyService>();
         services.AddScopedWithLogging<IInvoiceTemplateService, InvoiceTemplateService>();
         services.AddScopedWithLogging<IPdfExportService, PdfExportService>();
@@ -284,6 +285,11 @@ public static class ServiceCollectionExtensions
         // File attachment tools — let the agent attach files to entities and list existing attachments.
         services.AddScoped<IChatTool, AttachFileTool>();
         services.AddScoped<IChatTool, ListAttachmentsTool>();
+
+        // Reporting tools — read-only overviews (dashboard, receivables, period/client, DPH).
+        services.AddScoped<IChatTool, GetDashboardTool>();
+        services.AddScoped<IChatTool, ListInvoicesTool>();
+        services.AddScoped<IChatTool, GetVatReportTool>();
 
         services.AddScopedWithLogging<IChatToolExecutor, ChatToolExecutor>();
 

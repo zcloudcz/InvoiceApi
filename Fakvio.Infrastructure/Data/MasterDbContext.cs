@@ -76,6 +76,13 @@ public class MasterDbContext : DbContext, IDataProtectionKeyContext
     public DbSet<UserPreferences> UserPreferences { get; set; }
 
     /// <summary>
+    /// Long-lived API keys of users (machine credentials for the MCP server, curl, CI).
+    /// Master DB because authentication must resolve the key BEFORE the tenant schema
+    /// is known — see the ApiKey entity for the full reasoning.
+    /// </summary>
+    public DbSet<ApiKey> ApiKey { get; set; }
+
+    /// <summary>
     /// Companies (Client records where IsIssuer = true).
     /// In the master DB, we only store issuer/company records — customers live in tenant DBs.
     /// NOTE: The Client table schema is the same, but master DB only contains IsIssuer = true records.
@@ -214,6 +221,7 @@ public class MasterDbContext : DbContext, IDataProtectionKeyContext
 
         ConfigureUser(modelBuilder);
         ConfigureUserPreferences(modelBuilder);
+        ConfigureApiKey(modelBuilder);
         ConfigureClient(modelBuilder);
         ConfigureAddress(modelBuilder);
         ConfigureContact(modelBuilder);
@@ -254,6 +262,37 @@ public class MasterDbContext : DbContext, IDataProtectionKeyContext
                 .OnDelete(DeleteBehavior.Cascade);
 
             entity.Property(e => e.DefaultGridPageSize).HasDefaultValue(10);
+        });
+    }
+
+    /// <summary>
+    /// ApiKey — long-lived machine credentials owned by a user (N per user).
+    /// Cascade delete: removing a user removes their keys.
+    /// KeyHash is unique and indexed — SHA-256 is deterministic, so authentication
+    /// is a single indexed equality lookup (see ApiKeyService.ComputeHash for why
+    /// SHA-256 and not BCrypt).
+    /// </summary>
+    private void ConfigureApiKey(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<ApiKey>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Listing a user's keys is the only non-auth query path.
+            entity.HasIndex(e => e.UserId);
+
+            // The authentication lookup. Unique doubles as a collision guard.
+            entity.HasIndex(e => e.KeyHash).IsUnique();
+
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.KeyPrefix).IsRequired().HasMaxLength(16);
+            entity.Property(e => e.KeyHash).IsRequired().HasMaxLength(64);
+            entity.Property(e => e.Scopes).IsRequired().HasMaxLength(64);
         });
     }
 

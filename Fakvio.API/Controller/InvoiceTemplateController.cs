@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Fakvio.Application.Exceptions;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Contracts.Dto.InvoiceTemplate;
 using Fakvio.Application.Service;
@@ -156,6 +157,22 @@ public class InvoiceTemplateController : ControllerBase
                 controllerName: "Invoice",
                 routeValues: new { id = invoice.Id },
                 value: invoice);
+        }
+        catch (TenantNotReadyException ex)
+        {
+            // Only reachable with AutoComplete = true: creating the draft is always allowed,
+            // issuing it is not. Same 400 shape as POST /api/invoice/{id}/complete.
+            _logger.LogWarning(
+                "Cannot auto-complete invoice from template {TemplateId} — tenant not ready: {MissingFields}",
+                id, string.Join(", ", ex.MissingFields));
+
+            return BadRequest(new
+            {
+                code          = ex.Code,
+                message       = ex.Message,
+                missingFields = ex.MissingFields,
+                issues        = ex.Issues
+            });
         }
         catch (InvalidOperationException ex)
         {

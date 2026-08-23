@@ -278,7 +278,7 @@ Pole „Výchozí poskytovatel" určuje, který AI se použije když firma nemá
 Umožňuje doladit chování AI asistenta bez nasazení nové verze. Nastavení je **systémové** —
 platí pro všechny tenanty.
 
-Systémový prompt má pět bloků; editovatelné jsou dva prostřední:
+Systémový prompt má šest bloků; editovatelné jsou dva prostřední:
 
 | # | Blok | Editovatelné |
 |---|------|--------------|
@@ -287,6 +287,7 @@ Systémový prompt má pět bloků; editovatelné jsou dva prostřední:
 | 3 | Hlavní instrukce — styl odpovědi, seznam nástrojů, pravidla importu | **ano** |
 | 4 | Dodatek | **ano** |
 | 5 | Business kontext (počty klientů a faktur z databáze tenanta) | ne |
+| 6 | Situační kontext (dnešní datum, otevřená stránka a doklad, chybějící nastavení tenanta) | ne |
 
 | Pole | Chování |
 |------|---------|
@@ -298,9 +299,10 @@ Systémový prompt má pět bloků; editovatelné jsou dva prostřední:
 1. Otevřete `/ai-instructions`
 2. Chip nahoře ukazuje, jestli běží výchozí, nebo vlastní instrukce
 3. Vyplňte pole a klikněte „Uložit"
-4. „Náhled celého promptu" zobrazí složený prompt tak, jak ho AI dostane. Identita firmy
-   a statistiky jsou v náhledu zástupné (`[N/A — preview mode]`), protože náhled běží
-   v SysAdmin kontextu bez databáze tenanta. Náhled zobrazuje **uložený** stav, ne
+4. „Náhled celého promptu" zobrazí složený prompt tak, jak ho AI dostane. Identita firmy,
+   statistiky i situační kontext jsou v náhledu zástupné (`[N/A — preview mode]`): první dvě
+   proto, že náhled běží v SysAdmin kontextu bez databáze tenanta, situační kontext proto,
+   že vzniká až u konkrétní zprávy uživatele. Náhled zobrazuje **uložený** stav, ne
    rozepsané změny.
 5. „Obnovit výchozí" (s potvrzením) vymaže obě pole — AI se vrátí k vestavěným instrukcím
 
@@ -566,6 +568,28 @@ Viz §2 — Správa uživatelů → 2FA. Uživatel si aktivuje sám. SysAdmin ne
 ```
 
 **NIKDY neměnit pořadí** — Impersonation musí být po Authentication (Role musí být validní).
+
+### Diagnostické endpointy (Azure Functions)
+
+| Endpoint | Přístup | K čemu |
+|----------|---------|--------|
+| `GET /api/diagnostic/health` | **jen SysAdmin** | Režim autentizace k DB, stav připojení a čekající migrace. Podrobně §13. |
+| `POST /api/diagnostic/migrate` | **jen SysAdmin** | Ruční spuštění EF Core migrací (master DB + všechny tenanty). |
+| `GET /api/diagnostic/auth` | **jen SysAdmin** | Výpis stavu JWT tak, jak ho vidí worker — hlavička, claims, issuer/audience, ruční validace tokenu. |
+
+Od issue #263 vyžadují `migrate` a `auth` platný Bearer token s rolí SysAdmin — dřív byly
+anonymní, takže kdokoli mohl spustit migrace nebo si nechat vypsat konfiguraci JWT.
+Od issue #138 platí totéž i pro `health`: vypisuje režim autentizace k databázi, cílový
+server a jména migrací, což je pro útočníka stejně cenné. Bez tokenu vrací všechny tři
+**401**, s tokenem bez role SysAdmin **403**.
+
+**Dopad na health probe:** `health` už není použitelný jako anonymní liveness probe Azure —
+probe bez tokenu dostane 401. Nastavte probe na jiný anonymní endpoint, nebo ji berte tak,
+že 401 znamená „proces běží a odpovídá" (což pro liveness stačí; readiness ne).
+
+Praktický důsledek pro ladění: `/api/diagnostic/auth` už nepomůže u volajícího, jehož token
+se vůbec nevaliduje (dostane 401 dřív, než se cokoli vypíše). Pro takové případy použijte
+logy Function Appu — `JwtAuthenticationMiddleware` důvod zamítnutí loguje.
 
 ---
 

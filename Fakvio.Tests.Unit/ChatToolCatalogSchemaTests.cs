@@ -16,7 +16,7 @@ namespace Fakvio.Tests.Unit;
 ///
 /// Why this exists next to <see cref="ChatToolExecutorTests"/>: those tests describe the
 /// executor's behaviour using NSubstitute mocks, so they prove the rules are enforced but
-/// never touch a single shipped tool. Nothing checked that the eleven tools we actually
+/// never touch a single shipped tool. Nothing checked that the tools we actually
 /// ship satisfy those rules — a tool with a broken schema would only blow up at startup in
 /// production, and a tool that is never registered would be silently invisible to the model.
 ///
@@ -109,7 +109,7 @@ public class ChatToolCatalogSchemaTests
         // #159 replaced the hand-written tool list in the prompt with a catalog generated from
         // the registered tools. Generated is not the same as verified: the tests that drive the
         // prompt elsewhere use fake tools, so nothing else checks what the model is actually
-        // told about the eleven tools we ship.
+        // told about the tools we ship.
         //
         // ComposePreview is the real composition path (the SysAdmin preview and the live prompt
         // share it), so this also pins that the catalog lands inside the built-in block, in DI
@@ -172,10 +172,16 @@ public class ChatToolCatalogSchemaTests
 
         var toolDefinition = Catalog.Definitions.Single(definition => definition.Name == toolName);
 
+        // A data-changing tool additionally gets the reserved 'confirm' flag appended by the
+        // executor (issue #212). Spelled out literally, not taken from production code.
+        var expectedParameterNames = tool.Parameters.Select(parameter => parameter.Name).ToList();
+        if (tool is IConfirmableChatTool)
+            expectedParameterNames.Add("confirm");
+
         toolDefinition.Description.ShouldBe(tool.Description);
         toolDefinition.Parameters
             .Select(parameter => parameter.Name)
-            .ShouldBe(tool.Parameters.Select(parameter => parameter.Name));
+            .ShouldBe(expectedParameterNames);
         toolDefinition.Required.ShouldBe(
             tool.Parameters.Where(parameter => parameter.IsRequired).Select(parameter => parameter.Name),
             ignoreOrder: true,
@@ -259,13 +265,26 @@ public class ChatToolCatalogSchemaTests
 
     private static IChatTool CreateSchemaMirror(IChatTool realTool)
     {
-        var mirror = Substitute.For<IChatTool>();
+        // The mirror must keep the real tool's INTERFACE too: a confirmable tool mirrored as a
+        // plain IChatTool would lose the confirm flag, and the executor under test would then
+        // validate a schema production never uses.
+        var mirror = realTool is IConfirmableChatTool
+            ? Substitute.For<IConfirmableChatTool>()
+            : Substitute.For<IChatTool>();
         mirror.ToolName.Returns(realTool.ToolName);
         mirror.Description.Returns(realTool.Description);
         mirror.Parameters.Returns(realTool.Parameters);
         mirror
             .ExecuteAsync(Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>())
             .Returns(ChatToolResult.Success("stubbed execution"));
+
+        if (mirror is IConfirmableChatTool confirmableMirror)
+        {
+            confirmableMirror
+                .BuildPreviewAsync(Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>())
+                .Returns(ChatToolResult.Success("stubbed preview"));
+        }
+
         return mirror;
     }
 

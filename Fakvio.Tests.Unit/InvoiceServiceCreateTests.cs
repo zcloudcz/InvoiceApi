@@ -41,7 +41,7 @@ public class InvoiceServiceCreateTests : IDisposable
                 Arg.Any<CancellationToken>())
             .Returns("INV-2026-042");
 
-        _service = new InvoiceService(_context, _numberSequence, _logger);
+        _service = new InvoiceService(_context, _numberSequence, Substitute.For<ITenantReadinessService>(), _logger);
 
         SeedTestData();
     }

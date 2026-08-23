@@ -99,12 +99,16 @@ public static class AiSystemPrompt
     /// <param name="appendix">Optional SysAdmin text appended after the main block.</param>
     /// <param name="businessContextBlock">Business statistics block (already formatted).</param>
     /// <param name="tools">Registered chat tools — the source of the built-in tool catalog.</param>
+    /// <param name="situationalBlock">
+    /// Situational context block (already formatted), or null when the caller has none.
+    /// </param>
     public static string Compose(
         string? companyBlock,
         string? customPrompt,
         string? appendix,
         string businessContextBlock,
-        IEnumerable<IChatTool> tools)
+        IEnumerable<IChatTool> tools,
+        string? situationalBlock = null)
     {
         var sb = new StringBuilder();
         sb.AppendLine(Identity);
@@ -130,6 +134,15 @@ public static class AiSystemPrompt
         }
 
         sb.Append(businessContextBlock);
+
+        // Situational data stays last: it is the most volatile part of the prompt and models
+        // weigh the tail of the context most heavily.
+        if (!string.IsNullOrWhiteSpace(situationalBlock))
+        {
+            sb.AppendLine();
+            sb.Append(situationalBlock);
+        }
+
         return sb.ToString();
     }
 
@@ -151,7 +164,15 @@ public static class AiSystemPrompt
             overdueInvoices: PreviewPlaceholder,
             paidInvoices: PreviewPlaceholder);
 
-        return Compose(companyBlock, customPrompt, appendix, businessContext, tools);
+        // The situational block is runtime-only, but the SysAdmin still has to see that it
+        // exists — a custom prompt is written against the whole layout, not half of it.
+        var situationalContext = BuildSituationalContextBlock(
+            today: PreviewPlaceholder,
+            currentPage: PreviewPlaceholder,
+            openEntity: PreviewPlaceholder,
+            setupGaps: PreviewPlaceholder);
+
+        return Compose(companyBlock, customPrompt, appendix, businessContext, tools, situationalContext);
     }
 
     /// <summary>
@@ -187,6 +208,43 @@ public static class AiSystemPrompt
         sb.AppendLine($"- Open (unpaid) invoices: {openInvoices}");
         sb.AppendLine($"- Overdue invoices: {overdueInvoices}");
         sb.AppendLine($"- Paid invoices: {paidInvoices}");
+        return sb.ToString();
+    }
+
+    /// <summary>Header of the situational block. Also serves as a preview anchor.</summary>
+    public const string SituationalContextHeader = "Current situation:";
+
+    /// <summary>
+    /// Formats the situational block: what day it is, where the user is standing and what is
+    /// still missing before they can invoice. Values are passed as strings so the preview can
+    /// substitute placeholders without duplicating the layout.
+    ///
+    /// A line whose value is null or blank is left out entirely, the same way the DIČ line is:
+    /// an empty "- Open entity:" would invite the model to invent one.
+    /// </summary>
+    /// <param name="today">Today's date, already formatted.</param>
+    /// <param name="currentPage">Route the user is on, or null when the client did not send one.</param>
+    /// <param name="openEntity">Record open on that page, or null when the page shows none.</param>
+    /// <param name="setupGaps">Missing setup, or null when the tenant is fully configured.</param>
+    public static string BuildSituationalContextBlock(
+        string today,
+        string? currentPage,
+        string? openEntity,
+        string? setupGaps)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine(SituationalContextHeader);
+        sb.Append($"- Today's date: {today}");
+
+        if (!string.IsNullOrWhiteSpace(currentPage))
+            sb.Append($"{Environment.NewLine}- Current page: {currentPage}");
+
+        if (!string.IsNullOrWhiteSpace(openEntity))
+            sb.Append($"{Environment.NewLine}- Open record: {openEntity}");
+
+        if (!string.IsNullOrWhiteSpace(setupGaps))
+            sb.Append($"{Environment.NewLine}- Setup not finished yet: {setupGaps}");
+
         return sb.ToString();
     }
 }

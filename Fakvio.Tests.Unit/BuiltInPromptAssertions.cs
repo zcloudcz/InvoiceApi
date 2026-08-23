@@ -47,7 +47,7 @@ internal static class BuiltInPromptAssertions
     ];
 
     /// <summary>
-    /// The catalog the eleven shipped tools are expected to render, in DI registration order
+    /// The catalog the fourteen shipped tools are expected to render, in DI registration order
     /// (<c>ServiceCollectionExtensions</c>). Each line is <c>- {ToolName}: {Description}</c>
     /// with the description written out as one line. This is the independent copy: when a tool
     /// description changes, it has to be changed here too, deliberately. That is the point.
@@ -56,7 +56,7 @@ internal static class BuiltInPromptAssertions
     [
         "- ares_lookup: Looks up a Czech company in the ARES business registry by IČO (registration number). Returns company name, tax number (DIČ), VAT status, and registered address. Read-only — use it when unsure whether the user wants a lookup or a new client.",
         "- create_client: Creates a new client (customer) in the system using their IČO. Automatically fetches company data from ARES (name, address, DIČ). Use this when the user explicitly asks to create, add, or register a client.",
-        "- navigate: Navigates the user to a page in the application. Can open new invoice, new credit note, show client detail, open client list, invoice list, or new client form. If a client name is mentioned, it finds the client first. Opens forms only — it never creates a document.",
+        "- navigate: Navigates the user to a page in the application — documents, clients, payments, templates, taxes, reminders or settings. If a client name is mentioned, it finds the client first. Opens pages and forms only — it never creates a document.",
         "- create_invoice: Creates a new invoice for a client with specified items. Automatically resolves the client by name, sets default currency (CZK), applies default VAT rate, and generates a document number. After creation, navigates to the invoice detail page. Use this when the user provides item details (description, price) — when they only want to open the form, use 'navigate' with target new_invoice instead.",
         "- import_invoice: Imports an invoice from extracted data. Automatically determines if it's an issued (vydaná) or received (přijatá) invoice by matching IČO against the company database. Finds the client/supplier automatically. Preserves all dates exactly as extracted.",
         "- export_invoice: Export/download an invoice or credit note as a PDF file. Finds the document by number, by client name (most recent), or exports the most recent invoice if no parameters given.",
@@ -64,7 +64,10 @@ internal static class BuiltInPromptAssertions
         "- list_received_invoices: List received (incoming/expense) invoices with optional filtering by status, supplier name, date range, amount range, or currency. Returns paged results with totals.",
         "- search_received_invoices: Full-text search across received (incoming/expense) invoices. Searches by document number, supplier name, variable symbol, or amount. Use this when the user provides a number or name without specifying which field.",
         "- attach_file: Attach a file to an entity (Invoice, ReceivedInvoice, or Client). The file content must be provided as a Base64-encoded string — the frontend supplies it when the user drops a file into the chat. Returns the attachment ID, file name, and size upon success.",
-        "- list_attachments: List all file attachments for an entity record (Invoice, ReceivedInvoice, or Client). Returns file name, size, upload date, and optional description for each attachment."
+        "- list_attachments: List all file attachments for an entity record (Invoice, ReceivedInvoice, or Client). Returns file name, size, upload date, and optional description for each attachment.",
+        "- get_dashboard: Get the dashboard summary: cashflow due this month, number of clients, unpaid amount, overdue invoice count, the most recent invoices, invoice counts per status, and the top clients by revenue. Read-only overview — use it for general questions about how the business is doing.",
+        "- list_invoices: List issued (outgoing) invoices and credit notes with optional filtering by status, document type, client name, issue date range, or overdue flag. Returns paged results with page totals. Use it for overdue receivables, per-client history, and period reports.",
+        "- get_vat_report: Get the VAT (DPH) report for a period: output VAT from issued invoices, input VAT from received invoices, the resulting tax liability, plus revenue, expenses and profit. The period is matched on the taxable supply date (DUZP). Read-only."
     ];
 
     /// <summary>The static lines below the generated tool catalog, verbatim.</summary>

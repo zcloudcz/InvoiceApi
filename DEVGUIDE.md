@@ -253,6 +253,42 @@ Functions přes `SystemConfigurationFunctions.SystemConfiguration_GetCredentialH
 
 **AresCache TTL.** ARES proxy je anonymní, takže počet klíčů v `AresCache` volí volající. `AresCacheRepository.SaveCacheAsync` proto při každém zápisu smaže dávku expirovaných řádků (`ExpiredSweepBatchSize`, index na `ExpiresAt`). Záměrně **není** periodická úloha (§6) — řádky vznikají jen na zápisové cestě, takže tabulka neroste, když se nezapisuje, a úklid nepotřebuje dvojici BackgroundService + `[TimerTrigger]` ani průchod všemi tenant schématy. Neúspěšné lookupy expirují za 1 hodinu (`AresServiceImpl.FailureCacheExpiration`), takže enumerace uklízí sama po sobě.
 
+### 2.9 API klíče (SHA-256 — vědomá výjimka z §2.1)
+
+Dlouhodobý, revokovatelný credential pro strojové klienty (MCP server, curl, CI) místo 24h JWT.
+
+| Co | Kde | Detail |
+|----|-----|--------|
+| Entita | `Fakvio.Domain/Entities/ApiKey.cs` | **Master schema** (migrace `AddApiKey_v147`), FK → `User`, cascade. |
+| Service | `Fakvio.Infrastructure/Service/ApiKeyService.cs` | Generování, hash, scopes, revokace. |
+| Endpointy | `Fakvio.API/Controller/ApiKeyController.cs` + `Fakvio.Functions/HttpFunctions/ApiKeyFunctions.cs` | `GET /api/api-key`, `POST /api/api-key`, `POST /api/api-key/{id}/revoke`. Vždy jen **vlastní** klíče. |
+| Formát klíče | `fak_live_` + 43 znaků Base64Url | 32 B z `RandomNumberGenerator`. Prefix `fak_` je nosný — podle něj vybírá auth scheme selector (JWT vždy začíná `eyJ`) a poznají ho secret scannery. |
+| Hash | `ApiKeyService.ComputeHash` | `Convert.ToBase64String(SHA256.HashData(...))`, sloupec `KeyHash` s **unique indexem**. |
+| Zobrazení | `KeyPrefix` = prvních 12 znaků | Jen pro výpis a korelaci v logu, **nikdy** jako selektor. |
+| Scopes | `EApiKeyScope { Read, Write }` | Uloženo `"read"` / `"read,write"`. `write` se normalizuje na `read,write`. Efektivní oprávnění = **role ∩ scope**. |
+| Revokace | `RevokedAt` + `RevokedByUserId` | Soft — řádek zůstává kvůli auditu. |
+| Validace vstupu | `ApiKeyService.CreateAsync` | Jméno neprázdné a ≤ 100 znaků (sloupec je `varchar(100)`), scope musí být **jménem** z `EApiKeyScope` (číselný tvar `"1"`/`"999"` je odmítnut — `Enum.TryParse` ho jinak bere), `ExpiresAt` v budoucnu. Validace patří **do service**, ne do controlleru: Functions host žádnou model validaci nemá. |
+
+**Proč SHA-256 a ne BCrypt wf12 podle §2.1** (kompletní zdůvodnění je v komentáři u `ComputeHash`):
+adaptivní hash chrání *nízkoentropijní lidský vstup* před offline brute force, ale klíč je 32 B
+z CSPRNG; BCrypt by stál ~100 ms CPU **na každý request** (jeden AI turn = desítky tool callů);
+a protože je salted, byl by neindexovatelný — SHA-256 je deterministický, takže autentizace je
+jeden indexovaný equality dotaz. **Kdyby do `KeyHash` někdy šlo něco nízkoentropijního, tohle
+zdůvodnění padá a algoritmus se musí změnit s ním.**
+
+**Proč master schema a ne tenant:** `TenantContextMiddleware` odvozuje schéma z `CompanyId` claimu,
+který musí autentizace vyrobit dřív. V tenant schématu by vznikl kruh — potřeboval bys schéma
+k nalezení klíče a klíč k nalezení schématu. Precedent: `UserPreferences`.
+Entita proto **nemá `CompanyId`** — tenant se odvozuje z `User.CompanyId` při autentizaci, takže
+přesun uživatele mezi firmami klíče následují místo tichého stale bindingu (a SysAdmin klíč bez
+firmy je reprezentovatelný).
+
+**Raw klíč se vrací právě jednou** — v odpovědi `POST /api/api-key` (`CreatedApiKeyDto.Key`).
+Nikam se neukládá a nikdy se neloguje; do logu jde jen `KeyPrefix`.
+
+> Autentizace klíčem (scheme selector, `ApiKeyScopeMiddleware`, Functions mirror) je samostatný
+> task #236 — endpointy výše jsou zatím **JWT-only**.
+
 ---
 
 ## 3. Multi-tenant — jak data oddělujeme
@@ -283,7 +319,7 @@ Pipeline pořadí v `Fakvio.API/Program.cs`:
 4. `app.UseTenantContext()` (řádek 180) — z `CompanyId` claimu resolvuje schema name a nastaví na scoped `TenantDbContext`.
 
 **TenantContextMiddleware** (`Fakvio.API/Middleware/TenantContextMiddleware.cs`):
-- Řádek 35: `MasterOnlyPaths` — `/api/auth`, `/api/user`, `/api/company`, `/api/system-configuration`, `/api/logs`, `/api/twofactor`, `/api/cloud-storage`, `/api/email`, `/api/sysadmin/payment-matching`. **Skip** tenant kontroly.
+- Řádek 35: `MasterOnlyPaths` — `/api/auth`, `/api/user`, `/api/api-key`, `/api/company`, `/api/system-configuration`, `/api/logs`, `/api/twofactor`, `/api/cloud-storage`, `/api/email`, `/api/sysadmin/payment-matching`. **Skip** tenant kontroly.
 - Řádek 56: `SysAdminCodeTablePaths` — code-table endpointy přístupné SysAdminovi i bez `X-Company-Id` (konfigurace systémových číselníků). Patří sem **jen dual-context číselníky** (`/api/currency`, `/api/vatrate`, `/api/contenttemplate`, `/api/numbersequence/formats`), jejichž service umí sáhnout do Master i Tenant DB.
 - **Tenant-only číselník do žádného z těch dvou seznamů nepatří.** Např. `/api/reversechargecode` (issue #46) čte přes `ReverseChargeCodeService` výhradně `TenantDbContext`, takže potřebuje normální tenant resolution — data jsou sice statutární (MFČR), ale fyzicky leží v tenant schématu. Bez `X-Company-Id` proto SysAdmin tyto řádky nevidí; až #49 přidá SysAdmin CRUD, bude nutné vědomě rozhodnout, zda service překlopit na dual-context.
 - Řádek 126: `await factory.ResolveSchemaAsync(companyId)` — jediný zdroj pravdy.
@@ -644,7 +680,7 @@ Implementace: `PaymentMatchingService.cs` (metoda `GetPaymentsForInvoiceAsync`).
 - Implementace: `Fakvio.Infrastructure/AiProviders/` (Anthropic, OpenAI, Gemini, Ollama).
 - API key storage: `CompanySystemSettings.AiApiKeyEncrypted` (per company) přes `CredentialProtector`.
 - SSE streaming přes `ChatController.StreamAsync`.
-- **Chat Tools**: 11 tools registrovaných v DI jako `IChatTool`, orchestrováno přes `IChatToolExecutor`.
+- **Chat Tools**: 14 tools registrovaných v DI jako `IChatTool`, orchestrováno přes `IChatToolExecutor`.
   Registrace v `ServiceCollectionExtensions.cs`; přidání nového toolu = implementace `IChatTool` + řádek v DI.
 
 #### Přidání nového chat toolu (POVINNÝ postup)
@@ -710,6 +746,61 @@ Pravidla:
    `TryGetValue` vrátí `false` a povinný parametr správně spadne na „missing“.
    Řetězec `"null"` v hodnotě nikdy nedostaneš.
 6. Registrace: jeden řádek `services.AddScoped<IChatTool, MyTool>();`.
+7. **Zápisový tool = `IConfirmableChatTool`.** Cokoli, co mění nebo maže data, musí projít
+   potvrzovacím krokem (viz níže). Nový zápisový tool bez něj = review reject.
+
+#### Zápisový tool — potvrzovací krok (POVINNÝ, issue #212)
+
+Asistent nemá ohlásit změnu, kterou uživatel neviděl přicházet. Vzor je **konverzační**:
+tool se nejdřív zavolá bez potvrzení a vrátí náhled, teprve po souhlasu uživatele se zavolá
+znovu s `confirm: true`. Žádná změna UI, funguje u všech čtyř providerů.
+
+```csharp
+public class UpdateNumberSequenceTool : IConfirmableChatTool   // místo IChatTool
+{
+    // ToolName / Description / Parameters / ExecuteAsync — beze změny.
+    // POZOR: parametr "confirm" NEDEKLARUJ, přidá ho executor sám
+    // (jinak InvalidOperationException při startu).
+
+    public async Task<ChatToolResult> BuildPreviewAsync(
+        Dictionary<string, string> parameters, CancellationToken ct = default)
+    {
+        var current = await _repository.GetAsync(parameters["id"], ct);
+        if (current is null)
+            return ChatToolResult.Failure("Číselná řada nenalezena.");   // není co potvrzovat
+
+        // Jen popiš změnu. Nic nezapisuj. Žádné "potvrď prosím" — to doplní executor.
+        return ChatToolResult.Success(
+            $"Číslování se změní z '{current.Pattern}' na '{parameters["pattern"]}'.");
+    }
+}
+```
+
+Co dělá `ChatToolExecutor` (`Fakvio.Infrastructure/Service/ChatTools/`) automaticky:
+
+| Krok | Chování |
+|------|---------|
+| Schéma | Do `Parameters` doplní volitelný `confirm` (boolean) — v textových instrukcích i v native JSON Schema. Tool si ho nesmí deklarovat sám. |
+| Volání bez `confirm: true` | `ExecuteAsync` se **vůbec nezavolá**. Spustí se `BuildPreviewAsync` a k výsledku se připojí `ChatToolConfirmation.PreviewSuffix`. |
+| Neparsovatelná hodnota (`"ano"`, `"1"`) | Centrální validace ji odmítne jako ne-boolean; nespustí se ani zápis, ani náhled (fail-closed). |
+| Neúspěšný náhled | Vrátí se jako obyčejná chyba — model není vyzván k `confirm: true`. |
+| `UiAction` u náhledu | Zahodí se (`UiAction = null`). Jinak by prohlížeč přenavigoval dřív, než uživatel cokoli potvrdil. UI akci vracej až z `ExecuteAsync`. |
+| Odpověď modelu | Všechny čtyři tool cesty (text/native × streaming/non-streaming) skládají druhý průchod přes `ChatService.DescribeToolResult` + `BuildToolResultInstruction`; u náhledu říkají „tool NEBYL spuštěn". Framing tedy nezávisí na textu, který dodá tool. |
+| `confirm` v parametrech | Neodfiltruje se — dojde i do `BuildPreviewAsync`, i do `ExecuteAsync`. Čti parametry přes `TryGetValue` a `confirm` prostě ignoruj. |
+
+**Co gate NENÍ: autorizační hranice.** Server si souhlas nikde nepamatuje — kroky „náhled" a
+„potvrzení" drží pohromadě jen znění promptu. Model, který pošle `confirm: true` rovnou v prvním
+volání, zapíše okamžitě. Je to **UX tok** proti tichým změnám, ne oprávnění; autorizace zůstává
+tam, kde byla — na API endpointech a v tenant scope. Destruktivní tool (mazání) proto za tímhle
+gate smí viset jen tehdy, když by ho uživatel směl zavolat i bez chatu.
+
+Obě volání navíc **nejsou nijak spárovaná**: mezi náhledem a zápisem může být N uživatelských
+tahů a executor nekoreluje nic. `ExecuteAsync` si musí předpoklady ověřit **znovu sám** a nesmí
+se spolehnout na snímek z náhledu.
+
+Zdroj pravdy o mechanismu: `Fakvio.Application/Service/IConfirmableChatTool.cs`
+(interface + `ChatToolConfirmation`). Read-only tool zůstává na `IChatTool` —
+potvrzovat čtení je jen otravné.
 
 #### System prompt — složení a editovatelnost (issue #146)
 
@@ -727,6 +818,7 @@ Pořadí bloků shora dolů:
 | 3 | Hlavní blok (RESPONSE STYLE / TOOLS / IMPORT RULES / RULES) | `AiSystemPrompt.BuildDefaultMainBlock(tools)` — statický text z konstant, katalog toolů generovaný z `IChatTool` — nebo `SystemConfiguration.AiSystemPromptCustom` | **ano (SysAdmin)** |
 | 4 | Dodatek | `SystemConfiguration.AiSystemPromptAppendix` | **ano (SysAdmin)** |
 | 5 | Business kontext (počty klientů a faktur) | tenant DB | ne |
+| 6 | Situační kontext (dnešek, stránka, otevřený záznam, chybějící nastavení) | request + tenant DB | ne |
 
 - Neprázdný `AiSystemPromptCustom` **nahradí celý blok 3** — včetně katalogu tools. Nový
   chat tool se nikam nedopisuje: sekce `TOOLS:` se generuje z registrovaných `IChatTool`
@@ -757,6 +849,36 @@ Pořadí bloků shora dolů:
   Functions zrcadlo: `Fakvio.Functions/HttpFunctions/AiInstructionsFunctions.cs`.
 - UI: `/ai-instructions` (`Fakvio.UI.Shared/Components/Pages/AiInstructions.razor`), SysAdmin sekce nav menu.
 
+#### Situační kontext (blok 6, issue #230)
+
+Poslední blok promptu říká modelu, *kdy a kde* uživatel stojí — bez něj se „oprav tuhle
+fakturu" nebo „splatnost do pátku" nedá vyhodnotit:
+
+| Řádek | Zdroj | Chybí když |
+|-------|-------|------------|
+| `Today's date` | `DateTime.UtcNow` (UTC jako všude jinde, app nemá per-tenant timezone) | nikdy |
+| `Current page` | `SendMessageRequest.CurrentRoute` | klient routu neposlal (Functions, starší klient) |
+| `Open record` | `SendMessageRequest.OpenEntity` | stránka nezobrazuje jeden záznam (přehledy, dashboard) |
+| `Setup not finished yet` | `ITenantReadinessService.GetReportAsync` — jen **blocking** nálezy, formát `CODE (fix at /route)` | tenant je nastavený nebo jsou nálezy jen warning |
+
+- Řádek bez hodnoty se **vynechá celý** (stejně jako `- DIČ:`) — prázdný popisek jen svádí
+  model k tomu, aby si hodnotu domyslel.
+- Routu i otevřený záznam plní **klient** (`ChatSituation.NormalizeRoute` /
+  `DescribeOpenEntity` v `Fakvio.UI.Shared/Components/Chat/`, volané z `ChatPanel`).
+  Pravidlo „poslední segment je číslo ⇒ na stránce je jeden záznam" je záměrně generické:
+  žádná tabulka rout, nová detailní stránka funguje bez zásahu, a mapování intent → route
+  zůstává na `NavigateTool`. Query string se zahazuje (filtry a stránkování modelu nic neříkají).
+- Obě hodnoty jdou do promptu z requestu, takže je `ChatContextBuilder.Sanitize` zkracuje
+  a zbavuje konců řádků — jinak by šitá route mohla podvrhnout vlastní sekci promptu.
+  Limity v DTO to nezachytí: Functions host request deserializuje sám, bez model validace.
+- Pravidla připravenosti se tu **neduplikují** — vlastní je `ITenantReadinessService`
+  (issue #148). Warningy do promptu nejdou (model s nimi nemá co dělat) a detail chybějících
+  polí zůstává v UI banneru; modelu stačí kód a stránka, kam uživatele poslat.
+  Readiness je jediná část promptu, která sahá do master DB, takže se volá ve vlastním
+  `try/catch`: její výpadek smaže jen tenhle řádek, ne identitu firmy a statistiky.
+- Náhled pro SysAdmina blok ukazuje také, s `PreviewPlaceholder` místo živých hodnot —
+  vlastní prompt se píše proti celému layoutu, ne proti jeho polovině.
+
 #### Chat AI Tools matice
 
 Sloupec „Klíčové parametry" je jen orientační — závazné je schéma v příslušné třídě.
@@ -768,17 +890,124 @@ Sloupec „Klíčové parametry" je jen orientační — závazné je schéma v 
 | `create_invoice` | `CreateInvoiceTool` | Invoice (vydaná) | Create | `client_name`, `items` (JSON), `currency`, `notes` |
 | `import_invoice` | `ImportInvoiceTool` | Invoice / ReceivedInvoice | Create | vydaná vs přijatá auto-detekce z IČO; `document_number`, `items`, data atd. |
 | `export_invoice` | `ExportInvoiceTool` | Invoice (vydaná) | Read → Download | `document_number`, `client_name` |
-| `navigate` | `NavigateTool` | — | Navigation | `target` (new\_invoice, client\_list, …), `client_name` |
+| `navigate` | `NavigateTool` | — | Navigation | `target` (uzavřený výčet **všech tenant-facing stránek**, viz níže), `client_name` |
 | `get_received_invoice` | `GetReceivedInvoiceTool` | ReceivedInvoice | Read (detail) | `id` nebo `document_number`; vrátí položky, DPH, celkové částky, cross-check |
 | `list_received_invoices` | `ListReceivedInvoicesTool` | ReceivedInvoice | Read (paged list) | `status`, `supplier_name`, `issue_date_from/to`, `min/max_amount`, `currency`, `overdue` |
 | `search_received_invoices` | `SearchReceivedInvoicesTool` | ReceivedInvoice | Search | `query` (fulltext: číslo dokladu, dodavatel, VS, částka), `limit` |
 | `attach_file` | `AttachFileTool` | Invoice / ReceivedInvoice / Client | Write (upload) | `entity_name`, `record_id`, `file_name`, `file_content_base64` (Base64 bytes), `content_type`, `description` |
 | `list_attachments` | `ListAttachmentsTool` | Invoice / ReceivedInvoice / Client | Read (list) | `entity_name`, `record_id`; vrátí jméno, velikost, datum, popis pro každý soubor |
+| `get_dashboard` | `GetDashboardTool` | Invoice / Client (agregace) | Read (souhrn) | bez parametrů; cashflow tento měsíc, počet klientů, neuhrazeno, po splatnosti, top klienti |
+| `list_invoices` | `ListInvoicesTool` | Invoice (vydaná) | Read (paged list) | `status`, `document_type`, `client_name`, `issue_date_from/to`, `overdue` |
+| `get_vat_report` | `GetVatReportTool` | VAT report (agregace) | Read (report) | `date_from`, `date_to` (obojí povinné, období podle DUZP) |
 
-##### Co zatím NENÍ pokryto chat tools (jen MCP Server)
-- Reminders (dunning) — přístupné přes SysAdmin UI, ne přes chat
-- PaymentMatch / BankTransaction — přístupné přes SysAdmin UI
-- NumberSequence, BankAccount, VatRate, Currency, ContentTemplate — read-only přes MCP server (`Fakvio.McpServer`)
+##### Reporting tools (#228) — proč tři, ne šest
+
+MCP `ReportingTools` má šest metod, chat tools jen tři (`GetDashboard` a `GetVatReport` mají
+1:1 protějšek). Zbylé **čtyři nejsou mezera** — jejich schopnost už pokrývá jiný tool:
+
+| MCP metoda | Chat ekvivalent |
+|------------|-----------------|
+| `GetOverdueInvoices` | `list_invoices` s `overdue=true` |
+| `GetClientInvoices` | `list_invoices` s `client_name` (substring podle jména, ne `clientId` jako MCP — dva podobně pojmenovaní klienti se přes chat nerozliší) |
+| `GetInvoicesByDateRange` | `list_invoices` s `issue_date_from/to` |
+| `GetOverdueReceivedInvoices` | `list_received_invoices` s `overdue=true` (existující tool, sémantika `IsOverdue` u přijatých už je „Approved + po splatnosti") |
+
+Duplikovat je jako samostatné tooly by znamenalo čtyři třídy nad jedním dotazem a čtyři
+řádky navíc v katalogu, který model čte při každé zprávě.
+
+**Definice „po splatnosti" u vydaných faktur:** `list_invoices` s `overdue=true` doplní
+`Status = Completed`, pokud volající status neurčil — stejně jako `DashboardService`.
+Samotný `IsOverdue` filtr v `InvoiceService` totiž vrací i **drafty** s prošlým datem
+splatnosti, což by pohledávky nafouklo. `InvoiceFilterDto` umí jen jeden status naráz,
+takže „Completed NEBO PartiallyPaid" se musí zeptat dvěma voláními (parametr `status`
+to umožňuje).
+
+##### `navigate` — katalog rout (#229)
+
+`NavigateTool.Routes` je jediný zdroj pravdy: z něj se odvozuje jak `AllowedValues`
+parametru `target` (co model smí poslat), tak URL, na kterou Blazor klient přejde.
+Target bez routy (nebo naopak) proto nemůže vzniknout. Přidání stránky do aplikace
+= přidání jednoho řádku do `Routes`.
+
+Co v katalogu **záměrně není**:
+
+| Vynecháno | Proč |
+|-----------|------|
+| Auth flow (`/login`, `/register`, `/set-password`, `/verify-email`, callbacky) | Asistent běží v session přihlášeného uživatele — navigace ven z aplikace. |
+| SysAdmin-only stránky (`/logs`, `/system-settings`, `/companies`, `/company-settings`, `/currencies`, `/ai-instructions`, `/send-email`, `/sysadmin/*`) | Tenant uživatel by dostal jen „access denied". |
+| Routy s parametrem (`/invoices/{id}`, `/payments/{id}`, `/received-invoices/{id}`, detaily šablon) | Potřebují nejdřív dohledat entitu; dnes existuje jen resoluce klienta (target `client_detail` → `/clients/{id}`). |
+
+Stránky s `[Authorize(Roles = "Admin,SysAdmin")]` (`/users`, `/tax-configs`) v katalogu
+**jsou** — `Admin` je tenantová role.
+
+Hlídá to `NavigateToolRouteCatalogTests`: čte reálnou routovací tabulku reflexí
+(`RouteAttribute` + `AuthorizeAttribute` na zkompilovaných stránkách `Fakvio.UI.Shared`)
+a tvrdí, že (a) každý nabízený target vede na existující routu, (b) žádný nevede na
+anonymní nebo SysAdmin-only stránku, (c) každá tenant-facing stránka bez parametru
+v routě je nabízená. **Nová stránka v UI tedy shodí testy, dokud ji nedoplníš do
+`Routes`** — nebo ji v tom testu explicitně nevyloučíš s odůvodněním.
+
+##### Paritní tabulka chat ↔ MCP (stav k #212)
+
+Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 14 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
+a **MCP server** (`[McpServerTool]`, 36 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
+cílem story #149 je mezeru zavřít. Tabulka je jediný pravdivý seznam toho, co kde chybí;
+**každý nový tool na kterékoli straně sem přidá řádek** (viz §13).
+
+Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nemá)
+
+| MCP tool | Operace | Chat ekvivalent | Stav | Doplní |
+|----------|---------|-----------------|------|--------|
+| **Klienti** (`ClientTools`, 6) |
+| `LookupAres` | Read (ARES) | `ares_lookup` | ✅ | |
+| `CreateClient` | Create | `create_client` | ✅ | |
+| `ListClients` | Read | — | ❌ | #222 |
+| `GetClient` | Read | — | ❌ | #222 |
+| `UpdateClient` | **Write** | — | ❌ | #222 |
+| `GetIssuer` | Read | — | ❌ | #222 |
+| **Vydané faktury** (`InvoiceTools`, 10) |
+| `CreateInvoice` | Create | `create_invoice` | ✅ | |
+| `ExportInvoicePdf` | Read → download | `export_invoice` | ◐ (chat neumí ISDOC) | #217 |
+| `ListInvoices` | Read | — | ❌ | #217 |
+| `GetInvoice` | Read | — | ❌ | #217 |
+| `FindInvoiceByNumber` | Read | — | ❌ | #217 |
+| `CompleteInvoice` | **Write** | — | ❌ | #217 |
+| `MarkInvoicePaid` | **Write** | — | ❌ | #217 |
+| `SendInvoiceEmail` | **Write** (odešle e-mail) | — | ❌ | #217 |
+| `ExportInvoiceIsdoc` | Read → download | — | ❌ | #217 |
+| `DeleteInvoice` | **Destructive** | — | ❌ | #217 |
+| **Přijaté faktury** (`ReceivedInvoiceTools`, 6) |
+| `GetReceivedInvoice` | Read | `get_received_invoice` | ✅ | |
+| `ListReceivedInvoices` | Read | `list_received_invoices` | ✅ | |
+| `CreateReceivedInvoice` | Create | `import_invoice` (auto-detekce vydaná/přijatá) | ◐ | #218 |
+| `ApproveReceivedInvoice` | **Write** | — | ❌ | #218 |
+| `MarkReceivedInvoicePaid` | **Write** | — | ❌ | #218 |
+| `DeleteReceivedInvoice` | **Destructive** | — | ❌ | #218 |
+| **Reporting** (`ReportingTools`, 6) |
+| `GetDashboard` | Read | `get_dashboard` | ✅ | |
+| `GetOverdueInvoices` | Read | `list_invoices` + `overdue=true` | ✅ | |
+| `GetClientInvoices` | Read | `list_invoices` + `client_name` | ✅ | |
+| `GetInvoicesByDateRange` | Read | `list_invoices` + `issue_date_from/to` | ✅ | |
+| `GetVatReport` | Read | `get_vat_report` | ✅ | |
+| `GetOverdueReceivedInvoices` | Read | `list_received_invoices` + `overdue=true` | ✅ | |
+| **Daně** (`TaxTools`, 5) |
+| `EstimateTax`, `CompareTaxRegimes`, `GetAnnualIncome`, `GetInsuranceAdvance`, `GetTaxConfig` | Read | — | ❌ | zatím bez tasku |
+| **Šablony** (`TemplateTools`, 3) |
+| `ListTemplates` | Read | — | ❌ | #225 |
+| `GetTemplate` | Read | — | ❌ | #225 |
+| `CreateInvoiceFromTemplate` | Create | — | ❌ | #225 |
+| **Jen chat (MCP nemá)** |
+| — | Search | `search_received_invoices` | ⬅ | |
+| — | Navigace UI | `navigate` | ⬅ | |
+| — | Upload přílohy | `attach_file` | ⬅ | |
+| — | Read | `list_attachments` | ⬅ | |
+
+**Součty:** 36 MCP toolů, 14 chat toolů. Chat pokrývá 13 MCP toolů (z toho 2 částečně),
+4 chat tooly nemají MCP protějšek. Zbývá 23 mezer.
+
+Mimo obě rozhraní (jen UI / SysAdmin, plánováno v #220 / #224 / #227):
+nastavení firmy a bankovní účty, číselné řady a sazby DPH, upomínky (dunning),
+PaymentMatch / BankTransaction.
 
 ### 4.8 In-app notifikace (per-user)
 
@@ -835,6 +1064,7 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
 - Žádný přístup k DB — všechno jde přes `IFakvioApiClient` → HTTP na `Fakvio.API`, takže autorizace i tenant izolace platí beze změny.
 - **36 tools**: 10 invoice + 6 client + 6 received invoice + 6 reporting + 5 tax + 3 template (po jednom souboru v `Tools/`).
   Ruční číslo v dokumentaci stárne; zdroj pravdy je `grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs`.
+  Porovnání s chat tooly (co MCP umí a chat ještě ne): paritní tabulka v §4.7.
 - Konfigurace v Claude Desktop / Claude Code: spustí `fakvio-mcp` jako subprocess se stdio piping. Vzor v `.mcp.json.sample` (kořen repa).
 - Detaily (build, získání tokenu, seznam nástrojů, postup přidání nástroje): `Fakvio.McpServer/README.md`.
 
@@ -964,10 +1194,12 @@ vlastní výjimku ani vlastní tvar chyby**. Použij `ITenantReadinessService`.
 
 | Vrstva | Kde | Co dělá |
 |--------|-----|---------|
-| Interface | `Fakvio.Application/Service/ITenantReadinessService.cs` | `GetReportAsync(issuerId?)` = report; `EnsureReadyAsync(issuerId?)` = guard, který hodí výjimku |
+| Interface | `Fakvio.Application/Service/ITenantReadinessService.cs` | `GetReportAsync(issuerId?, documentType?)` = report; `EnsureReadyAsync(issuerId?, documentType?)` = guard, který hodí výjimku |
 | Implementace | `Fakvio.Infrastructure/Service/TenantReadinessService.cs` | Všechna pravidla na jednom místě (inline checky, žádná FluentValidation) |
 | DTO | `Fakvio.Contracts/Dto/Readiness/` | `ReadinessReportDto`, `ReadinessIssueDto`, konstanty kódů `ReadinessCodes` |
 | Výjimka | `Fakvio.Application/Exceptions/TenantNotReadyException.cs` | Nese `Code` + `MissingFields` + `Issues` |
+| REST | `Fakvio.API/Controller/ReadinessController.cs` | `GET /api/readiness?issuerId=` — tenká obálka nad `GetReportAsync` |
+| Functions | `Fakvio.Functions/HttpFunctions/ReadinessFunctions.cs` | Zrcadlo téhož endpointu pro Azure host (dual-host pravidlo §6) |
 
 **Pravidla a jejich závažnost:**
 
@@ -978,7 +1210,7 @@ vlastní výjimku ani vlastní tvar chyby**. Použij `ITenantReadinessService`.
 | `ISSUER_REGISTRATION_NUMBER_MISSING` | Blocking | prázdné IČO | `/my-company` |
 | `ISSUER_TAX_NUMBER_MISSING` | Blocking | `IsVatPayer = true` a prázdné DIČ | `/my-company` |
 | `ISSUER_BANK_ACCOUNT_MISSING` | Blocking | žádný účet s vyplněným číslem | `/my-company` |
-| `NUMBER_SEQUENCE_MISSING` | Blocking | chybí aktivní default řada pro `Invoice` / `CreditNote` (`MissingFields` nese typ dokladu) | `/number-sequences` |
+| `NUMBER_SEQUENCE_MISSING` | Blocking | chybí aktivní default řada pro `Invoice` / `CreditNote` (`MissingFields` nese typ dokladu). S parametrem `documentType` se kontroluje jen ta jedna řada | `/number-sequences` |
 | `EPO_HEADER_INCOMPLETE` | Warning | `CompanySystemSettings.EpoTaxOfficeCode` / `EpoTaxOfficeBranchCode` není vyplněné | `/company-settings` |
 
 **Konvence, které musíš dodržet, když přidáváš pravidlo:**
@@ -1002,6 +1234,39 @@ vlastní výjimku ani vlastní tvar chyby**. Použij `ITenantReadinessService`.
 { "code": "TENANT_NOT_READY", "message": "...", "missingFields": ["RegistrationNumber"],
   "issues": [ { "code": "...", "severity": 1, "missingFields": [...], "fixRoute": "/my-company" } ] }
 ```
+
+**Kde je guard zapojený (stav k #206):**
+
+| Místo | Volání | Poznámka |
+|-------|--------|----------|
+| `InvoiceService.CompleteInvoiceAsync` | `EnsureReadyAsync(invoice.IssuerId, invoice.DocumentType, ct)` | Jediný gate na vystavení dokladu. Běží **až po** guardech „faktura neexistuje" / „už je vystavená" a **před** jakoukoli změnou stavu — odmítnutá faktura zůstane Draft a nespotřebuje číslo z řady. |
+| `InvoiceController.CompleteInvoice` | `catch (TenantNotReadyException)` → 400 | Tvar odpovědi viz výše. |
+| `InvoiceTemplateController.CreateInvoiceFromTemplate` | `catch (TenantNotReadyException)` → 400 | Nastane jen s `AutoComplete = true`; draft už je v tu chvíli založený a zůstane. |
+
+Gate je schválně **v servisu, ne v controlleru** — přes `CompleteInvoiceAsync` vede každá
+cesta k vystavení (REST, Azure Functions wrapper, `BulkCompleteAsync`, auto-complete ze
+šablony, MCP nástroj přes REST). Kdyby seděl v controlleru, hromadné vystavení a šablony by
+ho obešly. `BulkCompleteAsync` výjimku chytá na položku a hlásí ji v `Errors` — zbytek
+dávky projde.
+
+Mapování na HTTP patří **do controlleru, ne do `GlobalExceptionMiddleware`** — Functions
+host volá metody controlleru přímo a middleware API v něm neběží; kdyby se mapovalo tam,
+Azure deploy by na tutéž situaci vrátil 500.
+
+**`GET /api/readiness`** (issue #209) — čtecí endpoint, kterým se UI ptá „co ještě chybí".
+
+| Vlastnost | Hodnota |
+|-----------|---------|
+| Autorizace | `[Authorize]` — **kterýkoli přihlášený uživatel tenanta**, ne jen SysAdmin (banner v UI vidí běžný uživatel, který to má opravit) |
+| Tenant kontext | Běžný tenant endpoint — **NEpatří do `MasterOnlyPaths`** ani do `SysAdminCodeTablePaths` v `TenantContextMiddleware` (obou hostů). SysAdmin musí impersonovat přes `X-Company-Id`. |
+| Query | `issuerId` (volitelné) — omezí report na jednoho vystavitele |
+| 200 | `ReadinessReportDto`. **Nedokončené nastavení není chyba** — je to obsah reportu. |
+| 404 | Jen když volající poslal `issuerId`, které v tenantu neexistuje |
+
+Rozdíl 200 vs. 404 je jediná logika, kterou controller přidává: služba vrací
+`ISSUER_MISSING` jak pro „tenant nemá žádného vystavitele", tak pro „tohle ID neexistuje" —
+rozlišit je umí až volající, protože to ID sám poslal. Bez `issuerId` je `ISSUER_MISSING`
+normální položka reportu (200), s `issuerId` je to 404.
 
 ---
 
@@ -1837,12 +2102,14 @@ pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. P
 | Změna Data Protection persistence / ApplicationName | §2.7 |
 | Nová seed migrace s hardcoded Id | §12 (non-idempotent seed) |
 | Nový projekt s `EmitCompilerGeneratedFiles` | §12 (Generated/) + `.gitignore` |
-| Nové readiness pravidlo / nový readiness kód | §4.12 (tabulka pravidel!) |
+| Nové readiness pravidlo / nový readiness kód / nový readiness gate | §4.12 (tabulka pravidel + tabulka zapojení!) |
 | Nový code-table pattern (master / tenant / dual-context) | §11.2 |
 | Nový background lock klíč | §6.3 (tabulka klíčů) |
-| Nový chat tool nebo změna schématu parametrů (`IChatTool.Parameters`) | §4.7 (postup + matice) |
+| Nový chat tool nebo změna schématu parametrů (`IChatTool.Parameters`) | §4.7 (postup + matice + **paritní tabulka**) |
+| Nový MCP tool (`[McpServerTool]`) | §4.9 (počty) + §4.7 (paritní tabulka) |
 | Změna observability stacku (App Insights → jiný) | §10 |
 | Nová list stránka s gridem / změna grid patternu | §7.10 (FakvioGrid) |
+| Nová tenant-facing stránka (`@page`) | §4.7 (`NavigateTool.Routes` — jinak spadne `NavigateToolRouteCatalogTests`) |
 | Nová/změněná funkce **viditelná uživateli** (stránka, akce, stav, export) | **USERGUIDE.md** |
 | Nová/změněná funkce **viditelná SysAdminovi** (nastavení, provider, log, provisioning) | **ADMINGUIDE.md** |
 

@@ -21,6 +21,11 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Opravy
 
+- **#263** — Diagnostické endpointy Azure Functions (`/api/diagnostic/migrate`,
+  `/api/diagnostic/auth`) byly dostupné bez přihlášení: kdokoli mohl vzdáleně spustit
+  DB migrace nebo si vypsat JWT konfiguraci (issuer, audience, délku secretu, claims).
+  Oba teď vyžadují přihlášeného SysAdmina — bez tokenu 401, s tokenem bez role 403.
+  (PR #270, `4f766df`)
 - **#200** — Ověření reCAPTCHA bylo fail-open: výpadek Googlu nebo chybějící `SecretKey`
   bránu tiše propustily místo aby ji zablokovaly, a token se navíc nekontroloval proti
   akci ani doméně, takže se dal token z jednoho formuláře přehrát jinam. Anonymní ARES
@@ -58,6 +63,49 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Změny pro vývojáře
 
+- **#209** — Nový endpoint `GET /api/readiness` (i jako Azure Function) vrací, co ve
+  vystaviteli ještě chybí k vystavení faktury (sídlo, číselné řady, šablony) — základ pro
+  banner v UI (#215) a pro MCP/chat nástroje, které se teď mají o co opřít místo vlastní
+  logiky. (PR #266, `824aaec`)
+- **#228** — AI asistent v chatu teď umí nahlásit stav dashboardu (cashflow, neuhrazené a
+  po splatnosti částky, top klienti), vypsat vydané faktury a dobropisy s filtry podle
+  stavu, klienta, období nebo splatnosti a spočítat DPH report za zadané období — dřív
+  musel uživatel tyhle přehledy hledat v UI ručně. (PR #259, `c3c591f`)
+- **#212** — Zápisové nástroje AI chatu (zatím žádný neexistuje, ale #217/#218/#220/#222/
+  #224/#225/#227 na tomhle základu staví) budou mít jednotný potvrzovací mechanismus: bez
+  parametru `confirm: true` se zápis vůbec nespustí a model dostane jen náhled toho, co by
+  se stalo. Gate je centrální (`ChatToolExecutor`), takže funguje stejně napříč všemi
+  4 AI providery i textovým i nativním tool-calling flow — implementátor jednotlivého
+  nástroje ho nemusí řešit sám. DEVGUIDE §4.7 dostal i paritní tabulku chat ↔ MCP nástrojů,
+  aby bylo vidět, kolik nástrojů z MCP serveru chat ještě nepokrývá. (PR #258, `b91a94c`)
+- **#230** — AI asistent v chatu dosud odpovídal bez ponětí, kde uživatel zrovna je:
+  neznal dnešní datum, aktuální stránku ani otevřený doklad, a o nedokončeném nastavení
+  firmy (chybějící sídlo, číselné řady, šablony) nevěděl vůbec. Prompt teď dostává
+  poslední blok se situačním kontextem — datum, aktuální stránka, otevřený záznam a
+  seznam blokujících mezer v nastavení firmy s odkazem, kde je doplnit — takže asistent
+  může reagovat na to, co uživatel právě dělá, místo obecné odpovědi naslepo.
+  (PR #265, `640f7c6`)
+- **#206** — Vystavení faktury nebo dobropisu (ruční i hromadné, i automatické z
+  šablony) teď nejdřív ověří, že má vystavitel vyplněné povinné údaje (adresa, IČO,
+  bankovní účet, aktivní číselné řady). Když ne, vystavení se odmítne se srozumitelnou
+  chybou a seznamem chybějících položek — doklad zůstane rozpracovaný, nespotřebuje
+  číslo z řady a nic se neuloží napůl. Chybějící EPO nastavení vystavení neblokuje,
+  jen upozorní. (PR #267, `9ac56b6`)
+- **#235** — Základ pro strojový přístup do API bez lidského uživatelského účtu
+  (SysAdmin nástroje, budoucí Remote MCP). Přibyl `ApiKey` (v master schématu — autentizace
+  ho musí najít dřív, než zná tenanta): pojmenovaný klíč se scope read/read+write a
+  volitelnou expirací, raw hodnota se vrátí jen jednou, DB drží pouze SHA-256 hash
+  (vědomá odchylka od BCrypt — klíč je 32 B z CSPRNG, adaptivní hash by jen zbytečně
+  zatížil CPU), výpis ukazuje jen prefix. Klíč lze soft-revokovat. CRUD dostupný v obou
+  hostech (API controller i ručně psaný Functions wrapper). Zatím jen správa klíčů —
+  přihlašování pomocí nich přidají navazující tasky. (PR #256, `b9b8066`)
+- **#229** — AI chat asistent uměl v aplikaci navigovat jen na 6 natvrdo napsaných
+  stránek. Nyní zná všech 28 stránek dostupných běžnému uživateli i firemnímu
+  administrátorovi (např. přehled DPH, upomínky, číselné řady, uživatelé) včetně
+  detailu konkrétního klienta — přihlašovací a čistě sysadminovské stránky zůstávají
+  mimo dosah. Katalog cílů je odvozený přímo z routovací tabulky UI, takže nová
+  stránka bez navigačního cíle spadne na testu, dokud ji někdo nedoplní.
+  (PR #262, `c8edf27`)
 - **#161** — AI asistent byl v aplikaci prakticky neviditelný: tlačítko v AppBaru
   splývalo s logem firmy, stav otevření se po refreshi nikdy nezapamatoval a nikde
   jinde na chat nevedl odkaz. Na mobilu zabíral drawer napevno celou obrazovku a
