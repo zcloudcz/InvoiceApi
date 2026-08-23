@@ -52,6 +52,13 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Změny pro vývojáře
 
+- **#205** — Chybějící nastavení tenanta (adresa vystavitele, IČO, DIČ u plátce DPH,
+  bankovní účet, číselná řada dokladu…) se dosud řešilo náhodně a nekonzistentně —
+  jediný existující precedens byla EPO hlavička u DPH exportu. Nová
+  `ITenantReadinessService` na jednom místě odpoví, jestli tenant má dost nastavení
+  na fakturaci, s výčtem konkrétních chybějících položek a odkazem, kde je doplnit;
+  je to základ, na kterém teď staví gate ve vystavování faktur (#206), REST endpoint
+  (#209), chat/MCP nástroj (#211) a UI karta (#215). (PR #251, `6b978cf`)
 - **#234** — MCP server (`fakvio-mcp`, 36 nástrojů pro AI klienty typu Claude Code/Desktop)
   neměl žádnou dokumentaci, takže napojení vlastního AI klienta vyžadovalo číst zdrojový
   kód. Nový `Fakvio.McpServer/README.md` popisuje build, spuštění, získání JWT tokenu
