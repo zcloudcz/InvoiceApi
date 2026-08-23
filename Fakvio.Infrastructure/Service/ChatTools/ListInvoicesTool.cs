@@ -118,6 +118,16 @@ public class ListInvoicesTool : IChatTool
         _logger.LogInformation("ListInvoicesTool executing with parameters: {Params}",
             string.Join(", ", parameters.Select(kv => $"{kv.Key}={kv.Value}")));
 
+        // The schema can only say "string", so the FORMAT of a date is validated here. A value
+        // that is present but unreadable is rejected rather than dropped — the same reasoning
+        // (and wording) as GetVatReportTool: a report for the wrong period reads as plausibly
+        // as the right one.
+        if (!ChatToolDates.TryParseOptional(parameters, "issue_date_from", out var issueDateFrom, out var dateError) ||
+            !ChatToolDates.TryParseOptional(parameters, "issue_date_to", out var issueDateTo, out dateError))
+        {
+            return ChatToolResult.Failure(dateError!);
+        }
+
         var filter = new InvoiceFilterDto
         {
             Page = ParsePositiveInt(parameters, "page", 1),
@@ -127,8 +137,8 @@ public class ListInvoicesTool : IChatTool
             // (SysAdmin without impersonation) leaves the query at tenant scope.
             IssuerId = _tenantResolver.GetCurrentCompanyId(),
 
-            IssueDateFrom = ChatToolDates.ParseOptional(parameters, "issue_date_from"),
-            IssueDateTo = ChatToolDates.ParseOptional(parameters, "issue_date_to")
+            IssueDateFrom = issueDateFrom,
+            IssueDateTo = issueDateTo
         };
 
         if (parameters.TryGetValue("status", out var statusText) &&
@@ -146,8 +156,12 @@ public class ListInvoicesTool : IChatTool
         if (parameters.TryGetValue("client_name", out var clientName) && !string.IsNullOrWhiteSpace(clientName))
             filter.ClientName = clientName.Trim();
 
+        // Trim before comparing: ChatToolExecutor validates the trimmed value but dispatches the
+        // raw one, so " true " arrives here as-is and would otherwise read as false — silently
+        // turning "which invoices are overdue" into "list every invoice". Central normalization
+        // in the executor (which would make this Trim redundant) is tracked as #268.
         var overdueOnly = parameters.TryGetValue("overdue", out var overdueText) &&
-                          overdueText.Equals("true", StringComparison.OrdinalIgnoreCase);
+                          overdueText.Trim().Equals("true", StringComparison.OrdinalIgnoreCase);
 
         if (overdueOnly)
             ApplyOverdueReporting(filter);

@@ -278,15 +278,37 @@ public class ReportingChatToolTests
     }
 
     /// <summary>
-    /// A date the tool cannot parse must not become a silent filter — it is dropped, and the
-    /// answer covers the whole period instead of a wrong slice of it.
+    /// A date the tool cannot parse must fail loudly, exactly like GetVatReportTool does.
+    /// Dropping the filter instead would answer a different question than the one asked:
+    /// "kolik jsme vystavili za březen" would silently become "za celou historii" and the
+    /// model would report that number as the March total.
     /// </summary>
-    [Fact]
-    public async Task ListInvoicesTool_UnparsableDate_IsIgnoredRatherThanGuessed()
+    [Theory]
+    [InlineData("issue_date_from")]
+    [InlineData("issue_date_to")]
+    public async Task ListInvoicesTool_UnparsableDate_FailsWithoutQueryingTheService(string brokenParameter)
     {
         var (tool, service) = CreateListTool();
 
-        var result = await tool.ExecuteAsync(new Dictionary<string, string> { ["issue_date_from"] = "last monday" });
+        var result = await tool.ExecuteAsync(new Dictionary<string, string> { [brokenParameter] = "2026-03" });
+
+        result.IsSuccess.ShouldBeFalse();
+        result.ErrorMessage!.ShouldContain(brokenParameter);
+        result.ErrorMessage!.ShouldContain("YYYY-MM-DD");
+        await service.DidNotReceive().GetInvoicesPagedAsync(
+            Arg.Any<InvoiceFilterDto>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// A missing or blank date is not an error — these filters are optional, and "no value"
+    /// legitimately means "no date restriction". Only a present, unreadable value fails.
+    /// </summary>
+    [Fact]
+    public async Task ListInvoicesTool_BlankDate_IsTreatedAsNoFilter()
+    {
+        var (tool, service) = CreateListTool();
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, string> { ["issue_date_from"] = "  " });
 
         result.IsSuccess.ShouldBeTrue();
         CapturedFilter(service).IssueDateFrom.ShouldBeNull();
@@ -332,6 +354,28 @@ public class ReportingChatToolTests
         var filter = CapturedFilter(service);
         filter.IsOverdue.ShouldBe(true);
         filter.Status.ShouldBe(EInvoiceStatus.PartiallyPaid);
+    }
+
+    /// <summary>
+    /// ChatToolExecutor validates the TRIMMED value but dispatches the raw one, so " true "
+    /// reaches the tool as-is. Comparing it untrimmed would pass validation and then silently
+    /// turn the arrears question into "list everything" — the worst kind of wrong answer,
+    /// because the header still says invoices and the model presents them as receivables.
+    /// </summary>
+    [Theory]
+    [InlineData(" true ")]
+    [InlineData("TRUE\t")]
+    public async Task ListInvoicesTool_Overdue_IgnoresSurroundingWhitespace(string rawValue)
+    {
+        var (tool, service) = CreateListTool();
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, string> { ["overdue"] = rawValue });
+
+        result.OutputText.ShouldContain("Overdue issued invoices");
+
+        var filter = CapturedFilter(service);
+        filter.IsOverdue.ShouldBe(true);
+        filter.Status.ShouldBe(EInvoiceStatus.Completed);
     }
 
     /// <summary>
@@ -489,8 +533,8 @@ public class ReportingChatToolTests
         var result = await tool.ExecuteAsync(parameters);
 
         result.IsSuccess.ShouldBeFalse();
-        result.ErrorMessage.ShouldContain(brokenParameter);
-        result.ErrorMessage.ShouldContain("YYYY-MM-DD");
+        result.ErrorMessage!.ShouldContain(brokenParameter);
+        result.ErrorMessage!.ShouldContain("YYYY-MM-DD");
         await service.DidNotReceive().GetReportAsync(
             Arg.Any<DateTime>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>());
     }
@@ -510,8 +554,8 @@ public class ReportingChatToolTests
         });
 
         result.IsSuccess.ShouldBeFalse();
-        result.ErrorMessage.ShouldContain("2026-03-31");
-        result.ErrorMessage.ShouldContain("2026-01-01");
+        result.ErrorMessage!.ShouldContain("2026-03-31");
+        result.ErrorMessage!.ShouldContain("2026-01-01");
         await service.DidNotReceive().GetReportAsync(
             Arg.Any<DateTime>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>());
     }

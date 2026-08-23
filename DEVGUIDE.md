@@ -780,13 +780,13 @@ Sloupec „Klíčové parametry" je jen orientační — závazné je schéma v 
 
 ##### Reporting tools (#228) — proč tři, ne šest
 
-MCP `ReportingTools` má šest metod, chat tools jen tři. Chybějící tři **nejsou mezera** —
-jejich schopnost už pokrývá jiný tool:
+MCP `ReportingTools` má šest metod, chat tools jen tři (`GetDashboard` a `GetVatReport` mají
+1:1 protějšek). Zbylé **čtyři nejsou mezera** — jejich schopnost už pokrývá jiný tool:
 
 | MCP metoda | Chat ekvivalent |
 |------------|-----------------|
 | `GetOverdueInvoices` | `list_invoices` s `overdue=true` |
-| `GetClientInvoices` | `list_invoices` s `client_name` |
+| `GetClientInvoices` | `list_invoices` s `client_name` (substring podle jména, ne `clientId` jako MCP — dva podobně pojmenovaní klienti se přes chat nerozliší) |
 | `GetInvoicesByDateRange` | `list_invoices` s `issue_date_from/to` |
 | `GetOverdueReceivedInvoices` | `list_received_invoices` s `overdue=true` (existující tool, sémantika `IsOverdue` u přijatých už je „Approved + po splatnosti") |
 

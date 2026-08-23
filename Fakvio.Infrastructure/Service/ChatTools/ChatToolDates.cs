@@ -41,10 +41,37 @@ internal static class ChatToolDates
     }
 
     /// <summary>
-    /// Same as <see cref="TryParse"/> but for optional filters — returns null instead of false.
+    /// Optional-filter variant. It distinguishes the two cases <see cref="TryParse"/> lumps
+    /// together, because for a filter they mean opposite things:
+    ///   missing / blank  → no filter (returns true, <paramref name="value"/> stays null),
+    ///   present but unreadable → error (returns false, <paramref name="error"/> is filled).
+    ///
+    /// Junior note on why the second case must not silently become "no filter": dropping
+    /// <c>issue_date_from</c> widens the query to the whole history, and the model then
+    /// reports that total as the answer to a question about one month. A tool failure is
+    /// recoverable — the model reads the message and calls again with a valid date.
     /// </summary>
-    public static DateTime? ParseOptional(Dictionary<string, string> parameters, string key)
-        => TryParse(parameters, key, out var value) ? value : null;
+    public static bool TryParseOptional(
+        Dictionary<string, string> parameters,
+        string key,
+        out DateTime? value,
+        out string? error)
+    {
+        value = null;
+        error = null;
+
+        if (!parameters.TryGetValue(key, out var raw) || string.IsNullOrWhiteSpace(raw))
+            return true;
+
+        if (!TryParse(parameters, key, out var parsed))
+        {
+            error = $"Invalid {key}: '{raw}'. Use YYYY-MM-DD.";
+            return false;
+        }
+
+        value = parsed;
+        return true;
+    }
 
     /// <summary>Formats a date for the text block handed back to the model.</summary>
     public static string Format(DateTime? date)
