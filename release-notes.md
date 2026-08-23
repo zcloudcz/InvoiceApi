@@ -21,6 +21,15 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Opravy
 
+- **#233** — Swagger UI i `swagger.json` byly dostupné na rootu API i mimo Development,
+  takže je při nasazení na klasický App Service host mohl vidět kdokoli. Nově se
+  registrují jen v Development; v Production vrátí `/` i `/swagger/v1/swagger.json` 404.
+  (PR #247, `329c588`)
+- **#192** — Pozvání dalšího uživatele do už zavedené firmy znovu spouštělo provisioning
+  tenanta, který u živého tenanta mazal a přečísloval sazby DPH, měny, číselné řady
+  šablon i obsahové šablony — vystavené doklady tak mohly tiše ztratit vazbu na svou
+  původní sazbu DPH nebo měnu. Nastavení hesla pozvaného uživatele už provisioning
+  zavedené firmy nespouští. (PR #245, `074229d`)
 - **#157** — Při registraci nové firmy se adresa dohledaná v ARES nikam neuložila —
   firma vznikla bez sídla a vystavitel v tenantu neměl adresu vůbec, takže PDF faktury
   měl prázdný blok vystavitele. Adresa z ARES se teď uloží a propíše do tenanta;
@@ -43,6 +52,26 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Změny pro vývojáře
 
+- **#140** — Přesun produkční databáze z Azure PostgreSQL (Entra ID) na vlastní
+  server dosud neměl žádný ověřený postup. Nový `SELFHOST-DB.md` runbook popisuje
+  celý přesun krok za krokem: pre-flight kontroly, cutover přes `pg_dump`/`pg_restore`,
+  ověření dat po schématech i migrace Data Protection key ringu, a rollback zpět na
+  Azure, kdyby přesun nevyšel. (PR #244, `e68281a`)
+- **#159** — Popis parametrů chat nástrojů pro AI asistenta byl natvrdo zadrátovaný `switch`
+  podle názvu nástroje; nástroj, na který se ve switchi zapomnělo, tiše dostal jediný
+  parametr `input` a nefungoval bez jakékoli chybové hlášky. Popis parametrů je teď
+  strukturované schéma na každém nástroji (typ, povinnost, povolené hodnoty) a switch
+  i tři ručně udržované kopie katalogu nástrojů (systémový prompt, definice pro model,
+  kontext chatu) zmizely — generují se z jednoho zdroje. Nástroj s vadným schématem
+  spadne hlasitě už při startu, ne tiše za běhu. Typy parametrů navíc přestaly být
+  jen `string` (čísla, booleany a pole se posílají jako svůj typ, ne jako escapovaný
+  text). Připravuje podklad pro nativní tool calling u OpenAI/Gemini (#160).
+  (PR #188, `4b6c3be`)
+- **#136** — `Fakvio.MigrationTool` a `DataIntegrityVerifier` mluvily s oběma databázemi přes
+  syrové connection stringy, takže je nešlo přepnout na Entra ID auth zavedené v #132. Nástroj
+  teď staví dva nezávislé data source factory (cíl i zdroj) a přebírá i přísnější sanitizaci
+  a izolaci `search_path` tenant schématu. Nástroj se nedeployuje, takže bez dopadu na provoz.
+  (PR #166, `1ce837d`)
 - **#146** — Systémový prompt AI asistenta byl napevno zadrátovaný v kódu. SysAdmin ho teď může
   upravit (vlastní prompt i doplněk k výchozímu) přímo v UI se živým náhledem; změna se v chatu
   projeví do 5 minut (cache). (PR #187, `824775d`)

@@ -59,20 +59,51 @@ public class CreateInvoiceTool : IChatTool
         "Creates a new invoice for a client with specified items. " +
         "Automatically resolves the client by name, sets default currency (CZK), " +
         "applies default VAT rate, and generates a document number. " +
-        "After creation, navigates to the invoice detail page.";
+        "After creation, navigates to the invoice detail page. " +
+        "Use this when the user provides item details (description, price) — " +
+        "when they only want to open the form, use 'navigate' with target new_invoice instead.";
 
-    public string ParameterDescription =>
-        "client_name (string, required): Client/company name to invoice. " +
-        "items (string, required): JSON array of items, each with " +
-        "\"description\" (string), \"quantity\" (number, default 1), \"unit_price\" (number). " +
-        "Example: [{\"description\": \"Mléko\", \"quantity\": 1, \"unit_price\": 999}]. " +
-        "currency (string, optional): Currency code like \"EUR\". Default: \"CZK\". " +
-        "notes (string, optional): Additional notes for the invoice.";
+    /// <summary>
+    /// Parameter schema — static because it never changes per instance.
+    /// </summary>
+    private static readonly ChatToolParameter[] Schema =
+    [
+        new()
+        {
+            Name = "client_name",
+            Type = ChatToolParameterType.String,
+            Description = "Name of the client/company to invoice",
+            IsRequired = true
+        },
+        new()
+        {
+            Name = "items",
+            Type = ChatToolParameterType.ObjectArray,
+            Description = "Invoice line items. Each item has \"description\" (string, required), " +
+                          "\"quantity\" (number, default 1) and \"unit_price\" (number, required). " +
+                          "Example: [{\"description\": \"Web development\", \"quantity\": 10, \"unit_price\": 1500}]",
+            IsRequired = true
+        },
+        new()
+        {
+            Name = "currency",
+            Type = ChatToolParameterType.String,
+            Description = "ISO 4217 currency code (CZK, EUR, …). Default: CZK"
+        },
+        new()
+        {
+            Name = "notes",
+            Type = ChatToolParameterType.String,
+            Description = "Optional notes to include on the invoice"
+        }
+    ];
+
+    public IReadOnlyList<ChatToolParameter> Parameters => Schema;
 
     /// <summary>
     /// Creates an invoice by resolving all required references and calling IInvoiceService.
     /// The flow is:
-    /// 1. Validate parameters (client_name, items)
+    /// 1. Read parameters (validated centrally by ChatToolExecutor)
     /// 2. Resolve client by name → get ClientId
     /// 3. Get issuer → get IssuerId
     /// 4. Get currency (default CZK) → get CurrencyId
@@ -85,23 +116,12 @@ public class CreateInvoiceTool : IChatTool
         Dictionary<string, string> parameters,
         CancellationToken ct = default)
     {
-        // ── Step 1: Validate required parameters ─────────────────────────
+        // ── Step 1: Read parameters ──────────────────────────────────────
+        // Required parameters are guaranteed present and well-formed (items is a JSON array)
+        // by ChatToolExecutor's central validation.
 
-        if (!parameters.TryGetValue("client_name", out var clientName) ||
-            string.IsNullOrWhiteSpace(clientName))
-        {
-            return ChatToolResult.Failure(
-                "Missing required parameter: client_name. " +
-                "Please specify which client the invoice is for.");
-        }
-
-        if (!parameters.TryGetValue("items", out var itemsJson) ||
-            string.IsNullOrWhiteSpace(itemsJson))
-        {
-            return ChatToolResult.Failure(
-                "Missing required parameter: items. " +
-                "Please specify at least one item with description and price.");
-        }
+        var clientName = parameters["client_name"];
+        var itemsJson = parameters["items"];
 
         // Optional parameters.
         parameters.TryGetValue("currency", out var currencyCode);

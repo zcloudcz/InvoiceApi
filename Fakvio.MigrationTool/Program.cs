@@ -1,3 +1,4 @@
+using Fakvio.Infrastructure.Data;
 using Fakvio.MigrationTool;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -17,6 +18,10 @@ using Microsoft.Extensions.Logging;
 ///
 /// Configuration:
 ///   - appsettings.json: SourceConnection (existing single DB), DefaultConnection (shared DB with public schema)
+///   - Database / SourceDatabase sections: how to authenticate against the target / source
+///     database ("AuthMode": "Password" or "AzureEntraId"). Both default to Password.
+///     The two databases are configured independently — the target can already live on
+///     Azure (Entra ID) while the legacy source database still uses a password.
 ///   - Migration:DryRun: true = log what would happen without writing data
 ///   - Migration:SkipProvisionedCompanies: true = skip companies already provisioned
 ///   - Migration:TenantSchemaPrefix: schema name prefix (default: "tenant_")
@@ -81,40 +86,66 @@ else if (dryRun)
     Console.WriteLine();
 }
 
-Console.WriteLine($"  Source DB: {MaskConnectionString(configuration.GetConnectionString("SourceConnection") ?? "")}");
-Console.WriteLine($"  Target DB: {MaskConnectionString(configuration.GetConnectionString("DefaultConnection") ?? "")}");
-Console.WriteLine();
+// The banner is the operator's last check before confirming a destructive run, so it must
+// show the connection strings the tool will ACTUALLY use. Precedence mirrors
+// DatabaseOptions.Resolve: an explicit section value wins over the classic ConnectionStrings
+// entry (typically overridden via the SourceDatabase__ConnectionString environment variable).
+var sourceConnectionDisplay = configuration["SourceDatabase:ConnectionString"]
+    ?? configuration.GetConnectionString("SourceConnection");
+var targetConnectionDisplay = configuration["Database:ConnectionString"]
+    ?? configuration.GetConnectionString("DefaultConnection");
 
-// Confirm before proceeding (unless DRY RUN)
-if (!dryRun)
-{
-    Console.ForegroundColor = ConsoleColor.Red;
-    Console.Write("  This will modify databases. Continue? (y/N): ");
-    Console.ResetColor();
-    var answer = Console.ReadLine()?.Trim().ToLowerInvariant();
-    if (answer != "y")
-    {
-        Console.WriteLine("  Migration cancelled.");
-        return 1;
-    }
-    Console.WriteLine();
-}
+Console.WriteLine($"  Source DB: {MaskConnectionString(sourceConnectionDisplay ?? "")}");
+Console.WriteLine($"  Target DB: {MaskConnectionString(targetConnectionDisplay ?? "")}");
+Console.WriteLine();
 
 // Execute migration or verification
 try
 {
+    // Two independent data source factories — one per database. Each resolves its own
+    // authentication mode (Password / AzureEntraId) and owns every NpgsqlDataSource it
+    // hands out, so nothing below ever disposes a connection source it did not create.
+    // The legacy global "UseAzureAdAuthentication" flag deliberately applies to the primary
+    // "Database" section only; the source database would otherwise inherit an Entra ID mode
+    // meant for the target (see DatabaseOptions.Resolve).
+    await using var targetFactory = NpgsqlDataSourceFactory.Create(configuration);
+    await using var sourceFactory = NpgsqlDataSourceFactory.Create(
+        configuration, sectionName: "SourceDatabase", connectionStringName: "SourceConnection");
+
+    Console.WriteLine($"  Auth mode: source={sourceFactory.AuthMode}, target={targetFactory.AuthMode}");
+    Console.WriteLine();
+
+    // Confirm before proceeding (unless DRY RUN). The prompt sits INSIDE the try and AFTER
+    // both factories are built on purpose: the operator must see the resolved authentication
+    // mode before approving a destructive run, and a broken configuration must still surface
+    // as LogCritical + exit code 2 rather than as a question nobody can answer sensibly.
+    // Building the factories is safe — it only validates and opens no connection.
+    if (!dryRun)
+    {
+        Console.ForegroundColor = ConsoleColor.Red;
+        Console.Write("  This will modify databases. Continue? (y/N): ");
+        Console.ResetColor();
+        var answer = Console.ReadLine()?.Trim().ToLowerInvariant();
+        if (answer != "y")
+        {
+            Console.WriteLine("  Migration cancelled.");
+            return 1;
+        }
+        Console.WriteLine();
+    }
+
     if (verifyOnly)
     {
         // Verification-only mode — checks data integrity without modifying anything
         var verifierLogger = loggerFactory.CreateLogger<DataIntegrityVerifier>();
-        var verifier = new DataIntegrityVerifier(configuration, verifierLogger);
+        var verifier = new DataIntegrityVerifier(targetFactory, sourceFactory, verifierLogger);
         var verified = await verifier.VerifyAsync();
         return verified ? 0 : 1;
     }
     else
     {
         // Full migration mode
-        var migrationService = new DataMigrationService(configuration, logger);
+        var migrationService = new DataMigrationService(configuration, logger, targetFactory, sourceFactory);
         var success = await migrationService.MigrateAsync();
 
         if (success)
@@ -122,7 +153,7 @@ try
             // Auto-verify after successful migration
             Console.WriteLine();
             var verifierLogger = loggerFactory.CreateLogger<DataIntegrityVerifier>();
-            var verifier = new DataIntegrityVerifier(configuration, verifierLogger);
+            var verifier = new DataIntegrityVerifier(targetFactory, sourceFactory, verifierLogger);
             await verifier.VerifyAsync();
         }
 

@@ -38,10 +38,28 @@ public class GetReceivedInvoiceTool : IChatTool
         "Get detail of a received (incoming/expense) invoice by ID or document number. " +
         "Returns all fields: supplier info, line items, VAT breakdown, totals, dates, status, payment info.";
 
-    public string ParameterDescription =>
-        "id (string, optional): internal database ID. " +
-        "document_number (string, optional): document number as printed on the invoice. " +
-        "At least one of id or document_number is required.";
+    /// <summary>
+    /// Parameter schema — static because it never changes per instance.
+    /// Both parameters are optional in the schema because "at least one of them" is a rule
+    /// JSON Schema cannot express; it is enforced in ExecuteAsync below.
+    /// </summary>
+    private static readonly ChatToolParameter[] Schema =
+    [
+        new()
+        {
+            Name = "id",
+            Type = ChatToolParameterType.Integer,
+            Description = "Internal database ID of the received invoice"
+        },
+        new()
+        {
+            Name = "document_number",
+            Type = ChatToolParameterType.String,
+            Description = "Document number as printed on the invoice (e.g. '267708922')"
+        }
+    ];
+
+    public IReadOnlyList<ChatToolParameter> Parameters => Schema;
 
     /// <summary>
     /// Resolves the invoice by id first, then by document_number as fallback,

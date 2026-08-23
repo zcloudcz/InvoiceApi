@@ -29,15 +29,21 @@ namespace Fakvio.Infrastructure.Service;
 public class ChatContextBuilder : IChatContextBuilder
 {
     private readonly TenantDbContext _context;
+    private readonly IReadOnlyList<IChatTool> _tools;
     private readonly IAiInstructionsService _aiInstructions;
     private readonly ILogger<ChatContextBuilder> _logger;
 
     public ChatContextBuilder(
         TenantDbContext context,
+        IEnumerable<IChatTool> tools,
         IAiInstructionsService aiInstructions,
         ILogger<ChatContextBuilder> logger)
     {
         _context = context;
+
+        // The capability list in the system prompt is generated from the registered tools,
+        // so it can never drift from what the assistant can actually do.
+        _tools = tools.ToList();
         _aiInstructions = aiInstructions;
         _logger = logger;
     }
@@ -102,20 +108,19 @@ public class ChatContextBuilder : IChatContextBuilder
                 overdueInvoices: overdueInvoices.ToString(),
                 paidInvoices: paidInvoicesCount.ToString());
 
-            return AiSystemPrompt.Compose(companyBlock, customPrompt, appendix, businessContext);
+            return AiSystemPrompt.Compose(companyBlock, customPrompt, appendix, businessContext, _tools);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to build chat context from database, using default prompt");
 
-            // Fallback: return a basic prompt without business data but WITH capabilities.
+            // Fallback: basic prompt without business data, but still WITH the real capability list
+            // (generated from the registered tools — no hand-maintained copy to go stale).
             return "You are Fakvio AI Assistant — a helpful invoicing and business assistant. " +
                    "You are DIRECTLY CONNECTED to the Fakvio invoicing system and CAN perform real actions. " +
-                   "You can: look up companies by IČO (ARES), create clients, create invoices, " +
-                   "look up / list / search received (incoming) invoices by ID, document number, supplier, date, or amount, " +
-                   "attach files to entities and list existing attachments, " +
-                   "and navigate users to pages. Use your tools when the user asks for these actions. " +
-                   "Be concise and professional. " +
+                   "Use your tools when the user asks for these actions:\n" +
+                   string.Join("\n", _tools.Select(t => $"- {t.ToolName}: {t.Description}")) +
+                   "\nBe concise and professional. " +
                    "Respond in the same language the user writes in (Czech or English).";
         }
     }

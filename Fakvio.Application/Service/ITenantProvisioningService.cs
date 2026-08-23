@@ -24,11 +24,16 @@ public interface ITenantProvisioningService
     /// <summary>
     /// Provisions a new tenant database for the given company.
     /// Creates the database, applies migrations, copies code tables, and creates the issuer.
-    /// Throws if the company is already provisioned or if provisioning fails.
+    /// Throws if provisioning fails.
+    ///
+    /// A company that is already provisioned is left completely alone and reported as
+    /// successful (issue #192): re-running the pipeline would re-seed the tenant code tables
+    /// underneath documents that already reference them. Retrying a run that failed half way
+    /// still works — the provisioned flag is only written once every step has succeeded.
     /// </summary>
     /// <param name="companyId">The master DB company ID to provision</param>
     /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>True if provisioning succeeded</returns>
+    /// <returns>True if the tenant is provisioned — either by this call or by an earlier one</returns>
     Task<bool> ProvisionTenantAsync(long companyId, CancellationToken cancellationToken = default);
 
     /// <summary>

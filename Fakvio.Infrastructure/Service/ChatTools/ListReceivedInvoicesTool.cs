@@ -50,13 +50,76 @@ public class ListReceivedInvoicesTool : IChatTool
         "List received (incoming/expense) invoices with optional filtering by status, " +
         "supplier name, date range, amount range, or currency. Returns paged results with totals.";
 
-    public string ParameterDescription =>
-        "page (number, default 1), page_size (number, default 10, max 50), " +
-        "status (Received|Approved|Paid|Rejected, optional), " +
-        "supplier_name (string, optional, case-insensitive search), " +
-        "issue_date_from (YYYY-MM-DD, optional), issue_date_to (YYYY-MM-DD, optional), " +
-        "min_amount (number, optional), max_amount (number, optional), " +
-        "currency (e.g. CZK|EUR, optional), overdue (true|false, optional).";
+    /// <summary>
+    /// Parameter schema — static because it never changes per instance.
+    /// Every filter is optional: with no parameters the tool returns the first page.
+    /// </summary>
+    private static readonly ChatToolParameter[] Schema =
+    [
+        new()
+        {
+            Name = "page",
+            Type = ChatToolParameterType.Integer,
+            Description = "Page number (default 1)"
+        },
+        new()
+        {
+            Name = "page_size",
+            Type = ChatToolParameterType.Integer,
+            Description = "Items per page (default 10, max 50)"
+        },
+        new()
+        {
+            Name = "status",
+            Type = ChatToolParameterType.String,
+            Description = "Filter by invoice status",
+            AllowedValues = ["Received", "Approved", "Paid", "Rejected"]
+        },
+        new()
+        {
+            Name = "supplier_name",
+            Type = ChatToolParameterType.String,
+            Description = "Supplier company name (case-insensitive substring match)"
+        },
+        new()
+        {
+            Name = "issue_date_from",
+            Type = ChatToolParameterType.String,
+            Description = "Issue date range start in YYYY-MM-DD format"
+        },
+        new()
+        {
+            Name = "issue_date_to",
+            Type = ChatToolParameterType.String,
+            Description = "Issue date range end in YYYY-MM-DD format"
+        },
+        new()
+        {
+            Name = "min_amount",
+            Type = ChatToolParameterType.Number,
+            Description = "Minimum total amount including VAT"
+        },
+        new()
+        {
+            Name = "max_amount",
+            Type = ChatToolParameterType.Number,
+            Description = "Maximum total amount including VAT"
+        },
+        new()
+        {
+            Name = "currency",
+            Type = ChatToolParameterType.String,
+            Description = "ISO 4217 currency code filter (CZK, EUR, …)"
+        },
+        new()
+        {
+            Name = "overdue",
+            Type = ChatToolParameterType.Boolean,
+            Description = "True to return only overdue invoices"
+        }
+    ];
+
+    public IReadOnlyList<ChatToolParameter> Parameters => Schema;
 
     /// <summary>
     /// Builds a filter DTO from the AI parameters and calls GetPagedAsync.
