@@ -43,6 +43,16 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Změny pro vývojáře
 
+- **#159** — Popis parametrů chat nástrojů pro AI asistenta byl natvrdo zadrátovaný `switch`
+  podle názvu nástroje; nástroj, na který se ve switchi zapomnělo, tiše dostal jediný
+  parametr `input` a nefungoval bez jakékoli chybové hlášky. Popis parametrů je teď
+  strukturované schéma na každém nástroji (typ, povinnost, povolené hodnoty) a switch
+  i tři ručně udržované kopie katalogu nástrojů (systémový prompt, definice pro model,
+  kontext chatu) zmizely — generují se z jednoho zdroje. Nástroj s vadným schématem
+  spadne hlasitě už při startu, ne tiše za běhu. Typy parametrů navíc přestaly být
+  jen `string` (čísla, booleany a pole se posílají jako svůj typ, ne jako escapovaný
+  text). Připravuje podklad pro nativní tool calling u OpenAI/Gemini (#160).
+  (PR #188, `4b6c3be`)
 - **#136** — `Fakvio.MigrationTool` a `DataIntegrityVerifier` mluvily s oběma databázemi přes
   syrové connection stringy, takže je nešlo přepnout na Entra ID auth zavedené v #132. Nástroj
   teď staví dva nezávislé data source factory (cíl i zdroj) a přebírá i přísnější sanitizaci
