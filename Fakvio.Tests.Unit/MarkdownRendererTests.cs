@@ -169,7 +169,7 @@ public class MarkdownRendererTests
     }
 
     [Fact]
-    public void ToSafeHtml_DangerousAutolinkInsideTable_IsNotALink()
+    public void ToSafeHtml_DangerousAutolinkInsideBlockquote_IsNotALink()
     {
         // Regression guard: the sanitisation must walk the whole document tree,
         // not just top-level paragraphs.
@@ -182,6 +182,55 @@ public class MarkdownRendererTests
         html.ShouldContain("<blockquote>");
         html.ShouldNotContain("<a ");
         html.ShouldNotContain("href");
+    }
+
+    [Fact]
+    public void ToSafeHtml_DangerousAutolinkInsideTableCell_IsNotALink()
+    {
+        // Table cells are the deepest container a model routinely produces (an
+        // answer to "list my invoices" is a pipe table), and pipe tables come from
+        // an extension rather than CommonMark core — so they get their own guard
+        // instead of relying on the blockquote case above.
+        var markdown = """
+            | Doklad | Odkaz                |
+            |--------|----------------------|
+            | FAK-1  | <javascript:alert(1)> |
+            """;
+
+        var html = MarkdownRenderer.ToSafeHtml(markdown);
+
+        html.ShouldContain("<table");
+        html.ShouldContain("javascript:alert(1)"); // survives as inert plain text
+        html.ShouldNotContain("<a ");
+        html.ShouldNotContain("href");
+    }
+
+    [Fact]
+    public void ToSafeHtml_AdjacentAutolinks_NeutralisesEveryHostileOne_AndKeepsTheBenignOne()
+    {
+        // The autolink pass mutates the inline tree while it walks it, so the pass must
+        // survive its own edits: sanitising one node may not make the renderer lose the
+        // siblings that follow. A benign link in the middle is what makes that failure
+        // mode dangerous — the visible half of the output still looks right while the
+        // trailing vbscript: autolink reaches the DOM as a live anchor.
+        //
+        // Note on MarkdownRenderer's ToList(): with Markdig 1.3.2 removing it does NOT
+        // change the output (measured across paragraphs, blockquotes, lists, emphasis
+        // and table cells), so this test is not a guard on that call. It pins the
+        // observable contract instead, which is what would break if a future Markdig
+        // walker stopped tolerating mutation.
+        var markdown = "<javascript:alert(1)> <https://ares.gov.cz> <vbscript:msgbox(1)>";
+
+        var html = MarkdownRenderer.ToSafeHtml(markdown);
+
+        html.ShouldNotContain("href=\"javascript:", Case.Insensitive);
+        html.ShouldNotContain("href=\"vbscript:", Case.Insensitive);
+        html.ShouldContain("href=\"https://ares.gov.cz\"");
+        CountAnchors(html).ShouldBe(1, "only the https autolink may stay clickable");
+
+        // Both rejected URLs degrade to readable text rather than disappearing.
+        html.ShouldContain("javascript:alert(1)");
+        html.ShouldContain("vbscript:msgbox(1)");
     }
 
     [Fact]
@@ -211,4 +260,9 @@ public class MarkdownRendererTests
         html.ShouldContain("&gt;");
         html.ShouldContain("&amp;&amp;");
     }
+
+    // ─── Helpers ─────────────────────────────────────────────────────────────
+
+    /// <summary>Number of opening anchor tags in rendered HTML.</summary>
+    private static int CountAnchors(string html) => html.Split("<a ").Length - 1;
 }

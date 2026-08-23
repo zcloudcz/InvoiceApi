@@ -16,6 +16,12 @@ namespace Fakvio.Tests.Playwright.Tests.Navigation;
 [TestFixture]
 public class MobileLayoutTests : FakvioPageTest
 {
+    /// <summary>Czech value of the Chat_Title resource key (SharedResource.resx).</summary>
+    private const string ChatToggleLabelCs = "AI Asistent";
+
+    /// <summary>English value of the Chat_Title resource key (SharedResource.en.resx).</summary>
+    private const string ChatToggleLabelEn = "AI Assistant";
+
     /// <summary>Same context as FakvioPageTest, but with a phone viewport.</summary>
     public override BrowserNewContextOptions ContextOptions()
     {
@@ -98,15 +104,20 @@ public class MobileLayoutTests : FakvioPageTest
     {
         await LoginAndNavigateAsync("/", "h4, h3, .mud-card");
 
-        // The AppBar toggle carries the localized assistant name as its aria-label.
-        var toggle = Page.Locator(".mud-appbar button[aria-label='AI Asistent']");
-        if (await toggle.CountAsync() == 0)
-        {
-            Assert.Inconclusive("AI assistant is hidden for this account (no tenant context) — skip");
-            return;
-        }
+        // The AppBar toggle carries the localized assistant name (resource key
+        // Chat_Title) as its aria-label, so the selector must accept both cultures —
+        // matching only Czech made the whole test inconclusive under an English UI.
+        var toggle = Page.Locator(
+            $".mud-appbar button[aria-label='{ChatToggleLabelCs}'], " +
+            $".mud-appbar button[aria-label='{ChatToggleLabelEn}']");
 
-        await toggle.ClickAsync();
+        // LoginAsAdminAsync always establishes a tenant context (a SysAdmin gets an
+        // impersonated company), so the toggle has to be there. Skipping instead of
+        // failing would let the mobile acceptance criterion pass unverified.
+        Assert.That(await toggle.CountAsync(), Is.GreaterThan(0),
+            "AI assistant toggle must be present in the AppBar for a tenant-scoped account");
+
+        await toggle.First.ClickAsync();
 
         var drawer = Page.Locator(".mud-drawer.chat-drawer");
         await drawer.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 10_000 });
