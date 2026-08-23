@@ -24,7 +24,7 @@ Pokud máš pochybnost, **zde má pravdu DEVGUIDE.md**, ne komentáře v kódu (
 | `Fakvio.Contracts` | Class lib (zero-NuGet) | DTOs, Pagination, DueDateCalculator. **Sdílí** server (`Application`) i klient (`UI.Shared`). Nesmí mít NuGet závislosti, jinak je rozbije WASM. |
 | `Fakvio.Application` | Class lib | Service kontrakty (`Service/I*.cs`). **Stateless logika** — žádný EF context přímo, žádný HTTP. |
 | `Fakvio.Infrastructure` | Class lib | Implementace Application interface. EF Core (3 DbContexty), repository, mapping (ZMapper), auth handlery, AI providers. Sem patří všechno, co sahá ven (DB, SMTP, IMAP, OAuth, Azure ARM). |
-| `Fakvio.API` | ASP.NET Core | HTTP host. Controllery, middleware (`Middleware/`: CorrelationId → Auth → Impersonation → TenantContext), Swagger. Background workers (např. `ImapPollWorker`) hostuje přes `AddHostedService`. |
+| `Fakvio.API` | ASP.NET Core | HTTP host. Controllery, middleware (`Middleware/`: CorrelationId → Auth → Impersonation → TenantContext), Swagger (**jen v Development** — viz §12). Background workers (např. `ImapPollWorker`) hostuje přes `AddHostedService`. |
 | `Fakvio.Functions` | Azure Functions Isolated Worker | Druhý hostovací model (Azure Functions). HTTP triggery + TimerTrigger úlohy. Vlastní middleware mirror. |
 | `Fakvio.Functions.Generator` | Roslyn source generator | Generuje rouge boilerplate pro Functions (HTTP endpoint registrace). |
 | `Fakvio.UI.Shared` | Razor Class Library (RCL) | **Všechny** Blazor stránky, komponenty, services, modely, resources. Sdílí WASM host i MAUI host. |
@@ -318,7 +318,19 @@ context.InstanceServices       ← Functions Worker scope (kde žije Function cl
 7. Create default NumberSequence pro **všechny 4 typy**: Invoice (`INV`), CreditNote (`CN`), Proforma (`PF-`), TaxReceiptForAdvance (`DPP-`) — viz `CreateDefaultNumberSequencesAsync` (#26).
 8. Mark `IsProvisioned=true, IsActive=true, ProvisionedAt=UtcNow` v master DB.
 
-**Idempotentní** (řádky 76-82) — bezpečné re-provision po částečné chybě.
+**Guard na `IsProvisioned` (#192)**: je-li firma už provisionovaná, metoda hned vrací `true`
+a **nedělá nic**. Není to optimalizace, ale oprava datové ztráty — krok 5 dělá
+`DELETE FROM "tenant_x"."VatRate"` + `ALTER SEQUENCE … RESTART WITH 1` (totéž pro `Currency`,
+`NumberSequenceFormat`, `ContentTemplate`), a na mazané řádky vedou FK z `Invoice.CurrencyId`,
+`ReceivedInvoice.CurrencyId`, `InvoiceItem.VatRateId`, `ReceivedInvoiceItem.VatRateId`,
+`Client.PreferredCurrencyId`. Volají to čtyři místa (`UserService.SetPasswordAsync`,
+`AuthService.VerifyEmail`, `CompanyController`, `AzureOperationController`), proto guard
+sedí ve službě, ne u volajících.
+
+**Retry po částečné chybě** funguje dál: příznak se zapisuje až v kroku 8, takže nedoběhnutý
+běh nechává `IsProvisioned=false`. Opravu schématu **už provisionovaného** tenanta dělá
+`MigrateTenantAsync`, ne opakovaný provisioning. Regresní test proti reálné DB:
+`Fakvio.Tests.Integration/TenantReprovisioningDatabaseTests.cs`.
 
 **Schema permissions**: `EnsureSchemaPermissionsAsync()` (řádek 337-344) — `GRANT ALL ON ALL TABLES IN SCHEMA` + `ALTER DEFAULT PRIVILEGES`. Použij `NpgsqlDataSource`, ne raw connection string — funguje s Azure AD/Managed Identity tokens automaticky.
 
@@ -1657,6 +1669,14 @@ pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. P
 ### MAUI Hybrid
 - `dotnet workload install maui` před prvním buildem, jinak SDK not found.
 - WebView používá `blazor.webview.js` (ne `blazor.webassembly.js`), žádný service worker.
+
+### Swagger (issue #233)
+- `UseSwagger()` / `UseSwaggerUI()` v `Fakvio.API/Program.cs` běží **jen když `app.Environment.IsDevelopment()`**. Mimo Development je Swagger UI i `/swagger/v1/swagger.json` prostě 404 — publikovat celou API surface (routy, DTO tvary, auth schéma) do produkce je bezpečnostní díra. Guard je na prostředí, ne na configu, aby ho nešlo omylem zapnout nastavením.
+- V Development zůstává UI na rootu (`RoutePrefix = string.Empty`), takže `http://localhost:5237/` je Swagger.
+- Pokrývá `SwaggerEnvironmentTests` — 404 v Production, 200 v Development.
+
+### Startup migrace
+- Blok startup migrací v `Program.cs` se přeskakuje podle **providera** (`masterDb.Database.IsRelational()`), ne podle názvu prostředí. EF Core InMemory (integrační testy) nemá migration history a `MigrateAsync()` na něm hodí výjimku. Díky tomu může testovací host běžet pod libovolným `ASPNETCORE_ENVIRONMENT` (Production/Development), ne jen pod `"Testing"`.
 
 ### Tests
 - InMemoryDatabase enforcuje `IsRequired()` z fluent config — `Client.RegistrationNumber`, `Invoice.Issuer` musí být setnuty v test seedu.

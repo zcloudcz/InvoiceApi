@@ -229,26 +229,30 @@ public class TenantProvisioningServiceTests : IDisposable
     }
 
     /// <summary>
-    /// Verifies that re-provisioning an already provisioned company does NOT throw.
-    /// The provisioning flow is idempotent — safe to re-run after partial failure.
-    /// It clears and re-seeds code tables, checks for existing issuer, etc.
-    /// NOTE: This test will still fail at the CREATE SCHEMA step because
-    /// there's no real PostgreSQL available in unit tests. The important thing is
-    /// that it does NOT throw InvalidOperationException for "already provisioned".
+    /// Issue #192: an already provisioned company is reported as done and NOTHING else
+    /// happens. Until this fix the flow logged a warning and then re-ran every step,
+    /// including the code table re-seed that deletes rows live documents point at.
+    ///
+    /// The discriminating assertion is that the call RETURNS: every step past step 1 needs
+    /// a reachable PostgreSQL, which unit tests do not have, so the old behaviour could only
+    /// ever throw here. The factory assertion backs it up one step further — no data source
+    /// for the tenant schema was even requested, i.e. no migration or re-seed was attempted.
+    /// The real-database proof that nothing is deleted lives in
+    /// Fakvio.Tests.Integration/TenantReprovisioningDatabaseTests.
     /// </summary>
     [Fact]
-    public async Task ProvisionTenantAsync_AlreadyProvisioned_DoesNotThrowAlreadyProvisionedException()
+    public async Task ProvisionTenantAsync_AlreadyProvisioned_ReturnsWithoutTouchingTheTenantSchema()
     {
         // Arrange — company already provisioned
         await SeedCompanyAsync(6);
         await SeedSettingsAsync(6, isProvisioned: true, isActive: true);
 
-        // Act — re-provisioning should NOT throw "already provisioned" exception.
-        // It WILL throw because there's no real PostgreSQL for CREATE SCHEMA,
-        // but the error should be about the database connection, not about "already provisioned".
-        var act = () => _service.ProvisionTenantAsync(6);
-        var ex = await Should.ThrowAsync<Exception>(act);
-        ex.Message.ShouldNotContain("already provisioned");
+        // Act
+        var result = await _service.ProvisionTenantAsync(6);
+
+        // Assert — reported as provisioned, and no tenant schema work was started
+        result.ShouldBeTrue();
+        _dataSourceFactory.DidNotReceive().GetForSchema(Arg.Any<string>(), Arg.Any<bool>());
     }
 
     /// <summary>

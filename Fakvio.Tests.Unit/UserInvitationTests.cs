@@ -7,6 +7,7 @@ using Fakvio.Infrastructure.Service;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Npgsql;
 using NSubstitute;
 using Shouldly;
 
@@ -21,6 +22,14 @@ public class UserInvitationTests : IDisposable
 {
     /// <summary>Id of the company seeded by <see cref="SeedTestCompany"/> for every test.</summary>
     private const long SeededCompanyId = 1;
+
+    /// <summary>
+    /// Points at a port nothing listens on. Used where a test wires up the real
+    /// TenantProvisioningService: any attempt to actually reach the database must fail
+    /// immediately instead of hitting whatever the developer happens to have running.
+    /// </summary>
+    private const string UnreachableConnectionString =
+        "Host=localhost;Port=1;Database=fakvio;Username=fakvio;Password=none;Timeout=1";
 
     private readonly MasterDbContext _context;
     private readonly UserService _userService;
@@ -464,16 +473,22 @@ public class UserInvitationTests : IDisposable
 
     /// <summary>
     /// The mirror image of the failure case, and the reason readiness must be read rather
-    /// than inferred: an established company is provisioned once, but every later invited
-    /// colleague runs SetPasswordAsync and so re-runs the whole provisioning pipeline over
-    /// a tenant that already holds data. That re-run can well throw (see the follow-up on
-    /// the re-seed of the code tables) without anything being wrong with the workspace.
+    /// than inferred: an invited colleague of an established company must be told "ready",
+    /// otherwise the warning added for issue #152 would fire for every second and further
+    /// user of every healthy company.
     ///
-    /// Such a user must still be told "ready" — otherwise the warning added for issue #152
-    /// would fire for every second and further user of every healthy company.
+    /// Reformulated for issue #192. The original version pinned that readiness survives the
+    /// provisioning RE-RUN throwing over the existing data — that re-run no longer happens,
+    /// because TenantProvisioningService now returns early for a provisioned company
+    /// (see TenantProvisioningServiceTests and the real-database
+    /// Fakvio.Tests.Integration/TenantReprovisioningDatabaseTests).
+    ///
+    /// The failing stub is kept deliberately: it now stands for "whatever the provisioning
+    /// call does, up to and including failing", and pins that the answer comes from the
+    /// persisted flag rather than from the outcome of that call.
     /// </summary>
     [Fact]
-    public async Task SetPasswordAsync_AlreadyProvisionedCompany_ReportsWorkspaceReady_EvenWhenTheReRunThrows()
+    public async Task SetPasswordAsync_AlreadyProvisionedCompany_ReportsWorkspaceReady_FromThePersistedFlag()
     {
         // Arrange - the tenant was provisioned long ago ...
         var settings = await _context.CompanySystemSettings.FirstAsync(s => s.CompanyId == SeededCompanyId);
@@ -481,7 +496,8 @@ public class UserInvitationTests : IDisposable
         settings.ProvisionedAt = DateTime.UtcNow.AddDays(-30);
         await _context.SaveChangesAsync();
 
-        // ... and the re-run triggered by this invitation fails over the existing data
+        // ... and the provisioning call is made to fail, so that a "ready" answer can only
+        // have come from the persisted flag
         _provisioningService
             .ProvisionTenantAsync(SeededCompanyId, Arg.Any<CancellationToken>())
             .Returns<Task<bool>>(_ => throw new InvalidOperationException(
@@ -497,6 +513,75 @@ public class UserInvitationTests : IDisposable
         // Assert - the workspace exists, so the user is let in without a warning
         result.PasswordSet.ShouldBeTrue();
         result.WorkspaceReady.ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// Issue #192 driven through its real entry point, with the REAL provisioning service
+    /// behind it. Every other unit test of this flow either stubs the provisioning service
+    /// away (so the guard never runs) or calls the service directly (so the caller never
+    /// runs); here the whole chain runs — SetPasswordAsync → TenantProvisioningService →
+    /// the guard — and only the database layer is faked.
+    ///
+    /// The discriminating assertion is the missing error log. The data sources point at a
+    /// port nothing listens on, so any attempt to actually provision fails within
+    /// milliseconds, and UserService — which deliberately swallows provisioning exceptions
+    /// so that a broken workspace cannot revoke an already stored password — records it as
+    /// "Tenant provisioning FAILED". That log line, once per invited colleague of every
+    /// established company, is what the issue was reported from.
+    ///
+    /// What is NOT covered here: whether the tenant data really survives. InMemory has no
+    /// foreign keys and no sequences, so the damage is invisible at this level — the proof
+    /// lives in Fakvio.Tests.Integration/TenantReprovisioningDatabaseTests against a real
+    /// PostgreSQL.
+    /// </summary>
+    [Fact]
+    public async Task SetPasswordAsync_InvitedColleagueOfAnEstablishedCompany_RealProvisioningServiceDoesNothing()
+    {
+        // Arrange - the company was provisioned long ago ...
+        var settings = await _context.CompanySystemSettings.FirstAsync(s => s.CompanyId == SeededCompanyId);
+        settings.IsProvisioned = true;
+        settings.ProvisionedAt = DateTime.UtcNow.AddDays(-30);
+        await _context.SaveChangesAsync();
+
+        // ... and this user service talks to the real provisioning service, not to a stub
+        await using var rootDataSource = new NpgsqlDataSourceBuilder(UnreachableConnectionString).Build();
+
+        var dataSourceFactory = Substitute.For<INpgsqlDataSourceFactory>();
+        dataSourceFactory.Root.Returns(rootDataSource);
+
+        var userLogger = Substitute.For<ILogger<UserService>>();
+
+        var userService = new UserService(
+            _context,
+            _authService,
+            new TenantProvisioningService(
+                _context,
+                dataSourceFactory,
+                rootDataSource,
+                Substitute.For<ILogger<TenantProvisioningService>>()),
+            userLogger);
+
+        var token = await SeedInvitedUserAsync("colleague-real@test.com", companyId: SeededCompanyId);
+
+        var dto = new SetPasswordDto { Token = token, NewPassword = "MySecurePassword123" };
+
+        // Act
+        var result = await userService.SetPasswordAsync(dto);
+
+        // Assert - the colleague is let in and told the workspace is ready ...
+        result.PasswordSet.ShouldBeTrue();
+        result.WorkspaceReady.ShouldBeTrue();
+
+        // ... without provisioning having failed ...
+        userLogger.DidNotReceive().Log(
+            LogLevel.Error,
+            Arg.Any<EventId>(),
+            Arg.Any<object>(),
+            Arg.Any<Exception?>(),
+            Arg.Any<Func<object, Exception?, string>>());
+
+        // ... and without so much as asking for a connection to the tenant schema.
+        dataSourceFactory.DidNotReceive().GetForSchema(Arg.Any<string>(), Arg.Any<bool>());
     }
 
     /// <summary>
@@ -524,17 +609,16 @@ public class UserInvitationTests : IDisposable
     }
 
     /// <summary>
-    /// The invitation token is single-use, and this is what bounds the blast radius of the
-    /// re-provisioning bug tracked as #192: a user who submits the set-password form twice
-    /// (double click, browser retry, refresh) must not run the provisioning pipeline twice
-    /// over an established tenant, where step 5 deletes and re-seeds the code tables.
-    ///
+    /// The invitation token is single-use: a user who submits the set-password form twice
+    /// (double click, browser retry, refresh) must not run the provisioning pipeline twice.
     /// Once the first submit has committed, the token is gone, so the replay is rejected
-    /// before anything touches the tenant schema. What this test deliberately does NOT
-    /// cover is the genuinely concurrent case — two submits interleaving before either
-    /// SaveChangesAsync lands, where the read-then-update in SetPasswordAsync has no
-    /// atomicity and both callers do provision. That race belongs to #192 together with
-    /// the destructive re-run it feeds; here only the sequential guarantee is pinned.
+    /// before anything else happens.
+    ///
+    /// The read-then-update in SetPasswordAsync still has no atomicity, so two genuinely
+    /// concurrent submits can both get past the token check. Since issue #192 that race is
+    /// no longer destructive — provisioning returns immediately for a company that is
+    /// already provisioned, so neither caller re-seeds the tenant code tables. What is
+    /// pinned here is only the sequential guarantee: exactly one provisioning call.
     /// </summary>
     [Fact]
     public async Task SetPasswordAsync_TokenReplayedAfterTheFirstSubmit_DoesNotProvisionASecondTime()

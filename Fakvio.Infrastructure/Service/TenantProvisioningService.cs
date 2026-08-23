@@ -81,15 +81,26 @@ public class TenantProvisioningService : ITenantProvisioningService
                     $"CompanySystemSettings not found for company {companyId}. " +
                     "Create the settings record first before provisioning.");
 
-            // Allow re-provisioning: if already provisioned, log a warning and continue.
-            // This makes the entire flow idempotent — safe to re-run after a partial failure
-            // (e.g., schema created but tables not seeded, or code tables inserted partially).
+            // An established tenant is NEVER provisioned again (issue #192).
+            //
+            // The flag is written in step 8, i.e. last, so "IsProvisioned == true" means every
+            // step succeeded. Re-running them is not the harmless idempotency it looks like:
+            // step 5 (CopyCodeTablesAsync) DELETEs and re-seeds the tenant code tables, which
+            // on a company that already invoices either violates a foreign key (Invoice.CurrencyId,
+            // InvoiceItem.VatRateId, Client.PreferredCurrencyId) or — silently, and far worse —
+            // renumbers the VAT rates and currencies underneath documents already issued.
+            //
+            // A run that failed half way leaves the flag false, so retries (SysAdmin "Provision",
+            // a second registration attempt) still execute the whole pipeline. Repairing a tenant
+            // whose flag IS set is MigrateTenantAsync's job, not this method's.
             if (settings.IsProvisioned)
             {
-                _logger.LogWarning(
-                    "Company {CompanyId} is already marked as provisioned (schema: {SchemaName}). " +
-                    "Re-running provisioning to ensure all data is consistent.",
+                _logger.LogInformation(
+                    "Company {CompanyId} is already provisioned (schema: {SchemaName}) — skipping. " +
+                    "Re-provisioning an established tenant would re-seed its code tables.",
                     companyId, settings.SchemaName);
+
+                return true;
             }
 
             // ── Step 2: Load company (issuer) data from master DB ───────────
