@@ -1,4 +1,6 @@
 using System.Net.Sockets;
+using Fakvio.Application.Service;
+using Fakvio.Contracts.Dto.User;
 using Fakvio.Domain.Entities;
 using Fakvio.Domain.Enums;
 using Fakvio.Infrastructure.Data;
@@ -7,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
+using NSubstitute;
 using Shouldly;
 
 namespace Fakvio.Tests.Integration;
@@ -64,13 +67,20 @@ public class TenantReprovisioningDatabaseTests : IAsyncLifetime
     /// <summary>Master-DB id of the company being provisioned. Named after the issue.</summary>
     private const long CompanyId = 192L;
 
+    /// <summary>The one document the tests issue — the reason a code table re-seed hurts.</summary>
+    private const string InvoiceDocumentNumber = "INV-192-0001";
+
     private readonly string _schemaName = $"test_issue192_{Guid.NewGuid():N}"[..40];
     private readonly string _connectionString =
         Environment.GetEnvironmentVariable(ConnectionStringEnvVar) ?? DefaultConnectionString;
 
+    /// <summary>
+    /// The in-memory master database shared by every context this class opens. Contexts come
+    /// and go per simulated request; the data behind them stays.
+    /// </summary>
+    private readonly string _masterDatabaseName = Guid.NewGuid().ToString();
+
     private NpgsqlDataSourceFactory? _dataSourceFactory;
-    private MasterDbContext? _masterContext;
-    private TenantProvisioningService? _service;
     private bool _databaseAvailable;
 
     // ─── Fixture lifetime ─────────────────────────────────────────────────────
@@ -90,21 +100,107 @@ public class TenantReprovisioningDatabaseTests : IAsyncLifetime
         if (!_databaseAvailable)
             return; // Every test skips with SkipReason.
 
-        // The MASTER side stays InMemory on purpose: provisioning only reads company data
-        // and writes the IsProvisioned flag there, none of which needs real SQL. The tenant
-        // side — the destructive one — is the real database.
-        _masterContext = new MasterDbContext(
-            new DbContextOptionsBuilder<MasterDbContext>()
-                .UseInMemoryDatabase(Guid.NewGuid().ToString())
-                .Options);
-
         SeedMaster();
+    }
 
-        _service = new TenantProvisioningService(
-            _masterContext,
-            _dataSourceFactory,
-            _dataSourceFactory.Root,
+    /// <summary>
+    /// Opens a context over this class's in-memory master database.
+    ///
+    /// Every simulated request gets its OWN context and closes it again, exactly as the API
+    /// does with its scoped DbContext. Sharing one context across the two provisioning runs
+    /// would make the second run read the CompanySystemSettings row straight out of the first
+    /// run's change tracker — the guard under test would then be looking at an in-memory
+    /// object instead of at persisted state, and the test would prove less than it claims.
+    ///
+    /// The MASTER side stays InMemory on purpose: provisioning only reads company data and
+    /// writes the IsProvisioned flag there, none of which needs real SQL. The tenant side —
+    /// the destructive one — is the real database.
+    /// </summary>
+    private MasterDbContext CreateMasterContext()
+        => new(new DbContextOptionsBuilder<MasterDbContext>()
+            .UseInMemoryDatabase(_masterDatabaseName)
+            .Options);
+
+    /// <summary>
+    /// Runs one provisioning call the way a request does: fresh master context, fresh service,
+    /// both gone by the time the call returns. <paramref name="dataSourceFactory"/> lets a test
+    /// pass a spy instead of the real factory.
+    /// </summary>
+    private async Task<bool> ProvisionAsync(INpgsqlDataSourceFactory? dataSourceFactory = null)
+    {
+        await using var masterContext = CreateMasterContext();
+
+        var service = CreateProvisioningService(masterContext, dataSourceFactory ?? _dataSourceFactory!);
+
+        return await service.ProvisionTenantAsync(CompanyId);
+    }
+
+    private static TenantProvisioningService CreateProvisioningService(
+        MasterDbContext masterContext,
+        INpgsqlDataSourceFactory dataSourceFactory)
+        => new(
+            masterContext,
+            dataSourceFactory,
+            dataSourceFactory.Root,
             NullLogger<TenantProvisioningService>.Instance);
+
+    /// <summary>
+    /// The real factory behind a substitute, so a test can both let provisioning work for
+    /// real and assert what it asked the factory for.
+    ///
+    /// Asking for a per-schema data source is the first thing that happens once the guard
+    /// lets a run through (step 4 builds the tenant context from it), and nothing before
+    /// that touches the tenant schema. "GetForSchema was never called" is therefore the
+    /// sharpest available statement of "the tenant schema was not opened at all" — sharper
+    /// than looking at the data afterwards, which the foreign keys would protect anyway.
+    /// </summary>
+    private INpgsqlDataSourceFactory CreateFactorySpy()
+    {
+        var spy = Substitute.For<INpgsqlDataSourceFactory>();
+
+        spy.Root.Returns(_dataSourceFactory!.Root);
+        spy.GetForSchema(Arg.Any<string>(), Arg.Any<bool>())
+            .Returns(callInfo => _dataSourceFactory!.GetForSchema(
+                callInfo.ArgAt<string>(0), callInfo.ArgAt<bool>(1)));
+
+        return spy;
+    }
+
+    /// <summary>
+    /// A password hasher is irrelevant to what these tests assert, so it is stubbed — the
+    /// real one is BCrypt with work factor 12 and would only make the suite slower.
+    /// </summary>
+    private static IAuthService CreateAuthServiceStub()
+    {
+        var authService = Substitute.For<IAuthService>();
+        authService.HashPassword(Arg.Any<string>()).Returns(call => $"HASH:{call.Arg<string>()}");
+        return authService;
+    }
+
+    /// <summary>
+    /// Invites a colleague into the established company and returns the invitation token
+    /// from the email link. Runs through the real service in a request of its own.
+    /// </summary>
+    private async Task<string> InviteColleagueAsync()
+    {
+        await using var masterContext = CreateMasterContext();
+
+        var userService = new UserService(
+            masterContext,
+            CreateAuthServiceStub(),
+            CreateProvisioningService(masterContext, _dataSourceFactory!),
+            NullLogger<UserService>.Instance);
+
+        var invited = await userService.InviteUserAsync(new InviteUserDto
+        {
+            Email = "kolega@zavedena-firma.cz",
+            FirstName = "Kolega",
+            LastName = "Pozvaný",
+            Role = EUserRole.Admin,
+            CompanyId = CompanyId
+        });
+
+        return invited.InvitationToken!;
     }
 
     /// <summary>
@@ -139,8 +235,6 @@ public class TenantReprovisioningDatabaseTests : IAsyncLifetime
             await command.ExecuteNonQueryAsync();
         }
 
-        _masterContext?.Dispose();
-
         if (_dataSourceFactory is not null)
             await _dataSourceFactory.DisposeAsync();
     }
@@ -162,7 +256,9 @@ public class TenantReprovisioningDatabaseTests : IAsyncLifetime
     /// </summary>
     private void SeedMaster()
     {
-        _masterContext!.Client.Add(new Client
+        using var masterContext = CreateMasterContext();
+
+        masterContext.Client.Add(new Client
         {
             Id = CompanyId,
             CompanyName = "Zavedená firma s.r.o.",
@@ -172,7 +268,7 @@ public class TenantReprovisioningDatabaseTests : IAsyncLifetime
             IsVatPayer = true
         });
 
-        _masterContext.CompanySystemSettings.Add(new CompanySystemSettings
+        masterContext.CompanySystemSettings.Add(new CompanySystemSettings
         {
             CompanyId = CompanyId,
             SchemaName = _schemaName,
@@ -180,7 +276,7 @@ public class TenantReprovisioningDatabaseTests : IAsyncLifetime
             IsActive = false
         });
 
-        _masterContext.VatRate.Add(new VatRate
+        masterContext.VatRate.Add(new VatRate
         {
             Name = "Základní 21 %",
             Rate = 21m,
@@ -189,7 +285,7 @@ public class TenantReprovisioningDatabaseTests : IAsyncLifetime
             IsActive = true
         });
 
-        _masterContext.Currency.Add(new Currency
+        masterContext.Currency.Add(new Currency
         {
             Code = "CZK",
             Name = "Česká koruna",
@@ -198,7 +294,7 @@ public class TenantReprovisioningDatabaseTests : IAsyncLifetime
             IsActive = true
         });
 
-        _masterContext.SaveChanges();
+        masterContext.SaveChanges();
     }
 
     /// <summary>
@@ -236,7 +332,7 @@ public class TenantReprovisioningDatabaseTests : IAsyncLifetime
         {
             DocumentType = EDocumentType.Invoice,
             Status = EInvoiceStatus.Completed,
-            DocumentNumber = "INV-192-0001",
+            DocumentNumber = InvoiceDocumentNumber,
             IssueDate = DateTime.UtcNow,
             DueDate = DateTime.UtcNow.AddDays(14),
             IssuerId = issuer.Id,
@@ -284,13 +380,14 @@ public class TenantReprovisioningDatabaseTests : IAsyncLifetime
         Skip.IfNot(_databaseAvailable, SkipReason);
 
         // Arrange — the company is provisioned once, as registration does it ...
-        (await _service!.ProvisionTenantAsync(CompanyId)).ShouldBeTrue();
+        (await ProvisionAsync()).ShouldBeTrue();
 
         // ... and then starts invoicing on the code tables it was given.
         var (vatRateId, currencyId) = await IssueInvoiceOnCodeTablesAsync();
 
-        // Act — the second run: what setting the password of an invited colleague triggers.
-        var result = await _service.ProvisionTenantAsync(CompanyId);
+        // Act — the second run, in a request of its own: what setting the password of an
+        // invited colleague triggers.
+        var result = await ProvisionAsync();
 
         // Assert — reported as done ...
         result.ShouldBeTrue();
@@ -306,7 +403,7 @@ public class TenantReprovisioningDatabaseTests : IAsyncLifetime
 
         var invoice = await context.Invoice
             .Include(i => i.InvoiceItem)
-            .SingleAsync(i => i.DocumentNumber == "INV-192-0001");
+            .SingleAsync(i => i.DocumentNumber == InvoiceDocumentNumber);
 
         invoice.CurrencyId.ShouldBe(currencyId);
         invoice.InvoiceItem.ShouldHaveSingleItem().VatRateId.ShouldBe(vatRateId);
@@ -324,17 +421,83 @@ public class TenantReprovisioningDatabaseTests : IAsyncLifetime
         Skip.IfNot(_databaseAvailable, SkipReason);
 
         // Act
-        var result = await _service!.ProvisionTenantAsync(CompanyId);
+        var result = await ProvisionAsync();
 
         // Assert — the schema really was built, not skipped
         result.ShouldBeTrue();
 
-        var settings = await _masterContext!.CompanySystemSettings.SingleAsync(s => s.CompanyId == CompanyId);
+        await using var masterContext = CreateMasterContext();
+        var settings = await masterContext.CompanySystemSettings.SingleAsync(s => s.CompanyId == CompanyId);
         settings.IsProvisioned.ShouldBeTrue();
 
         await using var context = CreateTenantContext();
         (await context.Client.CountAsync(c => c.IsIssuer)).ShouldBe(1);
         (await context.VatRate.SingleAsync()).Rate.ShouldBe(21m);
         (await context.NumberSequence.CountAsync()).ShouldBeGreaterThan(0);
+    }
+
+    /// <summary>
+    /// The same guard, reached the way the reported bug reached it: an invited colleague of
+    /// an established company opens the link from the invitation email and sets a password.
+    /// <c>UserService.SetPasswordAsync</c> then calls provisioning — and that call is the one
+    /// that used to re-seed the tenant code tables underneath the company's invoices.
+    ///
+    /// Why this test exists next to the one above, which calls the service directly: the
+    /// caller swallows every provisioning exception (a failed workspace must not revoke a
+    /// password that is already stored). A re-run therefore leaves no trace in the caller's
+    /// answer, and the foreign keys would abort the DELETE before the data visibly moved.
+    /// The spy is what makes the difference observable — it records that nothing ever asked
+    /// for a data source on the tenant schema, i.e. the pipeline never started.
+    /// </summary>
+    [SkippableFact]
+    public async Task SetPasswordAsync_InvitedColleagueOfAnEstablishedCompany_NeverOpensTheTenantSchema()
+    {
+        Skip.IfNot(_databaseAvailable, SkipReason);
+
+        // Arrange — an established, invoicing company ...
+        (await ProvisionAsync()).ShouldBeTrue();
+        var (vatRateId, currencyId) = await IssueInvoiceOnCodeTablesAsync();
+
+        // ... which invites a colleague.
+        var invitationToken = await InviteColleagueAsync();
+
+        var dataSourceFactorySpy = CreateFactorySpy();
+
+        // Act — the colleague's own request: sets the password from the emailed link.
+        SetPasswordResultDto result;
+
+        await using (var masterContext = CreateMasterContext())
+        {
+            var userService = new UserService(
+                masterContext,
+                CreateAuthServiceStub(),
+                CreateProvisioningService(masterContext, dataSourceFactorySpy),
+                NullLogger<UserService>.Instance);
+
+            result = await userService.SetPasswordAsync(new SetPasswordDto
+            {
+                Token = invitationToken,
+                NewPassword = "Kolega-Heslo-192"
+            });
+        }
+
+        // Assert — the colleague is let in and told the workspace is ready ...
+        result.PasswordSet.ShouldBeTrue();
+        result.WorkspaceReady.ShouldBeTrue();
+
+        // ... without provisioning ever opening the tenant schema ...
+        dataSourceFactorySpy.DidNotReceive().GetForSchema(Arg.Any<string>(), Arg.Any<bool>());
+
+        // ... and with the invoiced code tables still carrying their original ids.
+        await using var context = CreateTenantContext();
+
+        (await context.VatRate.SingleAsync()).Id.ShouldBe(vatRateId);
+        (await context.Currency.SingleAsync()).Id.ShouldBe(currencyId);
+
+        var invoice = await context.Invoice
+            .Include(i => i.InvoiceItem)
+            .SingleAsync(i => i.DocumentNumber == InvoiceDocumentNumber);
+
+        invoice.InvoiceItem.ShouldHaveSingleItem().VatRateId.ShouldBe(vatRateId);
     }
 }
