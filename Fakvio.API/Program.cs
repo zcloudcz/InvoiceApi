@@ -183,6 +183,11 @@ if (!app.Environment.IsDevelopment())
 app.UseAuthentication();
 app.UseAuthorization();
 
+// API-key scope middleware — a read-only key gets 403 on state-changing requests,
+// and no key may manage keys. Must be after UseAuthentication so the scope claim exists;
+// JWT requests carry no scope claim and pass straight through.
+app.UseApiKeyScope();
+
 // Impersonation middleware — allows SysAdmin to act as a specific company
 // by sending X-Company-Id header. Must be after auth so we can check the role.
 app.UseImpersonation();

@@ -15,6 +15,7 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using Fakvio.Infrastructure.Authentication;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Middleware;
@@ -74,6 +75,19 @@ public class JwtAuthenticationMiddleware : IFunctionsWorkerMiddleware
         if (!string.IsNullOrEmpty(authHeader) && authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
         {
             var token = authHeader["Bearer ".Length..].Trim();
+
+            // An API key is also presented as a Bearer token, but it is not a JWT — feeding
+            // it to the token handler would only produce a scary "validation FAILED" warning
+            // on every single MCP call. ApiKeyAuthenticationMiddleware, which runs right
+            // after this one, is what handles it.
+            if (token.StartsWith(ApiKeyAuthenticationDefaults.RawKeyPrefix, StringComparison.Ordinal))
+            {
+                _logger.LogInformation("JWT middleware: API key presented for {Method} {Path} — deferring to ApiKeyAuthenticationMiddleware",
+                    method, path);
+                await next(context);
+                return;
+            }
+
             _logger.LogInformation("JWT middleware: Bearer token found for {Method} {Path} (token length={Length})",
                 method, path, token.Length);
 

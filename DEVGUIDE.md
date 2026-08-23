@@ -261,7 +261,7 @@ Dlouhodobý, revokovatelný credential pro strojové klienty (MCP server, curl, 
 |----|-----|--------|
 | Entita | `Fakvio.Domain/Entities/ApiKey.cs` | **Master schema** (migrace `AddApiKey_v147`), FK → `User`, cascade. |
 | Service | `Fakvio.Infrastructure/Service/ApiKeyService.cs` | Generování, hash, scopes, revokace. |
-| Endpointy | `Fakvio.API/Controller/ApiKeyController.cs` + `Fakvio.Functions/HttpFunctions/ApiKeyFunctions.cs` | `GET /api/api-key`, `POST /api/api-key`, `POST /api/api-key/{id}/revoke`. Vždy jen **vlastní** klíče. |
+| Endpointy | `Fakvio.API/Controller/ApiKeyController.cs` + `Fakvio.Functions/HttpFunctions/ApiKeyFunctions.cs` | `GET /api/api-key`, `POST /api/api-key`, `POST /api/api-key/{id}/revoke`, `GET /api/api-key/me`. Vždy jen **vlastní** klíče. |
 | Formát klíče | `fak_live_` + 43 znaků Base64Url | 32 B z `RandomNumberGenerator`. Prefix `fak_` je nosný — podle něj vybírá auth scheme selector (JWT vždy začíná `eyJ`) a poznají ho secret scannery. |
 | Hash | `ApiKeyService.ComputeHash` | `Convert.ToBase64String(SHA256.HashData(...))`, sloupec `KeyHash` s **unique indexem**. |
 | Zobrazení | `KeyPrefix` = prvních 12 znaků | Jen pro výpis a korelaci v logu, **nikdy** jako selektor. |
@@ -286,8 +286,60 @@ firmy je reprezentovatelný).
 **Raw klíč se vrací právě jednou** — v odpovědi `POST /api/api-key` (`CreatedApiKeyDto.Key`).
 Nikam se neukládá a nikdy se neloguje; do logu jde jen `KeyPrefix`.
 
-> Autentizace klíčem (scheme selector, `ApiKeyScopeMiddleware`, Functions mirror) je samostatný
-> task #236 — endpointy výše jsou zatím **JWT-only**.
+---
+
+### 2.10 Autentizace API klíčem — oba hosty + scopes (issue #236)
+
+Klient pošle klíč ve stejné hlavičce jako JWT: `Authorization: Bearer fak_live_…`.
+Rozliší se podle prefixu (`fak_` vs `eyJ` u JWT) — žádná druhá hlavička, žádný query parametr.
+
+| Vrstva | Soubor | Role |
+|--------|--------|------|
+| **Validace klíče (sdílená)** | `Fakvio.Infrastructure/Authentication/ApiKeyAuthenticator.cs` (`IApiKeyAuthenticator`) | Jediné místo, kde se klíč ověřuje a staví principal. Oba hosty ho volají. |
+| **Pravidla scope (sdílená)** | `Fakvio.Infrastructure/Authentication/ApiKeyRequestGuard.cs` | Rozhoduje, co smí request autentizovaný klíčem; vrací 403. |
+| **Konstanty** | `Fakvio.Infrastructure/Authentication/ApiKeyAuthenticationDefaults.cs` | Jména schémat, claim typy, `ExtractRawKey` — aby se tři místa nerozešla v překlepu. |
+| **API host — driver** | `ApiKeyAuthenticationHandler` + policy scheme `FakvioBearer` v `AuthenticationExtensions` | Selector podle tokenu forwarduje na `ApiKey` nebo `JwtBearer`. |
+| **API host — scopes** | `Fakvio.API/Middleware/ApiKeyScopeMiddleware.cs`, zapojeno v `Program.cs` **za** `UseAuthentication()` | Tenká obálka nad guardem. |
+| **Functions host — driver** | `Fakvio.Functions/Middleware/ApiKeyAuthenticationMiddleware.cs` | Zrcadlo obojího. Isolated worker nemá `UseAuthentication()`, registrace schématu je tam **inertní**. |
+
+**Pořadí middlewarů ve Functions:** `Jwt → ApiKey → Impersonation → Tenant`. ApiKey je až **za**
+JWT, protože JWT middleware zapojuje `IHttpContextAccessor` do worker scope (potřebuje ho
+`MasterDbContext` na audit stamping). JWT middleware si tokenů s prefixem `fak_` nevšímá —
+jinak by na každý MCP call logoval „validation FAILED".
+
+**Claim set je znak po znaku shodný s JWT cestou** (`AuthService.GenerateJwtTokenAsync`):
+`NameIdentifier`, `Email`, `Name`, `Role`, podmíněně `CompanyId` — plus `api_key_scope`
+a `api_key_id`. Díky tomu `ImpersonationMiddleware`, `TenantContextMiddleware`
+i `[Authorize(Roles=…)]` fungují beze změny. Tenant se odvozuje z `User.CompanyId`,
+takže **SysAdmin klíč + `X-Company-Id` impersonace funguje** (schválený default story #144,
+zafixováno testem).
+
+**Fail closed.** Neznámý / revokovaný / expirovaný klíč a klíč deaktivovaného uživatele
+nevrací principal → API host 401 (`AuthenticateResult.Fail`), Functions host nechá request
+anonymní a wrapper vrátí 401. Důvod se volajícímu **neříká**, jde jen do logu.
+
+**Scopes = `read` vs `read,write`.** Vynuceno podle HTTP metody: bezpečné metody
+(GET/HEAD/OPTIONS) projdou vždy, cokoli jiného chce `write`. Výjimky jsou v
+`SafeMethodOverridePaths` (dnes jediná: `POST /api/tax/estimate` — výpočet, ne zápis).
+**Default je deny** — nový POST endpoint automaticky vyžaduje `write`; do seznamu ho přidej
+jen když ověříš, že nic neukládá („test" a „preview" endpointy bezpečné nejsou automaticky).
+
+**Klíčem nejde spravovat klíče.** Guard odmítne API-key principal na všem pod `/api/api-key`
+kromě `GET /api/api-key/me`. Uniklý klíč si tedy nevyrobí nový ani nezahladí stopy revokací
+ostatních. `/me` vrací `ApiKeyIdentityDto` (kdo, jaká role, jaký tenant, jaké scopes) —
+používá ho MCP server na validaci session.
+
+> **⚠️ `DateTime.Kind` u `ExpiresAt`.** Oba hosty zapínají
+> `Npgsql.EnableLegacyTimestampBehavior`, pod kterým se sloupec `timestamp with time zone`
+> **nečte jako UTC** — vrátí se převedený do lokálního času s `Kind=Local`. Porovnání
+> `ExpiresAt <= DateTime.UtcNow` je pak posunuté o lokální offset a v CEST v tom nebezpečném
+> směru: expirovaný klíč by autentizoval o další 2 hodiny déle. `ApiKeyAuthenticator.ToUtc`
+> proto před porovnáním normalizuje (`Local` → převod, `Unspecified` → jen přeznačení na UTC,
+> shodně s `MasterDbContext.NormalizeDateTimesToUtc`). InMemory test tohle **neukáže** —
+> důkaz je v `ApiKeyDatabaseConstraintTests` proti reálnému PG.
+
+**Zápis do `LastUsedAt`** je hrubozrnný (nejvýš jednou za 5 minut) a best-effort — jeden AI
+turn je desítky tool callů a každý z nich by jinak byl zápis do master DB.
 
 ---
 
