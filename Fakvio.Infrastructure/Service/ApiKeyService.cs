@@ -37,6 +37,12 @@ public class ApiKeyService : IApiKeyService
     /// </summary>
     private const int DisplayPrefixLength = 12;
 
+    /// <summary>
+    /// Must stay in sync with the varchar(100) column (see MasterDbContext.ConfigureApiKey)
+    /// and with the [StringLength(100)] annotation on <see cref="CreateApiKeyDto"/>.
+    /// </summary>
+    private const int NameMaxLength = 100;
+
     private readonly MasterDbContext _context;
     private readonly ILogger<ApiKeyService> _logger;
 
@@ -97,6 +103,12 @@ public class ApiKeyService : IApiKeyService
         var name = (dto.Name ?? string.Empty).Trim();
         if (name.Length == 0)
             throw new ArgumentException("API key name is required.");
+
+        // Without this the value would reach the varchar(100) column and PostgreSQL
+        // would answer 22001 ("value too long") — a 500 instead of a 400 on the
+        // Functions host, which has no model validation to stop it earlier.
+        if (name.Length > NameMaxLength)
+            throw new ArgumentException($"API key name must be at most {NameMaxLength} characters.");
 
         var scopes = NormalizeScopes(dto.Scopes);
 
@@ -188,7 +200,14 @@ public class ApiKeyService : IApiKeyService
         var canWrite = false;
         foreach (var part in parts)
         {
-            if (!Enum.TryParse<EApiKeyScope>(part, ignoreCase: true, out var scope))
+            // Enum.TryParse alone is not an allow-list: it also accepts the underlying
+            // number, so "1" would mean Write and "999" would produce an EApiKeyScope
+            // that has no member at all — both would end up in the Scopes column
+            // without ever being named. Requiring the input to equal a declared name
+            // closes both holes (Enum.GetName returns null for an undefined value),
+            // and the list of names still lives in exactly one place: the enum.
+            if (!Enum.TryParse<EApiKeyScope>(part, ignoreCase: true, out var scope)
+                || !string.Equals(Enum.GetName(scope), part, StringComparison.OrdinalIgnoreCase))
                 throw new ArgumentException($"Unknown scope '{part}'. Allowed scopes: read, write.");
 
             canWrite |= scope == EApiKeyScope.Write;

@@ -248,6 +248,7 @@ Dlouhodobý, revokovatelný credential pro strojové klienty (MCP server, curl, 
 | Zobrazení | `KeyPrefix` = prvních 12 znaků | Jen pro výpis a korelaci v logu, **nikdy** jako selektor. |
 | Scopes | `EApiKeyScope { Read, Write }` | Uloženo `"read"` / `"read,write"`. `write` se normalizuje na `read,write`. Efektivní oprávnění = **role ∩ scope**. |
 | Revokace | `RevokedAt` + `RevokedByUserId` | Soft — řádek zůstává kvůli auditu. |
+| Validace vstupu | `ApiKeyService.CreateAsync` | Jméno neprázdné a ≤ 100 znaků (sloupec je `varchar(100)`), scope musí být **jménem** z `EApiKeyScope` (číselný tvar `"1"`/`"999"` je odmítnut — `Enum.TryParse` ho jinak bere), `ExpiresAt` v budoucnu. Validace patří **do service**, ne do controlleru: Functions host žádnou model validaci nemá. |
 
 **Proč SHA-256 a ne BCrypt wf12 podle §2.1** (kompletní zdůvodnění je v komentáři u `ComputeHash`):
 adaptivní hash chrání *nízkoentropijní lidský vstup* před offline brute force, ale klíč je 32 B

@@ -177,6 +177,15 @@ public class ApiKeyServiceTests : IDisposable
     [InlineData("read,delete")]
     [InlineData("")]
     [InlineData(" , ")]
+    // Numeric input must not pass either: Enum.TryParse accepts the underlying
+    // number, so "1" would silently mean Write and "999" an enum value that does
+    // not exist — both would land in the Scopes column without ever meeting the
+    // allow-list.
+    [InlineData("0")]
+    [InlineData("1")]
+    [InlineData("2")]
+    [InlineData("-1")]
+    [InlineData("999")]
     public async Task CreateAsync_InvalidScopes_Throws(string scopes)
     {
         await Should.ThrowAsync<ArgumentException>(
@@ -202,6 +211,31 @@ public class ApiKeyServiceTests : IDisposable
     {
         await Should.ThrowAsync<ArgumentException>(
             () => _service.CreateAsync(OwnerUserId, NewRequest(name)));
+    }
+
+    [Fact]
+    public async Task CreateAsync_NameLongerThanTheColumn_Throws()
+    {
+        // Name is varchar(100) in the master schema. The API host would stop 101
+        // characters at model validation, but the Functions host has none — there the
+        // value would reach PostgreSQL and come back as 22001 → 500. Hence the guard
+        // lives in the service, which both hosts go through.
+        await Should.ThrowAsync<ArgumentException>(
+            () => _service.CreateAsync(OwnerUserId, NewRequest(new string('x', 101))));
+
+        (await _context.ApiKey.CountAsync()).ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task CreateAsync_NameExactlyAtTheColumnLimit_Succeeds()
+    {
+        // Boundary on the allowed side — the guard must reject 101, not 100.
+        var name = new string('x', 100);
+
+        var created = await _service.CreateAsync(OwnerUserId, NewRequest(name));
+
+        created.Name.ShouldBe(name);
+        (await LoadStoredKeyAsync(created.Id)).Name.ShouldBe(name);
     }
 
     [Fact]
