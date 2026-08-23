@@ -23,6 +23,13 @@ public class AresCacheRepository : IAresCacheRepository
     private readonly ILogger<AresCacheRepository> _logger;
 
     /// <summary>
+    /// How many expired rows one write may delete. Deletion is indexed (AresCache has an
+    /// index on ExpiresAt) but the cap keeps a single lookup from paying for a huge
+    /// backlog left by an earlier burst.
+    /// </summary>
+    private const int ExpiredSweepBatchSize = 200;
+
+    /// <summary>
     /// True when no tenant is available — use MasterDbContext.
     /// False when a tenant is set — use TenantDbContext.
     /// </summary>
@@ -143,8 +150,49 @@ public class AresCacheRepository : IAresCacheRepository
             _logger.LogDebug("Created new cache entry for IČO {RegistrationNumber}", cacheEntry.RegistrationNumber);
         }
 
+        await RemoveExpiredEntriesAsync(cacheEntry.RegistrationNumber, cancellationToken);
+
         await ActiveContext.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation("Successfully saved cache for IČO {RegistrationNumber}", cacheEntry.RegistrationNumber);
+    }
+
+    /// <summary>
+    /// Deletes cache rows whose TTL has passed (issue #200).
+    ///
+    /// WHY HERE AND NOT IN A SCHEDULED JOB
+    /// Rows are only ever created by SaveCacheAsync, so sweeping on the write path means
+    /// the table cannot grow while nothing writes to it — and it needs no BackgroundService
+    /// plus [TimerTrigger] pair (see CLAUDE.md → "API + Functions duplication"), which
+    /// would have to be duplicated for both hosts and would still run against every
+    /// tenant schema separately. The caller pays for its own garbage: the anonymous
+    /// endpoint that makes this table enumerable is also the one cleaning it up.
+    ///
+    /// The row being written is excluded — a refresh of an entry that has just expired
+    /// must keep the new value, not delete it.
+    ///
+    /// The batch is capped so a single write never turns into an unbounded DELETE.
+    /// ponytail: capped sweep on the write path; if the expired backlog ever outgrows
+    /// the batch (it shrinks by one batch per write, grows by one row per write), move
+    /// this to a scheduled job.
+    /// </summary>
+    private async Task RemoveExpiredEntriesAsync(
+        string currentRegistrationNumber,
+        CancellationToken cancellationToken)
+    {
+        var now = DateTime.UtcNow;
+
+        var expired = await CacheSet
+            .Where(x => x.ExpiresAt < now && x.RegistrationNumber != currentRegistrationNumber)
+            .Take(ExpiredSweepBatchSize)
+            .ToListAsync(cancellationToken);
+
+        if (expired.Count == 0)
+            return;
+
+        CacheSet.RemoveRange(expired);
+
+        _logger.LogInformation("Removed {Count} expired ARES cache entries (context: {Context})",
+            expired.Count, IsMasterContext ? "Master" : "Tenant");
     }
 }

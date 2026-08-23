@@ -479,6 +479,25 @@ AddDataProtection().PersistKeysToDbContext<MasterDbContext>().SetApplicationName
 ```
 `SetApplicationName("Fakvio")` musí být totožné na API i Functions hostu — jinak navzájem nedešifrují.
 
+### reCAPTCHA v3 (ochrana anonymních endpointů)
+
+Chrání přihlášení, registraci a anonymní ARES lookup na registračním formuláři. Jiná ochrana proti robotům v aplikaci **není**.
+
+Konfigurace v `appsettings.json` nebo env proměnných (Azure App Settings používá dvojité podtržítko, např. `Recaptcha__SecretKey`). Přes UI nastavit nelze — jde o secret.
+
+| Klíč | Výchozí | Popis |
+|------|---------|-------|
+| `Recaptcha:Enabled` | `true` | `false` = ověřování se úplně přeskočí. Použijte jen tam, kde záměrně běžíte bez reCAPTCHA. |
+| `Recaptcha:SiteKey` | prázdný | Veřejný klíč pro frontend (`Fakvio.BlazorUI/wwwroot/appsettings.json`). |
+| `Recaptcha:SecretKey` | prázdný | Tajný klíč pro ověření na serveru. Získáte na https://www.google.com/recaptcha/admin (Score based v3). |
+| `Recaptcha:AllowedHostnames` | prázdné pole | Seznam hostů, na kterých se site key používá (např. `fakvio.cz`). Prázdné = kontrola hostname se přeskočí. |
+
+**DŮLEŽITÉ — brána je „fail closed"** (od issue #200): pokud je `Enabled=true` a `SecretKey` chybí, **přihlášení i registrace vracejí chybu 400**. Totéž při výpadku Googlu. Dřívější chování bylo opačné (při jakémkoli problému se požadavek propustil), což znamenalo, že zapomenutý klíč tiše vypnul ochranu.
+
+**Před nasazením zkontrolujte**, že v prostředí (Azure App Settings pro API i Function App) je buď nastavený `Recaptcha__SecretKey`, nebo `Recaptcha__Enabled=false`.
+
+**Diagnostika:** v logu (`/logs`, úroveň Error) hledejte zprávu `reCAPTCHA is enabled but Recaptcha:SecretKey is not configured`. Úroveň Warning zaznamená i odmítnutí kvůli nízkému skóre, neshodě akce nebo neznámému hostname.
+
 ### OAuth (Social login)
 
 Dostupní poskytovatelé: Google, Microsoft, Facebook, Seznam.cz
