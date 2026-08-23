@@ -79,20 +79,26 @@ public class AresVatPayerDerivationTests
         var configuration = new ConfigurationBuilder().AddInMemoryCollection().Build();
 
         return new AresServiceImpl(
-            new HttpClient(new StubHttpMessageHandler(new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent(aresJson)
-            })),
+            new HttpClient(new StubHttpMessageHandler(aresJson)),
             Substitute.For<IAresCacheRepository>(),
             Substitute.For<ILogger<AresServiceImpl>>(),
             configuration);
     }
 
-    /// <summary>HttpMessageHandler stub returning a fixed response for any request.</summary>
-    private sealed class StubHttpMessageHandler(HttpResponseMessage response) : HttpMessageHandler
+    /// <summary>
+    /// HttpMessageHandler stub answering every request with HTTP 200 and the given JSON body.
+    ///
+    /// It builds a NEW response per request on purpose. A response content stream can only be
+    /// read once, so handing out one shared instance would make a second call (a retry, or a
+    /// future test that looks up twice) fail on an empty body instead of on the real assertion.
+    /// </summary>
+    private sealed class StubHttpMessageHandler(string json) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
-            => Task.FromResult(response);
+            => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(json)
+            });
     }
 }
