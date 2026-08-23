@@ -1,0 +1,26 @@
+@*
+    Renders markdown text as formatted HTML (headings, bold, lists, tables, code blocks).
+
+    Used for AI assistant answers, which arrive as markdown. The conversion — including
+    the XSS sanitisation — lives in MarkdownRenderer so it can be unit tested on its own;
+    this component only wraps the result in a styled container.
+
+    The .markdown-body class (app.css) tames the spacing of the generated HTML so that
+    headings and lists do not blow up the size of a chat bubble.
+*@
+
+<div class="markdown-body @Class">@((MarkupString)MarkdownRenderer.ToSafeHtml(Content))</div>
+
+@code {
+    /// <summary>
+    /// Raw markdown to render. Null or whitespace renders an empty container.
+    /// </summary>
+    [Parameter]
+    public string? Content { get; set; }
+
+    /// <summary>
+    /// Extra CSS classes appended to the container (spacing utilities, etc.).
+    /// </summary>
+    [Parameter]
+    public string? Class { get; set; }
+}
