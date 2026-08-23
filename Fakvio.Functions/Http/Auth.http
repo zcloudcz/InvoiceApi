@@ -34,17 +34,17 @@ GET {{baseUrl}}/api/auth/validate
 Authorization: Bearer {{token}}
 
 ### ============================================================================
-### Auth Diagnostic (with token)
+### Auth Diagnostic (SysAdmin token required)
 ### GET /api/diagnostic/auth — Dumps full auth state as seen by the function.
 ### Shows: Authorization header, User claims, manual JWT validation result.
-### Use this to debug 401 issues.
+### Use this to debug role/claim issues on a token that already validates.
 ### ============================================================================
 GET {{baseUrl}}/api/diagnostic/auth
 Authorization: Bearer {{token}}
 
 ### ============================================================================
-### Auth Diagnostic (no token)
-### Verifies the diagnostic endpoint works without auth (should show
-### jwtSecretConfigured=true and userIdentityIsAuthenticated=false).
+### Auth Diagnostic (no token) — must be rejected
+### Since issue #263 the endpoint is SysAdmin-only, because its payload contains
+### the JWT configuration and every claim. Expected: 401, empty body.
 ### ============================================================================
 GET {{baseUrl}}/api/diagnostic/auth
