@@ -21,6 +21,11 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Opravy
 
+- **#263** — Diagnostické endpointy Azure Functions (`/api/diagnostic/migrate`,
+  `/api/diagnostic/auth`) byly dostupné bez přihlášení: kdokoli mohl vzdáleně spustit
+  DB migrace nebo si vypsat JWT konfiguraci (issuer, audience, délku secretu, claims).
+  Oba teď vyžadují přihlášeného SysAdmina — bez tokenu 401, s tokenem bez role 403.
+  (PR #270, `4f766df`)
 - **#200** — Ověření reCAPTCHA bylo fail-open: výpadek Googlu nebo chybějící `SecretKey`
   bránu tiše propustily místo aby ji zablokovaly, a token se navíc nekontroloval proti
   akci ani doméně, takže se dal token z jednoho formuláře přehrát jinam. Anonymní ARES
