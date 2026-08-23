@@ -31,6 +31,26 @@
             <MudText Typo="Typo.h5" Class="appbar-title">@L["Layout_AppTitle"]</MudText>
             <MudSpacer />
 
+            @* AI Chat toggle — first control after the spacer so the assistant is the most
+               prominent AppBar action, not the last icon in a row of six. The icon is the
+               generic "AI robot" (same one the empty chat panel shows); the Fakvio logo used
+               before was indistinguishable from the app logo two icons to the left.
+               Hidden for SysAdmin without impersonation: chat data is tenant-scoped, so
+               /api/chat/* returns 403 when no CompanyId claim is present (see issue #34). *@
+            <AuthorizeView>
+                <Authorized>
+                    @if (_hasTenantContext)
+                    {
+                        <MudTooltip Text="@L["Chat_Title"].Value">
+                            <MudIconButton Icon="@Icons.Material.Filled.SmartToy"
+                                           Color="Color.Inherit"
+                                           OnClick="@ToggleChat"
+                                           aria-label="@L["Chat_Title"].Value" />
+                        </MudTooltip>
+                    }
+                </Authorized>
+            </AuthorizeView>
+
             <AuthorizeView>
                 <Authorized>
                     @* Impersonation selector — only visible for SysAdmin *@
@@ -105,22 +125,6 @@
                 </NotAuthorized>
             </AuthorizeView>
 
-            @* AI Chat toggle button — opens the right drawer. Uses the Fakvio logo as the AI assistant icon.
-               Hidden for SysAdmin without impersonation: chat data is tenant-scoped, so /api/chat/*
-               returns 403 when no CompanyId claim is present (see issue #34). *@
-            <AuthorizeView>
-                <Authorized>
-                    @if (_hasTenantContext)
-                    {
-                        <MudTooltip Text="@L["Chat_Title"].Value">
-                            <MudIconButton OnClick="@ToggleChat" Color="Color.Inherit">
-                                <MudImage Src="@_logoSrc" Alt="@L["Chat_Title"].Value" Width="24" Height="24" />
-                            </MudIconButton>
-                        </MudTooltip>
-                    }
-                </Authorized>
-            </AuthorizeView>
-
             @* Dark/light mode toggle — only shown for authenticated users *@
             <AuthorizeView>
                 <Authorized>
@@ -148,9 +152,15 @@
             <Authorized>
                 @if (_hasTenantContext)
                 {
-                    <MudDrawer @bind-Open="_chatOpen" Anchor="Anchor.End"
+                    @* Open/OpenChanged instead of @bind-Open: @bind would keep the field in
+                       sync (overlay taps included) but gives no hook for the side effect —
+                       every state change must also be written to localStorage.
+                       Width stays a parameter — MudDrawerContainer derives the main-content
+                       offset from it; the phone override lives in app.css (.chat-drawer). *@
+                    <MudDrawer Open="_chatOpen" OpenChanged="SetChatOpenAsync" Anchor="Anchor.End"
                                ClipMode="DrawerClipMode.Always" Elevation="4"
-                               Width="400px" Breakpoint="Breakpoint.Lg">
+                               Width="400px" Breakpoint="Breakpoint.Lg"
+                               Class="chat-drawer">
                         <ChatPanel OnClose="@ToggleChat" />
                     </MudDrawer>
                 }
@@ -194,6 +204,9 @@
     private bool _chatOpen;
     private bool _cookiesAccepted = true; // default true to avoid flash
 
+    /// <summary>localStorage key holding whether the AI chat drawer was left open.</summary>
+    private const string ChatOpenStorageKey = "chatDrawerOpen";
+
     /// <summary>
     /// Returns the logo image path based on the current theme.
     /// Grey logo for dark mode (better contrast on dark AppBar),
@@ -224,9 +237,33 @@
         _isDarkMode = !_isDarkMode;
     }
 
-    void ToggleChat()
+    /// <summary>
+    /// Opens / closes the AI chat drawer and remembers the choice.
+    /// </summary>
+    private Task ToggleChat() => SetChatOpenAsync(!_chatOpen);
+
+    /// <summary>
+    /// Sets the chat drawer state and persists it in localStorage, so the assistant is
+    /// still open after a page reload — a panel that silently closes on every refresh is
+    /// the main reason the feature goes unnoticed (issue #161).
+    /// localStorage (not UserPreferences) on purpose: this is a per-device UI state, the
+    /// same store the cookie consent above uses, and it costs no API round-trip on a
+    /// preference that changes several times per session.
+    /// </summary>
+    private async Task SetChatOpenAsync(bool open)
     {
-        _chatOpen = !_chatOpen;
+        _chatOpen = open;
+        await JS.InvokeVoidAsync("localStorage.setItem", ChatOpenStorageKey, open ? "true" : "false");
+    }
+
+    /// <summary>
+    /// Handles the toggle request raised by the "AI asistent" entry in the nav menu.
+    /// The event comes from another component, so an explicit re-render is required.
+    /// </summary>
+    private async void OnChatToggleRequested()
+    {
+        await ToggleChat();
+        StateHasChanged();
     }
 
     /// <summary>
@@ -245,10 +282,17 @@
             // Check if user already accepted cookies
             var consent = await JS.InvokeAsync<string?>("localStorage.getItem", "cookieConsent");
             _cookiesAccepted = consent == "true";
+
+            // Restore the chat drawer state from the previous visit (default: closed).
+            var chatOpen = await JS.InvokeAsync<string?>("localStorage.getItem", ChatOpenStorageKey);
+            _chatOpen = chatOpen == "true";
+
             StateHasChanged();
             // Subscribe to company list changes (e.g., CompanyDetail creates a new company).
             // This replaces forceLoad: true navigation which restarts the WASM app.
             AppState.OnCompanyListChanged += OnCompanyListChanged;
+            // The nav menu entry asks MainLayout to toggle the chat drawer.
+            AppState.OnChatToggleRequested += OnChatToggleRequested;
 
             await LoadCompaniesAsync();
         }
@@ -302,6 +346,7 @@
     public void Dispose()
     {
         AppState.OnCompanyListChanged -= OnCompanyListChanged;
+        AppState.OnChatToggleRequested -= OnChatToggleRequested;
     }
 
     /// <summary>
@@ -325,6 +370,10 @@
         _hasTenantContext = companyId.HasValue;
         if (!_hasTenantContext)
         {
+            // Deliberately the field only, not SetChatOpenAsync: the drawer is being
+            // hidden because the tenant context is gone, not because the user closed it.
+            // The stored preference must survive so the panel comes back open on the
+            // next impersonation.
             _chatOpen = false;
         }
 

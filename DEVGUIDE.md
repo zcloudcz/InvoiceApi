@@ -234,6 +234,25 @@ Functions přes `SystemConfigurationFunctions.SystemConfiguration_GetCredentialH
 
 **Pravidlo**: NIKDY neodstraňuj `PersistKeysToDbContext` ani neměň `ApplicationName`. Pokud musíš změnit ApplicationName, je to ekvivalent ztráty všech zašifrovaných dat — plánuj migrační okno.
 
+### 2.8 reCAPTCHA gate (issue #200)
+
+`CaptchaService` (`Fakvio.Infrastructure/Service/CaptchaService.cs`) je **jediná** ochrana před zneužitím u tří anonymních endpointů — `/api/auth/login`, `/api/auth/register` a ARES proxy `/api/auth/ares/{ico}`. Rate limiting v repu **není** (a nesmí být middleware — Functions host ho neprovede, viz §11.3).
+
+**Fail closed.** Cokoli zabrání kladnému ověření (výjimka, HTTP chyba od Googlu, chybějící `SecretKey`) znamená **odmítnutí** požadavku. Dřív se v těchto případech vracelo `true`, takže výpadek Googlu bránu úplně vypnul.
+
+| Config klíč | Default | Význam |
+|-------------|---------|--------|
+| `Recaptcha:Enabled` | `true` | `false` = brána se přeskočí bez jakéhokoli odchozího volání. **Jediný** povolený způsob, jak běžet bez reCAPTCHA (lokální dev, testy). |
+| `Recaptcha:SecretKey` | `""` | Prázdný + `Enabled=true` ⇒ všechny brány vracejí 400. Čte ho jen server. |
+| `Recaptcha:SiteKey` | `""` | Čte ho jen klient (`Fakvio.BlazorUI/wwwroot/appsettings.json`). Prázdný ⇒ stránka token nevyžádá a hlavička nedorazí, takže zapnutá brána vrátí 400 i pro legitimního uživatele. Zapnout bránu proto znamená nastavit `SecretKey` **i** `SiteKey` (§9.3, ADMINGUIDE §9). |
+| `Recaptcha:AllowedHostnames` | `[]` | Hosty, na kterých se site key používá. Prázdné = kontrola hostname se přeskočí (site key má doménový whitelist už v reCAPTCHA konzoli). |
+
+**Action binding.** `VerifyAsync(token, expectedAction)` — druhý argument musí být stejný řetězec, jaký Blazor stránka předá `grecaptcha.execute()`. Token je na akci vázaný, takže bez porovnání by token z registračního formuláře otevřel i login a ARES proxy.
+
+**Kde je escape hatch nastavený**: `appsettings.Development.json`, `Fakvio.Functions/local.settings.json` (`Recaptcha__Enabled`), `FakvioFactory` v integračních testech (`builder.UseSetting`). Testy, které testují **samotnou bránu**, místo toho substituují `ICaptchaService`.
+
+**AresCache TTL.** ARES proxy je anonymní, takže počet klíčů v `AresCache` volí volající. `AresCacheRepository.SaveCacheAsync` proto při každém zápisu smaže dávku expirovaných řádků (`ExpiredSweepBatchSize`, index na `ExpiresAt`). Záměrně **není** periodická úloha (§6) — řádky vznikají jen na zápisové cestě, takže tabulka neroste, když se nezapisuje, a úklid nepotřebuje dvojici BackgroundService + `[TimerTrigger]` ani průchod všemi tenant schématy. Neúspěšné lookupy expirují za 1 hodinu (`AresServiceImpl.FailureCacheExpiration`), takže enumerace uklízí sama po sobě.
+
 ---
 
 ## 3. Multi-tenant — jak data oddělujeme
@@ -835,10 +854,14 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
 
 ### 4.9 MCP Server (`Fakvio.McpServer`)
 
-- Standalone .NET tool (PackAsTool), stdio transport.
-- Auth: `FAKVIO_API_TOKEN` env var (JWT bearer).
-- 21 tools: 8 invoice + 6 client + 3 template + 4 reporting.
-- Konfigurace v Claude Desktop / Claude Code: spustí `fakvio-mcp-server` jako subprocess se stdio piping.
+- Standalone .NET tool (PackAsTool), `ToolCommandName` = **`fakvio-mcp`**, stdio transport, SDK `ModelContextProtocol` 1.0.0.
+- Jméno v MCP handshake (`ServerInfo.Name`) je `fakvio` — nezaměňovat s názvem příkazu.
+- Auth: `FAKVIO_API_TOKEN` env var (JWT bearer, povinný — bez něj exit code 1), `FAKVIO_API_URL` (výchozí `https://localhost:7001`, lokální API ale běží na `7047` → nastavovat explicitně).
+- Žádný přístup k DB — všechno jde přes `IFakvioApiClient` → HTTP na `Fakvio.API`, takže autorizace i tenant izolace platí beze změny.
+- **36 tools**: 10 invoice + 6 client + 6 received invoice + 6 reporting + 5 tax + 3 template (po jednom souboru v `Tools/`).
+  Ruční číslo v dokumentaci stárne; zdroj pravdy je `grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs`.
+- Konfigurace v Claude Desktop / Claude Code: spustí `fakvio-mcp` jako subprocess se stdio piping. Vzor v `.mcp.json.sample` (kořen repa).
+- Detaily (build, získání tokenu, seznam nástrojů, postup přidání nástroje): `Fakvio.McpServer/README.md`.
 
 ### 4.10 Invoice by Email (IMAP → auto-import)
 
@@ -958,6 +981,52 @@ $env:RUN_EPO_SANDBOX_TESTS = "true"
 dotnet test Fakvio.Tests.Integration --filter "FullyQualifiedName~EpoSandboxSmokeTests"
 ```
 Gate: env `RUN_EPO_SANDBOX_TESTS=true`. Sandbox: `https://adisepo.mfcr.cz/adis/jepo/epo/ePodani/podani.faces`.
+
+### 4.12 Tenant readiness (POVINNÝ pattern pro "chybí nastavení")
+
+Když operace nesmí proběhnout, protože tenant nemá dokončené nastavení, **nezakládej
+vlastní výjimku ani vlastní tvar chyby**. Použij `ITenantReadinessService`.
+
+| Vrstva | Kde | Co dělá |
+|--------|-----|---------|
+| Interface | `Fakvio.Application/Service/ITenantReadinessService.cs` | `GetReportAsync(issuerId?)` = report; `EnsureReadyAsync(issuerId?)` = guard, který hodí výjimku |
+| Implementace | `Fakvio.Infrastructure/Service/TenantReadinessService.cs` | Všechna pravidla na jednom místě (inline checky, žádná FluentValidation) |
+| DTO | `Fakvio.Contracts/Dto/Readiness/` | `ReadinessReportDto`, `ReadinessIssueDto`, konstanty kódů `ReadinessCodes` |
+| Výjimka | `Fakvio.Application/Exceptions/TenantNotReadyException.cs` | Nese `Code` + `MissingFields` + `Issues` |
+
+**Pravidla a jejich závažnost:**
+
+| Kód | Závažnost | Podmínka | Fix route |
+|-----|-----------|----------|-----------|
+| `ISSUER_MISSING` | Blocking | tenant nemá žádného `Client.IsIssuer = true` (nebo zadané `issuerId` neexistuje) | `/my-company` |
+| `ISSUER_ADDRESS_INCOMPLETE` | Blocking | vystavitel nemá adresu, nebo primární adrese chybí Street/City/PostalCode/Country | `/my-company` |
+| `ISSUER_REGISTRATION_NUMBER_MISSING` | Blocking | prázdné IČO | `/my-company` |
+| `ISSUER_TAX_NUMBER_MISSING` | Blocking | `IsVatPayer = true` a prázdné DIČ | `/my-company` |
+| `ISSUER_BANK_ACCOUNT_MISSING` | Blocking | žádný účet s vyplněným číslem | `/my-company` |
+| `NUMBER_SEQUENCE_MISSING` | Blocking | chybí aktivní default řada pro `Invoice` / `CreditNote` (`MissingFields` nese typ dokladu) | `/number-sequences` |
+| `EPO_HEADER_INCOMPLETE` | Warning | `CompanySystemSettings.EpoTaxOfficeCode` / `EpoTaxOfficeBranchCode` není vyplněné | `/company-settings` |
+
+**Konvence, které musíš dodržet, když přidáváš pravidlo:**
+
+- Pravidlo patří **do `TenantReadinessService`**, ne do volajícího servisu — jinak se ta
+  samá kontrola rozleze po kódu a odpovědi se rozejdou.
+- Nový kód přidej jako konstantu do `ReadinessCodes`. UI ho používá jako lokalizační klíč,
+  takže se nesmí lišit o písmeno.
+- `FixRoute` je **relativní UI routa** (`@page` v `Fakvio.UI.Shared/Components/Pages`).
+  API nikdy nestaví absolutní URL.
+- Blocking = operaci je nutné odmítnout. Warning = uživatel narazí až v konkrétní featuře
+  (EPO), běžné fakturaci to nebrání — `IsReady` warningy ignoruje.
+- Pravidlo vázané na vystavitele plní `IssuerId` + `IssuerName` (multi-issuer tenant),
+  tenant-wide pravidlo je nechává `null`.
+- Pravidlo pokrývají unit testy v obou směrech (`TenantReadinessServiceTests`).
+
+**Tvar chyby na API** — zobecňuje EPO precedens, takže UI má jedno zpracování:
+
+```jsonc
+// 400 Bad Request
+{ "code": "TENANT_NOT_READY", "message": "...", "missingFields": ["RegistrationNumber"],
+  "issues": [ { "code": "...", "severity": 1, "missingFields": [...], "fixRoute": "/my-company" } ] }
+```
 
 ---
 
@@ -1279,10 +1348,40 @@ v `wwwroot\css\app.css`, sekce „Responsive / mobile").
 | Grid sloupce | sekundární sloupce (datumy, kódy, města) označ `HideSmall="true"` — MudBlazor razítkuje `mud-table-cell-hide` na header/filter/body buňky, app.css je pod 600px skryje. Ponech identifikaci + částku + stav + akce. Nebojuje s persistencí ani column menu (čisté CSS). |
 | Dialogy | pod 600px automaticky fullscreen (CSS). Opt-out: `dialog-keep-size`. |
 | AppBar | title text, jméno uživatele, dark-mode a logout ikona se na xs skrývají (logout je v profil menu); tříd `appbar-*` se nedotýkej bez přeměření na 375px |
+| Drawery s pevnou šířkou | `Width="…"` na `MudDrawer` **nech** (z něj `MudDrawerContainer` počítá offset hlavního obsahu) a pod 600px ho přebij CSS třídou s `width: 100vw !important` — viz `.chat-drawer` v app.css. Pravidlo na CSS proměnnou `--mud-drawer-width` nestačí, MudBlazor ji píše inline. |
 
 **Ověření:** Playwright `Tests\Navigation\MobileLayoutTests.cs` (viewport 375×812 —
-overflow, ikonová tlačítka, AppBar, skryté sloupce). Při změně layoutu je pusť
-proti běžícímu stacku.
+overflow, ikonová tlačítka, AppBar, skryté sloupce, šířka chat draweru). Při změně
+layoutu je pusť proti běžícímu stacku.
+
+### 7.12 Markdown rendering (`MarkdownView` / `MarkdownRenderer`)
+
+Odpovědi AI asistenta chodí jako markdown. Renderují se přes:
+
+| Vrstva | Soubor | Role |
+|--------|--------|------|
+| Logika | `Services\MarkdownRenderer.cs` | `ToSafeHtml(string?)` — markdown → sanitizované HTML. Čistá statická funkce, unit-testovatelná bez bUnitu. |
+| Komponenta | `Components\Shared\MarkdownView.razor` | Obalí výsledek do `MarkupString` a `.markdown-body` (styly v app.css). |
+
+Pravidla:
+- **Veškerý markdown z modelu jde přes `MarkdownView`**, nikdy ne přímo přes
+  `(MarkupString)` — obsah je neověřený vstup (umí ho ovlivnit text faktury,
+  e-mailu nebo přiloženého PDF).
+- Pipeline je záměrně **bez `UseAdvancedExtensions()`** — ten balík zapíná generic
+  attributes (`{...}`), kterými by šlo do HTML propašovat libovolný atribut.
+  Zapnuté jsou jen `UsePipeTables` + `UseEmphasisExtras` + `UseAutoLinks`.
+- Dvě obranné vrstvy: `DisableHtml()` (raw HTML se escapuje) a whitelist schémat
+  odkazů (`http`, `https`, `mailto`, relativní); `javascript:`/`data:` se přepíše
+  na `#`. Testy: `Fakvio.Tests.Unit\MarkdownRendererTests.cs`.
+- **Odkaz má v Markdigu dva typy uzlů**, sanitizovat se musí oba: `LinkInline`
+  (`[text](url)`, obrázky i reference definice) a `AutolinkInline`
+  (`<https://…>`, `<user@example.com>`). U `AutolinkInline` je text totožný s URL,
+  takže se závadný uzel nepřepisuje na `#`, ale nahrazuje `LiteralInline`
+  (jinak by zmizel i text). Přidáváš-li do pipeline další extension, ověř,
+  jaké uzly emituje — nový typ uzlu = nová díra.
+- **Uživatelský vstup se markdownem NErenderuje** — uživatel psal literální text
+  (`ChatMessageBubble` proto větví podle role zprávy).
+- Balíček: `Markdig` (v `Fakvio.UI.Shared`), čistě managed, funguje v browser-wasm.
 
 ---
 
@@ -1450,12 +1549,15 @@ dotnet test Fakvio.Tests.Unit --filter "FullyQualifiedName~DatabaseConnectivityS
 - `OAuth:*` — viz §2.4.
 - `SmtpSettings:*` — fallback SMTP (per-company se bere z `CompanySystemSettings`).
 - `CorsSettings:AllowedOrigins` — array. Načteno v `Program.cs:90`.
+- `Recaptcha:*` — viz §2.8. **Pozor**: brána je fail-closed, takže prostředí bez `SecretKey` musí mít `Recaptcha:Enabled=false`, jinak login i registrace vracejí 400. Zapnout ji znamená nastavit **dvě** věci — `SecretKey` na serveru **a** `SiteKey` v klientovi (§9.3); server sám nestačí, viz ADMINGUIDE §9.
 
 ### 9.3 BlazorUI WASM deploy
 
 - Hostováno na **GitHub Pages** s custom doménou (`CNAME` v repu).
 - API endpoint v `Fakvio.BlazorUI/wwwroot/appsettings.json` (`ApiSettings:BaseUrl`) — production URL Azure Function Appu.
 - Service worker pro PWA — pozor na cache invalidation při deployi.
+- **Celý `wwwroot/appsettings.json` se publikuje tak, jak je v repu** — `blazorui-deploy.yml` v něm nic nesubstituuje a Pages nemají App Settings. Cokoli má klient znát (`ApiSettings:BaseUrl`, `Recaptcha:SiteKey`) musí být commitnuté a nasazené novým buildem. Platí to jen pro **veřejné** hodnoty; secret ve `wwwroot` = secret zveřejněný.
+- Prázdný `Recaptcha:SiteKey` znamená, že klient token neposílá, a fail-closed brána (§2.8) pak odmítne login, registraci i ARES. Varianty nasazení viz ADMINGUIDE §9.
 
 ### 9.4 Functions deploy (Azure)
 
@@ -1597,12 +1699,18 @@ pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. P
       z těch seznamů; endpoint jede standardní tenant resolution (§3.3)
 2. JWT Authorize?
    ├─ Public (login, password reset, ARES lookup pro registraci) → [AllowAnonymous]
-   │   └─ POVINNĚ: captcha gate (X-Captcha-Token → ICaptchaService.VerifyAsync),
+   │   └─ POVINNĚ: captcha gate (X-Captcha-Token → ICaptchaService.VerifyAsync(token, action)),
    │      validace vstupu v controlleru a co nejužší DTO. NEdávej [AllowAnonymous]
    │      na tenant-scoped controller — vznikne otevřená proxy.
    │      Vzor: AuthController.FetchFromAres (GET /api/auth/ares/{ico}).
    │      Rate-limit middleware NEpoužívej — Functions host ho neprovede;
    │      captcha + cache-first lookup fungují v obou hostitelích.
+   │      `action` je druhý argument VerifyAsync a musí být stejný řetězec, jaký
+   │      stránka předává `grecaptcha.execute()` ("login", "register", "ares").
+   │      Token je na akci vázaný — bez shody by token z registračního formuláře
+   │      otevřel i ostatní brány.
+   │      Validuj ASCII, ne Unicode: `c is >= '0' and <= '9'`, NE `char.IsDigit`
+   │      (ten propustí arabsko-indické číslice — issue #200).
    ├─ Tenant user → [Authorize] (default)
    └─ SysAdmin only → [Authorize(Roles="SysAdmin")]
 3. Tenant kontext potřebný?
@@ -1704,6 +1812,7 @@ pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. P
 | Změna Data Protection persistence / ApplicationName | §2.7 |
 | Nová seed migrace s hardcoded Id | §12 (non-idempotent seed) |
 | Nový projekt s `EmitCompilerGeneratedFiles` | §12 (Generated/) + `.gitignore` |
+| Nové readiness pravidlo / nový readiness kód | §4.12 (tabulka pravidel!) |
 | Nový code-table pattern (master / tenant / dual-context) | §11.2 |
 | Nový background lock klíč | §6.3 (tabulka klíčů) |
 | Nový chat tool nebo změna schématu parametrů (`IChatTool.Parameters`) | §4.7 (postup + matice) |

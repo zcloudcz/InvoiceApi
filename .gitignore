@@ -379,3 +379,7 @@ MEMORY.md
 # folder here too. See DEVGUIDE §12.
 /Fakvio.Infrastructure/Generated/
 /Fakvio.Functions/Generated/
+
+# Lokální MCP konfigurace — obsahuje JWT token v otevřené podobě.
+# Verzuje se jen vzor .mcp.json.sample (viz Fakvio.McpServer/README.md).
+/.mcp.json
