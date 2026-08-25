@@ -104,6 +104,7 @@ public class DeleteBankAccountTool : IConfirmableChatTool
 
         return await IssuerChatToolSupport.SaveBankAccountsAsync(
             _clientService,
+            _logger,
             issuer,
             remaining,
             $"Bank account '{target.AccountNumber}' was removed. The remaining accounts were " +

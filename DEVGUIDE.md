@@ -991,13 +991,22 @@ tool, zápisy tři — a všechny tři jsou `IConfirmableChatTool`.
   stránka My Company při uložení. Dva důsledky: účty dostanou **nová ID** (tooly proto po zápisu
   vypisují čerstvý seznam) a účet, na který už ukazuje `BankTransaction` nebo
   `BankAccountMailbox` (FK `Restrict`), rewrite **odmítne** — `IssuerChatToolSupport` na to
-  `DbUpdateException` překládá do věty, se kterou uživatel může něco udělat. Per-account
-  update/delete v `IClientService` by to vyřešil; zatím se s tím žije, protože UI se chová stejně.
+  `DbUpdateException` **zaloguje** (loggerem volajícího toolu, takže kategorie nese jeho jméno)
+  a uživateli i modelu vrátí jen srozumitelnou větu. Syrový text driveru ven nejde: pojmenovává
+  schéma, tabulku a constraint a odpověď chatu putuje i k externímu LLM providerovi. Větu
+  „účet je držený platebními daty" dostane jen skutečné porušení cizího klíče
+  (`PostgresException`, SQLSTATE 23503); jiné selhání zápisu (délka, spojení) má neutrální
+  znění, jinak by uživatel hledal platby, které neexistují. Per-account update/delete
+  v `IClientService` by celý replace-all odstranil — vedeno jako **#304**; zatím se s tím žije,
+  protože UI se chová stejně.
 - `add_bank_account` jde přes `AddBankAccountAsync`, který přidává **na místě** — žádná změna ID
   a žádný FK problém. Proto se přidání replace-allem nedělá.
 - Výchozí účet: první účet firmy se stane výchozím vždycky (dělá `ClientService`), a při přepnutí
   výchozího v `update_bank_account` odznačuje ostatní sám tool — `ClientService` poslané příznaky
-  respektuje.
+  respektuje. `is_default: false` proto `update_bank_account` **odmítá**: kdyby příznak jen zhasl,
+  neměl by výchozí nikdo a `ClientService` by ho dosadil sám (účet na indexu 0 — klidně ten samý,
+  který se měl odznačit), takže by tool hlásil změnu, která se nestala. Výchozí účet nejde zrušit,
+  jen přesunout — `is_default: true` na tom druhém.
 - `update_my_company` mění skalární pole a **primární adresu**; adresy se posílají taky
   replace-allem, takže tool ty ostatní přenáší beze změny. IČO měnit nejde (`UpdateClientDto` ho
   nemá) a bankovní účty do tohohle toolu nepatří — mají vlastní trojici.

@@ -83,7 +83,8 @@ public class UpdateBankAccountTool : IConfirmableChatTool
         {
             Name = "is_default",
             Type = ChatToolParameterType.Boolean,
-            Description = "True to make this the default account of the company"
+            Description = "True to make this the default account of the company. False is refused — " +
+                          "a company always has a default account, so it can only be moved to another one"
         }
     ];
 
@@ -93,6 +94,9 @@ public class UpdateBankAccountTool : IConfirmableChatTool
         Dictionary<string, string> parameters,
         CancellationToken ct = default)
     {
+        if (RejectClearingDefault(parameters) is { } refusal)
+            return refusal;
+
         var (issuer, target, failure) = await ResolveAccountAsync(parameters, ct);
         if (failure is not null)
             return failure;
@@ -113,6 +117,9 @@ public class UpdateBankAccountTool : IConfirmableChatTool
         _logger.LogInformation("UpdateBankAccountTool executing for account {BankAccountId}",
             IssuerChatToolSupport.RequiredId(parameters, "bank_account_id"));
 
+        if (RejectClearingDefault(parameters) is { } refusal)
+            return refusal;
+
         // Re-read: preview and execution are separate calls and nothing correlates them, so the
         // account may have been changed or removed in between.
         var (issuer, target, failure) = await ResolveAccountAsync(parameters, ct);
@@ -127,12 +134,31 @@ public class UpdateBankAccountTool : IConfirmableChatTool
 
         return await IssuerChatToolSupport.SaveBankAccountsAsync(
             _clientService,
+            _logger,
             issuer!,
             accounts,
             $"Bank account updated ({string.Join("; ", changes)}). The accounts were re-saved, " +
             "so their IDs are new — use the ones below from now on.",
             ct);
     }
+
+    /// <summary>
+    /// Refuses <c>is_default: false</c> before anything is read or written.
+    ///
+    /// Why it cannot be honoured: a company always ends up with a default account. Clearing the
+    /// flag on the addressed account would leave the collection with no default at all, and
+    /// <c>ClientService</c> then re-appoints the first account in the list — possibly the very
+    /// account the model just tried to demote. The write would report a change that did not
+    /// happen, which is exactly what the confirm preview exists to prevent. The operation that
+    /// does work is "make THAT other account the default".
+    /// </summary>
+    private static ChatToolResult? RejectClearingDefault(Dictionary<string, string> parameters)
+        => IssuerChatToolSupport.OptionalFlag(parameters, "is_default") == false
+            ? ChatToolResult.Failure(
+                "A company always has one default bank account, so the default cannot be cleared — " +
+                "only moved. Call update_bank_account with is_default: true on the account that " +
+                "should become the default instead.")
+            : null;
 
     /// <summary>Message used when the model names an account but no field to change on it.</summary>
     private const string NothingToChange =
@@ -176,13 +202,9 @@ public class UpdateBankAccountTool : IConfirmableChatTool
         AddIfChanged(changes, "SWIFT", account.SWIFT, Text(parameters, "swift"));
         AddIfChanged(changes, "currency", account.CurrencyCode, CurrencyCode(parameters));
 
-        var isDefault = IssuerChatToolSupport.OptionalFlag(parameters, "is_default");
-        if (isDefault is not null && isDefault != account.IsDefault)
-        {
-            changes.Add(isDefault.Value
-                ? "default account: this one becomes the default"
-                : "default account: this one stops being the default");
-        }
+        // Only promotion can get this far — is_default:false is refused in RejectClearingDefault.
+        if (IssuerChatToolSupport.OptionalFlag(parameters, "is_default") == true && !account.IsDefault)
+            changes.Add("default account: this one becomes the default");
 
         return changes;
     }
@@ -224,18 +246,15 @@ public class UpdateBankAccountTool : IConfirmableChatTool
         edited.SWIFT = Text(parameters, "swift") ?? edited.SWIFT;
         edited.CurrencyCode = CurrencyCode(parameters) ?? edited.CurrencyCode;
 
-        var isDefault = IssuerChatToolSupport.OptionalFlag(parameters, "is_default");
-        if (isDefault is not null)
+        // Only one account may be the default one. ClientService keeps whatever flags it is given
+        // as long as at least one is true, so demoting the others is this tool's job. Demotion
+        // without a replacement cannot happen here — is_default:false never reaches this method.
+        if (IssuerChatToolSupport.OptionalFlag(parameters, "is_default") == true)
         {
-            edited.IsDefault = isDefault;
+            foreach (var candidate in accounts)
+                candidate.IsDefault = false;
 
-            // Only one account may be the default one. ClientService keeps whatever flags it is
-            // given when at least one is true, so clearing the others is this tool's job.
-            if (isDefault.Value)
-            {
-                foreach (var other in accounts.Where(candidate => !ReferenceEquals(candidate, edited)))
-                    other.IsDefault = false;
-            }
+            edited.IsDefault = true;
         }
 
         return accounts;

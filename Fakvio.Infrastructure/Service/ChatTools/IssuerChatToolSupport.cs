@@ -3,6 +3,8 @@ using System.Text;
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.Client;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Npgsql;
 
 namespace Fakvio.Infrastructure.Service.ChatTools;
 
@@ -181,9 +183,14 @@ internal static class IssuerChatToolSupport
     /// fails. It is translated below into a sentence the user can act on, instead of a raw
     /// driver error.</item>
     /// </list>
+    ///
+    /// The <paramref name="logger"/> is the calling tool's own logger, so the log entry carries
+    /// the tool name in its category. It has to be passed in: this failure is caught here and
+    /// never reaches <c>ChatToolExecutor</c>, which is the only other place that logs it.
     /// </summary>
     public static async Task<ChatToolResult> SaveBankAccountsAsync(
         IClientService clientService,
+        ILogger logger,
         ClientDto issuer,
         List<UpdateBankAccountDto> accounts,
         string successHeading,
@@ -204,13 +211,33 @@ internal static class IssuerChatToolSupport
         }
         catch (DbUpdateException ex)
         {
-            return ChatToolResult.Failure(
-                "The bank accounts could not be saved because at least one of them is already " +
-                "referenced by payment data (bank transactions or an incoming-payment mailbox). " +
-                "Such an account cannot be rewritten — the user has to detach that data first. " +
-                $"Database message: {ex.GetBaseException().Message}");
+            // Log first: the raw driver text belongs on the server, not in a chat reply that also
+            // travels to the external LLM provider (it names schema, table and constraint).
+            logger.LogError(ex, "Saving the bank accounts of issuer {IssuerId} failed", issuer.Id);
+
+            // Only a foreign-key violation is really "the account is in use". A truncated
+            // currency code or a dropped connection is not, and telling the user otherwise sends
+            // them looking for payments that do not exist.
+            return ChatToolResult.Failure(IsForeignKeyViolation(ex)
+                ? "The bank accounts could not be saved because at least one of them is already " +
+                  "referenced by payment data (bank transactions or an incoming-payment mailbox). " +
+                  "Such an account cannot be rewritten — the user has to detach that data first."
+                : "The bank accounts could not be saved because the database rejected the change. " +
+                  "The details are in the server log; the user can try again, or edit the accounts " +
+                  "on the My Company page (/my-company).");
         }
     }
+
+    /// <summary>
+    /// True when the save failed on a foreign key — in practice an account pinned by a bank
+    /// transaction or an incoming-payment mailbox (<c>DeleteBehavior.Restrict</c>).
+    /// SQLSTATE 23503 is the PostgreSQL code for it.
+    /// </summary>
+    private static bool IsForeignKeyViolation(DbUpdateException ex)
+        => ex.GetBaseException() is PostgresException
+        {
+            SqlState: PostgresErrorCodes.ForeignKeyViolation
+        };
 
     /// <summary>Appends the registered addresses, primary one first.</summary>
     private static void AppendAddresses(StringBuilder sb, ClientDto issuer)

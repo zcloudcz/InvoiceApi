@@ -4,6 +4,7 @@ using Fakvio.Domain.Enums;
 using Fakvio.Infrastructure.Service.ChatTools;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Npgsql;
 using NSubstitute;
 using Shouldly;
 
@@ -694,18 +695,61 @@ public class CompanySettingsChatToolTests
     }
 
     /// <summary>
-    /// Rewriting the collection deletes and re-inserts the accounts, which the database refuses
-    /// for an account that already has payment data (FK Restrict). The model must get a sentence
-    /// the user can act on, not a raw driver error.
+    /// A company always ends up with a default account: clearing the flag on the addressed one
+    /// leaves no default at all and ClientService re-appoints the first account in the list —
+    /// possibly the same one. Announcing "stops being the default" would therefore be a lie, so
+    /// the call is refused before anything is read or written (review B1 on PR #299).
     /// </summary>
     [Fact]
-    public async Task UpdateBankAccountTool_WhenTheDatabaseRefusesTheRewrite_ExplainsWhy()
+    public async Task UpdateBankAccountTool_ClearingTheDefault_IsRefusedAndWritesNothing()
     {
+        var service = StubService(BuildIssuer(
+            BuildAccount(id: 1, accountNumber: "111/0100", isDefault: true),
+            BuildAccount(id: 2, accountNumber: "222/0300", isDefault: false)));
+        var tool = CreateUpdateAccountTool(service);
+
+        var parameters = new Dictionary<string, string>
+        {
+            ["bank_account_id"] = "1",
+            ["is_default"] = "false"
+        };
+
+        var preview = await tool.BuildPreviewAsync(parameters);
+        preview.IsSuccess.ShouldBeFalse();
+        preview.ErrorMessage.ShouldContain("is_default: true");
+
+        parameters["confirm"] = "true";
+        var result = await tool.ExecuteAsync(parameters);
+
+        result.IsSuccess.ShouldBeFalse();
+        result.ErrorMessage.ShouldContain("is_default: true");
+        await service.DidNotReceive().UpdateClientAsync(
+            Arg.Any<long>(), Arg.Any<UpdateClientDto>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Rewriting the collection deletes and re-inserts the accounts, which the database refuses
+    /// for an account that already has payment data (FK Restrict, SQLSTATE 23503). The model must
+    /// get a sentence the user can act on — and the raw driver text, which names schema, table and
+    /// constraint, must stay on the server: the chat reply travels to the LLM provider too.
+    /// </summary>
+    [Fact]
+    public async Task UpdateBankAccountTool_WhenAnAccountIsPinnedByPayments_ExplainsWhyAndLogsTheDetails()
+    {
+        var driverError = new PostgresException(
+            "update or delete on table \"BankAccount\" violates foreign key constraint " +
+            "\"FK_BankTransaction_BankAccount_BankAccountId\" on table \"tenant_7.BankTransaction\"",
+            "ERROR",
+            "ERROR",
+            PostgresErrorCodes.ForeignKeyViolation);
+        var thrown = new DbUpdateException("An error occurred while saving the entity changes.", driverError);
+
         var service = StubService(BuildIssuer(BuildAccount(id: 4, accountNumber: "111/0100")));
         service.UpdateClientAsync(Arg.Any<long>(), Arg.Any<UpdateClientDto>(), Arg.Any<CancellationToken>())
-            .Returns<ClientDto?>(_ => throw new DbUpdateException("FK violation on BankTransaction"));
+            .Returns<ClientDto?>(_ => throw thrown);
 
-        var tool = CreateUpdateAccountTool(service);
+        var logger = Substitute.For<ILogger<UpdateBankAccountTool>>();
+        var tool = new UpdateBankAccountTool(service, logger);
 
         var result = await tool.ExecuteAsync(new Dictionary<string, string>
         {
@@ -715,7 +759,60 @@ public class CompanySettingsChatToolTests
 
         result.IsSuccess.ShouldBeFalse();
         result.ErrorMessage.ShouldContain("payment data");
-        result.ErrorMessage.ShouldContain("FK violation on BankTransaction");
+        result.ErrorMessage!.ShouldNotContain("foreign key constraint");
+        result.ErrorMessage.ShouldNotContain("BankTransaction");
+
+        // The exception object itself has to reach the log — it is caught here and never gets
+        // as far as ChatToolExecutor, which is the only other place that would log it.
+        logger.Received(1).Log(
+            LogLevel.Error,
+            Arg.Any<EventId>(),
+            Arg.Any<object>(),
+            thrown,
+            Arg.Any<Func<object, Exception?, string>>());
+    }
+
+    /// <summary>
+    /// Not every failed save is a pinned account — a too-long currency code or a dropped
+    /// connection arrives as the same exception type. Blaming payment data would send the user
+    /// hunting for transactions that do not exist, so anything that is not SQLSTATE 23503 gets
+    /// the neutral wording.
+    /// </summary>
+    [Fact]
+    public async Task UpdateBankAccountTool_WhenTheSaveFailsForAnotherReason_DoesNotBlameThePaymentData()
+    {
+        var thrown = new DbUpdateException(
+            "An error occurred while saving the entity changes.",
+            new PostgresException(
+                "value too long for type character varying(3)",
+                "ERROR",
+                "ERROR",
+                PostgresErrorCodes.StringDataRightTruncation));
+
+        var service = StubService(BuildIssuer(BuildAccount(id: 4, accountNumber: "111/0100")));
+        service.UpdateClientAsync(Arg.Any<long>(), Arg.Any<UpdateClientDto>(), Arg.Any<CancellationToken>())
+            .Returns<ClientDto?>(_ => throw thrown);
+
+        var logger = Substitute.For<ILogger<UpdateBankAccountTool>>();
+        var tool = new UpdateBankAccountTool(service, logger);
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, string>
+        {
+            ["bank_account_id"] = "4",
+            ["account_number"] = "999/0800"
+        });
+
+        result.IsSuccess.ShouldBeFalse();
+        result.ErrorMessage.ShouldContain("database rejected the change");
+        result.ErrorMessage!.ShouldNotContain("payment data");
+        result.ErrorMessage.ShouldNotContain("character varying");
+
+        logger.Received(1).Log(
+            LogLevel.Error,
+            Arg.Any<EventId>(),
+            Arg.Any<object>(),
+            thrown,
+            Arg.Any<Func<object, Exception?, string>>());
     }
 
     // ═══════════════════════════════════════════════════════════════════════

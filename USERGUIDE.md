@@ -660,6 +660,11 @@ bankovní účet), ukáže vám nejprve náhled — co přesně se změní a z �
 nezapíše**. Teprve když odpovíte, že souhlasíte, změnu provede. Když náhled nesedí, řekněte,
 co má být jinak, a asistent nabídne nový.
 
+Výchozí účet firmy nejde zrušit, jen přesunout: řekněte, který účet má být nově výchozí
+(„Ať je výchozí ten eurový"), a asistent přeznačí oba. Požadavek „tenhle už ať není výchozí"
+odmítne — nějaký účet výchozí být musí, jinak by ho aplikace vybrala sama a vy byste se to
+nedozvěděli.
+
 Jedno omezení má úprava a rušení bankovních účtů: účet, ke kterému už jsou v aplikaci
 navázané platby (načtené bankovní transakce nebo aktivní e-mailová schránka pro příjem
 výpisů), přepsat nejde — ani přes asistenta, ani ručně na stránce **Moje firma**. Asistent
