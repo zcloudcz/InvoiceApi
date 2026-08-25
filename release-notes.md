@@ -68,6 +68,12 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Změny pro vývojáře
 
+- **#237** — Nová stránka `/settings/integrations`, kde si uživatel sám vygeneruje
+  revokovatelný API klíč pro napojení AI klientů na Fakvio (lokálně přes stdio i
+  vzdáleně přes HTTP). Klíč jde vytvořit se jménem, oprávněním (jen čtení / čtení
+  a zápis) a volitelnou expirací, zobrazí se v plném znění jen jednou hned po
+  vytvoření a jde kdykoli zrušit. Stránka rovnou nabízí hotový konfigurační snippet
+  ke zkopírování pro oba způsoby připojení. (PR #278, `737ff1d`)
 - **#160** — AI chat pro OpenAI a Gemini teď volá nástroje (vytvoření faktury, import,
   vyhledání klienta atd.) nativním function callingem obou API místo dřívějšího
   křehkého textového protokolu, kde model musel sám vypsat holý JSON a parser ho
