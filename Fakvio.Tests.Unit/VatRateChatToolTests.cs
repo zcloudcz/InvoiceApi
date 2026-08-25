@@ -66,6 +66,38 @@ public class VatRateChatToolTests
         return service;
     }
 
+    /// <summary>
+    /// The same stub, plus a replay of the real service guard in
+    /// <c>VatRateService.UpdateVatRateAsync</c>: when the DTO raises the default flag on a rate
+    /// that does not already hold it for that kind, the real service consults
+    /// <c>ValidateDefaultRateConstraintAsync</c> and — with another default of that kind stored —
+    /// throws "…or use SetAsDefault method".
+    ///
+    /// The tool must never reach that branch. It moves the default with SetAsDefaultAsync and
+    /// refuses a kind flip on the default holder before the preview, so a throw from here means an
+    /// internal message naming a C# method leaked to the end user.
+    /// </summary>
+    private static IVatRateService StubServiceRejectingASecondDefault(VatRateDto stored)
+    {
+        var service = StubService(stored);
+
+        service.UpdateVatRateAsync(stored.Id, Arg.Any<UpdateVatRateDto>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                var dto = call.Arg<UpdateVatRateDto>();
+                if (dto.IsDefault && (!stored.IsDefault || stored.IsReduced != dto.IsReduced))
+                {
+                    throw new InvalidOperationException(
+                        $"A default {(dto.IsReduced ? "reduced" : "standard")} VAT rate already exists. " +
+                        "Please unset the existing default rate before setting a new one, or use SetAsDefault method.");
+                }
+
+                return stored;
+            });
+
+        return service;
+    }
+
     private static ListVatRatesTool CreateListTool(IVatRateService service)
         => new(service, Substitute.For<ILogger<ListVatRatesTool>>());
 
@@ -496,6 +528,103 @@ public class VatRateChatToolTests
 
         result.IsSuccess.ShouldBeTrue();
         CapturedUpdate(service).IsReduced.ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// "Ta 21% sazba je základní, že?" — is_reduced sent with the value the rate already has, on
+    /// the rate holding the default. Nothing moves between kinds, so the guard must let the call
+    /// through; refusing here would block a perfectly ordinary rename or rate change that happens
+    /// to restate the kind.
+    /// </summary>
+    [Fact]
+    public async Task Update_RestatingTheCurrentKindOfTheDefaultRate_IsAllowed()
+    {
+        var service = StubServiceRejectingASecondDefault(BuildRate(isReduced: false, isDefault: true));
+
+        var result = await CreateUpdateTool(service).ExecuteAsync(new Dictionary<string, string>
+        {
+            ["id"] = "3",
+            ["is_reduced"] = "false",
+            ["rate"] = "19"
+        });
+
+        result.IsSuccess.ShouldBeTrue();
+
+        var dto = CapturedUpdate(service);
+        dto.Rate.ShouldBe(19m);
+        dto.IsReduced.ShouldBeFalse();
+        dto.IsDefault.ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// The kind flip on the default holder stays refused even when the model also asks for
+    /// is_default: true. Re-declaring the rate as default does not repair the damage — it would be
+    /// the default of the kind it moved TO, while the kind it came from would be left without one.
+    /// </summary>
+    [Fact]
+    public async Task Update_ChangingKindOfTheDefaultRate_IsRefusedEvenWithIsDefaultTrue()
+    {
+        var service = StubServiceRejectingASecondDefault(BuildRate(isReduced: false, isDefault: true));
+
+        var result = await CreateUpdateTool(service).BuildPreviewAsync(new Dictionary<string, string>
+        {
+            ["id"] = "3",
+            ["is_reduced"] = "true",
+            ["is_default"] = "true"
+        });
+
+        result.IsSuccess.ShouldBeFalse();
+        result.ErrorMessage.ShouldContain("default one of its kind");
+
+        await service.DidNotReceive().UpdateVatRateAsync(
+            Arg.Any<long>(), Arg.Any<UpdateVatRateDto>(), Arg.Any<CancellationToken>());
+        await service.DidNotReceive().SetAsDefaultAsync(Arg.Any<long>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The other half of the same pair: a rate that does not hold the default may flip its kind AND
+    /// become the default of the kind it lands in. No kind is left without a default, so the guard
+    /// must not fire — and the flag is still raised by SetAsDefaultAsync, never by the update.
+    /// </summary>
+    [Fact]
+    public async Task Update_PromotingANonDefaultRateIntoTheOtherKind_MovesTheDefaultAfterTheUpdate()
+    {
+        var service = StubServiceRejectingASecondDefault(BuildRate(isReduced: false, isDefault: false));
+
+        var result = await CreateUpdateTool(service).ExecuteAsync(new Dictionary<string, string>
+        {
+            ["id"] = "3",
+            ["is_reduced"] = "true",
+            ["is_default"] = "true"
+        });
+
+        result.IsSuccess.ShouldBeTrue();
+
+        var dto = CapturedUpdate(service);
+        dto.IsReduced.ShouldBeTrue();
+        dto.IsDefault.ShouldBeFalse();
+        await service.Received(1).SetAsDefaultAsync(3, Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The preview of that promotion has to name the kind the rate is moving TO. Announcing the old
+    /// kind would have the user confirm a different change from the one that runs.
+    /// </summary>
+    [Fact]
+    public async Task Update_Preview_PromotingIntoTheOtherKind_NamesTheKindTheRateLandsIn()
+    {
+        var service = StubServiceRejectingASecondDefault(BuildRate(isReduced: false, isDefault: false));
+
+        var result = await CreateUpdateTool(service).BuildPreviewAsync(new Dictionary<string, string>
+        {
+            ["id"] = "3",
+            ["is_reduced"] = "true",
+            ["is_default"] = "true"
+        });
+
+        result.IsSuccess.ShouldBeTrue();
+        result.OutputText.ShouldContain("kind: standard → reduced");
+        result.OutputText.ShouldContain("it would become the default reduced rate");
     }
 
     /// <summary>
