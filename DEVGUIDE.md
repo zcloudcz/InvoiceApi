@@ -1820,6 +1820,7 @@ dotnet test Fakvio.Tests.Unit --filter "FullyQualifiedName~DatabaseConnectivityS
 |--------|---------|---------|
 | `blazorui-deploy.yml` | Push `master`, manual, PR (path-filtered) | Build `Fakvio.BlazorUI` (WASM publish) → deploy GitHub Pages. Přidá CNAME, .nojekyll, kopie `index.html → 404.html` (client-side routing). |
 | `master_zcloudinvoicingapi.yml` | Push `master` | Publish `Fakvio.Functions.csproj` → Azure Function App `zcloudinvoicingapi`. Auth přes managed identity (federated credentials). |
+| `testenv_zcloudinvoicingapi.yml` | Push `TEST-ENV`, manual | Totožné publish jako řádek výše, ale do **testovacího** Function Appu `zcloudinvoicingapi-test`. OIDC přes secrets s příponou `_TEST` (viz §9.4). |
 
 **Pozn.**: Pro `Fakvio.API` (klasický host) **není dedicated workflow** v repu — historicky se hostil přes externí App Service nebo manuálně. Pokud přidáš API workflow, zaznamenej zde.
 
@@ -1854,11 +1855,18 @@ dotnet test Fakvio.Tests.Unit --filter "FullyQualifiedName~DatabaseConnectivityS
 
 ### 9.4 Functions deploy (Azure)
 
-- Consumption plan, Isolated Worker.
+- Flex Consumption plan, Isolated Worker.
 - TimerTrigger CRONy v UTC.
 - DB connection: `ConnectionStrings:DefaultConnection` z Function App settings.
 - Managed Identity pro DB + Key Vault (pokud nasazeno).
 - Cold start: prvních ~3-5 sec request nemá tenant context cached → mírně pomalejší.
+- **Testovací prostředí není slot, ale samostatný Function App** `zcloudinvoicingapi-test`
+  (https://zcloudinvoicingapi-test.azurewebsites.net). Produkce běží na **Flex Consumption**,
+  který deployment sloty nepodporuje — proto `testenv_zcloudinvoicingapi.yml` nasazuje
+  s `app-name: zcloudinvoicingapi-test` a `slot-name: Production`. Vlastní app registration
+  (federated credential jen pro větev `TEST-ENV`, Contributor scope jen na tento app),
+  vlastní `JwtSettings:Secret` a vlastní CORS origin — vše jako App Settings v Azure,
+  ne ve workflow. Testovací prostředí zatím **nemá vlastní databázi** (viz #295).
 
 ### 9.5 Autentizace k databázi (`Database:AuthMode`) + health endpoint
 
