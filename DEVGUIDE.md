@@ -1900,6 +1900,24 @@ tedy nešlo připnout. Vzor: `TenantSchemaCanonicalizationTests`.
 - Context: Czech locale, Prague TZ, base URL z `TestConfiguration`.
 - SysAdmin impersonation: `localStorage['ImpersonatedCompanyId']='1'`.
 
+#### Běh proti nasazenému prostředí
+
+`TestConfiguration` čte cíl z proměnných prostředí, takže stejná sada jede lokálně i proti Azure:
+
+```bash
+FAKVIO_UI_URL=https://test.fakvio.cz FAKVIO_API_URL=https://zcloudinvoicingapi-test.azurewebsites.net   dotnet test Fakvio.Tests.Playwright --filter "TestCategory=Deployment"
+```
+
+`Tests/Deployment/DeployedEnvironmentTests.cs` (kategorie `Deployment`) ověřuje **jen to, co lokální
+běh reprodukovat nedokáže**: jaká API URL se zapekla do publikovaného bundlu, že statický host
+odpoví na deep link místo 404, že CORS preflight z prohlížeče projde, že API dosáhne na databázi
+(na testu přes Tailscale tunel) a že neprodukční prostředí je vizuálně označené. Bez
+`FAKVIO_UI_URL` na `https://` se celá kategorie **přeskočí**, takže `dotnet test` na vývojářském
+stroji zůstane zelený.
+
+Ostatní E2E testy potřebují **data** (firma s ID 1, klienti, faktury). Na čerstvě provisionované
+databázi — jako je dnes `fakvio_test` — padají na prázdném stavu; to není regrese aplikace.
+
 ### 8.4 Co testovat kde
 
 | Co | Layer |
