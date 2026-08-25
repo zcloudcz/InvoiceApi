@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Blazored.LocalStorage;
 using Bunit;
 using Fakvio.Contracts.Dto.Readiness;
@@ -96,19 +97,64 @@ public class SetupChecklistTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
-    public void BlockingAndWarning_AreVisuallyDistinct_SoAnEpoHintIsNotMistakenForABlocker()
+    public void BlockingAndWarning_AreListedUnderTheirOwnHeadings_SoSeverityIsNotCarriedByColourAlone()
     {
         _backend.Report = ReportWith(
-            Issue(ReadinessCodes.IssuerAddressIncomplete, EReadinessSeverity.Blocking, "/my-company"),
+            // Warning first on purpose: TenantReadinessService does not sort the report, so the
+            // component's own grouping is the only thing that puts blockers above hints.
+            Issue(ReadinessCodes.EpoHeaderIncomplete, EReadinessSeverity.Warning, "/company-settings"),
+            Issue(ReadinessCodes.IssuerAddressIncomplete, EReadinessSeverity.Blocking, "/my-company"));
+
+        var cut = Render<SetupChecklist>();
+        cut.WaitForAssertion(() => cut.FindAll("div.setup-checklist-group").Count.ShouldBe(2));
+
+        var groups = cut.FindAll("div.setup-checklist-group");
+
+        // Asserted per group, not "somewhere in the markup": severity has to be readable as text
+        // (a screen reader gets nothing from an icon colour, and red vs orange is the pair
+        // colour-blind users are least able to tell apart). Swapping the two severities has to
+        // fail here — with a flat list it changed nothing a test could see.
+        groups[0].TextContent.ShouldContain("Readiness_BlockingTitle");
+        groups[0].TextContent.ShouldContain("Readiness_Code_ISSUER_ADDRESS_INCOMPLETE");
+        groups[0].TextContent.ShouldNotContain("Readiness_Code_EPO_HEADER_INCOMPLETE");
+        groups[0].InnerHtml.ShouldContain("mud-error-text");
+        groups[0].InnerHtml.ShouldNotContain("mud-warning-text");
+
+        groups[1].TextContent.ShouldContain("Readiness_WarningTitle");
+        groups[1].TextContent.ShouldContain("Readiness_Code_EPO_HEADER_INCOMPLETE");
+        groups[1].TextContent.ShouldNotContain("Readiness_Code_ISSUER_ADDRESS_INCOMPLETE");
+        groups[1].InnerHtml.ShouldContain("mud-warning-text");
+        groups[1].InnerHtml.ShouldNotContain("mud-error-text");
+    }
+
+    [Fact]
+    public void OneSeverityOnly_RendersOnlyThatHeading_SoAReadyEnoughTenantIsNotWarnedAboutNothing()
+    {
+        _backend.Report = ReportWith(
             Issue(ReadinessCodes.EpoHeaderIncomplete, EReadinessSeverity.Warning, "/company-settings"));
 
         var cut = Render<SetupChecklist>();
-        cut.WaitForAssertion(() => cut.Markup.ShouldContain("SetupChecklist_Title"));
+        cut.WaitForAssertion(() => cut.FindAll("div.setup-checklist-group").Count.ShouldBe(1));
 
-        // MudBlazor encodes the icon colour in a CSS class. Without the distinction an EPO hint
-        // would look exactly like something that blocks invoicing today.
-        cut.Markup.ShouldContain("mud-error-text");
-        cut.Markup.ShouldContain("mud-warning-text");
+        // An empty "before you start invoicing" heading would read as a blocker that is not there.
+        cut.Markup.ShouldContain("Readiness_WarningTitle");
+        cut.Markup.ShouldNotContain("Readiness_BlockingTitle");
+    }
+
+    [Fact]
+    public void UnreadableDeferralFlag_StillShowsTheGuide_SoAStorageHiccupDoesNotCostTheDashboard()
+    {
+        // Only reachable through a value written by hand or by an older schema — nobody else writes
+        // this key. Cheap to guard anyway: an exception out of OnInitializedAsync is the whole page
+        // for a "remind me later" flag, and not knowing the flag just means showing the guide.
+        _backend.Report = ReportWith(
+            Issue(ReadinessCodes.IssuerAddressIncomplete, EReadinessSeverity.Blocking, "/my-company"));
+        _storage.GetItemAsync<bool>(DeferStorageKey)
+            .Returns(ValueTask.FromException<bool>(new JsonException("corrupted flag")));
+
+        var cut = Render<SetupChecklist>();
+
+        cut.WaitForAssertion(() => cut.FindAll("div.mud-card").Count.ShouldBe(1));
     }
 
     [Fact]

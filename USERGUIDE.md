@@ -71,12 +71,14 @@ kartu **Dokončit nastavení** se seznamem toho, co zbývá. U každé položky 
 **Doplnit**, který vás zavede přímo na stránku, kde ji vyplníte. Pod položkou jsou drobně
 vypsaná konkrétní pole, která chybí.
 
-Kolečko před položkou rozlišuje dvě závažnosti:
+Položky jsou rozdělené do dvou skupin, každá má vlastní nadpis (a barvu koleček):
 
-| Barva | Význam |
-|-------|--------|
-| Červená | Bez těchto údajů aplikace **odmítne vystavit fakturu** (viz [§2.3.1](#231-když-vystavení-skončí-chybou-nedokončené-nastavení-firmy)) |
-| Oranžová | Fakturovat můžete, ale narazíte později v konkrétní funkci (typicky EPO export přiznání k DPH) |
+| Nadpis skupiny | Význam |
+|----------------|--------|
+| **Než začnete fakturovat, doplňte tato nastavení** (červená kolečka) | Bez těchto údajů aplikace **odmítne vystavit fakturu** (viz [§2.3.1](#231-když-vystavení-skončí-chybou-nedokončené-nastavení-firmy)) |
+| **Doporučená nastavení k doplnění** (oranžová kolečka) | Fakturovat můžete, ale narazíte později v konkrétní funkci (typicky EPO export přiznání k DPH) |
+
+Skupina, ve které nic nechybí, se nezobrazí vůbec.
 
 Máte-li v účtu víc vystavitelů, je u položky uvedeno, které firmy se týká.
 

@@ -48,9 +48,10 @@ public class ReadinessApiService : ApiClientBase
             // Deliberately every exception, not just ApiException: ApiClientBase.GetAsync
             // rethrows ApiException but lets everything else through as well — an
             // HttpRequestException when the network or CORS is down, a JsonException when the
-            // response is malformed. The only caller is ReadinessBanner.OnParametersSetAsync,
-            // and an exception escaping a Blazor lifecycle method takes the whole WASM app
-            // down — over a decorative banner. ApiClientBase has already logged the failure,
+            // response is malformed. Both callers (ReadinessBanner.OnParametersSetAsync and
+            // SetupChecklist.OnInitializedAsync) call from a Blazor lifecycle method, and an
+            // exception escaping one takes the whole WASM app down — over a decorative hint
+            // that the user did not ask for. ApiClientBase has already logged the failure,
             // so swallowing here loses no diagnostics.
             //
             // Of the API errors: 401 never reaches here (UnauthorizedRedirectHandler redirects
