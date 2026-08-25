@@ -28,7 +28,7 @@
         @foreach (var issue in group.Issues)
         {
             <div class="d-flex flex-wrap align-center gap-2">
-                <MudText Typo="Typo.body2">@Describe(issue)</MudText>
+                <MudText Typo="Typo.body2">@ReadinessIssueText.Describe(L, issue)</MudText>
                 @* FixRoute is a relative UI route supplied by the API — render it as a plain link.
                    The DTO defaults it to string.Empty, so a rule that forgets to fill it in would
                    otherwise produce a "Fix" link pointing at the current page. *@
@@ -114,12 +114,6 @@
 
         _groups.Add(new IssueGroup(alertSeverity, titleKey, matching));
     }
-
-    /// <summary>
-    /// Human-readable text for one issue. Shared with the assistant's onboarding welcome
-    /// (issue #214) via <see cref="ReadinessText"/> so both name a finding identically.
-    /// </summary>
-    private string Describe(ReadinessIssueDto issue) => ReadinessText.Describe(issue, L);
 
     /// <summary>Issues of one severity, together with how their alert should look.</summary>
     private sealed record IssueGroup(Severity Severity, string TitleKey, List<ReadinessIssueDto> Issues);

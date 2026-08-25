@@ -306,13 +306,8 @@
   <data name="Dashboard_OverdueAlert" xml:space="preserve"><value>faktur po splatnosti vyžaduje pozornost!</value></data>
   <data name="Dashboard_NoInvoicesYet" xml:space="preserve"><value>Zatím žádné faktury.</value></data>
   <data name="Dashboard_CreateFirst" xml:space="preserve"><value>Vytvořte svou první fakturu</value></data>
-  <data name="Dashboard_QuickStart" xml:space="preserve"><value>Rychlý start</value></data>
   <data name="Dashboard_SetupVat" xml:space="preserve"><value>Nastavte sazby DPH</value></data>
   <data name="Dashboard_SetupVatDesc" xml:space="preserve"><value>Přejděte do</value></data>
-  <data name="Dashboard_ManageClients" xml:space="preserve"><value>Spravujte klienty</value></data>
-  <data name="Dashboard_ManageClientsDesc" xml:space="preserve"><value>Přidejte své klienty v</value></data>
-  <data name="Dashboard_CreateInvoices" xml:space="preserve"><value>Vytvořte faktury</value></data>
-  <data name="Dashboard_CreateInvoicesDesc" xml:space="preserve"><value>Začněte vystavovat faktury v</value></data>
   <data name="Dashboard_Days" xml:space="preserve"><value>dní</value></data>
   <data name="VatRate_Subtitle" xml:space="preserve"><value>Správa sazeb daně z přidané hodnoty</value></data>
   <data name="VatRate_NoRecords" xml:space="preserve"><value>Nebyly nalezeny žádné sazby DPH.</value></data>
@@ -1687,6 +1682,9 @@
   <data name="Readiness_Code_ISSUER_BANK_ACCOUNT_MISSING" xml:space="preserve"><value>Vlastní firma nemá bankovní účet, na faktuře by chybělo, kam zaplatit.</value></data>
   <data name="Readiness_Code_NUMBER_SEQUENCE_MISSING" xml:space="preserve"><value>Pro tento typ dokladu není aktivní žádná číselná řada.</value></data>
   <data name="Readiness_Code_EPO_HEADER_INCOMPLETE" xml:space="preserve"><value>Nejsou vyplněny hlavičkové údaje EPO, bez nich nepůjde vyexportovat přiznání k DPH.</value></data>
+  <!-- Setup checklist on the dashboard (issue #210) -->
+  <data name="SetupChecklist_Title" xml:space="preserve"><value>Dokončit nastavení</value></data>
+  <data name="SetupChecklist_Defer" xml:space="preserve"><value>Připomenout později</value></data>
   <!-- Integrations / API keys (/settings/integrations) -->
   <data name="Nav_Integrations" xml:space="preserve"><value>Integrace</value></data>
   <data name="Integration_Title" xml:space="preserve"><value>Integrace a API klíče</value></data>

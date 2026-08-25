@@ -95,7 +95,7 @@ public class ChatOnboardingTests
     public void UnknownCode_FallsBackToTheGenericSentence_InsteadOfLeakingTheCode()
     {
         // Older UI against a newer API. The user must never read "ISSUER_FOO"; shared with
-        // the dashboard banner through ReadinessText, so both degrade identically.
+        // the dashboard banner through ReadinessIssueText, so both degrade identically.
         _localizer["Readiness_Code_ISSUER_FOO"]
             .Returns(new LocalizedString("Readiness_Code_ISSUER_FOO", "Readiness_Code_ISSUER_FOO", resourceNotFound: true));
 

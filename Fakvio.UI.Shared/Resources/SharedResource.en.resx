@@ -306,13 +306,8 @@
   <data name="Dashboard_OverdueAlert" xml:space="preserve"><value>overdue invoice(s) require attention!</value></data>
   <data name="Dashboard_NoInvoicesYet" xml:space="preserve"><value>No invoices yet.</value></data>
   <data name="Dashboard_CreateFirst" xml:space="preserve"><value>Create your first invoice</value></data>
-  <data name="Dashboard_QuickStart" xml:space="preserve"><value>Quick start</value></data>
   <data name="Dashboard_SetupVat" xml:space="preserve"><value>Set up VAT rates</value></data>
   <data name="Dashboard_SetupVatDesc" xml:space="preserve"><value>Go to</value></data>
-  <data name="Dashboard_ManageClients" xml:space="preserve"><value>Manage clients</value></data>
-  <data name="Dashboard_ManageClientsDesc" xml:space="preserve"><value>Add your clients in</value></data>
-  <data name="Dashboard_CreateInvoices" xml:space="preserve"><value>Create invoices</value></data>
-  <data name="Dashboard_CreateInvoicesDesc" xml:space="preserve"><value>Start issuing invoices in</value></data>
   <data name="Dashboard_Days" xml:space="preserve"><value>days</value></data>
   <data name="VatRate_Subtitle" xml:space="preserve"><value>Manage value added tax rates</value></data>
   <data name="VatRate_NoRecords" xml:space="preserve"><value>No VAT rates found.</value></data>
@@ -1687,6 +1682,9 @@
   <data name="Readiness_Code_ISSUER_BANK_ACCOUNT_MISSING" xml:space="preserve"><value>Your company has no bank account, so invoices would not say where to pay.</value></data>
   <data name="Readiness_Code_NUMBER_SEQUENCE_MISSING" xml:space="preserve"><value>There is no active number sequence for this document type.</value></data>
   <data name="Readiness_Code_EPO_HEADER_INCOMPLETE" xml:space="preserve"><value>EPO header data is missing, so the VAT return cannot be exported.</value></data>
+  <!-- Setup checklist on the dashboard (issue #210) -->
+  <data name="SetupChecklist_Title" xml:space="preserve"><value>Finish setup</value></data>
+  <data name="SetupChecklist_Defer" xml:space="preserve"><value>Remind me later</value></data>
   <!-- Integrations / API keys (/settings/integrations) -->
   <data name="Nav_Integrations" xml:space="preserve"><value>Integrations</value></data>
   <data name="Integration_Title" xml:space="preserve"><value>Integrations and API keys</value></data>

@@ -53,7 +53,7 @@ public static class ChatOnboarding
         sb.AppendLine();
 
         foreach (var issue in blocking)
-            sb.AppendLine($"- {ReadinessText.Describe(issue, localizer)}");
+            sb.AppendLine($"- {ReadinessIssueText.Describe(localizer, issue)}");
 
         sb.AppendLine();
         sb.Append(localizer["Chat_Onboarding_Ask"].Value);
