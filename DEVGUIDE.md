@@ -732,7 +732,7 @@ Implementace: `PaymentMatchingService.cs` (metoda `GetPaymentsForInvoiceAsync`).
 - Implementace: `Fakvio.Infrastructure/AiProviders/` (Anthropic, OpenAI, Gemini, Ollama).
 - API key storage: `CompanySystemSettings.AiApiKeyEncrypted` (per company) přes `CredentialProtector`.
 - SSE streaming přes `ChatController.StreamAsync`.
-- **Chat Tools**: 14 tools registrovaných v DI jako `IChatTool`, orchestrováno přes `IChatToolExecutor`.
+- **Chat Tools**: 18 tools registrovaných v DI jako `IChatTool`, orchestrováno přes `IChatToolExecutor`.
   Registrace v `ServiceCollectionExtensions.cs`; přidání nového toolu = implementace `IChatTool` + řádek v DI.
 
 #### Přidání nového chat toolu (POVINNÝ postup)
@@ -942,6 +942,10 @@ Sloupec „Klíčové parametry" je jen orientační — závazné je schéma v 
 | `create_invoice` | `CreateInvoiceTool` | Invoice (vydaná) | Create | `client_name`, `items` (JSON), `currency`, `notes` |
 | `import_invoice` | `ImportInvoiceTool` | Invoice / ReceivedInvoice | Create | vydaná vs přijatá auto-detekce z IČO; `document_number`, `items`, data atd. |
 | `export_invoice` | `ExportInvoiceTool` | Invoice (vydaná) | Read → Download | `document_number`, `client_name` |
+| `list_clients` | `ListClientsTool` | Client | Read (paged list) | `search`, `is_vat_payer`, `is_issuer` (= MCP `GetIssuer`), `include_inactive`, `page`, `page_size` |
+| `get_client` | `GetClientTool` | Client | Read (detail) | `id` / `registration_number` / `name`; vrátí adresy, kontakty, bankovní účty, fakturační nastavení |
+| `update_client` | `UpdateClientTool` | Client | **Write** (za `confirm`) | identita + `company_name`, `trading_name`, `tax_number`, `is_vat_payer`, `is_active`, `refresh_from_ares` |
+| `delete_client` | `DeleteClientTool` | Client | **Destructive** (za `confirm`) | `id` / `registration_number` / `name`; soft delete (`IsActive = false`) |
 | `navigate` | `NavigateTool` | — | Navigation | `target` (uzavřený výčet **všech tenant-facing stránek**, viz níže), `client_name` |
 | `get_received_invoice` | `GetReceivedInvoiceTool` | ReceivedInvoice | Read (detail) | `id` nebo `document_number`; vrátí položky, DPH, celkové částky, cross-check |
 | `list_received_invoices` | `ListReceivedInvoicesTool` | ReceivedInvoice | Read (paged list) | `status`, `supplier_name`, `issue_date_from/to`, `min/max_amount`, `currency`, `overdue` |
@@ -1020,9 +1024,9 @@ anonymní nebo SysAdmin-only stránku, (c) každá tenant-facing stránka bez pa
 v routě je nabízená. **Nová stránka v UI tedy shodí testy, dokud ji nedoplníš do
 `Routes`** — nebo ji v tom testu explicitně nevyloučíš s odůvodněním.
 
-##### Paritní tabulka chat ↔ MCP (stav k #212)
+##### Paritní tabulka chat ↔ MCP (stav k #222)
 
-Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 14 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
+Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 18 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
 a **MCP server** (`[McpServerTool]`, 36 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
 cílem story #149 je mezeru zavřít. Tabulka je jediný pravdivý seznam toho, co kde chybí;
 **každý nový tool na kterékoli straně sem přidá řádek** (viz §13).
@@ -1034,10 +1038,10 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | **Klienti** (`ClientTools`, 6) |
 | `LookupAres` | Read (ARES) | `ares_lookup` | ✅ | |
 | `CreateClient` | Create | `create_client` | ✅ | |
-| `ListClients` | Read | — | ❌ | #222 |
-| `GetClient` | Read | — | ❌ | #222 |
-| `UpdateClient` | **Write** | — | ❌ | #222 |
-| `GetIssuer` | Read | — | ❌ | #222 |
+| `ListClients` | Read | `list_clients` | ✅ | |
+| `GetClient` | Read | `get_client` | ✅ | |
+| `UpdateClient` | **Write** | `update_client` (za `confirm`) | ✅ | |
+| `GetIssuer` | Read | `list_clients` + `is_issuer=true` | ✅ | |
 | **Vydané faktury** (`InvoiceTools`, 10) |
 | `CreateInvoice` | Create | `create_invoice` | ✅ | |
 | `ExportInvoicePdf` | Read → download | `export_invoice` | ◐ (chat neumí ISDOC) | #217 |
@@ -1070,13 +1074,14 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | `GetTemplate` | Read | — | ❌ | #225 |
 | `CreateInvoiceFromTemplate` | Create | — | ❌ | #225 |
 | **Jen chat (MCP nemá)** |
+| — | **Destructive** | `delete_client` (za `confirm`) | ⬅ | |
 | — | Search | `search_received_invoices` | ⬅ | |
 | — | Navigace UI | `navigate` | ⬅ | |
 | — | Upload přílohy | `attach_file` | ⬅ | |
 | — | Read | `list_attachments` | ⬅ | |
 
-**Součty:** 36 MCP toolů, 14 chat toolů. Chat pokrývá 13 MCP toolů (z toho 2 částečně),
-4 chat tooly nemají MCP protějšek. Zbývá 23 mezer.
+**Součty:** 36 MCP toolů, 18 chat toolů. Chat pokrývá 17 MCP toolů (z toho 2 částečně),
+5 chat toolů nemá MCP protějšek. Zbývá 19 mezer.
 
 Mimo obě rozhraní (jen UI / SysAdmin, plánováno v #220 / #224 / #227):
 nastavení firmy a bankovní účty, číselné řady a sazby DPH, upomínky (dunning),

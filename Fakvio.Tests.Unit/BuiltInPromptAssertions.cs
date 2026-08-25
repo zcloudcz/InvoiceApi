@@ -47,7 +47,7 @@ internal static class BuiltInPromptAssertions
     ];
 
     /// <summary>
-    /// The catalog the fourteen shipped tools are expected to render, in DI registration order
+    /// The catalog the eighteen shipped tools are expected to render, in DI registration order
     /// (<c>ServiceCollectionExtensions</c>). Each line is <c>- {ToolName}: {Description}</c>
     /// with the description written out as one line. This is the independent copy: when a tool
     /// description changes, it has to be changed here too, deliberately. That is the point.
@@ -60,6 +60,10 @@ internal static class BuiltInPromptAssertions
         "- create_invoice: Creates a new invoice for a client with specified items. Automatically resolves the client by name, sets default currency (CZK), applies default VAT rate, and generates a document number. After creation, navigates to the invoice detail page. Use this when the user provides item details (description, price) — when they only want to open the form, use 'navigate' with target new_invoice instead.",
         "- import_invoice: Imports an invoice from extracted data. Automatically determines if it's an issued (vydaná) or received (přijatá) invoice by matching IČO against the company database. Finds the client/supplier automatically. Preserves all dates exactly as extracted.",
         "- export_invoice: Export/download an invoice or credit note as a PDF file. Finds the document by number, by client name (most recent), or exports the most recent invoice if no parameters given.",
+        "- list_clients: List clients with optional search and filtering by VAT status. Without is_issuer the list holds customers AND the user's own company (the issuer), which is flagged in its row; set is_issuer=true for the issuer alone or false for customers alone. Returns paged results; use get_client for the full detail of one client.",
+        "- get_client: Get the full detail of one client: addresses, contacts, bank accounts and billing settings. Identify the client by id, registration_number (IČO) or name.",
+        "- update_client: Update an existing client: company name, trading name, DIČ, VAT payer flag, active flag, or refresh the data from the ARES registry. Identify the client by id, registration_number (IČO) or name. Only the fields you send are changed. Addresses, contacts and bank accounts cannot be edited here.",
+        "- delete_client: Delete a client (customer). The client is deactivated, not erased, and a client that already has invoices cannot be deleted at all. Identify the client by id, registration_number (IČO) or name.",
         "- get_received_invoice: Get detail of a received (incoming/expense) invoice by ID or document number. Returns all fields: supplier info, line items, VAT breakdown, totals, dates, status, payment info.",
         "- list_received_invoices: List received (incoming/expense) invoices with optional filtering by status, supplier name, date range, amount range, or currency. Returns paged results with totals.",
         "- search_received_invoices: Full-text search across received (incoming/expense) invoices. Searches by document number, supplier name, variable symbol, or amount. Use this when the user provides a number or name without specifying which field.",
