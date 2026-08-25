@@ -1,3 +1,4 @@
+using System.Globalization;
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Common.Pagination;
 using Fakvio.Contracts.Dto.Chat;
@@ -153,6 +154,63 @@ public class ReceivedInvoiceWriteChatToolTests
         await service.Received(1).ApproveAsync(7, Arg.Any<CancellationToken>());
         await service.DidNotReceive().GetAllAsync(
             Arg.Any<EReceivedInvoiceStatus?>(), Arg.Any<long?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Approve_WithANonNumericId_RefusesInsteadOfThrowing()
+    {
+        // The executor type-checks 'id' before a tool runs, so this guard only covers direct
+        // callers - but "the model sent the document number as the id" has to come back as a
+        // message it can act on, never as an unhandled FormatException.
+        var service = Substitute.For<IReceivedInvoiceService>();
+
+        var result = await BuildApproveTool(service).ExecuteAsync(new() { ["id"] = "FP-2026-0042" });
+
+        result.IsSuccess.ShouldBeFalse();
+        result.ErrorMessage!.ShouldContain("numeric");
+        await service.DidNotReceive().GetByIdAsync(Arg.Any<long>(), Arg.Any<CancellationToken>());
+        await service.DidNotReceive().ApproveAsync(Arg.Any<long>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Approve_WithADocumentNumberThatMatchesNothing_SaysSoAndChangesNothing()
+    {
+        var service = Substitute.For<IReceivedInvoiceService>();
+        service.GetAllAsync(ct: Arg.Any<CancellationToken>())
+            .Returns(new List<ReceivedInvoiceDto> { BuildInvoice(id: 7, documentNumber: "FP-2026-0042") });
+
+        var result = await BuildApproveTool(service).ExecuteAsync(new() { ["document_number"] = "FP-2025-0001" });
+
+        result.IsSuccess.ShouldBeFalse();
+        // The number the user said, so they can see the typo - not just "not found".
+        result.ErrorMessage!.ShouldContain("FP-2025-0001");
+        result.ErrorMessage!.ShouldContain("not found");
+        await service.DidNotReceive().ApproveAsync(Arg.Any<long>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The candidate list is capped so a model does not get fifty rows to choose from. The cap is
+    /// only safe while the number of hidden matches is still reported - otherwise the user picks
+    /// from ten and believes those ten are all there is.
+    /// </summary>
+    [Fact]
+    public async Task Approve_WhenDocumentNumberMatchesMoreThanTheListCap_ShowsTenAndCountsTheRest()
+    {
+        const int matchCount = 12;
+        var service = Substitute.For<IReceivedInvoiceService>();
+        service.GetAllAsync(ct: Arg.Any<CancellationToken>())
+            .Returns(Enumerable.Range(1, matchCount)
+                .Select(number => BuildInvoice(id: number, documentNumber: $"FP-2026-{number:0000}"))
+                .ToList());
+
+        var result = await BuildApproveTool(service).ExecuteAsync(new() { ["document_number"] = "FP-2026-" });
+
+        result.IsSuccess.ShouldBeFalse();
+        result.ErrorMessage!.ShouldContain($"matches {matchCount}");
+        result.ErrorMessage!.ShouldContain("and 2 more");
+        result.ErrorMessage!.ShouldContain("ID=10");     // the tenth row is still listed
+        result.ErrorMessage!.ShouldNotContain("ID=11");  // the eleventh is only in the "2 more"
+        await service.DidNotReceive().ApproveAsync(Arg.Any<long>(), Arg.Any<CancellationToken>());
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -324,6 +382,24 @@ public class ReceivedInvoiceWriteChatToolTests
 
         result.IsSuccess.ShouldBeTrue();
         result.OutputText.ShouldContain("FP-2026-0042");
+        result.OutputText.ShouldContain("Alza.cz a.s.");
+        await service.DidNotReceive().DeleteAsync(Arg.Any<long>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task DeletePreview_ForAnInvoiceWithoutADocumentNumber_StillNamesTheDocument()
+    {
+        // Suppliers do send unnumbered documents. The preview is the last thing the user reads
+        // before an irreversible write, so a missing number has to read as "(no number)" and the
+        // rest of the identification must still be there.
+        var service = Substitute.For<IReceivedInvoiceService>();
+        service.GetByIdAsync(7, Arg.Any<CancellationToken>())
+            .Returns(BuildInvoice(documentNumber: null));
+
+        var result = await BuildDeleteTool(service).BuildPreviewAsync(new() { ["id"] = "7" });
+
+        result.IsSuccess.ShouldBeTrue();
+        result.OutputText.ShouldContain("(no number)");
         result.OutputText.ShouldContain("Alza.cz a.s.");
         await service.DidNotReceive().DeleteAsync(Arg.Any<long>(), Arg.Any<CancellationToken>());
     }
@@ -588,20 +664,27 @@ public class ReceivedInvoiceWriteChatToolTests
                 .Returns(new CurrencyDto { Id = 1, Code = "CZK" });
         }
 
-        if (vatRateService is null)
-        {
-            vatRateService = Substitute.For<IVatRateService>();
-            vatRateService.GetDefaultStandardRateAsync(Arg.Any<CancellationToken>())
-                .Returns(new VatRateDto { Id = 5, Rate = 21m });
-            // A dictated vat_rate is checked against the rates the tenant has, so the stub has
-            // to return real ones — see SeededVatRates.
-            vatRateService.GetActiveVatRatesForDateAsync(Arg.Any<DateTime?>(), Arg.Any<CancellationToken>())
-                .Returns(SeededVatRates());
-        }
+        vatRateService ??= BuildVatRateService();
 
         return new CreateReceivedInvoiceTool(
             receivedInvoiceService, clientService, currencyService, vatRateService,
             Substitute.For<ILogger<CreateReceivedInvoiceTool>>());
+    }
+
+    /// <summary>
+    /// The VAT rate collaborator of the happy path: a default 21 % rate, plus the seeded rates a
+    /// dictated <c>vat_rate</c> is checked against (see <see cref="SeededVatRates"/>). Built
+    /// apart from <see cref="BuildCreateTool"/> so a test can keep the substitute and assert
+    /// WHICH date the rates were asked for.
+    /// </summary>
+    private static IVatRateService BuildVatRateService()
+    {
+        var vatRateService = Substitute.For<IVatRateService>();
+        vatRateService.GetDefaultStandardRateAsync(Arg.Any<CancellationToken>())
+            .Returns(new VatRateDto { Id = 5, Rate = 21m });
+        vatRateService.GetActiveVatRatesForDateAsync(Arg.Any<DateTime?>(), Arg.Any<CancellationToken>())
+            .Returns(SeededVatRates());
+        return vatRateService;
     }
 
     private static IClientService BuildClientServiceReturning(params ClientDto[] matches)
@@ -783,11 +866,7 @@ public class ReceivedInvoiceWriteChatToolTests
         service.CreateAsync(Arg.Any<CreateReceivedInvoiceDto>(), Arg.Any<CancellationToken>())
             .Returns(BuildInvoice(id: 7));
 
-        var vatRateService = Substitute.For<IVatRateService>();
-        vatRateService.GetDefaultStandardRateAsync(Arg.Any<CancellationToken>())
-            .Returns(new VatRateDto { Id = 5, Rate = 21m });
-        vatRateService.GetActiveVatRatesForDateAsync(Arg.Any<DateTime?>(), Arg.Any<CancellationToken>())
-            .Returns(SeededVatRates());
+        var vatRateService = BuildVatRateService();
 
         await BuildCreateTool(service, vatRateService: vatRateService).ExecuteAsync(new()
         {
@@ -798,6 +877,78 @@ public class ReceivedInvoiceWriteChatToolTests
 
         await vatRateService.Received(1).GetActiveVatRatesForDateAsync(
             new DateTime(2023, 6, 30, 0, 0, 0, DateTimeKind.Utc), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Pins WHICH date the rate check is anchored to: <c>taxable_supply_date ?? issue_date</c>.
+    /// The test above sends only the supply date, so the two dates are interchangeable there and
+    /// a swapped fallback would still pass. These three rows are the cases that tell them apart.
+    /// </summary>
+    [Theory]
+    // Both dictated - the supply date decides. Reversing the fallback would ask about 2026-04-01
+    // and could refuse a rate that was legal on the day the expense actually happened.
+    [InlineData("2026-04-01", "2023-06-30", "2023-06-30")]
+    // Only the issue date - it stands in. Dropping the fallback would ask about today instead,
+    // which is exactly wrong for an expense recorded months late.
+    [InlineData("2023-06-30", null, "2023-06-30")]
+    // Neither - the tool has nothing to anchor on and must not invent a date; VatRateService
+    // substitutes today itself.
+    [InlineData(null, null, null)]
+    public async Task Create_ChecksTheRatesValidOnTheDateTheDocumentBelongsTo(
+        string? issueDate, string? taxableSupplyDate, string? expectedRateDate)
+    {
+        var service = Substitute.For<IReceivedInvoiceService>();
+        service.CreateAsync(Arg.Any<CreateReceivedInvoiceDto>(), Arg.Any<CancellationToken>())
+            .Returns(BuildInvoice(id: 7));
+        var vatRateService = BuildVatRateService();
+
+        var parameters = new Dictionary<string, string>
+        {
+            ["supplier_name"] = "Alza",
+            ["items"] = OneItem
+        };
+        if (issueDate is not null)
+            parameters["issue_date"] = issueDate;
+        if (taxableSupplyDate is not null)
+            parameters["taxable_supply_date"] = taxableSupplyDate;
+
+        var result = await BuildCreateTool(service, vatRateService: vatRateService).ExecuteAsync(parameters);
+
+        result.IsSuccess.ShouldBeTrue();
+        await vatRateService.Received(1).GetActiveVatRatesForDateAsync(
+            ParseUtcDate(expectedRateDate), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>An ISO date the way the chat tools accept it, or null for "no date at all".</summary>
+    private static DateTime? ParseUtcDate(string? isoDate)
+        => isoDate is null
+            ? null
+            : DateTime.SpecifyKind(
+                DateTime.ParseExact(isoDate, "yyyy-MM-dd", CultureInfo.InvariantCulture),
+                DateTimeKind.Utc);
+
+    [Fact]
+    public async Task Create_WithALowercaseCurrencyCode_LooksItUpInUpperCase()
+    {
+        // A model passes through whatever the user said ("eur"), while currency codes are stored
+        // upper-case - without the normalisation a perfectly valid expense would be refused.
+        var service = Substitute.For<IReceivedInvoiceService>();
+        service.CreateAsync(Arg.Any<CreateReceivedInvoiceDto>(), Arg.Any<CancellationToken>())
+            .Returns(BuildInvoice(id: 7));
+        var currencyService = Substitute.For<ICurrencyService>();
+        currencyService.GetCurrencyByCodeAsync("EUR", Arg.Any<CancellationToken>())
+            .Returns(new CurrencyDto { Id = 2, Code = "EUR" });
+
+        var result = await BuildCreateTool(service, currencyService: currencyService).ExecuteAsync(new()
+        {
+            ["supplier_name"] = "Alza",
+            ["items"] = OneItem,
+            ["currency"] = "eur"
+        });
+
+        result.IsSuccess.ShouldBeTrue();
+        await service.Received(1).CreateAsync(
+            Arg.Is<CreateReceivedInvoiceDto>(dto => dto.CurrencyId == 2), Arg.Any<CancellationToken>());
     }
 
     [Fact]
