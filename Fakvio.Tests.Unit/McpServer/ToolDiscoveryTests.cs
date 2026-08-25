@@ -1,6 +1,8 @@
 using System.Reflection;
 using System.Text.Json;
+using Fakvio.McpServer;
 using Fakvio.McpServer.Client;
+using Fakvio.McpServer.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Server;
 using NSubstitute;
@@ -29,17 +31,17 @@ public class ToolDiscoveryTests
     private const string SnakeCaseToolName = "^[a-z][a-z0-9]*(_[a-z0-9]+)*$";
 
     /// <summary>
-    /// Builds the tool list the way <c>Program.cs</c> does — register <see cref="IFakvioApiClient"/>
-    /// first, then scan the McpServer assembly for <c>[McpServerToolType]</c> classes and register
-    /// their tools into DI.
+    /// Builds the tool list from the production registration itself —
+    /// <see cref="McpServerRegistration.AddFakvioMcpServer"/>, the one method both the stdio host
+    /// and the HTTP host call.
     ///
-    /// Junior note: the order matters, and so does having the client registered at all. The SDK asks
+    /// Junior note: the order inside that method matters, and so does having
+    /// <see cref="IFakvioApiClient"/> registered at all. The SDK asks
     /// <c>IServiceProviderIsService</c> whether it can resolve a tool parameter from DI; if it can,
     /// the parameter is injected and hidden from the tool's input schema, otherwise it becomes an
-    /// input the AI client has to supply. <c>Program.cs</c> registers the client via
-    /// <c>AddHttpClient</c> before <c>AddMcpServer()</c>, so every <c>IFakvioApiClient api</c>
-    /// parameter is injected. A plain substitute is enough here — nothing calls it, only its
-    /// presence in the container is observed.
+    /// input the AI client has to supply. Calling the real registration instead of re-creating it
+    /// here is deliberate: a hand-copied mirror would keep passing after the hosts changed, and
+    /// these tests would go quietly false-green.
     /// </summary>
     private static IReadOnlyList<McpServerTool> DiscoverTools() =>
         // WithToolsFromAssembly registers one McpServerTool singleton per discovered method.
@@ -53,8 +55,11 @@ public class ToolDiscoveryTests
     private static ServiceProvider BuildServerContainer()
     {
         var services = new ServiceCollection();
-        services.AddSingleton(Substitute.For<IFakvioApiClient>());
-        services.AddMcpServer().WithToolsFromAssembly(McpServerAssembly);
+
+        // The mode-specific piece the shared registration deliberately leaves to its caller.
+        // Nothing here sends a request, so a substitute is enough.
+        services.AddSingleton(Substitute.For<IApiTokenProvider>());
+        services.AddFakvioMcpServer(new McpServerSettings { ApiBaseUrl = "https://api.invalid" });
 
         return services.BuildServiceProvider();
     }
