@@ -27,8 +27,14 @@ určuje JWT token, kterým server pracuje.
 ## Požadavky
 
 - .NET 10 SDK
+- **ASP.NET Core shared framework (`Microsoft.AspNetCore.App`)** — a to i pro stdio režim.
+  Balíček `ModelContextProtocol.AspNetCore`, který přináší Streamable HTTP transport, nese
+  `FrameworkReference`, takže ho potřebuje celý nástroj, ne jen http režim. Na stroji s plným
+  .NET 10 SDK je součástí instalace; na cílovém stroji jen s .NET runtime se musí doinstalovat
+  ASP.NET Core Runtime. Balení a deploy řeší #241.
 - Běžící `Fakvio.API` (lokálně nebo v cloudu), dosažitelné z počítače, kde běží AI klient
-- Platný JWT token uživatele Fakvio
+- Credential podle režimu: platný JWT token uživatele Fakvio (stdio, `FAKVIO_API_TOKEN`),
+  nebo API klíč `fak_…` na každém requestu volajícího (http — server žádný vlastní nemá)
 
 ## Build a spuštění
 

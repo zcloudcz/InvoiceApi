@@ -42,6 +42,26 @@ public class McpHttpTransportTests
     private const string TenantBIssuer = "Tenant B GmbH";
 
     /// <summary>
+    /// Upper bound on every wait in this file — the concurrency barrier in the stub, the MCP
+    /// handshake and each tool call.
+    ///
+    /// <para>
+    /// Nothing here touches a socket, so a wait that runs out has hit a broken build, not a slow
+    /// machine. The bound is what makes that build <b>fail</b> the suite instead of hanging it:
+    /// an unbounded barrier waits forever for a second request that a broken pipeline will never
+    /// send, and a run that never finishes is a run nobody reads. Generous on purpose — it is a
+    /// deadlock detector, not a performance assertion.
+    /// </para>
+    /// </summary>
+    private static readonly TimeSpan WaitBudget = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// Header a <b>stateful</b> Streamable HTTP server returns on <c>initialize</c> to name the
+    /// session the client must quote from then on. A stateless server never sends it.
+    /// </summary>
+    private const string McpSessionIdHeader = "Mcp-Session-Id";
+
+    /// <summary>
     /// <b>The mandatory acceptance criterion of #240.</b> Two concurrent sessions belonging to
     /// different tenants must not leak data or credentials into each other.
     ///
@@ -176,10 +196,146 @@ public class McpHttpTransportTests
         refused.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
     }
 
+    /// <summary>
+    /// An <c>Authorization</c> header the caller filled in with something that is not a usable
+    /// bearer token is refused, whichever way it is malformed.
+    ///
+    /// <para>
+    /// The gate deliberately knows nothing about what a valid key looks like - it asks the API.
+    /// That makes "wrong scheme" and "empty token" cases interesting: the token provider hands
+    /// the outbound pipeline nothing, so the API is asked <i>unauthenticated</i> and refuses, and
+    /// the caller must see 401 rather than reach a tool. Written against the outcome, not against
+    /// how the gate arrives at it, so it keeps holding if the gate ever short-circuits these
+    /// locally instead of spending an API round-trip on them.
+    /// </para>
+    /// </summary>
+    [Theory]
+    [InlineData("Basic dXNlcjpwYXNz")]           // wrong scheme entirely
+    [InlineData("Bearer")]                       // scheme, no token
+    [InlineData("Bearer    ")]                   // scheme, whitespace token
+    [InlineData("fak_tenant_a_key")]             // real key, no scheme
+    [InlineData("!!! not a header at all !!!")]  // garbage
+    public async Task AuthorizationHeaderCarryingNoUsableToken_IsRejectedWith401(string header)
+    {
+        await using var host = await McpHttpTestHost.StartAsync();
+
+        using var response = await host.PostInitializeWithAuthorizationAsync(header);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized,
+            $"Authorization: '{header}' reached the MCP transport instead of being refused.");
+    }
+
+    /// <summary>
+    /// The transport really runs stateless, asserted on what the protocol shows rather than on
+    /// the configuration line that causes it.
+    ///
+    /// <para>
+    /// A stateful server answers <c>initialize</c> with an <c>Mcp-Session-Id</c> header and then
+    /// expects it back on every follow-up; a stateless one issues none, because there is no
+    /// session to address. Its absence is therefore the observable form of
+    /// <c>SessionMode = Stateless</c> in <c>McpHttpHost</c> - verified by flipping that line to
+    /// <c>Stateful</c>, which makes the header appear and this test fail.
+    /// </para>
+    ///
+    /// <para>
+    /// Why it is worth pinning: reading the caller's token off <c>HttpContext</c> only works
+    /// while the tool handler runs on the execution context of the request that carried it, and
+    /// stateless is what guarantees that. It also means no session affinity, so the host scales
+    /// out without sticky routing (#241). Both properties are lost silently by editing one word.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task StreamableHttpTransport_RunsStateless_AndIssuesNoSessionId()
+    {
+        await using var host = await McpHttpTestHost.StartAsync();
+
+        using var response = await host.PostInitializeAsync(TenantAKey);
+
+        response.IsSuccessStatusCode.ShouldBeTrue();
+        response.Headers.Contains(McpSessionIdHeader).ShouldBeFalse(
+            "The server handed out a session id, so it is no longer running stateless: tool calls " +
+            "may execute outside the HTTP request that carried them (no HttpContext, no caller " +
+            "token) and the host now needs sticky routing to scale out.");
+    }
+
+    /// <summary>
+    /// The gate guards the whole pipeline, not just <c>/mcp</c>. An unauthenticated request to a
+    /// path that maps to nothing is answered 401, not 404.
+    ///
+    /// <para>
+    /// This host serves nothing but MCP, so closed-by-default is the cheap correct posture: a
+    /// route added later is protected the moment it exists, instead of being open until somebody
+    /// notices. Registering the gate on the MCP route only would flip that, and nothing else in
+    /// this suite would go red.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task RequestOutsideTheMcpEndpoint_IsGatedToo()
+    {
+        await using var host = await McpHttpTestHost.StartAsync();
+
+        using var response = await host.GetAsync("/some/route/added/later");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+    }
+
+    /// <summary>
+    /// A key the API refuses with 403 (authenticated, but not allowed) reaches the MCP client as
+    /// a 401 - not as a server error.
+    ///
+    /// <para>
+    /// <c>FakvioApiClient.GetIdentityAsync</c> treats 401 and 403 alike: both are the API having
+    /// looked at the credential and said no, which is a domain answer rather than a failure. Drop
+    /// the 403 arm and this path would throw instead, turning "your key lacks the scope" into a
+    /// 500 that sends the operator looking for an outage.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task ApiRefusingTheKeyWithForbidden_IsRejectedWith401_NotAServerError()
+    {
+        await using var host = await McpHttpTestHost.StartAsync();
+        host.Api.IdentityStatusOverride = HttpStatusCode.Forbidden;
+
+        using var response = await host.PostInitializeAsync(TenantAKey);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+    }
+
+    /// <summary>
+    /// An unreachable API is <b>not</b> reported as a bad credential. The failure escapes the
+    /// gate, which under a real Kestrel host renders as 500.
+    ///
+    /// <para>
+    /// This is the deliberate design call of #240: "the API is unreachable" and "your key is
+    /// invalid" are different diagnoses, and answering 401 to the first one sends the operator
+    /// hunting through key management while the API is down. The test pins the absence of a
+    /// <c>catch</c> in the gate - add one that falls back to 401 and it goes red.
+    /// </para>
+    ///
+    /// <para>
+    /// Junior note: the assertion is an exception rather than a 500 status because
+    /// <c>TestServer</c> hands an unhandled pipeline exception straight back to the caller
+    /// instead of rendering an error response. The property under test - the failure is not
+    /// converted into 401 - is the same either way.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task UnreachableApi_DoesNotBecomeA401()
+    {
+        await using var host = await McpHttpTestHost.StartAsync();
+        host.Api.IsUnreachable = true;
+
+        await Should.ThrowAsync<HttpRequestException>(() => host.PostInitializeAsync(TenantAKey));
+    }
+
     /// <summary>Calls the readiness tool and returns the text the AI client would see.</summary>
     private static async Task<string> CallReadinessAsync(McpClient client)
     {
-        var result = await client.CallToolAsync("get_readiness");
+        // Bounded for the same reason as the barrier it ends up waiting on: a tool call that
+        // never comes back must fail this test, not stall the whole suite.
+        using var deadline = new CancellationTokenSource(WaitBudget);
+
+        var result = await client.CallToolAsync("get_readiness", cancellationToken: deadline.Token);
 
         return string.Concat(result.Content.OfType<TextContentBlock>().Select(block => block.Text));
     }
@@ -245,14 +401,23 @@ public class McpHttpTransportTests
 
             var transport = new HttpClientTransport(options, _transportClient);
 
-            return await McpClient.CreateAsync(transport);
+            using var deadline = new CancellationTokenSource(WaitBudget);
+
+            return await McpClient.CreateAsync(transport, cancellationToken: deadline.Token);
         }
 
         /// <summary>
         /// Sends a bare <c>initialize</c> POST — the first thing any MCP client does — so a test can
         /// assert on the raw HTTP answer instead of on an exception thrown mid-handshake.
         /// </summary>
-        public async Task<HttpResponseMessage> PostInitializeAsync(string? apiKey)
+        public Task<HttpResponseMessage> PostInitializeAsync(string? apiKey) =>
+            PostInitializeWithAuthorizationAsync(apiKey is null ? null : $"Bearer {apiKey}");
+
+        /// <summary>
+        /// The same request, but with the <c>Authorization</c> header written out verbatim - for
+        /// the cases where the malformed header itself is what is under test.
+        /// </summary>
+        public async Task<HttpResponseMessage> PostInitializeWithAuthorizationAsync(string? authorizationHeader)
         {
             using var request = new HttpRequestMessage(HttpMethod.Post, McpHttpHost.EndpointPath)
             {
@@ -273,11 +438,16 @@ public class McpHttpTransportTests
             request.Headers.Accept.Add(new("application/json"));
             request.Headers.Accept.Add(new("text/event-stream"));
 
-            if (apiKey is not null)
-                request.Headers.Add("Authorization", $"Bearer {apiKey}");
+            // TryAddWithoutValidation, because half the point of the theory above is to send
+            // header values that HttpClient would otherwise refuse to put on the wire.
+            if (authorizationHeader is not null)
+                request.Headers.TryAddWithoutValidation("Authorization", authorizationHeader);
 
             return await _transportClient.SendAsync(request);
         }
+
+        /// <summary>A plain unauthenticated GET, for asserting what the gate does off the MCP route.</summary>
+        public Task<HttpResponseMessage> GetAsync(string path) => _transportClient.GetAsync(path);
 
         public async ValueTask DisposeAsync()
         {
@@ -309,6 +479,15 @@ public class McpHttpTransportTests
         private int _readinessRequestsArrived;
         private int _identityCallCount;
 
+        /// <summary>
+        /// Status the identity endpoint answers with regardless of the key presented.
+        /// Null = normal behaviour (look the key up).
+        /// </summary>
+        public HttpStatusCode? IdentityStatusOverride { get; set; }
+
+        /// <summary>Makes every call fail at the transport level, exactly like an API that is down.</summary>
+        public bool IsUnreachable { get; set; }
+
         /// <summary>How many times <c>GET /api/api-key/me</c> was asked — proves nothing is cached.</summary>
         public int IdentityCallCount => Volatile.Read(ref _identityCallCount);
 
@@ -318,12 +497,20 @@ public class McpHttpTransportTests
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
         {
+            // Not an HTTP status: the API is not answering at all. HttpClient surfaces that shape
+            // as HttpRequestException, which is what a refused connection looks like in production.
+            if (IsUnreachable)
+                throw new HttpRequestException("The Fakvio API is unreachable.");
+
             var presentedKey = request.Headers.Authorization?.Parameter;
             var path = request.RequestUri!.AbsolutePath;
 
             if (path.EndsWith("/api/api-key/me", StringComparison.Ordinal))
             {
                 Interlocked.Increment(ref _identityCallCount);
+
+                if (IdentityStatusOverride is { } forcedStatus)
+                    return new HttpResponseMessage(forcedStatus);
 
                 return IssuerOf(presentedKey) is null
                     ? new HttpResponseMessage(HttpStatusCode.Unauthorized)
@@ -335,7 +522,9 @@ public class McpHttpTransportTests
                 if (Interlocked.Increment(ref _readinessRequestsArrived) >= releaseReadinessAfter)
                     _allReadinessRequestsArrived.TrySetResult();
 
-                await _allReadinessRequestsArrived.Task.WaitAsync(cancellationToken);
+                // Bounded wait: if the other session never arrives because the pipeline is broken,
+                // this throws and the test reports a failure instead of blocking forever.
+                await _allReadinessRequestsArrived.Task.WaitAsync(WaitBudget, cancellationToken);
 
                 var issuer = IssuerOf(presentedKey);
 
