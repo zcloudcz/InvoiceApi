@@ -858,6 +858,90 @@ Dvojité podtržítko `__` je oddělovač sekcí v .NET konfiguraci —
 > [části 6.2](#62-ssl-mode--npgsql-8-validuje-certifikát) — sedí na DB ve stejné
 > privátní síti. Pokud spojení jde přes veřejnou síť, vyber z té tabulky výš.
 
+### Varianta: databáze za Tailscale tunelem
+
+Když databázový port **není ve veřejném internetu** a hostitel se k němu dostane jen přes
+tailnet (tak je zapojené testovací prostředí, viz `Fakvio.Functions/Tailscale/README.md`),
+liší se dvě věci: `Host`/`Port` míří na **lokální konec tunelu**, ne na databázový server,
+a přibývá klíč s auth key. Zbytek zůstává stejný.
+
+```
+TAILSCALE_AUTHKEY=tskey-auth-…
+Database__AuthMode=Password
+UseAzureAdAuthentication=false
+ConnectionStrings__DefaultConnection=Host=127.0.0.1;Port=15432;Database=fakvio_test;Username=fakvio_test;Password=***;Ssl Mode=Prefer;Timezone=UTC;Maximum Pool Size=20;Timeout=15
+```
+
+`Ssl Mode=Prefer` je tu navíc jediná praktická volba: provoz šifruje už WireGuard a
+certifikát vystavený na `127.0.0.1` se ověřit nedá. `Timeout=15` proto, že první spojení
+zahrnuje WireGuard handshake.
+
+**Přihlašovací role je per prostředí, ne jedna sdílená** — do databáze `fakvio_test` se
+přihlašuje role `fakvio_test`, do `fakvio_prod` role `fakvio_prod`, každá s vlastním heslem.
+Samotné `CREATE DATABASE … OWNER` ale hranici mezi databázemi **nepostaví**: PostgreSQL dává
+`CONNECT` na novou databázi implicitně roli `PUBLIC` (`datacl` je hned po založení `NULL`, což
+znamená „platí defaulty z `template1`" — a ty `PUBLIC`u `CONNECT` dávají). Testovací role by se
+tedy do produkční databáze přihlásila. `CONNECT` proto odeber a vrať jen té jedné roli:
+
+```sql
+CREATE ROLE fakvio_test WITH LOGIN PASSWORD 'ZMEN_ME';
+CREATE DATABASE fakvio_test OWNER fakvio_test;
+REVOKE CONNECT ON DATABASE fakvio_test FROM PUBLIC;
+GRANT  CONNECT ON DATABASE fakvio_test TO fakvio_test;
+```
+
+Totéž pro produkci (`fakvio_prod` / `fakvio_prod`). Ostatní práva se tím neztrácejí — vlastník
+má `CREATE` i `TEMP` na své databázi dál, provisioning tenantů (krok 2.4) funguje beze změny.
+
+**Očekávaný výsledek:**
+
+```bash
+psql "$DST_ADMIN" -Atc "SELECT datname, has_database_privilege('public', datname, 'CONNECT')
+  FROM pg_database WHERE datname IN ('fakvio_test','fakvio_prod');"
+# fakvio_test|f
+# fakvio_prod|f
+```
+
+Pokus o přihlášení cizí rolí pak končí hned na spojení:
+`FATAL: permission denied for database "fakvio_prod"`, `DETAIL: User does not have CONNECT privilege.`
+
+Druhá vrstva je `pg_hba.conf` na databázovém serveru — sváže tailnet rozsah s dvojicí
+role/databáze, takže cizí kombinace neprojde už při navazování spojení:
+
+```
+# TYPE  DATABASE      USER          ADDRESS           METHOD
+host    fakvio_test   fakvio_test   100.64.0.0/10     scram-sha-256
+host    fakvio_prod   fakvio_prod   100.64.0.0/10     scram-sha-256
+```
+
+`100.64.0.0/10` je rozsah tailnet adres (CGNAT). **Pořadí řádků rozhoduje** — soubor se čte
+shora a platí **první** odpovídající řádek. Když je nad těmito dvěma širší pravidlo typu
+`host all all 0.0.0.0/0 scram-sha-256`, chytí spojení dřív a řádky níž už nic neomezí; širší
+pravidlo je proto potřeba zúžit nebo zakomentovat. Po úpravě `SELECT pg_reload_conf();` a
+kontrola, že se řádky načetly bez chyby:
+
+```bash
+psql "$DST_ADMIN" -Atc "SELECT line_number, database, user_name, error FROM pg_hba_file_rules
+  WHERE database::text LIKE '%fakvio%';"   # sloupec error musí být prázdný
+```
+
+**Co tím je a není izolované:**
+
+- **Je:** přihlášení do cizí databáze, a s ním i čtení jejího katalogu (jména schémat, tabulek
+  a sloupců, definice pohledů, těla funkcí), zabírání jejích connection slotů a `TEMP` tabulek.
+  Všechno padá už na navázání spojení.
+- **Bylo izolované i předtím:** aplikační data. Tabulky vlastní ta druhá role a `PUBLIC` na nich
+  žádné granty nemá — to drží i bez `REVOKE CONNECT`.
+- **Není:** sdílené katalogy clusteru. Role ze *své* databáze pořád vidí `pg_database` a
+  `pg_roles`, tedy jména ostatních databází a rolí (hesla ne — `pg_authid` je pro ni nečitelné).
+  A superuser (`postgres`) tahle omezení z definice obchází.
+
+Uniklé testovací heslo tedy neotevře produkční databázi ani její data; co z něj útočníkovi
+zbude, je znalost jmen databází a rolí na serveru.
+
+**`TAILSCALE_AUTHKEY` je spínač celé funkce** — když chybí, tunel se nepostaví a databáze
+je nedostupná. Klíč má expiraci, takže platí to samé co pro hesla: patří do rotace.
+
 ### Konfigurační klíče — nový klíč stačí, legacy nesmí odporovat
 
 `Database:AuthMode` je nový klíč; `UseAzureAdAuthentication` je **legacy bool**.

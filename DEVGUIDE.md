@@ -732,8 +732,9 @@ Implementace: `PaymentMatchingService.cs` (metoda `GetPaymentsForInvoiceAsync`).
 - Implementace: `Fakvio.Infrastructure/AiProviders/` (Anthropic, OpenAI, Gemini, Ollama).
 - API key storage: `CompanySystemSettings.AiApiKeyEncrypted` (per company) přes `CredentialProtector`.
 - SSE streaming přes `ChatController.StreamAsync`.
-- **Chat Tools**: 23 tools registrovaných v DI jako `IChatTool`, orchestrováno přes `IChatToolExecutor`.
+- **Chat Tools**: tools registrované v DI jako `IChatTool`, orchestrováno přes `IChatToolExecutor`.
   Registrace v `ServiceCollectionExtensions.cs`; přidání nového toolu = implementace `IChatTool` + řádek v DI.
+  Ruční počet v dokumentaci stárne; zdroj pravdy je matice níže a registrace v DI.
 
 #### Matice schopností providerů
 
@@ -1007,6 +1008,7 @@ Sloupec „Klíčové parametry" je jen orientační — závazné je schéma v 
 | `add_bank_account` | `AddBankAccountTool` | BankAccount (issuer) | **Write** (confirm) | `account_number` (povinný), `label`, `bank_name`, `iban`, `swift`, `currency_code`, `is_default` |
 | `update_bank_account` | `UpdateBankAccountTool` | BankAccount (issuer) | **Write** (confirm) | `bank_account_id` (povinný) + měněná pole |
 | `delete_bank_account` | `DeleteBankAccountTool` | BankAccount (issuer) | **Destructive** (confirm) | `bank_account_id` (povinný) |
+| `get_readiness` | `GetReadinessTool` | Nastavení tenanta | Read (report) | bez parametrů; vrátí chybějící nastavení + závažnost + `fixRoute` (viz níže) |
 
 ##### Reporting tools (#228) — proč tři, ne šest
 
@@ -1108,10 +1110,27 @@ anonymní nebo SysAdmin-only stránku, (c) každá tenant-facing stránka bez pa
 v routě je nabízená. **Nová stránka v UI tedy shodí testy, dokud ji nedoplníš do
 `Routes`** — nebo ji v tom testu explicitně nevyloučíš s odůvodněním.
 
-##### Paritní tabulka chat ↔ MCP (stav k #220 a #222)
+##### `get_readiness` — co ještě chybí v nastavení (#211)
 
-Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 23 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
-a **MCP server** (`[McpServerTool]`, 36 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
+Tenká obálka nad `ITenantReadinessService` (§4.12) — **žádné pravidlo v toolu není**.
+Dvojče pro externí AI klienty je MCP nástroj `GetReadiness` (§4.9), který jde přes REST
+`GET /api/readiness`, takže obě cesty odpovídají stejně.
+
+- **Bez parametrů, záměrně.** Filtr na vystavitele by potřeboval databázové ID, které model
+  nemá odkud znát, a každý problém vázaný na vystavitele stejně nese `IssuerName`.
+- **Read-only** — nic nemění, takže nepotřebuje potvrzovací krok.
+- Výstup je text, jeden odstavec na problém: `[BLOCKING|WARNING] {Code}`, chybějící pole
+  a `Fix at: {FixRoute}`. Fix route je to, díky čemu asistent naváže `navigate` na stránku,
+  kde se to opraví.
+- Report se prezentuje **tak, jak přijde ze servisu**. Nefiltrovaný report proto může nést
+  problémy **neaktivního** vystavitele, kterého picker na Dashboardu (`DashboardController`)
+  nenabízí — vědomý důsledek, ne chyba: dofiltrovávat v toolu by rozešlo odpověď asistenta
+  s bannerem i s gate na vystavení dokladu. Kdyby to vadilo, patří filtr do servisu.
+
+##### Paritní tabulka chat ↔ MCP (stav k #211, #220 a #222)
+
+Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 24 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
+a **MCP server** (`[McpServerTool]`, 37 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
 cílem story #149 je mezeru zavřít. Tabulka je jediný pravdivý seznam toho, co kde chybí;
 **každý nový tool na kterékoli straně sem přidá řádek** (viz §13).
 
@@ -1157,6 +1176,8 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | `ListTemplates` | Read | — | ❌ | #225 |
 | `GetTemplate` | Read | — | ❌ | #225 |
 | `CreateInvoiceFromTemplate` | Create | — | ❌ | #225 |
+| **Readiness** (`ReadinessTools`, 1) |
+| `GetReadiness` | Read | `get_readiness` | ✅ | |
 | **Jen chat (MCP nemá)** |
 | — | **Destructive** | `delete_client` (za `confirm`) | ⬅ | |
 | — | Search | `search_received_invoices` | ⬅ | |
@@ -1166,7 +1187,7 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | — | **Write** (nastavení firmy) | `update_my_company` | ⬅ | |
 | — | **Write** (bankovní účty) | `add_bank_account`, `update_bank_account`, `delete_bank_account` | ⬅ | |
 
-**Součty:** 36 MCP toolů, 23 chat toolů. Chat pokrývá 17 MCP toolů (z toho 2 částečně),
+**Součty:** 37 MCP toolů, 24 chat toolů. Chat pokrývá 18 MCP toolů (z toho 2 částečně),
 9 chat toolů nemá MCP protějšek. Zbývá 19 mezer.
 
 Mimo obě rozhraní (jen UI / SysAdmin, plánováno v #224 / #227):
@@ -1225,7 +1246,7 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
 - Jméno v MCP handshake (`ServerInfo.Name`) je `fakvio` — nezaměňovat s názvem příkazu.
 - Auth: `FAKVIO_API_TOKEN` env var (JWT bearer, povinný — bez něj exit code 1), `FAKVIO_API_URL` (výchozí `https://localhost:7001`, lokální API ale běží na `7047` → nastavovat explicitně).
 - Žádný přístup k DB — všechno jde přes `IFakvioApiClient` → HTTP na `Fakvio.API`, takže autorizace i tenant izolace platí beze změny.
-- **36 tools**: 10 invoice + 6 client + 6 received invoice + 6 reporting + 5 tax + 3 template (po jednom souboru v `Tools/`).
+- **37 tools**: 10 invoice + 6 client + 6 received invoice + 6 reporting + 5 tax + 3 template + 1 readiness (po jednom souboru v `Tools/`).
   Ruční číslo v dokumentaci stárne; zdroj pravdy je `grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs`.
   Porovnání s chat tooly (co MCP umí a chat ještě ne): paritní tabulka v §4.7.
 - Konfigurace v Claude Desktop / Claude Code: spustí `fakvio-mcp` jako subprocess se stdio piping. Vzor v `.mcp.json.sample` (kořen repa).
@@ -1405,6 +1426,17 @@ vlastní výjimku ani vlastní tvar chyby**. Použij `ITenantReadinessService`.
 | `InvoiceService.CompleteInvoiceAsync` | `EnsureReadyAsync(invoice.IssuerId, invoice.DocumentType, ct)` | Jediný gate na vystavení dokladu. Běží **až po** guardech „faktura neexistuje" / „už je vystavená" a **před** jakoukoli změnou stavu — odmítnutá faktura zůstane Draft a nespotřebuje číslo z řady. |
 | `InvoiceController.CompleteInvoice` | `catch (TenantNotReadyException)` → 400 | Tvar odpovědi viz výše. |
 | `InvoiceTemplateController.CreateInvoiceFromTemplate` | `catch (TenantNotReadyException)` → 400 | Nastane jen s `AutoComplete = true`; draft už je v tu chvíli založený a zůstane. |
+
+**Kdo report jen čte** (`GetReportAsync`, nic neblokuje):
+
+| Místo | Volání | Poznámka |
+|-------|--------|----------|
+| `GetReadinessTool` (chat tool `get_readiness`) | `GetReportAsync(ct: ct)` | Bez filtru — uživatel se ptá na celé nastavení. Vykreslí `Code` + závažnost + `FixRoute`, viz §4.7. |
+| `ReadinessTools.GetReadiness` (MCP) | `GET /api/readiness` přes `IFakvioApiClient` | MCP server nemá přístup k DB, jde vždy přes REST, takže autorizace i tenant izolace platí beze změny (§4.9). |
+
+Čtecí konzumenti report **nefiltrují ani nepřepisují**. Nefiltrovaný report může nést
+problémy neaktivního vystavitele, kterého Dashboard picker nenabízí — kdyby to mělo vadit,
+patří filtr do `TenantReadinessService`, ne do jedné z obálek.
 
 Gate je schválně **v servisu, ne v controlleru** — přes `CompleteInvoiceAsync` vede každá
 cesta k vystavení (REST, Azure Functions wrapper, `BulkCompleteAsync`, auto-complete ze
@@ -1931,8 +1963,16 @@ dotnet test Fakvio.Tests.Unit --filter "FullyQualifiedName~DatabaseConnectivityS
 |--------|---------|---------|
 | `blazorui-deploy.yml` | Push `master`, manual, PR (path-filtered) | Build `Fakvio.BlazorUI` (WASM publish) → deploy GitHub Pages. Přidá CNAME, .nojekyll, kopie `index.html → 404.html` (client-side routing). |
 | `blazorui-test-deploy.yml` | Push `TEST-ENV`, manual | Build `Fakvio.BlazorUI` (WASM publish) → deploy Azure Static Web App `fakvio-test-ui`. Před publishem přepíše `ApiSettings:BaseUrl` na testovací Function App. Client-side routing řeší `wwwroot/staticwebapp.config.json` (`navigationFallback`). |
-| `master_zcloudinvoicingapi.yml` | Push `master` | Publish `Fakvio.Functions.csproj` → Azure Function App `zcloudinvoicingapi`. Auth přes managed identity (federated credentials). |
+| `master_zcloudinvoicingapi.yml` | Push `master` | Stáhne binárky Tailscale (viz níž) a publishne `Fakvio.Functions.csproj` → Azure Function App `zcloudinvoicingapi`. Auth přes managed identity (federated credentials). |
 | `testenv_zcloudinvoicingapi.yml` | Push `TEST-ENV`, manual | Totožné publish jako řádek výše, ale do **testovacího** Function Appu `zcloudinvoicingapi-test`. OIDC přes secrets s příponou `_TEST` (viz §9.4). |
+
+**Krok „Download Tailscale binaries"** (oba Functions workflow, před `dotnet publish`):
+stáhne `tailscale` + `tailscaled` do `Fakvio.Functions/tsbin/`, odkud je do publish outputu
+kopíruje `<None Update="tsbin/**">` v csproj. Verze a `sha256` jsou **napevno v bloku `env:`**
+obou workflow — tarball se stahuje až při deployi, takže bez pinu by změna upstreamu šla rovnou
+do Azure. `tsbin/` je gitignorovaný, v repu binárky nejsou. Produkce je stahuje také (feature je
+tam bez `TAILSCALE_AUTHKEY` nečinná), aby byl balíček obou prostředí identický. Bump verze a
+proč to celé existuje: `Fakvio.Functions/Tailscale/README.md`.
 
 **Pozn.**: Pro `Fakvio.API` (klasický host) **není dedicated workflow** v repu — historicky se hostil přes externí App Service nebo manuálně. Pokud přidáš API workflow, zaznamenej zde.
 
@@ -1960,7 +2000,7 @@ dotnet test Fakvio.Tests.Unit --filter "FullyQualifiedName~DatabaseConnectivityS
 ### 9.3 BlazorUI WASM deploy
 
 - **Produkce**: hostováno na **GitHub Pages** s custom doménou (`CNAME` v repu).
-- **Test**: hostováno na **Azure Static Web Apps** (`fakvio-test-ui`, Free tier) — GitHub Pages umí jen jeden web na repozitář, proto jiný hosting. Deploy token je v repo secretu `AZURE_STATIC_WEB_APPS_API_TOKEN_TEST`.
+- **Test**: hostováno na **Azure Static Web Apps** (`fakvio-test-ui`, Free tier, custom doména `test.fakvio.cz` — CNAME u Forpsi na technický host SWA) — GitHub Pages umí jen jeden web na repozitář, proto jiný hosting. Deploy token je v repo secretu `AZURE_STATIC_WEB_APPS_API_TOKEN_TEST`.
 - API endpoint v `Fakvio.BlazorUI/wwwroot/appsettings.json` (`ApiSettings:BaseUrl`) — production URL Azure Function Appu. WASM nemá server, který by URL vstříkl za běhu, takže testovací workflow ji **přepisuje před publishem** (publish generuje i `.br` / `.gz` kopie, ty by jinak zůstaly s produkční URL).
 - Deep-linky: GitHub Pages je řeší kopií `index.html → 404.html`, SWA `navigationFallback` v `wwwroot/staticwebapp.config.json`. Ten soubor je součástí bundlu i na Pages, kde ho nic nečte — je nezvaný, ale neškodný.
 - Service worker pro PWA — pozor na cache invalidation při deployi.
@@ -1980,7 +2020,17 @@ dotnet test Fakvio.Tests.Unit --filter "FullyQualifiedName~DatabaseConnectivityS
   s `app-name: zcloudinvoicingapi-test` a `slot-name: Production`. Vlastní app registration
   (federated credential jen pro větev `TEST-ENV`, Contributor scope jen na tento app),
   vlastní `JwtSettings:Secret` a vlastní CORS origin — vše jako App Settings v Azure,
-  ne ve workflow. Testovací prostředí zatím **nemá vlastní databázi** (viz #295).
+  ne ve workflow.
+- **Testovací prostředí má vlastní databázi `fakvio_test` dostupnou přes Tailscale tunel**
+  (#318, uzavřelo i #295). Vlastní PostgreSQL na Hostingeru nemá port ve veřejném internetu,
+  takže se k ní Function App připojuje přes tailnet: `tailscaled` běží v **userspace** režimu
+  (sandbox neumí TUN) a nabízí SOCKS5, který Npgsql neumí — mezi ně proto vstupuje vlastní
+  `Socks5Forwarder` na `127.0.0.1:15432` a `ConnectionStrings__DefaultConnection` míří na něj.
+  Staví se v `Fakvio.Functions/Program.cs` hned po `Build()` a **před migračním blokem**
+  (`IHostedService` by startoval až v `RunAsync()`, tedy po první práci s databází).
+  Bez App Settingu `TAILSCALE_AUTHKEY` je celá věc nečinná — jeden log řádek a nic víc, proto
+  lokální vývoj i produkce fungují beze změny. Detaily, ACL, rotace klíče a známá omezení
+  (cold start, uzel per instance): `Fakvio.Functions/Tailscale/README.md`.
 
 ### 9.5 Autentizace k databázi (`Database:AuthMode`) + health endpoint
 
@@ -2005,6 +2055,11 @@ Kde co je nastavené:
 | `Fakvio.API/appsettings.Development.json` | `AzureEntraId`; vedle je **zakomentovaný** `Password` — přepnutí na lokální Docker = odkomentovat dva řádky (conn string + AuthMode) |
 | `Fakvio.Functions/local.settings.json` | `Database__AuthMode = Password` (lokální Docker) |
 | `Fakvio.MigrationTool/appsettings.json` | `Database` i `SourceDatabase` = `Password` |
+
+Testovací Function App má od #318 v App Settings `Database__AuthMode = Password` (vedle
+`UseAzureAdAuthentication = false`, obojí musí souhlasit), takže health tam hlásí
+`authModeSource: Database:AuthMode` — ne už legacy zdroj. Connection string míří na lokální
+konec Tailscale tunelu (§9.4), takže `masterConnectionServer` je `127.0.0.1 / fakvio_test / fakvio_test`.
 
 **Ověření za běhu** — `GET /api/diagnostic/health`, **SysAdmin only**:
 
@@ -2324,7 +2379,7 @@ pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. P
 | Nový code-table pattern (master / tenant / dual-context) | §11.2 |
 | Nový background lock klíč | §6.3 (tabulka klíčů) |
 | Nový chat tool nebo změna schématu parametrů (`IChatTool.Parameters`) | §4.7 (postup + matice + **paritní tabulka**) |
-| Nový MCP tool (`[McpServerTool]`) | §4.9 (počty) + §4.7 (paritní tabulka) |
+| Nový MCP tool (`[McpServerTool]`) nebo nová metoda v `IFakvioApiClient` | §4.9 (počty) + §4.7 (paritní tabulka) + `Fakvio.McpServer/README.md` (tabulka nástrojů) |
 | Nový AI provider nebo změna jeho schopností (tools, obrázky) | §4.7 (matice schopností providerů) |
 | Změna observability stacku (App Insights → jiný) | §10 |
 | Nová list stránka s gridem / změna grid patternu | §7.10 (FakvioGrid) |

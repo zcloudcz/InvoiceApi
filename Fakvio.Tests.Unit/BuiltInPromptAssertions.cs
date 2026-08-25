@@ -47,7 +47,7 @@ internal static class BuiltInPromptAssertions
     ];
 
     /// <summary>
-    /// The catalog the twenty-three shipped tools are expected to render, in DI registration order
+    /// The catalog the twenty-four shipped tools are expected to render, in DI registration order
     /// (<c>ServiceCollectionExtensions</c>). Each line is <c>- {ToolName}: {Description}</c>
     /// with the description written out as one line. This is the independent copy: when a tool
     /// description changes, it has to be changed here too, deliberately. That is the point.
@@ -76,7 +76,8 @@ internal static class BuiltInPromptAssertions
         "- update_my_company: Change the settings of the user's own company (the issuer): name, trading name, DIČ, VAT payer status, document language and the primary address. Send only the fields that should change — everything else is left as it is. IČO cannot be changed. Use add_bank_account / update_bank_account / delete_bank_account for bank accounts.",
         "- add_bank_account: Add a bank account to the user's own company (the issuer). The account number is required, everything else is optional. The very first account of the company always becomes the default one — the account offered on new invoices and used for QR payments.",
         "- update_bank_account: Change one bank account of the user's own company (the issuer): its number, label, bank, IBAN, SWIFT, currency, or which account is the default one. Identify the account by the ID returned from get_my_company and send only the fields that should change.",
-        "- delete_bank_account: Permanently remove one bank account from the user's own company (the issuer). Identify the account by the ID returned from get_my_company. Invoices already issued keep the payment details printed on them; only the stored account is removed."
+        "- delete_bank_account: Permanently remove one bank account from the user's own company (the issuer). Identify the account by the ID returned from get_my_company. Invoices already issued keep the payment details printed on them; only the stored account is removed.",
+        "- get_readiness: Checks whether the company setup is complete enough to issue invoices. Returns every missing setting with its severity (blocking or warning), the empty fields and the page where the user fixes it. Read-only — use it when the user asks what is still missing, or when an invoice was refused because the setup is incomplete."
     ];
 
     /// <summary>The static lines below the generated tool catalog, verbatim.</summary>

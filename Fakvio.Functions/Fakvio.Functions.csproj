@@ -22,6 +22,12 @@
     <Compile Remove="Generated/**" />
   </ItemGroup>
 
+  <!-- Allow the test project to reach internal members (Redact, the Start overload with an
+       explicit handshake deadline) — same arrangement as Fakvio.Infrastructure. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Fakvio.Tests.Unit" />
+  </ItemGroup>
+
   <!-- Azure Functions Isolated Worker packages — timer triggers + HTTP triggers -->
   <ItemGroup>
     <!-- IMPORTANT: v3.0.0 crashes Azure Functions with TypeLoadException (ITelemetryInitializer).
@@ -64,6 +70,13 @@
     <None Update="local.settings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>Never</CopyToPublishDirectory>
+    </None>
+    <!-- Tailscale binaries for the userspace tunnel (Tailscale/README.md).
+         The folder is gitignored and filled by the deploy workflow, so it is usually absent —
+         Update (not Include) because the SDK already globs non-.cs files as None; Include would
+         add them twice and fail the build. -->
+    <None Update="tsbin/**">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
 
