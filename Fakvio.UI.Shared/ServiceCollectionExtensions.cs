@@ -63,6 +63,8 @@ public static class ServiceCollectionExtensions
         services.AddApiClient<UserApiService>();
         services.AddApiClient<CompanyApiService>();
         services.AddApiClient<DashboardApiService>();
+        // Feeds ReadinessBanner on the dashboard and the invoice detail (issue #215).
+        services.AddApiClient<ReadinessApiService>();
         services.AddApiClient<InvoiceTemplateApiService>();
         services.AddApiClient<ContentTemplateApiService>();
         services.AddApiClient<NumberSequenceApiService>();
