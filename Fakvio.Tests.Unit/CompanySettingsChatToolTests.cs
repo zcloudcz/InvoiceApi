@@ -126,6 +126,75 @@ public class CompanySettingsChatToolTests
             .Single(call => call.GetMethodInfo().Name == nameof(IClientService.AddBankAccountAsync))
             .GetArguments()[1]!;
 
+    /// <summary>
+    /// The foreign-key failure the database raises when a re-inserted account is already
+    /// referenced by payment data (FK <c>Restrict</c>). Built in one place because three tests
+    /// need the exact same shape — <c>DbUpdateException</c> wrapping a SQLSTATE 23503
+    /// <c>PostgresException</c> — and only that shape is supposed to produce the "payment data"
+    /// wording.
+    /// </summary>
+    private static DbUpdateException ForeignKeyViolation()
+        => new(
+            "An error occurred while saving the entity changes.",
+            new PostgresException(
+                "update or delete on table \"BankAccount\" violates foreign key constraint " +
+                "\"FK_BankTransaction_BankAccount_BankAccountId\" on table \"tenant_7.BankTransaction\"",
+                "ERROR",
+                "ERROR",
+                PostgresErrorCodes.ForeignKeyViolation));
+
+    /// <summary>Id of the first re-inserted account in <see cref="ReplayBankAccountSave"/>.</summary>
+    private const long ReinsertedAccountId = 100;
+
+    /// <summary>
+    /// Makes the stub replay what ClientService actually does on a replace-all save of the bank
+    /// accounts: it wipes the collection and re-inserts the supplied one with fresh ids, and when
+    /// no account arrives flagged as default it promotes the one at index 0
+    /// (<c>hasExplicitDefault ? … : index == 0</c> in <c>ClientService.UpdateClientAsync</c>).
+    ///
+    /// The plain echo stub cannot answer "which account is the default now", because it hands
+    /// back the accounts the tool started from instead of the ones it saved.
+    /// </summary>
+    private static void ReplayBankAccountSave(IClientService service, ClientDto issuer)
+        => service.UpdateClientAsync(Arg.Any<long>(), Arg.Any<UpdateClientDto>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                var saved = ((UpdateClientDto)call[1]).BankAccount;
+                if (saved is null)
+                    return issuer;
+
+                var hasExplicitDefault = saved.Any(account => account.IsDefault == true);
+
+                // A separate instance on purpose. ClientService re-reads the client after the
+                // save, so the object the tool started from keeps the pre-save accounts — and a
+                // tool that answers from that stale object has to be visible as a failure here.
+                return new ClientDto
+                {
+                    Id = issuer.Id,
+                    CompanyName = issuer.CompanyName,
+                    BankAccount = saved
+                        .Select((account, index) => new BankAccountDto
+                        {
+                            Id = ReinsertedAccountId + index,
+                            AccountNumber = account.AccountNumber ?? string.Empty,
+                            Label = account.Label,
+                            BankName = account.BankName,
+                            IBAN = account.IBAN,
+                            SWIFT = account.SWIFT,
+                            CurrencyCode = account.CurrencyCode,
+                            IsDefault = hasExplicitDefault ? account.IsDefault == true : index == 0
+                        })
+                        .ToList()
+                };
+            });
+
+    /// <summary>
+    /// The one rendered line that mentions the given account number. The tools print one account
+    /// per line, so this is how a test asks "what does the answer say about THIS account".
+    /// </summary>
+    private static string LineFor(string? renderedText, string accountNumber)
+        => renderedText!.Split('\n').Single(line => line.Contains(accountNumber));
+
     // ═══════════════════════════════════════════════════════════════════════
     //  GetMyCompanyTool
     // ═══════════════════════════════════════════════════════════════════════
@@ -420,6 +489,114 @@ public class CompanySettingsChatToolTests
         result.ErrorMessage.ShouldContain("no longer exists");
     }
 
+    /// <summary>
+    /// Flipping the VAT payer flag decides whether the next invoice carries VAT at all, so the
+    /// preview has to spell out the direction — "VAT payer: yes" alone reads the same whether it
+    /// is the old value or the new one. Both directions are checked because a swapped pair of
+    /// values would still produce a sentence that looks right.
+    /// </summary>
+    [Theory]
+    [InlineData(false, "true", "VAT payer: no → yes")]
+    [InlineData(true, "false", "VAT payer: yes → no")]
+    public async Task UpdateMyCompanyTool_VatPayerFlag_IsPreviewedWithTheDirectionOfTheChange(
+        bool storedFlag,
+        string requestedFlag,
+        string expectedChangeLine)
+    {
+        var issuer = BuildIssuer();
+        issuer.IsVatPayer = storedFlag;
+
+        var service = StubService(issuer);
+        var tool = CreateUpdateCompanyTool(service);
+        var parameters = new Dictionary<string, string> { ["is_vat_payer"] = requestedFlag };
+
+        var preview = await tool.BuildPreviewAsync(parameters);
+        preview.IsSuccess.ShouldBeTrue();
+        preview.OutputText.ShouldContain(expectedChangeLine);
+
+        parameters["confirm"] = "true";
+        var result = await tool.ExecuteAsync(parameters);
+
+        result.IsSuccess.ShouldBeTrue();
+        CapturedUpdate(service).IsVatPayer.ShouldBe(!storedFlag);
+    }
+
+    /// <summary>
+    /// "Jsme plátci DPH" about a company that already is one is not a change. Reporting it as one
+    /// would tell the user their VAT status has just been switched when nothing happened.
+    /// </summary>
+    [Fact]
+    public async Task UpdateMyCompanyTool_VatPayerFlagRepeatingTheStoredValue_IsRefused()
+    {
+        var service = StubService(BuildIssuer());   // the stored company is a VAT payer
+        var tool = CreateUpdateCompanyTool(service);
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, string>
+        {
+            ["is_vat_payer"] = "true",
+            ["confirm"] = "true"
+        });
+
+        result.IsSuccess.ShouldBeFalse();
+        result.ErrorMessage.ShouldContain("No change was requested");
+        await service.DidNotReceive().UpdateClientAsync(
+            Arg.Any<long>(), Arg.Any<UpdateClientDto>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The model likes to echo back the address it was just shown. Rebuilt, that address is
+    /// identical to the stored one — and rewriting the collection for an identical result would
+    /// hand the addresses new ids and report a move that never happened.
+    /// </summary>
+    [Fact]
+    public async Task UpdateMyCompanyTool_AddressRepeatingTheStoredValue_IsRefused()
+    {
+        var service = StubService(BuildIssuer());
+        var tool = CreateUpdateCompanyTool(service);
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, string>
+        {
+            ["street"] = "Národní 1",
+            ["city"] = "Praha",
+            ["postal_code"] = "11000",
+            ["country"] = "Česká republika",
+            ["confirm"] = "true"
+        });
+
+        result.IsSuccess.ShouldBeFalse();
+        result.ErrorMessage.ShouldContain("No change was requested");
+        await service.DidNotReceive().UpdateClientAsync(
+            Arg.Any<long>(), Arg.Any<UpdateClientDto>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Older data can hold a single address with no primary flag on it. That address is still the
+    /// company's address, so it gets rewritten — and flagged primary — instead of being left
+    /// behind next to a newly created one.
+    /// </summary>
+    [Fact]
+    public async Task UpdateMyCompanyTool_AddressNotFlaggedPrimary_IsRewrittenNotDuplicated()
+    {
+        var issuer = BuildIssuer();
+        issuer.Address[0].IsPrimary = false;
+
+        var service = StubService(issuer);
+        var tool = CreateUpdateCompanyTool(service);
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, string>
+        {
+            ["city"] = "Brno",
+            ["confirm"] = "true"
+        });
+
+        result.IsSuccess.ShouldBeTrue();
+
+        var address = CapturedUpdate(service).Address!.ShouldHaveSingleItem();
+        address.City.ShouldBe("Brno");
+        address.Street.ShouldBe("Národní 1");   // carried over from the unflagged address
+        address.IsPrimary.ShouldBe(true);
+    }
+
     // ═══════════════════════════════════════════════════════════════════════
     //  AddBankAccountTool
     // ═══════════════════════════════════════════════════════════════════════
@@ -560,6 +737,83 @@ public class CompanySettingsChatToolTests
 
         result.IsSuccess.ShouldBeFalse();
         result.ErrorMessage.ShouldContain("no longer exists");
+    }
+
+    /// <summary>
+    /// A second account added without asking for the default flag leaves the default where it is.
+    /// The preview says so out loud: which account gets printed on the next invoice is exactly
+    /// what the user is checking here, and silence about it reads as "something may have moved".
+    /// </summary>
+    [Fact]
+    public async Task AddBankAccountTool_Preview_SecondAccountWithoutTheFlag_LeavesTheDefaultAlone()
+    {
+        var service = StubService(BuildIssuer(BuildAccount(id: 1, accountNumber: "111/0100")));
+        var tool = CreateAddAccountTool(service);
+
+        var preview = await tool.BuildPreviewAsync(new Dictionary<string, string>
+        {
+            ["account_number"] = "222/0300"
+        });
+
+        preview.IsSuccess.ShouldBeTrue();
+        preview.OutputText.ShouldContain("current default account stays unchanged");
+        preview.OutputText!.ShouldNotContain("would become the DEFAULT");
+        preview.OutputText.ShouldContain("1 bank account(s)");
+    }
+
+    /// <summary>
+    /// The very first account of a company becomes the default even when the model explicitly
+    /// sent <c>is_default: false</c> — ClientService decides that, not the flag. The preview has
+    /// to announce the outcome the database will produce, not the flag it was handed.
+    /// </summary>
+    [Fact]
+    public async Task AddBankAccountTool_Preview_FirstAccountIsDefaultEvenWhenTheFlagSaysOtherwise()
+    {
+        var service = StubService(BuildIssuer());
+        var tool = CreateAddAccountTool(service);
+
+        var preview = await tool.BuildPreviewAsync(new Dictionary<string, string>
+        {
+            ["account_number"] = "555/0300",
+            ["is_default"] = "false"
+        });
+
+        preview.IsSuccess.ShouldBeTrue();
+        preview.OutputText.ShouldContain("DEFAULT");
+        preview.OutputText.ShouldContain("the company has none yet");
+    }
+
+    /// <summary>
+    /// The answer to a successful add is the stored collection with its ids, not just a
+    /// confirmation. Those ids are the only handle update_bank_account and delete_bank_account
+    /// have, and the model can quote only what it has been shown.
+    /// </summary>
+    [Fact]
+    public async Task AddBankAccountTool_Execute_AnswersWithTheStoredAccountsAndTheirIds()
+    {
+        var beforeAdd = BuildIssuer(BuildAccount(id: 1, accountNumber: "111/0100"));
+        var afterAdd = BuildIssuer(
+            BuildAccount(id: 1, accountNumber: "111/0100", isDefault: true),
+            BuildAccount(id: 9, accountNumber: "222/0300", label: "EUR účet",
+                currencyCode: "EUR", isDefault: false));
+
+        var service = StubService(beforeAdd);
+        service.AddBankAccountAsync(Arg.Any<long>(), Arg.Any<CreateBankAccountDto>(), Arg.Any<CancellationToken>())
+            .Returns(afterAdd);
+
+        var tool = CreateAddAccountTool(service);
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, string>
+        {
+            ["account_number"] = "222/0300",
+            ["currency_code"] = "EUR",
+            ["confirm"] = "true"
+        });
+
+        result.IsSuccess.ShouldBeTrue();
+        result.OutputText.ShouldContain("Bank account added");
+        LineFor(result.OutputText, "222/0300").ShouldContain("ID=9");
+        LineFor(result.OutputText, "111/0100").ShouldContain("ID=1");   // the untouched one is listed too
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -736,13 +990,7 @@ public class CompanySettingsChatToolTests
     [Fact]
     public async Task UpdateBankAccountTool_WhenAnAccountIsPinnedByPayments_ExplainsWhyAndLogsTheDetails()
     {
-        var driverError = new PostgresException(
-            "update or delete on table \"BankAccount\" violates foreign key constraint " +
-            "\"FK_BankTransaction_BankAccount_BankAccountId\" on table \"tenant_7.BankTransaction\"",
-            "ERROR",
-            "ERROR",
-            PostgresErrorCodes.ForeignKeyViolation);
-        var thrown = new DbUpdateException("An error occurred while saving the entity changes.", driverError);
+        var thrown = ForeignKeyViolation();
 
         var service = StubService(BuildIssuer(BuildAccount(id: 4, accountNumber: "111/0100")));
         service.UpdateClientAsync(Arg.Any<long>(), Arg.Any<UpdateClientDto>(), Arg.Any<CancellationToken>())
@@ -915,5 +1163,139 @@ public class CompanySettingsChatToolTests
 
         result.IsSuccess.ShouldBeFalse();
         result.ErrorMessage.ShouldContain("/my-company");
+    }
+
+    /// <summary>
+    /// Deleting the default account changes something nobody asked about: the collection is
+    /// re-saved without any default, so ClientService promotes the first remaining account. The
+    /// answer has to name the promoted one — it is what the next invoice and its QR code carry.
+    /// </summary>
+    [Fact]
+    public async Task DeleteBankAccountTool_DeletingTheDefault_PromotesTheFirstRemainingAndNamesIt()
+    {
+        var issuer = BuildIssuer(
+            BuildAccount(id: 1, accountNumber: "111/0100", isDefault: true),
+            BuildAccount(id: 2, accountNumber: "222/0300", isDefault: false),
+            BuildAccount(id: 3, accountNumber: "333/0800", isDefault: false));
+
+        var service = StubService(issuer);
+        ReplayBankAccountSave(service, issuer);
+        var tool = CreateDeleteAccountTool(service);
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, string>
+        {
+            ["bank_account_id"] = "1",
+            ["confirm"] = "true"
+        });
+
+        result.IsSuccess.ShouldBeTrue();
+
+        // Nothing in the saved collection claims the flag — that is what hands the decision to
+        // ClientService's "first one wins" rule.
+        var saved = CapturedUpdate(service).BankAccount!;
+        saved.Select(account => account.AccountNumber).ShouldBe(["222/0300", "333/0800"]);
+        saved.ShouldAllBe(account => account.IsDefault != true);
+
+        LineFor(result.OutputText, "222/0300").ShouldContain("default");
+        LineFor(result.OutputText, "333/0800").ShouldNotContain("default");
+        result.OutputText.ShouldContain("IDs are new");
+    }
+
+    /// <summary>
+    /// Deleting some other account must not move the default. The whole collection is rewritten,
+    /// so the surviving default has to carry its flag along — dropped on the way, ClientService
+    /// would hand the flag to whichever account happens to be first.
+    /// </summary>
+    [Fact]
+    public async Task DeleteBankAccountTool_DeletingANonDefault_KeepsTheDefaultWhereItWas()
+    {
+        var issuer = BuildIssuer(
+            BuildAccount(id: 1, accountNumber: "111/0100", isDefault: false),
+            BuildAccount(id: 2, accountNumber: "222/0300", isDefault: false),
+            BuildAccount(id: 3, accountNumber: "333/0800", isDefault: true));
+
+        var service = StubService(issuer);
+        ReplayBankAccountSave(service, issuer);
+        var tool = CreateDeleteAccountTool(service);
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, string>
+        {
+            ["bank_account_id"] = "2",
+            ["confirm"] = "true"
+        });
+
+        result.IsSuccess.ShouldBeTrue();
+
+        var saved = CapturedUpdate(service).BankAccount!;
+        saved.Select(account => account.AccountNumber).ShouldBe(["111/0100", "333/0800"]);
+        saved.Single(account => account.AccountNumber == "333/0800").IsDefault.ShouldBe(true);
+
+        LineFor(result.OutputText, "333/0800").ShouldContain("default");
+        LineFor(result.OutputText, "111/0100").ShouldNotContain("default");
+    }
+
+    /// <summary>
+    /// The delete goes through the same guarded save as the update, so an account pinned by
+    /// payment data fails the same way: an actionable sentence for the user, the driver text on
+    /// the server only. A delete tool with a catch block of its own would leak that text to the
+    /// LLM provider — this test is what notices.
+    /// </summary>
+    [Fact]
+    public async Task DeleteBankAccountTool_WhenAnAccountIsPinnedByPayments_ExplainsWhyAndLogsTheDetails()
+    {
+        var thrown = ForeignKeyViolation();
+
+        var service = StubService(BuildIssuer(
+            BuildAccount(id: 1, accountNumber: "111/0100", isDefault: true),
+            BuildAccount(id: 2, accountNumber: "222/0300", isDefault: false)));
+        service.UpdateClientAsync(Arg.Any<long>(), Arg.Any<UpdateClientDto>(), Arg.Any<CancellationToken>())
+            .Returns<ClientDto?>(_ => throw thrown);
+
+        var logger = Substitute.For<ILogger<DeleteBankAccountTool>>();
+        var tool = new DeleteBankAccountTool(service, logger);
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, string>
+        {
+            ["bank_account_id"] = "2",
+            ["confirm"] = "true"
+        });
+
+        result.IsSuccess.ShouldBeFalse();
+        result.ErrorMessage.ShouldContain("payment data");
+        result.ErrorMessage!.ShouldNotContain("foreign key constraint");
+        result.ErrorMessage.ShouldNotContain("BankTransaction");
+
+        logger.Received(1).Log(
+            LogLevel.Error,
+            Arg.Any<EventId>(),
+            Arg.Any<object>(),
+            thrown,
+            Arg.Any<Func<object, Exception?, string>>());
+    }
+
+    /// <summary>
+    /// The company profile can disappear between the confirmation and the save (another session,
+    /// a removed tenant). The save reports it as a missing client, and the tool has to say the
+    /// delete did not happen — an upbeat answer here would be a deletion the user never got.
+    /// </summary>
+    [Fact]
+    public async Task DeleteBankAccountTool_WhenSaveReportsMissingClient_Fails()
+    {
+        var service = StubService(BuildIssuer(
+            BuildAccount(id: 1, accountNumber: "111/0100", isDefault: true),
+            BuildAccount(id: 2, accountNumber: "222/0300", isDefault: false)));
+        service.UpdateClientAsync(Arg.Any<long>(), Arg.Any<UpdateClientDto>(), Arg.Any<CancellationToken>())
+            .Returns((ClientDto?)null);
+
+        var tool = CreateDeleteAccountTool(service);
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, string>
+        {
+            ["bank_account_id"] = "2",
+            ["confirm"] = "true"
+        });
+
+        result.IsSuccess.ShouldBeFalse();
+        result.ErrorMessage.ShouldContain("no longer exists");
     }
 }
