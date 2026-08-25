@@ -875,7 +875,7 @@ jsou v `Fakvio.Functions/Tailscale/README.md`.
 |------|-----|-------------|
 | `develop` | `agent-ops` (automaticky při mergi feature PR) | Nenasazuje se nic — `develop` nemá deploy workflow. |
 | `/release` | **člověk** | Otevře promotion PR `develop → TEST-ENV`. **Po jeho mergnutí** se spustí oba testovací deploye (push na `TEST-ENV`). Karty na boardu se nehýbou. |
-| ověření na testu | **člověk** | Viz Známá omezení — bez DB jde ověřit jen deploy, dostupnost a CORS. |
+| ověření na testu | **člověk** | Test běží proti vlastní DB `fakvio_test` (viz „Jak je testovací databáze zapojená" výše) — ověřit lze přihlášení i běžný provoz, ne jen deploy a CORS. |
 | `/release-prod` — 1. běh | **člověk** po ověření testu | Otevře promotion PR `TEST-ENV → master` a skončí. Merge dělá člověk v GitHubu; merge nasadí produkci. **Karty se zatím nehýbou.** |
 | `/release-prod` — 2. běh | **člověk** po mergnutí release PR | Finalizace boardu: karty v `Implemented`, jejichž merge commit je ancestorem `master`, se přesunou do `Approved` (stejný test i pro story). Bez druhého běhu zůstane board viset v `Implemented`. |
 
