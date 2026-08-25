@@ -68,6 +68,13 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Změny pro vývojáře
 
+- **#293** — ADMINGUIDE má novou sekci §14 „Prostředí" popisující rozdíl mezi
+  testovacím a produkčním nasazením pro SysAdmina: kde která část běží (hosting,
+  URL, větev, deploy workflow, databáze), jak se liší App Settings (vlastní
+  `JwtSettings__Secret`, takže tokeny mezi prostředími nejsou přenosné, oddělené
+  CORS a connection string), jaké chování je na testu bez vlastní databáze
+  očekávané (401/503 z healthu, ne incident) a jak probíhá promotion přes
+  `/release` a `/release-prod` včetně rotace nasazovacích secrets. (PR #311, `91f6564`)
 - **#220** — AI chat asistent teď umí zobrazit i upravit nastavení vlastní firmy
   (název, DIČ, plátcovství DPH, jazyk dokumentů, sídlo) a spravovat bankovní účty —
   přidat, upravit i smazat. Každá změna se nejdřív ukáže k odsouhlasení a provede se,
