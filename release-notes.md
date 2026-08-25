@@ -63,6 +63,11 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Změny pro vývojáře
 
+- **#290** — Testovací prostředí `TEST-ENV` má teď vlastní deploy pro Azure Functions
+  backend: push do větve `TEST-ENV` nasadí `Fakvio.Functions` do samostatné aplikace
+  `zcloudinvoicingapi-test` (Flex Consumption, deployment slot tu není podporovaný),
+  produkční deploy z `master` zůstal beze změny. Umožňuje ověřit release proti testovacímu
+  backendu dřív, než jde na produkci. (PR #300, `dfab4a7`)
 - **#138** — Health endpoint teď hlásí, jaký režim přihlášení k databázi (`authMode`,
   `authModeSource`) skutečně používá — v obou hostech, API i Azure Functions, poprvé
   stejně (API dosud žádný health endpoint nemělo). Umožňuje ověřit rollout přepínatelné
