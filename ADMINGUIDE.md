@@ -1,4 +1,4 @@
-# Fakvio — Administrátorská příručka (ADMINGUIDE)
+﻿# Fakvio — Administrátorská příručka (ADMINGUIDE)
 
 > Průvodce pro SysAdmin roli. Vysvětluje **kde** a **jak** spravovat systém, tenanty, uživatele a infrastrukturu. Cílová skupina: systémový administrátor.
 >
@@ -839,7 +839,7 @@ Co z toho plyne pro provoz:
   nulu; při každém probuzení se tunel staví znovu. V Tailscale admin konzoli se proto objevují
   uzly `fakvio-func`, `fakvio-func-1`, … — jeden na instanci. Klíč je *ephemeral*, takže se
   po zhasnutí instance uklidí samy.
-- **Zdravý start** vypadá v logu takhle (kategorie `Fakvio.Functions.Tailscale`):
+- **Zdravý start** vypadá v logu takhle:
 
   ```text
   Tailscale: up OK (attempt 1)
@@ -847,6 +847,15 @@ Co z toho plyne pro provoz:
   Tailscale: target reachable (100.69.241.17:5544) after 1 attempt(s)
   Startup: master database migrated successfully
   ```
+
+  Řádky `Tailscale: …` se píšou i na standardní výstup workeru, takže v App Insights jsou
+  v `traces` pod kategorií `Host.Function.Console` (kategorie `Fakvio.*` tam zatím nedoletí —
+  issue #322). Dotaz: `traces | where message startswith "Tailscale:"`.
+- **Na jedné instanci může běžet víc worker procesů** a sdílejí jeden sandbox. Tunel staví
+  jen ten, který byl první; ostatní se přidají k němu a v logu je pak vidět
+  `Tailscale: tailscaled already running on 127.0.0.1:1055, reusing it`, případně
+  `Tailscale: forwarder port 15432 already served by another worker, reusing it`. **To je
+  normální stav, ne chyba** — databáze je dostupná pro všechny workery instance.
 
 - **Rychlé vypnutí (rollback):** smazat App Setting `TAILSCALE_AUTHKEY` a vrátit placeholder
   connection string (`Host=test-env-has-no-database.invalid;…`), pak restart. Redeploy není

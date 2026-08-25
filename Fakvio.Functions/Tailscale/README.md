@@ -1,4 +1,4 @@
-# Tailscale userspace tunel → privátní PostgreSQL
+﻿# Tailscale userspace tunel → privátní PostgreSQL
 
 Testovací Function App (`zcloudinvoicingapi-test`) se připojuje k vlastní PostgreSQL
 na Hostingeru, jejíž port **není ve veřejném internetu**. Cesta k ní vede přes tailnet.
@@ -27,6 +27,12 @@ Vše se spouští v `Fakvio.Functions/Program.cs`, **po `Build()`** (potřebujem
 `ILogger` a `IHostApplicationLifetime`) a **před migračním blokem** (to je první místo,
 kde aplikace otevře socket do databáze). `IHostedService` by byl pozdě — hostované
 služby startují až v `RunAsync()`, tedy až po migraci.
+
+Pořadí kroků je **probe-first**: nejdřív se zkusí, jestli už někdo neodpovídá na
+`127.0.0.1:1055`. Když ano, běží démon jiného workeru na téže instanci a tenhle worker
+**nesahá na binárky ani nespouští druhého démona** — jen zaloguje
+`Tailscale: tailscaled already running …` a pokračuje `tailscale up` (je idempotentní),
+forwarderem a probem. Proč to tak musí být, viz [Známá omezení](#6-známá-omezení-a-rizika).
 
 ```
 tailscaled --tun=userspace-networking --socks5-server=localhost:1055
@@ -136,9 +142,35 @@ Redeploy není potřeba — bez klíče je kód nečinný.
   child procesy, tunel se nepostaví, hostitel poběží dál a databáze bude nedostupná
   (health 401 bez tokenu, 503 s tokenem — viz část 2).
   Řešením je pak „Cesta A" (subnet router).
+- **Na jedné instanci běží víc worker procesů.** Flex Consumption škáluje worker procesy
+  uvnitř jedné instance (v traces se to pozná podle opakovaného `Host.Triggers.Warmup`).
+  Všechny sdílejí jeden sandbox, tedy i `/tmp` a loopback. Důsledky, se kterými kód počítá
+  (issue #321):
+  - Kopie do `/tmp/tsbin` se **přeskočí**, když tam soubor už je ve stejné délce. Přepis
+    souboru, který běžící `tailscaled` drží otevřený, Linux odmítne s `ETXTBSY`
+    (`System.IO.IOException: Text file busy`) — dřív to shodilo celý start tunelu **před**
+    spuštěním forwarderu a instance pak jela bez databáze.
+  - `IOException` při kopii, když cíl existuje, je jen `Warning` — spuštěný soubor je
+    z definice funkční binárka.
+  - Když `127.0.0.1:15432` už drží forwarder jiného workeru, `Socks5Forwarder.Start` vrátí
+    `null` a jen to zaloguje. Loopback je sdílený, takže connection string toho druhého
+    forwarderu využije i tenhle worker.
+  - `tailscale up` selhané v situaci, kdy SOCKS port žije, taky není fatální — uzel už
+    přihlásil ten, kdo démona spustil.
 - **Výstup `tailscaled` je na úrovni `Debug`**, takže při výchozí `Information` v
   `host.json` není vidět. Při ladění dočasně zvyš úroveň pro kategorii
   `Fakvio.Functions.Tailscale`.
+- **Worker `ILogger` do App Insights zatím nedoletí** — v `traces` jsou jen host kategorie
+  a `Host.Function.Console` (= stdout worker procesu), kategorie `Fakvio.*` chybí; viz
+  **issue #322**. Proto se milníky tunelu (`disabled`, `tailscaled already running`, `up OK`,
+  `forwarder …`, `target reachable`, `failed: …`) píšou **i na `Console.Out`** s prefixem
+  `Tailscale:`. V Azure se hledají takhle:
+
+  ```kusto
+  traces | where message startswith "Tailscale:" | order by timestamp desc
+  ```
+
+  Auth key se do těchhle řádků nikdy nedostane — výstup CLI je před logováním redigovaný.
 - **Balíček je o ~50 MB větší**, deploy je tedy o něco pomalejší.
 
 ## 7. Lokální ověření (WSL / Linux)

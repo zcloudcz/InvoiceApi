@@ -1,4 +1,4 @@
-// ============================================================================
+﻿// ============================================================================
 // TailscaleTunnel — brings up a userspace Tailscale node inside the Function
 // App sandbox and exposes the private PostgreSQL server as a plain local port.
 //
@@ -15,6 +15,13 @@
 // Without TAILSCALE_AUTHKEY the whole thing is inert: local development, the
 // production host and the unit tests never have the key, and must keep working
 // exactly as before. See Tailscale/README.md for setup, ACLs and known limits.
+//
+// WHY probe first: Flex Consumption runs several worker processes on one
+// instance and they share /tmp. The first worker copies the binaries and starts
+// the daemon; every later worker would overwrite a file the running daemon holds
+// open, which Linux answers with ETXTBSY ("Text file busy"). So the SOCKS port is
+// probed before anything is copied, and every step below tolerates a sibling
+// worker having done it already.
 // ============================================================================
 
 using System.Diagnostics;
@@ -56,6 +63,8 @@ public static class TailscaleTunnel
     // the executable bit is set.
     private const string BinDirectoryName = "tsbin";
     private const string RuntimeBinDirectory = "/tmp/tsbin";
+    private const string CliFileName = "tailscale";
+    private const string DaemonFileName = "tailscaled";
 
     // Everything below runs before the host serves its first request, so the whole sequence has one
     // hard ceiling. Worst case inside it: 3 × 30 s of 'tailscale up' plus 2 s + 4 s backoff ≈ 96 s,
@@ -96,7 +105,7 @@ public static class TailscaleTunnel
     {
         if (string.IsNullOrWhiteSpace(authKey))
         {
-            logger.LogInformation("Tailscale: {AuthKeyEnv} not set, tunnel disabled", AuthKeyEnv);
+            Milestone(logger, $"{AuthKeyEnv} not set, tunnel disabled");
             return false;
         }
 
@@ -106,14 +115,68 @@ public static class TailscaleTunnel
         budget.CancelAfter(StartupBudget);
 
         var target = ResolveTarget();
-        var (tailscalePath, tailscaledPath) = PrepareBinaries();
+        var (tailscalePath, daemon, alreadyRunning) = await EnsureDaemonAsync(SocksPort, lifetime, logger);
 
-        var daemon = await StartDaemonIfNeededAsync(tailscaledPath, lifetime, logger);
-        await RunUpAsync(tailscalePath, authKey, daemon, logger, budget.Token);
+        try
+        {
+            await RunUpAsync(tailscalePath, authKey, daemon, logger, budget.Token);
+        }
+        catch (Exception ex)
+        {
+            // 'tailscale up' is idempotent, so when another worker already authenticated the node our
+            // call adds nothing — and its failure (a busy socket, a CLI that never got copied) must not
+            // cost us the forwarder. Re-probe instead of trusting the flag: this worker may also have
+            // lost the race *after* the first probe, spawning a daemon that then failed to bind 1055.
+            if (!alreadyRunning && !await IsSocksPortOpenAsync(SocksPort))
+            {
+                throw;
+            }
+
+            Milestone(logger, $"up skipped, daemon owned by another worker: {ex.Message}", LogLevel.Warning);
+        }
 
         Socks5Forwarder.Start(ListenPort, SocksPort, target.Address, target.Port, logger);
         await ProbeTargetAsync(target, logger, budget.Token);
         return true;
+    }
+
+    /// <summary>
+    /// Writes one tunnel milestone to the logger and to stdout. Both on purpose: worker
+    /// <c>ILogger</c> categories do not reach App Insights today (see the follow-up issue linked from
+    /// Tailscale/README.md §6), while stdout arrives as <c>Host.Function.Console</c> — without this
+    /// line the tunnel is undiagnosable in Azure. Callers never pass the auth key in
+    /// <paramref name="message"/>.
+    /// </summary>
+    internal static void Milestone(ILogger logger, string message, LogLevel level = LogLevel.Information)
+    {
+        logger.Log(level, "Tailscale: {Milestone}", message);
+        Console.Out.WriteLine($"Tailscale: {message}");
+    }
+
+    /// <summary>
+    /// Makes sure a daemon is available and returns the CLI path used to talk to it, the daemon
+    /// process this worker owns (null when it owns none) and whether a sibling worker got there first.
+    /// The SOCKS probe runs <em>before</em> any binary is touched — copying over a file the running
+    /// daemon executes is exactly what throws 'Text file busy'.
+    /// </summary>
+    // Internal with an injectable prepare step so the probe-first order can be pinned by a test
+    // without a tailnet, a /tmp directory or a child process.
+    internal static async Task<(string TailscalePath, Process? Daemon, bool AlreadyRunning)> EnsureDaemonAsync(
+        int socksPort,
+        IHostApplicationLifetime lifetime,
+        ILogger logger,
+        Func<(string TailscalePath, string TailscaledPath)>? prepareBinaries = null)
+    {
+        if (await IsSocksPortOpenAsync(socksPort))
+        {
+            // Whoever started that daemon also copied the CLI to the shared /tmp directory, so the
+            // path is known without touching a single file here.
+            Milestone(logger, $"tailscaled already running on 127.0.0.1:{socksPort}, reusing it");
+            return (Path.Combine(RuntimeBinDirectory, CliFileName), null, true);
+        }
+
+        var (tailscalePath, tailscaledPath) = (prepareBinaries ?? (() => PrepareBinaries(logger)))();
+        return (tailscalePath, StartDaemon(tailscaledPath, lifetime, logger), false);
     }
 
     /// <summary>Reads the target from the environment, falling back to the known database node.</summary>
@@ -148,50 +211,79 @@ public static class TailscaleTunnel
     /// Copies both binaries next to /tmp and marks them executable. The build output may sit on a
     /// read-only package mount, where chmod is not an option.
     /// </summary>
-    private static (string TailscalePath, string TailscaledPath) PrepareBinaries()
+    private static (string TailscalePath, string TailscaledPath) PrepareBinaries(ILogger logger)
     {
         var sourceDirectory = Path.Combine(AppContext.BaseDirectory, BinDirectoryName);
         Directory.CreateDirectory(RuntimeBinDirectory);
 
-        return (CopyExecutable(sourceDirectory, "tailscale"), CopyExecutable(sourceDirectory, "tailscaled"));
+        return (CopyExecutable(sourceDirectory, RuntimeBinDirectory, CliFileName, logger),
+                CopyExecutable(sourceDirectory, RuntimeBinDirectory, DaemonFileName, logger));
     }
 
-    private static string CopyExecutable(string sourceDirectory, string fileName)
+    /// <summary>
+    /// Puts one binary into the runtime directory, tolerating a copy a sibling worker made first.
+    /// Only a destination that does not exist at all is fatal — see the two comments inside.
+    /// </summary>
+    // Internal so the "identical file is left alone" rule can be tested against a temp directory.
+    internal static string CopyExecutable(string sourceDirectory, string destinationDirectory, string fileName, ILogger logger)
     {
-        var source = Path.Combine(sourceDirectory, fileName);
-        if (!File.Exists(source))
+        var source = new FileInfo(Path.Combine(sourceDirectory, fileName));
+        if (!source.Exists)
         {
             throw new FileNotFoundException(
                 $"Tailscale binary '{fileName}' is missing from '{sourceDirectory}'. " +
                 "It is fetched by the 'Download Tailscale binaries' step in the deploy workflow — " +
-                "see Fakvio.Functions/Tailscale/README.md.", source);
+                "see Fakvio.Functions/Tailscale/README.md.", source.FullName);
         }
 
-        var destination = Path.Combine(RuntimeBinDirectory, fileName);
-        File.Copy(source, destination, overwrite: true);
+        var destination = new FileInfo(Path.Combine(destinationDirectory, fileName));
 
+        // Same name and same length = the copy another worker in this sandbox already made from the
+        // very same package. Rewriting it buys nothing and risks ETXTBSY, so it is skipped outright.
+        if (!destination.Exists || destination.Length != source.Length)
+        {
+            try
+            {
+                File.Copy(source.FullName, destination.FullName, overwrite: true);
+            }
+            catch (IOException ex) when (destination.Exists)
+            {
+                // 'Text file busy': the destination is being executed right now, which also means it
+                // is a working binary — keep it and carry on. Before this, the exception aborted the
+                // whole bring-up before the forwarder even started (issue #321).
+                logger.LogWarning(ex, "Tailscale: {FileName} is in use, keeping the copy already in {Directory}",
+                    fileName, destinationDirectory);
+            }
+        }
+
+        EnsureExecutable(destination.FullName);
+        return destination.FullName;
+    }
+
+    /// <summary>Sets the executable bit only when it is missing — chmod on a file another worker is running is pointless work.</summary>
+    private static void EnsureExecutable(string path)
+    {
         // The tunnel only ever runs on the Linux Function App, but the same assembly is compiled on
         // Windows dev machines where SetUnixFileMode is not supported — hence the guard.
-        if (!OperatingSystem.IsWindows())
+        if (OperatingSystem.IsWindows())
         {
-            File.SetUnixFileMode(destination, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            return;
         }
 
-        return destination;
+        const UnixFileMode required = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
+        var mode = File.GetUnixFileMode(path);
+        if ((mode & required) != required)
+        {
+            File.SetUnixFileMode(path, mode | required);
+        }
     }
 
     /// <summary>
-    /// Starts tailscaled unless something is already answering on the SOCKS5 port. Returns null when
-    /// the daemon was already running (nothing for us to supervise in that case).
+    /// Launches tailscaled and ties its lifetime to the host's. The caller has already established
+    /// that nothing answers on the SOCKS port, so this always spawns.
     /// </summary>
-    private static async Task<Process?> StartDaemonIfNeededAsync(string tailscaledPath, IHostApplicationLifetime lifetime, ILogger logger)
+    private static Process StartDaemon(string tailscaledPath, IHostApplicationLifetime lifetime, ILogger logger)
     {
-        if (await IsSocksPortOpenAsync())
-        {
-            logger.LogInformation("Tailscale: daemon already listening on 127.0.0.1:{SocksPort}, reusing it", SocksPort);
-            return null;
-        }
-
         var daemon = StartProcess(tailscaledPath, TailscaledArguments);
 
         // Debug level: the daemon is chatty and its lines only matter while diagnosing the tunnel.
@@ -216,12 +308,12 @@ public static class TailscaleTunnel
         }
     }
 
-    private static async Task<bool> IsSocksPortOpenAsync()
+    private static async Task<bool> IsSocksPortOpenAsync(int socksPort)
     {
         try
         {
             using var probe = new TcpClient();
-            await probe.ConnectAsync(IPAddress.Loopback, SocksPort).WaitAsync(TimeSpan.FromSeconds(1));
+            await probe.ConnectAsync(IPAddress.Loopback, socksPort).WaitAsync(TimeSpan.FromSeconds(1));
             return true;
         }
         catch (Exception)
@@ -255,7 +347,7 @@ public static class TailscaleTunnel
             var (exitCode, output) = await RunToCompletionAsync(tailscalePath, UpArguments(authKey), authKey, cancellationToken);
             if (exitCode == 0)
             {
-                logger.LogInformation("Tailscale: up OK (attempt {Attempt})", attempt);
+                Milestone(logger, $"up OK (attempt {attempt})");
                 return;
             }
 
@@ -352,8 +444,7 @@ public static class TailscaleTunnel
                 timeout.CancelAfter(ProbeTimeout);
                 using var connection = await Socks5Forwarder.ConnectViaSocksAsync(
                     SocksPort, target.Address, target.Port, timeout.Token);
-                logger.LogInformation("Tailscale: target reachable ({Target}:{Port}) after {Attempt} attempt(s)",
-                    target.Address, target.Port, attempt);
+                Milestone(logger, $"target reachable ({target.Address}:{target.Port}) after {attempt} attempt(s)");
                 return;
             }
             catch (Exception ex)

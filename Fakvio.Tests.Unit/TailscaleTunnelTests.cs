@@ -1,4 +1,4 @@
-// ============================================================================
+﻿// ============================================================================
 // TailscaleTunnelTests — what can be checked about the tunnel without a tailnet,
 // a network or a child process.
 //
@@ -13,8 +13,13 @@
 // 4. Rejection of an unusable target: host and port come from App Settings, and
 //    both are validated before any binary is touched, so these cases stay
 //    process-free too.
+// 5. The order of the bring-up and the tolerance of the binary copy — the two
+//    halves of issue #321, where a second worker process on the same instance
+//    overwrote a binary the first one was running and got 'Text file busy'.
 // ============================================================================
 
+using System.Net;
+using System.Net.Sockets;
 using Fakvio.Functions.Tailscale;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -153,6 +158,76 @@ public class TailscaleTunnelTests
         TailscaleTunnel.ListenPort.ShouldBe(15432);
         TailscaleTunnel.SocksPort.ShouldBe(1055);
         TailscaleTunnel.AuthKeyEnv.ShouldBe("TAILSCALE_AUTHKEY");
+    }
+
+    [Fact]
+    public async Task ProbesSocksPortBeforeTouchingAnyBinary()
+    {
+        // A bare listener stands in for a sibling worker's tailscaled: all this test needs is
+        // "something answers on the SOCKS port", which is exactly what the probe checks.
+        using var siblingDaemon = new TcpListener(IPAddress.Loopback, 0);
+        siblingDaemon.Start();
+        var socksPort = ((IPEndPoint)siblingDaemon.LocalEndpoint).Port;
+
+        var (tailscalePath, daemon, alreadyRunning) = await TailscaleTunnel.EnsureDaemonAsync(
+            socksPort,
+            Substitute.For<IHostApplicationLifetime>(),
+            NullLogger.Instance,
+            // Copying is what used to throw 'Text file busy' here — it must not even be attempted.
+            prepareBinaries: () => throw new IOException("Text file busy : '/tmp/tsbin/tailscaled'"));
+
+        alreadyRunning.ShouldBeTrue();
+        // Nothing to supervise: the daemon belongs to the worker that started it.
+        daemon.ShouldBeNull();
+        // The CLI still has to be addressable — the sibling worker left it in the shared directory.
+        tailscalePath.ShouldContain("tsbin");
+        tailscalePath.ShouldEndWith("tailscale");
+    }
+
+    [Fact]
+    public void CopyExecutableKeepsAnIdenticallySizedFileThatIsAlreadyThere()
+    {
+        using var directories = new TempDirectoryScope();
+        var running = new byte[] { 9, 9, 9, 9 };
+        File.WriteAllBytes(Path.Combine(directories.Source, "tailscaled"), new byte[] { 1, 2, 3, 4 });
+        var destination = Path.Combine(directories.Destination, "tailscaled");
+        File.WriteAllBytes(destination, running);
+
+        var result = TailscaleTunnel.CopyExecutable(
+            directories.Source, directories.Destination, "tailscaled", NullLogger.Instance);
+
+        result.ShouldBe(destination);
+        // Same length = the copy another worker already made from the same package. Overwriting it
+        // is what a running daemon answers with ETXTBSY, so the bytes must be left untouched.
+        File.ReadAllBytes(destination).ShouldBe(running);
+    }
+
+    [Fact]
+    public void CopyExecutableRefreshesAFileOfADifferentLength()
+    {
+        // The counterpart of the test above: skipping is keyed on the length, so a destination left
+        // over from an older deploy still gets replaced.
+        using var directories = new TempDirectoryScope();
+        var deployed = new byte[] { 1, 2, 3, 4, 5 };
+        File.WriteAllBytes(Path.Combine(directories.Source, "tailscale"), deployed);
+        var destination = Path.Combine(directories.Destination, "tailscale");
+        File.WriteAllBytes(destination, new byte[] { 7, 7 });
+
+        TailscaleTunnel.CopyExecutable(directories.Source, directories.Destination, "tailscale", NullLogger.Instance);
+
+        File.ReadAllBytes(destination).ShouldBe(deployed);
+    }
+
+    /// <summary>Source and destination directory for one copy test, removed afterwards.</summary>
+    private sealed class TempDirectoryScope : IDisposable
+    {
+        private readonly DirectoryInfo _root = Directory.CreateTempSubdirectory("fakvio-tsbin");
+
+        public string Source => Directory.CreateDirectory(Path.Combine(_root.FullName, "package")).FullName;
+
+        public string Destination => Directory.CreateDirectory(Path.Combine(_root.FullName, "runtime")).FullName;
+
+        public void Dispose() => _root.Delete(recursive: true);
     }
 
     /// <summary>
