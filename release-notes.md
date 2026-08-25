@@ -22,6 +22,7 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Změny pro vývojáře
 
+- **#217** — AI asistent v chatu teď zvládne celý životní cyklus vydané faktury: zobrazit detail, vystavit koncept, označit jako zaplacenou, poslat e-mailem nebo smazat koncept. Každá z těchto změn se napřed ukáže k odsouhlasení, teprve pak se provede. Export faktury navíc nově umí kromě PDF i formát ISDOC. (PR #280, `26b284d`)
 - **e2e** — nová kategorie Playwright testů `Deployment` ověřuje nasazené prostředí tam, kde lokální běh nestačí: zapečená API URL v bundlu, deep link místo 404, CORS preflight z prohlížeče, dosažitelnost DB z nasazeného hostu a vizuální označení neprodukčního prostředí. Bez `FAKVIO_UI_URL` na https se přeskočí. (PR #335, #336)
 
 ## 2026.08.25.7 — 2026-08-25
