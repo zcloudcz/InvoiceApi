@@ -93,12 +93,30 @@ public class Socks5ForwarderTests
         forwarder.LocalEndPoint.Address.ShouldBe(IPAddress.Loopback);
     }
 
-    private static Socks5Forwarder StartForwarder(FakeSocks5Server socks) => Socks5Forwarder.Start(
+    [Fact]
+    public async Task ClosesClientConnection_WhenProxyAcceptsButNeverAnswers()
+    {
+        // The nastiest failure mode: the proxy takes the connection and then goes mute. Without a
+        // deadline on the handshake both sockets would stay open forever, and a connection pool
+        // retrying into that is how a sandbox runs out of file descriptors. Deadline shortened to
+        // 500 ms here — the production value is 15 s, which is a deadline, not a test budget.
+        using var socks = new FakeSocks5Server(silent: true);
+        var forwarder = StartForwarder(socks, negotiationTimeout: TimeSpan.FromMilliseconds(500));
+
+        using var client = new TcpClient();
+        await client.ConnectAsync(IPAddress.Loopback, forwarder.Port);
+
+        (await ReadOneByteAsync(client)).ShouldBe(0, "the forwarder should have given up on the mute proxy");
+    }
+
+    private static Socks5Forwarder StartForwarder(FakeSocks5Server socks, TimeSpan? negotiationTimeout = null) => Socks5Forwarder.Start(
         listenPort: 0, // OS-assigned: never collides with a real deployment or a parallel test.
         socksPort: socks.Port,
         target: TargetAddress,
         targetPort: TargetPort,
-        logger: NullLogger.Instance);
+        logger: NullLogger.Instance,
+        // Default keeps the other tests on the production deadline; they never reach it.
+        negotiationTimeout: negotiationTimeout ?? TimeSpan.FromSeconds(15));
 
     /// <summary>Reads a single byte, returning 0 when the peer closed (gracefully or by reset) instead.</summary>
     private static async Task<int> ReadOneByteAsync(TcpClient client)
@@ -146,14 +164,17 @@ public class Socks5ForwarderTests
         private readonly TcpListener _listener;
         private readonly byte _replyAddressType;
         private readonly byte _replyCode;
+        private readonly bool _silent;
         private int _connectCount;
 
         /// <param name="replyAddressType">Address type of the bound address in the CONNECT reply (ATYP).</param>
         /// <param name="replyCode">Reply code (REP); anything but 0 means the proxy refused.</param>
-        public FakeSocks5Server(byte replyAddressType = AddrTypeIPv4, byte replyCode = ReplySucceeded)
+        /// <param name="silent">When true the server accepts the connection and never answers a single byte.</param>
+        public FakeSocks5Server(byte replyAddressType = AddrTypeIPv4, byte replyCode = ReplySucceeded, bool silent = false)
         {
             _replyAddressType = replyAddressType;
             _replyCode = replyCode;
+            _silent = silent;
             _listener = new TcpListener(IPAddress.Loopback, 0);
             _listener.Start();
             _ = AcceptLoopAsync();
@@ -205,6 +226,18 @@ public class Socks5ForwarderTests
             using (client)
             {
                 var stream = client.GetStream();
+
+                if (_silent)
+                {
+                    // Swallow whatever arrives and answer nothing — never close either, otherwise
+                    // the forwarder would give up on the EOF instead of on its own deadline.
+                    var sink = new byte[256];
+                    while (await stream.ReadAsync(sink) > 0)
+                    {
+                    }
+
+                    return;
+                }
 
                 // Greeting must be exactly "version 5, one method, no authentication".
                 var greeting = new byte[3];

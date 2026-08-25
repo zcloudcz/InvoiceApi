@@ -22,6 +22,12 @@
     <Compile Remove="Generated/**" />
   </ItemGroup>
 
+  <!-- Allow the test project to reach internal members (Redact, the Start overload with an
+       explicit handshake deadline) — same arrangement as Fakvio.Infrastructure. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Fakvio.Tests.Unit" />
+  </ItemGroup>
+
   <!-- Azure Functions Isolated Worker packages — timer triggers + HTTP triggers -->
   <ItemGroup>
     <!-- IMPORTANT: v3.0.0 crashes Azure Functions with TypeLoadException (ITelemetryInitializer).

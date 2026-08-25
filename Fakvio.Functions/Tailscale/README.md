@@ -96,8 +96,11 @@ a **stejný přepínač musí nést i každé volání CLI**, jinak mluví na ji
    }
    ```
 
-4. Na databázovém serveru musí `pg_hba.conf` pouštět tailnet rozsah `100.64.0.0/10`
-   (běžně už nastaveno — viz `SELFHOST-DB.md`).
+4. Na databázovém serveru musí `pg_hba.conf` pouštět tailnet rozsah `100.64.0.0/10` —
+   a to řádkem svázaným s dvojicí role/databáze (`host fakvio_test fakvio_test 100.64.0.0/10
+   scram-sha-256`), ne širokým `host all all`. Právě tenhle řádek spolu s
+   `REVOKE CONNECT … FROM PUBLIC` odděluje přihlášení do testu od produkce — přesné příkazy
+   a ověření jsou v `SELFHOST-DB.md` §7.
 
 ## 5. App Settings
 

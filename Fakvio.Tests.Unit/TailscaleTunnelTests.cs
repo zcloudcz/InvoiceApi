@@ -1,6 +1,6 @@
 // ============================================================================
-// TailscaleTunnelTests — the two things about the tunnel that can be checked
-// without a tailnet, a network or a child process.
+// TailscaleTunnelTests — what can be checked about the tunnel without a tailnet,
+// a network or a child process.
 //
 // 1. No auth key = no tunnel. Local development, the production host and this
 //    very test run all lack the key, so any accidental side effect on that path
@@ -8,6 +8,8 @@
 // 2. The command-line arguments. They are the whole configuration of the tunnel
 //    and a single wrong flag fails only in Azure, minutes into a deploy —
 //    pinning them here turns that into a red test.
+// 3. Redaction of the auth key from the CLI output, which is the one string that
+//    travels from the child process straight into a log line.
 // ============================================================================
 
 using Fakvio.Functions.Tailscale;
@@ -81,6 +83,33 @@ public class TailscaleTunnelTests
         // --socket must repeat on the CLI call, otherwise it talks to the default path and hangs.
         TailscaleTunnel.UpArguments("tskey-x").ShouldBe(
             "--socket=/tmp/tailscaled.sock up --authkey=tskey-x --hostname=fakvio-func --accept-dns=false --timeout=30s");
+    }
+
+    [Theory]
+    // The shapes 'tailscale up' actually produces when it complains: the key quoted back inside a
+    // message, twice in one blob (stdout + stderr are merged), and as the bare argument echo.
+    [InlineData("backend error: invalid key: tskey-auth-secret123")]
+    [InlineData("invalid key tskey-auth-secret123\nup: failed with tskey-auth-secret123")]
+    [InlineData("tskey-auth-secret123")]
+    public void RedactsAuthKeyFromProcessOutput(string output)
+    {
+        // Whatever the CLI prints ends up in a log line ('up failed on attempt … {Output}'), so the
+        // key must be gone before the string leaves RunToCompletionAsync. App Insights keeps logs
+        // for 90 days; a key that lands there is a key that has to be rotated.
+        const string authKey = "tskey-auth-secret123";
+
+        var redacted = TailscaleTunnel.Redact(output, authKey);
+
+        redacted.ShouldNotContain(authKey);
+        redacted.ShouldContain("<redacted>");
+    }
+
+    [Fact]
+    public void RedactLeavesOutputAloneWhenNoKeyIsConfigured()
+    {
+        // The disabled-tunnel path passes an empty secret; replacing "" would otherwise splice the
+        // marker between every character of the output.
+        TailscaleTunnel.Redact("nothing secret here", string.Empty).ShouldBe("nothing secret here");
     }
 
     [Fact]

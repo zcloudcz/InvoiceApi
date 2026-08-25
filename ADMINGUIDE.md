@@ -802,9 +802,16 @@ variables), ne ve workflow souborech. Zápis používá dvojité podtržítko m�
 ### Jak je testovací databáze zapojená
 
 Testovací databáze je **vlastní PostgreSQL na privátním serveru** (databáze `fakvio_test`,
-uživatel `fakvio_test`). **Role je per prostředí** — `fakvio_test` má přístup jen k databázi
-`fakvio_test`, produkční `fakvio_prod` jen k `fakvio_prod`; jedno uniklé heslo tak nikdy
-neotevře obě databáze. Port serveru **není ve veřejném internetu** — server je dostupný jen uvnitř
+uživatel `fakvio_test`). **Role je per prostředí** — do `fakvio_test` se přihlašuje jen role
+`fakvio_test`, do produkční `fakvio_prod` jen `fakvio_prod`. Tohle oddělení ale **nevzniká
+samo založením databáze**: PostgreSQL dává právo `CONNECT` implicitně roli `PUBLIC`, takže
+hranici staví teprve explicitní `REVOKE CONNECT … FROM PUBLIC` (plus `GRANT CONNECT` té jedné
+roli) a odpovídající řádek v `pg_hba.conf` — přesné příkazy i ověření jsou v `SELFHOST-DB.md`
+§7. **S nimi** se držitel testovacího hesla do produkční databáze nepřihlásí (`FATAL:
+permission denied for database "fakvio_prod"`), tedy nepřečte ani její katalog. **Bez nich**
+se přihlásí — aplikační data sice neuvidí (ta chrání vlastnictví tabulek), ale jména schémat,
+tabulek a sloupců si přečte. Při zakládání dalšího prostředí to proto zkontroluj.
+Port serveru **není ve veřejném internetu** — server je dostupný jen uvnitř
 privátní sítě Tailscale. Function App se do té sítě připojuje sám: při startu spustí
 Tailscale v uživatelském režimu a vystaví databázi jako **lokální port `127.0.0.1:15432`**.
 Proto connection string v tabulce výš míří na `127.0.0.1`.

@@ -304,7 +304,8 @@ public static class TailscaleTunnel
     }
 
     /// <summary>Replaces the auth key with a marker, so no log line or exception message can carry it.</summary>
-    private static string Redact(string text, string secret) =>
+    // Internal, not private, so the test can pin this contract without spawning a child process.
+    internal static string Redact(string text, string secret) =>
         string.IsNullOrEmpty(secret) ? text : text.Replace(secret, "<redacted>", StringComparison.Ordinal);
 
     private static Process StartProcess(string fileName, string arguments)

@@ -34,7 +34,7 @@ public sealed class Socks5Forwarder
     private const byte ReplySucceeded = 0x00;
 
     // A stuck SOCKS5 endpoint must not park a socket pair forever — see HandleAsync.
-    private static readonly TimeSpan NegotiationTimeout = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan DefaultNegotiationTimeout = TimeSpan.FromSeconds(15);
 
     // Breathing room after a failed accept(), so a broken listener cannot spin the CPU.
     private static readonly TimeSpan AcceptRetryDelay = TimeSpan.FromSeconds(1);
@@ -49,8 +49,9 @@ public sealed class Socks5Forwarder
     private readonly IPAddress _target;
     private readonly int _targetPort;
     private readonly ILogger _logger;
+    private readonly TimeSpan _negotiationTimeout;
 
-    private Socks5Forwarder(TcpListener listener, int socksPort, IPAddress target, int targetPort, ILogger logger)
+    private Socks5Forwarder(TcpListener listener, int socksPort, IPAddress target, int targetPort, ILogger logger, TimeSpan negotiationTimeout)
     {
         _listener = listener;
         // Remembered once, at construction: reading LocalEndpoint later (typically from a catch
@@ -60,6 +61,7 @@ public sealed class Socks5Forwarder
         _target = target;
         _targetPort = targetPort;
         _logger = logger;
+        _negotiationTimeout = negotiationTimeout;
     }
 
     /// <summary>Address and port the forwarder actually bound to (the port differs from the requested one only when 0 was asked for).</summary>
@@ -76,13 +78,22 @@ public sealed class Socks5Forwarder
     // the process does. Add IDisposable / CancellationToken plumbing only if something ever needs
     // to restart the tunnel without restarting the worker.
     public static Socks5Forwarder Start(int listenPort, int socksPort, IPAddress target, int targetPort, ILogger logger)
+        => Start(listenPort, socksPort, target, targetPort, logger, DefaultNegotiationTimeout);
+
+    /// <summary>
+    /// Same as <see cref="Start(int, int, IPAddress, int, ILogger)"/>, only with the handshake
+    /// deadline spelled out. Internal because nothing but the test needs it: proving the deadline
+    /// exists would otherwise cost 15 s of real waiting per run.
+    /// </summary>
+    internal static Socks5Forwarder Start(
+        int listenPort, int socksPort, IPAddress target, int targetPort, ILogger logger, TimeSpan negotiationTimeout)
     {
         // Loopback only. This endpoint is an unauthenticated door into the tailnet — it must never
         // be reachable from outside the sandbox.
         var listener = new TcpListener(IPAddress.Loopback, listenPort);
         listener.Start();
 
-        var forwarder = new Socks5Forwarder(listener, socksPort, target, targetPort, logger);
+        var forwarder = new Socks5Forwarder(listener, socksPort, target, targetPort, logger, negotiationTimeout);
         _ = forwarder.AcceptLoopAsync();
 
         logger.LogInformation(
@@ -247,7 +258,7 @@ public sealed class Socks5Forwarder
     /// </summary>
     private async Task<TcpClient> ConnectUpstreamAsync()
     {
-        using var negotiation = new CancellationTokenSource(NegotiationTimeout);
+        using var negotiation = new CancellationTokenSource(_negotiationTimeout);
         return await ConnectViaSocksAsync(_socksPort, _target, _targetPort, negotiation.Token);
     }
 
