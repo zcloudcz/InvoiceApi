@@ -10,6 +10,9 @@
 //    pinning them here turns that into a red test.
 // 3. Redaction of the auth key from the CLI output, which is the one string that
 //    travels from the child process straight into a log line.
+// 4. Rejection of an unusable target: host and port come from App Settings, and
+//    both are validated before any binary is touched, so these cases stay
+//    process-free too.
 // ============================================================================
 
 using Fakvio.Functions.Tailscale;
@@ -45,27 +48,56 @@ public class TailscaleTunnelTests
         started.ShouldBeFalse();
     }
 
-    [Fact]
-    public async Task RejectsNonIPv4Target()
+    [Theory]
+    // IPv6 literal: its 16 address bytes do not fit the 4-byte address field of the CONNECT request.
+    [InlineData("fd7a:115c:a1e0::1")]
+    // MagicDNS name: userspace mode does not wire the daemon's resolver into this process, so a name
+    // can never be resolved here — and it is the mistake an operator is most likely to make.
+    [InlineData("fakvio-db-server")]
+    // Host and port pasted into one setting instead of two.
+    [InlineData("100.69.241.17:5544")]
+    public async Task RejectsTargetHostThatIsNotAnIPv4Literal(string host)
     {
-        // The SOCKS5 CONNECT this code sends carries a 4-byte address, so an IPv6 target cannot
-        // work. It has to be refused here, at the boundary: further in it would only show up once
-        // per connection, as a debug log, behind a misleading "target not reachable" warning.
-        var original = Environment.GetEnvironmentVariable(TailscaleTunnel.TargetHostEnv);
-        Environment.SetEnvironmentVariable(TailscaleTunnel.TargetHostEnv, "fd7a:115c:a1e0::1");
-        try
-        {
-            var exception = await Should.ThrowAsync<InvalidOperationException>(
-                () => TailscaleTunnel.StartIfConfiguredAsync(
-                    "tskey-x", Substitute.For<IHostApplicationLifetime>(), NullLogger.Instance));
+        // It has to be refused here, at the boundary: further in it would only show up once per
+        // connection, as a debug log, behind a misleading "target not reachable" warning.
+        using var _ = new EnvironmentVariableScope(TailscaleTunnel.TargetHostEnv, host);
 
-            exception.Message.ShouldContain("IPv4");
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable(TailscaleTunnel.TargetHostEnv, original);
-        }
+        var exception = await StartTunnelAndCaptureFailureAsync();
+
+        exception.Message.ShouldContain("IPv4");
+        exception.Message.ShouldContain(TailscaleTunnel.TargetHostEnv);
+        // The rejected value belongs in the message — an operator reading the Azure log has no
+        // other way to see what the App Setting actually contained.
+        exception.Message.ShouldContain(host);
     }
+
+    [Theory]
+    [InlineData("abc")]     // Not a number at all.
+    [InlineData("0")]       // Port 0 means "any free port", which is meaningless for a target.
+    [InlineData("70000")]   // Above the 16-bit range.
+    [InlineData("-1")]
+    public async Task RejectsTargetPortOutsideTheValidRange(string port)
+    {
+        // An unusable port must fail with a message naming the setting. Without the range check the
+        // value would reach IPEndPoint, whose ArgumentOutOfRangeException names 'port', not the
+        // App Setting the operator has to fix.
+        using var _ = new EnvironmentVariableScope(TailscaleTunnel.TargetPortEnv, port);
+
+        var exception = await StartTunnelAndCaptureFailureAsync();
+
+        exception.Message.ShouldContain(TailscaleTunnel.TargetPortEnv);
+        exception.Message.ShouldContain(port);
+    }
+
+    /// <summary>
+    /// Starts the tunnel with a dummy key and returns the configuration failure it throws. Safe to
+    /// call: target validation runs before any binary is touched or any process is started, so this
+    /// never leaves the test process.
+    /// </summary>
+    private static Task<InvalidOperationException> StartTunnelAndCaptureFailureAsync() =>
+        Should.ThrowAsync<InvalidOperationException>(
+            () => TailscaleTunnel.StartIfConfiguredAsync(
+                "tskey-x", Substitute.For<IHostApplicationLifetime>(), NullLogger.Instance));
 
     [Fact]
     public void BuildsExpectedDaemonArguments()
@@ -121,5 +153,24 @@ public class TailscaleTunnelTests
         TailscaleTunnel.ListenPort.ShouldBe(15432);
         TailscaleTunnel.SocksPort.ShouldBe(1055);
         TailscaleTunnel.AuthKeyEnv.ShouldBe("TAILSCALE_AUTHKEY");
+    }
+
+    /// <summary>
+    /// Sets an environment variable for the duration of one test and puts the original value back
+    /// afterwards, so a failed assertion cannot leak configuration into the next test.
+    /// </summary>
+    private sealed class EnvironmentVariableScope : IDisposable
+    {
+        private readonly string _name;
+        private readonly string? _originalValue;
+
+        public EnvironmentVariableScope(string name, string? value)
+        {
+            _name = name;
+            _originalValue = Environment.GetEnvironmentVariable(name);
+            Environment.SetEnvironmentVariable(name, value);
+        }
+
+        public void Dispose() => Environment.SetEnvironmentVariable(_name, _originalValue);
     }
 }
