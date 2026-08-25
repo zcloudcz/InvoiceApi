@@ -833,6 +833,56 @@ public class ChatToolExecutorTests
         result.IsSuccess.ShouldBeFalse();
         result.ErrorMessage.ShouldContain("confirm");
         result.ErrorMessage.ShouldContain("boolean");
+
+        // Review round 1 (B1), door 3 of the invariant: nothing ran, so the result must say so.
+        // "ano" is the case DEVGUIDE §4.7 names by hand, and a Czech user says exactly that —
+        // without the flag ChatService tells the model that delete_invoice "was executed".
+        result.RequiresConfirmation.ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// Review round 1 (B1): the half-fix guard. Merely computing the confirm gate before the
+    /// validation would fix the case above and leave this one broken — here <c>confirm</c> parses
+    /// as true, so the gate flag is false, yet the call still dies in validation and never
+    /// reaches the write. The flag is keyed on "confirmable tool", not on the gate.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteToolAsync_MarksCallAsNotExecuted_WhenConfirmedCallFailsValidation()
+    {
+        var tool = CreateConfirmableTool();
+        var executor = CreateExecutor(tool);
+
+        // confirm=true, but the required 'value' parameter is missing.
+        var result = await executor.ExecuteToolAsync(new ParsedToolCall
+        {
+            Action = "update_settings",
+            Parameters = new Dictionary<string, string> { ["confirm"] = "true" }
+        });
+
+        result.IsSuccess.ShouldBeFalse();
+        result.ErrorMessage.ShouldContain("missing required parameter 'value'");
+        result.RequiresConfirmation.ShouldBeTrue();
+        await tool.DidNotReceive().ExecuteAsync(
+            Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>());
+        await tool.DidNotReceive().BuildPreviewAsync(
+            Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The counterweight: the widened flag must not leak onto ordinary read-only tools. A
+    /// non-confirmable tool has no write to hold back, so a validation failure there is just a
+    /// failure — flipping it would make ChatService announce a preview nobody can approve.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteToolAsync_LeavesFlagOff_WhenANonConfirmableToolFailsValidation()
+    {
+        var executor = CreateExecutor(_mockAresTool);
+
+        var result = await executor.ExecuteToolAsync(
+            new ParsedToolCall { Action = "ares_lookup", Parameters = new Dictionary<string, string>() });
+
+        result.IsSuccess.ShouldBeFalse();
+        result.RequiresConfirmation.ShouldBeFalse();
     }
 
     [Theory]
@@ -875,11 +925,15 @@ public class ChatToolExecutorTests
             Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>());
     }
 
+    /// <summary>
+    /// A failed preview is a failure the model must not be invited to retry with confirm=true
+    /// (that would walk straight into the same error, but writing this time) — and at the same
+    /// time it is NOT an execution: <c>ExecuteAsync</c> never ran, so RequiresConfirmation stays
+    /// true and ChatService says "was NOT executed" (issue #217).
+    /// </summary>
     [Fact]
-    public async Task ExecuteToolAsync_KeepsFailedPreviewAsPlainFailure()
+    public async Task ExecuteToolAsync_KeepsFailedPreviewAsAFailure_ButStillMarksItAsNotExecuted()
     {
-        // Nothing to confirm when the preview itself failed — inviting the model to retry
-        // with confirm=true would send it straight into the same error, but writing this time.
         var tool = CreateConfirmableTool();
         tool.BuildPreviewAsync(Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>())
             .Returns(ChatToolResult.Failure("Setting 'value' not found."));
@@ -888,13 +942,17 @@ public class ChatToolExecutorTests
         var result = await executor.ExecuteToolAsync(ConfirmableCall(confirm: null));
 
         result.IsSuccess.ShouldBeFalse();
-        result.RequiresConfirmation.ShouldBeFalse();
+        result.RequiresConfirmation.ShouldBeTrue();
         result.OutputText.ShouldNotContain("NOTHING HAS BEEN CHANGED YET");
+        await tool.DidNotReceive().ExecuteAsync(
+            Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
     public async Task ExecuteToolAsync_ReturnsFailure_WhenPreviewThrows()
     {
+        // Same reasoning as above: a preview that blew up wrote nothing either, so the failure
+        // must carry "not executed" — the catch block cannot report it as a completed call.
         var tool = CreateConfirmableTool();
         tool.BuildPreviewAsync(Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>())
             .Returns<Task<ChatToolResult>>(_ => throw new InvalidOperationException("DB down"));
@@ -903,8 +961,45 @@ public class ChatToolExecutorTests
         var result = await executor.ExecuteToolAsync(ConfirmableCall(confirm: null));
 
         result.IsSuccess.ShouldBeFalse();
+        result.RequiresConfirmation.ShouldBeTrue();
+        result.ErrorMessage.ShouldContain("DB down");
+    }
+
+    [Fact]
+    public async Task ExecuteToolAsync_ThrowingWriteStaysAnExecution()
+    {
+        // The mirror image of the test above: an approved call that threw DID run, so it must
+        // not be dressed up as "nothing happened" — the write may well have been partially done.
+        var tool = CreateConfirmableTool();
+        tool.ExecuteAsync(Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>())
+            .Returns<Task<ChatToolResult>>(_ => throw new InvalidOperationException("DB down"));
+        var executor = CreateExecutor(tool);
+
+        var result = await executor.ExecuteToolAsync(ConfirmableCall(confirm: "true"));
+
+        result.IsSuccess.ShouldBeFalse();
         result.RequiresConfirmation.ShouldBeFalse();
         result.ErrorMessage.ShouldContain("DB down");
+    }
+
+    /// <summary>
+    /// Review round 1 (F4): the flag is documented as "set by the executor, never by a tool" —
+    /// this makes it true. A sibling tool that returns it from ExecuteAsync by mistake would
+    /// otherwise have a completed write reported to the model as a preview: the user reads
+    /// "nothing has been changed" while the invoice is already deleted.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteToolAsync_ClearsTheFlag_WhenAToolSetsItOnAnExecutedWrite()
+    {
+        var tool = CreateConfirmableTool();
+        tool.ExecuteAsync(Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>())
+            .Returns(ChatToolResult.Success("Setting saved.") with { RequiresConfirmation = true });
+        var executor = CreateExecutor(tool);
+
+        var result = await executor.ExecuteToolAsync(ConfirmableCall(confirm: "true"));
+
+        result.IsSuccess.ShouldBeTrue();
+        result.RequiresConfirmation.ShouldBeFalse();
     }
 
     [Fact]

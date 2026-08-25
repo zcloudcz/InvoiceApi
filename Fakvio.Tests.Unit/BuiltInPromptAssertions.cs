@@ -47,7 +47,7 @@ internal static class BuiltInPromptAssertions
     ];
 
     /// <summary>
-    /// The catalog the thirty shipped tools are expected to render, in DI registration order
+    /// The catalog the thirty-five shipped tools are expected to render, in DI registration order
     /// (<c>ServiceCollectionExtensions</c>). Each line is <c>- {ToolName}: {Description}</c>
     /// with the description written out as one line. This is the independent copy: when a tool
     /// description changes, it has to be changed here too, deliberately. That is the point.
@@ -59,7 +59,7 @@ internal static class BuiltInPromptAssertions
         "- navigate: Navigates the user to a page in the application — documents, clients, payments, templates, taxes, reminders or settings. If a client name is mentioned, it finds the client first. Opens pages and forms only — it never creates a document.",
         "- create_invoice: Creates a new invoice for a client with specified items. Automatically resolves the client by name, sets default currency (CZK), applies default VAT rate, and generates a document number. After creation, navigates to the invoice detail page. Use this when the user provides item details (description, price) — when they only want to open the form, use 'navigate' with target new_invoice instead.",
         "- import_invoice: Imports an invoice from extracted data. Automatically determines if it's an issued (vydaná) or received (přijatá) invoice by matching IČO against the company database. Finds the client/supplier automatically. Preserves all dates exactly as extracted.",
-        "- export_invoice: Export/download an invoice or credit note as a PDF file. Finds the document by number, by client name (most recent), or exports the most recent invoice if no parameters given.",
+        "- export_invoice: Export/download an invoice or credit note as a PDF or ISDOC file (ISDOC is the Czech electronic invoice standard imported by Pohoda, Money S3 and Helios). Finds the document by number, by client name (most recent), or exports the most recent invoice if no parameters given.",
         "- list_clients: List clients with optional search and filtering by VAT status. Without is_issuer the list holds customers AND the user's own company (the issuer), which is flagged in its row; set is_issuer=true for the issuer alone or false for customers alone. Returns paged results; use get_client for the full detail of one client.",
         "- get_client: Get the full detail of one client: addresses, contacts, bank accounts and billing settings. Identify the client by id, registration_number (IČO) or name.",
         "- update_client: Update an existing client: company name, trading name, DIČ, VAT payer flag, active flag, or refresh the data from the ARES registry. Identify the client by id, registration_number (IČO) or name. Only the fields you send are changed. Addresses, contacts and bank accounts cannot be edited here.",
@@ -78,6 +78,11 @@ internal static class BuiltInPromptAssertions
         "- update_bank_account: Change one bank account of the user's own company (the issuer): its number, label, bank, IBAN, SWIFT, currency, or which account is the default one. Identify the account by the ID returned from get_my_company and send only the fields that should change.",
         "- delete_bank_account: Permanently remove one bank account from the user's own company (the issuer). Identify the account by the ID returned from get_my_company. Invoices already issued keep the payment details printed on them; only the stored account is removed.",
         "- get_readiness: Checks whether the company setup is complete enough to issue invoices. Returns every missing setting with its severity (blocking or warning), the empty fields and the page where the user fixes it. Read-only — use it when the user asks what is still missing, or when an invoice was refused because the setup is incomplete.",
+        "- get_invoice: Get the full detail of an ISSUED (outgoing) invoice, credit note, proforma or advance tax receipt by its ID or document number. Returns line items, VAT breakdown, totals, dates, payment state and the payment details printed on the document.",
+        "- complete_invoice: Issue (complete) a DRAFT issued invoice: status changes from Draft to Completed and the document number is assigned. This cannot be undone from chat. Identify the draft by ID or document number.",
+        "- mark_invoice_paid: Mark a COMPLETED issued invoice as paid (status Completed → Paid, payment date = now). Identify the invoice by ID or document number.",
+        "- send_invoice_email: Send an issued invoice by e-mail with the PDF and ISDOC attachments. Identify the invoice by ID or document number and give the recipient address.",
+        "- delete_invoice: Delete a DRAFT issued invoice (soft delete — it can be restored on the Invoices page). Issued documents cannot be deleted from chat. Identify the draft by ID or document number.",
         "- list_number_sequences: List the document number sequences (číselné řady) of the user's company: their name, document type, prefix/suffix, current counter, numbering format and which one is the default. Also lists the available numbering formats with the IDs needed to create a new sequence.",
         "- create_number_sequence: Create a new document number sequence (číselná řada) for invoices, credit notes, pro-forma invoices or advance tax receipts. The numbering format is referenced by the ID that list_number_sequences prints, so call that tool first.",
         "- update_number_sequence: Change one document number sequence (číselná řada): its name, prefix, suffix, counter, or make it the default sequence for its document type. Identify the sequence by the ID returned from list_number_sequences and send only the fields that should change. The document type and the numbering format cannot be changed — create a new sequence instead.",

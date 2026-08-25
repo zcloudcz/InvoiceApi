@@ -64,6 +64,25 @@ před vystavením první faktury. Chcete-li adresu odstranit, udělejte to tam.
 
 Dashboard zobrazuje aktuální přehled vaší firmy na jednom místě:
 
+### Připravenost k fakturaci
+
+Pokud vaší firmě chybí něco, co musí být na daňovém dokladu, uvidíte nahoře na dashboardu
+banner se seznamem chybějících položek. U každé položky je odkaz **Doplnit**, který vás
+zavede přímo na stránku, kde ji vyplníte.
+
+Banner rozlišuje dvě závažnosti:
+
+| Barva | Význam |
+|-------|--------|
+| Červená — „Než začnete fakturovat, doplňte tato nastavení" | Bez těchto údajů aplikace **odmítne vystavit fakturu** (viz [§2.3.1](#231-když-vystavení-skončí-chybou-nedokončené-nastavení-firmy)) |
+| Oranžová — „Doporučená nastavení k doplnění" | Fakturovat můžete, ale narazíte později v konkrétní funkci (typicky EPO export přiznání k DPH) |
+
+Máte-li v účtu víc vystavitelů, je u položky uvedeno, které firmy se týká.
+Když je vše vyplněné, banner se nezobrazuje vůbec.
+
+Stejný banner najdete i v detailu faktury ve stavu Draft — tam je omezený na vystavitele
+té konkrétní faktury, takže vidíte přesně to, co by vystavení zablokovalo.
+
 ### KPI karty (klikatelné — navigují na příslušný seznam)
 
 | Karta | Co zobrazuje | Navigace |
@@ -647,7 +666,8 @@ AI asistent zná kontext vaší firmy a umí odpovídat na otázky i provádět 
 
 | Oblast | Co umí |
 |--------|--------|
-| Faktury | Vyhledat fakturu, zobrazit detail, vypsat seznam faktur podle kritérií |
+| Faktury | Vyhledat fakturu, zobrazit detail, vypsat seznam faktur podle kritérií, stáhnout PDF nebo ISDOC |
+| Faktury — změny | Vystavit koncept, označit vydanou fakturu jako zaplacenou, odeslat ji e-mailem, smazat koncept. **Každou takovou změnu si nejdřív necháte odsouhlasit** — viz níže |
 | Klienti | Vypsat seznam klientů, vyhledat klienta, zobrazit celý detail (adresy, kontakty, bankovní účty, fakturační nastavení), založit nového podle IČO, upravit údaje a smazat klienta. Úprava i smazání se vždy nejdřív ukážou k odsouhlasení — viz níže. |
 | Přijaté faktury | Vyhledat, vypsat seznam |
 | Přehledy a reporty | Shrnout dashboard, vypsat faktury po splatnosti, faktury za období nebo pro konkrétního klienta, spočítat DPH za období |
@@ -658,11 +678,28 @@ AI asistent zná kontext vaší firmy a umí odpovídat na otázky i provádět 
 | Obecné dotazy | Odpovídat na otázky o funkcích aplikace |
 | Navigace | Otevřít libovolnou stránku aplikace — faktury, přijaté faktury, klienty, platby, šablony, DPH a daně, upomínky i nastavení („Otevři DPH přiznání", „Založ novou fakturu pro klienta XYZ"). Stránky správce systému a přihlašovací obrazovky asistent neotevírá. |
 
-**Změnu dat vždycky nejdřív potvrdíte.** Když asistenta požádáte o změnu nebo smazání
-(klient, nastavení firmy, bankovní účet, číselná řada, sazba DPH), ukáže vám nejprve náhled — co přesně se stane
-a z čeho na co („Název se změní z X na Y") — a **nic nezapíše**. Teprve když odpovíte, že
-souhlasíte, změnu provede. Když náhled nesedí, řekněte, co má být jinak, a asistent nabídne
-nový.
+### Než asistent něco změní, zeptá se
+
+Dotazy asistent zodpoví rovnou. Ale všechno, co **mění data** — vystavení konceptu, označení
+faktury jako zaplacené, odeslání e-mailu, smazání konceptu, i změny u klientů, nastavení
+firmy, bankovních účtů, číselných řad nebo sazeb DPH — proběhne na dvě fáze:
+
+1. Napíšete, co chcete („Vystav koncept FAK-2026-001").
+2. Asistent **nic neudělá** a napíše, co by se stalo („Vystavím fakturu FAK-2026-001 pro
+   Alza.cz, 12 100,00 Kč: stav Koncept → Vystaveno…", u ostatních entit „Název se změní
+   z X na Y").
+3. Teprve když odpovíte, že souhlasíte, akci provede a potvrdí výsledek.
+
+Když akce provést nejde, dozvíte se to už v tom druhém kroku — například „faktura je už
+zaplacená, vystavit lze jen koncept". Potvrzovat tedy nemusíte nic, co by stejně selhalo.
+Když náhled nesedí, řekněte, co má být jinak, a asistent nabídne nový.
+
+Dvě omezení u faktur, která jsou v aplikaci schválně:
+
+- **Smazat umí asistent jen koncept** (a jde o smazání do koše — koncept obnovíte na stránce
+  Faktury). Vydaný doklad má číslo z číselné řady, ten smažete jen ručně v přehledu faktur.
+- **U odeslání e-mailem musíte říct adresu příjemce.** Asistent ji sám neuhodne, a v náhledu
+  ji uvidíte dřív, než e-mail odejde.
 
 Smazání klienta je „měkké" — klient se skryje, ale nezmizí, takže starší faktury
 na něj dál odkazují. Klienta, který už nějakou fakturu má, smazat nelze vůbec;
@@ -729,6 +766,10 @@ jinak, než jste zvyklí, je pravděpodobně upravené systémové nastavení �
 - „Jaký je celkový obrat za Q1 2026?"
 - „Najdi fakturu číslo FAK-2026-001"
 - „Kolik mám nesplacených faktur?"
+- „Vystav koncept faktury FAK-2026-014"
+- „Označ fakturu FAK-2026-003 jako zaplacenou"
+- „Pošli fakturu FAK-2026-003 na ucetni@alza.cz"
+- „Stáhni fakturu FAK-2026-003 jako ISDOC"
 - „Můžu už fakturovat? Co mi ještě chybí v nastavení?"
 
 ### Když se odpověď nepodaří vygenerovat

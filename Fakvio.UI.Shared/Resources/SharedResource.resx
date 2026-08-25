@@ -1669,6 +1669,20 @@
   <data name="Epo_ContactPhone" xml:space="preserve"><value>Kontaktní telefon</value></data>
   <data name="Epo_ContactEmail" xml:space="preserve"><value>Kontaktní e-mail</value></data>
   <data name="Epo_AuthorizedPersonName" xml:space="preserve"><value>Jméno oprávněné osoby</value></data>
+  <!-- Připravenost firmy (issue #215) — texty banneru s chybějícími povinnými nastaveními.
+       Klíče Readiness_Code_* odpovídají 1:1 konstantám v ReadinessCodes; nový kód v API
+       znamená nový klíč zde, jinak se uživateli ukáže obecná hláška Readiness_Code_Unknown. -->
+  <data name="Readiness_BlockingTitle" xml:space="preserve"><value>Než začnete fakturovat, doplňte tato nastavení</value></data>
+  <data name="Readiness_WarningTitle" xml:space="preserve"><value>Doporučená nastavení k doplnění</value></data>
+  <data name="Readiness_FixLink" xml:space="preserve"><value>Doplnit</value></data>
+  <data name="Readiness_Code_Unknown" xml:space="preserve"><value>Chybí povinné nastavení firmy.</value></data>
+  <data name="Readiness_Code_ISSUER_MISSING" xml:space="preserve"><value>Není nastavena vlastní firma, která faktury vystavuje.</value></data>
+  <data name="Readiness_Code_ISSUER_ADDRESS_INCOMPLETE" xml:space="preserve"><value>Vlastní firma nemá úplnou adresu sídla.</value></data>
+  <data name="Readiness_Code_ISSUER_REGISTRATION_NUMBER_MISSING" xml:space="preserve"><value>Vlastní firma nemá vyplněné IČO.</value></data>
+  <data name="Readiness_Code_ISSUER_TAX_NUMBER_MISSING" xml:space="preserve"><value>Vlastní firma je plátce DPH, ale nemá vyplněné DIČ.</value></data>
+  <data name="Readiness_Code_ISSUER_BANK_ACCOUNT_MISSING" xml:space="preserve"><value>Vlastní firma nemá bankovní účet, na faktuře by chybělo, kam zaplatit.</value></data>
+  <data name="Readiness_Code_NUMBER_SEQUENCE_MISSING" xml:space="preserve"><value>Pro tento typ dokladu není aktivní žádná číselná řada.</value></data>
+  <data name="Readiness_Code_EPO_HEADER_INCOMPLETE" xml:space="preserve"><value>Nejsou vyplněny hlavičkové údaje EPO, bez nich nepůjde vyexportovat přiznání k DPH.</value></data>
   <!-- Integrations / API keys (/settings/integrations) -->
   <data name="Nav_Integrations" xml:space="preserve"><value>Integrace</value></data>
   <data name="Integration_Title" xml:space="preserve"><value>Integrace a API klíče</value></data>

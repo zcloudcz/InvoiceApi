@@ -173,6 +173,11 @@ else
        Shows tenant-specific invoice/client statistics.
        ════════════════════════════════════════════════════════════════════ *@
 
+    @* Readiness banner (issue #215) — the first thing a freshly registered tenant sees,
+       so unfinished company settings surface here rather than at the first refused invoice.
+       No IssuerId: the dashboard speaks for the whole tenant. Renders nothing when ready. *@
+    <ReadinessBanner />
+
     @* Top statistics cards - 3 KPIs (clickable → navigate to corresponding list page).
        The first tile forecasts cashflow for the current calendar month: how many issued
        (Completed) invoices come due before month-end, plus totals without / with VAT. *@
