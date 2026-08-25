@@ -1285,6 +1285,8 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
 - Standalone .NET tool (PackAsTool), `ToolCommandName` = **`fakvio-mcp`**, stdio transport, SDK `ModelContextProtocol` 2.2.0.
 - Jméno v MCP handshake (`ServerInfo.Name`) je `fakvio` — nezaměňovat s názvem příkazu.
 - Auth: `FAKVIO_API_TOKEN` env var (JWT bearer, povinný — bez něj exit code 1), `FAKVIO_API_URL` (výchozí `https://localhost:7001`, lokální API ale běží na `7047` → nastavovat explicitně).
+- **Outbound auth je per request, ne per proces.** `AuthHeaderHandler` (`DelegatingHandler`) nasazuje `Authorization: Bearer` na každý odchozí request; token dodává `IApiTokenProvider`. Ve stdio režimu je to `EnvironmentApiTokenProvider` (čte `FAKVIO_API_TOKEN` načtený do `McpServerSettings`), HTTP transport za stejné rozhraní zapojí session-scoped providera.
+  Do `HttpClient.DefaultRequestHeaders.Authorization` token **nikdy nepatří** — defaulty sdílí všichni volající, takže pod HTTP hostingem by boot credential procesu jel na cizí tool cally (cross-tenant leak) a mutace defaultu za běhu je data race. Regresi hlídá `AuthHeaderHandlerTests`.
 - Žádný přístup k DB — všechno jde přes `IFakvioApiClient` → HTTP na `Fakvio.API`, takže autorizace i tenant izolace platí beze změny.
 - **37 tools**: 10 invoice + 6 client + 6 received invoice + 6 reporting + 5 tax + 3 template + 1 readiness (po jednom souboru v `Tools/`).
   Ruční číslo v dokumentaci stárne; zdroj pravdy je `grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs`.

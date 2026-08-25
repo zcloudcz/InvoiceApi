@@ -1,4 +1,4 @@
-using Fakvio.McpServer.Client;
+﻿using Fakvio.McpServer.Client;
 using Fakvio.McpServer.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -48,18 +48,29 @@ if (string.IsNullOrWhiteSpace(settings.ApiToken))
 // Register settings as a singleton so tools/services can inject it
 builder.Services.AddSingleton(settings);
 
+// ── Outbound authentication ────────────────────────────────────────
+// The bearer token is resolved per request by AuthHeaderHandler, never baked
+// into HttpClient.DefaultRequestHeaders. Defaults are shared by every call on
+// that client, so a token stored there would be sent on behalf of whoever comes
+// later — harmless in stdio (one process = one user), a cross-tenant leak once
+// the same server is hosted over HTTP.
+//
+// In stdio mode the credential is the FAKVIO_API_TOKEN env var; the HTTP
+// transport will swap in a session-scoped provider behind the same interface.
+builder.Services.AddSingleton<IApiTokenProvider, EnvironmentApiTokenProvider>();
+builder.Services.AddTransient<AuthHeaderHandler>();
+
 // ── HTTP Client ────────────────────────────────────────────────────
 // Register a typed HttpClient for IFakvioApiClient → FakvioApiClient.
-// The factory configures the base address and Authorization header once,
-// so every API call automatically includes the JWT bearer token.
+// The factory configures the base address; AuthHeaderHandler adds the
+// Authorization header to each individual request.
 builder.Services.AddHttpClient<IFakvioApiClient, FakvioApiClient>(client =>
 {
     client.BaseAddress = new Uri(settings.ApiBaseUrl.TrimEnd('/') + "/");
-    client.DefaultRequestHeaders.Authorization =
-        new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", settings.ApiToken);
     client.DefaultRequestHeaders.Accept.Add(
         new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
-});
+})
+.AddHttpMessageHandler<AuthHeaderHandler>();
 
 // ── MCP Server ─────────────────────────────────────────────────────
 // Register the MCP server with stdio transport (for CLI integration).
