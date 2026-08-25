@@ -732,7 +732,7 @@ Implementace: `PaymentMatchingService.cs` (metoda `GetPaymentsForInvoiceAsync`).
 - Implementace: `Fakvio.Infrastructure/AiProviders/` (Anthropic, OpenAI, Gemini, Ollama).
 - API key storage: `CompanySystemSettings.AiApiKeyEncrypted` (per company) přes `CredentialProtector`.
 - SSE streaming přes `ChatController.StreamAsync`.
-- **Chat Tools**: 18 tools registrovaných v DI jako `IChatTool`, orchestrováno přes `IChatToolExecutor`.
+- **Chat Tools**: 23 tools registrovaných v DI jako `IChatTool`, orchestrováno přes `IChatToolExecutor`.
   Registrace v `ServiceCollectionExtensions.cs`; přidání nového toolu = implementace `IChatTool` + řádek v DI.
 
 #### Přidání nového chat toolu (POVINNÝ postup)
@@ -955,6 +955,11 @@ Sloupec „Klíčové parametry" je jen orientační — závazné je schéma v 
 | `get_dashboard` | `GetDashboardTool` | Invoice / Client (agregace) | Read (souhrn) | bez parametrů; cashflow tento měsíc, počet klientů, neuhrazeno, po splatnosti, top klienti |
 | `list_invoices` | `ListInvoicesTool` | Invoice (vydaná) | Read (paged list) | `status`, `document_type`, `client_name`, `issue_date_from/to`, `overdue` |
 | `get_vat_report` | `GetVatReportTool` | VAT report (agregace) | Read (report) | `date_from`, `date_to` (obojí povinné, období podle DUZP) |
+| `get_my_company` | `GetMyCompanyTool` | Client (issuer) | Read | bez parametrů; vrací i **ID bankovních účtů** pro update/delete |
+| `update_my_company` | `UpdateMyCompanyTool` | Client (issuer) | **Write** (confirm) | `company_name`, `trading_name`, `tax_number`, `is_vat_payer`, `language`, `street`, `city`, `postal_code`, `country` |
+| `add_bank_account` | `AddBankAccountTool` | BankAccount (issuer) | **Write** (confirm) | `account_number` (povinný), `label`, `bank_name`, `iban`, `swift`, `currency_code`, `is_default` |
+| `update_bank_account` | `UpdateBankAccountTool` | BankAccount (issuer) | **Write** (confirm) | `bank_account_id` (povinný) + měněná pole |
+| `delete_bank_account` | `DeleteBankAccountTool` | BankAccount (issuer) | **Destructive** (confirm) | `bank_account_id` (povinný) |
 
 ##### Reporting tools (#228) — proč tři, ne šest
 
@@ -999,6 +1004,38 @@ filtr. Sjednocení na `ChatToolDates` řeší #301 (u `list_received_invoices` j
 `Failure` změna chování, ne refactor); do té doby nepředpokládej, že datum chodí přes jedno
 místo.
 
+##### Nastavení firmy a bankovní účty (#220)
+
+Pět toolů nad **issuerem** (`Client.IsIssuer`), tedy nad vlastní firmou tenanta. Čtení je jeden
+tool, zápisy tři — a všechny tři jsou `IConfirmableChatTool`.
+
+- `get_my_company` je jediný zdroj **ID bankovních účtů**. `update_bank_account`
+  i `delete_bank_account` účet adresují tímhle ID, takže model musí nejdřív číst.
+- **Zápis účtů je replace-all.** `IClientService` nemá per-account update ani delete, takže se
+  posílá celá kolekce do `UpdateClientAsync`, která ji smaže a založí znovu — přesně to, co dělá
+  stránka My Company při uložení. Dva důsledky: účty dostanou **nová ID** (tooly proto po zápisu
+  vypisují čerstvý seznam) a účet, na který už ukazuje `BankTransaction` nebo
+  `BankAccountMailbox` (FK `Restrict`), rewrite **odmítne** — `IssuerChatToolSupport` na to
+  `DbUpdateException` **zaloguje** (loggerem volajícího toolu, takže kategorie nese jeho jméno)
+  a uživateli i modelu vrátí jen srozumitelnou větu. Syrový text driveru ven nejde: pojmenovává
+  schéma, tabulku a constraint a odpověď chatu putuje i k externímu LLM providerovi. Větu
+  „účet je držený platebními daty" dostane jen skutečné porušení cizího klíče
+  (`PostgresException`, SQLSTATE 23503); jiné selhání zápisu (délka, spojení) má neutrální
+  znění, jinak by uživatel hledal platby, které neexistují. Per-account update/delete
+  v `IClientService` by celý replace-all odstranil — vedeno jako **#304**; zatím se s tím žije,
+  protože UI se chová stejně.
+- `add_bank_account` jde přes `AddBankAccountAsync`, který přidává **na místě** — žádná změna ID
+  a žádný FK problém. Proto se přidání replace-allem nedělá.
+- Výchozí účet: první účet firmy se stane výchozím vždycky (dělá `ClientService`), a při přepnutí
+  výchozího v `update_bank_account` odznačuje ostatní sám tool — `ClientService` poslané příznaky
+  respektuje. `is_default: false` proto `update_bank_account` **odmítá**: kdyby příznak jen zhasl,
+  neměl by výchozí nikdo a `ClientService` by ho dosadil sám (účet na indexu 0 — klidně ten samý,
+  který se měl odznačit), takže by tool hlásil změnu, která se nestala. Výchozí účet nejde zrušit,
+  jen přesunout — `is_default: true` na tom druhém.
+- `update_my_company` mění skalární pole a **primární adresu**; adresy se posílají taky
+  replace-allem, takže tool ty ostatní přenáší beze změny. IČO měnit nejde (`UpdateClientDto` ho
+  nemá) a bankovní účty do tohohle toolu nepatří — mají vlastní trojici.
+
 ##### `navigate` — katalog rout (#229)
 
 `NavigateTool.Routes` je jediný zdroj pravdy: z něj se odvozuje jak `AllowedValues`
@@ -1024,9 +1061,9 @@ anonymní nebo SysAdmin-only stránku, (c) každá tenant-facing stránka bez pa
 v routě je nabízená. **Nová stránka v UI tedy shodí testy, dokud ji nedoplníš do
 `Routes`** — nebo ji v tom testu explicitně nevyloučíš s odůvodněním.
 
-##### Paritní tabulka chat ↔ MCP (stav k #222)
+##### Paritní tabulka chat ↔ MCP (stav k #220 a #222)
 
-Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 18 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
+Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 23 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
 a **MCP server** (`[McpServerTool]`, 36 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
 cílem story #149 je mezeru zavřít. Tabulka je jediný pravdivý seznam toho, co kde chybí;
 **každý nový tool na kterékoli straně sem přidá řádek** (viz §13).
@@ -1041,7 +1078,7 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | `ListClients` | Read | `list_clients` | ✅ | |
 | `GetClient` | Read | `get_client` | ✅ | |
 | `UpdateClient` | **Write** | `update_client` (za `confirm`) | ✅ | |
-| `GetIssuer` | Read | `list_clients` + `is_issuer=true` | ✅ | |
+| `GetIssuer` | Read | `list_clients` + `is_issuer=true` (#222), `get_my_company` (#220) | ✅ | |
 | **Vydané faktury** (`InvoiceTools`, 10) |
 | `CreateInvoice` | Create | `create_invoice` | ✅ | |
 | `ExportInvoicePdf` | Read → download | `export_invoice` | ◐ (chat neumí ISDOC) | #217 |
@@ -1079,13 +1116,14 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | — | Navigace UI | `navigate` | ⬅ | |
 | — | Upload přílohy | `attach_file` | ⬅ | |
 | — | Read | `list_attachments` | ⬅ | |
+| — | **Write** (nastavení firmy) | `update_my_company` | ⬅ | |
+| — | **Write** (bankovní účty) | `add_bank_account`, `update_bank_account`, `delete_bank_account` | ⬅ | |
 
-**Součty:** 36 MCP toolů, 18 chat toolů. Chat pokrývá 17 MCP toolů (z toho 2 částečně),
-5 chat toolů nemá MCP protějšek. Zbývá 19 mezer.
+**Součty:** 36 MCP toolů, 23 chat toolů. Chat pokrývá 17 MCP toolů (z toho 2 částečně),
+9 chat toolů nemá MCP protějšek. Zbývá 19 mezer.
 
-Mimo obě rozhraní (jen UI / SysAdmin, plánováno v #220 / #224 / #227):
-nastavení firmy a bankovní účty, číselné řady a sazby DPH, upomínky (dunning),
-PaymentMatch / BankTransaction.
+Mimo obě rozhraní (jen UI / SysAdmin, plánováno v #224 / #227):
+číselné řady a sazby DPH, upomínky (dunning), PaymentMatch / BankTransaction.
 
 ### 4.8 In-app notifikace (per-user)
 

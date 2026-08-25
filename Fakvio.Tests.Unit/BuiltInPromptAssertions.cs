@@ -47,7 +47,7 @@ internal static class BuiltInPromptAssertions
     ];
 
     /// <summary>
-    /// The catalog the eighteen shipped tools are expected to render, in DI registration order
+    /// The catalog the twenty-three shipped tools are expected to render, in DI registration order
     /// (<c>ServiceCollectionExtensions</c>). Each line is <c>- {ToolName}: {Description}</c>
     /// with the description written out as one line. This is the independent copy: when a tool
     /// description changes, it has to be changed here too, deliberately. That is the point.
@@ -71,7 +71,12 @@ internal static class BuiltInPromptAssertions
         "- list_attachments: List all file attachments for an entity record (Invoice, ReceivedInvoice, or Client). Returns file name, size, upload date, and optional description for each attachment.",
         "- get_dashboard: Get the dashboard summary: cashflow due this month, number of clients, unpaid amount, overdue invoice count, the most recent invoices, invoice counts per status, and the top clients by revenue. Read-only overview — use it for general questions about how the business is doing.",
         "- list_invoices: List issued (outgoing) invoices and credit notes with optional filtering by status, document type, client name, issue date range, or overdue flag. Returns paged results with page totals. Use it for overdue receivables, per-client history, and period reports.",
-        "- get_vat_report: Get the VAT (DPH) report for a period: output VAT from issued invoices, input VAT from received invoices, the resulting tax liability, plus revenue, expenses and profit. The period is matched on the taxable supply date (DUZP). Read-only."
+        "- get_vat_report: Get the VAT (DPH) report for a period: output VAT from issued invoices, input VAT from received invoices, the resulting tax liability, plus revenue, expenses and profit. The period is matched on the taxable supply date (DUZP). Read-only.",
+        "- get_my_company: Get the settings of the user's own company (the issuer that appears as the sender on invoices): name, IČO, DIČ, VAT payer status, document language, addresses, contacts and bank accounts including their IDs. Read-only — call it before changing anything, and to answer questions about our own company or our bank account numbers.",
+        "- update_my_company: Change the settings of the user's own company (the issuer): name, trading name, DIČ, VAT payer status, document language and the primary address. Send only the fields that should change — everything else is left as it is. IČO cannot be changed. Use add_bank_account / update_bank_account / delete_bank_account for bank accounts.",
+        "- add_bank_account: Add a bank account to the user's own company (the issuer). The account number is required, everything else is optional. The very first account of the company always becomes the default one — the account offered on new invoices and used for QR payments.",
+        "- update_bank_account: Change one bank account of the user's own company (the issuer): its number, label, bank, IBAN, SWIFT, currency, or which account is the default one. Identify the account by the ID returned from get_my_company and send only the fields that should change.",
+        "- delete_bank_account: Permanently remove one bank account from the user's own company (the issuer). Identify the account by the ID returned from get_my_company. Invoices already issued keep the payment details printed on them; only the stored account is removed."
     ];
 
     /// <summary>The static lines below the generated tool catalog, verbatim.</summary>
