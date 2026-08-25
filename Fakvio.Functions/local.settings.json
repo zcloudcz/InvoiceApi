@@ -3,6 +3,7 @@
   "Values": {
     "AzureWebJobsStorage": "UseDevelopmentStorage=true",
     "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
+    "Database__AuthMode": "Password",
     "JwtSettings__Secret": "sF8sdfADSF85g8g65Aag8GASDG85dfaDfdsgGadfg",
     "JwtSettings__Issuer": "Fakvio",
     "JwtSettings__Audience": "FakvioClient",

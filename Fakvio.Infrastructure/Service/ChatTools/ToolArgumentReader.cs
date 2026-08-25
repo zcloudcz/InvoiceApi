@@ -7,7 +7,8 @@ namespace Fakvio.Infrastructure.Service.ChatTools;
 /// Dictionary&lt;string, string&gt; that IChatTool.ExecuteAsync consumes.
 ///
 /// It lives in exactly one place on purpose. The text-based flow
-/// (<see cref="ChatToolExecutor.ParseToolCall"/>) and every native flow (Claude, Ollama)
+/// (<see cref="ChatToolExecutor.ParseToolCall"/>) and every native flow
+/// (Claude, Ollama, OpenAI, Gemini)
 /// must agree on what a value means, otherwise the same model answer behaves differently
 /// depending on which provider the tenant happens to have configured.
 /// </summary>

@@ -126,7 +126,7 @@ Bez instalace nástroje lze server spouštět rovnou ze zdrojáků — místo
 `.mcp.json` obsahuje token v otevřené podobě, proto **patří do `.gitignore`**,
 nikdy ne do commitu. Verzuje se jen `.mcp.json.sample`.
 
-## Dostupné nástroje (36)
+## Dostupné nástroje (37)
 
 | Soubor | Počet | Nástroje |
 |--------|-------|----------|
@@ -136,6 +136,7 @@ nikdy ne do commitu. Verzuje se jen `.mcp.json.sample`.
 | `Tools/ReportingTools.cs` | 6 | GetDashboard, GetOverdueInvoices, GetClientInvoices, GetInvoicesByDateRange, GetVatReport, GetOverdueReceivedInvoices |
 | `Tools/TaxTools.cs` | 5 | EstimateTax, CompareTaxRegimes, GetAnnualIncome, GetInsuranceAdvance, GetTaxConfig |
 | `Tools/TemplateTools.cs` | 3 | ListTemplates, GetTemplate, CreateInvoiceFromTemplate |
+| `Tools/ReadinessTools.cs` | 1 | GetReadiness |
 
 Zdroj pravdy je vždy kód — atributy `[McpServerTool]` v `Tools/`:
 

@@ -83,23 +83,42 @@ public class ChatToolDatesTests
     }
 
     /// <summary>
-    /// CHARACTERIZATION of the gap tracked as issue #271, not an endorsement of it.
+    /// Issue #271: the helper's header names "15.3.2026" as the motivating example, but the
+    /// format list only had the zero-padded <c>dd.MM.yyyy</c>, so exactly that input was the
+    /// one shape it rejected. This test used to characterize the gap; it now pins the fix.
     ///
-    /// The helper's own header names "15.3.2026" as the motivating example, but
-    /// <c>AcceptedFormats</c> only lists the zero-padded <c>dd.MM.yyyy</c>, so a single-digit
-    /// day or month is rejected. The failure is loud and recoverable (the tool answers
-    /// "Use YYYY-MM-DD" and the model retries), which is why #271 is low priority rather than
-    /// a bug in this PR.
-    ///
-    /// When #271 is fixed this test goes RED — that is its purpose. Flip it to
-    /// <c>ShouldBeTrue</c> plus a value assertion then.
+    /// Both the single-digit and the padded rows are here on purpose: they are read by the
+    /// SAME format string (<c>d.M.yyyy</c> matches one or two digits when parsing), so this is
+    /// also the proof that widening did not cost the padded forms.
     /// </summary>
     [Theory]
-    [InlineData("15.3.2026")]
-    [InlineData("1.1.2026")]
-    [InlineData("15/3/2026")]
+    [InlineData("15.3.2026", 15, 3)]
+    [InlineData("1.3.2026", 1, 3)]
+    [InlineData("1.1.2026", 1, 1)]
+    [InlineData("15/3/2026", 15, 3)]
+    [InlineData("1/3/2026", 1, 3)]
+    [InlineData("15.03.2026", 15, 3)]
+    [InlineData("15/03/2026", 15, 3)]
+    public void TryParse_SingleDigitDayOrMonth_IsAccepted_Issue271(string rawValue, int expectedDay, int expectedMonth)
+    {
+        var parsed = ChatToolDates.TryParse(Parameters(rawValue), DateKey, out var value);
+
+        parsed.ShouldBeTrue();
+        value.ShouldBe(new DateTime(2026, expectedMonth, expectedDay, 0, 0, 0, DateTimeKind.Utc));
+        value.Kind.ShouldBe(DateTimeKind.Utc);
+    }
+
+    /// <summary>
+    /// The ISO form stays strictly padded, deliberately (issue #271 acceptance criterion 1
+    /// lists only the Czech forms). "15.3.2026" is a human dictating a date and the model
+    /// quoting it; "2026-3-15" is the model ignoring its own tool schema, which says
+    /// YYYY-MM-DD. Failing that one loudly keeps the schema meaningful — and the model
+    /// recovers on the next call, it does not give up.
+    /// </summary>
+    [Theory]
     [InlineData("2026-3-15")]
-    public void TryParse_SingleDigitDayOrMonth_IsRejected_Issue271(string rawValue)
+    [InlineData("2026-03-5")]
+    public void TryParse_IsoWithoutZeroPadding_IsStillRejected(string rawValue)
     {
         var parsed = ChatToolDates.TryParse(Parameters(rawValue), DateKey, out var value);
 
@@ -160,6 +179,9 @@ public class ChatToolDatesTests
     [InlineData("2026-02-30")]        // day that does not exist in that month
     [InlineData("15-03-2026")]        // right parts, wrong separator
     [InlineData("2026/03/15")]        // ISO order with slashes
+    [InlineData("3/15/2026")]         // US month-first order (issue #271: d/M must not become M/d)
+    [InlineData("15.3.26")]           // two-digit year — "yyyy" still demands four
+    [InlineData("32.1.2026")]         // day out of range, now that "d" accepts two digits
     public void TryParseOptional_PresentButUnreadable_FailsInsteadOfGuessing(string rawValue)
     {
         var succeeded = ChatToolDates.TryParseOptional(Parameters(rawValue), DateKey, out var value, out var error);

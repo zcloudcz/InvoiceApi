@@ -648,11 +648,37 @@ AI asistent zná kontext vaší firmy a umí odpovídat na otázky i provádět 
 | Oblast | Co umí |
 |--------|--------|
 | Faktury | Vyhledat fakturu, zobrazit detail, vypsat seznam faktur podle kritérií |
-| Klienti | Vyhledat klienta, zobrazit detail |
+| Klienti | Vypsat seznam klientů, vyhledat klienta, zobrazit celý detail (adresy, kontakty, bankovní účty, fakturační nastavení), založit nového podle IČO, upravit údaje a smazat klienta. Úprava i smazání se vždy nejdřív ukážou k odsouhlasení — viz níže. |
 | Přijaté faktury | Vyhledat, vypsat seznam, **zaevidovat novou**, **schválit k proplacení**, **označit jako zaplacenou**, **smazat** (každá z těchto čtyř změn se vždy nejdřív zeptá — viz níže) |
 | Přehledy a reporty | Shrnout dashboard, vypsat faktury po splatnosti, faktury za období nebo pro konkrétního klienta, spočítat DPH za období |
+| Nastavení firmy | Přečíst nastavení vlastní firmy (název, IČO, DIČ, plátcovství DPH, jazyk dokladů, adresa, kontakty, bankovní účty) a změnit ho — včetně přidání, úpravy a zrušení bankovního účtu („Přidej nám účet 1234567890/0100", „Od ledna jsme plátci DPH"). IČO měnit nelze. |
+| Kontrola nastavení | Zkontrolovat, jestli máte vyplněné vše potřebné k vystavení faktury („Můžu už fakturovat?", „Co mi ještě chybí?"). Vypíše, co chybí, jestli to fakturaci brání, nebo jen omezuje jednu funkci, a na které stránce se to doplní. Nic sám nemění. |
 | Obecné dotazy | Odpovídat na otázky o funkcích aplikace |
 | Navigace | Otevřít libovolnou stránku aplikace — faktury, přijaté faktury, klienty, platby, šablony, DPH a daně, upomínky i nastavení („Otevři DPH přiznání", „Založ novou fakturu pro klienta XYZ"). Stránky správce systému a přihlašovací obrazovky asistent neotevírá. |
+
+**Změnu dat vždycky nejdřív potvrdíte.** Když asistenta požádáte o změnu nebo smazání
+(klient, nastavení firmy, bankovní účet), ukáže vám nejprve náhled — co přesně se stane
+a z čeho na co („Název se změní z X na Y") — a **nic nezapíše**. Teprve když odpovíte, že
+souhlasíte, změnu provede. Když náhled nesedí, řekněte, co má být jinak, a asistent nabídne
+nový.
+
+Smazání klienta je „měkké" — klient se skryje, ale nezmizí, takže starší faktury
+na něj dál odkazují. Klienta, který už nějakou fakturu má, smazat nelze vůbec;
+asistent vám to řekne. Skrytého klienta lze vrátit zpět („Obnov klienta X").
+
+Když si vyžádáte načtení údajů z ARESu a rejstřík zrovna neodpoví nebo dané IČO
+nezná, asistent to řekne rovnou — nikdy nepotvrdí načtení dat, ke kterému nedošlo.
+
+Výchozí účet firmy nejde zrušit, jen přesunout: řekněte, který účet má být nově výchozí
+(„Ať je výchozí ten eurový"), a asistent přeznačí oba. Požadavek „tenhle už ať není výchozí"
+odmítne — nějaký účet výchozí být musí, jinak by ho aplikace vybrala sama a vy byste se to
+nedozvěděli.
+
+Jedno omezení má úprava a rušení bankovních účtů: účet, ke kterému už jsou v aplikaci
+navázané platby (načtené bankovní transakce nebo aktivní e-mailová schránka pro příjem
+výpisů), přepsat nejde — ani přes asistenta, ani ručně na stránce **Moje firma**. Asistent
+vám v takovém případě řekne, proč to neprošlo; upravit takový účet lze až po odpojení
+navázaných dat.
 
 Asistent navíc ví, **kde právě stojíte** — jakou stránku máte otevřenou a jestli je na ní
 konkrétní doklad — a zná dnešní datum. Můžete se tedy ptát „kdy je tahle faktura splatná"
@@ -722,6 +748,7 @@ jinak, než jste zvyklí, je pravděpodobně upravené systémové nastavení �
 - „Jaký je celkový obrat za Q1 2026?"
 - „Najdi fakturu číslo FAK-2026-001"
 - „Kolik mám nesplacených faktur?"
+- „Můžu už fakturovat? Co mi ještě chybí v nastavení?"
 - „Zaeviduj přijatou fakturu od Alzy, 2 tonery po 1500, splatnost 30.4."
 - „Schval přijatou fakturu 267708922"
 - „Přijatou fakturu 267708922 jsme zaplatili 15.4."
