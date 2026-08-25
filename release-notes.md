@@ -20,6 +20,8 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+## 2026.08.25 — 2026-08-25
+
 ### Opravy
 
 - **#271** — AI chat asistent odmítl datum zadané jedním číslem (např. „15.3.2026")
