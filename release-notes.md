@@ -20,6 +20,12 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+## 2026.08.25.7 — 2026-08-25
+
+### Změny pro uživatele
+
+- **UI** — testovací prostředí (test.fakvio.cz) má růžový horní panel a štítek TEST, aby se nedalo splést s produkcí. (PR #333, `8e72e39`)
+
 ## 2026.08.25.6 — 2026-08-25
 
 ### Změny pro vývojáře
