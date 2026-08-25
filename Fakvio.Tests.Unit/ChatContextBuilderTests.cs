@@ -594,4 +594,67 @@ public class ChatContextBuilderTests : IDisposable
 
         prompt.ShouldEndWith("- Open record: invoices #42");
     }
+
+    [Fact]
+    public async Task BuildSystemPrompt_OnAFreshTenant_TellsTheAssistantHowToOnboard()
+    {
+        // Issue #214: listing the gaps is not enough — without instructions the model dumps
+        // every missing value into one message, or tells the user to go and fill in a form.
+        ReadinessIssues(Blocking(ReadinessCodes.IssuerBankAccountMissing, "/my-company"));
+
+        var prompt = await _builder.BuildSystemPromptAsync();
+
+        prompt.ShouldContain(AiSystemPrompt.OnboardingInstructions);
+        prompt.ShouldContain("Ask for ONE missing value per message");
+        prompt.ShouldContain("Save each answer immediately with the matching tool");
+        // The two-phase confirmation gate (#212): without this line the model reports a value
+        // as saved when the tool has only previewed it.
+        prompt.ShouldContain("needs confirmation");
+    }
+
+    [Fact]
+    public async Task BuildSystemPrompt_OnAConfiguredTenant_OmitsTheOnboardingInstructions()
+    {
+        // Nothing to onboard means nothing to instruct — and no tokens spent on it in every
+        // single request for the rest of the tenant's life.
+        ReadinessIssues();
+
+        var prompt = await _builder.BuildSystemPromptAsync();
+
+        prompt.ShouldNotContain(AiSystemPrompt.OnboardingInstructions);
+    }
+
+    [Fact]
+    public async Task BuildSystemPrompt_WithWarningsOnly_OmitsTheOnboardingInstructions()
+    {
+        // A warning does not stop the user from invoicing, so it must not switch the whole
+        // assistant into onboarding mode. Same rule as the gaps line itself.
+        ReadinessIssues(new ReadinessIssueDto
+        {
+            Code = ReadinessCodes.EpoHeaderIncomplete,
+            Severity = EReadinessSeverity.Warning,
+            FixRoute = "/company-settings"
+        });
+
+        var prompt = await _builder.BuildSystemPromptAsync();
+
+        prompt.ShouldNotContain(AiSystemPrompt.OnboardingInstructions);
+    }
+
+    [Fact]
+    public async Task BuildSystemPrompt_PutsTheOnboardingInstructionsAfterTheGaps()
+    {
+        // The instructions say "the setup above" — worthless if the model reads them before
+        // it knows what is missing.
+        ReadinessIssues(Blocking(ReadinessCodes.IssuerMissing, "/my-company"));
+
+        var prompt = await _builder.BuildSystemPromptAsync();
+
+        var gapsPosition = prompt.IndexOf("- Setup not finished yet:", StringComparison.Ordinal);
+        var onboardingPosition = prompt.IndexOf(
+            AiSystemPrompt.OnboardingInstructions, StringComparison.Ordinal);
+
+        gapsPosition.ShouldBeGreaterThanOrEqualTo(0);
+        onboardingPosition.ShouldBeGreaterThan(gapsPosition);
+    }
 }

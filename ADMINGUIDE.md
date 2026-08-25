@@ -300,7 +300,13 @@ Systémový prompt má šest bloků; editovatelné jsou dva prostřední:
 | 3 | Hlavní instrukce — styl odpovědi, seznam nástrojů, pravidla importu | **ano** |
 | 4 | Dodatek | **ano** |
 | 5 | Business kontext (počty klientů a faktur z databáze tenanta) | ne |
-| 6 | Situační kontext (dnešní datum, otevřená stránka a doklad, chybějící nastavení tenanta) | ne |
+| 6 | Situační kontext (dnešní datum, otevřená stránka a doklad, chybějící nastavení tenanta) + onboarding instrukce | ne |
+
+Blok 6 obsahuje navíc **onboarding instrukce** — jak asistent doprovodí firmu s nedokončeným
+nastavením (ptát se po jednom údaji a rovnou ho zapsat). Přidají se jen tenantům, kterým
+opravdu něco chybí; hotové firmě se do promptu nedostanou vůbec. V bloku 6 jsou schválně:
+vlastní instrukce (blok 3) je nepřepíší, takže ani firma s vlastním promptem o onboarding
+nepřijde. V náhledu je blok vidět (viz níže).
 
 | Pole | Chování |
 |------|---------|

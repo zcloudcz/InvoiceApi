@@ -1006,6 +1006,19 @@ fakturu" nebo „splatnost do pátku" nedá vyhodnotit:
 - Náhled pro SysAdmina blok ukazuje také, s `PreviewPlaceholder` místo živých hodnot —
   vlastní prompt se píše proti celému layoutu, ne proti jeho polovině.
 
+**Onboarding instrukce (issue #214).** Když — a jen když — je řádek `Setup not finished yet`
+neprázdný, přidá se za něj `AiSystemPrompt.OnboardingInstructions`: doptávej se **po jednom
+údaji**, každou odpověď rovnou zapiš odpovídajícím toolem, neposílej uživatele do formuláře
+a respektuj dvoufázové potvrzení (`IConfirmableChatTool`, pravidlo 7 výše). Bez nich model vysype všechny
+chybějící údaje do jedné zprávy nebo ohlásí uložení hodnoty, kterou tool teprve nabídl.
+
+- Sedí v **bloku 6, ne v bloku 3** — blok 3 může SysAdmin celý nahradit vlastním promptem
+  a onboarding je to jediné, o co nový tenant nesmí takhle přijít.
+- Tooly se v textu jmenují obecně („the matching tool above"). Katalog se generuje z DI,
+  takže jmenný seznam by byl druhá, ručně udržovaná kopie, co zastará při prvním novém toolu.
+- Nastavený tenant instrukce nedostane vůbec — jinak by je platil v tokenech v každém requestu.
+- Klientskou půlku (proaktivní uvítání) řeší `ChatOnboarding`, viz §4.12.
+
 #### Chat AI Tools matice
 
 Sloupec „Klíčové parametry" je jen orientační — závazné je schéma v příslušné třídě.
@@ -1726,6 +1739,19 @@ normální položka reportu (200), s `issuerId` je to 404.
 | API klient | `Fakvio.UI.Shared/Services/ReadinessApiService.cs` | Chytá **`Exception`**, ne jen `ApiException` — `ApiClientBase.GetAsync` propouští i `HttpRequestException` / `JsonException` a výjimka z lifecycle metody v Blazor WASM shodí celou aplikaci. Při chybě vrací prázdný report; banner je dekorace, nesmí shodit hostitelskou stránku |
 | Komponenta | `Fakvio.UI.Shared/Components/Shared/ReadinessBanner.razor` | Blocking → `Severity.Error`, Warning → `Severity.Warning`, dva oddělené alerty. Prázdný report = nerenderuje nic. Stahuje **jednou na `IssuerId`** (guard `_loadedIssuerId`, stejný idiom jako `_lastTrigger` v `InvoicePaymentsPanel`) — bez něj by každý `StateHasChanged()` hostitelské stránky znamenal další `GET /api/readiness` |
 | Zapojení | `Home.razor` (bez `IssuerId`, celý tenant), `InvoiceDetail.razor` (jen stav Draft, `IssuerId` dokladu) | Detail Draftu je poslední místo před gate v `CompleteInvoiceAsync` |
+
+**UI konzument — konverzační onboarding** (issue #214). Druhá polovina je serverová
+(`AiSystemPrompt.OnboardingInstructions`, §4.7).
+
+| Vrstva | Kde | Poznámka |
+|--------|-----|----------|
+| Rozhodnutí + text | `Fakvio.UI.Shared/Components/Chat/ChatOnboarding.cs` | `BuildWelcome(report, L)` → markdown, nebo **null** = tenant je připravený, neotravuj. Jen `Blocking` nálezy, stejně jako v promptu — warning uživateli fakturovat nebrání. Čistá funkce, takže je pravidlo testovatelné bez renderu i bez živého modelu |
+| Text nálezu | `Fakvio.UI.Shared/Components/Shared/ReadinessText.cs` | `Describe(issue, L)` sdílený s `ReadinessBanner` — banner i uvítání musí tentýž nález pojmenovat stejně, dvě kopie pravidla „kód → klíč + fallback" se rozejdou při prvním novém kódu |
+| Zapojení | `MainLayout.razor` (`TryProactiveOnboardingAsync`) → `ChatPanel.OnboardingWelcome` | Po `LoadCompaniesAsync` (potřebuje `_hasTenantContext`), **jednou za session** (`sessionStorage["chatOnboardingShown"]`, maže se při odhlášení). Uvítání se vloží do `_messages` jen v UI — do konverzace v DB nejde, jinak by měl model v historii každé konverzace vloženou vlastní repliku |
+
+Uvítání **neskládá model** — je to lokalizovaný text. Panel ho ukáže hned po otevření, nic
+nestojí, nemůže si chybějící položky vymyslet a dá se otestovat bez živého AI. Konverzaci od
+druhé zprávy dál řídí prompt (§4.7), ne tenhle text.
 
 Když přidáváš readiness kód, přidej k němu **i lokalizační klíč `Readiness_Code_<KÓD>`
 do obou `SharedResource*.resx`** — jinak uživatel uvidí obecnou náhradní hlášku.

@@ -116,20 +116,10 @@
     }
 
     /// <summary>
-    /// Human-readable text for one issue: the localized message for its code, plus the issuer
-    /// name when the problem belongs to a specific company (a tenant may have several).
+    /// Human-readable text for one issue. Shared with the assistant's onboarding welcome
+    /// (issue #214) via <see cref="ReadinessText"/> so both name a finding identically.
     /// </summary>
-    private string Describe(ReadinessIssueDto issue)
-    {
-        // The code is a localization key, never shown raw — an unknown code (older UI against a
-        // newer API) falls back to a generic sentence instead of leaking "ISSUER_FOO" to the user.
-        var text = L[$"Readiness_Code_{issue.Code}"];
-        var message = text.ResourceNotFound ? L["Readiness_Code_Unknown"].Value : text.Value;
-
-        return string.IsNullOrWhiteSpace(issue.IssuerName)
-            ? message
-            : $"{message} ({issue.IssuerName})";
-    }
+    private string Describe(ReadinessIssueDto issue) => ReadinessText.Describe(issue, L);
 
     /// <summary>Issues of one severity, together with how their alert should look.</summary>
     private sealed record IssueGroup(Severity Severity, string TitleKey, List<ReadinessIssueDto> Issues);

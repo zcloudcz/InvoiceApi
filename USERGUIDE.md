@@ -80,6 +80,9 @@ Banner rozlišuje dvě závažnosti:
 Máte-li v účtu víc vystavitelů, je u položky uvedeno, které firmy se týká.
 Když je vše vyplněné, banner se nezobrazuje vůbec.
 
+Chybí-li něco červeného, ozve se po přihlášení i [AI asistent](#13-ai-asistent) a nabídne,
+že to s vámi doplní rovnou v chatu — údaj po údaji, bez chození po stránkách.
+
 Stejný banner najdete i v detailu faktury ve stavu Draft — tam je omezený na vystavitele
 té konkrétní faktury, takže vidíte přesně to, co by vystavení zablokovalo.
 
@@ -659,6 +662,22 @@ můžete mít panel zavřený, i když ho na počítači necháváte otevřený.
 **Na mobilu** panel zabírá celou šířku displeje. Zavřete ho křížkem vpravo nahoře v panelu
 nebo klepnutím mimo panel. Plocha pro přetažení souboru se na telefonu nezobrazuje —
 soubor připojíte tlačítkem se sponkou vedle textového pole.
+
+### Při prvním přihlášení se asistent ozve sám
+
+Dokud vaší firmě chybí něco, bez čeho nejde vystavit fakturu, otevře se panel asistenta
+hned po přihlášení a asistent rovnou napíše, co ještě chybí — nezůstanete stát nad prázdným
+přehledem. Vypisuje přesně ty položky, které najdete i v [banneru připravenosti na
+dashboardu](#připravenost-k-fakturaci); doporučená (oranžová) nastavení uvítání nespouštějí.
+
+Nastavení můžete doplnit rovnou v chatu: asistent se ptá **po jednom údaji**, odpověď hned
+uloží, potvrdí ji a řekne, co zbývá. Než něco zapíše, ukáže to k odsouhlasení stejně jako
+u každé jiné změny (viz [Než asistent něco změní, zeptá se](#než-asistent-něco-změní-zeptá-se)).
+Nechcete-li to řešit v chatu, panel zavřete a doplňte údaje na příslušných stránkách —
+odkaz **Doplnit** v banneru na dashboardu vede přímo na ně.
+
+Uvítání přijde **jednou za přihlášení**. Když panel zavřete, do dalšího přihlášení už se sám
+neotevře. Jakmile je nastavení kompletní, uvítání se nezobrazuje vůbec.
 
 ### Co AI asistent umí
 
