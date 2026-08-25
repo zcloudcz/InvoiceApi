@@ -15,7 +15,7 @@ určuje JWT token, kterým server pracuje.
 - Projekt: `Fakvio.McpServer` (net10.0, `PackAsTool`)
 - Příkaz nainstalovaného nástroje: **`fakvio-mcp`** (`ToolCommandName` v csproj)
 - Jméno serveru hlášené v MCP handshake: `fakvio` (`Program.cs`, `ServerInfo`)
-- SDK: `ModelContextProtocol` 1.0.0, transport **pouze stdio**
+- SDK: `ModelContextProtocol` 2.2.0, transport **pouze stdio**
 
 ## Požadavky
 

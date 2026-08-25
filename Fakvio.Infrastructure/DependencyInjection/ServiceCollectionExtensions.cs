@@ -290,6 +290,13 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IChatTool, ListReceivedInvoicesTool>();
         services.AddScoped<IChatTool, SearchReceivedInvoicesTool>();
 
+        // …and act on them: record a new one and walk it through its lifecycle.
+        // All four write, so all four are IConfirmableChatTool — see DEVGUIDE §4.7 rule 7.
+        services.AddScoped<IChatTool, CreateReceivedInvoiceTool>();
+        services.AddScoped<IChatTool, ApproveReceivedInvoiceTool>();
+        services.AddScoped<IChatTool, MarkReceivedInvoicePaidTool>();
+        services.AddScoped<IChatTool, DeleteReceivedInvoiceTool>();
+
         // File attachment tools — let the agent attach files to entities and list existing attachments.
         services.AddScoped<IChatTool, AttachFileTool>();
         services.AddScoped<IChatTool, ListAttachmentsTool>();
@@ -326,6 +333,15 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IChatTool, MarkInvoicePaidTool>();
         services.AddScoped<IChatTool, SendInvoiceEmailTool>();
         services.AddScoped<IChatTool, DeleteInvoiceTool>();
+
+        // Numbering and VAT settings — read the číselné řady and sazby DPH, and change them
+        // conversationally. Both writes of each pair are confirmable (IConfirmableChatTool).
+        services.AddScoped<IChatTool, ListNumberSequencesTool>();
+        services.AddScoped<IChatTool, CreateNumberSequenceTool>();
+        services.AddScoped<IChatTool, UpdateNumberSequenceTool>();
+        services.AddScoped<IChatTool, ListVatRatesTool>();
+        services.AddScoped<IChatTool, CreateVatRateTool>();
+        services.AddScoped<IChatTool, UpdateVatRateTool>();
 
         services.AddScopedWithLogging<IChatToolExecutor, ChatToolExecutor>();
 

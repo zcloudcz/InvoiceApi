@@ -47,7 +47,7 @@ internal static class BuiltInPromptAssertions
     ];
 
     /// <summary>
-    /// The catalog the thirty-four shipped tools are expected to render, in DI registration order
+    /// The catalog the forty-four shipped tools are expected to render, in DI registration order
     /// (<c>ServiceCollectionExtensions</c>). Each line is <c>- {ToolName}: {Description}</c>
     /// with the description written out as one line. This is the independent copy: when a tool
     /// description changes, it has to be changed here too, deliberately. That is the point.
@@ -67,6 +67,10 @@ internal static class BuiltInPromptAssertions
         "- get_received_invoice: Get detail of a received (incoming/expense) invoice by ID or document number. Returns all fields: supplier info, line items, VAT breakdown, totals, dates, status, payment info.",
         "- list_received_invoices: List received (incoming/expense) invoices with optional filtering by status, supplier name, date range, amount range, or currency. Returns paged results with totals.",
         "- search_received_invoices: Full-text search across received (incoming/expense) invoices. Searches by document number, supplier name, variable symbol, or amount. Use this when the user provides a number or name without specifying which field.",
+        "- create_received_invoice: Record a received (incoming/expense) invoice from data the user dictates: supplier, items, dates. Use this when the user describes the expense in the conversation — when they paste or upload the text of a real document, use 'import_invoice' instead, which reads issued/received from the IČO and keeps the document's own dates.",
+        "- approve_received_invoice: Approve a received (incoming/expense) invoice for payment — moves it from status 'Received' to 'Approved'. Identify the invoice by id or by document number.",
+        "- mark_received_invoice_paid: Mark a received (incoming/expense) invoice as paid — moves it from status 'Approved' to 'Paid'. Identify the invoice by id or by document number. Pass paid_at when the payment happened on a different day than today.",
+        "- delete_received_invoice: Delete a received (incoming/expense) invoice. Only invoices in status 'Received' or 'Rejected' can be deleted. Identify the invoice by id or by document number.",
         "- attach_file: Attach a file to an entity (Invoice, ReceivedInvoice, or Client). The file content must be provided as a Base64-encoded string — the frontend supplies it when the user drops a file into the chat. Returns the attachment ID, file name, and size upon success.",
         "- list_attachments: List all file attachments for an entity record (Invoice, ReceivedInvoice, or Client). Returns file name, size, upload date, and optional description for each attachment.",
         "- get_dashboard: Get the dashboard summary: cashflow due this month, number of clients, unpaid amount, overdue invoice count, the most recent invoices, invoice counts per status, and the top clients by revenue. Read-only overview — use it for general questions about how the business is doing.",
@@ -87,7 +91,13 @@ internal static class BuiltInPromptAssertions
         "- complete_invoice: Issue (complete) a DRAFT issued invoice: status changes from Draft to Completed and the document number is assigned. This cannot be undone from chat. Identify the draft by ID or document number.",
         "- mark_invoice_paid: Mark a COMPLETED issued invoice as paid (status Completed → Paid, payment date = now). Identify the invoice by ID or document number.",
         "- send_invoice_email: Send an issued invoice by e-mail with the PDF and ISDOC attachments. Identify the invoice by ID or document number and give the recipient address.",
-        "- delete_invoice: Delete a DRAFT issued invoice (soft delete — it can be restored on the Invoices page). Issued documents cannot be deleted from chat. Identify the draft by ID or document number."
+        "- delete_invoice: Delete a DRAFT issued invoice (soft delete — it can be restored on the Invoices page). Issued documents cannot be deleted from chat. Identify the draft by ID or document number.",
+        "- list_number_sequences: List the document number sequences (číselné řady) of the user's company: their name, document type, prefix/suffix, current counter, numbering format and which one is the default. Also lists the available numbering formats with the IDs needed to create a new sequence.",
+        "- create_number_sequence: Create a new document number sequence (číselná řada) for invoices, credit notes, pro-forma invoices or advance tax receipts. The numbering format is referenced by the ID that list_number_sequences prints, so call that tool first.",
+        "- update_number_sequence: Change one document number sequence (číselná řada): its name, prefix, suffix, counter, or make it the default sequence for its document type. Identify the sequence by the ID returned from list_number_sequences and send only the fields that should change. The document type and the numbering format cannot be changed — create a new sequence instead.",
+        "- list_vat_rates: List the VAT rates (sazby DPH) configured for the user's company: percentage, name, whether the rate is reduced or standard, its validity period and which rates are the default ones. Returns the IDs needed to change a rate.",
+        "- create_vat_rate: Create a new VAT rate (sazba DPH) for the user's company. The percentage and a name are required; validity starts today unless a date is given. A rate can be marked as the default standard or default reduced rate, which is the one offered on new invoice items.",
+        "- update_vat_rate: Change one VAT rate (sazba DPH): its name, percentage, validity dates, whether it is a reduced rate, or make it the default rate of its kind. Identify the rate by the ID returned from list_vat_rates and send only the fields that should change."
     ];
 
     /// <summary>The static lines below the generated tool catalog, verbatim.</summary>
