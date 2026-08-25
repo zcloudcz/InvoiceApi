@@ -53,7 +53,8 @@ public class ReminderChatToolTests
         long id = 5,
         EReminderStatus status = EReminderStatus.Draft,
         string? sentToEmail = null,
-        string? errorMessage = null)
+        string? errorMessage = null,
+        string? notes = null)
         => new()
         {
             Id = id,
@@ -70,7 +71,8 @@ public class ReminderChatToolTests
             InterestCzk = 12.5m,
             TotalCzk = 12_162.5m,
             SentToEmail = sentToEmail,
-            ErrorMessage = errorMessage
+            ErrorMessage = errorMessage,
+            Notes = notes
         };
 
     /// <summary>Reminder service stub that returns one page with the supplied rows.</summary>
@@ -238,6 +240,29 @@ public class ReminderChatToolTests
 
         // "Failed" without a reason leaves the model inventing one.
         result.OutputText.ShouldContain("error: SMTP timeout");
+    }
+
+    [Fact]
+    public async Task ListReminders_ReportsWhyACancelledReminderWasCalledOff()
+    {
+        var reminder = BuildReminder(status: EReminderStatus.Cancelled, notes: "Klient zaplatil telefonicky");
+
+        var result = await CreateListTool(StubList(reminder)).ExecuteAsync([]);
+
+        // Third arm of FormatOutcome: a cancelled reminder without its note reads as an
+        // unexplained gap in the dunning history, and the model fills the gap with a guess.
+        result.OutputText.ShouldContain("note: Klient zaplatil telefonicky");
+    }
+
+    [Fact]
+    public async Task ListReminders_WithACancelledReminderWithoutANote_AddsNothing()
+    {
+        var result = await CreateListTool(StubList(BuildReminder(status: EReminderStatus.Cancelled))).ExecuteAsync([]);
+
+        // The note is optional, so the guard arm must fall through to the empty suffix
+        // instead of printing a dangling "note:".
+        result.OutputText.ShouldContain("Cancelled");
+        result.OutputText.ShouldNotContain("note:");
     }
 
     // ─── get_reminder_settings ────────────────────────────────────────────
@@ -412,6 +437,30 @@ public class ReminderChatToolTests
         // Naming no setting must not reach GetCompanySettingsAsync either — it auto-creates the
         // default record, so an empty call would leave state behind while reporting a failure.
         await service.DidNotReceive().GetCompanySettingsAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task UpdateReminderSettings_WithoutAnySetting_AndNothingStored_CreatesNoRecord()
+    {
+        // Mirror of the test above, and the case the parameter guard actually exists for:
+        // nothing is stored AND no setting is named. Without the guard the tool would fall
+        // through to GetCompanySettingsAsync, which CREATES the default record, find an empty
+        // diff, skip the "existed &&" refusal and report "Reminder settings updated" — the
+        // opposite of the truth, with a record left behind.
+        var service = StubSettings(null);
+        var tool = CreateUpdateSettingsTool(service);
+
+        var preview = await tool.BuildPreviewAsync([]);
+        var executed = await tool.ExecuteAsync([]);
+
+        preview.IsSuccess.ShouldBeFalse();
+        preview.ErrorMessage.ShouldContain("No change was requested");
+        executed.IsSuccess.ShouldBeFalse();
+        executed.ErrorMessage.ShouldContain("No change was requested");
+
+        await service.DidNotReceive().GetCompanySettingsAsync(Arg.Any<CancellationToken>());
+        await service.DidNotReceive()
+            .UpsertSettingsAsync(Arg.Any<UpdateReminderSettingsDto>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]

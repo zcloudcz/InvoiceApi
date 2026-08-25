@@ -134,6 +134,20 @@ public class PaymentChatToolTests
         CapturedQuery(service).Paging.PageSize.ShouldBe(100);
     }
 
+    [Theory]
+    [InlineData("0")]
+    [InlineData("-4")]
+    public async Task ListPayments_IgnoresNonsensicalPageNumbers(string page)
+    {
+        var service = StubList(BuildPayment());
+
+        await CreateListTool(service).ExecuteAsync(new Dictionary<string, string> { ["page"] = page });
+
+        // PaginationParams clamps to 1..100; assigning a non-positive page blindly would push
+        // the clamp into a negative OFFSET and make the query throw instead of answering.
+        CapturedQuery(service).Paging.Page.ShouldBe(1);
+    }
+
     [Fact]
     public async Task ListPayments_WithUnreadableDate_FailsInsteadOfDroppingTheFilter()
     {
@@ -246,6 +260,77 @@ public class PaymentChatToolTests
         result.OutputText.ShouldNotContain("Constant symbol");
         result.OutputText.ShouldNotContain("Specific symbol");
         result.OutputText.ShouldNotContain("Bank transaction code");
+    }
+
+    [Fact]
+    public async Task GetPayment_RendersAnOutgoingPaymentAsMoneySent()
+    {
+        var service = Substitute.For<IBankTransactionQueryService>();
+        service.GetAsync(7, Arg.Any<CancellationToken>())
+            .Returns(BuildPayment(direction: EPaymentDirection.Outgoing));
+
+        var result = await CreateGetTool(service)
+            .ExecuteAsync(new Dictionary<string, string> { ["id"] = "7" });
+
+        // The stored amount is absolute, so both the sign and the wording come from the
+        // direction — the detail must not read as income the way the list row already cannot.
+        result.OutputText.ShouldContain("-12,100.00 CZK (money sent)");
+    }
+
+    [Fact]
+    public async Task GetPayment_NamesTheRecognizedCounterpartyWithItsCategory()
+    {
+        var payment = BuildPayment(matchStatus: EMatchStatus.Recognized);
+        payment.RecognizedCounterpartyId = 4;
+        payment.RecognizedCounterpartyLabel = "OSSZ — sociální pojištění";
+        payment.RecognizedCategory = EPaymentCategory.SocialInsurance;
+
+        var service = Substitute.For<IBankTransactionQueryService>();
+        service.GetAsync(7, Arg.Any<CancellationToken>()).Returns(payment);
+
+        var result = await CreateGetTool(service)
+            .ExecuteAsync(new Dictionary<string, string> { ["id"] = "7" });
+
+        // A recognized outgoing payment is never matched to an invoice, so this line is the
+        // only answer the model has to "what was that payment for?".
+        result.OutputText.ShouldContain("Recognized counterparty: OSSZ — sociální pojištění (category: SocialInsurance)");
+    }
+
+    [Fact]
+    public async Task GetPayment_WithARecognizedCounterpartyButNoCategory_OmitsTheCategory()
+    {
+        var payment = BuildPayment(matchStatus: EMatchStatus.Recognized);
+        payment.RecognizedCounterpartyLabel = "OSSZ — sociální pojištění";
+
+        var service = Substitute.For<IBankTransactionQueryService>();
+        service.GetAsync(7, Arg.Any<CancellationToken>()).Returns(payment);
+
+        var result = await CreateGetTool(service)
+            .ExecuteAsync(new Dictionary<string, string> { ["id"] = "7" });
+
+        // The category is optional on the counterparty record; the ternary must fall through
+        // to nothing rather than print an empty bracket.
+        result.OutputText.ShouldContain("Recognized counterparty: OSSZ — sociální pojištění");
+        result.OutputText.ShouldNotContain("category:");
+    }
+
+    [Fact]
+    public async Task GetPayment_WithAnAnonymousTransfer_SaysTheCounterpartyIsUnknown()
+    {
+        var payment = BuildPayment();
+        payment.CounterpartyName = null;
+        payment.BankAccountLabel = null;
+
+        var service = Substitute.For<IBankTransactionQueryService>();
+        service.GetAsync(7, Arg.Any<CancellationToken>()).Returns(payment);
+
+        var result = await CreateGetTool(service)
+            .ExecuteAsync(new Dictionary<string, string> { ["id"] = "7" });
+
+        // Both fallbacks are load-bearing: a blank line invites the model to fill the name in
+        // from the message text, and the account has to stay identifiable by its ID.
+        result.OutputText.ShouldContain("Counterparty: (unknown)");
+        result.OutputText.ShouldContain("Our bank account: ID 3");
     }
 
     [Fact]
