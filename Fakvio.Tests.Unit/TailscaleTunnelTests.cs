@@ -19,12 +19,20 @@
 //    Both tolerances are races, so both are driven through a seam: the copy that
 //    fails only after a sibling worker slipped its own copy in, and the bring-up
 //    that fails while the winner's daemon is still binding the SOCKS port.
+// 6. Where the tolerance stops: no daemon at all, and a binary missing from the
+//    package. Both must still fail loudly, otherwise a broken deploy looks like
+//    a healthy one.
+// 7. The milestones themselves. They go to the logger *and* to stdout, and only
+//    the stdout copy reaches App Insights today, so both are behaviour.
 // ============================================================================
 
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
+using System.Text;
 using Fakvio.Functions.Tailscale;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Shouldly;
@@ -294,6 +302,146 @@ public class TailscaleTunnelTests
         logger.Warnings.ShouldContain(entry => entry.Message.Contains("continuing on another worker's daemon"));
     }
 
+    [Fact]
+    public async Task RethrowsTheBringUpFailureWhenNoDaemonEverAnswers()
+    {
+        // The tolerance is for a race with a sibling worker, not a blanket "ignore failures". When
+        // nothing serves the SOCKS port, the original failure has to reach the caller — swallowing
+        // it would leave the host running with a connection string pointing at a forwarder that was
+        // never started, and the only symptom would be Npgsql timeouts minutes later.
+        // The startup budget is spent up front (a shutdown during bring-up looks exactly like this),
+        // which is also what keeps the give-up path from waiting out all fifteen poll attempts.
+        var logger = new RecordingLogger<Socks5Forwarder>();
+        using var alreadyOver = new CancellationTokenSource();
+        await alreadyOver.CancelAsync();
+
+        var failure = await Should.ThrowAsync<IOException>(() => TailscaleTunnel.StartIfConfiguredAsync(
+            "tskey-x",
+            Substitute.For<IHostApplicationLifetime>(),
+            logger,
+            socksPort: ReserveFreePort(),
+            listenPort: 0,
+            bringUp: _ => throw new IOException("Text file busy : '/tmp/tsbin/tailscaled'"),
+            alreadyOver.Token));
+
+        // The exception the operator sees must be the one that actually happened, not a wrapper.
+        failure.Message.ShouldContain("Text file busy");
+        logger.Entries.ShouldNotContain(entry => entry.Message.Contains("forwarder"));
+        logger.Warnings.ShouldNotContain(entry => entry.Message.Contains("another worker's daemon"));
+    }
+
+    [Fact]
+    public async Task RethrowsAMissingBinaryEvenWhileAnotherWorkersDaemonAnswers()
+    {
+        // The one failure that is never a race: a binary missing from the deployment package cannot
+        // be fixed by another worker, because every worker on the instance runs the same package.
+        // So this must not take the "someone else's daemon will do" exit even with the SOCKS port
+        // wide open — a broken deploy has to look broken.
+        using var siblingDaemon = new DelayedSocksListener(TimeSpan.Zero);
+        var logger = new RecordingLogger<Socks5Forwarder>();
+
+        await Should.ThrowAsync<FileNotFoundException>(() => TailscaleTunnel.StartIfConfiguredAsync(
+            "tskey-x",
+            Substitute.For<IHostApplicationLifetime>(),
+            logger,
+            siblingDaemon.Port,
+            listenPort: 0,
+            bringUp: _ => throw new FileNotFoundException("tsbin/tailscaled missing"),
+            CancellationToken.None));
+
+        logger.Entries.ShouldNotContain(entry => entry.Message.Contains("forwarder"));
+    }
+
+    [Fact]
+    public async Task StartsTheForwarderAndProbesTheTargetWhenTheBringUpSucceeds()
+    {
+        // The plain path, with only the daemon faked: after a successful bring-up the forwarder is
+        // bound and the target is probed through the SOCKS proxy. The reachability milestone is what
+        // an operator looks for in Host.Function.Console to tell "tunnel up" from "tunnel up but the
+        // database is not on the other end".
+        using var daemon = new DelayedSocksListener(TimeSpan.Zero);
+        var logger = new RecordingLogger<Socks5Forwarder>();
+
+        var started = await TailscaleTunnel.StartIfConfiguredAsync(
+            "tskey-x",
+            Substitute.For<IHostApplicationLifetime>(),
+            logger,
+            daemon.Port,
+            listenPort: 0,
+            bringUp: _ => Task.CompletedTask,
+            CancellationToken.None);
+
+        started.ShouldBeTrue();
+        logger.Entries.ShouldContain(entry => entry.Message.Contains("forwarder 127.0.0.1:"));
+        logger.Entries.ShouldContain(entry => entry.Message.Contains("target reachable"));
+        // Nothing raced here, so the fallback warning would mean the happy path took the tolerant
+        // exit instead of the direct one.
+        logger.Warnings.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void MilestoneWritesTheSameSingleLineToTheLoggerAndToStdout()
+    {
+        // Worker ILogger categories do not reach App Insights today (follow-up issue in
+        // Tailscale/README.md §6); stdout does, as Host.Function.Console. A milestone that lands in
+        // only one of the two sinks makes the tunnel undiagnosable in Azure, so both are behaviour.
+        var logger = new RecordingLogger<Socks5Forwarder>();
+        using var stdout = new ConsoleOutputScope();
+
+        // CR/LF is what an exception message drags in. One milestone has to stay one row, otherwise
+        // the tail of it shows up in App Insights as an unrelated-looking event.
+        TailscaleTunnel.Milestone(logger, "bring-up failed:\r\nexit code 1", LogLevel.Warning);
+
+        var logged = logger.Warnings.ShouldHaveSingleItem().Message;
+        logged.ShouldBe("Tailscale: bring-up failed: exit code 1");
+        // Same text, one line: an exact match on a captured line proves both at once.
+        stdout.Lines.ShouldContain(logged);
+    }
+
+    [Fact]
+    public void CopyExecutableFailsWhenTheCopyLeftNoFileBehind()
+    {
+        // The other half of the tolerance rule: an IOException is survivable only because it leaves
+        // a usable binary behind (the sibling worker's). A read-only /tmp or a vanished mount leaves
+        // nothing at all, and continuing would only push the failure into Process.Start.
+        using var directories = new TempDirectoryScope();
+        File.WriteAllBytes(Path.Combine(directories.Source, "tailscaled"), new byte[] { 1, 2, 3, 4 });
+
+        Should.Throw<IOException>(() => TailscaleTunnel.CopyExecutable(
+            directories.Source, directories.Destination, "tailscaled", NullLogger.Instance,
+            copyFile: (_, _) => throw new IOException("Read-only file system")));
+    }
+
+    [Fact]
+    public void CopyExecutableReportsASourceBinaryMissingFromThePackage()
+    {
+        // Distinct type on purpose: FileNotFoundException is the one failure StartIfConfiguredAsync
+        // refuses to tolerate, so downgrading it to a plain IOException here would make a package
+        // without binaries wait out the SOCKS poll on every worker and then fail anyway.
+        using var directories = new TempDirectoryScope();
+
+        var missing = Should.Throw<FileNotFoundException>(() => TailscaleTunnel.CopyExecutable(
+            directories.Source, directories.Destination, "tailscaled", NullLogger.Instance));
+
+        // The message is the whole diagnosis for an operator who has no shell on the instance.
+        missing.Message.ShouldContain("tailscaled");
+        missing.Message.ShouldContain(directories.Source);
+        missing.Message.ShouldContain("deploy workflow");
+    }
+
+    /// <summary>
+    /// Picks a loopback port the OS says is free and lets go of it again. Used both for a port that
+    /// is about to be listened on and for one that must stay dead for the whole test.
+    /// </summary>
+    private static int ReserveFreePort()
+    {
+        var probe = new TcpListener(IPAddress.Loopback, 0);
+        probe.Start();
+        var port = ((IPEndPoint)probe.LocalEndpoint).Port;
+        probe.Stop();
+        return port;
+    }
+
     /// <summary>
     /// Stands in for the sibling worker's tailscaled: the port stays closed for a moment (the window
     /// in which the losing worker's bring-up fails) and then answers the SOCKS5 handshake with
@@ -310,12 +458,22 @@ public class TailscaleTunnelTests
         private readonly TcpListener _listener;
         private readonly CancellationTokenSource _stopping = new();
 
+        private readonly bool _listeningFromTheStart;
+
         public DelayedSocksListener(TimeSpan startDelay)
         {
             // The port has to be known before anything listens on it, so it is reserved and released
             // first — the caller passes it in as "the port the daemon will use".
             Port = ReserveFreePort();
             _listener = new TcpListener(IPAddress.Loopback, Port);
+            _listeningFromTheStart = startDelay == TimeSpan.Zero;
+            if (_listeningFromTheStart)
+            {
+                // Bound before the constructor returns: a test that needs the daemon answering from
+                // the very first probe must not race the background serve loop into existence.
+                _listener.Start();
+            }
+
             _ = ServeAsync(startDelay);
         }
 
@@ -328,21 +486,16 @@ public class TailscaleTunnelTests
             _stopping.Dispose();
         }
 
-        private static int ReserveFreePort()
-        {
-            var probe = new TcpListener(IPAddress.Loopback, 0);
-            probe.Start();
-            var port = ((IPEndPoint)probe.LocalEndpoint).Port;
-            probe.Stop();
-            return port;
-        }
-
         private async Task ServeAsync(TimeSpan startDelay)
         {
             try
             {
-                await Task.Delay(startDelay, _stopping.Token);
-                _listener.Start();
+                if (!_listeningFromTheStart)
+                {
+                    await Task.Delay(startDelay, _stopping.Token);
+                    _listener.Start();
+                }
+
                 while (!_stopping.IsCancellationRequested)
                 {
                     var client = await _listener.AcceptTcpClientAsync(_stopping.Token);
@@ -366,8 +519,10 @@ public class TailscaleTunnelTests
                     await stream.WriteAsync(GreetingReply);
                     await stream.ReadExactlyAsync(new byte[10]);
                     await stream.WriteAsync(ConnectReply);
-                    // Stay open until the other side hangs up, like a real proxy would.
-                    await stream.ReadAsync(new byte[1]);
+                    // Stay open until the other side hangs up, like a real proxy would. ReadExactly
+                    // rather than Read: it throws at end-of-stream instead of returning a count this
+                    // fake would have to inspect (CA2022), and the catch below is where that belongs.
+                    await stream.ReadExactlyAsync(new byte[1]);
                 }
                 catch (Exception)
                 {
@@ -387,6 +542,42 @@ public class TailscaleTunnelTests
         public string Destination => Directory.CreateDirectory(Path.Combine(_root.FullName, "runtime")).FullName;
 
         public void Dispose() => _root.Delete(recursive: true);
+    }
+
+    /// <summary>
+    /// Redirects <c>Console.Out</c> for the duration of one test and puts the original writer back
+    /// afterwards. Lines are captured one by one rather than as one blob, so an assertion can match
+    /// a whole milestone exactly — which is also how "one milestone is one line" gets pinned.
+    /// </summary>
+    private sealed class ConsoleOutputScope : IDisposable
+    {
+        private readonly ConcurrentQueue<string> _lines = new();
+        private readonly TextWriter _original = Console.Out;
+
+        public ConsoleOutputScope() => Console.SetOut(new LineCollectingWriter(_lines));
+
+        /// <summary>
+        /// Lines written to stdout while the scope was open. Other test classes run in parallel and
+        /// their own stdout lands here too, so assert that a line is present — never on the set.
+        /// </summary>
+        public IReadOnlyCollection<string> Lines => _lines;
+
+        public void Dispose() => Console.SetOut(_original);
+
+        /// <summary>
+        /// Writer that keeps whole lines. A concurrent queue because a parallel test class can be
+        /// writing its own milestone while this one reads.
+        /// </summary>
+        private sealed class LineCollectingWriter : TextWriter
+        {
+            private readonly ConcurrentQueue<string> _lines;
+
+            public LineCollectingWriter(ConcurrentQueue<string> lines) => _lines = lines;
+
+            public override Encoding Encoding => Encoding.UTF8;
+
+            public override void WriteLine(string? value) => _lines.Enqueue(value ?? string.Empty);
+        }
     }
 
     /// <summary>
