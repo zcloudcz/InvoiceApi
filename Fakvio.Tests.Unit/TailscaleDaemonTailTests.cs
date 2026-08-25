@@ -14,7 +14,7 @@ public class TailscaleDaemonTailTests
     [Fact]
     public void KeepsOnlyTheLastLinesAndRedactsTheKey()
     {
-        for (var i = 1; i <= 40; i++)
+        for (var i = 1; i <= 60; i++)
         {
             TailscaleTunnel.RecordDaemonLine($"line {i} tskey-auth-SECRET123");
         }
@@ -22,8 +22,8 @@ public class TailscaleDaemonTailTests
         var tail = TailscaleTunnel.DaemonTailText("tskey-auth-SECRET123");
 
         tail.ShouldNotContain("SECRET123");
-        tail.ShouldContain("line 40 <redacted>");
-        tail.ShouldContain("line 16 <redacted>");   // 40 - 25 + 1 = oldest survivor
-        tail.ShouldNotContain("line 15 ");
+        tail.ShouldContain("line 60 <redacted>");
+        tail.ShouldContain("line 21 <redacted>");   // 60 - 40 + 1 = oldest survivor
+        tail.ShouldNotContain("line 20 ");
     }
 }

@@ -81,11 +81,17 @@ public static class TailscaleTunnel
     // expired", "control server unreachable", ...) but those lines only go to the worker logger at
     // Debug level, which nothing in Azure collects — so when 'tailscale up' fails, this tail is
     // written to stdout next to the failure. Small and bounded: it is a diagnostic, not a log.
-    private const int DaemonTailLines = 25;
+    private const int DaemonTailLines = 40;
+    // The first lines the daemon prints are where sandbox trouble shows up (netns, permissions,
+    // socket paths) — by the time the login hangs they have long left the tail.
+    private const int DaemonHeadLines = 40;
+    private static readonly System.Collections.Concurrent.ConcurrentQueue<string> DaemonHead = new();
     private static readonly System.Collections.Concurrent.ConcurrentQueue<string> DaemonTail = new();
 
     private const int UpAttempts = 3;
-    private static readonly TimeSpan UpProcessTimeout = TimeSpan.FromSeconds(30);
+    // 45 s, deliberately longer than the CLI's own --timeout=30s: the CLI must get to print *why* it gave up
+    // before this kill lands — a bare "timed out" was all the first deployment left behind.
+    private static readonly TimeSpan UpProcessTimeout = TimeSpan.FromSeconds(45);
     private const int ProbeAttempts = 10;
     private static readonly TimeSpan ProbeDelay = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(4);
@@ -101,7 +107,7 @@ public static class TailscaleTunnel
     /// ephemeral auth key: every cold start registers a fresh node and Tailscale reaps the old one.
     /// </summary>
     public static string TailscaledArguments =>
-        $"--tun=userspace-networking --socks5-server=localhost:{SocksPort} --socket={SocketPath} --state=mem:";
+        $"--tun=userspace-networking --socks5-server=localhost:{SocksPort} --socket={SocketPath} --state=mem: --verbose=1";
 
     /// <summary>
     /// Arguments for <c>tailscale up</c>. <c>--accept-dns=false</c> because MagicDNS is not used and
@@ -422,6 +428,11 @@ public static class TailscaleTunnel
     // Internal so the cap can be pinned by a test without a daemon.
     internal static void RecordDaemonLine(string line)
     {
+        if (DaemonHead.Count < DaemonHeadLines)
+        {
+            DaemonHead.Enqueue(line);
+        }
+
         DaemonTail.Enqueue(line);
         while (DaemonTail.Count > DaemonTailLines && DaemonTail.TryDequeue(out _))
         {
@@ -431,6 +442,10 @@ public static class TailscaleTunnel
     /// <summary>The recorded daemon tail as one line, with the auth key stripped just in case.</summary>
     internal static string DaemonTailText(string secret) =>
         Redact(string.Join(" | ", DaemonTail), secret);
+
+    /// <summary>The first lines the daemon printed, redacted the same way.</summary>
+    internal static string DaemonHeadText(string secret) =>
+        Redact(string.Join(" | ", DaemonHead), secret);
 
     private static async Task<bool> IsSocksPortOpenAsync(int socksPort)
     {
@@ -479,7 +494,7 @@ public static class TailscaleTunnel
             // Azure gives about *why* the login did not happen (rejected key, unreachable control
             // plane, ...), and only stdout reaches App Insights. Both strings are already redacted.
             Milestone(logger,
-                $"up failed on attempt {attempt} with exit code {exitCode}: {output} | tailscaled tail: {DaemonTailText(authKey)}",
+                $"up failed on attempt {attempt} with exit code {exitCode}: {output} | tailscaled head: {DaemonHeadText(authKey)} | tailscaled tail: {DaemonTailText(authKey)}",
                 LogLevel.Warning);
 
             if (attempt == 1)
