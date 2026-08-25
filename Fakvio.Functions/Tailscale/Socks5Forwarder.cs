@@ -1,4 +1,4 @@
-﻿// ============================================================================
+// ============================================================================
 // Socks5Forwarder — plain TCP listener that relays every accepted connection
 // through a local SOCKS5 proxy to one fixed target.
 //

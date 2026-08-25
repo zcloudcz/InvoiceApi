@@ -1,4 +1,4 @@
-﻿// ============================================================================
+// ============================================================================
 // TailscaleTunnel — brings up a userspace Tailscale node inside the Function
 // App sandbox and exposes the private PostgreSQL server as a plain local port.
 //
@@ -70,6 +70,9 @@ public static class TailscaleTunnel
     // hard ceiling. Worst case inside it: 3 × 30 s of 'tailscale up' plus 2 s + 4 s backoff ≈ 96 s,
     // which leaves the probe whatever is left of the budget. The platform kills a worker that takes
     // too long to start, so exceeding this would turn a tunnel problem into a restart loop.
+    // The ceiling is a cancellation token, so it only cuts steps that can be cancelled: the copy of
+    // the binaries into /tmp runs to completion regardless (tens of milliseconds, and a half-copied
+    // executable would be worse than a late one).
     private static readonly TimeSpan StartupBudget = TimeSpan.FromSeconds(100);
 
     private const int UpAttempts = 3;
@@ -77,6 +80,12 @@ public static class TailscaleTunnel
     private const int ProbeAttempts = 10;
     private static readonly TimeSpan ProbeDelay = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(4);
+
+    // How long to keep looking for a sibling worker's daemon after our own bring-up failed. The
+    // daemon that loses the race exits within milliseconds, but the one that won still has to bind
+    // 1055 — a single instant re-probe reliably arrives too early and throws away a working tunnel.
+    private const int SocksWaitAttempts = 15;
+    private static readonly TimeSpan SocksWaitDelay = TimeSpan.FromSeconds(1);
 
     /// <summary>
     /// Arguments for the daemon. <c>--state=mem:</c> keeps no state on disk, which pairs with an
@@ -100,8 +109,24 @@ public static class TailscaleTunnel
     /// The whole sequence is capped by <see cref="StartupBudget"/>; pass ApplicationStopping as
     /// <paramref name="cancellationToken"/> so a shutdown during startup cuts it short too.
     /// </summary>
-    public static async Task<bool> StartIfConfiguredAsync(
+    public static Task<bool> StartIfConfiguredAsync(
         string? authKey, IHostApplicationLifetime lifetime, ILogger logger, CancellationToken cancellationToken = default)
+        => StartIfConfiguredAsync(authKey, lifetime, logger, SocksPort, ListenPort, bringUp: null, cancellationToken);
+
+    /// <summary>
+    /// The same bring-up with the seams a test needs: both ports (so a test never touches the ports
+    /// a real deployment uses) and the step that produces a running daemon, which otherwise copies
+    /// ~50 MB and spawns a child process. Production always passes the constants and no
+    /// <paramref name="bringUp"/> override.
+    /// </summary>
+    internal static async Task<bool> StartIfConfiguredAsync(
+        string? authKey,
+        IHostApplicationLifetime lifetime,
+        ILogger logger,
+        int socksPort,
+        int listenPort,
+        Func<CancellationToken, Task>? bringUp,
+        CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(authKey))
         {
@@ -115,29 +140,74 @@ public static class TailscaleTunnel
         budget.CancelAfter(StartupBudget);
 
         var target = ResolveTarget();
-        var (tailscalePath, daemon, alreadyRunning) = await EnsureDaemonAsync(SocksPort, lifetime, logger);
+        string key = authKey;
+        bringUp ??= async token =>
+        {
+            var (tailscalePath, daemon) = await EnsureDaemonAsync(socksPort, lifetime, logger);
+            await RunUpAsync(tailscalePath, key, daemon, logger, token);
+        };
 
         try
         {
-            await RunUpAsync(tailscalePath, authKey, daemon, logger, budget.Token);
+            await bringUp(budget.Token);
+        }
+        catch (FileNotFoundException)
+        {
+            // Not a race: a binary missing from the deployment package means no worker on this
+            // instance can ever have a daemon, so waiting for one would only delay the failure.
+            throw;
         }
         catch (Exception ex)
         {
-            // 'tailscale up' is idempotent, so when another worker already authenticated the node our
-            // call adds nothing — and its failure (a busy socket, a CLI that never got copied) must not
-            // cost us the forwarder. Re-probe instead of trusting the flag: this worker may also have
-            // lost the race *after* the first probe, spawning a daemon that then failed to bind 1055.
-            if (!alreadyRunning && !await IsSocksPortOpenAsync(SocksPort))
+            // Everything else fails the same way when a sibling worker got there first — the file is
+            // busy (ETXTBSY), the daemon socket is taken, the losing daemon exits before it can be
+            // authenticated. None of that matters as long as *someone's* daemon serves SOCKS: the
+            // forwarder and the connection string only care about that port. Hence the whole
+            // bring-up sits inside this block, and the wait is a short poll rather than one instant
+            // probe — the winner needs a moment to bind after the loser dies (issue #321).
+            if (!await WaitForSocksPortAsync(socksPort, budget.Token))
             {
                 throw;
             }
 
-            Milestone(logger, $"up skipped, daemon owned by another worker: {ex.Message}", LogLevel.Warning);
+            Milestone(logger, $"bring-up failed, continuing on another worker's daemon: {ex.Message}", LogLevel.Warning);
         }
 
-        Socks5Forwarder.Start(ListenPort, SocksPort, target.Address, target.Port, logger);
-        await ProbeTargetAsync(target, logger, budget.Token);
+        Socks5Forwarder.Start(listenPort, socksPort, target.Address, target.Port, logger);
+        await ProbeTargetAsync(target, socksPort, logger, budget.Token);
         return true;
+    }
+
+    /// <summary>
+    /// Polls the SOCKS port for a few seconds and reports whether anything ended up serving it.
+    /// The probe deliberately runs before the cancellation check: a tunnel that is up is worth a
+    /// forwarder even when the startup budget has already been spent.
+    /// </summary>
+    private static async Task<bool> WaitForSocksPortAsync(int socksPort, CancellationToken cancellationToken)
+    {
+        for (var attempt = 1; attempt <= SocksWaitAttempts; attempt++)
+        {
+            if (await IsSocksPortOpenAsync(socksPort))
+            {
+                return true;
+            }
+
+            if (attempt == SocksWaitAttempts)
+            {
+                break;
+            }
+
+            try
+            {
+                await Task.Delay(SocksWaitDelay, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -149,19 +219,23 @@ public static class TailscaleTunnel
     /// </summary>
     internal static void Milestone(ILogger logger, string message, LogLevel level = LogLevel.Information)
     {
-        logger.Log(level, "Tailscale: {Milestone}", message);
-        Console.Out.WriteLine($"Tailscale: {message}");
+        // One milestone stays one line: messages built from an exception can carry CR/LF from the
+        // platform, and Console.Out would turn those into separate Host.Function.Console rows that
+        // read like unrelated events.
+        var oneLine = message.ReplaceLineEndings(" ");
+        logger.Log(level, "Tailscale: {Milestone}", oneLine);
+        Console.Out.WriteLine($"Tailscale: {oneLine}");
     }
 
     /// <summary>
-    /// Makes sure a daemon is available and returns the CLI path used to talk to it, the daemon
-    /// process this worker owns (null when it owns none) and whether a sibling worker got there first.
-    /// The SOCKS probe runs <em>before</em> any binary is touched — copying over a file the running
-    /// daemon executes is exactly what throws 'Text file busy'.
+    /// Makes sure a daemon is available and returns the CLI path used to talk to it plus the daemon
+    /// process this worker owns — null means a sibling worker already had one running, so there is
+    /// nothing here to supervise. The SOCKS probe runs <em>before</em> any binary is touched —
+    /// copying over a file the running daemon executes is exactly what throws 'Text file busy'.
     /// </summary>
     // Internal with an injectable prepare step so the probe-first order can be pinned by a test
     // without a tailnet, a /tmp directory or a child process.
-    internal static async Task<(string TailscalePath, Process? Daemon, bool AlreadyRunning)> EnsureDaemonAsync(
+    internal static async Task<(string TailscalePath, Process? Daemon)> EnsureDaemonAsync(
         int socksPort,
         IHostApplicationLifetime lifetime,
         ILogger logger,
@@ -172,11 +246,11 @@ public static class TailscaleTunnel
             // Whoever started that daemon also copied the CLI to the shared /tmp directory, so the
             // path is known without touching a single file here.
             Milestone(logger, $"tailscaled already running on 127.0.0.1:{socksPort}, reusing it");
-            return (Path.Combine(RuntimeBinDirectory, CliFileName), null, true);
+            return (Path.Combine(RuntimeBinDirectory, CliFileName), null);
         }
 
         var (tailscalePath, tailscaledPath) = (prepareBinaries ?? (() => PrepareBinaries(logger)))();
-        return (tailscalePath, StartDaemon(tailscaledPath, lifetime, logger), false);
+        return (tailscalePath, StartDaemon(tailscaledPath, lifetime, logger));
     }
 
     /// <summary>Reads the target from the environment, falling back to the known database node.</summary>
@@ -222,10 +296,18 @@ public static class TailscaleTunnel
 
     /// <summary>
     /// Puts one binary into the runtime directory, tolerating a copy a sibling worker made first.
-    /// Only a destination that does not exist at all is fatal — see the two comments inside.
+    /// A failed copy is only survivable when it leaves a complete file behind — see the two
+    /// comments inside.
     /// </summary>
     // Internal so the "identical file is left alone" rule can be tested against a temp directory.
-    internal static string CopyExecutable(string sourceDirectory, string destinationDirectory, string fileName, ILogger logger)
+    // The copy itself is injectable for one reason only: the tolerated case is a race between the
+    // existence check and the copy, and a test cannot slip a sibling worker in between otherwise.
+    internal static string CopyExecutable(
+        string sourceDirectory,
+        string destinationDirectory,
+        string fileName,
+        ILogger logger,
+        Action<string, string>? copyFile = null)
     {
         var source = new FileInfo(Path.Combine(sourceDirectory, fileName));
         if (!source.Exists)
@@ -244,9 +326,9 @@ public static class TailscaleTunnel
         {
             try
             {
-                File.Copy(source.FullName, destination.FullName, overwrite: true);
+                (copyFile ?? CopyOverwriting)(source.FullName, destination.FullName);
             }
-            catch (IOException ex) when (destination.Exists)
+            catch (IOException ex) when (IsCompleteCopy(destination.FullName, source.Length))
             {
                 // 'Text file busy': the destination is being executed right now, which also means it
                 // is a working binary — keep it and carry on. Before this, the exception aborted the
@@ -258,6 +340,24 @@ public static class TailscaleTunnel
 
         EnsureExecutable(destination.FullName);
         return destination.FullName;
+    }
+
+    private static void CopyOverwriting(string source, string destination) =>
+        File.Copy(source, destination, overwrite: true);
+
+    /// <summary>
+    /// Fresh look at the destination: is it there, and is it the full length of the source?
+    /// A brand new <see cref="FileInfo"/> on purpose. <see cref="FileSystemInfo.Exists"/> caches its
+    /// first read, and the snapshot taken before the copy says "missing" in precisely the race this
+    /// tolerance exists for — the sibling worker copies and spawns between our check and our copy,
+    /// so the stale answer would let the ETXTBSY escape (issue #321). The length check guards the
+    /// other direction: a copy cut short by a full disk also leaves the file "existing", and running
+    /// a truncated binary is worse than failing here.
+    /// </summary>
+    private static bool IsCompleteCopy(string path, long expectedLength)
+    {
+        var current = new FileInfo(path);
+        return current.Exists && current.Length == expectedLength;
     }
 
     /// <summary>Sets the executable bit only when it is missing — chmod on a file another worker is running is pointless work.</summary>
@@ -434,7 +534,8 @@ public static class TailscaleTunnel
     /// Checks that the database port actually answers through the tunnel. A failure is only a
     /// warning: EF Core retries the migration, so a slow WireGuard handshake still recovers.
     /// </summary>
-    private static async Task ProbeTargetAsync(IPEndPoint target, ILogger logger, CancellationToken cancellationToken)
+    private static async Task ProbeTargetAsync(
+        IPEndPoint target, int socksPort, ILogger logger, CancellationToken cancellationToken)
     {
         for (var attempt = 1; attempt <= ProbeAttempts && !cancellationToken.IsCancellationRequested; attempt++)
         {
@@ -443,7 +544,7 @@ public static class TailscaleTunnel
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 timeout.CancelAfter(ProbeTimeout);
                 using var connection = await Socks5Forwarder.ConnectViaSocksAsync(
-                    SocksPort, target.Address, target.Port, timeout.Token);
+                    socksPort, target.Address, target.Port, timeout.Token);
                 Milestone(logger, $"target reachable ({target.Address}:{target.Port}) after {attempt} attempt(s)");
                 return;
             }

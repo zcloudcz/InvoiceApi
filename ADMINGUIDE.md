@@ -1,4 +1,4 @@
-﻿# Fakvio — Administrátorská příručka (ADMINGUIDE)
+# Fakvio — Administrátorská příručka (ADMINGUIDE)
 
 > Průvodce pro SysAdmin roli. Vysvětluje **kde** a **jak** spravovat systém, tenanty, uživatele a infrastrukturu. Cílová skupina: systémový administrátor.
 >

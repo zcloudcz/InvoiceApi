@@ -1,4 +1,4 @@
-﻿// ============================================================================
+// ============================================================================
 // TailscaleTunnelTests — what can be checked about the tunnel without a tailnet,
 // a network or a child process.
 //
@@ -16,6 +16,9 @@
 // 5. The order of the bring-up and the tolerance of the binary copy — the two
 //    halves of issue #321, where a second worker process on the same instance
 //    overwrote a binary the first one was running and got 'Text file busy'.
+//    Both tolerances are races, so both are driven through a seam: the copy that
+//    fails only after a sibling worker slipped its own copy in, and the bring-up
+//    that fails while the winner's daemon is still binding the SOCKS port.
 // ============================================================================
 
 using System.Net;
@@ -169,15 +172,15 @@ public class TailscaleTunnelTests
         siblingDaemon.Start();
         var socksPort = ((IPEndPoint)siblingDaemon.LocalEndpoint).Port;
 
-        var (tailscalePath, daemon, alreadyRunning) = await TailscaleTunnel.EnsureDaemonAsync(
+        var (tailscalePath, daemon) = await TailscaleTunnel.EnsureDaemonAsync(
             socksPort,
             Substitute.For<IHostApplicationLifetime>(),
             NullLogger.Instance,
             // Copying is what used to throw 'Text file busy' here — it must not even be attempted.
             prepareBinaries: () => throw new IOException("Text file busy : '/tmp/tsbin/tailscaled'"));
 
-        alreadyRunning.ShouldBeTrue();
-        // Nothing to supervise: the daemon belongs to the worker that started it.
+        // No daemon to supervise means the sibling worker's one was reused: nothing was copied and
+        // nothing was spawned, which is the whole point of probing first.
         daemon.ShouldBeNull();
         // The CLI still has to be addressable — the sibling worker left it in the shared directory.
         tailscalePath.ShouldContain("tsbin");
@@ -216,6 +219,162 @@ public class TailscaleTunnelTests
         TailscaleTunnel.CopyExecutable(directories.Source, directories.Destination, "tailscale", NullLogger.Instance);
 
         File.ReadAllBytes(destination).ShouldBe(deployed);
+    }
+
+    [Fact]
+    public void CopyExecutableToleratesADestinationThatAppearsBetweenTheCheckAndTheCopy()
+    {
+        // The exact interleaving from #321: at the check the destination is not there yet, so the
+        // copy is attempted; by the time it runs, the sibling worker has copied the very same binary
+        // and is already executing it, and Linux answers the overwrite with ETXTBSY. The snapshot
+        // taken before the copy still says "missing", so the tolerance has to look at the file again
+        // — otherwise the exception escapes and this worker starts no forwarder at all.
+        using var directories = new TempDirectoryScope();
+        var deployed = new byte[] { 1, 2, 3, 4 };
+        File.WriteAllBytes(Path.Combine(directories.Source, "tailscaled"), deployed);
+        var destination = Path.Combine(directories.Destination, "tailscaled");
+        var logger = new RecordingLogger<Socks5Forwarder>();
+
+        var result = TailscaleTunnel.CopyExecutable(
+            directories.Source, directories.Destination, "tailscaled", logger,
+            copyFile: (_, target) =>
+            {
+                // The sibling worker wins the race exactly here.
+                File.WriteAllBytes(target, deployed);
+                throw new IOException("Text file busy : '/tmp/tsbin/tailscaled'");
+            });
+
+        result.ShouldBe(destination);
+        logger.Warnings.ShouldContain(entry => entry.Message.Contains("is in use"));
+    }
+
+    [Fact]
+    public void CopyExecutableStillFailsWhenTheCopyWasCutShort()
+    {
+        // Same exception type, different cause: a full disk (or a sibling that died mid-copy) leaves
+        // a destination that exists but is shorter than the source. "It exists" is therefore not
+        // enough to keep it — handing a truncated binary to Process.Start fails later and far less
+        // legibly than failing right here.
+        using var directories = new TempDirectoryScope();
+        File.WriteAllBytes(Path.Combine(directories.Source, "tailscaled"), new byte[] { 1, 2, 3, 4 });
+
+        Should.Throw<IOException>(() => TailscaleTunnel.CopyExecutable(
+            directories.Source, directories.Destination, "tailscaled", NullLogger.Instance,
+            copyFile: (_, target) =>
+            {
+                File.WriteAllBytes(target, new byte[] { 1, 2 });
+                throw new IOException("No space left on device");
+            }));
+    }
+
+    [Fact]
+    public async Task StartsTheForwarderWhenTheSocksPortComesUpAfterTheBringUpFailed()
+    {
+        // The worker that loses the #321 race: its own bring-up dies (a busy binary, a taken daemon
+        // socket, or the daemon it spawned exiting) while the winner's daemon is still binding the
+        // SOCKS port. One instant re-probe would find nothing and rethrow, so this worker would run
+        // without a forwarder even though the tunnel is up half a second later.
+        using var siblingDaemon = new DelayedSocksListener(TimeSpan.FromSeconds(2));
+        var logger = new RecordingLogger<Socks5Forwarder>();
+
+        var started = await TailscaleTunnel.StartIfConfiguredAsync(
+            "tskey-x",
+            Substitute.For<IHostApplicationLifetime>(),
+            logger,
+            siblingDaemon.Port,
+            // 0 = let the OS pick a free port, so the test never competes for the real 15432.
+            listenPort: 0,
+            bringUp: _ => throw new IOException("Text file busy : '/tmp/tsbin/tailscaled'"),
+            CancellationToken.None);
+
+        started.ShouldBeTrue();
+        // The forwarder is the point of the whole tolerance — the connection string has nothing to
+        // talk to without it.
+        logger.Entries.ShouldContain(entry => entry.Message.Contains("forwarder 127.0.0.1:"));
+        logger.Warnings.ShouldContain(entry => entry.Message.Contains("continuing on another worker's daemon"));
+    }
+
+    /// <summary>
+    /// Stands in for the sibling worker's tailscaled: the port stays closed for a moment (the window
+    /// in which the losing worker's bring-up fails) and then answers the SOCKS5 handshake with
+    /// "connected", so the reachability probe finishes on its first attempt instead of waiting out
+    /// all ten of them.
+    /// </summary>
+    private sealed class DelayedSocksListener : IDisposable
+    {
+        // SOCKS5 (RFC 1928): the client greeting is 3 bytes, a CONNECT to an IPv4 address is 10, and
+        // both replies are fixed-size for that address type.
+        private static readonly byte[] GreetingReply = [0x05, 0x00];
+        private static readonly byte[] ConnectReply = [0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0];
+
+        private readonly TcpListener _listener;
+        private readonly CancellationTokenSource _stopping = new();
+
+        public DelayedSocksListener(TimeSpan startDelay)
+        {
+            // The port has to be known before anything listens on it, so it is reserved and released
+            // first — the caller passes it in as "the port the daemon will use".
+            Port = ReserveFreePort();
+            _listener = new TcpListener(IPAddress.Loopback, Port);
+            _ = ServeAsync(startDelay);
+        }
+
+        public int Port { get; }
+
+        public void Dispose()
+        {
+            _stopping.Cancel();
+            _listener.Dispose();
+            _stopping.Dispose();
+        }
+
+        private static int ReserveFreePort()
+        {
+            var probe = new TcpListener(IPAddress.Loopback, 0);
+            probe.Start();
+            var port = ((IPEndPoint)probe.LocalEndpoint).Port;
+            probe.Stop();
+            return port;
+        }
+
+        private async Task ServeAsync(TimeSpan startDelay)
+        {
+            try
+            {
+                await Task.Delay(startDelay, _stopping.Token);
+                _listener.Start();
+                while (!_stopping.IsCancellationRequested)
+                {
+                    var client = await _listener.AcceptTcpClientAsync(_stopping.Token);
+                    _ = AnswerAsync(client);
+                }
+            }
+            catch (Exception)
+            {
+                // Disposed while waiting or accepting — the test is over, there is nothing to report.
+            }
+        }
+
+        private static async Task AnswerAsync(TcpClient client)
+        {
+            using (client)
+            {
+                try
+                {
+                    var stream = client.GetStream();
+                    await stream.ReadExactlyAsync(new byte[3]);
+                    await stream.WriteAsync(GreetingReply);
+                    await stream.ReadExactlyAsync(new byte[10]);
+                    await stream.WriteAsync(ConnectReply);
+                    // Stay open until the other side hangs up, like a real proxy would.
+                    await stream.ReadAsync(new byte[1]);
+                }
+                catch (Exception)
+                {
+                    // The port probe only connects and drops the connection — no handshake to finish.
+                }
+            }
+        }
     }
 
     /// <summary>Source and destination directory for one copy test, removed afterwards.</summary>

@@ -15,6 +15,9 @@ internal sealed class RecordingLogger<T> : ILogger<T>
 {
     private readonly List<LogEntry> _entries = [];
 
+    /// <summary>Everything that was written, in order — for lines an operator reads at Information.</summary>
+    public IReadOnlyList<LogEntry> Entries => _entries;
+
     /// <summary>Warnings only — the level the fallback and latch messages are written at.</summary>
     public IReadOnlyList<LogEntry> Warnings =>
         _entries.Where(entry => entry.Level == LogLevel.Warning).ToList();

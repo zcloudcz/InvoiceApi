@@ -1,4 +1,4 @@
-﻿# Tailscale userspace tunel → privátní PostgreSQL
+# Tailscale userspace tunel → privátní PostgreSQL
 
 Testovací Function App (`zcloudinvoicingapi-test`) se připojuje k vlastní PostgreSQL
 na Hostingeru, jejíž port **není ve veřejném internetu**. Cesta k ní vede přes tailnet.
@@ -150,13 +150,19 @@ Redeploy není potřeba — bez klíče je kód nečinný.
     souboru, který běžící `tailscaled` drží otevřený, Linux odmítne s `ETXTBSY`
     (`System.IO.IOException: Text file busy`) — dřív to shodilo celý start tunelu **před**
     spuštěním forwarderu a instance pak jela bez databáze.
-  - `IOException` při kopii, když cíl existuje, je jen `Warning` — spuštěný soubor je
-    z definice funkční binárka.
+  - `IOException` při kopii je jen `Warning`, pokud po ní v cíli leží **úplný soubor**
+    (existuje a má stejnou délku jako zdroj) — spuštěný soubor je z definice funkční
+    binárka. Kontroluje se čerstvě, až v okamžiku chyby: sourozenec stačil kopírovat
+    i mezi naší kontrolou a naší kopií. Usečnutá kopie (např. plný disk) fatální zůstává.
   - Když `127.0.0.1:15432` už drží forwarder jiného workeru, `Socks5Forwarder.Start` vrátí
     `null` a jen to zaloguje. Loopback je sdílený, takže connection string toho druhého
     forwarderu využije i tenhle worker.
-  - `tailscale up` selhané v situaci, kdy SOCKS port žije, taky není fatální — uzel už
-    přihlásil ten, kdo démona spustil.
+  - Selhání **kteréhokoli kroku** stavby tunelu (kopie, spuštění démona i `tailscale up`)
+    není fatální, pokud SOCKS port žije — uzel už přihlásil ten, kdo démona spustil,
+    a forwarder musí nastartovat tak jako tak. Démon, který závod prohraje, končí dřív,
+    než vítěz sváže port 1055, takže se na něj krátce počká (až 15 × 1 s, uvnitř
+    stovkového rozpočtu). Fatální zůstává jen chybějící **zdrojová** binárka
+    v balíčku — to není závod, ale rozbitý deploy.
 - **Výstup `tailscaled` je na úrovni `Debug`**, takže při výchozí `Information` v
   `host.json` není vidět. Při ladění dočasně zvyš úroveň pro kategorii
   `Fakvio.Functions.Tailscale`.

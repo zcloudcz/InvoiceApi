@@ -1,4 +1,4 @@
-﻿// ============================================================================
+// ============================================================================
 // Socks5ForwarderTests — the forwarder that lets Npgsql reach the tailnet.
 //
 // Nothing here spawns a process or leaves the loopback interface: a fake SOCKS5
