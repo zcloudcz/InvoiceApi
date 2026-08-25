@@ -293,6 +293,14 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IChatTool, ListInvoicesTool>();
         services.AddScoped<IChatTool, GetVatReportTool>();
 
+        // Company profile tools — read and change the issuer ("naše firma") and its bank
+        // accounts. Every write among them is confirmable (IConfirmableChatTool).
+        services.AddScoped<IChatTool, GetMyCompanyTool>();
+        services.AddScoped<IChatTool, UpdateMyCompanyTool>();
+        services.AddScoped<IChatTool, AddBankAccountTool>();
+        services.AddScoped<IChatTool, UpdateBankAccountTool>();
+        services.AddScoped<IChatTool, DeleteBankAccountTool>();
+
         services.AddScopedWithLogging<IChatToolExecutor, ChatToolExecutor>();
 
         // ── Database Logging ────────────────────────────────────────────────

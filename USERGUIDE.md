@@ -651,8 +651,20 @@ AI asistent zná kontext vaší firmy a umí odpovídat na otázky i provádět 
 | Klienti | Vyhledat klienta, zobrazit detail |
 | Přijaté faktury | Vyhledat, vypsat seznam |
 | Přehledy a reporty | Shrnout dashboard, vypsat faktury po splatnosti, faktury za období nebo pro konkrétního klienta, spočítat DPH za období |
+| Nastavení firmy | Přečíst nastavení vlastní firmy (název, IČO, DIČ, plátcovství DPH, jazyk dokladů, adresa, kontakty, bankovní účty) a změnit ho — včetně přidání, úpravy a zrušení bankovního účtu („Přidej nám účet 1234567890/0100", „Od ledna jsme plátci DPH"). IČO měnit nelze. |
 | Obecné dotazy | Odpovídat na otázky o funkcích aplikace |
 | Navigace | Otevřít libovolnou stránku aplikace — faktury, přijaté faktury, klienty, platby, šablony, DPH a daně, upomínky i nastavení („Otevři DPH přiznání", „Založ novou fakturu pro klienta XYZ"). Stránky správce systému a přihlašovací obrazovky asistent neotevírá. |
+
+**Změnu dat vždycky nejdřív potvrdíte.** Když asistenta požádáte o změnu (nastavení firmy,
+bankovní účet), ukáže vám nejprve náhled — co přesně se změní a z čeho na co — a **nic
+nezapíše**. Teprve když odpovíte, že souhlasíte, změnu provede. Když náhled nesedí, řekněte,
+co má být jinak, a asistent nabídne nový.
+
+Jedno omezení má úprava a rušení bankovních účtů: účet, ke kterému už jsou v aplikaci
+navázané platby (načtené bankovní transakce nebo aktivní e-mailová schránka pro příjem
+výpisů), přepsat nejde — ani přes asistenta, ani ručně na stránce **Moje firma**. Asistent
+vám v takovém případě řekne, proč to neprošlo; upravit takový účet lze až po odpojení
+navázaných dat.
 
 Asistent navíc ví, **kde právě stojíte** — jakou stránku máte otevřenou a jestli je na ní
 konkrétní doklad — a zná dnešní datum. Můžete se tedy ptát „kdy je tahle faktura splatná"
