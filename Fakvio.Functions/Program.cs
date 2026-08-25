@@ -20,6 +20,7 @@ using System.Globalization;
 using Microsoft.Azure.Functions.Worker;
 using Fakvio.Application.Service;
 using Fakvio.Functions.Middleware;
+using Fakvio.Functions.Tailscale;
 using Fakvio.Infrastructure.Data;
 using Fakvio.Infrastructure.DependencyInjection;
 using Fakvio.Functions.Telemetry;
@@ -151,6 +152,36 @@ var host = new HostBuilder()
 // down, /api/diagnostic/health cannot answer (SysAdmin login needs the master DB), so this is
 // the only place the mode can be read. See SELFHOST-DB.md §3.4.
 host.Services.LogDatabaseAuthMode();
+
+// ── Tailscale tunnel (test environment) ───────────────────────────────────
+// The test database sits behind Tailscale and its port is not on the public internet, so the
+// connection string points at a loopback port that only exists once the tunnel is up.
+//
+// WHY here and not in an IHostedService: hosted services do not start until RunAsync() below,
+// which is *after* the migration block — the very first socket the app opens. The tunnel has to
+// exist before that. And it has to be after Build(), because that is where the real ILogger and
+// IHostApplicationLifetime come from.
+//
+// Without TAILSCALE_AUTHKEY this is a single log line and nothing else, so local development and
+// the production host (which reach their database directly) are unaffected.
+var tunnelLogger = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Fakvio.Functions.Tailscale");
+var tunnelLifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
+try
+{
+    // ApplicationStopping shortens the tunnel's own startup budget: a shutdown requested while the
+    // node is still logging in must not wait out the full budget before the host can exit.
+    await TailscaleTunnel.StartIfConfiguredAsync(
+        Environment.GetEnvironmentVariable(TailscaleTunnel.AuthKeyEnv),
+        tunnelLifetime,
+        tunnelLogger,
+        tunnelLifetime.ApplicationStopping);
+}
+catch (Exception ex)
+{
+    // Do not crash the host: timer triggers and the health endpoint should still answer so the
+    // failure is diagnosable. The migration below will fail too and say the same thing.
+    tunnelLogger.LogError(ex, "Startup: Tailscale tunnel failed — database unreachable until resolved");
+}
 
 // ── Startup database migration (master DB only) ───────────────────────────
 // Step 1: Migrate master DB (Users, Companies, SystemSettings, code tables).
