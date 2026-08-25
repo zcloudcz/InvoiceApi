@@ -84,6 +84,71 @@ namespace Fakvio.Infrastructure.Migrations.Master
                     b.ToTable("Address");
                 });
 
+            modelBuilder.Entity("Fakvio.Domain.Entities.ApiKey", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("CreatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("KeyHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("KeyPrefix")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<DateTime?>("LastUsedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTime?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("RevokedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Scopes")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("UpdatedByUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("UserId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("KeyHash")
+                        .IsUnique();
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("ApiKey");
+                });
+
             modelBuilder.Entity("Fakvio.Domain.Entities.AppLog", b =>
                 {
                     b.Property<long>("Id")
@@ -1305,6 +1370,12 @@ namespace Fakvio.Infrastructure.Migrations.Master
                     b.Property<string>("AiOpenAiModel")
                         .HasColumnType("text");
 
+                    b.Property<string>("AiSystemPromptAppendix")
+                        .HasColumnType("text");
+
+                    b.Property<string>("AiSystemPromptCustom")
+                        .HasColumnType("text");
+
                     b.Property<string>("AppName")
                         .IsRequired()
                         .HasColumnType("text");
@@ -1952,6 +2023,17 @@ namespace Fakvio.Infrastructure.Migrations.Master
                         .IsRequired();
 
                     b.Navigation("Client");
+                });
+
+            modelBuilder.Entity("Fakvio.Domain.Entities.ApiKey", b =>
+                {
+                    b.HasOne("Fakvio.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("Fakvio.Domain.Entities.BankAccount", b =>

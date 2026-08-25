@@ -33,13 +33,9 @@ namespace Fakvio.Infrastructure.Service.ChatTools;
 public class AttachFileTool : IChatTool
 {
     // Valid entity names accepted by this tool — must match EntityName used by IFileAttachmentService.
-    private static readonly IReadOnlySet<string> AllowedEntities =
-        new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "Invoice",
-            "ReceivedInvoice",
-            "Client"
-        };
+    // Ordered array (not a set) so the parameter schema can expose it as the allowed value list —
+    // one source of truth for the schema and for the capitalisation normalisation below.
+    private static readonly string[] AllowedEntities = ["Invoice", "ReceivedInvoice", "Client"];
 
     private readonly IFileAttachmentService _fileAttachmentService;
     private readonly ILogger<AttachFileTool> _logger;
@@ -56,55 +52,80 @@ public class AttachFileTool : IChatTool
 
     public string Description =>
         "Attach a file to an entity (Invoice, ReceivedInvoice, or Client). " +
-        "The file content must be provided as a Base64-encoded string. " +
+        "The file content must be provided as a Base64-encoded string — the frontend supplies it " +
+        "when the user drops a file into the chat. " +
         "Returns the attachment ID, file name, and size upon success.";
 
-    public string ParameterDescription =>
-        "entity_name (string, required): target entity type — Invoice, ReceivedInvoice, or Client. " +
-        "record_id (string, required): primary key of the target entity record (numeric). " +
-        "file_name (string, required): original file name including extension (e.g. contract.pdf). " +
-        "file_content_base64 (string, required): file bytes encoded as Base64. " +
-        "content_type (string, optional, default application/octet-stream): MIME type of the file. " +
-        "description (string, optional): human-readable note about the attachment.";
+    /// <summary>
+    /// Parameter schema — static because it never changes per instance.
+    /// </summary>
+    private static readonly ChatToolParameter[] Schema =
+    [
+        new()
+        {
+            Name = "entity_name",
+            Type = ChatToolParameterType.String,
+            Description = "Target entity type",
+            IsRequired = true,
+            AllowedValues = AllowedEntities
+        },
+        new()
+        {
+            Name = "record_id",
+            Type = ChatToolParameterType.Integer,
+            Description = "Primary key of the target entity record",
+            IsRequired = true
+        },
+        new()
+        {
+            Name = "file_name",
+            Type = ChatToolParameterType.String,
+            Description = "Original file name including extension (e.g. contract.pdf)",
+            IsRequired = true
+        },
+        new()
+        {
+            Name = "file_content_base64",
+            Type = ChatToolParameterType.String,
+            Description = "File bytes encoded as Base64",
+            IsRequired = true
+        },
+        new()
+        {
+            Name = "content_type",
+            Type = ChatToolParameterType.String,
+            Description = "MIME type of the file (e.g. application/pdf, image/png). " +
+                          "Default: application/octet-stream"
+        },
+        new()
+        {
+            Name = "description",
+            Type = ChatToolParameterType.String,
+            Description = "Optional human-readable note about the attachment"
+        }
+    ];
+
+    public IReadOnlyList<ChatToolParameter> Parameters => Schema;
 
     /// <summary>
     /// Decodes the base64 file content and uploads the file via IFileAttachmentService.
     /// Returns a success message with attachment metadata on success,
-    /// or a descriptive failure message if any parameter is invalid.
+    /// or a descriptive failure message when the content cannot be decoded or stored.
     /// </summary>
     public async Task<ChatToolResult> ExecuteAsync(
         Dictionary<string, string> parameters,
         CancellationToken ct = default)
     {
         // ── Parameter extraction ──────────────────────────────────────────────
+        // Required parameters, the allowed entity_name and the numeric record_id are all
+        // guaranteed by ChatToolExecutor's central validation.
 
-        parameters.TryGetValue("entity_name", out var entityName);
-        parameters.TryGetValue("record_id", out var recordIdStr);
-        parameters.TryGetValue("file_name", out var fileName);
-        parameters.TryGetValue("file_content_base64", out var base64Content);
+        var entityName = parameters["entity_name"];
+        var recordId = long.Parse(parameters["record_id"].Trim());
+        var fileName = parameters["file_name"];
+        var base64Content = parameters["file_content_base64"];
         parameters.TryGetValue("content_type", out var contentType);
         parameters.TryGetValue("description", out var description);
-
-        // ── Validation ────────────────────────────────────────────────────────
-
-        if (string.IsNullOrWhiteSpace(entityName))
-            return ChatToolResult.Failure(
-                "Parameter 'entity_name' is required. Valid values: Invoice, ReceivedInvoice, Client.");
-
-        if (!AllowedEntities.Contains(entityName))
-            return ChatToolResult.Failure(
-                $"Invalid entity_name '{entityName}'. Valid values: Invoice, ReceivedInvoice, Client.");
-
-        if (string.IsNullOrWhiteSpace(recordIdStr) || !long.TryParse(recordIdStr.Trim(), out var recordId))
-            return ChatToolResult.Failure(
-                "Parameter 'record_id' is required and must be a numeric entity ID.");
-
-        if (string.IsNullOrWhiteSpace(fileName))
-            return ChatToolResult.Failure("Parameter 'file_name' is required.");
-
-        if (string.IsNullOrWhiteSpace(base64Content))
-            return ChatToolResult.Failure(
-                "Parameter 'file_content_base64' is required. Encode the file bytes as Base64.");
 
         // ── Base64 decode ─────────────────────────────────────────────────────
 

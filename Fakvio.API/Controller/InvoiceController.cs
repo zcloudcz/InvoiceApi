@@ -1,6 +1,7 @@
 using System.IO.Compression;
 using System.Security.Claims;
 using Fakvio.Application.Common.Helpers;
+using Fakvio.Application.Exceptions;
 using Fakvio.Contracts.Common.Pagination;
 using Fakvio.Contracts.Dto.Email;
 using Fakvio.Contracts.Dto.Invoice;
@@ -361,6 +362,23 @@ public class InvoiceController : ControllerBase
             }
 
             return Ok(invoice);
+        }
+        catch (TenantNotReadyException ex)
+        {
+            // Mandatory company settings are missing — same 400 shape the EPO export uses
+            // (see VatReportController), so the UI has one way to read structured errors.
+            // "issues" additionally carries a fix route per problem.
+            _logger.LogWarning(
+                "Cannot complete invoice {Id} — tenant not ready: {MissingFields}",
+                id, string.Join(", ", ex.MissingFields));
+
+            return BadRequest(new
+            {
+                code          = ex.Code,
+                message       = ex.Message,
+                missingFields = ex.MissingFields,
+                issues        = ex.Issues
+            });
         }
         catch (InvalidOperationException ex)
         {

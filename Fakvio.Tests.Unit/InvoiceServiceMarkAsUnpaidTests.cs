@@ -41,7 +41,7 @@ public class InvoiceServiceMarkAsUnpaidTests : IDisposable
                 Arg.Any<CancellationToken>())
             .Returns("INV-2026-001");
 
-        _service = new InvoiceService(_context, _numberSequence, _logger);
+        _service = new InvoiceService(_context, _numberSequence, Substitute.For<ITenantReadinessService>(), _logger);
 
         SeedTestData();
     }

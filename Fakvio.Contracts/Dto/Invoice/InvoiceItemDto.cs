@@ -1,3 +1,4 @@
+using Fakvio.Contracts.Dto.ReverseChargeCode;
 using Fakvio.Domain.Enums;
 
 namespace Fakvio.Contracts.Dto.Invoice;
@@ -41,6 +42,13 @@ public class InvoiceItemDto
     /// FK to ReverseChargeCode lookup. Set when VatRegime == ReverseCharge.
     /// </summary>
     public long? ReverseChargeCodeId { get; set; }
+
+    /// <summary>
+    /// Nested reverse charge code details (read-only, populated only in API responses).
+    /// Contains Code, NameCs, NameEn, ParagraphRef for display in the UI dropdown/label.
+    /// Null when VatRegime != ReverseCharge or when the navigation property was not loaded.
+    /// </summary>
+    public ReverseChargeCodeDto? ReverseChargeCode { get; set; }
 
     /// <summary>
     /// Informational VAT amount for Reverse Charge items.

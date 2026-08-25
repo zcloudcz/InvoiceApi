@@ -527,27 +527,39 @@ public class UserController : ControllerBase
     /// <summary>
     /// Sets password for an invited user using their invitation token.
     /// This endpoint is anonymous — authentication is done via the token itself.
+    ///
+    /// Setting the password also provisions the tenant workspace. The response therefore
+    /// carries WorkspaceReady: false means the password IS set but the workspace could not
+    /// be created, so the client must warn the user instead of reporting plain success.
     /// </summary>
     /// <param name="dto">Token and new password</param>
-    /// <returns>Success or failure status</returns>
-    /// <response code="200">Password set successfully</response>
+    /// <returns>Result with the password outcome and the workspace readiness flag</returns>
+    /// <response code="200">Password set successfully (check WorkspaceReady)</response>
     /// <response code="400">Invalid or expired token</response>
     [HttpPost("set-password")]
     [AllowAnonymous]
-    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(SetPasswordResultDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<ActionResult> SetPassword([FromBody] SetPasswordDto dto)
+    public async Task<ActionResult<SetPasswordResultDto>> SetPassword([FromBody] SetPasswordDto dto)
     {
         try
         {
             var result = await _userService.SetPasswordAsync(dto);
 
-            if (!result)
+            if (!result.PasswordSet)
             {
                 return BadRequest(new { message = "Invalid or expired invitation token." });
             }
 
-            return Ok(new { message = "Password set successfully. You can now log in." });
+            if (!result.WorkspaceReady)
+            {
+                // Not an error for the password itself — but a state the caller must surface.
+                // No exception detail is returned; the cause is only in the server logs.
+                _logger.LogWarning(
+                    "Password set, but the tenant workspace is not provisioned — client is being told so");
+            }
+
+            return Ok(result);
         }
         catch (Exception ex)
         {

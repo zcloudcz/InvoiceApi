@@ -36,11 +36,14 @@
     </div>
 }
 
-@* ── Drop zone — always visible when no file attached, doubles as click target ── *@
+@* ── Drop zone — visible when no file attached, doubles as click target.
+      Hidden on touch devices via the .chat-dropzone rule in app.css: there is nothing
+      to drag a file from on a phone, so the ~72px zone would only eat screen space.
+      The paper-clip button below stays available on every device. ── *@
 @if (string.IsNullOrEmpty(AttachedFileName) && !IsExtracting)
 {
     <div style="position: relative; border: 2px dashed var(--mud-palette-lines-default); border-radius: 8px; margin: 4px 8px; padding: 24px 0; text-align: center; cursor: pointer;"
-         class="d-flex align-center justify-center gap-1">
+         class="chat-dropzone d-flex align-center justify-center gap-1">
         <MudIcon Icon="@Icons.Material.Filled.CloudUpload" Size="Size.Small" Style="opacity: 0.5;" />
         <MudText Typo="Typo.caption" Style="opacity: 0.5;">@L["Chat_DragDropHint"]</MudText>
         <InputFile OnChange="@HandleFileFromInput"

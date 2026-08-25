@@ -3,11 +3,21 @@
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IStringLocalizer<SharedResource> L
 @inject PaymentMatchingApiService PaymentApi
+@inject AppStateService AppState
 
 <AuthorizeView>
     <Authorized>
         <MudNavMenu>
             <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">@L["Nav_Dashboard"]</MudNavLink>
+
+            @* AI assistant — second entry point next to the AppBar icon, so the assistant
+               is discoverable from the navigation like every other feature. It opens the
+               chat drawer (owned by MainLayout) instead of navigating anywhere.
+               Same tenant-context guard as the AppBar button: /api/chat/* needs a CompanyId. *@
+            @if (_showInvoicing)
+            {
+                <MudNavLink Icon="@Icons.Material.Filled.SmartToy" OnClick="@ToggleChat">@L["Chat_Title"]</MudNavLink>
+            }
 
             @* Invoicing section — visible for User/Admin, and SysAdmin when impersonating a company *@
             @if (_showInvoicing)
@@ -46,6 +56,8 @@
                 @if (_showInvoicing)
                 {
                     <MudNavLink Href="/profile/two-factor" Icon="@Icons.Material.Filled.Security">@L["Nav_TwoFactor"]</MudNavLink>
+                    @* Personal API keys for connecting AI clients (MCP) — every user has their own. *@
+                    <MudNavLink Href="/settings/integrations" Icon="@Icons.Material.Filled.Hub">@L["Nav_Integrations"]</MudNavLink>
                     <MudNavLink Href="/my-company" Icon="@Icons.Material.Filled.Business">@L["Nav_MyCompany"]</MudNavLink>
                     <MudNavLink Href="/vat-rates" Icon="@Icons.Material.Filled.Percent">@L["Nav_VatRates"]</MudNavLink>
                     <MudNavLink Href="/number-sequences" Icon="@Icons.Material.Filled.Numbers">@L["Nav_NumberSequences"]</MudNavLink>
@@ -77,6 +89,8 @@
                         <MudNavLink Href="/tax-configs" Icon="@Icons.Material.Filled.AccountBalance">@L["Nav_TaxConfig"]</MudNavLink>
                         @* Payment matching — system-wide IMAP/AI configuration. *@
                         <MudNavLink Href="/sysadmin/payment-matching" Icon="@Icons.Material.Filled.MarkEmailRead">@L["Nav_PaymentMatching"]</MudNavLink>
+                        @* Editable AI assistant system prompt. *@
+                        <MudNavLink Href="/ai-instructions" Icon="@Icons.Material.Filled.SmartToy">@L["Nav_AiInstructions"]</MudNavLink>
                     }
                 </AuthorizeView>
             </MudNavGroup>
@@ -85,6 +99,12 @@
 </AuthorizeView>
 
 @code {
+    /// <summary>
+    /// Opens / closes the AI chat drawer. MainLayout owns the drawer, so the request
+    /// travels through AppStateService (same pattern as OnCompanyListChanged).
+    /// </summary>
+    private void ToggleChat() => AppState.NotifyChatToggleRequested();
+
     // Whether to show invoicing menu items.
     // True for User/Admin (they always have a company), and for SysAdmin when impersonating.
     private bool _showInvoicing = false;

@@ -16,8 +16,11 @@ public partial class InvoiceProfile : IMapperProfile
 {
     public void Configure(MapperConfiguration config)
     {
-        // InvoiceItem → InvoiceItemDto: direct 1:1 mapping including inherited Id
-        config.CreateMap<InvoiceItem, InvoiceItemDto>();
+        // InvoiceItem → InvoiceItemDto: direct mapping.
+        // ReverseChargeCode (navigation property) is ignored by ZMapper and populated
+        // manually in the service layer after eagerly loading the navigation property.
+        config.CreateMap<InvoiceItem, InvoiceItemDto>()
+            .ForMember(d => d.ReverseChargeCode, opt => opt.Ignore());
 
         // Invoice → InvoiceDto: direct property mapping for matching properties.
         // Navigation-derived props are ignored (set in service layer after mapping).

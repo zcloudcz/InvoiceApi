@@ -19,8 +19,14 @@ namespace Fakvio.Tests.Integration.Fixtures;
 /// 2. Replace TenantProvisioningService with a test double (no CREATE DATABASE)
 /// 3. Remove background services (LogFlushService, LogCleanupService) that need real SQL
 /// 4. Remove DatabaseLoggerProvider (needs LogFlushService to drain its queue)
-/// 5. Set environment to "Testing" so the migration block in Program.cs is skipped
+/// 5. Set environment to "Testing" so the host behaves neither like Development
+///    (no Swagger) nor like Production, and so appsettings.Testing.json applies
 /// 6. Configure JWT with known test values so we can generate valid tokens
+///
+/// Note: the startup migration block in Program.cs is skipped because of point 1,
+/// not point 5 — it checks Database.IsRelational(), and the InMemory provider is
+/// not relational. That is what lets a test override the environment (see
+/// SwaggerEnvironmentTests) without MigrateAsync() blowing up on startup.
 ///
 /// After building the host, it calls EnsureCreated() on both DbContexts
 /// so that the InMemoryDatabase has the schema (tables) ready and seed data populated.
@@ -41,8 +47,11 @@ public class FakvioFactory : WebApplicationFactory<Program>
     /// </summary>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        // Set environment to "Testing" — the migration block in Program.cs checks for this
-        // and skips MigrateAsync() which would fail on InMemoryDatabase.
+        // Set environment to "Testing" — picks up appsettings.Testing.json and keeps the host
+        // out of Development-only branches (Swagger). It does NOT drive the startup migration
+        // block any more: that one checks Database.IsRelational(), so MigrateAsync() is skipped
+        // purely because the DbContexts below use the InMemory provider. Tests are therefore
+        // free to override the environment via WithWebHostBuilder(b => b.UseEnvironment(...)).
         builder.UseEnvironment("Testing");
 
         builder.ConfigureServices(services =>
@@ -94,11 +103,31 @@ public class FakvioFactory : WebApplicationFactory<Program>
         builder.UseSetting("JwtSettings:Issuer", "Fakvio.Tests");
         builder.UseSetting("JwtSettings:Audience", "Fakvio.Tests.Client");
 
-        // ── Configure connection strings (required by LogFlushService constructor) ──
-        // Even though we removed LogFlushService, other services may read these.
-        // Provide dummy values so configuration binding doesn't throw.
-        builder.UseSetting("ConnectionStrings:MasterConnection", "Server=test;Database=test;");
-        builder.UseSetting("ConnectionStrings:TenantTemplateConnection", "Server=test;Database=test;");
+        // ── Switch the reCAPTCHA gate off explicitly ─────────────────────────
+        // The gate fails closed since issue #200: enabled + no secret key = every gated
+        // request is rejected. The test host has no keys, so it must opt out the same way
+        // local development does. Tests that are ABOUT the gate substitute ICaptchaService
+        // instead (see AnonymousAresLookupTests.AresStubFactory).
+        builder.UseSetting("Recaptcha:Enabled", "false");
+
+        // ── Configure database auth mode for AddDatabaseContexts ──────────────
+        // AddDatabaseContexts now builds its NpgsqlDataSource singleton EAGERLY (inside
+        // DatabaseOptions.Validate() + the NpgsqlDataSourceFactory constructor), before any
+        // of the ConfigureServices overrides above run. Fakvio.API/appsettings.json points at
+        // the Azure host in "AzureEntraId" mode (no password in the connection string), so
+        // without this override Validate() would fail host startup for every integration test.
+        // A syntactically valid Password-mode connection string is enough — nothing here ever
+        // opens a real connection (MasterDbContext/TenantDbContext are swapped to InMemory
+        // above; RemoveAll<NpgsqlDataSource>() is NOT used because AzureOperationController,
+        // ImapPollService and AdvisoryLock all inject NpgsqlDataSource directly and would fail
+        // to construct without it).
+        builder.UseSetting("ConnectionStrings:DefaultConnection", "Host=localhost;Port=5432;Database=fakvio;Username=fakvio;Password=fakvio_dev");
+        builder.UseSetting("Database:AuthMode", "Password");
+
+        // The legacy "UseAzureAdAuthentication" bool needs no override any more: #138 removed it
+        // from the committed appsettings files, so there is nothing left for this Password-mode
+        // override to disagree with. DatabaseOptions.Resolve still throws on a genuine mismatch,
+        // which would now only come from a stray environment variable on the build machine.
     }
 
     /// <summary>
@@ -153,8 +182,15 @@ public class FakvioFactory : WebApplicationFactory<Program>
     /// </summary>
     /// <param name="email">Email to register the user under (must be unique in the test DB)</param>
     /// <param name="userId">Explicit ID to avoid collisions with seed data (seed admin = 1)</param>
+    /// <param name="companyId">
+    /// Optional tenant the user belongs to. Left null the user has no company at all, which is
+    /// what the [Authorize(Roles = "SysAdmin")] tests want. Pass a company ID to get a real
+    /// tenant user: AuthService bakes a "CompanyId" claim into the JWT, so TenantContextMiddleware
+    /// resolves the tenant from the token instead of from SysAdmin's X-Company-Id header.
+    /// The company (and its provisioned CompanySystemSettings row) must already be seeded.
+    /// </param>
     /// <returns>The plain-text password to pass to AuthHelper.LoginAsync()</returns>
-    public string SeedRegularUser(string email, long userId = 100)
+    public string SeedRegularUser(string email, long userId = 100, long? companyId = null)
     {
         const string plainTextPassword = "TestUser123";
         // Use cost factor 4 (minimum) for speed in tests — production uses 12.
@@ -176,7 +212,7 @@ public class FakvioFactory : WebApplicationFactory<Program>
                 FirstName = "Regular",
                 LastName = "User",
                 Role = Fakvio.Domain.Enums.EUserRole.User,
-                CompanyId = null,
+                CompanyId = companyId,
                 IsActive = true,
                 IsEmailVerified = true,  // pre-verified so login doesn't require email step
                 ExternalProvider = Fakvio.Domain.Enums.EExternalProvider.None

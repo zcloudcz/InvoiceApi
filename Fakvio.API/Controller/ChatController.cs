@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text.Json;
+using Fakvio.Application.Exceptions;
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.Chat;
 using Microsoft.AspNetCore.Authorization;
@@ -28,6 +29,15 @@ public class ChatController : ControllerBase
     /// Maximum allowed PDF file size for text extraction (10 MB).
     /// </summary>
     private const int MaxPdfSizeBytes = 10 * 1024 * 1024;
+
+    /// <summary>
+    /// The only text the client ever gets for a missing conversation.
+    ///
+    /// Written here, in the controller — never taken from the exception. It is deliberately
+    /// identical for "does not exist" and "belongs to somebody else", so probing foreign IDs
+    /// tells the caller nothing (issue #156).
+    /// </summary>
+    private const string ConversationNotFoundMessage = "Conversation not found.";
 
     public ChatController(
         IChatService chatService,
@@ -73,9 +83,9 @@ public class ChatController : ControllerBase
             var conversation = await _chatService.GetConversationAsync(id, userId, ct);
             return Ok(conversation);
         }
-        catch (InvalidOperationException ex)
+        catch (ChatConversationNotFoundException)
         {
-            return NotFound(new { message = ex.Message });
+            return NotFound(new { message = ConversationNotFoundMessage });
         }
     }
 
@@ -86,10 +96,14 @@ public class ChatController : ControllerBase
     /// <param name="request">Message request with optional conversation ID and provider override</param>
     /// <param name="ct">Cancellation token</param>
     /// <response code="200">AI response with conversation metadata</response>
-    /// <response code="400">Invalid request</response>
+    /// <response code="400">Invalid request body (model validation)</response>
+    /// <response code="404">ConversationId does not exist or doesn't belong to the user</response>
+    /// <response code="500">Processing failed — body carries a reference ID, details are in AppLog</response>
     [HttpPost("send")]
     [ProducesResponseType(typeof(SendMessageResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<SendMessageResponse>> SendMessage(
         [FromBody] SendMessageRequest request, CancellationToken ct = default)
     {
@@ -99,16 +113,40 @@ public class ChatController : ControllerBase
             var response = await _chatService.SendMessageAsync(userId, request, ct);
             return Ok(response);
         }
-        catch (InvalidOperationException ex)
+        catch (ChatConversationNotFoundException ex)
         {
-            return BadRequest(new { message = ex.Message });
+            // A caller-supplied ID that does not resolve is a client mistake, not a server
+            // failure: a tab still holding an ID deleted in another tab, or a hand-crafted
+            // request probing somebody else's conversations. It gets the same 404 as
+            // GetConversation and DeleteConversation, so all three endpoints answer "this
+            // conversation does not exist" the same way.
+            //
+            // Only ConversationId is logged, and only as a warning — this is not an incident
+            // worth alerting on. The response text comes from the constant above, never from
+            // ex.Message, which is what leaked internals in issue #156.
+            _logger.LogWarning(
+                "Chat message rejected — conversation {ConversationId} not found for the current user",
+                ex.ConversationId);
+
+            return NotFound(new { message = ConversationNotFoundMessage });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error sending chat message");
-            // TODO: In production, consider replacing ex.ToString() with a safe message.
+            // Everything else is treated as an untrusted infrastructure failure. There is
+            // deliberately no catch for InvalidOperationException here: that branch used to echo
+            // ex.Message back to the caller, which is exactly how the configuration dump from
+            // CompanyAiSettingsResolver ("No AI provider resolved. CompanyId=…, Tier 1 → …")
+            // reached the browser via InvoiceImport.razor (issue #156), and it logged nothing.
+            // Client errors are told apart by their own exception type (see the catch above),
+            // not by trusting the message of a general-purpose type.
+            //
+            // The full exception (stack trace included) goes to the server log only —
+            // DatabaseLogger picks up the CorrelationId automatically and writes it to AppLog.
+            var correlationId = GetCorrelationId();
+            _logger.LogError(ex, "Error sending chat message [{CorrelationId}]", correlationId);
+
             return StatusCode(StatusCodes.Status500InternalServerError,
-                new { message = ex.ToString() });
+                new { message = BuildSafeErrorMessage(correlationId), correlationId });
         }
     }
 
@@ -151,12 +189,21 @@ public class ChatController : ControllerBase
             // This catches silent failures where the AI provider returns nothing.
             if (!hasContent)
             {
-                _logger.LogWarning("SSE stream completed with no content — possible AI provider issue");
+                // Provider and ConversationId come from the caller's own request, so echoing them
+                // back leaks nothing. The reference ID is added because USERGUIDE §13 promises one
+                // for every chat failure — this branch is a failure too, just not an exception.
+                var emptyCorrelationId = GetCorrelationId();
+                _logger.LogWarning(
+                    "SSE stream completed with no content — possible AI provider issue [{CorrelationId}]",
+                    emptyCorrelationId);
+
                 var emptyPayload = JsonSerializer.Serialize(new
                 {
                     error = "AI provider returned no response. Check server logs for details. " +
                             $"Provider: {request.Provider ?? "(default)"}, " +
-                            $"ConversationId: {request.ConversationId?.ToString() ?? "new"}"
+                            $"ConversationId: {request.ConversationId?.ToString() ?? "new"}. " +
+                            $"Reference ID: {emptyCorrelationId}",
+                    correlationId = emptyCorrelationId
                 });
                 await Response.WriteAsync($"data: {emptyPayload}\n\n", HttpContext.RequestAborted);
                 await Response.Body.FlushAsync(HttpContext.RequestAborted);
@@ -181,15 +228,44 @@ public class ChatController : ControllerBase
         {
             _logger.LogDebug("SSE stream cancelled (client disconnected)");
         }
-        catch (Exception ex)
+        catch (ChatConversationNotFoundException ex)
         {
-            _logger.LogError(ex, "Error during SSE streaming");
+            // The streaming endpoint resolves the conversation through the very same lookup as
+            // SendMessage (ChatService.GetOrCreateConversationAsync), so it can fail for the very
+            // same client-side reason — most often a browser tab still holding the ID of a
+            // conversation that was deleted in another tab. This is the endpoint the chat panel
+            // actually uses, so that is not a rare case.
+            //
+            // It gets the same treatment as on the non-streaming path: a warning in the log
+            // (not an Error — nobody should be paged for a stale tab) and the controller's own
+            // text, never ex.Message. No reference ID is attached because there is no server-side
+            // incident to look up; USERGUIDE §13 documents this one message as the exception.
+            _logger.LogWarning(
+                "SSE stream rejected — conversation {ConversationId} not found for the current user",
+                ex.ConversationId);
 
-            // Send the full exception to the client so we can see what's going on.
-            // TODO: In production, consider replacing ex.ToString() with a safe message.
             try
             {
-                var errorPayload = JsonSerializer.Serialize(new { error = ex.ToString() });
+                // The status code cannot be used here: this is an SSE response, so the error has
+                // to travel as a normal stream event just like every other failure below.
+                var notFoundPayload = JsonSerializer.Serialize(new { error = ConversationNotFoundMessage });
+                await Response.WriteAsync($"data: {notFoundPayload}\n\n", HttpContext.RequestAborted);
+                await Response.Body.FlushAsync(HttpContext.RequestAborted);
+            }
+            catch { /* Connection already closed */ }
+        }
+        catch (Exception ex)
+        {
+            // Same contract as the non-streaming path: details to AppLog, reference ID to the user.
+            // The SSE stream cannot fall back to GlobalExceptionMiddleware — the response headers
+            // are already sent, so the error has to travel as a regular SSE event.
+            var correlationId = GetCorrelationId();
+            _logger.LogError(ex, "Error during SSE streaming [{CorrelationId}]", correlationId);
+
+            try
+            {
+                var errorPayload = JsonSerializer.Serialize(
+                    new { error = BuildSafeErrorMessage(correlationId), correlationId });
                 await Response.WriteAsync($"data: {errorPayload}\n\n", HttpContext.RequestAborted);
                 await Response.Body.FlushAsync(HttpContext.RequestAborted);
             }
@@ -215,9 +291,9 @@ public class ChatController : ControllerBase
             await _chatService.DeleteConversationAsync(id, userId, ct);
             return NoContent();
         }
-        catch (InvalidOperationException ex)
+        catch (ChatConversationNotFoundException)
         {
-            return NotFound(new { message = ex.Message });
+            return NotFound(new { message = ConversationNotFoundMessage });
         }
     }
 
@@ -300,6 +376,26 @@ public class ChatController : ControllerBase
     }
 
     // ─── Private helpers ────────────────────────────────────────────────
+
+    /// <summary>
+    /// Reads the CorrelationId that CorrelationIdMiddleware stored in HttpContext.Items.
+    /// The middleware runs first for every request, so the value is normally always present;
+    /// "unknown" is only a defensive fallback (e.g., the endpoint called from a unit test).
+    /// </summary>
+    private string GetCorrelationId()
+        => HttpContext.Items["CorrelationId"] as string ?? "unknown";
+
+    /// <summary>
+    /// Builds the only error text the chat client is ever allowed to see.
+    ///
+    /// Why: the exception itself (type, message, stack trace, inner exceptions) can expose
+    /// internal class names, file paths and configuration details, and the chat UI renders
+    /// whatever it receives as an assistant message. The user gets the CorrelationId instead —
+    /// with it, support can find the full exception in AppLog.
+    /// </summary>
+    private static string BuildSafeErrorMessage(string correlationId)
+        => "An unexpected error occurred while processing your message. " +
+           $"Please report this reference ID: {correlationId}";
 
     /// <summary>
     /// Extracts the current user's ID from JWT claims.

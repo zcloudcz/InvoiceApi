@@ -36,6 +36,7 @@ public class TenantContextMiddleware
     [
         "/api/auth",
         "/api/user",
+        "/api/api-key",              // API keys live in master DB (auth must resolve them before the tenant is known)
         "/api/company",
         "/api/system-configuration", // SMTP + JWT settings — master DB, SysAdmin only
         "/api/dashboard/sysadmin",   // SysAdmin dashboard — master DB, no tenant needed
@@ -44,6 +45,9 @@ public class TenantContextMiddleware
         "/api/cloud-storage",        // Cloud storage settings — stored in master DB CompanySystemSettings
         "/api/email",                // SysAdmin email — uses system SMTP, no tenant needed
         "/api/sysadmin/payment-matching", // Payment matching IMAP/poll config — master DB, SysAdmin only
+        "/api/diagnostic",           // Deployment diagnostics — master DB only; a SysAdmin must be
+                                     // able to ask "is the database reachable" without first
+                                     // impersonating a company that may not even exist yet
         "/swagger",
         "/health"
     ];

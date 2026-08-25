@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Text;
 using Fakvio.Infrastructure.Authentication;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -55,14 +56,17 @@ public static class AuthenticationExtensions
         var jwtIssuer = configuration["JwtSettings:Issuer"] ?? "Fakvio";
         var jwtAudience = configuration["JwtSettings:Audience"] ?? "FakvioClient";
 
-        // ── JWT Bearer Authentication ───────────────────────────────────────
-        // Sets JWT Bearer as the default authentication scheme.
-        // All [Authorize] endpoints will require a valid Bearer token.
+        // ── JWT Bearer + API key ────────────────────────────────────────────
+        // The default scheme is a POLICY scheme, not JWT: an "Authorization: Bearer …"
+        // header can now carry either a JWT or an API key, and the selector below picks
+        // the handler by looking at the token. Only Authenticate/Challenge are pointed at
+        // it — DefaultSignInScheme is deliberately left alone, because the OAuth handlers
+        // sign in and a policy scheme cannot.
         // ClockSkew = Zero removes the default 5-minute tolerance for token expiry.
         var authBuilder = services.AddAuthentication(options =>
         {
-            options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-            options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+            options.DefaultAuthenticateScheme = ApiKeyAuthenticationDefaults.SelectorScheme;
+            options.DefaultChallengeScheme = ApiKeyAuthenticationDefaults.SelectorScheme;
         })
         .AddJwtBearer(options =>
         {
@@ -101,6 +105,23 @@ public static class AuthenticationExtensions
                 NameClaimType = ClaimTypes.Name
             };
         });
+
+        // ── API key authentication + scheme selector ────────────────────────
+        // The handler validates "fak_…" bearer tokens against the ApiKey table.
+        authBuilder.AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>(
+            ApiKeyAuthenticationDefaults.AuthenticationScheme, displayName: null, configureOptions: null);
+
+        // The selector never authenticates anything itself — it only forwards to the
+        // handler that understands the presented token. Anything that is not recognisably
+        // an API key goes to JWT, which keeps the JWT path byte-for-byte unchanged
+        // (including the 401 it produces for garbage tokens).
+        authBuilder.AddPolicyScheme(
+            ApiKeyAuthenticationDefaults.SelectorScheme,
+            displayName: "JWT or API key",
+            options => options.ForwardDefaultSelector = context =>
+                ApiKeyAuthenticationDefaults.ExtractRawKey(context.Request.Headers.Authorization) is not null
+                    ? ApiKeyAuthenticationDefaults.AuthenticationScheme
+                    : JwtBearerDefaults.AuthenticationScheme);
 
         // ── External OAuth Providers (conditional) ──────────────────────────
         // Each provider is only registered when its ClientId/AppId is configured.

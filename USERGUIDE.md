@@ -8,6 +8,7 @@
 
 ## Obsah
 
+0. [Registrace firmy](#0-registrace-firmy)
 1. [Přehled (Dashboard)](#1-přehled-dashboard)
 2. [Faktury](#2-faktury)
 3. [Dobropisy](#3-dobropisy)
@@ -26,6 +27,34 @@
 16. [Lokalizace — přepínání jazyka CZ/EN](#16-lokalizace--přepínání-jazyka-czen)
 17. [Notifikace](#17-notifikace)
 18. [Příjem faktur emailem](#18-příjem-faktur-emailem)
+19. [Nastavení hesla a první přihlášení](#19-nastavení-hesla-a-první-přihlášení)
+20. [Napojení vlastního AI klienta (MCP server)](#20-napojení-vlastního-ai-klienta-mcp-server)
+
+---
+
+## 0. Registrace firmy
+
+**Stránka:** `/register` (dostupná bez přihlášení)
+
+1. Vyplňte e-mail, jméno, příjmení, název firmy a IČO.
+2. Klikněte „Načíst z ARES" — systém doplní oficiální název firmy **a sídlo**
+   (ulice, PSČ, město, země) z obchodního rejstříku ARES.
+3. Sekce „Sídlo firmy" je editovatelná — pokud ARES nemá aktuální údaje,
+   adresu jednoduše přepište. Uloží se to, co ve formuláři vidíte.
+4. Klikněte „Zaregistrovat se" — na zadaný e-mail přijde odkaz pro nastavení hesla.
+
+Sídlo se uloží k vaší firmě jako primární adresa a používá se jako blok vystavitele
+na fakturách (PDF). Změnit ho lze později v „Nastavení firmy".
+
+**Plátcovství DPH se odvodí z ARES:** má-li vaše firma v registru DIČ, založí se rovnou
+jako plátce DPH (a DIČ se uloží). Bez DIČ v ARES — nebo když je registr nedostupný —
+vznikne firma jako neplátce. DIČ v registru ale není právní záruka plátcovství, proto si
+nastavení po přihlášení zkontrolujte v „Nastavení firmy"; tam ho lze kdykoli přepnout.
+
+**Pozor na jednu výjimku:** když ulici, PSČ i město **úplně vymažete**, systém to bere
+jako „nevyplněno" a doplní adresu z ARES. Firma bez adresy vznikne jen tehdy, když ji
+nemá ani ARES (nebo je registr nedostupný) — pak ji doplňte v „Nastavení firmy"
+před vystavením první faktury. Chcete-li adresu odstranit, udělejte to tam.
 
 ---
 
@@ -127,6 +156,35 @@ Grid zobrazuje vydané faktury s těmito sloupci:
 | Kopírovat | Zkopírovat fakturu jako nový Draft | ne CreditNote, ne Deleted |
 | Tři tečky | Sekundární akce (Vytvořit šablonu) | vždy |
 | Obnovit | Obnovit smazanou fakturu | pouze Deleted |
+
+### 2.3.1 Když vystavení skončí chybou „nedokončené nastavení firmy"
+
+Fakturu lze vystavit (Draft → Issued) jen tehdy, když má **vystavitel dané faktury**
+vyplněné vše, co na daňovém dokladu musí být. Dokud něco chybí, aplikace vystavení
+**odmítne** a v chybové hlášce uvede, co chybí. Podle označení v hlášce najdete
+v tabulce, kam pro nápravu jít:
+
+| V hlášce uvidíte | Co chybí | Kde to doplníte |
+|------------------|----------|-----------------|
+| `ISSUER_ADDRESS_INCOMPLETE` | Adresa vystavitele (ulice, město, PSČ, země) | Nastavení firmy (`/my-company`) |
+| `ISSUER_REGISTRATION_NUMBER_MISSING` | IČO | Nastavení firmy |
+| `ISSUER_TAX_NUMBER_MISSING` | DIČ — jen pokud jste plátce DPH | Nastavení firmy |
+| `ISSUER_BANK_ACCOUNT_MISSING` | Bankovní účet | Nastavení firmy |
+| `NUMBER_SEQUENCE_MISSING` | Aktivní výchozí číselná řada pro daný typ dokladu | Číselné řady (`/number-sequences`) |
+| `ISSUER_MISSING` | Vystavitel není v účtu vůbec založený | Nastavení firmy |
+
+Co je dobré vědět:
+
+- Kontroluje se **vystavitel té konkrétní faktury**. Máte-li v účtu víc vystavitelů,
+  nedokončený vystavitel blokuje jen své vlastní doklady.
+- Kontroluje se jen typ dokladu, který právě vystavujete — chybějící řada dobropisů
+  nebrání vystavení běžné faktury.
+- Nevyplněná hlavička EPO (podání DPH) je jen upozornění a **fakturaci nebrání**.
+- Odmítnutá faktura zůstane beze změny ve stavu Draft a nespotřebuje číslo z číselné
+  řady. Po doplnění údajů akci prostě zopakujte.
+- Totéž platí pro hromadné vystavení (u odmítnutých faktur uvidíte důvod v souhrnu
+  výsledku, zbytek dávky se vystaví) i pro vytvoření faktury ze šablony se zapnutým
+  automatickým vystavením — tam se faktura vytvoří jako Draft a jen se nevystaví.
 
 ### 2.4 Vytvoření nové faktury
 
@@ -420,6 +478,21 @@ Lze přiřadit:
 - Výchozí systémový formát
 - Vlastní formát (kliknutím na řádek → dialog editace)
 
+### Když číselná řada chybí nebo je vypnutá
+
+Číslo dokladu se generuje **výhradně** z přiřazené číselné řady. Pokud pro daný typ
+dokladu žádná aktivní výchozí řada neexistuje, je přiřazená řada deaktivovaná, nebo se
+číslo z jiného důvodu nepodaří vygenerovat, vytvoření dokladu **skončí chybou**.
+
+Aplikace v takovém případě nikdy nepřidělí náhradní číslo mimo vaši řadu — číslování
+dokladů musí zůstat souvislé a předvídatelné. Chybová hláška uvádí typ dokladu i stránku
+`/number-sequences`, kde řadu nastavíte; po nastavení aktivní výchozí řady akci zopakujte.
+
+Zvláštní případ je **souběh** — dva doklady si sáhnou pro číslo ze stejné řady ve stejný
+okamžik. Aplikace se pokus několikrát zopakuje sama, a když ani pak neuspěje, vytvoření
+dokladu skončí chybou. Tady není nic špatně nastaveného: hláška to výslovně říká a stačí
+akci zopakovat.
+
 ---
 
 ## 10. Nastavení firmy
@@ -449,6 +522,15 @@ Správa informací o vaší firmě (vydavatele faktur).
 
 **Cloud úložiště:**
 - Napojení cloudového úložiště pro ukládání dokumentů
+
+**Nastavení EPO (jen role Admin):**
+- Hlavičkové údaje pro elektronické podání přiznání k DPH a kontrolního hlášení — viz [§12](#12-přehled-dph--epo-export)
+- Kód finančního úřadu a kód územního pracoviště jsou povinné, bez nich EPO export nelze vygenerovat
+- Kontaktní telefon, kontaktní e-mail a jméno oprávněné osoby jsou volitelné (uložený kontaktní
+  e-mail zatím nejde vymazat, jen přepsat jiným)
+- Sekce má vlastní tlačítko „Uložit" — ukládá se nezávisle na tlačítku „Upravit" nahoře
+- **Známé omezení:** uložení dnes projde jen správci systému. U role Admin skončí chybou —
+  než bude opraveno, požádejte o vyplnění správce systému.
 
 ### Jak editovat
 
@@ -530,11 +612,34 @@ Sekce „EPO Export" umožňuje stáhnout dva soubory pro portál EPO MFČR:
 3. Klikněte „Stáhnout DPHDP3" nebo „Stáhnout DPHKH1"
 4. Vygenerovaný XML soubor nahrajte na portál EPO (https://adisepo.mfcr.cz)
 
+### Chybějící nastavení EPO
+
+Export vyžaduje vyplněný kód finančního úřadu a kód územního pracoviště. Pokud chybí,
+místo staženého souboru se zobrazí upozornění se seznamem chybějících polí:
+
+- **Máte roli Admin** — upozornění nabídne tlačítko „Přejít do nastavení firmy", které vás
+  přenese na `/my-company` do sekce „Nastavení EPO" (viz [§10](#10-nastavení-firmy)).
+- **Nemáte roli Admin** — sekce nastavení je pro vás skrytá, takže upozornění místo odkazu
+  napíše, že pole musí doplnit administrátor firmy.
+
 ---
 
 ## 13. AI asistent
 
-**Přístup:** ikona AI robota v pravém horním rohu hlavní navigace → otevře se boční panel (Chat Drawer)
+**Přístup:** dvě cesty ke stejnému panelu:
+
+- ikona robota (🤖) v horní liště — první ikona vpravo od názvu aplikace,
+- položka **AI asistent** v hlavním menu vlevo (hned pod Přehledem).
+
+Obojí otevře/zavře boční panel (Chat Drawer) na pravé straně.
+
+**Panel si pamatuje, jestli byl otevřený.** Pokud ho necháte otevřený a stránku znovu
+načtete, otevře se sám. Stav se pamatuje pro daný prohlížeč a zařízení — na mobilu tedy
+můžete mít panel zavřený, i když ho na počítači necháváte otevřený.
+
+**Na mobilu** panel zabírá celou šířku displeje. Zavřete ho křížkem vpravo nahoře v panelu
+nebo klepnutím mimo panel. Plocha pro přetažení souboru se na telefonu nezobrazuje —
+soubor připojíte tlačítkem se sponkou vedle textového pole.
 
 ### Co AI asistent umí
 
@@ -543,21 +648,70 @@ AI asistent zná kontext vaší firmy a umí odpovídat na otázky i provádět 
 | Oblast | Co umí |
 |--------|--------|
 | Faktury | Vyhledat fakturu, zobrazit detail, vypsat seznam faktur podle kritérií |
-| Klienti | Vyhledat klienta, zobrazit detail |
+| Klienti | Vypsat seznam klientů, vyhledat klienta, zobrazit celý detail (adresy, kontakty, bankovní účty, fakturační nastavení), založit nového podle IČO, upravit údaje a smazat klienta. Úprava i smazání se vždy nejdřív ukážou k odsouhlasení — viz níže. |
 | Přijaté faktury | Vyhledat, vypsat seznam |
+| Přehledy a reporty | Shrnout dashboard, vypsat faktury po splatnosti, faktury za období nebo pro konkrétního klienta, spočítat DPH za období |
+| Nastavení firmy | Přečíst nastavení vlastní firmy (název, IČO, DIČ, plátcovství DPH, jazyk dokladů, adresa, kontakty, bankovní účty) a změnit ho — včetně přidání, úpravy a zrušení bankovního účtu („Přidej nám účet 1234567890/0100", „Od ledna jsme plátci DPH"). IČO měnit nelze. |
 | Obecné dotazy | Odpovídat na otázky o funkcích aplikace |
-| Navigace | Přesměrovat vás na příslušnou stránku |
+| Navigace | Otevřít libovolnou stránku aplikace — faktury, přijaté faktury, klienty, platby, šablony, DPH a daně, upomínky i nastavení („Otevři DPH přiznání", „Založ novou fakturu pro klienta XYZ"). Stránky správce systému a přihlašovací obrazovky asistent neotevírá. |
+
+**Změnu dat vždycky nejdřív potvrdíte.** Když asistenta požádáte o změnu nebo smazání
+(klient, nastavení firmy, bankovní účet), ukáže vám nejprve náhled — co přesně se stane
+a z čeho na co („Název se změní z X na Y") — a **nic nezapíše**. Teprve když odpovíte, že
+souhlasíte, změnu provede. Když náhled nesedí, řekněte, co má být jinak, a asistent nabídne
+nový.
+
+Smazání klienta je „měkké" — klient se skryje, ale nezmizí, takže starší faktury
+na něj dál odkazují. Klienta, který už nějakou fakturu má, smazat nelze vůbec;
+asistent vám to řekne. Skrytého klienta lze vrátit zpět („Obnov klienta X").
+
+Když si vyžádáte načtení údajů z ARESu a rejstřík zrovna neodpoví nebo dané IČO
+nezná, asistent to řekne rovnou — nikdy nepotvrdí načtení dat, ke kterému nedošlo.
+
+Výchozí účet firmy nejde zrušit, jen přesunout: řekněte, který účet má být nově výchozí
+(„Ať je výchozí ten eurový"), a asistent přeznačí oba. Požadavek „tenhle už ať není výchozí"
+odmítne — nějaký účet výchozí být musí, jinak by ho aplikace vybrala sama a vy byste se to
+nedozvěděli.
+
+Jedno omezení má úprava a rušení bankovních účtů: účet, ke kterému už jsou v aplikaci
+navázané platby (načtené bankovní transakce nebo aktivní e-mailová schránka pro příjem
+výpisů), přepsat nejde — ani přes asistenta, ani ručně na stránce **Moje firma**. Asistent
+vám v takovém případě řekne, proč to neprošlo; upravit takový účet lze až po odpojení
+navázaných dat.
+
+Asistent navíc ví, **kde právě stojíte** — jakou stránku máte otevřenou a jestli je na ní
+konkrétní doklad — a zná dnešní datum. Můžete se tedy ptát „kdy je tahle faktura splatná"
+místo toho, abyste číslo dokladu opisovali. Pokud vám ještě něco chybí k vystavení faktury
+(vyplněná vlastní firma, adresa, číselná řada), asistent to ví a nasměruje vás na stránku,
+kde se to doplní.
 
 ### Jak používat
 
-1. Klikněte na ikonu AI v pravém horním rohu
+1. Klikněte na ikonu robota v horní liště nebo na **AI asistent** v menu
 2. V panelu napište dotaz v přirozeném jazyce (česky nebo anglicky)
 3. Odpověď se zobrazuje streamovaně (postupně, token po tokenu)
 4. Konverzace se ukládají — historii konverzací zobrazíte tlačítkem hodiny (History)
+5. Konverzaci smažete ikonou koše v historii. Aplikace se vždy zeptá na potvrzení —
+   smazanou konverzaci nelze obnovit.
+
+### Formátování odpovědí
+
+Odpovědi asistenta se zobrazují naformátované: nadpisy, tučné písmo, odrážkové
+a číslované seznamy, tabulky i bloky kódu. Text tedy neuvidíte jako „syrové" znaky
+(`**tučně**`, `| sloupec |`), ale jako hotové formátování.
+
+Odkazy v odpovědi vedou buď do aplikace, nebo na web. Z bezpečnostních důvodů jsou
+odkazy s neobvyklým cílem zneškodněny (kliknutí na ně nic neudělá) a případné HTML
+z odpovědi se vypíše jako text, nikdy se nespustí.
 
 ### Výběr AI poskytovatele
 
 Pokud je nakonfigurováno více AI poskytovatelů, zobrazí se rozbalovací seznam (Claude / OpenAI / Gemini / Ollama) pro výběr.
+
+### Chování asistenta
+
+Styl odpovědí a pravidla asistenta nastavuje správce systému. Pokud vám asistent odpovídá
+jinak, než jste zvyklí, je pravděpodobně upravené systémové nastavení — obraťte se na správce.
 
 ### Příklady dotazů
 
@@ -565,6 +719,20 @@ Pokud je nakonfigurováno více AI poskytovatelů, zobrazí se rozbalovací sezn
 - „Jaký je celkový obrat za Q1 2026?"
 - „Najdi fakturu číslo FAK-2026-001"
 - „Kolik mám nesplacených faktur?"
+
+### Když se odpověď nepodaří vygenerovat
+
+Místo odpovědi se objeví krátká hláška s **referenčním ID** (dlouhé číslo
+ve tvaru `11111111-2222-…`). Technický detail chyby se neposílá do prohlížeče —
+zapisuje se do serverového logu. Při hlášení problému administrátorovi vždy uveďte
+toto referenční ID, podle něj chybu v logu dohledá.
+
+Platí to pro všechna místa, kde aplikace volá AI: chatovací panel i AI kontrolu
+importu dokladů (hláška „AI review failed…" na stránce importu).
+
+Výjimkou je hláška „Conversation not found." — ta referenční ID nemá, protože
+nejde o chybu serveru. Znamená, že konverzace už neexistuje (typicky jste ji
+smazali v jiném okně prohlížeče). Stačí obnovit seznam konverzací.
 
 ---
 
@@ -847,3 +1015,74 @@ V sekci **Nastavení firmy** máte k dispozici:
 | ISDOCX (.isdocx) | Nejvyšší | ZIP kontejner s ISDOC XML uvnitř |
 | PDF | Vysoká | Rozpoznání přes QR kód, AI, nebo textovou analýzu |
 | Email bez příloh | Nízká | Pokus o rozpoznání z těla emailu (pouze AI) |
+
+
+---
+
+## 19. Nastavení hesla a první přihlášení
+
+Odkaz z registračního nebo pozvánkového emailu vede na stránku **Nastavení hesla**
+(`/set-password?token=…`). Po zadání hesla se současně ověří vaše emailová adresa
+a založí se váš pracovní prostor (databáze vaší firmy).
+
+Výsledek uvidíte přímo na stránce:
+
+| Hlášení | Co znamená | Co dělat |
+|---------|-----------|----------|
+| Zelené „Heslo bylo úspěšně nastaveno" | Heslo je nastavené a pracovní prostor je připravený | Přihlaste se |
+| Oranžové „Heslo bylo nastaveno, ale váš pracovní prostor se nepodařilo připravit" | Heslo platí, ale založení prostoru selhalo — přihlášení zatím nebude fungovat | Zkuste to za chvíli znovu; pokud problém trvá, kontaktujte podporu (přípravu dokončí administrátor) |
+| Červené „Pozvánka je neplatná nebo vypršela" | Odkaz vypršel (48 hodin) nebo už byl použit | Požádejte administrátora o novou pozvánku |
+
+Oranžové hlášení nikdy neznamená, že musíte zakládat účet znovu — heslo zůstává
+platné a po dokončení přípravy se přihlásíte stejnými údaji.
+
+---
+
+## 20. Napojení vlastního AI klienta (MCP server)
+
+Kromě vestavěného [AI asistenta](#13-ai-asistent) umí Fakvio pracovat i s AI
+aplikací, kterou už používáte na svém počítači (např. Claude Desktop nebo
+Claude Code). Napojení zajišťuje **MCP server** — malý program, který běží
+u vás lokálně a překládá požadavky AI na volání Fakvia.
+
+**V čem se to liší od AI asistenta v aplikaci:**
+
+| | AI asistent v aplikaci | MCP server |
+|---|---|---|
+| Kde se ovládá | Panel v pravém horním rohu Fakvia | Vaše AI aplikace na počítači |
+| Instalace | Žádná | Nutná (program + konfigurační soubor) |
+| Rozsah akcí | Vyhledávání a přehledy | 36 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové výpočty, šablony |
+
+### Co je potřeba
+
+1. **Nainstalovaný MCP server** na vašem počítači. Instalaci a nastavení
+   provádí správce systému — technický postup je v souboru
+   `Fakvio.McpServer/README.md`.
+2. **Přístupový token** (JWT) vašeho účtu. Token zastupuje vaše přihlášení,
+   proto má AI přesně stejná oprávnění, jaká máte vy — nic víc.
+3. **Zápis do konfigurace AI aplikace** — vzor je v souboru
+   `.mcp.json.sample`; do něj se doplní adresa Fakvia a token.
+
+### Co s tím AI zvládne
+
+| Oblast | Příklady |
+|--------|---------|
+| Vydané faktury | Vypsat, najít podle čísla, vystavit novou, dokončit, označit jako uhrazenou, odeslat emailem, stáhnout PDF nebo ISDOC, smazat koncept |
+| Klienti | Vypsat, zobrazit detail, založit, upravit, dohledat firmu v ARES |
+| Přijaté faktury | Vypsat, zobrazit, zadat novou, schválit, označit jako uhrazenou, smazat |
+| Přehledy | Dashboard, faktury po splatnosti, faktury klienta, faktury za období, přehled DPH |
+| Daně | Odhad daně, porovnání daňových režimů, roční příjmy, zálohy na pojistné |
+| Šablony | Vypsat, zobrazit, vystavit fakturu ze šablony |
+
+Příklady zadání: „Vystav fakturu pro klienta XYZ na 15 000 Kč za konzultace“,
+„Stáhni mi PDF faktury FAK-2026-001“, „Kolik mám letos zaplatit na zálohách?“
+
+### Bezpečnost — čtěte, než token někam vložíte
+
+- Token **je uložen v konfiguračním souboru v čitelné podobě**. Kdo se dostane
+  k souboru, dostane se k vašemu účtu. Nesdílejte ho a neposílejte emailem.
+- Token **platí 24 hodin**. Po vypršení začne AI hlásit chyby — stačí vložit nový.
+- AI může data i **měnit a mazat** (vystavit fakturu, smazat koncept). Než akci
+  potvrdíte, přečtěte si, co se chystá udělat.
+- Napojení nefunguje přes internetový prohlížeč — server běží na vašem
+  počítači a připojuje se na stejné Fakvio, do kterého se hlásíte v UI.

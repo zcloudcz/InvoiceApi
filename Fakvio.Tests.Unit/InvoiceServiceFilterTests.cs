@@ -32,7 +32,7 @@ public class InvoiceServiceFilterTests : IDisposable
         _context = new TenantDbContext(options);
         _logger = Substitute.For<ILogger<InvoiceService>>();
         _numberSequence = Substitute.For<INumberSequenceService>();
-        _service = new InvoiceService(_context, _numberSequence, _logger);
+        _service = new InvoiceService(_context, _numberSequence, Substitute.For<ITenantReadinessService>(), _logger);
 
         SeedTestData();
     }

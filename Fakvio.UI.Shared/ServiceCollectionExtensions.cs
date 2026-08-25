@@ -70,6 +70,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<GridStateService>();
         services.AddApiClient<CompanySettingsApiService>();
         services.AddApiClient<SystemConfigurationApiService>();
+        // Editable AI assistant instructions — SysAdmin-only page /ai-instructions.
+        services.AddApiClient<AiInstructionsApiService>();
         services.AddApiClient<AppLogApiService>();
         services.AddApiClient<TwoFactorApiService>();
         services.AddApiClient<CloudStorageApiService>();
@@ -81,6 +83,9 @@ public static class ServiceCollectionExtensions
         services.AddApiClient<EmailAdminApiService>();
         services.AddApiClient<FileAttachmentApiService>();
         services.AddApiClient<ReminderApiService>();
+
+        // Personal API keys for AI clients (MCP) — page /settings/integrations.
+        services.AddApiClient<ApiKeyApiService>();
 
         // User preferences — API client + session cache used by FakvioGrid (page size)
         services.AddApiClient<UserPreferencesApiService>();
@@ -100,6 +105,10 @@ public static class ServiceCollectionExtensions
         // Invoice email — mailbox management + inbox list.
         services.AddApiClient<InvoiceMailboxApiService>();
         services.AddApiClient<InboundInvoiceEmailApiService>();
+
+        // Reverse charge codes — MFČR číselník for the PDP dropdown in invoice line-item editor.
+        // Read-only on the client side; admin CRUD is task #49 (ReverseChargeCodes.razor).
+        services.AddApiClient<ReverseChargeCodeApiService>();
 
         // Shared app state — cross-component notifications (e.g., company list changed → refresh dropdown)
         services.AddScoped<AppStateService>();

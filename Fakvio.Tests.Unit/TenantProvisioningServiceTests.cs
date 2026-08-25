@@ -1,10 +1,13 @@
+﻿using System.Data.Common;
+using System.Reflection;
 using Fakvio.Domain.Entities;
 using Fakvio.Infrastructure.Data;
 using Fakvio.Infrastructure.Service;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.Logging;
 using Npgsql;
+using Npgsql.EntityFrameworkCore.PostgreSQL.Infrastructure.Internal;
 using NSubstitute;
 using Shouldly;
 
@@ -27,8 +30,19 @@ namespace Fakvio.Tests.Unit;
 /// </summary>
 public class TenantProvisioningServiceTests : IDisposable
 {
+    private const string TestConnectionString =
+        "Host=localhost;Database=fakvio;Username=fakvio;Password=test";
+
+    /// <summary>
+    /// Marker baked into the stubbed per-schema connection string so a test can tell the
+    /// factory's data source apart from the root one.
+    /// </summary>
+    private const string SchemaDataSourceMarker = "fakvio-schema-source";
+
     private readonly MasterDbContext _masterContext;
-    private readonly IConfiguration _configuration;
+    private readonly INpgsqlDataSourceFactory _dataSourceFactory;
+    private readonly NpgsqlDataSource _rootDataSource;
+    private readonly NpgsqlDataSource _schemaDataSource;
     private readonly ILogger<TenantProvisioningService> _logger;
     private readonly TenantProvisioningService _service;
 
@@ -41,22 +55,26 @@ public class TenantProvisioningServiceTests : IDisposable
 
         _masterContext = new MasterDbContext(options);
 
-        // Configuration with a mock PostgreSQL connection string (won't actually connect in unit tests)
-        _configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["ConnectionStrings:DefaultConnection"] = "Host=localhost;Database=fakvio;Username=fakvio;Password=test"
-            })
-            .Build();
-
         _logger = Substitute.For<ILogger<TenantProvisioningService>>();
 
         // NpgsqlDataSource for unit tests — points to localhost, won't actually connect.
-        // Tests that trigger real DB operations will fail at SQL level (expected in unit tests).
-        var dataSource = new NpgsqlDataSourceBuilder(
-            "Host=localhost;Database=fakvio;Username=fakvio;Password=test").Build();
+        // Building a data source only parses the connection string; no network I/O happens
+        // until a connection is requested, so tests that trigger real DB operations fail at
+        // SQL level (expected in unit tests).
+        _rootDataSource = new NpgsqlDataSourceBuilder(TestConnectionString).Build();
 
-        _service = new TenantProvisioningService(_masterContext, _configuration, dataSource, _logger);
+        // Stand-in for what the real factory hands out for a tenant schema: same host, but
+        // tagged via ApplicationName so a test can prove the context uses THIS instance.
+        _schemaDataSource = new NpgsqlDataSourceBuilder(
+            $"{TestConnectionString};Application Name={SchemaDataSourceMarker}").Build();
+
+        // The factory is substituted: these tests assert WHICH data source the service asks
+        // for, not how the factory builds one (that is covered by NpgsqlDataSourceFactoryTests).
+        _dataSourceFactory = Substitute.For<INpgsqlDataSourceFactory>();
+        _dataSourceFactory.Root.Returns(_rootDataSource);
+        _dataSourceFactory.GetForSchema(Arg.Any<string>(), Arg.Any<bool>()).Returns(_schemaDataSource);
+
+        _service = new TenantProvisioningService(_masterContext, _dataSourceFactory, _rootDataSource, _logger);
     }
 
     /// <summary>
@@ -211,26 +229,71 @@ public class TenantProvisioningServiceTests : IDisposable
     }
 
     /// <summary>
-    /// Verifies that re-provisioning an already provisioned company does NOT throw.
-    /// The provisioning flow is idempotent — safe to re-run after partial failure.
-    /// It clears and re-seeds code tables, checks for existing issuer, etc.
-    /// NOTE: This test will still fail at the CREATE SCHEMA step because
-    /// there's no real PostgreSQL available in unit tests. The important thing is
-    /// that it does NOT throw InvalidOperationException for "already provisioned".
+    /// Issue #192: an already provisioned company is reported as done and NOTHING else
+    /// happens. Until this fix the flow logged a warning and then re-ran every step,
+    /// including the code table re-seed that deletes rows live documents point at.
+    ///
+    /// The discriminating assertion is that the call RETURNS: every step past step 1 needs
+    /// a reachable PostgreSQL, which unit tests do not have, so the old behaviour could only
+    /// ever throw here. The factory assertion backs it up one step further — no data source
+    /// for the tenant schema was even requested, i.e. no migration or re-seed was attempted.
+    /// The real-database proof that nothing is deleted lives in
+    /// Fakvio.Tests.Integration/TenantReprovisioningDatabaseTests.
     /// </summary>
     [Fact]
-    public async Task ProvisionTenantAsync_AlreadyProvisioned_DoesNotThrowAlreadyProvisionedException()
+    public async Task ProvisionTenantAsync_AlreadyProvisioned_ReturnsWithoutTouchingTheTenantSchema()
     {
         // Arrange — company already provisioned
         await SeedCompanyAsync(6);
         await SeedSettingsAsync(6, isProvisioned: true, isActive: true);
 
-        // Act — re-provisioning should NOT throw "already provisioned" exception.
-        // It WILL throw because there's no real PostgreSQL for CREATE SCHEMA,
-        // but the error should be about the database connection, not about "already provisioned".
-        var act = () => _service.ProvisionTenantAsync(6);
-        var ex = await Should.ThrowAsync<Exception>(act);
-        ex.Message.ShouldNotContain("already provisioned");
+        // Act
+        var result = await _service.ProvisionTenantAsync(6);
+
+        // Assert — reported as provisioned, and no tenant schema work was started
+        result.ShouldBeTrue();
+        _dataSourceFactory.DidNotReceive().GetForSchema(Arg.Any<string>(), Arg.Any<bool>());
+    }
+
+    /// <summary>
+    /// Issue #155 — the provisioning half of the fix relies on this contract: Step 7 now THROWS
+    /// when the tenant schema has no active NumberSequenceFormat (see
+    /// CreateDefaultNumberSequencesTests), and that throw must prevent Step 8 from marking the
+    /// tenant as provisioned. A tenant without number sequences would otherwise look ready while
+    /// being unable to number a single document.
+    ///
+    /// This test pins the mechanism the guard depends on: when ANY step throws, the caller gets
+    /// an error naming that step and IsProvisioned stays false. The trigger used here is Step 2
+    /// (company is not an issuer), because it is the last failure reachable before the service
+    /// opens a PostgreSQL connection — Steps 3+ cannot run in a unit test.
+    /// </summary>
+    [Fact]
+    public async Task ProvisionTenantAsync_WhenAStepFails_LeavesTenantUnprovisionedAndNamesTheStep()
+    {
+        // Arrange — settings exist (Step 1 passes) but the company is not marked as issuer,
+        // so Step 2 fails the same way a Step 7 failure would.
+        const long CompanyId = 7;
+        var company = await SeedCompanyAsync(CompanyId);
+        await SeedSettingsAsync(CompanyId);
+
+        company.IsIssuer = false;
+        await _masterContext.SaveChangesAsync();
+
+        // Act
+        var ex = await Should.ThrowAsync<InvalidOperationException>(
+            () => _service.ProvisionTenantAsync(CompanyId));
+
+        // Assert — the SysAdmin is told which step broke, not just "provisioning failed"
+        ex.Message.ShouldContain("Step 2",
+            customMessage: "The failing step must be named so the SysAdmin can fix the right thing");
+
+        // Assert — the tenant must NOT be usable. AsNoTracking reads what was really persisted.
+        var settings = await _masterContext.CompanySystemSettings.AsNoTracking()
+            .FirstAsync(s => s.CompanyId == CompanyId);
+
+        settings.IsProvisioned.ShouldBeFalse(
+            customMessage: "A failed step must never leave the tenant marked as provisioned");
+        settings.ProvisionedAt.ShouldBeNull();
     }
 
     #endregion
@@ -309,9 +372,139 @@ public class TenantProvisioningServiceTests : IDisposable
 
     #endregion
 
+    #region CreateTenantContext (per-schema data source)
+
+    /// <summary>
+    /// Invokes the private CreateTenantContext(string) via reflection.
+    /// The method is private by design (an implementation detail of provisioning), but its
+    /// wiring — which data source it uses and where migration history is recorded — is
+    /// exactly what this task changed, so it is worth pinning directly.
+    /// </summary>
+    private TenantDbContext InvokeCreateTenantContext(string schemaName)
+    {
+        var method = typeof(TenantProvisioningService)
+            .GetMethod("CreateTenantContext", BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException("TenantProvisioningService.CreateTenantContext not found.");
+
+        return (TenantDbContext)method.Invoke(_service, [schemaName])!;
+    }
+
+    [Fact]
+    public void CreateTenantContext_AsksTheFactoryForTheSchemaDataSource_ExactlyOnce()
+    {
+        // The leak fix: the service must REUSE the factory's cached per-schema data source
+        // instead of building (and dropping) a new NpgsqlDataSource on every call.
+        // "Exactly once per call" is the observable part of that contract.
+        using var context = InvokeCreateTenantContext("tenant_42");
+
+        _dataSourceFactory.Received(1).GetForSchema("tenant_42", true);
+    }
+
+    [Fact]
+    public void CreateTenantContext_UsesTheDataSourceReturnedByTheFactory()
+    {
+        // The stubbed schema data source carries a marker in its connection string, so the
+        // connection handed out by the context proves it really came from the factory —
+        // and not from a locally built data source with a hand-rolled search_path.
+        using var context = InvokeCreateTenantContext("tenant_42");
+
+        context.Database.GetDbConnection().ConnectionString.ShouldContain(SchemaDataSourceMarker);
+    }
+
+    [Fact]
+    public void CreateTenantContext_SanitizesTheSchemaNameBeforeAskingTheFactory()
+    {
+        // Schema names reach this method from the database (CompanySystemSettings.SchemaName),
+        // so they are still sanitized here — the factory sanitizes again, but defence in
+        // depth is intentional and the sanitized form must be what gets cached.
+        // SchemaNames.Sanitize lowercases and drops everything outside [a-z0-9_].
+        using var context = InvokeCreateTenantContext("Tenant_42!");
+
+        _dataSourceFactory.Received(1).GetForSchema("tenant_42", true);
+    }
+
+    [Fact]
+    public void CreateTenantContext_KeepsMigrationsHistoryTableInTheTenantSchema()
+    {
+        // Load-bearing regression guard: without a per-schema __EFMigrationsHistory, every
+        // tenant would share one history table in "public" and the second tenant would skip
+        // migrations that the first one already recorded as applied.
+        using var context = InvokeCreateTenantContext("tenant_42");
+
+        // Extensions are keyed by their concrete type, so FindExtension<RelationalOptionsExtension>()
+        // would miss the Npgsql-specific subclass — filter the list by assignability instead.
+        var relationalOptions = context.GetService<IDbContextOptions>()
+            .Extensions.OfType<RelationalOptionsExtension>().Single();
+
+        relationalOptions.MigrationsHistoryTableName.ShouldBe("__EFMigrationsHistory");
+        relationalOptions.MigrationsHistoryTableSchema.ShouldBe("tenant_42");
+        relationalOptions.MigrationsAssembly.ShouldBe("Fakvio.Infrastructure");
+    }
+
+    [Fact]
+    public void CreateTenantContext_DisposingTheContext_DoesNotDisposeTheFactoryOwnedDataSource()
+    {
+        // The ownership rule the whole leak fix rests on: the context BORROWS the factory's
+        // per-schema data source, it does not own it. EF Core only disposes a data source it
+        // created itself, never one handed to UseNpgsql(DbDataSource) — but that is a
+        // third-party guarantee, so pin it: if a future EF/Npgsql version started disposing
+        // it, the factory's cache would hand a dead instance to the next tenant and
+        // provisioning would fail on everything after the first one.
+        using (InvokeCreateTenantContext("tenant_42"))
+        {
+        }
+
+        IsDisposed(_schemaDataSource).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void CreateTenantContext_CalledAgainAfterTheFirstContextWasDisposed_GetsTheSameInstanceBack()
+    {
+        // Provisioning and migration walk tenants in a loop: create context, use it, dispose
+        // it, move on. Before the fix every iteration built its own NpgsqlDataSource and
+        // dropped it on the floor (one leaked pool per iteration); now every iteration goes
+        // back to the factory, which hands out the one cached instance per schema.
+        using (InvokeCreateTenantContext("tenant_42"))
+        {
+        }
+
+        using var second = InvokeCreateTenantContext("tenant_42");
+
+        _dataSourceFactory.Received(2).GetForSchema("tenant_42", true);
+        DataSourceOf(second).ShouldBeSameAs(_schemaDataSource);
+    }
+
+    /// <summary>
+    /// Returns the data source EF Core actually stored in the context's options — the
+    /// strongest available proof of "which instance is this context running on", stronger
+    /// than comparing connection strings.
+    /// </summary>
+    private static DbDataSource? DataSourceOf(DbContext context) =>
+        context.GetService<IDbContextOptions>()
+            .FindExtension<NpgsqlOptionsExtension>()?.DataSource;
+
+    /// <summary>
+    /// Reads Npgsql's private disposal flag. NpgsqlDataSource exposes no public "is disposed"
+    /// state, and its only member that reacts to disposal (OpenConnection) would attempt a
+    /// real network connection when the source is still alive — which a unit test must not do.
+    /// </summary>
+    private static bool IsDisposed(NpgsqlDataSource dataSource)
+    {
+        var field = typeof(NpgsqlDataSource)
+            .GetField("_isDisposed", BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException(
+                "NpgsqlDataSource._isDisposed not found — Npgsql internals changed, adjust this helper.");
+
+        return (int)field.GetValue(dataSource)! != 0;
+    }
+
+    #endregion
+
     public void Dispose()
     {
         _masterContext.Database.EnsureDeleted();
         _masterContext.Dispose();
+        _rootDataSource.Dispose();
+        _schemaDataSource.Dispose();
     }
 }

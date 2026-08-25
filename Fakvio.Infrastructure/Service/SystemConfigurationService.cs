@@ -116,32 +116,11 @@ public class SystemConfigurationService : ISystemConfigurationService
     /// <summary>
     /// Gets the existing configuration row, or creates one with defaults if none exists.
     /// This ensures we always have exactly one row in the table.
+    /// Delegates to <see cref="SystemConfigurationStore"/>, which AiInstructionsService uses
+    /// as well, so the default values are defined in exactly one place.
     /// </summary>
-    private async Task<SystemConfiguration> GetOrCreateAsync(CancellationToken ct)
-    {
-        // OrderBy(Id): deterministic ordering — EF warns when FirstOrDefault has no OrderBy.
-        // SystemConfiguration is a singleton table, but adding OrderBy ensures no EF warning.
-        var existing = await _context.Set<SystemConfiguration>().OrderBy(c => c.Id).FirstOrDefaultAsync(ct);
-        if (existing != null)
-            return existing;
-
-        // No configuration row exists yet — create one with defaults
-        _logger.LogInformation("No SystemConfiguration found — creating default row");
-        var defaultConfig = new SystemConfiguration
-        {
-            SmtpHost = "",
-            SmtpPort = 587,
-            SmtpSenderEmail = "",
-            SmtpSenderName = "Fakvio",
-            SmtpUseSsl = true,
-            JwtExpirationHours = 24,
-            CreatedAt = DateTime.UtcNow
-        };
-
-        _context.Set<SystemConfiguration>().Add(defaultConfig);
-        await _context.SaveChangesAsync(ct);
-        return defaultConfig;
-    }
+    private Task<SystemConfiguration> GetOrCreateAsync(CancellationToken ct)
+        => SystemConfigurationStore.GetOrCreateAsync(_context, _logger, ct);
 
     /// <inheritdoc />
     public async Task<string?> GetSmtpPasswordAsync(CancellationToken ct = default)

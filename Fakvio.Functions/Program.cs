@@ -78,6 +78,18 @@ var host = new HostBuilder()
         // Without this, HttpContext.User stays anonymous → all auth checks return 401.
         app.UseMiddleware<JwtAuthenticationMiddleware>();
 
+        // ── API Key Authentication Middleware ─────────────────────────────────────
+        // Mirror of the API host's ApiKey authentication scheme (registered by
+        // AddFakvioAuthentication but never executed here — the isolated worker has no
+        // UseAuthentication()). Handles "Authorization: Bearer fak_…", which the JWT
+        // middleware above deliberately ignores, and enforces the key's read/write scope.
+        //
+        // Runs AFTER the JWT middleware, not before: that one wires IHttpContextAccessor
+        // into the worker scope, which the authenticator's MasterDbContext needs for its
+        // audit stamping. The two never fight over HttpContext.User — each handles a token
+        // shape the other skips.
+        app.UseMiddleware<ApiKeyAuthenticationMiddleware>();
+
         // ── Impersonation Middleware ────────────────────────────────────────────────
         // MUST run AFTER JwtAuthenticationMiddleware (needs User.Claims populated)
         // and BEFORE TenantContextMiddleware (which reads the CompanyId claim).
@@ -133,6 +145,12 @@ var host = new HostBuilder()
         services.AddSingleton<ILoggerProvider>(new DatabaseLoggerProvider(LogLevel.Information));
     })
     .Build();
+
+// Startup breadcrumb: which database auth mode won, and from which config key. Same line as
+// the API host (LogDatabaseAuthMode), logged before any database work — when the database is
+// down, /api/diagnostic/health cannot answer (SysAdmin login needs the master DB), so this is
+// the only place the mode can be read. See SELFHOST-DB.md §3.4.
+host.Services.LogDatabaseAuthMode();
 
 // ── Startup database migration (master DB only) ───────────────────────────
 // Step 1: Migrate master DB (Users, Companies, SystemSettings, code tables).

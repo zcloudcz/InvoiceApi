@@ -177,15 +177,26 @@
                 @L["EpoExportSection"]
             </MudText>
 
-            @* EPO_HEADER_INCOMPLETE error alert with missing fields list and settings link. *@
+            @* EPO_HEADER_INCOMPLETE error alert with missing fields list.
+               The settings link is offered only to roles that can actually edit the EPO
+               fields on /my-company — the role list must stay in sync with the
+               EpoSettingsSection guard in MyCompany.razor. Everyone else is told who to
+               ask instead of being sent to a page where the section is hidden. *@
             @if (_epoHeaderIncomplete)
             {
                 <MudAlert Severity="Severity.Warning" Class="mb-3">
                     @string.Format(L["EpoHeaderIncomplete"].Value, string.Join(", ", _epoMissingFields))
-                    <MudButton Variant="Variant.Text" Size="Size.Small"
-                               OnClick="GoToCompanySettings" Class="ml-2">
-                        @L["EpoGoToSettings"]
-                    </MudButton>
+                    <AuthorizeView Roles="Admin,SysAdmin">
+                        <Authorized>
+                            <MudButton Variant="Variant.Text" Size="Size.Small"
+                                       OnClick="GoToCompanySettings" Class="ml-2">
+                                @L["EpoGoToSettings"]
+                            </MudButton>
+                        </Authorized>
+                        <NotAuthorized>
+                            <MudText Typo="Typo.body2" Class="mt-1">@L["EpoHeaderIncompleteAskAdmin"]</MudText>
+                        </NotAuthorized>
+                    </AuthorizeView>
                 </MudAlert>
             }
 
@@ -451,8 +462,9 @@
     }
 
     /// <summary>
-    /// Navigates to company settings (/my-company) where the user can fill in
-    /// the missing EPO header fields (EpoTaxOfficeCode, EpoContactEmail, etc.).
+    /// Navigates to company settings (/my-company), whose EPO section lets an Admin
+    /// fill in the missing header fields (EpoTaxOfficeCode, EpoContactEmail, etc.).
+    /// Only rendered for Admin / SysAdmin — see the alert markup above.
     /// </summary>
     private void GoToCompanySettings()
     {

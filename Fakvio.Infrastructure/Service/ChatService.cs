@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Text;
+using Fakvio.Application.Exceptions;
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.Chat;
 using Fakvio.Domain.Entities;
@@ -88,7 +89,8 @@ public class ChatService : IChatService
 
     /// <summary>
     /// Loads a single conversation with all its messages.
-    /// Throws InvalidOperationException if the conversation doesn't belong to the user.
+    /// Throws ChatConversationNotFoundException if the conversation does not exist
+    /// or does not belong to the user.
     /// </summary>
     public async Task<ChatConversationDto> GetConversationAsync(
         long conversationId, long userId, CancellationToken ct = default)
@@ -97,7 +99,7 @@ public class ChatService : IChatService
             .AsNoTracking()
             .Include(c => c.Messages.Where(m => m.Role != EChatRole.System))
             .FirstOrDefaultAsync(c => c.Id == conversationId && c.UserId == userId, ct)
-            ?? throw new InvalidOperationException($"Conversation {conversationId} not found.");
+            ?? throw new ChatConversationNotFoundException(conversationId);
 
         return new ChatConversationDto
         {
@@ -139,7 +141,8 @@ public class ChatService : IChatService
 
         // Build context and get AI response.
         var provider = await ResolveProviderAsync(request.Provider, ct);
-        var systemPrompt = await _contextBuilder.BuildSystemPromptAsync(ct);
+        var systemPrompt = await _contextBuilder.BuildSystemPromptAsync(
+            request.CurrentRoute, request.OpenEntity, ct);
         var history = await GetConversationHistoryAsync(conversation.Id, ct);
 
         // If an image is attached, set the transient Images property on the last user message.
@@ -184,10 +187,7 @@ public class ChatService : IChatService
                 _pendingUiAction = toolResult.UiAction;
 
                 // Second pass: AI call with tool result injected into the system prompt.
-                var resultPrompt = systemPrompt +
-                    $"\n\nTool '{toolCall.Action}' was executed. Result:\n{toolResult.OutputText}\n\n" +
-                    "Now respond to the user in a friendly, concise way based on the tool result above. " +
-                    "Include the key information from the result. Respond in the same language as the user.";
+                var resultPrompt = BuildToolResultPrompt(systemPrompt, toolCall.Action, toolResult);
 
                 responseText = await provider.GetCompletionAsync(history, resultPrompt, ct);
             }
@@ -246,7 +246,8 @@ public class ChatService : IChatService
 
         // Build context and start streaming.
         var provider = await ResolveProviderAsync(request.Provider, ct);
-        var systemPrompt = await _contextBuilder.BuildSystemPromptAsync(ct);
+        var systemPrompt = await _contextBuilder.BuildSystemPromptAsync(
+            request.CurrentRoute, request.OpenEntity, ct);
         var history = await GetConversationHistoryAsync(conversation.Id, ct);
 
         // If an image is attached, set the transient Images property on the last user message.
@@ -279,6 +280,11 @@ public class ChatService : IChatService
             var toolIteration = 0;
             var toolResultsLog = new StringBuilder();
 
+            // Issue #212: the closing instruction must match the LAST result. A confirmable tool
+            // called without approval only produced a preview, and a preview always ends the loop
+            // (it is reported as success), so the last result is the one that decides the framing.
+            var lastResultNeedsConfirmation = false;
+
             while (nativeResult?.HasToolCalls == true && toolIteration < maxToolIterations)
             {
                 toolIteration++;
@@ -299,9 +305,10 @@ public class ChatService : IChatService
                 if (toolResult.UiAction != null)
                     _pendingUiAction = toolResult.UiAction;
 
-                // Accumulate tool results so AI has full context.
-                toolResultsLog.AppendLine(
-                    $"Tool '{nativeToolCall.ToolName}' result: {toolResult.OutputText}");
+                // Accumulate tool results so AI has full context. Same wording as every other
+                // tool flow — a preview is announced as "was NOT executed" here as well.
+                toolResultsLog.AppendLine(DescribeToolResult(nativeToolCall.ToolName, toolResult));
+                lastResultNeedsConfirmation = toolResult.RequiresConfirmation;
 
                 // If the tool SUCCEEDED → stop the loop. Don't let AI call more tools
                 // because it tends to re-call the same tool and create duplicates.
@@ -325,8 +332,8 @@ public class ChatService : IChatService
             if (toolIteration > 0)
             {
                 var finalPrompt = systemPrompt + "\n\n" + toolResultsLog +
-                    "\nRespond briefly with the result. Do NOT call any more tools. " +
-                    "Respond in the same language as the user.";
+                    "\nDo NOT call any more tools. " +
+                    BuildToolResultInstruction(lastResultNeedsConfirmation);
 
                 string finalText;
                 if (nativeResult != null && !nativeResult.HasToolCalls
@@ -424,10 +431,7 @@ public class ChatService : IChatService
                 _pendingUiAction = toolResult.UiAction;
 
                 // Second pass: stream the final response with tool result in the system prompt.
-                var resultPrompt = systemPrompt +
-                    $"\n\nTool '{toolCall.Action}' was executed. Result:\n{toolResult.OutputText}\n\n" +
-                    "Now respond to the user in a friendly, concise way based on the tool result above. " +
-                    "Include the key information from the result. Respond in the same language as the user.";
+                var resultPrompt = BuildToolResultPrompt(systemPrompt, toolCall.Action, toolResult);
 
                 var toolFullResponse = new StringBuilder();
 
@@ -507,7 +511,7 @@ public class ChatService : IChatService
     {
         var conversation = await _context.ChatConversation
             .FirstOrDefaultAsync(c => c.Id == conversationId && c.UserId == userId, ct)
-            ?? throw new InvalidOperationException($"Conversation {conversationId} not found.");
+            ?? throw new ChatConversationNotFoundException(conversationId);
 
         _context.ChatConversation.Remove(conversation);
         await _context.SaveChangesAsync(ct);
@@ -527,6 +531,41 @@ public class ChatService : IChatService
     }
 
     // ─── Private helpers ────────────────────────────────────────────────
+
+    /// <summary>
+    /// Builds the second-pass system prompt that turns a raw tool result into an answer.
+    /// Shared by all tool flows (streaming / non-streaming, native / text-based) so the
+    /// model is framed identically no matter which provider the tenant uses.
+    ///
+    /// The distinction that matters: a confirmable tool that was called without approval
+    /// only produced a PREVIEW (see <see cref="IConfirmableChatTool"/>). Telling the model it
+    /// "was executed" would make the assistant announce a change that never happened.
+    /// </summary>
+    private static string BuildToolResultPrompt(string systemPrompt, string toolName, ChatToolResult result)
+        => systemPrompt + "\n\n" + DescribeToolResult(toolName, result)
+           + "\n\n" + BuildToolResultInstruction(result.RequiresConfirmation);
+
+    /// <summary>
+    /// Renders one tool result for the second-pass prompt. The native streaming flow accumulates
+    /// several of these into one log, the other flows use exactly one — either way the sentence
+    /// that says whether the tool actually ran comes from here, never from the tool's own text.
+    /// </summary>
+    private static string DescribeToolResult(string toolName, ChatToolResult result)
+        => result.RequiresConfirmation
+            ? $"Tool '{toolName}' was NOT executed — nothing has been changed. " +
+              $"It returned a preview of the change:\n{result.OutputText}"
+            : $"Tool '{toolName}' was executed. Result:\n{result.OutputText}";
+
+    /// <summary>
+    /// Closing instruction of the second-pass prompt — the last thing the model reads, so it has
+    /// to match the framing above. A preview must never be summarised as a completed change.
+    /// </summary>
+    private static string BuildToolResultInstruction(bool requiresConfirmation)
+        => requiresConfirmation
+            ? "Show the user what would change and ask them to confirm. " +
+              "Do NOT claim the change is done. Respond in the same language as the user."
+            : "Now respond to the user in a friendly, concise way based on the tool result above. " +
+              "Include the key information from the result. Respond in the same language as the user.";
 
     /// <summary>
     /// Handles the non-streaming native tool calling flow.
@@ -569,10 +608,7 @@ public class ChatService : IChatService
             _pendingUiAction = toolResult.UiAction;
 
             // Second pass: AI generates a natural-language response using the tool result.
-            var resultPrompt = systemPrompt +
-                $"\n\nTool '{nativeToolCall.ToolName}' was executed. Result:\n{toolResult.OutputText}\n\n" +
-                "Now respond to the user in a friendly, concise way based on the tool result above. " +
-                "Include the key information from the result. Respond in the same language as the user.";
+            var resultPrompt = BuildToolResultPrompt(systemPrompt, nativeToolCall.ToolName, toolResult);
 
             return await provider.GetCompletionAsync(history, resultPrompt, ct);
         }
@@ -597,7 +633,7 @@ public class ChatService : IChatService
         {
             var existing = await _context.ChatConversation
                 .FirstOrDefaultAsync(c => c.Id == conversationId.Value && c.UserId == userId, ct)
-                ?? throw new InvalidOperationException($"Conversation {conversationId} not found.");
+                ?? throw new ChatConversationNotFoundException(conversationId.Value);
             return existing;
         }
 

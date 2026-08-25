@@ -3,6 +3,7 @@ using System.Text.Json;
 using Anthropic;
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.Chat;
+using Fakvio.Infrastructure.Service.ChatTools;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -185,12 +186,10 @@ public class ClaudeProvider : IAiProvider, IDisposable
                             if (!string.IsNullOrEmpty(inputJson))
                             {
                                 using var doc = JsonDocument.Parse(inputJson);
-                                foreach (var prop in doc.RootElement.EnumerateObject())
-                                {
-                                    args[prop.Name] = prop.Value.ValueKind == JsonValueKind.String
-                                        ? prop.Value.GetString() ?? ""
-                                        : prop.Value.GetRawText();
-                                }
+
+                                // Shared with the text-based flow and with Ollama, so the same
+                                // model answer produces the same arguments on every provider.
+                                args = ToolArgumentReader.ReadArguments(doc.RootElement);
                             }
                         }
                         catch (JsonException ex)
@@ -240,47 +239,13 @@ public class ClaudeProvider : IAiProvider, IDisposable
     /// </summary>
     private static List<Tool> BuildClaudeTools(List<NativeToolDefinition> tools)
     {
-        return tools.Select(tool =>
+        // The SDK's InputSchema class has no Required property, so we hand it the plain
+        // JSON Schema dictionary built by the shared translator (Tool.InputSchema is object).
+        return tools.Select(tool => new Tool
         {
-            // Build JSON Schema properties dictionary.
-            var properties = new Dictionary<string, object>();
-            foreach (var param in tool.Parameters)
-            {
-                var propDef = new Dictionary<string, object>
-                {
-                    ["type"] = param.Type,
-                    ["description"] = param.Description
-                };
-
-                if (param.EnumValues is { Count: > 0 })
-                {
-                    propDef["enum"] = param.EnumValues;
-                }
-
-                properties[param.Name] = propDef;
-            }
-
-            // Claude's InputSchema follows JSON Schema format.
-            // The SDK's InputSchema class doesn't have a Required property,
-            // so we build the schema as a plain dictionary and pass it as Tool.InputSchema (which is object).
-            var inputSchema = new Dictionary<string, object>
-            {
-                ["type"] = "object",
-                ["properties"] = properties
-            };
-
-            // Add "required" array if there are required parameters.
-            if (tool.Required is { Count: > 0 })
-            {
-                inputSchema["required"] = tool.Required;
-            }
-
-            return new Tool
-            {
-                Name = tool.Name,
-                Description = tool.Description,
-                InputSchema = inputSchema
-            };
+            Name = tool.Name,
+            Description = tool.Description,
+            InputSchema = NativeToolSchema.BuildJsonSchema(tool)
         }).ToList();
     }
 
