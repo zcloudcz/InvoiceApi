@@ -20,6 +20,12 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+## 2026.08.25.6 — 2026-08-25
+
+### Změny pro vývojáře
+
+- **hotfix** — diagnostika Tailscale tunelu: milník selhání nese i prvních 40 řádků démona, `tailscaled --verbose=1`, CLI dostane 45 s na vlastní hlášku. (PR #330, `04d8b77`)
+
 ## 2026.08.25.5 — 2026-08-25
 
 ### Změny pro vývojáře
