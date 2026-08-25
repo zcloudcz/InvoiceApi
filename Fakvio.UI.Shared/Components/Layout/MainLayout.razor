@@ -12,13 +12,15 @@
 @inject NotificationApiService NotificationService
 @inject AppStateService AppState
 @inject IJSRuntime JS
+@inject Microsoft.Extensions.Configuration.IConfiguration Configuration
 @implements IDisposable
 
 @* NOTE: CascadingAuthenticationState is provided by App.razor — no need to wrap here.
    All child components can access Task<AuthenticationState> via [CascadingParameter]. *@
 <MudThemeProvider @bind-IsDarkMode="_isDarkMode" />
     <MudLayout>
-        <MudAppBar Elevation="1">
+        @* Pink on test, theme default on production — see UiEnvironment. *@
+        <MudAppBar Elevation="1" Style="@UiEnvironment.AppBarStyle(_environmentName)">
             @* Hamburger menu — only shown for authenticated users (no nav menu on login/register) *@
             <AuthorizeView>
                 <Authorized>
@@ -29,6 +31,11 @@
             <MudImage Src="@_logoSrc" Alt="Fakvio" Width="32" Height="32" Class="ml-3 mr-2 appbar-logo" />
             @* appbar-title hides on phones (logo stays) — see app.css responsive section *@
             <MudText Typo="Typo.h5" Class="appbar-title">@L["Layout_AppTitle"]</MudText>
+            @if (UiEnvironment.IsNonProduction(_environmentName))
+            {
+                @* The colour alone is not enough for everyone — the name is spelled out too. *@
+                <MudChip T="string" Size="Size.Small" Variant="Variant.Filled" Class="ml-2">@_environmentName!.Trim().ToUpperInvariant()</MudChip>
+            }
             <MudSpacer />
 
             @* AI Chat toggle — first control after the spacer so the assistant is the most
@@ -213,6 +220,9 @@
     /// color logo for light mode.
     /// </summary>
     private string _logoSrc => _isDarkMode ? "images/logo-grey.png" : "images/logo.png";
+
+    /// <summary>Environment name from wwwroot/appsettings.json; null on hosts that do not set it (MAUI, tests).</summary>
+    private string? _environmentName => Configuration[UiEnvironment.ConfigKey];
 
     // Impersonation state — SysAdmin can select a company to "act as"
     private long? _impersonatedCompanyId;
