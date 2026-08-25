@@ -22,6 +22,15 @@ public class OpenAiProvider : IAiProvider
 
     public string ProviderName => "OpenAI";
 
+    /// <summary>
+    /// OpenAI supports native function calling on every model we ship with (gpt-4o and newer).
+    /// Starts optimistic and is switched off only when the API definitively refuses the tools
+    /// — see <see cref="OpenAiToolCalling.CompleteWithToolsAsync"/>. Once off, ChatService uses
+    /// the text-based tool protocol instead, so tools keep working either way.
+    /// </summary>
+    private bool _supportsNativeTools = true;
+    public bool SupportsNativeTools => _supportsNativeTools;
+
     public OpenAiProvider(IOptions<AiSettings> settings, ILogger<OpenAiProvider> logger)
     {
         _logger = logger;
@@ -30,6 +39,16 @@ public class OpenAiProvider : IAiProvider
 
         var client = new OpenAIClient(config.ApiKey);
         _chatClient = client.GetChatClient(model);
+    }
+
+    /// <summary>
+    /// Test seam: lets a unit test drive the provider against a stubbed HTTP transport
+    /// instead of the real OpenAI endpoint. Production always uses the ctor above.
+    /// </summary>
+    internal OpenAiProvider(ChatClient chatClient, ILogger<OpenAiProvider> logger)
+    {
+        _chatClient = chatClient;
+        _logger = logger;
     }
 
     /// <summary>
@@ -75,6 +94,25 @@ public class OpenAiProvider : IAiProvider
             }
         }
     }
+
+    /// <summary>
+    /// Sends the conversation with native tool definitions to the Chat Completions API.
+    /// The model answers either with tool calls or with plain text — see
+    /// <see cref="OpenAiToolCalling"/> for the translation, which is shared with the
+    /// per-company ad-hoc OpenAI provider.
+    /// </summary>
+    public Task<NativeToolCallResult?> GetCompletionWithToolsAsync(
+        List<ChatMessageDto> messages,
+        string? systemPrompt,
+        List<NativeToolDefinition> tools,
+        CancellationToken ct = default)
+        => OpenAiToolCalling.CompleteWithToolsAsync(
+            _chatClient,
+            BuildMessages(messages, systemPrompt),
+            tools,
+            _logger,
+            () => _supportsNativeTools = false,
+            ct);
 
     /// <summary>
     /// Builds OpenAI ChatMessage list from our DTOs.

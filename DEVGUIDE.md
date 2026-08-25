@@ -735,6 +735,53 @@ Implementace: `PaymentMatchingService.cs` (metoda `GetPaymentsForInvoiceAsync`).
 - **Chat Tools**: 23 tools registrovaných v DI jako `IChatTool`, orchestrováno přes `IChatToolExecutor`.
   Registrace v `ServiceCollectionExtensions.cs`; přidání nového toolu = implementace `IChatTool` + řádek v DI.
 
+#### Matice schopností providerů
+
+| Provider | Native tool calling | Obrázky v promptu (`msg.Images`) |
+|----------|---------------------|----------------------------------|
+| Claude   | ano — Messages API `tools` | ne |
+| OpenAI   | ano — Chat Completions `tools` | ne |
+| Gemini   | ano — `tools[].functionDeclarations` | ne |
+| Ollama   | ano, pokud to model umí (gemma3/phi4 ne) | ano |
+
+Schéma parametrů si **žádný provider nepočítá sám**. Všichni berou `GetToolDefinitions()`
+a překládají ho jediným helperem `NativeToolSchema`
+(`Fakvio.Infrastructure/AiProviders/NativeToolSchema.cs`):
+
+- `BuildJsonSchema` — běžné JSON Schema, malými písmeny (Claude, OpenAI, Ollama).
+- `BuildOpenApiSchema` — totéž, ale názvy typů VELKÝMI (Gemini: jeho `Schema.type`
+  je protobuf enum, jehož JSON podoba je název členu).
+
+Odpovědi se přes `ToolArgumentReader` převádějí na `Dictionary<string, string>` úplně
+stejně u všech providerů — stejná odpověď modelu tedy nikdy nedopadne jinak podle toho,
+jakého providera má tenant nastaveného.
+
+**Degradace, když nativní volání selže:** provider vrátí `null` a `ChatService` dojede
+zbytek zprávy bez nástrojů. Když API **odmítne samotné nástroje**, provider si navíc vypne
+`SupportsNativeTools` a od další zprávy jede textový tool protokol (`BuildToolInstructions()`
++ `ParseToolCall()`) — nástroje fungují dál, jen po staré cestě.
+
+Co je „odmítnutí nástrojů", rozhoduje **jediné místo — `NativeToolRefusal.IsPermanent`**:
+**404** (model pro tenhle klíč neexistuje) a **400, jehož tělo zmiňuje `tool`/`function`**.
+Nic jiného nevypíná, protože vypnutí drží až do restartu procesu a singleton provider
+sdílejí všichni tenanti:
+
+- **401/403** (expirovaný nebo rotovaný klíč) — textová cesta jede přes stejný klíč a padá
+  taky, takže vypnutím se nic nezíská, jen degradace přežije opravu klíče.
+- **400 `context_length_exceeded`** — `ChatService.GetConversationHistoryAsync` posílá celou
+  historii bez okna, takže to spolehlivě vyrobí dost dlouhá konverzace. O podpoře nástrojů
+  to neříká nic.
+- **408/413, 429, 5xx, síť** — přechodné; jedna špatná minuta nesmí tenanta degradovat natrvalo.
+
+Kdo přidává providera: latch **nesmí být `static`** (jinak jeden tenant degraduje všechny)
+a podmínku pište přes `NativeToolRefusal`, ne vlastní rozsah stavových kódů.
+
+**Každý provider existuje dvakrát** — singleton v `AiProviders/` a per-firma `AdHoc*`
+v `CompanyAiSettingsResolver`. Změna se dělá **vždy na obou**, a nejlépe tak, že obě
+varianty volají jeden sdílený helper (`NativeToolSchema`, `GeminiApi`, `OpenAiToolCalling`,
+`ToolArgumentReader`). Ručně zkopírovaná druhá varianta = review reject: přesně takhle
+ad-hoc providerům dřív chybělo `items` u polí a schéma tiše odešlo rozbité.
+
 #### Přidání nového chat toolu (POVINNÝ postup)
 
 Tool se popisuje **na jednom místě** — ve vlastní třídě. Z `IChatTool.Parameters` se generuje
@@ -2278,6 +2325,7 @@ pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. P
 | Nový background lock klíč | §6.3 (tabulka klíčů) |
 | Nový chat tool nebo změna schématu parametrů (`IChatTool.Parameters`) | §4.7 (postup + matice + **paritní tabulka**) |
 | Nový MCP tool (`[McpServerTool]`) | §4.9 (počty) + §4.7 (paritní tabulka) |
+| Nový AI provider nebo změna jeho schopností (tools, obrázky) | §4.7 (matice schopností providerů) |
 | Změna observability stacku (App Insights → jiný) | §10 |
 | Nová list stránka s gridem / změna grid patternu | §7.10 (FakvioGrid) |
 | Nová tenant-facing stránka (`@page`) | §4.7 (`NavigateTool.Routes` — jinak spadne `NavigateToolRouteCatalogTests`) |
