@@ -30,7 +30,7 @@ Pokud máš pochybnost, **zde má pravdu DEVGUIDE.md**, ne komentáře v kódu (
 | `Fakvio.UI.Shared` | Razor Class Library (RCL) | **Všechny** Blazor stránky, komponenty, services, modely, resources. Sdílí WASM host i MAUI host. |
 | `Fakvio.BlazorUI` | Blazor WebAssembly | Tenký WASM host. Pouze `Program.cs`, `index.html`, PWA assets. |
 | `Fakvio.MauiApp` | MAUI Blazor Hybrid | Native shell pro Android/iOS/macOS/Windows. Sdílí komponenty přes `UI.Shared`. |
-| `Fakvio.McpServer` | Console (.NET tool) | MCP server pro AI klienty. Stdio transport, ModelContextProtocol 1.0.0. |
+| `Fakvio.McpServer` | Console (.NET tool) | MCP server pro AI klienty. Stdio transport, ModelContextProtocol 2.2.0. |
 | `Fakvio.MigrationTool` | Console | DB migrace, seed master schema, provisioning helper. |
 | `Fakvio.AresService` | Class lib | Klient pro ARES (CZ obchodní rejstřík) — autonomní, bez EF. |
 | `Fakvio.Tests.Unit` | xUnit | Unit testy (~756). Stack: xUnit + **NSubstitute** + **Shouldly** + EF InMemory. |
@@ -1242,7 +1242,7 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
 
 ### 4.9 MCP Server (`Fakvio.McpServer`)
 
-- Standalone .NET tool (PackAsTool), `ToolCommandName` = **`fakvio-mcp`**, stdio transport, SDK `ModelContextProtocol` 1.0.0.
+- Standalone .NET tool (PackAsTool), `ToolCommandName` = **`fakvio-mcp`**, stdio transport, SDK `ModelContextProtocol` 2.2.0.
 - Jméno v MCP handshake (`ServerInfo.Name`) je `fakvio` — nezaměňovat s názvem příkazu.
 - Auth: `FAKVIO_API_TOKEN` env var (JWT bearer, povinný — bez něj exit code 1), `FAKVIO_API_URL` (výchozí `https://localhost:7001`, lokální API ale běží na `7047` → nastavovat explicitně).
 - Žádný přístup k DB — všechno jde přes `IFakvioApiClient` → HTTP na `Fakvio.API`, takže autorizace i tenant izolace platí beze změny.
