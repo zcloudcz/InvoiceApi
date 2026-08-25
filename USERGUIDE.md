@@ -64,24 +64,34 @@ před vystavením první faktury. Chcete-li adresu odstranit, udělejte to tam.
 
 Dashboard zobrazuje aktuální přehled vaší firmy na jednom místě:
 
-### Připravenost k fakturaci
+### Dokončit nastavení (checklist připravenosti)
 
 Pokud vaší firmě chybí něco, co musí být na daňovém dokladu, uvidíte nahoře na dashboardu
-banner se seznamem chybějících položek. U každé položky je odkaz **Doplnit**, který vás
-zavede přímo na stránku, kde ji vyplníte.
+kartu **Dokončit nastavení** se seznamem toho, co zbývá. U každé položky je odkaz
+**Doplnit**, který vás zavede přímo na stránku, kde ji vyplníte. Pod položkou jsou drobně
+vypsaná konkrétní pole, která chybí.
 
-Banner rozlišuje dvě závažnosti:
+Kolečko před položkou rozlišuje dvě závažnosti:
 
 | Barva | Význam |
 |-------|--------|
-| Červená — „Než začnete fakturovat, doplňte tato nastavení" | Bez těchto údajů aplikace **odmítne vystavit fakturu** (viz [§2.3.1](#231-když-vystavení-skončí-chybou-nedokončené-nastavení-firmy)) |
-| Oranžová — „Doporučená nastavení k doplnění" | Fakturovat můžete, ale narazíte později v konkrétní funkci (typicky EPO export přiznání k DPH) |
+| Červená | Bez těchto údajů aplikace **odmítne vystavit fakturu** (viz [§2.3.1](#231-když-vystavení-skončí-chybou-nedokončené-nastavení-firmy)) |
+| Oranžová | Fakturovat můžete, ale narazíte později v konkrétní funkci (typicky EPO export přiznání k DPH) |
 
 Máte-li v účtu víc vystavitelů, je u položky uvedeno, které firmy se týká.
-Když je vše vyplněné, banner se nezobrazuje vůbec.
 
-Stejný banner najdete i v detailu faktury ve stavu Draft — tam je omezený na vystavitele
-té konkrétní faktury, takže vidíte přesně to, co by vystavení zablokovalo.
+**Odložení na později.** Tlačítko **Připomenout později** kartu sbalí na jediný řádek
+„Dokončit nastavení (počet)“. Kliknutím na něj se průvodce kdykoli znovu rozbalí — není to
+jednorázové zavření. Volba se pamatuje v prohlížeči, takže přežije i obnovení stránky
+(na jiném počítači nebo v jiném prohlížeči se karta objeví opět rozbalená).
+
+**Hotovo se nikde neukládá.** Seznam se počítá vždy znovu z aktuálního stavu nastavení, takže
+jakmile poslední položku doplníte (třeba i kolega), zmizí karta i sbalený řádek úplně —
+odložení na tom nic nemění a žádné zastaralé připomínky nezbývají.
+
+Stejný seznam najdete i v detailu faktury ve stavu Draft — tam se zobrazí jako barevný
+banner omezený na vystavitele té konkrétní faktury, takže vidíte přesně to, co by vystavení
+zablokovalo. Tam se odložit nedá — jde o poslední varování před kliknutím na Vystavit.
 
 ### KPI karty (klikatelné — navigují na příslušný seznam)
 
@@ -116,10 +126,6 @@ Tabulka posledních 5 faktur s číslem, klientem, datem a stavem. Kliknutím se
 ### Widget upomínek
 
 Zobrazí se pokud máte aktivní upomínkový systém: počty Draft/Sent/Failed upomínek + poslední záznamy.
-
-### Quick Start
-
-Pro nové uživatele: průvodce v krocích (Klienti → Faktury).
 
 ---
 
