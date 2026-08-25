@@ -1,0 +1,78 @@
+name: BlazorUI Deploy to Azure Static Web Apps (TEST-ENV)
+
+on:
+  # Manual trigger from the Actions tab — handy for redeploying without a new commit.
+  workflow_dispatch:
+
+  # The test environment tracks the TEST-ENV branch. Production (GitHub Pages via
+  # blazorui-deploy.yml) tracks master and is deliberately left untouched by this file.
+  push:
+    branches: [ TEST-ENV ]
+
+permissions:
+  contents: read
+
+# One test deploy at a time; let an in-progress one finish rather than cancel it,
+# so the SWA never ends up serving a half-uploaded bundle.
+concurrency:
+  group: "swa-test"
+  cancel-in-progress: false
+
+env:
+  # Test backend = the separate Function App provisioned in #289.
+  # The WASM bundle reads ApiSettings:BaseUrl from a static file, so this URL
+  # has to be baked in at publish time — there is no server to inject it later.
+  TEST_API_BASE_URL: 'https://zcloudinvoicingapi-test.azurewebsites.net'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          # Must match the TargetFramework (net10.0) declared in the csproj files
+          dotnet-version: '10.x'
+
+      - name: Point the WASM bundle at the test backend
+        run: |
+          CONFIG=Fakvio.BlazorUI/wwwroot/appsettings.json
+
+          # Rewritten BEFORE publish on purpose. Publish also emits precompressed
+          # siblings (appsettings.json.br / .gz) and a static host may serve those
+          # instead of the plain file; patching only the plain file after publish would
+          # leave the production URL sitting in the compressed copies.
+          #
+          # The ^[[:space:]]* anchor matches only the active setting; the commented-out
+          # localhost line starts with "//" and is left alone.
+          sed -i -E "s|^([[:space:]]*)\"BaseUrl\": \".*\"|\1\"BaseUrl\": \"${TEST_API_BASE_URL}\"|" "$CONFIG"
+
+          # Fail fast: if appsettings.json is ever restructured the sed above becomes a
+          # no-op, and a silent no-op would ship a *test* frontend talking to *production*.
+          grep -q "${TEST_API_BASE_URL}" "$CONFIG"
+
+          cat "$CONFIG"
+
+      - name: Publish BlazorUI (WASM)
+        run: |
+          dotnet publish Fakvio.BlazorUI/Fakvio.BlazorUI.csproj \
+            -c Release \
+            -o ./publish
+
+      # skip_app_build: the bundle is already built above by the .NET SDK, so Oryx
+      # must not try to detect and rebuild it. app_location therefore points at the
+      # finished artifact. Deep links are handled by wwwroot/staticwebapp.config.json
+      # (navigationFallback) — the SWA equivalent of the 404.html trick used on Pages.
+      - name: Deploy to Azure Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_TEST }}
+          action: 'upload'
+          app_location: 'publish/wwwroot'
+          api_location: ''
+          output_location: ''
+          skip_app_build: true
