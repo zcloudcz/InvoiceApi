@@ -20,6 +20,12 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+## 2026.08.25.4 — 2026-08-25
+
+### Opravy
+
+- **hotfix** — Tailscale bring-up na testovacím Function App blokoval start workeru, host odpovídal 502/503; tunel i startovní migrace teď běží na pozadí a při zaseklém `tailscale up` se do logu dostane důvod (výstup CLI + posledních 25 řádků démona, bez klíče). (PR #326, `8cf2c81`)
+
 ## 2026.08.25.3 — 2026-08-25
 
 ### Opravy
