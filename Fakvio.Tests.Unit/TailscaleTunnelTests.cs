@@ -122,7 +122,7 @@ public class TailscaleTunnelTests
         // --socket: the default /var/run path is not writable there.
         // --state=mem:: no state on disk, which is what an ephemeral auth key expects.
         TailscaleTunnel.TailscaledArguments.ShouldBe(
-            "--tun=userspace-networking --socks5-server=localhost:1055 --socket=/tmp/tailscaled.sock --state=mem:");
+            "--tun=userspace-networking --socks5-server=localhost:1055 --socket=/tmp/tailscaled.sock --state=mem: --verbose=1");
     }
 
     [Fact]
