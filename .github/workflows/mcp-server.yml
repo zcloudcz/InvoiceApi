@@ -56,10 +56,16 @@ jobs:
           # missing Microsoft.AspNetCore.App fails here and nowhere earlier.
           #
           # An unknown transport is the one input that makes the server exit on purpose
-          # (Program.cs returns 1), so this needs no token, no API and no network. stdin is
-          # closed so a regression that falls back to stdio hangs the step for zero seconds
-          # instead of six hours.
-          FAKVIO_MCP_TRANSPORT=__invalid__ ./publish/Fakvio.McpServer </dev/null && rc=0 || rc=$?
+          # (Program.cs returns 1), so this needs no API and no network. stdin is closed so a
+          # regression that falls back to stdio hangs the step for zero seconds instead of six
+          # hours.
+          #
+          # FAKVIO_API_TOKEN is a placeholder, and it is what makes the assert below mean
+          # anything: stdio mode exits 1 too when the token is missing (Program.cs), so without
+          # it a regression that swallows __invalid__ and falls back to stdio would also exit 1
+          # and pass. With the token set, that fallback exits 0 and the step goes red. The value
+          # is never sent anywhere — nothing does an outgoing request at startup.
+          FAKVIO_API_TOKEN=dummy FAKVIO_MCP_TRANSPORT=__invalid__ ./publish/Fakvio.McpServer </dev/null && rc=0 || rc=$?
 
           # Exactly 1, not merely non-zero: a framework-load failure also exits non-zero, and
           # that is the failure this step exists to catch.
@@ -168,9 +174,14 @@ jobs:
         run: |
           set -euo pipefail
           # A request with no Authorization header is rejected by McpApiKeyMiddleware without
-          # touching the API, so 401 proves the host booted, the gate is in front of the
-          # endpoints, and /mcp is mapped — with no credential in the workflow. Anything else
-          # (200 = gate missing, 404 = wrong route, 5xx = did not start) is a failed deploy.
+          # touching the API, so 401 proves two things with no credential in the workflow: the
+          # host booted, and the gate stands in front of the whole pipeline. Anything else
+          # (200 = gate missing, 5xx = did not start) is a failed deploy.
+          #
+          # It does NOT prove /mcp is mapped: the middleware is registered with app.Use(...)
+          # over the entire pipeline and short-circuits before any endpoint runs, so every path
+          # answers 401 — a wrong route included. Proving the mapping would need a valid API
+          # key here, which is exactly the credential this check is designed not to carry.
           #
           # The URL comes from the deploy action rather than being composed by hand, because
           # newly created App Services get a region-suffixed default hostname.

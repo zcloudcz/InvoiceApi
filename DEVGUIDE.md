@@ -2282,9 +2282,13 @@ proč to celé existuje: `Fakvio.Functions/Tailscale/README.md`.
 - **Smoke test spuštěním, ne jen buildem.** ASP.NET Core shared framework se resolvuje hostem
   *před* `Main`, takže jeho chybějící instalaci build nikdy neodhalí. Workflow spustí publishnutý
   host s neznámou hodnotou `FAKVIO_MCP_TRANSPORT` a čeká **přesně** exit code 1 (guard v
-  `Program.cs`) — bez tokenu, bez API, bez sítě. Přesně 1, ne „nenulový": pád na chybějícím
+  `Program.cs`) — bez API a bez sítě. Přesně 1, ne „nenulový": pád na chybějícím
   frameworku je taky nenulový a je to právě ten případ, kvůli kterému krok existuje.
   `stdin` je zavřený, aby případná regrese na fallback do stdio krok neuspala.
+  **`FAKVIO_API_TOKEN=dummy` v tom kroku není kosmetika**: stdio mód bez tokenu vrací taky 1,
+  takže bez placeholderu by assert prošel i regresi, která `__invalid__` spolkne a spadne do
+  stdio. S tokenem ten fallback vrací 0 a krok zčervená. Token nikam neodchází — při startu
+  se žádný request nedělá.
 - **Assert na `Microsoft.AspNetCore.App` v `runtimeconfig.json` zabaleného nupkg.**
   `ModelContextProtocol.AspNetCore` nese `FrameworkReference`, takže ASP.NET Core runtime je
   tvrdý požadavek nástroje **i pro stdio** — a je to tak napsané v README „Požadavky" i v §4.9.
@@ -2298,8 +2302,14 @@ proč to celé existuje: `Fakvio.Functions/Tailscale/README.md`.
   jak jsou rozdělené Functions workflow.
 - **Post-deploy ověření: `POST /mcp` bez `Authorization` musí vrátit 401.** Tenhle případ
   `McpApiKeyMiddleware` odmítne bez round-tripu na API (§4.9), takže test nenese žádný
-  credential a přesto dokazuje tři věci naráz — host nastartoval, `/mcp` je namapované a brána
-  je **před** endpointy. 200 = brána chybí, 404 = špatná routa, 5xx = nenastartoval.
+  credential a přesto dokazuje dvě věci — host nastartoval a brána stojí **před** celou
+  pipeline. 200 = brána chybí, 5xx = nenastartoval.
+  **Namapování `/mcp` neověřuje** a ověřit ho takhle nejde: middleware je registrovaný přes
+  `app.Use(...)` nad celou pipeline (`McpHttpHost.cs`) a bez hlavičky short-circuituje **dřív**
+  než jakýkoli endpoint, takže 401 vrátí i neexistující cesta (ověřeno: `POST /mcp`,
+  `POST /nope` i `GET /` → 401). Na důkaz mapování by byl potřeba platný API key, tedy přesně
+  ten credential, který tenhle krok schválně nemá. (Pozor i na opačný směr: 401 může jednou
+  přijít od platformy — App Service Authentication — ještě než se aplikace dostane ke slovu.)
 - App settings HTTP hostu (`FAKVIO_MCP_TRANSPORT=http`, `FAKVIO_API_URL`) patří do konfigurace
   Azure App Service, **ne do workflow** — stejné pravidlo jako u Functions (§9.4).
 
