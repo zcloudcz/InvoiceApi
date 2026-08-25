@@ -347,6 +347,58 @@ public class ReportingChatToolTests
     }
 
     /// <summary>
+    /// Issue #271 end to end through the tool: a dictated Czech range has to land on BOTH ends
+    /// of the filter and keep the day-first order. "1/4/2026" is the trap — read US-style it is
+    /// 4 January, a perfectly valid date, so a wrong-order parser would answer a different
+    /// question instead of failing.
+    /// </summary>
+    [Theory]
+    [InlineData("15.3.2026", "1.4.2026")]       // dots, single-digit month and day
+    [InlineData("15/3/2026", "1/4/2026")]       // slashes, single-digit month and day
+    [InlineData("15/03/2026", "01/04/2026")]    // slashes, zero-padded — still day-first
+    public async Task ListInvoicesTool_SingleDigitCzechRange_ReachesBothEndsOfTheFilterAsDayFirst(
+        string dictatedFrom,
+        string dictatedTo)
+    {
+        var (tool, service) = CreateListTool();
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, string>
+        {
+            ["issue_date_from"] = dictatedFrom,
+            ["issue_date_to"] = dictatedTo
+        });
+
+        result.IsSuccess.ShouldBeTrue();
+        var filter = CapturedFilter(service);
+        filter.IssueDateFrom.ShouldBe(new DateTime(2026, 3, 15, 0, 0, 0, DateTimeKind.Utc));
+        filter.IssueDateTo.ShouldBe(new DateTime(2026, 4, 1, 0, 0, 0, DateTimeKind.Utc));
+    }
+
+    /// <summary>
+    /// Accepting a single digit (#271) must not degrade into "accept anything shaped like a
+    /// Czech date". Each row is one step past the accepted forms, and each has to fail loudly:
+    /// a dropped issue_date filter widens the query to the whole history and the model reports
+    /// that total as the answer for the asked month.
+    /// </summary>
+    [Theory]
+    [InlineData("31.4.2026")]   // April has 30 days — the calendar still applies
+    [InlineData("0.3.2026")]    // day zero
+    [InlineData("15.3.26")]     // two-digit year — "yyyy" demands four
+    [InlineData("3/15/2026")]   // US month-first order
+    public async Task ListInvoicesTool_SingleDigitLookalike_FailsInsteadOfDroppingTheFilter(string rawDate)
+    {
+        var (tool, service) = CreateListTool();
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, string> { ["issue_date_from"] = rawDate });
+
+        result.IsSuccess.ShouldBeFalse();
+        result.ErrorMessage!.ShouldContain(rawDate);
+        result.ErrorMessage!.ShouldContain("YYYY-MM-DD");
+        await service.DidNotReceive().GetInvoicesPagedAsync(
+            Arg.Any<InvoiceFilterDto>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
     /// A missing or blank date is not an error — these filters are optional, and "no value"
     /// legitimately means "no date restriction". Only a present, unreadable value fails.
     /// </summary>
@@ -711,6 +763,61 @@ public class ReportingChatToolTests
 
         result.IsSuccess.ShouldBeFalse();
         result.ErrorMessage!.ShouldContain(brokenParameter);
+        result.ErrorMessage!.ShouldContain("YYYY-MM-DD");
+        await service.DidNotReceive().GetReportAsync(
+            Arg.Any<DateTime>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The VAT period is where a misread order does the most damage: "1/3/2026" — "1/4/2026"
+    /// read US-style is 3 January — 4 January, a valid and non-reversed period, so no guard
+    /// fires and the filed report covers two days instead of a month (#271).
+    /// </summary>
+    [Theory]
+    [InlineData("1/3/2026", "1/4/2026")]      // slashes, single digit on both ends
+    [InlineData("1.3.2026", "1.4.2026")]      // dots, single digit on both ends
+    [InlineData("01/3/2026", "1/04/2026")]    // mixed padding within one call
+    public async Task GetVatReportTool_SingleDigitPeriod_IsReadAsDayFirst(
+        string dictatedFrom,
+        string dictatedTo)
+    {
+        var (tool, service) = CreateVatTool();
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, string>
+        {
+            ["date_from"] = dictatedFrom,
+            ["date_to"] = dictatedTo
+        });
+
+        result.IsSuccess.ShouldBeTrue();
+        await service.Received(1).GetReportAsync(
+            new DateTime(2026, 3, 1, 0, 0, 0, DateTimeKind.Utc),
+            new DateTime(2026, 4, 1, 0, 0, 0, DateTimeKind.Utc),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The same near-miss inputs as the ListInvoicesTool theory, on the tool where a silently
+    /// guessed period would be filed with the tax office. A required date has no "no filter"
+    /// fallback, so the only correct outcome is a failure the model can read and retry.
+    /// </summary>
+    [Theory]
+    [InlineData("31.4.2026")]   // April has 30 days
+    [InlineData("0.3.2026")]    // day zero
+    [InlineData("15.3.26")]     // two-digit year
+    [InlineData("3/15/2026")]   // US month-first order
+    public async Task GetVatReportTool_SingleDigitLookalike_FailsWithoutQueryingTheService(string rawDate)
+    {
+        var (tool, service) = CreateVatTool();
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, string>
+        {
+            ["date_from"] = rawDate,
+            ["date_to"] = "31.3.2026"
+        });
+
+        result.IsSuccess.ShouldBeFalse();
+        result.ErrorMessage!.ShouldContain(rawDate);
         result.ErrorMessage!.ShouldContain("YYYY-MM-DD");
         await service.DidNotReceive().GetReportAsync(
             Arg.Any<DateTime>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>());
