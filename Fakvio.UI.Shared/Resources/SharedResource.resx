@@ -1061,6 +1061,10 @@
   <data name="Chat_UnsupportedFileType" xml:space="preserve"><value>Nepodporovaný typ souboru.</value></data>
   <data name="Chat_FileTooLarge" xml:space="preserve"><value>Soubor přesahuje maximální povolenou velikost 10 MB.</value></data>
   <data name="Chat_Error_Unexpected" xml:space="preserve"><value>Zprávu se nepodařilo zpracovat. Zkuste to prosím znovu.</value></data>
+  <!-- Konverzační onboarding (issue #214) — asistent se ozve sám, když tenant nemá
+       dokončené nastavení. Seznam chybějících položek se skládá z klíčů Readiness_Code_*. -->
+  <data name="Chat_Onboarding_Intro" xml:space="preserve"><value>Vítejte ve Fakviu! Než vystavíte první fakturu, chybí ještě pár údajů:</value></data>
+  <data name="Chat_Onboarding_Ask" xml:space="preserve"><value>Doplníme je rovnou tady v chatu — budu se ptát po jednom a hned je uložím. Můžeme začít?</value></data>
   <data name="EChatRole_User" xml:space="preserve"><value>Vy</value></data>
   <data name="EChatRole_Assistant" xml:space="preserve"><value>Asistent</value></data>
   <!-- Received Invoices (Expenses) -->

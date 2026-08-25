@@ -215,6 +215,36 @@ public static class AiSystemPrompt
     public const string SituationalContextHeader = "Current situation:";
 
     /// <summary>
+    /// Conversational onboarding instructions (issue #214). Emitted only when the tenant
+    /// still has blocking setup gaps — a configured tenant never pays for these tokens.
+    ///
+    /// It sits in the situational block on purpose: block 3 can be replaced wholesale by a
+    /// SysAdmin custom prompt, and onboarding is the one thing a brand new tenant must not
+    /// lose that way.
+    ///
+    /// The tools are referenced generically ("the matching tool above") instead of by name.
+    /// The catalog is generated from the registered <see cref="IChatTool"/> implementations,
+    /// so naming tools here would be a second, hand-maintained list free to go stale.
+    ///
+    /// The confirmation line is not politeness — write tools implementing
+    /// <c>IConfirmableChatTool</c> answer the first call with a preview and write nothing
+    /// until they are called again (issue #212). A model that does not know this reports
+    /// the value as saved when it is not.
+    ///
+    /// "Never send the user to a settings page" holds for every gap the onboarding path can
+    /// actually raise — the one exception, ISSUER_MISSING, has no tool because it cannot occur:
+    /// <c>AuthService</c> creates the issuer during registration (AuthService.cs:223). If that
+    /// ever changes, this line needs a carve-out before a create_issuer tool exists.
+    /// </summary>
+    public const string OnboardingInstructions = """
+        ONBOARDING (the setup above is unfinished — finishing it is the user's first priority):
+        - Ask for ONE missing value per message, in the order the gaps are listed. Never a list of questions.
+        - Save each answer immediately with the matching tool above, confirm what was saved, then say what is still missing.
+        - Never send the user to a settings page to type it in themselves — you have the tools for it.
+        - When a tool answers that it needs confirmation, repeat what it would write and call it again only after the user agrees.
+        """;
+
+    /// <summary>
     /// Formats the situational block: what day it is, where the user is standing and what is
     /// still missing before they can invoice. Values are passed as strings so the preview can
     /// substitute placeholders without duplicating the layout.
@@ -243,7 +273,13 @@ public static class AiSystemPrompt
             sb.Append($"{Environment.NewLine}- Open record: {openEntity}");
 
         if (!string.IsNullOrWhiteSpace(setupGaps))
+        {
             sb.Append($"{Environment.NewLine}- Setup not finished yet: {setupGaps}");
+
+            // Only an unfinished tenant gets the onboarding instructions; for everyone else
+            // they would be dead weight in every single request.
+            sb.Append($"{Environment.NewLine}{Environment.NewLine}{OnboardingInstructions}");
+        }
 
         return sb.ToString();
     }
