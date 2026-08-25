@@ -1025,6 +1025,10 @@ Sloupec „Klíčové parametry" je jen orientační — závazné je schéma v 
 | `get_received_invoice` | `GetReceivedInvoiceTool` | ReceivedInvoice | Read (detail) | `id` nebo `document_number`; vrátí položky, DPH, celkové částky, cross-check |
 | `list_received_invoices` | `ListReceivedInvoicesTool` | ReceivedInvoice | Read (paged list) | `status`, `supplier_name`, `issue_date_from/to`, `min/max_amount`, `currency`, `overdue` |
 | `search_received_invoices` | `SearchReceivedInvoicesTool` | ReceivedInvoice | Search | `query` (fulltext: číslo dokladu, dodavatel, VS, částka), `limit` |
+| `create_received_invoice` | `CreateReceivedInvoiceTool` | ReceivedInvoice | **Create, za `confirm`** | `supplier_name`, `items` (JSON), `document_number`, `issue_date`, `due_date`, `taxable_supply_date`, `variable_symbol`, `currency`, `notes` |
+| `approve_received_invoice` | `ApproveReceivedInvoiceTool` | ReceivedInvoice | **Write, za `confirm`** (Received → Approved) | `id` nebo `document_number` |
+| `mark_received_invoice_paid` | `MarkReceivedInvoicePaidTool` | ReceivedInvoice | **Write, za `confirm`** (Approved → Paid) | `id` nebo `document_number`, `paid_at` |
+| `delete_received_invoice` | `DeleteReceivedInvoiceTool` | ReceivedInvoice | **Destruktivní, za `confirm`** | `id` nebo `document_number` |
 | `attach_file` | `AttachFileTool` | Invoice / ReceivedInvoice / Client | Write (upload) | `entity_name`, `record_id`, `file_name`, `file_content_base64` (Base64 bytes), `content_type`, `description` |
 | `list_attachments` | `ListAttachmentsTool` | Invoice / ReceivedInvoice / Client | Read (list) | `entity_name`, `record_id`; vrátí jméno, velikost, datum, popis pro každý soubor |
 | `get_dashboard` | `GetDashboardTool` | Invoice / Client (agregace) | Read (souhrn) | bez parametrů; cashflow tento měsíc, počet klientů, neuhrazeno, po splatnosti, top klienti |
@@ -1123,6 +1127,59 @@ tool, zápisy tři — a všechny tři jsou `IConfirmableChatTool`.
   replace-allem, takže tool ty ostatní přenáší beze změny. IČO měnit nejde (`UpdateClientDto` ho
   nemá) a bankovní účty do tohohle toolu nepatří — mají vlastní trojici.
 
+##### Přijaté faktury — zápisy (#218)
+
+Čtyři zápisové tooly nad `IReceivedInvoiceService`. Podle pravidla 7 výše je **všechny čtyři**
+`IConfirmableChatTool` — první volání jen ukáže náhled, teprve druhé s `confirm: true` zapíše.
+Čtecí trojice (`get_` / `list_` / `search_received_invoices`) gate nemá.
+
+Co má náhled říct, aby uživatel schvaloval konkrétní věc a ne slovo:
+
+| Tool | Náhled |
+|------|--------|
+| `create_received_invoice` | dodavatel, počet položek, částka **bez DPH**, splatnost |
+| `approve_received_invoice` | popis faktury + cílový stav `Approved` |
+| `mark_received_invoice_paid` | popis faktury + **datum úhrady** (dopadá do období DPH) |
+| `delete_received_invoice` | popis faktury, která zmizí |
+
+Náhled u `create` je záměrně bez DPH: součet nadiktovaných položek je přesný, kdežto částka
+s DPH je smysluplná teprve po #283 — dokud chybějící výchozí sazba tiše znamená 0 %, ukázal by
+špatně nastavenému tenantovi částku s DPH shodnou s částkou bez DPH. (Není to otázka
+zaokrouhlení — `ReceivedInvoiceService` v create cestě nezaokrouhluje vůbec.) Sdílená příprava
+DTO (`PrepareAsync`) je jedna metoda pro náhled i zápis, aby náhled nemohl popisovat něco
+jiného, než co se pak uloží.
+
+Gate **není** autorizační hranice (viz §4.7 výše) — všechny čtyři operace uživatel smí i z UI,
+gate jen brání tomu, aby je asistent udělal potichu.
+
+**Nadiktovaná sazba DPH se ověřuje proti sazbám tenanta.** `vat_rate` u položky jde do
+`CreateReceivedInvoiceDto` **bez `VatRateId`** (id výchozí sazby by servis přečetl jako procento
+a přebil jím tu nadiktovanou), takže pod toolem už tu hodnotu nekontroluje nic —
+`ReceivedInvoiceService` s ní jen násobí. Tool ji proto porovná se seznamem z
+`GetActiveVatRatesForDateAsync` a neznámou sazbu odmítne s výčtem těch dostupných. Ptá se na
+sazby platné **k datu plnění**, ne k dnešku (starší doklad se eviduje se starší sazbou), a
+záměrně nemá pevný rozsah typu 0–100: „které procento je legální" je data, ne konstanta.
+0 % je regulérní sazba (`DPH 0% - osvobozeno od daně`), takže projde. Vynechaná `vat_rate` jde
+dál výchozí sazbou — tichá nula při nenakonfigurované výchozí sazbě je #283.
+
+Společná je resoluce „která faktura?" (`ReceivedInvoiceLookup`): `id` má přednost před
+`document_number`, číslo dokladu se hledá jako substring. **Víc než jedna shoda = chyba**, ne
+volba první — u zápisu by „první shoda" schválila nebo smazala doklad, který uživatel nejmenoval.
+`GetReceivedInvoiceTool` (čtení) si první shodu bere dál; ukázat detail cizí faktury nic nerozbije.
+
+**`create_received_invoice` vs `import_invoice`** — obojí umí založit přijatou fakturu, popisy
+toolů ten rozdíl musí říct modelu, ne až člověku:
+
+| | `create_received_invoice` | `import_invoice` |
+|---|---|---|
+| Vstup | pole, která uživatel nadiktuje | text reálného dokladu (paste, OCR, příloha) |
+| Druh dokladu | vždy přijatá | vydaná/přijatá podle IČO |
+| Dodavatel | podle jména, musí sedět na jednoho klienta | podle IČO, jméno jako fallback |
+| Data | volitelná, co chybí doplní servis | přesně z dokladu, nikdy se nedomýšlí |
+
+Neexponované proti `CreateReceivedInvoiceDto`: `bank_account`, `iban`, `swift`, `payment_method`,
+`received_date`. Nikdo je do chatu nediktuje — kdo má doklad v ruce, jde přes `import_invoice`.
+
 ##### `navigate` — katalog rout (#229)
 
 `NavigateTool.Routes` je jediný zdroj pravdy: z něj se odvozuje jak `AllowedValues`
@@ -1211,9 +1268,9 @@ i čtení parametrů drží `SettingsChatToolSupport` — model vidí jen text, 
   procento 0–100 a `valid_to >= valid_from` se ověřuje v toolu, aby náhled nikdy nesliboval
   zápis, který by servis odmítl.
 
-##### Paritní tabulka chat ↔ MCP (stav k #211, #217, #220, #222 a #224)
+##### Paritní tabulka chat ↔ MCP (stav k #211, #217, #218, #220, #222 a #224)
 
-Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 35 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
+Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 39 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
 a **MCP server** (`[McpServerTool]`, 37 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
 cílem story #149 je mezeru zavřít. Tabulka je jediný pravdivý seznam toho, co kde chybí;
 **každý nový tool na kterékoli straně sem přidá řádek** (viz §13).
@@ -1243,10 +1300,10 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | **Přijaté faktury** (`ReceivedInvoiceTools`, 6) |
 | `GetReceivedInvoice` | Read | `get_received_invoice` | ✅ | |
 | `ListReceivedInvoices` | Read | `list_received_invoices` | ✅ | |
-| `CreateReceivedInvoice` | Create | `import_invoice` (auto-detekce vydaná/přijatá) | ◐ | #218 |
-| `ApproveReceivedInvoice` | **Write** | — | ❌ | #218 |
-| `MarkReceivedInvoicePaid` | **Write** | — | ❌ | #218 |
-| `DeleteReceivedInvoice` | **Destructive** | — | ❌ | #218 |
+| `CreateReceivedInvoice` | Create | `create_received_invoice` (diktovaná data) · `import_invoice` (z dokladu) | ✅ | |
+| `ApproveReceivedInvoice` | **Write** | `approve_received_invoice` | ✅ | |
+| `MarkReceivedInvoicePaid` | **Write** | `mark_received_invoice_paid` (+ `paid_at`, MCP neumí) | ✅ | |
+| `DeleteReceivedInvoice` | **Destructive** | `delete_received_invoice` | ✅ | |
 | **Reporting** (`ReportingTools`, 6) |
 | `GetDashboard` | Read | `get_dashboard` | ✅ | |
 | `GetOverdueInvoices` | Read | `list_invoices` + `overdue=true` | ✅ | |
@@ -1275,9 +1332,8 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | — | Read | `list_vat_rates` | ⬅ | |
 | — | **Write** (sazby DPH) | `create_vat_rate`, `update_vat_rate` | ⬅ | |
 
-**Součty:** 37 MCP toolů, 35 chat toolů. Chat pokrývá 26 MCP toolů (z toho 1 částečně —
-`CreateReceivedInvoice`), 15 chat toolů nemá MCP protějšek. Zbývá 11 mezer:
-přijaté faktury (3, #218), daně (5, zatím bez tasku), šablony (3, #225).
+**Součty:** 37 MCP toolů, 39 chat toolů. Chat pokrývá 29 MCP toolů, žádný už jen částečně;
+15 chat toolů nemá MCP protějšek. Zbývá 8 mezer: daně (5, zatím bez tasku), šablony (3, #225).
 
 **Vydané faktury jsou po #217 pokryté celé.** Jeden rozdíl proti MCP je záměrný:
 `delete_invoice` maže **jen koncepty**, i když servis umí smazat i poslední vydaný doklad
@@ -1285,6 +1341,10 @@ přijaté faktury (3, #218), daně (5, zatím bez tasku), šablony (3, #225).
 Druhý rozdíl je konsolidace: `get_invoice` zastupuje `GetInvoice` i `FindInvoiceByNumber`
 a `export_invoice` obě exportní metody — model si nemá vybírat mezi tooly, které se liší
 jen vyhledávacím klíčem nebo příponou souboru.
+
+**Přijaté faktury jsou po #218 pokryté celé.** `create_received_invoice` uzavřel poslední
+částečnou položku — `import_invoice` zastupoval `CreateReceivedInvoice` jen pro text dokladu,
+diktovaná data neuměl.
 
 Mimo obě rozhraní (jen UI / SysAdmin, plánováno v #227): upomínky (dunning),
 PaymentMatch / BankTransaction. Číselné řady a sazby DPH už chat umí (#224), MCP zatím ne.

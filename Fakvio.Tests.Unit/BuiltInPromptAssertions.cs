@@ -47,7 +47,7 @@ internal static class BuiltInPromptAssertions
     ];
 
     /// <summary>
-    /// The catalog the thirty-five shipped tools are expected to render, in DI registration order
+    /// The catalog the thirty-nine shipped tools are expected to render, in DI registration order
     /// (<c>ServiceCollectionExtensions</c>). Each line is <c>- {ToolName}: {Description}</c>
     /// with the description written out as one line. This is the independent copy: when a tool
     /// description changes, it has to be changed here too, deliberately. That is the point.
@@ -67,6 +67,10 @@ internal static class BuiltInPromptAssertions
         "- get_received_invoice: Get detail of a received (incoming/expense) invoice by ID or document number. Returns all fields: supplier info, line items, VAT breakdown, totals, dates, status, payment info.",
         "- list_received_invoices: List received (incoming/expense) invoices with optional filtering by status, supplier name, date range, amount range, or currency. Returns paged results with totals.",
         "- search_received_invoices: Full-text search across received (incoming/expense) invoices. Searches by document number, supplier name, variable symbol, or amount. Use this when the user provides a number or name without specifying which field.",
+        "- create_received_invoice: Record a received (incoming/expense) invoice from data the user dictates: supplier, items, dates. Use this when the user describes the expense in the conversation — when they paste or upload the text of a real document, use 'import_invoice' instead, which reads issued/received from the IČO and keeps the document's own dates.",
+        "- approve_received_invoice: Approve a received (incoming/expense) invoice for payment — moves it from status 'Received' to 'Approved'. Identify the invoice by id or by document number.",
+        "- mark_received_invoice_paid: Mark a received (incoming/expense) invoice as paid — moves it from status 'Approved' to 'Paid'. Identify the invoice by id or by document number. Pass paid_at when the payment happened on a different day than today.",
+        "- delete_received_invoice: Delete a received (incoming/expense) invoice. Only invoices in status 'Received' or 'Rejected' can be deleted. Identify the invoice by id or by document number.",
         "- attach_file: Attach a file to an entity (Invoice, ReceivedInvoice, or Client). The file content must be provided as a Base64-encoded string — the frontend supplies it when the user drops a file into the chat. Returns the attachment ID, file name, and size upon success.",
         "- list_attachments: List all file attachments for an entity record (Invoice, ReceivedInvoice, or Client). Returns file name, size, upload date, and optional description for each attachment.",
         "- get_dashboard: Get the dashboard summary: cashflow due this month, number of clients, unpaid amount, overdue invoice count, the most recent invoices, invoice counts per status, and the top clients by revenue. Read-only overview — use it for general questions about how the business is doing.",
