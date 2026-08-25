@@ -36,6 +36,15 @@ public class ClientChatToolTests
     private readonly UpdateClientTool _update;
     private readonly DeleteClientTool _delete;
 
+    /// <summary>Mirrors ListClientsTool.DefaultPageSize — the size the tool asks for by default.</summary>
+    private const int DefaultPageSize = 10;
+
+    /// <summary>Mirrors ClientLookup.MaxCandidatesShown — the cap on the "which one?" list.</summary>
+    private const int MaxCandidatesShown = 10;
+
+    /// <summary>Two candidates past the cap, so "… and N more" has a number worth asserting.</summary>
+    private const int CandidatesOverTheCap = 12;
+
     public ClientChatToolTests()
     {
         _list = new ListClientsTool(_clientService, Substitute.For<ILogger<ListClientsTool>>());
@@ -378,6 +387,131 @@ public class ClientChatToolTests
 
         result.IsSuccess.ShouldBeTrue();
         result.OutputText.ShouldContain("No clients match");
+    }
+
+    [Fact]
+    public async Task List_ReportsPagingPosition_SoTheModelKnowsWhetherAnotherPageExists()
+    {
+        // The header is the model's only clue that rows are missing. Without it, "show me all
+        // clients" gets answered from page 1 as if page 1 were everything.
+        _clientService.GetClientsPagedAsync(Arg.Any<ClientFilterDto>(), Arg.Any<CancellationToken>())
+            .Returns(Page([Client(11, "Alfa s.r.o.")], pageNumber: 2, totalCount: 23));
+
+        var result = await _list.ExecuteAsync(new Dictionary<string, string> { ["page"] = "2" });
+
+        result.IsSuccess.ShouldBeTrue();
+        result.OutputText.ShouldContain("page 2/3");
+        result.OutputText.ShouldContain("total: 23");
+    }
+
+    [Fact]
+    public async Task List_ReportsPageOneOfOne_WhenNothingMatches()
+    {
+        // PagedResult.TotalPages is 0 for an empty result; "page 1/0" reads to the model like
+        // a page it failed to fetch, and invites a pointless retry.
+        _clientService.GetClientsPagedAsync(Arg.Any<ClientFilterDto>(), Arg.Any<CancellationToken>())
+            .Returns(Page([], pageNumber: 1, totalCount: 0));
+
+        var result = await _list.ExecuteAsync([]);
+
+        result.OutputText.ShouldContain("page 1/1");
+        result.OutputText.ShouldNotContain("/0");
+    }
+
+    [Theory]
+    [InlineData("0")]        // below the first page
+    [InlineData("-3")]
+    [InlineData("abc")]      // the model spelled it out instead of sending a number
+    [InlineData("")]
+    public async Task List_FallsBackToTheFirstPage_WhenPageIsNotUsable(string requested)
+    {
+        _clientService.GetClientsPagedAsync(Arg.Any<ClientFilterDto>(), Arg.Any<CancellationToken>())
+            .Returns(Page([]));
+
+        await _list.ExecuteAsync(new Dictionary<string, string> { ["page"] = requested });
+
+        await _clientService.Received(1).GetClientsPagedAsync(
+            Arg.Is<ClientFilterDto>(filter => filter.Page == 1),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task List_DropsFiltersTheModelWordedInsteadOfSendingAsValues()
+    {
+        // Models answer a boolean with "yes" and fill a parameter they have no value for with
+        // an empty string. Neither may narrow the result — an unparsable filter must read as
+        // "no filter", and a blank search must not become the substring that matches everything.
+        _clientService.GetClientsPagedAsync(Arg.Any<ClientFilterDto>(), Arg.Any<CancellationToken>())
+            .Returns(Page([]));
+
+        await _list.ExecuteAsync(new Dictionary<string, string>
+        {
+            ["search"] = "   ",
+            ["is_vat_payer"] = "yes",
+            ["is_issuer"] = "1",
+            ["include_inactive"] = "nope"
+        });
+
+        await _clientService.Received(1).GetClientsPagedAsync(
+            Arg.Is<ClientFilterDto>(filter =>
+                filter.Search == null &&
+                filter.IsVatPayer == null &&
+                filter.IsIssuer == null &&
+                !filter.IncludeInactive),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task List_MarksOnlyTheIssuerRow_WhenTheUnfilteredPageHoldsBoth()
+    {
+        // The tool description promises the issuer is "flagged in its row" instead of getting
+        // its own tool. If the flag were on every row (or on none), is_issuer=true would be the
+        // only way to tell the user's own company from a customer.
+        var issuer = Client(1, "Moje firma s.r.o.");
+        issuer.IsIssuer = true;
+        _clientService.GetClientsPagedAsync(Arg.Any<ClientFilterDto>(), Arg.Any<CancellationToken>())
+            .Returns(Page([issuer, Client(2, "Alfa s.r.o.")]));
+
+        var result = await _list.ExecuteAsync([]);
+
+        var issuerLine = LineContaining(result.OutputText, "Moje firma s.r.o.");
+        var customerLine = LineContaining(result.OutputText, "Alfa s.r.o.");
+        issuerLine.ShouldContain("ISSUER");
+        customerLine.ShouldNotContain("ISSUER");
+    }
+
+    [Fact]
+    public async Task List_MarksDeletedClientsAsInactive_WhenInactiveOnesWereAskedFor()
+    {
+        // include_inactive=true is how "which clients did we delete?" is answered. A row that
+        // does not say so is indistinguishable from a live customer.
+        var deleted = Client(7, "Zaniklá s.r.o.");
+        deleted.IsActive = false;
+        _clientService.GetClientsPagedAsync(Arg.Any<ClientFilterDto>(), Arg.Any<CancellationToken>())
+            .Returns(Page([deleted, Client(8, "Alfa s.r.o.")]));
+
+        var result = await _list.ExecuteAsync(
+            new Dictionary<string, string> { ["include_inactive"] = "true" });
+
+        LineContaining(result.OutputText, "Zaniklá s.r.o.").ShouldContain("inactive");
+        LineContaining(result.OutputText, "Alfa s.r.o.").ShouldNotContain("inactive");
+    }
+
+    [Fact]
+    public async Task List_WritesNoneForMissingIdentifiers_InsteadOfLeavingThemBlank()
+    {
+        // An empty "IČO: " reads to the model like a value it truncated, and it will happily
+        // repeat that as the client's IČO. A missing number has to say it is missing.
+        var withoutNumbers = Client(3, "Fyzická osoba");
+        withoutNumbers.RegistrationNumber = null;
+        withoutNumbers.TaxNumber = null;
+        _clientService.GetClientsPagedAsync(Arg.Any<ClientFilterDto>(), Arg.Any<CancellationToken>())
+            .Returns(Page([withoutNumbers]));
+
+        var result = await _list.ExecuteAsync([]);
+
+        result.OutputText.ShouldContain("IČO: (none)");
+        result.OutputText.ShouldContain("DIČ: (none)");
     }
 
     // ─── update_client ───────────────────────────────────────────────────────
@@ -759,6 +893,73 @@ public class ClientChatToolTests
         result.OutputText.ShouldContain("no longer exists");
     }
 
+    // ─── Ambiguity is a write barrier, not a formatting detail ───────────────
+
+    [Fact]
+    public async Task Lookup_CapsTheCandidateList_WhenTheNameMatchesTooMany()
+    {
+        // A hundred rows would push the real answer out of the model's context. The cap has to
+        // say how many were hidden, or "matches 12" and a list of 10 contradict each other.
+        var matches = Enumerable.Range(1, CandidatesOverTheCap)
+            .Select(index => Client(index, $"Alfa {index} s.r.o."))
+            .ToList();
+        _clientService.GetAllClientsAsync(true, Arg.Any<CancellationToken>()).Returns(matches);
+
+        var result = await _get.ExecuteAsync(new Dictionary<string, string> { ["name"] = "Alfa" });
+
+        result.IsSuccess.ShouldBeFalse();
+        result.OutputText.ShouldContain($"matches {CandidatesOverTheCap} clients");
+        CountOccurrences(result.OutputText, "ID=").ShouldBe(MaxCandidatesShown);
+        result.OutputText.ShouldContain($"and {CandidatesOverTheCap - MaxCandidatesShown} more");
+    }
+
+    [Fact]
+    public async Task Update_WritesNothing_WhenTheNameMatchesMoreThanOneClient()
+    {
+        // Renaming the wrong company is data loss, so an ambiguous name must stop before the
+        // write — not resolve to the first match the database happened to return.
+        _clientService.GetAllClientsAsync(true, Arg.Any<CancellationToken>())
+            .Returns([Client(1, "Alfa s.r.o."), Client(2, "Alfa Trade a.s.")]);
+
+        var result = await _update.ExecuteAsync(new Dictionary<string, string>
+        {
+            ["name"] = "Alfa",
+            ["company_name"] = "Alfa Group a.s."
+        });
+
+        result.IsSuccess.ShouldBeFalse();
+        result.OutputText.ShouldContain("matches 2 clients");
+        await _clientService.DidNotReceiveWithAnyArgs().UpdateClientAsync(default, default!);
+    }
+
+    [Fact]
+    public async Task Delete_WritesNothing_WhenTheNameMatchesMoreThanOneClient()
+    {
+        _clientService.GetAllClientsAsync(true, Arg.Any<CancellationToken>())
+            .Returns([Client(1, "Alfa s.r.o."), Client(2, "Alfa Trade a.s.")]);
+
+        var result = await _delete.ExecuteAsync(new Dictionary<string, string> { ["name"] = "Alfa" });
+
+        result.IsSuccess.ShouldBeFalse();
+        result.OutputText.ShouldContain("matches 2 clients");
+        await _clientService.DidNotReceiveWithAnyArgs().DeleteClientAsync(default);
+    }
+
+    [Fact]
+    public async Task DeletePreview_WritesNothing_WhenTheNameMatchesMoreThanOneClient()
+    {
+        // The preview is what the user says "yes" to. If it silently picked one of the two,
+        // the confirmation would be for a company the user never saw named.
+        _clientService.GetAllClientsAsync(true, Arg.Any<CancellationToken>())
+            .Returns([Client(1, "Alfa s.r.o."), Client(2, "Alfa Trade a.s.")]);
+
+        var result = await _delete.BuildPreviewAsync(new Dictionary<string, string> { ["name"] = "Alfa" });
+
+        result.IsSuccess.ShouldBeFalse();
+        result.OutputText.ShouldContain("matches 2 clients");
+        await _clientService.DidNotReceiveWithAnyArgs().DeleteClientAsync(default);
+    }
+
     // ─── Fixtures ────────────────────────────────────────────────────────────
 
     /// <summary>Minimal active customer — tests override only the field they are about.</summary>
@@ -770,11 +971,25 @@ public class ClientChatToolTests
         IsActive = true
     };
 
-    private static PagedResult<ClientDto> Page(List<ClientDto> items) => new()
+    private static PagedResult<ClientDto> Page(List<ClientDto> items)
+        => Page(items, pageNumber: 1, totalCount: items.Count);
+
+    /// <summary>Paged result with a caller-chosen position, for asserting the paging header.</summary>
+    private static PagedResult<ClientDto> Page(List<ClientDto> items, int pageNumber, int totalCount) => new()
     {
         Items = items,
-        TotalCount = items.Count,
-        PageNumber = 1,
-        PageSize = 10
+        TotalCount = totalCount,
+        PageNumber = pageNumber,
+        PageSize = DefaultPageSize
     };
+
+    /// <summary>
+    /// The one output line mentioning <paramref name="needle"/>. Lets a test assert what a
+    /// single client's row says without depending on the order of the rows around it.
+    /// </summary>
+    private static string LineContaining(string output, string needle)
+        => output.Split(Environment.NewLine).Single(line => line.Contains(needle));
+
+    private static int CountOccurrences(string text, string needle)
+        => text.Split(needle).Length - 1;
 }
