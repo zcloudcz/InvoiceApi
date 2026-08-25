@@ -435,4 +435,87 @@ public class VatRateChatToolTests
         result.IsSuccess.ShouldBeFalse();
         result.ErrorMessage.ShouldContain("backwards");
     }
+
+    /// <summary>
+    /// "Překlop 21 % na sníženou" over the default standard rate. The merge carries IsDefault
+    /// along, so without the guard the flag would follow the rate to the other kind and leave the
+    /// standard kind with no default at all — or, when the reduced kind already has one, the
+    /// service would throw. Both are refused by the tool, in the preview, before the user confirms.
+    /// </summary>
+    [Fact]
+    public async Task Update_ChangingKindOfTheDefaultRate_IsRefusedInThePreview()
+    {
+        var service = StubService(BuildRate(isReduced: false, isDefault: true));
+
+        var result = await CreateUpdateTool(service).BuildPreviewAsync(new Dictionary<string, string>
+        {
+            ["id"] = "3",
+            ["is_reduced"] = "true"
+        });
+
+        result.IsSuccess.ShouldBeFalse();
+        result.ErrorMessage.ShouldContain("default one of its kind");
+        result.ErrorMessage.ShouldContain("is_default: true");
+    }
+
+    [Fact]
+    public async Task Update_ChangingKindOfTheDefaultRate_WritesNothing()
+    {
+        var service = StubService(BuildRate(isReduced: false, isDefault: true));
+
+        var result = await CreateUpdateTool(service).ExecuteAsync(new Dictionary<string, string>
+        {
+            ["id"] = "3",
+            ["name"] = "DPH 15% snížená",
+            ["is_reduced"] = "true"
+        });
+
+        result.IsSuccess.ShouldBeFalse();
+
+        // Not even the rename goes through — the whole call is refused, so the record cannot end
+        // up half-changed.
+        await service.DidNotReceive().UpdateVatRateAsync(
+            Arg.Any<long>(), Arg.Any<UpdateVatRateDto>(), Arg.Any<CancellationToken>());
+        await service.DidNotReceive().SetAsDefaultAsync(Arg.Any<long>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Counterweight to the two tests above: a rate that does NOT hold the default flag may change
+    /// kind freely. Catches a guard written too wide.
+    /// </summary>
+    [Fact]
+    public async Task Update_ChangingKindOfANonDefaultRate_IsAllowed()
+    {
+        var service = StubService(BuildRate(isReduced: false, isDefault: false));
+
+        var result = await CreateUpdateTool(service).ExecuteAsync(new Dictionary<string, string>
+        {
+            ["id"] = "3",
+            ["is_reduced"] = "true"
+        });
+
+        result.IsSuccess.ShouldBeTrue();
+        CapturedUpdate(service).IsReduced.ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// The two-step write is not atomic: the field update can succeed and the default move still
+    /// find nothing to promote. The report must name both halves instead of claiming the default
+    /// moved (review nit 3).
+    /// </summary>
+    [Fact]
+    public async Task Update_WhenTheDefaultMoveFindsNothing_ReportsThePartialWrite()
+    {
+        var service = StubService(BuildRate(isDefault: false));
+        service.SetAsDefaultAsync(Arg.Any<long>(), Arg.Any<CancellationToken>()).Returns((VatRateDto?)null);
+
+        var result = await CreateUpdateTool(service).ExecuteAsync(new Dictionary<string, string>
+        {
+            ["id"] = "3",
+            ["is_default"] = "true"
+        });
+
+        result.IsSuccess.ShouldBeFalse();
+        result.ErrorMessage.ShouldContain("was updated, but the default flag could not be moved");
+    }
 }

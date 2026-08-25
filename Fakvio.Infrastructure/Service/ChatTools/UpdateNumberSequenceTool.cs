@@ -136,9 +136,18 @@ public class UpdateNumberSequenceTool : IConfirmableChatTool
         // operation that also unsets the previous holder for the same document type.
         if (SettingsChatToolSupport.OptionalFlag(parameters, "is_default") == true && !sequence!.IsDefault)
         {
-            updated = await _numberSequenceService.SetAsDefaultAsync(sequenceId, ct);
-            if (updated is null)
-                return ChatToolResult.Failure(NotFound(sequenceId));
+            var promoted = await _numberSequenceService.SetAsDefaultAsync(sequenceId, ct);
+            if (promoted is null)
+            {
+                // "No such sequence" is only true when nothing has been written yet. Once the
+                // rename above went through, the honest report is that the record changed but the
+                // default did not move.
+                return ChatToolResult.Failure(updateDto is null
+                    ? NotFound(sequenceId)
+                    : SettingsChatToolSupport.DefaultMoveFailedAfterUpdate("number sequence", sequenceId));
+            }
+
+            updated = promoted;
         }
 
         _logger.LogInformation("Number sequence {SequenceId} updated", sequenceId);

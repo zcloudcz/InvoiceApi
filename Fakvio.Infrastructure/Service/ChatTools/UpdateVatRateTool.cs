@@ -74,7 +74,9 @@ public class UpdateVatRateTool : IConfirmableChatTool
         {
             Name = "is_reduced",
             Type = ChatToolParameterType.Boolean,
-            Description = "True to mark the rate as reduced (snížená sazba), false as standard"
+            Description = "True to mark the rate as reduced (snížená sazba), false as standard. " +
+                          "Refused on the rate that currently holds the default flag — move the " +
+                          "default to another rate of that kind first"
         },
         new()
         {
@@ -130,7 +132,12 @@ public class UpdateVatRateTool : IConfirmableChatTool
         // the previous holder instead.
         if (SettingsChatToolSupport.OptionalFlag(parameters, "is_default") == true && !current!.IsDefault)
         {
-            updated = await _vatRateService.SetAsDefaultAsync(vatRateId, ct) ?? updated;
+            var promoted = await _vatRateService.SetAsDefaultAsync(vatRateId, ct);
+            if (promoted is null)
+                return ChatToolResult.Failure(
+                    SettingsChatToolSupport.DefaultMoveFailedAfterUpdate("VAT rate", vatRateId));
+
+            updated = promoted;
         }
 
         _logger.LogInformation("VAT rate {VatRateId} updated", vatRateId);
@@ -160,6 +167,16 @@ public class UpdateVatRateTool : IConfirmableChatTool
         if (current is null)
             return (null, null, ChatToolResult.Failure(NotFound(vatRateId)));
 
+        // The default flag belongs to a kind ("default standard rate" / "default reduced rate"),
+        // so flipping the kind of the rate that currently holds it takes the flag along and leaves
+        // the kind it came from without a default — the exact state DefaultCannotBeCleared refuses,
+        // just reached through is_reduced instead of is_default. Refused here, before the preview,
+        // because afterwards the service either throws (the other kind already has a default) or
+        // performs the write and leaves the hole.
+        var isReduced = SettingsChatToolSupport.OptionalFlag(parameters, "is_reduced") ?? current.IsReduced;
+        if (current.IsDefault && isReduced != current.IsReduced)
+            return (null, null, ChatToolResult.Failure(DefaultRateCannotChangeKind));
+
         var rate = SettingsChatToolSupport.OptionalNumber(parameters, "rate") ?? current.Rate;
         if (rate is < 0 or > 100)
             return (null, null, ChatToolResult.Failure(
@@ -178,7 +195,7 @@ public class UpdateVatRateTool : IConfirmableChatTool
             Rate = rate,
             ValidFrom = validFrom ?? current.ValidFrom,
             ValidTo = validTo ?? current.ValidTo,
-            IsReduced = SettingsChatToolSupport.OptionalFlag(parameters, "is_reduced") ?? current.IsReduced,
+            IsReduced = isReduced,
 
             // The default flag is carried over, never raised here — moving it is the separate
             // SetAsDefaultAsync call in ExecuteAsync.
@@ -229,6 +246,17 @@ public class UpdateVatRateTool : IConfirmableChatTool
 
         return changes;
     }
+
+    /// <summary>
+    /// Refusal for "make the default rate the other kind" — the sibling of
+    /// <see cref="SettingsChatToolSupport.DefaultCannotBeCleared"/>, worded the same way: the
+    /// default is moved, never dropped.
+    /// </summary>
+    private const string DefaultRateCannotChangeKind =
+        "This rate is currently the default one of its kind, so it cannot be switched between " +
+        "standard and reduced — the kind it left would stay without a default rate. Make another " +
+        "rate of that kind the default first (update_vat_rate with is_default: true on it), then " +
+        "change this one.";
 
     private static string NotFound(long vatRateId)
         => $"There is no VAT rate with ID {vatRateId}. Call list_vat_rates to see the existing ones.";

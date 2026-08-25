@@ -675,7 +675,10 @@ Výchozí účet firmy nejde zrušit, jen přesunout: řekněte, který účet m
 („Ať je výchozí ten eurový"), a asistent přeznačí oba. Požadavek „tenhle už ať není výchozí"
 odmítne — nějaký účet výchozí být musí, jinak by ho aplikace vybrala sama a vy byste se to
 nedozvěděli. **Stejné pravidlo platí u číselných řad a sazeb DPH:** výchozí se dá jen
-přesunout na jinou řadu nebo sazbu, ne zrušit.
+přesunout na jinou řadu nebo sazbu, ne zrušit. Ze stejného důvodu asistent odmítne
+překlopit výchozí sazbu ze základní na sníženou (nebo naopak) — druh, který by opustila,
+by zůstal bez výchozí sazby. Nejdřív určete jako výchozí jinou sazbu toho druhu, pak
+teprve tuhle překlopte.
 
 Pozor na ruční posun čítače číselné řady dozadu — čísla, která už na dokladech jsou, by se
 vydala podruhé. Asistent na to v náhledu upozorní, ale rozhodnutí nechává na vás.

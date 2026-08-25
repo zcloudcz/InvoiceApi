@@ -40,6 +40,18 @@ internal static class SettingsChatToolSupport
     public const string NothingToChange =
         "No change was requested — send at least one field with a new value.";
 
+    /// <summary>
+    /// Reports the half-done state of the two-step "update, then move the default" write: the
+    /// record was already changed, but <c>SetAsDefaultAsync</c> found nothing to promote (the row
+    /// disappeared between the two calls). The message has to name both halves — claiming plain
+    /// success would hide the missing default, and claiming "no such record" would hide the write
+    /// that did happen.
+    /// </summary>
+    public static string DefaultMoveFailedAfterUpdate(string recordDescription, long id)
+        => $"The {recordDescription} was updated, but the default flag could not be moved to it — " +
+           $"there is no longer a record with ID {id}. Call the matching list tool to see the " +
+           "current state.";
+
     // ─── Parameter readers ────────────────────────────────────────────────
     //
     // Presence, allowed values and types are validated centrally by ChatToolExecutor before the

@@ -1155,6 +1155,11 @@ i čtení parametrů drží `SettingsChatToolSupport` — model vidí jen text, 
   odmítají stejnou větou (`SettingsChatToolSupport.DefaultCannotBeCleared`) — typ dokladu bez
   výchozí řady přestane číslovat a sazba bez výchozí se nenabídne na položce faktury. Totéž
   pravidlo má `update_bank_account` (#220).
+- **A ani přelepit druhem.** `update_vat_rate` odmítá i změnu `is_reduced` na sazbě, která
+  právě drží výchozí příznak: merge nese `IsDefault` s sebou, takže by se výchozí přesunula
+  k druhému druhu a ten původní by zůstal bez výchozí sazby — tentýž zakázaný stav, jen jinými
+  dveřmi. Guard je v `UpdateVatRateTool.ResolveAsync` vedle toho pro `is_default: false`, tedy
+  *před* náhledem; jinak by `ValidateDefaultRateConstraintAsync` házela výjimku až po potvrzení.
 - **Přesun výchozího je u obou entit samostatné volání.** `UpdateNumberSequenceDto` příznak
   vůbec nemá, a `CreateVatRateAsync` / `UpdateVatRateAsync` druhý default stejného druhu
   **odmítnou výjimkou** — teprve `SetAsDefaultAsync` předchozího držitele odznačí. Tooly proto
@@ -1166,8 +1171,10 @@ i čtení parametrů drží `SettingsChatToolSupport` — model vidí jen text, 
   `UpdateSequenceAsync` aplikuje pouze ne-null hodnoty.
 - **Co v šestici vědomě není:** deaktivace/aktivace řady, formátu ani sazby (to je soft delete
   a mazání přes chat je mimo scope #224), zakládání a úprava **formátů** číslování (řada na
-  hotový formát jen ukazuje) a vymazání prefixu/sufixu do prázdna — prázdná hodnota se
-  v celém katalogu čte jako „parametr neposlán".
+  hotový formát jen ukazuje), vymazání prefixu/sufixu do prázdna a vrácení `valid_to` na
+  neomezenou platnost — prázdná hodnota se v celém katalogu čte jako „parametr neposlán",
+  takže `null` (= otevřená platnost) tool nikdy nevyrobí a „zruš platnost do" skončí na
+  `NothingToChange`.
 - Rozsah a formát dat: `ChatToolDates` (stejný parser jako reporting tooly, tedy i `15.3.2026`),
   procento 0–100 a `valid_to >= valid_from` se ověřuje v toolu, aby náhled nikdy nesliboval
   zápis, který by servis odmítl.

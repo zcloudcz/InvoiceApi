@@ -437,4 +437,47 @@ public class NumberSequenceChatToolTests
 
         await service.DidNotReceive().SetAsDefaultAsync(Arg.Any<long>(), Arg.Any<CancellationToken>());
     }
+
+    /// <summary>
+    /// The rename went through and only the default move found nothing. Reporting "no such
+    /// sequence" would deny a write that already happened (review nit 3).
+    /// </summary>
+    [Fact]
+    public async Task Update_WhenTheDefaultMoveFindsNothingAfterAWrite_ReportsThePartialWrite()
+    {
+        var service = StubService(BuildSequence(isDefault: false));
+        service.SetAsDefaultAsync(Arg.Any<long>(), Arg.Any<CancellationToken>())
+            .Returns((NumberSequenceDto?)null);
+
+        var result = await CreateUpdateTool(service).ExecuteAsync(new Dictionary<string, string>
+        {
+            ["id"] = "5",
+            ["name"] = "Faktury vydané",
+            ["is_default"] = "true"
+        });
+
+        result.IsSuccess.ShouldBeFalse();
+        result.ErrorMessage.ShouldContain("was updated, but the default flag could not be moved");
+    }
+
+    /// <summary>
+    /// Nothing was written before the default move, so here "no such sequence" IS the truth —
+    /// the counterweight that keeps the message above from being used everywhere.
+    /// </summary>
+    [Fact]
+    public async Task Update_WhenTheDefaultMoveFindsNothingWithoutAWrite_ReportsMissingSequence()
+    {
+        var service = StubService(BuildSequence(isDefault: false));
+        service.SetAsDefaultAsync(Arg.Any<long>(), Arg.Any<CancellationToken>())
+            .Returns((NumberSequenceDto?)null);
+
+        var result = await CreateUpdateTool(service).ExecuteAsync(new Dictionary<string, string>
+        {
+            ["id"] = "5",
+            ["is_default"] = "true"
+        });
+
+        result.IsSuccess.ShouldBeFalse();
+        result.ErrorMessage.ShouldContain("no number sequence with ID 5");
+    }
 }
