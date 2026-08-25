@@ -974,6 +974,18 @@ splatnosti, což by pohledávky nafouklo. `InvoiceFilterDto` umí jen jeden stat
 takže „Completed NEBO PartiallyPaid" se musí zeptat dvěma voláními (parametr `status`
 to umožňuje).
 
+##### Datumové parametry reporting toolů — jeden parser, tři formáty (#271)
+
+`ChatToolDates` (Infrastructure/Service/ChatTools) je jediné místo, kde se datumový parametr
+chat toolu převádí na `DateTime`. Přijímá **`yyyy-MM-dd`, `d.M.yyyy`, `d/M/yyyy`** přes
+`TryParseExact` s `InvariantCulture` — kultura vlákna tedy výsledek neovlivní (pod `th-TH` by
+`TryParse` vrátil buddhistický rok). České tvary berou i jednociferný den a měsíc
+(„15.3.2026" i „15.03.2026"), protože specifikátor `d`/`M` při parsování matchuje jednu nebo
+dvě číslice; ISO tvar zůstává striktně nulou doplněný, protože právě ten schéma toolu modelu
+předepisuje. Výsledek je vždy `DateTimeKind.Utc` — Npgsql jiný Kind proti
+`timestamp with time zone` odmítne. Nečitelná hodnota je vždy `ChatToolResult.Failure`, nikdy
+tichý „žádný filtr" (jinak by se „za březen" rozšířilo na celou historii).
+
 ##### `navigate` — katalog rout (#229)
 
 `NavigateTool.Routes` je jediný zdroj pravdy: z něj se odvozuje jak `AllowedValues`

@@ -306,13 +306,18 @@ public class ReportingChatToolTests
     /// <summary>
     /// Npgsql rejects Unspecified DateTimeKind against 'timestamp with time zone' columns,
     /// so a date that parses but carries the wrong Kind blows up only in production.
+    ///
+    /// The single-digit row is issue #271: "15.3.2026" is what a Czech user dictates, and it
+    /// has to reach the filter as the same UTC midnight as the padded form.
     /// </summary>
-    [Fact]
-    public async Task ListInvoicesTool_ParsedDates_AreUtc()
+    [Theory]
+    [InlineData("15.03.2026")]
+    [InlineData("15.3.2026")]
+    public async Task ListInvoicesTool_ParsedDates_AreUtc(string dictatedDate)
     {
         var (tool, service) = CreateListTool();
 
-        await tool.ExecuteAsync(new Dictionary<string, string> { ["issue_date_from"] = "15.03.2026" });
+        await tool.ExecuteAsync(new Dictionary<string, string> { ["issue_date_from"] = dictatedDate });
 
         var filter = CapturedFilter(service);
         filter.IssueDateFrom.ShouldBe(new DateTime(2026, 3, 15, 0, 0, 0, DateTimeKind.Utc));
@@ -661,16 +666,20 @@ public class ReportingChatToolTests
 
     /// <summary>
     /// Czech date input is accepted — users dictate "1.1.2026" and the model forwards it.
+    /// The unpadded row is issue #271: that is literally the wording the summary promised and
+    /// the only one the tool used to reject.
     /// </summary>
-    [Fact]
-    public async Task GetVatReportTool_AcceptsCzechDateFormat()
+    [Theory]
+    [InlineData("01.01.2026", "31.03.2026")]
+    [InlineData("1.1.2026", "31.3.2026")]
+    public async Task GetVatReportTool_AcceptsCzechDateFormat(string dictatedFrom, string dictatedTo)
     {
         var (tool, service) = CreateVatTool();
 
         var result = await tool.ExecuteAsync(new Dictionary<string, string>
         {
-            ["date_from"] = "01.01.2026",
-            ["date_to"] = "31.03.2026"
+            ["date_from"] = dictatedFrom,
+            ["date_to"] = dictatedTo
         });
 
         result.IsSuccess.ShouldBeTrue();
