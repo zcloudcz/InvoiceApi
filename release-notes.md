@@ -68,6 +68,11 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Změny pro vývojáře
 
+- **#220** — AI chat asistent teď umí zobrazit i upravit nastavení vlastní firmy
+  (název, DIČ, plátcovství DPH, jazyk dokumentů, sídlo) a spravovat bankovní účty —
+  přidat, upravit i smazat. Každá změna se nejdřív ukáže k odsouhlasení a provede se,
+  až uživatel potvrdí; při smazání výchozího účtu asistent sám určí nový výchozí
+  a řekne který. (PR #299, `eb52a97`)
 - **#291** — Release flow je teď třístupňový: `/release` nově staguje `develop` do
   `TEST-ENV` (dřív mířil rovnou do `master`), nový příkaz `/release-prod` teprve
   z `TEST-ENV` promuje do `master` a přesouvá karty do `Approved`. Vydání tak jde
