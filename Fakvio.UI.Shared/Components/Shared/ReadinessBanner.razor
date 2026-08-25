@@ -1,0 +1,136 @@
+@*
+    ReadinessBanner.razor — unobtrusive banner listing what the tenant still has to fill in
+    before it can issue documents (issue #215, story #148).
+
+    Why it exists: since issue #206 the API refuses to complete an invoice when mandatory
+    company settings are missing. Being told "no" at the very last click is a bad experience,
+    so this banner shows the same list — from the same GET /api/readiness report, driven by
+    the same rules — on the pages where the user is heading towards that click.
+
+    Design notes:
+    - Blocking issues (the ones that actually cause the refusal) render as an error alert,
+      warnings as a separate warning alert. Two alerts, never one mixed list.
+    - Every issue links to its FixRoute, which the API carries in the DTO. The UI never
+      invents routes; if a rule moves to a different settings page, no UI change is needed.
+    - Nothing at all is rendered when there is nothing to report — including when the API
+      call fails. A readiness hint must never break the page that hosts it.
+*@
+@using Fakvio.Contracts.Dto.Readiness
+@using Fakvio.Domain.Enums
+@inject ReadinessApiService ReadinessService
+@inject IStringLocalizer<SharedResource> L
+
+@foreach (var group in _groups)
+{
+    <MudAlert Severity="@group.Severity" Dense="true" Class="mb-4" Elevation="0">
+        <MudText Typo="Typo.subtitle2" Class="mb-1">@L[group.TitleKey]</MudText>
+
+        @foreach (var issue in group.Issues)
+        {
+            <div class="d-flex flex-wrap align-center gap-2">
+                <MudText Typo="Typo.body2">@Describe(issue)</MudText>
+                @* FixRoute is a relative UI route supplied by the API — render it as a plain link.
+                   The DTO defaults it to string.Empty, so a rule that forgets to fill it in would
+                   otherwise produce a "Fix" link pointing at the current page. *@
+                @if (!string.IsNullOrWhiteSpace(issue.FixRoute))
+                {
+                    <MudLink Href="@issue.FixRoute" Typo="Typo.body2">@L["Readiness_FixLink"]</MudLink>
+                }
+            </div>
+
+            @if (issue.MissingFields.Count > 0)
+            {
+                @* The same field names the 400 TENANT_NOT_READY response lists, so a user who
+                   does hit the refusal recognises what the banner had already told them. *@
+                <MudText Typo="Typo.caption" Class="d-block mb-2">
+                    @string.Join(", ", issue.MissingFields)
+                </MudText>
+            }
+        }
+    </MudAlert>
+}
+
+@code {
+    /// <summary>
+    /// Check only this issuer instead of every issuer of the tenant. Set it on pages that
+    /// already know which company issues the document (invoice detail), so a second, unrelated
+    /// issuer with incomplete settings does not raise a false alarm. Null = whole tenant.
+    /// </summary>
+    [Parameter]
+    public long? IssuerId { get; set; }
+
+    /// <summary>One alert per severity — populated in <see cref="OnParametersSetAsync"/>.</summary>
+    private readonly List<IssueGroup> _groups = new();
+
+    /// <summary>
+    /// The <see cref="IssuerId"/> the currently held report was fetched for. Together with
+    /// <see cref="_loaded"/> it tells "already fetched for this issuer" apart from "never
+    /// fetched" — null is a legitimate value of the parameter (whole tenant), so a plain
+    /// null check would not do.
+    /// </summary>
+    private long? _loadedIssuerId;
+
+    /// <summary>False until the first fetch has been started. See <see cref="_loadedIssuerId"/>.</summary>
+    private bool _loaded;
+
+    /// <summary>
+    /// Reloads whenever the host page changes <see cref="IssuerId"/> (e.g. invoice detail
+    /// finishing its own load), not just on first render.
+    ///
+    /// Blazor calls this on every render of the *parent*, even when no parameter changed —
+    /// and InvoiceDetail re-renders a lot (7 explicit StateHasChanged plus dialog toggles).
+    /// Without the guard each of those would cost one GET /api/readiness, which on the server
+    /// walks every issuer, number sequence and EPO setting. Same idiom as
+    /// InvoicePaymentsPanel's _lastTrigger. It also removes the overlap where two in-flight
+    /// calls finish out of order and the older answer overwrites the newer issuer's report.
+    /// </summary>
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loaded && _loadedIssuerId == IssuerId)
+            return;
+
+        // Marked before the await on purpose: a re-render arriving while the call is still in
+        // flight must not start a second one for the same issuer.
+        _loaded = true;
+        _loadedIssuerId = IssuerId;
+
+        var report = await ReadinessService.GetReportAsync(IssuerId);
+
+        _groups.Clear();
+        AddGroup(EReadinessSeverity.Blocking, Severity.Error, "Readiness_BlockingTitle", report.Issues);
+        AddGroup(EReadinessSeverity.Warning, Severity.Warning, "Readiness_WarningTitle", report.Issues);
+    }
+
+    /// <summary>Adds an alert for the issues of one severity, or nothing when there are none.</summary>
+    private void AddGroup(
+        EReadinessSeverity severity,
+        Severity alertSeverity,
+        string titleKey,
+        List<ReadinessIssueDto> issues)
+    {
+        var matching = issues.Where(i => i.Severity == severity).ToList();
+        if (matching.Count == 0)
+            return;
+
+        _groups.Add(new IssueGroup(alertSeverity, titleKey, matching));
+    }
+
+    /// <summary>
+    /// Human-readable text for one issue: the localized message for its code, plus the issuer
+    /// name when the problem belongs to a specific company (a tenant may have several).
+    /// </summary>
+    private string Describe(ReadinessIssueDto issue)
+    {
+        // The code is a localization key, never shown raw — an unknown code (older UI against a
+        // newer API) falls back to a generic sentence instead of leaking "ISSUER_FOO" to the user.
+        var text = L[$"Readiness_Code_{issue.Code}"];
+        var message = text.ResourceNotFound ? L["Readiness_Code_Unknown"].Value : text.Value;
+
+        return string.IsNullOrWhiteSpace(issue.IssuerName)
+            ? message
+            : $"{message} ({issue.IssuerName})";
+    }
+
+    /// <summary>Issues of one severity, together with how their alert should look.</summary>
+    private sealed record IssueGroup(Severity Severity, string TitleKey, List<ReadinessIssueDto> Issues);
+}
