@@ -1,5 +1,8 @@
+using Fakvio.McpServer;
 using Fakvio.McpServer.Client;
 using Fakvio.McpServer.Configuration;
+using Fakvio.McpServer.Http;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -7,100 +10,88 @@ using Microsoft.Extensions.Logging;
 // ──────────────────────────────────────────────────────────────────────
 // Fakvio MCP Server — Entry Point
 //
-// This is a console application that speaks the Model Context Protocol
-// (MCP) over stdio. AI clients like Claude Code connect to it and can
-// invoke invoice, client, template, and reporting tools.
+// One server, two hosting modes, the same 37 tools (same assembly, same
+// WithToolsFromAssembly() scan — see McpServerRegistration):
 //
-// Architecture:
-//   AI Client ←stdio→ this process ←HTTP/JWT→ Fakvio.API ←EF Core→ DB
+//   stdio (default)  AI client ←stdio→ this process ←HTTP/JWT→ Fakvio.API ←EF Core→ DB
+//   http             AI clients ←HTTP/MCP→ this process ←HTTP/API key→ Fakvio.API ←EF Core→ DB
 //
-// Required environment variables:
-//   FAKVIO_API_TOKEN  — JWT bearer token for API authentication
-//   FAKVIO_API_URL    — (optional) API base URL, defaults to https://localhost:7001
+// The modes differ in exactly one thing that matters: where the API credential
+// comes from. stdio serves a single local user, so the process credential IS the
+// user's credential (FAKVIO_API_TOKEN). HTTP serves many users, so the credential
+// must come from the caller's own request and never from a value captured at
+// startup — see IApiTokenProvider and HttpContextApiTokenProvider.
+//
+// Environment variables:
+//   FAKVIO_MCP_TRANSPORT — "stdio" (default) or "http"
+//   FAKVIO_API_URL       — API base URL, defaults to https://localhost:7001
+//   FAKVIO_API_TOKEN     — JWT bearer token; REQUIRED in stdio mode, unused in http mode
+//   ASPNETCORE_URLS      — http mode only: what Kestrel binds to (standard ASP.NET Core)
 // ──────────────────────────────────────────────────────────────────────
 
-var builder = Host.CreateApplicationBuilder(args);
-
-// ── Logging ────────────────────────────────────────────────────────
-// MCP protocol uses stdout for JSON-RPC messages, so ALL logging
-// must go to stderr. Otherwise log lines corrupt the protocol stream.
-builder.Logging.AddConsole(options =>
-{
-    options.LogToStandardErrorThreshold = LogLevel.Trace;
-});
-
 // ── Configuration ──────────────────────────────────────────────────
-// Read API URL and token from environment variables.
-// FAKVIO_API_TOKEN is required — fail fast if missing.
 var settings = new McpServerSettings
 {
     ApiBaseUrl = Environment.GetEnvironmentVariable("FAKVIO_API_URL") ?? "https://localhost:7001",
     ApiToken = Environment.GetEnvironmentVariable("FAKVIO_API_TOKEN") ?? string.Empty
 };
 
+// Fail fast on a misspelled transport instead of silently falling back to stdio — a server
+// that was meant to be reachable over HTTP and instead sits waiting on stdin looks "started"
+// to everything watching it.
+var rawTransport = Environment.GetEnvironmentVariable("FAKVIO_MCP_TRANSPORT");
+var transport = EMcpTransport.Stdio;
+
+if (!string.IsNullOrWhiteSpace(rawTransport)
+    && !Enum.TryParse(rawTransport, ignoreCase: true, out transport))
+{
+    Console.Error.WriteLine($"ERROR: FAKVIO_MCP_TRANSPORT='{rawTransport}' is not a known transport.");
+    Console.Error.WriteLine("Use 'stdio' (default) or 'http'.");
+    return 1;
+}
+
+if (transport == EMcpTransport.Http)
+{
+    // ── HTTP mode ──────────────────────────────────────────────────
+    // Credentials arrive per request; there is nothing to check at startup.
+    var webBuilder = WebApplication.CreateBuilder(args);
+
+    McpHttpHost.ConfigureServices(webBuilder.Services, settings);
+
+    var app = webBuilder.Build();
+    McpHttpHost.MapEndpoints(app);
+
+    await app.RunAsync();
+    return 0;
+}
+
+// ── stdio mode ─────────────────────────────────────────────────────
+// FAKVIO_API_TOKEN is the only credential this mode has — fail fast if missing.
 if (string.IsNullOrWhiteSpace(settings.ApiToken))
 {
-    Console.Error.WriteLine("ERROR: FAKVIO_API_TOKEN environment variable is required.");
+    Console.Error.WriteLine("ERROR: FAKVIO_API_TOKEN environment variable is required in stdio mode.");
     Console.Error.WriteLine("Set it to a valid JWT token obtained from the Fakvio API login endpoint.");
     return 1;
 }
 
-// Register settings as a singleton so tools/services can inject it
-builder.Services.AddSingleton(settings);
+var builder = Host.CreateApplicationBuilder(args);
 
-// ── Outbound authentication ────────────────────────────────────────
-// The bearer token is resolved per request by AuthHeaderHandler, never baked
-// into HttpClient.DefaultRequestHeaders. Defaults are shared by every call on
-// that client, so a token stored there would be sent on behalf of whoever comes
-// later — harmless in stdio (one process = one user), a cross-tenant leak once
-// the same server is hosted over HTTP.
-//
-// In stdio mode the credential is the FAKVIO_API_TOKEN env var. The HTTP
-// transport will swap in a different implementation behind the same interface,
-// but that implementation MUST STAY A SINGLETON that reads the token from
-// ambient request-local state (IHttpContextAccessor / AsyncLocal) inside
-// GetToken(). Registering it with AddScoped would reopen the very leak
-// described above, one floor down:
-//
-//   AddHttpMessageHandler below does NOT resolve the handler from the request
-//   scope. IHttpClientFactory builds the whole pipeline in its own private
-//   scope and pools it (default handler lifetime: 2 minutes), so the
-//   AddTransient on the next line means transient *per pipeline construction*,
-//   not per request. A scoped provider would therefore be captured once by the
-//   pooled handler and then serve every later caller — one user's token on the
-//   next user's call. SetHandlerLifetime does not help; it does not align the
-//   scopes, it only shortens how long the wrong token is reused.
-builder.Services.AddSingleton<IApiTokenProvider, EnvironmentApiTokenProvider>();
-builder.Services.AddTransient<AuthHeaderHandler>();
-
-// ── HTTP Client ────────────────────────────────────────────────────
-// Register a typed HttpClient for IFakvioApiClient → FakvioApiClient.
-// The factory configures the base address; AuthHeaderHandler adds the
-// Authorization header to each individual request.
-builder.Services.AddHttpClient<IFakvioApiClient, FakvioApiClient>(client =>
+// ── Logging ────────────────────────────────────────────────────────
+// MCP over stdio uses stdout for JSON-RPC messages, so ALL logging must go to
+// stderr. Otherwise log lines corrupt the protocol stream.
+builder.Logging.AddConsole(options =>
 {
-    client.BaseAddress = new Uri(settings.ApiBaseUrl.TrimEnd('/') + "/");
-    client.DefaultRequestHeaders.Accept.Add(
-        new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
-})
-.AddHttpMessageHandler<AuthHeaderHandler>();
+    options.LogToStandardErrorThreshold = LogLevel.Trace;
+});
 
-// ── MCP Server ─────────────────────────────────────────────────────
-// Register the MCP server with stdio transport (for CLI integration).
-// WithToolsFromAssembly() discovers all [McpServerToolType] classes
-// and registers their [McpServerTool] methods as available tools.
+// One process serves exactly one user here, so "the process credential" and "the caller's
+// credential" are the same thing. It is still a singleton resolved per request through
+// IApiTokenProvider — see that interface for why the registration rule has no exceptions.
+builder.Services.AddSingleton<IApiTokenProvider, EnvironmentApiTokenProvider>();
+
 builder.Services
-    .AddMcpServer(options =>
-    {
-        options.ServerInfo = new()
-        {
-            Name = "fakvio",
-            Version = "1.0.0"
-        };
-    })
-    .WithStdioServerTransport()
-    .WithToolsFromAssembly();
+    .AddFakvioMcpServer(settings)
+    .WithStdioServerTransport();
 
-// ── Run ────────────────────────────────────────────────────────────
 await builder.Build().RunAsync();
 return 0;
