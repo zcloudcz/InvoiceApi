@@ -20,6 +20,13 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+### Změny pro vývojáře
+
+- **#211** — AI chat asistent i MCP klient teď umí zeptat na "readiness" — jestli je
+  firma (vystavitel) připravená na vystavení dokladu, a pokud ne, co konkrétně chybí
+  a kde se to dá doplnit. Dřív bylo potřeba projít nastavení ručně nebo počkat na
+  banner v UI. (PR #273, `6474632`)
+
 ## 2026.08.25 — 2026-08-25
 
 ### Opravy
