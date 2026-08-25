@@ -732,7 +732,7 @@ Implementace: `PaymentMatchingService.cs` (metoda `GetPaymentsForInvoiceAsync`).
 - Implementace: `Fakvio.Infrastructure/AiProviders/` (Anthropic, OpenAI, Gemini, Ollama).
 - API key storage: `CompanySystemSettings.AiApiKeyEncrypted` (per company) přes `CredentialProtector`.
 - SSE streaming přes `ChatController.StreamAsync`.
-- **Chat Tools**: 19 tools registrovaných v DI jako `IChatTool`, orchestrováno přes `IChatToolExecutor`.
+- **Chat Tools**: 23 tools registrovaných v DI jako `IChatTool`, orchestrováno přes `IChatToolExecutor`.
   Registrace v `ServiceCollectionExtensions.cs`; přidání nového toolu = implementace `IChatTool` + řádek v DI.
 
 #### Přidání nového chat toolu (POVINNÝ postup)
@@ -942,6 +942,10 @@ Sloupec „Klíčové parametry" je jen orientační — závazné je schéma v 
 | `create_invoice` | `CreateInvoiceTool` | Invoice (vydaná) | Create | `client_name`, `items` (JSON), `currency`, `notes` |
 | `import_invoice` | `ImportInvoiceTool` | Invoice / ReceivedInvoice | Create | vydaná vs přijatá auto-detekce z IČO; `document_number`, `items`, data atd. |
 | `export_invoice` | `ExportInvoiceTool` | Invoice (vydaná) | Read → Download | `document_number`, `client_name` |
+| `list_clients` | `ListClientsTool` | Client | Read (paged list) | `search`, `is_vat_payer`, `is_issuer` (= MCP `GetIssuer`), `include_inactive`, `page`, `page_size` |
+| `get_client` | `GetClientTool` | Client | Read (detail) | `id` / `registration_number` / `name`; vrátí adresy, kontakty, bankovní účty, fakturační nastavení |
+| `update_client` | `UpdateClientTool` | Client | **Write** (za `confirm`) | identita + `company_name`, `trading_name`, `tax_number`, `is_vat_payer`, `is_active`, `refresh_from_ares` |
+| `delete_client` | `DeleteClientTool` | Client | **Destructive** (za `confirm`) | `id` / `registration_number` / `name`; soft delete (`IsActive = false`) |
 | `navigate` | `NavigateTool` | — | Navigation | `target` (uzavřený výčet **všech tenant-facing stránek**, viz níže), `client_name` |
 | `get_received_invoice` | `GetReceivedInvoiceTool` | ReceivedInvoice | Read (detail) | `id` nebo `document_number`; vrátí položky, DPH, celkové částky, cross-check |
 | `list_received_invoices` | `ListReceivedInvoicesTool` | ReceivedInvoice | Read (paged list) | `status`, `supplier_name`, `issue_date_from/to`, `min/max_amount`, `currency`, `overdue` |
@@ -978,6 +982,27 @@ Samotný `IsOverdue` filtr v `InvoiceService` totiž vrací i **drafty** s proš
 splatnosti, což by pohledávky nafouklo. `InvoiceFilterDto` umí jen jeden status naráz,
 takže „Completed NEBO PartiallyPaid" se musí zeptat dvěma voláními (parametr `status`
 to umožňuje).
+
+##### Datumové parametry reporting toolů — jeden parser, tři formáty (#271)
+
+`ChatToolDates` (Infrastructure/Service/ChatTools) je parser datumových parametrů toolů
+**`list_invoices` a `get_vat_report`**. Přijímá **`yyyy-MM-dd`, `d.M.yyyy`, `d/M/yyyy`** přes
+`TryParseExact` s `InvariantCulture` — kultura vlákna tedy výsledek neovlivní (pod `th-TH` by
+`TryParse` vrátil buddhistický rok). České tvary berou i jednociferný den a měsíc
+(„15.3.2026" i „15.03.2026"), protože specifikátor `d`/`M` při parsování matchuje jednu nebo
+dvě číslice; ISO tvar zůstává striktně nulou doplněný, protože právě ten schéma toolu modelu
+předepisuje. Výsledek je vždy `DateTimeKind.Utc` — Npgsql jiný Kind proti
+`timestamp with time zone` odmítne. Nečitelná hodnota je **v těchto dvou toolech** vždy
+`ChatToolResult.Failure`, nikdy tichý „žádný filtr" (jinak by se „za březen" rozšířilo na
+celou historii).
+
+**Zbylé chat tooly zatím parsují datum samy** a `ChatToolDates` neznají:
+`ListReceivedInvoicesTool.cs:256` a `ImportInvoiceTool.cs:470` mají vlastní seznam formátů —
+jen nulou doplněné `dd.MM.yyyy` / `dd/MM/yyyy`, takže „15.3.2026" v nich neprojde — a
+nečitelnou hodnotu vracejí jako `null`, což u `list_received_invoices` znamená tiše zahozený
+filtr. Sjednocení na `ChatToolDates` řeší #301 (u `list_received_invoices` je `null` →
+`Failure` změna chování, ne refactor); do té doby nepředpokládej, že datum chodí přes jedno
+místo.
 
 ##### Nastavení firmy a bankovní účty (#220)
 
@@ -1036,9 +1061,9 @@ anonymní nebo SysAdmin-only stránku, (c) každá tenant-facing stránka bez pa
 v routě je nabízená. **Nová stránka v UI tedy shodí testy, dokud ji nedoplníš do
 `Routes`** — nebo ji v tom testu explicitně nevyloučíš s odůvodněním.
 
-##### Paritní tabulka chat ↔ MCP (stav k #220)
+##### Paritní tabulka chat ↔ MCP (stav k #220 a #222)
 
-Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 19 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
+Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 23 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
 a **MCP server** (`[McpServerTool]`, 36 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
 cílem story #149 je mezeru zavřít. Tabulka je jediný pravdivý seznam toho, co kde chybí;
 **každý nový tool na kterékoli straně sem přidá řádek** (viz §13).
@@ -1050,10 +1075,10 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | **Klienti** (`ClientTools`, 6) |
 | `LookupAres` | Read (ARES) | `ares_lookup` | ✅ | |
 | `CreateClient` | Create | `create_client` | ✅ | |
-| `ListClients` | Read | — | ❌ | #222 |
-| `GetClient` | Read | — | ❌ | #222 |
-| `UpdateClient` | **Write** | — | ❌ | #222 |
-| `GetIssuer` | Read | `get_my_company` | ✅ | |
+| `ListClients` | Read | `list_clients` | ✅ | |
+| `GetClient` | Read | `get_client` | ✅ | |
+| `UpdateClient` | **Write** | `update_client` (za `confirm`) | ✅ | |
+| `GetIssuer` | Read | `list_clients` + `is_issuer=true` (#222), `get_my_company` (#220) | ✅ | |
 | **Vydané faktury** (`InvoiceTools`, 10) |
 | `CreateInvoice` | Create | `create_invoice` | ✅ | |
 | `ExportInvoicePdf` | Read → download | `export_invoice` | ◐ (chat neumí ISDOC) | #217 |
@@ -1086,6 +1111,7 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | `GetTemplate` | Read | — | ❌ | #225 |
 | `CreateInvoiceFromTemplate` | Create | — | ❌ | #225 |
 | **Jen chat (MCP nemá)** |
+| — | **Destructive** | `delete_client` (za `confirm`) | ⬅ | |
 | — | Search | `search_received_invoices` | ⬅ | |
 | — | Navigace UI | `navigate` | ⬅ | |
 | — | Upload přílohy | `attach_file` | ⬅ | |
@@ -1093,8 +1119,8 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | — | **Write** (nastavení firmy) | `update_my_company` | ⬅ | |
 | — | **Write** (bankovní účty) | `add_bank_account`, `update_bank_account`, `delete_bank_account` | ⬅ | |
 
-**Součty:** 36 MCP toolů, 19 chat toolů. Chat pokrývá 14 MCP toolů (z toho 2 částečně),
-8 chat toolů nemá MCP protějšek. Zbývá 22 mezer.
+**Součty:** 36 MCP toolů, 23 chat toolů. Chat pokrývá 17 MCP toolů (z toho 2 částečně),
+9 chat toolů nemá MCP protějšek. Zbývá 19 mezer.
 
 Mimo obě rozhraní (jen UI / SysAdmin, plánováno v #224 / #227):
 číselné řady a sazby DPH, upomínky (dunning), PaymentMatch / BankTransaction.
@@ -1857,7 +1883,9 @@ dotnet test Fakvio.Tests.Unit --filter "FullyQualifiedName~DatabaseConnectivityS
 | Soubor | Trigger | Co dělá |
 |--------|---------|---------|
 | `blazorui-deploy.yml` | Push `master`, manual, PR (path-filtered) | Build `Fakvio.BlazorUI` (WASM publish) → deploy GitHub Pages. Přidá CNAME, .nojekyll, kopie `index.html → 404.html` (client-side routing). |
+| `blazorui-test-deploy.yml` | Push `TEST-ENV`, manual | Build `Fakvio.BlazorUI` (WASM publish) → deploy Azure Static Web App `fakvio-test-ui`. Před publishem přepíše `ApiSettings:BaseUrl` na testovací Function App. Client-side routing řeší `wwwroot/staticwebapp.config.json` (`navigationFallback`). |
 | `master_zcloudinvoicingapi.yml` | Push `master` | Publish `Fakvio.Functions.csproj` → Azure Function App `zcloudinvoicingapi`. Auth přes managed identity (federated credentials). |
+| `testenv_zcloudinvoicingapi.yml` | Push `TEST-ENV`, manual | Totožné publish jako řádek výše, ale do **testovacího** Function Appu `zcloudinvoicingapi-test`. OIDC přes secrets s příponou `_TEST` (viz §9.4). |
 
 **Pozn.**: Pro `Fakvio.API` (klasický host) **není dedicated workflow** v repu — historicky se hostil přes externí App Service nebo manuálně. Pokud přidáš API workflow, zaznamenej zde.
 
@@ -1884,19 +1912,28 @@ dotnet test Fakvio.Tests.Unit --filter "FullyQualifiedName~DatabaseConnectivityS
 
 ### 9.3 BlazorUI WASM deploy
 
-- Hostováno na **GitHub Pages** s custom doménou (`CNAME` v repu).
-- API endpoint v `Fakvio.BlazorUI/wwwroot/appsettings.json` (`ApiSettings:BaseUrl`) — production URL Azure Function Appu.
+- **Produkce**: hostováno na **GitHub Pages** s custom doménou (`CNAME` v repu).
+- **Test**: hostováno na **Azure Static Web Apps** (`fakvio-test-ui`, Free tier) — GitHub Pages umí jen jeden web na repozitář, proto jiný hosting. Deploy token je v repo secretu `AZURE_STATIC_WEB_APPS_API_TOKEN_TEST`.
+- API endpoint v `Fakvio.BlazorUI/wwwroot/appsettings.json` (`ApiSettings:BaseUrl`) — production URL Azure Function Appu. WASM nemá server, který by URL vstříkl za běhu, takže testovací workflow ji **přepisuje před publishem** (publish generuje i `.br` / `.gz` kopie, ty by jinak zůstaly s produkční URL).
+- Deep-linky: GitHub Pages je řeší kopií `index.html → 404.html`, SWA `navigationFallback` v `wwwroot/staticwebapp.config.json`. Ten soubor je součástí bundlu i na Pages, kde ho nic nečte — je nezvaný, ale neškodný.
 - Service worker pro PWA — pozor na cache invalidation při deployi.
 - **Celý `wwwroot/appsettings.json` se publikuje tak, jak je v repu** — `blazorui-deploy.yml` v něm nic nesubstituuje a Pages nemají App Settings. Cokoli má klient znát (`ApiSettings:BaseUrl`, `Recaptcha:SiteKey`) musí být commitnuté a nasazené novým buildem. Platí to jen pro **veřejné** hodnoty; secret ve `wwwroot` = secret zveřejněný.
 - Prázdný `Recaptcha:SiteKey` znamená, že klient token neposílá, a fail-closed brána (§2.8) pak odmítne login, registraci i ARES. Varianty nasazení viz ADMINGUIDE §9.
 
 ### 9.4 Functions deploy (Azure)
 
-- Consumption plan, Isolated Worker.
+- Flex Consumption plan, Isolated Worker.
 - TimerTrigger CRONy v UTC.
 - DB connection: `ConnectionStrings:DefaultConnection` z Function App settings.
 - Managed Identity pro DB + Key Vault (pokud nasazeno).
 - Cold start: prvních ~3-5 sec request nemá tenant context cached → mírně pomalejší.
+- **Testovací prostředí není slot, ale samostatný Function App** `zcloudinvoicingapi-test`
+  (https://zcloudinvoicingapi-test.azurewebsites.net). Produkce běží na **Flex Consumption**,
+  který deployment sloty nepodporuje — proto `testenv_zcloudinvoicingapi.yml` nasazuje
+  s `app-name: zcloudinvoicingapi-test` a `slot-name: Production`. Vlastní app registration
+  (federated credential jen pro větev `TEST-ENV`, Contributor scope jen na tento app),
+  vlastní `JwtSettings:Secret` a vlastní CORS origin — vše jako App Settings v Azure,
+  ne ve workflow. Testovací prostředí zatím **nemá vlastní databázi** (viz #295).
 
 ### 9.5 Autentizace k databázi (`Database:AuthMode`) + health endpoint
 

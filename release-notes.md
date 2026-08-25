@@ -21,6 +21,10 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Opravy
 
+- **#271** — AI chat asistent odmítl datum zadané jedním číslem (např. „15.3.2026")
+  v přehledu faktur i v DPH reportu — bral jen dvouciferné tvary s nulou (`15.03.2026`).
+  Nově akceptuje obě podoby, padded tvary i ISO datum se chovají stejně jako dřív.
+  (PR #296, `46fad72`)
 - **#263** — Diagnostické endpointy Azure Functions (`/api/diagnostic/migrate`,
   `/api/diagnostic/auth`) byly dostupné bez přihlášení: kdokoli mohl vzdáleně spustit
   DB migrace nebo si vypsat JWT konfiguraci (issuer, audience, délku secretu, claims).
@@ -63,6 +67,24 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Změny pro vývojáře
 
+- **#222** — AI asistent v chatu teď umí i práci s klienty: vypsat seznam s filtry
+  (vč. hledání „vystavitel" bez zvláštního tlačítka), zobrazit celý detail (adresy,
+  kontakty, bankovní účty, fakturační nastavení), upravit údaje nebo klienta smazat.
+  Úprava i smazání se nejdřív ukážou k odsouhlasení a provedou se, až uživatel potvrdí;
+  smazání je měkké (klient zmizí ze seznamů, staré faktury na něj dál odkazují) a klienta
+  s existující fakturou smazat nejde vůbec. Prázdný název firmy se odmítne a neúspěšné
+  načtení z ARESu se nahlásí jako neúspěch, ne jako tichý úspěch. (PR #298, `03a9159`)
+- **#292** — Testovací prostředí `TEST-ENV` má teď vlastní deploy i pro frontend: push do
+  větve `TEST-ENV` nasadí BlazorUI na Azure Static Web Apps (`fakvio-test-ui`), s vlastní
+  URL API backendu zapečenou do buildu (ne produkční), a s deep-linky, které na SWA
+  nevrací 404. Produkční deploy na GitHub Pages z `master` zůstal beze změny. Spolu
+  s #290 (Functions backend) umožňuje ověřit release proti testovacímu prostředí celý,
+  ne jen na backendu. (PR #302, `75d7556`)
+- **#290** — Testovací prostředí `TEST-ENV` má teď vlastní deploy pro Azure Functions
+  backend: push do větve `TEST-ENV` nasadí `Fakvio.Functions` do samostatné aplikace
+  `zcloudinvoicingapi-test` (Flex Consumption, deployment slot tu není podporovaný),
+  produkční deploy z `master` zůstal beze změny. Umožňuje ověřit release proti testovacímu
+  backendu dřív, než jde na produkci. (PR #300, `dfab4a7`)
 - **#138** — Health endpoint teď hlásí, jaký režim přihlášení k databázi (`authMode`,
   `authModeSource`) skutečně používá — v obou hostech, API i Azure Functions, poprvé
   stejně (API dosud žádný health endpoint nemělo). Umožňuje ověřit rollout přepínatelné
