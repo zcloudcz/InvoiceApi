@@ -20,6 +20,12 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+## 2026.08.25.3 — 2026-08-25
+
+### Opravy
+
+- **#321** — Tailscale tunel na testovacím Function App padal hned po nasazení na `Text file busy`: Flex Consumption spouští na jedné instanci víc worker procesů a druhý přepisoval binárku, kterou první už spustil. Start je teď probe-first (běžící `tailscaled` se znovu nespouští), kopie binárek je tolerantní a forwarder nastartuje, jakmile SOCKS port žije. Milníky tunelu jdou i na stdout (`Host.Function.Console`). (PR #323, `b9eabc3`)
+
 ## 2026.08.25.2 — 2026-08-25
 
 ### Změny pro vývojáře
