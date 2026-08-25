@@ -47,7 +47,7 @@ internal static class BuiltInPromptAssertions
     ];
 
     /// <summary>
-    /// The catalog the thirty-nine shipped tools are expected to render, in DI registration order
+    /// The catalog the forty-four shipped tools are expected to render, in DI registration order
     /// (<c>ServiceCollectionExtensions</c>). Each line is <c>- {ToolName}: {Description}</c>
     /// with the description written out as one line. This is the independent copy: when a tool
     /// description changes, it has to be changed here too, deliberately. That is the point.
@@ -81,6 +81,11 @@ internal static class BuiltInPromptAssertions
         "- add_bank_account: Add a bank account to the user's own company (the issuer). The account number is required, everything else is optional. The very first account of the company always becomes the default one — the account offered on new invoices and used for QR payments.",
         "- update_bank_account: Change one bank account of the user's own company (the issuer): its number, label, bank, IBAN, SWIFT, currency, or which account is the default one. Identify the account by the ID returned from get_my_company and send only the fields that should change.",
         "- delete_bank_account: Permanently remove one bank account from the user's own company (the issuer). Identify the account by the ID returned from get_my_company. Invoices already issued keep the payment details printed on them; only the stored account is removed.",
+        "- list_invoice_templates: List invoice templates — reusable blueprints of invoice DATA (line items, currency, payment details) used to create an invoice quickly. Returns paged results with the template IDs; use get_invoice_template for the full detail of one template. For the HTML that renders a PDF or an e-mail, use list_content_templates instead.",
+        "- get_invoice_template: Get one invoice template by ID with all details: pre-filled line items, currency, payment details, number sequence and usage statistics. Call list_invoice_templates first to find the ID.",
+        "- list_content_templates: List content templates — the HTML templates that render PDF documents (invoice, credit note, reminder, ...) and e-mail bodies. Shows which one is the default for each type and language. Use set_default_content_template to change the default, and list_invoice_templates for the separate invoice DATA blueprints.",
+        "- get_content_template: Get one content template (PDF or e-mail HTML template) by ID: name, type, language, whether it is the default, the e-mail subject and the size of the HTML body. The HTML itself is not returned and cannot be edited through chat — the user edits it in the visual editor. Call list_content_templates first to find the ID.",
+        "- set_default_content_template: Make one content template the default for its type and language, so new PDFs and e-mails of that type use it. The previous default for the same type and language is unset automatically. Call list_content_templates first to find the ID. Invoice DATA templates (list_invoice_templates) have no default — this tool does not apply to them.",
         "- get_readiness: Checks whether the company setup is complete enough to issue invoices. Returns every missing setting with its severity (blocking or warning), the empty fields and the page where the user fixes it. Read-only — use it when the user asks what is still missing, or when an invoice was refused because the setup is incomplete.",
         "- get_invoice: Get the full detail of an ISSUED (outgoing) invoice, credit note, proforma or advance tax receipt by its ID or document number. Returns line items, VAT breakdown, totals, dates, payment state and the payment details printed on the document.",
         "- complete_invoice: Issue (complete) a DRAFT issued invoice: status changes from Draft to Completed and the document number is assigned. This cannot be undone from chat. Identify the draft by ID or document number.",

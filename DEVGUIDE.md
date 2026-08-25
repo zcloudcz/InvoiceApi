@@ -1039,6 +1039,11 @@ Sloupec „Klíčové parametry" je jen orientační — závazné je schéma v 
 | `add_bank_account` | `AddBankAccountTool` | BankAccount (issuer) | **Write** (confirm) | `account_number` (povinný), `label`, `bank_name`, `iban`, `swift`, `currency_code`, `is_default` |
 | `update_bank_account` | `UpdateBankAccountTool` | BankAccount (issuer) | **Write** (confirm) | `bank_account_id` (povinný) + měněná pole |
 | `delete_bank_account` | `DeleteBankAccountTool` | BankAccount (issuer) | **Destructive** (confirm) | `bank_account_id` (povinný) |
+| `list_invoice_templates` | `ListInvoiceTemplatesTool` | InvoiceTemplate | Read (paged list) | `search`, `document_type`, `category`, `include_inactive`, `page`, `page_size` |
+| `get_invoice_template` | `GetInvoiceTemplateTool` | InvoiceTemplate | Read (detail) | `id` (povinný); vrátí položky, platební údaje, číselnou řadu, statistiku použití |
+| `list_content_templates` | `ListContentTemplatesTool` | ContentTemplate | Read (list) | `template_type`, `language`, `include_inactive`; bez stránkování (seznam je řádově jednotky řádků) |
+| `get_content_template` | `GetContentTemplateTool` | ContentTemplate | Read (detail) | `id` (povinný); metadata + předmět e-mailu + **velikost** HTML, nikdy samotné HTML |
+| `set_default_content_template` | `SetDefaultContentTemplateTool` | ContentTemplate | **Write** (confirm) | `id` (povinný) |
 | `get_readiness` | `GetReadinessTool` | Nastavení tenanta | Read (report) | bez parametrů; vrátí chybějící nastavení + závažnost + `fixRoute` (viz níže) |
 | `get_invoice` | `GetInvoiceTool` | Invoice (vydaná) | Read (detail) | `id` nebo `document_number`; vrátí položky, DPH, platební údaje |
 | `complete_invoice` | `CompleteInvoiceTool` | Invoice (vydaná) | **Write** (confirm) | `id` nebo `document_number`; jen Draft |
@@ -1222,6 +1227,37 @@ Dvojče pro externí AI klienty je MCP nástroj `GetReadiness` (§4.9), který j
   nenabízí — vědomý důsledek, ne chyba: dofiltrovávat v toolu by rozešlo odpověď asistenta
   s bannerem i s gate na vystavení dokladu. Kdyby to vadilo, patří filtr do servisu.
 
+##### Šablony — dva různé pojmy, pět toolů (#225)
+
+Slovo „šablona" znamená ve Fakviu **dvě různé entity** a model je nesmí zaměnit, takže to
+rozlišení nese popis každého toolu i vypisovaný text (jeden zdroj: `TemplateChatToolSupport`):
+
+| Entita | Co to je | Tooly |
+|--------|----------|-------|
+| `InvoiceTemplate` | Blueprint **dat faktury** — položky, měna, platební údaje, číselná řada. Slouží k rychlému založení faktury. | `list_invoice_templates`, `get_invoice_template` |
+| `ContentTemplate` | **HTML**, kterým se renderuje PDF dokument nebo tělo e-mailu. | `list_content_templates`, `get_content_template`, `set_default_content_template` |
+
+- **Set-default existuje jen u `ContentTemplate`.** `InvoiceTemplate` žádný příznak „výchozí"
+  v doméně **nemá** (`Fakvio.Domain/Entities/InvoiceTemplate.cs`) a zavádět ho by znamenalo
+  migraci schématu, ne tool adapter. Story #149 přitom šablonový task výslovně staví jako
+  „tenký adapter + testy". Rozsah AC z #225 („list/get/set-default pro obojí") je proto
+  naplněný tam, kde ho doména dovoluje; pokud výchozí šablona faktury má vzniknout, je to
+  samostatný doménový task.
+- **Výchozí šablona je párovaná na (typ, jazyk).** `ContentTemplateService.UpdateAsync`
+  odznačí předchozí výchozí právě téhle dvojice, takže přepnutí české šablony nechá anglickou
+  být. `set_default_content_template` proto hledá „nahrazovanou" šablonu podle typu **i jazyka**
+  — a **včetně neaktivních**, protože příznak může držet i deaktivovaný řádek a právě ten se
+  odznačí.
+- **Neaktivní šablonu tool výchozí neudělá.** Rozpoznání výchozí šablony (`GetDefaultByTypeAsync`)
+  filtruje na `IsActive`, takže zápis by ohlásil změnu bez efektu. Tool ji odmítne a pošle
+  uživatele šablonu nejdřív aktivovat.
+- **HTML tělo se z chatu nevrací ani nemění.** `get_content_template` hlásí jen jeho velikost
+  a odkáže na editor `/content-templates`. Editace HTML konverzací je mimo scope (story #149,
+  otázka 3 — WYSIWYG editor je na to lepší nástroj) a celá šablona má desítky kilobajtů, které
+  by konverzace platila v každé další zprávě.
+- `AllowedValues` u `document_type` / `template_type` se generují z `Enum.GetNames<T>()`, ne
+  z ručního seznamu — nový typ dokladu nebo šablony tak nemůže tiše zmizet z nabídky modelu.
+
 ##### Číselné řady a sazby DPH (#224)
 
 Šest toolů nad dvěma číselníky, které do té doby existovaly jen v UI. Vzor je stejný jako
@@ -1268,12 +1304,18 @@ i čtení parametrů drží `SettingsChatToolSupport` — model vidí jen text, 
   procento 0–100 a `valid_to >= valid_from` se ověřuje v toolu, aby náhled nikdy nesliboval
   zápis, který by servis odmítl.
 
-##### Paritní tabulka chat ↔ MCP (stav k #211, #217, #218, #220, #222 a #224)
+##### Paritní tabulka chat ↔ MCP (stav k #211, #217, #218, #220, #222, #224 a #225)
 
-Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 39 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
+Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 44 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
 a **MCP server** (`[McpServerTool]`, 37 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
 cílem story #149 je mezeru zavřít. Tabulka je jediný pravdivý seznam toho, co kde chybí;
 **každý nový tool na kterékoli straně sem přidá řádek** (viz §13).
+
+> Počet chat toolů (v úvodní větě i v součtech níže) **hlídá test** —
+> `ChatToolCatalogSchemaTests.DevGuide_PublishesTheLiveNumberOfChatTools` ho porovnává
+> s registracemi v `AddFakvioCore`. Důvod: když dvě větve přidají tooly každá zvlášť,
+> git tu větu slije **bez konfliktu** (na obou stranách je znak po znaku stejná) a v `develop`
+> zůstane staré číslo, kterého si nikdo nevšimne. Když test spadne, přepiš čísla, netest.
 
 Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nemá)
 
@@ -1314,9 +1356,9 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | **Daně** (`TaxTools`, 5) |
 | `EstimateTax`, `CompareTaxRegimes`, `GetAnnualIncome`, `GetInsuranceAdvance`, `GetTaxConfig` | Read | — | ❌ | zatím bez tasku |
 | **Šablony** (`TemplateTools`, 3) |
-| `ListTemplates` | Read | — | ❌ | #225 |
-| `GetTemplate` | Read | — | ❌ | #225 |
-| `CreateInvoiceFromTemplate` | Create | — | ❌ | #225 |
+| `ListTemplates` | Read | `list_invoice_templates` | ✅ | |
+| `GetTemplate` | Read | `get_invoice_template` | ✅ | |
+| `CreateInvoiceFromTemplate` | Create | — | ❌ | zatím bez tasku |
 | **Readiness** (`ReadinessTools`, 1) |
 | `GetReadiness` | Read | `get_readiness` | ✅ | |
 | **Jen chat (MCP nemá)** |
@@ -1331,9 +1373,12 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | — | **Write** (číselné řady) | `create_number_sequence`, `update_number_sequence` | ⬅ | |
 | — | Read | `list_vat_rates` | ⬅ | |
 | — | **Write** (sazby DPH) | `create_vat_rate`, `update_vat_rate` | ⬅ | |
+| — | Read (šablony dokumentů) | `list_content_templates`, `get_content_template` | ⬅ | |
+| — | **Write** (výchozí šablona dokumentu) | `set_default_content_template` | ⬅ | |
 
-**Součty:** 37 MCP toolů, 39 chat toolů. Chat pokrývá 29 MCP toolů, žádný už jen částečně;
-15 chat toolů nemá MCP protějšek. Zbývá 8 mezer: daně (5, zatím bez tasku), šablony (3, #225).
+**Součty:** 37 MCP toolů, 44 chat toolů. Chat pokrývá 31 MCP toolů, žádný už jen částečně;
+18 chat toolů nemá MCP protějšek. Zbývá 6 mezer: daně (5, zatím bez tasku),
+šablony (1 — `CreateInvoiceFromTemplate`).
 
 **Vydané faktury jsou po #217 pokryté celé.** Jeden rozdíl proti MCP je záměrný:
 `delete_invoice` maže **jen koncepty**, i když servis umí smazat i poslední vydaný doklad
