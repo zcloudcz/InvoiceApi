@@ -654,6 +654,8 @@ AI asistent zná kontext vaší firmy a umí odpovídat na otázky i provádět 
 | Přehledy a reporty | Shrnout dashboard, vypsat faktury po splatnosti, faktury za období nebo pro konkrétního klienta, spočítat DPH za období |
 | Nastavení firmy | Přečíst nastavení vlastní firmy (název, IČO, DIČ, plátcovství DPH, jazyk dokladů, adresa, kontakty, bankovní účty) a změnit ho — včetně přidání, úpravy a zrušení bankovního účtu („Přidej nám účet 1234567890/0100", „Od ledna jsme plátci DPH"). IČO měnit nelze. |
 | Kontrola nastavení | Zkontrolovat, jestli máte vyplněné vše potřebné k vystavení faktury („Můžu už fakturovat?", „Co mi ještě chybí?"). Vypíše, co chybí, jestli to fakturaci brání, nebo jen omezuje jednu funkci, a na které stránce se to doplní. Nic sám nemění. |
+| Upomínky | Vypsat upomínky (koncepty, odeslané, neúspěšné) podle stavu, úrovně nebo období, přečíst nastavení upomínání — i to, které platí pro konkrétního klienta — a změnit firemní nastavení („Upomínej až 14 dní po splatnosti", „Upomínky ať se neposílají samy"). Změna se vždy nejdřív ukáže k odsouhlasení. Jednotlivé upomínky se odesílají a ruší na stránce **Upomínky**, ne přes asistenta. |
+| Platby | Vypsat platby načtené z banky (nespárované, příchozí i odchozí, za období, podle protistrany nebo variabilního symbolu) a zobrazit detail jedné platby včetně faktur, ke kterým je přiřazená. Asistent platby jen čte — spárovat platbu s fakturou nebo párování zrušit lze pouze na stránce **Platby**. |
 | Obecné dotazy | Odpovídat na otázky o funkcích aplikace |
 | Navigace | Otevřít libovolnou stránku aplikace — faktury, přijaté faktury, klienty, platby, šablony, DPH a daně, upomínky i nastavení („Otevři DPH přiznání", „Založ novou fakturu pro klienta XYZ"). Stránky správce systému a přihlašovací obrazovky asistent neotevírá. |
 
@@ -697,6 +699,12 @@ navázané platby (načtené bankovní transakce nebo aktivní e-mailová schrá
 výpisů), přepsat nejde — ani přes asistenta, ani ručně na stránce **Moje firma**. Asistent
 vám v takovém případě řekne, proč to neprošlo; upravit takový účet lze až po odpojení
 navázaných dat.
+
+U upomínek mění asistent jen **firemní nastavení** — tedy to, co platí, pokud klient nemá
+vlastní výjimku. Jednotlivé stupně upomínek (za kolik dní, jaký poplatek, jaká šablona)
+a výjimky pro konkrétní klienty nastavíte na stránce **Upomínky → Nastavení**. Zeptat se
+asistenta, co pro daného klienta platí, ale můžete („Jak upomínáme klienta ABC?") — řekne
+i to, jestli má klient vlastní nastavení, nebo se řídí firemním.
 
 Asistent navíc ví, **kde právě stojíte** — jakou stránku máte otevřenou a jestli je na ní
 konkrétní doklad — a zná dnešní datum. Můžete se tedy ptát „kdy je tahle faktura splatná"
