@@ -974,6 +974,27 @@ splatnosti, což by pohledávky nafouklo. `InvoiceFilterDto` umí jen jeden stat
 takže „Completed NEBO PartiallyPaid" se musí zeptat dvěma voláními (parametr `status`
 to umožňuje).
 
+##### Datumové parametry reporting toolů — jeden parser, tři formáty (#271)
+
+`ChatToolDates` (Infrastructure/Service/ChatTools) je parser datumových parametrů toolů
+**`list_invoices` a `get_vat_report`**. Přijímá **`yyyy-MM-dd`, `d.M.yyyy`, `d/M/yyyy`** přes
+`TryParseExact` s `InvariantCulture` — kultura vlákna tedy výsledek neovlivní (pod `th-TH` by
+`TryParse` vrátil buddhistický rok). České tvary berou i jednociferný den a měsíc
+(„15.3.2026" i „15.03.2026"), protože specifikátor `d`/`M` při parsování matchuje jednu nebo
+dvě číslice; ISO tvar zůstává striktně nulou doplněný, protože právě ten schéma toolu modelu
+předepisuje. Výsledek je vždy `DateTimeKind.Utc` — Npgsql jiný Kind proti
+`timestamp with time zone` odmítne. Nečitelná hodnota je **v těchto dvou toolech** vždy
+`ChatToolResult.Failure`, nikdy tichý „žádný filtr" (jinak by se „za březen" rozšířilo na
+celou historii).
+
+**Zbylé chat tooly zatím parsují datum samy** a `ChatToolDates` neznají:
+`ListReceivedInvoicesTool.cs:256` a `ImportInvoiceTool.cs:470` mají vlastní seznam formátů —
+jen nulou doplněné `dd.MM.yyyy` / `dd/MM/yyyy`, takže „15.3.2026" v nich neprojde — a
+nečitelnou hodnotu vracejí jako `null`, což u `list_received_invoices` znamená tiše zahozený
+filtr. Sjednocení na `ChatToolDates` řeší #301 (u `list_received_invoices` je `null` →
+`Failure` změna chování, ne refactor); do té doby nepředpokládej, že datum chodí přes jedno
+místo.
+
 ##### `navigate` — katalog rout (#229)
 
 `NavigateTool.Routes` je jediný zdroj pravdy: z něj se odvozuje jak `AllowedValues`
