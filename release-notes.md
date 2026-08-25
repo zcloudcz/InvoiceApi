@@ -20,6 +20,10 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+### Opravy
+
+- **#239** (bezpečnostní oprava) — MCP server (`Fakvio.McpServer`) posílal na každé volání API startupem zachycený token procesu místo tokenu volajícího uživatele; pod HTTP hostingem by to znamenalo, že tool cally jednoho uživatele nesou přihlašovací údaje jiného (cross-tenant leak). Autorizace teď jde per request přes `AuthHeaderHandler`. Ve stdio režimu (aktuální provoz) se chování nemění. (PR #343, `1f98b22`)
+
 ### Změny pro vývojáře
 
 - **#227** — AI asistent v chatu teď umí i s upomínkami a platbami: vypsat upomínky a jejich nastavení, přečíst, co platí pro konkrétního klienta, a změnit firemní nastavení upomínání (po odsouhlasení). U bankovních plateb umí vypsat seznam a zobrazit detail — spárování platby s fakturou zůstává na stránce Platby, přes chat se to záměrně nedělá. (PR #340, `b79d5c1`)
