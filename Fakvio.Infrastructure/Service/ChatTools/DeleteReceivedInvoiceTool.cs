@@ -4,16 +4,15 @@ using Microsoft.Extensions.Logging;
 namespace Fakvio.Infrastructure.Service.ChatTools;
 
 /// <summary>
-/// Chat tool that deletes a received invoice (soft delete) — the one write in this set that sits
-/// behind the confirm gate from issue #212.
+/// Chat tool that deletes a received invoice (soft delete).
 ///
 /// Typical usage:
 ///   "Smaž přijatou fakturu 267708922"  → preview → user agrees → the model repeats the call
 ///                                        with confirm: true
 ///
-/// Why this one and not approve / mark-paid: those move an invoice one step along a path the
-/// service guards and the user can see; this one takes the document out of the books. It is the
-/// only operation here where "the model misunderstood" costs the user data.
+/// It changes data, so it goes through the confirm gate (<see cref="IConfirmableChatTool"/>,
+/// DEVGUIDE §4.7 rule 7) — like every other write in this set. The first call only names the
+/// invoice that would disappear.
 ///
 /// Junior note on what the gate is NOT: an authorization boundary. Deleting a received invoice
 /// is something the user can already do in the UI — the gate only stops the assistant from doing

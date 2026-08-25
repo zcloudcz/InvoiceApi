@@ -593,6 +593,10 @@ public class ReceivedInvoiceWriteChatToolTests
             vatRateService = Substitute.For<IVatRateService>();
             vatRateService.GetDefaultStandardRateAsync(Arg.Any<CancellationToken>())
                 .Returns(new VatRateDto { Id = 5, Rate = 21m });
+            // A dictated vat_rate is checked against the rates the tenant has, so the stub has
+            // to return real ones — see SeededVatRates.
+            vatRateService.GetActiveVatRatesForDateAsync(Arg.Any<DateTime?>(), Arg.Any<CancellationToken>())
+                .Returns(SeededVatRates());
         }
 
         return new CreateReceivedInvoiceTool(
@@ -674,6 +678,128 @@ public class ReceivedInvoiceWriteChatToolTests
                 dto.Items[0].VatRateId == null &&
                 dto.Items[0].Quantity == 1m),
             Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The three rates <c>TenantDbContext</c> seeds: standard 21 %, reduced 12 % and the 0 %
+    /// "osvobozeno od daně" row. 0 % is a real, active rate — so it must stay accepted.
+    /// </summary>
+    private static List<VatRateDto> SeededVatRates() =>
+    [
+        new() { Id = 5, Rate = 21m },
+        new() { Id = 6, Rate = 12m },
+        new() { Id = 3, Rate = 0m }
+    ];
+
+    [Theory]
+    [InlineData(-21, "-21")]   // lower bound: a minus sign turns the VAT return upside down
+    [InlineData(500, "500")]   // upper bound: nothing below this tool would have caught it
+    public async Task Create_WithAVatRateThatIsNotSetUp_RefusesAndCreatesNothing(
+        int dictatedRate, string expectedInMessage)
+    {
+        var service = Substitute.For<IReceivedInvoiceService>();
+
+        var result = await BuildCreateTool(service).ExecuteAsync(new()
+        {
+            ["supplier_name"] = "Alza",
+            ["items"] = $"[{{\"description\": \"Toner\", \"unit_price\": 1500, \"vat_rate\": {dictatedRate}}}]"
+        });
+
+        result.IsSuccess.ShouldBeFalse();
+        result.ErrorMessage.ShouldNotBeNull();
+        result.ErrorMessage.ShouldContain(expectedInMessage);
+        // The answer has to name the way out, otherwise the model just retries the same number.
+        result.ErrorMessage.ShouldContain("21%");
+        await service.DidNotReceive().CreateAsync(
+            Arg.Any<CreateReceivedInvoiceDto>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Create_WithTheZeroPercentRate_IsAcceptedBecauseItIsARealRate()
+    {
+        // Guards the check from being written as "the rate must be positive": 0 % (osvobozeno
+        // od daně) is a seeded, active rate and invoices from non-VAT-payers carry it.
+        var service = Substitute.For<IReceivedInvoiceService>();
+        service.CreateAsync(Arg.Any<CreateReceivedInvoiceDto>(), Arg.Any<CancellationToken>())
+            .Returns(BuildInvoice(id: 7));
+
+        var result = await BuildCreateTool(service).ExecuteAsync(new()
+        {
+            ["supplier_name"] = "Alza",
+            ["items"] = """[{"description": "Poradenství", "unit_price": 1000, "vat_rate": 0}]"""
+        });
+
+        result.IsSuccess.ShouldBeTrue();
+        await service.Received(1).CreateAsync(
+            Arg.Is<CreateReceivedInvoiceDto>(dto => dto.Items[0].VatRatePercentage == 0m),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Create_PreviewWithAVatRateThatIsNotSetUp_RefusesToo()
+    {
+        // The gate is only useful if the preview refuses as well — otherwise the user would
+        // approve an expense that the confirmed call then rejects.
+        var service = Substitute.For<IReceivedInvoiceService>();
+
+        var result = await BuildCreateTool(service).BuildPreviewAsync(new()
+        {
+            ["supplier_name"] = "Alza",
+            ["items"] = """[{"description": "Toner", "unit_price": 1500, "vat_rate": 99}]"""
+        });
+
+        result.IsSuccess.ShouldBeFalse();
+        await service.DidNotReceive().CreateAsync(
+            Arg.Any<CreateReceivedInvoiceDto>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Create_WithADictatedRateAndNoRatesSetUp_SaysSoInsteadOfListingNothing()
+    {
+        var service = Substitute.For<IReceivedInvoiceService>();
+        var vatRateService = Substitute.For<IVatRateService>();
+        vatRateService.GetDefaultStandardRateAsync(Arg.Any<CancellationToken>())
+            .Returns((VatRateDto?)null);
+        vatRateService.GetActiveVatRatesForDateAsync(Arg.Any<DateTime?>(), Arg.Any<CancellationToken>())
+            .Returns([]);
+
+        var result = await BuildCreateTool(service, vatRateService: vatRateService).ExecuteAsync(new()
+        {
+            ["supplier_name"] = "Alza",
+            ["items"] = """[{"description": "Toner", "unit_price": 1500, "vat_rate": 21}]"""
+        });
+
+        result.IsSuccess.ShouldBeFalse();
+        result.ErrorMessage.ShouldNotBeNull();
+        result.ErrorMessage.ShouldContain("No VAT rates are set up");
+        await service.DidNotReceive().CreateAsync(
+            Arg.Any<CreateReceivedInvoiceDto>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Create_ChecksTheRatesValidOnTheDayOfSupply_NotToday()
+    {
+        // An expense recorded months late must be checked against the rates that applied then,
+        // not against today's — otherwise an old but legal rate would be refused.
+        var service = Substitute.For<IReceivedInvoiceService>();
+        service.CreateAsync(Arg.Any<CreateReceivedInvoiceDto>(), Arg.Any<CancellationToken>())
+            .Returns(BuildInvoice(id: 7));
+
+        var vatRateService = Substitute.For<IVatRateService>();
+        vatRateService.GetDefaultStandardRateAsync(Arg.Any<CancellationToken>())
+            .Returns(new VatRateDto { Id = 5, Rate = 21m });
+        vatRateService.GetActiveVatRatesForDateAsync(Arg.Any<DateTime?>(), Arg.Any<CancellationToken>())
+            .Returns(SeededVatRates());
+
+        await BuildCreateTool(service, vatRateService: vatRateService).ExecuteAsync(new()
+        {
+            ["supplier_name"] = "Alza",
+            ["items"] = OneItem,
+            ["taxable_supply_date"] = "2023-06-30"
+        });
+
+        await vatRateService.Received(1).GetActiveVatRatesForDateAsync(
+            new DateTime(2023, 6, 30, 0, 0, 0, DateTimeKind.Utc), Arg.Any<CancellationToken>());
     }
 
     [Fact]

@@ -74,7 +74,8 @@ public class CreateReceivedInvoiceTool : IConfirmableChatTool
             Type = ChatToolParameterType.ObjectArray,
             Description = "Line items. Each item has \"description\" (string, required), " +
                           "\"quantity\" (number, default 1), \"unit_price\" (number, required, excluding VAT) " +
-                          "and optional \"vat_rate\" (number, percent). " +
+                          "and optional \"vat_rate\" (number, percent — must be one of the rates " +
+                          "set up for the company; omit it to use the default). " +
                           "Example: [{\"description\": \"Toner\", \"quantity\": 2, \"unit_price\": 1500}]",
             IsRequired = true
         },
@@ -230,7 +231,11 @@ public class CreateReceivedInvoiceTool : IConfirmableChatTool
 
         // ── Items ──────────────────────────────────────────────────────────
         var defaultVatRate = await _vatRateService.GetDefaultStandardRateAsync(ct);
-        var items = ParseItems(itemsJson, defaultVatRate);
+        // Rates valid on the day of the supply, not today: expenses are often recorded weeks or
+        // months late, and a rate that was legal back then must not be refused now.
+        var allowedVatRates = await _vatRateService.GetActiveVatRatesForDateAsync(
+            taxableSupplyDate ?? issueDate, ct);
+        var items = ParseItems(itemsJson, defaultVatRate, allowedVatRates);
         if (items.Error is not null)
             return new Preparation { Error = items.Error };
 
@@ -311,8 +316,17 @@ public class CreateReceivedInvoiceTool : IConfirmableChatTool
     /// the user dictated is passed on as a percentage only. That is not an oversight —
     /// <c>ReceivedInvoiceService</c> re-reads the percentage from the VatRate row whenever an id
     /// is present, so keeping the default id next to a 12% rate would silently bill it at 21%.
+    ///
+    /// Which is exactly why a dictated rate has to be checked here: with no id, nothing further
+    /// down validates it. <c>ReceivedInvoiceService</c> only multiplies by it, so a misheard
+    /// "-21" or "210" would reach the VAT return as a real number. It is checked against the
+    /// rates the tenant actually has (<paramref name="allowedVatRates"/>) rather than a
+    /// hard-coded range, because "which percentages are legal" is data, not a constant.
     /// </summary>
-    private static ItemParseResult ParseItems(string itemsJson, Contracts.Dto.VatRate.VatRateDto? defaultVatRate)
+    private static ItemParseResult ParseItems(
+        string itemsJson,
+        Contracts.Dto.VatRate.VatRateDto? defaultVatRate,
+        IReadOnlyList<Contracts.Dto.VatRate.VatRateDto> allowedVatRates)
     {
         List<RawItem>? rawItems;
         try
@@ -351,6 +365,13 @@ public class CreateReceivedInvoiceTool : IConfirmableChatTool
 
             var usesDefaultRate = raw.VatRate is null;
 
+            if (!usesDefaultRate && allowedVatRates.All(rate => rate.Rate != raw.VatRate!.Value))
+            {
+                return ItemParseResult.Failed(
+                    $"Item #{position} ('{raw.Description}') has VAT rate {raw.VatRate!.Value:0.##}%, " +
+                    $"which is not one of the rates set up for this company. {DescribeAllowed(allowedVatRates)}");
+            }
+
             items.Add(new CreateReceivedInvoiceItemDto
             {
                 OrderIndex = index,
@@ -365,6 +386,17 @@ public class CreateReceivedInvoiceTool : IConfirmableChatTool
 
         return new ItemParseResult { Items = items };
     }
+
+    /// <summary>
+    /// The tail of the "unknown VAT rate" message: which percentages the model may use instead.
+    /// An empty list means the tenant has no rates configured at all, which is a different
+    /// problem and deserves a different sentence.
+    /// </summary>
+    private static string DescribeAllowed(IReadOnlyList<Contracts.Dto.VatRate.VatRateDto> allowedVatRates)
+        => allowedVatRates.Count == 0
+            ? "No VAT rates are set up — add them in Settings, or leave 'vat_rate' out to use the default."
+            : $"Available: {string.Join(", ", allowedVatRates.Select(rate => $"{rate.Rate:0.##}%"))}. " +
+              "Leave 'vat_rate' out to use the default rate.";
 
     /// <summary>Czech "kusy" — the unit the UI also defaults to.</summary>
     private const string DefaultUnit = "ks";
