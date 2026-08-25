@@ -159,8 +159,9 @@ Repeat:
 ## Done — what it means
 
 `/ticks` **cannot** move a card to `Approved`. `Implemented → Approved`
-happens only in `/release` (develop → master), which a human triggers;
-`/ticks` never touches `master`. So "drained" here means:
+happens only in `/release-prod` (TEST-ENV → master), which a human
+triggers; `/ticks` never touches `TEST-ENV` or `master`. So "drained"
+here means:
 
 > every **eligible** card is either in `Implemented` (waiting for the
 > next `/release`), in `Approved` already, or parked on a human.
@@ -179,7 +180,7 @@ But they are also not invisible. The final summary MUST list, by issue
 number and with the reason:
 
 - cards sitting in `Implemented`, i.e. what the next `/release` would
-  promote;
+  promote to the test environment (and `/release-prod` to production);
 - cards parked on a human, and what each is waiting for;
 - cards that ended in `Blocked` during this run.
 

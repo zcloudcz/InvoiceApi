@@ -1910,6 +1910,39 @@ obou `TenantContextMiddleware` — SysAdmin ho musí zavolat i bez impersonace f
 
 ---
 
+### 9.6 Release flow (`develop` → `TEST-ENV` → `master`)
+
+Kód se do produkce dostává ve třech stupních. Každý stupeň má vlastní větev
+a vlastní spouštěč:
+
+| Stupeň | Větev | Kdo / čím | Co se nasadí | Karty na boardu |
+|--------|-------|-----------|--------------|-----------------|
+| Integrace | `develop` | `agent-ops` squash-merge feature PR | nic (`develop` nemá deploy workflow) | karta → `Implemented` |
+| Test | `TEST-ENV` | člověk příkazem `/release` | testovací prostředí (Functions slot `test` + Static Web App) | **nehýbou se** |
+| Produkce | `master` | člověk příkazem `/release-prod` po ověření testu | produkce (Function App `zcloudinvoicingapi` + GitHub Pages) | `Implemented` → `Approved` |
+
+Pravidla:
+
+- Na `TEST-ENV` ani `master` se **nikdy nekomituje přímo**. Oprava toho, co se
+  najde na testovacím prostředí, jde jako běžný feature PR do `develop` a znovu
+  přes `/release`.
+- Oba promotion PR se mergují **merge commitem** (ne squash) — feature commity
+  tak zůstanou v historii. Squash je jen u feature PR do `develop`.
+- Řez verze v `release-notes.md` (`## Nevydáno` → `## <verze> — <datum>`) dělá
+  **`/release`** commitem na `develop`. `/release-prod` už notes nesahá — kdyby
+  se řez dělal až nad `master`, další merge `develop → TEST-ENV` by na tom
+  souboru konfliktoval.
+- Když `TEST-ENV` neexistuje, založí ji `/release` z `master` (stejný legacy
+  bootstrap jako u `develop`).
+- Žádná z větví nemá branch protection — pořadí stupňů je konvence vynucená
+  agenty a těmito příkazy, ne GitHubem.
+
+Deploy workflows pro `TEST-ENV` (Functions slot `test`, Static Web App) řeší
+issue #290 a #292; až budou hotové, přibudou do tabulky v §9.1. Stavový automat
+obou příkazů je v `.claude/commands/release.md` a
+`.claude/commands/release-prod.md`, dopad na board v `.claude/BOARD-OPS.md`
+(sekce „Integration branch model").
+
 ## 10. Observability — logging + correlation
 
 ### 10.1 CorrelationId
@@ -2150,6 +2183,7 @@ pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. P
 | Nový email/PDF placeholder | §4.3 (typy) |
 | Nový hostovací model (např. native API workflow) | §1.2 + §9.1 |
 | Změna config zdroje (Key Vault, App Configuration) | §9.2 |
+| Změna release flow / promotion větví (`/release`, `/release-prod`) | §9.6 |
 | Změna tvaru konfigurace DB autentizace nebo obsahu health endpointu | §9.5 |
 | Změna Data Protection persistence / ApplicationName | §2.7 |
 | Nová seed migrace s hardcoded Id | §12 (non-idempotent seed) |

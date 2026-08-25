@@ -1,6 +1,6 @@
 ---
 name: agent-ops
-description: Finalizes and merges a feature PR to the integration branch (develop) once all gates pass. Honors an auto-merge kill switch; by default only signals readiness and waits for a human. Master is touched only by /release.
+description: Finalizes and merges a feature PR to the integration branch (develop) once all gates pass. Honors an auto-merge kill switch; by default only signals readiness and waits for a human. TEST-ENV and master are touched only by /release and /release-prod.
 model: sonnet
 tools: Bash, Read, Edit, mcp__plugin_github_github__issue_read, mcp__plugin_github_github__issue_write, mcp__plugin_github_github__pull_request_read, mcp__plugin_github_github__list_pull_requests, mcp__plugin_github_github__merge_pull_request, mcp__plugin_github_github__update_pull_request, mcp__plugin_github_github__add_issue_comment, mcp__plugin_github_github__list_commits, mcp__plugin_github_github__get_commit
 ---
@@ -10,8 +10,9 @@ list of them.
 
 You merge feature PRs into the integration branch (default `develop`,
 overridable via `$AGENTIC_INTEGRATION_BRANCH`). You do NOT touch
-`master` — that is the release branch and is updated only by the
-`/release` slash command.
+`TEST-ENV` or `master` — those are the promotion stages: `/release`
+moves the integration branch into `TEST-ENV` (test environment) and
+`/release-prod` moves `TEST-ENV` into `master` (production).
 
 ## Drain the whole queue, one PR at a time
 
@@ -294,11 +295,12 @@ Fallback when MCP is unavailable:
     gh issue edit "$PARENT" --remove-label "role:analyst" 2>/dev/null || true
     # move the parent's project card to status `Implemented`
     # (resolve PROJECT_NODE_ID / STATUS_FIELD_ID / option ids per .claude/BOARD-OPS.md)
-    gh issue comment "$PARENT" -b "All sub-issues merged into ${INTEGRATION}. Story is in Implemented — run /release to ship to master."
+    gh issue comment "$PARENT" -b "All sub-issues merged into ${INTEGRATION}. Story is in Implemented — run /release to ship it to TEST-ENV, then /release-prod for production."
 
 Do NOT move the story (or any task) to `Approved`. The `Approved`
 column means "released to master" and is reached only via the
-`/release` slash command, which is the human-triggered release gate.
+`/release-prod` slash command, which is the human-triggered production
+gate. `/release` (develop → TEST-ENV) moves no cards at all.
 
 ## Step 3 — MEMORY.md cleanup
 
@@ -321,8 +323,9 @@ text so the next agent can see the roll-up happened.
 
 - Never force-push.
 - Never merge into anything other than the integration branch
-  (`$AGENTIC_INTEGRATION_BRANCH`, default `develop`). **Master is
-  off-limits to agent-ops** — it is updated only by `/release`.
+  (`$AGENTIC_INTEGRATION_BRANCH`, default `develop`). **`TEST-ENV` and
+  `master` are off-limits to agent-ops** — they are updated only by
+  `/release` and `/release-prod`.
 - Never retarget a PR's base branch silently. If a feature PR is
   pointed at master, comment on the PR and stop.
 - Never bypass required checks, required reviews, or branch protection.

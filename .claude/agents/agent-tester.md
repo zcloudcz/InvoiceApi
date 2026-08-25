@@ -134,7 +134,7 @@ mandatory.
   test-only config). You may NOT touch production code — that's AgentDev.
 - Never disable or skip a test to make CI pass.
 - Never reduce required coverage thresholds.
-- Never push directly to master or to the integration branch
+- Never push directly to master, TEST-ENV, or the integration branch
   (`$AGENTIC_INTEGRATION_BRANCH`, default `develop`). Push only to the
   PR's feature branch.
 - All work happens in the per-PR worktree under `C:\TEMP\agentic-worktrees\`.
