@@ -34,13 +34,18 @@ public sealed class AuthHeaderHandler : DelegatingHandler
     {
         var token = _tokenProvider.GetToken();
 
-        // No token → send unauthenticated and let the API return 401. Failing
-        // here instead would turn a recoverable auth problem into an opaque
-        // client-side crash inside the MCP tool call.
-        if (!string.IsNullOrWhiteSpace(token))
-        {
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        }
+        // Assigned unconditionally, including the null case: "no token" must
+        // CLEAR the header, not merely leave whatever is already on the request.
+        // Nothing builds a request with an Authorization header today, but under
+        // the HTTP transport the incoming header travels with the call, and a
+        // conditional set would let it ride out to the API unchecked.
+        //
+        // No token → the request goes out unauthenticated and the API answers
+        // 401. Throwing here instead would turn a recoverable auth problem into
+        // an opaque client-side crash inside the MCP tool call.
+        request.Headers.Authorization = string.IsNullOrWhiteSpace(token)
+            ? null
+            : new AuthenticationHeaderValue("Bearer", token);
 
         return base.SendAsync(request, cancellationToken);
     }

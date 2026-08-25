@@ -1,4 +1,4 @@
-﻿using Fakvio.McpServer.Client;
+using Fakvio.McpServer.Client;
 using Fakvio.McpServer.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -55,8 +55,21 @@ builder.Services.AddSingleton(settings);
 // later — harmless in stdio (one process = one user), a cross-tenant leak once
 // the same server is hosted over HTTP.
 //
-// In stdio mode the credential is the FAKVIO_API_TOKEN env var; the HTTP
-// transport will swap in a session-scoped provider behind the same interface.
+// In stdio mode the credential is the FAKVIO_API_TOKEN env var. The HTTP
+// transport will swap in a different implementation behind the same interface,
+// but that implementation MUST STAY A SINGLETON that reads the token from
+// ambient request-local state (IHttpContextAccessor / AsyncLocal) inside
+// GetToken(). Registering it with AddScoped would reopen the very leak
+// described above, one floor down:
+//
+//   AddHttpMessageHandler below does NOT resolve the handler from the request
+//   scope. IHttpClientFactory builds the whole pipeline in its own private
+//   scope and pools it (default handler lifetime: 2 minutes), so the
+//   AddTransient on the next line means transient *per pipeline construction*,
+//   not per request. A scoped provider would therefore be captured once by the
+//   pooled handler and then serve every later caller — one user's token on the
+//   next user's call. SetHandlerLifetime does not help; it does not align the
+//   scopes, it only shortens how long the wrong token is reused.
 builder.Services.AddSingleton<IApiTokenProvider, EnvironmentApiTokenProvider>();
 builder.Services.AddTransient<AuthHeaderHandler>();
 

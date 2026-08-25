@@ -1,3 +1,4 @@
+using System.Net.Http.Headers;
 using Fakvio.McpServer.Client;
 using Fakvio.McpServer.Configuration;
 using NSubstitute;
@@ -77,6 +78,37 @@ public class AuthHeaderHandlerTests
         await client.GetAsync("https://test-api.fakvio.cz/api/invoice/1");
 
         recorder.SeenTokens.ShouldHaveSingleItem().ShouldBeNull();
+    }
+
+    /// <summary>
+    /// A request that already carries an Authorization header must come out the
+    /// other side with that header REPLACED — cleared when the provider has no
+    /// token, overwritten when it has one. The handler is the single authority
+    /// on outbound credentials; anything the caller put there is not trusted.
+    ///
+    /// Unreachable through today's stdio path (FakvioApiClient never builds a
+    /// request by hand), but the HTTP transport forwards the caller's own
+    /// headers, so this is the semantics that path will depend on.
+    /// </summary>
+    [Theory]
+    [InlineData(null, null)]
+    [InlineData("token-user-b", "token-user-b")]
+    public async Task SendAsync_PreExistingAuthorizationHeader_IsReplacedByTheProvidersAnswer(
+        string? providerToken, string? expected)
+    {
+        var provider = Substitute.For<IApiTokenProvider>();
+        provider.GetToken().Returns(providerToken);
+
+        var recorder = new RecordingHandler();
+        using var client = new HttpClient(new AuthHeaderHandler(provider) { InnerHandler = recorder });
+
+        // GetAsync cannot pre-set headers, so the request is built explicitly
+        var request = new HttpRequestMessage(HttpMethod.Get, "https://test-api.fakvio.cz/api/invoice/1");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", "token-someone-else");
+
+        await client.SendAsync(request);
+
+        recorder.SeenTokens.ShouldHaveSingleItem().ShouldBe(expected);
     }
 
     /// <summary>
