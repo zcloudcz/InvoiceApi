@@ -669,10 +669,15 @@ AI asistent zná kontext vaší firmy a umí odpovídat na otázky i provádět 
 | Faktury | Vyhledat fakturu, zobrazit detail, vypsat seznam faktur podle kritérií, stáhnout PDF nebo ISDOC |
 | Faktury — změny | Vystavit koncept, označit vydanou fakturu jako zaplacenou, odeslat ji e-mailem, smazat koncept. **Každou takovou změnu si nejdřív necháte odsouhlasit** — viz níže |
 | Klienti | Vypsat seznam klientů, vyhledat klienta, zobrazit celý detail (adresy, kontakty, bankovní účty, fakturační nastavení), založit nového podle IČO, upravit údaje a smazat klienta. Úprava i smazání se vždy nejdřív ukážou k odsouhlasení — viz níže. |
-| Přijaté faktury | Vyhledat, vypsat seznam |
+| Přijaté faktury | Vyhledat, vypsat seznam, **zaevidovat novou**, **schválit k proplacení**, **označit jako zaplacenou**, **smazat** (každá z těchto čtyř změn se vždy nejdřív zeptá — viz níže) |
 | Přehledy a reporty | Shrnout dashboard, vypsat faktury po splatnosti, faktury za období nebo pro konkrétního klienta, spočítat DPH za období |
 | Nastavení firmy | Přečíst nastavení vlastní firmy (název, IČO, DIČ, plátcovství DPH, jazyk dokladů, adresa, kontakty, bankovní účty) a změnit ho — včetně přidání, úpravy a zrušení bankovního účtu („Přidej nám účet 1234567890/0100", „Od ledna jsme plátci DPH"). IČO měnit nelze. |
+| Číselné řady | Vypsat číselné řady (název, typ dokladu, prefix/sufix, stav čítače, formát, která je výchozí) i dostupné formáty číslování, založit novou řadu a upravit existující — název, prefix, sufix, čítač, nebo ji nastavit jako výchozí („Založ řadu Faktury 2026 s prefixem FV-", „Nastav u faktur čítač na 100"). Typ dokladu a formát u existující řady měnit nelze — na to založte řadu novou. |
+| Sazby DPH | Vypsat sazby DPH (procento, název, základní/snížená, platnost, výchozí), přidat novou a upravit existující — název, procento, platnost, druh, nebo ji nastavit jako výchozí („Přidej sníženou sazbu 12 % od 1.1.2026", „Ať je 21 % výchozí"). Rušit sazby přes asistenta nelze. |
+| Šablony | Vypsat a přečíst **šablony faktur** (předvyplněné položky, měna, platební údaje) i **šablony dokumentů** (HTML pro PDF a e-maily) a přepnout, která šablona dokumentu je výchozí („Ať je pro faktury výchozí ta modrá"). Přepnutí výchozí šablony se nejdřív ukáže k odsouhlasení. Samotné HTML šablony asistent nemění — to se dělá v editoru na stránce **Šablony dokumentů**. |
 | Kontrola nastavení | Zkontrolovat, jestli máte vyplněné vše potřebné k vystavení faktury („Můžu už fakturovat?", „Co mi ještě chybí?"). Vypíše, co chybí, jestli to fakturaci brání, nebo jen omezuje jednu funkci, a na které stránce se to doplní. Nic sám nemění. |
+| Upomínky | Vypsat upomínky (koncepty, odeslané, neúspěšné) podle stavu, úrovně nebo období, přečíst nastavení upomínání — i to, které platí pro konkrétního klienta — a změnit firemní nastavení („Upomínej až 14 dní po splatnosti", „Upomínky ať se neposílají samy"). Změna se vždy nejdřív ukáže k odsouhlasení. Jednotlivé upomínky se odesílají a ruší na stránce **Upomínky**, ne přes asistenta. |
+| Platby | Vypsat platby načtené z banky (nespárované, příchozí i odchozí, za období, podle protistrany nebo variabilního symbolu) a zobrazit detail jedné platby včetně faktur, ke kterým je přiřazená. Asistent platby jen čte — spárovat platbu s fakturou nebo párování zrušit lze pouze na stránce **Platby**. |
 | Obecné dotazy | Odpovídat na otázky o funkcích aplikace |
 | Navigace | Otevřít libovolnou stránku aplikace — faktury, přijaté faktury, klienty, platby, šablony, DPH a daně, upomínky i nastavení („Otevři DPH přiznání", „Založ novou fakturu pro klienta XYZ"). Stránky správce systému a přihlašovací obrazovky asistent neotevírá. |
 
@@ -680,7 +685,7 @@ AI asistent zná kontext vaší firmy a umí odpovídat na otázky i provádět 
 
 Dotazy asistent zodpoví rovnou. Ale všechno, co **mění data** — vystavení konceptu, označení
 faktury jako zaplacené, odeslání e-mailu, smazání konceptu, i změny u klientů, nastavení
-firmy nebo bankovních účtů — proběhne na dvě fáze:
+firmy, bankovních účtů, číselných řad nebo sazeb DPH — proběhne na dvě fáze:
 
 1. Napíšete, co chcete („Vystav koncept FAK-2026-001").
 2. Asistent **nic neudělá** a napíše, co by se stalo („Vystavím fakturu FAK-2026-001 pro
@@ -709,7 +714,14 @@ nezná, asistent to řekne rovnou — nikdy nepotvrdí načtení dat, ke kterém
 Výchozí účet firmy nejde zrušit, jen přesunout: řekněte, který účet má být nově výchozí
 („Ať je výchozí ten eurový"), a asistent přeznačí oba. Požadavek „tenhle už ať není výchozí"
 odmítne — nějaký účet výchozí být musí, jinak by ho aplikace vybrala sama a vy byste se to
-nedozvěděli.
+nedozvěděli. **Stejné pravidlo platí u číselných řad a sazeb DPH:** výchozí se dá jen
+přesunout na jinou řadu nebo sazbu, ne zrušit. Ze stejného důvodu asistent odmítne
+překlopit výchozí sazbu ze základní na sníženou (nebo naopak) — druh, který by opustila,
+by zůstal bez výchozí sazby. Nejdřív určete jako výchozí jinou sazbu toho druhu, pak
+teprve tuhle překlopte.
+
+Pozor na ruční posun čítače číselné řady dozadu — čísla, která už na dokladech jsou, by se
+vydala podruhé. Asistent na to v náhledu upozorní, ale rozhodnutí nechává na vás.
 
 Jedno omezení má úprava a rušení bankovních účtů: účet, ke kterému už jsou v aplikaci
 navázané platby (načtené bankovní transakce nebo aktivní e-mailová schránka pro příjem
@@ -717,11 +729,45 @@ výpisů), přepsat nejde — ani přes asistenta, ani ručně na stránce **Moj
 vám v takovém případě řekne, proč to neprošlo; upravit takový účet lze až po odpojení
 navázaných dat.
 
+U upomínek mění asistent jen **firemní nastavení** — tedy to, co platí, pokud klient nemá
+vlastní výjimku. Jednotlivé stupně upomínek (za kolik dní, jaký poplatek, jaká šablona)
+a výjimky pro konkrétní klienty nastavíte na stránce **Upomínky → Nastavení**. Zeptat se
+asistenta, co pro daného klienta platí, ale můžete („Jak upomínáme klienta ABC?") — řekne
+i to, jestli má klient vlastní nastavení, nebo se řídí firemním.
+
 Asistent navíc ví, **kde právě stojíte** — jakou stránku máte otevřenou a jestli je na ní
 konkrétní doklad — a zná dnešní datum. Můžete se tedy ptát „kdy je tahle faktura splatná"
 místo toho, abyste číslo dokladu opisovali. Pokud vám ještě něco chybí k vystavení faktury
 (vyplněná vlastní firma, adresa, číselná řada), asistent to ví a nasměruje vás na stránku,
 kde se to doplní.
+
+### Když asistent něco mění (přijaté faktury)
+
+**Asistent se nejdřív vždycky zeptá.** Ať chcete přijatou fakturu zaevidovat, schválit,
+označit za zaplacenou nebo smazat, první odpověď je jen náhled toho, co by se stalo — a
+nezmění se nic. Teprve když odpovíte, že souhlasíte, asistent změnu provede. Když souhlas
+nedáte, nestane se nic.
+
+Náhled vám ukáže konkrétní údaje, ne jen „provedu to":
+
+| Napíšete | Asistent ukáže |
+|----------|----------------|
+| „Zaeviduj přijatou fakturu od Alzy, 2 tonery po 1500" | dodavatele, počet položek, částku bez DPH a splatnost |
+| „Schval přijatou fakturu 267708922" | o kterou fakturu jde (číslo, dodavatel, částka, stav) |
+| „Přijatou fakturu 267708922 jsme zaplatili 15.4." | tutéž fakturu **a datum úhrady** |
+| „Smaž přijatou fakturu 267708922" | fakturu, která by zmizela |
+
+U evidence nové faktury musí dodavatel odpovídat právě jednomu vašemu klientovi; když jich
+jméno sedne víc, asistent je vypíše a zeptá se, který myslíte. Stejně to platí i pro číslo
+dokladu: pokud odpovídá víc fakturám, asistent se zeptá místo toho, aby hádal.
+
+Pravidla aplikace platí i pro asistenta: schválit jde jen fakturu ve stavu *Přijatá*,
+zaplatit jen *Schválenou* a smazat jen *Přijatou* nebo *Zamítnutou*. Když to nesedí,
+asistent řekne proč a nic nezmění.
+
+**Fakturu podle dokladu radši nediktujte** — když máte PDF nebo text faktury, vložte ho
+do chatu nebo připojte sponkou. Asistent si z něj přečte i to, co byste vynechali
+(IČO, DUZP, variabilní symbol), a pozná sám, jestli jde o vydanou nebo přijatou fakturu.
 
 ### Jak používat
 
@@ -762,6 +808,9 @@ jinak, než jste zvyklí, je pravděpodobně upravené systémové nastavení �
 - „Pošli fakturu FAK-2026-003 na ucetni@alza.cz"
 - „Stáhni fakturu FAK-2026-003 jako ISDOC"
 - „Můžu už fakturovat? Co mi ještě chybí v nastavení?"
+- „Zaeviduj přijatou fakturu od Alzy, 2 tonery po 1500, splatnost 30.4."
+- „Schval přijatou fakturu 267708922"
+- „Přijatou fakturu 267708922 jsme zaplatili 15.4."
 
 ### Když se odpověď nepodaří vygenerovat
 

@@ -1025,6 +1025,10 @@ Sloupec „Klíčové parametry" je jen orientační — závazné je schéma v 
 | `get_received_invoice` | `GetReceivedInvoiceTool` | ReceivedInvoice | Read (detail) | `id` nebo `document_number`; vrátí položky, DPH, celkové částky, cross-check |
 | `list_received_invoices` | `ListReceivedInvoicesTool` | ReceivedInvoice | Read (paged list) | `status`, `supplier_name`, `issue_date_from/to`, `min/max_amount`, `currency`, `overdue` |
 | `search_received_invoices` | `SearchReceivedInvoicesTool` | ReceivedInvoice | Search | `query` (fulltext: číslo dokladu, dodavatel, VS, částka), `limit` |
+| `create_received_invoice` | `CreateReceivedInvoiceTool` | ReceivedInvoice | **Create, za `confirm`** | `supplier_name`, `items` (JSON), `document_number`, `issue_date`, `due_date`, `taxable_supply_date`, `variable_symbol`, `currency`, `notes` |
+| `approve_received_invoice` | `ApproveReceivedInvoiceTool` | ReceivedInvoice | **Write, za `confirm`** (Received → Approved) | `id` nebo `document_number` |
+| `mark_received_invoice_paid` | `MarkReceivedInvoicePaidTool` | ReceivedInvoice | **Write, za `confirm`** (Approved → Paid) | `id` nebo `document_number`, `paid_at` |
+| `delete_received_invoice` | `DeleteReceivedInvoiceTool` | ReceivedInvoice | **Destruktivní, za `confirm`** | `id` nebo `document_number` |
 | `attach_file` | `AttachFileTool` | Invoice / ReceivedInvoice / Client | Write (upload) | `entity_name`, `record_id`, `file_name`, `file_content_base64` (Base64 bytes), `content_type`, `description` |
 | `list_attachments` | `ListAttachmentsTool` | Invoice / ReceivedInvoice / Client | Read (list) | `entity_name`, `record_id`; vrátí jméno, velikost, datum, popis pro každý soubor |
 | `get_dashboard` | `GetDashboardTool` | Invoice / Client (agregace) | Read (souhrn) | bez parametrů; cashflow tento měsíc, počet klientů, neuhrazeno, po splatnosti, top klienti |
@@ -1035,12 +1039,23 @@ Sloupec „Klíčové parametry" je jen orientační — závazné je schéma v 
 | `add_bank_account` | `AddBankAccountTool` | BankAccount (issuer) | **Write** (confirm) | `account_number` (povinný), `label`, `bank_name`, `iban`, `swift`, `currency_code`, `is_default` |
 | `update_bank_account` | `UpdateBankAccountTool` | BankAccount (issuer) | **Write** (confirm) | `bank_account_id` (povinný) + měněná pole |
 | `delete_bank_account` | `DeleteBankAccountTool` | BankAccount (issuer) | **Destructive** (confirm) | `bank_account_id` (povinný) |
+| `list_invoice_templates` | `ListInvoiceTemplatesTool` | InvoiceTemplate | Read (paged list) | `search`, `document_type`, `category`, `include_inactive`, `page`, `page_size` |
+| `get_invoice_template` | `GetInvoiceTemplateTool` | InvoiceTemplate | Read (detail) | `id` (povinný); vrátí položky, platební údaje, číselnou řadu, statistiku použití |
+| `list_content_templates` | `ListContentTemplatesTool` | ContentTemplate | Read (list) | `template_type`, `language`, `include_inactive`; bez stránkování (seznam je řádově jednotky řádků) |
+| `get_content_template` | `GetContentTemplateTool` | ContentTemplate | Read (detail) | `id` (povinný); metadata + předmět e-mailu + **velikost** HTML, nikdy samotné HTML |
+| `set_default_content_template` | `SetDefaultContentTemplateTool` | ContentTemplate | **Write** (confirm) | `id` (povinný) |
 | `get_readiness` | `GetReadinessTool` | Nastavení tenanta | Read (report) | bez parametrů; vrátí chybějící nastavení + závažnost + `fixRoute` (viz níže) |
 | `get_invoice` | `GetInvoiceTool` | Invoice (vydaná) | Read (detail) | `id` nebo `document_number`; vrátí položky, DPH, platební údaje |
 | `complete_invoice` | `CompleteInvoiceTool` | Invoice (vydaná) | **Write** (confirm) | `id` nebo `document_number`; jen Draft |
 | `mark_invoice_paid` | `MarkInvoicePaidTool` | Invoice (vydaná) | **Write** (confirm) | `id` nebo `document_number`; jen Completed |
 | `send_invoice_email` | `SendInvoiceEmailTool` | Invoice (vydaná) | **Write** (confirm) | `id` nebo `document_number` + `recipient_email` |
 | `delete_invoice` | `DeleteInvoiceTool` | Invoice (vydaná) | **Destructive** (confirm) | `id` nebo `document_number`; jen Draft (soft delete) |
+| `list_number_sequences` | `ListNumberSequencesTool` | NumberSequence | Read (list) | `document_type`, `include_inactive`; vypíše i **formáty číslování** s ID pro create |
+| `create_number_sequence` | `CreateNumberSequenceTool` | NumberSequence | **Write** (confirm) | `name`, `document_type`, `format_id` (povinné) + `prefix`, `suffix`, `starting_number`, `is_default` |
+| `update_number_sequence` | `UpdateNumberSequenceTool` | NumberSequence | **Write** (confirm) | `id` (povinný) + `name`, `prefix`, `suffix`, `current_number`, `is_default` |
+| `list_vat_rates` | `ListVatRatesTool` | VatRate | Read (list) | `include_inactive` |
+| `create_vat_rate` | `CreateVatRateTool` | VatRate | **Write** (confirm) | `name`, `rate` (povinné) + `valid_from`, `valid_to`, `is_reduced`, `is_default` |
+| `update_vat_rate` | `UpdateVatRateTool` | VatRate | **Write** (confirm) | `id` (povinný) + `name`, `rate`, `valid_from`, `valid_to`, `is_reduced`, `is_default` |
 
 ##### Reporting tools (#228) — proč tři, ne šest
 
@@ -1117,6 +1132,59 @@ tool, zápisy tři — a všechny tři jsou `IConfirmableChatTool`.
   replace-allem, takže tool ty ostatní přenáší beze změny. IČO měnit nejde (`UpdateClientDto` ho
   nemá) a bankovní účty do tohohle toolu nepatří — mají vlastní trojici.
 
+##### Přijaté faktury — zápisy (#218)
+
+Čtyři zápisové tooly nad `IReceivedInvoiceService`. Podle pravidla 7 výše je **všechny čtyři**
+`IConfirmableChatTool` — první volání jen ukáže náhled, teprve druhé s `confirm: true` zapíše.
+Čtecí trojice (`get_` / `list_` / `search_received_invoices`) gate nemá.
+
+Co má náhled říct, aby uživatel schvaloval konkrétní věc a ne slovo:
+
+| Tool | Náhled |
+|------|--------|
+| `create_received_invoice` | dodavatel, počet položek, částka **bez DPH**, splatnost |
+| `approve_received_invoice` | popis faktury + cílový stav `Approved` |
+| `mark_received_invoice_paid` | popis faktury + **datum úhrady** (dopadá do období DPH) |
+| `delete_received_invoice` | popis faktury, která zmizí |
+
+Náhled u `create` je záměrně bez DPH: součet nadiktovaných položek je přesný, kdežto částka
+s DPH je smysluplná teprve po #283 — dokud chybějící výchozí sazba tiše znamená 0 %, ukázal by
+špatně nastavenému tenantovi částku s DPH shodnou s částkou bez DPH. (Není to otázka
+zaokrouhlení — `ReceivedInvoiceService` v create cestě nezaokrouhluje vůbec.) Sdílená příprava
+DTO (`PrepareAsync`) je jedna metoda pro náhled i zápis, aby náhled nemohl popisovat něco
+jiného, než co se pak uloží.
+
+Gate **není** autorizační hranice (viz §4.7 výše) — všechny čtyři operace uživatel smí i z UI,
+gate jen brání tomu, aby je asistent udělal potichu.
+
+**Nadiktovaná sazba DPH se ověřuje proti sazbám tenanta.** `vat_rate` u položky jde do
+`CreateReceivedInvoiceDto` **bez `VatRateId`** (id výchozí sazby by servis přečetl jako procento
+a přebil jím tu nadiktovanou), takže pod toolem už tu hodnotu nekontroluje nic —
+`ReceivedInvoiceService` s ní jen násobí. Tool ji proto porovná se seznamem z
+`GetActiveVatRatesForDateAsync` a neznámou sazbu odmítne s výčtem těch dostupných. Ptá se na
+sazby platné **k datu plnění**, ne k dnešku (starší doklad se eviduje se starší sazbou), a
+záměrně nemá pevný rozsah typu 0–100: „které procento je legální" je data, ne konstanta.
+0 % je regulérní sazba (`DPH 0% - osvobozeno od daně`), takže projde. Vynechaná `vat_rate` jde
+dál výchozí sazbou — tichá nula při nenakonfigurované výchozí sazbě je #283.
+
+Společná je resoluce „která faktura?" (`ReceivedInvoiceLookup`): `id` má přednost před
+`document_number`, číslo dokladu se hledá jako substring. **Víc než jedna shoda = chyba**, ne
+volba první — u zápisu by „první shoda" schválila nebo smazala doklad, který uživatel nejmenoval.
+`GetReceivedInvoiceTool` (čtení) si první shodu bere dál; ukázat detail cizí faktury nic nerozbije.
+
+**`create_received_invoice` vs `import_invoice`** — obojí umí založit přijatou fakturu, popisy
+toolů ten rozdíl musí říct modelu, ne až člověku:
+
+| | `create_received_invoice` | `import_invoice` |
+|---|---|---|
+| Vstup | pole, která uživatel nadiktuje | text reálného dokladu (paste, OCR, příloha) |
+| Druh dokladu | vždy přijatá | vydaná/přijatá podle IČO |
+| Dodavatel | podle jména, musí sedět na jednoho klienta | podle IČO, jméno jako fallback |
+| Data | volitelná, co chybí doplní servis | přesně z dokladu, nikdy se nedomýšlí |
+
+Neexponované proti `CreateReceivedInvoiceDto`: `bank_account`, `iban`, `swift`, `payment_method`,
+`received_date`. Nikdo je do chatu nediktuje — kdo má doklad v ruce, jde přes `import_invoice`.
+
 ##### `navigate` — katalog rout (#229)
 
 `NavigateTool.Routes` je jediný zdroj pravdy: z něj se odvozuje jak `AllowedValues`
@@ -1159,12 +1227,140 @@ Dvojče pro externí AI klienty je MCP nástroj `GetReadiness` (§4.9), který j
   nenabízí — vědomý důsledek, ne chyba: dofiltrovávat v toolu by rozešlo odpověď asistenta
   s bannerem i s gate na vystavení dokladu. Kdyby to vadilo, patří filtr do servisu.
 
-##### Paritní tabulka chat ↔ MCP (stav k #211, #217, #220 a #222)
+##### Šablony — dva různé pojmy, pět toolů (#225)
 
-Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 29 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
+Slovo „šablona" znamená ve Fakviu **dvě různé entity** a model je nesmí zaměnit, takže to
+rozlišení nese popis každého toolu i vypisovaný text (jeden zdroj: `TemplateChatToolSupport`):
+
+| Entita | Co to je | Tooly |
+|--------|----------|-------|
+| `InvoiceTemplate` | Blueprint **dat faktury** — položky, měna, platební údaje, číselná řada. Slouží k rychlému založení faktury. | `list_invoice_templates`, `get_invoice_template` |
+| `ContentTemplate` | **HTML**, kterým se renderuje PDF dokument nebo tělo e-mailu. | `list_content_templates`, `get_content_template`, `set_default_content_template` |
+
+- **Set-default existuje jen u `ContentTemplate`.** `InvoiceTemplate` žádný příznak „výchozí"
+  v doméně **nemá** (`Fakvio.Domain/Entities/InvoiceTemplate.cs`) a zavádět ho by znamenalo
+  migraci schématu, ne tool adapter. Story #149 přitom šablonový task výslovně staví jako
+  „tenký adapter + testy". Rozsah AC z #225 („list/get/set-default pro obojí") je proto
+  naplněný tam, kde ho doména dovoluje; pokud výchozí šablona faktury má vzniknout, je to
+  samostatný doménový task.
+- **Výchozí šablona je párovaná na (typ, jazyk).** `ContentTemplateService.UpdateAsync`
+  odznačí předchozí výchozí právě téhle dvojice, takže přepnutí české šablony nechá anglickou
+  být. `set_default_content_template` proto hledá „nahrazovanou" šablonu podle typu **i jazyka**
+  — a **včetně neaktivních**, protože příznak může držet i deaktivovaný řádek a právě ten se
+  odznačí.
+- **Neaktivní šablonu tool výchozí neudělá.** Rozpoznání výchozí šablony (`GetDefaultByTypeAsync`)
+  filtruje na `IsActive`, takže zápis by ohlásil změnu bez efektu. Tool ji odmítne a pošle
+  uživatele šablonu nejdřív aktivovat.
+- **HTML tělo se z chatu nevrací ani nemění.** `get_content_template` hlásí jen jeho velikost
+  a odkáže na editor `/content-templates`. Editace HTML konverzací je mimo scope (story #149,
+  otázka 3 — WYSIWYG editor je na to lepší nástroj) a celá šablona má desítky kilobajtů, které
+  by konverzace platila v každé další zprávě.
+- `AllowedValues` u `document_type` / `template_type` se generují z `Enum.GetNames<T>()`, ne
+  z ručního seznamu — nový typ dokladu nebo šablony tak nemůže tiše zmizet z nabídky modelu.
+
+##### Číselné řady a sazby DPH (#224)
+
+Šest toolů nad dvěma číselníky, které do té doby existovaly jen v UI. Vzor je stejný jako
+u #220: čtení jeden tool, zápisy dva a oba `IConfirmableChatTool`. Společné formátování
+i čtení parametrů drží `SettingsChatToolSupport` — model vidí jen text, který vyrobí, takže
+řada popsaná v náhledu jinak než ve výsledku by četla jako změna něčeho jiného.
+
+- `list_number_sequences` vypisuje **i formáty číslování**, ne jen řady.
+  `create_number_sequence` adresuje formát přes `format_id` a model nemá jak se ho jinak
+  dozvědět. `GetAllFormatsAsync` si navíc chybějící formáty sám doplní
+  (`EnsureDefaultFormatsExistAsync`), takže i čerstvě naprovisionovaný tenant nějaké ID nabídne.
+- **Čítač se vypisuje ve dvou číslech** — `counter: 41 (next number 42)`. `CurrentNumber` je
+  poslední použité číslo, ne příští; kdyby tool vypsal jen jedno, model by ho hlásil jako
+  číslo příští faktury. Ze stejného důvodu preview u `create_number_sequence` počítá
+  `StartingNumber - 1`, přesně jak to ukládá `CreateSequenceAsync`.
+- **Posun čítače dozadu prochází, ale s varováním v náhledu.** Je to legitimní oprava (UI to
+  umí taky) a zároveň nejrychlejší cesta k duplicitnímu číslu dokladu, takže uživatel to musí
+  vidět *před* potvrzením. Záporná hodnota se odmítá rovnou — servis ji nehlídá.
+- **Výchozí příznak jde jen přesunout, ne zhasnout.** `is_default: false` obě `update_*`
+  odmítají stejnou větou (`SettingsChatToolSupport.DefaultCannotBeCleared`) — typ dokladu bez
+  výchozí řady přestane číslovat a sazba bez výchozí se nenabídne na položce faktury. Totéž
+  pravidlo má `update_bank_account` (#220).
+- **A ani přelepit druhem.** `update_vat_rate` odmítá i změnu `is_reduced` na sazbě, která
+  právě drží výchozí příznak: merge nese `IsDefault` s sebou, takže by se výchozí přesunula
+  k druhému druhu a ten původní by zůstal bez výchozí sazby — tentýž zakázaný stav, jen jinými
+  dveřmi. Guard je v `UpdateVatRateTool.ResolveAsync` vedle toho pro `is_default: false`, tedy
+  *před* náhledem; jinak by `ValidateDefaultRateConstraintAsync` házela výjimku až po potvrzení.
+- **Přesun výchozího je u obou entit samostatné volání.** `UpdateNumberSequenceDto` příznak
+  vůbec nemá, a `CreateVatRateAsync` / `UpdateVatRateAsync` druhý default stejného druhu
+  **odmítnou výjimkou** — teprve `SetAsDefaultAsync` předchozího držitele odznačí. Tooly proto
+  zapisují bez příznaku a default posouvají druhým voláním. `update_number_sequence` navíc
+  `UpdateSequenceAsync` úplně přeskočí, když se mění jen default (jinak by šel zbytečný zápis).
+- **`update_vat_rate` posílá celý merge.** `UpdateVatRateAsync` přepisuje *každou* property
+  z DTO, takže pole, které model neposlal, se musí načíst ze stávajícího záznamu — jinak by
+  se tiše smazalo. `update_number_sequence` naopak posílá jen poslané fieldy, protože
+  `UpdateSequenceAsync` aplikuje pouze ne-null hodnoty.
+- **Co v šestici vědomě není:** deaktivace/aktivace řady, formátu ani sazby (to je soft delete
+  a mazání přes chat je mimo scope #224), zakládání a úprava **formátů** číslování (řada na
+  hotový formát jen ukazuje), vymazání prefixu/sufixu do prázdna a vrácení `valid_to` na
+  neomezenou platnost — prázdná hodnota se v celém katalogu čte jako „parametr neposlán",
+  takže `null` (= otevřená platnost) tool nikdy nevyrobí a „zruš platnost do" skončí na
+  `NothingToChange`.
+- Rozsah a formát dat: `ChatToolDates` (stejný parser jako reporting tooly, tedy i `15.3.2026`),
+  procento 0–100 a `valid_to >= valid_from` se ověřuje v toolu, aby náhled nikdy nesliboval
+  zápis, který by servis odmítl.
+
+##### Upomínky a platby (#227)
+
+Pět toolů: tři nad `IReminderService` (`list_reminders`, `get_reminder_settings`,
+`update_reminder_settings`) a dva nad `IBankTransactionQueryService`
+(`list_payments`, `get_payment`). Jediný zápis je `update_reminder_settings`, a ten je
+`IConfirmableChatTool`.
+
+- **Platby jsou read-only záměrně** — potvrzený default story #149 (otázka 5). Ruční
+  párování a odpárování zůstává na stránce Platby: rozhoduje o tom, kolik z platby padne na
+  kterou fakturu, a UI k tomu ukazuje kandidáty i zbývající částky, které chat nemá jak
+  předat. Odesílání a rušení jednotlivých upomínek zůstává ze stejného důvodu mimo chat —
+  `IReminderService.SendReminderAsync` / `CancelReminderAsync` chat nevolá.
+- **Částka platby nese znaménko podle směru** (`EPaymentDirection`), ne podle uloženého
+  čísla: sloupec `Amount` je absolutní hodnota, takže bez znaménka by odchozí platba
+  v odpovědi asistenta vypadala jako příjem. Formátuje se `InvariantCulture`, aby stejná
+  platba četla stejně bez ohledu na culture procesu.
+- **Čtení nastavení nesmí zapisovat.** `GetCompanySettingsAsync` chybějící záznam **založí**
+  (výchozí tři úrovně) — to je zápis. `get_reminder_settings` i `BuildPreviewAsync`
+  v update toolu proto čtou přes `GetEffectiveSettingsAsync`, které vrací `null`. Založení
+  patří výhradně na zápisovou cestu `ExecuteAsync`, kde si o změnu uživatel řekl. I ta si
+  ale existenci záznamu ověří `GetEffectiveSettingsAsync` **před** založením — jinak by
+  potvrzený požadavek na hodnotu rovnou defaultu (`grace_period_days = 7`) záznam založil
+  a pak ohlásil „nic se nezměnilo".
+- **Dvouúrovňová resoluce je v DTO neviditelná.** Dotaz na klienta bez vlastního override
+  vrátí firemní default a jediné, co je odliší, je `ReminderSettingsDto.ClientId`.
+  `get_reminder_settings` proto explicitně řekne, že klient vlastní nastavení nemá — jinak
+  by uživatel netušil, že změna firemního defaultu se ho týká.
+- **Zápis nastavení je replace-all.** `UpsertSettingsAsync` přepíše všechny skaláry a kolekci
+  úrovní smaže a založí znovu. `update_reminder_settings` proto posílá i to, co nemění, a
+  úrovně přenáší 1:1; prázdné `Levels` by dunning umlčelo, protože bez úrovně nemá co
+  vygenerovat. Úrovně samotné (dny, poplatek, subject, dvě FK na šablony) se přes chat
+  needitují — jsou vnořená kolekce a patří na stránku nastavení upomínek.
+- **Jen firemní default.** Per-klientský override se přes chat nezakládá ani nemění: „založ
+  override" a „uprav existující" vypadají zvenčí stejně, takže špatně určený klient by tiše
+  vyrobil nový override místo změny, kterou uživatel myslel.
+- **Rozsahy hlídá tool, v obou vstupních bodech.** `max_reminder_level` 1-5 a
+  `grace_period_days` 0-365 schéma vyjádřit neumí a servis je nevaliduje; kontrola je
+  v `BuildPreviewAsync` i `ExecuteAsync`, protože model, který pošle `confirm: true` hned
+  napoprvé, přes preview neprojde. `max_reminder_level = 0` by dunning vypnul, zatímco
+  stránka nastavení by dál hlásila zapnuto.
+- **Neparsovatelné datum ve filtru je `Failure`**, ne tiše zahozený filtr — stejně jako
+  u reporting toolů (viz výše). Oba list tooly jdou přes `ChatToolDates`.
+- **`AllowedValues` u enum filtrů se odvozují `Enum.GetNames<T>()`**, takže nová hodnota
+  `EMatchStatus` / `EReminderStatus` / `EPaymentDirection` nemůže z nabídky vypadnout.
+
+##### Paritní tabulka chat ↔ MCP (stav k #211, #217, #218, #220, #222, #224, #225 a #227)
+
+Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 49 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
 a **MCP server** (`[McpServerTool]`, 37 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
 cílem story #149 je mezeru zavřít. Tabulka je jediný pravdivý seznam toho, co kde chybí;
 **každý nový tool na kterékoli straně sem přidá řádek** (viz §13).
+
+> Počet chat toolů (v úvodní větě i v součtech níže) **hlídá test** —
+> `ChatToolCatalogSchemaTests.DevGuide_PublishesTheLiveNumberOfChatTools` ho porovnává
+> s registracemi v `AddFakvioCore`. Důvod: když dvě větve přidají tooly každá zvlášť,
+> git tu větu slije **bez konfliktu** (na obou stranách je znak po znaku stejná) a v `develop`
+> zůstane staré číslo, kterého si nikdo nevšimne. Když test spadne, přepiš čísla, netest.
 
 Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nemá)
 
@@ -1191,10 +1387,10 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | **Přijaté faktury** (`ReceivedInvoiceTools`, 6) |
 | `GetReceivedInvoice` | Read | `get_received_invoice` | ✅ | |
 | `ListReceivedInvoices` | Read | `list_received_invoices` | ✅ | |
-| `CreateReceivedInvoice` | Create | `import_invoice` (auto-detekce vydaná/přijatá) | ◐ | #218 |
-| `ApproveReceivedInvoice` | **Write** | — | ❌ | #218 |
-| `MarkReceivedInvoicePaid` | **Write** | — | ❌ | #218 |
-| `DeleteReceivedInvoice` | **Destructive** | — | ❌ | #218 |
+| `CreateReceivedInvoice` | Create | `create_received_invoice` (diktovaná data) · `import_invoice` (z dokladu) | ✅ | |
+| `ApproveReceivedInvoice` | **Write** | `approve_received_invoice` | ✅ | |
+| `MarkReceivedInvoicePaid` | **Write** | `mark_received_invoice_paid` (+ `paid_at`, MCP neumí) | ✅ | |
+| `DeleteReceivedInvoice` | **Destructive** | `delete_received_invoice` | ✅ | |
 | **Reporting** (`ReportingTools`, 6) |
 | `GetDashboard` | Read | `get_dashboard` | ✅ | |
 | `GetOverdueInvoices` | Read | `list_invoices` + `overdue=true` | ✅ | |
@@ -1205,9 +1401,9 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | **Daně** (`TaxTools`, 5) |
 | `EstimateTax`, `CompareTaxRegimes`, `GetAnnualIncome`, `GetInsuranceAdvance`, `GetTaxConfig` | Read | — | ❌ | zatím bez tasku |
 | **Šablony** (`TemplateTools`, 3) |
-| `ListTemplates` | Read | — | ❌ | #225 |
-| `GetTemplate` | Read | — | ❌ | #225 |
-| `CreateInvoiceFromTemplate` | Create | — | ❌ | #225 |
+| `ListTemplates` | Read | `list_invoice_templates` | ✅ | |
+| `GetTemplate` | Read | `get_invoice_template` | ✅ | |
+| `CreateInvoiceFromTemplate` | Create | — | ❌ | zatím bez tasku |
 | **Readiness** (`ReadinessTools`, 1) |
 | `GetReadiness` | Read | `get_readiness` | ✅ | |
 | **Jen chat (MCP nemá)** |
@@ -1218,10 +1414,21 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | — | Read | `list_attachments` | ⬅ | |
 | — | **Write** (nastavení firmy) | `update_my_company` | ⬅ | |
 | — | **Write** (bankovní účty) | `add_bank_account`, `update_bank_account`, `delete_bank_account` | ⬅ | |
+| — | Read | `list_number_sequences` | ⬅ | |
+| — | **Write** (číselné řady) | `create_number_sequence`, `update_number_sequence` | ⬅ | |
+| — | Read | `list_vat_rates` | ⬅ | |
+| — | **Write** (sazby DPH) | `create_vat_rate`, `update_vat_rate` | ⬅ | |
+| — | Read (šablony dokumentů) | `list_content_templates`, `get_content_template` | ⬅ | |
+| — | **Write** (výchozí šablona dokumentu) | `set_default_content_template` | ⬅ | |
+| — | Read (upomínky) | `list_reminders` | ⬅ | |
+| — | Read (nastavení upomínek) | `get_reminder_settings` | ⬅ | |
+| — | **Write** (nastavení upomínek) | `update_reminder_settings` (za `confirm`) | ⬅ | |
+| — | Read (platby) | `list_payments` | ⬅ | |
+| — | Read (detail platby) | `get_payment` | ⬅ | |
 
-**Součty:** 37 MCP toolů, 29 chat toolů. Chat pokrývá 26 MCP toolů (z toho 1 částečně —
-`CreateReceivedInvoice`), 9 chat toolů nemá MCP protějšek. Zbývá 11 mezer:
-přijaté faktury (3, #218), daně (5, zatím bez tasku), šablony (3, #225).
+**Součty:** 37 MCP toolů, 49 chat toolů. Chat pokrývá 31 MCP toolů, žádný už jen částečně;
+23 chat toolů nemá MCP protějšek. Zbývá 6 mezer: daně (5, zatím bez tasku),
+šablony (1 — `CreateInvoiceFromTemplate`).
 
 **Vydané faktury jsou po #217 pokryté celé.** Jeden rozdíl proti MCP je záměrný:
 `delete_invoice` maže **jen koncepty**, i když servis umí smazat i poslední vydaný doklad
@@ -1230,8 +1437,13 @@ Druhý rozdíl je konsolidace: `get_invoice` zastupuje `GetInvoice` i `FindInvoi
 a `export_invoice` obě exportní metody — model si nemá vybírat mezi tooly, které se liší
 jen vyhledávacím klíčem nebo příponou souboru.
 
-Mimo obě rozhraní (jen UI / SysAdmin, plánováno v #224 / #227):
-číselné řady a sazby DPH, upomínky (dunning), PaymentMatch / BankTransaction.
+**Přijaté faktury jsou po #218 pokryté celé.** `create_received_invoice` uzavřel poslední
+částečnou položku — `import_invoice` zastupoval `CreateReceivedInvoice` jen pro text dokladu,
+diktovaná data neuměl.
+
+Číselné řady a sazby DPH už chat umí (#224), upomínky a platby taky (#227) — u obou MCP
+protějšek nemá. Mimo obě rozhraní zůstává jen UI / SysAdmin: párování platby s fakturou
+(PaymentMatch) — `list_payments`/`get_payment` čtou, ale spárovat jde jen na stránce Platby.
 
 ### 4.8 In-app notifikace (per-user)
 

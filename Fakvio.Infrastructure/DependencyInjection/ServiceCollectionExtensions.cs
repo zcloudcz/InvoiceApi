@@ -290,6 +290,13 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IChatTool, ListReceivedInvoicesTool>();
         services.AddScoped<IChatTool, SearchReceivedInvoicesTool>();
 
+        // …and act on them: record a new one and walk it through its lifecycle.
+        // All four write, so all four are IConfirmableChatTool — see DEVGUIDE §4.7 rule 7.
+        services.AddScoped<IChatTool, CreateReceivedInvoiceTool>();
+        services.AddScoped<IChatTool, ApproveReceivedInvoiceTool>();
+        services.AddScoped<IChatTool, MarkReceivedInvoicePaidTool>();
+        services.AddScoped<IChatTool, DeleteReceivedInvoiceTool>();
+
         // File attachment tools — let the agent attach files to entities and list existing attachments.
         services.AddScoped<IChatTool, AttachFileTool>();
         services.AddScoped<IChatTool, ListAttachmentsTool>();
@@ -307,6 +314,14 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IChatTool, UpdateBankAccountTool>();
         services.AddScoped<IChatTool, DeleteBankAccountTool>();
 
+        // Template tools — invoice DATA blueprints (read-only) and the PDF / e-mail HTML
+        // templates, whose default per type and language is changeable behind the confirm gate.
+        services.AddScoped<IChatTool, ListInvoiceTemplatesTool>();
+        services.AddScoped<IChatTool, GetInvoiceTemplateTool>();
+        services.AddScoped<IChatTool, ListContentTemplatesTool>();
+        services.AddScoped<IChatTool, GetContentTemplateTool>();
+        services.AddScoped<IChatTool, SetDefaultContentTemplateTool>();
+
         // Setup tools — let the agent say what is still missing before the user can invoice.
         services.AddScoped<IChatTool, GetReadinessTool>();
 
@@ -318,6 +333,26 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IChatTool, MarkInvoicePaidTool>();
         services.AddScoped<IChatTool, SendInvoiceEmailTool>();
         services.AddScoped<IChatTool, DeleteInvoiceTool>();
+
+        // Numbering and VAT settings — read the číselné řady and sazby DPH, and change them
+        // conversationally. Both writes of each pair are confirmable (IConfirmableChatTool).
+        services.AddScoped<IChatTool, ListNumberSequencesTool>();
+        services.AddScoped<IChatTool, CreateNumberSequenceTool>();
+        services.AddScoped<IChatTool, UpdateNumberSequenceTool>();
+        services.AddScoped<IChatTool, ListVatRatesTool>();
+        services.AddScoped<IChatTool, CreateVatRateTool>();
+        services.AddScoped<IChatTool, UpdateVatRateTool>();
+
+        // Reminder (dunning) tools — read the state and the settings; the settings write is
+        // confirmable (IConfirmableChatTool). Sending and cancelling reminders stays in the UI.
+        services.AddScoped<IChatTool, ListRemindersTool>();
+        services.AddScoped<IChatTool, GetReminderSettingsTool>();
+        services.AddScoped<IChatTool, UpdateReminderSettingsTool>();
+
+        // Payment tools — read-only by decision of story #149: matching a payment to an invoice
+        // moves money between documents, so it stays on the Payments page.
+        services.AddScoped<IChatTool, ListPaymentsTool>();
+        services.AddScoped<IChatTool, GetPaymentTool>();
 
         services.AddScopedWithLogging<IChatToolExecutor, ChatToolExecutor>();
 
