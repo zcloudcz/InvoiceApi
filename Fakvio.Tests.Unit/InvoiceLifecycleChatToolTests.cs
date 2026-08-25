@@ -465,6 +465,113 @@ public class InvoiceLifecycleChatToolTests
         result.ErrorMessage.ShouldContain("42");
     }
 
+
+    // ─── How get_invoice renders the parts a reader asks about ────
+
+    [Fact]
+    public async Task GetInvoice_WithoutLineItems_SaysThereAreNone()
+    {
+        // A draft can legitimately have no lines yet. Saying so explicitly is what stops the
+        // model from claiming the listing was merely truncated.
+        var withoutItems = BuildInvoice();
+        withoutItems.InvoiceItem = [];
+        GivenInvoice(withoutItems);
+
+        var result = await GetTool().ExecuteAsync(ById());
+
+        result.IsSuccess.ShouldBeTrue();
+        result.OutputText.ShouldContain("Line items: (none)");
+    }
+
+    [Fact]
+    public async Task GetInvoice_CreditNote_NamesTheDocumentItCorrects()
+    {
+        // "A credit note against what?" is the first question anyone asks about a dobropis.
+        var creditNote = BuildInvoice(documentType: EDocumentType.CreditNote, status: EInvoiceStatus.Completed);
+        creditNote.OriginalInvoiceId = 7;
+        creditNote.OriginalInvoiceNumber = "FAK-2025-119";
+        GivenInvoice(creditNote);
+
+        var result = await GetTool().ExecuteAsync(ById());
+
+        result.OutputText.ShouldContain("Related document");
+        result.OutputText.ShouldContain("FAK-2025-119");
+    }
+
+    // ─── Shared identity resolution (InvoiceLookup) ───────────────────
+
+    [Fact]
+    public async Task Lookup_PaddedId_IsStillResolvedById()
+    {
+        // The executor validates the type but dispatches the raw model value (#268).
+        GivenInvoice(BuildInvoice());
+
+        var result = await GetTool().ExecuteAsync(new Dictionary<string, string> { ["id"] = "  42  " });
+
+        result.IsSuccess.ShouldBeTrue();
+        await _invoiceService.Received(1).GetInvoiceByIdAsync(42, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Lookup_BlankId_FallsBackToTheDocumentNumber()
+    {
+        // Models like to fill every field, empty string included. That must not turn a call
+        // carrying a perfectly good document number into "invalid id".
+        GivenInvoice(BuildInvoice());
+
+        var result = await GetTool().ExecuteAsync(new Dictionary<string, string>
+        {
+            ["id"] = "   ",
+            ["document_number"] = "FAK-2026-001"
+        });
+
+        result.IsSuccess.ShouldBeTrue();
+        await _invoiceService.Received(1)
+            .GetInvoiceByDocumentNumberAsync("FAK-2026-001", Arg.Any<CancellationToken>());
+    }
+
+    // ─── The write itself came back empty (the record vanished meanwhile) ─
+
+    [Fact]
+    public async Task CompleteInvoice_Execute_Fails_WhenTheServiceReturnsNothing()
+    {
+        // The re-check found a draft, but the row was gone by the time of the write. The tool
+        // must report that instead of dereferencing the missing result.
+        GivenInvoice(BuildInvoice());
+        _invoiceService.CompleteInvoiceAsync(42, Arg.Any<CancellationToken>()).Returns((InvoiceDto?)null);
+
+        var result = await CompleteTool().ExecuteAsync(ById());
+
+        result.IsSuccess.ShouldBeFalse();
+        result.ErrorMessage.ShouldContain("42");
+    }
+
+    [Fact]
+    public async Task MarkInvoicePaid_Execute_Fails_WhenTheServiceReturnsNothing()
+    {
+        GivenInvoice(BuildInvoice(status: EInvoiceStatus.Completed));
+        _invoiceService.MarkAsPaidAsync(42, null, Arg.Any<CancellationToken>()).Returns((InvoiceDto?)null);
+
+        var result = await MarkPaidTool().ExecuteAsync(ById());
+
+        result.IsSuccess.ShouldBeFalse();
+        result.ErrorMessage.ShouldContain("42");
+    }
+
+    [Fact]
+    public async Task SendInvoiceEmail_Execute_AlsoSendsADraft_LikeTheEmailActionInTheGrid()
+    {
+        // Deliberate asymmetry against the other three writes: the grid offers Email for any
+        // status (USERGUIDE §2.3). A status guard added here would quietly take that away.
+        GivenInvoice(BuildInvoice(status: EInvoiceStatus.Draft));
+
+        var result = await SendEmailTool().ExecuteAsync(SendParameters());
+
+        result.IsSuccess.ShouldBeTrue();
+        await _emailService.Received(1)
+            .SendInvoiceEmailAsync(42, "ucetni@alza.cz", Arg.Any<CancellationToken>());
+    }
+
     // ─── The confirm gate over the real tools (issue #212 seam) ───────────
 
     /// <summary>
@@ -533,5 +640,144 @@ public class InvoiceLifecycleChatToolTests
 
         writeTools.ShouldAllBe(tool => tool is IConfirmableChatTool);
         GetTool().ShouldNotBeAssignableTo<IConfirmableChatTool>();
+    }
+
+    /// <summary>The four lifecycle writes and the status each of them accepts.</summary>
+    public static TheoryData<string, EInvoiceStatus> LifecycleWrites => new()
+    {
+        { "complete_invoice", EInvoiceStatus.Draft },
+        { "mark_invoice_paid", EInvoiceStatus.Completed },
+        { "send_invoice_email", EInvoiceStatus.Completed },
+        { "delete_invoice", EInvoiceStatus.Draft }
+    };
+
+    /// <summary>
+    /// One executor holding all four writes, the way DI wires them in production.
+    /// <see cref="SendParameters"/> serves every one of them: the identity keys are shared and
+    /// a recipient_email the other schemas do not declare is simply ignored.
+    /// </summary>
+    private ChatToolExecutor ExecutorOverEveryLifecycleWrite()
+        => new([CompleteTool(), MarkPaidTool(), SendEmailTool(), DeleteTool()],
+            Substitute.For<ILogger<ChatToolExecutor>>());
+
+    [Theory]
+    [MemberData(nameof(LifecycleWrites))]
+    public async Task EveryLifecycleWrite_WithoutConfirm_OnlyPreviews(string toolName, EInvoiceStatus status)
+    {
+        // The type assertion above proves the tools declare the interface; this proves the
+        // executor really holds each of them back. Only delete_invoice was walked through the
+        // real seam before, and "confirmable in theory" is the state that ships a silent write.
+        GivenInvoice(BuildInvoice(status: status));
+
+        var result = await ExecutorOverEveryLifecycleWrite().ExecuteToolAsync(
+            new ParsedToolCall { Action = toolName, Parameters = SendParameters() });
+
+        result.IsSuccess.ShouldBeTrue();
+        result.RequiresConfirmation.ShouldBeTrue();
+        result.OutputText.ShouldContain("NOTHING HAS BEEN CHANGED YET");
+        await ShouldHaveWrittenNothing();
+    }
+
+    [Theory]
+    [MemberData(nameof(LifecycleWrites))]
+    public async Task EveryLifecycleWrite_WithConfirm_ReachesItsService(string toolName, EInvoiceStatus status)
+    {
+        GivenInvoice(BuildInvoice(status: status));
+        GivenEveryWriteSucceeds();
+
+        var parameters = SendParameters();
+        parameters["confirm"] = "true";
+
+        var result = await ExecutorOverEveryLifecycleWrite().ExecuteToolAsync(
+            new ParsedToolCall { Action = toolName, Parameters = parameters });
+
+        result.IsSuccess.ShouldBeTrue();
+        result.RequiresConfirmation.ShouldBeFalse();
+        await ShouldHaveWritten(toolName);
+    }
+
+    [Fact]
+    public async Task SendInvoiceEmail_ThroughTheExecutor_WithoutARecipient_NeverReachesTheTool()
+    {
+        // The tool reads recipient_email through the indexer, which is only safe because central
+        // validation rejects the call first — and a rejected call never ran, so the flag says so.
+        GivenInvoice(BuildInvoice(status: EInvoiceStatus.Completed));
+
+        var result = await ExecutorOver(SendEmailTool()).ExecuteToolAsync(
+            new ParsedToolCall { Action = "send_invoice_email", Parameters = ById() });
+
+        result.IsSuccess.ShouldBeFalse();
+        result.ErrorMessage.ShouldContain("recipient_email");
+        result.RequiresConfirmation.ShouldBeTrue();
+        await _emailService.DidNotReceive()
+            .SendInvoiceEmailAsync(Arg.Any<long>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CompleteInvoice_ThroughTheExecutor_WhenTheServiceThrows_StaysAnExecutedCall()
+    {
+        // InvoiceService.CompleteInvoiceAsync throws when the company settings are incomplete
+        // (readiness gate, #206) or the variable symbol collides — neither is visible to the
+        // preview, so the failure arrives from the write. It DID run: the model must not be told
+        // nothing happened, because part of the change may already be persisted.
+        GivenInvoice(BuildInvoice());
+        _invoiceService.CompleteInvoiceAsync(42, Arg.Any<CancellationToken>())
+            .Returns<Task<InvoiceDto?>>(_ => throw new InvalidOperationException("Company settings are incomplete"));
+
+        var parameters = ById();
+        parameters["confirm"] = "true";
+
+        var result = await ExecutorOver(CompleteTool()).ExecuteToolAsync(
+            new ParsedToolCall { Action = "complete_invoice", Parameters = parameters });
+
+        result.IsSuccess.ShouldBeFalse();
+        result.ErrorMessage.ShouldContain("Company settings are incomplete");
+        result.RequiresConfirmation.ShouldBeFalse();
+    }
+
+    /// <summary>Every write the four tools can perform, all stubbed as successful.</summary>
+    private void GivenEveryWriteSucceeds()
+    {
+        _invoiceService.CompleteInvoiceAsync(42, Arg.Any<CancellationToken>())
+            .Returns(BuildInvoice(status: EInvoiceStatus.Completed));
+        _invoiceService.MarkAsPaidAsync(42, null, Arg.Any<CancellationToken>())
+            .Returns(BuildInvoice(status: EInvoiceStatus.Paid));
+        _invoiceService.DeleteInvoiceAsync(42, Arg.Any<CancellationToken>()).Returns(true);
+    }
+
+    /// <summary>Not one of the four writes reached a service — the whole point of the gate.</summary>
+    private async Task ShouldHaveWrittenNothing()
+    {
+        await _invoiceService.DidNotReceive()
+            .CompleteInvoiceAsync(Arg.Any<long>(), Arg.Any<CancellationToken>());
+        await _invoiceService.DidNotReceive()
+            .MarkAsPaidAsync(Arg.Any<long>(), Arg.Any<DateTime?>(), Arg.Any<CancellationToken>());
+        await _invoiceService.DidNotReceive()
+            .DeleteInvoiceAsync(Arg.Any<long>(), Arg.Any<CancellationToken>());
+        await _emailService.DidNotReceive()
+            .SendInvoiceEmailAsync(Arg.Any<long>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>The confirmed tool performed its own write, on the invoice it resolved.</summary>
+    private async Task ShouldHaveWritten(string toolName)
+    {
+        switch (toolName)
+        {
+            case "complete_invoice":
+                await _invoiceService.Received(1).CompleteInvoiceAsync(42, Arg.Any<CancellationToken>());
+                break;
+            case "mark_invoice_paid":
+                await _invoiceService.Received(1).MarkAsPaidAsync(42, null, Arg.Any<CancellationToken>());
+                break;
+            case "send_invoice_email":
+                await _emailService.Received(1)
+                    .SendInvoiceEmailAsync(42, "ucetni@alza.cz", Arg.Any<CancellationToken>());
+                break;
+            case "delete_invoice":
+                await _invoiceService.Received(1).DeleteInvoiceAsync(42, Arg.Any<CancellationToken>());
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(toolName), toolName, "Unknown lifecycle write.");
+        }
     }
 }
