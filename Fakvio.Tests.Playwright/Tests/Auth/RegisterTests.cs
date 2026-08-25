@@ -7,14 +7,44 @@ namespace Fakvio.Tests.Playwright.Tests.Auth;
 /// <summary>
 /// Tests for the Registration page (/register) and for the onboarding journey that starts there.
 ///
-/// Two kinds of test live here:
+/// Three kinds of test live here:
 /// - the cheap rendering checks on /register itself,
 /// - one long journey (issue #221, story #150) that walks a brand-new company all the way from
-///   the registration form to a dashboard with nothing left blocking invoicing.
+///   the registration form to a dashboard with nothing left blocking invoicing,
+/// - the refusal paths of /set-password, the step of that journey that arrives by e-mail and is
+///   therefore the one a user can reach with a broken or already-spent link.
 /// </summary>
 [TestFixture]
 public class RegisterTests : FakvioPageTest
 {
+    /// <summary>
+    /// Width of the browser window every test in this fixture runs at.
+    ///
+    /// The chat drawer (#358) is declared with <c>Breakpoint="Breakpoint.Lg"</c>, and MudBlazor
+    /// puts that boundary at exactly 1280 px: at 1280 and above the drawer clips the content and
+    /// leaves it clickable, below it turns into an overlay that swallows clicks. Playwright's
+    /// default window happens to be exactly 1280 px wide, i.e. exactly on the boundary — and the
+    /// onboarding journey is precisely the situation in which the assistant opens itself, because
+    /// the setup is not finished yet. The width is therefore pinned well clear of the boundary
+    /// instead of being inherited from a library default that may move.
+    /// </summary>
+    private const int DesktopViewportWidth = 1440;
+
+    /// <summary>Height that goes with <see cref="DesktopViewportWidth"/>; no breakpoint depends on it.</summary>
+    private const int DesktopViewportHeight = 900;
+
+    /// <inheritdoc />
+    public override BrowserNewContextOptions ContextOptions()
+    {
+        var options = base.ContextOptions();
+        options.ViewportSize = new ViewportSize
+        {
+            Width = DesktopViewportWidth,
+            Height = DesktopViewportHeight
+        };
+        return options;
+    }
+
     [Test]
     public async Task Register_PageLoads_ShowsForm()
     {
@@ -115,6 +145,9 @@ public class RegisterTests : FakvioPageTest
     private const string BankAccountIssueCz = "Vlastní firma nemá bankovní účet";
     private const string FixLinkCz = "Doplnit";
     private const string SaveSuccessCz = "Uloženo úspěšně";
+    private const string NewPasswordLabelCz = "Nové heslo";
+    private const string TokenMissingCz = "Chybí token pozvánky. Zkontrolujte odkaz v emailu.";
+    private const string TokenRejectedCz = "Pozvánka je neplatná nebo vypršela. Požádejte administrátora o novou pozvánku.";
 
     /// <summary>Password the journey sets for the account it registers (min. 6 chars).</summary>
     private const string NewUserPassword = "E2eHeslo123!";
@@ -166,6 +199,11 @@ public class RegisterTests : FakvioPageTest
 
         await SetPasswordAsync(invitationToken);
 
+        // The invitation is single use — setting the password clears the token server-side.
+        // Asserted here rather than in a test of its own because this is the only place in the
+        // suite that ever holds a real, freshly issued token; anywhere else it would be a fake.
+        await ExpectSetPasswordRefusesLinkAsync(SetPasswordUrl(invitationToken), TokenRejectedCz);
+
         // First login — through the real form, as the freshly created account.
         await LoginViaUiAsync(email, NewUserPassword);
 
@@ -177,7 +215,9 @@ public class RegisterTests : FakvioPageTest
 
         // Follow the guide. Scoping the link to the blocking group matters: the warning group
         // carries a "Doplnit" link of its own that leads to a page this user may not open (#345).
-        await blockingGroup.GetByRole(AriaRole.Link, new() { Name = FixLinkCz }).First.ClickAsync();
+        // No .First here on purpose — Playwright's strict mode then also asserts what the two
+        // lines above only imply, namely that the bank account is the *only* thing blocking.
+        await blockingGroup.GetByRole(AriaRole.Link, new() { Name = FixLinkCz }).ClickAsync();
         await Page.WaitForURLAsync("**/my-company", new() { Timeout = Config.BlazorLoadTimeout });
 
         await AddBankAccountAsync("2002002002/2010");
@@ -194,6 +234,45 @@ public class RegisterTests : FakvioPageTest
             .ToBeVisibleAsync(new() { Timeout = OnboardingStepTimeout });
         await Expect(ChecklistGroup(BlockingGroupTitleCz)).ToHaveCountAsync(0);
     }
+
+    /// <summary>
+    /// A link with no token at all — a mail client that dropped the query string, or somebody
+    /// typing the address by hand. The page must say why instead of offering an empty form.
+    /// </summary>
+    [Test]
+    public async Task SetPassword_WithoutToken_RefusesTheLink()
+        => await ExpectSetPasswordRefusesLinkAsync("/set-password", TokenMissingCz);
+
+    /// <summary>
+    /// A well-formed token that belongs to nobody. This is the branch the API answers, as opposed
+    /// to the missing-token case above, which the page decides on its own without a round trip.
+    /// </summary>
+    [Test]
+    public async Task SetPassword_WithUnknownToken_RefusesTheLink()
+        => await ExpectSetPasswordRefusesLinkAsync(SetPasswordUrl(Guid.NewGuid().ToString()), TokenRejectedCz);
+
+    /// <summary>
+    /// Opens a "set your password" link that must not work and asserts the page turned it down:
+    /// the reason is on screen and the form is not there at all. The second half is the load
+    /// bearing one — an error banner sitting above a usable form would still let the caller
+    /// through.
+    /// </summary>
+    private async Task ExpectSetPasswordRefusesLinkAsync(string relativeUrl, string expectedMessage)
+    {
+        await Page.GotoAsync(relativeUrl, new()
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+            Timeout = Config.BlazorLoadTimeout
+        });
+
+        await Expect(Page.GetByText(expectedMessage))
+            .ToBeVisibleAsync(new() { Timeout = Config.BlazorLoadTimeout });
+        await Expect(Page.GetByLabel(NewPasswordLabelCz)).ToHaveCountAsync(0);
+    }
+
+    /// <summary>Builds the invitation link the registration mail would contain.</summary>
+    private static string SetPasswordUrl(string token)
+        => $"/set-password?token={Uri.EscapeDataString(token)}";
 
     /// <summary>
     /// One severity block of the setup checklist. <c>setup-checklist-group</c> is the structural
@@ -249,13 +328,13 @@ public class RegisterTests : FakvioPageTest
     /// </summary>
     private async Task SetPasswordAsync(string invitationToken)
     {
-        await Page.GotoAsync($"/set-password?token={Uri.EscapeDataString(invitationToken)}", new()
+        await Page.GotoAsync(SetPasswordUrl(invitationToken), new()
         {
             WaitUntil = WaitUntilState.NetworkIdle,
             Timeout = Config.BlazorLoadTimeout
         });
 
-        var newPassword = Page.GetByLabel("Nové heslo");
+        var newPassword = Page.GetByLabel(NewPasswordLabelCz);
         await Expect(newPassword).ToBeVisibleAsync(new() { Timeout = Config.BlazorLoadTimeout });
         await newPassword.FillAsync(NewUserPassword);
         await Page.GetByLabel("Potvrzení hesla").FillAsync(NewUserPassword);
