@@ -65,7 +65,8 @@ there is no finalize step here, the board moves happen in
 
 If there is an OPEN PR with base=TEST-ENV, head=$INTEGRATION:
 
-    gh pr list --base TEST-ENV --head $INTEGRATION --state open --json number,url,title
+    gh pr list --base TEST-ENV --head $INTEGRATION --state open --limit 1 \
+      --json number,url,title --jq '.[0]'
 
 Print:
 
@@ -87,7 +88,12 @@ Default case: develop has commits `TEST-ENV` does not.
    `agent-ops` wrote one reader-facing line per merged task under
    `## Nevydáno` (see `.claude/agents/agent-ops.md` Step 2a). That section
    **is** the release body — it says what changed and why it matters, which
-   commit subjects do not. Use the raw compare output only as a cross-check:
+   commit subjects do not. Read it here, **before** step 1b renames the
+   heading:
+
+       BODY=$(awk '/^## Nevydáno$/{f=1;next} /^## /{f=0} f' release-notes.md)
+
+   Use the raw compare output only as a cross-check:
 
        gh api repos/$OWNER_REPO/compare/TEST-ENV...$INTEGRATION \
          --jq '.commits | map("- " + (.commit.message | split("\n")[0])) | .[]'
@@ -96,9 +102,25 @@ Default case: develop has commits `TEST-ENV` does not.
    record — say so in the PR body and name the issue, rather than silently
    filling it in from the commit subject.
 
-1b. **Roll the notes over on `develop`, before opening the PR.**
-   In `release-notes.md`, rename `## Nevydáno` to `## <verze> — <YYYY-MM-DD>`
-   and insert a fresh empty `## Nevydáno` above it. Commit as:
+1b. **Roll the notes over on `develop`, before opening the PR — unless it
+   has already been rolled.**
+
+   Guard first. This command must not double-roll the notes (see Hard
+   rules), and an earlier run that was interrupted after the rollover
+   commit but before `gh pr create` leaves exactly that trap: rolling
+   again would cut a second, empty version. Roll over only when
+   `## Nevydáno` still has at least one entry under it:
+
+       ENTRIES=$(awk '/^## Nevydáno$/{f=1;next} /^## /{f=0} f && /^- /' release-notes.md | wc -l)
+
+   `ENTRIES` = 0 means the section is already empty — the rollover has
+   happened (or there is genuinely nothing to cut). Skip it, say so in
+   the run output, and continue to step 2 with the version that is
+   already at the top of the file.
+
+   Otherwise, in `release-notes.md`, rename `## Nevydáno` to
+   `## <verze> — <YYYY-MM-DD>` and insert a fresh empty `## Nevydáno`
+   above it. Commit as:
 
        chore(release-notes): close <verze>
 
@@ -108,6 +130,9 @@ Default case: develop has commits `TEST-ENV` does not.
    `develop → TEST-ENV` a fast-forwardable, conflict-free merge.
    `/release-prod` only promotes what this step already wrote — it never
    edits `release-notes.md`.
+
+   This commit lands directly on the integration branch, which is the
+   second (and last) named exception in `AGENT-RULES.md` §1.
 
 2. Open the promotion PR:
 

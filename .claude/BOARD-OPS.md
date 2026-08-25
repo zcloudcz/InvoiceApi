@@ -388,7 +388,9 @@ Lifecycle of a feature:
   card moves — the test environment is not a release.
 - A human verifies the test environment and triggers `/release-prod`
   (TEST-ENV → master, merge commit). Only then do `Implemented` cards
-  batch-move to `Approved`.
+  batch-move to `Approved`, and only those whose feature-PR merge commit
+  actually reached `master` — a card merged into develop while the
+  release PR was open waits for the next release.
 
 Column meanings on the board:
 
@@ -432,9 +434,13 @@ Task flow (sub-issues created from a story, or standalone backlog items):
     Test        -> Progress    : agent-tester on failing impl,       label -> role:dev
     Test        -> Implemented : agent-tester on green CI,           label -> role:ops
                                  (PR target is develop, not master)
-    Implemented -> Approved    : `/release-prod` merges TEST-ENV -> master, batch-moves
-                                 all Implemented cards to Approved. (`/release` promotes
-                                 develop -> TEST-ENV and moves no cards.)
+    Implemented -> Approved    : `/release-prod` merges TEST-ENV -> master, then batch-moves
+                                 the Implemented cards whose feature-PR merge commit is an
+                                 ancestor of master. Closing time is NOT the test — a card
+                                 merged into develop while the release PR was open closed
+                                 early and is still not in master. See release-prod.md
+                                 State A. (`/release` promotes develop -> TEST-ENV and
+                                 moves no cards.)
     any         -> Blocked     : agent-dev when it must ask a question, label +blocked:question
     Blocked     -> ToDo        : human after answering (manual)
     Implemented -> Progress    : agent-ops on merge conflict, +needs:rebase, label -> role:dev
@@ -449,7 +455,8 @@ Story flow (a `type:story` issue, before and around its task children):
                                  (story stays in Decomposed throughout child execution)
     Decomposed  -> Implemented : agent-ops when it merges the LAST open child of the story
                                  into develop
-    Implemented -> Approved    : `/release-prod` (alongside the child task cards)
+    Implemented -> Approved    : `/release-prod` (alongside the child task cards, and only
+                                 once every child is itself in master)
 
 Approval / blocking labels on a story:
 

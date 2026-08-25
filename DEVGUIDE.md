@@ -1918,7 +1918,7 @@ a vlastní spouštěč:
 | Stupeň | Větev | Kdo / čím | Co se nasadí | Karty na boardu |
 |--------|-------|-----------|--------------|-----------------|
 | Integrace | `develop` | `agent-ops` squash-merge feature PR | nic (`develop` nemá deploy workflow) | karta → `Implemented` |
-| Test | `TEST-ENV` | člověk příkazem `/release` | testovací prostředí (Functions slot `test` + Static Web App) | **nehýbou se** |
+| Test | `TEST-ENV` | člověk příkazem `/release` | testovací prostředí (Functions slot `test` + Static Web App) — jakmile jsou příslušné workflows v repu, viz níže | **nehýbou se** |
 | Produkce | `master` | člověk příkazem `/release-prod` po ověření testu | produkce (Function App `zcloudinvoicingapi` + GitHub Pages) | `Implemented` → `Approved` |
 
 Pravidla:
@@ -1937,11 +1937,12 @@ Pravidla:
 - Žádná z větví nemá branch protection — pořadí stupňů je konvence vynucená
   agenty a těmito příkazy, ne GitHubem.
 
-Deploy workflows pro `TEST-ENV` (Functions slot `test`, Static Web App) řeší
-issue #290 a #292; až budou hotové, přibudou do tabulky v §9.1. Stavový automat
-obou příkazů je v `.claude/commands/release.md` a
-`.claude/commands/release-prod.md`, dopad na board v `.claude/BOARD-OPS.md`
-(sekce „Integration branch model").
+Deploy workflows pro `TEST-ENV` (Functions slot `test`, Static Web App) vznikají
+v issue #290 a #292. Dokud nejsou v `develop`, `/release` jen posune větev a
+nic se nenasadí — samotné posunutí `TEST-ENV` deploy nespouští. Až tyhle
+workflows přistanou, doplň je do tabulky v §9.1. Stavový automat obou příkazů
+je v `.claude/commands/release.md` a `.claude/commands/release-prod.md`, dopad
+na board v `.claude/BOARD-OPS.md` (sekce „Integration branch model").
 
 ## 10. Observability — logging + correlation
 

@@ -54,34 +54,66 @@ Then pick the FIRST matching state. **Finalization is checked before
 and `TEST-ENV` are identical, so an "up-to-date, nothing to do" check
 placed first would swallow the pending board moves.
 
-### State A — A merged release PR still has cards to finalize
+### State A — the last merged release PR still has cards to finalize
 
 Find the most recently merged PR with base=master, head=TEST-ENV:
 
     RELEASE_PR=$(gh pr list --base master --head TEST-ENV --state merged \
-      --limit 1 --json number,mergedAt,url)
+      --limit 1 --json number,url --jq '.[0]')
 
-If there is one, list the cards still in `Implemented` and keep only
-those whose issue was closed **at or before** that merge — a card that
-reached `Implemented` after the release PR merged belongs to the *next*
-release and must not be approved with this one.
+`gh pr list` returns an **array**, so take `.[0]`; it comes back empty
+when nothing was ever released. No merged release PR ⇒ State A does not
+apply.
 
-1. List all cards in the `Implemented` column of the project board and
-   drop the ones with `closedAt > mergedAt`. If what remains is **more
-   than 5**, AGENT-RULES §6 applies (mass state change): print the full
-   list and ask for confirmation before touching anything. The
-   `/release-prod` invocation authorizes the release, not an unbounded
-   board rewrite. On a non-interactive run, stop and report the count
-   instead of guessing.
-2. For each, move card status `Implemented` → `Approved`.
-3. For each story card in `Implemented`, also move it to `Approved`
-   (story rollup at release time).
+Otherwise build the **finalize set**: the cards still in `Implemented`
+whose code is actually in `master`.
+
+Do not filter by time. "Issue closed at or before the release PR merged"
+answers a different question — a card merged into `develop` *while* the
+release PR was open closed before that merge and still missed the
+promotion, so a timestamp filter would approve a card whose code is not
+in `master`. The test is ancestry:
+
+    # merge commit of the card's own feature PR (squashed onto develop)
+    MERGE_SHA=$(gh pr list --state merged --search "in:body \"Closes #<issue>\"" \
+      --limit 1 --json mergeCommit --jq '.[0].mergeCommit.oid')
+
+    # in this release if and only if that commit is an ancestor of master
+    git fetch origin master
+    git merge-base --is-ancestor "$MERGE_SHA" origin/master   # exit 0 -> in the release
+
+Without a local checkout the same question is one API call — `status` is
+`identical` or `behind` when the commit is already in `master`, `ahead`
+or `diverged` when it is not:
+
+    gh api repos/$OWNER_REPO/compare/master...$MERGE_SHA --jq .status
+
+**If the finalize set is empty, State A does not apply — fall through to
+B / C / D.** That empty check *is* the condition: a merged release PR
+never disappears, so its mere existence is not a state; only "it still
+has cards waiting" is. Keying State A off the PR alone would make every
+run after the first production release stop here, and a second release
+PR would never be opened.
+
+With a non-empty finalize set:
+
+1. If the set holds **more than 5** cards, AGENT-RULES §6 applies (mass
+   state change): print the full list and ask for confirmation before
+   touching anything. The `/release-prod` invocation authorizes the
+   release, not an unbounded board rewrite. On a non-interactive run,
+   stop and report the count instead of guessing.
+2. For each card in the set, move card status `Implemented` → `Approved`.
+3. For each story card in `Implemented`, apply the same ancestry test to
+   its children: move the story only when every child task card is in the
+   finalize set or already `Approved`. A story with a child that is not
+   yet in `master` stays in `Implemented` and rolls up with the next
+   release.
 4. Comment on the merged release PR:
    `Finalized: N task cards + M story cards moved to Approved.`
 5. Stop. Print a summary.
 
-This step is idempotent — re-running with all cards already in
-`Approved` is a no-op.
+This step is idempotent — once the cards are in `Approved` the finalize
+set is empty, so the next run falls through instead of re-moving them.
 
 ### State B — `master` is up-to-date with `TEST-ENV`
 
@@ -94,7 +126,8 @@ Stop. Nothing has been promoted to `TEST-ENV` since the last release.
 
 If there is an OPEN PR with base=master, head=TEST-ENV:
 
-    gh pr list --base master --head TEST-ENV --state open --json number,url,title
+    gh pr list --base master --head TEST-ENV --state open --limit 1 \
+      --json number,url,title --jq '.[0]'
 
 Print:
 
@@ -113,6 +146,12 @@ Default case: `TEST-ENV` has commits `master` does not.
    into versioned sections on `develop`, so read them from `TEST-ENV`:
 
        TITLE="Production release: $(date +%Y-%m-%d)"
+
+       # The lines release-notes.md gained between master and TEST-ENV are
+       # exactly the versions master has not seen yet.
+       git fetch origin master TEST-ENV
+       BODY=$(git diff origin/master:release-notes.md origin/TEST-ENV:release-notes.md \
+              | grep '^+[^+]' | cut -c2-)
 
    Cross-check against the raw compare output:
 

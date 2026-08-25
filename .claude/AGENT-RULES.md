@@ -35,8 +35,13 @@ the repo wins.
   branches when the repo does not have it yet is branch creation, not a
   commit, and stays allowed (`/release` bootstraps `TEST-ENV` off
   `master`, `agent-dev` the integration branch).
-  **One exception, and only one:** `agent-ops` commits the
-  `release-notes.md` line for a merge it has just made (its Step 2a). Nothing else qualifies — not a one-line test fix, not a doc
+  **Two exceptions, and only two — both are `release-notes.md` on the
+  integration branch:** (1) `agent-ops` commits the release-notes line
+  for a merge it has just made (its Step 2a); (2) `/release` step 1b
+  commits the version rollover (`## Nevydáno` → `## <verze> — <datum>`)
+  right before it opens the promotion PR. The record has to sit on the
+  branch being promoted, which is why neither can go through a PR of its
+  own. Nothing else qualifies — not a one-line test fix, not a doc
   refresh. On 2026-08-23 `7d685e7` (test fix behind #276) and `997e9ba`
   (DEVGUIDE parity table) landed straight on `develop` with no PR, no
   review and no release-notes line. Both should have been PRs.
@@ -57,7 +62,7 @@ the repo wins.
 **Forbidden:**
 - `gh repo delete`, `gh repo archive`, `gh repo rename`.
 - Closing issues / PRs you did not open, except as part of an explicit
-  human-approved workflow (e.g. `/release` finalization).
+  human-approved workflow (e.g. `/release-prod` finalization).
 - Bulk operations across many issues / PRs without an explicit
   human-issued instruction in this session.
 - Touching repos outside the current working tree.
