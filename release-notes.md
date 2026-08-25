@@ -22,6 +22,11 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Změny pro uživatele
 
+- **#214** — přihlásíte-li se s nedokončeným nastavením firmy (chybí sídlo, IČO/DIČ, bankovní
+  účet nebo číselná řada), AI asistent v chatu se teď sám ozve jako první — otevře se panel
+  s uvítáním a nabídkou pomoct to doplnit. Ptá se po jednom údaji a rovnou ho zapisuje, není
+  potřeba přepínat do formulářů. Ozve se jen jednou za přihlášení (ne po každém obnovení
+  stránky) a jakmile je nastavení kompletní, mlčí. (PR #358, `14e4a77`)
 - **#210** — dashboard místo statického „Rychlý start" teď ukazuje živý přehled, co firmě ještě chybí k vystavení faktury — položky jsou rozdělené na blokující a doporučené (ne jen barvou, i nadpisem), každá vede přímo tam, kde se dá doplnit. Kartu jde tlačítkem „Připomenout později" sbalit na jeden řádek, ale nezmizí natrvalo — jakmile něco chybí, po dalším přihlášení se zase ukáže sama. (PR #348, `31bf00d`)
 
 ### Opravy
