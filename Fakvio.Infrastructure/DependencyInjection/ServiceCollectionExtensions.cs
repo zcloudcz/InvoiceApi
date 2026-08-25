@@ -307,6 +307,14 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IChatTool, UpdateBankAccountTool>();
         services.AddScoped<IChatTool, DeleteBankAccountTool>();
 
+        // Template tools — invoice DATA blueprints (read-only) and the PDF / e-mail HTML
+        // templates, whose default per type and language is changeable behind the confirm gate.
+        services.AddScoped<IChatTool, ListInvoiceTemplatesTool>();
+        services.AddScoped<IChatTool, GetInvoiceTemplateTool>();
+        services.AddScoped<IChatTool, ListContentTemplatesTool>();
+        services.AddScoped<IChatTool, GetContentTemplateTool>();
+        services.AddScoped<IChatTool, SetDefaultContentTemplateTool>();
+
         // Setup tools — let the agent say what is still missing before the user can invoice.
         services.AddScoped<IChatTool, GetReadinessTool>();
 
