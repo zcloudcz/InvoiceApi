@@ -1905,7 +1905,7 @@ tedy nešlo připnout. Vzor: `TenantSchemaCanonicalizationTests`.
 `TestConfiguration` čte cíl z proměnných prostředí, takže stejná sada jede lokálně i proti Azure:
 
 ```bash
-FAKVIO_UI_URL=https://test.fakvio.cz FAKVIO_API_URL=https://zcloudinvoicingapi-test.azurewebsites.net   dotnet test Fakvio.Tests.Playwright --filter "TestCategory=Deployment"
+FAKVIO_UI_URL=https://test.fakvio.cz \nFAKVIO_API_URL=https://zcloudinvoicingapi-test.azurewebsites.net \n  dotnet test Fakvio.Tests.Playwright --filter "TestCategory=Deployment"
 ```
 
 `Tests/Deployment/DeployedEnvironmentTests.cs` (kategorie `Deployment`) ověřuje **jen to, co lokální
