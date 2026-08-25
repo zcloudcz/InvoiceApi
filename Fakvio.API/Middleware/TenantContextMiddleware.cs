@@ -45,6 +45,9 @@ public class TenantContextMiddleware
         "/api/cloud-storage",        // Cloud storage settings — stored in master DB CompanySystemSettings
         "/api/email",                // SysAdmin email — uses system SMTP, no tenant needed
         "/api/sysadmin/payment-matching", // Payment matching IMAP/poll config — master DB, SysAdmin only
+        "/api/diagnostic",           // Deployment diagnostics — master DB only; a SysAdmin must be
+                                     // able to ask "is the database reachable" without first
+                                     // impersonating a company that may not even exist yet
         "/swagger",
         "/health"
     ];

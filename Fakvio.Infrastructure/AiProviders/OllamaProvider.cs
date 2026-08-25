@@ -296,48 +296,15 @@ public class OllamaProvider : IAiProvider
     /// </summary>
     private static List<object> BuildOllamaTools(List<NativeToolDefinition> tools)
     {
-        return tools.Select(tool =>
+        return tools.Select(tool => (object)new
         {
-            // Build JSON Schema properties from NativeToolParameter list.
-            var properties = new Dictionary<string, object>();
-            foreach (var param in tool.Parameters)
+            type = "function",
+            function = new
             {
-                var propDef = new Dictionary<string, object>
-                {
-                    ["type"] = param.Type,
-                    ["description"] = param.Description
-                };
-
-                // Add enum constraint if the parameter has specific allowed values.
-                if (param.EnumValues is { Count: > 0 })
-                {
-                    propDef["enum"] = param.EnumValues;
-                }
-
-                // Array parameters must declare the schema of their elements.
-                if (param.ArrayItemType is { Length: > 0 })
-                {
-                    propDef["items"] = new Dictionary<string, object> { ["type"] = param.ArrayItemType };
-                }
-
-                properties[param.Name] = propDef;
+                name = tool.Name,
+                description = tool.Description,
+                parameters = NativeToolSchema.BuildJsonSchema(tool)
             }
-
-            return (object)new
-            {
-                type = "function",
-                function = new
-                {
-                    name = tool.Name,
-                    description = tool.Description,
-                    parameters = new
-                    {
-                        type = "object",
-                        properties,
-                        required = tool.Required
-                    }
-                }
-            };
         }).ToList();
     }
 

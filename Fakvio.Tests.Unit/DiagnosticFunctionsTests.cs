@@ -1,20 +1,18 @@
 // ============================================================================
-// DiagnosticFunctionsTests — Unit tests for the health check endpoint.
+// DiagnosticFunctionsTests — unit tests for the Azure Functions health trigger.
 //
-// Verifies that the /api/diagnostic/health endpoint correctly reports:
-// - databaseConnected: true/false based on DB connectivity
-// - databaseReady: true only when connected AND no pending migrations
-// - HTTP 503 when the database is unreachable
-// - HTTP 200 when the database is healthy
-//
-// Uses InMemoryDatabase to simulate a working DB, and NSubstitute
-// to simulate a failing DB scenario (CanConnectAsync returns false).
-//
-// Also covers the SysAdmin gate on /api/diagnostic/migrate and
-// /api/diagnostic/auth (401 anonymous, 403 non-SysAdmin, 200 SysAdmin).
+// Since #138 the health payload itself is built by Fakvio.API DiagnosticController and is
+// pinned by DiagnosticControllerTests. What is left to verify HERE is what only the
+// Functions host can get wrong:
+// - the [Authorize(Roles = "SysAdmin")] check on all three endpoints, which must be
+//   inlined because the MVC filter pipeline does not run inside a function invocation
+//   (401 anonymous, 403 non-SysAdmin, 200 SysAdmin)
+// - that a permitted call really reaches the controller (same payload, both hosts),
+//   including the 503 propagating instead of being flattened to 200
 // ============================================================================
 
 using System.Security.Claims;
+using Fakvio.API.Controller;
 using Fakvio.Functions.HttpFunctions;
 using Fakvio.Infrastructure.Data;
 using Microsoft.AspNetCore.Http;
@@ -28,186 +26,147 @@ using Shouldly;
 
 namespace Fakvio.Tests.Unit;
 
-/// <summary>
-/// Tests for DiagnosticFunctions.Health() — the database health check endpoint.
-/// Covers the new databaseConnected/databaseReady flags and HTTP status codes.
-/// </summary>
 public class DiagnosticFunctionsTests : IDisposable
 {
     private readonly ServiceProvider _serviceProvider;
     private readonly IConfiguration _configuration;
+    private readonly MasterDbContext _masterDb;
     private readonly ILogger<DiagnosticFunctions> _logger;
 
     public DiagnosticFunctionsTests()
     {
         _logger = Substitute.For<ILogger<DiagnosticFunctions>>();
 
-        // Configuration with a dummy connection string (InMemory DB doesn't use it,
-        // but the health check reads it to report "configured" status)
         _configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["ConnectionStrings:DefaultConnection"] = "Host=localhost;Database=test",
-                ["ConnectionStrings:TenantTemplateConnection"] = "Host=localhost;Database=template"
+                ["ConnectionStrings:DefaultConnection"] =
+                    "Host=localhost;Port=5432;Database=fakvio;Username=fakvio;Password=fakvio_dev",
+                ["Database:AuthMode"] = "Password"
             })
             .Build();
 
-        // Register a real MasterDbContext backed by InMemoryDatabase.
-        // InMemoryDatabase always returns true for CanConnectAsync(),
-        // which simulates a healthy DB connection.
+        // InMemoryDatabase always returns true for CanConnectAsync() — a healthy DB.
+        _masterDb = new MasterDbContext(new DbContextOptionsBuilder<MasterDbContext>()
+            .UseInMemoryDatabase($"DiagnosticFunctionsTest_{Guid.NewGuid()}")
+            .Options);
+
+        // Only Migrate/AuthDiagnostic still resolve out of the service provider; Health goes
+        // through the injected controller.
         var services = new ServiceCollection();
         services.AddDbContext<MasterDbContext>(options =>
-            options.UseInMemoryDatabase($"DiagnosticTest_{Guid.NewGuid()}"));
-
+            options.UseInMemoryDatabase($"DiagnosticFunctionsScope_{Guid.NewGuid()}"));
         _serviceProvider = services.BuildServiceProvider();
     }
 
     public void Dispose()
     {
+        _masterDb.Dispose();
         _serviceProvider.Dispose();
         GC.SuppressFinalize(this);
     }
 
+    private DiagnosticFunctions CreateSut(MasterDbContext? masterDb = null) =>
+        new(
+            _serviceProvider,
+            _configuration,
+            new DiagnosticController(
+                masterDb ?? _masterDb,
+                DatabaseOptions.Resolve(_configuration),
+                Substitute.For<ILogger<DiagnosticController>>()),
+            _logger);
+
+    private static HttpRequest RequestFrom(ClaimsPrincipal? user = null)
+    {
+        var httpContext = new DefaultHttpContext();
+        if (user != null)
+        {
+            httpContext.User = user;
+        }
+
+        return httpContext.Request;
+    }
+
+    private static ClaimsPrincipal UserInRole(string role) =>
+        new(new ClaimsIdentity([new Claim(ClaimTypes.Role, role)], authenticationType: "TestAuth"));
+
     /// <summary>
-    /// When the database is reachable (InMemoryDatabase), the health endpoint
-    /// should return HTTP 200 with databaseConnected = true.
+    /// No token at all → 401. The function trigger is AuthorizationLevel.Anonymous (that only
+    /// disables the Functions host key), so this check is the only thing standing between an
+    /// anonymous caller and the database diagnostics.
     /// </summary>
     [Fact]
-    public async Task Health_WhenDbIsReachable_ReturnsDatabaseConnectedTrue()
+    public async Task Health_WhenTheCallerIsNotAuthenticated_Returns401()
     {
-        // Arrange
-        var sut = new DiagnosticFunctions(_serviceProvider, _configuration, _logger);
-        var httpContext = new DefaultHttpContext();
-
         // Act
-        var actionResult = await sut.Health(httpContext.Request);
+        var result = await CreateSut().Health(RequestFrom());
 
-        // Assert — should be 200 OK
-        var okResult = actionResult.ShouldBeOfType<OkObjectResult>();
-        var data = okResult.Value.ShouldBeOfType<Dictionary<string, object>>();
+        // Assert
+        result.ShouldBeOfType<UnauthorizedResult>();
+    }
 
+    /// <summary>
+    /// Authenticated but not a SysAdmin → 403. An ordinary tenant user has no business
+    /// knowing the database host or its migration history.
+    /// </summary>
+    [Fact]
+    public async Task Health_WhenTheCallerIsNotSysAdmin_Returns403()
+    {
+        // Act
+        var result = await CreateSut().Health(RequestFrom(UserInRole("Admin")));
+
+        // Assert
+        result.ShouldBeOfType<ForbidResult>();
+    }
+
+    /// <summary>
+    /// SysAdmin → the controller answers, and its payload comes back unchanged. This is the
+    /// "both hosts report the same authMode" guarantee in test form.
+    /// </summary>
+    [Fact]
+    public async Task Health_WhenTheCallerIsSysAdmin_ReturnsTheControllerPayload()
+    {
+        // Act
+        var result = await CreateSut().Health(RequestFrom(UserInRole("SysAdmin")));
+
+        // Assert
+        var data = result.ShouldBeOfType<OkObjectResult>().Value
+            .ShouldBeOfType<Dictionary<string, object>>();
+
+        data["authMode"].ShouldBe("Password");
+        data["authModeSource"].ShouldBe("Database:AuthMode");
         data["databaseConnected"].ShouldBe(true);
+        data.ShouldNotContainKey("tenantTemplateConnectionConfigured");
     }
 
     /// <summary>
-    /// When DB is connected and there are no pending migrations,
-    /// databaseReady should be true (InMemoryDatabase has no migrations concept,
-    /// so GetPendingMigrationsAsync returns empty — which means "ready").
+    /// Unreachable database → the controller answers 503, and the wrapper must hand that
+    /// status through untouched: ADMINGUIDE tells monitoring it may watch the status code
+    /// alone, in BOTH hosts. The hand-written function this one replaced always returned
+    /// OkObjectResult, which would report a dead database as healthy.
+    ///
+    /// Port 1 on the loopback interface refuses instantly — deterministic, no DNS, no wait.
     /// </summary>
     [Fact]
-    public async Task Health_WhenDbIsReachableAndNoMigrationsPending_ReturnsDatabaseReadyTrue()
+    public async Task Health_WhenTheDatabaseIsUnreachable_PropagatesThe503FromTheController()
     {
         // Arrange
-        var sut = new DiagnosticFunctions(_serviceProvider, _configuration, _logger);
-        var httpContext = new DefaultHttpContext();
+        using var unreachableDb = new MasterDbContext(new DbContextOptionsBuilder<MasterDbContext>()
+            .UseNpgsql("Host=127.0.0.1;Port=1;Database=fakvio;Username=fakvio;Password=fakvio_dev;Timeout=2")
+            .Options);
 
         // Act
-        var actionResult = await sut.Health(httpContext.Request);
+        var result = await CreateSut(unreachableDb).Health(RequestFrom(UserInRole("SysAdmin")));
 
-        // Assert
-        var okResult = actionResult.ShouldBeOfType<OkObjectResult>();
-        var data = okResult.Value.ShouldBeOfType<Dictionary<string, object>>();
+        // Assert — a plain ObjectResult carrying 503, not an OkObjectResult
+        var objectResult = result.ShouldBeOfType<ObjectResult>();
+        objectResult.StatusCode.ShouldBe(StatusCodes.Status503ServiceUnavailable);
 
-        data["databaseReady"].ShouldBe(true);
-    }
-
-    /// <summary>
-    /// When MasterDbContext cannot be resolved (simulating a DB outage),
-    /// the health endpoint should return HTTP 503 with databaseConnected = false.
-    /// We achieve this by registering a broken service provider that throws on resolve.
-    /// </summary>
-    [Fact]
-    public async Task Health_WhenDbIsUnreachable_Returns503WithDatabaseConnectedFalse()
-    {
-        // Arrange — register MasterDbContext with an invalid connection string
-        // that will fail on CanConnectAsync(). We use a service provider
-        // where MasterDbContext resolution throws an exception.
-        var brokenServices = new ServiceCollection();
-        // Register a factory that throws, simulating DB being completely down
-        brokenServices.AddScoped<MasterDbContext>(_ =>
-            throw new InvalidOperationException("Simulated DB outage"));
-
-        using var brokenProvider = brokenServices.BuildServiceProvider();
-        var sut = new DiagnosticFunctions(brokenProvider, _configuration, _logger);
-        var httpContext = new DefaultHttpContext();
-
-        // Act
-        var actionResult = await sut.Health(httpContext.Request);
-
-        // Assert — should be 503 Service Unavailable
-        var objectResult = actionResult.ShouldBeOfType<ObjectResult>();
-        objectResult.StatusCode.ShouldBe(503);
-
+        // The diagnostic fields survive the failure path too — that is when they matter most.
         var data = objectResult.Value.ShouldBeOfType<Dictionary<string, object>>();
+        data["authMode"].ShouldBe("Password");
+        data["authModeSource"].ShouldBe("Database:AuthMode");
         data["databaseConnected"].ShouldBe(false);
-        data["databaseReady"].ShouldBe(false);
-    }
-
-    /// <summary>
-    /// The health endpoint should always include timestamp and environment fields,
-    /// regardless of DB connectivity status.
-    /// </summary>
-    [Fact]
-    public async Task Health_Always_IncludesTimestampAndEnvironment()
-    {
-        // Arrange
-        var sut = new DiagnosticFunctions(_serviceProvider, _configuration, _logger);
-        var httpContext = new DefaultHttpContext();
-
-        // Act
-        var actionResult = await sut.Health(httpContext.Request);
-
-        // Assert
-        var okResult = actionResult.ShouldBeOfType<OkObjectResult>();
-        var data = okResult.Value.ShouldBeOfType<Dictionary<string, object>>();
-
-        data.ShouldContainKey("timestamp");
-        data.ShouldContainKey("environment");
-        data["timestamp"].ShouldBeOfType<DateTime>();
-    }
-
-    /// <summary>
-    /// When connection strings are configured, the health endpoint should report them.
-    /// This tests the configuration reading logic, not the actual DB connection.
-    /// </summary>
-    [Fact]
-    public async Task Health_WithConfiguredConnectionStrings_ReportsConfiguredTrue()
-    {
-        // Arrange
-        var sut = new DiagnosticFunctions(_serviceProvider, _configuration, _logger);
-        var httpContext = new DefaultHttpContext();
-
-        // Act
-        var actionResult = await sut.Health(httpContext.Request);
-
-        // Assert
-        var okResult = actionResult.ShouldBeOfType<OkObjectResult>();
-        var data = okResult.Value.ShouldBeOfType<Dictionary<string, object>>();
-
-        data["masterConnectionConfigured"].ShouldBe(true);
-        data["tenantTemplateConnectionConfigured"].ShouldBe(true);
-    }
-
-    /// <summary>
-    /// When no connection strings are configured, the endpoint should report false.
-    /// </summary>
-    [Fact]
-    public async Task Health_WithoutConnectionStrings_ReportsConfiguredFalse()
-    {
-        // Arrange — empty configuration, no connection strings
-        var emptyConfig = new ConfigurationBuilder().Build();
-        var sut = new DiagnosticFunctions(_serviceProvider, emptyConfig, _logger);
-        var httpContext = new DefaultHttpContext();
-
-        // Act
-        var actionResult = await sut.Health(httpContext.Request);
-
-        // Assert
-        var okResult = actionResult.ShouldBeOfType<OkObjectResult>();
-        var data = okResult.Value.ShouldBeOfType<Dictionary<string, object>>();
-
-        data["masterConnectionConfigured"].ShouldBe(false);
-        data["tenantTemplateConnectionConfigured"].ShouldBe(false);
     }
 
     // ─── Authorization gating (issue #263) ──────────────────────────────────
@@ -242,7 +201,7 @@ public class DiagnosticFunctionsTests : IDisposable
     [Fact]
     public async Task Migrate_Anonymous_Returns401()
     {
-        var sut = new DiagnosticFunctions(_serviceProvider, _configuration, _logger);
+        var sut = CreateSut();
 
         var result = await sut.Migrate(BuildRequest(authenticated: false));
 
@@ -252,7 +211,7 @@ public class DiagnosticFunctionsTests : IDisposable
     [Fact]
     public async Task Migrate_AuthenticatedNonSysAdmin_Returns403()
     {
-        var sut = new DiagnosticFunctions(_serviceProvider, _configuration, _logger);
+        var sut = CreateSut();
 
         var result = await sut.Migrate(BuildRequest(authenticated: true, sysAdmin: false));
 
@@ -262,7 +221,7 @@ public class DiagnosticFunctionsTests : IDisposable
     [Fact]
     public async Task Migrate_SysAdmin_PassesTheAuthGate()
     {
-        var sut = new DiagnosticFunctions(_serviceProvider, _configuration, _logger);
+        var sut = CreateSut();
 
         var result = await sut.Migrate(BuildRequest(authenticated: true, sysAdmin: true));
 
@@ -282,7 +241,7 @@ public class DiagnosticFunctionsTests : IDisposable
     [Fact]
     public void AuthDiagnostic_Anonymous_Returns401AndLeaksNothing()
     {
-        var sut = new DiagnosticFunctions(_serviceProvider, _configuration, _logger);
+        var sut = CreateSut();
 
         var result = sut.AuthDiagnostic(BuildRequest(authenticated: false));
 
@@ -294,7 +253,7 @@ public class DiagnosticFunctionsTests : IDisposable
     [Fact]
     public void AuthDiagnostic_AuthenticatedNonSysAdmin_Returns403()
     {
-        var sut = new DiagnosticFunctions(_serviceProvider, _configuration, _logger);
+        var sut = CreateSut();
 
         var result = sut.AuthDiagnostic(BuildRequest(authenticated: true, sysAdmin: false));
 
@@ -304,7 +263,7 @@ public class DiagnosticFunctionsTests : IDisposable
     [Fact]
     public void AuthDiagnostic_SysAdmin_StillReturnsFullDiagnosticPayload()
     {
-        var sut = new DiagnosticFunctions(_serviceProvider, _configuration, _logger);
+        var sut = CreateSut();
 
         var result = sut.AuthDiagnostic(BuildRequest(authenticated: true, sysAdmin: true));
 

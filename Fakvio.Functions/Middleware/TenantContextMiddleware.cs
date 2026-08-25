@@ -59,7 +59,8 @@ public class TenantContextMiddleware : IFunctionsWorkerMiddleware
         "/api/twofactor",
         "/api/cloud-storage",
         "/api/email",                       // SysAdmin email — uses system SMTP, no tenant needed
-        "/api/sysadmin/payment-matching"    // SysAdmin IMAP/poll config — master DB only
+        "/api/sysadmin/payment-matching",   // SysAdmin IMAP/poll config — master DB only
+        "/api/diagnostic"                   // Deployment diagnostics — master DB only
     ];
 
     /// <summary>

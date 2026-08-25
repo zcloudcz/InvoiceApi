@@ -24,13 +24,18 @@ public class GeminiProvider : IAiProvider
     private readonly string _model;
     private readonly ILogger<GeminiProvider> _logger;
 
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-    };
+    private static readonly JsonSerializerOptions JsonOptions = GeminiApi.JsonOptions;
 
     public string ProviderName => "Gemini";
+
+    /// <summary>
+    /// Gemini supports native function calling on every model we ship with (gemini-2.0-flash
+    /// and newer). Starts optimistic and is switched off only when the API definitively
+    /// refuses the tools — see <see cref="GeminiApi.CompleteWithToolsAsync"/>. Once off,
+    /// ChatService uses the text-based tool protocol instead, so tools keep working either way.
+    /// </summary>
+    private bool _supportsNativeTools = true;
+    public bool SupportsNativeTools => _supportsNativeTools;
 
     public GeminiProvider(
         HttpClient httpClient,
@@ -52,7 +57,7 @@ public class GeminiProvider : IAiProvider
         string? systemPrompt = null,
         CancellationToken ct = default)
     {
-        var requestBody = BuildRequestBody(messages, systemPrompt);
+        var requestBody = GeminiApi.BuildRequestBody(messages, systemPrompt);
         var url = $"https://generativelanguage.googleapis.com/v1beta/models/{_model}:generateContent?key={_apiKey}";
 
         _logger.LogDebug("Sending {Count} messages to Gemini model {Model}", messages.Count, _model);
@@ -60,9 +65,31 @@ public class GeminiProvider : IAiProvider
         var response = await _httpClient.PostAsJsonAsync(url, requestBody, JsonOptions, ct);
         response.EnsureSuccessStatusCode();
 
-        var result = await response.Content.ReadFromJsonAsync<GeminiResponse>(JsonOptions, ct);
-        return result?.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.Text ?? string.Empty;
+        var result = await response.Content.ReadFromJsonAsync<GeminiApi.Response>(JsonOptions, ct);
+        return GeminiApi.FirstText(result) ?? string.Empty;
     }
+
+    /// <summary>
+    /// Sends the conversation with native function declarations to Gemini.
+    /// The model answers either with functionCall parts or with plain text — see
+    /// <see cref="GeminiApi"/> for the wire format, which is shared with the
+    /// per-company ad-hoc Gemini provider.
+    /// </summary>
+    public Task<NativeToolCallResult?> GetCompletionWithToolsAsync(
+        List<ChatMessageDto> messages,
+        string? systemPrompt,
+        List<NativeToolDefinition> tools,
+        CancellationToken ct = default)
+        => GeminiApi.CompleteWithToolsAsync(
+            _httpClient,
+            _apiKey,
+            _model,
+            messages,
+            systemPrompt,
+            tools,
+            _logger,
+            () => _supportsNativeTools = false,
+            ct);
 
     /// <summary>
     /// Streams the response from Gemini using SSE (Server-Sent Events).
@@ -73,7 +100,7 @@ public class GeminiProvider : IAiProvider
         string? systemPrompt = null,
         [EnumeratorCancellation] CancellationToken ct = default)
     {
-        var requestBody = BuildRequestBody(messages, systemPrompt);
+        var requestBody = GeminiApi.BuildRequestBody(messages, systemPrompt);
         var url = $"https://generativelanguage.googleapis.com/v1beta/models/{_model}:streamGenerateContent?alt=sse&key={_apiKey}";
 
         _logger.LogDebug("Starting streaming from Gemini model {Model}", _model);
@@ -99,66 +126,13 @@ public class GeminiProvider : IAiProvider
                 continue;
 
             var json = line["data: ".Length..];
-            var chunk = JsonSerializer.Deserialize<GeminiResponse>(json, JsonOptions);
-            var text = chunk?.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.Text;
+            var chunk = JsonSerializer.Deserialize<GeminiApi.Response>(json, JsonOptions);
+            var text = GeminiApi.FirstText(chunk);
 
             if (!string.IsNullOrEmpty(text))
             {
                 yield return text;
             }
         }
-    }
-
-    /// <summary>
-    /// Builds the Gemini API request body.
-    /// Gemini uses "contents" array with "user" and "model" roles (no "assistant" role).
-    /// System instructions go to a separate "systemInstruction" field.
-    /// </summary>
-    private static object BuildRequestBody(List<ChatMessageDto> messages, string? systemPrompt)
-    {
-        var contents = messages
-            .Where(m => m.Role != "System")
-            .Select(m => new
-            {
-                role = m.Role == "Assistant" ? "model" : "user",
-                parts = new[] { new { text = m.Content } }
-            })
-            .ToList();
-
-        if (!string.IsNullOrEmpty(systemPrompt))
-        {
-            return new
-            {
-                contents,
-                systemInstruction = new
-                {
-                    parts = new[] { new { text = systemPrompt } }
-                }
-            };
-        }
-
-        return new { contents };
-    }
-
-    // ─── Gemini response model (minimal, for deserialization) ─────────────
-
-    private class GeminiResponse
-    {
-        public List<GeminiCandidate>? Candidates { get; set; }
-    }
-
-    private class GeminiCandidate
-    {
-        public GeminiContent? Content { get; set; }
-    }
-
-    private class GeminiContent
-    {
-        public List<GeminiPart>? Parts { get; set; }
-    }
-
-    private class GeminiPart
-    {
-        public string? Text { get; set; }
     }
 }

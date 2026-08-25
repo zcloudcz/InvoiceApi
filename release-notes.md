@@ -5,8 +5,9 @@ Záznam dokončených změn. **Jeden záznam na každý task, který byl mergnut
 Step 2b. Ručně sem nepiš; když záznam chybí, chybí i merge.
 
 Řazeno **nejnovější nahoře**. Sekce `## Nevydáno` drží to, co je v `develop`, ale
-ještě nebylo promováno na `master`. Při `/release` se přejmenuje na verzi s datem
-a nad ní vznikne nová prázdná `## Nevydáno`.
+ještě nebylo promováno dál. Řez dělá `/release` (promotion `develop → TEST-ENV`):
+sekce se přejmenuje na verzi s datem a nad ní vznikne nová prázdná `## Nevydáno`.
+`/release-prod` (`TEST-ENV → master`) už tenhle soubor nemění.
 
 Formát řádku:
 
@@ -19,8 +20,14 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+## 2026.08.25 — 2026-08-25
+
 ### Opravy
 
+- **#271** — AI chat asistent odmítl datum zadané jedním číslem (např. „15.3.2026")
+  v přehledu faktur i v DPH reportu — bral jen dvouciferné tvary s nulou (`15.03.2026`).
+  Nově akceptuje obě podoby, padded tvary i ISO datum se chovají stejně jako dřív.
+  (PR #296, `46fad72`)
 - **#263** — Diagnostické endpointy Azure Functions (`/api/diagnostic/migrate`,
   `/api/diagnostic/auth`) byly dostupné bez přihlášení: kdokoli mohl vzdáleně spustit
   DB migrace nebo si vypsat JWT konfiguraci (issuer, audience, délku secretu, claims).
@@ -63,6 +70,63 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Změny pro vývojáře
 
+- **#237** — Nová stránka `/settings/integrations`, kde si uživatel sám vygeneruje
+  revokovatelný API klíč pro napojení AI klientů na Fakvio (lokálně přes stdio i
+  vzdáleně přes HTTP). Klíč jde vytvořit se jménem, oprávněním (jen čtení / čtení
+  a zápis) a volitelnou expirací, zobrazí se v plném znění jen jednou hned po
+  vytvoření a jde kdykoli zrušit. Stránka rovnou nabízí hotový konfigurační snippet
+  ke zkopírování pro oba způsoby připojení. (PR #278, `737ff1d`)
+- **#160** — AI chat pro OpenAI a Gemini teď volá nástroje (vytvoření faktury, import,
+  vyhledání klienta atd.) nativním function callingem obou API místo dřívějšího
+  křehkého textového protokolu, kde model musel sám vypsat holý JSON a parser ho
+  vyřezával podřetězcem. Spolehlivější rozpoznání i menší latence (odpadá dvojí
+  průchod). Když nativní volání selže, chat se sám přepne na starou textovou cestu,
+  takže nástroje fungují dál i při výpadku. (PR #277, `62b809c`)
+- **#293** — ADMINGUIDE má novou sekci §14 „Prostředí" popisující rozdíl mezi
+  testovacím a produkčním nasazením pro SysAdmina: kde která část běží (hosting,
+  URL, větev, deploy workflow, databáze), jak se liší App Settings (vlastní
+  `JwtSettings__Secret`, takže tokeny mezi prostředími nejsou přenosné, oddělené
+  CORS a connection string), jaké chování je na testu bez vlastní databáze
+  očekávané (401/503 z healthu, ne incident) a jak probíhá promotion přes
+  `/release` a `/release-prod` včetně rotace nasazovacích secrets. (PR #311, `91f6564`)
+- **#220** — AI chat asistent teď umí zobrazit i upravit nastavení vlastní firmy
+  (název, DIČ, plátcovství DPH, jazyk dokumentů, sídlo) a spravovat bankovní účty —
+  přidat, upravit i smazat. Každá změna se nejdřív ukáže k odsouhlasení a provede se,
+  až uživatel potvrdí; při smazání výchozího účtu asistent sám určí nový výchozí
+  a řekne který. (PR #299, `eb52a97`)
+- **#291** — Release flow je teď třístupňový: `/release` nově staguje `develop` do
+  `TEST-ENV` (dřív mířil rovnou do `master`), nový příkaz `/release-prod` teprve
+  z `TEST-ENV` promuje do `master` a přesouvá karty do `Approved`. Vydání tak jde
+  nejdřív otestovat na testovacím prostředí, než se dostane k zákazníkům.
+  (PR #297, `11a3131`)
+- **#222** — AI asistent v chatu teď umí i práci s klienty: vypsat seznam s filtry
+  (vč. hledání „vystavitel" bez zvláštního tlačítka), zobrazit celý detail (adresy,
+  kontakty, bankovní účty, fakturační nastavení), upravit údaje nebo klienta smazat.
+  Úprava i smazání se nejdřív ukážou k odsouhlasení a provedou se, až uživatel potvrdí;
+  smazání je měkké (klient zmizí ze seznamů, staré faktury na něj dál odkazují) a klienta
+  s existující fakturou smazat nejde vůbec. Prázdný název firmy se odmítne a neúspěšné
+  načtení z ARESu se nahlásí jako neúspěch, ne jako tichý úspěch. (PR #298, `03a9159`)
+- **#292** — Testovací prostředí `TEST-ENV` má teď vlastní deploy i pro frontend: push do
+  větve `TEST-ENV` nasadí BlazorUI na Azure Static Web Apps (`fakvio-test-ui`), s vlastní
+  URL API backendu zapečenou do buildu (ne produkční), a s deep-linky, které na SWA
+  nevrací 404. Produkční deploy na GitHub Pages z `master` zůstal beze změny. Spolu
+  s #290 (Functions backend) umožňuje ověřit release proti testovacímu prostředí celý,
+  ne jen na backendu. (PR #302, `75d7556`)
+- **#290** — Testovací prostředí `TEST-ENV` má teď vlastní deploy pro Azure Functions
+  backend: push do větve `TEST-ENV` nasadí `Fakvio.Functions` do samostatné aplikace
+  `zcloudinvoicingapi-test` (Flex Consumption, deployment slot tu není podporovaný),
+  produkční deploy z `master` zůstal beze změny. Umožňuje ověřit release proti testovacímu
+  backendu dřív, než jde na produkci. (PR #300, `dfab4a7`)
+- **#138** — Health endpoint teď hlásí, jaký režim přihlášení k databázi (`authMode`,
+  `authModeSource`) skutečně používá — v obou hostech, API i Azure Functions, poprvé
+  stejně (API dosud žádný health endpoint nemělo). Umožňuje ověřit rollout přepínatelné
+  DB autentizace bez čtení connection stringu; secret se do odpovědi nikdy nedostane.
+  (PR #260, `17475ad`)
+- **#236** — Integrace (MCP server, budoucí externí nástroje) se teď mohou přihlásit
+  API klíčem místo běžného uživatelského přihlášení: klíč se pošle v hlavičce
+  `Authorization: ApiKey <klíč>` a nese vlastní scope (které akce smí), takže
+  nevyžaduje sdílené heslo ani plný přístup uživatele. Funguje shodně v API
+  hostu i v Azure Functions. (PR #275, `bd4ffb3`)
 - **#209** — Nový endpoint `GET /api/readiness` (i jako Azure Function) vrací, co ve
   vystaviteli ještě chybí k vystavení faktury (sídlo, číselné řady, šablony) — základ pro
   banner v UI (#215) a pro MCP/chat nástroje, které se teď mají o co opřít místo vlastní

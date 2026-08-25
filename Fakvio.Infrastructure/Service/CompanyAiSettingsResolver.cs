@@ -442,35 +442,14 @@ internal sealed class AdHocClaudeProvider : IAiProvider, IDisposable
         // Delegate to the same tool-calling logic as the singleton ClaudeProvider.
         // Build tool definitions and send them to the Claude API.
         var anthropicMessages = BuildMessages(messages);
-        var anthropicTools = tools.Select(tool =>
+
+        // Same schema translator as the singleton providers. It used to be copied inline here
+        // and had silently lost the "items" keyword for array parameters.
+        var anthropicTools = tools.Select(tool => new Tool
         {
-            var properties = new Dictionary<string, object>();
-            foreach (var param in tool.Parameters)
-            {
-                var propDef = new Dictionary<string, object>
-                {
-                    ["type"] = param.Type,
-                    ["description"] = param.Description
-                };
-                if (param.EnumValues is { Count: > 0 })
-                    propDef["enum"] = param.EnumValues;
-                properties[param.Name] = propDef;
-            }
-
-            var inputSchema = new Dictionary<string, object>
-            {
-                ["type"] = "object",
-                ["properties"] = properties
-            };
-            if (tool.Required is { Count: > 0 })
-                inputSchema["required"] = tool.Required;
-
-            return new Tool
-            {
-                Name = tool.Name,
-                Description = tool.Description,
-                InputSchema = inputSchema
-            };
+            Name = tool.Name,
+            Description = tool.Description,
+            InputSchema = NativeToolSchema.BuildJsonSchema(tool)
         }).ToList();
 
         try
@@ -545,7 +524,7 @@ internal sealed class AdHocClaudeProvider : IAiProvider, IDisposable
 
 /// <summary>
 /// Lightweight OpenAI provider created on-the-fly with a company-specific API key.
-/// Supports streaming completions.
+/// Supports the same full feature set as the singleton OpenAiProvider (streaming + native tools).
 ///
 /// Lives only for the duration of a single request.
 /// </summary>
@@ -556,11 +535,28 @@ internal sealed class AdHocOpenAiProvider : IAiProvider
 
     public string ProviderName => "OpenAI";
 
+    /// <summary>
+    /// Optimistic: assume native function calling works until the API definitively refuses it.
+    /// See <see cref="OpenAiToolCalling.CompleteWithToolsAsync"/>.
+    /// </summary>
+    private bool _supportsNativeTools = true;
+    public bool SupportsNativeTools => _supportsNativeTools;
+
     public AdHocOpenAiProvider(string apiKey, string model, ILogger logger)
     {
         _logger = logger;
         var client = new OpenAIClient(apiKey);
         _chatClient = client.GetChatClient(model);
+    }
+
+    /// <summary>
+    /// Test seam: lets a unit test drive this provider against a stubbed HTTP transport
+    /// instead of the real OpenAI endpoint. Production always uses the ctor above.
+    /// </summary>
+    internal AdHocOpenAiProvider(OpenAI.Chat.ChatClient chatClient, ILogger logger)
+    {
+        _chatClient = chatClient;
+        _logger = logger;
     }
 
     public async Task<string> GetCompletionAsync(
@@ -597,6 +593,22 @@ internal sealed class AdHocOpenAiProvider : IAiProvider
         }
     }
 
+    /// <summary>
+    /// Native function calling — delegates to the same translation as the singleton provider.
+    /// </summary>
+    public Task<NativeToolCallResult?> GetCompletionWithToolsAsync(
+        List<ChatMessageDto> messages,
+        string? systemPrompt,
+        List<NativeToolDefinition> tools,
+        CancellationToken ct = default)
+        => OpenAiToolCalling.CompleteWithToolsAsync(
+            _chatClient,
+            BuildMessages(messages, systemPrompt),
+            tools,
+            _logger,
+            () => _supportsNativeTools = false,
+            ct);
+
     private static List<OpenAI.Chat.ChatMessage> BuildMessages(
         List<ChatMessageDto> messages,
         string? systemPrompt)
@@ -623,7 +635,7 @@ internal sealed class AdHocOpenAiProvider : IAiProvider
 /// <summary>
 /// Lightweight Gemini provider created on-the-fly with a company-specific API key.
 /// Uses the Gemini REST API directly via HttpClient (same as the singleton GeminiProvider).
-/// Supports both synchronous and streaming completions via SSE.
+/// Supports synchronous and streaming completions via SSE, plus native function calling.
 ///
 /// Lives only for the duration of a single request.
 /// </summary>
@@ -634,13 +646,16 @@ internal sealed class AdHocGeminiProvider : IAiProvider
     private readonly string _model;
     private readonly ILogger _logger;
 
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-    };
+    private static readonly JsonSerializerOptions JsonOptions = GeminiApi.JsonOptions;
 
     public string ProviderName => "Gemini";
+
+    /// <summary>
+    /// Optimistic: assume native function calling works until the API definitively refuses it.
+    /// See <see cref="GeminiApi.CompleteWithToolsAsync"/>.
+    /// </summary>
+    private bool _supportsNativeTools = true;
+    public bool SupportsNativeTools => _supportsNativeTools;
 
     public AdHocGeminiProvider(HttpClient httpClient, string apiKey, string model, ILogger logger)
     {
@@ -658,7 +673,7 @@ internal sealed class AdHocGeminiProvider : IAiProvider
         string? systemPrompt = null,
         CancellationToken ct = default)
     {
-        var requestBody = BuildRequestBody(messages, systemPrompt);
+        var requestBody = GeminiApi.BuildRequestBody(messages, systemPrompt);
         var url = $"https://generativelanguage.googleapis.com/v1beta/models/{_model}:generateContent?key={_apiKey}";
 
         _logger.LogDebug("AdHoc Gemini: sending {Count} messages to model {Model}", messages.Count, _model);
@@ -666,9 +681,21 @@ internal sealed class AdHocGeminiProvider : IAiProvider
         var response = await _httpClient.PostAsJsonAsync(url, requestBody, JsonOptions, ct);
         response.EnsureSuccessStatusCode();
 
-        var result = await response.Content.ReadFromJsonAsync<GeminiResponse>(JsonOptions, ct);
-        return result?.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.Text ?? string.Empty;
+        var result = await response.Content.ReadFromJsonAsync<GeminiApi.Response>(JsonOptions, ct);
+        return GeminiApi.FirstText(result) ?? string.Empty;
     }
+
+    /// <summary>
+    /// Native function calling — delegates to the same wire format as the singleton provider.
+    /// </summary>
+    public Task<NativeToolCallResult?> GetCompletionWithToolsAsync(
+        List<ChatMessageDto> messages,
+        string? systemPrompt,
+        List<NativeToolDefinition> tools,
+        CancellationToken ct = default)
+        => GeminiApi.CompleteWithToolsAsync(
+            _httpClient, _apiKey, _model, messages, systemPrompt, tools,
+            _logger, () => _supportsNativeTools = false, ct);
 
     /// <summary>
     /// Streams the response from Gemini using SSE (Server-Sent Events).
@@ -678,7 +705,7 @@ internal sealed class AdHocGeminiProvider : IAiProvider
         string? systemPrompt = null,
         [EnumeratorCancellation] CancellationToken ct = default)
     {
-        var requestBody = BuildRequestBody(messages, systemPrompt);
+        var requestBody = GeminiApi.BuildRequestBody(messages, systemPrompt);
         var url = $"https://generativelanguage.googleapis.com/v1beta/models/{_model}:streamGenerateContent?alt=sse&key={_apiKey}";
 
         _logger.LogDebug("AdHoc Gemini: starting streaming from model {Model}", _model);
@@ -704,65 +731,12 @@ internal sealed class AdHocGeminiProvider : IAiProvider
                 continue;
 
             var json = line["data: ".Length..];
-            var chunk = JsonSerializer.Deserialize<GeminiResponse>(json, JsonOptions);
-            var text = chunk?.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.Text;
+            var chunk = JsonSerializer.Deserialize<GeminiApi.Response>(json, JsonOptions);
+            var text = GeminiApi.FirstText(chunk);
 
             if (!string.IsNullOrEmpty(text))
                 yield return text;
         }
-    }
-
-    /// <summary>
-    /// Builds the Gemini API request body.
-    /// Gemini uses "contents" array with "user" and "model" roles.
-    /// System instructions go to a separate "systemInstruction" field.
-    /// </summary>
-    private static object BuildRequestBody(List<ChatMessageDto> messages, string? systemPrompt)
-    {
-        var contents = messages
-            .Where(m => m.Role != "System")
-            .Select(m => new
-            {
-                role = m.Role == "Assistant" ? "model" : "user",
-                parts = new[] { new { text = m.Content } }
-            })
-            .ToList();
-
-        if (!string.IsNullOrEmpty(systemPrompt))
-        {
-            return new
-            {
-                contents,
-                systemInstruction = new
-                {
-                    parts = new[] { new { text = systemPrompt } }
-                }
-            };
-        }
-
-        return new { contents };
-    }
-
-    // ─── Gemini response model (minimal, for deserialization) ─────────────
-
-    private class GeminiResponse
-    {
-        public List<GeminiCandidate>? Candidates { get; set; }
-    }
-
-    private class GeminiCandidate
-    {
-        public GeminiContent? Content { get; set; }
-    }
-
-    private class GeminiContent
-    {
-        public List<GeminiPart>? Parts { get; set; }
-    }
-
-    private class GeminiPart
-    {
-        public string? Text { get; set; }
     }
 }
 
@@ -966,38 +940,21 @@ internal sealed class AdHocOllamaProvider : IAiProvider
         return ollamaMessages;
     }
 
+    /// <summary>
+    /// Ollama follows the OpenAI function-calling shape; the parameter schema comes from
+    /// the shared translator, so this path cannot drift from the singleton provider.
+    /// </summary>
     private static List<object> BuildOllamaTools(List<NativeToolDefinition> tools)
     {
-        return tools.Select(tool =>
+        return tools.Select(tool => (object)new
         {
-            var properties = new Dictionary<string, object>();
-            foreach (var param in tool.Parameters)
+            type = "function",
+            function = new
             {
-                var propDef = new Dictionary<string, object>
-                {
-                    ["type"] = param.Type,
-                    ["description"] = param.Description
-                };
-                if (param.EnumValues is { Count: > 0 })
-                    propDef["enum"] = param.EnumValues;
-                properties[param.Name] = propDef;
+                name = tool.Name,
+                description = tool.Description,
+                parameters = NativeToolSchema.BuildJsonSchema(tool)
             }
-
-            return (object)new
-            {
-                type = "function",
-                function = new
-                {
-                    name = tool.Name,
-                    description = tool.Description,
-                    parameters = new
-                    {
-                        type = "object",
-                        properties,
-                        required = tool.Required
-                    }
-                }
-            };
         }).ToList();
     }
 

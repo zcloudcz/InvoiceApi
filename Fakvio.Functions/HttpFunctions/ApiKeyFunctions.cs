@@ -45,6 +45,21 @@ public class ApiKeyFunctions
     }
 
     /// <summary>
+    /// GET api/api-key/me → ApiKeyController.Me
+    /// </summary>
+    [Function("ApiKey_Me")]
+    public IActionResult ApiKey_Me(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/api-key/me")] HttpRequest req)
+    {
+        _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
+
+        if (req.HttpContext.User.Identity?.IsAuthenticated != true)
+            return new UnauthorizedResult();
+
+        return FunctionResultHelper.Normalize(_controller.Me());
+    }
+
+    /// <summary>
     /// POST api/api-key → ApiKeyController.Create
     /// </summary>
     [Function("ApiKey_Create")]

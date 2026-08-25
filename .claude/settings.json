@@ -17,6 +17,10 @@
     "AGENTIC_PROJECT_NUMBER": "3",
     "AGENTIC_PROJECT_OWNER": "@me",
     "AGENTIC_AUTO_MERGE": "true",
-    "AGENTIC_INTEGRATION_BRANCH": "master"
+    "AGENTIC_INTEGRATION_BRANCH": "develop",
+    "MAX_PARALLEL_DEVS": "3",
+    "MAX_PARALLEL_REVIEWERS": "3",
+    "MAX_PARALLEL_TESTERS": "3",
+    "AGENTIC_FOCUS": "db-switch,ai-first"
   }
 }

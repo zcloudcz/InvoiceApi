@@ -77,10 +77,10 @@ internal static class DesignTimeDataSource
     /// <see cref="DatabaseAuthMode.AzureEntraId"/> mode — so without pinning the mode, the
     /// fallback would be unusable on any machine whose environment says "Azure". And this
     /// repository says exactly that: Fakvio.API/appsettings.json ships
-    /// <c>"UseAzureAdAuthentication": true</c> and no <c>Database:AuthMode</c> at all.
-    /// Pinning only the new key would therefore leave the two disagreeing, and
-    /// <see cref="DatabaseOptions.Resolve"/> fails fast on that pair — the fallback would
-    /// still be unusable, just with a different exception.
+    /// <c>"Database:AuthMode": "AzureEntraId"</c>. The legacy bool is no longer in any
+    /// committed config file (removed in #138), but it is a global key that an environment
+    /// variable can still set — and <see cref="DatabaseOptions.Resolve"/> fails fast when the
+    /// two disagree, so the fallback keeps pinning both.
     ///
     /// Exposed (internal) as a seam so the fallback rules can be unit tested over an
     /// in-memory builder, without touching real appsettings files or the process environment.
@@ -111,10 +111,10 @@ internal static class DesignTimeDataSource
                 ["ConnectionStrings:DefaultConnection"] = LocalFallbackConnectionString,
                 ["Database:AuthMode"] = nameof(DatabaseAuthMode.Password),
 
-                // The legacy bool is global (not scoped under "Database"), so appsettings.json
-                // can keep asserting "Azure" while the fallback asks for "Password". This
-                // in-memory source is registered last, so it wins over appsettings and over
-                // the environment, and the two keys end up agreeing.
+                // The legacy bool is global (not scoped under "Database"), so an environment
+                // variable can keep asserting "Azure" while the fallback asks for "Password".
+                // This in-memory source is registered last, so it wins over appsettings and
+                // over the environment, and the two keys end up agreeing.
                 ["UseAzureAdAuthentication"] = "false"
             })
             .Build();
