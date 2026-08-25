@@ -43,10 +43,19 @@ public class ReadinessApiService : ApiClientBase
         {
             return await GetAsync<ReadinessReportDto>(url) ?? new ReadinessReportDto();
         }
-        catch (ApiException)
+        catch (Exception)
         {
-            // 401 never reaches here (UnauthorizedRedirectHandler redirects to /login).
-            // 404 means the issuer id is stale — again nothing the user can act on from a banner.
+            // Deliberately every exception, not just ApiException: ApiClientBase.GetAsync
+            // rethrows ApiException but lets everything else through as well — an
+            // HttpRequestException when the network or CORS is down, a JsonException when the
+            // response is malformed. The only caller is ReadinessBanner.OnParametersSetAsync,
+            // and an exception escaping a Blazor lifecycle method takes the whole WASM app
+            // down — over a decorative banner. ApiClientBase has already logged the failure,
+            // so swallowing here loses no diagnostics.
+            //
+            // Of the API errors: 401 never reaches here (UnauthorizedRedirectHandler redirects
+            // to /login), 404 means the issuer id is stale — again nothing the user could act
+            // on from a banner.
             return new ReadinessReportDto();
         }
     }

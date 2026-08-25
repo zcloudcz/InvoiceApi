@@ -29,8 +29,13 @@
         {
             <div class="d-flex flex-wrap align-center gap-2">
                 <MudText Typo="Typo.body2">@Describe(issue)</MudText>
-                @* FixRoute is a relative UI route supplied by the API — render it as a plain link. *@
-                <MudLink Href="@issue.FixRoute" Typo="Typo.body2">@L["Readiness_FixLink"]</MudLink>
+                @* FixRoute is a relative UI route supplied by the API — render it as a plain link.
+                   The DTO defaults it to string.Empty, so a rule that forgets to fill it in would
+                   otherwise produce a "Fix" link pointing at the current page. *@
+                @if (!string.IsNullOrWhiteSpace(issue.FixRoute))
+                {
+                    <MudLink Href="@issue.FixRoute" Typo="Typo.body2">@L["Readiness_FixLink"]</MudLink>
+                }
             </div>
 
             @if (issue.MissingFields.Count > 0)
@@ -58,11 +63,37 @@
     private readonly List<IssueGroup> _groups = new();
 
     /// <summary>
+    /// The <see cref="IssuerId"/> the currently held report was fetched for. Together with
+    /// <see cref="_loaded"/> it tells "already fetched for this issuer" apart from "never
+    /// fetched" — null is a legitimate value of the parameter (whole tenant), so a plain
+    /// null check would not do.
+    /// </summary>
+    private long? _loadedIssuerId;
+
+    /// <summary>False until the first fetch has been started. See <see cref="_loadedIssuerId"/>.</summary>
+    private bool _loaded;
+
+    /// <summary>
     /// Reloads whenever the host page changes <see cref="IssuerId"/> (e.g. invoice detail
     /// finishing its own load), not just on first render.
+    ///
+    /// Blazor calls this on every render of the *parent*, even when no parameter changed —
+    /// and InvoiceDetail re-renders a lot (7 explicit StateHasChanged plus dialog toggles).
+    /// Without the guard each of those would cost one GET /api/readiness, which on the server
+    /// walks every issuer, number sequence and EPO setting. Same idiom as
+    /// InvoicePaymentsPanel's _lastTrigger. It also removes the overlap where two in-flight
+    /// calls finish out of order and the older answer overwrites the newer issuer's report.
     /// </summary>
     protected override async Task OnParametersSetAsync()
     {
+        if (_loaded && _loadedIssuerId == IssuerId)
+            return;
+
+        // Marked before the await on purpose: a re-render arriving while the call is still in
+        // flight must not start a second one for the same issuer.
+        _loaded = true;
+        _loadedIssuerId = IssuerId;
+
         var report = await ReadinessService.GetReportAsync(IssuerId);
 
         _groups.Clear();

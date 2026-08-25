@@ -1324,8 +1324,8 @@ normální položka reportu (200), s `issuerId` je to 404.
 
 | Vrstva | Kde | Poznámka |
 |--------|-----|----------|
-| API klient | `Fakvio.UI.Shared/Services/ReadinessApiService.cs` | Při chybě vrací prázdný report — banner je dekorace, nesmí shodit hostitelskou stránku |
-| Komponenta | `Fakvio.UI.Shared/Components/Shared/ReadinessBanner.razor` | Blocking → `Severity.Error`, Warning → `Severity.Warning`, dva oddělené alerty. Prázdný report = nerenderuje nic |
+| API klient | `Fakvio.UI.Shared/Services/ReadinessApiService.cs` | Chytá **`Exception`**, ne jen `ApiException` — `ApiClientBase.GetAsync` propouští i `HttpRequestException` / `JsonException` a výjimka z lifecycle metody v Blazor WASM shodí celou aplikaci. Při chybě vrací prázdný report; banner je dekorace, nesmí shodit hostitelskou stránku |
+| Komponenta | `Fakvio.UI.Shared/Components/Shared/ReadinessBanner.razor` | Blocking → `Severity.Error`, Warning → `Severity.Warning`, dva oddělené alerty. Prázdný report = nerenderuje nic. Stahuje **jednou na `IssuerId`** (guard `_loadedIssuerId`, stejný idiom jako `_lastTrigger` v `InvoicePaymentsPanel`) — bez něj by každý `StateHasChanged()` hostitelské stránky znamenal další `GET /api/readiness` |
 | Zapojení | `Home.razor` (bez `IssuerId`, celý tenant), `InvoiceDetail.razor` (jen stav Draft, `IssuerId` dokladu) | Detail Draftu je poslední místo před gate v `CompleteInvoiceAsync` |
 
 Když přidáváš readiness kód, přidej k němu **i lokalizační klíč `Readiness_Code_<KÓD>`

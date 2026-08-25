@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text;
 using Bunit;
 using Fakvio.Contracts.Dto.Readiness;
 using Fakvio.Domain.Enums;
@@ -81,8 +82,13 @@ public class ReadinessBannerTests : BunitContext, IAsyncLifetime
 
         var cut = Render<ReadinessBanner>();
 
-        cut.WaitForAssertion(() => _backend.CallCount.ShouldBe(1));
-        cut.Markup.Trim().ShouldBeEmpty();
+        // Both checks in one WaitForAssertion: CallCount++ runs synchronously inside SendAsync,
+        // before the response is delivered, so waiting on it alone proves nothing about the markup.
+        cut.WaitForAssertion(() =>
+        {
+            _backend.CallCount.ShouldBe(1);
+            cut.Markup.Trim().ShouldBeEmpty();
+        });
     }
 
     [Fact]
@@ -133,6 +139,21 @@ public class ReadinessBannerTests : BunitContext, IAsyncLifetime
         // The route comes from the DTO — the UI must not derive it from the code.
         cut.FindAll("a").Select(a => a.GetAttribute("href"))
             .ShouldBe(new[] { "/my-company", "/number-sequences" });
+    }
+
+    [Fact]
+    public void EmptyFixRoute_RendersNoLink_SoNoIssueLinksBackToTheCurrentPage()
+    {
+        // ReadinessIssueDto defaults FixRoute to string.Empty. A rule that forgets to fill it in
+        // would otherwise render a "Fix" link with href="" — i.e. pointing at the current page.
+        _backend.Report = ReportWith(
+            Issue(ReadinessCodes.IssuerAddressIncomplete, EReadinessSeverity.Blocking, string.Empty));
+
+        var cut = Render<ReadinessBanner>();
+        cut.WaitForAssertion(() => cut.Markup.ShouldContain("Readiness_BlockingTitle"));
+
+        // The issue itself is still listed; only the useless link is gone.
+        cut.FindAll("a").Count.ShouldBe(0);
     }
 
     [Fact]
@@ -200,8 +221,81 @@ public class ReadinessBannerTests : BunitContext, IAsyncLifetime
         // Render must not throw — a readiness hint is decoration, never a page killer.
         var cut = Render<ReadinessBanner>();
 
+        cut.WaitForAssertion(() =>
+        {
+            _backend.CallCount.ShouldBe(1);
+            cut.Markup.Trim().ShouldBeEmpty();
+        });
+    }
+
+    [Fact]
+    public void NetworkFailure_RendersNothingAndDoesNotThrow_SoTheHostPageSurvives()
+    {
+        // ApiClientBase.GetAsync gives ApiException special treatment but lets transport
+        // failures through untouched. An HttpRequestException escaping OnParametersSetAsync is
+        // an unhandled exception in a Blazor WASM lifecycle method — i.e. a dead app. The HTTP
+        // 500 case above cannot catch this regression, because 500 is an ApiException.
+        _backend.ThrowOnSend = new HttpRequestException("connection refused");
+
+        var cut = Render<ReadinessBanner>();
+
+        cut.WaitForAssertion(() =>
+        {
+            _backend.CallCount.ShouldBe(1);
+            cut.Markup.Trim().ShouldBeEmpty();
+        });
+    }
+
+    [Fact]
+    public void MalformedJsonResponse_RendersNothingAndDoesNotThrow_SoTheHostPageSurvives()
+    {
+        // 200 OK with a body that is not a readiness report — a stale proxy, a half-written
+        // response. ReadFromJsonAsync throws JsonException, which is not an ApiException either.
+        _backend.RawBody = "{ \"issues\": [ ";
+
+        var cut = Render<ReadinessBanner>();
+
+        cut.WaitForAssertion(() =>
+        {
+            _backend.CallCount.ShouldBe(1);
+            cut.Markup.Trim().ShouldBeEmpty();
+        });
+    }
+
+    [Fact]
+    public void ParentReRender_WithUnchangedIssuerId_DoesNotRefetch_SoAChattyHostPageCostsOneCall()
+    {
+        _backend.Report = new ReadinessReportDto();
+
+        var cut = Render<ReadinessBanner>(p => p.Add(c => c.IssuerId, 77L));
         cut.WaitForAssertion(() => _backend.CallCount.ShouldBe(1));
-        cut.Markup.Trim().ShouldBeEmpty();
+
+        // Blazor runs OnParametersSetAsync on every render of the parent even when no parameter
+        // changed. InvoiceDetail has 7 explicit StateHasChanged plus dialog toggles, so without
+        // the guard this would be one GET /api/readiness per click.
+        cut.Render();
+        cut.Render();
+
+        _backend.CallCount.ShouldBe(1);
+    }
+
+    [Fact]
+    public void ChangedIssuerId_Refetches_SoTheBannerFollowsTheDocumentsIssuer()
+    {
+        _backend.Report = new ReadinessReportDto();
+
+        var cut = Render<ReadinessBanner>(p => p.Add(c => c.IssuerId, 77L));
+        cut.WaitForAssertion(() => _backend.CallCount.ShouldBe(1));
+
+        // The guard must not freeze the banner: invoice detail learns its issuer only after its
+        // own load finishes, and the banner has to follow that change.
+        cut.Render(p => p.Add(c => c.IssuerId, 88L));
+
+        cut.WaitForAssertion(() =>
+        {
+            _backend.CallCount.ShouldBe(2);
+            _backend.LastQuery.ShouldContain("issuerId=88");
+        });
     }
 
     private static ReadinessReportDto ReportWith(params ReadinessIssueDto[] issues)
@@ -215,6 +309,12 @@ public class ReadinessBannerTests : BunitContext, IAsyncLifetime
 
         /// <summary>Status answered to the readiness call; non-OK exercises the degradation path.</summary>
         public HttpStatusCode StatusCode { get; set; } = HttpStatusCode.OK;
+
+        /// <summary>When set, the request fails at transport level instead of returning a response.</summary>
+        public Exception? ThrowOnSend { get; set; }
+
+        /// <summary>When set, returned verbatim as the 200 body instead of serialized <see cref="Report"/>.</summary>
+        public string? RawBody { get; set; }
 
         /// <summary>Query string of the last readiness request, without the leading '?'.</summary>
         public string? LastQuery { get; private set; }
@@ -232,11 +332,17 @@ public class ReadinessBannerTests : BunitContext, IAsyncLifetime
             CallCount++;
             LastQuery = request.RequestUri?.Query.TrimStart('?') ?? string.Empty;
 
-            var response = StatusCode == HttpStatusCode.OK
-                ? new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(Report) }
-                : new HttpResponseMessage(StatusCode);
+            if (ThrowOnSend != null)
+                return Task.FromException<HttpResponseMessage>(ThrowOnSend);
 
-            return Task.FromResult(response);
+            if (StatusCode != HttpStatusCode.OK)
+                return Task.FromResult(new HttpResponseMessage(StatusCode));
+
+            HttpContent content = RawBody != null
+                ? new StringContent(RawBody, Encoding.UTF8, "application/json")
+                : JsonContent.Create(Report);
+
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = content });
         }
     }
 }
