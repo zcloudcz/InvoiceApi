@@ -66,14 +66,23 @@ public static class TailscaleTunnel
     private const string CliFileName = "tailscale";
     private const string DaemonFileName = "tailscaled";
 
-    // Everything below runs before the host serves its first request, so the whole sequence has one
-    // hard ceiling. Worst case inside it: 3 × 30 s of 'tailscale up' plus 2 s + 4 s backoff ≈ 96 s,
-    // which leaves the probe whatever is left of the budget. The platform kills a worker that takes
-    // too long to start, so exceeding this would turn a tunnel problem into a restart loop.
+    // The whole sequence has one hard ceiling. Worst case inside it: 3 × 30 s of 'tailscale up' plus
+    // 2 s + 4 s backoff ≈ 96 s, which leaves the probe whatever is left of the budget. Program.cs
+    // runs this in the background — the Functions host gives up on a worker that does not report
+    // ready within roughly a minute, and a bring-up that blocked startup turned every tunnel problem
+    // into a 502/503 restart loop (the first deployment did exactly that). The budget still matters:
+    // it bounds how long the migration behind it waits for a tunnel that is not coming.
     // The ceiling is a cancellation token, so it only cuts steps that can be cancelled: the copy of
     // the binaries into /tmp runs to completion regardless (tens of milliseconds, and a half-copied
     // executable would be worse than a late one).
     private static readonly TimeSpan StartupBudget = TimeSpan.FromSeconds(100);
+
+    // Last few lines the daemon printed. tailscaled explains a stuck login on stderr ("auth key
+    // expired", "control server unreachable", ...) but those lines only go to the worker logger at
+    // Debug level, which nothing in Azure collects — so when 'tailscale up' fails, this tail is
+    // written to stdout next to the failure. Small and bounded: it is a diagnostic, not a log.
+    private const int DaemonTailLines = 25;
+    private static readonly System.Collections.Concurrent.ConcurrentQueue<string> DaemonTail = new();
 
     private const int UpAttempts = 3;
     private static readonly TimeSpan UpProcessTimeout = TimeSpan.FromSeconds(30);
@@ -405,8 +414,23 @@ public static class TailscaleTunnel
         if (!string.IsNullOrWhiteSpace(line))
         {
             logger.LogDebug("tailscaled: {Line}", line);
+            RecordDaemonLine(line);
         }
     }
+
+    /// <summary>Keeps the last <see cref="DaemonTailLines"/> daemon lines for the failure milestone.</summary>
+    // Internal so the cap can be pinned by a test without a daemon.
+    internal static void RecordDaemonLine(string line)
+    {
+        DaemonTail.Enqueue(line);
+        while (DaemonTail.Count > DaemonTailLines && DaemonTail.TryDequeue(out _))
+        {
+        }
+    }
+
+    /// <summary>The recorded daemon tail as one line, with the auth key stripped just in case.</summary>
+    internal static string DaemonTailText(string secret) =>
+        Redact(string.Join(" | ", DaemonTail), secret);
 
     private static async Task<bool> IsSocksPortOpenAsync(int socksPort)
     {
@@ -451,8 +475,12 @@ public static class TailscaleTunnel
                 return;
             }
 
-            logger.LogWarning("Tailscale: up failed on attempt {Attempt} with exit code {ExitCode}: {Output}",
-                attempt, exitCode, output);
+            // A milestone, not a plain warning: the CLI output and the daemon tail are the only clue
+            // Azure gives about *why* the login did not happen (rejected key, unreachable control
+            // plane, ...), and only stdout reaches App Insights. Both strings are already redacted.
+            Milestone(logger,
+                $"up failed on attempt {attempt} with exit code {exitCode}: {output} | tailscaled tail: {DaemonTailText(authKey)}",
+                LogLevel.Warning);
 
             if (attempt < UpAttempts)
             {
@@ -488,7 +516,11 @@ public static class TailscaleTunnel
         catch (OperationCanceledException)
         {
             KillQuietly(process);
-            return (-1, $"timed out after {UpProcessTimeout.TotalSeconds:0} s");
+            // Whatever the CLI managed to print before the kill is the diagnosis — a rejected key
+            // shows up as "To authenticate, visit: https://login.tailscale.com/..." and then waits
+            // forever, which is exactly what a bare "timed out" would hide.
+            var partial = $"{await stdout}{await stderr}".Trim();
+            return (-1, $"timed out after {UpProcessTimeout.TotalSeconds:0} s; output so far: {Redact(partial, secret)}");
         }
 
         var output = $"{await stdout}{await stderr}".Trim();
