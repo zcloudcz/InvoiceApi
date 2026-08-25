@@ -67,6 +67,12 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Změny pro vývojáře
 
+- **#292** — Testovací prostředí `TEST-ENV` má teď vlastní deploy i pro frontend: push do
+  větve `TEST-ENV` nasadí BlazorUI na Azure Static Web Apps (`fakvio-test-ui`), s vlastní
+  URL API backendu zapečenou do buildu (ne produkční), a s deep-linky, které na SWA
+  nevrací 404. Produkční deploy na GitHub Pages z `master` zůstal beze změny. Spolu
+  s #290 (Functions backend) umožňuje ověřit release proti testovacímu prostředí celý,
+  ne jen na backendu. (PR #302, `75d7556`)
 - **#290** — Testovací prostředí `TEST-ENV` má teď vlastní deploy pro Azure Functions
   backend: push do větve `TEST-ENV` nasadí `Fakvio.Functions` do samostatné aplikace
   `zcloudinvoicingapi-test` (Flex Consumption, deployment slot tu není podporovaný),
