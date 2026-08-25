@@ -364,49 +364,63 @@ when a gate genuinely fails or a rule conflict has no defined path.
 
 ## Integration branch model
 
-AgenticTeam uses two long-lived branches:
+AgenticTeam uses three long-lived branches:
 
 - `master` — release branch. Stable, deployable, what a fresh `git
-  clone` gets. Updated only by the `/release` slash command.
+  clone` gets. Deploys to production. Updated only by the
+  `/release-prod` slash command.
+- `TEST-ENV` — staging branch between the integration branch and
+  `master`. Deploys to the test environment. Updated only by the
+  `/release` slash command, and never committed to directly: a fix for
+  something found on the test environment goes into the integration
+  branch as a normal feature PR and is promoted again.
 - `$AGENTIC_INTEGRATION_BRANCH` (default `develop`) — integration
   branch. Where feature PRs land. Cards in `Implemented` are sitting
   here, waiting to be released.
 
 Lifecycle of a feature:
 
-    feature/issue-N-foo  ── PR ──▶  develop  ── /release PR ──▶  master
-        ↑                              ↑                            ↑
-        agent-dev                      agent-ops merges               human triggers
-        branches off develop           (squash, --base develop)     /release; Implemented
-                                                                    cards batch-move to
-                                                                    Approved
+    feature/issue-N-foo ─PR─▶ develop ─/release PR─▶ TEST-ENV ─/release-prod PR─▶ master
+
+- `agent-dev` branches off develop; `agent-ops` squash-merges the
+  feature PR back into develop and the card lands in `Implemented`.
+- A human triggers `/release` (develop → TEST-ENV, merge commit). No
+  card moves — the test environment is not a release.
+- A human verifies the test environment and triggers `/release-prod`
+  (TEST-ENV → master, merge commit). Only then do `Implemented` cards
+  batch-move to `Approved`, and only those whose feature-PR merge commit
+  actually reached `master` — a card merged into develop while the
+  release PR was open waits for the next release.
 
 Column meanings on the board:
 
 - `Implemented`   feature PR is merged into the integration branch
                   (develop). Issue is closed. Code is integrated but
-                  not yet released.
-- `Approved`      release happened — the develop→master PR was merged
-                  and `/release` (or the user) batch-moved cards from
-                  Implemented to Approved.
+                  not yet released — it may already be running on the
+                  test environment, that does not move the card.
+- `Approved`      production release happened — the TEST-ENV→master PR
+                  was merged and `/release-prod` (or the user)
+                  batch-moved cards from Implemented to Approved.
 
 Merge styles:
 
-- feature PR → develop  : **squash** (one commit per feature on develop)
-- develop PR → master   : **merge commit** (preserves the squashed
-                          feature commits in master's history; release
-                          shows up as a single readable rollup)
+- feature PR → develop   : **squash** (one commit per feature on develop)
+- develop PR → TEST-ENV  : **merge commit**
+- TEST-ENV PR → master   : **merge commit** (preserves the squashed
+                           feature commits in master's history; a
+                           release shows up as a single readable rollup)
 
 Legacy / migration:
 
 - If the integration branch does not exist on origin (existing repo
   predating this convention), `agent-dev` creates it from `master` on
-  first use and pushes it. No manual migration required.
+  first use and pushes it. `/release` does the same for `TEST-ENV`.
+  No manual migration required.
 - If `$AGENTIC_INTEGRATION_BRANCH` is unset or empty, agents fall back
   to `develop` (not master — never master). To opt out of the model
   for a single repo, set `AGENTIC_INTEGRATION_BRANCH=master` and
   agent-ops + agent-dev will treat master as the integration target
-  and `/release` becomes a no-op.
+  and `/release` + `/release-prod` become no-ops.
 
 ## Transition cheat sheet
 
@@ -420,8 +434,13 @@ Task flow (sub-issues created from a story, or standalone backlog items):
     Test        -> Progress    : agent-tester on failing impl,       label -> role:dev
     Test        -> Implemented : agent-tester on green CI,           label -> role:ops
                                  (PR target is develop, not master)
-    Implemented -> Approved    : `/release` merges develop -> master, batch-moves all
-                                 Implemented cards to Approved
+    Implemented -> Approved    : `/release-prod` merges TEST-ENV -> master, then batch-moves
+                                 the Implemented cards whose feature-PR merge commit is an
+                                 ancestor of master. Closing time is NOT the test — a card
+                                 merged into develop while the release PR was open closed
+                                 early and is still not in master. See release-prod.md
+                                 State A. (`/release` promotes develop -> TEST-ENV and
+                                 moves no cards.)
     any         -> Blocked     : agent-dev when it must ask a question, label +blocked:question
     Blocked     -> ToDo        : human after answering (manual)
     Implemented -> Progress    : agent-ops on merge conflict, +needs:rebase, label -> role:dev
@@ -436,7 +455,8 @@ Story flow (a `type:story` issue, before and around its task children):
                                  (story stays in Decomposed throughout child execution)
     Decomposed  -> Implemented : agent-ops when it merges the LAST open child of the story
                                  into develop
-    Implemented -> Approved    : `/release` (alongside the child task cards)
+    Implemented -> Approved    : `/release-prod` (alongside the child task cards, and only
+                                 once every child is itself in master)
 
 Approval / blocking labels on a story:
 

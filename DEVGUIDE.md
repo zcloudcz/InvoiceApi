@@ -1947,6 +1947,46 @@ obou `TenantContextMiddleware` — SysAdmin ho musí zavolat i bez impersonace f
 
 ---
 
+### 9.6 Release flow (`develop` → `TEST-ENV` → `master`)
+
+Kód se do produkce dostává ve třech stupních. Každý stupeň má vlastní větev
+a vlastní spouštěč:
+
+| Stupeň | Větev | Kdo / čím | Co se nasadí | Karty na boardu |
+|--------|-------|-----------|--------------|-----------------|
+| Integrace | `develop` | `agent-ops` squash-merge feature PR | nic (`develop` nemá deploy workflow) | karta → `Implemented` |
+| Test | `TEST-ENV` | člověk příkazem `/release` | testovací prostředí — Function App `zcloudinvoicingapi-test` (samostatný app, ne slot) + Static Web App `fakvio-test-ui` | **nehýbou se** |
+| Produkce | `master` | člověk příkazem `/release-prod` po ověření testu | produkce (Function App `zcloudinvoicingapi` + GitHub Pages) | `Implemented` → `Approved` |
+
+Pravidla:
+
+- Na `TEST-ENV` ani `master` se **nikdy nekomituje přímo**. Oprava toho, co se
+  najde na testovacím prostředí, jde jako běžný feature PR do `develop` a znovu
+  přes `/release`.
+- Oba promotion PR se mergují **merge commitem** (ne squash) — feature commity
+  tak zůstanou v historii. Squash je jen u feature PR do `develop`.
+- Řez verze v `release-notes.md` (`## Nevydáno` → `## <verze> — <datum>`) dělá
+  **`/release`** commitem na `develop`. `/release-prod` už notes nesahá — kdyby
+  se řez dělal až nad `master`, další merge `develop → TEST-ENV` by na tom
+  souboru konfliktoval.
+- Když `TEST-ENV` neexistuje, založí ji `/release` z `master` (stejný legacy
+  bootstrap jako u `develop`).
+- Žádná z větví nemá branch protection — pořadí stupňů je konvence vynucená
+  agenty a těmito příkazy, ne GitHubem.
+
+Deploy na `TEST-ENV` obstarávají dva workflows, které už v `develop` jsou — viz
+tabulka v §9.1: `testenv_zcloudinvoicingapi.yml` (Function App
+`zcloudinvoicingapi-test`; je to **samostatný Function App, ne slot** — proč, viz
+§9.4) a `blazorui-test-deploy.yml` (Static Web App `fakvio-test-ui`). Oba mají
+trigger `push` na `TEST-ENV`, takže **merge promotion PR `develop → TEST-ENV`
+oba deploye rovnou vystřelí**. Jediná výjimka je bootstrap větve (step 0
+v `/release`, kdy `TEST-ENV` ještě neexistuje a zakládá se z `master`):
+`master` ty dva soubory nemá, takže samotné založení větve nenasadí nic —
+první reálný test deploy přijde až s prvním mergnutým promotion PR. Stavový
+automat obou příkazů je v `.claude/commands/release.md`
+a `.claude/commands/release-prod.md`, dopad na board v `.claude/BOARD-OPS.md`
+(sekce „Integration branch model").
+
 ## 10. Observability — logging + correlation
 
 ### 10.1 CorrelationId
@@ -2187,6 +2227,7 @@ pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. P
 | Nový email/PDF placeholder | §4.3 (typy) |
 | Nový hostovací model (např. native API workflow) | §1.2 + §9.1 |
 | Změna config zdroje (Key Vault, App Configuration) | §9.2 |
+| Změna release flow / promotion větví (`/release`, `/release-prod`) | §9.6 |
 | Změna tvaru konfigurace DB autentizace nebo obsahu health endpointu | §9.5 |
 | Změna Data Protection persistence / ApplicationName | §2.7 |
 | Nová seed migrace s hardcoded Id | §12 (non-idempotent seed) |

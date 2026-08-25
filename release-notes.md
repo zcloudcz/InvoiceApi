@@ -5,8 +5,9 @@ Záznam dokončených změn. **Jeden záznam na každý task, který byl mergnut
 Step 2b. Ručně sem nepiš; když záznam chybí, chybí i merge.
 
 Řazeno **nejnovější nahoře**. Sekce `## Nevydáno` drží to, co je v `develop`, ale
-ještě nebylo promováno na `master`. Při `/release` se přejmenuje na verzi s datem
-a nad ní vznikne nová prázdná `## Nevydáno`.
+ještě nebylo promováno dál. Řez dělá `/release` (promotion `develop → TEST-ENV`):
+sekce se přejmenuje na verzi s datem a nad ní vznikne nová prázdná `## Nevydáno`.
+`/release-prod` (`TEST-ENV → master`) už tenhle soubor nemění.
 
 Formát řádku:
 

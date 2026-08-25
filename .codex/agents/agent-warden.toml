@@ -123,7 +123,7 @@ state.
 | ready (not draft), no decision    | `CodeReview`    |
 | `CHANGES_REQUESTED`               | `Progress`      |
 | `APPROVED`, CI pending/green      | `Test` or `Implemented` (last reviewer/tester sets it) |
-| merged, issue closed              | `Implemented` (until /release) |
+| merged, issue closed              | `Implemented` (until /release-prod) |
 
 Detector: column mismatches the PR state by more than one step (e.g.
 PR is `APPROVED` but card is in `Backlog`; PR is merged but card is in
@@ -178,7 +178,8 @@ card to `Implemented`, remove `role:analyst` if present, comment on the
 story:
 
     "All sub-issues closed but roll-up to Implemented did not happen.
-    Warden moved the card. Run /release when ready."
+    Warden moved the card. Run /release when ready (and /release-prod
+    once the test environment checks out)."
 
 ### Invariant 5 — Abandoned `Blocked` cards
 

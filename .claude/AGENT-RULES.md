@@ -25,20 +25,28 @@ the repo wins.
   one specific case — `agent-dev` Step 2c (rebase after parallel-merge
   conflict), and only after a clean rebase + re-test in the same
   working directory. Never `--force` (without lease), never on shared
-  branches (`master`, `main`, integration branch), never to bypass a
-  failing test.
+  branches (`master`, `main`, `TEST-ENV`, integration branch), never to
+  bypass a failing test.
 - `git reset --hard` against anything you did not create in this session.
 - Rewriting published history outside the rebase exception above —
   `rebase -i` against pushed commits, `commit --amend` after push.
-- Direct commits / pushes to `master`, `main`, or the integration branch.
-  Always go through a PR. **One exception, and only one:** `agent-ops`
-  commits the `release-notes.md` line for a merge it has just made (its
-  Step 2a). Nothing else qualifies — not a one-line test fix, not a doc
+- Direct commits / pushes to `master`, `main`, `TEST-ENV`, or the
+  integration branch. Always go through a PR. Creating one of those
+  branches when the repo does not have it yet is branch creation, not a
+  commit, and stays allowed (`/release` bootstraps `TEST-ENV` off
+  `master`, `agent-dev` the integration branch).
+  **Two exceptions, and only two — both are `release-notes.md` on the
+  integration branch:** (1) `agent-ops` commits the release-notes line
+  for a merge it has just made (its Step 2a); (2) `/release` step 1b
+  commits the version rollover (`## Nevydáno` → `## <verze> — <datum>`)
+  right before it opens the promotion PR. The record has to sit on the
+  branch being promoted, which is why neither can go through a PR of its
+  own. Nothing else qualifies — not a one-line test fix, not a doc
   refresh. On 2026-08-23 `7d685e7` (test fix behind #276) and `997e9ba`
   (DEVGUIDE parity table) landed straight on `develop` with no PR, no
   review and no release-notes line. Both should have been PRs.
 - Deleting branches you did not create. Deleting `master` / `main` /
-  `develop` under any circumstance.
+  `TEST-ENV` / `develop` under any circumstance.
 - `git clean -fdx` outside a freshly-cloned scratch dir.
 
 ## 2. GitHub (issues, PRs, board, labels)
@@ -54,7 +62,7 @@ the repo wins.
 **Forbidden:**
 - `gh repo delete`, `gh repo archive`, `gh repo rename`.
 - Closing issues / PRs you did not open, except as part of an explicit
-  human-approved workflow (e.g. `/release` finalization).
+  human-approved workflow (e.g. `/release-prod` finalization).
 - Bulk operations across many issues / PRs without an explicit
   human-issued instruction in this session.
 - Touching repos outside the current working tree.
@@ -142,7 +150,7 @@ restore with `git checkout --`.
 
 Even when permissions allow it, **stop and ask the user** before:
 - Merging a PR into `master` / `main`.
-- Running `/release`.
+- Running `/release` or `/release-prod`.
 - Deleting any GitHub artifact (issue, PR, branch on remote, label).
 - Reverting a merged commit.
 - Mass label / state changes on more than 5 items.
