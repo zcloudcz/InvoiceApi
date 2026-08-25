@@ -1,0 +1,173 @@
+@*
+    SetupChecklist.razor — deferrable "finish your setup" guide on the dashboard (issue #210, story #150).
+
+    Why it exists: the dashboard used to end with a hard-coded "Quick Start" timeline that said the
+    same two sentences to everybody, whether their company was fully set up or completely empty.
+    This replaces it with the live readiness report (story #148) — the same rules that make
+    CompleteInvoiceAsync refuse an invoice, so the checklist can never promise a readiness the API
+    would then deny.
+
+    Design notes:
+    - "Done" is never stored. The list is what GET /api/readiness reports right now; when the tenant
+      fixes the last item the report comes back empty and the whole component renders nothing.
+      That is the one state that cannot go stale.
+    - Items are grouped by severity under the same two headings the banner uses, so "this blocks
+      invoicing today" is said in words and not only in the colour of an icon.
+    - Only the deferral ("remind me later") is persisted, in localStorage — same precedent as the
+      cookie consent in MainLayout. Deferring collapses the card to a one-line entry point, so the
+      guide stays reachable later instead of being dismissed once and forever.
+    - Every item links to the FixRoute the API supplies. The UI never invents routes.
+*@
+@using Blazored.LocalStorage
+@using Fakvio.Contracts.Dto.Readiness
+@using Fakvio.Domain.Enums
+@inject ReadinessApiService ReadinessService
+@inject ILocalStorageService LocalStorage
+@inject IStringLocalizer<SharedResource> L
+
+@if (_groups.Count > 0)
+{
+    @if (_deferred)
+    {
+        @* Collapsed entry point — the whole point of the localStorage flag is that it parks the
+           guide, not that it deletes it. The count keeps the reminder honest without the detail. *@
+        <MudButton Variant="Variant.Text" Color="Color.Primary" Class="mb-4"
+                   StartIcon="@Icons.Material.Filled.PlaylistAddCheck" OnClick="ResumeAsync">
+            @L["SetupChecklist_Title"] (@_groups.Sum(g => g.Issues.Count))
+        </MudButton>
+    }
+    else
+    {
+        <MudCard Elevation="2" Class="mb-6 rounded-lg">
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h6">@L["SetupChecklist_Title"]</MudText>
+                </CardHeaderContent>
+                <CardHeaderActions>
+                    <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="DeferAsync">
+                        @L["SetupChecklist_Defer"]
+                    </MudButton>
+                </CardHeaderActions>
+            </MudCardHeader>
+            <MudCardContent>
+                @foreach (var group in _groups)
+                {
+                    @* One block per severity, each under its own heading. The heading is what carries
+                       the severity in *words*: an icon colour says nothing to a screen reader, and
+                       red-vs-orange is the pair colour-blind users are least able to tell apart. The
+                       two keys are the ones ReadinessBanner already uses, so both surfaces word the
+                       same severity identically. *@
+                    <div class="setup-checklist-group">
+                        <MudText Typo="Typo.subtitle2" Class="mt-2 mb-1">@L[group.TitleKey]</MudText>
+
+                        @foreach (var issue in group.Issues)
+                        {
+                            <div class="d-flex flex-wrap align-center gap-2">
+                                @* Every listed item is by definition still open, so the icon is always
+                                   the empty circle; its colour repeats the heading's severity. *@
+                                <MudIcon Icon="@Icons.Material.Filled.RadioButtonUnchecked" Size="Size.Small"
+                                         Color="@group.Color" />
+                                <MudText Typo="Typo.body2">@ReadinessIssueText.Describe(L, issue)</MudText>
+                                @* FixRoute is a relative UI route supplied by the API. The DTO defaults
+                                   it to string.Empty, so a rule that forgets to fill it in must not
+                                   render a link pointing back at the current page. *@
+                                @if (!string.IsNullOrWhiteSpace(issue.FixRoute))
+                                {
+                                    <MudLink Href="@issue.FixRoute" Typo="Typo.body2">@L["Readiness_FixLink"]</MudLink>
+                                }
+                            </div>
+
+                            @if (issue.MissingFields.Count > 0)
+                            {
+                                @* The same field names the 400 TENANT_NOT_READY response lists, so a user
+                                   who does hit the refusal recognises what the checklist had told them. *@
+                                <MudText Typo="Typo.caption" Class="d-block mb-2">
+                                    @string.Join(", ", issue.MissingFields)
+                                </MudText>
+                            }
+                        }
+                    </div>
+                }
+            </MudCardContent>
+        </MudCard>
+    }
+}
+
+@code {
+    /// <summary>
+    /// localStorage key holding the "remind me later" flag. Only the deferral is stored here —
+    /// storing completion would be the one piece of state able to contradict the live report.
+    /// </summary>
+    private const string DeferStorageKey = "setupChecklistDeferred";
+
+    /// <summary>
+    /// What readiness still reports as missing, split into one block per severity. Empty = nothing
+    /// to guide through. Grouping also fixes the order: the report itself is not sorted
+    /// (TenantReadinessService appends rule by rule), so a blocking rule added after the EPO
+    /// warning would otherwise be listed below it.
+    /// </summary>
+    private readonly List<IssueGroup> _groups = new();
+
+    /// <summary>True while the user has parked the guide. Collapses it, never hides an item.</summary>
+    private bool _deferred;
+
+    /// <summary>
+    /// Loads both halves of the state once per page visit. The component takes no parameters, so
+    /// OnInitializedAsync runs exactly once — no re-fetch guard is needed here (unlike
+    /// ReadinessBanner, whose IssuerId parameter makes OnParametersSetAsync re-run).
+    ///
+    /// Leaving the dashboard and coming back re-creates the component, which is what makes a
+    /// setting fixed in the meantime disappear from the list without any refresh plumbing.
+    /// </summary>
+    protected override async Task OnInitializedAsync()
+    {
+        // Read the flag before the report so the card cannot flash open for a user who parked it.
+        try
+        {
+            _deferred = await LocalStorage.GetItemAsync<bool>(DeferStorageKey);
+        }
+        catch (Exception)
+        {
+            // Same reasoning as GridStateService.LoadAsync: a value left over from an older schema,
+            // or storage the browser refuses, must not throw out of a lifecycle method — in Blazor
+            // WASM that costs the whole page over a "remind me later" flag. Not knowing the flag
+            // means showing the guide, which is what a first-time visitor gets anyway.
+            _deferred = false;
+        }
+
+        var issues = (await ReadinessService.GetReportAsync()).Issues;
+        AddGroup(EReadinessSeverity.Blocking, Color.Error, "Readiness_BlockingTitle", issues);
+        AddGroup(EReadinessSeverity.Warning, Color.Warning, "Readiness_WarningTitle", issues);
+    }
+
+    /// <summary>Adds a block for the issues of one severity, or nothing when there are none.</summary>
+    private void AddGroup(
+        EReadinessSeverity severity,
+        Color color,
+        string titleKey,
+        List<ReadinessIssueDto> issues)
+    {
+        var matching = issues.Where(i => i.Severity == severity).ToList();
+        if (matching.Count == 0)
+            return;
+
+        _groups.Add(new IssueGroup(color, titleKey, matching));
+    }
+
+    /// <summary>Parks the guide until the user asks for it again.</summary>
+    private async Task DeferAsync()
+    {
+        _deferred = true;
+        await LocalStorage.SetItemAsync(DeferStorageKey, true);
+    }
+
+    /// <summary>Reopens the guide from the collapsed entry and forgets the deferral.</summary>
+    private async Task ResumeAsync()
+    {
+        _deferred = false;
+        await LocalStorage.RemoveItemAsync(DeferStorageKey);
+    }
+
+    /// <summary>Issues of one severity, together with the heading and colour that announce it.</summary>
+    private sealed record IssueGroup(Color Color, string TitleKey, List<ReadinessIssueDto> Issues);
+}

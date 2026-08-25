@@ -1719,13 +1719,15 @@ Rozdíl 200 vs. 404 je jediná logika, kterou controller přidává: služba vra
 rozlišit je umí až volající, protože to ID sám poslal. Bez `issuerId` je `ISSUER_MISSING`
 normální položka reportu (200), s `issuerId` je to 404.
 
-**UI konzument — `ReadinessBanner`** (issue #215).
+**UI konzumenti — `ReadinessBanner`** (issue #215) **a `SetupChecklist`** (issue #210).
 
 | Vrstva | Kde | Poznámka |
 |--------|-----|----------|
-| API klient | `Fakvio.UI.Shared/Services/ReadinessApiService.cs` | Chytá **`Exception`**, ne jen `ApiException` — `ApiClientBase.GetAsync` propouští i `HttpRequestException` / `JsonException` a výjimka z lifecycle metody v Blazor WASM shodí celou aplikaci. Při chybě vrací prázdný report; banner je dekorace, nesmí shodit hostitelskou stránku |
-| Komponenta | `Fakvio.UI.Shared/Components/Shared/ReadinessBanner.razor` | Blocking → `Severity.Error`, Warning → `Severity.Warning`, dva oddělené alerty. Prázdný report = nerenderuje nic. Stahuje **jednou na `IssuerId`** (guard `_loadedIssuerId`, stejný idiom jako `_lastTrigger` v `InvoicePaymentsPanel`) — bez něj by každý `StateHasChanged()` hostitelské stránky znamenal další `GET /api/readiness` |
-| Zapojení | `Home.razor` (bez `IssuerId`, celý tenant), `InvoiceDetail.razor` (jen stav Draft, `IssuerId` dokladu) | Detail Draftu je poslední místo před gate v `CompleteInvoiceAsync` |
+| API klient | `Fakvio.UI.Shared/Services/ReadinessApiService.cs` | Chytá **`Exception`**, ne jen `ApiException` — `ApiClientBase.GetAsync` propouští i `HttpRequestException` / `JsonException` a výjimka z lifecycle metody v Blazor WASM shodí celou aplikaci. Při chybě vrací prázdný report; obě komponenty jsou dekorace, nesmí shodit hostitelskou stránku |
+| Text položky | `Fakvio.UI.Shared/Components/Shared/ReadinessIssueText.cs` | `Describe()` — `Readiness_Code_<KÓD>` s fallbackem na `Readiness_Code_Unknown` plus jméno vystavitele. Sdílený, aby obě plochy popsaly týž problém stejně |
+| Banner | `Fakvio.UI.Shared/Components/Shared/ReadinessBanner.razor` | Blocking → `Severity.Error`, Warning → `Severity.Warning`, dva oddělené alerty. Prázdný report = nerenderuje nic. Stahuje **jednou na `IssuerId`** (guard `_loadedIssuerId`, stejný idiom jako `_lastTrigger` v `InvoicePaymentsPanel`) — bez něj by každý `StateHasChanged()` hostitelské stránky znamenal další `GET /api/readiness` |
+| Checklist | `Fakvio.UI.Shared/Components/Shared/SetupChecklist.razor` | Karta „Dokončit nastavení" na dashboardu. Stejné dělení jako banner — položky **seskupené podle závažnosti** pod klíči `Readiness_BlockingTitle` / `Readiness_WarningTitle`, barva ikony nadpis jen opakuje. Severita nesmí být nesená jen barvou (odečítač obrazovky z barvy nepřečte nic, červená vs oranžová je navíc nejhorší dvojice pro barvosleposti) — a report z `TenantReadinessService` není řazený, seskupení tedy drží i pořadí. Bez parametrů → stačí `OnInitializedAsync`, **žádný re-fetch guard** (není co znovu spouštět). Odložení = `bool` v localStorage pod klíčem `setupChecklistDeferred` přes `ILocalStorageService`, čtení v `try/catch` (precedens `GridStateService.LoadAsync`) — sbalí kartu na jedno tlačítko, nesmaže ji. **Dokončenost se neukládá nikdy**, počítá se z reportu, takže nemůže zastarat |
+| Zapojení | `Home.razor` → `SetupChecklist` (bez `IssuerId`, celý tenant), `InvoiceDetail.razor` → `ReadinessBanner` (jen stav Draft, `IssuerId` dokladu) | Na dashboardu je checklist nástupcem banneru (#210 nahradil i statickou „Quick Start" osu) — **dvě komponenty se stejným reportem na jedné stránce nikdy**. Detail Draftu je poslední místo před gate v `CompleteInvoiceAsync`, tam se odkládat nedá |
 
 Když přidáváš readiness kód, přidej k němu **i lokalizační klíč `Readiness_Code_<KÓD>`
 do obou `SharedResource*.resx`** — jinak uživatel uvidí obecnou náhradní hlášku.
