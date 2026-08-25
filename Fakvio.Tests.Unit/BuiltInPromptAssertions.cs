@@ -47,7 +47,7 @@ internal static class BuiltInPromptAssertions
     ];
 
     /// <summary>
-    /// The catalog the twenty-four shipped tools are expected to render, in DI registration order
+    /// The catalog the thirty shipped tools are expected to render, in DI registration order
     /// (<c>ServiceCollectionExtensions</c>). Each line is <c>- {ToolName}: {Description}</c>
     /// with the description written out as one line. This is the independent copy: when a tool
     /// description changes, it has to be changed here too, deliberately. That is the point.
@@ -77,7 +77,13 @@ internal static class BuiltInPromptAssertions
         "- add_bank_account: Add a bank account to the user's own company (the issuer). The account number is required, everything else is optional. The very first account of the company always becomes the default one — the account offered on new invoices and used for QR payments.",
         "- update_bank_account: Change one bank account of the user's own company (the issuer): its number, label, bank, IBAN, SWIFT, currency, or which account is the default one. Identify the account by the ID returned from get_my_company and send only the fields that should change.",
         "- delete_bank_account: Permanently remove one bank account from the user's own company (the issuer). Identify the account by the ID returned from get_my_company. Invoices already issued keep the payment details printed on them; only the stored account is removed.",
-        "- get_readiness: Checks whether the company setup is complete enough to issue invoices. Returns every missing setting with its severity (blocking or warning), the empty fields and the page where the user fixes it. Read-only — use it when the user asks what is still missing, or when an invoice was refused because the setup is incomplete."
+        "- get_readiness: Checks whether the company setup is complete enough to issue invoices. Returns every missing setting with its severity (blocking or warning), the empty fields and the page where the user fixes it. Read-only — use it when the user asks what is still missing, or when an invoice was refused because the setup is incomplete.",
+        "- list_number_sequences: List the document number sequences (číselné řady) of the user's company: their name, document type, prefix/suffix, current counter, numbering format and which one is the default. Also lists the available numbering formats with the IDs needed to create a new sequence.",
+        "- create_number_sequence: Create a new document number sequence (číselná řada) for invoices, credit notes, pro-forma invoices or advance tax receipts. The numbering format is referenced by the ID that list_number_sequences prints, so call that tool first.",
+        "- update_number_sequence: Change one document number sequence (číselná řada): its name, prefix, suffix, counter, or make it the default sequence for its document type. Identify the sequence by the ID returned from list_number_sequences and send only the fields that should change. The document type and the numbering format cannot be changed — create a new sequence instead.",
+        "- list_vat_rates: List the VAT rates (sazby DPH) configured for the user's company: percentage, name, whether the rate is reduced or standard, its validity period and which rates are the default ones. Returns the IDs needed to change a rate.",
+        "- create_vat_rate: Create a new VAT rate (sazba DPH) for the user's company. The percentage and a name are required; validity starts today unless a date is given. A rate can be marked as the default standard or default reduced rate, which is the one offered on new invoice items.",
+        "- update_vat_rate: Change one VAT rate (sazba DPH): its name, percentage, validity dates, whether it is a reduced rate, or make it the default rate of its kind. Identify the rate by the ID returned from list_vat_rates and send only the fields that should change."
     ];
 
     /// <summary>The static lines below the generated tool catalog, verbatim.</summary>

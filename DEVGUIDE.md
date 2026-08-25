@@ -1009,6 +1009,12 @@ Sloupec „Klíčové parametry" je jen orientační — závazné je schéma v 
 | `update_bank_account` | `UpdateBankAccountTool` | BankAccount (issuer) | **Write** (confirm) | `bank_account_id` (povinný) + měněná pole |
 | `delete_bank_account` | `DeleteBankAccountTool` | BankAccount (issuer) | **Destructive** (confirm) | `bank_account_id` (povinný) |
 | `get_readiness` | `GetReadinessTool` | Nastavení tenanta | Read (report) | bez parametrů; vrátí chybějící nastavení + závažnost + `fixRoute` (viz níže) |
+| `list_number_sequences` | `ListNumberSequencesTool` | NumberSequence | Read (list) | `document_type`, `include_inactive`; vypíše i **formáty číslování** s ID pro create |
+| `create_number_sequence` | `CreateNumberSequenceTool` | NumberSequence | **Write** (confirm) | `name`, `document_type`, `format_id` (povinné) + `prefix`, `suffix`, `starting_number`, `is_default` |
+| `update_number_sequence` | `UpdateNumberSequenceTool` | NumberSequence | **Write** (confirm) | `id` (povinný) + `name`, `prefix`, `suffix`, `current_number`, `is_default` |
+| `list_vat_rates` | `ListVatRatesTool` | VatRate | Read (list) | `include_inactive` |
+| `create_vat_rate` | `CreateVatRateTool` | VatRate | **Write** (confirm) | `name`, `rate` (povinné) + `valid_from`, `valid_to`, `is_reduced`, `is_default` |
+| `update_vat_rate` | `UpdateVatRateTool` | VatRate | **Write** (confirm) | `id` (povinný) + `name`, `rate`, `valid_from`, `valid_to`, `is_reduced`, `is_default` |
 
 ##### Reporting tools (#228) — proč tři, ne šest
 
@@ -1127,9 +1133,48 @@ Dvojče pro externí AI klienty je MCP nástroj `GetReadiness` (§4.9), který j
   nenabízí — vědomý důsledek, ne chyba: dofiltrovávat v toolu by rozešlo odpověď asistenta
   s bannerem i s gate na vystavení dokladu. Kdyby to vadilo, patří filtr do servisu.
 
-##### Paritní tabulka chat ↔ MCP (stav k #211, #220 a #222)
+##### Číselné řady a sazby DPH (#224)
 
-Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 24 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
+Šest toolů nad dvěma číselníky, které do té doby existovaly jen v UI. Vzor je stejný jako
+u #220: čtení jeden tool, zápisy dva a oba `IConfirmableChatTool`. Společné formátování
+i čtení parametrů drží `SettingsChatToolSupport` — model vidí jen text, který vyrobí, takže
+řada popsaná v náhledu jinak než ve výsledku by četla jako změna něčeho jiného.
+
+- `list_number_sequences` vypisuje **i formáty číslování**, ne jen řady.
+  `create_number_sequence` adresuje formát přes `format_id` a model nemá jak se ho jinak
+  dozvědět. `GetAllFormatsAsync` si navíc chybějící formáty sám doplní
+  (`EnsureDefaultFormatsExistAsync`), takže i čerstvě naprovisionovaný tenant nějaké ID nabídne.
+- **Čítač se vypisuje ve dvou číslech** — `counter: 41 (next number 42)`. `CurrentNumber` je
+  poslední použité číslo, ne příští; kdyby tool vypsal jen jedno, model by ho hlásil jako
+  číslo příští faktury. Ze stejného důvodu preview u `create_number_sequence` počítá
+  `StartingNumber - 1`, přesně jak to ukládá `CreateSequenceAsync`.
+- **Posun čítače dozadu prochází, ale s varováním v náhledu.** Je to legitimní oprava (UI to
+  umí taky) a zároveň nejrychlejší cesta k duplicitnímu číslu dokladu, takže uživatel to musí
+  vidět *před* potvrzením. Záporná hodnota se odmítá rovnou — servis ji nehlídá.
+- **Výchozí příznak jde jen přesunout, ne zhasnout.** `is_default: false` obě `update_*`
+  odmítají stejnou větou (`SettingsChatToolSupport.DefaultCannotBeCleared`) — typ dokladu bez
+  výchozí řady přestane číslovat a sazba bez výchozí se nenabídne na položce faktury. Totéž
+  pravidlo má `update_bank_account` (#220).
+- **Přesun výchozího je u obou entit samostatné volání.** `UpdateNumberSequenceDto` příznak
+  vůbec nemá, a `CreateVatRateAsync` / `UpdateVatRateAsync` druhý default stejného druhu
+  **odmítnou výjimkou** — teprve `SetAsDefaultAsync` předchozího držitele odznačí. Tooly proto
+  zapisují bez příznaku a default posouvají druhým voláním. `update_number_sequence` navíc
+  `UpdateSequenceAsync` úplně přeskočí, když se mění jen default (jinak by šel zbytečný zápis).
+- **`update_vat_rate` posílá celý merge.** `UpdateVatRateAsync` přepisuje *každou* property
+  z DTO, takže pole, které model neposlal, se musí načíst ze stávajícího záznamu — jinak by
+  se tiše smazalo. `update_number_sequence` naopak posílá jen poslané fieldy, protože
+  `UpdateSequenceAsync` aplikuje pouze ne-null hodnoty.
+- **Co v šestici vědomě není:** deaktivace/aktivace řady, formátu ani sazby (to je soft delete
+  a mazání přes chat je mimo scope #224), zakládání a úprava **formátů** číslování (řada na
+  hotový formát jen ukazuje) a vymazání prefixu/sufixu do prázdna — prázdná hodnota se
+  v celém katalogu čte jako „parametr neposlán".
+- Rozsah a formát dat: `ChatToolDates` (stejný parser jako reporting tooly, tedy i `15.3.2026`),
+  procento 0–100 a `valid_to >= valid_from` se ověřuje v toolu, aby náhled nikdy nesliboval
+  zápis, který by servis odmítl.
+
+##### Paritní tabulka chat ↔ MCP (stav k #211, #220, #222 a #224)
+
+Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 30 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
 a **MCP server** (`[McpServerTool]`, 37 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
 cílem story #149 je mezeru zavřít. Tabulka je jediný pravdivý seznam toho, co kde chybí;
 **každý nový tool na kterékoli straně sem přidá řádek** (viz §13).
@@ -1186,12 +1231,16 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | — | Read | `list_attachments` | ⬅ | |
 | — | **Write** (nastavení firmy) | `update_my_company` | ⬅ | |
 | — | **Write** (bankovní účty) | `add_bank_account`, `update_bank_account`, `delete_bank_account` | ⬅ | |
+| — | Read | `list_number_sequences` | ⬅ | |
+| — | **Write** (číselné řady) | `create_number_sequence`, `update_number_sequence` | ⬅ | |
+| — | Read | `list_vat_rates` | ⬅ | |
+| — | **Write** (sazby DPH) | `create_vat_rate`, `update_vat_rate` | ⬅ | |
 
-**Součty:** 37 MCP toolů, 24 chat toolů. Chat pokrývá 18 MCP toolů (z toho 2 částečně),
-9 chat toolů nemá MCP protějšek. Zbývá 19 mezer.
+**Součty:** 37 MCP toolů, 30 chat toolů. Chat pokrývá 18 MCP toolů (z toho 2 částečně),
+15 chat toolů nemá MCP protějšek. Zbývá 19 mezer.
 
-Mimo obě rozhraní (jen UI / SysAdmin, plánováno v #224 / #227):
-číselné řady a sazby DPH, upomínky (dunning), PaymentMatch / BankTransaction.
+Mimo obě rozhraní (jen UI / SysAdmin, plánováno v #227): upomínky (dunning),
+PaymentMatch / BankTransaction. Číselné řady a sazby DPH už chat umí (#224), MCP zatím ne.
 
 ### 4.8 In-app notifikace (per-user)
 

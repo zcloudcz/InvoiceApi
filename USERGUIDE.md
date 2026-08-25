@@ -652,12 +652,14 @@ AI asistent zná kontext vaší firmy a umí odpovídat na otázky i provádět 
 | Přijaté faktury | Vyhledat, vypsat seznam |
 | Přehledy a reporty | Shrnout dashboard, vypsat faktury po splatnosti, faktury za období nebo pro konkrétního klienta, spočítat DPH za období |
 | Nastavení firmy | Přečíst nastavení vlastní firmy (název, IČO, DIČ, plátcovství DPH, jazyk dokladů, adresa, kontakty, bankovní účty) a změnit ho — včetně přidání, úpravy a zrušení bankovního účtu („Přidej nám účet 1234567890/0100", „Od ledna jsme plátci DPH"). IČO měnit nelze. |
+| Číselné řady | Vypsat číselné řady (název, typ dokladu, prefix/sufix, stav čítače, formát, která je výchozí) i dostupné formáty číslování, založit novou řadu a upravit existující — název, prefix, sufix, čítač, nebo ji nastavit jako výchozí („Založ řadu Faktury 2026 s prefixem FV-", „Nastav u faktur čítač na 100"). Typ dokladu a formát u existující řady měnit nelze — na to založte řadu novou. |
+| Sazby DPH | Vypsat sazby DPH (procento, název, základní/snížená, platnost, výchozí), přidat novou a upravit existující — název, procento, platnost, druh, nebo ji nastavit jako výchozí („Přidej sníženou sazbu 12 % od 1.1.2026", „Ať je 21 % výchozí"). Rušit sazby přes asistenta nelze. |
 | Kontrola nastavení | Zkontrolovat, jestli máte vyplněné vše potřebné k vystavení faktury („Můžu už fakturovat?", „Co mi ještě chybí?"). Vypíše, co chybí, jestli to fakturaci brání, nebo jen omezuje jednu funkci, a na které stránce se to doplní. Nic sám nemění. |
 | Obecné dotazy | Odpovídat na otázky o funkcích aplikace |
 | Navigace | Otevřít libovolnou stránku aplikace — faktury, přijaté faktury, klienty, platby, šablony, DPH a daně, upomínky i nastavení („Otevři DPH přiznání", „Založ novou fakturu pro klienta XYZ"). Stránky správce systému a přihlašovací obrazovky asistent neotevírá. |
 
 **Změnu dat vždycky nejdřív potvrdíte.** Když asistenta požádáte o změnu nebo smazání
-(klient, nastavení firmy, bankovní účet), ukáže vám nejprve náhled — co přesně se stane
+(klient, nastavení firmy, bankovní účet, číselná řada, sazba DPH), ukáže vám nejprve náhled — co přesně se stane
 a z čeho na co („Název se změní z X na Y") — a **nic nezapíše**. Teprve když odpovíte, že
 souhlasíte, změnu provede. Když náhled nesedí, řekněte, co má být jinak, a asistent nabídne
 nový.
@@ -672,7 +674,11 @@ nezná, asistent to řekne rovnou — nikdy nepotvrdí načtení dat, ke kterém
 Výchozí účet firmy nejde zrušit, jen přesunout: řekněte, který účet má být nově výchozí
 („Ať je výchozí ten eurový"), a asistent přeznačí oba. Požadavek „tenhle už ať není výchozí"
 odmítne — nějaký účet výchozí být musí, jinak by ho aplikace vybrala sama a vy byste se to
-nedozvěděli.
+nedozvěděli. **Stejné pravidlo platí u číselných řad a sazeb DPH:** výchozí se dá jen
+přesunout na jinou řadu nebo sazbu, ne zrušit.
+
+Pozor na ruční posun čítače číselné řady dozadu — čísla, která už na dokladech jsou, by se
+vydala podruhé. Asistent na to v náhledu upozorní, ale rozhodnutí nechává na vás.
 
 Jedno omezení má úprava a rušení bankovních účtů: účet, ke kterému už jsou v aplikaci
 navázané platby (načtené bankovní transakce nebo aktivní e-mailová schránka pro příjem

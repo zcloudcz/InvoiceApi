@@ -310,6 +310,15 @@ public static class ServiceCollectionExtensions
         // Setup tools — let the agent say what is still missing before the user can invoice.
         services.AddScoped<IChatTool, GetReadinessTool>();
 
+        // Numbering and VAT settings — read the číselné řady and sazby DPH, and change them
+        // conversationally. Both writes of each pair are confirmable (IConfirmableChatTool).
+        services.AddScoped<IChatTool, ListNumberSequencesTool>();
+        services.AddScoped<IChatTool, CreateNumberSequenceTool>();
+        services.AddScoped<IChatTool, UpdateNumberSequenceTool>();
+        services.AddScoped<IChatTool, ListVatRatesTool>();
+        services.AddScoped<IChatTool, CreateVatRateTool>();
+        services.AddScoped<IChatTool, UpdateVatRateTool>();
+
         services.AddScopedWithLogging<IChatToolExecutor, ChatToolExecutor>();
 
         // ── Database Logging ────────────────────────────────────────────────
