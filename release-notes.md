@@ -20,8 +20,15 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+### Opravy
+
+- **#239** (bezpečnostní oprava) — MCP server (`Fakvio.McpServer`) posílal na každé volání API startupem zachycený token procesu místo tokenu volajícího uživatele; pod HTTP hostingem by to znamenalo, že tool cally jednoho uživatele nesou přihlašovací údaje jiného (cross-tenant leak). Autorizace teď jde per request přes `AuthHeaderHandler`. Ve stdio režimu (aktuální provoz) se chování nemění. (PR #343, `1f98b22`)
+
 ### Změny pro vývojáře
 
+- **#227** — AI asistent v chatu teď umí i s upomínkami a platbami: vypsat upomínky a jejich nastavení, přečíst, co platí pro konkrétního klienta, a změnit firemní nastavení upomínání (po odsouhlasení). U bankovních plateb umí vypsat seznam a zobrazit detail — spárování platby s fakturou zůstává na stránce Platby, přes chat se to záměrně nedělá. (PR #340, `b79d5c1`)
+- **#225** — AI asistent v chatu teď umí i se šablonami: vypsat šablony faktur i e-mailových/tiskových šablon dokumentů, zobrazit jejich detail a přepnout, která je výchozí. Editace obsahu šablony zůstává v UI (Quill editor je na to lepší nástroj). (PR #338, `6b249d3`)
+- **#218** — AI asistent v chatu teď umí i s přijatými fakturami: založit novou (podle diktovaných údajů, ne jen z nahraného dokladu), schválit, označit jako zaplacenou nebo smazat. Každá z těchto změn se napřed ukáže k odsouhlasení (dodavatel, částka bez DPH, případně datum úhrady) a teprve po potvrzení se zapíše. Dictovaná sazba DPH se navíc ověřuje proti sazbám, které firma skutečně má nastavené. (PR #281, `595148b`)
 - **#224** — AI asistent v chatu teď umí i číselné řady a sazby DPH: vypsat je, založit novou řadu nebo sazbu a upravit existující (název, prefix/sufix, čítač, procento, platnost, výchozí). Dřív se to dalo měnit jen v UI. Změna výchozí řady/sazby jde jen přesunout na jinou, ne zhasnout — typ dokladu bez výchozí řady by přestal číslovat. (PR #339, `2698d9d`)
 - **#238** — MCP server (Fakvio.McpServer) přešel na SDK `ModelContextProtocol` 2.2.0 (z 1.0.0, které pro `AspNetCore` transport ani neexistovalo) — čistě technický upgrade, drátový kontrakt (`protocolVersion`, `serverInfo`, 37 nástrojů) se nemění, žádná nová funkčnost pro uživatele. Odemyká HTTP transport pro story #144. (PR #337, `d64884f`)
 - **#215** — Dashboard a detail konceptu faktury teď rovnou ukazují, co firmě ještě chybí k vystavení dokladu (sídlo, IČO/DIČ, bankovní účet, číselná řada…) — banner rozlišuje blokující položky od doporučených a každá vede odkazem přímo tam, kde se dá doplnit. Dřív se to zjistilo až při odmítnutém vystavení faktury (#206) nebo dotazem v chatu (#211). Poslední kus story #148. (PR #286, `425925c`)
