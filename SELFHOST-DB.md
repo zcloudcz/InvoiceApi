@@ -858,6 +858,27 @@ Dvojité podtržítko `__` je oddělovač sekcí v .NET konfiguraci —
 > [části 6.2](#62-ssl-mode--npgsql-8-validuje-certifikát) — sedí na DB ve stejné
 > privátní síti. Pokud spojení jde přes veřejnou síť, vyber z té tabulky výš.
 
+### Varianta: databáze za Tailscale tunelem
+
+Když databázový port **není ve veřejném internetu** a hostitel se k němu dostane jen přes
+tailnet (tak je zapojené testovací prostředí, viz `Fakvio.Functions/Tailscale/README.md`),
+liší se dvě věci: `Host`/`Port` míří na **lokální konec tunelu**, ne na databázový server,
+a přibývá klíč s auth key. Zbytek zůstává stejný.
+
+```
+TAILSCALE_AUTHKEY=tskey-auth-…
+Database__AuthMode=Password
+UseAzureAdAuthentication=false
+ConnectionStrings__DefaultConnection=Host=127.0.0.1;Port=15432;Database=fakvio_test;Username=fakvio;Password=***;Ssl Mode=Prefer;Timezone=UTC;Maximum Pool Size=20;Timeout=15
+```
+
+`Ssl Mode=Prefer` je tu navíc jediná praktická volba: provoz šifruje už WireGuard a
+certifikát vystavený na `127.0.0.1` se ověřit nedá. `Timeout=15` proto, že první spojení
+zahrnuje WireGuard handshake.
+
+**`TAILSCALE_AUTHKEY` je spínač celé funkce** — když chybí, tunel se nepostaví a databáze
+je nedostupná. Klíč má expiraci, takže platí to samé co pro hesla: patří do rotace.
+
 ### Konfigurační klíče — nový klíč stačí, legacy nesmí odporovat
 
 `Database:AuthMode` je nový klíč; `UseAzureAdAuthentication` je **legacy bool**.

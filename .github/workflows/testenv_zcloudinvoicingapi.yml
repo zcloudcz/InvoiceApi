@@ -13,6 +13,12 @@ on:
 env:
   AZURE_FUNCTIONAPP_PACKAGE_PATH: '.' # set this to the path to your web app project, defaults to the repository root
   DOTNET_VERSION: '10.0.x' # set this to the dotnet version to use
+  # Tailscale userspace tunnel shipped inside the function package — see
+  # Fakvio.Functions/Tailscale/README.md. Version and checksum are pinned because the tarball is
+  # fetched at deploy time; bumping the version means replacing both lines together (the hash comes
+  # from https://pkgs.tailscale.com/stable/tailscale_<version>_amd64.tgz.sha256).
+  TAILSCALE_VERSION: '1.102.3'
+  TAILSCALE_SHA256: '36ddd9b51be57ffc2990cf76323cfa13643bfbb1b8a969f6183fa164741cdef5'
 
 jobs:
   build-and-deploy:
@@ -29,6 +35,24 @@ jobs:
         uses: actions/setup-dotnet@v1
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: 'Download Tailscale binaries'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # tsbin/ is gitignored — the ~50 MB binaries are fetched here and copied into the
+          # publish output by the <None Update="tsbin/**"> item in Fakvio.Functions.csproj.
+          # Must run before publish, otherwise there is nothing to copy.
+          TARBALL="tailscale_${TAILSCALE_VERSION}_amd64.tgz"
+          curl -fsSL -o "$TARBALL" "https://pkgs.tailscale.com/stable/${TARBALL}"
+          echo "${TAILSCALE_SHA256}  ${TARBALL}" | sha256sum -c -
+          mkdir -p Fakvio.Functions/tsbin
+          # --strip-components=1 drops the "tailscale_<version>_amd64/" prefix; only the two
+          # binaries are extracted, the tarball also carries systemd units and docs we do not want.
+          tar -xzf "$TARBALL" --strip-components=1 -C Fakvio.Functions/tsbin \
+            "tailscale_${TAILSCALE_VERSION}_amd64/tailscale" \
+            "tailscale_${TAILSCALE_VERSION}_amd64/tailscaled"
+          ls -l Fakvio.Functions/tsbin
 
       - name: 'Build and Publish Azure Functions Project'
         shell: bash

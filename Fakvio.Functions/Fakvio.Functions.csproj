@@ -65,6 +65,13 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>Never</CopyToPublishDirectory>
     </None>
+    <!-- Tailscale binaries for the userspace tunnel (Tailscale/README.md).
+         The folder is gitignored and filled by the deploy workflow, so it is usually absent —
+         Update (not Include) because the SDK already globs non-.cs files as None; Include would
+         add them twice and fail the build. -->
+    <None Update="tsbin/**">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>

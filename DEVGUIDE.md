@@ -1963,8 +1963,16 @@ dotnet test Fakvio.Tests.Unit --filter "FullyQualifiedName~DatabaseConnectivityS
 |--------|---------|---------|
 | `blazorui-deploy.yml` | Push `master`, manual, PR (path-filtered) | Build `Fakvio.BlazorUI` (WASM publish) → deploy GitHub Pages. Přidá CNAME, .nojekyll, kopie `index.html → 404.html` (client-side routing). |
 | `blazorui-test-deploy.yml` | Push `TEST-ENV`, manual | Build `Fakvio.BlazorUI` (WASM publish) → deploy Azure Static Web App `fakvio-test-ui`. Před publishem přepíše `ApiSettings:BaseUrl` na testovací Function App. Client-side routing řeší `wwwroot/staticwebapp.config.json` (`navigationFallback`). |
-| `master_zcloudinvoicingapi.yml` | Push `master` | Publish `Fakvio.Functions.csproj` → Azure Function App `zcloudinvoicingapi`. Auth přes managed identity (federated credentials). |
+| `master_zcloudinvoicingapi.yml` | Push `master` | Stáhne binárky Tailscale (viz níž) a publishne `Fakvio.Functions.csproj` → Azure Function App `zcloudinvoicingapi`. Auth přes managed identity (federated credentials). |
 | `testenv_zcloudinvoicingapi.yml` | Push `TEST-ENV`, manual | Totožné publish jako řádek výše, ale do **testovacího** Function Appu `zcloudinvoicingapi-test`. OIDC přes secrets s příponou `_TEST` (viz §9.4). |
+
+**Krok „Download Tailscale binaries"** (oba Functions workflow, před `dotnet publish`):
+stáhne `tailscale` + `tailscaled` do `Fakvio.Functions/tsbin/`, odkud je do publish outputu
+kopíruje `<None Update="tsbin/**">` v csproj. Verze a `sha256` jsou **napevno v bloku `env:`**
+obou workflow — tarball se stahuje až při deployi, takže bez pinu by změna upstreamu šla rovnou
+do Azure. `tsbin/` je gitignorovaný, v repu binárky nejsou. Produkce je stahuje také (feature je
+tam bez `TAILSCALE_AUTHKEY` nečinná), aby byl balíček obou prostředí identický. Bump verze a
+proč to celé existuje: `Fakvio.Functions/Tailscale/README.md`.
 
 **Pozn.**: Pro `Fakvio.API` (klasický host) **není dedicated workflow** v repu — historicky se hostil přes externí App Service nebo manuálně. Pokud přidáš API workflow, zaznamenej zde.
 
@@ -2012,7 +2020,17 @@ dotnet test Fakvio.Tests.Unit --filter "FullyQualifiedName~DatabaseConnectivityS
   s `app-name: zcloudinvoicingapi-test` a `slot-name: Production`. Vlastní app registration
   (federated credential jen pro větev `TEST-ENV`, Contributor scope jen na tento app),
   vlastní `JwtSettings:Secret` a vlastní CORS origin — vše jako App Settings v Azure,
-  ne ve workflow. Testovací prostředí zatím **nemá vlastní databázi** (viz #295).
+  ne ve workflow.
+- **Testovací prostředí má vlastní databázi `fakvio_test` dostupnou přes Tailscale tunel**
+  (#318, uzavřelo i #295). Vlastní PostgreSQL na Hostingeru nemá port ve veřejném internetu,
+  takže se k ní Function App připojuje přes tailnet: `tailscaled` běží v **userspace** režimu
+  (sandbox neumí TUN) a nabízí SOCKS5, který Npgsql neumí — mezi ně proto vstupuje vlastní
+  `Socks5Forwarder` na `127.0.0.1:15432` a `ConnectionStrings__DefaultConnection` míří na něj.
+  Staví se v `Fakvio.Functions/Program.cs` hned po `Build()` a **před migračním blokem**
+  (`IHostedService` by startoval až v `RunAsync()`, tedy po první práci s databází).
+  Bez App Settingu `TAILSCALE_AUTHKEY` je celá věc nečinná — jeden log řádek a nic víc, proto
+  lokální vývoj i produkce fungují beze změny. Detaily, ACL, rotace klíče a známá omezení
+  (cold start, uzel per instance): `Fakvio.Functions/Tailscale/README.md`.
 
 ### 9.5 Autentizace k databázi (`Database:AuthMode`) + health endpoint
 
@@ -2037,6 +2055,11 @@ Kde co je nastavené:
 | `Fakvio.API/appsettings.Development.json` | `AzureEntraId`; vedle je **zakomentovaný** `Password` — přepnutí na lokální Docker = odkomentovat dva řádky (conn string + AuthMode) |
 | `Fakvio.Functions/local.settings.json` | `Database__AuthMode = Password` (lokální Docker) |
 | `Fakvio.MigrationTool/appsettings.json` | `Database` i `SourceDatabase` = `Password` |
+
+Testovací Function App má od #318 v App Settings `Database__AuthMode = Password` (vedle
+`UseAzureAdAuthentication = false`, obojí musí souhlasit), takže health tam hlásí
+`authModeSource: Database:AuthMode` — ne už legacy zdroj. Connection string míří na lokální
+konec Tailscale tunelu (§9.4), takže `masterConnectionServer` je `127.0.0.1 / fakvio_test / fakvio`.
 
 **Ověření za běhu** — `GET /api/diagnostic/health`, **SysAdmin only**:
 

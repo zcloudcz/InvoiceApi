@@ -768,7 +768,7 @@ v WASM bundlu) je v `DEVGUIDE.md` §9 — tady je jen to, co potřebuje SysAdmin
 | Backend URL | https://zcloudinvoicingapi-test.azurewebsites.net | https://zcloudinvoicingapi-crcqggehb7a6ggdv.westeurope-01.azurewebsites.net |
 | Zdrojová větev | `TEST-ENV` | `master` |
 | Deploy workflows | `testenv_zcloudinvoicingapi.yml` (backend), `blazorui-test-deploy.yml` (frontend) | `master_zcloudinvoicingapi.yml` (backend), `blazorui-deploy.yml` (frontend) |
-| Databáze | **žádná** (viz Známá omezení) | produkční PostgreSQL |
+| Databáze | vlastní PostgreSQL `fakvio_test` na privátním serveru, dostupná **přes Tailscale tunel** (viz níž) | produkční PostgreSQL |
 
 Větev **`TEST-ENV` na `origin` vzniká až prvním během `/release`** (odbočí z `master`).
 Dokud tam není, testovací deploy workflows nemají co spustit — není to incident.
@@ -793,38 +793,59 @@ variables), ne ve workflow souborech. Zápis používá dvojité podtržítko m�
 | `JwtSettings__Secret` | **vlastní, nesdílený s produkcí** | Token vydaný produkcí na testu neplatí a naopak. To je záměr — jinak by únik jednoho klíče otevřel obě prostředí. |
 | `JwtSettings__Issuer`, `JwtSettings__Audience` | shodné s produkcí | Liší se jen klíč, ne formát tokenu. |
 | `CorsSettings__AllowedOrigins__0` / `__1` | `https://wonderful-meadow-0eb3ada03.7.azurestaticapps.net` a `https://test.fakvio.cz` (oba originy testovacího frontendu) | Musí sedět na frontend URL daného prostředí, jinak prohlížeč zablokuje všechna volání API. Při změně URL frontendu se mění i tady. |
-| `ConnectionStrings__DefaultConnection` | `Host=test-env-has-no-database.invalid;Port=5432;Database=fakvio_test;Username=placeholder;Password=placeholder;Ssl Mode=Require;Timeout=5;` | Syntakticky platný connection string na **záměrně neexistující host** (TLD `.invalid`). Musí být platný — connection string se parsuje už při startu, nesmysl by hostitele shodil. Skutečná testovací DB je #295. |
-| `UseAzureAdAuthentication` | `false` (produkce: `true`, tedy Entra ID) | Bez databáze není komu vydávat Entra token; placeholder má heslo, takže test jede v režimu `Password`. Je to **legacy klíč** — kanonický je dnes `Database__AuthMode` (§13), ten test zatím nastavený nemá, takže health hlásí `authModeSource: UseAzureAdAuthentication (legacy)`. Při #295 se oba klíče musí měnit společně: když si budou odporovat, aplikace při startu spadne. |
+| `ConnectionStrings__DefaultConnection` | `Host=127.0.0.1;Port=15432;Database=fakvio_test;Username=fakvio;Password=***;Ssl Mode=Prefer;Timezone=UTC;Maximum Pool Size=20;Timeout=15` | **`127.0.0.1` není překlep** — míří na lokální konec Tailscale tunelu (viz níž), ne přímo na databázový server. `Ssl Mode=Prefer`, protože provoz už šifruje WireGuard a certifikát na `127.0.0.1` se ověřit nedá; `Timeout=15` kvůli WireGuard handshake při prvním spojení. |
+| `TAILSCALE_AUTHKEY` | `tskey-auth-…` (reusable + ephemeral + tag) | **Spínač celé funkce.** Když klíč chybí, tunel se nepostaví a databáze je nedostupná. Klíč má expiraci — po vypršení se nové instance nepřihlásí. Postup vydání, ACL a rotace: `Fakvio.Functions/Tailscale/README.md`. |
+| `Database__AuthMode` | `Password` (produkce: `AzureEntraId`) | Vlastní PostgreSQL Entra ID neumí. Kanonický klíč (§13) — health proto hlásí `authModeSource: Database:AuthMode`. |
+| `UseAzureAdAuthentication` | `false` (produkce: `true`, tedy Entra ID) | **Legacy klíč, musí souhlasit s řádkem výš** — když si budou odporovat, aplikace při startu spadne (fail-fast, §13). Měnit vždy oba zároveň. |
 | `AresSettings__BaseUrl` | shodné s produkcí | |
+
+### Jak je testovací databáze zapojená
+
+Testovací databáze je **vlastní PostgreSQL na privátním serveru** (databáze `fakvio_test`,
+uživatel `fakvio`). Její port **není ve veřejném internetu** — server je dostupný jen uvnitř
+privátní sítě Tailscale. Function App se do té sítě připojuje sám: při startu spustí
+Tailscale v uživatelském režimu a vystaví databázi jako **lokální port `127.0.0.1:15432`**.
+Proto connection string v tabulce výš míří na `127.0.0.1`.
+
+Co z toho plyne pro provoz:
+
+- **Chybějící nebo vypršelý `TAILSCALE_AUTHKEY` = nedostupná databáze.** Tunel se nepostaví,
+  aplikace ale **nespadne** — timer triggery i `GET /api/diagnostic/health` odpovídají dál.
+  Poznávací znamení v Log stream / Application Insights:
+
+  ```text
+  fail: Fakvio.Functions.Tailscale[0]
+        Startup: Tailscale tunnel failed — database unreachable until resolved
+  ```
+
+  Health pak vrací **503** a `masterDbCanConnect: false`. Klíč je potřeba **rotovat dřív, než
+  vyprší** — běžící instance jedou dál, ale každá nově nastartovaná selže.
+- **Cold start je o ~3–8 s delší.** Function App běží na Flex Consumption, tedy škáluje na
+  nulu; při každém probuzení se tunel staví znovu. V Tailscale admin konzoli se proto objevují
+  uzly `fakvio-func`, `fakvio-func-1`, … — jeden na instanci. Klíč je *ephemeral*, takže se
+  po zhasnutí instance uklidí samy.
+- **Zdravý start** vypadá v logu takhle (kategorie `Fakvio.Functions.Tailscale`):
+
+  ```text
+  Tailscale: up OK (attempt 1)
+  Tailscale: forwarder 127.0.0.1:15432 -> 100.69.241.17:5544 (via SOCKS5 127.0.0.1:1055)
+  Tailscale: target reachable (100.69.241.17:5544) after 1 attempt(s)
+  Startup: master database migrated successfully
+  ```
+
+- **Rychlé vypnutí (rollback):** smazat App Setting `TAILSCALE_AUTHKEY` a vrátit placeholder
+  connection string (`Host=test-env-has-no-database.invalid;…`), pak restart. Redeploy není
+  potřeba — bez klíče je funkce nečinná. Test tím ale přijde o databázi i o přihlašování.
+- **Kdy zakládat ticket:** když backend neodpovídá vůbec (timeout nebo 5xx přímo z platformy),
+  nebo když vrátí 5xx, které **není** chyba databáze. Trvalé 503 z healthu spolu s řádkem
+  `Startup: Tailscale tunnel failed` je nejčastěji vypršelý auth key — než zakládáš ticket,
+  zkontroluj v Tailscale admin konzoli platnost klíče a jestli je uzel `fakvio-func` online.
+
+Podrobnosti (proč uživatelský režim, ACL pravidla, vydání a rotace klíče, lokální ověření)
+jsou v `Fakvio.Functions/Tailscale/README.md`.
 
 ### Známá omezení testovacího prostředí
 
-- **Testovací prostředí zatím nemá databázi.** Byl to vědomý krok při zřizování (issue #289) —
-  oddělená testovací DB je samostatný úkol (#295). Connection string proto míří na neexistující
-  host (viz tabulka výše). Důsledky:
-  - **Backend nastartuje a odpovídá, pokus o připojení k DB ale selže hned při startu.**
-    Hostitel se nejdřív postaví, vypíše do logu režim autentizace k DB (§13) a **ještě než začne
-    obsluhovat požadavky**, zkusí migraci master DB. Ta na neexistujícím hostu selže a zaloguje
-    se jako **ERROR**; hostitel kvůli tomu ale nespadne (chyba je odchycená) a normálně běží dál.
-    Ověřit se tedy dá, že se frontend nasadil a načte, že backend odpovídá a že **CORS** mezi
-    nimi prochází. Function App jede na **Flex Consumption**, tedy škáluje na nulu — ten ERROR
-    proto naskočí v Log stream / Application Insights **při každém cold startu**, ne jen jednou
-    po deploji.
-  - **Přihlášení na testu nefunguje** — uživatelé i tenanti žijí v master DB. Bez přihlášení
-    není ani SysAdmin token, a `GET /api/diagnostic/health` (§13) ho vyžaduje: anonymní volání
-    dostane **401**. To je dnes na testu očekávaná odpověď a zároveň důkaz, že hostitel běží.
-  - S platným tokenem by health vrátil **503** a `databaseConnected: false` (souhrnná vlajka,
-    vždy přítomná). Detail se liší podle toho, jestli se pokus o připojení vrátí, nebo vyhodí
-    výjimku: `masterDbCanConnect: false`, resp. `masterDbError` s textem chyby.
-  - **Kdy zakládat ticket:** když backend neodpovídá vůbec (timeout nebo 5xx přímo
-    z platformy), nebo když vrátí 5xx, které **není** chyba databáze — to už může být regrese.
-    Do #295 jsou naopak očekávaný stav: 401 z healthu, nefunkční přihlášení, 503 z healthu
-    s chybou DB a tenhle řádek v logu při každém startu:
-
-    ```text
-    fail: Program[0]
-          Startup: database migration failed — API calls will return errors until resolved
-    ```
 - SWA běží na **Free tier** — bez SLA. Pro testovací prostředí je to v pořádku, na produkční
   provoz to není.
 
