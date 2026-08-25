@@ -498,6 +498,17 @@ curl). Posílají se ve stejné hlavičce: `Authorization: Bearer fak_live_…`.
   logu jde vždy jen prefix. Ztracený klíč nejde obnovit, jen zrušit a vydat nový.
 - Funguje **shodně na API i na Azure Functions hostu**.
 
+**Kde se klíče zakládají — self-service, ne SysAdmin agenda.** Klíče si vydává každý uživatel
+sám na stránce **Nastavení → Integrace** (`/settings/integrations`); stačí libovolná přihlášená
+role. Zadává jméno klíče, rozsah (`Jen čtení` / `Čtení i zápis`) a nepovinnou platnost do data;
+raw klíč se ukáže **právě jednou** a stránka k němu rovnou vypíše hotové konfigurační bloky pro
+MCP klienta. Revokace je tamtéž, s potvrzením, a platí okamžitě.
+
+> **SysAdmin cizí klíče nevidí ani neruší.** Endpointy `/api/api-key` pracují vždy jen s klíči
+> přihlášeného uživatele — není nad nimi žádná administrátorská nadstavba. Páka na kompromitovaný
+> účet je proto **deaktivace uživatele** (řádek v tabulce níž). Impersonace firmy (§11) tu
+> nepomůže — mění se jí tenant, ne identita, takže SysAdmin i pod ní vidí pořád jen své klíče.
+
 **Co SysAdmina zajímá provozně:**
 
 | Situace | Chování |
@@ -514,6 +525,50 @@ umí `X-Company-Id` impersonaci úplně stejně jako jeho přihlášení (viz §
 takový klíč na tenant endpointy nedosáhne (403) — stejně jako SysAdmin bez impersonace.
 Je to tedy **plnohodnotný SysAdmin credential s dlouhou platností**: vydávejte ho uvážlivě,
 raději s vyplněnou expirací a rozsahem `read`.
+
+### MCP server v HTTP režimu (vzdálené napojení AI klientů)
+
+`Fakvio.McpServer` umí dva režimy, přepíná se proměnnou `FAKVIO_MCP_TRANSPORT`:
+
+| Režim | Kdo ho spouští | Credential | Kdy dává smysl |
+|-------|----------------|------------|----------------|
+| `stdio` (výchozí) | AI klient na počítači uživatele, jako podproces | API klíč v `FAKVIO_API_TOKEN` (proměnná procesu) | Jeden uživatel, jeho vlastní stroj |
+| `http` | Vy, jako trvale běžící službu | API klíč **v každém requestu** volajícího | Víc uživatelů, klienti, které nejde nic doinstalovat |
+
+Neznámá hodnota proměnné = chyba na stderr a **exit code 1** (server, který měl poslouchat na
+HTTP a místo toho čeká na stdin, vypadá zvenčí jako nastartovaný — proto fail fast).
+
+**Co je potřeba k provozu HTTP hostu:**
+
+- **ASP.NET Core shared framework** (`Microsoft.AspNetCore.App`) na cílovém stroji — a to i pro
+  stdio režim; balíček se Streamable HTTP transportem ho táhne přes `FrameworkReference` do
+  celého nástroje. Na stroji jen s .NET runtime se musí doinstalovat ASP.NET Core Runtime.
+- `ASPNETCORE_URLS` — na čem Kestrel poslouchá. `FAKVIO_API_URL` — adresa API, kam server volá.
+- **HTTPS.** Klienti posílají API klíč v hlavičce `Authorization`, takže po veřejné síti musí
+  jít spojení šifrovaně. Host je holá ASP.NET Core aplikace bez vlastní TLS konfigurace —
+  buď mu certifikát dodáte standardní cestou Kestrelu, nebo ho postavte za reverzní proxy.
+
+**Bezpečnostní model — co je na něm důležité:**
+
+- Host **nemá vlastní credential** a nemá přístup k databázi. Klíč volajícího jen přeposílá na
+  `Fakvio.API`, takže autorizace i tenant izolace zůstávají tam, kde byly. Kompromitovaný MCP
+  host tedy sám o sobě nedává přístup k datům, dokud mu někdo neposílá platné klíče.
+- **Každý request se ověřuje znovu** proti `GET /api/api-key/me`, **bez jakékoli cache** — proto
+  revokovaný klíč přestává fungovat okamžitě, ne „do vypršení cache". Chybějící hlavička se
+  odmítne rovnou, bez round-tripu na API.
+- Odmítnutí = **401** + `WWW-Authenticate: Bearer`, bez detailu v těle; důvod jde do logu hostu.
+  **Nedostupné API se na 401 nepřevádí** — padá jako 500, aby se „API neběží" nepletlo s
+  „tvůj klíč neplatí".
+- Běží **stateless** (žádné `Mcp-Session-Id`), takže není potřeba sticky routing a host jde
+  škálovat vodorovně. `GET /mcp` ani `/sse` k dispozici nejsou.
+- Endpoint je jediný: `POST /mcp`.
+
+> **Nasazení zatím není zautomatizované.** V `.github/workflows/` pro MCP host žádný workflow
+> není — packaging a deploy řeší issue #241. Do té doby je to ruční `dotnet tool` instalace,
+> resp. vlastní hosting procesu. Adresu hostu předejte uživatelům; stránka Integrace v UI ji
+> v generovaném bloku odhaduje z adresy API a uživatel ji podle vás opraví.
+
+Podrobnosti pro vývojáře: DEVGUIDE §4.9, `Fakvio.McpServer/README.md`.
 
 ### Data Protection (CredentialProtector)
 
