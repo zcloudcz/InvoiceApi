@@ -524,13 +524,22 @@ Až když 3.1–3.3 prošly. Připojovací řetězec a **obě** konfigurační k
 Po startu ověř:
 
 ```bash
-curl -s https://<app>/api/diagnostic/health | jq '{authMode, authModeSource, masterDbCanConnect}'
+curl -s -H "Authorization: Bearer <sysadmin-jwt>"   https://<app>/api/diagnostic/health | jq '{authMode, authModeSource, masterDbCanConnect}'
 ```
 
-> **Endpoint `/api/diagnostic/health` přidává task #138** — dokud není mergnutý,
-> tenhle `curl` vrátí 404 a `authMode` se dá ověřit jen ze startup logu.
-> Tvary polí (`authMode` / `authModeSource` / `masterDbCanConnect`) odpovídají
-> zadání #138.
+> Endpoint je **SysAdmin only** (#138) — bez tokenu vrací 401. Token získáš stejně jako
+> pro `credential-health` níž. Když je databáze nedostupná a login tedy neprojde,
+> `authMode` se dá přečíst ze **startup logu** — oba hosty ho vypíšou hned po startu,
+> kategorie `Fakvio.Infrastructure.Database`:
+>
+> ```text
+> info: Fakvio.Infrastructure.Database[0]
+>       Startup: database auth mode Password (source: Database:AuthMode)
+> ```
+>
+> Řádek jde ven před prvním sáhnutím do databáze, takže je k dispozici i když je DB dole
+> (v Azure: Log stream / Application Insights, lokálně stdout procesu). Připojovací řetězec
+> v logu nikdy není — jen mód a zdrojový klíč.
 
 **Očekávaný výsledek:**
 ```json
@@ -720,9 +729,10 @@ az functionapp restart --name <function-app-name> --resource-group <rg>
 **Očekávaný výsledek:** health hlásí `"authMode": "AzureEntraId"` a
 `"masterDbCanConnect": true`.
 
-> **Obě klíče se vrací společně.** Když se revertuje jen jeden,
+> **Dokud App Settings nesou oba klíče, vrací se společně.** Když se revertuje jen jeden,
 > `DatabaseOptions.Resolve` hodí `Conflicting database auth mode configuration`
-> a aplikace nenaběhne vůbec — viz [část 7](#konfigurační-klíče--vždy-obě-najednou).
+> a aplikace nenaběhne vůbec — viz
+> [část 7](#konfigurační-klíče--nový-klíč-stačí-legacy-nesmí-odporovat).
 
 ### Point of no return
 
@@ -848,11 +858,97 @@ Dvojité podtržítko `__` je oddělovač sekcí v .NET konfiguraci —
 > [části 6.2](#62-ssl-mode--npgsql-8-validuje-certifikát) — sedí na DB ve stejné
 > privátní síti. Pokud spojení jde přes veřejnou síť, vyber z té tabulky výš.
 
-### Konfigurační klíče — vždy **obě** najednou
+### Varianta: databáze za Tailscale tunelem
 
-`Database:AuthMode` je nový klíč; `UseAzureAdAuthentication` je **legacy bool,
-který je zapečený v `Fakvio.API/appsettings.json:13` s hodnotou `true`**.
-Nastavením proměnné prostředí ho tedy nelze „nenastavit" — appsettings ho dodá vždy.
+Když databázový port **není ve veřejném internetu** a hostitel se k němu dostane jen přes
+tailnet (tak je zapojené testovací prostředí, viz `Fakvio.Functions/Tailscale/README.md`),
+liší se dvě věci: `Host`/`Port` míří na **lokální konec tunelu**, ne na databázový server,
+a přibývá klíč s auth key. Zbytek zůstává stejný.
+
+```
+TAILSCALE_AUTHKEY=tskey-auth-…
+Database__AuthMode=Password
+UseAzureAdAuthentication=false
+ConnectionStrings__DefaultConnection=Host=127.0.0.1;Port=15432;Database=fakvio_test;Username=fakvio_test;Password=***;Ssl Mode=Prefer;Timezone=UTC;Maximum Pool Size=20;Timeout=15
+```
+
+`Ssl Mode=Prefer` je tu navíc jediná praktická volba: provoz šifruje už WireGuard a
+certifikát vystavený na `127.0.0.1` se ověřit nedá. `Timeout=15` proto, že první spojení
+zahrnuje WireGuard handshake.
+
+**Přihlašovací role je per prostředí, ne jedna sdílená** — do databáze `fakvio_test` se
+přihlašuje role `fakvio_test`, do `fakvio_prod` role `fakvio_prod`, každá s vlastním heslem.
+Samotné `CREATE DATABASE … OWNER` ale hranici mezi databázemi **nepostaví**: PostgreSQL dává
+`CONNECT` na novou databázi implicitně roli `PUBLIC` (`datacl` je hned po založení `NULL`, což
+znamená „platí defaulty z `template1`" — a ty `PUBLIC`u `CONNECT` dávají). Testovací role by se
+tedy do produkční databáze přihlásila. `CONNECT` proto odeber a vrať jen té jedné roli:
+
+```sql
+CREATE ROLE fakvio_test WITH LOGIN PASSWORD 'ZMEN_ME';
+CREATE DATABASE fakvio_test OWNER fakvio_test;
+REVOKE CONNECT ON DATABASE fakvio_test FROM PUBLIC;
+GRANT  CONNECT ON DATABASE fakvio_test TO fakvio_test;
+```
+
+Totéž pro produkci (`fakvio_prod` / `fakvio_prod`). Ostatní práva se tím neztrácejí — vlastník
+má `CREATE` i `TEMP` na své databázi dál, provisioning tenantů (krok 2.4) funguje beze změny.
+
+**Očekávaný výsledek:**
+
+```bash
+psql "$DST_ADMIN" -Atc "SELECT datname, has_database_privilege('public', datname, 'CONNECT')
+  FROM pg_database WHERE datname IN ('fakvio_test','fakvio_prod');"
+# fakvio_test|f
+# fakvio_prod|f
+```
+
+Pokus o přihlášení cizí rolí pak končí hned na spojení:
+`FATAL: permission denied for database "fakvio_prod"`, `DETAIL: User does not have CONNECT privilege.`
+
+Druhá vrstva je `pg_hba.conf` na databázovém serveru — sváže tailnet rozsah s dvojicí
+role/databáze, takže cizí kombinace neprojde už při navazování spojení:
+
+```
+# TYPE  DATABASE      USER          ADDRESS           METHOD
+host    fakvio_test   fakvio_test   100.64.0.0/10     scram-sha-256
+host    fakvio_prod   fakvio_prod   100.64.0.0/10     scram-sha-256
+```
+
+`100.64.0.0/10` je rozsah tailnet adres (CGNAT). **Pořadí řádků rozhoduje** — soubor se čte
+shora a platí **první** odpovídající řádek. Když je nad těmito dvěma širší pravidlo typu
+`host all all 0.0.0.0/0 scram-sha-256`, chytí spojení dřív a řádky níž už nic neomezí; širší
+pravidlo je proto potřeba zúžit nebo zakomentovat. Po úpravě `SELECT pg_reload_conf();` a
+kontrola, že se řádky načetly bez chyby:
+
+```bash
+psql "$DST_ADMIN" -Atc "SELECT line_number, database, user_name, error FROM pg_hba_file_rules
+  WHERE database::text LIKE '%fakvio%';"   # sloupec error musí být prázdný
+```
+
+**Co tím je a není izolované:**
+
+- **Je:** přihlášení do cizí databáze, a s ním i čtení jejího katalogu (jména schémat, tabulek
+  a sloupců, definice pohledů, těla funkcí), zabírání jejích connection slotů a `TEMP` tabulek.
+  Všechno padá už na navázání spojení.
+- **Bylo izolované i předtím:** aplikační data. Tabulky vlastní ta druhá role a `PUBLIC` na nich
+  žádné granty nemá — to drží i bez `REVOKE CONNECT`.
+- **Není:** sdílené katalogy clusteru. Role ze *své* databáze pořád vidí `pg_database` a
+  `pg_roles`, tedy jména ostatních databází a rolí (hesla ne — `pg_authid` je pro ni nečitelné).
+  A superuser (`postgres`) tahle omezení z definice obchází.
+
+Uniklé testovací heslo tedy neotevře produkční databázi ani její data; co z něj útočníkovi
+zbude, je znalost jmen databází a rolí na serveru.
+
+**`TAILSCALE_AUTHKEY` je spínač celé funkce** — když chybí, tunel se nepostaví a databáze
+je nedostupná. Klíč má expiraci, takže platí to samé co pro hesla: patří do rotace.
+
+### Konfigurační klíče — nový klíč stačí, legacy nesmí odporovat
+
+`Database:AuthMode` je nový klíč; `UseAzureAdAuthentication` je **legacy bool**.
+Od #138 už legacy klíč **není v žádném commitnutém config souboru** — v `appsettings.json`
+je nově `Database:AuthMode`. Do konfigurace se tedy dostane jen tehdy, když ho někdo
+explicitně nastaví (Azure App Settings, proměnná prostředí). Produkce ho v fázi 1 pořád
+nese, proto pravidlo níž platí dál.
 
 `DatabaseOptions.Resolve` (`Fakvio.Infrastructure/Data/DatabaseOptions.cs:161-199`)
 řeší kombinace takto:
@@ -861,7 +957,7 @@ Nastavením proměnné prostředí ho tedy nelze „nenastavit" — appsettings 
 |---|---|---|
 | `Password` | `false` | ✅ Password, `authModeSource = "Database:AuthMode"` |
 | `AzureEntraId` | `true` | ✅ AzureEntraId, `authModeSource = "Database:AuthMode"` |
-| `Password` | `true` (z appsettings) | ❌ **`InvalidOperationException` při startu** |
+| `Password` | `true` (z App Settings) | ❌ **`InvalidOperationException` při startu** |
 | `AzureEntraId` | `false` | ❌ **`InvalidOperationException` při startu** |
 | nenastaveno | `true` / `false` | ✅ podle legacy, `authModeSource = "UseAzureAdAuthentication (legacy)"` |
 
@@ -875,16 +971,17 @@ Delete the legacy 'UseAzureAdAuthentication' key once 'Database:AuthMode' is con
 
 To je **záměrný fail-fast** — brání tichému rozjetí konfigurace. Praktický důsledek:
 
-- **při přepnutí na vlastní server nastav obě proměnné** (`Database__AuthMode=Password`
-  **i** `UseAzureAdAuthentication=false`),
-- **při rollbacku vrať obě** zpět,
-- **až bude nový klíč ověřený v provozu**, legacy klíč smaž z appsettings i z app
-  settings — od té chvíle stačí `Database:AuthMode`.
+- **při přepnutí na vlastní server nastav `Database__AuthMode=Password`**; pokud cílové
+  prostředí legacy klíč ještě nese (produkce ano), nastav i `UseAzureAdAuthentication=false`,
+  jinak start spadne na konfliktu,
+- **při rollbacku vrať zpět obojí**, co jsi nastavil,
+- **až bude nový klíč ověřený v provozu**, legacy klíč smaž z App Settings — z commitnutých
+  configů ho odstranilo #138, takže od té chvíle stačí `Database:AuthMode`.
 
 Kontrola, co aplikace skutečně vyhodnotila:
 
 ```bash
-curl -s https://<app>/api/diagnostic/health | jq '{authMode, authModeSource}'
+curl -s -H "Authorization: Bearer <sysadmin-jwt>"   https://<app>/api/diagnostic/health | jq '{authMode, authModeSource}'
 ```
 
 ### Varování: jakýkoli nový host musí nastavit dvě věci

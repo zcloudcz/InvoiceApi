@@ -7,6 +7,7 @@ using Fakvio.Contracts.Dto.Dashboard;
 using Fakvio.Contracts.Dto.Email;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Contracts.Dto.InvoiceTemplate;
+using Fakvio.Contracts.Dto.Readiness;
 using Fakvio.Contracts.Dto.ReceivedInvoice;
 using Fakvio.Contracts.Dto.Tax;
 using Fakvio.Contracts.Dto.VatReport;
@@ -324,6 +325,27 @@ public class FakvioApiClient : IFakvioApiClient
             return null;
         await EnsureSuccessAsync(response, ct);
         return await response.Content.ReadFromJsonAsync<TaxYearConfigDto>(JsonOptions, ct);
+    }
+
+    // ── Readiness endpoints ────────────────────────────────────────────
+
+    public async Task<ReadinessReportDto?> GetReadinessAsync(long? issuerId = null, CancellationToken ct = default)
+    {
+        // No issuerId → the whole tenant is checked, which is what the API does without the filter.
+        var query = issuerId.HasValue ? $"?issuerId={issuerId.Value}" : string.Empty;
+        var response = await _http.GetAsync($"api/readiness{query}", ct);
+
+        // A 404 is a domain answer *only* when we asked for one specific issuer — the endpoint
+        // returns it exactly for "that issuerId is not in this tenant" (ReadinessController).
+        // Without a filter it never 404s, so a 404 there means the route itself is unreachable
+        // (wrong base URL, endpoint not deployed, proxy). Let that fall through to
+        // EnsureSuccessAsync so it surfaces as a transport error instead of being mistaken
+        // for a missing issuer. An unfinished setup is a normal 200 with issues either way.
+        if (issuerId.HasValue && response.StatusCode == HttpStatusCode.NotFound)
+            return null;
+
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadFromJsonAsync<ReadinessReportDto>(JsonOptions, ct);
     }
 
     // ── Query string builders ────────────────────────────────────────────

@@ -20,6 +20,7 @@ using System.Globalization;
 using Microsoft.Azure.Functions.Worker;
 using Fakvio.Application.Service;
 using Fakvio.Functions.Middleware;
+using Fakvio.Functions.Tailscale;
 using Fakvio.Infrastructure.Data;
 using Fakvio.Infrastructure.DependencyInjection;
 using Fakvio.Functions.Telemetry;
@@ -78,6 +79,18 @@ var host = new HostBuilder()
         // Without this, HttpContext.User stays anonymous → all auth checks return 401.
         app.UseMiddleware<JwtAuthenticationMiddleware>();
 
+        // ── API Key Authentication Middleware ─────────────────────────────────────
+        // Mirror of the API host's ApiKey authentication scheme (registered by
+        // AddFakvioAuthentication but never executed here — the isolated worker has no
+        // UseAuthentication()). Handles "Authorization: Bearer fak_…", which the JWT
+        // middleware above deliberately ignores, and enforces the key's read/write scope.
+        //
+        // Runs AFTER the JWT middleware, not before: that one wires IHttpContextAccessor
+        // into the worker scope, which the authenticator's MasterDbContext needs for its
+        // audit stamping. The two never fight over HttpContext.User — each handles a token
+        // shape the other skips.
+        app.UseMiddleware<ApiKeyAuthenticationMiddleware>();
+
         // ── Impersonation Middleware ────────────────────────────────────────────────
         // MUST run AFTER JwtAuthenticationMiddleware (needs User.Claims populated)
         // and BEFORE TenantContextMiddleware (which reads the CompanyId claim).
@@ -134,13 +147,62 @@ var host = new HostBuilder()
     })
     .Build();
 
-// ── Startup database migration (master DB only) ───────────────────────────
-// Step 1: Migrate master DB (Users, Companies, SystemSettings, code tables).
-// Step 2: Tenant migrations are handled LAZILY by ITenantDbContextFactory.EnsureMigratedAsync
-//         — each tenant schema is migrated on first request (cached per process lifetime).
-//         This is faster at startup and handles tenants provisioned while the app is running.
-using (var scope = host.Services.CreateScope())
+// Startup breadcrumb: which database auth mode won, and from which config key. Same line as
+// the API host (LogDatabaseAuthMode), logged before any database work — when the database is
+// down, /api/diagnostic/health cannot answer (SysAdmin login needs the master DB), so this is
+// the only place the mode can be read. See SELFHOST-DB.md §3.4.
+host.Services.LogDatabaseAuthMode();
+
+// ── Tailscale tunnel (test environment) ───────────────────────────────────
+// The test database sits behind Tailscale and its port is not on the public internet, so the
+// connection string points at a loopback port that only exists once the tunnel is up.
+//
+// WHY a background task and not an IHostedService: hosted services do not start until RunAsync()
+// below, and the migration — the very first socket the app opens — has to wait for the tunnel.
+// WHY not awaited before RunAsync(): the Functions host only waits about a minute for the worker
+// to report ready; a tunnel bring-up that can legitimately take 100 s (three login attempts) held
+// the worker back past that and the host answered every request with 502/503 and restarted the
+// worker in a loop. So the tunnel and the migration run as one background task, the worker
+// reports ready immediately, and requests that arrive before the database is reachable fail on
+// their own (EF retries, health says 503) instead of taking the whole host down.
+// It has to be after Build(), because that is where the real ILogger and
+// IHostApplicationLifetime come from.
+//
+// Without TAILSCALE_AUTHKEY the tunnel step is a single log line and nothing else, so local
+// development and the production host (which reach their database directly) are unaffected —
+// only the migration moved off the startup path, and it already tolerated an unreachable DB.
+var tunnelLogger = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Fakvio.Functions.Tailscale");
+var tunnelLifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
+_ = Task.Run(async () =>
 {
+    try
+    {
+        // ApplicationStopping shortens the tunnel's own startup budget: a shutdown requested while
+        // the node is still logging in must not wait out the full budget before the host can exit.
+        await TailscaleTunnel.StartIfConfiguredAsync(
+            Environment.GetEnvironmentVariable(TailscaleTunnel.AuthKeyEnv),
+            tunnelLifetime,
+            tunnelLogger,
+            tunnelLifetime.ApplicationStopping);
+    }
+    catch (Exception ex)
+    {
+        // Do not crash the host: timer triggers and the health endpoint should still answer so the
+        // failure is diagnosable. The migration below will fail too and say the same thing.
+        tunnelLogger.LogError(ex, "Startup: Tailscale tunnel failed — database unreachable until resolved");
+        // The line above carries the stack trace but only reaches the worker logger, which App
+        // Insights does not collect today; this second, short one goes to stdout as well
+        // (Host.Function.Console), which is where the tunnel is actually diagnosed in Azure.
+        // ex.Message never carries the key.
+        TailscaleTunnel.Milestone(tunnelLogger, $"failed: {ex.Message}", LogLevel.Error);
+    }
+
+    // ── Startup database migration (master DB only) ───────────────────────
+    // Step 1: Migrate master DB (Users, Companies, SystemSettings, code tables).
+    // Step 2: Tenant migrations are handled LAZILY by ITenantDbContextFactory.EnsureMigratedAsync
+    //         — each tenant schema is migrated on first request (cached per process lifetime).
+    //         This is faster at startup and handles tenants provisioned while the app is running.
+    using var scope = host.Services.CreateScope();
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
 
     try
@@ -151,13 +213,16 @@ using (var scope = host.Services.CreateScope())
         logger.LogInformation("Startup: applying master database migrations...");
         await masterDb.Database.MigrateAsync();
         logger.LogInformation("Startup: master database migrated successfully");
+        Console.Out.WriteLine("Startup: master database migrated successfully");
     }
     catch (Exception ex)
     {
         // Log but don't crash — timer triggers (log flush) should still work
         // even if the database isn't ready yet.
         logger.LogError(ex, "Startup: database migration failed — API calls will return errors until resolved");
+        // stdout twin of the line above, for the same reason as the tunnel milestone.
+        Console.Out.WriteLine($"Startup: database migration failed — {ex.GetBaseException().Message.ReplaceLineEndings(" ")}");
     }
-}
+});
 
 await host.RunAsync();

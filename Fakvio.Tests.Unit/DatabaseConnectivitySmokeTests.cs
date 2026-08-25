@@ -46,9 +46,9 @@ public sealed class DatabaseSmokeFactAttribute : FactAttribute
         "Azure PostgreSQL (the committed default configuration): run 'az login' first, no overrides needed. " +
         "Local Docker ('docker compose up -d'): override the committed configuration with the environment " +
         "variables ConnectionStrings__DefaultConnection=Host=localhost;Port=5432;Database=fakvio;" +
-        "Username=fakvio;Password=fakvio_dev, Database__AuthMode=Password and UseAzureAdAuthentication=false. " +
-        "Both auth-mode keys have to be flipped: the legacy 'UseAzureAdAuthentication' key is still present " +
-        "in Fakvio.API/appsettings.json, and DatabaseOptions.Resolve rejects a pair that disagrees.";
+        "Username=fakvio;Password=fakvio_dev and Database__AuthMode=Password. " +
+        "The legacy 'UseAzureAdAuthentication' key is no longer in Fakvio.API/appsettings.json, but if your " +
+        "environment still sets it, set it to false too — DatabaseOptions.Resolve rejects a pair that disagrees.";
 
     /// <summary>
     /// True when the smoke tests were explicitly enabled for this process.

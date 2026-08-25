@@ -5,8 +5,9 @@ Záznam dokončených změn. **Jeden záznam na každý task, který byl mergnut
 Step 2b. Ručně sem nepiš; když záznam chybí, chybí i merge.
 
 Řazeno **nejnovější nahoře**. Sekce `## Nevydáno` drží to, co je v `develop`, ale
-ještě nebylo promováno na `master`. Při `/release` se přejmenuje na verzi s datem
-a nad ní vznikne nová prázdná `## Nevydáno`.
+ještě nebylo promováno dál. Řez dělá `/release` (promotion `develop → TEST-ENV`):
+sekce se přejmenuje na verzi s datem a nad ní vznikne nová prázdná `## Nevydáno`.
+`/release-prod` (`TEST-ENV → master`) už tenhle soubor nemění.
 
 Formát řádku:
 
@@ -19,8 +20,63 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+### Změny pro vývojáře
+
+- **e2e** — nová kategorie Playwright testů `Deployment` ověřuje nasazené prostředí tam, kde lokální běh nestačí: zapečená API URL v bundlu, deep link místo 404, CORS preflight z prohlížeče, dosažitelnost DB z nasazeného hostu a vizuální označení neprodukčního prostředí. Bez `FAKVIO_UI_URL` na https se přeskočí. (PR #335, #336)
+
+## 2026.08.25.7 — 2026-08-25
+
+### Změny pro uživatele
+
+- **UI** — testovací prostředí (test.fakvio.cz) má růžový horní panel a štítek TEST, aby se nedalo splést s produkcí. (PR #333, `8e72e39`)
+
+## 2026.08.25.6 — 2026-08-25
+
+### Změny pro vývojáře
+
+- **hotfix** — diagnostika Tailscale tunelu: milník selhání nese i prvních 40 řádků démona, `tailscaled --verbose=1`, CLI dostane 45 s na vlastní hlášku. (PR #330, `04d8b77`)
+
+## 2026.08.25.5 — 2026-08-25
+
+### Změny pro vývojáře
+
+- **hotfix** — při zaseklém `tailscale up` se do logu (`Host.Function.Console`) vypíše dosažitelnost control plane (DNS, HTTPS, `tailscale netcheck`), aby šlo odlišit blokovaný odchozí provoz od špatného klíče. (PR #328, `89c1f3f`)
+
+## 2026.08.25.4 — 2026-08-25
+
 ### Opravy
 
+- **hotfix** — Tailscale bring-up na testovacím Function App blokoval start workeru, host odpovídal 502/503; tunel i startovní migrace teď běží na pozadí a při zaseklém `tailscale up` se do logu dostane důvod (výstup CLI + posledních 25 řádků démona, bez klíče). (PR #326, `8cf2c81`)
+
+## 2026.08.25.3 — 2026-08-25
+
+### Opravy
+
+- **#321** — Tailscale tunel na testovacím Function App padal hned po nasazení na `Text file busy`: Flex Consumption spouští na jedné instanci víc worker procesů a druhý přepisoval binárku, kterou první už spustil. Start je teď probe-first (běžící `tailscaled` se znovu nespouští), kopie binárek je tolerantní a forwarder nastartuje, jakmile SOCKS port žije. Milníky tunelu jdou i na stdout (`Host.Function.Console`). (PR #323, `b9eabc3`)
+
+## 2026.08.25.2 — 2026-08-25
+
+### Změny pro vývojáře
+
+- **#318** — Testovací Azure Function App (`zcloudinvoicingapi-test`) se teď umí připojit
+  k vlastní self-hosted PostgreSQL (`fakvio_test`) přes Tailscale tunel a lokální SOCKS5
+  forwarder — testovací prostředí tak konečně běží proti reálné databázi místo aby bylo
+  bez DB (uzavírá i #295). Bez nastaveného `TAILSCALE_AUTHKEY` je funkce úplně neaktivní,
+  lokální vývoj i produkce jedou beze změny. Tailscale binárky jsou pinované a stahují se
+  v CI při publish. (PR #319, `196f7fb`)
+- **#211** — AI chat asistent i MCP klient teď umí zeptat na "readiness" — jestli je
+  firma (vystavitel) připravená na vystavení dokladu, a pokud ne, co konkrétně chybí
+  a kde se to dá doplnit. Dřív bylo potřeba projít nastavení ručně nebo počkat na
+  banner v UI. (PR #273, `6474632`)
+
+## 2026.08.25 — 2026-08-25
+
+### Opravy
+
+- **#271** — AI chat asistent odmítl datum zadané jedním číslem (např. „15.3.2026")
+  v přehledu faktur i v DPH reportu — bral jen dvouciferné tvary s nulou (`15.03.2026`).
+  Nově akceptuje obě podoby, padded tvary i ISO datum se chovají stejně jako dřív.
+  (PR #296, `46fad72`)
 - **#263** — Diagnostické endpointy Azure Functions (`/api/diagnostic/migrate`,
   `/api/diagnostic/auth`) byly dostupné bez přihlášení: kdokoli mohl vzdáleně spustit
   DB migrace nebo si vypsat JWT konfiguraci (issuer, audience, délku secretu, claims).
@@ -63,6 +119,63 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Změny pro vývojáře
 
+- **#237** — Nová stránka `/settings/integrations`, kde si uživatel sám vygeneruje
+  revokovatelný API klíč pro napojení AI klientů na Fakvio (lokálně přes stdio i
+  vzdáleně přes HTTP). Klíč jde vytvořit se jménem, oprávněním (jen čtení / čtení
+  a zápis) a volitelnou expirací, zobrazí se v plném znění jen jednou hned po
+  vytvoření a jde kdykoli zrušit. Stránka rovnou nabízí hotový konfigurační snippet
+  ke zkopírování pro oba způsoby připojení. (PR #278, `737ff1d`)
+- **#160** — AI chat pro OpenAI a Gemini teď volá nástroje (vytvoření faktury, import,
+  vyhledání klienta atd.) nativním function callingem obou API místo dřívějšího
+  křehkého textového protokolu, kde model musel sám vypsat holý JSON a parser ho
+  vyřezával podřetězcem. Spolehlivější rozpoznání i menší latence (odpadá dvojí
+  průchod). Když nativní volání selže, chat se sám přepne na starou textovou cestu,
+  takže nástroje fungují dál i při výpadku. (PR #277, `62b809c`)
+- **#293** — ADMINGUIDE má novou sekci §14 „Prostředí" popisující rozdíl mezi
+  testovacím a produkčním nasazením pro SysAdmina: kde která část běží (hosting,
+  URL, větev, deploy workflow, databáze), jak se liší App Settings (vlastní
+  `JwtSettings__Secret`, takže tokeny mezi prostředími nejsou přenosné, oddělené
+  CORS a connection string), jaké chování je na testu bez vlastní databáze
+  očekávané (401/503 z healthu, ne incident) a jak probíhá promotion přes
+  `/release` a `/release-prod` včetně rotace nasazovacích secrets. (PR #311, `91f6564`)
+- **#220** — AI chat asistent teď umí zobrazit i upravit nastavení vlastní firmy
+  (název, DIČ, plátcovství DPH, jazyk dokumentů, sídlo) a spravovat bankovní účty —
+  přidat, upravit i smazat. Každá změna se nejdřív ukáže k odsouhlasení a provede se,
+  až uživatel potvrdí; při smazání výchozího účtu asistent sám určí nový výchozí
+  a řekne který. (PR #299, `eb52a97`)
+- **#291** — Release flow je teď třístupňový: `/release` nově staguje `develop` do
+  `TEST-ENV` (dřív mířil rovnou do `master`), nový příkaz `/release-prod` teprve
+  z `TEST-ENV` promuje do `master` a přesouvá karty do `Approved`. Vydání tak jde
+  nejdřív otestovat na testovacím prostředí, než se dostane k zákazníkům.
+  (PR #297, `11a3131`)
+- **#222** — AI asistent v chatu teď umí i práci s klienty: vypsat seznam s filtry
+  (vč. hledání „vystavitel" bez zvláštního tlačítka), zobrazit celý detail (adresy,
+  kontakty, bankovní účty, fakturační nastavení), upravit údaje nebo klienta smazat.
+  Úprava i smazání se nejdřív ukážou k odsouhlasení a provedou se, až uživatel potvrdí;
+  smazání je měkké (klient zmizí ze seznamů, staré faktury na něj dál odkazují) a klienta
+  s existující fakturou smazat nejde vůbec. Prázdný název firmy se odmítne a neúspěšné
+  načtení z ARESu se nahlásí jako neúspěch, ne jako tichý úspěch. (PR #298, `03a9159`)
+- **#292** — Testovací prostředí `TEST-ENV` má teď vlastní deploy i pro frontend: push do
+  větve `TEST-ENV` nasadí BlazorUI na Azure Static Web Apps (`fakvio-test-ui`), s vlastní
+  URL API backendu zapečenou do buildu (ne produkční), a s deep-linky, které na SWA
+  nevrací 404. Produkční deploy na GitHub Pages z `master` zůstal beze změny. Spolu
+  s #290 (Functions backend) umožňuje ověřit release proti testovacímu prostředí celý,
+  ne jen na backendu. (PR #302, `75d7556`)
+- **#290** — Testovací prostředí `TEST-ENV` má teď vlastní deploy pro Azure Functions
+  backend: push do větve `TEST-ENV` nasadí `Fakvio.Functions` do samostatné aplikace
+  `zcloudinvoicingapi-test` (Flex Consumption, deployment slot tu není podporovaný),
+  produkční deploy z `master` zůstal beze změny. Umožňuje ověřit release proti testovacímu
+  backendu dřív, než jde na produkci. (PR #300, `dfab4a7`)
+- **#138** — Health endpoint teď hlásí, jaký režim přihlášení k databázi (`authMode`,
+  `authModeSource`) skutečně používá — v obou hostech, API i Azure Functions, poprvé
+  stejně (API dosud žádný health endpoint nemělo). Umožňuje ověřit rollout přepínatelné
+  DB autentizace bez čtení connection stringu; secret se do odpovědi nikdy nedostane.
+  (PR #260, `17475ad`)
+- **#236** — Integrace (MCP server, budoucí externí nástroje) se teď mohou přihlásit
+  API klíčem místo běžného uživatelského přihlášení: klíč se pošle v hlavičce
+  `Authorization: ApiKey <klíč>` a nese vlastní scope (které akce smí), takže
+  nevyžaduje sdílené heslo ani plný přístup uživatele. Funguje shodně v API
+  hostu i v Azure Functions. (PR #275, `bd4ffb3`)
 - **#209** — Nový endpoint `GET /api/readiness` (i jako Azure Function) vrací, co ve
   vystaviteli ještě chybí k vystavení faktury (sídlo, číselné řady, šablony) — základ pro
   banner v UI (#215) a pro MCP/chat nástroje, které se teď mají o co opřít místo vlastní

@@ -256,7 +256,8 @@ public class DatabaseOptions
             {
                 throw new InvalidOperationException(
                     "Database auth mode is 'AzureEntraId' but the connection string contains a " +
-                    "'Password'. Remove it — the access token is provided at runtime instead.");
+                    "'Password'. Remove it — the access token is provided at runtime instead." +
+                    AuthModeOrigin());
             }
 
             // Entra ID authentication requires a username matching the Entra principal
@@ -265,7 +266,8 @@ public class DatabaseOptions
             {
                 throw new InvalidOperationException(
                     "Database auth mode is 'AzureEntraId' but the connection string has no 'Username'. " +
-                    "Set it to the Entra ID principal name (managed identity or AAD user).");
+                    "Set it to the Entra ID principal name (managed identity or AAD user)." +
+                    AuthModeOrigin());
             }
         }
         else
@@ -281,7 +283,8 @@ public class DatabaseOptions
                 throw new InvalidOperationException(
                     "Database auth mode is 'Password' but the connection string has no 'Password' and no " +
                     "'Passfile'. Either set a password, point 'Passfile' at a .pgpass file, connect via a " +
-                    "Unix domain socket, or set 'AllowPasswordlessConnectionString' if this is intentional.");
+                    "Unix domain socket, or set 'AllowPasswordlessConnectionString' if this is intentional." +
+                    AuthModeOrigin());
             }
         }
 
@@ -291,6 +294,15 @@ public class DatabaseOptions
         ValidatePositive(MaxRetryDelaySeconds, nameof(MaxRetryDelaySeconds));
         ValidatePositive(SchemaDataSourceMaxPoolSize, nameof(SchemaDataSourceMaxPoolSize));
     }
+
+    /// <summary>
+    /// Suffix appended to every auth-mode validation error: names the configuration key the
+    /// mode came from. Without it a startup failure only says WHAT is wrong, not WHICH key to
+    /// edit — and during the Azure rollout the mode can come from three different places
+    /// ("Database:AuthMode", the legacy bool, or the built-in default).
+    /// </summary>
+    private string AuthModeOrigin() =>
+        $" Auth mode '{AuthMode}' was resolved from '{AuthModeSource}'.";
 
     private static void ValidatePositive(int value, string keyName)
     {
