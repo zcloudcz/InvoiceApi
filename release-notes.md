@@ -68,6 +68,12 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Změny pro vývojáře
 
+- **#160** — AI chat pro OpenAI a Gemini teď volá nástroje (vytvoření faktury, import,
+  vyhledání klienta atd.) nativním function callingem obou API místo dřívějšího
+  křehkého textového protokolu, kde model musel sám vypsat holý JSON a parser ho
+  vyřezával podřetězcem. Spolehlivější rozpoznání i menší latence (odpadá dvojí
+  průchod). Když nativní volání selže, chat se sám přepne na starou textovou cestu,
+  takže nástroje fungují dál i při výpadku. (PR #277, `62b809c`)
 - **#293** — ADMINGUIDE má novou sekci §14 „Prostředí" popisující rozdíl mezi
   testovacím a produkčním nasazením pro SysAdmina: kde která část běží (hosting,
   URL, větev, deploy workflow, databáze), jak se liší App Settings (vlastní
