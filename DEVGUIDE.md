@@ -1136,13 +1136,25 @@ Co má náhled říct, aby uživatel schvaloval konkrétní věc a ne slovo:
 | `mark_received_invoice_paid` | popis faktury + **datum úhrady** (dopadá do období DPH) |
 | `delete_received_invoice` | popis faktury, která zmizí |
 
-Náhled u `create` je záměrně bez DPH: součet položek je přesný, kdežto celkovou částku s DPH
-zaokrouhluje `ReceivedInvoiceService` a náhled by mohl ukázat číslo, kterému uložená faktura
-odporuje. Sdílená příprava DTO (`PrepareAsync`) je jedna metoda pro náhled i zápis, aby náhled
-nemohl popisovat něco jiného, než co se pak uloží.
+Náhled u `create` je záměrně bez DPH: součet nadiktovaných položek je přesný, kdežto částka
+s DPH je smysluplná teprve po #283 — dokud chybějící výchozí sazba tiše znamená 0 %, ukázal by
+špatně nastavenému tenantovi částku s DPH shodnou s částkou bez DPH. (Není to otázka
+zaokrouhlení — `ReceivedInvoiceService` v create cestě nezaokrouhluje vůbec.) Sdílená příprava
+DTO (`PrepareAsync`) je jedna metoda pro náhled i zápis, aby náhled nemohl popisovat něco
+jiného, než co se pak uloží.
 
 Gate **není** autorizační hranice (viz §4.7 výše) — všechny čtyři operace uživatel smí i z UI,
 gate jen brání tomu, aby je asistent udělal potichu.
+
+**Nadiktovaná sazba DPH se ověřuje proti sazbám tenanta.** `vat_rate` u položky jde do
+`CreateReceivedInvoiceDto` **bez `VatRateId`** (id výchozí sazby by servis přečetl jako procento
+a přebil jím tu nadiktovanou), takže pod toolem už tu hodnotu nekontroluje nic —
+`ReceivedInvoiceService` s ní jen násobí. Tool ji proto porovná se seznamem z
+`GetActiveVatRatesForDateAsync` a neznámou sazbu odmítne s výčtem těch dostupných. Ptá se na
+sazby platné **k datu plnění**, ne k dnešku (starší doklad se eviduje se starší sazbou), a
+záměrně nemá pevný rozsah typu 0–100: „které procento je legální" je data, ne konstanta.
+0 % je regulérní sazba (`DPH 0% - osvobozeno od daně`), takže projde. Vynechaná `vat_rate` jde
+dál výchozí sazbou — tichá nula při nenakonfigurované výchozí sazbě je #283.
 
 Společná je resoluce „která faktura?" (`ReceivedInvoiceLookup`): `id` má přednost před
 `document_number`, číslo dokladu se hledá jako substring. **Víc než jedna shoda = chyba**, ne

@@ -76,7 +76,7 @@ public class ReceivedInvoiceWriteChatToolTests
         var result = await BuildApproveTool(service).ExecuteAsync([]);
 
         result.IsSuccess.ShouldBeFalse();
-        result.ErrorMessage.ShouldContain("at least one of");
+        result.ErrorMessage!.ShouldContain("at least one of");
         await service.DidNotReceive().ApproveAsync(Arg.Any<long>(), Arg.Any<CancellationToken>());
     }
 
@@ -89,8 +89,8 @@ public class ReceivedInvoiceWriteChatToolTests
         var result = await BuildApproveTool(service).ExecuteAsync(new() { ["id"] = "99" });
 
         result.IsSuccess.ShouldBeFalse();
-        result.ErrorMessage.ShouldContain("99");
-        result.ErrorMessage.ShouldContain("not found");
+        result.ErrorMessage!.ShouldContain("99");
+        result.ErrorMessage!.ShouldContain("not found");
         await service.DidNotReceive().ApproveAsync(Arg.Any<long>(), Arg.Any<CancellationToken>());
     }
 
@@ -132,9 +132,9 @@ public class ReceivedInvoiceWriteChatToolTests
         var result = await BuildApproveTool(service).ExecuteAsync(new() { ["document_number"] = "FP-2026-004" });
 
         result.IsSuccess.ShouldBeFalse();
-        result.ErrorMessage.ShouldContain("matches 2");
-        result.ErrorMessage.ShouldContain("ID=7");
-        result.ErrorMessage.ShouldContain("ID=8");
+        result.ErrorMessage!.ShouldContain("matches 2");
+        result.ErrorMessage!.ShouldContain("ID=7");
+        result.ErrorMessage!.ShouldContain("ID=8");
         await service.DidNotReceive().ApproveAsync(Arg.Any<long>(), Arg.Any<CancellationToken>());
     }
 
@@ -191,7 +191,7 @@ public class ReceivedInvoiceWriteChatToolTests
         var result = await BuildApproveTool(service).ExecuteAsync(new() { ["id"] = "7" });
 
         result.IsSuccess.ShouldBeFalse();
-        result.ErrorMessage.ShouldContain("Only Received allowed");
+        result.ErrorMessage!.ShouldContain("Only Received allowed");
     }
 
     /// <summary>
@@ -208,7 +208,7 @@ public class ReceivedInvoiceWriteChatToolTests
         var result = await BuildApproveTool(service).ExecuteAsync(new() { ["id"] = "7" });
 
         result.IsSuccess.ShouldBeFalse();
-        result.ErrorMessage.ShouldContain("7");
+        result.ErrorMessage!.ShouldContain("7");
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -267,7 +267,7 @@ public class ReceivedInvoiceWriteChatToolTests
             new() { ["id"] = "7", ["paid_at"] = "yesterday" });
 
         result.IsSuccess.ShouldBeFalse();
-        result.ErrorMessage.ShouldContain("paid_at");
+        result.ErrorMessage!.ShouldContain("paid_at");
         await service.DidNotReceive().MarkAsPaidAsync(
             Arg.Any<long>(), Arg.Any<DateTime?>(), Arg.Any<CancellationToken>());
     }
@@ -283,7 +283,7 @@ public class ReceivedInvoiceWriteChatToolTests
         var result = await BuildMarkPaidTool(service).ExecuteAsync(new() { ["id"] = "7" });
 
         result.IsSuccess.ShouldBeFalse();
-        result.ErrorMessage.ShouldContain("Only Approved allowed");
+        result.ErrorMessage!.ShouldContain("Only Approved allowed");
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -337,7 +337,7 @@ public class ReceivedInvoiceWriteChatToolTests
         var result = await BuildDeleteTool(service).BuildPreviewAsync(new() { ["id"] = "99" });
 
         result.IsSuccess.ShouldBeFalse();
-        result.ErrorMessage.ShouldContain("not found");
+        result.ErrorMessage!.ShouldContain("not found");
     }
 
     [Fact]
@@ -368,7 +368,7 @@ public class ReceivedInvoiceWriteChatToolTests
             new() { ["id"] = "7", ["confirm"] = "true" });
 
         result.IsSuccess.ShouldBeFalse();
-        result.ErrorMessage.ShouldContain("Only Received or Rejected allowed");
+        result.ErrorMessage!.ShouldContain("Only Received or Rejected allowed");
     }
 
     [Fact]
@@ -706,10 +706,9 @@ public class ReceivedInvoiceWriteChatToolTests
         });
 
         result.IsSuccess.ShouldBeFalse();
-        result.ErrorMessage.ShouldNotBeNull();
-        result.ErrorMessage.ShouldContain(expectedInMessage);
+        result.ErrorMessage!.ShouldContain(expectedInMessage);
         // The answer has to name the way out, otherwise the model just retries the same number.
-        result.ErrorMessage.ShouldContain("21%");
+        result.ErrorMessage!.ShouldContain("21%");
         await service.DidNotReceive().CreateAsync(
             Arg.Any<CreateReceivedInvoiceDto>(), Arg.Any<CancellationToken>());
     }
@@ -770,8 +769,7 @@ public class ReceivedInvoiceWriteChatToolTests
         });
 
         result.IsSuccess.ShouldBeFalse();
-        result.ErrorMessage.ShouldNotBeNull();
-        result.ErrorMessage.ShouldContain("No VAT rates are set up");
+        result.ErrorMessage!.ShouldContain("No VAT rates are set up");
         await service.DidNotReceive().CreateAsync(
             Arg.Any<CreateReceivedInvoiceDto>(), Arg.Any<CancellationToken>());
     }
@@ -811,7 +809,7 @@ public class ReceivedInvoiceWriteChatToolTests
         var result = await tool.ExecuteAsync(new() { ["supplier_name"] = "Nobody", ["items"] = OneItem });
 
         result.IsSuccess.ShouldBeFalse();
-        result.ErrorMessage.ShouldContain("Nobody");
+        result.ErrorMessage!.ShouldContain("Nobody");
         await service.DidNotReceive().CreateAsync(
             Arg.Any<CreateReceivedInvoiceDto>(), Arg.Any<CancellationToken>());
     }
@@ -827,8 +825,8 @@ public class ReceivedInvoiceWriteChatToolTests
         var result = await tool.ExecuteAsync(new() { ["supplier_name"] = "Alza", ["items"] = OneItem });
 
         result.IsSuccess.ShouldBeFalse();
-        result.ErrorMessage.ShouldContain("Alza.cz a.s.");
-        result.ErrorMessage.ShouldContain("Alza Media s.r.o.");
+        result.ErrorMessage!.ShouldContain("Alza.cz a.s.");
+        result.ErrorMessage!.ShouldContain("Alza Media s.r.o.");
         await service.DidNotReceive().CreateAsync(
             Arg.Any<CreateReceivedInvoiceDto>(), Arg.Any<CancellationToken>());
     }
@@ -849,7 +847,7 @@ public class ReceivedInvoiceWriteChatToolTests
         });
 
         result.IsSuccess.ShouldBeFalse();
-        result.ErrorMessage.ShouldContain("XYZ");
+        result.ErrorMessage!.ShouldContain("XYZ");
         await service.DidNotReceive().CreateAsync(
             Arg.Any<CreateReceivedInvoiceDto>(), Arg.Any<CancellationToken>());
     }
@@ -892,7 +890,7 @@ public class ReceivedInvoiceWriteChatToolTests
         });
 
         result.IsSuccess.ShouldBeFalse();
-        result.ErrorMessage.ShouldContain(expectedHint);
+        result.ErrorMessage!.ShouldContain(expectedHint);
         await service.DidNotReceive().CreateAsync(
             Arg.Any<CreateReceivedInvoiceDto>(), Arg.Any<CancellationToken>());
     }
@@ -914,7 +912,7 @@ public class ReceivedInvoiceWriteChatToolTests
         });
 
         result.IsSuccess.ShouldBeFalse();
-        result.ErrorMessage.ShouldContain("taxable_supply_date");
+        result.ErrorMessage!.ShouldContain("taxable_supply_date");
         await service.DidNotReceive().CreateAsync(
             Arg.Any<CreateReceivedInvoiceDto>(), Arg.Any<CancellationToken>());
     }
@@ -933,6 +931,6 @@ public class ReceivedInvoiceWriteChatToolTests
         });
 
         result.IsSuccess.ShouldBeFalse();
-        result.ErrorMessage.ShouldContain("Supplier is not active.");
+        result.ErrorMessage!.ShouldContain("Supplier is not active.");
     }
 }

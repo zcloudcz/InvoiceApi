@@ -129,9 +129,13 @@ public class CreateReceivedInvoiceTool : IConfirmableChatTool
     /// Describes the expense that would be recorded: supplier, item count and the total the user
     /// can check against the document in front of them.
     ///
-    /// Junior note on the amount: it is the total EXCLUDING VAT, which is simply the sum of the
-    /// line items. The VAT total and its rounding are <c>ReceivedInvoiceService</c>'s job, and a
-    /// preview that recomputed them here could show a number the saved invoice then contradicts.
+    /// Junior note on the amount: it is the total EXCLUDING VAT — exactly the sum of the line
+    /// items the user has just dictated, so it can be checked against the document word for word.
+    /// The total WITH VAT is deliberately left out until #283 lands: a company with no default
+    /// VAT rate configured currently gets 0 %, which would print a with-VAT total equal to the
+    /// without-VAT one. A number that looks right and is not is worse than no number at all.
+    /// (It is not a rounding question — <c>ReceivedInvoiceService</c> does not round; the create
+    /// path is plain decimal arithmetic.)
     /// </summary>
     public async Task<ChatToolResult> BuildPreviewAsync(
         Dictionary<string, string> parameters,
