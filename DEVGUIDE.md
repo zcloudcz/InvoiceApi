@@ -1987,6 +1987,9 @@ automat obou příkazů je v `.claude/commands/release.md`
 a `.claude/commands/release-prod.md`, dopad na board v `.claude/BOARD-OPS.md`
 (sekce „Integration branch model").
 
+Provozní pohled na obě prostředí — URL, rozdíly v App Settings (CORS, JWT, DB),
+deploy secrets a jejich rotace — je v `ADMINGUIDE.md` §14.
+
 ## 10. Observability — logging + correlation
 
 ### 10.1 CorrelationId

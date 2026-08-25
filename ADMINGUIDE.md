@@ -21,6 +21,7 @@
 11. [Impersonace tenant firmy](#11-impersonace-tenant-firmy)
 12. [Odesílání testovacího emailu](#12-odesílání-testovacího-emailu)
 13. [Diagnostika nasazení (health endpoint)](#13-diagnostika-nasazení-health-endpoint)
+14. [Prostředí (test vs produkce)](#14-prostředí-test-vs-produkce)
 
 ---
 
@@ -730,6 +731,113 @@ info: Fakvio.Infrastructure.Database[0]
 
 Chyba při startu (např. heslo v connection stringu při `AzureEntraId`) vždy dopoví, **odkud**
 se režim vzal — podle toho víte, který klíč opravit.
+
+---
+
+## 14. Prostředí (test vs produkce)
+
+Aplikace běží ve **dvou oddělených prostředích**. Kód je stejný, Azure zdroje ne — testovací
+prostředí má vlastní Function App, vlastní frontend hosting, vlastní JWT klíč i vlastní
+deploy credentials. Nic se mezi prostředími nesdílí, takže test nemůže sáhnout na produkční
+data ani na produkční Azure zdroje.
+
+Vývojářský pohled (obsah workflow souborů, precedence konfigurace, jak se přepisuje URL API
+v WASM bundlu) je v `DEVGUIDE.md` §9 — tady je jen to, co potřebuje SysAdmin.
+
+### Co kde běží
+
+| | **Test** | **Produkce** |
+|---|---|---|
+| Frontend hosting | Azure Static Web App `fakvio-test-ui` (Free tier) | GitHub Pages (custom doména z `CNAME` v repu) |
+| Frontend URL | https://wonderful-meadow-0eb3ada03.7.azurestaticapps.net | https://app.fakvio.cz |
+| Backend | Function App `zcloudinvoicingapi-test` | Function App `zcloudinvoicingapi` |
+| Backend URL | https://zcloudinvoicingapi-test.azurewebsites.net | https://zcloudinvoicingapi-crcqggehb7a6ggdv.westeurope-01.azurewebsites.net |
+| Zdrojová větev | `TEST-ENV` | `master` |
+| Deploy workflows | `testenv_zcloudinvoicingapi.yml` (backend), `blazorui-test-deploy.yml` (frontend) | `master_zcloudinvoicingapi.yml` (backend), `blazorui-deploy.yml` (frontend) |
+| Databáze | **žádná** (viz Známá omezení) | produkční PostgreSQL |
+
+**Proč test není deployment slot:** produkční Function App běží na plánu **Flex Consumption**,
+který sloty nepodporuje (`az functionapp deployment slot list` to rovnou odmítne). Testovací
+prostředí je proto **samostatný Function App** na stejném plánu. V praxi je to lepší izolace —
+slot by sdílel App Settings i škálování s produkcí.
+
+**Proč frontend testu není na GitHub Pages:** Pages umí hostovat jen jeden web na repozitář
+a ten patří produkci. Test proto jede na Azure Static Web Apps.
+
+### Jak se liší konfigurace
+
+Všechna nastavení jsou **App Settings v Azure** (Function App → Settings → Environment
+variables), ne ve workflow souborech. Zápis používá dvojité podtržítko místo dvojtečky
+(`JwtSettings__Secret`).
+
+| Nastavení | Test | Poznámka |
+|-----------|------|----------|
+| `JwtSettings__Secret` | **vlastní, nesdílený s produkcí** | Token vydaný produkcí na testu neplatí a naopak. To je záměr — jinak by únik jednoho klíče otevřel obě prostředí. |
+| `JwtSettings__Issuer`, `JwtSettings__Audience` | shodné s produkcí | Liší se jen klíč, ne formát tokenu. |
+| `CorsSettings__AllowedOrigins__0` | origin testovacího SWA (viz tabulka výše) | Musí sedět na frontend URL daného prostředí, jinak prohlížeč zablokuje všechna volání API. Při změně URL frontendu se mění i tady. |
+| `ConnectionStrings__DefaultConnection` | `PLACEHOLDER-test-env-has-no-database-yet-see-issue-295` | Placeholder, ne funkční connection string. |
+| `UseAzureAdAuthentication`, `AresSettings__BaseUrl` | shodné s produkcí | |
+
+### Známá omezení testovacího prostředí
+
+- **Testovací prostředí zatím nemá databázi.** Byl to vědomý krok při zřizování (issue #289) —
+  oddělená testovací DB je samostatný úkol (#295). Dokud nevznikne:
+  - `GET /api/diagnostic/health` (§13) vrací **503** a `masterDbCanConnect: false`. Je to
+    **očekávaný stav, ne incident** — nezakládejte kvůli tomu ticket.
+  - **Přihlášení na testu nefunguje** (uživatelé i tenanti žijí v master DB), takže se dá
+    ověřit jen to, co běží bez DB: že se frontend nasadil a načte, že backend odpovídá
+    a že CORS mezi nimi prochází.
+- SWA běží na **Free tier** — bez SLA. Pro testovací prostředí je to v pořádku, na produkční
+  provoz to není.
+
+### Promotion — kdo a kdy co spouští
+
+    develop  ──/release──▶  TEST-ENV  ──/release-prod──▶  master
+
+| Krok | Kdo | Co se stane |
+|------|-----|-------------|
+| `develop` | `agent-ops` (automaticky při mergi feature PR) | Nenasazuje se nic — `develop` nemá deploy workflow. |
+| `/release` | **člověk** | Otevře promotion PR `develop → TEST-ENV`. **Po jeho mergnutí** se spustí oba testovací deploye (push na `TEST-ENV`). Karty na boardu se nehýbou. |
+| ověření na testu | **člověk** | Viz Známá omezení — bez DB jde ověřit jen deploy, dostupnost a CORS. |
+| `/release-prod` | **člověk** po ověření testu | Otevře promotion PR `TEST-ENV → master`; merge nasadí produkci. Karty `Implemented` → `Approved`. |
+
+Pravidla, která platí bez výjimky:
+
+- Do `TEST-ENV` ani do `master` se **nikdy nekomituje přímo**. Oprava toho, co se najde na
+  testu, jde jako běžný feature PR do `develop` a znovu přes `/release`.
+- Žádná z větví nemá branch protection — pořadí stupňů drží konvence a agenti, ne GitHub.
+  Ruční push mimo tento postup nikdo nezastaví, proto ho nedělejte.
+
+Stavový automat obou příkazů je v `.claude/commands/release.md` a
+`.claude/commands/release-prod.md`, vývojářský popis v `DEVGUIDE.md` §9.6.
+
+### Secrets pro deploy a jejich rotace
+
+Všechny žijí v **GitHub → Settings → Secrets and variables → Actions** daného repozitáře.
+V Azure ani v repu jinde nejsou.
+
+| Secret | K čemu |
+|--------|--------|
+| `AZUREAPPSERVICE_CLIENTID_TEST`, `AZUREAPPSERVICE_TENANTID_TEST`, `AZUREAPPSERVICE_SUBSCRIPTIONID_TEST` | Přihlášení workflow `testenv_zcloudinvoicingapi.yml` do Azure (OIDC, app registration `zcloudcz-InvoiceApi-TEST`). |
+| `AZURE_STATIC_WEB_APPS_API_TOKEN_TEST` | Deploy token pro `blazorui-test-deploy.yml` → SWA `fakvio-test-ui`. |
+| `AZUREAPPSERVICE_*` bez přípony `_TEST` | Totéž pro produkční `master_zcloudinvoicingapi.yml`. Produkční frontend token nepotřebuje — GitHub Pages se nasazují vestavěným `GITHUB_TOKEN`. |
+
+**Rozsah oprávnění testovacího OIDC** (nastaveno při zřízení, issue #289): federated credential
+je vázaný na subject `repo:zcloudcz/InvoiceApi:ref:refs/heads/TEST-ENV` a role **Contributor je
+scopovaná jen na `zcloudinvoicingapi-test`**. Workflow spuštěné z jiné větve se tedy nepřihlásí
+vůbec a ani po přihlášení nedosáhne na produkční zdroje.
+
+**Rotace deploy tokenu SWA** (při podezření na únik nebo když deploy začne vracet 401):
+
+1. Azure Portal → Static Web App `fakvio-test-ui` → **Manage deployment token** → *Reset*,
+   nebo `az staticwebapp secrets reset-api-key --name fakvio-test-ui`.
+2. Nový token vložte do secretu `AZURE_STATIC_WEB_APPS_API_TOKEN_TEST`
+   (`gh secret set AZURE_STATIC_WEB_APPS_API_TOKEN_TEST`).
+3. Reset zneplatní starý token okamžitě — ověřte ručním spuštěním
+   `blazorui-test-deploy.yml` (Actions → Run workflow).
+
+OIDC credentials rotaci nepotřebují: app registration nemá client secret, důvěra stojí na
+federated credential. Mění se jen tehdy, když se mění samotná app registration nebo název větve.
 
 ---
 
