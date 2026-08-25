@@ -47,7 +47,7 @@ internal static class BuiltInPromptAssertions
     ];
 
     /// <summary>
-    /// The catalog the twenty-nine shipped tools are expected to render, in DI registration order
+    /// The catalog the thirty-four shipped tools are expected to render, in DI registration order
     /// (<c>ServiceCollectionExtensions</c>). Each line is <c>- {ToolName}: {Description}</c>
     /// with the description written out as one line. This is the independent copy: when a tool
     /// description changes, it has to be changed here too, deliberately. That is the point.
@@ -59,7 +59,7 @@ internal static class BuiltInPromptAssertions
         "- navigate: Navigates the user to a page in the application — documents, clients, payments, templates, taxes, reminders or settings. If a client name is mentioned, it finds the client first. Opens pages and forms only — it never creates a document.",
         "- create_invoice: Creates a new invoice for a client with specified items. Automatically resolves the client by name, sets default currency (CZK), applies default VAT rate, and generates a document number. After creation, navigates to the invoice detail page. Use this when the user provides item details (description, price) — when they only want to open the form, use 'navigate' with target new_invoice instead.",
         "- import_invoice: Imports an invoice from extracted data. Automatically determines if it's an issued (vydaná) or received (přijatá) invoice by matching IČO against the company database. Finds the client/supplier automatically. Preserves all dates exactly as extracted.",
-        "- export_invoice: Export/download an invoice or credit note as a PDF file. Finds the document by number, by client name (most recent), or exports the most recent invoice if no parameters given.",
+        "- export_invoice: Export/download an invoice or credit note as a PDF or ISDOC file (ISDOC is the Czech electronic invoice standard imported by Pohoda, Money S3 and Helios). Finds the document by number, by client name (most recent), or exports the most recent invoice if no parameters given.",
         "- list_clients: List clients with optional search and filtering by VAT status. Without is_issuer the list holds customers AND the user's own company (the issuer), which is flagged in its row; set is_issuer=true for the issuer alone or false for customers alone. Returns paged results; use get_client for the full detail of one client.",
         "- get_client: Get the full detail of one client: addresses, contacts, bank accounts and billing settings. Identify the client by id, registration_number (IČO) or name.",
         "- update_client: Update an existing client: company name, trading name, DIČ, VAT payer flag, active flag, or refresh the data from the ARES registry. Identify the client by id, registration_number (IČO) or name. Only the fields you send are changed. Addresses, contacts and bank accounts cannot be edited here.",
@@ -82,7 +82,12 @@ internal static class BuiltInPromptAssertions
         "- list_content_templates: List content templates — the HTML templates that render PDF documents (invoice, credit note, reminder, ...) and e-mail bodies. Shows which one is the default for each type and language. Use set_default_content_template to change the default, and list_invoice_templates for the separate invoice DATA blueprints.",
         "- get_content_template: Get one content template (PDF or e-mail HTML template) by ID: name, type, language, whether it is the default, the e-mail subject and the size of the HTML body. The HTML itself is not returned and cannot be edited through chat — the user edits it in the visual editor. Call list_content_templates first to find the ID.",
         "- set_default_content_template: Make one content template the default for its type and language, so new PDFs and e-mails of that type use it. The previous default for the same type and language is unset automatically. Call list_content_templates first to find the ID. Invoice DATA templates (list_invoice_templates) have no default — this tool does not apply to them.",
-        "- get_readiness: Checks whether the company setup is complete enough to issue invoices. Returns every missing setting with its severity (blocking or warning), the empty fields and the page where the user fixes it. Read-only — use it when the user asks what is still missing, or when an invoice was refused because the setup is incomplete."
+        "- get_readiness: Checks whether the company setup is complete enough to issue invoices. Returns every missing setting with its severity (blocking or warning), the empty fields and the page where the user fixes it. Read-only — use it when the user asks what is still missing, or when an invoice was refused because the setup is incomplete.",
+        "- get_invoice: Get the full detail of an ISSUED (outgoing) invoice, credit note, proforma or advance tax receipt by its ID or document number. Returns line items, VAT breakdown, totals, dates, payment state and the payment details printed on the document.",
+        "- complete_invoice: Issue (complete) a DRAFT issued invoice: status changes from Draft to Completed and the document number is assigned. This cannot be undone from chat. Identify the draft by ID or document number.",
+        "- mark_invoice_paid: Mark a COMPLETED issued invoice as paid (status Completed → Paid, payment date = now). Identify the invoice by ID or document number.",
+        "- send_invoice_email: Send an issued invoice by e-mail with the PDF and ISDOC attachments. Identify the invoice by ID or document number and give the recipient address.",
+        "- delete_invoice: Delete a DRAFT issued invoice (soft delete — it can be restored on the Invoices page). Issued documents cannot be deleted from chat. Identify the draft by ID or document number."
     ];
 
     /// <summary>The static lines below the generated tool catalog, verbatim.</summary>

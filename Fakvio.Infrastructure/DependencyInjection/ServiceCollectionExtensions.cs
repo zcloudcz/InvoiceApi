@@ -318,6 +318,15 @@ public static class ServiceCollectionExtensions
         // Setup tools — let the agent say what is still missing before the user can invoice.
         services.AddScoped<IChatTool, GetReadinessTool>();
 
+        // Issued invoice lifecycle — read the detail, then issue / mark paid / send / delete.
+        // The four data-changing ones are IConfirmableChatTool: the model must show a preview
+        // and get the user's approval before anything is written (DEVGUIDE §4.7).
+        services.AddScoped<IChatTool, GetInvoiceTool>();
+        services.AddScoped<IChatTool, CompleteInvoiceTool>();
+        services.AddScoped<IChatTool, MarkInvoicePaidTool>();
+        services.AddScoped<IChatTool, SendInvoiceEmailTool>();
+        services.AddScoped<IChatTool, DeleteInvoiceTool>();
+
         services.AddScopedWithLogging<IChatToolExecutor, ChatToolExecutor>();
 
         // ── Database Logging ────────────────────────────────────────────────
