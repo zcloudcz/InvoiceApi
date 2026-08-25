@@ -1304,9 +1304,54 @@ i čtení parametrů drží `SettingsChatToolSupport` — model vidí jen text, 
   procento 0–100 a `valid_to >= valid_from` se ověřuje v toolu, aby náhled nikdy nesliboval
   zápis, který by servis odmítl.
 
-##### Paritní tabulka chat ↔ MCP (stav k #211, #217, #218, #220, #222, #224 a #225)
+##### Upomínky a platby (#227)
 
-Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 44 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
+Pět toolů: tři nad `IReminderService` (`list_reminders`, `get_reminder_settings`,
+`update_reminder_settings`) a dva nad `IBankTransactionQueryService`
+(`list_payments`, `get_payment`). Jediný zápis je `update_reminder_settings`, a ten je
+`IConfirmableChatTool`.
+
+- **Platby jsou read-only záměrně** — potvrzený default story #149 (otázka 5). Ruční
+  párování a odpárování zůstává na stránce Platby: rozhoduje o tom, kolik z platby padne na
+  kterou fakturu, a UI k tomu ukazuje kandidáty i zbývající částky, které chat nemá jak
+  předat. Odesílání a rušení jednotlivých upomínek zůstává ze stejného důvodu mimo chat —
+  `IReminderService.SendReminderAsync` / `CancelReminderAsync` chat nevolá.
+- **Částka platby nese znaménko podle směru** (`EPaymentDirection`), ne podle uloženého
+  čísla: sloupec `Amount` je absolutní hodnota, takže bez znaménka by odchozí platba
+  v odpovědi asistenta vypadala jako příjem. Formátuje se `InvariantCulture`, aby stejná
+  platba četla stejně bez ohledu na culture procesu.
+- **Čtení nastavení nesmí zapisovat.** `GetCompanySettingsAsync` chybějící záznam **založí**
+  (výchozí tři úrovně) — to je zápis. `get_reminder_settings` i `BuildPreviewAsync`
+  v update toolu proto čtou přes `GetEffectiveSettingsAsync`, které vrací `null`. Založení
+  patří výhradně na zápisovou cestu `ExecuteAsync`, kde si o změnu uživatel řekl. I ta si
+  ale existenci záznamu ověří `GetEffectiveSettingsAsync` **před** založením — jinak by
+  potvrzený požadavek na hodnotu rovnou defaultu (`grace_period_days = 7`) záznam založil
+  a pak ohlásil „nic se nezměnilo".
+- **Dvouúrovňová resoluce je v DTO neviditelná.** Dotaz na klienta bez vlastního override
+  vrátí firemní default a jediné, co je odliší, je `ReminderSettingsDto.ClientId`.
+  `get_reminder_settings` proto explicitně řekne, že klient vlastní nastavení nemá — jinak
+  by uživatel netušil, že změna firemního defaultu se ho týká.
+- **Zápis nastavení je replace-all.** `UpsertSettingsAsync` přepíše všechny skaláry a kolekci
+  úrovní smaže a založí znovu. `update_reminder_settings` proto posílá i to, co nemění, a
+  úrovně přenáší 1:1; prázdné `Levels` by dunning umlčelo, protože bez úrovně nemá co
+  vygenerovat. Úrovně samotné (dny, poplatek, subject, dvě FK na šablony) se přes chat
+  needitují — jsou vnořená kolekce a patří na stránku nastavení upomínek.
+- **Jen firemní default.** Per-klientský override se přes chat nezakládá ani nemění: „založ
+  override" a „uprav existující" vypadají zvenčí stejně, takže špatně určený klient by tiše
+  vyrobil nový override místo změny, kterou uživatel myslel.
+- **Rozsahy hlídá tool, v obou vstupních bodech.** `max_reminder_level` 1-5 a
+  `grace_period_days` 0-365 schéma vyjádřit neumí a servis je nevaliduje; kontrola je
+  v `BuildPreviewAsync` i `ExecuteAsync`, protože model, který pošle `confirm: true` hned
+  napoprvé, přes preview neprojde. `max_reminder_level = 0` by dunning vypnul, zatímco
+  stránka nastavení by dál hlásila zapnuto.
+- **Neparsovatelné datum ve filtru je `Failure`**, ne tiše zahozený filtr — stejně jako
+  u reporting toolů (viz výše). Oba list tooly jdou přes `ChatToolDates`.
+- **`AllowedValues` u enum filtrů se odvozují `Enum.GetNames<T>()`**, takže nová hodnota
+  `EMatchStatus` / `EReminderStatus` / `EPaymentDirection` nemůže z nabídky vypadnout.
+
+##### Paritní tabulka chat ↔ MCP (stav k #211, #217, #218, #220, #222, #224, #225 a #227)
+
+Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 49 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
 a **MCP server** (`[McpServerTool]`, 37 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
 cílem story #149 je mezeru zavřít. Tabulka je jediný pravdivý seznam toho, co kde chybí;
 **každý nový tool na kterékoli straně sem přidá řádek** (viz §13).
@@ -1375,9 +1420,14 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | — | **Write** (sazby DPH) | `create_vat_rate`, `update_vat_rate` | ⬅ | |
 | — | Read (šablony dokumentů) | `list_content_templates`, `get_content_template` | ⬅ | |
 | — | **Write** (výchozí šablona dokumentu) | `set_default_content_template` | ⬅ | |
+| — | Read (upomínky) | `list_reminders` | ⬅ | |
+| — | Read (nastavení upomínek) | `get_reminder_settings` | ⬅ | |
+| — | **Write** (nastavení upomínek) | `update_reminder_settings` (za `confirm`) | ⬅ | |
+| — | Read (platby) | `list_payments` | ⬅ | |
+| — | Read (detail platby) | `get_payment` | ⬅ | |
 
-**Součty:** 37 MCP toolů, 44 chat toolů. Chat pokrývá 31 MCP toolů, žádný už jen částečně;
-18 chat toolů nemá MCP protějšek. Zbývá 6 mezer: daně (5, zatím bez tasku),
+**Součty:** 37 MCP toolů, 49 chat toolů. Chat pokrývá 31 MCP toolů, žádný už jen částečně;
+23 chat toolů nemá MCP protějšek. Zbývá 6 mezer: daně (5, zatím bez tasku),
 šablony (1 — `CreateInvoiceFromTemplate`).
 
 **Vydané faktury jsou po #217 pokryté celé.** Jeden rozdíl proti MCP je záměrný:
@@ -1391,8 +1441,9 @@ jen vyhledávacím klíčem nebo příponou souboru.
 částečnou položku — `import_invoice` zastupoval `CreateReceivedInvoice` jen pro text dokladu,
 diktovaná data neuměl.
 
-Mimo obě rozhraní (jen UI / SysAdmin, plánováno v #227): upomínky (dunning),
-PaymentMatch / BankTransaction. Číselné řady a sazby DPH už chat umí (#224), MCP zatím ne.
+Číselné řady a sazby DPH už chat umí (#224), upomínky a platby taky (#227) — u obou MCP
+protějšek nemá. Mimo obě rozhraní zůstává jen UI / SysAdmin: párování platby s fakturou
+(PaymentMatch) — `list_payments`/`get_payment` čtou, ale spárovat jde jen na stránce Platby.
 
 ### 4.8 In-app notifikace (per-user)
 

@@ -47,7 +47,7 @@ internal static class BuiltInPromptAssertions
     ];
 
     /// <summary>
-    /// The catalog the forty-four shipped tools are expected to render, in DI registration order
+    /// The catalog the forty-nine shipped tools are expected to render, in DI registration order
     /// (<c>ServiceCollectionExtensions</c>). Each line is <c>- {ToolName}: {Description}</c>
     /// with the description written out as one line. This is the independent copy: when a tool
     /// description changes, it has to be changed here too, deliberately. That is the point.
@@ -97,7 +97,12 @@ internal static class BuiltInPromptAssertions
         "- update_number_sequence: Change one document number sequence (číselná řada): its name, prefix, suffix, counter, or make it the default sequence for its document type. Identify the sequence by the ID returned from list_number_sequences and send only the fields that should change. The document type and the numbering format cannot be changed — create a new sequence instead.",
         "- list_vat_rates: List the VAT rates (sazby DPH) configured for the user's company: percentage, name, whether the rate is reduced or standard, its validity period and which rates are the default ones. Returns the IDs needed to change a rate.",
         "- create_vat_rate: Create a new VAT rate (sazba DPH) for the user's company. The percentage and a name are required; validity starts today unless a date is given. A rate can be marked as the default standard or default reduced rate, which is the one offered on new invoice items.",
-        "- update_vat_rate: Change one VAT rate (sazba DPH): its name, percentage, validity dates, whether it is a reduced rate, or make it the default rate of its kind. Identify the rate by the ID returned from list_vat_rates and send only the fields that should change."
+        "- update_vat_rate: Change one VAT rate (sazba DPH): its name, percentage, validity dates, whether it is a reduced rate, or make it the default rate of its kind. Identify the rate by the ID returned from list_vat_rates and send only the fields that should change.",
+        "- list_reminders: List payment reminders (dunning) with optional filtering by status, escalation level, date range, or a free-text search over the invoice number, client name and notes. Returns paged results. Read-only — use it to answer what has been reminded and what is still waiting to be sent.",
+        "- get_reminder_settings: Read the payment reminder (dunning) settings: whether reminders are enabled, the grace period, the number of escalation levels with their fees, and whether e-mails are sent automatically. Without a client it returns the company-wide default; with a client it returns the settings that actually apply to that client. Read-only.",
+        "- update_reminder_settings: Change the company-wide payment reminder (dunning) settings: switch reminders on or off, the grace period after the due date, how many escalation levels are used, whether late payment interest is added, whether the invoice PDF is attached, and whether reminder e-mails are sent automatically. Send only the settings that should change. The escalation levels themselves and per-client overrides are edited on the Reminders settings page.",
+        "- list_payments: List bank payments (transactions imported from the bank) with optional filtering by matching status, direction (incoming/outgoing), date range, or a free-text search over the counterparty, message and variable symbol. Returns paged results. Read-only — matching a payment to an invoice is done by the user on the Payments page.",
+        "- get_payment: Get the full detail of one bank payment: amount, date, counterparty, symbols, message, how it was imported, and which invoices it has been matched to. Identify the payment by the ID from a list_payments result. Read-only."
     ];
 
     /// <summary>The static lines below the generated tool catalog, verbatim.</summary>
