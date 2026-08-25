@@ -298,9 +298,7 @@ public class TemplateChatToolTests
 
         var result = await tool.ExecuteAsync(new Dictionary<string, string> { ["id"] = "999" });
 
-        result.IsSuccess.ShouldBeFalse();
-        result.ErrorMessage.ShouldContain("999");
-        result.ErrorMessage.ShouldContain("list_invoice_templates");
+        ShouldFailWith(result, "999", "list_invoice_templates");
     }
 
     [Fact]
@@ -512,6 +510,72 @@ public class TemplateChatToolTests
         result.OutputText.ShouldContain("No content templates match");
     }
 
+    [Fact]
+    public async Task ListContentTemplatesTool_IncludeInactive_WithoutATypeFilter_AsksTheServiceForThemToo()
+    {
+        // The type-filtered branch already pins the flag; this is the other branch. Hard-coding
+        // "active only" here would leave "ukaz i vyrazene sablony" silently answering with
+        // active ones, and no other test would notice.
+        var service = Substitute.For<IContentTemplateService>();
+        service.GetAllAsync(true, Arg.Any<CancellationToken>()).Returns([BuildContentTemplate()]);
+        var tool = BuildListContentTemplatesTool(service);
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, string>
+        {
+            ["include_inactive"] = "true"
+        });
+
+        result.IsSuccess.ShouldBeTrue();
+        await service.Received(1).GetAllAsync(true, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ListContentTemplatesTool_IncludeInactive_MarksTheDeactivatedTemplates()
+    {
+        // Same reason as on the invoice-template side: without the marker the model would offer
+        // a deactivated template as if a document could still use it.
+        var service = Substitute.For<IContentTemplateService>();
+        service.GetAllAsync(Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(
+        [
+            BuildContentTemplate(id: 3, name: "Aktivni"),
+            BuildContentTemplate(id: 4, name: "Vyrazena", isActive: false)
+        ]);
+        var tool = BuildListContentTemplatesTool(service);
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, string>
+        {
+            ["include_inactive"] = "true"
+        });
+
+        result.OutputText.ShouldContain("ID=4 | name: Vyrazena");
+        result.OutputText.ShouldContain("INACTIVE");
+        // Only the deactivated row carries the marker — one occurrence, not two.
+        result.OutputText.Split("INACTIVE").Length.ShouldBe(2);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task ListContentTemplatesTool_BlankLanguage_IsNotTreatedAsAFilter(string language)
+    {
+        // Models happily send an empty string for a filter they do not want. Taking it literally
+        // would compare "" against every Language and answer "no templates" for a tenant that
+        // has several.
+        var service = Substitute.For<IContentTemplateService>();
+        service.GetAllAsync(Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(
+        [
+            BuildContentTemplate(id: 3, name: "Ceska", language: "cs"),
+            BuildContentTemplate(id: 4, name: "English", language: "en")
+        ]);
+        var tool = BuildListContentTemplatesTool(service);
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, string> { ["language"] = language });
+
+        result.OutputText.ShouldContain("total: 2");
+        result.OutputText.ShouldContain("Ceska");
+        result.OutputText.ShouldContain("English");
+    }
+
     // ─── get_content_template ─────────────────────────────────────────────
 
     [Fact]
@@ -543,9 +607,56 @@ public class TemplateChatToolTests
 
         var result = await tool.ExecuteAsync(new Dictionary<string, string> { ["id"] = "77" });
 
-        result.IsSuccess.ShouldBeFalse();
-        result.ErrorMessage.ShouldContain("77");
-        result.ErrorMessage.ShouldContain("list_content_templates");
+        ShouldFailWith(result, "77", "list_content_templates");
+    }
+
+    /// <summary>
+    /// The invoice-template side already pins this; the content-template side formats its own
+    /// dates and was not covered. Under th-TH a plain ToString("yyyy-MM-dd") prints the Buddhist
+    /// year (2569 instead of 2026), which is exactly what the class note on
+    /// TemplateChatToolSupport warns about.
+    ///
+    /// It also exercises the only branch nothing else reaches: a template that has been edited,
+    /// so UpdatedAt is set and the "last changed" half of the line is rendered.
+    /// </summary>
+    [Theory]
+    [InlineData("cs-CZ")]
+    [InlineData("en-US")]
+    [InlineData("th-TH")]
+    public async Task GetContentTemplateTool_FormatsDatesIndependentlyOfTheThreadCulture(string cultureName)
+    {
+        var template = BuildContentTemplate();
+        template.UpdatedAt = new DateTime(2026, 7, 19, 0, 0, 0, DateTimeKind.Utc);
+
+        var originalCulture = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo(cultureName);
+
+            var output = await RenderContentTemplateAsync(template);
+
+            output.ShouldContain("Created: 2026-01-02");
+            output.ShouldContain("last changed: 2026-07-19");
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = originalCulture;
+        }
+    }
+
+    /// <summary>
+    /// Runs <c>get_content_template</c> over one template and returns the text the model sees.
+    /// </summary>
+    private static async Task<string> RenderContentTemplateAsync(ContentTemplateDto template)
+    {
+        var service = Substitute.For<IContentTemplateService>();
+        service.GetByIdAsync(template.Id, Arg.Any<CancellationToken>()).Returns(template);
+
+        var result = await BuildGetContentTemplateTool(service).ExecuteAsync(
+            new Dictionary<string, string> { ["id"] = template.Id.ToString(CultureInfo.InvariantCulture) });
+
+        result.IsSuccess.ShouldBeTrue();
+        return result.OutputText!;
     }
 
     // ─── set_default_content_template ─────────────────────────────────────
@@ -646,8 +757,7 @@ public class TemplateChatToolTests
         var preview = await tool.BuildPreviewAsync(new Dictionary<string, string> { ["id"] = "4" });
         var execution = await tool.ExecuteAsync(new Dictionary<string, string> { ["id"] = "4" });
 
-        preview.IsSuccess.ShouldBeFalse();
-        preview.ErrorMessage.ShouldContain("deactivated");
+        ShouldFailWith(preview, "deactivated");
         execution.IsSuccess.ShouldBeFalse();
         await service.DidNotReceive().UpdateAsync(
             Arg.Any<long>(), Arg.Any<UpdateContentTemplateDto>(), Arg.Any<CancellationToken>());
@@ -663,8 +773,7 @@ public class TemplateChatToolTests
 
         var result = await tool.ExecuteAsync(new Dictionary<string, string> { ["id"] = "4" });
 
-        result.IsSuccess.ShouldBeFalse();
-        result.ErrorMessage.ShouldContain("already is the default");
+        ShouldFailWith(result, "already is the default");
         await service.DidNotReceive().UpdateAsync(
             Arg.Any<long>(), Arg.Any<UpdateContentTemplateDto>(), Arg.Any<CancellationToken>());
     }
@@ -679,8 +788,7 @@ public class TemplateChatToolTests
 
         var result = await tool.ExecuteAsync(new Dictionary<string, string> { ["id"] = "999" });
 
-        result.IsSuccess.ShouldBeFalse();
-        result.ErrorMessage.ShouldContain("999");
+        ShouldFailWith(result, "999");
     }
 
     [Fact]
@@ -694,8 +802,7 @@ public class TemplateChatToolTests
 
         var result = await tool.ExecuteAsync(new Dictionary<string, string> { ["id"] = "4" });
 
-        result.IsSuccess.ShouldBeFalse();
-        result.ErrorMessage.ShouldContain("no longer exists");
+        ShouldFailWith(result, "no longer exists");
     }
 
     [Fact]
@@ -733,10 +840,44 @@ public class TemplateChatToolTests
         var execution = await tool.ExecuteAsync(new Dictionary<string, string> { ["id"] = "4" });
 
         preview.IsSuccess.ShouldBeTrue();
-        execution.IsSuccess.ShouldBeFalse();
-        execution.ErrorMessage.ShouldContain("deactivated");
+        ShouldFailWith(execution, "deactivated");
         await service.DidNotReceive().UpdateAsync(
             Arg.Any<long>(), Arg.Any<UpdateContentTemplateDto>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Asserts that a tool call failed and that its error message names every given fragment.
+    /// The null check has to come first: Shouldly's <c>ShouldContain</c> takes a non-nullable
+    /// string, so a null <c>ErrorMessage</c> would surface as an <c>ArgumentNullException</c>
+    /// from the assertion library instead of a readable "expected ... but was null".
+    /// </summary>
+    private static void ShouldFailWith(ChatToolResult result, params string[] expectedFragments)
+    {
+        result.IsSuccess.ShouldBeFalse();
+        result.ErrorMessage.ShouldNotBeNull();
+
+        foreach (var fragment in expectedFragments)
+        {
+            result.ErrorMessage.ShouldContain(fragment);
+        }
+    }
+
+    [Fact]
+    public async Task SetDefaultContentTemplateTool_Preview_MatchesTheCurrentDefaultAcrossLanguageCasing()
+    {
+        // Nothing normalises Language on the way into the database, so "CS" and "cs" both occur.
+        // An ordinal comparison here would make the preview promise "there is no default yet"
+        // while ContentTemplateService quietly unsets one during the write — the same mismatch
+        // the deactivated-default case guards against, one dimension over.
+        var service = BuildContentServiceWithSiblings(
+            target: BuildContentTemplate(id: 4, name: "Nova sablona", language: "cs"),
+            siblings: [BuildContentTemplate(id: 3, name: "Stara vychozi", language: "CS", isDefault: true)]);
+        var tool = BuildSetDefaultTool(service);
+
+        var result = await tool.BuildPreviewAsync(new Dictionary<string, string> { ["id"] = "4" });
+
+        result.IsSuccess.ShouldBeTrue();
+        result.OutputText.ShouldContain("Stara vychozi");
     }
 
     /// <summary>
