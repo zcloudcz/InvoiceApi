@@ -763,8 +763,9 @@ Dokud tam není, testovací deploy workflows nemají co spustit — není to inc
 
 **Proč test není deployment slot:** produkční Function App běží na plánu **Flex Consumption**,
 který sloty nepodporuje (`az functionapp deployment slot list` to rovnou odmítne). Testovací
-prostředí je proto **samostatný Function App** na stejném plánu. V praxi je to lepší izolace —
-slot by sdílel App Settings i škálování s produkcí.
+prostředí je proto **samostatný Function App** na stejném plánu. V praxi je to i lepší izolace —
+slot by s produkcí sdílel škálování, protože plán je společný. App Settings by se oddělit daly
+(označením jako slot-specific), škálování ne.
 
 **Proč frontend testu není na GitHub Pages:** Pages umí hostovat jen jeden web na repozitář
 a ten patří produkci. Test proto jede na Azure Static Web Apps.
@@ -781,7 +782,7 @@ variables), ne ve workflow souborech. Zápis používá dvojité podtržítko m�
 | `JwtSettings__Issuer`, `JwtSettings__Audience` | shodné s produkcí | Liší se jen klíč, ne formát tokenu. |
 | `CorsSettings__AllowedOrigins__0` | origin testovacího SWA (viz tabulka výše) | Musí sedět na frontend URL daného prostředí, jinak prohlížeč zablokuje všechna volání API. Při změně URL frontendu se mění i tady. |
 | `ConnectionStrings__DefaultConnection` | `Host=test-env-has-no-database.invalid;Port=5432;Database=fakvio_test;Username=placeholder;Password=placeholder;Ssl Mode=Require;Timeout=5;` | Syntakticky platný connection string na **záměrně neexistující host** (TLD `.invalid`). Musí být platný — connection string se parsuje už při startu, nesmysl by hostitele shodil. Skutečná testovací DB je #295. |
-| `UseAzureAdAuthentication` | `false` (produkce: `true`, tedy Entra ID) | Bez databáze není komu vydávat Entra token; placeholder má heslo, takže test jede v režimu `Password`. Změní se spolu s #295. |
+| `UseAzureAdAuthentication` | `false` (produkce: `true`, tedy Entra ID) | Bez databáze není komu vydávat Entra token; placeholder má heslo, takže test jede v režimu `Password`. Je to **legacy klíč** — kanonický je dnes `Database__AuthMode` (§13), ten test zatím nastavený nemá, takže health hlásí `authModeSource: UseAzureAdAuthentication (legacy)`. Při #295 se oba klíče musí měnit společně: když si budou odporovat, aplikace při startu spadne. |
 | `AresSettings__BaseUrl` | shodné s produkcí | |
 
 ### Známá omezení testovacího prostředí
@@ -789,17 +790,29 @@ variables), ne ve workflow souborech. Zápis používá dvojité podtržítko m�
 - **Testovací prostředí zatím nemá databázi.** Byl to vědomý krok při zřizování (issue #289) —
   oddělená testovací DB je samostatný úkol (#295). Connection string proto míří na neexistující
   host (viz tabulka výše). Důsledky:
-  - **Backend nastartuje a odpovídá.** Připojení selže až při prvním dotazu do databáze, ne při
-    startu. Ověřit se tedy dá, že se frontend nasadil a načte, že backend odpovídá a že **CORS**
-    mezi nimi prochází.
+  - **Backend nastartuje a odpovídá, pokus o připojení k DB ale selže hned při startu.**
+    Hostitel se nejdřív postaví, vypíše do logu režim autentizace k DB (§13) a **ještě než začne
+    obsluhovat požadavky**, zkusí migraci master DB. Ta na neexistujícím hostu selže a zaloguje
+    se jako **ERROR**; hostitel kvůli tomu ale nespadne (chyba je odchycená) a normálně běží dál.
+    Ověřit se tedy dá, že se frontend nasadil a načte, že backend odpovídá a že **CORS** mezi
+    nimi prochází. Function App jede na **Flex Consumption**, tedy škáluje na nulu — ten ERROR
+    proto naskočí v Log stream / Application Insights **při každém cold startu**, ne jen jednou
+    po deploji.
   - **Přihlášení na testu nefunguje** — uživatelé i tenanti žijí v master DB. Bez přihlášení
     není ani SysAdmin token, a `GET /api/diagnostic/health` (§13) ho vyžaduje: anonymní volání
     dostane **401**. To je dnes na testu očekávaná odpověď a zároveň důkaz, že hostitel běží.
   - S platným tokenem by health vrátil **503** a `databaseConnected: false` (souhrnná vlajka,
     vždy přítomná). Detail se liší podle toho, jestli se pokus o připojení vrátí, nebo vyhodí
     výjimku: `masterDbCanConnect: false`, resp. `masterDbError` s textem chyby.
-  - **Kdy zakládat ticket:** když backend neodpovídá vůbec (timeout nebo 5xx přímo z platformy,
-    ne z aplikace). 401 z healthu a nefunkční přihlášení jsou do #295 očekávaný stav.
+  - **Kdy zakládat ticket:** když backend neodpovídá vůbec (timeout nebo 5xx přímo
+    z platformy), nebo když vrátí 5xx, které **není** chyba databáze — to už může být regrese.
+    Do #295 jsou naopak očekávaný stav: 401 z healthu, nefunkční přihlášení, 503 z healthu
+    s chybou DB a tenhle řádek v logu při každém startu:
+
+    ```text
+    fail: Program[0]
+          Startup: database migration failed — API calls will return errors until resolved
+    ```
 - SWA běží na **Free tier** — bez SLA. Pro testovací prostředí je to v pořádku, na produkční
   provoz to není.
 
