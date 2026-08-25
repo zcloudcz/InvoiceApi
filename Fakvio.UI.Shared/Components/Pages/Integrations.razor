@@ -1,0 +1,353 @@
+@*
+    Integrations.razor — personal API keys for connecting AI clients (MCP) to Fakvio.
+
+    An API key is a personal credential, so this page is for any authenticated user and
+    always shows only that user's own keys (the API derives the owner from the JWT).
+
+    The critical UX rule: the raw key exists ONLY in the create response. The server stores
+    just a SHA-256 hash, so once this page stops showing it, nobody can recover it. Hence
+    the one-time reveal panel — an explicit warning, a copy button, and ready-made config
+    snippets that already contain the key.
+*@
+@page "/settings/integrations"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@using Fakvio.Contracts.Dto.ApiKey
+@inject ApiKeyApiService ApiKeyService
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject IJSRuntime JS
+@inject IUiErrorHandler ErrorHandler
+@inject IStringLocalizer<SharedResource> L
+
+<PageTitle>@L["Integration_Title"]</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">@L["Integration_Title"]</MudText>
+<MudText Class="mb-4">@L["Integration_Subtitle"]</MudText>
+
+@* ── One-time reveal ────────────────────────────────────────────────────────
+   Rendered only right after a successful create. Dismissing it drops the key
+   from memory — there is deliberately no way to bring it back. *@
+@if (_createdKey is not null)
+{
+    <MudAlert Severity="Severity.Warning" Class="mb-4" NoIcon="false">
+        <MudText Typo="Typo.subtitle1">@L["Integration_RawKeyTitle"]</MudText>
+        <MudText Typo="Typo.body2" Class="mb-3">@L["Integration_RawKeyWarning"]</MudText>
+
+        <MudPaper Class="pa-2 mb-3 d-flex align-center gap-2" Outlined="true">
+            <MudText Typo="Typo.body1" Style="font-family: monospace; word-break: break-all;">
+                @_createdKey.Key
+            </MudText>
+            <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small"
+                           Title="@L["Integration_CopyKey"].Value"
+                           OnClick="@(() => CopyAsync(_createdKey.Key))" />
+        </MudPaper>
+
+        @* Both transports get the same block: title, hint, copy button, code. *@
+        @foreach (var snippet in BuildSnippets(_createdKey.Key))
+        {
+            <div class="mb-3">
+                <div class="d-flex align-center gap-2">
+                    <MudText Typo="Typo.subtitle2">@snippet.Title</MudText>
+                    <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small"
+                                   Title="@L["Integration_CopySnippet"].Value"
+                                   OnClick="@(() => CopyAsync(snippet.Json))" />
+                </div>
+                <MudText Typo="Typo.caption">@snippet.Helper</MudText>
+                <MudPaper Class="pa-2 mt-1" Outlined="true">
+                    <pre style="margin:0; white-space:pre-wrap; word-break:break-all; font-size:0.8rem;">@snippet.Json</pre>
+                </MudPaper>
+            </div>
+        }
+
+        <MudButton Variant="Variant.Filled" Color="Color.Warning" Class="mt-3"
+                   StartIcon="@Icons.Material.Filled.Check" OnClick="DismissCreatedKey">
+            @L["Integration_KeySaved"]
+        </MudButton>
+    </MudAlert>
+}
+
+<MudPaper Class="pa-4 mb-4 d-flex justify-end">
+    <ResponsiveButton Label="@L["Integration_NewKey"].Value"
+                      StartIcon="@Icons.Material.Filled.Add"
+                      OnClick="OpenCreateDialog" />
+</MudPaper>
+
+@* FakvioGrid in client mode — the endpoint returns the full (short) list, no paging. *@
+<FakvioGrid T="ApiKeyDto" GridKey="api-keys" Items="_keys" Loading="_loading">
+    <Columns>
+        <PropertyColumn Property="x => x.Name" Title="@L["Label_Name"].Value" />
+        <PropertyColumn Property="x => x.KeyPrefix" Title="@L["Integration_Prefix"].Value">
+            <CellTemplate>
+                @* Prefix only — the full key never leaves the create response. *@
+                <MudText Typo="Typo.body2" Style="font-family: monospace;">@context.Item.KeyPrefix…</MudText>
+            </CellTemplate>
+        </PropertyColumn>
+        <PropertyColumn Property="x => x.Scopes" Title="@L["Integration_Scope"].Value">
+            <CellTemplate>
+                <MudChip T="string" Size="Size.Small" Color="Color.Default">@ScopeLabel(context.Item.Scopes)</MudChip>
+            </CellTemplate>
+        </PropertyColumn>
+        <PropertyColumn Property="x => x.CreatedAt" Title="@L["Integration_Created"].Value">
+            <CellTemplate>@FormatDate(context.Item.CreatedAt)</CellTemplate>
+        </PropertyColumn>
+        <PropertyColumn Property="x => x.ExpiresAt" Title="@L["Integration_Expiration"].Value">
+            <CellTemplate>@(context.Item.ExpiresAt is null ? L["Integration_NeverExpires"].Value : FormatDate(context.Item.ExpiresAt.Value))</CellTemplate>
+        </PropertyColumn>
+        <PropertyColumn Property="x => x.LastUsedAt" Title="@L["Integration_LastUsed"].Value">
+            <CellTemplate>@(context.Item.LastUsedAt is null ? L["Integration_NeverUsed"].Value : FormatDate(context.Item.LastUsedAt.Value))</CellTemplate>
+        </PropertyColumn>
+        <TemplateColumn T="ApiKeyDto" Title="@L["Label_Status"].Value" Sortable="false" Filterable="false">
+            <CellTemplate>
+                <MudChip T="string" Size="Size.Small" Color="@StatusColor(context.Item)">@StatusLabel(context.Item)</MudChip>
+            </CellTemplate>
+        </TemplateColumn>
+        <TemplateColumn T="ApiKeyDto" Title="@L["Label_Actions"].Value" Sortable="false" Filterable="false" CellStyle="white-space:nowrap;">
+            <CellTemplate>
+                @* Revoking an already revoked key is a no-op on the server; hide the button instead. *@
+                @if (context.Item.RevokedAt is null)
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.Block" Size="Size.Small" Color="Color.Error"
+                                   Title="@L["Integration_Revoke"].Value"
+                                   OnClick="@(() => RevokeAsync(context.Item))" />
+                }
+            </CellTemplate>
+        </TemplateColumn>
+    </Columns>
+    <NoRecordsContent>
+        <MudAlert Severity="Severity.Info">@L["Integration_NoKeys"]</MudAlert>
+    </NoRecordsContent>
+</FakvioGrid>
+
+@* ── Create dialog ─────────────────────────────────────────────────────────── *@
+<MudDialog @bind-Visible="_showCreateDialog" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@L["Integration_CreateDialogTitle"]</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudForm @ref="_form" @bind-IsValid="_formValid">
+            <MudTextField @bind-Value="_newName" Label="@L["Label_Name"].Value"
+                          Required="true" MaxLength="100" Immediate="true"
+                          HelperText="@L["Integration_KeyNameHelper"].Value" />
+
+            <MudSelect T="string" @bind-Value="_newScopes" Label="@L["Integration_Scope"].Value" Class="mt-3"
+                       HelperText="@L["Integration_ScopeHelper"].Value">
+                <MudSelectItem Value="@ScopeRead">@L["Integration_ScopeRead"]</MudSelectItem>
+                <MudSelectItem Value="@ScopeReadWrite">@L["Integration_ScopeReadWrite"]</MudSelectItem>
+            </MudSelect>
+
+            <MudDatePicker @bind-Date="_newExpiresOn" Label="@L["Integration_Expiration"].Value" Class="mt-3"
+                           Clearable="true" MinDate="DateTime.Today.AddDays(1)"
+                           HelperText="@L["Integration_ExpirationHelper"].Value" />
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseCreateDialog">@L["Btn_Cancel"]</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateAsync"
+                   Disabled="@(!_formValid || _saving)">
+            @L["Btn_Create"]
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    /// <summary>Scope value sent to the API for a read-only key.</summary>
+    private const string ScopeRead = "read";
+
+    /// <summary>Scope value sent to the API for a read+write key.</summary>
+    private const string ScopeReadWrite = "read,write";
+
+    private IReadOnlyList<ApiKeyDto> _keys = [];
+    private bool _loading;
+    private bool _saving;
+
+    private MudForm? _form;
+    private bool _showCreateDialog;
+    private bool _formValid;
+    private string _newName = string.Empty;
+    private string _newScopes = ScopeRead;
+    private DateTime? _newExpiresOn;
+
+    /// <summary>
+    /// The just-created key, held in memory only while the reveal panel is open.
+    /// Never stored anywhere else — this is the only copy the user will ever see.
+    /// </summary>
+    private CreatedApiKeyDto? _createdKey;
+
+    private readonly DialogOptions _dialogOptions = new()
+    {
+        MaxWidth = MaxWidth.Small,
+        FullWidth = true,
+        CloseButton = true
+    };
+
+    protected override Task OnInitializedAsync() => ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _keys = await ApiKeyService.GetAllAsync();
+        }
+        catch (Exception ex)
+        {
+            ErrorHandler.Handle(ex, "Integrations.Load");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void OpenCreateDialog()
+    {
+        _newName = string.Empty;
+        _newScopes = ScopeRead;
+        _newExpiresOn = null;
+        _formValid = false;
+        _showCreateDialog = true;
+    }
+
+    private void CloseCreateDialog() => _showCreateDialog = false;
+
+    private async Task CreateAsync()
+    {
+        if (_form is null)
+            return;
+
+        await _form.Validate();
+        if (!_formValid)
+            return;
+
+        _saving = true;
+        try
+        {
+            var created = await ApiKeyService.CreateAsync(new CreateApiKeyDto
+            {
+                Name = _newName,
+                Scopes = _newScopes,
+                // The picker yields a local midnight; the key should stay valid for the whole
+                // chosen day, so it expires at the start of the following day (in UTC, which is
+                // what the API compares against).
+                ExpiresAt = _newExpiresOn?.Date.AddDays(1).ToUniversalTime()
+            });
+
+            if (created is null)
+                return;
+
+            _createdKey = created;
+            _showCreateDialog = false;
+            Snackbar.Add(L["Integration_CreateSuccess"].Value, Severity.Success);
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            ErrorHandler.Handle(ex, "Integrations.Create");
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    /// <summary>Closes the reveal panel and forgets the raw key for good.</summary>
+    private void DismissCreatedKey() => _createdKey = null;
+
+    private async Task RevokeAsync(ApiKeyDto key)
+    {
+        var confirmed = await DialogService.ShowMessageBox(
+            L["Integration_RevokeConfirmTitle"].Value,
+            string.Format(L["Integration_RevokeConfirmText"].Value, key.Name, key.KeyPrefix),
+            yesText: L["Integration_Revoke"].Value,
+            cancelText: L["Btn_Cancel"].Value);
+
+        if (confirmed != true)
+            return;
+
+        try
+        {
+            if (await ApiKeyService.RevokeAsync(key.Id))
+                Snackbar.Add(L["Integration_RevokeSuccess"].Value, Severity.Success);
+
+            // Reload either way: a false result means the key was already gone on the server,
+            // so the grid is the stale side.
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            ErrorHandler.Handle(ex, "Integrations.Revoke");
+        }
+    }
+
+    private async Task CopyAsync(string text)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
+            Snackbar.Add(L["Integration_Copied"].Value, Severity.Success);
+        }
+        catch
+        {
+            // Clipboard API is unavailable in non-secure contexts; the text is on screen
+            // anyway, so failing silently beats an alarming error next to the raw key.
+        }
+    }
+
+    /// <summary>
+    /// Ready-to-paste MCP client configs with the key already filled in — one for the local
+    /// stdio server (Claude Code / Claude Desktop), one for the remote HTTP transport.
+    /// </summary>
+    private (string Title, string Helper, string Json)[] BuildSnippets(string rawKey) =>
+    [
+        (L["Integration_SnippetStdio"].Value, L["Integration_SnippetStdioHelper"].Value,
+            $$"""
+            {
+              "mcpServers": {
+                "fakvio": {
+                  "command": "fakvio-mcp",
+                  "env": {
+                    "FAKVIO_API_URL": "{{ApiKeyService.ApiBaseUrl}}",
+                    "FAKVIO_API_TOKEN": "{{rawKey}}"
+                  }
+                }
+              }
+            }
+            """),
+        (L["Integration_SnippetHttp"].Value, L["Integration_SnippetHttpHelper"].Value,
+            $$"""
+            {
+              "mcpServers": {
+                "fakvio": {
+                  "type": "http",
+                  "url": "{{ApiKeyService.ApiBaseUrl}}/mcp",
+                  "headers": {
+                    "Authorization": "Bearer {{rawKey}}"
+                  }
+                }
+              }
+            }
+            """)
+    ];
+
+    private string ScopeLabel(string scopes) =>
+        scopes.Contains("write", StringComparison.OrdinalIgnoreCase)
+            ? L["Integration_ScopeReadWrite"].Value
+            : L["Integration_ScopeRead"].Value;
+
+    private string StatusLabel(ApiKeyDto key)
+    {
+        if (key.RevokedAt is not null) return L["Integration_StatusRevoked"].Value;
+        if (!key.IsActive) return L["Integration_StatusExpired"].Value;
+        return L["Label_Active"].Value;
+    }
+
+    private static Color StatusColor(ApiKeyDto key)
+    {
+        if (key.RevokedAt is not null) return Color.Error;
+        if (!key.IsActive) return Color.Warning;
+        return Color.Success;
+    }
+
+    /// <summary>API timestamps are UTC; show them in the user's own time zone.</summary>
+    private static string FormatDate(DateTime utc) => utc.ToLocalTime().ToString("g");
+}
