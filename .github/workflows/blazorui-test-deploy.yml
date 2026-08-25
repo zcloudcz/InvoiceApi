@@ -55,6 +55,12 @@ jobs:
           # no-op, and a silent no-op would ship a *test* frontend talking to *production*.
           grep -q "${TEST_API_BASE_URL}" "$CONFIG"
 
+          # Same idea for the environment name: the UI paints the app bar pink and shows a
+          # TEST chip when this is anything but "production", so nobody edits production
+          # believing it is the test system (Fakvio.UI.Shared/Services/UiEnvironment.cs).
+          sed -i -E "s|^([[:space:]]*)\"Name\": \"production\"|\1\"Name\": \"test\"|" "$CONFIG"
+          grep -q '"Name": "test"' "$CONFIG"
+
           cat "$CONFIG"
 
       - name: Publish BlazorUI (WASM)
