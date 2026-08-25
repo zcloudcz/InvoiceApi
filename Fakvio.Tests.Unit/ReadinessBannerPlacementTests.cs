@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Json;
 using Bunit;
 using Bunit.TestDoubles;
@@ -128,6 +128,33 @@ public class ReadinessBannerPlacementTests : BunitContext, IAsyncLifetime
         cut.FindComponents<Stub<ReadinessBanner>>().ShouldBeEmpty();
     }
 
+    [Fact]
+    public void DraftWithoutIssuer_PassesNullIssuerId_SoTheWholeTenantIsChecked()
+    {
+        // A draft created before an issuer was picked carries IssuerId = 0. Forwarded as-is that
+        // would ask the API about a company id that cannot exist; the page maps it to null, which
+        // the banner reads as "check every issuer of the tenant".
+        _backend.Invoice = NewInvoice(EInvoiceStatus.Draft, issuerId: 0);
+
+        var cut = RenderInvoiceDetail();
+
+        var banner = cut.FindComponents<Stub<ReadinessBanner>>().ShouldHaveSingleItem();
+        banner.Instance.Parameters[nameof(ReadinessBanner.IssuerId)].ShouldBeNull();
+    }
+
+    [Fact]
+    public void DraftCreditNote_HostsTheReadinessBanner_SoBothDocumentTypesBehaveTheSame()
+    {
+        // CLAUDE.md requires invoices and credit notes to share one UI. The placement is gated on
+        // status alone, and this test is what turns a later DocumentType condition into a failure
+        // instead of a silently one-sided feature.
+        _backend.Invoice = NewInvoice(EInvoiceStatus.Draft, documentType: EDocumentType.CreditNote);
+
+        var cut = RenderInvoiceDetail();
+
+        cut.FindComponents<Stub<ReadinessBanner>>().ShouldHaveSingleItem();
+    }
+
     /// <summary>Renders /invoices/{id} and waits until the invoice load has finished.</summary>
     private IRenderedComponent<InvoiceDetail> RenderInvoiceDetail()
     {
@@ -136,13 +163,16 @@ public class ReadinessBannerPlacementTests : BunitContext, IAsyncLifetime
         return cut;
     }
 
-    private static InvoiceDto NewInvoice(EInvoiceStatus status) => new()
+    private static InvoiceDto NewInvoice(
+        EInvoiceStatus status,
+        long issuerId = IssuerId,
+        EDocumentType documentType = EDocumentType.Invoice) => new()
     {
         Id = InvoiceId,
         DocumentNumber = "2026-0001",
-        DocumentType = EDocumentType.Invoice,
+        DocumentType = documentType,
         Status = status,
-        IssuerId = IssuerId,
+        IssuerId = issuerId,
         IssuerName = "Testovací s.r.o."
     };
 

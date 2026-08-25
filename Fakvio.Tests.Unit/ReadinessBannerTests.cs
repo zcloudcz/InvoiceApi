@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using Bunit;
@@ -30,6 +30,11 @@ namespace Fakvio.Tests.Unit;
 public class ReadinessBannerTests : BunitContext, IAsyncLifetime
 {
     private readonly ReadinessBackendHandler _backend = new();
+
+    // Two distinct issuers of one tenant — used where the test has to tell "the report the
+    // banner holds now" apart from "the report it held before".
+    private const string FirstIssuerName = "První firma s.r.o.";
+    private const string SecondIssuerName = "Druhá firma s.r.o.";
 
     // MudBlazor's PopoverService only supports async disposal; xunit disposes test classes
     // synchronously, so route disposal through IAsyncLifetime (same as MyCompanyEpoSectionTests).
@@ -161,13 +166,13 @@ public class ReadinessBannerTests : BunitContext, IAsyncLifetime
     {
         _backend.Report = ReportWith(
             Issue(ReadinessCodes.IssuerTaxNumberMissing, EReadinessSeverity.Blocking,
-                "/my-company", issuerName: "Druhá firma s.r.o.", missingFields: "TaxNumber"));
+                "/my-company", issuerName: SecondIssuerName, missingFields: "TaxNumber"));
 
         var cut = Render<ReadinessBanner>();
         cut.WaitForAssertion(() => cut.Markup.ShouldContain("Readiness_Code_ISSUER_TAX_NUMBER_MISSING"));
 
         // A tenant can have several issuers — the banner has to say which one is incomplete.
-        cut.Markup.ShouldContain("Druhá firma s.r.o.");
+        cut.Markup.ShouldContain(SecondIssuerName);
 
         // Same field names the TENANT_NOT_READY 400 lists, so the two surfaces agree.
         cut.Markup.ShouldContain("TaxNumber");
@@ -296,6 +301,68 @@ public class ReadinessBannerTests : BunitContext, IAsyncLifetime
             _backend.CallCount.ShouldBe(2);
             _backend.LastQuery.ShouldContain("issuerId=88");
         });
+    }
+
+    [Fact]
+    public void ChangedIssuerId_ReplacesThePreviousIssues_SoNoOtherCompanysProblemIsShown()
+    {
+        _backend.Report = ReportWith(
+            Issue(ReadinessCodes.IssuerBankAccountMissing, EReadinessSeverity.Blocking,
+                "/my-company", issuerName: FirstIssuerName));
+
+        var cut = Render<ReadinessBanner>(p => p.Add(c => c.IssuerId, 77L));
+        cut.WaitForAssertion(() => cut.Markup.ShouldContain(FirstIssuerName));
+
+        _backend.Report = ReportWith(
+            Issue(ReadinessCodes.NumberSequenceMissing, EReadinessSeverity.Blocking,
+                "/number-sequences", issuerName: SecondIssuerName));
+
+        cut.Render(p => p.Add(c => c.IssuerId, 88L));
+
+        cut.WaitForAssertion(() =>
+        {
+            cut.Markup.ShouldContain(SecondIssuerName);
+
+            // The group list is a field that outlives the re-render, so a refetch has to clear it.
+            // Without that, an invoice issued by the second company would keep listing the first
+            // company's problems next to its own — worse than showing nothing.
+            cut.Markup.ShouldNotContain(FirstIssuerName);
+            cut.FindAll("div.mud-alert").Count.ShouldBe(1);
+        });
+    }
+
+    [Fact]
+    public void NullJsonBody_RendersNothingAndDoesNotThrow_SoAnEmptyAnswerCountsAsReady()
+    {
+        // A literal "null" payload (200 OK, no report) deserializes to a null reference, not to
+        // an empty report. Only the service's ?? fallback stands between that and a
+        // NullReferenceException in the banner's lifecycle method.
+        _backend.RawBody = "null";
+
+        var cut = Render<ReadinessBanner>();
+
+        cut.WaitForAssertion(() =>
+        {
+            _backend.CallCount.ShouldBe(1);
+            cut.Markup.Trim().ShouldBeEmpty();
+        });
+    }
+
+    [Fact]
+    public void NullIssuesCollection_StillCrashesTheBanner_WhichIsWhyTheApiMustNeverSendIt()
+    {
+        // Characterization test, not an endorsement. "issues": null passes JSON deserialization
+        // (it overwrites the DTO's initializer with null) and therefore never reaches the
+        // service's catch block — the throw happens afterwards, in AddGroup's LINQ Where over
+        // the null list, inside the component. So the "a broken readiness call never takes the
+        // page down" promise has exactly one hole, and this is it.
+        //
+        // Not fixed in production code on purpose: the API builds the list itself and cannot
+        // emit null today, so a guard would be code for a case that does not exist. If that ever
+        // changes, make the service normalize the report and turn this assertion around.
+        _backend.RawBody = "{ \"issues\": null }";
+
+        Should.Throw<ArgumentNullException>(() => Render<ReadinessBanner>());
     }
 
     private static ReadinessReportDto ReportWith(params ReadinessIssueDto[] issues)
