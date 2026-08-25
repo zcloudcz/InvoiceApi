@@ -652,6 +652,7 @@ AI asistent zná kontext vaší firmy a umí odpovídat na otázky i provádět 
 | Přijaté faktury | Vyhledat, vypsat seznam |
 | Přehledy a reporty | Shrnout dashboard, vypsat faktury po splatnosti, faktury za období nebo pro konkrétního klienta, spočítat DPH za období |
 | Nastavení firmy | Přečíst nastavení vlastní firmy (název, IČO, DIČ, plátcovství DPH, jazyk dokladů, adresa, kontakty, bankovní účty) a změnit ho — včetně přidání, úpravy a zrušení bankovního účtu („Přidej nám účet 1234567890/0100", „Od ledna jsme plátci DPH"). IČO měnit nelze. |
+| Kontrola nastavení | Zkontrolovat, jestli máte vyplněné vše potřebné k vystavení faktury („Můžu už fakturovat?", „Co mi ještě chybí?"). Vypíše, co chybí, jestli to fakturaci brání, nebo jen omezuje jednu funkci, a na které stránce se to doplní. Nic sám nemění. |
 | Obecné dotazy | Odpovídat na otázky o funkcích aplikace |
 | Navigace | Otevřít libovolnou stránku aplikace — faktury, přijaté faktury, klienty, platby, šablony, DPH a daně, upomínky i nastavení („Otevři DPH přiznání", „Založ novou fakturu pro klienta XYZ"). Stránky správce systému a přihlašovací obrazovky asistent neotevírá. |
 
@@ -719,6 +720,7 @@ jinak, než jste zvyklí, je pravděpodobně upravené systémové nastavení �
 - „Jaký je celkový obrat za Q1 2026?"
 - „Najdi fakturu číslo FAK-2026-001"
 - „Kolik mám nesplacených faktur?"
+- „Můžu už fakturovat? Co mi ještě chybí v nastavení?"
 
 ### Když se odpověď nepodaří vygenerovat
 

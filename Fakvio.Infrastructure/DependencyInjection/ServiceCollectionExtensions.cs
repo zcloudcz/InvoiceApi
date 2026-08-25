@@ -307,6 +307,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IChatTool, UpdateBankAccountTool>();
         services.AddScoped<IChatTool, DeleteBankAccountTool>();
 
+        // Setup tools — let the agent say what is still missing before the user can invoice.
+        services.AddScoped<IChatTool, GetReadinessTool>();
+
         services.AddScopedWithLogging<IChatToolExecutor, ChatToolExecutor>();
 
         // ── Database Logging ────────────────────────────────────────────────

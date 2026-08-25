@@ -732,8 +732,9 @@ Implementace: `PaymentMatchingService.cs` (metoda `GetPaymentsForInvoiceAsync`).
 - Implementace: `Fakvio.Infrastructure/AiProviders/` (Anthropic, OpenAI, Gemini, Ollama).
 - API key storage: `CompanySystemSettings.AiApiKeyEncrypted` (per company) přes `CredentialProtector`.
 - SSE streaming přes `ChatController.StreamAsync`.
-- **Chat Tools**: 23 tools registrovaných v DI jako `IChatTool`, orchestrováno přes `IChatToolExecutor`.
+- **Chat Tools**: tools registrované v DI jako `IChatTool`, orchestrováno přes `IChatToolExecutor`.
   Registrace v `ServiceCollectionExtensions.cs`; přidání nového toolu = implementace `IChatTool` + řádek v DI.
+  Ruční počet v dokumentaci stárne; zdroj pravdy je matice níže a registrace v DI.
 
 #### Matice schopností providerů
 
@@ -1007,6 +1008,7 @@ Sloupec „Klíčové parametry" je jen orientační — závazné je schéma v 
 | `add_bank_account` | `AddBankAccountTool` | BankAccount (issuer) | **Write** (confirm) | `account_number` (povinný), `label`, `bank_name`, `iban`, `swift`, `currency_code`, `is_default` |
 | `update_bank_account` | `UpdateBankAccountTool` | BankAccount (issuer) | **Write** (confirm) | `bank_account_id` (povinný) + měněná pole |
 | `delete_bank_account` | `DeleteBankAccountTool` | BankAccount (issuer) | **Destructive** (confirm) | `bank_account_id` (povinný) |
+| `get_readiness` | `GetReadinessTool` | Nastavení tenanta | Read (report) | bez parametrů; vrátí chybějící nastavení + závažnost + `fixRoute` (viz níže) |
 
 ##### Reporting tools (#228) — proč tři, ne šest
 
@@ -1108,10 +1110,27 @@ anonymní nebo SysAdmin-only stránku, (c) každá tenant-facing stránka bez pa
 v routě je nabízená. **Nová stránka v UI tedy shodí testy, dokud ji nedoplníš do
 `Routes`** — nebo ji v tom testu explicitně nevyloučíš s odůvodněním.
 
-##### Paritní tabulka chat ↔ MCP (stav k #220 a #222)
+##### `get_readiness` — co ještě chybí v nastavení (#211)
 
-Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 23 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
-a **MCP server** (`[McpServerTool]`, 36 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
+Tenká obálka nad `ITenantReadinessService` (§4.12) — **žádné pravidlo v toolu není**.
+Dvojče pro externí AI klienty je MCP nástroj `GetReadiness` (§4.9), který jde přes REST
+`GET /api/readiness`, takže obě cesty odpovídají stejně.
+
+- **Bez parametrů, záměrně.** Filtr na vystavitele by potřeboval databázové ID, které model
+  nemá odkud znát, a každý problém vázaný na vystavitele stejně nese `IssuerName`.
+- **Read-only** — nic nemění, takže nepotřebuje potvrzovací krok.
+- Výstup je text, jeden odstavec na problém: `[BLOCKING|WARNING] {Code}`, chybějící pole
+  a `Fix at: {FixRoute}`. Fix route je to, díky čemu asistent naváže `navigate` na stránku,
+  kde se to opraví.
+- Report se prezentuje **tak, jak přijde ze servisu**. Nefiltrovaný report proto může nést
+  problémy **neaktivního** vystavitele, kterého picker na Dashboardu (`DashboardController`)
+  nenabízí — vědomý důsledek, ne chyba: dofiltrovávat v toolu by rozešlo odpověď asistenta
+  s bannerem i s gate na vystavení dokladu. Kdyby to vadilo, patří filtr do servisu.
+
+##### Paritní tabulka chat ↔ MCP (stav k #211, #220 a #222)
+
+Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 24 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
+a **MCP server** (`[McpServerTool]`, 37 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
 cílem story #149 je mezeru zavřít. Tabulka je jediný pravdivý seznam toho, co kde chybí;
 **každý nový tool na kterékoli straně sem přidá řádek** (viz §13).
 
@@ -1157,6 +1176,8 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | `ListTemplates` | Read | — | ❌ | #225 |
 | `GetTemplate` | Read | — | ❌ | #225 |
 | `CreateInvoiceFromTemplate` | Create | — | ❌ | #225 |
+| **Readiness** (`ReadinessTools`, 1) |
+| `GetReadiness` | Read | `get_readiness` | ✅ | |
 | **Jen chat (MCP nemá)** |
 | — | **Destructive** | `delete_client` (za `confirm`) | ⬅ | |
 | — | Search | `search_received_invoices` | ⬅ | |
@@ -1166,7 +1187,7 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | — | **Write** (nastavení firmy) | `update_my_company` | ⬅ | |
 | — | **Write** (bankovní účty) | `add_bank_account`, `update_bank_account`, `delete_bank_account` | ⬅ | |
 
-**Součty:** 36 MCP toolů, 23 chat toolů. Chat pokrývá 17 MCP toolů (z toho 2 částečně),
+**Součty:** 37 MCP toolů, 24 chat toolů. Chat pokrývá 18 MCP toolů (z toho 2 částečně),
 9 chat toolů nemá MCP protějšek. Zbývá 19 mezer.
 
 Mimo obě rozhraní (jen UI / SysAdmin, plánováno v #224 / #227):
@@ -1225,7 +1246,7 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
 - Jméno v MCP handshake (`ServerInfo.Name`) je `fakvio` — nezaměňovat s názvem příkazu.
 - Auth: `FAKVIO_API_TOKEN` env var (JWT bearer, povinný — bez něj exit code 1), `FAKVIO_API_URL` (výchozí `https://localhost:7001`, lokální API ale běží na `7047` → nastavovat explicitně).
 - Žádný přístup k DB — všechno jde přes `IFakvioApiClient` → HTTP na `Fakvio.API`, takže autorizace i tenant izolace platí beze změny.
-- **36 tools**: 10 invoice + 6 client + 6 received invoice + 6 reporting + 5 tax + 3 template (po jednom souboru v `Tools/`).
+- **37 tools**: 10 invoice + 6 client + 6 received invoice + 6 reporting + 5 tax + 3 template + 1 readiness (po jednom souboru v `Tools/`).
   Ruční číslo v dokumentaci stárne; zdroj pravdy je `grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs`.
   Porovnání s chat tooly (co MCP umí a chat ještě ne): paritní tabulka v §4.7.
 - Konfigurace v Claude Desktop / Claude Code: spustí `fakvio-mcp` jako subprocess se stdio piping. Vzor v `.mcp.json.sample` (kořen repa).
@@ -1405,6 +1426,17 @@ vlastní výjimku ani vlastní tvar chyby**. Použij `ITenantReadinessService`.
 | `InvoiceService.CompleteInvoiceAsync` | `EnsureReadyAsync(invoice.IssuerId, invoice.DocumentType, ct)` | Jediný gate na vystavení dokladu. Běží **až po** guardech „faktura neexistuje" / „už je vystavená" a **před** jakoukoli změnou stavu — odmítnutá faktura zůstane Draft a nespotřebuje číslo z řady. |
 | `InvoiceController.CompleteInvoice` | `catch (TenantNotReadyException)` → 400 | Tvar odpovědi viz výše. |
 | `InvoiceTemplateController.CreateInvoiceFromTemplate` | `catch (TenantNotReadyException)` → 400 | Nastane jen s `AutoComplete = true`; draft už je v tu chvíli založený a zůstane. |
+
+**Kdo report jen čte** (`GetReportAsync`, nic neblokuje):
+
+| Místo | Volání | Poznámka |
+|-------|--------|----------|
+| `GetReadinessTool` (chat tool `get_readiness`) | `GetReportAsync(ct: ct)` | Bez filtru — uživatel se ptá na celé nastavení. Vykreslí `Code` + závažnost + `FixRoute`, viz §4.7. |
+| `ReadinessTools.GetReadiness` (MCP) | `GET /api/readiness` přes `IFakvioApiClient` | MCP server nemá přístup k DB, jde vždy přes REST, takže autorizace i tenant izolace platí beze změny (§4.9). |
+
+Čtecí konzumenti report **nefiltrují ani nepřepisují**. Nefiltrovaný report může nést
+problémy neaktivního vystavitele, kterého Dashboard picker nenabízí — kdyby to mělo vadit,
+patří filtr do `TenantReadinessService`, ne do jedné z obálek.
 
 Gate je schválně **v servisu, ne v controlleru** — přes `CompleteInvoiceAsync` vede každá
 cesta k vystavení (REST, Azure Functions wrapper, `BulkCompleteAsync`, auto-complete ze
@@ -2324,7 +2356,7 @@ pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. P
 | Nový code-table pattern (master / tenant / dual-context) | §11.2 |
 | Nový background lock klíč | §6.3 (tabulka klíčů) |
 | Nový chat tool nebo změna schématu parametrů (`IChatTool.Parameters`) | §4.7 (postup + matice + **paritní tabulka**) |
-| Nový MCP tool (`[McpServerTool]`) | §4.9 (počty) + §4.7 (paritní tabulka) |
+| Nový MCP tool (`[McpServerTool]`) nebo nová metoda v `IFakvioApiClient` | §4.9 (počty) + §4.7 (paritní tabulka) + `Fakvio.McpServer/README.md` (tabulka nástrojů) |
 | Nový AI provider nebo změna jeho schopností (tools, obrázky) | §4.7 (matice schopností providerů) |
 | Změna observability stacku (App Insights → jiný) | §10 |
 | Nová list stránka s gridem / změna grid patternu | §7.10 (FakvioGrid) |
