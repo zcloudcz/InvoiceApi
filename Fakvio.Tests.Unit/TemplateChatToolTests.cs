@@ -1,3 +1,4 @@
+using System.Globalization;
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Common.Pagination;
 using Fakvio.Contracts.Dto.ContentTemplate;
@@ -234,6 +235,26 @@ public class TemplateChatToolTests
         result.OutputText.ShouldContain("Invoice");
     }
 
+    [Fact]
+    public async Task ListInvoiceTemplatesTool_IncludeInactive_MarksTheDeactivatedTemplates()
+    {
+        // Without the marker the model would offer a deactivated template as if it were usable.
+        var service = BuildTemplateService(BuildPage(
+            BuildInvoiceTemplate(id: 1, name: "Aktivní"),
+            BuildInvoiceTemplate(id: 2, name: "Vyřazená", isActive: false)));
+        var tool = BuildListInvoiceTemplatesTool(service);
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, string>
+        {
+            ["include_inactive"] = "true"
+        });
+
+        result.OutputText.ShouldContain("ID=2 | name: Vyřazená");
+        result.OutputText.ShouldContain("INACTIVE");
+        // Only the deactivated row carries the marker — one occurrence, not two.
+        result.OutputText.Split("INACTIVE").Length.ShouldBe(2);
+    }
+
     // ─── get_invoice_template ─────────────────────────────────────────────
 
     [Fact]
@@ -280,6 +301,132 @@ public class TemplateChatToolTests
         result.IsSuccess.ShouldBeFalse();
         result.ErrorMessage.ShouldContain("999");
         result.ErrorMessage.ShouldContain("list_invoice_templates");
+    }
+
+    [Fact]
+    public async Task GetInvoiceTemplateTool_MissingOptionalData_IsSpelledOutInsteadOfLeftBlank()
+    {
+        // A blank "Default client:" line reads to the model as a field it may fill in from
+        // memory. Every optional field therefore has an explicit "nothing here" wording.
+        var template = BuildInvoiceTemplate();
+        template.ClientId = null;
+        template.ClientName = null;
+        template.NumberSequenceName = null;
+        template.LastUsedAt = null;
+        template.BankAccountNumber = null;
+        template.VariableSymbol = null;
+        template.InvoiceItem = [];
+
+        var output = await RenderInvoiceTemplateAsync(template);
+
+        output.ShouldContain("Default client: (not set)");
+        output.ShouldContain("Number sequence: (the default sequence for this document type)");
+        output.ShouldContain("(never yet)");
+        output.ShouldContain("Items: none");
+        // No payment detail is filled in, so the whole line is omitted rather than left empty.
+        output.ShouldNotContain("Payment:");
+    }
+
+    [Fact]
+    public async Task GetInvoiceTemplateTool_ListsEveryPaymentDetailThatIsFilledIn()
+    {
+        var template = BuildInvoiceTemplate();
+        template.PaymentMethod = EPaymentMethod.BankTransfer;
+        template.IBAN = "CZ6501000000001234567890";
+        template.SWIFT = "KOMBCZPP";
+        template.ConstantSymbol = "0308";
+        template.SpecificSymbol = "555";
+        template.Notes = "Splatnost prodloužena dohodou";
+
+        var output = await RenderInvoiceTemplateAsync(template);
+
+        output.ShouldContain("method: BankTransfer");
+        output.ShouldContain("account: 1234567890/0100");
+        output.ShouldContain("IBAN: CZ6501000000001234567890");
+        output.ShouldContain("SWIFT: KOMBCZPP");
+        output.ShouldContain("VS: 2026001");
+        output.ShouldContain("KS: 0308");
+        output.ShouldContain("SS: 555");
+        output.ShouldContain("Notes: Splatnost prodloužena dohodou");
+    }
+
+    [Fact]
+    public async Task GetInvoiceTemplateTool_RendersItemsInOrderIndexOrderAndTextRowsWithoutAmounts()
+    {
+        // Deliberately handed over out of order: the service is not required to sort, the
+        // rendering is. A text row carries no amounts, so printing "0 ks x 0 CZK" would lie.
+        var template = BuildInvoiceTemplate();
+        template.InvoiceItem =
+        [
+            new InvoiceItemDto { Id = 2, OrderIndex = 2, Description = "Doména", Quantity = 1, Unit = "ks", UnitPrice = 200m, VatRatePercentage = 21m, TotalWithVat = 242m },
+            new InvoiceItemDto { Id = 3, OrderIndex = 3, Description = "Sekce služeb", IsTextRow = true },
+            new InvoiceItemDto { Id = 1, OrderIndex = 1, Description = "Webhosting", Quantity = 1, Unit = "ks", UnitPrice = 500m, VatRatePercentage = 21m, TotalWithVat = 605m }
+        ];
+
+        var output = await RenderInvoiceTemplateAsync(template);
+
+        output.IndexOf("Webhosting", StringComparison.Ordinal)
+            .ShouldBeLessThan(output.IndexOf("Doména", StringComparison.Ordinal));
+        output.IndexOf("Doména", StringComparison.Ordinal)
+            .ShouldBeLessThan(output.IndexOf("Sekce služeb", StringComparison.Ordinal));
+        output.ShouldContain("Sekce služeb (text row, no amount)");
+    }
+
+    /// <summary>
+    /// The formatter documents InvariantCulture as an invariant, and this is the test that can
+    /// actually break it. Under <c>th-TH</c> a culture-sensitive date would print the Buddhist
+    /// year 2569 instead of 2026; under <c>cs-CZ</c> a culture-sensitive number would print a
+    /// decimal comma. Both would be handed to the model as fact.
+    /// </summary>
+    [Theory]
+    [InlineData("cs-CZ")]
+    [InlineData("en-US")]
+    [InlineData("th-TH")]
+    public async Task GetInvoiceTemplateTool_FormatsDatesAndAmountsIndependentlyOfTheThreadCulture(
+        string cultureName)
+    {
+        var template = BuildInvoiceTemplate();
+        template.InvoiceItem =
+        [
+            new InvoiceItemDto
+            {
+                Id = 1, OrderIndex = 1, Description = "Webhosting",
+                Quantity = 1.5m, Unit = "ks", UnitPrice = 1234.5m,
+                VatRatePercentage = 12.5m, TotalWithVat = 2083.22m
+            }
+        ];
+
+        var originalCulture = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo(cultureName);
+
+            var output = await RenderInvoiceTemplateAsync(template);
+
+            output.ShouldContain("2026-05-01");
+            output.ShouldContain("1.5 ks x 1234.5 CZK");
+            output.ShouldContain("VAT 12.5 %");
+            output.ShouldContain("2083.22 CZK");
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = originalCulture;
+        }
+    }
+
+    /// <summary>
+    /// Runs <c>get_invoice_template</c> over one template and returns the text the model sees.
+    /// </summary>
+    private static async Task<string> RenderInvoiceTemplateAsync(InvoiceTemplateDto template)
+    {
+        var service = BuildTemplateService();
+        service.GetTemplateByIdAsync(template.Id, Arg.Any<CancellationToken>()).Returns(template);
+
+        var result = await BuildGetInvoiceTemplateTool(service).ExecuteAsync(
+            new Dictionary<string, string> { ["id"] = template.Id.ToString(CultureInfo.InvariantCulture) });
+
+        result.IsSuccess.ShouldBeTrue();
+        return result.OutputText!;
     }
 
     // ─── list_content_templates ───────────────────────────────────────────
@@ -549,6 +696,47 @@ public class TemplateChatToolTests
 
         result.IsSuccess.ShouldBeFalse();
         result.ErrorMessage.ShouldContain("no longer exists");
+    }
+
+    [Fact]
+    public async Task SetDefaultContentTemplateTool_Preview_NamesADeactivatedCurrentDefault()
+    {
+        // A deactivated row can still carry IsDefault, and it is exactly the row the write
+        // unsets — so the sibling lookup must ask for inactive templates too, or the preview
+        // claims "no default yet" while the write silently replaces one.
+        var service = BuildContentServiceWithSiblings(
+            target: BuildContentTemplate(id: 4, name: "Nová šablona"),
+            siblings: [BuildContentTemplate(id: 3, name: "Vyřazená výchozí", isDefault: true, isActive: false)]);
+        var tool = BuildSetDefaultTool(service);
+
+        var result = await tool.BuildPreviewAsync(new Dictionary<string, string> { ["id"] = "4" });
+
+        result.OutputText.ShouldContain("Vyřazená výchozí");
+        await service.Received(1).GetAllByTypeAsync(
+            EContentTemplateType.InvoicePdf, true, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SetDefaultContentTemplateTool_TemplateDeactivatedAfterThePreview_IsRefusedAtTheWrite()
+    {
+        // The preview and the write are two independent calls, so the write re-reads the
+        // template instead of trusting what the preview saw.
+        var service = Substitute.For<IContentTemplateService>();
+        service.GetByIdAsync(4, Arg.Any<CancellationToken>()).Returns(
+            BuildContentTemplate(id: 4, name: "Nová šablona"),
+            BuildContentTemplate(id: 4, name: "Nová šablona", isActive: false));
+        service.GetAllByTypeAsync(Arg.Any<EContentTemplateType>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns([]);
+        var tool = BuildSetDefaultTool(service);
+
+        var preview = await tool.BuildPreviewAsync(new Dictionary<string, string> { ["id"] = "4" });
+        var execution = await tool.ExecuteAsync(new Dictionary<string, string> { ["id"] = "4" });
+
+        preview.IsSuccess.ShouldBeTrue();
+        execution.IsSuccess.ShouldBeFalse();
+        execution.ErrorMessage.ShouldContain("deactivated");
+        await service.DidNotReceive().UpdateAsync(
+            Arg.Any<long>(), Arg.Any<UpdateContentTemplateDto>(), Arg.Any<CancellationToken>());
     }
 
     /// <summary>
