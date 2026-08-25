@@ -33,7 +33,18 @@ public sealed class Socks5Forwarder
     private const byte AddrTypeIPv6 = 0x04;
     private const byte ReplySucceeded = 0x00;
 
+    // A stuck SOCKS5 endpoint must not park a socket pair forever — see HandleAsync.
+    private static readonly TimeSpan NegotiationTimeout = TimeSpan.FromSeconds(15);
+
+    // Breathing room after a failed accept(), so a broken listener cannot spin the CPU.
+    private static readonly TimeSpan AcceptRetryDelay = TimeSpan.FromSeconds(1);
+
+    // How many accepts in a row may fail before the loop gives up. Transient errors
+    // (ECONNABORTED, EMFILE) recover long before this; ten in a row means it will not.
+    private const int MaxConsecutiveAcceptFailures = 10;
+
     private readonly TcpListener _listener;
+    private readonly IPEndPoint _localEndPoint;
     private readonly int _socksPort;
     private readonly IPAddress _target;
     private readonly int _targetPort;
@@ -42,14 +53,20 @@ public sealed class Socks5Forwarder
     private Socks5Forwarder(TcpListener listener, int socksPort, IPAddress target, int targetPort, ILogger logger)
     {
         _listener = listener;
+        // Remembered once, at construction: reading LocalEndpoint later (typically from a catch
+        // block) can throw ObjectDisposedException on a listener that has already been closed.
+        _localEndPoint = (IPEndPoint)listener.LocalEndpoint;
         _socksPort = socksPort;
         _target = target;
         _targetPort = targetPort;
         _logger = logger;
     }
 
+    /// <summary>Address and port the forwarder actually bound to (the port differs from the requested one only when 0 was asked for).</summary>
+    public IPEndPoint LocalEndPoint => _localEndPoint;
+
     /// <summary>Port the forwarder actually listens on. Differs from the requested one only when 0 was asked for.</summary>
-    public int Port => ((IPEndPoint)_listener.LocalEndpoint).Port;
+    public int Port => _localEndPoint.Port;
 
     /// <summary>
     /// Binds 127.0.0.1:listenPort and starts accepting. Pass 0 to let the OS pick a free port
@@ -159,12 +176,15 @@ public sealed class Socks5Forwarder
 
     private async Task AcceptLoopAsync()
     {
+        var consecutiveFailures = 0;
+
         while (true)
         {
             TcpClient client;
             try
             {
                 client = await _listener.AcceptTcpClientAsync();
+                consecutiveFailures = 0;
             }
             catch (ObjectDisposedException)
             {
@@ -172,10 +192,22 @@ public sealed class Socks5Forwarder
             }
             catch (Exception ex)
             {
-                // A dead accept loop means the database stays unreachable for the rest of the
-                // process lifetime, so this one is loud (unlike per-connection failures below).
-                _logger.LogError(ex, "Tailscale: forwarder accept loop failed on port {Port}", Port);
-                return;
+                // accept() fails transiently on Linux (ECONNABORTED when the peer vanishes during
+                // the handshake, EMFILE when descriptors run out). Returning here would leave the
+                // database unreachable for the rest of the process lifetime, and nothing restarts
+                // this loop — so a single failure only costs a pause and a log line.
+                consecutiveFailures++;
+                if (consecutiveFailures >= MaxConsecutiveAcceptFailures)
+                {
+                    _logger.LogError(ex, "Tailscale: forwarder accept loop gave up on port {Port} after {Failures} consecutive failures",
+                        _localEndPoint.Port, consecutiveFailures);
+                    return;
+                }
+
+                _logger.LogWarning(ex, "Tailscale: forwarder accept failed on port {Port} (attempt {Failures}), retrying",
+                    _localEndPoint.Port, consecutiveFailures);
+                await Task.Delay(AcceptRetryDelay);
+                continue;
             }
 
             _ = HandleAsync(client);
@@ -187,7 +219,7 @@ public sealed class Socks5Forwarder
         try
         {
             using (client)
-            using (var upstream = await ConnectViaSocksAsync(_socksPort, _target, _targetPort, CancellationToken.None))
+            using (var upstream = await ConnectUpstreamAsync())
             {
                 var downstreamStream = client.GetStream();
                 var upstreamStream = upstream.GetStream();
@@ -205,6 +237,18 @@ public sealed class Socks5Forwarder
             // ends up here as a broken pipe. At Warning this would drown the real log.
             _logger.LogDebug(ex, "Tailscale: forwarded connection ended with an error");
         }
+    }
+
+    /// <summary>
+    /// Opens the upstream connection under a bounded deadline. A SOCKS5 endpoint that accepts the
+    /// connection and then stops answering would otherwise hang this task forever, holding both
+    /// sockets open — repeated over a connection pool that is exactly how a sandbox runs out of
+    /// file descriptors. The deadline covers only the handshake; the data pump is unlimited.
+    /// </summary>
+    private async Task<TcpClient> ConnectUpstreamAsync()
+    {
+        using var negotiation = new CancellationTokenSource(NegotiationTimeout);
+        return await ConnectViaSocksAsync(_socksPort, _target, _targetPort, negotiation.Token);
     }
 
     /// <summary>

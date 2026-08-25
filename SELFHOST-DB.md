@@ -869,12 +869,22 @@ a přibývá klíč s auth key. Zbytek zůstává stejný.
 TAILSCALE_AUTHKEY=tskey-auth-…
 Database__AuthMode=Password
 UseAzureAdAuthentication=false
-ConnectionStrings__DefaultConnection=Host=127.0.0.1;Port=15432;Database=fakvio_test;Username=fakvio;Password=***;Ssl Mode=Prefer;Timezone=UTC;Maximum Pool Size=20;Timeout=15
+ConnectionStrings__DefaultConnection=Host=127.0.0.1;Port=15432;Database=fakvio_test;Username=fakvio_test;Password=***;Ssl Mode=Prefer;Timezone=UTC;Maximum Pool Size=20;Timeout=15
 ```
 
 `Ssl Mode=Prefer` je tu navíc jediná praktická volba: provoz šifruje už WireGuard a
 certifikát vystavený na `127.0.0.1` se ověřit nedá. `Timeout=15` proto, že první spojení
 zahrnuje WireGuard handshake.
+
+**Přihlašovací role je per prostředí, ne jedna sdílená** — do databáze `fakvio_test` se
+přihlašuje role `fakvio_test`, do `fakvio_prod` role `fakvio_prod` (každá s vlastním heslem
+a přístupem jen ke své databázi). Uniklé heslo z testu tak nikdy neotevře produkci. Role se
+zakládá stejně jako v kroku 2.4 výš, jen s jiným jménem:
+
+```sql
+CREATE ROLE fakvio_test WITH LOGIN PASSWORD 'ZMEN_ME';
+CREATE DATABASE fakvio_test OWNER fakvio_test;
+```
 
 **`TAILSCALE_AUTHKEY` je spínač celé funkce** — když chybí, tunel se nepostaví a databáze
 je nedostupná. Klíč má expiraci, takže platí to samé co pro hesla: patří do rotace.

@@ -793,7 +793,7 @@ variables), ne ve workflow souborech. Zápis používá dvojité podtržítko m�
 | `JwtSettings__Secret` | **vlastní, nesdílený s produkcí** | Token vydaný produkcí na testu neplatí a naopak. To je záměr — jinak by únik jednoho klíče otevřel obě prostředí. |
 | `JwtSettings__Issuer`, `JwtSettings__Audience` | shodné s produkcí | Liší se jen klíč, ne formát tokenu. |
 | `CorsSettings__AllowedOrigins__0` / `__1` | `https://wonderful-meadow-0eb3ada03.7.azurestaticapps.net` a `https://test.fakvio.cz` (oba originy testovacího frontendu) | Musí sedět na frontend URL daného prostředí, jinak prohlížeč zablokuje všechna volání API. Při změně URL frontendu se mění i tady. |
-| `ConnectionStrings__DefaultConnection` | `Host=127.0.0.1;Port=15432;Database=fakvio_test;Username=fakvio;Password=***;Ssl Mode=Prefer;Timezone=UTC;Maximum Pool Size=20;Timeout=15` | **`127.0.0.1` není překlep** — míří na lokální konec Tailscale tunelu (viz níž), ne přímo na databázový server. `Ssl Mode=Prefer`, protože provoz už šifruje WireGuard a certifikát na `127.0.0.1` se ověřit nedá; `Timeout=15` kvůli WireGuard handshake při prvním spojení. |
+| `ConnectionStrings__DefaultConnection` | `Host=127.0.0.1;Port=15432;Database=fakvio_test;Username=fakvio_test;Password=***;Ssl Mode=Prefer;Timezone=UTC;Maximum Pool Size=20;Timeout=15` | **`127.0.0.1` není překlep** — míří na lokální konec Tailscale tunelu (viz níž), ne přímo na databázový server. `Ssl Mode=Prefer`, protože provoz už šifruje WireGuard a certifikát na `127.0.0.1` se ověřit nedá; `Timeout=15` kvůli WireGuard handshake při prvním spojení. |
 | `TAILSCALE_AUTHKEY` | `tskey-auth-…` (reusable + ephemeral + tag) | **Spínač celé funkce.** Když klíč chybí, tunel se nepostaví a databáze je nedostupná. Klíč má expiraci — po vypršení se nové instance nepřihlásí. Postup vydání, ACL a rotace: `Fakvio.Functions/Tailscale/README.md`. |
 | `Database__AuthMode` | `Password` (produkce: `AzureEntraId`) | Vlastní PostgreSQL Entra ID neumí. Kanonický klíč (§13) — health proto hlásí `authModeSource: Database:AuthMode`. |
 | `UseAzureAdAuthentication` | `false` (produkce: `true`, tedy Entra ID) | **Legacy klíč, musí souhlasit s řádkem výš** — když si budou odporovat, aplikace při startu spadne (fail-fast, §13). Měnit vždy oba zároveň. |
@@ -802,7 +802,9 @@ variables), ne ve workflow souborech. Zápis používá dvojité podtržítko m�
 ### Jak je testovací databáze zapojená
 
 Testovací databáze je **vlastní PostgreSQL na privátním serveru** (databáze `fakvio_test`,
-uživatel `fakvio`). Její port **není ve veřejném internetu** — server je dostupný jen uvnitř
+uživatel `fakvio_test`). **Role je per prostředí** — `fakvio_test` má přístup jen k databázi
+`fakvio_test`, produkční `fakvio_prod` jen k `fakvio_prod`; jedno uniklé heslo tak nikdy
+neotevře obě databáze. Port serveru **není ve veřejném internetu** — server je dostupný jen uvnitř
 privátní sítě Tailscale. Function App se do té sítě připojuje sám: při startu spustí
 Tailscale v uživatelském režimu a vystaví databázi jako **lokální port `127.0.0.1:15432`**.
 Proto connection string v tabulce výš míří na `127.0.0.1`.
@@ -818,8 +820,14 @@ Co z toho plyne pro provoz:
         Startup: Tailscale tunnel failed — database unreachable until resolved
   ```
 
-  Health pak vrací **503** a `masterDbCanConnect: false`. Klíč je potřeba **rotovat dřív, než
-  vyprší** — běžící instance jedou dál, ale každá nově nastartovaná selže.
+  **Co uvidíš na healthu:** `GET /api/diagnostic/health` je chráněný JWT tokenem SysAdmina
+  (§13), a přihlášení potřebuje **tu samou** master DB, která je v tomhle scénáři nedostupná.
+  Bez tokenu tedy dostaneš **401** — a to není chyba autentizace, jen důsledek nedostupné DB.
+  **503** s `masterDbCanConnect: false` uvidíš jen s tokenem vydaným ještě za funkční databáze.
+  Rozhodující signál je proto ten řádek v logu, ne odpověď healthu.
+
+  Klíč je potřeba **rotovat dřív, než vyprší** — běžící instance jedou dál, ale každá nově
+  nastartovaná selže.
 - **Cold start je o ~3–8 s delší.** Function App běží na Flex Consumption, tedy škáluje na
   nulu; při každém probuzení se tunel staví znovu. V Tailscale admin konzoli se proto objevují
   uzly `fakvio-func`, `fakvio-func-1`, … — jeden na instanci. Klíč je *ephemeral*, takže se
@@ -837,9 +845,12 @@ Co z toho plyne pro provoz:
   connection string (`Host=test-env-has-no-database.invalid;…`), pak restart. Redeploy není
   potřeba — bez klíče je funkce nečinná. Test tím ale přijde o databázi i o přihlašování.
 - **Kdy zakládat ticket:** když backend neodpovídá vůbec (timeout nebo 5xx přímo z platformy),
-  nebo když vrátí 5xx, které **není** chyba databáze. Trvalé 503 z healthu spolu s řádkem
-  `Startup: Tailscale tunnel failed` je nejčastěji vypršelý auth key — než zakládáš ticket,
-  zkontroluj v Tailscale admin konzoli platnost klíče a jestli je uzel `fakvio-func` online.
+  nebo když vrátí 5xx, které **není** chyba databáze. Nefunkční přihlášení (a tedy 401
+  z healthu) spolu s řádkem `Startup: Tailscale tunnel failed` v logu je nejčastěji vypršelý
+  auth key — než zakládáš ticket, zkontroluj v Tailscale admin konzoli platnost klíče a jestli
+  je uzel `fakvio-func` online. Startovní log je v tomhle stavu jediný spolehlivý zdroj:
+  `Startup: Tailscale tunnel failed …` ukazuje na tunel, `Startup: database migration failed …`
+  na databázi samotnou (tunel stojí, ale server neodpovídá nebo odmítá přihlášení).
 
 Podrobnosti (proč uživatelský režim, ACL pravidla, vydání a rotace klíče, lokální ověření)
 jsou v `Fakvio.Functions/Tailscale/README.md`.

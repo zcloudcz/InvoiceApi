@@ -38,20 +38,26 @@ Socks5Forwarder  127.0.0.1:15432  →  SOCKS5  →  100.69.241.17:5544
 Npgsql (ConnectionStrings__DefaultConnection = Host=127.0.0.1;Port=15432;…)
 ```
 
-Nakonec se ještě zkusí **reachability probe** (max 10 pokusů po 2 s). Neúspěch je jen
-`Warning` — EF Core má `EnableRetryOnFailure`, takže migrace dostane další šanci.
+Nakonec se ještě zkusí **reachability probe** (max 10 pokusů po 2 s, každý s vlastním
+4s timeoutem). Neúspěch je jen `Warning` — EF Core má `EnableRetryOnFailure`, takže migrace
+dostane další šanci. Celý řetěz (přihlášení uzlu i probe) má **jeden společný rozpočet
+100 s**; když se do něj nevejde, start pokračuje bez tunelu, aby hostitele nezabil platformní
+timeout.
 
 **Bez `TAILSCALE_AUTHKEY` se nic z toho nestane.** Zaloguje se jediný řádek
 `Tailscale: TAILSCALE_AUTHKEY not set, tunnel disabled` a běh pokračuje beze změny —
 proto lokální vývoj, produkce i unit testy fungují dál stejně.
 
-Když start tunelu selhat, hostitel **nespadne**: výjimka se odchytí a zaloguje jako
+Když start tunelu selže, hostitel **nespadne**: výjimka se odchytí a zaloguje jako
 
 ```text
 Startup: Tailscale tunnel failed — database unreachable until resolved
 ```
 
-Timer triggery a `/api/diagnostic/health` (ten pak vrátí 503) tedy zůstanou dostupné.
+Timer triggery i `/api/diagnostic/health` tedy zůstanou dostupné. Pozor na to, co health
+v tomhle stavu odpoví: je chráněný JWT tokenem SysAdmina a přihlášení potřebuje tu samou
+databázi, takže bez dřív vydaného tokenu dostaneš **401**, ne 503. Řádek v logu výš je proto
+spolehlivější signál než HTTP kód.
 
 ## 3. Soubory
 
@@ -100,7 +106,7 @@ Function App → *Settings → Environment variables*. Dvojité podtržítko = o
 | Klíč | Hodnota | Poznámka |
 |---|---|---|
 | `TAILSCALE_AUTHKEY` | `tskey-auth-…` | **Chybí ⇒ tunel je vypnutý.** Jediný spínač celé funkce. |
-| `ConnectionStrings__DefaultConnection` | `Host=127.0.0.1;Port=15432;Database=fakvio_test;Username=fakvio;Password=***;Ssl Mode=Prefer;Timezone=UTC;Maximum Pool Size=20;Timeout=15` | Míří na **forwarder**, ne na databázi. |
+| `ConnectionStrings__DefaultConnection` | `Host=127.0.0.1;Port=15432;Database=fakvio_test;Username=fakvio_test;Password=***;Ssl Mode=Prefer;Timezone=UTC;Maximum Pool Size=20;Timeout=15` | Míří na **forwarder**, ne na databázi. Role je **per prostředí**: `fakvio_test` k `fakvio_test`, `fakvio_prod` k `fakvio_prod`. |
 | `Database__AuthMode` | `Password` | |
 | `UseAzureAdAuthentication` | `false` | Musí souhlasit s předchozím řádkem, jinak start spadne na fail-fast kontrole (`SELFHOST-DB.md` §7). |
 | `TAILSCALE_TARGET_HOST` | *(volitelné)* výchozí `100.69.241.17` | Musí být **IPv4 tailnet adresa**; MagicDNS jméno kód odmítne — userspace režim resolver do procesu nezapojuje. |
@@ -124,7 +130,8 @@ Redeploy není potřeba — bez klíče je kód nečinný.
   nová se nepřihlásí a v logu bude `Tailscale: up failed`. Klíč je potřeba rotovat dřív,
   než vyprší — nastav si na to připomínku podle zvolené expirace.
 - **`/tmp` a spouštění potomků.** Kdyby sandbox `/tmp` připojil s `noexec` nebo blokoval
-  child procesy, tunel se nepostaví, hostitel poběží dál a health bude vracet 503.
+  child procesy, tunel se nepostaví, hostitel poběží dál a databáze bude nedostupná
+  (health 401 bez tokenu, 503 s tokenem — viz část 2).
   Řešením je pak „Cesta A" (subnet router).
 - **Výstup `tailscaled` je na úrovni `Debug`**, takže při výchozí `Information` v
   `host.json` není vidět. Při ladění dočasně zvyš úroveň pro kategorii
@@ -145,18 +152,18 @@ tar -xzf ts.tgz --strip-components=1 -C Fakvio.Functions/tsbin \
 
 # 2) konfigurace
 export TAILSCALE_AUTHKEY='tskey-auth-…'
-export ConnectionStrings__DefaultConnection='Host=127.0.0.1;Port=15432;Database=fakvio_test;Username=fakvio;Password=***;Ssl Mode=Prefer;Timezone=UTC'
+export ConnectionStrings__DefaultConnection='Host=127.0.0.1;Port=15432;Database=fakvio_test;Username=fakvio_test;Password=***;Ssl Mode=Prefer;Timezone=UTC'
 export Database__AuthMode=Password
 
 # 3) spuštění a kontrola logu
 dotnet run --project Fakvio.Functions
 ```
 
-V logu musí být `Tailscale: up OK`, `Tailscale: forwarder 127.0.0.1:15432 → …`
+V logu musí být `Tailscale: up OK`, `Tailscale: forwarder 127.0.0.1:15432 -> …`
 a `Tailscale: target reachable`. Samotný tunel bez aplikace se dá ověřit i ručně:
 
 ```bash
-psql "host=127.0.0.1 port=15432 dbname=fakvio_test user=fakvio sslmode=prefer"
+psql "host=127.0.0.1 port=15432 dbname=fakvio_test user=fakvio_test sslmode=prefer"
 ```
 
 ## 8. Bump verze Tailscale

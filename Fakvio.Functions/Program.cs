@@ -165,12 +165,16 @@ host.Services.LogDatabaseAuthMode();
 // Without TAILSCALE_AUTHKEY this is a single log line and nothing else, so local development and
 // the production host (which reach their database directly) are unaffected.
 var tunnelLogger = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Fakvio.Functions.Tailscale");
+var tunnelLifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
 try
 {
+    // ApplicationStopping shortens the tunnel's own startup budget: a shutdown requested while the
+    // node is still logging in must not wait out the full budget before the host can exit.
     await TailscaleTunnel.StartIfConfiguredAsync(
         Environment.GetEnvironmentVariable(TailscaleTunnel.AuthKeyEnv),
-        host.Services.GetRequiredService<IHostApplicationLifetime>(),
-        tunnelLogger);
+        tunnelLifetime,
+        tunnelLogger,
+        tunnelLifetime.ApplicationStopping);
 }
 catch (Exception ex)
 {

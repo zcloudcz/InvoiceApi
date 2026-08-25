@@ -2059,7 +2059,7 @@ Kde co je nastavené:
 Testovací Function App má od #318 v App Settings `Database__AuthMode = Password` (vedle
 `UseAzureAdAuthentication = false`, obojí musí souhlasit), takže health tam hlásí
 `authModeSource: Database:AuthMode` — ne už legacy zdroj. Connection string míří na lokální
-konec Tailscale tunelu (§9.4), takže `masterConnectionServer` je `127.0.0.1 / fakvio_test / fakvio`.
+konec Tailscale tunelu (§9.4), takže `masterConnectionServer` je `127.0.0.1 / fakvio_test / fakvio_test`.
 
 **Ověření za běhu** — `GET /api/diagnostic/health`, **SysAdmin only**:
 

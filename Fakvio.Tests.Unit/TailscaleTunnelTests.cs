@@ -44,6 +44,28 @@ public class TailscaleTunnelTests
     }
 
     [Fact]
+    public async Task RejectsNonIPv4Target()
+    {
+        // The SOCKS5 CONNECT this code sends carries a 4-byte address, so an IPv6 target cannot
+        // work. It has to be refused here, at the boundary: further in it would only show up once
+        // per connection, as a debug log, behind a misleading "target not reachable" warning.
+        var original = Environment.GetEnvironmentVariable(TailscaleTunnel.TargetHostEnv);
+        Environment.SetEnvironmentVariable(TailscaleTunnel.TargetHostEnv, "fd7a:115c:a1e0::1");
+        try
+        {
+            var exception = await Should.ThrowAsync<InvalidOperationException>(
+                () => TailscaleTunnel.StartIfConfiguredAsync(
+                    "tskey-x", Substitute.For<IHostApplicationLifetime>(), NullLogger.Instance));
+
+            exception.Message.ShouldContain("IPv4");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(TailscaleTunnel.TargetHostEnv, original);
+        }
+    }
+
+    [Fact]
     public void BuildsExpectedDaemonArguments()
     {
         // --tun=userspace-networking: the Functions sandbox cannot create a TUN device.

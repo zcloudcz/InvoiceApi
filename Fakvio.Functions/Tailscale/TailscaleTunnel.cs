@@ -57,11 +57,17 @@ public static class TailscaleTunnel
     private const string BinDirectoryName = "tsbin";
     private const string RuntimeBinDirectory = "/tmp/tsbin";
 
+    // Everything below runs before the host serves its first request, so the whole sequence has one
+    // hard ceiling. Worst case inside it: 3 × 30 s of 'tailscale up' plus 2 s + 4 s backoff ≈ 96 s,
+    // which leaves the probe whatever is left of the budget. The platform kills a worker that takes
+    // too long to start, so exceeding this would turn a tunnel problem into a restart loop.
+    private static readonly TimeSpan StartupBudget = TimeSpan.FromSeconds(100);
+
     private const int UpAttempts = 3;
-    private static readonly TimeSpan UpProcessTimeout = TimeSpan.FromSeconds(40);
+    private static readonly TimeSpan UpProcessTimeout = TimeSpan.FromSeconds(30);
     private const int ProbeAttempts = 10;
     private static readonly TimeSpan ProbeDelay = TimeSpan.FromSeconds(2);
-    private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(4);
 
     /// <summary>
     /// Arguments for the daemon. <c>--state=mem:</c> keeps no state on disk, which pairs with an
@@ -82,8 +88,11 @@ public static class TailscaleTunnel
     /// Starts the tunnel when an auth key is configured. Returns false when the feature is off.
     /// Throws when the key is present but the tunnel cannot be established — the caller logs that
     /// and lets the host start anyway, so telemetry and health checks stay reachable.
+    /// The whole sequence is capped by <see cref="StartupBudget"/>; pass ApplicationStopping as
+    /// <paramref name="cancellationToken"/> so a shutdown during startup cuts it short too.
     /// </summary>
-    public static async Task<bool> StartIfConfiguredAsync(string? authKey, IHostApplicationLifetime lifetime, ILogger logger)
+    public static async Task<bool> StartIfConfiguredAsync(
+        string? authKey, IHostApplicationLifetime lifetime, ILogger logger, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(authKey))
         {
@@ -91,14 +100,19 @@ public static class TailscaleTunnel
             return false;
         }
 
+        // One deadline for the whole bring-up, shared by the login retries and the probe. Without it
+        // the two budgets add up and the host blocks for minutes.
+        using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        budget.CancelAfter(StartupBudget);
+
         var target = ResolveTarget();
         var (tailscalePath, tailscaledPath) = PrepareBinaries();
 
         var daemon = await StartDaemonIfNeededAsync(tailscaledPath, lifetime, logger);
-        await RunUpAsync(tailscalePath, authKey, daemon, logger);
+        await RunUpAsync(tailscalePath, authKey, daemon, logger, budget.Token);
 
         Socks5Forwarder.Start(ListenPort, SocksPort, target.Address, target.Port, logger);
-        await ProbeTargetAsync(target, logger);
+        await ProbeTargetAsync(target, logger, budget.Token);
         return true;
     }
 
@@ -106,16 +120,27 @@ public static class TailscaleTunnel
     private static IPEndPoint ResolveTarget()
     {
         var host = Environment.GetEnvironmentVariable(TargetHostEnv) ?? DefaultTargetHost;
-        if (!IPAddress.TryParse(host, out var address))
+        if (!IPAddress.TryParse(host, out var address) || address.AddressFamily != AddressFamily.InterNetwork)
         {
-            // Fail fast at the boundary: a hostname here would silently never connect, because
-            // the SOCKS5 CONNECT this code sends carries an IPv4 literal only.
+            // Fail fast at the boundary: a hostname here would silently never connect, because the
+            // SOCKS5 CONNECT this code sends carries an IPv4 literal only. TryParse alone is not
+            // enough — it also accepts IPv6, whose 16 address bytes would not fit the request and
+            // would surface only per connection, as a debug-level log nobody reads.
             throw new InvalidOperationException(
                 $"{TargetHostEnv} must be a tailnet IPv4 address (MagicDNS names are not supported), got '{host}'.");
         }
 
         var portValue = Environment.GetEnvironmentVariable(TargetPortEnv);
-        var port = string.IsNullOrWhiteSpace(portValue) ? DefaultTargetPort : int.Parse(portValue);
+        if (string.IsNullOrWhiteSpace(portValue))
+        {
+            return new IPEndPoint(address, DefaultTargetPort);
+        }
+
+        if (!int.TryParse(portValue, out var port) || port is < 1 or > 65535)
+        {
+            throw new InvalidOperationException($"{TargetPortEnv} must be a TCP port between 1 and 65535, got '{portValue}'.");
+        }
+
         return new IPEndPoint(address, port);
     }
 
@@ -209,10 +234,17 @@ public static class TailscaleTunnel
     /// Authenticates the node, retrying a couple of times because the daemon needs a moment after
     /// launch before it can answer the CLI.
     /// </summary>
-    private static async Task RunUpAsync(string tailscalePath, string authKey, Process? daemon, ILogger logger)
+    private static async Task RunUpAsync(
+        string tailscalePath, string authKey, Process? daemon, ILogger logger, CancellationToken cancellationToken)
     {
         for (var attempt = 1; attempt <= UpAttempts; attempt++)
         {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                throw new InvalidOperationException(
+                    $"'tailscale up' did not succeed within the {StartupBudget.TotalSeconds:0} s startup budget.");
+            }
+
             if (daemon is { HasExited: true })
             {
                 throw new InvalidOperationException(
@@ -220,7 +252,7 @@ public static class TailscaleTunnel
             }
 
             // NEVER log the argument string — it carries the auth key.
-            var (exitCode, output) = await RunToCompletionAsync(tailscalePath, UpArguments(authKey));
+            var (exitCode, output) = await RunToCompletionAsync(tailscalePath, UpArguments(authKey), authKey, cancellationToken);
             if (exitCode == 0)
             {
                 logger.LogInformation("Tailscale: up OK (attempt {Attempt})", attempt);
@@ -232,18 +264,27 @@ public static class TailscaleTunnel
 
             if (attempt < UpAttempts)
             {
-                await Task.Delay(TimeSpan.FromSeconds(2 * attempt));
+                // Deliberately not cancellable: a spent budget is reported by the check at the top
+                // of the loop, as a message that names the budget, not as a bare OperationCanceled.
+                // The wait itself is at most 4 s.
+                await Task.Delay(TimeSpan.FromSeconds(2 * attempt), CancellationToken.None);
             }
         }
 
         throw new InvalidOperationException($"'tailscale up' failed after {UpAttempts} attempts.");
     }
 
-    /// <summary>Runs a child process to completion under a timeout, returning its exit code and merged output.</summary>
-    private static async Task<(int ExitCode, string Output)> RunToCompletionAsync(string fileName, string arguments)
+    /// <summary>
+    /// Runs a child process to completion under a timeout, returning its exit code and merged output.
+    /// The output is untrusted text from a process we handed the auth key to, so the key is stripped
+    /// from it here — nothing downstream has to remember to do it.
+    /// </summary>
+    private static async Task<(int ExitCode, string Output)> RunToCompletionAsync(
+        string fileName, string arguments, string secret, CancellationToken cancellationToken)
     {
         using var process = StartProcess(fileName, arguments);
-        using var timeout = new CancellationTokenSource(UpProcessTimeout);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(UpProcessTimeout);
 
         var stdout = process.StandardOutput.ReadToEndAsync();
         var stderr = process.StandardError.ReadToEndAsync();
@@ -259,8 +300,12 @@ public static class TailscaleTunnel
         }
 
         var output = $"{await stdout}{await stderr}".Trim();
-        return (process.ExitCode, output);
+        return (process.ExitCode, Redact(output, secret));
     }
+
+    /// <summary>Replaces the auth key with a marker, so no log line or exception message can carry it.</summary>
+    private static string Redact(string text, string secret) =>
+        string.IsNullOrEmpty(secret) ? text : text.Replace(secret, "<redacted>", StringComparison.Ordinal);
 
     private static Process StartProcess(string fileName, string arguments)
     {
@@ -296,13 +341,14 @@ public static class TailscaleTunnel
     /// Checks that the database port actually answers through the tunnel. A failure is only a
     /// warning: EF Core retries the migration, so a slow WireGuard handshake still recovers.
     /// </summary>
-    private static async Task ProbeTargetAsync(IPEndPoint target, ILogger logger)
+    private static async Task ProbeTargetAsync(IPEndPoint target, ILogger logger, CancellationToken cancellationToken)
     {
-        for (var attempt = 1; attempt <= ProbeAttempts; attempt++)
+        for (var attempt = 1; attempt <= ProbeAttempts && !cancellationToken.IsCancellationRequested; attempt++)
         {
             try
             {
-                using var timeout = new CancellationTokenSource(ProbeTimeout);
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                timeout.CancelAfter(ProbeTimeout);
                 using var connection = await Socks5Forwarder.ConnectViaSocksAsync(
                     SocksPort, target.Address, target.Port, timeout.Token);
                 logger.LogInformation("Tailscale: target reachable ({Target}:{Port}) after {Attempt} attempt(s)",
@@ -312,7 +358,19 @@ public static class TailscaleTunnel
             catch (Exception ex)
             {
                 logger.LogDebug(ex, "Tailscale: reachability probe {Attempt}/{Total} failed", attempt, ProbeAttempts);
-                await Task.Delay(ProbeDelay);
+            }
+
+            // No point sleeping after the last attempt — nobody is going to use that pause.
+            if (attempt < ProbeAttempts)
+            {
+                try
+                {
+                    await Task.Delay(ProbeDelay, cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
             }
         }
 
