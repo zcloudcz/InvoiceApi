@@ -22,6 +22,12 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Změny pro vývojáře
 
+- **#318** — Testovací Azure Function App (`zcloudinvoicingapi-test`) se teď umí připojit
+  k vlastní self-hosted PostgreSQL (`fakvio_test`) přes Tailscale tunel a lokální SOCKS5
+  forwarder — testovací prostředí tak konečně běží proti reálné databázi místo aby bylo
+  bez DB (uzavírá i #295). Bez nastaveného `TAILSCALE_AUTHKEY` je funkce úplně neaktivní,
+  lokální vývoj i produkce jedou beze změny. Tailscale binárky jsou pinované a stahují se
+  v CI při publish. (PR #319, `196f7fb`)
 - **#211** — AI chat asistent i MCP klient teď umí zeptat na "readiness" — jestli je
   firma (vystavitel) připravená na vystavení dokladu, a pokud ne, co konkrétně chybí
   a kde se to dá doplnit. Dřív bylo potřeba projít nastavení ručně nebo počkat na
