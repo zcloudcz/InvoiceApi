@@ -20,6 +20,12 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+## 2026.08.25.5 — 2026-08-25
+
+### Změny pro vývojáře
+
+- **hotfix** — při zaseklém `tailscale up` se do logu (`Host.Function.Console`) vypíše dosažitelnost control plane (DNS, HTTPS, `tailscale netcheck`), aby šlo odlišit blokovaný odchozí provoz od špatného klíče. (PR #328, `89c1f3f`)
+
 ## 2026.08.25.4 — 2026-08-25
 
 ### Opravy
