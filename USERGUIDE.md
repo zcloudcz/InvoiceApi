@@ -648,11 +648,19 @@ AI asistent zná kontext vaší firmy a umí odpovídat na otázky i provádět 
 | Oblast | Co umí |
 |--------|--------|
 | Faktury | Vyhledat fakturu, zobrazit detail, vypsat seznam faktur podle kritérií |
-| Klienti | Vyhledat klienta, zobrazit detail |
+| Klienti | Vypsat seznam klientů, vyhledat klienta, zobrazit celý detail (adresy, kontakty, bankovní účty, fakturační nastavení), založit nového podle IČO, upravit údaje a smazat klienta. Úprava i smazání se vždy nejdřív ukážou k odsouhlasení — viz níže. |
 | Přijaté faktury | Vyhledat, vypsat seznam |
 | Přehledy a reporty | Shrnout dashboard, vypsat faktury po splatnosti, faktury za období nebo pro konkrétního klienta, spočítat DPH za období |
 | Obecné dotazy | Odpovídat na otázky o funkcích aplikace |
 | Navigace | Otevřít libovolnou stránku aplikace — faktury, přijaté faktury, klienty, platby, šablony, DPH a daně, upomínky i nastavení („Otevři DPH přiznání", „Založ novou fakturu pro klienta XYZ"). Stránky správce systému a přihlašovací obrazovky asistent neotevírá. |
+
+Než asistent cokoli **změní nebo smaže**, nejdřív vám ukáže, co přesně se stane
+(„Název se změní z X na Y"), a počká na váš souhlas. Teprve když potvrdíte, změnu
+provede. Dokud nepotvrdíte, v datech se nezmění nic.
+
+Smazání klienta je „měkké" — klient se skryje, ale nezmizí, takže starší faktury
+na něj dál odkazují. Klienta, který už nějakou fakturu má, smazat nelze vůbec;
+asistent vám to řekne. Skrytého klienta lze vrátit zpět („Obnov klienta X").
 
 Asistent navíc ví, **kde právě stojíte** — jakou stránku máte otevřenou a jestli je na ní
 konkrétní doklad — a zná dnešní datum. Můžete se tedy ptát „kdy je tahle faktura splatná"
