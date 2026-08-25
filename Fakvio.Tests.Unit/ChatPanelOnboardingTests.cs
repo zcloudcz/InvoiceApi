@@ -105,6 +105,48 @@ public class ChatPanelOnboardingTests : BunitContext, IAsyncLifetime
         cut.FindAll(".chat-bubble-assistant").Count.ShouldBe(1);
     }
 
+    [Fact]
+    public void Welcome_ArrivesOnALaterRender_LikeInProduction()
+    {
+        // The path production always takes: MainLayout only sets the parameter once
+        // GET /api/readiness has answered, so the panel is constructed without it first.
+        // That is the whole reason the seeding lives in OnParametersSet rather than
+        // OnInitializedAsync — a first render carrying the welcome never happens for real.
+        var cut = Render<ChatPanel>();
+
+        // Wait out initialization first, otherwise "no bubble yet" is trivially true.
+        cut.WaitForAssertion(() => cut.Markup.ShouldNotContain("Chat_NoProviders_Title"));
+        cut.FindAll(".chat-bubble-assistant").ShouldBeEmpty();
+
+        cut.Render(p => p.Add(c => c.OnboardingWelcome, "Chybí bankovní účet."));
+
+        cut.FindAll(".chat-bubble-assistant").Count.ShouldBe(1);
+        cut.Markup.ShouldContain("Chybí bankovní účet.");
+    }
+
+    [Fact]
+    public async Task Welcome_IsNotSeededAgain_AfterTheUserStartsANewConversation()
+    {
+        var cut = Render<ChatPanel>(p => p.Add(
+            c => c.OnboardingWelcome, "Chybí bankovní účet."));
+
+        cut.WaitForAssertion(() => cut.FindAll(".chat-bubble-assistant").Count.ShouldBe(1));
+
+        // "New conversation" empties _messages (ChatPanel.StartNewConversation), which is the
+        // only other thing the seeding guard could read to tell "already greeted" apart from
+        // "fresh panel". Without the _welcomeShown flag the greeting comes back here — inside
+        // a conversation the user has just started on purpose.
+        await cut.InvokeAsync(() => cut.Find("button[title='Chat_NewConversation']").Click());
+
+        cut.FindAll(".chat-bubble-assistant").ShouldBeEmpty();
+
+        // MainLayout re-renders on every drawer toggle and company-list change, and the
+        // parameter is still set — that re-render is what would re-seed.
+        cut.Render(p => p.Add(c => c.OnboardingWelcome, "Chybí bankovní účet."));
+
+        cut.FindAll(".chat-bubble-assistant").ShouldBeEmpty();
+    }
+
     /// <summary>
     /// Answers the two calls <see cref="ChatPanel"/> makes while initializing. The provider
     /// list must not be empty — an empty one switches the panel to the "no AI provider

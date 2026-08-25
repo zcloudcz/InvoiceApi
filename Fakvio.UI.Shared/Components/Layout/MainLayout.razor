@@ -358,11 +358,14 @@
             return;
 
         _onboardingWelcome = welcome;
-        await JS.InvokeVoidAsync("sessionStorage.setItem", OnboardingShownStorageKey, "true");
 
         // Goes through SetChatOpenAsync so the panel also stays open on the next page load —
         // the user is in the middle of a conversation until the setup is done.
         await SetChatOpenAsync(true);
+
+        // Marked as greeted only after the panel is actually open. The other order would burn
+        // the session flag on a failed JS interop, and the user would never see the welcome.
+        await JS.InvokeVoidAsync("sessionStorage.setItem", OnboardingShownStorageKey, "true");
         StateHasChanged();
     }
 

@@ -230,6 +230,11 @@ public static class AiSystemPrompt
     /// <c>IConfirmableChatTool</c> answer the first call with a preview and write nothing
     /// until they are called again (issue #212). A model that does not know this reports
     /// the value as saved when it is not.
+    ///
+    /// "Never send the user to a settings page" holds for every gap the onboarding path can
+    /// actually raise — the one exception, ISSUER_MISSING, has no tool because it cannot occur:
+    /// <c>AuthService</c> creates the issuer during registration (AuthService.cs:223). If that
+    /// ever changes, this line needs a carve-out before a create_issuer tool exists.
     /// </summary>
     public const string OnboardingInstructions = """
         ONBOARDING (the setup above is unfinished — finishing it is the user's first priority):
