@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Blazored.LocalStorage;
@@ -34,6 +34,10 @@ public class SetupChecklistTests : BunitContext, IAsyncLifetime
     /// the deferral for every existing user, so it should cost a failing test.
     /// </summary>
     private const string DeferStorageKey = "setupChecklistDeferred";
+
+    /// <summary>Two companies of one tenant — the dashboard reports for all of them at once.</summary>
+    private const string FirstIssuerName = "První firma s.r.o.";
+    private const string SecondIssuerName = "Druhá firma s.r.o.";
 
     private readonly ReadinessBackendHandler _backend = new();
     private readonly ILocalStorageService _storage = Substitute.For<ILocalStorageService>();
@@ -269,16 +273,72 @@ public class SetupChecklistTests : BunitContext, IAsyncLifetime
         });
     }
 
+    [Fact]
+    public void DeferredGuide_CountsIssuesNotGroups_SoTheCollapsedReminderStaysHonest()
+    {
+        // Three issues in two groups, on purpose: counting groups would produce an equally
+        // plausible-looking number. Once the guide is parked this button is the whole visible
+        // surface, so a wrong count here is what the user reads every day until they reopen it.
+        _backend.Report = ReportWith(
+            Issue(ReadinessCodes.IssuerAddressIncomplete, EReadinessSeverity.Blocking, "/my-company"),
+            Issue(ReadinessCodes.IssuerBankAccountMissing, EReadinessSeverity.Blocking, "/my-company"),
+            Issue(ReadinessCodes.EpoHeaderIncomplete, EReadinessSeverity.Warning, "/company-settings"));
+        _storage.GetItemAsync<bool>(DeferStorageKey).Returns(true);
+
+        var cut = Render<SetupChecklist>();
+
+        cut.WaitForAssertion(() =>
+            cut.Find("button").TextContent.ShouldContain("SetupChecklist_Title (3)"));
+    }
+
+    [Fact]
+    public void IssuesOfSeveralIssuers_NameTheirCompany_SoTheTenantWideListStaysUnambiguous()
+    {
+        // The dashboard speaks for the whole tenant, so one rule can fire for two companies at
+        // once. Without the issuer name both rows read identically and neither says who to fix.
+        // The name is appended by the shared ReadinessIssueText.Describe — a component that
+        // localized the code itself would look right in every other test in this file.
+        _backend.Report = ReportWith(
+            Issue(ReadinessCodes.IssuerBankAccountMissing, EReadinessSeverity.Blocking,
+                "/my-company", issuerName: FirstIssuerName),
+            Issue(ReadinessCodes.IssuerBankAccountMissing, EReadinessSeverity.Blocking,
+                "/my-company", issuerName: SecondIssuerName));
+
+        var cut = Render<SetupChecklist>();
+
+        cut.WaitForAssertion(() =>
+        {
+            cut.Markup.ShouldContain(FirstIssuerName);
+            cut.Markup.ShouldContain(SecondIssuerName);
+        });
+    }
+
+    [Fact]
+    public void IssueWithoutMissingFields_RendersNoFieldList_SoNoBlankLineIsLeftBehind()
+    {
+        // MissingFields is optional: a rule such as "no active number sequence" names no field.
+        // Rendering the caption unconditionally would leave an empty grey line under the item.
+        _backend.Report = ReportWith(
+            Issue(ReadinessCodes.NumberSequenceMissing, EReadinessSeverity.Blocking, "/number-sequences"));
+
+        var cut = Render<SetupChecklist>();
+        cut.WaitForAssertion(() => cut.FindAll("div.setup-checklist-group").Count.ShouldBe(1));
+
+        cut.FindAll(".mud-typography-caption").ShouldBeEmpty();
+    }
+
     /// <summary>Convenience factory for a readiness issue with the fields the checklist reads.</summary>
     private static ReadinessIssueDto Issue(
         string code,
         EReadinessSeverity severity,
         string fixRoute,
+        string? issuerName = null,
         params string[] missingFields) => new()
         {
             Code = code,
             Severity = severity,
             FixRoute = fixRoute,
+            IssuerName = issuerName,
             MissingFields = missingFields.ToList()
         };
 

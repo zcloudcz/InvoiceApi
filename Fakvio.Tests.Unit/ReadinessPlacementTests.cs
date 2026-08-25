@@ -108,6 +108,18 @@ public class ReadinessPlacementTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
+    public void Dashboard_HasNoReadinessBanner_SoTheSameItemsAreNotAnnouncedTwice()
+    {
+        // #210 replaced the banner on this page with the deferrable checklist. Both read the very
+        // same report, so putting the banner back would list every item twice — and the copy the
+        // user cannot defer would outlive the one they parked.
+        var cut = Render<Home>();
+
+        cut.WaitForAssertion(() => cut.HasComponent<Stub<SetupChecklist>>().ShouldBeTrue());
+        cut.FindComponents<Stub<ReadinessBanner>>().ShouldBeEmpty();
+    }
+
+    [Fact]
     public void DraftInvoice_HostsTheReadinessBanner_SoTheRefusalIsSeenBeforeTheIssueClick()
     {
         _backend.Invoice = NewInvoice(EInvoiceStatus.Draft);
