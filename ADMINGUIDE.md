@@ -738,8 +738,10 @@ se režim vzal — podle toho víte, který klíč opravit.
 
 Aplikace běží ve **dvou oddělených prostředích**. Kód je stejný, Azure zdroje ne — testovací
 prostředí má vlastní Function App, vlastní frontend hosting, vlastní JWT klíč i vlastní
-deploy credentials. Nic se mezi prostředími nesdílí, takže test nemůže sáhnout na produkční
-data ani na produkční Azure zdroje.
+deploy credentials. Nesdílí se **credentials, Azure zdroje ani data** — test tedy nemůže
+sáhnout na produkční databázi ani na produkční Azure zdroje. Sdílený je naopak kód a ta část
+konfigurace, která se nemá lišit (`JwtSettings__Issuer`/`Audience`, `AresSettings__BaseUrl`);
+rozdíly vypisuje tabulka níž.
 
 Vývojářský pohled (obsah workflow souborů, precedence konfigurace, jak se přepisuje URL API
 v WASM bundlu) je v `DEVGUIDE.md` §9 — tady je jen to, co potřebuje SysAdmin.
@@ -755,6 +757,9 @@ v WASM bundlu) je v `DEVGUIDE.md` §9 — tady je jen to, co potřebuje SysAdmin
 | Zdrojová větev | `TEST-ENV` | `master` |
 | Deploy workflows | `testenv_zcloudinvoicingapi.yml` (backend), `blazorui-test-deploy.yml` (frontend) | `master_zcloudinvoicingapi.yml` (backend), `blazorui-deploy.yml` (frontend) |
 | Databáze | **žádná** (viz Známá omezení) | produkční PostgreSQL |
+
+Větev **`TEST-ENV` na `origin` vzniká až prvním během `/release`** (odbočí z `master`).
+Dokud tam není, testovací deploy workflows nemají co spustit — není to incident.
 
 **Proč test není deployment slot:** produkční Function App běží na plánu **Flex Consumption**,
 který sloty nepodporuje (`az functionapp deployment slot list` to rovnou odmítne). Testovací
@@ -775,18 +780,26 @@ variables), ne ve workflow souborech. Zápis používá dvojité podtržítko m�
 | `JwtSettings__Secret` | **vlastní, nesdílený s produkcí** | Token vydaný produkcí na testu neplatí a naopak. To je záměr — jinak by únik jednoho klíče otevřel obě prostředí. |
 | `JwtSettings__Issuer`, `JwtSettings__Audience` | shodné s produkcí | Liší se jen klíč, ne formát tokenu. |
 | `CorsSettings__AllowedOrigins__0` | origin testovacího SWA (viz tabulka výše) | Musí sedět na frontend URL daného prostředí, jinak prohlížeč zablokuje všechna volání API. Při změně URL frontendu se mění i tady. |
-| `ConnectionStrings__DefaultConnection` | `PLACEHOLDER-test-env-has-no-database-yet-see-issue-295` | Placeholder, ne funkční connection string. |
-| `UseAzureAdAuthentication`, `AresSettings__BaseUrl` | shodné s produkcí | |
+| `ConnectionStrings__DefaultConnection` | `Host=test-env-has-no-database.invalid;Port=5432;Database=fakvio_test;Username=placeholder;Password=placeholder;Ssl Mode=Require;Timeout=5;` | Syntakticky platný connection string na **záměrně neexistující host** (TLD `.invalid`). Musí být platný — connection string se parsuje už při startu, nesmysl by hostitele shodil. Skutečná testovací DB je #295. |
+| `UseAzureAdAuthentication` | `false` (produkce: `true`, tedy Entra ID) | Bez databáze není komu vydávat Entra token; placeholder má heslo, takže test jede v režimu `Password`. Změní se spolu s #295. |
+| `AresSettings__BaseUrl` | shodné s produkcí | |
 
 ### Známá omezení testovacího prostředí
 
 - **Testovací prostředí zatím nemá databázi.** Byl to vědomý krok při zřizování (issue #289) —
-  oddělená testovací DB je samostatný úkol (#295). Dokud nevznikne:
-  - `GET /api/diagnostic/health` (§13) vrací **503** a `masterDbCanConnect: false`. Je to
-    **očekávaný stav, ne incident** — nezakládejte kvůli tomu ticket.
-  - **Přihlášení na testu nefunguje** (uživatelé i tenanti žijí v master DB), takže se dá
-    ověřit jen to, co běží bez DB: že se frontend nasadil a načte, že backend odpovídá
-    a že CORS mezi nimi prochází.
+  oddělená testovací DB je samostatný úkol (#295). Connection string proto míří na neexistující
+  host (viz tabulka výše). Důsledky:
+  - **Backend nastartuje a odpovídá.** Připojení selže až při prvním dotazu do databáze, ne při
+    startu. Ověřit se tedy dá, že se frontend nasadil a načte, že backend odpovídá a že **CORS**
+    mezi nimi prochází.
+  - **Přihlášení na testu nefunguje** — uživatelé i tenanti žijí v master DB. Bez přihlášení
+    není ani SysAdmin token, a `GET /api/diagnostic/health` (§13) ho vyžaduje: anonymní volání
+    dostane **401**. To je dnes na testu očekávaná odpověď a zároveň důkaz, že hostitel běží.
+  - S platným tokenem by health vrátil **503** a `databaseConnected: false` (souhrnná vlajka,
+    vždy přítomná). Detail se liší podle toho, jestli se pokus o připojení vrátí, nebo vyhodí
+    výjimku: `masterDbCanConnect: false`, resp. `masterDbError` s textem chyby.
+  - **Kdy zakládat ticket:** když backend neodpovídá vůbec (timeout nebo 5xx přímo z platformy,
+    ne z aplikace). 401 z healthu a nefunkční přihlášení jsou do #295 očekávaný stav.
 - SWA běží na **Free tier** — bez SLA. Pro testovací prostředí je to v pořádku, na produkční
   provoz to není.
 
@@ -799,7 +812,8 @@ variables), ne ve workflow souborech. Zápis používá dvojité podtržítko m�
 | `develop` | `agent-ops` (automaticky při mergi feature PR) | Nenasazuje se nic — `develop` nemá deploy workflow. |
 | `/release` | **člověk** | Otevře promotion PR `develop → TEST-ENV`. **Po jeho mergnutí** se spustí oba testovací deploye (push na `TEST-ENV`). Karty na boardu se nehýbou. |
 | ověření na testu | **člověk** | Viz Známá omezení — bez DB jde ověřit jen deploy, dostupnost a CORS. |
-| `/release-prod` | **člověk** po ověření testu | Otevře promotion PR `TEST-ENV → master`; merge nasadí produkci. Karty `Implemented` → `Approved`. |
+| `/release-prod` — 1. běh | **člověk** po ověření testu | Otevře promotion PR `TEST-ENV → master` a skončí. Merge dělá člověk v GitHubu; merge nasadí produkci. **Karty se zatím nehýbou.** |
+| `/release-prod` — 2. běh | **člověk** po mergnutí release PR | Finalizace boardu: karty v `Implemented`, jejichž merge commit je ancestorem `master`, se přesunou do `Approved` (stejný test i pro story). Bez druhého běhu zůstane board viset v `Implemented`. |
 
 Pravidla, která platí bez výjimky:
 
@@ -813,14 +827,16 @@ Stavový automat obou příkazů je v `.claude/commands/release.md` a
 
 ### Secrets pro deploy a jejich rotace
 
-Všechny žijí v **GitHub → Settings → Secrets and variables → Actions** daného repozitáře.
-V Azure ani v repu jinde nejsou.
+**Hodnoty, které čtou workflows**, žijí v **GitHub → Settings → Secrets and variables →
+Actions** daného repozitáře — v repu nikde jinde nejsou. Zdroje, ze kterých vznikají (deploy
+token SWA, OIDC důvěra a RBAC role), jsou naopak v Azure; proto rotace níž začíná v portálu
+a do GitHubu se výsledek jen zkopíruje.
 
 | Secret | K čemu |
 |--------|--------|
 | `AZUREAPPSERVICE_CLIENTID_TEST`, `AZUREAPPSERVICE_TENANTID_TEST`, `AZUREAPPSERVICE_SUBSCRIPTIONID_TEST` | Přihlášení workflow `testenv_zcloudinvoicingapi.yml` do Azure (OIDC, app registration `zcloudcz-InvoiceApi-TEST`). |
 | `AZURE_STATIC_WEB_APPS_API_TOKEN_TEST` | Deploy token pro `blazorui-test-deploy.yml` → SWA `fakvio-test-ui`. |
-| `AZUREAPPSERVICE_*` bez přípony `_TEST` | Totéž pro produkční `master_zcloudinvoicingapi.yml`. Produkční frontend token nepotřebuje — GitHub Pages se nasazují vestavěným `GITHUB_TOKEN`. |
+| `AZUREAPPSERVICE_CLIENTID_71CB3DED09D246528906A346340AC1F8`, `AZUREAPPSERVICE_TENANTID_0F744DC7C56040999B540311235A4E45`, `AZUREAPPSERVICE_SUBSCRIPTIONID_0A2C19BC7D294FFA80F06B93F1D614E4` | Totéž pro produkční `master_zcloudinvoicingapi.yml`. GUID příponu generuje Azure Portál při napojení deploy centra — proto se nejmenují symetricky k `_TEST`. Produkční frontend token nepotřebuje: GitHub Pages se nasazují vestavěným `GITHUB_TOKEN`. |
 
 **Rozsah oprávnění testovacího OIDC** (nastaveno při zřízení, issue #289): federated credential
 je vázaný na subject `repo:zcloudcz/InvoiceApi:ref:refs/heads/TEST-ENV` a role **Contributor je
@@ -833,8 +849,10 @@ vůbec a ani po přihlášení nedosáhne na produkční zdroje.
    nebo `az staticwebapp secrets reset-api-key --name fakvio-test-ui`.
 2. Nový token vložte do secretu `AZURE_STATIC_WEB_APPS_API_TOKEN_TEST`
    (`gh secret set AZURE_STATIC_WEB_APPS_API_TOKEN_TEST`).
-3. Reset zneplatní starý token okamžitě — ověřte ručním spuštěním
-   `blazorui-test-deploy.yml` (Actions → Run workflow).
+3. Reset zneplatní starý token okamžitě; nový se projeví **při dalším pushi do `TEST-ENV`**
+   (typicky další `/release`) — tehdy taky poznáte, že secret sedí. Ruční spuštění z Actions →
+   Run workflow zatím nejde: GitHub nabízí `workflow_dispatch` jen u workflows, které jsou
+   na default branchi (`master`), a oba testovací tam doputují až prvním `/release-prod`.
 
 OIDC credentials rotaci nepotřebují: app registration nemá client secret, důvěra stojí na
 federated credential. Mění se jen tehdy, když se mění samotná app registration nebo název větve.
