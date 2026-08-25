@@ -23,6 +23,12 @@ namespace Fakvio.Tests.Unit.McpServer;
 public class ToolDiscoveryTests
 {
     /// <summary>
+    /// Protocol tool names the SDK generates today: lowercase words joined by single underscores
+    /// (<c>get_readiness</c>). Measured against both SDK 1.0.0 and 2.2.0 during the #238 upgrade.
+    /// </summary>
+    private const string SnakeCaseToolName = "^[a-z][a-z0-9]*(_[a-z0-9]+)*$";
+
+    /// <summary>
     /// Builds the tool list the way <c>Program.cs</c> does — register <see cref="IFakvioApiClient"/>
     /// first, then scan the McpServer assembly for <c>[McpServerToolType]</c> classes and register
     /// their tools into DI.
@@ -35,14 +41,22 @@ public class ToolDiscoveryTests
     /// parameter is injected. A plain substitute is enough here — nothing calls it, only its
     /// presence in the container is observed.
     /// </summary>
-    private static IReadOnlyList<McpServerTool> DiscoverTools()
+    private static IReadOnlyList<McpServerTool> DiscoverTools() =>
+        // WithToolsFromAssembly registers one McpServerTool singleton per discovered method.
+        BuildServerContainer().GetServices<McpServerTool>().ToList();
+
+    /// <summary>
+    /// The container behind <see cref="DiscoverTools"/>, handed out whole so a test can also ask it
+    /// <c>IServiceProviderIsService</c> — the very question the SDK asks when deciding whether a tool
+    /// parameter is injected or has to be supplied by the AI client.
+    /// </summary>
+    private static ServiceProvider BuildServerContainer()
     {
         var services = new ServiceCollection();
         services.AddSingleton(Substitute.For<IFakvioApiClient>());
         services.AddMcpServer().WithToolsFromAssembly(McpServerAssembly);
 
-        // WithToolsFromAssembly registers one McpServerTool singleton per discovered method.
-        return services.BuildServiceProvider().GetServices<McpServerTool>().ToList();
+        return services.BuildServiceProvider();
     }
 
     private static Assembly McpServerAssembly => typeof(Fakvio.McpServer.Tools.ReadinessTools).Assembly;
@@ -54,12 +68,7 @@ public class ToolDiscoveryTests
         // regardless of whether its class carries [McpServerToolType]. Deriving it by reflection
         // instead of hard-coding a number keeps the test from going stale every time a tool is
         // added — while still failing loudly if the SDK stops seeing one.
-        var annotated = McpServerAssembly.GetTypes()
-            .SelectMany(t => t.GetMethods(BindingFlags.Public | BindingFlags.NonPublic
-                                          | BindingFlags.Static | BindingFlags.Instance))
-            .Where(m => m.GetCustomAttribute<McpServerToolAttribute>() != null)
-            .Select(m => m.Name)
-            .ToList();
+        var annotated = AnnotatedToolMethods().Select(m => m.Name).ToList();
 
         annotated.ShouldNotBeEmpty("The assembly must contain [McpServerTool] methods at all.");
 
@@ -115,6 +124,141 @@ public class ToolDiscoveryTests
                 $"Tool '{tool.ProtocolTool.Name}' exposes its injected IFakvioApiClient in the " +
                 "input schema — the SDK is no longer resolving it from DI, so the tool is " +
                 "uncallable for an AI client.");
+        }
+    }
+
+    /// <summary>
+    /// Every <c>[McpServerTool]</c> method in the McpServer assembly, whatever its class or visibility.
+    /// Derived by reflection so the expectation cannot go stale as #241 / #242 add tools.
+    /// </summary>
+    private static IReadOnlyList<MethodInfo> AnnotatedToolMethods() =>
+        McpServerAssembly.GetTypes()
+            .SelectMany(t => t.GetMethods(BindingFlags.Public | BindingFlags.NonPublic
+                                          | BindingFlags.Static | BindingFlags.Instance))
+            .Where(m => m.GetCustomAttribute<McpServerToolAttribute>() != null)
+            .ToList();
+
+    /// <summary>
+    /// The letters of a name, with casing and underscores thrown away — <c>get_vat_report</c> and
+    /// <c>GetVatReport</c> both become <c>getvatreport</c>.
+    ///
+    /// Junior note: this is how a protocol tool is paired with the method it came from without
+    /// baking the SDK's casing rule into the test. A rule like "underscore before every capital"
+    /// would start lying the day someone writes an acronym method name such as <c>GetVATReport</c>,
+    /// and the test would fail on a naming style rather than on a real regression.
+    /// </summary>
+    private static string LettersOf(string name) => name.Replace("_", string.Empty).ToLowerInvariant();
+
+    /// <summary>
+    /// Pairs each annotated method with the tool the SDK generated for it, failing loudly when a
+    /// method has no counterpart (renamed, collapsed, or silently dropped by the SDK).
+    /// </summary>
+    private static IEnumerable<(MethodInfo Method, McpServerTool Tool)> PairToolsWithTheirMethods(
+        IServiceProvider container)
+    {
+        var toolsByLetters = container.GetServices<McpServerTool>()
+            .ToDictionary(tool => LettersOf(tool.ProtocolTool.Name));
+
+        foreach (var method in AnnotatedToolMethods())
+        {
+            toolsByLetters.TryGetValue(LettersOf(method.Name), out var tool).ShouldBeTrue(
+                $"No discovered tool corresponds to method '{method.Name}'. Discovered names: " +
+                $"[{string.Join(", ", toolsByLetters.Values.Select(t => t.ProtocolTool.Name).Order())}].");
+
+            yield return (method, tool!);
+        }
+    }
+
+    /// <summary>
+    /// The names an AI client sees as inputs of the tool. No fallback: a tool whose schema lost its
+    /// <c>properties</c> object reports an empty surface, which is exactly the regression the callers
+    /// of this helper compare against the parameters the method actually declares.
+    /// </summary>
+    private static IReadOnlyList<string> SchemaPropertyNames(McpServerTool tool) =>
+        tool.ProtocolTool.InputSchema.TryGetProperty("properties", out var properties)
+            ? properties.EnumerateObject().Select(property => property.Name).Order().ToList()
+            : [];
+
+    private static IReadOnlyList<string> SchemaRequiredNames(McpServerTool tool) =>
+        tool.ProtocolTool.InputSchema.TryGetProperty("required", out var required)
+            ? required.EnumerateArray().Select(name => name.GetString()!).Order().ToList()
+            : [];
+
+    /// <summary>
+    /// Parameters the AI client has to fill in: everything the container cannot inject and that is
+    /// not the framework-supplied cancellation token.
+    ///
+    /// Junior note: if a tool ever takes another parameter the SDK supplies by itself (an
+    /// <c>IMcpServer</c>, a <c>RequestContext&lt;&gt;</c>, an <c>IProgress&lt;&gt;</c>), add its type
+    /// to the exclusions here - otherwise the callers below expect it as an input the AI must send.
+    /// </summary>
+    private static IEnumerable<ParameterInfo> ClientSuppliedParameters(
+        MethodInfo method, IServiceProviderIsService isService) =>
+        method.GetParameters()
+            .Where(p => p.ParameterType != typeof(CancellationToken))
+            .Where(p => !isService.IsService(p.ParameterType));
+
+    [Fact]
+    public void EveryToolName_IsTheProtocolSpellingOfItsMethodName()
+    {
+        // Counting tools (the test above) cannot tell a healthy surface from one the SDK renamed or
+        // collapsed: 37 tools called anything at all still count as 37, and every AI client prompt,
+        // DEVGUIDE §4.9 table and downstream task (#241 / #242) is written against the names.
+        // The expectation is derived from the method names, so new tools need no edit here.
+        var container = BuildServerContainer();
+
+        foreach (var (method, tool) in PairToolsWithTheirMethods(container))
+        {
+            tool.ProtocolTool.Name.ShouldMatch(SnakeCaseToolName,
+                $"Tool name '{tool.ProtocolTool.Name}' (method '{method.Name}') is not snake_case — " +
+                "the SDK changed its naming convention and every client prompt now names a tool " +
+                "that no longer exists.");
+        }
+    }
+
+    [Fact]
+    public void EveryToolSchema_ExposesExactlyTheParametersTheAiClientMustSupply()
+    {
+        // The shape half of the surface snapshot. Expected properties come from the method signature
+        // minus whatever the container injects, which is the same rule the SDK applies — so this also
+        // covers the injected API client without naming it, and fails on a schema that silently lost
+        // its properties, gained an internal one, or renamed an existing input.
+        var container = BuildServerContainer();
+        var isService = container.GetRequiredService<IServiceProviderIsService>();
+
+        foreach (var (method, tool) in PairToolsWithTheirMethods(container))
+        {
+            var expected = ClientSuppliedParameters(method, isService)
+                .Select(p => p.Name!)
+                .Order()
+                .ToList();
+
+            SchemaPropertyNames(tool).ShouldBe(expected,
+                $"Input schema of tool '{tool.ProtocolTool.Name}' no longer matches the parameters " +
+                $"of method '{method.Name}'.");
+        }
+    }
+
+    [Fact]
+    public void ToolParametersWithDefaults_StayOptionalInTheSchema()
+    {
+        // Optionality is part of the contract, not decoration: most tools take a page size, a filter
+        // or an issuer ID with a C# default value. An SDK that marked those required would make every
+        // such tool fail validation until the AI client guessed a value for each one.
+        var container = BuildServerContainer();
+        var isService = container.GetRequiredService<IServiceProviderIsService>();
+
+        foreach (var (method, tool) in PairToolsWithTheirMethods(container))
+        {
+            var expectedRequired = ClientSuppliedParameters(method, isService)
+                .Where(p => !p.HasDefaultValue)
+                .Select(p => p.Name!)
+                .Order()
+                .ToList();
+
+            SchemaRequiredNames(tool).ShouldBe(expectedRequired,
+                $"Required inputs of tool '{tool.ProtocolTool.Name}' no longer match the parameters " +
+                $"of method '{method.Name}' that have no default value.");
         }
     }
 }
