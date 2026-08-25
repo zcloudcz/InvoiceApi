@@ -763,7 +763,7 @@ v WASM bundlu) je v `DEVGUIDE.md` §9 — tady je jen to, co potřebuje SysAdmin
 | | **Test** | **Produkce** |
 |---|---|---|
 | Frontend hosting | Azure Static Web App `fakvio-test-ui` (Free tier) | GitHub Pages (custom doména z `CNAME` v repu) |
-| Frontend URL | https://wonderful-meadow-0eb3ada03.7.azurestaticapps.net | https://app.fakvio.cz |
+| Frontend URL | https://test.fakvio.cz (custom doména; technický host SWA `wonderful-meadow-0eb3ada03.7.azurestaticapps.net`, CNAME u Forpsi) | https://app.fakvio.cz |
 | Backend | Function App `zcloudinvoicingapi-test` | Function App `zcloudinvoicingapi` |
 | Backend URL | https://zcloudinvoicingapi-test.azurewebsites.net | https://zcloudinvoicingapi-crcqggehb7a6ggdv.westeurope-01.azurewebsites.net |
 | Zdrojová větev | `TEST-ENV` | `master` |
@@ -792,7 +792,7 @@ variables), ne ve workflow souborech. Zápis používá dvojité podtržítko m�
 |-----------|------|----------|
 | `JwtSettings__Secret` | **vlastní, nesdílený s produkcí** | Token vydaný produkcí na testu neplatí a naopak. To je záměr — jinak by únik jednoho klíče otevřel obě prostředí. |
 | `JwtSettings__Issuer`, `JwtSettings__Audience` | shodné s produkcí | Liší se jen klíč, ne formát tokenu. |
-| `CorsSettings__AllowedOrigins__0` | origin testovacího SWA (viz tabulka výše) | Musí sedět na frontend URL daného prostředí, jinak prohlížeč zablokuje všechna volání API. Při změně URL frontendu se mění i tady. |
+| `CorsSettings__AllowedOrigins__0` / `__1` | `https://wonderful-meadow-0eb3ada03.7.azurestaticapps.net` a `https://test.fakvio.cz` (oba originy testovacího frontendu) | Musí sedět na frontend URL daného prostředí, jinak prohlížeč zablokuje všechna volání API. Při změně URL frontendu se mění i tady. |
 | `ConnectionStrings__DefaultConnection` | `Host=test-env-has-no-database.invalid;Port=5432;Database=fakvio_test;Username=placeholder;Password=placeholder;Ssl Mode=Require;Timeout=5;` | Syntakticky platný connection string na **záměrně neexistující host** (TLD `.invalid`). Musí být platný — connection string se parsuje už při startu, nesmysl by hostitele shodil. Skutečná testovací DB je #295. |
 | `UseAzureAdAuthentication` | `false` (produkce: `true`, tedy Entra ID) | Bez databáze není komu vydávat Entra token; placeholder má heslo, takže test jede v režimu `Password`. Je to **legacy klíč** — kanonický je dnes `Database__AuthMode` (§13), ten test zatím nastavený nemá, takže health hlásí `authModeSource: UseAzureAdAuthentication (legacy)`. Při #295 se oba klíče musí měnit společně: když si budou odporovat, aplikace při startu spadne. |
 | `AresSettings__BaseUrl` | shodné s produkcí | |
