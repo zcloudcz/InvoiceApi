@@ -1,4 +1,4 @@
-using Fakvio.Application.Service;
+﻿using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.Readiness;
 using Fakvio.Domain.Entities;
 using Fakvio.Domain.Enums;
@@ -639,6 +639,23 @@ public class ChatContextBuilderTests : IDisposable
         var prompt = await _builder.BuildSystemPromptAsync();
 
         prompt.ShouldNotContain(AiSystemPrompt.OnboardingInstructions);
+    }
+
+    [Fact]
+    public async Task BuildSystemPrompt_WithACustomSysAdminPrompt_StillCarriesTheOnboardingInstructions()
+    {
+        // A custom prompt replaces the built-in main block whole (AiSystemPrompt.Compose), so
+        // anything written there is one SysAdmin edit away from disappearing. Onboarding lives
+        // in the situational block for exactly that reason — a brand new tenant must not lose
+        // its only guidance because someone tuned the assistant's tone.
+        StoredInstructions("Answer only in haiku.", null);
+        ReadinessIssues(Blocking(ReadinessCodes.IssuerBankAccountMissing, "/my-company"));
+
+        var prompt = await _builder.BuildSystemPromptAsync();
+
+        prompt.ShouldContain("Answer only in haiku.");
+        prompt.ShouldNotContain(FakeToolLine); // proves the custom prompt really did replace the block
+        prompt.ShouldContain(AiSystemPrompt.OnboardingInstructions);
     }
 
     [Fact]

@@ -1,6 +1,7 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Json;
 using Bunit;
+using Fakvio.Contracts.Dto.Chat;
 using Fakvio.UI.Shared;
 using Fakvio.UI.Shared.Components.Chat;
 using Fakvio.UI.Shared.Services;
@@ -26,6 +27,12 @@ namespace Fakvio.Tests.Unit;
 /// </summary>
 public class ChatPanelOnboardingTests : BunitContext, IAsyncLifetime
 {
+    /// <summary>Stand-in for whatever ChatOnboarding.BuildWelcome composed — the panel only forwards it.</summary>
+    private const string WelcomeText = "Chybí bankovní účet.";
+
+    /// <summary>The one message of the saved conversation the history test opens.</summary>
+    private const string SavedUserMessage = "Kolik mám nezaplacených faktur?";
+
     private readonly ChatBackendHandler _backend = new();
 
     // MudBlazor's PopoverService only supports async disposal; xunit disposes test classes
@@ -62,14 +69,14 @@ public class ChatPanelOnboardingTests : BunitContext, IAsyncLifetime
     public void UnfinishedTenant_SeesTheAssistantGreetFirst_NotAnEmptyPanel()
     {
         var cut = Render<ChatPanel>(p => p.Add(
-            c => c.OnboardingWelcome, "Chybí bankovní účet."));
+            c => c.OnboardingWelcome, WelcomeText));
 
         cut.WaitForAssertion(() =>
         {
             // Rendered as a normal assistant bubble — the greeting must look like the
             // assistant talking, not like a banner bolted onto the chat.
             cut.FindAll(".chat-bubble-assistant").Count.ShouldBe(1);
-            cut.Markup.ShouldContain("Chybí bankovní účet.");
+            cut.Markup.ShouldContain(WelcomeText);
         });
     }
 
@@ -96,11 +103,11 @@ public class ChatPanelOnboardingTests : BunitContext, IAsyncLifetime
         // MainLayout re-renders on every drawer toggle and company-list change; a greeting
         // that piles up one bubble per render would be worse than no greeting at all.
         var cut = Render<ChatPanel>(p => p.Add(
-            c => c.OnboardingWelcome, "Chybí bankovní účet."));
+            c => c.OnboardingWelcome, WelcomeText));
 
         cut.WaitForAssertion(() => cut.FindAll(".chat-bubble-assistant").Count.ShouldBe(1));
 
-        cut.Render(p => p.Add(c => c.OnboardingWelcome, "Chybí bankovní účet."));
+        cut.Render(p => p.Add(c => c.OnboardingWelcome, WelcomeText));
 
         cut.FindAll(".chat-bubble-assistant").Count.ShouldBe(1);
     }
@@ -118,17 +125,17 @@ public class ChatPanelOnboardingTests : BunitContext, IAsyncLifetime
         cut.WaitForAssertion(() => cut.Markup.ShouldNotContain("Chat_NoProviders_Title"));
         cut.FindAll(".chat-bubble-assistant").ShouldBeEmpty();
 
-        cut.Render(p => p.Add(c => c.OnboardingWelcome, "Chybí bankovní účet."));
+        cut.Render(p => p.Add(c => c.OnboardingWelcome, WelcomeText));
 
         cut.FindAll(".chat-bubble-assistant").Count.ShouldBe(1);
-        cut.Markup.ShouldContain("Chybí bankovní účet.");
+        cut.Markup.ShouldContain(WelcomeText);
     }
 
     [Fact]
     public async Task Welcome_IsNotSeededAgain_AfterTheUserStartsANewConversation()
     {
         var cut = Render<ChatPanel>(p => p.Add(
-            c => c.OnboardingWelcome, "Chybí bankovní účet."));
+            c => c.OnboardingWelcome, WelcomeText));
 
         cut.WaitForAssertion(() => cut.FindAll(".chat-bubble-assistant").Count.ShouldBe(1));
 
@@ -142,18 +149,52 @@ public class ChatPanelOnboardingTests : BunitContext, IAsyncLifetime
 
         // MainLayout re-renders on every drawer toggle and company-list change, and the
         // parameter is still set — that re-render is what would re-seed.
-        cut.Render(p => p.Add(c => c.OnboardingWelcome, "Chybí bankovní účet."));
+        cut.Render(p => p.Add(c => c.OnboardingWelcome, WelcomeText));
 
         cut.FindAll(".chat-bubble-assistant").ShouldBeEmpty();
     }
 
+    [Fact]
+    public async Task Welcome_IsNotSeededIntoAConversationTheUserOpened()
+    {
+        // The race production can actually lose: the panel is already open, the user picks a
+        // saved conversation from the history, and only then does GET /api/readiness answer.
+        // Seeding the greeting at that point would drop a "your setup is unfinished" bubble
+        // into the middle of somebody else's dialogue, on top of the history they just loaded.
+        var cut = Render<ChatPanel>();
+
+        await OpenSavedConversationAsync(cut);
+
+        cut.Render(p => p.Add(c => c.OnboardingWelcome, WelcomeText));
+
+        cut.Markup.ShouldContain(SavedUserMessage);
+        cut.Markup.ShouldNotContain(WelcomeText);
+        cut.FindAll(".chat-bubble-assistant").ShouldBeEmpty();
+    }
+
     /// <summary>
-    /// Answers the two calls <see cref="ChatPanel"/> makes while initializing. The provider
-    /// list must not be empty — an empty one switches the panel to the "no AI provider
-    /// configured" screen, which would hide the greeting for an unrelated reason.
+    /// Walks the panel the way the user does: history toggle → click the one saved
+    /// conversation → its messages are on screen. Clicks go through InvokeAsync because a
+    /// Find-then-Click outside the renderer's dispatcher is the shape behind flake #349.
+    /// </summary>
+    private static async Task OpenSavedConversationAsync(IRenderedComponent<ChatPanel> cut)
+    {
+        await cut.InvokeAsync(() => cut.Find("button[title='History']").Click());
+        await cut.InvokeAsync(() => cut.Find(".mud-list-item").Click());
+
+        cut.WaitForAssertion(() => cut.Markup.ShouldContain(SavedUserMessage));
+    }
+
+    /// <summary>
+    /// Answers the calls <see cref="ChatPanel"/> makes while initializing, plus the history
+    /// endpoints the "already has messages" test walks through. The provider list must not be
+    /// empty — an empty one switches the panel to the "no AI provider configured" screen,
+    /// which would hide the greeting for an unrelated reason.
     /// </summary>
     private sealed class ChatBackendHandler : HttpMessageHandler
     {
+        private const long SavedConversationId = 7;
+
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -162,14 +203,26 @@ public class ChatPanelOnboardingTests : BunitContext, IAsyncLifetime
             HttpContent content = path switch
             {
                 "/api/chat/providers" => JsonContent.Create(new List<string> { "Claude" }),
-                "/api/chat/conversations" => JsonContent.Create(new List<ChatConversationListStub>()),
+                "/api/chat/conversations" => JsonContent.Create(new List<ChatConversationListDto>
+                {
+                    new() { Id = SavedConversationId, Title = "Faktury", MessageCount = 1 }
+                }),
+                // Detail of the one saved conversation, whatever id the panel asks for.
+                _ when path.StartsWith("/api/chat/conversations/") => JsonContent.Create(
+                    new ChatConversationDto
+                    {
+                        Id = SavedConversationId,
+                        Title = "Faktury",
+                        MessageCount = 1,
+                        // A user message on purpose: it leaves the assistant-bubble count at
+                        // zero, so a greeting seeded by mistake is the only thing that can
+                        // raise it.
+                        Messages = [new ChatMessageDto { Role = "User", Content = SavedUserMessage }]
+                    }),
                 _ => JsonContent.Create(new { })
             };
 
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = content });
         }
     }
-
-    /// <summary>Empty stand-in for the conversation list payload — the tests need no history.</summary>
-    private sealed class ChatConversationListStub;
 }
