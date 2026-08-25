@@ -181,6 +181,10 @@ catch (Exception ex)
     // Do not crash the host: timer triggers and the health endpoint should still answer so the
     // failure is diagnosable. The migration below will fail too and say the same thing.
     tunnelLogger.LogError(ex, "Startup: Tailscale tunnel failed — database unreachable until resolved");
+    // The line above carries the stack trace but only reaches the worker logger, which App Insights
+    // does not collect today; this second, short one goes to stdout as well (Host.Function.Console),
+    // which is where the tunnel is actually diagnosed in Azure. ex.Message never carries the key.
+    TailscaleTunnel.Milestone(tunnelLogger, $"failed: {ex.Message}", LogLevel.Error);
 }
 
 // ── Startup database migration (master DB only) ───────────────────────────
