@@ -1178,7 +1178,10 @@ Pět toolů: tři nad `IReminderService` (`list_reminders`, `get_reminder_settin
 - **Čtení nastavení nesmí zapisovat.** `GetCompanySettingsAsync` chybějící záznam **založí**
   (výchozí tři úrovně) — to je zápis. `get_reminder_settings` i `BuildPreviewAsync`
   v update toolu proto čtou přes `GetEffectiveSettingsAsync`, které vrací `null`. Založení
-  patří výhradně na zápisovou cestu `ExecuteAsync`, kde si o změnu uživatel řekl.
+  patří výhradně na zápisovou cestu `ExecuteAsync`, kde si o změnu uživatel řekl. I ta si
+  ale existenci záznamu ověří `GetEffectiveSettingsAsync` **před** založením — jinak by
+  potvrzený požadavek na hodnotu rovnou defaultu (`grace_period_days = 7`) záznam založil
+  a pak ohlásil „nic se nezměnilo".
 - **Dvouúrovňová resoluce je v DTO neviditelná.** Dotaz na klienta bez vlastního override
   vrátí firemní default a jediné, co je odliší, je `ReminderSettingsDto.ClientId`.
   `get_reminder_settings` proto explicitně řekne, že klient vlastní nastavení nemá — jinak
@@ -1203,7 +1206,7 @@ Pět toolů: tři nad `IReminderService` (`list_reminders`, `get_reminder_settin
 
 ##### Paritní tabulka chat ↔ MCP (stav k #211, #217, #220, #222 a #227)
 
-Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 29 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
+Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 34 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
 a **MCP server** (`[McpServerTool]`, 37 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
 cílem story #149 je mezeru zavřít. Tabulka je jediný pravdivý seznam toho, co kde chybí;
 **každý nový tool na kterékoli straně sem přidá řádek** (viz §13).

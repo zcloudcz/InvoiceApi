@@ -161,12 +161,23 @@ public class UpdateReminderSettingsTool : IConfirmableChatTool
         if (Validate(parameters) is { } validationError)
             return ChatToolResult.Failure(validationError);
 
+        // Bail out before the read below, which creates the default record when the tenant has
+        // none: a call that names no setting at all must not leave anything stored behind.
+        if (DescribeRequested(parameters).Count == 0)
+            return ChatToolResult.Failure(NothingToChange);
+
+        // Whether anything was stored decides how an otherwise-empty diff has to read, so probe
+        // through the non-creating getter first. Asking for a value that happens to equal the
+        // default is not a no-op when nothing exists yet — the record still gets created, and
+        // reporting NothingToChange after that would tell the user the opposite of what happened.
+        var existed = await _reminderService.GetEffectiveSettingsAsync(null, ct) is not null;
+
         // This is the write path, so creating the default record when the tenant has none is
         // exactly right — the user asked for a setting, and there has to be something to hold it.
         var current = await _reminderService.GetCompanySettingsAsync(ct);
 
         var (dto, changes) = BuildUpdate(current, parameters);
-        if (changes.Count == 0)
+        if (existed && changes.Count == 0)
             return ChatToolResult.Failure(NothingToChange);
 
         var updated = await _reminderService.UpsertSettingsAsync(dto, ct);

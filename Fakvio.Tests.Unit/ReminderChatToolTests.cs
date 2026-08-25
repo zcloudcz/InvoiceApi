@@ -408,6 +408,26 @@ public class ReminderChatToolTests
         executed.ErrorMessage.ShouldContain("No change was requested");
         await service.DidNotReceive()
             .UpsertSettingsAsync(Arg.Any<UpdateReminderSettingsDto>(), Arg.Any<CancellationToken>());
+
+        // Naming no setting must not reach GetCompanySettingsAsync either — it auto-creates the
+        // default record, so an empty call would leave state behind while reporting a failure.
+        await service.DidNotReceive().GetCompanySettingsAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task UpdateReminderSettings_Execute_WithNothingStored_TreatsTheDefaultValueAsAChange()
+    {
+        // Nothing stored yet, and the user asks for the value the created defaults already carry.
+        // The record still gets created, so the answer must be success — not "nothing changed".
+        var service = StubSettings(null);
+        service.GetCompanySettingsAsync(Arg.Any<CancellationToken>()).Returns(BuildSettings());
+
+        var result = await CreateUpdateSettingsTool(service)
+            .ExecuteAsync(new Dictionary<string, string> { ["grace_period_days"] = "7" });
+
+        result.IsSuccess.ShouldBeTrue();
+        await service.Received(1).GetCompanySettingsAsync(Arg.Any<CancellationToken>());
+        CapturedUpsert(service).GracePeriodDays.ShouldBe(7);
     }
 
     [Fact]
