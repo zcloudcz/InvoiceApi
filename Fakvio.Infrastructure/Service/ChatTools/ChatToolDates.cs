@@ -11,14 +11,25 @@ namespace Fakvio.Infrastructure.Service.ChatTools;
 /// culture independent: <c>TryParse</c> would read "03/04/2026" differently on a Czech
 /// workstation than on the (invariant-culture) server.
 ///
+/// The Czech forms accept a single-digit day and month ("15.3.2026", "1.3.2026"); the ISO
+/// form does not, because that one is what the tool schema tells the model to send, and
+/// "2026-3-15" means it ignored the instruction rather than quoted a user.
+///
 /// Junior note: the returned value is always <see cref="DateTimeKind.Utc"/>. Npgsql rejects
 /// <c>Unspecified</c> kinds when comparing against PostgreSQL <c>timestamp with time zone</c>
 /// columns, which is exactly what every date column in this database is.
 /// </summary>
 internal static class ChatToolDates
 {
-    /// <summary>Accepted input formats, in the order the model is most likely to produce them.</summary>
-    private static readonly string[] AcceptedFormats = ["yyyy-MM-dd", "dd.MM.yyyy", "dd/MM/yyyy"];
+    /// <summary>
+    /// Accepted input formats, in the order the model is most likely to produce them.
+    ///
+    /// Junior note on <c>d</c> versus <c>dd</c>: when PARSING, the single-letter specifier
+    /// matches one OR two digits, so <c>d.M.yyyy</c> reads both "15.3.2026" and "15.03.2026".
+    /// The zero-padded <c>dd.MM.yyyy</c> would be the stricter one and reject the first, so
+    /// listing both would be dead weight (issue #271).
+    /// </summary>
+    private static readonly string[] AcceptedFormats = ["yyyy-MM-dd", "d.M.yyyy", "d/M/yyyy"];
 
     /// <summary>
     /// Parses one date parameter. Returns false when the value is missing, blank, or not one

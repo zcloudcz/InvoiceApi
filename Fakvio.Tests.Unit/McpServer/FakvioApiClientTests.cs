@@ -7,6 +7,7 @@ using Fakvio.Contracts.Dto.Dashboard;
 using Fakvio.Contracts.Dto.Email;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Contracts.Dto.InvoiceTemplate;
+using Fakvio.Contracts.Dto.Readiness;
 using Fakvio.Domain.Enums;
 using Fakvio.McpServer.Client;
 using Shouldly;
@@ -322,6 +323,105 @@ public class FakvioApiClientTests : IDisposable
         result.UnpaidAmount.ShouldBe(150000m);
     }
 
+    // ── Readiness tests ────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetReadinessAsync_NoIssuerId_CallsEndpointWithoutQueryString()
+    {
+        _handler.SetupResponse(HttpStatusCode.OK, new ReadinessReportDto());
+
+        await _sut.GetReadinessAsync();
+
+        var url = _handler.LastRequestUri?.ToString() ?? "";
+        url.ShouldEndWith("api/readiness");
+    }
+
+    [Fact]
+    public async Task GetReadinessAsync_WithIssuerId_AppendsItAsQueryParameter()
+    {
+        _handler.SetupResponse(HttpStatusCode.OK, new ReadinessReportDto());
+
+        await _sut.GetReadinessAsync(42);
+
+        _handler.LastRequestUri?.ToString().ShouldContain("api/readiness?issuerId=42");
+    }
+
+    [Fact]
+    public async Task GetReadinessAsync_IncompleteSetup_ReturnsReportWithIssues()
+    {
+        // An unfinished setup is a normal 200 — the report is the answer, not an error.
+        _handler.SetupResponse(HttpStatusCode.OK, new ReadinessReportDto
+        {
+            Issues =
+            [
+                new ReadinessIssueDto
+                {
+                    Code = "ISSUER_MISSING",
+                    Severity = EReadinessSeverity.Blocking,
+                    MissingFields = ["Issuer"],
+                    FixRoute = "/my-company"
+                }
+            ]
+        });
+
+        var result = await _sut.GetReadinessAsync();
+
+        result.ShouldNotBeNull();
+        result.IsReady.ShouldBeFalse();
+        result.Issues.Single().FixRoute.ShouldBe("/my-company");
+    }
+
+    [Fact]
+    public async Task GetReadinessAsync_ReturnsNull_WhenIssuerNotFound()
+    {
+        // 404 is reserved for "this issuerId is not in the tenant" (see ReadinessController).
+        _handler.SetupResponse(HttpStatusCode.NotFound, new { message = "Not found" });
+
+        var result = await _sut.GetReadinessAsync(999);
+
+        result.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task GetReadinessAsync_TenantWide404_Throws_InsteadOfLookingLikeAMissingIssuer()
+    {
+        // Without an issuerId the endpoint never answers 404, so a 404 here is a broken route,
+        // not a domain answer. Swallowing it into null would make the MCP tool tell the user
+        // "Issuer with ID  not found." — an empty ID and a factually wrong diagnosis.
+        _handler.SetupResponse(HttpStatusCode.NotFound, new { message = "Not found" });
+
+        var ex = await Should.ThrowAsync<HttpRequestException>(() => _sut.GetReadinessAsync());
+
+        ex.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task GetReadinessAsync_AlreadyCancelledToken_NeverSendsTheRequest()
+    {
+        // Proves the token reaches the HTTP call itself. The throw alone would not: without
+        // the token on GetAsync the request goes out and only the body read notices. So the
+        // real assertion is that the handler was never reached at all.
+        _handler.SetupResponse(HttpStatusCode.OK, new ReadinessReportDto());
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        await Should.ThrowAsync<OperationCanceledException>(() => _sut.GetReadinessAsync(ct: cts.Token));
+
+        _handler.LastRequestUri.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task GetReadinessAsync_CancelledWhileTheResponseIsInFlight_StopsBeforeDeserializing()
+    {
+        // The second use of the token: reading the body. The handler cancels the caller's
+        // source as it answers, so the response exists but must never be deserialized.
+        _handler.SetupResponse(HttpStatusCode.OK, new ReadinessReportDto());
+        using var cts = new CancellationTokenSource();
+        _handler.CancelWhenSending = cts;
+
+        await Should.ThrowAsync<OperationCanceledException>(() => _sut.GetReadinessAsync(ct: cts.Token));
+    }
+
     // ── Error handling tests ───────────────────────────────────────────
 
     [Fact]
@@ -370,6 +470,13 @@ public class FakvioApiClientTests : IDisposable
         public HttpMethod? LastRequestMethod { get; private set; }
 
         /// <summary>
+        /// When set, the handler cancels this source as it answers — simulating a caller that
+        /// gives up while the response is on the wire. Lets a test prove the token is still
+        /// honoured while the body is being read, not only before the request is sent.
+        /// </summary>
+        public CancellationTokenSource? CancelWhenSending { get; set; }
+
+        /// <summary>
         /// Configure the mock to return a JSON-serialized object with the given status code.
         /// </summary>
         public void SetupResponse<T>(HttpStatusCode statusCode, T body)
@@ -407,9 +514,15 @@ public class FakvioApiClientTests : IDisposable
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
         {
+            // A real handler aborts on a cancelled token; the mock has to do the same,
+            // otherwise a dropped token would look like a perfectly healthy call.
+            cancellationToken.ThrowIfCancellationRequested();
+
             // Record the request details for assertion
             LastRequestUri = request.RequestUri;
             LastRequestMethod = request.Method;
+
+            CancelWhenSending?.Cancel();
             return Task.FromResult(_response);
         }
     }

@@ -1683,4 +1683,40 @@
   <data name="Readiness_Code_ISSUER_BANK_ACCOUNT_MISSING" xml:space="preserve"><value>Vlastní firma nemá bankovní účet, na faktuře by chybělo, kam zaplatit.</value></data>
   <data name="Readiness_Code_NUMBER_SEQUENCE_MISSING" xml:space="preserve"><value>Pro tento typ dokladu není aktivní žádná číselná řada.</value></data>
   <data name="Readiness_Code_EPO_HEADER_INCOMPLETE" xml:space="preserve"><value>Nejsou vyplněny hlavičkové údaje EPO, bez nich nepůjde vyexportovat přiznání k DPH.</value></data>
+  <!-- Integrations / API keys (/settings/integrations) -->
+  <data name="Nav_Integrations" xml:space="preserve"><value>Integrace</value></data>
+  <data name="Integration_Title" xml:space="preserve"><value>Integrace a API klíče</value></data>
+  <data name="Integration_Subtitle" xml:space="preserve"><value>API klíč slouží k připojení AI klienta (např. Claude) k Fakviu přes MCP server. Klíč je osobní — vidíte a spravujete jen své vlastní klíče.</value></data>
+  <data name="Integration_NewKey" xml:space="preserve"><value>Nový API klíč</value></data>
+  <data name="Integration_CreateDialogTitle" xml:space="preserve"><value>Vytvořit API klíč</value></data>
+  <data name="Integration_KeyNameHelper" xml:space="preserve"><value>Podle čeho klíč poznáte, například „Claude Desktop — notebook“.</value></data>
+  <data name="Integration_Scope" xml:space="preserve"><value>Oprávnění</value></data>
+  <data name="Integration_ScopeRead" xml:space="preserve"><value>Jen čtení</value></data>
+  <data name="Integration_ScopeReadWrite" xml:space="preserve"><value>Čtení i zápis</value></data>
+  <data name="Integration_ScopeHelper" xml:space="preserve"><value>Klíč nikdy neumí víc než váš účet. Pro AI asistenta, který má jen číst, zvolte „Jen čtení“.</value></data>
+  <data name="Integration_Expiration" xml:space="preserve"><value>Platnost do</value></data>
+  <data name="Integration_ExpirationHelper" xml:space="preserve"><value>Nevyplněno = klíč nikdy nevyprší.</value></data>
+  <data name="Integration_RawKeyTitle" xml:space="preserve"><value>Zkopírujte si klíč hned teď</value></data>
+  <data name="Integration_RawKeyWarning" xml:space="preserve"><value>Toto je jediné zobrazení klíče — po zavření tohoto panelu už ho neuvidíte. Ukládáme jen jeho otisk, takže ztracený klíč nelze obnovit, jen nahradit novým.</value></data>
+  <data name="Integration_CopyKey" xml:space="preserve"><value>Kopírovat klíč</value></data>
+  <data name="Integration_CopySnippet" xml:space="preserve"><value>Kopírovat konfiguraci</value></data>
+  <data name="Integration_Copied" xml:space="preserve"><value>Zkopírováno do schránky.</value></data>
+  <data name="Integration_KeySaved" xml:space="preserve"><value>Klíč mám uložený</value></data>
+  <data name="Integration_SnippetStdio" xml:space="preserve"><value>Lokální MCP server (stdio)</value></data>
+  <data name="Integration_SnippetStdioHelper" xml:space="preserve"><value>Vložte do .mcp.json (Claude Code) nebo claude_desktop_config.json (Claude Desktop). Vyžaduje nainstalovaný nástroj fakvio-mcp.</value></data>
+  <data name="Integration_SnippetHttp" xml:space="preserve"><value>Vzdálený MCP server (HTTP)</value></data>
+  <data name="Integration_SnippetHttpHelper" xml:space="preserve"><value>Pro klienty, kteří se k MCP serveru připojují po HTTP a nic neinstalují.</value></data>
+  <data name="Integration_Prefix" xml:space="preserve"><value>Prefix</value></data>
+  <data name="Integration_Created" xml:space="preserve"><value>Vytvořen</value></data>
+  <data name="Integration_LastUsed" xml:space="preserve"><value>Naposledy použit</value></data>
+  <data name="Integration_NeverExpires" xml:space="preserve"><value>Bez expirace</value></data>
+  <data name="Integration_NeverUsed" xml:space="preserve"><value>Nepoužit</value></data>
+  <data name="Integration_StatusRevoked" xml:space="preserve"><value>Revokován</value></data>
+  <data name="Integration_StatusExpired" xml:space="preserve"><value>Vypršel</value></data>
+  <data name="Integration_Revoke" xml:space="preserve"><value>Revokovat</value></data>
+  <data name="Integration_RevokeConfirmTitle" xml:space="preserve"><value>Revokovat API klíč?</value></data>
+  <data name="Integration_RevokeConfirmText" xml:space="preserve"><value>Klíč „{0}“ ({1}…) okamžitě přestane fungovat. Akci nelze vzít zpět.</value></data>
+  <data name="Integration_RevokeSuccess" xml:space="preserve"><value>Klíč byl revokován.</value></data>
+  <data name="Integration_CreateSuccess" xml:space="preserve"><value>API klíč byl vytvořen.</value></data>
+  <data name="Integration_NoKeys" xml:space="preserve"><value>Zatím nemáte žádný API klíč.</value></data>
 </root>

@@ -86,6 +86,9 @@ public static class ServiceCollectionExtensions
         services.AddApiClient<FileAttachmentApiService>();
         services.AddApiClient<ReminderApiService>();
 
+        // Personal API keys for AI clients (MCP) — page /settings/integrations.
+        services.AddApiClient<ApiKeyApiService>();
+
         // User preferences — API client + session cache used by FakvioGrid (page size)
         services.AddApiClient<UserPreferencesApiService>();
         services.AddScoped<UserPreferencesState>();

@@ -279,6 +279,12 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IChatTool, ImportInvoiceTool>();
         services.AddScoped<IChatTool, ExportInvoiceTool>();
 
+        // Client tools — list/detail plus the two writes, both behind the confirm gate (#222).
+        services.AddScoped<IChatTool, ListClientsTool>();
+        services.AddScoped<IChatTool, GetClientTool>();
+        services.AddScoped<IChatTool, UpdateClientTool>();
+        services.AddScoped<IChatTool, DeleteClientTool>();
+
         // Received invoice tools — let the agent look up, list, and search přijaté faktury.
         services.AddScoped<IChatTool, GetReceivedInvoiceTool>();
         services.AddScoped<IChatTool, ListReceivedInvoicesTool>();
@@ -292,6 +298,26 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IChatTool, GetDashboardTool>();
         services.AddScoped<IChatTool, ListInvoicesTool>();
         services.AddScoped<IChatTool, GetVatReportTool>();
+
+        // Company profile tools — read and change the issuer ("naše firma") and its bank
+        // accounts. Every write among them is confirmable (IConfirmableChatTool).
+        services.AddScoped<IChatTool, GetMyCompanyTool>();
+        services.AddScoped<IChatTool, UpdateMyCompanyTool>();
+        services.AddScoped<IChatTool, AddBankAccountTool>();
+        services.AddScoped<IChatTool, UpdateBankAccountTool>();
+        services.AddScoped<IChatTool, DeleteBankAccountTool>();
+
+        // Setup tools — let the agent say what is still missing before the user can invoice.
+        services.AddScoped<IChatTool, GetReadinessTool>();
+
+        // Issued invoice lifecycle — read the detail, then issue / mark paid / send / delete.
+        // The four data-changing ones are IConfirmableChatTool: the model must show a preview
+        // and get the user's approval before anything is written (DEVGUIDE §4.7).
+        services.AddScoped<IChatTool, GetInvoiceTool>();
+        services.AddScoped<IChatTool, CompleteInvoiceTool>();
+        services.AddScoped<IChatTool, MarkInvoicePaidTool>();
+        services.AddScoped<IChatTool, SendInvoiceEmailTool>();
+        services.AddScoped<IChatTool, DeleteInvoiceTool>();
 
         services.AddScopedWithLogging<IChatToolExecutor, ChatToolExecutor>();
 

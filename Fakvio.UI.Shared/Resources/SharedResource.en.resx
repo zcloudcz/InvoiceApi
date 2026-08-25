@@ -1683,4 +1683,40 @@
   <data name="Readiness_Code_ISSUER_BANK_ACCOUNT_MISSING" xml:space="preserve"><value>Your company has no bank account, so invoices would not say where to pay.</value></data>
   <data name="Readiness_Code_NUMBER_SEQUENCE_MISSING" xml:space="preserve"><value>There is no active number sequence for this document type.</value></data>
   <data name="Readiness_Code_EPO_HEADER_INCOMPLETE" xml:space="preserve"><value>EPO header data is missing, so the VAT return cannot be exported.</value></data>
+  <!-- Integrations / API keys (/settings/integrations) -->
+  <data name="Nav_Integrations" xml:space="preserve"><value>Integrations</value></data>
+  <data name="Integration_Title" xml:space="preserve"><value>Integrations and API keys</value></data>
+  <data name="Integration_Subtitle" xml:space="preserve"><value>An API key connects an AI client (e.g. Claude) to Fakvio through the MCP server. Keys are personal — you only see and manage your own.</value></data>
+  <data name="Integration_NewKey" xml:space="preserve"><value>New API key</value></data>
+  <data name="Integration_CreateDialogTitle" xml:space="preserve"><value>Create API key</value></data>
+  <data name="Integration_KeyNameHelper" xml:space="preserve"><value>How you will recognise the key later, e.g. "Claude Desktop — laptop".</value></data>
+  <data name="Integration_Scope" xml:space="preserve"><value>Permissions</value></data>
+  <data name="Integration_ScopeRead" xml:space="preserve"><value>Read only</value></data>
+  <data name="Integration_ScopeReadWrite" xml:space="preserve"><value>Read and write</value></data>
+  <data name="Integration_ScopeHelper" xml:space="preserve"><value>A key can never do more than your account can. For an assistant that should only look, pick "Read only".</value></data>
+  <data name="Integration_Expiration" xml:space="preserve"><value>Expires on</value></data>
+  <data name="Integration_ExpirationHelper" xml:space="preserve"><value>Leave empty for a key that never expires.</value></data>
+  <data name="Integration_RawKeyTitle" xml:space="preserve"><value>Copy the key now</value></data>
+  <data name="Integration_RawKeyWarning" xml:space="preserve"><value>This is the only time the key is shown — once you close this panel it is gone. We store only its fingerprint, so a lost key cannot be recovered, only replaced.</value></data>
+  <data name="Integration_CopyKey" xml:space="preserve"><value>Copy key</value></data>
+  <data name="Integration_CopySnippet" xml:space="preserve"><value>Copy configuration</value></data>
+  <data name="Integration_Copied" xml:space="preserve"><value>Copied to clipboard.</value></data>
+  <data name="Integration_KeySaved" xml:space="preserve"><value>I have saved the key</value></data>
+  <data name="Integration_SnippetStdio" xml:space="preserve"><value>Local MCP server (stdio)</value></data>
+  <data name="Integration_SnippetStdioHelper" xml:space="preserve"><value>Paste into .mcp.json (Claude Code) or claude_desktop_config.json (Claude Desktop). Requires the fakvio-mcp tool to be installed.</value></data>
+  <data name="Integration_SnippetHttp" xml:space="preserve"><value>Remote MCP server (HTTP)</value></data>
+  <data name="Integration_SnippetHttpHelper" xml:space="preserve"><value>For clients that connect to the MCP server over HTTP with nothing to install.</value></data>
+  <data name="Integration_Prefix" xml:space="preserve"><value>Prefix</value></data>
+  <data name="Integration_Created" xml:space="preserve"><value>Created</value></data>
+  <data name="Integration_LastUsed" xml:space="preserve"><value>Last used</value></data>
+  <data name="Integration_NeverExpires" xml:space="preserve"><value>Never expires</value></data>
+  <data name="Integration_NeverUsed" xml:space="preserve"><value>Never used</value></data>
+  <data name="Integration_StatusRevoked" xml:space="preserve"><value>Revoked</value></data>
+  <data name="Integration_StatusExpired" xml:space="preserve"><value>Expired</value></data>
+  <data name="Integration_Revoke" xml:space="preserve"><value>Revoke</value></data>
+  <data name="Integration_RevokeConfirmTitle" xml:space="preserve"><value>Revoke API key?</value></data>
+  <data name="Integration_RevokeConfirmText" xml:space="preserve"><value>Key "{0}" ({1}…) will stop working immediately. This cannot be undone.</value></data>
+  <data name="Integration_RevokeSuccess" xml:space="preserve"><value>The key has been revoked.</value></data>
+  <data name="Integration_CreateSuccess" xml:space="preserve"><value>API key created.</value></data>
+  <data name="Integration_NoKeys" xml:space="preserve"><value>You do not have any API key yet.</value></data>
 </root>
