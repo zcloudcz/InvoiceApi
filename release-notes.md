@@ -68,6 +68,11 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Změny pro vývojáře
 
+- **#291** — Release flow je teď třístupňový: `/release` nově staguje `develop` do
+  `TEST-ENV` (dřív mířil rovnou do `master`), nový příkaz `/release-prod` teprve
+  z `TEST-ENV` promuje do `master` a přesouvá karty do `Approved`. Vydání tak jde
+  nejdřív otestovat na testovacím prostředí, než se dostane k zákazníkům.
+  (PR #297, `11a3131`)
 - **#222** — AI asistent v chatu teď umí i práci s klienty: vypsat seznam s filtry
   (vč. hledání „vystavitel" bez zvláštního tlačítka), zobrazit celý detail (adresy,
   kontakty, bankovní účty, fakturační nastavení), upravit údaje nebo klienta smazat.
