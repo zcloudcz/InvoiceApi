@@ -187,6 +187,28 @@ public class Socks5ForwarderTests
         (await ReadOneByteAsync(client)).ShouldBe(0, "the forwarder should have closed the client side too");
     }
 
+    [Fact]
+    public void StartYieldsNoForwarderWhenAnotherWorkerAlreadyServesThePort()
+    {
+        // Flex Consumption runs several worker processes on one instance and they share the sandbox,
+        // loopback included: a taken port means a sibling worker's forwarder is already serving it,
+        // and every worker's connection string reaches that one. So this must be a log line, not an
+        // exception that takes the whole tunnel bring-up down with it (issue #321).
+        using var sibling = new TcpListener(IPAddress.Loopback, 0)
+        {
+            // Must be set before Start(): without it Windows lets the second bind succeed and the
+            // collision this test is about would never happen.
+            ExclusiveAddressUse = true
+        };
+        sibling.Start();
+        var occupiedPort = ((IPEndPoint)sibling.LocalEndpoint).Port;
+
+        var forwarder = Socks5Forwarder.Start(
+            occupiedPort, socksPort: occupiedPort, TargetAddress, TargetPort, NullLogger.Instance);
+
+        forwarder.ShouldBeNull();
+    }
+
     /// <summary>Runs one SOCKS5 handshake straight against the fake proxy, with no forwarder in between.</summary>
     private static async Task ConnectThroughAsync(FakeSocks5Server socks)
     {
@@ -195,6 +217,8 @@ public class Socks5ForwarderTests
             socks.Port, TargetAddress, TargetPort, timeout.Token);
     }
 
+    // Null-forgiving: listenPort 0 always binds, so this overload never returns the null that the
+    // "port already served" case produces.
     private static Socks5Forwarder StartForwarder(FakeSocks5Server socks, TimeSpan? negotiationTimeout = null) => Socks5Forwarder.Start(
         listenPort: 0, // OS-assigned: never collides with a real deployment or a parallel test.
         socksPort: socks.Port,
@@ -202,7 +226,7 @@ public class Socks5ForwarderTests
         targetPort: TargetPort,
         logger: NullLogger.Instance,
         // Default keeps the other tests on the production deadline; they never reach it.
-        negotiationTimeout: negotiationTimeout ?? TimeSpan.FromSeconds(15));
+        negotiationTimeout: negotiationTimeout ?? TimeSpan.FromSeconds(15))!;
 
     /// <summary>Reads a single byte, returning 0 when the peer closed (gracefully or by reset) instead.</summary>
     private static async Task<int> ReadOneByteAsync(TcpClient client)

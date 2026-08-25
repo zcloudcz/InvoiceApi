@@ -73,11 +73,12 @@ public sealed class Socks5Forwarder
     /// <summary>
     /// Binds 127.0.0.1:listenPort and starts accepting. Pass 0 to let the OS pick a free port
     /// (tests do this so they never collide with the port a real deployment uses).
+    /// Returns null when the port is already taken — see the internal overload for why that is fine.
     /// </summary>
     // ponytail: no stop API — the forwarder is started once at host startup and lives as long as
     // the process does. Add IDisposable / CancellationToken plumbing only if something ever needs
     // to restart the tunnel without restarting the worker.
-    public static Socks5Forwarder Start(int listenPort, int socksPort, IPAddress target, int targetPort, ILogger logger)
+    public static Socks5Forwarder? Start(int listenPort, int socksPort, IPAddress target, int targetPort, ILogger logger)
         => Start(listenPort, socksPort, target, targetPort, logger, DefaultNegotiationTimeout);
 
     /// <summary>
@@ -85,20 +86,32 @@ public sealed class Socks5Forwarder
     /// deadline spelled out. Internal because nothing but the test needs it: proving the deadline
     /// exists would otherwise cost 15 s of real waiting per run.
     /// </summary>
-    internal static Socks5Forwarder Start(
+    internal static Socks5Forwarder? Start(
         int listenPort, int socksPort, IPAddress target, int targetPort, ILogger logger, TimeSpan negotiationTimeout)
     {
         // Loopback only. This endpoint is an unauthenticated door into the tailnet — it must never
         // be reachable from outside the sandbox.
         var listener = new TcpListener(IPAddress.Loopback, listenPort);
-        listener.Start();
+        try
+        {
+            listener.Start();
+        }
+        catch (SocketException ex) when (ex.SocketErrorCode == SocketError.AddressAlreadyInUse)
+        {
+            // Flex Consumption runs several worker processes on one instance, and they share the
+            // sandbox — therefore also its loopback interface. So the port being taken means a
+            // sibling worker's forwarder is already serving it, and every worker's connection string
+            // (Host=127.0.0.1;Port=15432) reaches that one. Nothing to fix, nothing to throw.
+            TailscaleTunnel.Milestone(logger, $"forwarder port {listenPort} already served by another worker, reusing it");
+            listener.Dispose();
+            return null;
+        }
 
         var forwarder = new Socks5Forwarder(listener, socksPort, target, targetPort, logger, negotiationTimeout);
         _ = forwarder.AcceptLoopAsync();
 
-        logger.LogInformation(
-            "Tailscale: forwarder 127.0.0.1:{ListenPort} -> {Target}:{TargetPort} (via SOCKS5 127.0.0.1:{SocksPort})",
-            forwarder.Port, target, targetPort, socksPort);
+        TailscaleTunnel.Milestone(logger,
+            $"forwarder 127.0.0.1:{forwarder.Port} -> {target}:{targetPort} (via SOCKS5 127.0.0.1:{socksPort})");
         return forwarder;
     }
 
