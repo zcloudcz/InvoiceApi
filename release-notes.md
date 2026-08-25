@@ -21,6 +21,10 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Opravy
 
+- **#271** — AI chat asistent odmítl datum zadané jedním číslem (např. „15.3.2026")
+  v přehledu faktur i v DPH reportu — bral jen dvouciferné tvary s nulou (`15.03.2026`).
+  Nově akceptuje obě podoby, padded tvary i ISO datum se chovají stejně jako dřív.
+  (PR #296, `46fad72`)
 - **#263** — Diagnostické endpointy Azure Functions (`/api/diagnostic/migrate`,
   `/api/diagnostic/auth`) byly dostupné bez přihlášení: kdokoli mohl vzdáleně spustit
   DB migrace nebo si vypsat JWT konfiguraci (issuer, audience, délku secretu, claims).
