@@ -1994,7 +1994,7 @@ a vlastní spouštěč:
 |--------|-------|-----------|--------------|-----------------|
 | Integrace | `develop` | `agent-ops` squash-merge feature PR | nic (`develop` nemá deploy workflow) | karta → `Implemented` |
 | Test | `TEST-ENV` | člověk příkazem `/release` | testovací prostředí — Function App `zcloudinvoicingapi-test` (samostatný app, ne slot) + Static Web App `fakvio-test-ui` | **nehýbou se** |
-| Produkce | `master` | člověk příkazem `/release-prod` po ověření testu | produkce (Function App `zcloudinvoicingapi` + GitHub Pages) | `Implemented` → `Approved` |
+| Produkce | `master` | člověk příkazem `/release-prod` po ověření testu | produkce (Function App `zcloudinvoicingapi` + GitHub Pages) | `Implemented` → `Approved` — až při **druhém** běhu příkazu, po mergnutí release PR (State A) |
 
 Pravidla:
 
@@ -2024,6 +2024,9 @@ první reálný test deploy přijde až s prvním mergnutým promotion PR. Stavo
 automat obou příkazů je v `.claude/commands/release.md`
 a `.claude/commands/release-prod.md`, dopad na board v `.claude/BOARD-OPS.md`
 (sekce „Integration branch model").
+
+Provozní pohled na obě prostředí — URL, rozdíly v App Settings (CORS, JWT, DB),
+deploy secrets a jejich rotace — je v `ADMINGUIDE.md` §14.
 
 ## 10. Observability — logging + correlation
 
