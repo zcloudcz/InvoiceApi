@@ -3,5 +3,6 @@
   "bb1ca70ac0edcf94d15d279f6a4a921635cf51f6": {"unit": "2624/0/4", "integration": "105/21/3", "by": "orchestrator (from run 2026-08-23)", "at": "2026-08-23"},
   "faf536c76479cccb0935a7ee5c78805f7e032194": {"unit": "2623/1/4", "note": "1 fail = EmailSmtpIntegrationTests.SendRealEmail_ViaSmtp / MyCompanyEpoSectionTests — flaky pod plnou paralelní sadou, izolovaně zelené", "by": "agent-dev #271", "at": "2026-08-25"},
   "357b32a092aa29ea3334e785c3b6b975434b6e7d": {"unit": "2901/0/4", "by": "agent-dev #318", "at": "2026-08-25"},
-  "7af0b38c103f9ed1476d1985692b078bf7549ff5": {"unit": "3120/0/4", "by": "agent-dev #210", "at": "2026-08-25"}
+  "7af0b38c103f9ed1476d1985692b078bf7549ff5": {"unit": "3120/0/4", "by": "agent-dev #210", "at": "2026-08-25"},
+  "d4da575b7da3f7d24ce0099230670d1df39995e8": {"unit": "3364/1/4", "note": "1 fail = InvoiceServiceCopyTests.CopyInvoiceAsync_ShouldSetIssueDateToToday (#359), deterministicky mezi 22:00-24:00 UTC; merano 22:50 UTC", "by": "agent-dev #241", "at": "2026-08-25"}
 }
