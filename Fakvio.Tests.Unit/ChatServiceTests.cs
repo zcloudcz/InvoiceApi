@@ -636,6 +636,64 @@ public class ChatServiceTests : IDisposable
     private static NativeToolCallResult NativeCallOf(string toolName)
         => new() { ToolCalls = [new NativeToolCall { ToolName = toolName }] };
 
+    /// <summary>
+    /// Issue #217, review round 1 (F2). The confirm framing on streaming Path A has to distinguish
+    /// "there is a preview to approve" from "the call never got as far as the write" — the same
+    /// distinction <see cref="StreamMessage_NativeTools_TellsModelNothingChanged_WhenToolOnlyReturnedAPreview"/>
+    /// cannot see, because there the preview succeeded and both readings agree.
+    ///
+    /// The difference is only observable on this branch: a result that did not run is a FAILURE,
+    /// so the tool loop does not break, the model then answers without a tool call and without
+    /// text, and the composed <c>finalPrompt</c> is the one actually sent. Asking the user to
+    /// confirm something that could not even be prepared would send the model in a circle.
+    ///
+    /// Path A is the default provider (Claude) and was the blind spot of #212 round 1 — hence a
+    /// test of its own rather than trusting the shared helper's coverage on the other call site.
+    /// </summary>
+    [Fact]
+    public async Task StreamMessage_NativeTools_DoesNotAskForConfirmation_WhenTheCallCouldNotBePrepared()
+    {
+        _mockProvider.SupportsNativeTools.Returns(true);
+        _toolExecutor.GetToolDefinitions().Returns(
+            [new NativeToolDefinition { Name = "update_settings", Description = "Změní číslování" }]);
+        _mockProvider
+            .GetCompletionWithToolsAsync(
+                Arg.Any<List<ChatMessageDto>>(), Arg.Any<string?>(),
+                Arg.Any<List<NativeToolDefinition>>(), Arg.Any<CancellationToken>())
+            .Returns(
+                NativeCallOf("update_settings"),
+                // Model gives up: no further tool call and no text, so finalPrompt is used.
+                new NativeToolCallResult());
+
+        // Held back before the write (rejected parameters or a preview that failed) — nothing
+        // was changed, but there is nothing to approve either.
+        _toolExecutor.ExecuteToolAsync(Arg.Any<ParsedToolCall>(), Arg.Any<CancellationToken>())
+            .Returns(ChatToolResult.Failure("Numbering sequence not found.") with
+            {
+                RequiresConfirmation = true
+            });
+
+        string? finalPrompt = null;
+        _mockProvider
+            .StreamCompletionAsync(Arg.Any<List<ChatMessageDto>>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                finalPrompt = call.ArgAt<string?>(1);
+                return SingleChunkStream("ok");
+            });
+
+        await foreach (var _ in _service.StreamMessageAsync(TestUserId,
+                           new SendMessageRequest { Message = "Změň číslování na FA-2026" }))
+        {
+            // Only the accumulated prompt matters here.
+        }
+
+        finalPrompt.ShouldNotBeNull();
+        finalPrompt.ShouldContain("Tool 'update_settings' was NOT executed");
+        finalPrompt.ShouldContain("The call could not be prepared");
+        finalPrompt.ShouldNotContain("ask them to confirm");
+    }
+
     // ─── Confirm gate through the REAL executor (issue #212) ──────────────
     //
     // The tests above mock IChatToolExecutor, so they only prove that ChatService reacts
@@ -720,19 +778,16 @@ public class ChatServiceTests : IDisposable
     }
 
     /// <summary>
-    /// KNOWN GAP, characterised on purpose — assigned to issue #217, not fixed here.
+    /// The gap this test characterised is CLOSED (issue #217): the expectation was updated,
+    /// the test kept.
     ///
-    /// When <c>BuildPreviewAsync</c> itself fails, the executor returns that failure unchanged,
-    /// so <c>RequiresConfirmation</c> stays false and the prompt announces the tool "was
-    /// executed" — about something that never ran. Harmless today (the payload is the error
-    /// text, and no production tool is confirmable yet), but #217 must add the third branch
-    /// "the preview could not be prepared".
-    ///
-    /// When it does, this test goes red. That is the point: update the expectation, do not
-    /// delete the test.
+    /// When <c>BuildPreviewAsync</c> itself fails, nothing ran — no preview, no write. The
+    /// prompt used to announce the tool "was executed" about it; now it says the tool was NOT
+    /// executed and that the preview could not be prepared, while still NOT inviting the model
+    /// to retry with confirm=true (there is nothing to approve).
     /// </summary>
     [Fact]
-    public async Task SendMessage_ThroughTheRealExecutor_StillSaysExecuted_WhenThePreviewFailed()
+    public async Task SendMessage_ThroughTheRealExecutor_SaysNotExecuted_WhenThePreviewFailed()
     {
         var tool = CreateConfirmableTool();
         tool.BuildPreviewAsync(Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>())
@@ -752,8 +807,11 @@ public class ChatServiceTests : IDisposable
         await _mockProvider.Received(1).GetCompletionAsync(
             Arg.Any<List<ChatMessageDto>>(),
             Arg.Is<string?>(prompt => prompt != null
-                                      && prompt.Contains($"Tool '{ConfirmableToolName}' was executed")
+                                      && prompt.Contains($"Tool '{ConfirmableToolName}' was NOT executed")
+                                      && prompt.Contains("The call could not be prepared")
                                       && prompt.Contains("Error: Numbering sequence not found.")
+                                      // Nothing to approve — the closing instruction must not ask for it.
+                                      && !prompt.Contains("ask them to confirm")
                                       && !prompt.Contains("NOTHING HAS BEEN CHANGED YET")),
             Arg.Any<CancellationToken>());
     }
