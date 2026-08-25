@@ -1,4 +1,5 @@
 using Fakvio.Application.Service;
+using Fakvio.Contracts.Dto.Client;
 using Microsoft.Extensions.Logging;
 
 namespace Fakvio.Infrastructure.Service.ChatTools;
@@ -57,10 +58,7 @@ public class DeleteClientTool : IConfirmableChatTool
         // An already-deleted client is not an error, but confirming a no-op wastes the user's
         // turn — say it now instead of after the write.
         if (!client.IsActive)
-        {
-            return ChatToolResult.Failure(
-                $"Client '{client.CompanyName}' (ID={client.Id}) is already deleted (inactive).");
-        }
+            return AlreadyDeleted(client);
 
         return ChatToolResult.Success(
             $"This would delete the client:\n{ClientLookup.Describe(client)}\n\n" +
@@ -79,6 +77,13 @@ public class DeleteClientTool : IConfirmableChatTool
             return resolution.Error;
 
         var client = resolution.Client!;
+
+        // Re-checked, not assumed: the preview ran a turn ago and someone may have deleted the
+        // client meanwhile. DeleteClientAsync returns true for an already-inactive client, so
+        // without this the tool would announce a delete that was a no-op.
+        if (!client.IsActive)
+            return AlreadyDeleted(client);
+
         _logger.LogInformation("DeleteClientTool: deleting client {ClientId}", client.Id);
 
         try
@@ -97,4 +102,9 @@ public class DeleteClientTool : IConfirmableChatTool
             return ChatToolResult.Failure(ex.Message);
         }
     }
+
+    /// <summary>Shared wording, so preview and execution report the same no-op identically.</summary>
+    private static ChatToolResult AlreadyDeleted(ClientDto client)
+        => ChatToolResult.Failure(
+            $"Client '{client.CompanyName}' (ID={client.Id}) is already deleted (inactive).");
 }

@@ -34,8 +34,9 @@ public class ListClientsTool : IChatTool
     public string ToolName => "list_clients";
 
     public string Description =>
-        "List clients (customers) with optional search and filtering by VAT status. " +
-        "Set is_issuer=true to get the user's own company (the issuer) instead of customers. " +
+        "List clients with optional search and filtering by VAT status. Without is_issuer the " +
+        "list holds customers AND the user's own company (the issuer), which is flagged in its " +
+        "row; set is_issuer=true for the issuer alone or false for customers alone. " +
         "Returns paged results; use get_client for the full detail of one client.";
 
     /// <summary>Items per page when the model does not ask for a specific size.</summary>
@@ -49,8 +50,9 @@ public class ListClientsTool : IChatTool
 
     /// <summary>
     /// Parameter schema — static because it never changes per instance.
-    /// Every filter is optional: with no parameters the tool returns the first page
-    /// of active customers.
+    /// Every filter is optional: with no parameters the tool returns the first page of active
+    /// clients — the issuer included, because ClientFilterDto only filters on IsIssuer when the
+    /// flag has a value.
     /// </summary>
     private static readonly ChatToolParameter[] Schema =
     [
@@ -82,7 +84,8 @@ public class ListClientsTool : IChatTool
         {
             Name = "is_issuer",
             Type = ChatToolParameterType.Boolean,
-            Description = "True to return the user's own company (the issuer) instead of customers"
+            Description = "True to return only the user's own company (the issuer), false to " +
+                          "return only customers. Omit it to get both."
         },
         new()
         {

@@ -662,6 +662,9 @@ Smazání klienta je „měkké" — klient se skryje, ale nezmizí, takže star
 na něj dál odkazují. Klienta, který už nějakou fakturu má, smazat nelze vůbec;
 asistent vám to řekne. Skrytého klienta lze vrátit zpět („Obnov klienta X").
 
+Když si vyžádáte načtení údajů z ARESu a rejstřík zrovna neodpoví nebo dané IČO
+nezná, asistent to řekne rovnou — nikdy nepotvrdí načtení dat, ke kterému nedošlo.
+
 Asistent navíc ví, **kde právě stojíte** — jakou stránku máte otevřenou a jestli je na ní
 konkrétní doklad — a zná dnešní datum. Můžete se tedy ptát „kdy je tahle faktura splatná"
 místo toho, abyste číslo dokladu opisovali. Pokud vám ještě něco chybí k vystavení faktury

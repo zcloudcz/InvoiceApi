@@ -91,8 +91,9 @@ internal static class ClientLookup
         // Path 2 — IČO. Unique per company, so an exact lookup is enough.
         if (rawRegistrationNumber is not null)
         {
-            // Users dictate IČO with spaces ("123 456 78"); the column holds it without them.
-            var ico = rawRegistrationNumber.Replace(" ", string.Empty);
+            // Users dictate IČO with spaces ("123 456 78") and paste it out of documents with
+            // tabs or non-breaking spaces; the column holds it without any of them.
+            var ico = string.Concat(rawRegistrationNumber.Where(character => !char.IsWhiteSpace(character)));
             var byRegistrationNumber = await service.GetClientByRegistrationNumberAsync(ico, ct);
 
             return byRegistrationNumber is null

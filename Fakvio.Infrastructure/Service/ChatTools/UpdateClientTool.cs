@@ -44,8 +44,8 @@ public class UpdateClientTool : IConfirmableChatTool
 
     /// <summary>
     /// The fields this tool may change, on top of the shared identity parameters.
-    /// Kept as its own array so the "did the model ask for any change at all?" check
-    /// below cannot fall out of sync with the schema.
+    /// Kept as its own array so the "nothing to change" message can list them without
+    /// repeating the schema by hand.
     /// </summary>
     private static readonly ChatToolParameter[] ChangeableFields =
     [
@@ -59,13 +59,15 @@ public class UpdateClientTool : IConfirmableChatTool
         {
             Name = "trading_name",
             Type = ChatToolParameterType.String,
-            Description = "New trading name (used when it differs from the official name)"
+            Description = "New trading name (used when it differs from the official name). " +
+                          "Cannot be cleared from chat — send a value or omit the field."
         },
         new()
         {
             Name = "tax_number",
             Type = ChatToolParameterType.String,
-            Description = "New tax identification number (DIČ), e.g. 'CZ12345678'"
+            Description = "New tax identification number (DIČ), e.g. 'CZ12345678'. " +
+                          "Cannot be cleared from chat — send a value or omit the field."
         },
         new()
         {
@@ -103,13 +105,13 @@ public class UpdateClientTool : IConfirmableChatTool
         Dictionary<string, string> parameters,
         CancellationToken ct = default)
     {
-        var (client, error) = await ResolveAndValidateAsync(parameters, ct);
+        var (client, update, error) = await ResolveAndValidateAsync(parameters, ct);
         if (error is not null)
             return error;
 
         return ChatToolResult.Success(
             $"This would change the client:\n{ClientLookup.Describe(client!)}\n\n" +
-            DescribeChanges(client!, parameters));
+            DescribeChanges(client!, update!));
     }
 
     public async Task<ChatToolResult> ExecuteAsync(
@@ -119,64 +121,85 @@ public class UpdateClientTool : IConfirmableChatTool
         // Resolved and validated again, deliberately: preview and execution are two independent
         // calls with the user's turns in between (see IConfirmableChatTool), so nothing from the
         // preview is reused — the client may have been renamed or deleted meanwhile.
-        var (client, error) = await ResolveAndValidateAsync(parameters, ct);
+        var (client, update, error) = await ResolveAndValidateAsync(parameters, ct);
         if (error is not null)
             return error;
 
-        var updateDto = BuildUpdateDto(parameters);
-
         _logger.LogInformation("UpdateClientTool: updating client {ClientId}", client!.Id);
 
-        var updated = await _clientService.UpdateClientAsync(client.Id, updateDto, ct);
+        var updated = await _clientService.UpdateClientAsync(client.Id, update!, ct);
 
         // Null means the row vanished between the lookup and the update — rare, but the model
         // must not report a change that did not happen.
-        return updated is null
-            ? ChatToolResult.Failure($"Client with ID {client.Id} no longer exists — nothing was changed.")
-            : ChatToolResult.Success($"Client updated:\n{ClientLookup.Describe(updated)}");
+        if (updated is null)
+            return ChatToolResult.Failure($"Client with ID {client.Id} no longer exists — nothing was changed.");
+
+        // The other half of the ARES door. ClientService only overwrites the fields when the
+        // registry answers (aresInfo.IsSuccessful); when it is down or does not know the IČO it
+        // saves the rest and returns a DTO anyway, so "not null" is no proof the refresh ran.
+        // The one observable signal is LastAresFetchDate — the service stamps it ONLY after a
+        // successful fetch, so an unchanged timestamp means we got nothing from ARES.
+        if (update!.RefreshFromAres && updated.LastAresFetchDate == client.LastAresFetchDate)
+        {
+            return ChatToolResult.Failure(
+                $"ARES returned no usable data for IČO {client.RegistrationNumber} (registry " +
+                "unavailable or IČO unknown), so the client was NOT refreshed from ARES. " +
+                (WritesExplicitFields(update)
+                    ? $"The fields you sent explicitly were saved:\n{ClientLookup.Describe(updated)}"
+                    : "Nothing else was changed."));
+        }
+
+        return ChatToolResult.Success($"Client updated:\n{ClientLookup.Describe(updated)}");
     }
 
     /// <summary>
-    /// Finds the client and checks the two rules the JSON schema cannot express:
-    /// at least one field to change, and ARES refresh only for a client that has an IČO.
-    /// Returns the client OR a ready-to-return failure — never both.
+    /// Finds the client, builds the update, and checks the two rules the JSON schema cannot
+    /// express: at least one field to change, and ARES refresh only for a client that has an
+    /// IČO. Returns the client plus its update OR a ready-to-return failure — never both.
     /// </summary>
-    private async Task<(ClientDto? Client, ChatToolResult? Error)> ResolveAndValidateAsync(
+    private async Task<(ClientDto? Client, UpdateClientDto? Update, ChatToolResult? Error)> ResolveAndValidateAsync(
         Dictionary<string, string> parameters,
         CancellationToken ct)
     {
         var resolution = await ClientLookup.ResolveAsync(_clientService, parameters, ct);
         if (resolution.Error is not null)
-            return (null, resolution.Error);
+            return (null, null, resolution.Error);
 
         var client = resolution.Client!;
-
-        if (!ChangeableFields.Any(field => parameters.ContainsKey(field.Name)))
-        {
-            return (null, ChatToolResult.Failure(
-                "Nothing to change — send at least one of: " +
-                $"{string.Join(", ", ChangeableFields.Select(field => field.Name))}."));
-        }
 
         // A blank name would be written straight through: the [StringLength(MinimumLength = 1)]
         // attribute on UpdateClientDto is only enforced by API model binding, and a chat tool
         // calls the service directly. Every invoice PDF prints this field.
         if (parameters.TryGetValue("company_name", out var newName) && string.IsNullOrWhiteSpace(newName))
         {
-            return (null, ChatToolResult.Failure(
+            return (null, null, ChatToolResult.Failure(
                 "company_name cannot be empty — every client must keep a name."));
+        }
+
+        var update = BuildUpdateDto(parameters);
+
+        // "Did the model ask for anything?" is answered by the DTO, not by the keys in the
+        // dictionary. ChatToolExecutor treats a blank value as "not supplied" but leaves the key
+        // where it is, and 'refresh_from_ares: false' means "leave it alone" — so asking the
+        // keys would accept 'is_vat_payer: ""' as a change, write an empty update and report
+        // "Client updated" for something that changed nothing.
+        if (!RequestsAnyChange(update))
+        {
+            return (null, null, ChatToolResult.Failure(
+                "Nothing to change — send at least one of: " +
+                $"{string.Join(", ", ChangeableFields.Select(field => field.Name))}."));
         }
 
         // Fail fast rather than let ClientService silently skip the refresh: the user asked for
         // ARES data and would otherwise be told the update succeeded with nothing refreshed.
-        if (WantsAresRefresh(parameters) && string.IsNullOrWhiteSpace(client.RegistrationNumber))
+        if (update.RefreshFromAres && string.IsNullOrWhiteSpace(client.RegistrationNumber))
         {
-            return (null, ChatToolResult.Failure(
+            return (null, null, ChatToolResult.Failure(
                 $"Client '{client.CompanyName}' has no registration number (IČO), " +
                 "so its data cannot be refreshed from ARES."));
         }
 
-        return (client, null);
+        return (client, update, null);
     }
 
     /// <summary>Maps the tool parameters onto the update DTO. Absent parameter = "don't change".</summary>
@@ -188,58 +211,84 @@ public class UpdateClientTool : IConfirmableChatTool
             TaxNumber = ReadText(parameters, "tax_number"),
             IsVatPayer = ReadBool(parameters, "is_vat_payer"),
             IsActive = ReadBool(parameters, "is_active"),
-            RefreshFromAres = WantsAresRefresh(parameters)
+            // Only an explicit 'true' refreshes. 'false' means "leave it", which is also what
+            // the DTO's default does.
+            RefreshFromAres = ReadBool(parameters, "refresh_from_ares") == true
         };
 
     /// <summary>
+    /// True when the update carries at least one field the user spelled out. Kept separate from
+    /// <see cref="RequestsAnyChange"/> because the ARES report has to tell "your fields were
+    /// saved, only the refresh failed" apart from "nothing happened at all".
+    /// </summary>
+    private static bool WritesExplicitFields(UpdateClientDto update)
+        => update.CompanyName is not null
+           || update.TradingName is not null
+           || update.TaxNumber is not null
+           || update.IsVatPayer.HasValue
+           || update.IsActive.HasValue;
+
+    /// <summary>True when the update would do anything at all — explicit fields or ARES refresh.</summary>
+    private static bool RequestsAnyChange(UpdateClientDto update)
+        => WritesExplicitFields(update) || update.RefreshFromAres;
+
+    /// <summary>
     /// Lists the requested changes as "field: old → new", skipping fields the model did not send.
+    /// Reads the update DTO rather than the raw parameters, so the preview shows exactly what the
+    /// write would do — a value the tool decided to ignore can never appear here as a change.
+    ///
     /// The ARES refresh gets a sentence instead of a value pair — what ARES will return is not
     /// known until the write runs, and promising a value we have not fetched would be a lie.
     /// </summary>
-    private static string DescribeChanges(ClientDto client, Dictionary<string, string> parameters)
+    private static string DescribeChanges(ClientDto client, UpdateClientDto update)
     {
         var sb = new StringBuilder("Requested changes:");
         sb.AppendLine();
 
-        AppendChange(sb, parameters, "company_name", "Name", client.CompanyName);
-        AppendChange(sb, parameters, "trading_name", "Trading name", client.TradingName ?? "(none)");
-        AppendChange(sb, parameters, "tax_number", "DIČ", client.TaxNumber ?? "(none)");
-        AppendChange(sb, parameters, "is_vat_payer", "VAT payer", ClientLookup.YesNo(client.IsVatPayer));
-        AppendChange(sb, parameters, "is_active", "Active", ClientLookup.YesNo(client.IsActive));
+        AppendChange(sb, "Name", client.CompanyName, update.CompanyName);
+        AppendChange(sb, "Trading name", client.TradingName ?? "(none)", update.TradingName);
+        AppendChange(sb, "DIČ", client.TaxNumber ?? "(none)", update.TaxNumber);
+        AppendChange(sb, "VAT payer", ClientLookup.YesNo(client.IsVatPayer), YesNoOrNull(update.IsVatPayer));
+        AppendChange(sb, "Active", ClientLookup.YesNo(client.IsActive), YesNoOrNull(update.IsActive));
 
-        if (WantsAresRefresh(parameters))
+        if (update.RefreshFromAres)
         {
             sb.AppendLine(
                 $"  - Name, DIČ and VAT status will be overwritten with current ARES data " +
                 $"for IČO {client.RegistrationNumber}.");
+
+            // ClientService applies the ARES data first and the explicit fields after it, so a
+            // field listed above wins over what the registry says. Without this line the two
+            // bullets would contradict each other.
+            if (WritesExplicitFields(update))
+                sb.AppendLine("    The values listed above are written after the ARES data and take precedence.");
         }
 
         return sb.ToString();
     }
 
-    private static void AppendChange(
-        StringBuilder sb,
-        Dictionary<string, string> parameters,
-        string parameterName,
-        string label,
-        string currentValue)
+    private static void AppendChange(StringBuilder sb, string label, string currentValue, string? newValue)
     {
-        if (parameters.TryGetValue(parameterName, out var newValue))
+        if (newValue is not null)
             sb.AppendLine($"  - {label}: {currentValue} → {newValue}");
     }
 
-    /// <summary>
-    /// True only for an explicit <c>true</c>. <c>refresh_from_ares: false</c> means "leave it",
-    /// which is also what the DTO's default does.
-    /// </summary>
-    private static bool WantsAresRefresh(Dictionary<string, string> parameters)
-        => ReadBool(parameters, "refresh_from_ares") == true;
+    /// <summary>Renders a nullable flag the same way the rest of the output does — or nothing.</summary>
+    private static string? YesNoOrNull(bool? value) => value.HasValue ? ClientLookup.YesNo(value.Value) : null;
 
     // Types are validated centrally by ChatToolExecutor before the tool runs, so these only
     // translate "not supplied" into null — they are not a second validation.
 
+    /// <summary>
+    /// Blank counts as "not supplied", the same way <see cref="ChatToolExecutor"/> already treats
+    /// it — models send empty strings for parameters they have no value for. The side effect is
+    /// that a field cannot be cleared from chat; that is deliberate, since "" would be stored as
+    /// an empty string and then read back as blank while a never-filled field reads "(none)".
+    /// </summary>
     private static string? ReadText(Dictionary<string, string> parameters, string key)
-        => parameters.TryGetValue(key, out var raw) ? raw.Trim() : null;
+        => parameters.TryGetValue(key, out var raw) && !string.IsNullOrWhiteSpace(raw)
+            ? raw.Trim()
+            : null;
 
     private static bool? ReadBool(Dictionary<string, string> parameters, string key)
         => parameters.TryGetValue(key, out var raw) && bool.TryParse(raw, out var value)

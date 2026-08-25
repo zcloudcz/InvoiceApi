@@ -146,15 +146,18 @@ public class ClientChatToolTests
         await _clientService.DidNotReceiveWithAnyArgs().GetAllClientsAsync();
     }
 
-    [Fact]
-    public async Task Get_StripsSpacesFromDictatedRegistrationNumber()
+    [Theory]
+    [InlineData(" 123 456 78 ")]        // dictated
+    [InlineData("123 45678")]      // pasted from a document — non-breaking space
+    [InlineData("1234	5678")]          // pasted from a spreadsheet — tab
+    public async Task Get_StripsWhitespaceFromDictatedRegistrationNumber(string dictated)
     {
         _clientService.GetClientByRegistrationNumberAsync("12345678", Arg.Any<CancellationToken>())
             .Returns(Client(3, "Alfa s.r.o."));
 
         var result = await _get.ExecuteAsync(new Dictionary<string, string>
         {
-            ["registration_number"] = " 123 456 78 "
+            ["registration_number"] = dictated
         });
 
         result.IsSuccess.ShouldBeTrue();
@@ -395,7 +398,7 @@ public class ClientChatToolTests
 
         preview.IsSuccess.ShouldBeTrue();
         preview.OutputText.ShouldContain("Staré jméno s.r.o. → Nové jméno s.r.o.");
-        preview.OutputText.ShouldContain("VAT payer: No → true");
+        preview.OutputText.ShouldContain("VAT payer: No → Yes");
 
         // Untouched fields must not appear as changes (the DIČ is only listed in the
         // client's description line above, never as an old → new pair).
@@ -424,6 +427,27 @@ public class ClientChatToolTests
     }
 
     [Fact]
+    public async Task UpdatePreview_SaysExplicitFieldsBeatAres_WhenBothWereSent()
+    {
+        // ClientService writes the ARES data first and the explicit fields after it. Listing
+        // both without saying so would read as a contradiction ("Name: A → B" and "Name will be
+        // overwritten from ARES").
+        var client = Client(28, "Alfa s.r.o.");
+        _clientService.GetClientByIdAsync(28, Arg.Any<CancellationToken>()).Returns(client);
+
+        var preview = await _update.BuildPreviewAsync(new Dictionary<string, string>
+        {
+            ["id"] = "28",
+            ["company_name"] = "Alfa Trade a.s.",
+            ["refresh_from_ares"] = "true"
+        });
+
+        preview.IsSuccess.ShouldBeTrue();
+        preview.OutputText.ShouldContain("Alfa s.r.o. → Alfa Trade a.s.");
+        preview.OutputText.ShouldContain("take precedence");
+    }
+
+    [Fact]
     public async Task Update_Fails_WhenNoChangeableFieldWasSent()
     {
         _clientService.GetClientByIdAsync(22, Arg.Any<CancellationToken>()).Returns(Client(22, "Alfa s.r.o."));
@@ -433,6 +457,28 @@ public class ClientChatToolTests
         result.IsSuccess.ShouldBeFalse();
         result.OutputText.ShouldContain("Nothing to change");
         result.OutputText.ShouldContain("company_name");
+        await _clientService.DidNotReceiveWithAnyArgs().UpdateClientAsync(default, default!);
+    }
+
+    [Theory]
+    [InlineData("is_vat_payer", "")]
+    [InlineData("trading_name", "   ")]
+    [InlineData("refresh_from_ares", "false")]
+    public async Task Update_Fails_WhenTheOnlyFieldSentChangesNothing(string parameter, string value)
+    {
+        // ChatToolExecutor treats a blank value as "not supplied" but leaves the key in the
+        // dictionary, and 'refresh_from_ares: false' is "leave it alone" — neither is a change,
+        // so neither may be answered with "Client updated".
+        _clientService.GetClientByIdAsync(29, Arg.Any<CancellationToken>()).Returns(Client(29, "Alfa s.r.o."));
+
+        var result = await _update.ExecuteAsync(new Dictionary<string, string>
+        {
+            ["id"] = "29",
+            [parameter] = value
+        });
+
+        result.IsSuccess.ShouldBeFalse();
+        result.OutputText.ShouldContain("Nothing to change");
         await _clientService.DidNotReceiveWithAnyArgs().UpdateClientAsync(default, default!);
     }
 
@@ -509,7 +555,6 @@ public class ClientChatToolTests
     public async Task Update_TreatsRefreshFromAresFalse_AsNoRefresh()
     {
         var client = Client(26, "Alfa s.r.o.");
-        client.RegistrationNumber = "12345678";
         _clientService.GetClientByIdAsync(26, Arg.Any<CancellationToken>()).Returns(client);
         _clientService.UpdateClientAsync(26, Arg.Any<UpdateClientDto>(), Arg.Any<CancellationToken>())
             .Returns(client);
@@ -517,11 +562,82 @@ public class ClientChatToolTests
         await _update.ExecuteAsync(new Dictionary<string, string>
         {
             ["id"] = "26",
+            ["trading_name"] = "Alfa",
             ["refresh_from_ares"] = "false"
         });
 
         await _clientService.Received(1).UpdateClientAsync(
             26, Arg.Is<UpdateClientDto>(dto => !dto.RefreshFromAres), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Update_Fails_WhenAresWasAskedFor_ButTheRegistryReturnedNothing()
+    {
+        // ClientService overwrites the fields ONLY when ARES answers, and stamps LastAresFetchDate
+        // in the same branch. When the registry is down it saves the rest and returns a DTO — so
+        // reporting "Client updated" here would hand the user stale data with a confirmation.
+        var client = Client(40, "Alfa s.r.o.");
+        _clientService.GetClientByIdAsync(40, Arg.Any<CancellationToken>()).Returns(client);
+        _clientService.UpdateClientAsync(40, Arg.Any<UpdateClientDto>(), Arg.Any<CancellationToken>())
+            .Returns(Client(40, "Alfa s.r.o."));   // LastAresFetchDate still null = no fetch happened
+
+        var result = await _update.ExecuteAsync(new Dictionary<string, string>
+        {
+            ["id"] = "40",
+            ["refresh_from_ares"] = "true"
+        });
+
+        result.IsSuccess.ShouldBeFalse();
+        result.OutputText.ShouldContain("NOT refreshed");
+        result.OutputText.ShouldContain("12345678");
+        result.OutputText.ShouldContain("Nothing else was changed");
+    }
+
+    [Fact]
+    public async Task Update_SaysWhichHalfSurvived_WhenAresFailedButExplicitFieldsWereSaved()
+    {
+        // The explicit fields really were written, so "nothing happened" would be the opposite
+        // lie. The message has to separate the two halves.
+        var client = Client(41, "Alfa s.r.o.");
+        _clientService.GetClientByIdAsync(41, Arg.Any<CancellationToken>()).Returns(client);
+        _clientService.UpdateClientAsync(41, Arg.Any<UpdateClientDto>(), Arg.Any<CancellationToken>())
+            .Returns(Client(41, "Alfa Trade a.s."));
+
+        var result = await _update.ExecuteAsync(new Dictionary<string, string>
+        {
+            ["id"] = "41",
+            ["company_name"] = "Alfa Trade a.s.",
+            ["refresh_from_ares"] = "true"
+        });
+
+        result.IsSuccess.ShouldBeFalse();
+        result.OutputText.ShouldContain("NOT refreshed");
+        result.OutputText.ShouldContain("sent explicitly were saved");
+        result.OutputText.ShouldContain("Alfa Trade a.s.");
+    }
+
+    [Fact]
+    public async Task Update_ReportsSuccess_WhenAresActuallyAnswered()
+    {
+        // The counterpart of the two tests above: a bumped LastAresFetchDate is the service's
+        // proof that the fetch succeeded, and then the success message is the honest one.
+        var client = Client(42, "Alfa s.r.o.");
+        _clientService.GetClientByIdAsync(42, Arg.Any<CancellationToken>()).Returns(client);
+
+        var refreshed = Client(42, "Alfa Trade a.s.");
+        refreshed.LastAresFetchDate = DateTime.UtcNow;
+        _clientService.UpdateClientAsync(42, Arg.Any<UpdateClientDto>(), Arg.Any<CancellationToken>())
+            .Returns(refreshed);
+
+        var result = await _update.ExecuteAsync(new Dictionary<string, string>
+        {
+            ["id"] = "42",
+            ["refresh_from_ares"] = "true"
+        });
+
+        result.IsSuccess.ShouldBeTrue();
+        result.OutputText.ShouldContain("Client updated");
+        result.OutputText.ShouldContain("Alfa Trade a.s.");
     }
 
     [Fact]
@@ -599,6 +715,22 @@ public class ClientChatToolTests
         result.IsSuccess.ShouldBeTrue();
         result.OutputText.ShouldContain("deleted (deactivated)");
         result.OutputText.ShouldContain("Alfa s.r.o.");
+    }
+
+    [Fact]
+    public async Task Delete_Fails_WhenTheClientWasDeletedBetweenPreviewAndConfirmation()
+    {
+        // DeleteClientAsync returns true for an already-inactive client, so the tool has to
+        // notice the no-op itself instead of announcing a delete that deleted nothing.
+        var client = Client(35, "Zaniklá s.r.o.");
+        client.IsActive = false;
+        _clientService.GetClientByIdAsync(35, Arg.Any<CancellationToken>()).Returns(client);
+
+        var result = await _delete.ExecuteAsync(new Dictionary<string, string> { ["id"] = "35" });
+
+        result.IsSuccess.ShouldBeFalse();
+        result.OutputText.ShouldContain("already deleted");
+        await _clientService.DidNotReceiveWithAnyArgs().DeleteClientAsync(default);
     }
 
     [Fact]
