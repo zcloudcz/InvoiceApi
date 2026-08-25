@@ -20,6 +20,8 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+## 2026.08.25.2 — 2026-08-25
+
 ### Změny pro vývojáře
 
 - **#318** — Testovací Azure Function App (`zcloudinvoicingapi-test`) se teď umí připojit
