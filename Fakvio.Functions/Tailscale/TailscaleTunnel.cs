@@ -482,6 +482,15 @@ public static class TailscaleTunnel
                 $"up failed on attempt {attempt} with exit code {exitCode}: {output} | tailscaled tail: {DaemonTailText(authKey)}",
                 LogLevel.Warning);
 
+            if (attempt == 1)
+            {
+                // Once, not per attempt: the first deployment showed the daemon calling
+                // control: client.Login and then hearing nothing for 30 s. Whether that is DNS, an
+                // outbound block or a slow control plane is undecidable from the daemon tail alone,
+                // so one HTTPS round-trip from .NET plus 'tailscale netcheck' are written to stdout.
+                await ReportControlPlaneReachabilityAsync(tailscalePath, logger, cancellationToken);
+            }
+
             if (attempt < UpAttempts)
             {
                 // Deliberately not cancellable: a spent budget is reported by the check at the top
@@ -492,6 +501,56 @@ public static class TailscaleTunnel
         }
 
         throw new InvalidOperationException($"'tailscale up' failed after {UpAttempts} attempts.");
+    }
+
+    /// <summary>
+    /// Diagnostic only, never throws: can this sandbox resolve and reach the Tailscale control
+    /// plane at all, and what does the daemon's own 'netcheck' say about DERP/UDP/DNS? Everything
+    /// lands in the stdout milestone, because that is the only channel Azure shows us.
+    /// </summary>
+    private static async Task ReportControlPlaneReachabilityAsync(
+        string tailscalePath, ILogger logger, CancellationToken cancellationToken)
+    {
+        const string controlHost = "controlplane.tailscale.com";
+        string dns;
+        try
+        {
+            var addresses = await Dns.GetHostAddressesAsync(controlHost, cancellationToken);
+            dns = string.Join(",", addresses.Select(a => a.ToString()));
+        }
+        catch (Exception ex)
+        {
+            dns = $"FAILED: {ex.GetType().Name}: {ex.Message}";
+        }
+
+        string https;
+        try
+        {
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
+            using var response = await http.GetAsync($"https://{controlHost}/", cancellationToken);
+            https = $"{(int)response.StatusCode} {response.ReasonPhrase}";
+        }
+        catch (Exception ex)
+        {
+            https = $"FAILED: {ex.GetType().Name}: {ex.GetBaseException().Message}";
+        }
+
+        string netcheck;
+        try
+        {
+            // No secret in these arguments, so nothing to redact.
+            var (exitCode, output) = await RunToCompletionAsync(
+                tailscalePath, $"--socket={SocketPath} netcheck", secret: string.Empty, cancellationToken);
+            netcheck = $"exit {exitCode}: {output}";
+        }
+        catch (Exception ex)
+        {
+            netcheck = $"FAILED: {ex.GetType().Name}: {ex.Message}";
+        }
+
+        Milestone(logger,
+            $"control-plane diagnostics — DNS {controlHost}: {dns} | HTTPS GET: {https} | netcheck: {netcheck}",
+            LogLevel.Warning);
     }
 
     /// <summary>
