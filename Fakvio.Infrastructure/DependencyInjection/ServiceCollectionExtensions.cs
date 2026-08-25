@@ -319,6 +319,17 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IChatTool, SendInvoiceEmailTool>();
         services.AddScoped<IChatTool, DeleteInvoiceTool>();
 
+        // Reminder (dunning) tools — read the state and the settings; the settings write is
+        // confirmable (IConfirmableChatTool). Sending and cancelling reminders stays in the UI.
+        services.AddScoped<IChatTool, ListRemindersTool>();
+        services.AddScoped<IChatTool, GetReminderSettingsTool>();
+        services.AddScoped<IChatTool, UpdateReminderSettingsTool>();
+
+        // Payment tools — read-only by decision of story #149: matching a payment to an invoice
+        // moves money between documents, so it stays on the Payments page.
+        services.AddScoped<IChatTool, ListPaymentsTool>();
+        services.AddScoped<IChatTool, GetPaymentTool>();
+
         services.AddScopedWithLogging<IChatToolExecutor, ChatToolExecutor>();
 
         // ── Database Logging ────────────────────────────────────────────────

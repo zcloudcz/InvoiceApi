@@ -47,7 +47,7 @@ internal static class BuiltInPromptAssertions
     ];
 
     /// <summary>
-    /// The catalog the twenty-nine shipped tools are expected to render, in DI registration order
+    /// The catalog the thirty-four shipped tools are expected to render, in DI registration order
     /// (<c>ServiceCollectionExtensions</c>). Each line is <c>- {ToolName}: {Description}</c>
     /// with the description written out as one line. This is the independent copy: when a tool
     /// description changes, it has to be changed here too, deliberately. That is the point.
@@ -83,6 +83,11 @@ internal static class BuiltInPromptAssertions
         "- mark_invoice_paid: Mark a COMPLETED issued invoice as paid (status Completed → Paid, payment date = now). Identify the invoice by ID or document number.",
         "- send_invoice_email: Send an issued invoice by e-mail with the PDF and ISDOC attachments. Identify the invoice by ID or document number and give the recipient address.",
         "- delete_invoice: Delete a DRAFT issued invoice (soft delete — it can be restored on the Invoices page). Issued documents cannot be deleted from chat. Identify the draft by ID or document number."
+        "- list_reminders: List payment reminders (dunning) with optional filtering by status, escalation level, date range, or a free-text search over the invoice number, client name and notes. Returns paged results. Read-only — use it to answer what has been reminded and what is still waiting to be sent.",
+        "- get_reminder_settings: Read the payment reminder (dunning) settings: whether reminders are enabled, the grace period, the number of escalation levels with their fees, and whether e-mails are sent automatically. Without a client it returns the company-wide default; with a client it returns the settings that actually apply to that client. Read-only.",
+        "- update_reminder_settings: Change the company-wide payment reminder (dunning) settings: switch reminders on or off, the grace period after the due date, how many escalation levels are used, whether late payment interest is added, whether the invoice PDF is attached, and whether reminder e-mails are sent automatically. Send only the settings that should change. The escalation levels themselves and per-client overrides are edited on the Reminders settings page.",
+        "- list_payments: List bank payments (transactions imported from the bank) with optional filtering by matching status, direction (incoming/outgoing), date range, or a free-text search over the counterparty, message and variable symbol. Returns paged results. Read-only — matching a payment to an invoice is done by the user on the Payments page.",
+        "- get_payment: Get the full detail of one bank payment: amount, date, counterparty, symbols, message, how it was imported, and which invoices it has been matched to. Identify the payment by the ID from a list_payments result. Read-only."
     ];
 
     /// <summary>The static lines below the generated tool catalog, verbatim.</summary>
