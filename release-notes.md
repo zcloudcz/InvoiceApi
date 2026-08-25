@@ -67,6 +67,13 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Změny pro vývojáře
 
+- **#222** — AI asistent v chatu teď umí i práci s klienty: vypsat seznam s filtry
+  (vč. hledání „vystavitel" bez zvláštního tlačítka), zobrazit celý detail (adresy,
+  kontakty, bankovní účty, fakturační nastavení), upravit údaje nebo klienta smazat.
+  Úprava i smazání se nejdřív ukážou k odsouhlasení a provedou se, až uživatel potvrdí;
+  smazání je měkké (klient zmizí ze seznamů, staré faktury na něj dál odkazují) a klienta
+  s existující fakturou smazat nejde vůbec. Prázdný název firmy se odmítne a neúspěšné
+  načtení z ARESu se nahlásí jako neúspěch, ne jako tichý úspěch. (PR #298, `03a9159`)
 - **#292** — Testovací prostředí `TEST-ENV` má teď vlastní deploy i pro frontend: push do
   větve `TEST-ENV` nasadí BlazorUI na Azure Static Web Apps (`fakvio-test-ui`), s vlastní
   URL API backendu zapečenou do buildu (ne produkční), a s deep-linky, které na SWA
