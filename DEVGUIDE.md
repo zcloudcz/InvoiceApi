@@ -2311,6 +2311,7 @@ dotnet test Fakvio.Tests.Unit --filter "FullyQualifiedName~DatabaseConnectivityS
 | `blazorui-test-deploy.yml` | Push `TEST-ENV`, manual | Build `Fakvio.BlazorUI` (WASM publish) → deploy Azure Static Web App `fakvio-test-ui`. Před publishem přepíše `ApiSettings:BaseUrl` na testovací Function App. Client-side routing řeší `wwwroot/staticwebapp.config.json` (`navigationFallback`). |
 | `master_zcloudinvoicingapi.yml` | Push `master` | Stáhne binárky Tailscale (viz níž) a publishne `Fakvio.Functions.csproj` → Azure Function App `zcloudinvoicingapi`. Auth přes managed identity (federated credentials). |
 | `testenv_zcloudinvoicingapi.yml` | Push `TEST-ENV`, manual | Totožné publish jako řádek výše, ale do **testovacího** Function Appu `zcloudinvoicingapi-test`. OIDC přes secrets s příponou `_TEST` (viz §9.4). |
+| `mcp-server.yml` | Push `master` + `TEST-ENV`, manual | Publishne `Fakvio.McpServer` (**jeden artefakt = oba režimy**, viz §4.9), smoke testem ověří, že se spustí, a `dotnet pack`em zabalí stdio nástroj `fakvio-mcp`. Obojí jde nahoru jako build artefakt. Na `TEST-ENV` navíc deploy HTTP hostu do Azure Web Appu (viz níž). |
 
 **Krok „Download Tailscale binaries"** (oba Functions workflow, před `dotnet publish`):
 stáhne `tailscale` + `tailscaled` do `Fakvio.Functions/tsbin/`, odkud je do publish outputu
@@ -2319,6 +2320,49 @@ obou workflow — tarball se stahuje až při deployi, takže bez pinu by změna
 do Azure. `tsbin/` je gitignorovaný, v repu binárky nejsou. Produkce je stahuje také (feature je
 tam bez `TAILSCALE_AUTHKEY` nečinná), aby byl balíček obou prostředí identický. Bump verze a
 proč to celé existuje: `Fakvio.Functions/Tailscale/README.md`.
+
+**`mcp-server.yml` — proč tak, jak je** (#241):
+
+- **Jeden `dotnet publish`, oba režimy.** Transport se volí až za běhu z `FAKVIO_MCP_TRANSPORT`
+  (§4.9), takže binárky nainstalované jako nástroj `fakvio-mcp` a binárky nasazené do Azure
+  jsou tytéž. Druhý build s jinými přepínači by byla druhá věc, která se může rozejít; deploy
+  job proto artefakt **stahuje z build jobu**, nebuilduje si vlastní.
+- **Smoke test spuštěním, ne jen buildem.** ASP.NET Core shared framework se resolvuje hostem
+  *před* `Main`, takže jeho chybějící instalaci build nikdy neodhalí. Workflow spustí publishnutý
+  host s neznámou hodnotou `FAKVIO_MCP_TRANSPORT` a čeká **přesně** exit code 1 (guard v
+  `Program.cs`) — bez API a bez sítě. Přesně 1, ne „nenulový": pád na chybějícím
+  frameworku je taky nenulový a je to právě ten případ, kvůli kterému krok existuje.
+  `stdin` je zavřený, aby případná regrese na fallback do stdio krok neuspala.
+  **`FAKVIO_API_TOKEN=dummy` v tom kroku není kosmetika**: stdio mód bez tokenu vrací taky 1,
+  takže bez placeholderu by assert prošel i regresi, která `__invalid__` spolkne a spadne do
+  stdio. S tokenem ten fallback vrací 0 a krok zčervená. Token nikam neodchází — při startu
+  se žádný request nedělá.
+- **Assert na `Microsoft.AspNetCore.App` v `runtimeconfig.json` zabaleného nupkg.**
+  `ModelContextProtocol.AspNetCore` nese `FrameworkReference`, takže ASP.NET Core runtime je
+  tvrdý požadavek nástroje **i pro stdio** — a je to tak napsané v README „Požadavky" i v §4.9.
+  Dokumentované chování se nesmí změnit potichu, proto to hlídá workflow, ne komentář.
+- **Deploy HTTP hostu běží jen na `TEST-ENV`** a jen když je nastavená **repo variable**
+  `MCP_HTTP_APP_NAME` (jméno App Service, očekávaná hodnota `fakvio-mcp-test`). Proměnná je
+  zároveň vypínač: dokud Web App neexistuje, job se přeskočí místo aby barvil každý push do
+  `TEST-ENV` na červeno. OIDC bere **stávající `_TEST` secrets** (jedna app registration na
+  prostředí, ne na resource) — potřebuje jen rozšířit její role assignment na nový Web App.
+  Produkční MCP HTTP host zatím není; až bude, přidej sourozenecký job s produkčními secrets,
+  jak jsou rozdělené Functions workflow.
+- **Post-deploy ověření: `POST /mcp` bez `Authorization` musí vrátit 401.** Tenhle případ
+  `McpApiKeyMiddleware` odmítne bez round-tripu na API (§4.9), takže test nenese žádný
+  credential a přesto dokazuje dvě věci — host nastartoval a brána stojí **před** celou
+  pipeline. Kód ale není diagnóza: proti hostu s vymutovanou bránou vrací tenhle konkrétní
+  request **500** (dojde až na MCP transport a ten spadne na prázdném content type) a jakákoli
+  jiná cesta 404 — takže 5xx tady znamená „nenastartoval **nebo** brána chybí", a 200 nenastane.
+  **Namapování `/mcp` neověřuje** a ověřit ho takhle nejde: middleware je registrovaný přes
+  `app.Use(...)` nad celou pipeline (`McpHttpHost.cs`) a bez hlavičky short-circuituje **dřív**
+  než jakýkoli endpoint, takže 401 vrátí i neexistující cesta (ověřeno: `POST /mcp`,
+  `POST /nope` i `GET /` → 401). Na důkaz mapování by byl potřeba platný API key, tedy přesně
+  ten credential, který tenhle krok schválně nemá. (Pozor i na opačný směr: 401 může jednou
+  přijít od platformy — App Service Authentication — ještě než se aplikace dostane ke slovu,
+  takže na tomhle Web Appu ji **nezapínej**.)
+- App settings HTTP hostu (`FAKVIO_MCP_TRANSPORT=http`, `FAKVIO_API_URL`) patří do konfigurace
+  Azure App Service, **ne do workflow** — stejné pravidlo jako u Functions (§9.4).
 
 **Pozn.**: Pro `Fakvio.API` (klasický host) **není dedicated workflow** v repu — historicky se hostil přes externí App Service nebo manuálně. Pokud přidáš API workflow, zaznamenej zde.
 
