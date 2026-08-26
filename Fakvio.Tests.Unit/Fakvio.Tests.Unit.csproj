@@ -11,6 +11,9 @@
     <PackageReference Include="bunit" Version="2.7.2" />
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.0" />
+    <!-- TestServer: hosts the MCP HTTP transport in memory (no socket, no port) so the
+         cross-tenant isolation tests run the real ASP.NET Core pipeline. -->
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" Version="10.0.1" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="NSubstitute" Version="5.3.0" />
     <PackageReference Include="Shouldly" Version="4.3.0" />

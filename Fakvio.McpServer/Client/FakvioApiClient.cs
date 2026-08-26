@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Fakvio.Contracts.Common.Pagination;
+using Fakvio.Contracts.Dto.ApiKey;
 using Fakvio.Contracts.Dto.Client;
 using Fakvio.Contracts.Dto.Dashboard;
 using Fakvio.Contracts.Dto.Email;
@@ -446,6 +447,26 @@ public class FakvioApiClient : IFakvioApiClient
         if (f.MaxAmount.HasValue) parts.Add($"maxAmount={f.MaxAmount.Value}");
 
         return parts.Count > 0 ? "?" + string.Join("&", parts) : "";
+    }
+
+    // ── Identity ──────────────────────────────────────────────────────────
+
+    public async Task<ApiKeyIdentityDto?> GetIdentityAsync(CancellationToken ct = default)
+    {
+        var response = await _http.GetAsync("api/api-key/me", ct);
+
+        // 401/403 = the API looked at the credential and said no. That is a domain answer
+        // ("this key does not work"), not a failure, so it comes back as null and the caller
+        // decides what to do — the HTTP gate turns it into a 401 for the MCP client.
+        if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+            return null;
+
+        // Anything else non-2xx (API down, wrong base URL, 5xx) throws on purpose: answering
+        // "your key is invalid" to an unreachable API would send the operator hunting in the
+        // wrong place.
+        await EnsureSuccessAsync(response, ct);
+
+        return await response.Content.ReadFromJsonAsync<ApiKeyIdentityDto>(JsonOptions, ct);
     }
 
     /// <summary>

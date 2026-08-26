@@ -1006,6 +1006,19 @@ fakturu" nebo „splatnost do pátku" nedá vyhodnotit:
 - Náhled pro SysAdmina blok ukazuje také, s `PreviewPlaceholder` místo živých hodnot —
   vlastní prompt se píše proti celému layoutu, ne proti jeho polovině.
 
+**Onboarding instrukce (issue #214).** Když — a jen když — je řádek `Setup not finished yet`
+neprázdný, přidá se za něj `AiSystemPrompt.OnboardingInstructions`: doptávej se **po jednom
+údaji**, každou odpověď rovnou zapiš odpovídajícím toolem, neposílej uživatele do formuláře
+a respektuj dvoufázové potvrzení (`IConfirmableChatTool`, pravidlo 7 výše). Bez nich model vysype všechny
+chybějící údaje do jedné zprávy nebo ohlásí uložení hodnoty, kterou tool teprve nabídl.
+
+- Sedí v **bloku 6, ne v bloku 3** — blok 3 může SysAdmin celý nahradit vlastním promptem
+  a onboarding je to jediné, o co nový tenant nesmí takhle přijít.
+- Tooly se v textu jmenují obecně („the matching tool above"). Katalog se generuje z DI,
+  takže jmenný seznam by byl druhá, ručně udržovaná kopie, co zastará při prvním novém toolu.
+- Nastavený tenant instrukce nedostane vůbec — jinak by je platil v tokenech v každém requestu.
+- Klientskou půlku (proaktivní uvítání) řeší `ChatOnboarding`, viz §4.12.
+
 #### Chat AI Tools matice
 
 Sloupec „Klíčové parametry" je jen orientační — závazné je schéma v příslušné třídě.
@@ -1494,14 +1507,21 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
 
 ### 4.9 MCP Server (`Fakvio.McpServer`)
 
-- Standalone .NET tool (PackAsTool), `ToolCommandName` = **`fakvio-mcp`**, stdio transport, SDK `ModelContextProtocol` 2.2.0.
+- Standalone .NET tool (PackAsTool), `ToolCommandName` = **`fakvio-mcp`**, SDK `ModelContextProtocol` 2.2.0.
+- **Dva hostovací režimy, jedna sada nástrojů** (`FAKVIO_MCP_TRANSPORT`): `stdio` (výchozí, jeden proces = jeden lokální klient) a `http` (Streamable HTTP na `/mcp`, jeden proces = mnoho vzdálených klientů). Registrace, kterou oba sdílejí, je `McpServerRegistration.AddFakvioMcpServer()` — jediné místo, kde se skládá API klient + `AddMcpServer().WithToolsFromAssembly()`, takže surface obou režimů nemůže rozejít. Neznámá hodnota proměnné = exit code 1 (server, který měl poslouchat na HTTP a místo toho čeká na stdin, vypadá zvenčí jako nastartovaný).
 - Jméno v MCP handshake (`ServerInfo.Name`) je `fakvio` — nezaměňovat s názvem příkazu.
-- Auth: `FAKVIO_API_TOKEN` env var (JWT bearer, povinný — bez něj exit code 1), `FAKVIO_API_URL` (výchozí `https://localhost:7001`, lokální API ale běží na `7047` → nastavovat explicitně).
-- **Outbound auth je per request, ne per proces.** `AuthHeaderHandler` (`DelegatingHandler`) nasazuje `Authorization: Bearer` na každý odchozí request; token dodává `IApiTokenProvider`. Ve stdio režimu je to `EnvironmentApiTokenProvider` (čte `FAKVIO_API_TOKEN` načtený do `McpServerSettings`). HTTP transport zapojí za stejné rozhraní jinou implementaci — ta ale **musí zůstat singleton** a token číst z ambient request-local kontextu (`IHttpContextAccessor` / `AsyncLocal`) až uvnitř `GetToken()`.
+- Auth: `FAKVIO_API_TOKEN` env var (JWT bearer, povinný **jen ve stdio režimu** — bez něj exit code 1; v HTTP režimu se nepoužívá, credential nosí volající), `FAKVIO_API_URL` (výchozí `https://localhost:7001`, lokální API ale běží na `7047` → nastavovat explicitně).
+- **Outbound auth je per request, ne per proces.** `AuthHeaderHandler` (`DelegatingHandler`) nasazuje `Authorization: Bearer` na každý odchozí request; token dodává `IApiTokenProvider`. Ve stdio režimu je to `EnvironmentApiTokenProvider` (čte `FAKVIO_API_TOKEN` načtený do `McpServerSettings`), v HTTP režimu `HttpContextApiTokenProvider` — obojí **singleton**, ten druhý čte bearer token z ambient `IHttpContextAccessor` až uvnitř `GetToken()` a nedrží si nic v poli.
   Do `HttpClient.DefaultRequestHeaders.Authorization` token **nikdy nepatří** — defaulty sdílí všichni volající, takže pod HTTP hostingem by boot credential procesu jel na cizí tool cally (cross-tenant leak) a mutace defaultu za běhu je data race. Regresi hlídá `AuthHeaderHandlerTests`.
   - **`AddScoped<IApiTokenProvider, …>()` je zakázaný** — není to stylová preference, ale tatáž bezpečnostní díra o patro níž. `AddHttpMessageHandler<AuthHeaderHandler>()` handler **neresolvuje z request scope**: `IHttpClientFactory` staví celou pipeline ve svém privátním scope a hotovou ji pooluje (výchozí `HandlerLifetime` 2 minuty). `AddTransient<AuthHeaderHandler>()` proto znamená transient *per konstrukci pipeline*, ne per request. Scoped provider by se do poolovaného handleru zachytil při první konstrukci a obsluhoval všechny další volající po celou dobu života pipeline — token prvního uživatele na callech těch dalších. `SetHandlerLifetime` to neřeší, scopy nesrovnává, jen zkracuje dobu, po kterou se cizí token recykluje.
   - Singleton nad ambient kontextem je bezpečný právě proto, že **žádný credential nedrží**: `IHttpContextAccessor` je sám singleton nad `AsyncLocal`, takže se hodnota vyhodnotí až v logickém kontextu konkrétního requestu. Ze stejného důvodu `GetToken()` zůstává synchronní (ambient lookup nemá co awaitovat) a implementace si výsledek **nesmí cachovat** do pole.
 - Žádný přístup k DB — všechno jde přes `IFakvioApiClient` → HTTP na `Fakvio.API`, takže autorizace i tenant izolace platí beze změny.
+- **HTTP režim (#240)** — `McpHttpHost` (`Fakvio.McpServer/Http/`), dvě metody: `ConfigureServices()` a `MapEndpoints()`. Rozdělené takhle proto, aby testy hostovaly **tutéž** konfiguraci na in-memory `TestServer`, ne její ručně opsanou kopii.
+  - **Příchozí credential = API klíč volajícího** (`Authorization: Bearer fak_…`, viz #236). MCP server žádný vlastní credential nemá; klíč jen přeposílá dál na `Fakvio.API`, takže autorizace i tenant izolace zůstávají tam, kde byly.
+  - **Validace každý request přes `GET /api/api-key/me`** (`McpApiKeyMiddleware`), **bez cache** — cache by udělala z revokace eventually-consistent věc (zákaz ze story #144). Chybějící hlavička se odmítne rovnou, bez round-tripu na API. Transportní selhání API se **nepřevádí** na 401: „API je nedostupné" a „tvůj klíč neplatí" jsou dvě různé diagnózy, tak to padá jako 500.
+  - **`SessionMode = Stateless` je zapsaný natvrdo**, ne ponechaný na defaultu SDK. Čtení tokenu z `HttpContext` funguje jen dokud tool běží na `ExecutionContext` toho HTTP requestu, který ho přinesl; stateless to garantuje (každý request = čerstvý server context). Stateful se dnes chová stejně, ale jen proto, že `PerSessionExecutionContext` defaultuje na `false` — s `true` běží každý tool call na kontextu initialize requestu, `HttpContext` je pro volajícího `null` a API odpoví 401. Ověřeno mutací v `McpHttpTransportTests`. Vedlejší efekt: žádná session affinity → host jde škálovat bez sticky routingu.
+  - `ModelContextProtocol.AspNetCore` nese `FrameworkReference` na `Microsoft.AspNetCore.App`, takže zabalený tool potřebuje ASP.NET Core shared framework **i pro stdio**. Balení a deploy HTTP hostu řeší #241.
+  - **Mimo scope (story #144):** OAuth 2.1 / dynamic client registration pro Claude.ai konektory (hlavičku dodává uživatel ručně), per-area scopes (jen read/write), cache API klíčů.
 - **37 tools**: 10 invoice + 6 client + 6 received invoice + 6 reporting + 5 tax + 3 template + 1 readiness (po jednom souboru v `Tools/`).
   Ruční číslo v dokumentaci stárne; zdroj pravdy je `grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs`.
   Porovnání s chat tooly (co MCP umí a chat ještě ne): paritní tabulka v §4.7.
@@ -1728,6 +1748,19 @@ normální položka reportu (200), s `issuerId` je to 404.
 | Banner | `Fakvio.UI.Shared/Components/Shared/ReadinessBanner.razor` | Blocking → `Severity.Error`, Warning → `Severity.Warning`, dva oddělené alerty. Prázdný report = nerenderuje nic. Stahuje **jednou na `IssuerId`** (guard `_loadedIssuerId`, stejný idiom jako `_lastTrigger` v `InvoicePaymentsPanel`) — bez něj by každý `StateHasChanged()` hostitelské stránky znamenal další `GET /api/readiness` |
 | Checklist | `Fakvio.UI.Shared/Components/Shared/SetupChecklist.razor` | Karta „Dokončit nastavení" na dashboardu. Stejné dělení jako banner — položky **seskupené podle závažnosti** pod klíči `Readiness_BlockingTitle` / `Readiness_WarningTitle`, barva ikony nadpis jen opakuje. Severita nesmí být nesená jen barvou (odečítač obrazovky z barvy nepřečte nic, červená vs oranžová je navíc nejhorší dvojice pro barvosleposti) — a report z `TenantReadinessService` není řazený, seskupení tedy drží i pořadí. Bez parametrů → stačí `OnInitializedAsync`, **žádný re-fetch guard** (není co znovu spouštět). Odložení = `bool` v localStorage pod klíčem `setupChecklistDeferred` přes `ILocalStorageService`, čtení v `try/catch` (precedens `GridStateService.LoadAsync`) — sbalí kartu na jedno tlačítko, nesmaže ji. **Dokončenost se neukládá nikdy**, počítá se z reportu, takže nemůže zastarat |
 | Zapojení | `Home.razor` → `SetupChecklist` (bez `IssuerId`, celý tenant), `InvoiceDetail.razor` → `ReadinessBanner` (jen stav Draft, `IssuerId` dokladu) | Na dashboardu je checklist nástupcem banneru (#210 nahradil i statickou „Quick Start" osu) — **dvě komponenty se stejným reportem na jedné stránce nikdy**. Detail Draftu je poslední místo před gate v `CompleteInvoiceAsync`, tam se odkládat nedá |
+
+**UI konzument — konverzační onboarding** (issue #214). Druhá polovina je serverová
+(`AiSystemPrompt.OnboardingInstructions`, §4.7).
+
+| Vrstva | Kde | Poznámka |
+|--------|-----|----------|
+| Rozhodnutí + text | `Fakvio.UI.Shared/Components/Chat/ChatOnboarding.cs` | `BuildWelcome(report, L)` → markdown, nebo **null** = tenant je připravený, neotravuj. Jen `Blocking` nálezy, stejně jako v promptu — warning uživateli fakturovat nebrání. Čistá funkce, takže je pravidlo testovatelné bez renderu i bez živého modelu |
+| Text nálezu | `Fakvio.UI.Shared/Components/Shared/ReadinessIssueText.cs` | `Describe(L, issue)` — **týž** helper, který používá banner i checklist (tabulka §4.12 výše). Banner, checklist i uvítání musí tentýž nález pojmenovat stejně; další kopie pravidla „kód → klíč + fallback“ by se rozešla při prvním novém kódu |
+| Zapojení | `MainLayout.razor` (`TryProactiveOnboardingAsync`) → `ChatPanel.OnboardingWelcome` | Po `LoadCompaniesAsync` (potřebuje `_hasTenantContext`), **jednou za session** (`sessionStorage["chatOnboardingShown"]`, maže se při odhlášení). Uvítání se vloží do `_messages` jen v UI — do konverzace v DB nejde, jinak by měl model v historii každé konverzace vloženou vlastní repliku |
+
+Uvítání **neskládá model** — je to lokalizovaný text. Panel ho ukáže hned po otevření, nic
+nestojí, nemůže si chybějící položky vymyslet a dá se otestovat bez živého AI. Konverzaci od
+druhé zprávy dál řídí prompt (§4.7), ne tenhle text.
 
 Když přidáváš readiness kód, přidej k němu **i lokalizační klíč `Readiness_Code_<KÓD>`
 do obou `SharedResource*.resx`** — jinak uživatel uvidí obecnou náhradní hlášku.

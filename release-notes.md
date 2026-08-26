@@ -22,6 +22,11 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Změny pro uživatele
 
+- **#214** — přihlásíte-li se s nedokončeným nastavením firmy (chybí sídlo, IČO/DIČ, bankovní
+  účet nebo číselná řada), AI asistent v chatu se teď sám ozve jako první — otevře se panel
+  s uvítáním a nabídkou pomoct to doplnit. Ptá se po jednom údaji a rovnou ho zapisuje, není
+  potřeba přepínat do formulářů. Ozve se jen jednou za přihlášení (ne po každém obnovení
+  stránky) a jakmile je nastavení kompletní, mlčí. (PR #358, `14e4a77`)
 - **#210** — dashboard místo statického „Rychlý start" teď ukazuje živý přehled, co firmě ještě chybí k vystavení faktury — položky jsou rozdělené na blokující a doporučené (ne jen barvou, i nadpisem), každá vede přímo tam, kde se dá doplnit. Kartu jde tlačítkem „Připomenout později" sbalit na jeden řádek, ale nezmizí natrvalo — jakmile něco chybí, po dalším přihlášení se zase ukáže sama. (PR #348, `31bf00d`)
 
 ### Opravy
@@ -30,6 +35,7 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Změny pro vývojáře
 
+- **#240** — MCP server (`Fakvio.McpServer`) teď umí kromě stdia i vzdálený HTTP transport (`FAKVIO_MCP_TRANSPORT=http`, `MapMcp("/mcp")`), takže se dá připojit odjinud než z lokálního procesu. Session je stateless (žádné sdílené credentials mezi klienty) a každý request se ověřuje proti `GET /api/api-key/me` bez cache — revokace API klíče se projeví okamžitě, ne až po vypršení nějakého okna. Stdio režim (dnešní provoz) se nemění. (PR #357, `d7570b6`)
 - **#227** — AI asistent v chatu teď umí i s upomínkami a platbami: vypsat upomínky a jejich nastavení, přečíst, co platí pro konkrétního klienta, a změnit firemní nastavení upomínání (po odsouhlasení). U bankovních plateb umí vypsat seznam a zobrazit detail — spárování platby s fakturou zůstává na stránce Platby, přes chat se to záměrně nedělá. (PR #340, `b79d5c1`)
 - **#225** — AI asistent v chatu teď umí i se šablonami: vypsat šablony faktur i e-mailových/tiskových šablon dokumentů, zobrazit jejich detail a přepnout, která je výchozí. Editace obsahu šablony zůstává v UI (Quill editor je na to lepší nástroj). (PR #338, `6b249d3`)
 - **#218** — AI asistent v chatu teď umí i s přijatými fakturami: založit novou (podle diktovaných údajů, ne jen z nahraného dokladu), schválit, označit jako zaplacenou nebo smazat. Každá z těchto změn se napřed ukáže k odsouhlasení (dodavatel, částka bez DPH, případně datum úhrady) a teprve po potvrzení se zapíše. Dictovaná sazba DPH se navíc ověřuje proti sazbám, které firma skutečně má nastavené. (PR #281, `595148b`)
