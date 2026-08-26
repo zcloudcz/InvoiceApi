@@ -1271,7 +1271,8 @@ je hotovo. Když ne, obvyklé příčiny jsou tyhle:
 | Chybu s číslem **401** | Klíč je špatně zkopírovaný, vypršel, nebo byl revokovaný | Vytvořte na stránce Integrace nový klíč a vložte ho znovu |
 | Chybu s číslem **403** | Klíč má oprávnění `Jen čtení` a AI se pokusila něco změnit | Vytvořte klíč s `Čtení i zápis` (a ten původní revokujte) |
 | Že nástroje Fakvia vůbec nevidí | Konfigurace se nenačetla | Zkontrolujte, že soubor je uložený na správném místě, a AI aplikaci restartujte |
-| Že se nemůže připojit | U lokálního režimu chybí `fakvio-mcp` nebo v `FAKVIO_API_URL` není adresa API (častá chyba: je tam adresa, na které máte Fakvio otevřené v prohlížeči); u vzdáleného nesedí `url` | Porovnejte hodnotu s připraveným blokem na stránce Integrace, jinak se obraťte na správce |
+| Že se nemůže připojit — **lokální** režim | Chybí nástroj `fakvio-mcp`, nebo v `FAKVIO_API_URL` není adresa API (častá chyba: je tam adresa, na které máte Fakvio otevřené v prohlížeči) | Porovnejte `FAKVIO_API_URL` s blokem **Lokální MCP server (stdio)** na stránce Integrace; když blok už nemáte otevřený, řekněte si o adresu API správci |
+| Že se nemůže připojit — **vzdálený** režim | Nesedí `url` MCP serveru | Vložte adresu, kterou vám dal správce (končí `/mcp`). S připraveným blokem ji neporovnávejte — `url` je v něm jen zástupná hodnota (viz krok 3b) |
 
 ---
 

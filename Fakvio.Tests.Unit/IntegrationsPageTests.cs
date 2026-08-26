@@ -1,4 +1,4 @@
-// ============================================================================
+﻿// ============================================================================
 // IntegrationsPageTests — bUnit coverage for /settings/integrations (issue #237).
 //
 // ApiKeyServiceTests covers the server side. This file covers the part the user
@@ -56,6 +56,13 @@ public class IntegrationsPageTests : BunitContext, IAsyncLifetime
     private const string ScopeRead = "read";
     private const string ScopeReadWrite = "read,write";
 
+    /// <summary>
+    /// Base address of the API the page talks to. Deliberately not "localhost" and not the
+    /// address bUnit navigates from: the two are different hosts in every real deployment,
+    /// which is the whole point of the snippet assertion below.
+    /// </summary>
+    private const string ApiBaseUrl = "https://api.test.local";
+
     private readonly ApiKeyStub _api = new(RawKey);
 
     // MudBlazor's PopoverService only supports async disposal; xunit v2 disposes
@@ -77,7 +84,7 @@ public class IntegrationsPageTests : BunitContext, IAsyncLifetime
         Services.AddLocalization(options => options.ResourcesPath = "Resources");
 
         // Real API client over the stub, so DTO serialization is part of the test.
-        var httpClient = new HttpClient(_api) { BaseAddress = new Uri("https://api.test.local") };
+        var httpClient = new HttpClient(_api) { BaseAddress = new Uri(ApiBaseUrl) };
         var factory = Substitute.For<IHttpClientFactory>();
         factory.CreateClient(Arg.Any<string>()).Returns(httpClient);
         Services.AddSingleton(factory);
@@ -366,6 +373,26 @@ public class IntegrationsPageTests : BunitContext, IAsyncLifetime
             page.Markup.ShouldContain($"\"FAKVIO_API_TOKEN\": \"{RawKey}\"");
             page.Markup.ShouldContain($"Bearer {RawKey}");
         });
+    }
+
+    /// <summary>
+    /// The stdio snippet must carry the address of the **API**, not the address the user has
+    /// the app open at in the browser.
+    ///
+    /// This is USERGUIDE §20.3's escape hatch: the guide tells a user who does not know the
+    /// value to copy it out of this block. A snippet built from the host address instead would
+    /// start `fakvio-mcp` fine and fail every call on connection — the exact defect review
+    /// round 1 of #242 found in the prose, one layer down in the code that generates the value.
+    /// </summary>
+    [Fact]
+    public async Task Integrations_StdioSnippet_CarriesTheApiBaseUrl()
+    {
+        var page = RenderPageWithKeys();
+
+        await CreateKeyNamed(page, NewKeyName);
+
+        page.WaitForAssertion(() =>
+            page.Markup.ShouldContain($"\"FAKVIO_API_URL\": \"{ApiBaseUrl}\""));
     }
 
     // ── Revoke ────────────────────────────────────────────────────────────
