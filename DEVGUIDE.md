@@ -33,10 +33,10 @@ Pokud máš pochybnost, **zde má pravdu DEVGUIDE.md**, ne komentáře v kódu (
 | `Fakvio.McpServer` | Console (.NET tool) | MCP server pro AI klienty. Stdio transport, ModelContextProtocol 2.2.0. |
 | `Fakvio.MigrationTool` | Console | DB migrace, seed master schema, provisioning helper. |
 | `Fakvio.AresService` | Class lib | Klient pro ARES (CZ obchodní rejstřík) — autonomní, bez EF. |
-| `Fakvio.Tests.Unit` | xUnit | Unit testy (~756). Stack: xUnit + **NSubstitute** + **Shouldly** + EF InMemory. |
+| `Fakvio.Tests.Unit` | xUnit | Unit testy (3345 k 2026-08-26). Stack: xUnit + **NSubstitute** + **Shouldly** + EF InMemory. |
 | `Fakvio.Tests.Integration` | xUnit | Integration testy (5). `InvoiceApiFactory : WebApplicationFactory<Program>`. |
 | `Fakvio.Tests.MigrationTool` | xUnit | Testy `Fakvio.MigrationTool` proti reálnému PostgreSQL (3). Vlastní projekt kvůli izolaci procesně globálního `Npgsql.EnableLegacyTimestampBehavior`. |
-| `Fakvio.Tests.Playwright` | NUnit | E2E browser testy (~48). Czech locale, Prague TZ. |
+| `Fakvio.Tests.Playwright` | NUnit | E2E browser testy (192 k 2026-08-26). Czech locale, Prague TZ. |
 
 ### 1.2 Hostovací modely (důležité)
 
