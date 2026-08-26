@@ -175,8 +175,16 @@ jobs:
           set -euo pipefail
           # A request with no Authorization header is rejected by McpApiKeyMiddleware without
           # touching the API, so 401 proves two things with no credential in the workflow: the
-          # host booted, and the gate stands in front of the whole pipeline. Anything else
-          # (200 = gate missing, 5xx = did not start) is a failed deploy.
+          # host booted, and the gate stands in front of the whole pipeline. Anything else is a
+          # failed deploy, but do not read the code as a diagnosis: measured against a host with
+          # the gate mutated out, this exact request answers 500 (the MCP transport is reached
+          # and throws on the empty content type) and any other path answers 404. So 5xx here
+          # means "did not start OR the gate is gone", and 200 does not happen.
+          #
+          # The reverse trap: App Service Authentication (Easy Auth) answers 401 at the platform
+          # before the app is reached at all, which would keep this step green on a host that
+          # never booted. Do not enable Easy Auth on this Web App — the #241 hand-back asks only
+          # for HTTPS Only plus the two app settings (DEVGUIDE §9.1).
           #
           # It does NOT prove /mcp is mapped: the middleware is registered with app.Use(...)
           # over the entire pipeline and short-circuits before any endpoint runs, so every path

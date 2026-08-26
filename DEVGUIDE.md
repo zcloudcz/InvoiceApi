@@ -2303,13 +2303,16 @@ proč to celé existuje: `Fakvio.Functions/Tailscale/README.md`.
 - **Post-deploy ověření: `POST /mcp` bez `Authorization` musí vrátit 401.** Tenhle případ
   `McpApiKeyMiddleware` odmítne bez round-tripu na API (§4.9), takže test nenese žádný
   credential a přesto dokazuje dvě věci — host nastartoval a brána stojí **před** celou
-  pipeline. 200 = brána chybí, 5xx = nenastartoval.
+  pipeline. Kód ale není diagnóza: proti hostu s vymutovanou bránou vrací tenhle konkrétní
+  request **500** (dojde až na MCP transport a ten spadne na prázdném content type) a jakákoli
+  jiná cesta 404 — takže 5xx tady znamená „nenastartoval **nebo** brána chybí", a 200 nenastane.
   **Namapování `/mcp` neověřuje** a ověřit ho takhle nejde: middleware je registrovaný přes
   `app.Use(...)` nad celou pipeline (`McpHttpHost.cs`) a bez hlavičky short-circuituje **dřív**
   než jakýkoli endpoint, takže 401 vrátí i neexistující cesta (ověřeno: `POST /mcp`,
   `POST /nope` i `GET /` → 401). Na důkaz mapování by byl potřeba platný API key, tedy přesně
   ten credential, který tenhle krok schválně nemá. (Pozor i na opačný směr: 401 může jednou
-  přijít od platformy — App Service Authentication — ještě než se aplikace dostane ke slovu.)
+  přijít od platformy — App Service Authentication — ještě než se aplikace dostane ke slovu,
+  takže na tomhle Web Appu ji **nezapínej**.)
 - App settings HTTP hostu (`FAKVIO_MCP_TRANSPORT=http`, `FAKVIO_API_URL`) patří do konfigurace
   Azure App Service, **ne do workflow** — stejné pravidlo jako u Functions (§9.4).
 
