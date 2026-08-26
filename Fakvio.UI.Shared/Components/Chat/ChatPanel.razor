@@ -152,6 +152,15 @@
     [Parameter]
     public EventCallback OnClose { get; set; }
 
+    /// <summary>
+    /// Proactive onboarding welcome to show as the first assistant message, or null when the
+    /// tenant setup is finished and no greeting is due (issue #214). Composed by
+    /// <see cref="ChatOnboarding.BuildWelcome"/> in MainLayout, which also decides whether the
+    /// drawer opens by itself.
+    /// </summary>
+    [Parameter]
+    public string? OnboardingWelcome { get; set; }
+
     // ─── State ───────────────────────────────────────────────────────────
 
     private List<ChatConversationListDto> _conversations = new();
@@ -160,6 +169,9 @@
     private List<string> _providers = new();
     private string _selectedProvider = string.Empty;
     private bool _showConversationList;
+
+    /// <summary>Guards the onboarding welcome so it is seeded once, not on every re-render.</summary>
+    private bool _welcomeShown;
     private bool _isStreaming;
     private string _streamingContent = string.Empty;
     private ElementReference _messagesContainer;
@@ -179,6 +191,31 @@
     {
         await LoadProviders();
         await LoadConversations();
+    }
+
+    /// <summary>
+    /// Seeds the proactive onboarding welcome as the first assistant message (issue #214).
+    ///
+    /// In OnParametersSet rather than OnInitializedAsync because MainLayout fetches the
+    /// readiness report asynchronously: the panel may well be constructed before the answer
+    /// arrives, and the parameter is then set on a later render.
+    ///
+    /// The message is UI-only — it is never sent to the API and never stored in the
+    /// conversation. It is a greeting, not a turn: persisting it would put words in the
+    /// model's mouth in the history of every conversation the user later opens.
+    /// </summary>
+    protected override void OnParametersSet()
+    {
+        if (_welcomeShown || string.IsNullOrWhiteSpace(OnboardingWelcome) || _messages.Count > 0)
+            return;
+
+        _welcomeShown = true;
+        _messages.Add(new ChatMessageDto
+        {
+            Role = "Assistant",
+            Content = OnboardingWelcome,
+            CreatedAt = DateTime.UtcNow
+        });
     }
 
     // ─── Data Loading ────────────────────────────────────────────────────

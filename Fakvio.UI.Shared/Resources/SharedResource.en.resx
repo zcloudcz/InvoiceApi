@@ -1061,6 +1061,10 @@
   <data name="Chat_UnsupportedFileType" xml:space="preserve"><value>Unsupported file type.</value></data>
   <data name="Chat_FileTooLarge" xml:space="preserve"><value>File exceeds the maximum allowed size of 10 MB.</value></data>
   <data name="Chat_Error_Unexpected" xml:space="preserve"><value>The message could not be processed. Please try again.</value></data>
+  <!-- Conversational onboarding (issue #214) — the assistant greets first when the tenant
+       setup is unfinished. The list of gaps is composed from the Readiness_Code_* keys. -->
+  <data name="Chat_Onboarding_Intro" xml:space="preserve"><value>Welcome to Fakvio! A few details are still missing before you can issue your first invoice:</value></data>
+  <data name="Chat_Onboarding_Ask" xml:space="preserve"><value>We can fill them in right here in the chat — I will ask for one at a time and save it straight away. Shall we start?</value></data>
   <data name="EChatRole_User" xml:space="preserve"><value>You</value></data>
   <data name="EChatRole_Assistant" xml:space="preserve"><value>Assistant</value></data>
   <!-- Received Invoices (Expenses) -->

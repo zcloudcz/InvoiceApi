@@ -33,10 +33,10 @@ Pokud máš pochybnost, **zde má pravdu DEVGUIDE.md**, ne komentáře v kódu (
 | `Fakvio.McpServer` | Console (.NET tool) | MCP server pro AI klienty. Stdio transport, ModelContextProtocol 2.2.0. |
 | `Fakvio.MigrationTool` | Console | DB migrace, seed master schema, provisioning helper. |
 | `Fakvio.AresService` | Class lib | Klient pro ARES (CZ obchodní rejstřík) — autonomní, bez EF. |
-| `Fakvio.Tests.Unit` | xUnit | Unit testy (~756). Stack: xUnit + **NSubstitute** + **Shouldly** + EF InMemory. |
+| `Fakvio.Tests.Unit` | xUnit | Unit testy (3345 k 2026-08-26). Stack: xUnit + **NSubstitute** + **Shouldly** + EF InMemory. |
 | `Fakvio.Tests.Integration` | xUnit | Integration testy (5). `InvoiceApiFactory : WebApplicationFactory<Program>`. |
 | `Fakvio.Tests.MigrationTool` | xUnit | Testy `Fakvio.MigrationTool` proti reálnému PostgreSQL (3). Vlastní projekt kvůli izolaci procesně globálního `Npgsql.EnableLegacyTimestampBehavior`. |
-| `Fakvio.Tests.Playwright` | NUnit | E2E browser testy (~48). Czech locale, Prague TZ. |
+| `Fakvio.Tests.Playwright` | NUnit | E2E browser testy (192 k 2026-08-26). Czech locale, Prague TZ. |
 
 ### 1.2 Hostovací modely (důležité)
 
@@ -1006,6 +1006,19 @@ fakturu" nebo „splatnost do pátku" nedá vyhodnotit:
 - Náhled pro SysAdmina blok ukazuje také, s `PreviewPlaceholder` místo živých hodnot —
   vlastní prompt se píše proti celému layoutu, ne proti jeho polovině.
 
+**Onboarding instrukce (issue #214).** Když — a jen když — je řádek `Setup not finished yet`
+neprázdný, přidá se za něj `AiSystemPrompt.OnboardingInstructions`: doptávej se **po jednom
+údaji**, každou odpověď rovnou zapiš odpovídajícím toolem, neposílej uživatele do formuláře
+a respektuj dvoufázové potvrzení (`IConfirmableChatTool`, pravidlo 7 výše). Bez nich model vysype všechny
+chybějící údaje do jedné zprávy nebo ohlásí uložení hodnoty, kterou tool teprve nabídl.
+
+- Sedí v **bloku 6, ne v bloku 3** — blok 3 může SysAdmin celý nahradit vlastním promptem
+  a onboarding je to jediné, o co nový tenant nesmí takhle přijít.
+- Tooly se v textu jmenují obecně („the matching tool above"). Katalog se generuje z DI,
+  takže jmenný seznam by byl druhá, ručně udržovaná kopie, co zastará při prvním novém toolu.
+- Nastavený tenant instrukce nedostane vůbec — jinak by je platil v tokenech v každém requestu.
+- Klientskou půlku (proaktivní uvítání) řeší `ChatOnboarding`, viz §4.12.
+
 #### Chat AI Tools matice
 
 Sloupec „Klíčové parametry" je jen orientační — závazné je schéma v příslušné třídě.
@@ -1736,6 +1749,19 @@ normální položka reportu (200), s `issuerId` je to 404.
 | Checklist | `Fakvio.UI.Shared/Components/Shared/SetupChecklist.razor` | Karta „Dokončit nastavení" na dashboardu. Stejné dělení jako banner — položky **seskupené podle závažnosti** pod klíči `Readiness_BlockingTitle` / `Readiness_WarningTitle`, barva ikony nadpis jen opakuje. Severita nesmí být nesená jen barvou (odečítač obrazovky z barvy nepřečte nic, červená vs oranžová je navíc nejhorší dvojice pro barvosleposti) — a report z `TenantReadinessService` není řazený, seskupení tedy drží i pořadí. Bez parametrů → stačí `OnInitializedAsync`, **žádný re-fetch guard** (není co znovu spouštět). Odložení = `bool` v localStorage pod klíčem `setupChecklistDeferred` přes `ILocalStorageService`, čtení v `try/catch` (precedens `GridStateService.LoadAsync`) — sbalí kartu na jedno tlačítko, nesmaže ji. **Dokončenost se neukládá nikdy**, počítá se z reportu, takže nemůže zastarat |
 | Zapojení | `Home.razor` → `SetupChecklist` (bez `IssuerId`, celý tenant), `InvoiceDetail.razor` → `ReadinessBanner` (jen stav Draft, `IssuerId` dokladu) | Na dashboardu je checklist nástupcem banneru (#210 nahradil i statickou „Quick Start" osu) — **dvě komponenty se stejným reportem na jedné stránce nikdy**. Detail Draftu je poslední místo před gate v `CompleteInvoiceAsync`, tam se odkládat nedá |
 
+**UI konzument — konverzační onboarding** (issue #214). Druhá polovina je serverová
+(`AiSystemPrompt.OnboardingInstructions`, §4.7).
+
+| Vrstva | Kde | Poznámka |
+|--------|-----|----------|
+| Rozhodnutí + text | `Fakvio.UI.Shared/Components/Chat/ChatOnboarding.cs` | `BuildWelcome(report, L)` → markdown, nebo **null** = tenant je připravený, neotravuj. Jen `Blocking` nálezy, stejně jako v promptu — warning uživateli fakturovat nebrání. Čistá funkce, takže je pravidlo testovatelné bez renderu i bez živého modelu |
+| Text nálezu | `Fakvio.UI.Shared/Components/Shared/ReadinessIssueText.cs` | `Describe(L, issue)` — **týž** helper, který používá banner i checklist (tabulka §4.12 výše). Banner, checklist i uvítání musí tentýž nález pojmenovat stejně; další kopie pravidla „kód → klíč + fallback“ by se rozešla při prvním novém kódu |
+| Zapojení | `MainLayout.razor` (`TryProactiveOnboardingAsync`) → `ChatPanel.OnboardingWelcome` | Po `LoadCompaniesAsync` (potřebuje `_hasTenantContext`), **jednou za session** (`sessionStorage["chatOnboardingShown"]`, maže se při odhlášení). Uvítání se vloží do `_messages` jen v UI — do konverzace v DB nejde, jinak by měl model v historii každé konverzace vloženou vlastní repliku |
+
+Uvítání **neskládá model** — je to lokalizovaný text. Panel ho ukáže hned po otevření, nic
+nestojí, nemůže si chybějící položky vymyslet a dá se otestovat bez živého AI. Konverzaci od
+druhé zprávy dál řídí prompt (§4.7), ne tenhle text.
+
 Když přidáváš readiness kód, přidej k němu **i lokalizační klíč `Readiness_Code_<KÓD>`
 do obou `SharedResource*.resx`** — jinak uživatel uvidí obecnou náhradní hlášku.
 `SharedResourceLocalizationTests.ReadinessKeys_ShouldBeTranslated_InBothCultures` klíče
@@ -2177,6 +2203,28 @@ tedy nešlo připnout. Vzor: `TenantSchemaCanonicalizationTests`.
 - Auth: `AuthHelper.LoginAsAdminAsync()` — volá `POST /api/auth/login`, injectuje JWT do `localStorage['UserSession']` (PascalCase keys, matching Blazor JsonSerializer).
 - Context: Czech locale, Prague TZ, base URL z `TestConfiguration`.
 - SysAdmin impersonation: `localStorage['ImpersonatedCompanyId']='1'`.
+
+#### Onboarding journey (`RegisterTests.Register_SetPassword_FirstLogin_ThenGuide_LeavesNothingBlocking`)
+
+Jediný E2E test, který si data **vyrobí sám** místo aby je předpokládal: projde registraci,
+nastavení hesla, první přihlášení a dokončení nastavení přes `SetupChecklist` (#210).
+
+- **Token z API, ne z mailu.** Registrace posílá „nastav si heslo" odkaz e-mailem, který
+  prohlížečový test neotevře. `AuthHelper.GetInvitationTokenAsync` ho proto čte přes
+  `GET /api/user/paged` — `UserDto.InvitationToken` se SysAdminovi vrací. Žádné SMTP
+  pollování, tedy žádná závislost na mailserveru.
+- **Determinismus stojí na dvou volbách v registračním formuláři:** adresa se vyplní ručně
+  (ručně zadaná adresa na serveru přebíjí ARES) a IČO má **devět** číslic — `AresServiceImpl`
+  cokoli jiného než přesně 8 znaků odmítne ještě před síťovým voláním. Firma tak zůstane
+  neplátcem DPH a v reportu zbyde právě jedna blokující položka: chybějící bankovní účet.
+- **„Hotovo" = žádná blokující položka**, ne prázdný report. Každý nový tenant má navíc
+  varování `EPO_HEADER_INCOMPLETE`, jehož `FixRoute` míří na SysAdmin-only stránku (#345),
+  takže ho admin tenanta vyčistit nemůže. Test proto tvrdí, že skupina varování zůstala
+  a skupina blokujících zmizela.
+- Konverzační (AI) cesta onboardingu se v E2E **netestuje** — schválený default story #150
+  (otázka 4); kryjí ji unit/integrační testy kontextu a promptu.
+- Běh nechá v databázi jeden provisionovaný tenant. Úklid neexistuje záměrně:
+  `DELETE /api/company/{id}` je jen soft delete a schéma tenanta nezahodí.
 
 #### Běh proti nasazenému prostředí
 

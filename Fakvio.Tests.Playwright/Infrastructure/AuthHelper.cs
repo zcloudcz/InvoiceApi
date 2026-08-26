@@ -1,3 +1,4 @@
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -71,6 +72,50 @@ public static class AuthHelper
         using var doc = JsonDocument.Parse(json);
         return doc.RootElement.GetProperty("token").GetString()
             ?? throw new InvalidOperationException("Token is null in login response.");
+    }
+
+    /// <summary>
+    /// Reads the pending "set your password" token of a freshly registered user.
+    ///
+    /// Self-registration mails the token to the new user, and a browser test cannot open that
+    /// mailbox — polling SMTP would also make the run depend on a mail server being up. The
+    /// token is therefore read back through the API: <c>GET /api/user/paged</c> returns
+    /// <c>UserDto.InvitationToken</c>, and a SysAdmin caller may read users of any company.
+    /// </summary>
+    /// <param name="apiUrl">REST API base URL.</param>
+    /// <param name="sysAdminToken">JWT of a SysAdmin — see <see cref="GetTokenAsync"/>.</param>
+    /// <param name="email">Email address the user registered with.</param>
+    /// <exception cref="InvalidOperationException">
+    /// No user with that email has a pending invitation — e.g. registration silently failed,
+    /// or the password was already set.
+    /// </exception>
+    public static async Task<string> GetInvitationTokenAsync(string apiUrl, string sysAdminToken, string email)
+    {
+        using var http = new HttpClient { BaseAddress = new Uri(apiUrl) };
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", sysAdminToken);
+
+        // Search narrows the page server-side; the email match below is what actually decides,
+        // because Search is a "contains" filter and could return neighbouring accounts.
+        var json = await http.GetStringAsync(
+            $"api/user/paged?Search={Uri.EscapeDataString(email)}&PageSize=5");
+
+        using var doc = JsonDocument.Parse(json);
+        foreach (var user in doc.RootElement.GetProperty("items").EnumerateArray())
+        {
+            if (!string.Equals(user.GetProperty("email").GetString(), email, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            // The property is null once the password has been set, and may be omitted entirely
+            // by the serializer — neither is an invitation we can use.
+            if (user.TryGetProperty("invitationToken", out var token)
+                && token.ValueKind == JsonValueKind.String)
+            {
+                return token.GetString()!;
+            }
+        }
+
+        throw new InvalidOperationException(
+            $"No pending invitation token found for '{email}'. Did the registration succeed?");
     }
 
     /// <summary>

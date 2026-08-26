@@ -48,8 +48,9 @@ public class ReadinessApiService : ApiClientBase
             // Deliberately every exception, not just ApiException: ApiClientBase.GetAsync
             // rethrows ApiException but lets everything else through as well — an
             // HttpRequestException when the network or CORS is down, a JsonException when the
-            // response is malformed. Both callers (ReadinessBanner.OnParametersSetAsync and
-            // SetupChecklist.OnInitializedAsync) call from a Blazor lifecycle method, and an
+            // response is malformed. All three callers (ReadinessBanner.OnParametersSetAsync,
+            // SetupChecklist.OnInitializedAsync and MainLayout.TryProactiveOnboardingAsync)
+            // call from a Blazor lifecycle method, and an
             // exception escaping one takes the whole WASM app down — over a decorative hint
             // that the user did not ask for. ApiClientBase has already logged the failure,
             // so swallowing here loses no diagnostics.
