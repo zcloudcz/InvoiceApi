@@ -404,6 +404,58 @@ public class UserController : ControllerBase
     }
 
     /// <summary>
+    /// Returns the pending invitation token of a user so an admin can rebuild the
+    /// set-password link (for example when the invitation email never arrived).
+    ///
+    /// Why this is a separate, role-gated endpoint instead of a field on UserDto: the token
+    /// authenticates the anonymous POST /api/user/set-password call, so exposing it on the
+    /// listing DTO handed to every authenticated colleague is an account takeover (issue #364).
+    /// Admin and SysAdmin can already set any password in their scope via
+    /// <see cref="AdminResetPassword"/>, so this endpoint grants them nothing new.
+    /// </summary>
+    /// <param name="id">User ID</param>
+    /// <returns>The pending invitation token</returns>
+    /// <response code="200">Token returned</response>
+    /// <response code="403">Not authorized to read this user's invitation</response>
+    /// <response code="404">User not found, or no valid pending invitation</response>
+    [HttpGet("{id}/invitation-token")]
+    [Authorize(Roles = "Admin,SysAdmin")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult> GetInvitationToken(long id)
+    {
+        try
+        {
+            var targetUser = await _userService.GetUserByIdAsync(id);
+            if (targetUser == null)
+            {
+                return NotFound(new { message = $"User with ID {id} not found." });
+            }
+
+            // Admin may only reach users of their own company; SysAdmin is unrestricted.
+            if (!CanAccessUser(targetUser.CompanyId))
+            {
+                return Forbid();
+            }
+
+            var token = await _userService.GetPendingInvitationTokenAsync(id);
+            if (token == null)
+            {
+                return NotFound(new { message = $"User with ID {id} has no pending invitation." });
+            }
+
+            return Ok(new { token });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving invitation token for user {UserId}", id);
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { message = "An error occurred while retrieving the invitation token." });
+        }
+    }
+
+    /// <summary>
     /// Deletes a user (soft delete - sets IsActive = false)
     /// Admin can delete users in their company, SysAdmin can delete any user
     /// </summary>
@@ -487,13 +539,15 @@ public class UserController : ControllerBase
                 }
             }
 
-            // Create the user with invitation token
-            var user = await _userService.InviteUserAsync(inviteDto);
+            // Create the user with invitation token. The token comes back on the result type,
+            // never on the UserDto that goes into the response body (issue #364).
+            var invited = await _userService.InviteUserAsync(inviteDto);
+            var user = invited.User;
 
             // Build the invitation link pointing to the Blazor UI set-password page.
             // Priority: SystemConfiguration DB (SysAdmin-editable) → appsettings.json fallback.
             var blazorBaseUrl = await ResolveBlazorBaseUrlAsync();
-            var invitationLink = $"{blazorBaseUrl}/set-password?token={Uri.EscapeDataString(user.InvitationToken ?? "")}";
+            var invitationLink = $"{blazorBaseUrl}/set-password?token={Uri.EscapeDataString(invited.InvitationToken)}";
 
             // Send the invitation email
             try

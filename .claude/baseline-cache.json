@@ -5,5 +5,6 @@
   "357b32a092aa29ea3334e785c3b6b975434b6e7d": {"unit": "2901/0/4", "by": "agent-dev #318", "at": "2026-08-25"},
   "7604b6cdc196f3f6c71dcc675b8c97aa1dfb78e7": {"unit": "3340/1/4", "playwright": "172/13/5", "note": "1 unit fail = InvoiceServiceCopyTests.CopyInvoiceAsync_ShouldSetIssueDateToToday = #359 (okno 22:00-23:59 UTC); vsech 13 padu Playwright je data-dependent, stejne i bez zmeny", "by": "agent-dev #221", "at": "2026-08-25"},
   "416c2a466ce4621d1e420b1265c04ff4a7bad923": {"playwright_partial": "0/12/0", "note": "NEni plna baseline - na cistem develop bezelo jen tech 12 Playwright testu, ktere padly na merge PR #361; 12/12 cervenych i bez PR, tedy pre-existujici. Merged strom (develop + PR #361) = playwright 175/12/5 z 192, unit 3341/0/4 z 3345 (00:01 UTC, mimo okno #359).", "by": "agent-tester #221", "at": "2026-08-26"},
-  "7af0b38c103f9ed1476d1985692b078bf7549ff5": {"unit": "3120/0/4", "by": "agent-dev #210", "at": "2026-08-25"}
+  "7af0b38c103f9ed1476d1985692b078bf7549ff5": {"unit": "3120/0/4", "by": "agent-dev #210", "at": "2026-08-25"},
+  "91e13fc71cde0281d3a6cf67e0df7288da06075f": {"unit": "3383/0/4", "by": "agent-dev #364", "at": "2026-08-26"}
 }
