@@ -1193,7 +1193,7 @@ odpovídá vašemu způsobu připojení podle kroku 2.
 |---|---|---|
 | Kde MCP server běží | Na vašem počítači, spouští ho vaše AI aplikace | Na serveru, který provozuje váš správce |
 | Co musíte nainstalovat | Nástroj `fakvio-mcp` (instaluje správce) | Nic |
-| Co potřebujete znát | Adresu Fakvia | Adresu MCP serveru (dá vám ji správce) |
+| Co potřebujete znát | Adresu **API** Fakvia (najdete ji v připraveném bloku, viz krok 3a) | Adresu MCP serveru (dá vám ji správce) |
 | Kdy zvolit | Pracujete na jednom počítači a máte tam práva instalovat | Chcete se připojit odkudkoli nebo nemůžete nic instalovat |
 
 Nevíte-li, co máte k dispozici, zeptejte se správce systému — provoz MCP serveru je jeho
@@ -1214,7 +1214,7 @@ připravený blok **Lokální MCP server (stdio)**, ať se nepřepíšete.
     "fakvio": {
       "command": "fakvio-mcp",
       "env": {
-        "FAKVIO_API_URL": "https://vase-fakvio-adresa",
+        "FAKVIO_API_URL": "https://adresa-api-fakvia",
         "FAKVIO_API_TOKEN": "fak_live_vas-klic"
       }
     }
@@ -1222,7 +1222,11 @@ připravený blok **Lokální MCP server (stdio)**, ať se nepřepíšete.
 }
 ```
 
-- `FAKVIO_API_URL` je adresa Fakvia, do kterého se hlásíte v prohlížeči.
+- `FAKVIO_API_URL` je adresa **API** Fakvia — tedy serveru, se kterým aplikace mluví.
+  **Není to adresa, na kterou se hlásíte v prohlížeči**; v běžném nasazení to jsou dvě
+  různé adresy. Nejjistější je vzít hodnotu z připraveného bloku **Lokální MCP server
+  (stdio)** na stránce Integrace — je v něm vyplněná správně. Kdo blok už nemá otevřený,
+  ať si o adresu řekne správci.
 - `FAKVIO_API_TOKEN` je váš API klíč z kroku 1.
 - Předpokladem je, že správce na vašem počítači nainstaloval nástroj `fakvio-mcp`.
 
@@ -1250,8 +1254,9 @@ posílá v hlavičce každého požadavku.
 ```
 
 - `url` končí vždy `/mcp`.
-- Adresu serveru vám dá správce. Připravený blok na stránce Integrace ji **odhaduje**
-  z adresy Fakvia — pokud MCP server běží jinde, po vložení ji opravte.
+- Adresu serveru vám dá správce a bez ní se nepřipojíte. V připraveném bloku na stránce
+  Integrace je `url` jen **zástupná hodnota** poskládaná z adresy API — MCP server tam
+  neběží, takže ji po vložení **vždy** přepište adresou od správce.
 - Podporu vzdálených MCP serverů musí umět i vaše AI aplikace; ne všechny to zatím zvládají.
 
 ---
@@ -1266,7 +1271,7 @@ je hotovo. Když ne, obvyklé příčiny jsou tyhle:
 | Chybu s číslem **401** | Klíč je špatně zkopírovaný, vypršel, nebo byl revokovaný | Vytvořte na stránce Integrace nový klíč a vložte ho znovu |
 | Chybu s číslem **403** | Klíč má oprávnění `Jen čtení` a AI se pokusila něco změnit | Vytvořte klíč s `Čtení i zápis` (a ten původní revokujte) |
 | Že nástroje Fakvia vůbec nevidí | Konfigurace se nenačetla | Zkontrolujte, že soubor je uložený na správném místě, a AI aplikaci restartujte |
-| Že se nemůže připojit | U lokálního režimu chybí `fakvio-mcp` nebo nesedí adresa Fakvia; u vzdáleného nesedí `url` | Ověřte adresu, jinak se obraťte na správce |
+| Že se nemůže připojit | U lokálního režimu chybí `fakvio-mcp` nebo v `FAKVIO_API_URL` není adresa API (častá chyba: je tam adresa, na které máte Fakvio otevřené v prohlížeči); u vzdáleného nesedí `url` | Porovnejte hodnotu s připraveným blokem na stránce Integrace, jinak se obraťte na správce |
 
 ---
 
@@ -1300,9 +1305,9 @@ Na stránce **Nastavení → Integrace** máte seznam svých klíčů:
 | Naposledy použit | Orientační — zapisuje se nejvýš jednou za pět minut, takže úplně poslední volání v seznamu ještě být nemusí |
 | Stav | `Aktivní`, `Vypršel`, `Revokován` |
 
-**Revokace.** U aktivního klíče je v řádku ikona zákazu. Po potvrzení klíč **okamžitě**
-přestane fungovat — nic se necachuje, takže další požadavek AI už neprojde. Vzít zpět to nejde;
-místo revokovaného klíče se vydává nový.
+**Revokace.** U každého klíče, který ještě nebyl revokovaný — tedy i u vypršelého — je v řádku
+ikona zákazu. Po potvrzení klíč **okamžitě** přestane fungovat — nic se necachuje, takže další
+požadavek AI už neprojde. Vzít zpět to nejde; místo revokovaného klíče se vydává nový.
 
 **Na co si dát pozor:**
 

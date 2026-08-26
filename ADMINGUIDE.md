@@ -500,7 +500,9 @@ curl). Posílají se ve stejné hlavičce: `Authorization: Bearer fak_live_…`.
 
 **Kde se klíče zakládají — self-service, ne SysAdmin agenda.** Klíče si vydává každý uživatel
 sám na stránce **Nastavení → Integrace** (`/settings/integrations`); stačí libovolná přihlášená
-role. Zadává jméno klíče, rozsah (`Jen čtení` / `Čtení i zápis`) a nepovinnou platnost do data;
+role. SysAdmin bez impersonace ale tuhle položku v menu nemá (je ve fakturační skupině), takže
+na ni musí přes URL přímo — stránka sama žádnou roli nevyžaduje. Zadává jméno klíče, rozsah
+(`Jen čtení` / `Čtení i zápis`) a nepovinnou platnost do data;
 raw klíč se ukáže **právě jednou** a stránka k němu rovnou vypíše hotové konfigurační bloky pro
 MCP klienta. Revokace je tamtéž, s potvrzením, a platí okamžitě.
 
