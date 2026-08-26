@@ -33,10 +33,10 @@ Pokud máš pochybnost, **zde má pravdu DEVGUIDE.md**, ne komentáře v kódu (
 | `Fakvio.McpServer` | Console (.NET tool) | MCP server pro AI klienty. Stdio transport, ModelContextProtocol 2.2.0. |
 | `Fakvio.MigrationTool` | Console | DB migrace, seed master schema, provisioning helper. |
 | `Fakvio.AresService` | Class lib | Klient pro ARES (CZ obchodní rejstřík) — autonomní, bez EF. |
-| `Fakvio.Tests.Unit` | xUnit | Unit testy (~756). Stack: xUnit + **NSubstitute** + **Shouldly** + EF InMemory. |
+| `Fakvio.Tests.Unit` | xUnit | Unit testy (3345 k 2026-08-26). Stack: xUnit + **NSubstitute** + **Shouldly** + EF InMemory. |
 | `Fakvio.Tests.Integration` | xUnit | Integration testy (5). `InvoiceApiFactory : WebApplicationFactory<Program>`. |
 | `Fakvio.Tests.MigrationTool` | xUnit | Testy `Fakvio.MigrationTool` proti reálnému PostgreSQL (3). Vlastní projekt kvůli izolaci procesně globálního `Npgsql.EnableLegacyTimestampBehavior`. |
-| `Fakvio.Tests.Playwright` | NUnit | E2E browser testy (~48). Czech locale, Prague TZ. |
+| `Fakvio.Tests.Playwright` | NUnit | E2E browser testy (192 k 2026-08-26). Czech locale, Prague TZ. |
 
 ### 1.2 Hostovací modely (důležité)
 
@@ -2203,6 +2203,28 @@ tedy nešlo připnout. Vzor: `TenantSchemaCanonicalizationTests`.
 - Auth: `AuthHelper.LoginAsAdminAsync()` — volá `POST /api/auth/login`, injectuje JWT do `localStorage['UserSession']` (PascalCase keys, matching Blazor JsonSerializer).
 - Context: Czech locale, Prague TZ, base URL z `TestConfiguration`.
 - SysAdmin impersonation: `localStorage['ImpersonatedCompanyId']='1'`.
+
+#### Onboarding journey (`RegisterTests.Register_SetPassword_FirstLogin_ThenGuide_LeavesNothingBlocking`)
+
+Jediný E2E test, který si data **vyrobí sám** místo aby je předpokládal: projde registraci,
+nastavení hesla, první přihlášení a dokončení nastavení přes `SetupChecklist` (#210).
+
+- **Token z API, ne z mailu.** Registrace posílá „nastav si heslo" odkaz e-mailem, který
+  prohlížečový test neotevře. `AuthHelper.GetInvitationTokenAsync` ho proto čte přes
+  `GET /api/user/paged` — `UserDto.InvitationToken` se SysAdminovi vrací. Žádné SMTP
+  pollování, tedy žádná závislost na mailserveru.
+- **Determinismus stojí na dvou volbách v registračním formuláři:** adresa se vyplní ručně
+  (ručně zadaná adresa na serveru přebíjí ARES) a IČO má **devět** číslic — `AresServiceImpl`
+  cokoli jiného než přesně 8 znaků odmítne ještě před síťovým voláním. Firma tak zůstane
+  neplátcem DPH a v reportu zbyde právě jedna blokující položka: chybějící bankovní účet.
+- **„Hotovo" = žádná blokující položka**, ne prázdný report. Každý nový tenant má navíc
+  varování `EPO_HEADER_INCOMPLETE`, jehož `FixRoute` míří na SysAdmin-only stránku (#345),
+  takže ho admin tenanta vyčistit nemůže. Test proto tvrdí, že skupina varování zůstala
+  a skupina blokujících zmizela.
+- Konverzační (AI) cesta onboardingu se v E2E **netestuje** — schválený default story #150
+  (otázka 4); kryjí ji unit/integrační testy kontextu a promptu.
+- Běh nechá v databázi jeden provisionovaný tenant. Úklid neexistuje záměrně:
+  `DELETE /api/company/{id}` je jen soft delete a schéma tenanta nezahodí.
 
 #### Běh proti nasazenému prostředí
 
