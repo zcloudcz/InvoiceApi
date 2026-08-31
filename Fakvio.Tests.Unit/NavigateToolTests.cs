@@ -248,20 +248,6 @@ public class NavigateToolTests
     // ─── Error Handling Tests ────────────────────────────────────────────
 
     [Fact]
-    public async Task MissingTarget_ReturnsFailure()
-    {
-        // Arrange — no target parameter.
-        var parameters = new Dictionary<string, string>();
-
-        // Act
-        var result = await _tool.ExecuteAsync(parameters);
-
-        // Assert
-        result.IsSuccess.ShouldBeFalse();
-        result.OutputText.ShouldContain("target");
-    }
-
-    [Fact]
     public async Task UnknownTarget_ReturnsFailure()
     {
         // Arrange — invalid target value.
@@ -273,6 +259,238 @@ public class NavigateToolTests
         // Assert
         result.IsSuccess.ShouldBeFalse();
         result.OutputText.ShouldContain("unknown_page");
+    }
+
+    [Fact]
+    public async Task ClientName_OnATargetThatCannotPreselectAClient_IsIgnored()
+    {
+        // Only the invoice / credit note forms understand ?clientId=. Everywhere else a name
+        // the model volunteered must not trigger a lookup, and must not end up in the URL.
+        var parameters = new Dictionary<string, string>
+        {
+            ["target"] = "client_list",
+            ["client_name"] = "Test s.r.o."
+        };
+
+        var result = await _tool.ExecuteAsync(parameters);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.UiAction!.Url.ShouldBe("/clients");
+        await _clientService.DidNotReceive().GetClientsPagedAsync(
+            Arg.Any<ClientFilterDto>(), Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData("system_settings")]
+    [InlineData("logs")]
+    [InlineData("companies")]
+    public async Task SysAdminTarget_IsRejectedBeforeTheToolRuns(string target)
+    {
+        // SysAdmin pages are deliberately absent from the catalog (issue #229). The executor's
+        // central AllowedValues check is what stops the model from asking for them, so this
+        // goes through the executor rather than calling the tool directly.
+        var executor = new ChatToolExecutor([_tool], Substitute.For<ILogger<ChatToolExecutor>>());
+        var call = executor.ParseToolCall(
+            $"{{\"action\": \"navigate\", \"parameters\": {{\"target\": \"{target}\"}}}}");
+
+        call.ShouldNotBeNull();
+        var result = await executor.ExecuteToolAsync(call);
+
+        result.IsSuccess.ShouldBeFalse();
+        result.OutputText.ShouldContain(target);
+        await _clientService.DidNotReceive().GetClientsPagedAsync(
+            Arg.Any<ClientFilterDto>(), Arg.Any<CancellationToken>());
+    }
+
+    // ─── Target normalisation (#229) ─────────────────────────────────────
+
+    [Theory]
+    [InlineData("NEW_INVOICE")]
+    [InlineData("New_Invoice")]
+    [InlineData("  new_invoice  ")]
+    public async Task Target_IsTrimmedAndLowerCased_BeforeTheCatalogLookup(string target)
+    {
+        // The catalog is keyed ordinally, so the tool has to normalise first. It matters in
+        // production: the executor accepts targets case-insensitively and hands the raw value
+        // over, so without normalisation a model shouting "NEW_INVOICE" would get "Unknown target".
+        var result = await _tool.ExecuteAsync(new Dictionary<string, string> { ["target"] = target });
+
+        result.IsSuccess.ShouldBeTrue();
+        result.UiAction!.Url.ShouldBe("/invoices/create");
+    }
+
+    [Fact]
+    public async Task UpperCaseTarget_TravelsThroughTheExecutor_AndStillNavigates()
+    {
+        // End-to-end over the seam above: AllowedValues are compared case-insensitively by the
+        // executor, so the tool is the only place where the casing can still break navigation.
+        var executor = new ChatToolExecutor([_tool], Substitute.For<ILogger<ChatToolExecutor>>());
+        var call = executor.ParseToolCall(
+            "{\"action\": \"navigate\", \"parameters\": {\"target\": \"INVOICE_LIST\"}}");
+
+        var result = await executor.ExecuteToolAsync(call!);
+
+        result.IsSuccess.ShouldBeTrue(result.OutputText);
+        result.UiAction!.Url.ShouldBe("/invoices");
+    }
+
+    // ─── Missing target ──────────────────────────────────────────────────
+
+    [Fact]
+    public async Task MissingTarget_IsRejectedByTheExecutor_WithoutRunningTheTool()
+    {
+        // 'target' is required, and the executor validates required parameters centrally —
+        // this is the guard the tool relies on instead of checking the dictionary itself.
+        var executor = new ChatToolExecutor([_tool], Substitute.For<ILogger<ChatToolExecutor>>());
+        var call = executor.ParseToolCall("{\"action\": \"navigate\", \"parameters\": {}}");
+
+        var result = await executor.ExecuteToolAsync(call!);
+
+        result.IsSuccess.ShouldBeFalse();
+        result.OutputText.ShouldContain("target");
+        await _clientService.DidNotReceive().GetClientsPagedAsync(
+            Arg.Any<ClientFilterDto>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public void MissingTarget_ThrowsWhenTheToolIsCalledWithoutTheExecutor()
+    {
+        // Characterisation of today's behaviour, not an endorsement: ExecuteAsync indexes
+        // parameters["target"] directly. Every production caller goes through the executor
+        // (test above), so the throw is unreachable there — but a direct caller gets a
+        // KeyNotFoundException instead of a Failure result. If the tool ever grows its own
+        // guard, replace this with an assertion on the failure message.
+        Should.Throw<KeyNotFoundException>(
+            () => _tool.ExecuteAsync(new Dictionary<string, string>()));
+    }
+
+    // ─── Client name handling ────────────────────────────────────────────
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task ClientDetail_WithBlankClientName_ReturnsFailure_WithoutSearching(string clientName)
+    {
+        // A model that sends an empty string means "I have no value" — that must hit the same
+        // guard as a completely missing name, not a search for whitespace.
+        var parameters = new Dictionary<string, string>
+        {
+            ["target"] = "client_detail",
+            ["client_name"] = clientName
+        };
+
+        var result = await _tool.ExecuteAsync(parameters);
+
+        result.IsSuccess.ShouldBeFalse();
+        result.UiAction.ShouldBeNull();
+        result.OutputText.ShouldContain("client_name");
+        await _clientService.DidNotReceive().GetClientsPagedAsync(
+            Arg.Any<ClientFilterDto>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task NewInvoice_WithBlankClientName_NavigatesWithoutPreselection()
+    {
+        var parameters = new Dictionary<string, string>
+        {
+            ["target"] = "new_invoice",
+            ["client_name"] = "   "
+        };
+
+        var result = await _tool.ExecuteAsync(parameters);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.UiAction!.Url.ShouldBe("/invoices/create");
+        await _clientService.DidNotReceive().GetClientsPagedAsync(
+            Arg.Any<ClientFilterDto>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ClientName_IsTrimmedBeforeTheSearch()
+    {
+        StubClientSearch(new ClientDto { Id = 3, CompanyName = "Test s.r.o." });
+
+        var parameters = new Dictionary<string, string>
+        {
+            ["target"] = "client_detail",
+            ["client_name"] = "  Test s.r.o.  "
+        };
+
+        var result = await _tool.ExecuteAsync(parameters);
+
+        result.UiAction!.Url.ShouldBe("/clients/3");
+        await _clientService.Received(1).GetClientsPagedAsync(
+            Arg.Is<ClientFilterDto>(filter => filter.Search == "Test s.r.o."),
+            Arg.Any<CancellationToken>());
+    }
+
+    // ─── client_detail resolution paths ──────────────────────────────────
+
+    [Fact]
+    public async Task ClientDetail_WithMultipleMatches_ListsThem_AndDoesNotNavigate()
+    {
+        // The ambiguity branch is shared with the invoice forms, but client_detail is the only
+        // target where a name is mandatory — a wrong pick here opens a stranger's record.
+        StubClientSearch(
+            new ClientDto { Id = 1, CompanyName = "ABC Alpha", RegistrationNumber = "11111111" },
+            new ClientDto { Id = 2, CompanyName = "ABC Beta" });
+
+        var parameters = new Dictionary<string, string>
+        {
+            ["target"] = "client_detail",
+            ["client_name"] = "ABC"
+        };
+
+        var result = await _tool.ExecuteAsync(parameters);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.UiAction.ShouldBeNull();
+        // The client with an IČO shows it; the one without must not render an empty "IČO: ".
+        result.OutputText.ShouldContain("ABC Alpha (ID: 1, IČO: 11111111)");
+        result.OutputText.ShouldContain("ABC Beta (ID: 2)");
+    }
+
+    [Fact]
+    public async Task ClientDetail_WhenNoClientMatches_ReturnsFailure_WithoutNavigating()
+    {
+        StubClientSearch();
+
+        var parameters = new Dictionary<string, string>
+        {
+            ["target"] = "client_detail",
+            ["client_name"] = "Ghost s.r.o."
+        };
+
+        var result = await _tool.ExecuteAsync(parameters);
+
+        result.IsSuccess.ShouldBeFalse();
+        result.UiAction.ShouldBeNull();
+        result.OutputText.ShouldContain("Ghost s.r.o.");
+    }
+
+    // ─── Query separator derivation ──────────────────────────────────────
+
+    [Theory]
+    [InlineData("new_invoice")]
+    [InlineData("new_credit_note")]
+    public async Task PreselectingTarget_AppendsClientId_AsASingleWellFormedQuery(string target)
+    {
+        // The separator is derived from the route ('?' for a bare route, '&' when the route
+        // already carries ?type=CreditNote). Hard-coding either one produces a malformed URL
+        // for the other target — asserted here as a shape rule so a future route with its own
+        // query string is covered too.
+        StubClientSearch(new ClientDto { Id = 42, CompanyName = "Test s.r.o." });
+
+        var result = await _tool.ExecuteAsync(new Dictionary<string, string>
+        {
+            ["target"] = target,
+            ["client_name"] = "Test"
+        });
+
+        var url = result.UiAction!.Url!;
+        url.Count(character => character == '?').ShouldBe(1, $"'{url}' must contain exactly one '?'");
+        url.ShouldEndWith("clientId=42");
+        url.ShouldNotContain("?&");
     }
 
     [Fact]
@@ -297,4 +515,15 @@ public class NavigateToolTests
             Arg.Is<ClientFilterDto>(f => f.IsIssuer == false && f.Search == "Test"),
             Arg.Any<CancellationToken>());
     }
+
+    // ─── Test helpers ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Makes the client search return exactly these matches (none = "no client found").
+    /// PageSize 5 mirrors the filter the tool builds.
+    /// </summary>
+    private void StubClientSearch(params ClientDto[] matches)
+        => _clientService
+            .GetClientsPagedAsync(Arg.Any<ClientFilterDto>(), Arg.Any<CancellationToken>())
+            .Returns(new PagedResult<ClientDto>(matches.ToList(), matches.Length, 1, 5));
 }

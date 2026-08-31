@@ -1,3 +1,4 @@
+using AresService;
 using Fakvio.Contracts.Dto.Auth;
 using Fakvio.Application.Service;
 using Fakvio.Domain.Enums;
@@ -12,6 +13,7 @@ namespace Fakvio.API.Controller;
 /// <summary>
 /// Controller for authentication operations.
 /// Handles login, self-registration, email verification, and external OAuth login.
+/// Also exposes the anonymous ARES lookup the registration form needs (see FetchFromAres).
 /// reCAPTCHA v3 is validated on login and register endpoints via X-Captcha-Token header.
 /// </summary>
 [ApiController]
@@ -21,6 +23,8 @@ public class AuthController : ControllerBase
     private readonly IAuthService _authService;
     private readonly ISystemConfigurationService _systemConfigService;
     private readonly ICaptchaService _captchaService;
+    // ARES registry lookup — used by the anonymous endpoint the registration form calls.
+    private readonly IAresService _aresService;
     private readonly IConfiguration _configuration;
     private readonly ILogger<AuthController> _logger;
 
@@ -28,12 +32,14 @@ public class AuthController : ControllerBase
         IAuthService authService,
         ISystemConfigurationService systemConfigService,
         ICaptchaService captchaService,
+        IAresService aresService,
         IConfiguration configuration,
         ILogger<AuthController> logger)
     {
         _authService = authService;
         _systemConfigService = systemConfigService;
         _captchaService = captchaService;
+        _aresService = aresService;
         _configuration = configuration;
         _logger = logger;
     }
@@ -56,9 +62,10 @@ public class AuthController : ControllerBase
         try
         {
             // Validate reCAPTCHA v3 token (sent via X-Captcha-Token header from Blazor UI).
-            // When SecretKey is not configured, verification is skipped (dev mode).
+            // The action must match the one Login.razor passes to grecaptcha.execute(),
+            // otherwise a token minted on another page would be accepted here.
             var captchaToken = Request.Headers["X-Captcha-Token"].FirstOrDefault();
-            if (!await _captchaService.VerifyAsync(captchaToken))
+            if (!await _captchaService.VerifyAsync(captchaToken, "login"))
             {
                 _logger.LogWarning("reCAPTCHA verification failed for login: {Email}", loginRequest.Email);
                 return BadRequest(new { message = "CAPTCHA verification failed. Please try again." });
@@ -101,9 +108,9 @@ public class AuthController : ControllerBase
     {
         try
         {
-            // Validate reCAPTCHA v3 token
+            // Validate reCAPTCHA v3 token — action must match Register.razor's grecaptcha.execute("register").
             var captchaToken = Request.Headers["X-Captcha-Token"].FirstOrDefault();
-            if (!await _captchaService.VerifyAsync(captchaToken))
+            if (!await _captchaService.VerifyAsync(captchaToken, "register"))
             {
                 _logger.LogWarning("reCAPTCHA verification failed for registration: {Email}", request.Email);
                 return BadRequest(new { message = "CAPTCHA verification failed. Please try again." });
@@ -136,6 +143,103 @@ public class AuthController : ControllerBase
                 new { message = "An error occurred during registration." });
         }
     }
+
+    /// <summary>
+    /// Looks up a company in the ARES registry for the self-registration form.
+    /// Anonymous by design — /register is a page for a user who has no account yet,
+    /// so the tenant-scoped ClientController.FetchFromAres (which requires a JWT)
+    /// cannot be used from there.
+    ///
+    /// Abuse protection, in order of importance:
+    /// 1. The same reCAPTCHA v3 gate as login/register (X-Captcha-Token header).
+    ///    This is the mechanism the repo already uses for anonymous endpoints and it
+    ///    works in both hosts (API and Azure Functions), unlike ASP.NET rate-limiting
+    ///    middleware, which the Functions host would silently skip.
+    /// 2. Cache-first lookup (GetCompanyInfoAsync, not RefreshCompanyInfoAsync): a
+    ///    caller cannot force unbounded outbound traffic to the public ARES registry
+    ///    by replaying the same IČO.
+    /// 3. Input is validated here (8 digits) — a malformed IČO never leaves our host.
+    /// 4. The response is a narrow AresLookupResponse (name + registered office), not
+    ///    the full ClientDto. Registration needs nothing else.
+    /// </summary>
+    /// <param name="registrationNumber">Czech registration number (IČO), exactly 8 digits</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Company name and registered office from ARES</returns>
+    /// <response code="200">Company found</response>
+    /// <response code="400">Malformed IČO, failed CAPTCHA, or company not found in ARES</response>
+    [HttpGet("ares/{registrationNumber}")]
+    [AllowAnonymous]
+    [ProducesResponseType(typeof(AresLookupResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<AresLookupResponse>> FetchFromAres(
+        string registrationNumber,
+        CancellationToken cancellationToken = default)
+    {
+        // Validate reCAPTCHA v3 token — action must match Register.razor's grecaptcha.execute("ares").
+        // This endpoint proxies an external registry, so a token issued for another action
+        // (e.g. the registration form itself) must not open it.
+        var captchaToken = Request.Headers["X-Captcha-Token"].FirstOrDefault();
+        if (!await _captchaService.VerifyAsync(captchaToken, "ares"))
+        {
+            _logger.LogWarning("reCAPTCHA verification failed for anonymous ARES lookup");
+            return BadRequest(new { message = "CAPTCHA verification failed. Please try again." });
+        }
+
+        // Fail fast at the boundary: a malformed IČO is a client bug, not a registry outage.
+        if (!IsValidRegistrationNumber(registrationNumber))
+        {
+            return BadRequest(new { message = "Registration number must be exactly 8 digits." });
+        }
+
+        try
+        {
+            var info = await _aresService.GetCompanyInfoAsync(registrationNumber, cancellationToken);
+
+            if (!info.IsSuccessful)
+            {
+                // Not found / registry error — the caller only needs to know the lookup failed.
+                // ErrorMessage is deliberately NOT echoed back: AresServiceImpl builds some of
+                // those strings from raw exception text (connection errors, parse errors), and
+                // this endpoint is reachable without a login. The detail goes to the log only.
+                _logger.LogInformation(
+                    "Anonymous ARES lookup for {RegistrationNumber} failed: {Error}",
+                    registrationNumber, info.ErrorMessage);
+                return BadRequest(new { message = "Company not found in ARES." });
+            }
+
+            return Ok(new AresLookupResponse
+            {
+                RegistrationNumber = info.RegistrationNumber,
+                CompanyName = info.CompanyName,
+                // Address is null when ARES has no "sidlo" block — the form then stays empty.
+                Street = info.Address?.Street ?? string.Empty,
+                City = info.Address?.City ?? string.Empty,
+                PostalCode = info.Address?.PostalCode ?? string.Empty,
+                Country = info.Address?.Country ?? string.Empty
+            });
+        }
+        catch (Exception ex)
+        {
+            // Never leak registry/internal details to an anonymous caller.
+            _logger.LogError(ex, "Unexpected error during anonymous ARES lookup for {RegistrationNumber}",
+                registrationNumber);
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { message = "An error occurred during the ARES lookup." });
+        }
+    }
+
+    /// <summary>
+    /// A Czech IČO is exactly 8 digits. Same rule as AresServiceImpl — checked here too
+    /// so that garbage input is rejected before any outbound call is made.
+    ///
+    /// ASCII '0'-'9' only, NOT char.IsDigit (issue #200): char.IsDigit accepts every
+    /// Unicode decimal digit, so eight Arabic-Indic digits used to pass this guard,
+    /// reach the registry, and add another key to the shared ARES cache.
+    /// </summary>
+    private static bool IsValidRegistrationNumber(string? registrationNumber)
+        => !string.IsNullOrWhiteSpace(registrationNumber)
+           && registrationNumber.Length == 8
+           && registrationNumber.All(c => c is >= '0' and <= '9');
 
     // ─── Email Verification ──────────────────────────────────────────────────
 

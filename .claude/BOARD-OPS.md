@@ -29,20 +29,124 @@ running tick (if any). When the user asks why a card has not advanced,
 or what the last automated tick did, grep this log file for the most
 recent `START` / `END` block.
 
-## Find the oldest item in a given status column
+## Focus — themes, and priority between them
+
+`priority:*` ranks one card against another. It says nothing about
+whether the card is part of what the project is trying to finish right
+now, so a board drain will happily spend a day on high-priority work
+nobody asked for. That happened on 2026-08-22: of 19 issues opened
+during a drain, one belonged to an active priority.
+
+**A theme is a `theme:*` label.** Active themes and their relative
+priority are one ordered list in `.claude/settings.json`:
+
+    "AGENTIC_FOCUS": "db-switch,ai-first"
+
+Earlier in the list wins. A theme that is not listed is **parked** — its
+cards stay on the board and stay visible, they are simply not pulled.
+
+### Eligibility
+
+A card may be picked up by `/tick`, `/ticks`, `/tick-devs`,
+`/tick-tests` or `/pickup-task` only if it carries either:
+
+- a `theme:*` label naming an active theme, **or**
+- the label `focus:override` — a deliberate, human-approved exception
+  for something outside the themes that still has to be done now.
+
+Everything else is skipped. This is a **skip rule, not a status**: do
+not move, close or relabel a parked card, and do not report it as
+blocked. It is simply not this week's work.
+
+### Ordering among eligible cards
+
+1. Theme position in `AGENTIC_FOCUS` (earlier first). `focus:override`
+   sorts after all active themes — it is an exception, not a priority.
+2. Then the existing rules below: `type:bug` first, then oldest by
+   `createdAt`.
+
+### Who assigns a theme
+
+`agent-analyst` labels every sub-issue it creates with the parent
+story's theme. A standalone bug filed mid-flight has no parent, so it
+gets a theme only if it plainly belongs to one; otherwise it stays
+unthemed and parked until a human decides. **Agents do not add
+`focus:override` to their own findings** — that label is the owner's
+call, and letting an agent grant itself an exception would restore
+exactly the drift this rule exists to stop.
+
+## Task priority — bugs jump the queue
+
+`type:bug` outranks every other priority signal. Whenever multiple cards
+are eligible for the same action (same status column, same role label,
+same `/tick` priority level), pick the `type:bug` card first regardless
+of `createdAt` or `priority:*`. Within `type:bug` cards, oldest-first;
+within non-bug cards, oldest-first. `priority:high` only breaks ties
+*after* `type:bug` has been applied.
+
+Applies to: `/pickup-task`, `/tick`, `/tick-tests`, `/tick-stories`, and
+any agent that picks "the next" item from a column. A `type:bug` story
+in `StoryNew` is also claimed first by the analyst.
+
+## Find the oldest item in a given status column (bugs first)
 
     gh project item-list "$AGENTIC_PROJECT_NUMBER" \
         --owner "$AGENTIC_PROJECT_OWNER" --format json --limit 200 \
       | jq -r --arg S "Backlog" '
           .items
           | map(select(.status == $S))
-          | sort_by(.createdAt)
+          | sort_by([(.labels | index("type:bug") | not), .createdAt])
           | .[0] // empty'
+
+The compound sort key puts `type:bug` cards (where `index("type:bug")`
+is non-null, so `| not` is `false`) ahead of non-bug cards, then
+`createdAt` ascending within each group.
+
+## Budget: GraphQL is the scarce resource, REST is not
+
+Projects v2 exists **only** in GraphQL, which has its own 5000 points/hour
+shared by every agent. On 2026-08-23 that quota ran out repeatedly, each
+time for 20-40 minutes, while the separate REST quota never dropped below
+~4900. Cards then sit in the wrong column while the code is already pushed.
+
+The asymmetry that matters: **reads are expensive, writes are cheap.**
+`item-list --limit 200` costs tens of points; one
+`updateProjectV2ItemFieldValue` costs one to three. So:
+
+1. **Never look up what the dispatch already told you.** An agent handed
+   its item/project/field/option ids must not call `item-list` or
+   `field-list` at all. Orchestrators: put the ids in the prompt.
+2. **Prefer REST wherever a REST route exists** — labels, comments, issue
+   state, PR creation, gates. `gh issue edit`, `gh pr comment`,
+   `gh pr review` and `gh pr ready` go through GraphQL; the matching
+   `gh api repos/:owner/:repo/...` calls do not. (`gh pr edit --add-label`
+   also fails on a missing `read:org` scope here — REST is the way.)
+3. **Batch writes into one mutation with aliases** when moving several
+   cards: `mutation { m1: updateProjectV2ItemFieldValue(...){...}
+   m2: ... }`. Nine cards for the price of roughly one.
+4. **One attempt, then record and move on.** If a board write fails on
+   the quota, do NOT retry in a loop and do NOT block your real work.
+   State the intended transition in your report and in `MEMORY.md`; the
+   orchestrator or `/tick-warden` reconciles after the reset. Check
+   `gh api rate_limit --jq '.resources.graphql'` before a batch — below
+   ~1500 remaining, expect failures.
+
+Status option ids for this repo (verified 2026-08-23 — use these instead
+of calling `field-list`):
+
+    project PVT_kwHOA0sUmM4BVxTj   Status field PVTSSF_lAHOA0sUmM4BVxTjzhRKsGI
+    StoryNew a522063b | Analysis 05bfe875 | Decomposed 53feb57e
+    Backlog  8dfb317f | ToDo     8fe25f04 | Progress   523b90b0
+    CodeReview 23782cfd | Test   259268f3 | Implemented 1f3f5afd
+    Approved 7cf2fcd3 | Blocked 28e9b1dd
+
+If a mutation returns `The single select option Id does not belong to the
+field`, the map above is stale — re-resolve it once and update this block.
 
 ## Resolve the IDs needed to move a card
 
-Project node id + Status field id + option ids (one-time per session;
-cache in shell variables):
+Only when the dispatch did not give them to you, and only once per
+session (cache in shell variables — see the budget section above):
 
     gh project view "$AGENTIC_PROJECT_NUMBER" \
         --owner "$AGENTIC_PROJECT_OWNER" --format json \
@@ -88,55 +192,32 @@ in any target repo, regardless of plugin availability.
 
 ### List sub-issues of a story
 
-MCP (preferred):
-
     mcp__plugin_github_github__issue_read
       method: "get_sub_issues", owner: "$OWNER", repo: "$REPO",
       issue_number: <S>, perPage: 100
+    # Fallback: gh api repos/:owner/:repo/issues/<S>/sub_issues
 
-`gh` fallback:
+### Count still-open children
 
-    gh api repos/:owner/:repo/issues/<S>/sub_issues
-
-### Count still-open children (used by agent-ops for last-child detection)
-
-MCP: filter the `get_sub_issues` response in code, keep entries with
-`state == "open"`, take its length.
-
-`gh` fallback:
-
-    gh api repos/:owner/:repo/issues/<S>/sub_issues \
-      --jq '[.[] | select(.state=="open")] | length'
+Filter `get_sub_issues` response for `state == "open"`, take length.
+Fallback: `gh api repos/:owner/:repo/issues/<S>/sub_issues --jq '[.[] | select(.state=="open")] | length'`
 
 ### Find the parent of an issue
 
-The MCP plugin does not expose a parent lookup. `agent-ops` reads the
-parent number from the `Parent story:` line in `MEMORY.md` instead.
-If that is unavailable:
-
-    gh api repos/:owner/:repo/issues/<N>/parent_issue --jq '.number' 2>/dev/null
+Read `Parent story:` line from `MEMORY.md`. Fallback: `gh api repos/:owner/:repo/issues/<N>/parent_issue --jq '.number'`
 
 ### Add a child to a parent
-
-MCP (preferred):
 
     mcp__plugin_github_github__sub_issue_write
       method: "add", owner: "$OWNER", repo: "$REPO",
       issue_number: <S>, sub_issue_id: <CHILD_ID>
 
-`sub_issue_id` is the **internal numeric `id`** of the child issue, not
-its issue number. The `issue_write` MCP call returns it on `create`.
+`sub_issue_id` is the **internal numeric `id`** (not the issue number).
+Fallback: `gh api -X POST repos/:owner/:repo/issues/<S>/sub_issues -F sub_issue_id="$CHILD_ID"` (typed `-F` required — string `-f` gets 422 "not of type integer")
 
-`gh` fallback:
+## Worktree isolation → see agent-dev Step 2a/2c and agent-tester Step 0/4
 
-    PARENT_ID=$(gh api repos/:owner/:repo/issues/<S>   --jq '.id')
-    CHILD_ID=$(gh api  repos/:owner/:repo/issues/<NEW> --jq '.id')
-    gh api -X POST repos/:owner/:repo/issues/<S>/sub_issues \
-           -f sub_issue_id="$CHILD_ID"
-
-Note: if the target GitHub instance has no sub-issues feature at all,
-fall back to a `Parent story: #<S>` line in the body and a checklist on
-the parent — agents should still parse the body for parent linkage.
+## Parallel-dev labels → see agent-analyst Step 3 and AGENT-RULES §7
 
 ## MEMORY.md format
 
@@ -188,51 +269,158 @@ Rules:
 - If `MEMORY.md` does not exist when you first need it, create it with
   these headings populated for the current task.
 
+## Verdict markers — the load-bearing first lines
+
+Every role verdict is a **fixed first line** on a PR comment or review.
+Those lines are the only machine-readable record of the review and test
+gates: `role:*` labels are also set by pickup and by warden, board moves
+fail whenever the GraphQL quota is out, and on a single-account repo
+GitHub refuses formal `APPROVE` / `REQUEST_CHANGES`, so `reviewDecision`
+and `state=="CHANGES_REQUESTED"` are permanently useless here.
+
+Reword the rest of the body freely. Never the first line.
+
+| Marker (exact first line) | Posted by | Where |
+|---|---|---|
+| `AgentReviewer verdict: APPROVED` | agent-reviewer | `gh pr review --comment` |
+| `AgentReviewer verdict: CHANGES REQUESTED` | agent-reviewer | `gh pr review --comment` |
+| `AgentTester verdict: PASS` | agent-tester | `gh pr comment` |
+| `AgentTester kickback: implementation` | agent-tester | `gh pr comment` |
+
+**The collection is part of the convention.** Reviews
+(`pulls/<PR>/reviews`) and issue comments (`issues/<PR>/comments`) are
+separate collections and neither query sees the other. Reviewer markers
+live in reviews, tester markers in comments — always. On 2026-08-23 the
+reviewer used both at random (reviews on #244/#256/#258/#259/#273/#277/
+#280/#284, comments on #246/#260/#278/#281) and ops looking in the wrong
+one on #260 nearly read a merged approval as missing.
+
+Counters — use these, do not invent a variant:
+
+    KICKBACK_COUNT=$(gh api "repos/:owner/:repo/pulls/${PR}/reviews" --paginate \
+      --jq '[.[] | select(.body | startswith("AgentReviewer verdict: CHANGES REQUESTED"))] | length')
+
+    TESTER_KICKBACKS=$(gh api "repos/:owner/:repo/issues/${PR}/comments" \
+      --paginate \
+      --jq '[.[] | select(.body | startswith("AgentTester kickback: implementation"))] | length')
+
+Both counters cover the 2nd-round diagnostic and the 3rd-round
+escalation summary too — those carry the same first line.
+
+## Counting rebase rounds — one canonical query
+
+`agent-dev`, `agent-ops` and `agent-warden` all gate on "has this PR
+been through the rebase loop twice already?". They must count the same
+thing, or one of them escalates while another keeps looping.
+
+The count is **how many times the `needs:rebase` label has been applied**
+to the PR. `agent-ops` Step 1b applies it on every kickback, so the
+label-event log is an exact, wording-independent record:
+
+    REBASE_ROUNDS=$(gh api "repos/:owner/:repo/issues/${PR}/events" \
+      --paginate \
+      --jq '[.[] | select(.event=="labeled" and .label.name=="needs:rebase")] | length')
+
+Threshold, identical for all three roles: `REBASE_ROUNDS >= 2` means the
+loop has run twice and must not run a third time — escalate with
+`dev:blocked` + `needs:human` instead.
+
+Never count comment bodies for this. Comment wording drifts; a reworded
+template silently zeroes the counter and the escalation never fires.
+
+## Role runners — which subagent_type actually executes a role
+
+Most roles are dispatched as themselves: `subagent_type: "agent-dev"`,
+`"agent-tester"`, `"agent-ops"`, `"agent-analyst"`, `"agent-warden"`.
+
+**`agent-reviewer` is the exception.** It carries no `model:` in its
+frontmatter because it does not run on its own. Dispatch it as:
+
+    Agent(subagent_type: "hydra",
+          prompt: "<contents of .claude/agents/agent-reviewer.md as your
+                   instruction set> ... review PR #<PR>")
+
+`hydra` is a user-global agent that delegates the actual review to the
+Codex plugin and filters its feedback before reporting. The model comes
+from hydra's own definition.
+
+A caller that dispatches `subagent_type: "agent-reviewer"` literally
+still works, but silently bypasses the Codex second opinion — which is
+the whole point of the reviewer role. Every dispatch site must use the
+form above.
+
+## Review gate on single-account repos
+
+GitHub refuses a PR approval from the PR's own author, so with one
+account `reviewDecision == "APPROVED"` is impossible and the markers
+above carry the gate instead. If the repo ever gains a second
+(bot/machine) review account, drop the convention and require the
+formal approval again.
+
+Autonomy: with `AGENTIC_AUTO_MERGE=true`, agents act on passed gates
+without asking for extra confirmation — the env flags in
+`.claude/settings.json` ARE the human authorization. Agents ask only
+when a gate genuinely fails or a rule conflict has no defined path.
+
 ## Integration branch model
 
-AgenticTeam uses two long-lived branches:
+AgenticTeam uses three long-lived branches:
 
 - `master` — release branch. Stable, deployable, what a fresh `git
-  clone` gets. Updated only by the `/release` slash command.
+  clone` gets. Deploys to production. Updated only by the
+  `/release-prod` slash command.
+- `TEST-ENV` — staging branch between the integration branch and
+  `master`. Deploys to the test environment. Updated only by the
+  `/release` slash command, and never committed to directly: a fix for
+  something found on the test environment goes into the integration
+  branch as a normal feature PR and is promoted again.
 - `$AGENTIC_INTEGRATION_BRANCH` (default `develop`) — integration
   branch. Where feature PRs land. Cards in `Implemented` are sitting
   here, waiting to be released.
 
 Lifecycle of a feature:
 
-    feature/issue-N-foo  ── PR ──▶  develop  ── /release PR ──▶  master
-        ↑                              ↑                            ↑
-        agent-dev                      agent-ops merges               human triggers
-        branches off develop           (squash, --base develop)     /release; Implemented
-                                                                    cards batch-move to
-                                                                    Approved
+    feature/issue-N-foo ─PR─▶ develop ─/release PR─▶ TEST-ENV ─/release-prod PR─▶ master
+
+- `agent-dev` branches off develop; `agent-ops` squash-merges the
+  feature PR back into develop and the card lands in `Implemented`.
+- A human triggers `/release` (develop → TEST-ENV, merge commit). No
+  card moves — the test environment is not a release.
+- A human verifies the test environment and triggers `/release-prod`
+  (TEST-ENV → master, merge commit). Only then do `Implemented` cards
+  batch-move to `Approved`, and only those whose feature-PR merge commit
+  actually reached `master` — a card merged into develop while the
+  release PR was open waits for the next release.
 
 Column meanings on the board:
 
 - `Implemented`   feature PR is merged into the integration branch
                   (develop). Issue is closed. Code is integrated but
-                  not yet released.
-- `Approved`      release happened — the develop→master PR was merged
-                  and `/release` (or the user) batch-moved cards from
-                  Implemented to Approved.
+                  not yet released — it may already be running on the
+                  test environment, that does not move the card.
+- `Approved`      production release happened — the TEST-ENV→master PR
+                  was merged and `/release-prod` (or the user)
+                  batch-moved cards from Implemented to Approved.
 
 Merge styles:
 
-- feature PR → develop  : **squash** (one commit per feature on develop)
-- develop PR → master   : **merge commit** (preserves the squashed
-                          feature commits in master's history; release
-                          shows up as a single readable rollup)
+- feature PR → develop   : **squash** (one commit per feature on develop)
+- develop PR → TEST-ENV  : **merge commit**
+- TEST-ENV PR → master   : **merge commit** (preserves the squashed
+                           feature commits in master's history; a
+                           release shows up as a single readable rollup)
 
 Legacy / migration:
 
 - If the integration branch does not exist on origin (existing repo
   predating this convention), `agent-dev` creates it from `master` on
-  first use and pushes it. No manual migration required.
+  first use and pushes it. `/release` does the same for `TEST-ENV`.
+  No manual migration required.
 - If `$AGENTIC_INTEGRATION_BRANCH` is unset or empty, agents fall back
   to `develop` (not master — never master). To opt out of the model
   for a single repo, set `AGENTIC_INTEGRATION_BRANCH=master` and
   agent-ops + agent-dev will treat master as the integration target
-  and `/release` becomes a no-op.
+  and `/release` + `/release-prod` become no-ops.
 
 ## Transition cheat sheet
 
@@ -246,10 +434,17 @@ Task flow (sub-issues created from a story, or standalone backlog items):
     Test        -> Progress    : agent-tester on failing impl,       label -> role:dev
     Test        -> Implemented : agent-tester on green CI,           label -> role:ops
                                  (PR target is develop, not master)
-    Implemented -> Approved    : `/release` merges develop -> master, batch-moves all
-                                 Implemented cards to Approved
+    Implemented -> Approved    : `/release-prod` merges TEST-ENV -> master, then batch-moves
+                                 the Implemented cards whose feature-PR merge commit is an
+                                 ancestor of master. Closing time is NOT the test — a card
+                                 merged into develop while the release PR was open closed
+                                 early and is still not in master. See release-prod.md
+                                 State A. (`/release` promotes develop -> TEST-ENV and
+                                 moves no cards.)
     any         -> Blocked     : agent-dev when it must ask a question, label +blocked:question
     Blocked     -> ToDo        : human after answering (manual)
+    Implemented -> Progress    : agent-ops on merge conflict, +needs:rebase, label -> role:dev
+                                 (parallel-dev rebase loop; PR stays open)
 
 Story flow (a `type:story` issue, before and around its task children):
 
@@ -260,7 +455,8 @@ Story flow (a `type:story` issue, before and around its task children):
                                  (story stays in Decomposed throughout child execution)
     Decomposed  -> Implemented : agent-ops when it merges the LAST open child of the story
                                  into develop
-    Implemented -> Approved    : `/release` (alongside the child task cards)
+    Implemented -> Approved    : `/release-prod` (alongside the child task cards, and only
+                                 once every child is itself in master)
 
 Approval / blocking labels on a story:
 

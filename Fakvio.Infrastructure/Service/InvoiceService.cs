@@ -9,6 +9,7 @@ using Fakvio.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using ZMapper;
+using Fakvio.Contracts.Dto.ReverseChargeCode;
 
 namespace Fakvio.Infrastructure.Service;
 
@@ -20,22 +21,29 @@ public class InvoiceService : IInvoiceService
 {
     private readonly TenantDbContext _context;
     private readonly INumberSequenceService _numberSequenceService;
+    private readonly ITenantReadinessService _tenantReadinessService;
     private readonly ILogger<InvoiceService> _logger;
 
     public InvoiceService(
         TenantDbContext context,
         INumberSequenceService numberSequenceService,
+        ITenantReadinessService tenantReadinessService,
         ILogger<InvoiceService> logger)
     {
         _context = context;
         _numberSequenceService = numberSequenceService;
+        _tenantReadinessService = tenantReadinessService;
         _logger = logger;
     }
 
     /// <summary>
     /// Maps an Invoice entity to InvoiceDto using ZMapper v1.1.0.
-    /// ZMapper now handles BaseEntity (Id, CreatedAt, UpdatedAt) and nested collection Ids automatically.
-    /// Only navigation-derived properties (flattened from related entities) must be set manually.
+    /// ZMapper handles BaseEntity (Id, CreatedAt, UpdatedAt) and scalar properties automatically.
+    /// Navigation-derived properties (flattened from related entities) and nested navigation
+    /// objects (ReverseChargeCode on items) must be set manually after ZMapper runs.
+    ///
+    /// Prerequisite: the caller must have eagerly loaded InvoiceItem.ReverseChargeCode via
+    /// ThenInclude so that the navigation property is populated before this mapper runs.
     /// </summary>
     private static InvoiceDto MapToDto(Invoice entity)
     {
@@ -49,6 +57,43 @@ public class InvoiceService : IInvoiceService
         dto.CurrencyCode = entity.Currency?.Code ?? string.Empty;
         dto.CurrencySymbol = entity.Currency?.Symbol ?? string.Empty;
         dto.OriginalInvoiceNumber = entity.OriginalInvoice?.DocumentNumber;
+
+        // Populate the nested ReverseChargeCode on every line item. ZMapper copies scalar
+        // properties only, so the navigation object has to be mapped by hand here.
+        //
+        // Items are paired by Id, not by list position. Pairing by position would also be
+        // correct today — the generated ZMapper builds dto.InvoiceItem as
+        // source.InvoiceItem.Select(...).ToList(), a 1:1 order-preserving projection of the
+        // same collection — but that makes correctness here depend on a detail of generated
+        // code that nothing in this file controls. Keying on the primary key removes the
+        // coupling at identical O(n) cost. Note the guarantee is only as strong as the
+        // pairing itself: no test can distinguish the two variants from outside MapToDto.
+        //
+        // The Any() pre-check keeps the common case (an invoice with no reverse-charge line)
+        // free of the dictionary allocation — it is a cheap O(n) scan that allocates nothing.
+        if (dto.InvoiceItem.Count > 0 && entity.InvoiceItem.Any(item => item.ReverseChargeCode is not null))
+        {
+            var dtoItemsById = dto.InvoiceItem.ToDictionary(item => item.Id);
+
+            foreach (var entityItem in entity.InvoiceItem)
+            {
+                if (entityItem.ReverseChargeCode is null)
+                {
+                    continue;
+                }
+
+                // Unknown Id cannot happen for a DB-loaded graph; TryGetValue just avoids a
+                // throw if one ever did. It is not a general robustness guarantee — the
+                // ToDictionary above already requires the ids to be unique and would throw
+                // first on a graph of unsaved items that all still sit at Id == 0. Every
+                // caller of MapToDto reads through AsNoTracking with real primary keys, so
+                // that case is unreachable rather than handled.
+                if (dtoItemsById.TryGetValue(entityItem.Id, out var itemDto))
+                {
+                    itemDto.ReverseChargeCode = entityItem.ReverseChargeCode.ToReverseChargeCodeDto();
+                }
+            }
+        }
 
         return dto;
     }
@@ -662,6 +707,17 @@ public class InvoiceService : IInvoiceService
 
         if (invoice.Status != EInvoiceStatus.Draft)
             throw new InvalidOperationException($"Invoice is already {invoice.Status}");
+
+        // Readiness gate (#206): issuing a document is the point of no return — the number is
+        // drawn from the sequence and the document becomes a tax record. Refuse it while the
+        // mandatory company settings are incomplete (address, IČO/DIČ, bank account, number
+        // sequence) instead of producing a document the customer cannot pay.
+        //
+        // Scoped deliberately: only the issuer of THIS invoice and only the document type
+        // being issued, so an unrelated gap elsewhere in the tenant does not block the user.
+        // Warnings (EPO header) never throw. Runs before any state change — see the tests.
+        await _tenantReadinessService.EnsureReadyAsync(
+            invoice.IssuerId, invoice.DocumentType, cancellationToken);
 
         _logger.LogInformation("Completing {DocumentType} {Id}", invoice.DocumentType, invoice.Id);
 
@@ -1840,25 +1896,55 @@ public class InvoiceService : IInvoiceService
 
             return number;
         }
+        catch (InvalidOperationException ex) when (ex.InnerException is DbUpdateConcurrencyException)
+        {
+            // Issue #155, transient case: concurrent requests exhausted the optimistic-concurrency
+            // retry budget inside NumberSequenceService.GenerateNextNumberAsync. That method wraps
+            // the last DbUpdateConcurrencyException into an InvalidOperationException, and the inner
+            // type is what distinguishes this case from a configuration problem.
+            //
+            // Nothing is misconfigured here, so pointing the user at /number-sequences would be
+            // misleading advice — the correct instruction is simply to repeat the action.
+            _logger.LogError(ex,
+                "Document number generation hit a concurrency collision for {DocumentType} {Id}: {Message}",
+                invoice.DocumentType, invoice.Id, ex.Message);
+
+            throw new InvalidOperationException(
+                $"Cannot generate a document number for {invoice.DocumentType} right now — another " +
+                "request was drawing a number from the same sequence at the same moment " +
+                $"({ex.Message}). Nothing is misconfigured; please repeat the action.",
+                ex);
+        }
         catch (InvalidOperationException ex)
         {
-            // Fallback to simple generation if no sequence is configured
-            _logger.LogWarning("Number sequence generation failed, using fallback: {Message}", ex.Message);
+            // Issue #155: a failed number generation is an ERROR, never a silent fallback.
+            //
+            // The previous implementation caught this exception and returned a hardcoded
+            // "INV{year}{counter}" number. That number ignored the configured series, its
+            // prefix and its format, and the user was never told — only a warning was logged.
+            // For accounting documents that is unacceptable: the series must stay continuous
+            // and predictable, because that is what the accountant reconciles against.
+            //
+            // This branch handles the CONFIGURATION failures reported by INumberSequenceService:
+            // the series is missing or it is inactive. (The third failure path — an exhausted
+            // concurrency retry budget — is transient and handled by the catch block above,
+            // which is selected by the DbUpdateConcurrencyException carried as InnerException.)
+            // We rethrow with a message that tells the user WHAT is wrong and WHERE to fix it,
+            // keeping the original error as InnerException for diagnostics.
+            //
+            // The exception type stays InvalidOperationException on purpose: the API
+            // controllers already translate it into HTTP 400 with the message passed through
+            // to the UI, so the user sees the actionable text instead of a generic 500.
+            _logger.LogError(ex,
+                "Document number generation failed for {DocumentType} {Id}: {Message}",
+                invoice.DocumentType, invoice.Id, ex.Message);
 
-            var issueDate = invoice.IssueDate ?? DateTime.UtcNow;
-            var year = issueDate.Year;
-            var prefix = invoice.DocumentType == EDocumentType.Invoice ? "INV" : "CN";
-
-            // Count existing documents of same type in same year
-            var count = await _context.Invoice
-                .Where(i => i.DocumentType == invoice.DocumentType &&
-                           i.IssueDate.HasValue &&
-                           i.IssueDate.Value.Year == year &&
-                           i.Status != EInvoiceStatus.Deleted &&
-                           i.Id != invoice.Id)
-                .CountAsync(cancellationToken);
-
-            return $"{prefix}{year:0000}{(count + 1):000}";
+            throw new InvalidOperationException(
+                $"Cannot generate a document number for {invoice.DocumentType} — the number sequence " +
+                $"is missing, inactive or unusable ({ex.Message}). " +
+                "Set up an active default number sequence for this document type on the " +
+                "/number-sequences page and try again.",
+                ex);
         }
     }
 

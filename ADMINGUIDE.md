@@ -20,6 +20,8 @@
 10. [Číselníky — systémové vs tenant kopie](#10-číselníky--systémové-vs-tenant-kopie)
 11. [Impersonace tenant firmy](#11-impersonace-tenant-firmy)
 12. [Odesílání testovacího emailu](#12-odesílání-testovacího-emailu)
+13. [Diagnostika nasazení (health endpoint)](#13-diagnostika-nasazení-health-endpoint)
+14. [Prostředí (test vs produkce)](#14-prostředí-test-vs-produkce)
 
 ---
 
@@ -140,11 +142,38 @@ Provisioning provede:
 1. Vytvoří PostgreSQL schema `tenant_{companyId}`
 2. Aplikuje EF Core migrace na nové schéma
 3. Zkopíruje systémové číselníky (VatRate, Currency, NumberSequenceFormat, ContentTemplate) z master schématu do tenant schématu
-4. Vytvoří záznam vystavitele (issuer) v tenant schématu
+4. Vytvoří záznam vystavitele (issuer) v tenant schématu — včetně adres, kontaktů, bankovních účtů a fakturačního nastavení z master záznamu firmy
 5. Vytvoří výchozí číselné řady pro 4 typy dokladů (INV, CN-, PF-, DPP-)
 6. Označí firmu jako IsProvisioned=true, IsActive=true
 
-**Idempotentní** — bezpečné spustit opakovaně při chybě.
+**Kdy provisioning proběhne a kdy ne**
+
+- **Firma ve stavu Not provisioned** (`IsProvisioned=false`) — proběhne celý postup 1-6.
+  Sem patří i opakování po chybě: příznak se nastavuje až v kroku 6, takže po neúspěšném
+  běhu firma zůstává „nedoprovisionovaná" a další spuštění projde znovu všechny kroky.
+- **Firma ve stavu Provisioned** (`IsProvisioned=true`) — **neproběhne nic**. Tlačítko
+  „Provision" i automatické spuštění při nastavení hesla skončí bez zásahu do tenant
+  schématu a nahlásí úspěch. Důvod: krok 3 číselníky nejdřív smaže a teprve pak nakopíruje
+  znovu. U firmy, která už fakturuje, na mazané sazby DPH a měny vedou cizí klíče z faktur,
+  takže opakovaný běh by buď spadl, nebo (hůř, protože tiše) přečísloval sazby a měny pod
+  už vystavenými doklady.
+- **Oprava schématu už provisionované firmy** se dělá migrací (`MigrateTenantAsync`), ne
+  opakovaným provisioningem.
+
+**Krok 5 je povinný.** Pokud v tenant schématu není žádný aktivní formát číselné řady
+(`NumberSequenceFormat`), provisioning v kroku 5 selže s chybou a firma zůstane
+`IsProvisioned=false`. Dřív se krok tiše přeskočil a tenant vznikl úplně bez číselných
+řad — jeho faktury pak nešlo očíslovat. Náprava: zkontrolovat master číselník
+„Formáty číselných řad" (musí mít alespoň jeden aktivní záznam), pak provisioning
+spustit znovu.
+
+**Selhaný provisioning po self-registraci:** provisioning se spouští automaticky i při
+nastavení hesla nově registrovaným uživatelem. Když v tu chvíli selže, firma zůstane ve
+stavu **Not provisioned** a uživatel dostane na stránce nastavení hesla oranžové upozornění,
+že pracovní prostor není připravený (heslo mu ale platí). Takové firmy najdete v přehledu
+`/company-settings` se stavem „Ne" ve sloupci Provisioned — provisioning z něj spustíte
+znovu tlačítkem ▶. Důvod selhání najdete přímo v aplikaci na stránce `/logs` — vyhledejte
+`Tenant provisioning FAILED`; záznam obsahuje krok, na kterém provisioning spadl.
 
 ### Aktivace / Deaktivace firmy
 
@@ -166,6 +195,17 @@ V detailu firmy sekce „Email Settings" — umožňuje nastavit firemní SMTP o
 ### AI nastavení firmy (per-company)
 
 V detailu firmy sekce „AI Settings" — umožňuje nakonfigurovat AI poskytovatele specifické pro tuto firmu (přepíše systémové nastavení pro tuto firmu).
+
+### EPO nastavení firmy (per-company)
+
+Sekce „Nastavení EPO" na `/my-company` (viditelná pro role Admin a SysAdmin) — hlavičkové údaje
+pro elektronické podání přiznání k DPH a kontrolního hlášení:
+- Kód finančního úřadu (c_ufo) a kód územního pracoviště (c_pracufo) — **povinné**, bez nich
+  API odmítne EPO export chybou `EPO_HEADER_INCOMPLETE`
+- Kontaktní telefon, kontaktní e-mail, jméno oprávněné osoby — volitelné
+
+Data leží na `CompanySystemSettings` v master DB, stejně jako SMTP a AI nastavení. SysAdmin
+se k sekci dostane po zvolení firmy v přepínači impersonace.
 
 ---
 
@@ -210,12 +250,24 @@ Systém podporuje 4 AI poskytovatele. Nastavení per systém jsou záloha; nasta
 
 ### Dostupní poskytovatelé
 
-| Poskytovatel | Model (výchozí) | Konfigurace |
-|-------------|----------------|-------------|
-| **Claude (Anthropic)** | `claude-sonnet-4-6` | API key (šifrovaný) + model ID |
-| **OpenAI** | `gpt-4o` | API key (šifrovaný) + model ID |
-| **Gemini (Google)** | `gemini-2.0-flash` | API key (šifrovaný) + model ID |
-| **Ollama (Local)** | dle instalace | Base URL (lokální nebo sítě) + model ID |
+| Poskytovatel | Model (výchozí) | Konfigurace | Nástroje (tool calling) |
+|-------------|----------------|-------------|-------------------------|
+| **Claude (Anthropic)** | `claude-sonnet-4-6` | API key (šifrovaný) + model ID | nativní |
+| **OpenAI** | `gpt-4o` | API key (šifrovaný) + model ID | nativní |
+| **Gemini (Google)** | `gemini-2.0-flash` | API key (šifrovaný) + model ID | nativní |
+| **Ollama (Local)** | dle instalace | Base URL (lokální nebo sítě) + model ID | nativní, pokud to model umí (např. `gemma3` a `phi4` **ne**) |
+
+**Nativní nástroje** znamenají, že seznam nástrojů posílá aplikace přímo do API poskytovatele
+a model vrací strukturované volání. Je to spolehlivější než záložní textová cesta, kde model
+píše volání jako JSON do běžné odpovědi.
+
+Pokud model nástroje odmítne, aplikace se sama přepne na textovou cestu — nástroje fungují
+dál, jen méně spolehlivě a s vyšší latencí. V logu to poznáte podle varování
+„rejected native tool calling". Přepnutí platí až do restartu aplikace, proto na něj stačí
+jen dvě odpovědi API: **neexistující model (404)** a **chyba 400, která přímo mluví
+o nástrojích/funkcích**. Vypršelý API klíč, příliš dlouhá konverzace, rate limit ani výpadek
+sítě přepnutí nezpůsobí — u dané zprávy se nástroje nepoužijí a další zpráva to zkusí znovu
+nativně.
 
 ### Výchozí poskytovatel
 
@@ -231,6 +283,53 @@ Pole „Výchozí poskytovatel" určuje, který AI se použije když firma nemá
 6. Uložte
 
 **Hesla/klíče:** jsou šifrovány přes CredentialProtector (Data Protection API, AES-256). Po restartu bez persistovaných klíčů jsou nedešifrovatelné — viz §9.
+
+### Instrukce AI asistenta (editovatelný system prompt)
+
+**Stránka:** `/ai-instructions` (pouze SysAdmin, položka „Instrukce AI" v nav menu)
+
+Umožňuje doladit chování AI asistenta bez nasazení nové verze. Nastavení je **systémové** —
+platí pro všechny tenanty.
+
+Systémový prompt má šest bloků; editovatelné jsou dva prostřední:
+
+| # | Blok | Editovatelné |
+|---|------|--------------|
+| 1 | Úvodní věta („You are Fakvio AI Assistant…") | ne |
+| 2 | Identita firmy (název, IČO, DIČ z databáze tenanta) | ne |
+| 3 | Hlavní instrukce — styl odpovědi, seznam nástrojů, pravidla importu | **ano** |
+| 4 | Dodatek | **ano** |
+| 5 | Business kontext (počty klientů a faktur z databáze tenanta) | ne |
+| 6 | Situační kontext (dnešní datum, otevřená stránka a doklad, chybějící nastavení tenanta) | ne |
+
+| Pole | Chování |
+|------|---------|
+| **Vlastní instrukce** | Pokud není prázdné, **nahradí celý blok 3** — tedy i popis nástrojů. Bez popisu nástrojů je AI nemusí použít. |
+| **Dodatek** | Připojí se za blok 3 (vlastní i výchozí). Použijte, pokud chcete jen přidat pravidlo a zachovat výchozí chování. |
+
+#### Jak nastavit
+
+1. Otevřete `/ai-instructions`
+2. Chip nahoře ukazuje, jestli běží výchozí, nebo vlastní instrukce
+3. Vyplňte pole a klikněte „Uložit"
+4. „Náhled celého promptu" zobrazí složený prompt tak, jak ho AI dostane. Identita firmy,
+   statistiky i situační kontext jsou v náhledu zástupné (`[N/A — preview mode]`): první dvě
+   proto, že náhled běží v SysAdmin kontextu bez databáze tenanta, situační kontext proto,
+   že vzniká až u konkrétní zprávy uživatele. Náhled zobrazuje **uložený** stav, ne
+   rozepsané změny.
+5. „Obnovit výchozí" (s potvrzením) vymaže obě pole — AI se vrátí k vestavěným instrukcím
+
+**Kdy se změna projeví:** nejpozději do 5 minut, restart aplikace není potřeba. Prompt je
+cachovaný v paměti procesu s pevnou platností 5 minut. Uložení cache okamžitě zahodí v té
+instanci aplikace, která požadavek odbavila — tam se změna projeví hned. Běží-li aplikace
+ve více instancích (škálovaný Azure Function App), ostatní instance dojedou starý prompt
+ještě nejvýše 5 minut. Náhled čte vždy přímo z databáze, takže ukazuje
+aktuálně uložený stav bez ohledu na cache.
+
+**Pozor:** pokud vývojáři přibude nový AI nástroj, do výchozích instrukcí se doplní
+automaticky, ale do **vlastních instrukcí ne** — ty si musíte doplnit sami.
+
+---
 
 ### Azure Blob Storage
 
@@ -335,6 +434,8 @@ Grid s logy: Timestamp, Level (chip), Source (zkrácená kategorie loggeru), Zpr
 
 **CorrelationId:** Každý HTTP request má vlastní ID propagované přes `X-Correlation-Id` header. Pokud máte chybu, hledejte log záznamy se stejným CorrelationId.
 
+**Referenční ID od uživatele:** Když AI asistent (chat) selže, uživatel místo technického detailu uvidí hlášku s referenčním ID — to je právě CorrelationId. Zadejte ho do textového hledání v `/logs` a najdete záznam s plnou výjimkou včetně stack trace.
+
 **CompanyId:** Logy z tenant operací mají přiřazený CompanyId — lze filtrovat ve sloupci.
 
 ### Retence logů
@@ -387,6 +488,33 @@ Systémové šablony (typ = System) jsou sdílené a slouží jako výchozí pro
 - Expirace: konfigurovatelná (výchozí 24 h), ClockSkew=Zero
 - Konfigurace: `JwtSettings:*` v appsettings / env
 
+### API klíče (`fak_live_…`)
+
+Vedle JWT přijímá aplikace i dlouhodobé API klíče — pro strojové klienty (MCP server, CI,
+curl). Posílají se ve stejné hlavičce: `Authorization: Bearer fak_live_…`.
+
+- Klíč je **osobní credential uživatele**, ne firemní. Tenant se odvozuje z firmy vlastníka.
+- V DB je jen SHA-256 hash + prvních 12 znaků na zobrazení; **raw klíč se ukládá nikam** a do
+  logu jde vždy jen prefix. Ztracený klíč nejde obnovit, jen zrušit a vydat nový.
+- Funguje **shodně na API i na Azure Functions hostu**.
+
+**Co SysAdmina zajímá provozně:**
+
+| Situace | Chování |
+|---------|---------|
+| Klíč revokovaný / expirovaný / neznámý | **401**, důvod se volajícímu neřekne (je v logu jako `API key authentication failed: …` s prefixem klíče) |
+| **Deaktivace uživatele** (`IsActive = false`) | Okamžitě přestanou fungovat **i všechny jeho API klíče**. Toto je správný postup při odchodu člověka — samostatné rušení klíčů netřeba. |
+| Smazání uživatele | Klíče mizí s ním (FK cascade). |
+| Klíč s rozsahem `read` | Na jakýkoli zápis (POST/PUT/PATCH/DELETE) vrací **403**. Výjimka jsou výpočtové endpointy, dnes jen `POST /api/tax/estimate`. |
+| Klíč s rozsahem `read,write` | Smí měnit data — ale **nikdy víc, než smí role vlastníka** (platí `role ∩ scope`). |
+| Správa klíčů klíčem | Zakázáno. `GET/POST /api/api-key` a revokace jdou jen s přihlášením (JWT). Klíčem lze volat jen `GET /api/api-key/me`. |
+
+**SysAdmin klíč a impersonace:** klíč nese roli vlastníka, takže klíč vydaný SysAdminem
+umí `X-Company-Id` impersonaci úplně stejně jako jeho přihlášení (viz §11). Bez té hlavičky
+takový klíč na tenant endpointy nedosáhne (403) — stejně jako SysAdmin bez impersonace.
+Je to tedy **plnohodnotný SysAdmin credential s dlouhou platností**: vydávejte ho uvážlivě,
+raději s vyplněnou expirací a rozsahem `read`.
+
 ### Data Protection (CredentialProtector)
 
 - Šifruje: SMTP hesla, IMAP hesla, AI API klíče uložené v DB
@@ -405,6 +533,46 @@ Systémové šablony (typ = System) jsou sdílené a slouží jako výchozí pro
 AddDataProtection().PersistKeysToDbContext<MasterDbContext>().SetApplicationName("Fakvio")
 ```
 `SetApplicationName("Fakvio")` musí být totožné na API i Functions hostu — jinak navzájem nedešifrují.
+
+**Přesun databáze na jiný server:** key ring je nejrizikovější část celé operace —
+podle platformy, na které aplikace běžela, je sloupec `Xml` buď plaintext (přenositelný),
+nebo zašifrovaný přes DPAPI (nepřenositelný, vyžaduje ruční obnovu **všech** secretů
+včetně TOTP). Kompletní runbook včetně blokující pre-flight kontroly viz
+[`SELFHOST-DB.md`](SELFHOST-DB.md) §4.
+
+**Pozor:** `credential-health` **nekontroluje** `User.TotpSecretEncrypted`. Po ztrátě
+klíčů projde zeleně i ve chvíli, kdy se žádný uživatel s 2FA nepřihlásí — stav 2FA se
+musí ověřit zvlášť.
+
+### reCAPTCHA v3 (ochrana anonymních endpointů)
+
+Chrání přihlášení, registraci a anonymní ARES lookup na registračním formuláři. Jiná ochrana proti robotům v aplikaci **není**.
+
+Konfigurace v `appsettings.json` nebo env proměnných (Azure App Settings používá dvojité podtržítko, např. `Recaptcha__SecretKey`). Přes UI nastavit nelze — jde o secret.
+
+| Klíč | Výchozí | Popis |
+|------|---------|-------|
+| `Recaptcha:Enabled` | `true` | `false` = ověřování se úplně přeskočí. Použijte jen tam, kde záměrně běžíte bez reCAPTCHA. |
+| `Recaptcha:SiteKey` | prázdný | Veřejný klíč pro frontend (`Fakvio.BlazorUI/wwwroot/appsettings.json`). |
+| `Recaptcha:SecretKey` | prázdný | Tajný klíč pro ověření na serveru. Získáte na https://www.google.com/recaptcha/admin (Score based v3). |
+| `Recaptcha:AllowedHostnames` | prázdné pole | Seznam hostů, na kterých se site key používá (např. `fakvio.cz`). Prázdné = kontrola hostname se přeskočí. |
+
+**DŮLEŽITÉ — brána je „fail closed"** (od issue #200): pokud je `Enabled=true` a `SecretKey` chybí, **přihlášení i registrace vracejí chybu 400**. Totéž při výpadku Googlu. Dřívější chování bylo opačné (při jakémkoli problému se požadavek propustil), což znamenalo, že zapomenutý klíč tiše vypnul ochranu.
+
+**Nasazení — jsou jen dvě funkční varianty.** Samotné doplnění `Recaptcha__SecretKey` mezi ně nepatří, to přihlášení naopak rozbije:
+
+| Varianta | Co nastavit | Výsledek |
+|----------|-------------|----------|
+| **A — brána vypnutá** | `Recaptcha__Enabled=false` v App Settings API **i** Function Appu | Přihlášení, registrace i ARES fungují, ochrana proti robotům žádná. |
+| **B — brána zapnutá** | (1) `Recaptcha__SecretKey` v App Settings API **i** Function Appu **a zároveň** (2) veřejný `SiteKey` zapsaný do `Fakvio.BlazorUI/wwwroot/appsettings.json` + nový deploy GitHub Pages | Ochrana je aktivní. |
+
+Krok (2) nejde nahradit App Settings: WASM klient se konfiguruje ze statického souboru ve `wwwroot`, který workflow `blazorui-deploy.yml` publikuje beze změny — žádná substituce hodnot při deployi neexistuje. Když je `SiteKey` prázdný, stránka si od Googlu token vůbec nevyžádá, hlavička `X-Captcha-Token` nedorazí na server a fail-closed brána odpoví **400 na přihlášení, registraci i ARES lookup — všem uživatelům**.
+
+`SiteKey` je veřejný klíč (přečte ho kdokoli ze zdroje stránky), takže jeho uložení do repozitáře není únik. Tajný je pouze `SecretKey` a ten do `wwwroot` **nikdy** nepatří.
+
+Pozn.: `Recaptcha__SiteKey` v Azure App Settings nedělá nic — server SiteKey nečte, potřebuje ho jen klient.
+
+**Diagnostika:** v logu (`/logs`, úroveň Error) hledejte zprávu `reCAPTCHA is enabled but Recaptcha:SecretKey is not configured`. Úroveň Warning zaznamená i odmítnutí kvůli nízkému skóre, neshodě akce nebo neznámému hostname.
 
 ### OAuth (Social login)
 
@@ -441,6 +609,28 @@ Viz §2 — Správa uživatelů → 2FA. Uživatel si aktivuje sám. SysAdmin ne
 
 **NIKDY neměnit pořadí** — Impersonation musí být po Authentication (Role musí být validní).
 
+### Diagnostické endpointy (Azure Functions)
+
+| Endpoint | Přístup | K čemu |
+|----------|---------|--------|
+| `GET /api/diagnostic/health` | **jen SysAdmin** | Režim autentizace k DB, stav připojení a čekající migrace. Podrobně §13. |
+| `POST /api/diagnostic/migrate` | **jen SysAdmin** | Ruční spuštění EF Core migrací (master DB + všechny tenanty). |
+| `GET /api/diagnostic/auth` | **jen SysAdmin** | Výpis stavu JWT tak, jak ho vidí worker — hlavička, claims, issuer/audience, ruční validace tokenu. |
+
+Od issue #263 vyžadují `migrate` a `auth` platný Bearer token s rolí SysAdmin — dřív byly
+anonymní, takže kdokoli mohl spustit migrace nebo si nechat vypsat konfiguraci JWT.
+Od issue #138 platí totéž i pro `health`: vypisuje režim autentizace k databázi, cílový
+server a jména migrací, což je pro útočníka stejně cenné. Bez tokenu vrací všechny tři
+**401**, s tokenem bez role SysAdmin **403**.
+
+**Dopad na health probe:** `health` už není použitelný jako anonymní liveness probe Azure —
+probe bez tokenu dostane 401. Nastavte probe na jiný anonymní endpoint, nebo ji berte tak,
+že 401 znamená „proces běží a odpovídá" (což pro liveness stačí; readiness ne).
+
+Praktický důsledek pro ladění: `/api/diagnostic/auth` už nepomůže u volajícího, jehož token
+se vůbec nevaliduje (dostane 401 dřív, než se cokoli vypíše). Pro takové případy použijte
+logy Function Appu — `JwtAuthenticationMiddleware` důvod zamítnutí loguje.
+
 ---
 
 ## 10. Číselníky — systémové vs tenant kopie
@@ -473,7 +663,7 @@ Při provisioningu se **kopírují** do schématu tenanta:
 2. Otevřete `/vat-rates`
 3. „+ Nová sazba" → vyplňte název, procento, platnost
 4. Uložte
-5. **Nová sazba se automaticky nezobrazí u existujících tenantů.** Pro propagaci do tenanta je potřeba manuálně provisionovat nebo přidat migraci (konzultujte vývojový tým).
+5. **Nová sazba se automaticky nezobrazí u existujících tenantů.** Opakovaný provisioning ji tam nedostane — u provisionované firmy se nespustí (viz „Kdy provisioning proběhne a kdy ne"). Do existujícího tenanta se sazba propaguje migrací (konzultujte vývojový tým).
 
 ---
 
@@ -511,6 +701,237 @@ Systém použije SMTP dle priority (viz §3 — SMTP priority).
 
 ---
 
+## 13. Diagnostika nasazení (health endpoint)
+
+`GET /api/diagnostic/health` — **jen SysAdmin** (Bearer token). Odpovídá stejně na obou
+hostitelích (Fakvio.API i Azure Functions), protože oba volají tentýž kód.
+
+K čemu to je: po změně konfigurace databáze (typicky Azure App Settings) potřebujete vidět,
+**co běžící proces skutečně vyhodnotil** — ne co si myslíte, že je v konfiguraci.
+
+```bash
+curl -s -H "Authorization: Bearer <sysadmin-jwt>"   https://<host>/api/diagnostic/health | jq '{authMode, authModeSource, masterDbCanConnect}'
+```
+
+| Pole | Význam |
+|------|--------|
+| `authMode` | `Password` (heslo z connection stringu) nebo `AzureEntraId` (token z Entra ID). |
+| `authModeSource` | Který klíč vyhrál: `Database:AuthMode` (nový), `UseAzureAdAuthentication (legacy)` nebo `default` (nikde nic nastaveno = `Password`). |
+| `masterConnectionServer` | Host, databáze a uživatel — **nikdy heslo ani token**. |
+| `masterDbCanConnect`, `masterDbPendingMigrations` | Dostupnost master DB a počet nenasazených migrací. |
+| `databaseConnected` / `databaseReady` | Souhrnné vlajky pro monitoring. `databaseReady` = připojeno **a** žádné čekající migrace. |
+
+HTTP **200** = databáze odpovídá, **503** = neodpovídá (monitoring může jet jen podle status
+kódu). Při 503 se `authMode`/`authModeSource` hlásí dál — právě tehdy jsou nejužitečnější.
+
+**Když je databáze úplně nedostupná**, endpoint nepomůže — přihlášení SysAdmina samo potřebuje
+master DB. Tentýž údaj proto oba hostitelé vypisují do logu hned po startu (Azure: Log stream /
+Application Insights), ještě před prvním dotazem do databáze:
+
+```text
+info: Fakvio.Infrastructure.Database[0]
+      Startup: database auth mode Password (source: Database:AuthMode)
+```
+
+**Přepnutí režimu autentizace k DB** (Azure App Settings):
+
+1. Přidejte `Database__AuthMode` = `AzureEntraId` nebo `Password`. Starý klíč
+   `UseAzureAdAuthentication` může chvíli zůstat, ale **musí souhlasit** — při rozporu
+   aplikace při startu spadne s hláškou, která oba klíče jmenuje.
+2. Restart → `curl` výše. `authModeSource` musí hlásit `Database:AuthMode`.
+3. Teprve pak smažte `UseAzureAdAuthentication`.
+
+Chyba při startu (např. heslo v connection stringu při `AzureEntraId`) vždy dopoví, **odkud**
+se režim vzal — podle toho víte, který klíč opravit.
+
+---
+
+## 14. Prostředí (test vs produkce)
+
+Aplikace běží ve **dvou oddělených prostředích**. Kód je stejný, Azure zdroje ne — testovací
+prostředí má vlastní Function App, vlastní frontend hosting, vlastní JWT klíč i vlastní
+deploy credentials. Nesdílí se **credentials, Azure zdroje ani data** — test tedy nemůže
+sáhnout na produkční databázi ani na produkční Azure zdroje. Sdílený je naopak kód a ta část
+konfigurace, která se nemá lišit (`JwtSettings__Issuer`/`Audience`, `AresSettings__BaseUrl`);
+rozdíly vypisuje tabulka níž.
+
+Vývojářský pohled (obsah workflow souborů, precedence konfigurace, jak se přepisuje URL API
+v WASM bundlu) je v `DEVGUIDE.md` §9 — tady je jen to, co potřebuje SysAdmin.
+
+### Co kde běží
+
+| | **Test** | **Produkce** |
+|---|---|---|
+| Frontend hosting | Azure Static Web App `fakvio-test-ui` (Free tier) | GitHub Pages (custom doména z `CNAME` v repu) |
+| Frontend URL | https://test.fakvio.cz (custom doména; technický host SWA `wonderful-meadow-0eb3ada03.7.azurestaticapps.net`, CNAME u Forpsi) | https://app.fakvio.cz |
+| Backend | Function App `zcloudinvoicingapi-test` | Function App `zcloudinvoicingapi` |
+| Backend URL | https://zcloudinvoicingapi-test.azurewebsites.net | https://zcloudinvoicingapi-crcqggehb7a6ggdv.westeurope-01.azurewebsites.net |
+| Zdrojová větev | `TEST-ENV` | `master` |
+| Deploy workflows | `testenv_zcloudinvoicingapi.yml` (backend), `blazorui-test-deploy.yml` (frontend) | `master_zcloudinvoicingapi.yml` (backend), `blazorui-deploy.yml` (frontend) |
+| Databáze | vlastní PostgreSQL `fakvio_test` na privátním serveru, dostupná **přes Tailscale tunel** (viz níž) | produkční PostgreSQL |
+
+Větev **`TEST-ENV` na `origin` vzniká až prvním během `/release`** (odbočí z `master`).
+Dokud tam není, testovací deploy workflows nemají co spustit — není to incident.
+
+**Proč test není deployment slot:** produkční Function App běží na plánu **Flex Consumption**,
+který sloty nepodporuje (`az functionapp deployment slot list` to rovnou odmítne). Testovací
+prostředí je proto **samostatný Function App** na stejném plánu. V praxi je to i lepší izolace —
+slot by s produkcí sdílel škálování, protože plán je společný. App Settings by se oddělit daly
+(označením jako slot-specific), škálování ne.
+
+**Proč frontend testu není na GitHub Pages:** Pages umí hostovat jen jeden web na repozitář
+a ten patří produkci. Test proto jede na Azure Static Web Apps.
+
+### Jak se liší konfigurace
+
+Všechna nastavení jsou **App Settings v Azure** (Function App → Settings → Environment
+variables), ne ve workflow souborech. Zápis používá dvojité podtržítko místo dvojtečky
+(`JwtSettings__Secret`).
+
+| Nastavení | Test | Poznámka |
+|-----------|------|----------|
+| `JwtSettings__Secret` | **vlastní, nesdílený s produkcí** | Token vydaný produkcí na testu neplatí a naopak. To je záměr — jinak by únik jednoho klíče otevřel obě prostředí. |
+| `JwtSettings__Issuer`, `JwtSettings__Audience` | shodné s produkcí | Liší se jen klíč, ne formát tokenu. |
+| `CorsSettings__AllowedOrigins__0` / `__1` | `https://wonderful-meadow-0eb3ada03.7.azurestaticapps.net` a `https://test.fakvio.cz` (oba originy testovacího frontendu) | Musí sedět na frontend URL daného prostředí, jinak prohlížeč zablokuje všechna volání API. Při změně URL frontendu se mění i tady. |
+| `ConnectionStrings__DefaultConnection` | `Host=127.0.0.1;Port=15432;Database=fakvio_test;Username=fakvio_test;Password=***;Ssl Mode=Prefer;Timezone=UTC;Maximum Pool Size=20;Timeout=15` | **`127.0.0.1` není překlep** — míří na lokální konec Tailscale tunelu (viz níž), ne přímo na databázový server. `Ssl Mode=Prefer`, protože provoz už šifruje WireGuard a certifikát na `127.0.0.1` se ověřit nedá; `Timeout=15` kvůli WireGuard handshake při prvním spojení. |
+| `TAILSCALE_AUTHKEY` | `tskey-auth-…` (reusable + ephemeral + tag) | **Spínač celé funkce.** Když klíč chybí, tunel se nepostaví a databáze je nedostupná. Klíč má expiraci — po vypršení se nové instance nepřihlásí. Postup vydání, ACL a rotace: `Fakvio.Functions/Tailscale/README.md`. |
+| `Database__AuthMode` | `Password` (produkce: `AzureEntraId`) | Vlastní PostgreSQL Entra ID neumí. Kanonický klíč (§13) — health proto hlásí `authModeSource: Database:AuthMode`. |
+| `UseAzureAdAuthentication` | `false` (produkce: `true`, tedy Entra ID) | **Legacy klíč, musí souhlasit s řádkem výš** — když si budou odporovat, aplikace při startu spadne (fail-fast, §13). Měnit vždy oba zároveň. |
+| `AresSettings__BaseUrl` | shodné s produkcí | |
+
+### Jak je testovací databáze zapojená
+
+Testovací databáze je **vlastní PostgreSQL na privátním serveru** (databáze `fakvio_test`,
+uživatel `fakvio_test`). **Role je per prostředí** — do `fakvio_test` se přihlašuje jen role
+`fakvio_test`, do produkční `fakvio_prod` jen `fakvio_prod`. Tohle oddělení ale **nevzniká
+samo založením databáze**: PostgreSQL dává právo `CONNECT` implicitně roli `PUBLIC`, takže
+hranici staví teprve explicitní `REVOKE CONNECT … FROM PUBLIC` (plus `GRANT CONNECT` té jedné
+roli) a odpovídající řádek v `pg_hba.conf` — přesné příkazy i ověření jsou v `SELFHOST-DB.md`
+§7. **S nimi** se držitel testovacího hesla do produkční databáze nepřihlásí (`FATAL:
+permission denied for database "fakvio_prod"`), tedy nepřečte ani její katalog. **Bez nich**
+se přihlásí — aplikační data sice neuvidí (ta chrání vlastnictví tabulek), ale jména schémat,
+tabulek a sloupců si přečte. Při zakládání dalšího prostředí to proto zkontroluj.
+Port serveru **není ve veřejném internetu** — server je dostupný jen uvnitř
+privátní sítě Tailscale. Function App se do té sítě připojuje sám: při startu spustí
+Tailscale v uživatelském režimu a vystaví databázi jako **lokální port `127.0.0.1:15432`**.
+Proto connection string v tabulce výš míří na `127.0.0.1`.
+
+Co z toho plyne pro provoz:
+
+- **Chybějící nebo vypršelý `TAILSCALE_AUTHKEY` = nedostupná databáze.** Tunel se nepostaví,
+  aplikace ale **nespadne** — timer triggery i `GET /api/diagnostic/health` odpovídají dál.
+  Poznávací znamení v Log stream / Application Insights:
+
+  ```text
+  fail: Fakvio.Functions.Tailscale[0]
+        Startup: Tailscale tunnel failed — database unreachable until resolved
+  ```
+
+  **Co uvidíš na healthu:** `GET /api/diagnostic/health` je chráněný JWT tokenem SysAdmina
+  (§13), a přihlášení potřebuje **tu samou** master DB, která je v tomhle scénáři nedostupná.
+  Bez tokenu tedy dostaneš **401** — a to není chyba autentizace, jen důsledek nedostupné DB.
+  **503** s `masterDbCanConnect: false` uvidíš jen s tokenem vydaným ještě za funkční databáze.
+  Rozhodující signál je proto ten řádek v logu, ne odpověď healthu.
+
+  Klíč je potřeba **rotovat dřív, než vyprší** — běžící instance jedou dál, ale každá nově
+  nastartovaná selže.
+- **Cold start je o ~3–8 s delší.** Function App běží na Flex Consumption, tedy škáluje na
+  nulu; při každém probuzení se tunel staví znovu. V Tailscale admin konzoli se proto objevují
+  uzly `fakvio-func`, `fakvio-func-1`, … — jeden na instanci. Klíč je *ephemeral*, takže se
+  po zhasnutí instance uklidí samy.
+- **Zdravý start** vypadá v logu takhle:
+
+  ```text
+  Tailscale: up OK (attempt 1)
+  Tailscale: forwarder 127.0.0.1:15432 -> 100.69.241.17:5544 (via SOCKS5 127.0.0.1:1055)
+  Tailscale: target reachable (100.69.241.17:5544) after 1 attempt(s)
+  Startup: master database migrated successfully
+  ```
+
+  Řádky `Tailscale: …` se píšou i na standardní výstup workeru, takže v App Insights jsou
+  v `traces` pod kategorií `Host.Function.Console` (kategorie `Fakvio.*` tam zatím nedoletí —
+  issue #322). Dotaz: `traces | where message startswith "Tailscale:"`.
+- **Na jedné instanci může běžet víc worker procesů** a sdílejí jeden sandbox. Tunel staví
+  jen ten, který byl první; ostatní se přidají k němu a v logu je pak vidět
+  `Tailscale: tailscaled already running on 127.0.0.1:1055, reusing it`, případně
+  `Tailscale: forwarder port 15432 already served by another worker, reusing it`. **To je
+  normální stav, ne chyba** — databáze je dostupná pro všechny workery instance.
+
+- **Rychlé vypnutí (rollback):** smazat App Setting `TAILSCALE_AUTHKEY` a vrátit placeholder
+  connection string (`Host=test-env-has-no-database.invalid;…`), pak restart. Redeploy není
+  potřeba — bez klíče je funkce nečinná. Test tím ale přijde o databázi i o přihlašování.
+- **Kdy zakládat ticket:** když backend neodpovídá vůbec (timeout nebo 5xx přímo z platformy),
+  nebo když vrátí 5xx, které **není** chyba databáze. Nefunkční přihlášení (a tedy 401
+  z healthu) spolu s řádkem `Startup: Tailscale tunnel failed` v logu je nejčastěji vypršelý
+  auth key — než zakládáš ticket, zkontroluj v Tailscale admin konzoli platnost klíče a jestli
+  je uzel `fakvio-func` online. Startovní log je v tomhle stavu jediný spolehlivý zdroj:
+  `Startup: Tailscale tunnel failed …` ukazuje na tunel, `Startup: database migration failed …`
+  na databázi samotnou (tunel stojí, ale server neodpovídá nebo odmítá přihlášení).
+
+Podrobnosti (proč uživatelský režim, ACL pravidla, vydání a rotace klíče, lokální ověření)
+jsou v `Fakvio.Functions/Tailscale/README.md`.
+
+### Známá omezení testovacího prostředí
+
+- SWA běží na **Free tier** — bez SLA. Pro testovací prostředí je to v pořádku, na produkční
+  provoz to není.
+
+### Promotion — kdo a kdy co spouští
+
+    develop  ──/release──▶  TEST-ENV  ──/release-prod──▶  master
+
+| Krok | Kdo | Co se stane |
+|------|-----|-------------|
+| `develop` | `agent-ops` (automaticky při mergi feature PR) | Nenasazuje se nic — `develop` nemá deploy workflow. |
+| `/release` | **člověk** | Otevře promotion PR `develop → TEST-ENV`. **Po jeho mergnutí** se spustí oba testovací deploye (push na `TEST-ENV`). Karty na boardu se nehýbou. |
+| ověření na testu | **člověk** | Test běží proti vlastní DB `fakvio_test` (viz „Jak je testovací databáze zapojená" výše) — ověřit lze přihlášení i běžný provoz, ne jen deploy a CORS. |
+| `/release-prod` — 1. běh | **člověk** po ověření testu | Otevře promotion PR `TEST-ENV → master` a skončí. Merge dělá člověk v GitHubu; merge nasadí produkci. **Karty se zatím nehýbou.** |
+| `/release-prod` — 2. běh | **člověk** po mergnutí release PR | Finalizace boardu: karty v `Implemented`, jejichž merge commit je ancestorem `master`, se přesunou do `Approved` (stejný test i pro story). Bez druhého běhu zůstane board viset v `Implemented`. |
+
+Pravidla, která platí bez výjimky:
+
+- Do `TEST-ENV` ani do `master` se **nikdy nekomituje přímo**. Oprava toho, co se najde na
+  testu, jde jako běžný feature PR do `develop` a znovu přes `/release`.
+- Žádná z větví nemá branch protection — pořadí stupňů drží konvence a agenti, ne GitHub.
+  Ruční push mimo tento postup nikdo nezastaví, proto ho nedělejte.
+
+Stavový automat obou příkazů je v `.claude/commands/release.md` a
+`.claude/commands/release-prod.md`, vývojářský popis v `DEVGUIDE.md` §9.6.
+
+### Secrets pro deploy a jejich rotace
+
+**Hodnoty, které čtou workflows**, žijí v **GitHub → Settings → Secrets and variables →
+Actions** daného repozitáře — v repu nikde jinde nejsou. Zdroje, ze kterých vznikají (deploy
+token SWA, OIDC důvěra a RBAC role), jsou naopak v Azure; proto rotace níž začíná v portálu
+a do GitHubu se výsledek jen zkopíruje.
+
+| Secret | K čemu |
+|--------|--------|
+| `AZUREAPPSERVICE_CLIENTID_TEST`, `AZUREAPPSERVICE_TENANTID_TEST`, `AZUREAPPSERVICE_SUBSCRIPTIONID_TEST` | Přihlášení workflow `testenv_zcloudinvoicingapi.yml` do Azure (OIDC, app registration `zcloudcz-InvoiceApi-TEST`). |
+| `AZURE_STATIC_WEB_APPS_API_TOKEN_TEST` | Deploy token pro `blazorui-test-deploy.yml` → SWA `fakvio-test-ui`. |
+| `AZUREAPPSERVICE_CLIENTID_71CB3DED09D246528906A346340AC1F8`, `AZUREAPPSERVICE_TENANTID_0F744DC7C56040999B540311235A4E45`, `AZUREAPPSERVICE_SUBSCRIPTIONID_0A2C19BC7D294FFA80F06B93F1D614E4` | Totéž pro produkční `master_zcloudinvoicingapi.yml`. GUID příponu generuje Azure Portál při napojení deploy centra — proto se nejmenují symetricky k `_TEST`. Produkční frontend token nepotřebuje: GitHub Pages se nasazují vestavěným `GITHUB_TOKEN`. |
+
+**Rozsah oprávnění testovacího OIDC** (nastaveno při zřízení, issue #289): federated credential
+je vázaný na subject `repo:zcloudcz/InvoiceApi:ref:refs/heads/TEST-ENV` a role **Contributor je
+scopovaná jen na `zcloudinvoicingapi-test`**. Workflow spuštěné z jiné větve se tedy nepřihlásí
+vůbec a ani po přihlášení nedosáhne na produkční zdroje.
+
+**Rotace deploy tokenu SWA** (při podezření na únik nebo když deploy začne vracet 401):
+
+1. Azure Portal → Static Web App `fakvio-test-ui` → **Manage deployment token** → *Reset*,
+   nebo `az staticwebapp secrets reset-api-key --name fakvio-test-ui`.
+2. Nový token vložte do secretu `AZURE_STATIC_WEB_APPS_API_TOKEN_TEST`
+   (`gh secret set AZURE_STATIC_WEB_APPS_API_TOKEN_TEST`).
+3. Reset zneplatní starý token okamžitě; nový se projeví **při dalším pushi do `TEST-ENV`**
+   (typicky další `/release`) — tehdy taky poznáte, že secret sedí. Ruční spuštění z Actions →
+   Run workflow zatím nejde: GitHub nabízí `workflow_dispatch` jen u workflows, které jsou
+   na default branchi (`master`), a oba testovací tam doputují až prvním `/release-prod`.
+
+OIDC credentials rotaci nepotřebují: app registration nemá client secret, důvěra stojí na
+federated credential. Mění se jen tehdy, když se mění samotná app registration nebo název větve.
+
+---
+
 ## Rychlá reference — SysAdmin navigace
 
 | Co chcete udělat | Kde |
@@ -528,3 +949,4 @@ Systém použije SMTP dle priority (viz §3 — SMTP priority).
 | Daňové konfigurace (OSVČ) | `/tax-configs` |
 | Test emailu | `/send-email` |
 | Dashboard SysAdmin | `/` (bez impersonace) |
+| Diagnostika DB / auth režimu | `GET /api/diagnostic/health` (jen API, bez UI) |

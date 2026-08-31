@@ -32,22 +32,29 @@ Priority order (top first):
    -> invoke `agent-tester` with that PR number.
 
 3. A card in `CodeReview` with label `role:reviewer`
-   -> invoke `agent-reviewer` with that PR number.
+   -> dispatch the reviewer role for that PR number. Use
+      `subagent_type: "hydra"` with `.claude/agents/agent-reviewer.md`
+      as the instruction set, not `subagent_type: "agent-reviewer"`
+      (see "Role runners" in BOARD-OPS.md).
 
-4. A card in `ToDo` with label `role:dev`
-   -> invoke `agent-dev` with that issue number.
+4. A card in `Progress` with label `role:dev`
+   -> invoke `agent-dev` with that issue number (re-dispatch — review or
+      test kickback on an existing PR; drain WIP before starting new work).
 
-5. A card in `Decomposed` with labels `role:analyst` AND `analyst:approved`
+5. A card in `ToDo` with label `role:dev`
+   -> invoke `agent-dev` with that issue number (fresh implementation).
+
+6. A card in `Decomposed` with labels `role:analyst` AND `analyst:approved`
    -> invoke `agent-analyst` with that story issue number (Step 4 — materialize sub-issues).
 
-6. A card in `Analysis` with label `role:analyst` and WITHOUT `blocked:question`
+7. A card in `Analysis` with label `role:analyst` and WITHOUT `blocked:question`
    -> invoke `agent-analyst` with that story issue number (Step 2 — continue conversation).
 
-7. No card is in `ToDo`/`Progress`/`CodeReview`/`Test`/`Implemented` awaiting
+8. No card is in `ToDo`/`Progress`/`CodeReview`/`Test`/`Implemented` awaiting
    a role AND the `Backlog` column is non-empty
    -> run `/pickup-task`.
 
-8. No story currently carries the `role:analyst` label AND the `StoryNew`
+9. No story currently carries the `role:analyst` label AND the `StoryNew`
    column is non-empty
    -> claim the oldest item in `StoryNew`: move it to `Analysis`, add
       label `role:analyst` to the linked issue, then invoke `agent-analyst`
@@ -58,7 +65,31 @@ Priority order (top first):
    the story is just waiting for child PRs to merge. Picking up a new
    story in parallel is fine.)
 
+10. Nothing above fired AND there is at least one card in
+    `ToDo`/`Progress`/`CodeReview`/`Test`/`Implemented`/`Analysis`/`Decomposed`
+    -> run `/tick-warden`. Warden sweeps the board for state
+       inconsistencies (status ↔ role mismatch, PR state drift, stuck
+       roll-ups, stale WIP). If warden auto-fixes any card, the next
+       `/tick` pass will pick it up via rules 1-9. If warden reports
+       `board healthy`, treat this tick as idle.
+
+    This is the lowest priority — only run when no role agent has
+    work to do. On a healthy busy board it never fires. On a stuck
+    board it unblocks role agents that would otherwise idle forever.
+
+For parallel processing of multiple `Test` cards in one batch (each in
+its own git worktree), use `/tick-tests` instead of running `/tick` in
+a loop. Same outcomes, no waiting between testers. `/ticks` invokes
+`/tick-tests` automatically as Phase A of each pass.
+
 Skip rules:
+
+- **Not in an active theme.** A card is eligible only if it carries a
+  `theme:*` label named in `$AGENTIC_FOCUS`, or the label
+  `focus:override`. Everything else is skipped — silently, without
+  moving, closing or relabelling it. See BOARD-OPS.md -> "Focus".
+  Among eligible cards, theme order in `$AGENTIC_FOCUS` outranks
+  `type:bug` and age; `focus:override` sorts last.
 
 - Cards in `Blocked` (label `blocked:question`) are skipped — a human
   must answer and re-queue them. Same applies to stories in `Analysis`
@@ -68,4 +99,5 @@ Skip rules:
 - Cards in `Approved` are terminal — the human's final acceptance.
   Never act on them.
 
-Oldest-first within each priority level (by card `createdAt`).
+Within each priority level: `type:bug` cards first, then oldest-first by
+`createdAt`. See "Task priority — bugs jump the queue" in BOARD-OPS.md.

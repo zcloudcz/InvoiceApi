@@ -1,5 +1,8 @@
+﻿using System.Collections.Concurrent;
+using System.Reflection;
 using Fakvio.Infrastructure.Data;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using Shouldly;
 
@@ -298,6 +301,95 @@ public class NpgsqlDataSourceFactoryTests
         Should.Throw<ObjectDisposedException>(() => withoutPublic.OpenConnection());
     }
 
+    [Fact]
+    public void Evict_WhenCachedEntryIsNotYetConstructed_StillDisposesTheInstance()
+    {
+        // Guards a race that only became reachable now that a production caller exists
+        // (TenantProvisioningService evicts after DROP SCHEMA): a cache entry can already
+        // be in the dictionary while another thread is still inside the Lazy value factory.
+        // Skipping such an entry (a plain "IsValueCreated" check) would let that in-flight
+        // data source end up outside the cache, owned by nobody and never disposed — the
+        // exact leak this factory exists to fix.
+        //
+        // A real thread race is not reproducible deterministically, so the same state is
+        // created directly via the private cache field: an entry whose Lazy has not been
+        // evaluated yet. Reflection is used only to SET UP the state; the assertion is on
+        // the public behaviour of Evict.
+        using var factory = new NpgsqlDataSourceFactory(PasswordOptions());
+        NpgsqlDataSource? constructed = null;
+
+        SchemaSourceCache(factory)["tenant_inflight|True"] = new Lazy<NpgsqlDataSource>(
+            () =>
+            {
+                constructed = new NpgsqlDataSourceBuilder(PasswordConnectionString).Build();
+                return constructed;
+            },
+            LazyThreadSafetyMode.ExecutionAndPublication);
+
+        factory.Evict("tenant_inflight");
+
+        constructed.ShouldNotBeNull();
+        Should.Throw<ObjectDisposedException>(() => constructed!.OpenConnection());
+    }
+
+    [Fact]
+    public void Evict_WhenCachedConstructionFailed_DoesNotThrow()
+    {
+        // Lazy caches the exception thrown by its value factory and rethrows it on every
+        // later access. Because Evict now reads .Value (see the test above), it must
+        // swallow that rethrow: eviction is cleanup after a schema was dropped, and it
+        // must not turn a failed data source into a failed tenant deletion.
+        using var factory = new NpgsqlDataSourceFactory(PasswordOptions());
+
+        SchemaSourceCache(factory)["tenant_broken|True"] = new Lazy<NpgsqlDataSource>(
+            () => throw new InvalidOperationException("construction failed earlier"),
+            LazyThreadSafetyMode.ExecutionAndPublication);
+
+        Should.NotThrow(() => factory.Evict("tenant_broken"));
+    }
+
+    [Fact]
+    public void Evict_WhenConstructionFailedEarlier_ClearsTheCachedFailure()
+    {
+        // Sharper variant of the test above. There the Lazy had never been evaluated, so
+        // Evict hit the exception on its FIRST access; in production that state is only
+        // reachable through GetForSchema, which leaves behind a Lazy whose exception is
+        // already cached and rethrown to everyone from then on. Swallowing that rethrow is
+        // only half the contract — the poisoned entry must also be gone afterwards, so the
+        // next provisioning attempt for the same schema gets a clean build instead of
+        // inheriting a failure from a schema that has since been dropped and recreated.
+        const string brokenSchema = "tenant_broken_cached";
+        using var factory = new NpgsqlDataSourceFactory(PasswordOptions());
+        var cache = SchemaSourceCache(factory);
+
+        cache[$"{brokenSchema}|True"] = new Lazy<NpgsqlDataSource>(
+            () => throw new InvalidOperationException("construction failed earlier"),
+            LazyThreadSafetyMode.ExecutionAndPublication);
+        Should.Throw<InvalidOperationException>(() => cache[$"{brokenSchema}|True"].Value);
+
+        factory.Evict(brokenSchema);
+
+        // Asserted through the public surface: a rebuild would rethrow the cached exception
+        // if Evict had left the entry in place.
+        Should.NotThrow(() => factory.GetForSchema(brokenSchema));
+    }
+
+    /// <summary>
+    /// Reaches the factory's private per-schema cache so a test can plant an entry in a
+    /// state that cannot be produced through the public API (a Lazy that has not been
+    /// evaluated yet). Used only for arranging the two race tests above.
+    /// </summary>
+    private static ConcurrentDictionary<string, Lazy<NpgsqlDataSource>> SchemaSourceCache(
+        NpgsqlDataSourceFactory factory)
+    {
+        var field = typeof(NpgsqlDataSourceFactory)
+            .GetField("_schemaSources", BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException(
+                "NpgsqlDataSourceFactory._schemaSources not found — the cache field was renamed.");
+
+        return (ConcurrentDictionary<string, Lazy<NpgsqlDataSource>>)field.GetValue(factory)!;
+    }
+
     // ---------------------------------------------------------------------
     // Disposal
     // ---------------------------------------------------------------------
@@ -344,6 +436,116 @@ public class NpgsqlDataSourceFactoryTests
         factory.Dispose();
 
         Should.Throw<ObjectDisposedException>(() => factory.GetForSchema("tenant_1"));
+    }
+
+    [Fact]
+    public void Root_DisposedDirectly_ThenFactoryDisposedToo_DoesNotThrow()
+    {
+        // Guards the ownership-rule caveat documented on ServiceCollectionExtensions'
+        // `services.AddSingleton(factory.Root)` line: if some caller disposes Root directly —
+        // bypassing the "callers never dispose anything from this factory" contract — the
+        // factory's own Dispose() must not throw when it disposes the SAME Root a second time
+        // as part of its normal cleanup. This backs the "NpgsqlDataSource.Dispose() is
+        // idempotent" claim with an actual test instead of just asserting it in a comment.
+        var factory = new NpgsqlDataSourceFactory(PasswordOptions());
+
+        factory.Root.Dispose();
+
+        Should.NotThrow(() => factory.Dispose());
+    }
+
+    // ---------------------------------------------------------------------
+    // Composition-root ownership contract — mirrors the registration pattern in
+    // ServiceCollectionExtensions.AddDatabaseContexts (Fakvio.Infrastructure).
+    // ---------------------------------------------------------------------
+
+    [Fact]
+    public void ContainerDisposesFactory_WhenRegisteredViaFactoryDelegate_AndResolved()
+    {
+        // NOTE on what this test proves and what it does not: it mirrors the registration
+        // shape from ServiceCollectionExtensions.AddDatabaseContexts (delegate registration,
+        // `AddSingleton<INpgsqlDataSourceFactory>(_ => factory)`), but it ALSO resolves the
+        // service (`GetRequiredService<INpgsqlDataSourceFactory>()`) before disposing the
+        // provider. That resolve step is exactly what today's composition root does NOT do —
+        // as of this PR nothing in production code resolves INpgsqlDataSourceFactory (the
+        // first consumer arrives with #134). So this test demonstrates the rule "delegate
+        // registration + resolution => the container disposes it at shutdown", not the claim
+        // "the composition root disposes the factory today". See the bare-instance sibling
+        // test below for the contrasting case that pins the MEDI rule this depends on.
+        var factory = new NpgsqlDataSourceFactory(PasswordOptions());
+        var services = new ServiceCollection();
+        services.AddSingleton<INpgsqlDataSourceFactory>(_ => factory);
+        services.AddSingleton(factory.Root);
+
+        using (var provider = services.BuildServiceProvider())
+        {
+            provider.GetRequiredService<INpgsqlDataSourceFactory>().ShouldBeSameAs(factory);
+        }
+
+        // The `using` block above disposed the ServiceProvider — because the factory was
+        // resolved above, the delegate registration gave the container ownership, so
+        // factory.Dispose() already ran and Root is unusable now.
+        Should.Throw<ObjectDisposedException>(() => factory.Root.OpenConnection());
+    }
+
+    [Fact]
+    public void ContainerDoesNotDisposeInstance_WhenRegisteredViaBareInstance_EvenIfResolved()
+    {
+        // Contrasting case for the test above: registering the SAME kind of singleton as a
+        // BARE INSTANCE (`AddSingleton<TService>(instance)`, not a delegate) means the
+        // container never considers itself to have created it, so it is never disposed at
+        // shutdown — even though it was resolved. This pins the MEDI rule that
+        // AddDatabaseContexts' `services.AddSingleton(factory.Root)` line relies on (Root is
+        // registered this same, bare-instance way) as a regression test instead of just a
+        // code comment.
+        //
+        // A minimal disposal-tracking spy is used here instead of NpgsqlDataSourceFactory/
+        // NpgsqlDataSource, so the test exercises only the MEDI rule and does not depend on
+        // Npgsql or network behaviour (calling a real NpgsqlDataSource's OpenConnection()
+        // while NOT disposed would require a reachable PostgreSQL server, which this test
+        // class is documented to never need).
+        var spy = new DisposalTrackingSpy();
+        var services = new ServiceCollection();
+        services.AddSingleton<IDisposable>(spy);
+
+        using (var provider = services.BuildServiceProvider())
+        {
+            provider.GetRequiredService<IDisposable>().ShouldBeSameAs(spy);
+        }
+
+        spy.WasDisposed.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void ContainerDoesNotDisposeFactory_WhenRegisteredViaDelegate_ButNeverResolved()
+    {
+        // Pins the state ServiceCollectionExtensions.AddDatabaseContexts is actually in TODAY:
+        // the factory is registered via a delegate (same shape as ContainerDisposesFactory_...
+        // above), but — as of this PR — nothing in production code resolves
+        // INpgsqlDataSourceFactory (0 consumers, first arrives with #134). A delegate
+        // registration only gives the container something to dispose once the delegate has
+        // run at least once; if it never runs, there is nothing "created" to dispose. Without
+        // this test, the delegate-registration claim in the AddDatabaseContexts comment
+        // ("today this line does NOT yet give the factory a disposal path") would rest on
+        // narrative alone, same failure mode that blocked review rounds 1 and 2.
+        var spy = new DisposalTrackingSpy();
+        var services = new ServiceCollection();
+        services.AddSingleton<IDisposable>(_ => spy);
+
+        using (var provider = services.BuildServiceProvider())
+        {
+            // Deliberately NOT resolved — mirrors today's composition root, where
+            // INpgsqlDataSourceFactory is registered but nothing calls GetRequiredService on it.
+        }
+
+        spy.WasDisposed.ShouldBeFalse();
+    }
+
+    private sealed class DisposalTrackingSpy : IDisposable
+    {
+        public bool WasDisposed { get; private set; }
+
+        public void Dispose() => WasDisposed = true;
     }
 
     // ---------------------------------------------------------------------

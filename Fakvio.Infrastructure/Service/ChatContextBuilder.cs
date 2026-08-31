@@ -1,5 +1,5 @@
-using System.Text;
 using Fakvio.Application.Service;
+using Fakvio.Contracts.Dto.Readiness;
 using Fakvio.Domain.Enums;
 using Fakvio.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -15,6 +15,14 @@ namespace Fakvio.Infrastructure.Service;
 /// - Current tenant stats (clients, invoices, overdue amounts)
 /// - Domain context (Czech invoicing, DPH/VAT)
 ///
+/// This class only gathers the tenant data; the prompt layout and the built-in text
+/// live in <see cref="AiSystemPrompt"/>, shared with the SysAdmin preview so the two
+/// can never drift apart.
+///
+/// The style/tools/rules block is editable by a SysAdmin — see
+/// <see cref="IAiInstructionsService"/>. Company identity and business statistics are
+/// always generated here and cannot be overridden.
+///
 /// IMPORTANT: The system prompt must clearly state that the assistant IS connected
 /// to the Fakvio system and CAN perform actions. Without this, models like Ollama
 /// respond with "I'm not connected to any system" because they don't know they have tools.
@@ -22,11 +30,25 @@ namespace Fakvio.Infrastructure.Service;
 public class ChatContextBuilder : IChatContextBuilder
 {
     private readonly TenantDbContext _context;
+    private readonly IReadOnlyList<IChatTool> _tools;
+    private readonly IAiInstructionsService _aiInstructions;
+    private readonly ITenantReadinessService _readiness;
     private readonly ILogger<ChatContextBuilder> _logger;
 
-    public ChatContextBuilder(TenantDbContext context, ILogger<ChatContextBuilder> logger)
+    public ChatContextBuilder(
+        TenantDbContext context,
+        IEnumerable<IChatTool> tools,
+        IAiInstructionsService aiInstructions,
+        ITenantReadinessService readiness,
+        ILogger<ChatContextBuilder> logger)
     {
         _context = context;
+
+        // The capability list in the system prompt is generated from the registered tools,
+        // so it can never drift from what the assistant can actually do.
+        _tools = tools.ToList();
+        _aiInstructions = aiInstructions;
+        _readiness = readiness;
         _logger = logger;
     }
 
@@ -34,10 +56,20 @@ public class ChatContextBuilder : IChatContextBuilder
     /// Queries tenant database for business statistics and builds a system prompt.
     /// Uses AsNoTracking for read-only queries (better performance).
     /// </summary>
-    public async Task<string> BuildSystemPromptAsync(CancellationToken ct = default)
+    /// <param name="currentRoute">Route the client reported, or null when it sent none.</param>
+    /// <param name="openEntity">Record open on that route, or null.</param>
+    /// <param name="ct">Cancellation token.</param>
+    public async Task<string> BuildSystemPromptAsync(
+        string? currentRoute = null,
+        string? openEntity = null,
+        CancellationToken ct = default)
     {
         try
         {
+            // SysAdmin-editable instructions. Served from IMemoryCache on the hot path,
+            // so this normally costs no database round-trip.
+            var (customPrompt, appendix) = await _aiInstructions.GetCachedInstructionsAsync(ct);
+
             // Gather business context from the tenant database.
             // Each query is simple and fast — counts and sums only.
             var totalClients = await _context.Client
@@ -72,83 +104,105 @@ public class ChatContextBuilder : IChatContextBuilder
                 .Select(c => new { c.CompanyName, c.RegistrationNumber, c.TaxNumber })
                 .FirstOrDefaultAsync(ct);
 
-            // Build the system prompt with capabilities and business context.
-            var sb = new StringBuilder();
-            sb.AppendLine("You are Fakvio AI Assistant — connected to the Fakvio invoicing system.");
-            sb.AppendLine();
+            // Tenants without a configured issuer simply get no company block.
+            var companyBlock = issuer == null
+                ? null
+                : AiSystemPrompt.BuildCompanyBlock(
+                    issuer.CompanyName,
+                    issuer.RegistrationNumber,
+                    issuer.TaxNumber);
 
-            // Tell the AI exactly who the user's company is — critical for import_invoice tool.
-            if (issuer != null)
-            {
-                sb.AppendLine("YOUR COMPANY (the user's company — you represent this entity):");
-                sb.AppendLine($"- Name: {issuer.CompanyName}");
-                sb.AppendLine($"- IČO: {issuer.RegistrationNumber}");
-                if (!string.IsNullOrEmpty(issuer.TaxNumber))
-                    sb.AppendLine($"- DIČ: {issuer.TaxNumber}");
-                sb.AppendLine("When importing invoices: if YOUR IČO appears as the issuer (dodavatel), it's an ISSUED invoice.");
-                sb.AppendLine("If YOUR IČO appears as the recipient (odběratel), it's a RECEIVED invoice.");
-                sb.AppendLine();
-            }
+            var businessContext = AiSystemPrompt.BuildBusinessContextBlock(
+                totalClients: totalClients.ToString(),
+                openInvoices: $"{openInvoices} (total: {openInvoicesTotal:N2} CZK)",
+                overdueInvoices: overdueInvoices.ToString(),
+                paidInvoices: paidInvoicesCount.ToString());
 
-            sb.AppendLine("RESPONSE STYLE: Answer in ONE sentence maximum. No greetings, no filler, no repetition.");
-            sb.AppendLine("Just do what the user asks and confirm the result briefly.");
-            sb.AppendLine("Respond in the same language the user writes in (Czech or English).");
-            sb.AppendLine();
-            sb.AppendLine("TOOLS (use them, don't ask unnecessary questions):");
-            sb.AppendLine("- ares_lookup: Look up Czech company by IČO");
-            sb.AppendLine("- create_client: Create client from IČO (auto-fills from ARES)");
-            sb.AppendLine("- create_invoice: Create a new issued invoice with line items");
-            sb.AppendLine("- import_invoice: Import invoice from pasted text/data — auto-detects issued vs received");
-            sb.AppendLine("  by matching IČO against the company DB, finds client automatically, preserves all dates exactly");
-            sb.AppendLine("- navigate: Navigate user to a page");
-            sb.AppendLine("- export_invoice: Export/download invoice as PDF (by document number or client name)");
-            sb.AppendLine("- get_received_invoice: Get FULL detail of a received (incoming) invoice by ID or document number.");
-            sb.AppendLine("  Returns supplier info, ALL line items with quantities/prices/VAT rates, VAT breakdown totals,");
-            sb.AppendLine("  payment info, dates, status. Use this to answer questions like");
-            sb.AppendLine("  'proč má přijatá faktura 267708922 špatnou celkovou částku?'");
-            sb.AppendLine("- list_received_invoices: List/browse received invoices with filters");
-            sb.AppendLine("  (status, supplier, date range, amount range, currency, overdue).");
-            sb.AppendLine("- search_received_invoices: Full-text search across received invoices");
-            sb.AppendLine("  (document number, supplier name, variable symbol, amount).");
-            sb.AppendLine("- attach_file: Attach a file to an entity (Invoice, ReceivedInvoice, or Client).");
-            sb.AppendLine("  Requires entity_name, record_id, file_name, and file_content_base64 (Base64-encoded bytes).");
-            sb.AppendLine("  The frontend provides file_content_base64 when the user drops a file in the chat.");
-            sb.AppendLine("- list_attachments: List all files attached to an entity record.");
-            sb.AppendLine("  Provide entity_name and record_id. Returns file name, size, upload date, and description.");
-            sb.AppendLine();
-            sb.AppendLine("IMPORT RULES:");
-            sb.AppendLine("- When user pastes invoice text, extract ALL data and call import_invoice immediately.");
-            sb.AppendLine("- ALL dates (issue_date, due_date, taxable_supply_date) must be EXACTLY from the document.");
-            sb.AppendLine("- NEVER generate, guess, or use today's date. If a date is missing, pass null.");
-            sb.AppendLine("- The tool auto-determines issued/received — do NOT ask the user.");
-            sb.AppendLine("- The tool auto-finds the client by IČO — do NOT ask the user.");
-            sb.AppendLine("- If the client doesn't exist, the tool will tell you — then use create_client.");
-            sb.AppendLine();
-            sb.AppendLine("RULES:");
-            sb.AppendLine("- Use tools when asked. Never claim actions without tool confirmation.");
-            sb.AppendLine("- Don't ask about things you can determine from the data.");
-            sb.AppendLine();
-            sb.AppendLine("Current tenant business context:");
-            sb.AppendLine($"- Total active clients: {totalClients}");
-            sb.AppendLine($"- Open (unpaid) invoices: {openInvoices} (total: {openInvoicesTotal:N2} CZK)");
-            sb.AppendLine($"- Overdue invoices: {overdueInvoices}");
-            sb.AppendLine($"- Paid invoices: {paidInvoicesCount}");
+            var situationalContext = AiSystemPrompt.BuildSituationalContextBlock(
+                today: FormatToday(),
+                currentPage: Sanitize(currentRoute, MaxRouteLength),
+                openEntity: Sanitize(openEntity, MaxOpenEntityLength),
+                setupGaps: await DescribeSetupGapsAsync(ct));
 
-            return sb.ToString();
+            return AiSystemPrompt.Compose(
+                companyBlock, customPrompt, appendix, businessContext, _tools, situationalContext);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to build chat context from database, using default prompt");
 
-            // Fallback: return a basic prompt without business data but WITH capabilities.
+            // Fallback: basic prompt without business data, but still WITH the real capability list
+            // (generated from the registered tools — no hand-maintained copy to go stale).
             return "You are Fakvio AI Assistant — a helpful invoicing and business assistant. " +
                    "You are DIRECTLY CONNECTED to the Fakvio invoicing system and CAN perform real actions. " +
-                   "You can: look up companies by IČO (ARES), create clients, create invoices, " +
-                   "look up / list / search received (incoming) invoices by ID, document number, supplier, date, or amount, " +
-                   "attach files to entities and list existing attachments, " +
-                   "and navigate users to pages. Use your tools when the user asks for these actions. " +
-                   "Be concise and professional. " +
+                   "Use your tools when the user asks for these actions:\n" +
+                   string.Join("\n", _tools.Select(t => $"- {t.ToolName}: {t.Description}")) +
+                   "\nBe concise and professional. " +
                    "Respond in the same language the user writes in (Czech or English).";
         }
+    }
+
+    /// <summary>Caps mirroring the <c>SendMessageRequest</c> limits — see <see cref="Sanitize"/>.</summary>
+    private const int MaxRouteLength = 200;
+    private const int MaxOpenEntityLength = 100;
+
+    /// <summary>
+    /// Today's date as the model sees it. UTC, like every other timestamp in this app
+    /// (overdue detection above included) — the app has no per-tenant time zone.
+    /// The weekday is spelled out because "by Friday" questions are common and a model
+    /// cannot reliably derive it from the date alone.
+    /// </summary>
+    private static string FormatToday()
+    {
+        var today = DateTime.UtcNow;
+        return $"{today:yyyy-MM-dd} ({today.DayOfWeek})";
+    }
+
+    /// <summary>
+    /// Trims client-supplied text before it is pasted into the system prompt: line breaks out
+    /// (a newline would let a crafted route forge its own prompt section) and a hard length cap.
+    /// The DTO carries the same limits, but the Functions host deserializes the request itself
+    /// and runs no model validation — so the guard has to sit here too, where the value is used.
+    /// </summary>
+    private static string? Sanitize(string? value, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var singleLine = value.ReplaceLineEndings(" ").Trim();
+        return singleLine.Length <= maxLength ? singleLine : singleLine[..maxLength];
+    }
+
+    /// <summary>
+    /// Lists what still blocks the tenant from invoicing, or null when nothing does.
+    /// The assistant uses it to guide a fresh tenant instead of failing at the last step.
+    ///
+    /// The rules are NOT re-implemented here — <see cref="ITenantReadinessService"/> owns them
+    /// (issue #148). Only blocking issues make it into the prompt; warnings would be noise the
+    /// model has no action for. The code plus its fix route is enough for the assistant to send
+    /// the user to the right page; the field-level detail belongs to the UI banner.
+    /// </summary>
+    private async Task<string?> DescribeSetupGapsAsync(CancellationToken ct)
+    {
+        ReadinessReportDto report;
+        try
+        {
+            report = await _readiness.GetReportAsync(ct: ct);
+        }
+        catch (Exception ex)
+        {
+            // Readiness is the only part of the prompt that touches the master database.
+            // Losing it must not cost the company identity and the statistics as well, so it
+            // is caught here instead of falling through to the degraded fallback prompt.
+            _logger.LogWarning(ex, "Readiness check failed while building the chat context");
+            return null;
+        }
+
+        var blocking = report.Issues
+            .Where(i => i.Severity == EReadinessSeverity.Blocking)
+            .Select(i => $"{i.Code} (fix at {i.FixRoute})")
+            .ToList();
+
+        return blocking.Count == 0 ? null : string.Join("; ", blocking);
     }
 }

@@ -39,10 +39,27 @@ public class ExportInvoiceTool : IChatTool
         "Export/download an invoice or credit note as a PDF file. " +
         "Finds the document by number, by client name (most recent), or exports the most recent invoice if no parameters given.";
 
-    public string ParameterDescription =>
-        "document_number (string, optional): Invoice number (e.g., FV-2024-0001). " +
-        "client_name (string, optional): Client name — exports the most recent invoice for this client. " +
-        "If neither is provided, exports the most recent invoice in the system.";
+    /// <summary>
+    /// Parameter schema — static because it never changes per instance.
+    /// Both parameters are optional on purpose: with neither, the most recent invoice is exported.
+    /// </summary>
+    private static readonly ChatToolParameter[] Schema =
+    [
+        new()
+        {
+            Name = "document_number",
+            Type = ChatToolParameterType.String,
+            Description = "Invoice number as printed on the document (e.g. FV-2024-0001)"
+        },
+        new()
+        {
+            Name = "client_name",
+            Type = ChatToolParameterType.String,
+            Description = "Client name — exports the most recent invoice for this client"
+        }
+    ];
+
+    public IReadOnlyList<ChatToolParameter> Parameters => Schema;
 
     /// <summary>
     /// Finds the invoice and returns a download action with the PDF endpoint URL.

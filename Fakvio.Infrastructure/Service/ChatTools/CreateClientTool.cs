@@ -35,8 +35,22 @@ public class CreateClientTool : IChatTool
         "Automatically fetches company data from ARES (name, address, DIČ). " +
         "Use this when the user explicitly asks to create, add, or register a client.";
 
-    public string ParameterDescription =>
-        "registration_number (string, required): Czech company IČO, exactly 8 digits.";
+    /// <summary>
+    /// Parameter schema — static because it never changes per instance.
+    /// </summary>
+    private static readonly ChatToolParameter[] Schema =
+    [
+        new()
+        {
+            Name = "registration_number",
+            Type = ChatToolParameterType.String,
+            Description = "Czech company registration number (IČO), exactly 8 digits. " +
+                          "Company data is fetched from ARES automatically.",
+            IsRequired = true
+        }
+    ];
+
+    public IReadOnlyList<ChatToolParameter> Parameters => Schema;
 
     /// <summary>
     /// Creates a new client by IČO.
@@ -47,13 +61,8 @@ public class CreateClientTool : IChatTool
         Dictionary<string, string> parameters,
         CancellationToken ct = default)
     {
-        // Extract and validate the registration number parameter.
-        if (!parameters.TryGetValue("registration_number", out var ico) || string.IsNullOrWhiteSpace(ico))
-        {
-            return ChatToolResult.Failure("Missing required parameter: registration_number (IČO).");
-        }
-
-        ico = ico.Trim().Replace(" ", "");
+        // Presence of the required parameter is guaranteed by ChatToolExecutor's central validation.
+        var ico = parameters["registration_number"].Trim().Replace(" ", "");
 
         _logger.LogInformation("Create client tool executing for IČO {Ico}", ico);
 

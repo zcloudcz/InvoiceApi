@@ -35,28 +35,36 @@ public class AresLookupTool : IChatTool
 
     public string Description =>
         "Looks up a Czech company in the ARES business registry by IČO (registration number). " +
-        "Returns company name, tax number (DIČ), VAT status, and registered address.";
+        "Returns company name, tax number (DIČ), VAT status, and registered address. " +
+        "Read-only — use it when unsure whether the user wants a lookup or a new client.";
 
-    public string ParameterDescription =>
-        "registration_number (string, required): Czech company IČO, exactly 8 digits.";
+    /// <summary>
+    /// Parameter schema — static because it never changes per instance.
+    /// </summary>
+    private static readonly ChatToolParameter[] Schema =
+    [
+        new()
+        {
+            Name = "registration_number",
+            Type = ChatToolParameterType.String,
+            Description = "Czech company registration number (IČO), exactly 8 digits",
+            IsRequired = true
+        }
+    ];
+
+    public IReadOnlyList<ChatToolParameter> Parameters => Schema;
 
     /// <summary>
     /// Executes the ARES lookup.
-    /// Expects a "registration_number" parameter with an 8-digit IČO.
     /// Returns formatted company info on success, or an error message on failure.
     /// </summary>
     public async Task<ChatToolResult> ExecuteAsync(
         Dictionary<string, string> parameters,
         CancellationToken ct = default)
     {
-        // Extract and validate the registration number parameter.
-        if (!parameters.TryGetValue("registration_number", out var ico) || string.IsNullOrWhiteSpace(ico))
-        {
-            return ChatToolResult.Failure("Missing required parameter: registration_number (IČO).");
-        }
-
+        // Presence of the required parameter is guaranteed by ChatToolExecutor's central validation.
         // Strip any whitespace or formatting the AI might have added (e.g., "123 456 78").
-        ico = ico.Trim().Replace(" ", "");
+        var ico = parameters["registration_number"].Trim().Replace(" ", "");
 
         _logger.LogInformation("ARES lookup tool executing for IČO {Ico}", ico);
 

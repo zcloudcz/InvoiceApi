@@ -22,14 +22,9 @@ namespace Fakvio.Infrastructure.Service.ChatTools;
 /// </summary>
 public class ListAttachmentsTool : IChatTool
 {
-    // Valid entity names — same set as AttachFileTool to ensure consistency.
-    private static readonly IReadOnlySet<string> AllowedEntities =
-        new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "Invoice",
-            "ReceivedInvoice",
-            "Client"
-        };
+    // Valid entity names — same values as AttachFileTool to ensure consistency.
+    // Ordered array (not a set) so the parameter schema can expose it as the allowed value list.
+    private static readonly string[] AllowedEntities = ["Invoice", "ReceivedInvoice", "Client"];
 
     private readonly IFileAttachmentService _fileAttachmentService;
     private readonly ILogger<ListAttachmentsTool> _logger;
@@ -48,9 +43,29 @@ public class ListAttachmentsTool : IChatTool
         "List all file attachments for an entity record (Invoice, ReceivedInvoice, or Client). " +
         "Returns file name, size, upload date, and optional description for each attachment.";
 
-    public string ParameterDescription =>
-        "entity_name (string, required): target entity type — Invoice, ReceivedInvoice, or Client. " +
-        "record_id (string, required): primary key of the target entity record (numeric).";
+    /// <summary>
+    /// Parameter schema — static because it never changes per instance.
+    /// </summary>
+    private static readonly ChatToolParameter[] Schema =
+    [
+        new()
+        {
+            Name = "entity_name",
+            Type = ChatToolParameterType.String,
+            Description = "Target entity type",
+            IsRequired = true,
+            AllowedValues = AllowedEntities
+        },
+        new()
+        {
+            Name = "record_id",
+            Type = ChatToolParameterType.Integer,
+            Description = "Primary key of the target entity record",
+            IsRequired = true
+        }
+    ];
+
+    public IReadOnlyList<ChatToolParameter> Parameters => Schema;
 
     /// <summary>
     /// Fetches the attachment list from IFileAttachmentService and formats it as a readable text block.
@@ -60,22 +75,12 @@ public class ListAttachmentsTool : IChatTool
         Dictionary<string, string> parameters,
         CancellationToken ct = default)
     {
-        // ── Parameter extraction and validation ───────────────────────────────
+        // ── Parameter extraction ──────────────────────────────────────────────
+        // Required parameters, the allowed entity_name and the numeric record_id are all
+        // guaranteed by ChatToolExecutor's central validation.
 
-        parameters.TryGetValue("entity_name", out var entityName);
-        parameters.TryGetValue("record_id", out var recordIdStr);
-
-        if (string.IsNullOrWhiteSpace(entityName))
-            return ChatToolResult.Failure(
-                "Parameter 'entity_name' is required. Valid values: Invoice, ReceivedInvoice, Client.");
-
-        if (!AllowedEntities.Contains(entityName))
-            return ChatToolResult.Failure(
-                $"Invalid entity_name '{entityName}'. Valid values: Invoice, ReceivedInvoice, Client.");
-
-        if (string.IsNullOrWhiteSpace(recordIdStr) || !long.TryParse(recordIdStr.Trim(), out var recordId))
-            return ChatToolResult.Failure(
-                "Parameter 'record_id' is required and must be a numeric entity ID.");
+        var entityName = parameters["entity_name"];
+        var recordId = long.Parse(parameters["record_id"].Trim());
 
         // Normalise capitalisation (e.g., "invoice" → "Invoice").
         var normalisedEntityName = AllowedEntities

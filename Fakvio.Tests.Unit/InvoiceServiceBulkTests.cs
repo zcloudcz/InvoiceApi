@@ -7,6 +7,7 @@ using Fakvio.Infrastructure.Service;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using Shouldly;
 
 namespace Fakvio.Tests.Unit;
@@ -66,6 +67,12 @@ public class InvoiceServiceBulkTests : IDisposable
     /// <summary>ID of the seeded Currency entity (CZK).</summary>
     private const long CurrencyId = 1;
 
+    /// <summary>
+    /// Placeholder InvoiceService writes into DocumentNumber until a real number is drawn
+    /// from the sequence. An invoice still carrying it triggers numbering at completion time.
+    /// </summary>
+    private const string PlaceholderDocumentNumber = "DRAFT";
+
     // ─── Constructor & Dispose ───────────────────────────────────────────────
 
     /// <summary>
@@ -102,7 +109,7 @@ public class InvoiceServiceBulkTests : IDisposable
             .Returns("TEST001");
 
         // Instantiate the service under test with all dependencies.
-        _service = new InvoiceService(_context, _numberSequence, _logger);
+        _service = new InvoiceService(_context, _numberSequence, Substitute.For<ITenantReadinessService>(), _logger);
 
         // Seed reference entities that every test needs.
         SeedReferenceData();
@@ -308,6 +315,55 @@ public class InvoiceServiceBulkTests : IDisposable
 
         // Each error should have a non-empty error message
         result.Errors.ShouldAllBe(e => !string.IsNullOrWhiteSpace(e.Error));
+    }
+
+    /// <summary>
+    /// Issue #155 — blast radius of the new "fail loudly" numbering.
+    ///
+    /// A legacy draft still carrying the placeholder "DRAFT" gets its number at completion
+    /// time. Since #155 a missing number sequence throws there instead of inventing
+    /// "INV2026001", so this test pins what that means for a batch: the broken invoice
+    /// fails ALONE, its actionable message reaches the caller through the per-item catch
+    /// in BulkCompleteAsync, and the healthy invoice in the same batch still completes.
+    /// </summary>
+    [Fact]
+    public async Task BulkComplete_LegacyDraftWithoutNumberSequence_FailsOnlyThatInvoice()
+    {
+        // Arrange — one invoice that still needs a number, one that already has one.
+        // The sequence service behaves as it does for a tenant with no configured series.
+        _numberSequence
+            .GenerateNextNumberForDocumentTypeAsync(
+                Arg.Any<EDocumentType>(), Arg.Any<DateTime>(),
+                Arg.Any<string?>(), Arg.Any<string?>(),
+                Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("No default number sequence configured for Invoice"));
+
+        var unnumberedId = AddInvoice(PlaceholderDocumentNumber, EInvoiceStatus.Draft);
+        var numberedId = AddInvoice("BULK-C-NUMBERED", EInvoiceStatus.Draft);
+
+        // Act
+        var result = await _service.BulkCompleteAsync([unnumberedId, numberedId]);
+
+        // Assert — exactly one failure, and it is the invoice that needed a number
+        result.SuccessCount.ShouldBe(1,
+            customMessage: "A numbering failure must not abort the whole batch");
+        result.FailedCount.ShouldBe(1);
+        result.Errors.Count.ShouldBe(1);
+        result.Errors[0].InvoiceId.ShouldBe(unnumberedId);
+
+        // Assert — the caller learns what to fix, instead of silently getting a made-up number
+        result.Errors[0].Error.ShouldContain("/number-sequences",
+            customMessage: "The batch error must carry the actionable message from InvoiceService");
+
+        // Assert — the broken invoice stays a draft with its placeholder number untouched
+        var unnumbered = await _context.Invoice.AsNoTracking().FirstAsync(i => i.Id == unnumberedId);
+        unnumbered.Status.ShouldBe(EInvoiceStatus.Draft);
+        unnumbered.DocumentNumber.ShouldBe(PlaceholderDocumentNumber,
+            customMessage: "No fallback number may be persisted when the sequence is missing");
+
+        // Assert — the healthy invoice went through
+        var numbered = await _context.Invoice.AsNoTracking().FirstAsync(i => i.Id == numberedId);
+        numbered.Status.ShouldBe(EInvoiceStatus.Completed);
     }
 
     // ═════════════════════════════════════════════════════════════════════════

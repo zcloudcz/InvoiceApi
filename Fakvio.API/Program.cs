@@ -116,27 +116,37 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
+// Startup breadcrumb: which database auth mode won, and from which config key. Logged
+// BEFORE the migrations below, because that is the step that fails when the database is
+// unreachable — and an unreachable database also means no SysAdmin login and therefore no
+// /api/diagnostic/health to ask instead. See LogDatabaseAuthMode + SELFHOST-DB.md §3.4.
+app.Services.LogDatabaseAuthMode();
+
 // ── Startup migrations ──────────────────────────────────────────────────────
 // Apply database migrations automatically on startup.
 // Step 1: Migrate the master database (Users, Companies, CompanySystemSettings, code tables).
 // Step 2: Tenant migrations are handled LAZILY by ITenantDbContextFactory.EnsureMigratedAsync
 //         — each tenant schema is migrated on first request (cached per process lifetime).
 //         This is faster at startup and handles tenants provisioned while the app is running.
-// Skip during integration tests — InMemoryDatabase does not support migrations.
-if (!app.Environment.IsEnvironment("Testing"))
+using (var scope = app.Services.CreateScope())
 {
-    using (var scope = app.Services.CreateScope())
-    {
-        // Master DB migrations — always applied first
-        var masterDb = scope.ServiceProvider.GetRequiredService<MasterDbContext>();
-        await masterDb.Database.MigrateAsync();
+    // Master DB migrations — always applied first.
+    var masterDb = scope.ServiceProvider.GetRequiredService<MasterDbContext>();
 
-        // FOR DEVELOPMENT ONLY - delete all dbs and start fresh on each run. Comment out in production!
-        //var provisioningService = scope.ServiceProvider.GetRequiredService<ITenantProvisioningService>();
-        //await provisioningService.DeleteAllTenantDbs();
-        //await masterDb.Database.EnsureDeletedAsync();
-        //await masterDb.Database.MigrateAsync();
+    // Skip for non-relational providers. Integration tests swap PostgreSQL for the EF Core
+    // InMemory provider, which has no migration history and throws on MigrateAsync().
+    // The check is on the provider itself rather than on an environment name, so any test
+    // host works regardless of which ASPNETCORE_ENVIRONMENT it needs to simulate.
+    if (masterDb.Database.IsRelational())
+    {
+        await masterDb.Database.MigrateAsync();
     }
+
+    // FOR DEVELOPMENT ONLY - delete all dbs and start fresh on each run. Comment out in production!
+    //var provisioningService = scope.ServiceProvider.GetRequiredService<ITenantProvisioningService>();
+    //await provisioningService.DeleteAllTenantDbs();
+    //await masterDb.Database.EnsureDeletedAsync();
+    //await masterDb.Database.MigrateAsync();
 }
 
 // ── HTTP pipeline ───────────────────────────────────────────────────────────
@@ -150,15 +160,20 @@ app.UseCorrelationId();
 // and so it wraps the entire remaining pipeline (Swagger, CORS, Auth, controllers, etc.).
 app.UseGlobalExceptionHandler();
 
-//if (app.Environment.IsDevelopment())
-//{
+// Swagger is a DEVELOPMENT-ONLY convenience. Outside Development neither the UI nor
+// swagger.json is registered at all, so those paths simply 404 — the full API surface
+// (route table, DTO shapes, auth scheme) is never published to the public internet.
+// The guard is on the hosting environment, not on configuration, so a mis-set config
+// value cannot switch it back on in Production.
+if (app.Environment.IsDevelopment())
+{
     app.UseSwagger();
     app.UseSwaggerUI(options =>
     {
         options.SwaggerEndpoint("/swagger/v1/swagger.json", "Fakvio v1");
         options.RoutePrefix = string.Empty; // Swagger at root URL
     });
-//}
+}
 
 app.UseCors();
 
@@ -173,6 +188,11 @@ if (!app.Environment.IsDevelopment())
 // Authentication must come before Authorization
 app.UseAuthentication();
 app.UseAuthorization();
+
+// API-key scope middleware — a read-only key gets 403 on state-changing requests,
+// and no key may manage keys. Must be after UseAuthentication so the scope claim exists;
+// JWT requests carry no scope claim and pass straight through.
+app.UseApiKeyScope();
 
 // Impersonation middleware — allows SysAdmin to act as a specific company
 // by sending X-Company-Id header. Must be after auth so we can check the role.

@@ -4,6 +4,7 @@ using Fakvio.Contracts.Dto.Dashboard;
 using Fakvio.Contracts.Dto.Email;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Contracts.Dto.InvoiceTemplate;
+using Fakvio.Contracts.Dto.Readiness;
 using Fakvio.Contracts.Dto.ReceivedInvoice;
 using Fakvio.Contracts.Dto.Tax;
 using Fakvio.Contracts.Dto.VatReport;
@@ -132,4 +133,13 @@ public interface IFakvioApiClient
 
     /// <summary>GET /api/tax/config/{country}/{year} — tax year configuration.</summary>
     Task<TaxYearConfigDto?> GetTaxConfigAsync(string country, int year, CancellationToken ct = default);
+
+    // ── Readiness endpoints ────────────────────────────────────────────
+
+    /// <summary>
+    /// GET /api/readiness?issuerId= — what the tenant still has to fill in before invoicing.
+    /// An incomplete setup is a normal 200 with issues, not an error; null means the
+    /// explicitly requested issuer does not exist in this tenant (404).
+    /// </summary>
+    Task<ReadinessReportDto?> GetReadinessAsync(long? issuerId = null, CancellationToken ct = default);
 }

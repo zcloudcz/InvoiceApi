@@ -454,40 +454,6 @@ public class CreateInvoiceToolTests
     // ─── Missing Parameter Tests ────────────────────────────────────────
 
     [Fact]
-    public async Task CreateInvoice_MissingClientName_ReturnsFailure()
-    {
-        // Arrange — no client_name parameter.
-        var parameters = new Dictionary<string, string>
-        {
-            ["items"] = """[{"description": "Test", "unit_price": 100}]"""
-        };
-
-        // Act
-        var result = await _tool.ExecuteAsync(parameters);
-
-        // Assert
-        result.IsSuccess.ShouldBeFalse();
-        result.OutputText.ShouldContain("client_name");
-    }
-
-    [Fact]
-    public async Task CreateInvoice_MissingItems_ReturnsFailure()
-    {
-        // Arrange — no items parameter.
-        var parameters = new Dictionary<string, string>
-        {
-            ["client_name"] = "Alza"
-        };
-
-        // Act
-        var result = await _tool.ExecuteAsync(parameters);
-
-        // Assert
-        result.IsSuccess.ShouldBeFalse();
-        result.OutputText.ShouldContain("items");
-    }
-
-    [Fact]
     public async Task CreateInvoice_EmptyItemsArray_ReturnsFailure()
     {
         // Arrange

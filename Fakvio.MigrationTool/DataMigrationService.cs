@@ -40,6 +40,12 @@ public class DataMigrationService
     private readonly IConfiguration _configuration;
     private readonly ILogger<DataMigrationService> _logger;
 
+    // Target database (master public schema + all tenant schemas).
+    private readonly INpgsqlDataSourceFactory _targetFactory;
+
+    // Source database (the legacy single-DB installation being migrated away from).
+    private readonly INpgsqlDataSourceFactory _sourceFactory;
+
     // Counters for summary reporting
     private int _usersmigrated;
     private int _companiesMigrated;
@@ -48,10 +54,20 @@ public class DataMigrationService
     private int _templatesMigrated;
     private int _errors;
 
-    public DataMigrationService(IConfiguration configuration, ILogger<DataMigrationService> logger)
+    /// <param name="configuration">Supplies the "Migration:*" settings (dry run, schema prefix, ...).</param>
+    /// <param name="logger">Console logger.</param>
+    /// <param name="targetFactory">Data sources for the target (multi-tenant) database.</param>
+    /// <param name="sourceFactory">Data sources for the source (legacy single) database.</param>
+    public DataMigrationService(
+        IConfiguration configuration,
+        ILogger<DataMigrationService> logger,
+        INpgsqlDataSourceFactory targetFactory,
+        INpgsqlDataSourceFactory sourceFactory)
     {
         _configuration = configuration;
         _logger = logger;
+        _targetFactory = targetFactory;
+        _sourceFactory = sourceFactory;
     }
 
     /// <summary>
@@ -61,11 +77,6 @@ public class DataMigrationService
     {
         _logger.LogInformation("=== Starting Data Migration ===");
 
-        var sourceConnectionString = _configuration.GetConnectionString("SourceConnection")
-            ?? throw new InvalidOperationException("SourceConnection not configured.");
-        // DefaultConnection points to the single PostgreSQL database (public schema = master)
-        var masterConnectionString = _configuration.GetConnectionString("DefaultConnection")
-            ?? throw new InvalidOperationException("DefaultConnection not configured.");
         var dryRun = _configuration.GetValue<bool>("Migration:DryRun");
         var skipProvisioned = _configuration.GetValue<bool>("Migration:SkipProvisionedCompanies");
         // Schema prefix for tenant schemas (e.g., "tenant_42")
@@ -74,9 +85,11 @@ public class DataMigrationService
         if (dryRun)
             _logger.LogWarning("DRY RUN mode — no data will be written");
 
-        // Step 1: Create source and master DbContexts
-        using var sourceContext = CreateSourceContext(sourceConnectionString);
-        using var masterContext = CreateMasterContext(masterConnectionString);
+        // Step 1: Create source and master DbContexts.
+        // Both run on the factories' root data sources: the source database is read as-is and
+        // the master data lives in the target database's default (public) schema.
+        using var sourceContext = CreateSourceContext(_sourceFactory.Root);
+        using var masterContext = CreateMasterContext(_targetFactory.Root);
 
         // Step 2: Apply master DB migrations
         _logger.LogInformation("Step 1: Applying master DB migrations...");
@@ -111,8 +124,7 @@ public class DataMigrationService
             try
             {
                 await MigrateCompanyAsync(
-                    issuer, sourceContext, masterContext,
-                    masterConnectionString, tenantPrefix,
+                    issuer, sourceContext, masterContext, tenantPrefix,
                     skipProvisioned, dryRun, cancellationToken);
             }
             catch (Exception ex)
@@ -332,7 +344,6 @@ public class DataMigrationService
         Client issuer,
         SourceDbContext source,
         MasterDbContext master,
-        string masterConnectionString,
         string tenantPrefix,
         bool skipProvisioned,
         bool dryRun,
@@ -376,8 +387,14 @@ public class DataMigrationService
             return;
         }
 
-        // Schema name follows the convention "tenant_{companyId}" (e.g., "tenant_42")
-        var schemaName = $"{tenantPrefix}{masterCompanyId}";
+        // Schema name follows the convention "tenant_{companyId}" (e.g., "tenant_42").
+        // Canonicalize ONCE, right here: SchemaNames.Sanitize lowercases, and the physical
+        // schema below is created through it. If we persisted the raw value instead, a
+        // non-canonical Migration:TenantSchemaPrefix (e.g. "Tenant_") would write "Tenant_42"
+        // into CompanySystemSettings while creating the schema "tenant_42" — and the runtime
+        // TenantDbContextFactory uses the stored name verbatim, so the tenant would become
+        // unreachable after migration. One canonical value = created == stored == search_path.
+        var schemaName = SchemaNames.Sanitize($"{tenantPrefix}{masterCompanyId}");
 
         if (existingSettings == null && !dryRun)
         {
@@ -405,10 +422,15 @@ public class DataMigrationService
         // Step 3: Create tenant schema + apply migrations
         // In the schema-per-tenant model, we create a PostgreSQL schema within the same database
         // and set the search_path so EF Core migrations run inside the tenant schema.
-        await CreateSchemaIfNotExistsAsync(masterConnectionString, schemaName, ct);
+        await CreateSchemaIfNotExistsAsync(schemaName, ct);
 
-        var tenantConnectionString = BuildTenantConnectionString(masterConnectionString, schemaName);
-        using var tenantContext = CreateTenantContext(tenantConnectionString);
+        // includePublicInSearchPath: false is NOT cosmetic. CreateTenantContext builds the
+        // TenantDbContext without an explicit schema, so the target schema is resolved purely
+        // through search_path. With "public" in the path, a table still missing from the
+        // half-migrated tenant schema would silently fall through to the MASTER table and this
+        // tool would write tenant data into "public".
+        var tenantDataSource = _targetFactory.GetForSchema(schemaName, includePublicInSearchPath: false);
+        using var tenantContext = CreateTenantContext(tenantDataSource);
         await tenantContext.Database.MigrateAsync(ct);
         _logger.LogInformation("Tenant schema '{Schema}' created and migrated", schemaName);
 
@@ -1101,15 +1123,17 @@ public class DataMigrationService
     /// Queries information_schema.schemata to check for existence, then runs CREATE SCHEMA.
     /// This is used for schema-per-tenant isolation — all tenants share one PostgreSQL database.
     /// </summary>
-    private async Task CreateSchemaIfNotExistsAsync(
-        string connectionString, string schemaName, CancellationToken ct)
+    private async Task CreateSchemaIfNotExistsAsync(string schemaName, CancellationToken ct)
     {
-        // Connect to the shared PostgreSQL database to create the tenant schema
-        await using var connection = new NpgsqlConnection(connectionString);
-        await connection.OpenAsync(ct);
+        // Connect to the shared PostgreSQL database to create the tenant schema.
+        // The connection comes from the factory's root data source, so it honours the
+        // configured authentication mode (password or Entra ID access token).
+        await using var connection = await _targetFactory.Root.OpenConnectionAsync(ct);
 
-        // Sanitize schema name (alphanumeric + underscore only) to prevent SQL injection
-        var safeName = new string(schemaName.Where(c => char.IsLetterOrDigit(c) || c == '_').ToArray());
+        // Canonical, injection-safe schema name: SchemaNames.Sanitize keeps only letters,
+        // digits and underscores, lowercases the result and throws when nothing is left.
+        // Callers already pass a sanitized name, so this is a defence-in-depth no-op.
+        var safeName = SchemaNames.Sanitize(schemaName);
 
         // Check if schema already exists using PostgreSQL's information_schema
         await using var checkCmd = connection.CreateCommand();
@@ -1179,27 +1203,12 @@ public class DataMigrationService
     }
 
     /// <summary>
-    /// Builds a tenant connection string from the master connection string
-    /// by setting the PostgreSQL search_path to the tenant schema.
-    /// This directs all EF Core operations to the correct schema within the shared database.
-    /// </summary>
-    private static string BuildTenantConnectionString(string masterConnectionString, string schemaName)
-    {
-        var builder = new NpgsqlConnectionStringBuilder(masterConnectionString)
-        {
-            // search_path tells PostgreSQL which schema to use for unqualified table names
-            SearchPath = schemaName
-        };
-        return builder.ConnectionString;
-    }
-
-    /// <summary>
     /// Creates a SourceDbContext connected to the source (legacy single) PostgreSQL database.
     /// </summary>
-    private static SourceDbContext CreateSourceContext(string connectionString)
+    private static SourceDbContext CreateSourceContext(NpgsqlDataSource dataSource)
     {
         var options = new DbContextOptionsBuilder<SourceDbContext>()
-            .UseNpgsql(connectionString)
+            .UseNpgsql(dataSource)
             .Options;
         return new SourceDbContext(options);
     }
@@ -1207,22 +1216,23 @@ public class DataMigrationService
     /// <summary>
     /// Creates a MasterDbContext connected to the PostgreSQL public schema (master).
     /// </summary>
-    private static MasterDbContext CreateMasterContext(string connectionString)
+    private static MasterDbContext CreateMasterContext(NpgsqlDataSource dataSource)
     {
         var options = new DbContextOptionsBuilder<MasterDbContext>()
-            .UseNpgsql(connectionString, b => b.MigrationsAssembly("Fakvio.Infrastructure"))
+            .UseNpgsql(dataSource, b => b.MigrationsAssembly("Fakvio.Infrastructure"))
             .Options;
         return new MasterDbContext(options);
     }
 
     /// <summary>
     /// Creates a TenantDbContext connected to a specific tenant schema in the shared PostgreSQL database.
-    /// The connection string's search_path determines which schema EF Core targets.
+    /// The data source's search_path determines which schema EF Core targets — pass one obtained
+    /// from <see cref="INpgsqlDataSourceFactory.GetForSchema"/>.
     /// </summary>
-    private static TenantDbContext CreateTenantContext(string connectionString)
+    private static TenantDbContext CreateTenantContext(NpgsqlDataSource dataSource)
     {
         var options = new DbContextOptionsBuilder<TenantDbContext>()
-            .UseNpgsql(connectionString, b => b.MigrationsAssembly("Fakvio.Infrastructure"))
+            .UseNpgsql(dataSource, b => b.MigrationsAssembly("Fakvio.Infrastructure"))
             .Options;
         return new TenantDbContext(options);
     }

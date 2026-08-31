@@ -1,0 +1,87 @@
+# Test environment counterpart of master_zcloudinvoicingapi.yml.
+# Docs for the Azure Web Apps Deploy action: https://github.com/azure/functions-action
+# More GitHub Actions for Azure: https://github.com/Azure/actions
+
+name: Build and deploy dotnet core project to Azure Function App - zcloudinvoicingapi-test
+
+on:
+  push:
+    branches:
+      - TEST-ENV
+  workflow_dispatch:
+
+env:
+  AZURE_FUNCTIONAPP_PACKAGE_PATH: '.' # set this to the path to your web app project, defaults to the repository root
+  DOTNET_VERSION: '10.0.x' # set this to the dotnet version to use
+  # Tailscale userspace tunnel shipped inside the function package — see
+  # Fakvio.Functions/Tailscale/README.md. Version and checksum are pinned because the tarball is
+  # fetched at deploy time; bumping the version means replacing both lines together (the hash comes
+  # from https://pkgs.tailscale.com/stable/tailscale_<version>_amd64.tgz.sha256).
+  TAILSCALE_VERSION: '1.102.3'
+  TAILSCALE_SHA256: '36ddd9b51be57ffc2990cf76323cfa13643bfbb1b8a969f6183fa164741cdef5'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write #This is required for requesting the JWT
+      contents: read #This is required for actions/checkout
+
+    steps:
+      - name: 'Checkout GitHub Action'
+        uses: actions/checkout@v4
+
+      - name: Setup DotNet ${{ env.DOTNET_VERSION }} Environment
+        uses: actions/setup-dotnet@v1
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: 'Download Tailscale binaries'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # tsbin/ is gitignored — the ~50 MB binaries are fetched here and copied into the
+          # publish output by the <None Update="tsbin/**"> item in Fakvio.Functions.csproj.
+          # Must run before publish, otherwise there is nothing to copy.
+          TARBALL="tailscale_${TAILSCALE_VERSION}_amd64.tgz"
+          curl -fsSL -o "$TARBALL" "https://pkgs.tailscale.com/stable/${TARBALL}"
+          echo "${TAILSCALE_SHA256}  ${TARBALL}" | sha256sum -c -
+          mkdir -p Fakvio.Functions/tsbin
+          # --strip-components=1 drops the "tailscale_<version>_amd64/" prefix; only the two
+          # binaries are extracted, the tarball also carries systemd units and docs we do not want.
+          tar -xzf "$TARBALL" --strip-components=1 -C Fakvio.Functions/tsbin \
+            "tailscale_${TAILSCALE_VERSION}_amd64/tailscale" \
+            "tailscale_${TAILSCALE_VERSION}_amd64/tailscaled"
+          ls -l Fakvio.Functions/tsbin
+
+      - name: 'Build and Publish Azure Functions Project'
+        shell: bash
+        run: |
+          # Publish specifically the Functions project (not the entire solution).
+          # Azure Functions requires the function app's own output with host.json,
+          # GeneratedFunctionMetadataProvider, and all dependency DLLs.
+          dotnet publish ./Fakvio.Functions/Fakvio.Functions.csproj \
+            --configuration Release \
+            --output ./output
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          # Separate app registration (zcloudcz-InvoiceApi-TEST) whose federated
+          # credential only trusts the TEST-ENV branch and whose Contributor role
+          # is scoped to the test Function App alone. Production secrets are never
+          # referenced here, so a broken test deploy cannot touch production.
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_TEST }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_TEST }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_TEST }}
+
+      - name: 'Run Azure Functions Action'
+        uses: Azure/functions-action@v1
+        id: fa
+        with:
+          # The production app runs on the Flex Consumption plan, which does NOT
+          # support deployment slots. The test backend is therefore a standalone
+          # Function App and we deploy into its own (only) Production slot.
+          app-name: 'zcloudinvoicingapi-test'
+          slot-name: 'Production'
+          package: '${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/output'

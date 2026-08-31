@@ -41,10 +41,28 @@ public class SearchReceivedInvoicesTool : IChatTool
         "Searches by document number, supplier name, variable symbol, or amount. " +
         "Use this when the user provides a number or name without specifying which field.";
 
-    public string ParameterDescription =>
-        "query (string, required): search text — matched against document number, supplier name, " +
-        "variable symbol, and amount. " +
-        "limit (number, optional, default 10, max 50): maximum number of results to return.";
+    /// <summary>
+    /// Parameter schema — static because it never changes per instance.
+    /// </summary>
+    private static readonly ChatToolParameter[] Schema =
+    [
+        new()
+        {
+            Name = "query",
+            Type = ChatToolParameterType.String,
+            Description = "Free-text search — matched against document number, supplier name, " +
+                          "variable symbol and amount",
+            IsRequired = true
+        },
+        new()
+        {
+            Name = "limit",
+            Type = ChatToolParameterType.Integer,
+            Description = "Maximum number of results to return (default 10, max 50)"
+        }
+    ];
+
+    public IReadOnlyList<ChatToolParameter> Parameters => Schema;
 
     /// <summary>
     /// Loads all non-deleted invoices and filters in memory using contains search.
@@ -58,10 +76,8 @@ public class SearchReceivedInvoicesTool : IChatTool
         Dictionary<string, string> parameters,
         CancellationToken ct = default)
     {
-        if (!parameters.TryGetValue("query", out var query) || string.IsNullOrWhiteSpace(query))
-            return ChatToolResult.Failure("Missing required parameter: query.");
-
-        query = query.Trim();
+        // Presence of the required parameter is guaranteed by ChatToolExecutor's central validation.
+        var query = parameters["query"].Trim();
         var limit = ParseLimit(parameters);
 
         _logger.LogInformation("SearchReceivedInvoicesTool: query='{Query}', limit={Limit}", query, limit);

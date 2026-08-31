@@ -295,6 +295,8 @@
   <data name="SetPassword_TokenExpired" xml:space="preserve"><value>Invitation is invalid or expired. Ask an administrator for a new invitation.</value></data>
   <data name="SetPassword_ValidatingToken" xml:space="preserve"><value>Validating invitation...</value></data>
   <data name="SetPassword_SetFailed" xml:space="preserve"><value>Failed to set password. Token may have expired.</value></data>
+  <data name="SetPassword_WorkspaceNotReady" xml:space="preserve"><value>Your password has been set, but your workspace could not be prepared.</value></data>
+  <data name="SetPassword_WorkspaceNotReadyHint" xml:space="preserve"><value>Logging in will not work yet. An administrator will finish the setup — please try again later or contact support.</value></data>
   <data name="Dashboard_Welcome" xml:space="preserve"><value>Welcome to the Invoice Management System</value></data>
   <data name="Dashboard_InvoicesDueThisMonth" xml:space="preserve"><value>Invoices due this month</value></data>
   <data name="Dashboard_ThisMonth" xml:space="preserve"><value>This month</value></data>
@@ -694,6 +696,24 @@
   </data>
   <data name="SystemSettings_AiTitle" xml:space="preserve"><value>AI Settings</value></data>
   <data name="SystemSettings_AiDefaultProvider" xml:space="preserve"><value>Default AI Provider</value></data>
+  <data name="AiInstructions_Title" xml:space="preserve"><value>AI Assistant Instructions</value></data>
+  <data name="AiInstructions_Subtitle" xml:space="preserve"><value>Customize the AI assistant system prompt. Changes take effect within 5 minutes on all instances, no redeploy needed.</value></data>
+  <data name="AiInstructions_CustomPromptLabel" xml:space="preserve"><value>Custom instructions (replace the default style and rules)</value></data>
+  <data name="AiInstructions_CustomPromptHint" xml:space="preserve"><value>When non-empty, replaces the entire built-in RESPONSE STYLE, TOOLS, IMPORT RULES and RULES block — including the tool descriptions. Company identity and business context are always appended automatically.</value></data>
+  <data name="AiInstructions_CustomPromptPlaceholder" xml:space="preserve"><value>Leave empty to use the built-in defaults…</value></data>
+  <data name="AiInstructions_AppendixLabel" xml:space="preserve"><value>Appendix (appended after the main instructions)</value></data>
+  <data name="AiInstructions_AppendixHint" xml:space="preserve"><value>Added after the main instructions (custom or default). Use it to add a rule without overriding the built-in behaviour.</value></data>
+  <data name="AiInstructions_AppendixPlaceholder" xml:space="preserve"><value>Leave empty for no appendix…</value></data>
+  <data name="AiInstructions_UsingDefault" xml:space="preserve"><value>Using the built-in defaults</value></data>
+  <data name="AiInstructions_UsingCustom" xml:space="preserve"><value>Using custom instructions</value></data>
+  <data name="AiInstructions_Preview" xml:space="preserve"><value>Preview full prompt</value></data>
+  <data name="AiInstructions_PreviewTitle" xml:space="preserve"><value>Full prompt preview</value></data>
+  <data name="AiInstructions_PreviewNote" xml:space="preserve"><value>Company identity and business statistics are shown as placeholders — the real values are injected at runtime from the tenant database.</value></data>
+  <data name="AiInstructions_ResetToDefault" xml:space="preserve"><value>Reset to default</value></data>
+  <data name="AiInstructions_ResetConfirm" xml:space="preserve"><value>This clears both the custom instructions and the appendix, and the AI will use the built-in defaults. Continue?</value></data>
+  <data name="AiInstructions_SaveSuccess" xml:space="preserve"><value>AI instructions saved. They take effect within 5 minutes on all instances.</value></data>
+  <data name="AiInstructions_ResetSuccess" xml:space="preserve"><value>AI instructions reset to the defaults.</value></data>
+  <data name="Nav_AiInstructions" xml:space="preserve"><value>AI Instructions</value></data>
   <data name="Log_Title" xml:space="preserve">
     <value>Application Logs</value>
   </data>
@@ -873,6 +893,7 @@
   <data name="Register_AresLoading" xml:space="preserve"><value>Loading from ARES...</value></data>
   <data name="Register_AresSuccess" xml:space="preserve"><value>Data loaded from ARES</value></data>
   <data name="Register_AresFailed" xml:space="preserve"><value>Failed to load from ARES</value></data>
+  <data name="Register_AddressSection" xml:space="preserve"><value>Registered office (from ARES, editable)</value></data>
   <data name="Register_Submit" xml:space="preserve"><value>Register</value></data>
   <data name="Register_Registering" xml:space="preserve"><value>Registering...</value></data>
   <data name="Register_Success" xml:space="preserve"><value>Registration successful! Check your email.</value></data>
@@ -1044,6 +1065,7 @@
   <data name="Chat_PdfOnly" xml:space="preserve"><value>Only PDF files are supported.</value></data>
   <data name="Chat_UnsupportedFileType" xml:space="preserve"><value>Unsupported file type.</value></data>
   <data name="Chat_FileTooLarge" xml:space="preserve"><value>File exceeds the maximum allowed size of 10 MB.</value></data>
+  <data name="Chat_Error_Unexpected" xml:space="preserve"><value>The message could not be processed. Please try again.</value></data>
   <data name="EChatRole_User" xml:space="preserve"><value>You</value></data>
   <data name="EChatRole_Assistant" xml:space="preserve"><value>Assistant</value></data>
   <!-- Received Invoices (Expenses) -->
@@ -1637,4 +1659,50 @@
   <data name="EpoNotVatPayer" xml:space="preserve"><value>This feature is available for VAT payers only.</value></data>
   <data name="EpoDownloadError" xml:space="preserve"><value>Error generating EPO: {0}</value></data>
   <data name="EpoGoToSettings" xml:space="preserve"><value>Go to company settings</value></data>
+  <data name="EpoHeaderIncompleteAskAdmin" xml:space="preserve"><value>Only a company administrator can fill these fields in — please ask them to complete the settings.</value></data>
+  <data name="Epo_SettingsTitle" xml:space="preserve"><value>EPO settings (electronic filing)</value></data>
+  <data name="Epo_SettingsInfoText" xml:space="preserve"><value>Header data for the electronic VAT return and VAT control statement filed on the Czech EPO portal. Without the tax office and branch codes the XML files cannot be generated.</value></data>
+  <data name="Epo_TaxOfficeCode" xml:space="preserve"><value>Tax office code</value></data>
+  <data name="Epo_TaxOfficeCodeHelper" xml:space="preserve"><value>Numeric code of the competent tax office (c_ufo), e.g. 451 for Prague.</value></data>
+  <data name="Epo_TaxOfficeBranchCode" xml:space="preserve"><value>Tax office branch code</value></data>
+  <data name="Epo_TaxOfficeBranchCodeHelper" xml:space="preserve"><value>Numeric code of the tax office local branch (c_pracufo).</value></data>
+  <data name="Epo_ContactPhone" xml:space="preserve"><value>Contact phone</value></data>
+  <data name="Epo_ContactEmail" xml:space="preserve"><value>Contact email</value></data>
+  <data name="Epo_AuthorizedPersonName" xml:space="preserve"><value>Authorized person name</value></data>
+  <!-- Integrations / API keys (/settings/integrations) -->
+  <data name="Nav_Integrations" xml:space="preserve"><value>Integrations</value></data>
+  <data name="Integration_Title" xml:space="preserve"><value>Integrations and API keys</value></data>
+  <data name="Integration_Subtitle" xml:space="preserve"><value>An API key connects an AI client (e.g. Claude) to Fakvio through the MCP server. Keys are personal — you only see and manage your own.</value></data>
+  <data name="Integration_NewKey" xml:space="preserve"><value>New API key</value></data>
+  <data name="Integration_CreateDialogTitle" xml:space="preserve"><value>Create API key</value></data>
+  <data name="Integration_KeyNameHelper" xml:space="preserve"><value>How you will recognise the key later, e.g. "Claude Desktop — laptop".</value></data>
+  <data name="Integration_Scope" xml:space="preserve"><value>Permissions</value></data>
+  <data name="Integration_ScopeRead" xml:space="preserve"><value>Read only</value></data>
+  <data name="Integration_ScopeReadWrite" xml:space="preserve"><value>Read and write</value></data>
+  <data name="Integration_ScopeHelper" xml:space="preserve"><value>A key can never do more than your account can. For an assistant that should only look, pick "Read only".</value></data>
+  <data name="Integration_Expiration" xml:space="preserve"><value>Expires on</value></data>
+  <data name="Integration_ExpirationHelper" xml:space="preserve"><value>Leave empty for a key that never expires.</value></data>
+  <data name="Integration_RawKeyTitle" xml:space="preserve"><value>Copy the key now</value></data>
+  <data name="Integration_RawKeyWarning" xml:space="preserve"><value>This is the only time the key is shown — once you close this panel it is gone. We store only its fingerprint, so a lost key cannot be recovered, only replaced.</value></data>
+  <data name="Integration_CopyKey" xml:space="preserve"><value>Copy key</value></data>
+  <data name="Integration_CopySnippet" xml:space="preserve"><value>Copy configuration</value></data>
+  <data name="Integration_Copied" xml:space="preserve"><value>Copied to clipboard.</value></data>
+  <data name="Integration_KeySaved" xml:space="preserve"><value>I have saved the key</value></data>
+  <data name="Integration_SnippetStdio" xml:space="preserve"><value>Local MCP server (stdio)</value></data>
+  <data name="Integration_SnippetStdioHelper" xml:space="preserve"><value>Paste into .mcp.json (Claude Code) or claude_desktop_config.json (Claude Desktop). Requires the fakvio-mcp tool to be installed.</value></data>
+  <data name="Integration_SnippetHttp" xml:space="preserve"><value>Remote MCP server (HTTP)</value></data>
+  <data name="Integration_SnippetHttpHelper" xml:space="preserve"><value>For clients that connect to the MCP server over HTTP with nothing to install.</value></data>
+  <data name="Integration_Prefix" xml:space="preserve"><value>Prefix</value></data>
+  <data name="Integration_Created" xml:space="preserve"><value>Created</value></data>
+  <data name="Integration_LastUsed" xml:space="preserve"><value>Last used</value></data>
+  <data name="Integration_NeverExpires" xml:space="preserve"><value>Never expires</value></data>
+  <data name="Integration_NeverUsed" xml:space="preserve"><value>Never used</value></data>
+  <data name="Integration_StatusRevoked" xml:space="preserve"><value>Revoked</value></data>
+  <data name="Integration_StatusExpired" xml:space="preserve"><value>Expired</value></data>
+  <data name="Integration_Revoke" xml:space="preserve"><value>Revoke</value></data>
+  <data name="Integration_RevokeConfirmTitle" xml:space="preserve"><value>Revoke API key?</value></data>
+  <data name="Integration_RevokeConfirmText" xml:space="preserve"><value>Key "{0}" ({1}…) will stop working immediately. This cannot be undone.</value></data>
+  <data name="Integration_RevokeSuccess" xml:space="preserve"><value>The key has been revoked.</value></data>
+  <data name="Integration_CreateSuccess" xml:space="preserve"><value>API key created.</value></data>
+  <data name="Integration_NoKeys" xml:space="preserve"><value>You do not have any API key yet.</value></data>
 </root>

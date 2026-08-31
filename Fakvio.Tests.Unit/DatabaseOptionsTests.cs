@@ -274,6 +274,59 @@ public class DatabaseOptionsTests
         ex.Message.ShouldContain("Username");
     }
 
+    /// <summary>
+    /// Every auth-mode validation failure has to name the configuration key the mode came
+    /// from. During the Azure rollout the mode can arrive from three different places, and a
+    /// startup crash that only says "AzureEntraId is wrong here" leaves the operator guessing
+    /// which of them to edit. Both the legacy source and the new key are covered.
+    /// </summary>
+    [Theory]
+    [InlineData("UseAzureAdAuthentication", "true", "UseAzureAdAuthentication (legacy)")]
+    [InlineData("Database:AuthMode", "AzureEntraId", "Database:AuthMode")]
+    public void Validate_AuthModeFailure_NamesTheSourceOfTheAuthMode(
+        string key, string value, string expectedSource)
+    {
+        // Arrange — resolved through the real precedence rules, then given a connection string
+        // that is invalid for AzureEntraId (it carries a password).
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ConnectionStrings:DefaultConnection"] = PasswordConnectionString,
+                [key] = value
+            })
+            .Build();
+        var options = DatabaseOptions.Resolve(config);
+
+        // Act
+        var ex = Should.Throw<InvalidOperationException>(() => options.Validate());
+
+        // Assert
+        ex.Message.ShouldContain(expectedSource);
+    }
+
+    /// <summary>
+    /// Same requirement on the Password branch — the default source ("default") is just as
+    /// worth naming: it tells the operator no key is set at all.
+    /// </summary>
+    [Fact]
+    public void Validate_PasswordFailure_NamesTheDefaultAsTheSource()
+    {
+        // Arrange — no auth-mode key anywhere, and a connection string with no password
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ConnectionStrings:DefaultConnection"] = "Host=localhost;Database=fakvio;Username=fakvio"
+            })
+            .Build();
+        var options = DatabaseOptions.Resolve(config);
+
+        // Act
+        var ex = Should.Throw<InvalidOperationException>(() => options.Validate());
+
+        // Assert
+        ex.Message.ShouldContain("default");
+    }
+
     [Fact]
     public void Validate_AzureEntraId_ValidConnectionString_DoesNotThrow()
     {
