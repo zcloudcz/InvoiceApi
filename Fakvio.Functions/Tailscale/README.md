@@ -121,6 +121,7 @@ Function App → *Settings → Environment variables*. Dvojité podtržítko = o
 | `TAILSCALE_HOSTNAME` | `fakvio-func-prod` / `fakvio-func-test` | Jméno uzlu v tailnetu. Prod a test sdílejí tailnet, takže **každé prostředí musí mít vlastní**; bez klíče se použije `fakvio-func-prod`. |
 | `TAILSCALE_TARGET_HOST` | *(volitelné)* výchozí `100.69.241.17` | Musí být **IPv4 tailnet adresa**; MagicDNS jméno kód odmítne — userspace režim resolver do procesu nezapojuje. |
 | `TAILSCALE_TARGET_PORT` | *(volitelné)* výchozí `5544` | |
+| `TS_ASSUME_NETWORK_UP_FOR_TEST` | *(nenastavovat)* | Démon ji dostává **z kódu** (`TailscaleTunnel.DaemonEnvironment`). Sandbox Flex Consumption nemá routovací tabulku, bez ní `tailscaled` nikdy nehlásí Running a `tailscale up` končí timeoutem — uzel se v tailnetu vůbec neobjeví. Ruční App Setting už není potřeba. |
 
 `Ssl Mode=Prefer`, protože WireGuard provoz už šifruje a certifikát vystavený na
 `127.0.0.1` se stejně nedá ověřit. `Timeout=15`, protože první spojení zahrnuje

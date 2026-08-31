@@ -192,6 +192,9 @@ public class TailscaleTunnelTests
         TailscaleTunnel.SocksPort.ShouldBe(1055);
         TailscaleTunnel.AuthKeyEnv.ShouldBe("TAILSCALE_AUTHKEY");
         TailscaleTunnel.HostnameEnv.ShouldBe("TAILSCALE_HOSTNAME");
+        // Without this the daemon never reports Running inside the Flex Consumption sandbox — the
+        // node is simply absent from the tailnet, which is what production looked like on 2026-08-31.
+        TailscaleTunnel.DaemonEnvironment.ShouldBe(new Dictionary<string, string> { ["TS_ASSUME_NETWORK_UP_FOR_TEST"] = "true" });
     }
 
     [Fact]
