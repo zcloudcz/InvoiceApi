@@ -1,12 +1,19 @@
 # Fakvio MCP Server
 
-Konzolová aplikace, která zpřístupňuje fakturaci Fakvio AI klientům přes
-**Model Context Protocol (MCP)**. Klient (Claude Code, Claude Desktop, …) si
-server spustí jako podproces a komunikuje s ním po **stdio**.
+Aplikace, která zpřístupňuje fakturaci Fakvio AI klientům přes
+**Model Context Protocol (MCP)**. Umí dva režimy — sada nástrojů je v obou
+totožná, liší se jen tím, odkud se bere credential:
 
 ```
-AI klient ←stdio→ Fakvio.McpServer ←HTTP + JWT→ Fakvio.API ←EF Core→ PostgreSQL
+stdio  AI klient ←stdio→ Fakvio.McpServer ←HTTP + JWT→ Fakvio.API ←EF Core→ PostgreSQL
+http   AI klienti ←HTTP/MCP→ Fakvio.McpServer ←HTTP + API klíč→ Fakvio.API ←EF Core→ PostgreSQL
 ```
+
+Ve **stdio** režimu si server spustí klient (Claude Code, Claude Desktop, …) jako
+podproces; jeden proces obsluhuje jednoho uživatele, takže credential je token
+procesu (`FAKVIO_API_TOKEN`). Ve **http** režimu jeden proces obsluhuje mnoho
+volajících, takže credential nosí každý request zvlášť — je jím API klíč
+volajícího, který server jen přeposílá na API.
 
 Server sám nemá přístup k databázi — všechno jde přes REST API, takže platí
 úplně stejná autorizace a tenant izolace jako pro webové UI. Rozsah oprávnění
@@ -15,13 +22,19 @@ určuje JWT token, kterým server pracuje.
 - Projekt: `Fakvio.McpServer` (net10.0, `PackAsTool`)
 - Příkaz nainstalovaného nástroje: **`fakvio-mcp`** (`ToolCommandName` v csproj)
 - Jméno serveru hlášené v MCP handshake: `fakvio` (`Program.cs`, `ServerInfo`)
-- SDK: `ModelContextProtocol` 1.0.0, transport **pouze stdio**
+- SDK: `ModelContextProtocol` 2.2.0, transporty: **stdio** (výchozí) a **Streamable HTTP** na `/mcp`
 
 ## Požadavky
 
 - .NET 10 SDK
+- **ASP.NET Core shared framework (`Microsoft.AspNetCore.App`)** — a to i pro stdio režim.
+  Balíček `ModelContextProtocol.AspNetCore`, který přináší Streamable HTTP transport, nese
+  `FrameworkReference`, takže ho potřebuje celý nástroj, ne jen http režim. Na stroji s plným
+  .NET 10 SDK je součástí instalace; na cílovém stroji jen s .NET runtime se musí doinstalovat
+  ASP.NET Core Runtime. Balení a deploy řeší #241.
 - Běžící `Fakvio.API` (lokálně nebo v cloudu), dosažitelné z počítače, kde běží AI klient
-- Platný JWT token uživatele Fakvio
+- Credential podle režimu: platný JWT token uživatele Fakvio (stdio, `FAKVIO_API_TOKEN`),
+  nebo API klíč `fak_…` na každém requestu volajícího (http — server žádný vlastní nemá)
 
 ## Build a spuštění
 
@@ -56,8 +69,25 @@ Server se konfiguruje **jen proměnnými prostředí** (žádný `appsettings.js
 
 | Proměnná | Povinná | Výchozí | Popis |
 |----------|---------|---------|-------|
-| `FAKVIO_API_TOKEN` | ano | – | JWT bearer token. Chybí-li, server vypíše chybu na stderr a skončí s exit code 1. |
+| `FAKVIO_MCP_TRANSPORT` | ne | `stdio` | `stdio` nebo `http`. Cokoli jiného = chyba na stderr a exit code 1. |
+| `FAKVIO_API_TOKEN` | jen pro `stdio` | – | JWT bearer token. Chybí-li ve stdio režimu, server vypíše chybu na stderr a skončí s exit code 1. V HTTP režimu se nepoužívá. |
 | `FAKVIO_API_URL` | ne | `https://localhost:7001` | Base URL API, např. `https://localhost:7047` nebo `https://api.fakvio.cz`. |
+| `ASPNETCORE_URLS` | ne | Kestrel default | Jen `http` režim — na čem server poslouchá, standardní ASP.NET Core proměnná. |
+
+### HTTP režim
+
+```bash
+FAKVIO_MCP_TRANSPORT=http FAKVIO_API_URL=https://localhost:7047 ASPNETCORE_URLS=http://localhost:5290 dotnet run
+```
+
+Klient posílá na `POST /mcp` a **musí** přiložit `Authorization: Bearer <API klíč>`
+(klíč se zakládá v UI, viz ADMINGUIDE / USERGUIDE). Server klíč ověří na
+`GET /api/api-key/me` u **každého** requestu — nic se necachuje, takže revokovaný
+klíč přestane fungovat okamžitě. Neplatný nebo chybějící klíč = `401` s hlavičkou
+`WWW-Authenticate: Bearer`.
+
+Běží **stateless** (bez `Mcp-Session-Id`), takže `GET /mcp` a `/sse` nejsou k dispozici
+a host jde škálovat bez sticky routingu. Balení a nasazení HTTP hostu řeší #241.
 
 > **Pozor na výchozí hodnotu.** `Fakvio.API` běží lokálně na `https://localhost:7047`
 > (viz `Fakvio.API/Properties/launchSettings.json`), takže výchozí `7001` na

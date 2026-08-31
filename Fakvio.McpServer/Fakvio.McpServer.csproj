@@ -17,7 +17,12 @@
 
   <ItemGroup>
     <!-- ModelContextProtocol — official C# SDK for MCP (stdio transport, tool discovery) -->
-    <PackageReference Include="ModelContextProtocol" Version="1.0.0" />
+    <PackageReference Include="ModelContextProtocol" Version="2.2.0" />
+
+    <!-- ModelContextProtocol.AspNetCore — MapMcp() + the Streamable HTTP transport used by
+         the "http" hosting mode. It carries a FrameworkReference to Microsoft.AspNetCore.App,
+         so the packaged tool needs the ASP.NET Core shared framework even when run over stdio. -->
+    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="2.2.0" />
 
     <!-- Generic Host for DI, configuration, and lifetime management -->
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.0" />

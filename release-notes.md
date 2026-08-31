@@ -20,6 +20,36 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+## 2026.08.31 — 2026-08-31
+
+### Změny pro uživatele
+
+- **#214** — přihlásíte-li se s nedokončeným nastavením firmy (chybí sídlo, IČO/DIČ, bankovní
+  účet nebo číselná řada), AI asistent v chatu se teď sám ozve jako první — otevře se panel
+  s uvítáním a nabídkou pomoct to doplnit. Ptá se po jednom údaji a rovnou ho zapisuje, není
+  potřeba přepínat do formulářů. Ozve se jen jednou za přihlášení (ne po každém obnovení
+  stránky) a jakmile je nastavení kompletní, mlčí. (PR #358, `14e4a77`)
+- **#210** — dashboard místo statického „Rychlý start" teď ukazuje živý přehled, co firmě ještě chybí k vystavení faktury — položky jsou rozdělené na blokující a doporučené (ne jen barvou, i nadpisem), každá vede přímo tam, kde se dá doplnit. Kartu jde tlačítkem „Připomenout později" sbalit na jeden řádek, ale nezmizí natrvalo — jakmile něco chybí, po dalším přihlášení se zase ukáže sama. (PR #348, `31bf00d`)
+
+### Opravy
+
+- **#371** — Function App na Tailscale tunelu se v tailnetu hlásil vždy jako `fakvio-func`, takže prod a test uzel nešly v Tailscale konzoli ani v ACL rozlišit. Jméno teď dává App Setting `TAILSCALE_HOSTNAME` (výchozí `fakvio-func-prod`); TEST-ENV musí mít `fakvio-func-test`. (PR #371, `87699a2`)
+- **#239** (bezpečnostní oprava) — MCP server (`Fakvio.McpServer`) posílal na každé volání API startupem zachycený token procesu místo tokenu volajícího uživatele; pod HTTP hostingem by to znamenalo, že tool cally jednoho uživatele nesou přihlašovací údaje jiného (cross-tenant leak). Autorizace teď jde per request přes `AuthHeaderHandler`. Ve stdio režimu (aktuální provoz) se chování nemění. (PR #343, `1f98b22`)
+
+### Změny pro vývojáře
+
+- **#241** — nový CI workflow `mcp-server.yml`: balí a publikuje `Fakvio.McpServer` (stdio distribuce) a nasazuje HTTP host. Deploy krok je zatím neaktivní — čeká na ruční založení Azure Web App (vlastní App Service plán, Flex Consumption plán Functions ho hostovat nemůže) a nastavení repo proměnné `MCP_HTTP_APP_NAME`; do té doby merge nic nenasazuje. (PR #360, `e67a5e3`)
+- **#221** — nový Playwright E2E test prochází celou výchozí cestu nové firmy bez živé AI: registrace → nastavení hesla z pozvánky → první přihlášení → doplnění chybějícího bankovního účtu přes `SetupChecklist` (#210) → kontrola, že checklist už nic neblokuje. Běží deterministicky (bez sítě, bez SMTP) a bez zásahu do produkčního kódu. (PR #361, `074cd40`)
+- **#240** — MCP server (`Fakvio.McpServer`) teď umí kromě stdia i vzdálený HTTP transport (`FAKVIO_MCP_TRANSPORT=http`, `MapMcp("/mcp")`), takže se dá připojit odjinud než z lokálního procesu. Session je stateless (žádné sdílené credentials mezi klienty) a každý request se ověřuje proti `GET /api/api-key/me` bez cache — revokace API klíče se projeví okamžitě, ne až po vypršení nějakého okna. Stdio režim (dnešní provoz) se nemění. (PR #357, `d7570b6`)
+- **#227** — AI asistent v chatu teď umí i s upomínkami a platbami: vypsat upomínky a jejich nastavení, přečíst, co platí pro konkrétního klienta, a změnit firemní nastavení upomínání (po odsouhlasení). U bankovních plateb umí vypsat seznam a zobrazit detail — spárování platby s fakturou zůstává na stránce Platby, přes chat se to záměrně nedělá. (PR #340, `b79d5c1`)
+- **#225** — AI asistent v chatu teď umí i se šablonami: vypsat šablony faktur i e-mailových/tiskových šablon dokumentů, zobrazit jejich detail a přepnout, která je výchozí. Editace obsahu šablony zůstává v UI (Quill editor je na to lepší nástroj). (PR #338, `6b249d3`)
+- **#218** — AI asistent v chatu teď umí i s přijatými fakturami: založit novou (podle diktovaných údajů, ne jen z nahraného dokladu), schválit, označit jako zaplacenou nebo smazat. Každá z těchto změn se napřed ukáže k odsouhlasení (dodavatel, částka bez DPH, případně datum úhrady) a teprve po potvrzení se zapíše. Dictovaná sazba DPH se navíc ověřuje proti sazbám, které firma skutečně má nastavené. (PR #281, `595148b`)
+- **#224** — AI asistent v chatu teď umí i číselné řady a sazby DPH: vypsat je, založit novou řadu nebo sazbu a upravit existující (název, prefix/sufix, čítač, procento, platnost, výchozí). Dřív se to dalo měnit jen v UI. Změna výchozí řady/sazby jde jen přesunout na jinou, ne zhasnout — typ dokladu bez výchozí řady by přestal číslovat. (PR #339, `2698d9d`)
+- **#238** — MCP server (Fakvio.McpServer) přešel na SDK `ModelContextProtocol` 2.2.0 (z 1.0.0, které pro `AspNetCore` transport ani neexistovalo) — čistě technický upgrade, drátový kontrakt (`protocolVersion`, `serverInfo`, 37 nástrojů) se nemění, žádná nová funkčnost pro uživatele. Odemyká HTTP transport pro story #144. (PR #337, `d64884f`)
+- **#215** — Dashboard a detail konceptu faktury teď rovnou ukazují, co firmě ještě chybí k vystavení dokladu (sídlo, IČO/DIČ, bankovní účet, číselná řada…) — banner rozlišuje blokující položky od doporučených a každá vede odkazem přímo tam, kde se dá doplnit. Dřív se to zjistilo až při odmítnutém vystavení faktury (#206) nebo dotazem v chatu (#211). Poslední kus story #148. (PR #286, `425925c`)
+- **#217** — AI asistent v chatu teď zvládne celý životní cyklus vydané faktury: zobrazit detail, vystavit koncept, označit jako zaplacenou, poslat e-mailem nebo smazat koncept. Každá z těchto změn se napřed ukáže k odsouhlasení, teprve pak se provede. Export faktury navíc nově umí kromě PDF i formát ISDOC. (PR #280, `26b284d`)
+- **e2e** — nová kategorie Playwright testů `Deployment` ověřuje nasazené prostředí tam, kde lokální běh nestačí: zapečená API URL v bundlu, deep link místo 404, CORS preflight z prohlížeče, dosažitelnost DB z nasazeného hostu a vizuální označení neprodukčního prostředí. Bez `FAKVIO_UI_URL` na https se přeskočí. (PR #335, #336)
+
 ## 2026.08.25.7 — 2026-08-25
 
 ### Změny pro uživatele

@@ -300,7 +300,13 @@ Systémový prompt má šest bloků; editovatelné jsou dva prostřední:
 | 3 | Hlavní instrukce — styl odpovědi, seznam nástrojů, pravidla importu | **ano** |
 | 4 | Dodatek | **ano** |
 | 5 | Business kontext (počty klientů a faktur z databáze tenanta) | ne |
-| 6 | Situační kontext (dnešní datum, otevřená stránka a doklad, chybějící nastavení tenanta) | ne |
+| 6 | Situační kontext (dnešní datum, otevřená stránka a doklad, chybějící nastavení tenanta) + onboarding instrukce | ne |
+
+Blok 6 obsahuje navíc **onboarding instrukce** — jak asistent doprovodí firmu s nedokončeným
+nastavením (ptát se po jednom údaji a rovnou ho zapsat). Přidají se jen tenantům, kterým
+opravdu něco chybí; hotové firmě se do promptu nedostanou vůbec. V bloku 6 jsou schválně:
+vlastní instrukce (blok 3) je nepřepíší, takže ani firma s vlastním promptem o onboarding
+nepřijde. V náhledu je blok vidět (viz níže).
 
 | Pole | Chování |
 |------|---------|
@@ -795,6 +801,7 @@ variables), ne ve workflow souborech. Zápis používá dvojité podtržítko m�
 | `CorsSettings__AllowedOrigins__0` / `__1` | `https://wonderful-meadow-0eb3ada03.7.azurestaticapps.net` a `https://test.fakvio.cz` (oba originy testovacího frontendu) | Musí sedět na frontend URL daného prostředí, jinak prohlížeč zablokuje všechna volání API. Při změně URL frontendu se mění i tady. |
 | `ConnectionStrings__DefaultConnection` | `Host=127.0.0.1;Port=15432;Database=fakvio_test;Username=fakvio_test;Password=***;Ssl Mode=Prefer;Timezone=UTC;Maximum Pool Size=20;Timeout=15` | **`127.0.0.1` není překlep** — míří na lokální konec Tailscale tunelu (viz níž), ne přímo na databázový server. `Ssl Mode=Prefer`, protože provoz už šifruje WireGuard a certifikát na `127.0.0.1` se ověřit nedá; `Timeout=15` kvůli WireGuard handshake při prvním spojení. |
 | `TAILSCALE_AUTHKEY` | `tskey-auth-…` (reusable + ephemeral + tag) | **Spínač celé funkce.** Když klíč chybí, tunel se nepostaví a databáze je nedostupná. Klíč má expiraci — po vypršení se nové instance nepřihlásí. Postup vydání, ACL a rotace: `Fakvio.Functions/Tailscale/README.md`. |
+| `TAILSCALE_HOSTNAME` | `fakvio-func-prod` / `fakvio-func-test` | Jméno uzlu v tailnetu. Prod a test sdílejí tailnet — každé prostředí musí mít vlastní; bez klíče `fakvio-func-prod`. |
 | `Database__AuthMode` | `Password` (produkce: `AzureEntraId`) | Vlastní PostgreSQL Entra ID neumí. Kanonický klíč (§13) — health proto hlásí `authModeSource: Database:AuthMode`. |
 | `UseAzureAdAuthentication` | `false` (produkce: `true`, tedy Entra ID) | **Legacy klíč, musí souhlasit s řádkem výš** — když si budou odporovat, aplikace při startu spadne (fail-fast, §13). Měnit vždy oba zároveň. |
 | `AresSettings__BaseUrl` | shodné s produkcí | |

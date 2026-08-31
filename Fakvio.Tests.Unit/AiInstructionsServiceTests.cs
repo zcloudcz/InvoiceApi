@@ -1,4 +1,4 @@
-using Fakvio.Application.Service;
+﻿using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.SystemConfiguration;
 using Fakvio.Domain.Entities;
 using Fakvio.Infrastructure.Data;
@@ -356,6 +356,17 @@ public class AiInstructionsServiceTests : IDisposable
         preview.FullPrompt.ShouldContain($"- Current page: {AiSystemPrompt.PreviewPlaceholder}");
         preview.FullPrompt.ShouldContain($"- Open record: {AiSystemPrompt.PreviewPlaceholder}");
         preview.FullPrompt.ShouldContain($"- Setup not finished yet: {AiSystemPrompt.PreviewPlaceholder}");
+    }
+
+    [Fact]
+    public async Task GetPreviewAsync_ShowsTheOnboardingInstructions()
+    {
+        // The one block a custom prompt cannot replace (issue #214) — it is appended to the
+        // situational context, not to the main block. The SysAdmin about to overwrite the main
+        // block has to see that these rules stay, otherwise they write them a second time.
+        var preview = await _service.GetPreviewAsync();
+
+        preview.FullPrompt.ShouldContain(AiSystemPrompt.OnboardingInstructions);
     }
 
     [Fact]

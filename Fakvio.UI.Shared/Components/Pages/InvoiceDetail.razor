@@ -261,6 +261,15 @@ else
                    OnClick="@(() => _showEmailDialog = true)">@L["Btn_SendEmail"]</MudButton>
     </div>
 
+    @* Readiness banner (issue #215) — only while the document is still a Draft, because that
+       is the state in which the "Vystavit" button below is one click away from the API's
+       TENANT_NOT_READY refusal (issue #206). Scoped to this document's issuer so an unrelated
+       second company with incomplete settings does not raise a false alarm here. *@
+    @if (_invoice.Status == EInvoiceStatus.Draft)
+    {
+        <ReadinessBanner IssuerId="@(_invoice.IssuerId > 0 ? _invoice.IssuerId : (long?)null)" />
+    }
+
     @* ── Alert banner — shown for proformas with an open OverpaidProforma alert ─────────
        The banner persists until the user resolves the alert via the "Vyřešit přeplatek"
        button, which calls POST /api/alert/{id}/resolve and refreshes the page state.

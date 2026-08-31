@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text.RegularExpressions;
 using Fakvio.Application.Service;
 using Fakvio.Infrastructure.DependencyInjection;
 using Fakvio.Infrastructure.Service;
@@ -59,6 +61,20 @@ public class ChatToolCatalogSchemaTests
     /// <summary>Loaded once for the whole class — building the container costs ~200 ms.</summary>
     private static readonly RealToolCatalog Catalog = RealToolCatalog.Load();
 
+    /// <summary>
+    /// Both DEVGUIDE §4.7 spellings of the shipped chat tool count: <c>`IChatTool`, 34 toolů</c>
+    /// in the section intro and <c>37 MCP toolů, 34 chat toolů</c> in the totals line.
+    ///
+    /// Each alternative carries the words around the number, not just the number: the totals
+    /// paragraph goes on to say "12 chat toolů nemá MCP protějšek", which a bare
+    /// <c>(\d+) chat toolů</c> would also match and compare against the wrong quantity.
+    /// Reusing one group name across alternatives is legal in .NET regex and keeps the read
+    /// site to a single lookup.
+    /// </summary>
+    private static readonly Regex PublishedChatToolCount = new(
+        @"`IChatTool`, (?<count>\d+) toolů|MCP toolů, (?<count>\d+) chat toolů",
+        RegexOptions.Compiled);
+
     /// <summary>Tool names drive the data-driven tests, so a failure names the guilty tool.</summary>
     public static TheoryData<string> RealToolNames
     {
@@ -101,6 +117,45 @@ public class ChatToolCatalogSchemaTests
             .Select(tool => tool.GetType().Name)
             .Order()
             .ShouldBe(implementedTools, Case.Sensitive, "every registered tool must also be resolvable from the container");
+    }
+
+    [Fact]
+    public void DevGuide_PublishesTheLiveNumberOfChatTools()
+    {
+        // DEVGUIDE §4.7 states how many chat tools ship, and the number is load-bearing:
+        // it is what the next author trusts instead of counting registrations again.
+        //
+        // Why it needs a test and a reviewer is not enough: when two feature branches each
+        // add tools, both rewrite that sentence to a DIFFERENT number, but the sentence that
+        // was never touched stays byte-identical on both sides — git merges it silently, no
+        // conflict marker appears, and the guide ships a stale count. #225 hit exactly that
+        // after #217 merged. Nothing downstream fails, so it only surfaces when a human
+        // notices the arithmetic does not add up.
+        //
+        // The expectation is derived from the live container (the same source the rest of
+        // this class uses), never written out here — a hard-coded literal would be the very
+        // thing that goes stale.
+        var expected = Catalog.Tools.Count;
+
+        var devGuide = File.ReadAllText(Path.Combine(FindRepositoryRoot(), "DEVGUIDE.md"));
+
+        var published = PublishedChatToolCount
+            .Matches(devGuide)
+            .Select(match => int.Parse(match.Groups["count"].Value, CultureInfo.InvariantCulture))
+            .ToList();
+
+        published.Count.ShouldBeGreaterThanOrEqualTo(
+            2,
+            "DEVGUIDE §4.7 publishes the chat tool count twice (the intro line and the totals line); "
+            + "if the wording changed, update PublishedChatToolCount so the guard keeps biting");
+
+        // Distinct() so the failure message reads as "the guide says 29, we ship 34" rather
+        // than repeating the same wrong number once per occurrence.
+        published
+            .Distinct()
+            .ShouldBe(
+                [expected],
+                $"every chat tool count in DEVGUIDE.md must match the {expected} tools registered in AddFakvioCore");
     }
 
     [Fact]
@@ -286,6 +341,23 @@ public class ChatToolCatalogSchemaTests
         }
 
         return mirror;
+    }
+
+    /// <summary>
+    /// Walks up from the test binaries to the folder that holds <c>Fakvio.sln</c>, so a test
+    /// can read a file that lives in the repository root. A relative "../../../.." would be
+    /// shorter and would break the day the build layout or target framework changes.
+    /// </summary>
+    private static string FindRepositoryRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Fakvio.sln")))
+        {
+            directory = directory.Parent;
+        }
+
+        directory.ShouldNotBeNull($"Fakvio.sln was not found in any folder above {AppContext.BaseDirectory}");
+        return directory.FullName;
     }
 
     /// <summary>

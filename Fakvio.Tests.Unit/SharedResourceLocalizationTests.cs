@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Reflection;
+using Fakvio.Contracts.Dto.Readiness;
 using Fakvio.UI.Shared;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Localization;
@@ -183,6 +185,44 @@ public class SharedResourceLocalizationTests : IDisposable
                 result.ResourceNotFound.ShouldBeFalse(
                     $"Key '{key}' is missing from the {culture} resources.");
             }
+        }
+    }
+
+    [Fact]
+    public void ReadinessKeys_ShouldBeTranslated_InBothCultures()
+    {
+        // The readiness banner (issue #215) turns each ReadinessCodes constant into the
+        // localization key "Readiness_Code_<CODE>". Deriving the expected keys from the
+        // constants instead of hard-coding them means adding a rule to the readiness service
+        // without translating it fails here, rather than showing the fallback text to a user.
+        var codeKeys = typeof(ReadinessCodes)
+            .GetFields(BindingFlags.Public | BindingFlags.Static)
+            .Where(f => f.IsLiteral && f.FieldType == typeof(string))
+            .Select(f => $"Readiness_Code_{(string)f.GetRawConstantValue()!}");
+
+        // The dashboard checklist (issue #210) renders the same report, so its own two chrome
+        // keys are covered here rather than in a near-identical second test.
+        var readinessKeys = codeKeys
+            .Concat(["Readiness_BlockingTitle", "Readiness_WarningTitle",
+                     "Readiness_FixLink", "Readiness_Code_Unknown",
+                     "SetupChecklist_Title", "SetupChecklist_Defer"])
+            .ToArray();
+
+        foreach (var key in readinessKeys)
+        {
+            CultureInfo.CurrentUICulture = new CultureInfo("cs-CZ");
+            var czech = _localizer[key];
+            czech.ResourceNotFound.ShouldBeFalse($"Key '{key}' is missing from the Czech resources.");
+
+            CultureInfo.CurrentUICulture = new CultureInfo("en-US");
+            var english = _localizer[key];
+            english.ResourceNotFound.ShouldBeFalse($"Key '{key}' is missing from the English resources.");
+
+            // A key present only in the neutral (Czech) file silently falls back instead of
+            // reporting ResourceNotFound, so an English speaker would be shown Czech text.
+            // Comparing the two values is what actually catches a forgotten translation.
+            english.Value.ShouldNotBe(czech.Value,
+                $"Key '{key}' has no English translation — it falls back to the Czech text.");
         }
     }
 
