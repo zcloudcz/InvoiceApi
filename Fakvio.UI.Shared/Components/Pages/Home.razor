@@ -173,6 +173,13 @@ else
        Shows tenant-specific invoice/client statistics.
        ════════════════════════════════════════════════════════════════════ *@
 
+    @* Setup checklist (issue #210) — the first thing a freshly registered tenant sees, so
+       unfinished company settings surface here rather than at the first refused invoice.
+       It reads the whole-tenant readiness report and replaces both the previous ReadinessBanner
+       on this page (same report, same items, but this one can be deferred) and the hard-coded
+       "Quick Start" timeline that used to sit at the bottom. Renders nothing when ready. *@
+    <SetupChecklist />
+
     @* Top statistics cards - 3 KPIs (clickable → navigate to corresponding list page).
        The first tile forecasts cashflow for the current calendar month: how many issued
        (Completed) invoices come due before month-end, plus totals without / with VAT. *@
@@ -607,37 +614,6 @@ else
             </MudItem>
         </MudGrid>
     }
-
-    @* Quick start guide for new users *@
-    <MudGrid Class="mt-6">
-        <MudItem xs="12">
-            <MudCard Elevation="2">
-                <MudCardHeader>
-                    <CardHeaderContent>
-                        <MudText Typo="Typo.h6">@L["Dashboard_QuickStart"]</MudText>
-                    </CardHeaderContent>
-                </MudCardHeader>
-                <MudCardContent>
-                    <MudTimeline TimelineOrientation="TimelineOrientation.Vertical" TimelinePosition="TimelinePosition.Start">
-                        @* VAT rates onboarding step intentionally removed — VAT rates are a system code table,
-                           not a per-user setup step, so they no longer belong in the Quick Start guide. *@
-                        <MudTimelineItem Color="Color.Info" Size="Size.Small">
-                            <ItemContent>
-                                <MudText Typo="Typo.h6" GutterBottom="true">@L["Dashboard_ManageClients"]</MudText>
-                                <MudText>@L["Dashboard_ManageClientsDesc"] <MudLink Href="/clients" Color="Color.Primary">@L["Nav_Clients"]</MudLink></MudText>
-                            </ItemContent>
-                        </MudTimelineItem>
-                        <MudTimelineItem Color="Color.Primary" Size="Size.Small">
-                            <ItemContent>
-                                <MudText Typo="Typo.h6" GutterBottom="true">@L["Dashboard_CreateInvoices"]</MudText>
-                                <MudText>@L["Dashboard_CreateInvoicesDesc"] <MudLink Href="/invoices" Color="Color.Primary">@L["Nav_Invoices"]</MudLink></MudText>
-                            </ItemContent>
-                        </MudTimelineItem>
-                    </MudTimeline>
-                </MudCardContent>
-            </MudCard>
-        </MudItem>
-    </MudGrid>
 }
 
 @code {

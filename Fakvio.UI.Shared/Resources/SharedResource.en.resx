@@ -306,13 +306,8 @@
   <data name="Dashboard_OverdueAlert" xml:space="preserve"><value>overdue invoice(s) require attention!</value></data>
   <data name="Dashboard_NoInvoicesYet" xml:space="preserve"><value>No invoices yet.</value></data>
   <data name="Dashboard_CreateFirst" xml:space="preserve"><value>Create your first invoice</value></data>
-  <data name="Dashboard_QuickStart" xml:space="preserve"><value>Quick start</value></data>
   <data name="Dashboard_SetupVat" xml:space="preserve"><value>Set up VAT rates</value></data>
   <data name="Dashboard_SetupVatDesc" xml:space="preserve"><value>Go to</value></data>
-  <data name="Dashboard_ManageClients" xml:space="preserve"><value>Manage clients</value></data>
-  <data name="Dashboard_ManageClientsDesc" xml:space="preserve"><value>Add your clients in</value></data>
-  <data name="Dashboard_CreateInvoices" xml:space="preserve"><value>Create invoices</value></data>
-  <data name="Dashboard_CreateInvoicesDesc" xml:space="preserve"><value>Start issuing invoices in</value></data>
   <data name="Dashboard_Days" xml:space="preserve"><value>days</value></data>
   <data name="VatRate_Subtitle" xml:space="preserve"><value>Manage value added tax rates</value></data>
   <data name="VatRate_NoRecords" xml:space="preserve"><value>No VAT rates found.</value></data>
@@ -1066,6 +1061,10 @@
   <data name="Chat_UnsupportedFileType" xml:space="preserve"><value>Unsupported file type.</value></data>
   <data name="Chat_FileTooLarge" xml:space="preserve"><value>File exceeds the maximum allowed size of 10 MB.</value></data>
   <data name="Chat_Error_Unexpected" xml:space="preserve"><value>The message could not be processed. Please try again.</value></data>
+  <!-- Conversational onboarding (issue #214) — the assistant greets first when the tenant
+       setup is unfinished. The list of gaps is composed from the Readiness_Code_* keys. -->
+  <data name="Chat_Onboarding_Intro" xml:space="preserve"><value>Welcome to Fakvio! A few details are still missing before you can issue your first invoice:</value></data>
+  <data name="Chat_Onboarding_Ask" xml:space="preserve"><value>We can fill them in right here in the chat — I will ask for one at a time and save it straight away. Shall we start?</value></data>
   <data name="EChatRole_User" xml:space="preserve"><value>You</value></data>
   <data name="EChatRole_Assistant" xml:space="preserve"><value>Assistant</value></data>
   <!-- Received Invoices (Expenses) -->
@@ -1669,6 +1668,23 @@
   <data name="Epo_ContactPhone" xml:space="preserve"><value>Contact phone</value></data>
   <data name="Epo_ContactEmail" xml:space="preserve"><value>Contact email</value></data>
   <data name="Epo_AuthorizedPersonName" xml:space="preserve"><value>Authorized person name</value></data>
+  <!-- Tenant readiness (issue #215) — banner texts for unfinished mandatory settings.
+       Readiness_Code_* keys map 1:1 to the ReadinessCodes constants; a new code in the API
+       needs a new key here, otherwise the user gets the generic Readiness_Code_Unknown. -->
+  <data name="Readiness_BlockingTitle" xml:space="preserve"><value>Complete these settings before you start invoicing</value></data>
+  <data name="Readiness_WarningTitle" xml:space="preserve"><value>Recommended settings to complete</value></data>
+  <data name="Readiness_FixLink" xml:space="preserve"><value>Complete</value></data>
+  <data name="Readiness_Code_Unknown" xml:space="preserve"><value>A mandatory company setting is missing.</value></data>
+  <data name="Readiness_Code_ISSUER_MISSING" xml:space="preserve"><value>No company is set up as the invoice issuer.</value></data>
+  <data name="Readiness_Code_ISSUER_ADDRESS_INCOMPLETE" xml:space="preserve"><value>Your company address is incomplete.</value></data>
+  <data name="Readiness_Code_ISSUER_REGISTRATION_NUMBER_MISSING" xml:space="preserve"><value>Your company has no registration number (IČO).</value></data>
+  <data name="Readiness_Code_ISSUER_TAX_NUMBER_MISSING" xml:space="preserve"><value>Your company is a VAT payer but has no tax number (DIČ).</value></data>
+  <data name="Readiness_Code_ISSUER_BANK_ACCOUNT_MISSING" xml:space="preserve"><value>Your company has no bank account, so invoices would not say where to pay.</value></data>
+  <data name="Readiness_Code_NUMBER_SEQUENCE_MISSING" xml:space="preserve"><value>There is no active number sequence for this document type.</value></data>
+  <data name="Readiness_Code_EPO_HEADER_INCOMPLETE" xml:space="preserve"><value>EPO header data is missing, so the VAT return cannot be exported.</value></data>
+  <!-- Setup checklist on the dashboard (issue #210) -->
+  <data name="SetupChecklist_Title" xml:space="preserve"><value>Finish setup</value></data>
+  <data name="SetupChecklist_Defer" xml:space="preserve"><value>Remind me later</value></data>
   <!-- Integrations / API keys (/settings/integrations) -->
   <data name="Nav_Integrations" xml:space="preserve"><value>Integrations</value></data>
   <data name="Integration_Title" xml:space="preserve"><value>Integrations and API keys</value></data>
