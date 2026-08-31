@@ -43,6 +43,16 @@ public static class TailscaleTunnel
     /// <summary>Environment variable overriding the database port on that host.</summary>
     public const string TargetPortEnv = "TAILSCALE_TARGET_PORT";
 
+    /// <summary>
+    /// Environment variable overriding the name the node registers under in the tailnet. Each
+    /// environment must use its own (prod and test share one tailnet and one codebase), so the
+    /// admin console and the ACLs can tell the two Function Apps apart.
+    /// </summary>
+    public const string HostnameEnv = "TAILSCALE_HOSTNAME";
+
+    /// <summary>Node name used when <see cref="HostnameEnv"/> is not set.</summary>
+    public const string DefaultHostname = "fakvio-func-prod";
+
     // The default location of the daemon socket (/var/run/tailscale/) is not writable in the
     // Flex Consumption sandbox, so both the daemon and every CLI call are pointed at /tmp.
     public const string SocketPath = "/tmp/tailscaled.sock";
@@ -114,8 +124,15 @@ public static class TailscaleTunnel
     /// rewriting /etc/resolv.conf fails in the sandbox; <c>--timeout</c> so a stuck login gives up
     /// instead of hanging startup.
     /// </summary>
-    public static string UpArguments(string authKey) =>
-        $"--socket={SocketPath} up --authkey={authKey} --hostname=fakvio-func --accept-dns=false --timeout=30s";
+    public static string UpArguments(string authKey, string hostname) =>
+        $"--socket={SocketPath} up --authkey={authKey} --hostname={hostname} --accept-dns=false --timeout=30s";
+
+    /// <summary>Reads the node name from the environment, falling back to <see cref="DefaultHostname"/>.</summary>
+    public static string ResolveHostname()
+    {
+        var hostname = Environment.GetEnvironmentVariable(HostnameEnv);
+        return string.IsNullOrWhiteSpace(hostname) ? DefaultHostname : hostname.Trim();
+    }
 
     /// <summary>
     /// Starts the tunnel when an auth key is configured. Returns false when the feature is off.
@@ -483,7 +500,7 @@ public static class TailscaleTunnel
             }
 
             // NEVER log the argument string — it carries the auth key.
-            var (exitCode, output) = await RunToCompletionAsync(tailscalePath, UpArguments(authKey), authKey, cancellationToken);
+            var (exitCode, output) = await RunToCompletionAsync(tailscalePath, UpArguments(authKey, ResolveHostname()), authKey, cancellationToken);
             if (exitCode == 0)
             {
                 Milestone(logger, $"up OK (attempt {attempt})");
