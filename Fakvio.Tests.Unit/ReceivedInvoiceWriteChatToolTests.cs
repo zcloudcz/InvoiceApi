@@ -904,6 +904,107 @@ public class ReceivedInvoiceWriteChatToolTests
             Arg.Any<CreateReceivedInvoiceDto>(), Arg.Any<CancellationToken>());
     }
 
+    /// <summary>
+    /// The quantity guard reads through <c>RawItemOptions</c>' <c>AllowReadingFromString</c>, so a
+    /// model that quotes its numbers ("quantity": "0") must be rejected exactly like a bare 0 —
+    /// not silently parsed away because the JSON kind is String instead of Number.
+    /// </summary>
+    [Fact]
+    public async Task Create_WithQuantityAsQuotedZeroString_RefusesAndCreatesNothing()
+    {
+        var service = Substitute.For<IReceivedInvoiceService>();
+
+        var result = await BuildCreateTool(service).ExecuteAsync(new()
+        {
+            ["supplier_name"] = "Alza",
+            ["items"] = """[{"description": "Toner", "quantity": "0", "unit_price": 1500}]"""
+        });
+
+        result.IsSuccess.ShouldBeFalse();
+        result.ErrorMessage!.ShouldContain("quantity");
+        await service.DidNotReceive().CreateAsync(
+            Arg.Any<CreateReceivedInvoiceDto>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The other half of Nález 1: a missing default rate must NOT block an item that dictates its
+    /// own valid <c>vat_rate</c> — the guard only fires on <c>usesDefaultRate</c>, and the
+    /// <c>defaultVatRate!</c> null-forgiving operators lower down must never be reached on this
+    /// path. Pins the branch the reviewer's round-2 approval relied on without a regression test.
+    /// </summary>
+    [Fact]
+    public async Task Create_WithNoDefaultVatRateButAnExplicitValidVatRate_CreatesWithTheDictatedRate()
+    {
+        var service = Substitute.For<IReceivedInvoiceService>();
+        service.CreateAsync(Arg.Any<CreateReceivedInvoiceDto>(), Arg.Any<CancellationToken>())
+            .Returns(BuildInvoice(id: 7));
+        var vatRateService = Substitute.For<IVatRateService>();
+        vatRateService.GetDefaultStandardRateAsync(Arg.Any<CancellationToken>())
+            .Returns((VatRateDto?)null);
+        vatRateService.GetActiveVatRatesForDateAsync(Arg.Any<DateTime?>(), Arg.Any<CancellationToken>())
+            .Returns(SeededVatRates());
+
+        var result = await BuildCreateTool(service, vatRateService: vatRateService).ExecuteAsync(new()
+        {
+            ["supplier_name"] = "Alza",
+            ["items"] = """[{"description": "Kniha", "unit_price": 300, "vat_rate": 12}]"""
+        });
+
+        result.IsSuccess.ShouldBeTrue();
+        await service.Received(1).CreateAsync(
+            Arg.Is<CreateReceivedInvoiceDto>(dto =>
+                dto.Items[0].VatRateId == null &&
+                dto.Items[0].VatRatePercentage == 12m),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The preview half of Nález 1: <see cref="CreateReceivedInvoiceTool.BuildPreviewAsync"/>
+    /// shares <c>PrepareAsync</c> with <c>ExecuteAsync</c>, but that is exactly the kind of thing
+    /// a future refactor could break without either write path failing — the preview must refuse
+    /// on the same missing-default-rate condition, not just describe an expense that the confirmed
+    /// call would then reject.
+    /// </summary>
+    [Fact]
+    public async Task CreatePreview_WithNoDefaultVatRateAndNoDictatedRate_RefusesToo()
+    {
+        var service = Substitute.For<IReceivedInvoiceService>();
+        var vatRateService = Substitute.For<IVatRateService>();
+        vatRateService.GetDefaultStandardRateAsync(Arg.Any<CancellationToken>())
+            .Returns((VatRateDto?)null);
+        vatRateService.GetActiveVatRatesForDateAsync(Arg.Any<DateTime?>(), Arg.Any<CancellationToken>())
+            .Returns(SeededVatRates());
+
+        var result = await BuildCreateTool(service, vatRateService: vatRateService).BuildPreviewAsync(new()
+        {
+            ["supplier_name"] = "Alza",
+            ["items"] = OneItem
+        });
+
+        result.IsSuccess.ShouldBeFalse();
+        result.ErrorMessage!.ShouldContain("vat_rate");
+        await service.DidNotReceive().CreateAsync(
+            Arg.Any<CreateReceivedInvoiceDto>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>The preview half of Nález 2 — same reasoning as the preview VAT test above.</summary>
+    [Fact]
+    public async Task CreatePreview_WithAnExplicitNonPositiveQuantity_RefusesToo()
+    {
+        var service = Substitute.For<IReceivedInvoiceService>();
+
+        var result = await BuildCreateTool(service).BuildPreviewAsync(new()
+        {
+            ["supplier_name"] = "Alza",
+            ["items"] = """[{"description": "Toner", "quantity": 0, "unit_price": 1500}]"""
+        });
+
+        result.IsSuccess.ShouldBeFalse();
+        result.ErrorMessage!.ShouldContain("quantity");
+        await service.DidNotReceive().CreateAsync(
+            Arg.Any<CreateReceivedInvoiceDto>(), Arg.Any<CancellationToken>());
+    }
+
     [Fact]
     public async Task Create_ChecksTheRatesValidOnTheDayOfSupply_NotToday()
     {

@@ -631,6 +631,28 @@ public class CreateInvoiceToolTests
             Arg.Any<CreateInvoiceDto>(), Arg.Any<CancellationToken>());
     }
 
+    [Fact]
+    public async Task CreateInvoice_QuotedZeroQuantityString_ReturnsFailure()
+    {
+        // Arrange — GetJsonDecimal also accepts a quoted number ("quantity": "0"), which models
+        // send surprisingly often. The <= 0 rejection must fire on that path too, not just on a
+        // bare JSON number.
+        var parameters = new Dictionary<string, string>
+        {
+            ["client_name"] = "Alza",
+            ["items"] = """[{"description": "Test", "quantity": "0", "unit_price": 100}]"""
+        };
+
+        // Act
+        var result = await _tool.ExecuteAsync(parameters);
+
+        // Assert
+        result.IsSuccess.ShouldBeFalse();
+        result.OutputText.ShouldContain("quantity");
+        await _invoiceService.DidNotReceive().CreateInvoiceAsync(
+            Arg.Any<CreateInvoiceDto>(), Arg.Any<CancellationToken>());
+    }
+
     // ─── Error Handling Tests ───────────────────────────────────────────
 
     [Fact]
