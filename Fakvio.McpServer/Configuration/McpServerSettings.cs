@@ -3,7 +3,7 @@ namespace Fakvio.McpServer.Configuration;
 /// <summary>
 /// Configuration POCO for the MCP server.
 /// Values are read from environment variables at startup:
-///   - FAKVIO_API_URL  → ApiBaseUrl  (default: https://localhost:7001)
+///   - FAKVIO_API_URL  → ApiBaseUrl  (default: https://localhost:7047)
 ///   - FAKVIO_API_TOKEN → ApiToken   (required — JWT bearer token)
 ///
 /// Junior note: This class holds settings but has no logic.
@@ -12,10 +12,11 @@ namespace Fakvio.McpServer.Configuration;
 public class McpServerSettings
 {
     /// <summary>
-    /// Base URL of the Fakvio REST API (e.g., "https://localhost:7001").
-    /// Defaults to localhost for local development.
+    /// Base URL of the Fakvio REST API (e.g., "https://localhost:7047").
+    /// Defaults to the local Fakvio.API https launch profile
+    /// (see Fakvio.API/Properties/launchSettings.json) for local development.
     /// </summary>
-    public string ApiBaseUrl { get; set; } = "https://localhost:7001";
+    public string ApiBaseUrl { get; set; } = "https://localhost:7047";
 
     /// <summary>
     /// JWT bearer token used to authenticate API requests.

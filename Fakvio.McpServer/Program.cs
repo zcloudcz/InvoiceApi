@@ -24,7 +24,7 @@ using Microsoft.Extensions.Logging;
 //
 // Environment variables:
 //   FAKVIO_MCP_TRANSPORT — "stdio" (default) or "http"
-//   FAKVIO_API_URL       — API base URL, defaults to https://localhost:7001
+//   FAKVIO_API_URL       — API base URL, defaults to https://localhost:7047
 //   FAKVIO_API_TOKEN     — JWT bearer token; REQUIRED in stdio mode, unused in http mode
 //   ASPNETCORE_URLS      — http mode only: what Kestrel binds to (standard ASP.NET Core)
 // ──────────────────────────────────────────────────────────────────────
@@ -32,7 +32,7 @@ using Microsoft.Extensions.Logging;
 // ── Configuration ──────────────────────────────────────────────────
 var settings = new McpServerSettings
 {
-    ApiBaseUrl = Environment.GetEnvironmentVariable("FAKVIO_API_URL") ?? "https://localhost:7001",
+    ApiBaseUrl = Environment.GetEnvironmentVariable("FAKVIO_API_URL") ?? "https://localhost:7047",
     ApiToken = Environment.GetEnvironmentVariable("FAKVIO_API_TOKEN") ?? string.Empty
 };
 
