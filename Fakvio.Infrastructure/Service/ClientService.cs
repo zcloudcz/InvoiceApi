@@ -299,7 +299,8 @@ public class ClientService : IClientService
             ActivityType = Enum.TryParse<Domain.Enums.EActivityType>(createDto.ActivityType, out var activity) ? activity : null,
             IsMainActivity = createDto.IsMainActivity,
             FlatRateBand = Enum.TryParse<Domain.Enums.EFlatRateBand>(createDto.FlatRateBand, out var band) ? band : null,
-            Color = createDto.Color
+            Color = createDto.Color,
+            Language = createDto.Language
         };
 
         // Add addresses — ZMapper handles property mapping (AddressType, Street, City, etc.)
@@ -398,6 +399,10 @@ public class ClientService : IClientService
         // Update display color — empty string clears the color
         if (updateDto.Color != null)
             client.Color = string.IsNullOrEmpty(updateDto.Color) ? null : updateDto.Color;
+
+        // Update preferred document language — null means "don't change" (see UpdateClientDto doc).
+        if (updateDto.Language != null)
+            client.Language = updateDto.Language;
 
         // Update tax regime fields if provided.
         if (updateDto.TaxRegime != null)

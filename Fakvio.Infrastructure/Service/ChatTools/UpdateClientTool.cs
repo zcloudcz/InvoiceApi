@@ -18,6 +18,11 @@ namespace Fakvio.Infrastructure.Service.ChatTools;
 /// <see cref="UpdateClientDto"/>, so a model that sends one address wipes the other three.
 /// Editing those stays in the UI until someone asks for it.
 ///
+/// <c>Language</c> (document language, "cs"/"en") is intentionally NOT exposed here (see #306):
+/// it is a document-rendering preference, not an identity field a user corrects mid-conversation
+/// like the ones above, and no chat request for it has come up. Add it the same way as
+/// <c>company_name</c> if that changes — the MCP <c>UpdateClient</c> tool already supports it.
+///
 /// Junior note on what the gate is NOT: an authorization boundary. Editing a client is
 /// something the user can already do in the UI — the gate only stops the assistant from doing
 /// it silently. The <c>confirm</c> parameter is added by the executor, never declared here
