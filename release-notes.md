@@ -21,6 +21,7 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 ## Nevydáno
 
 ### Opravy
+- **#279** — MCP server nově sanitizuje těla chyb API předtím, než je pošle externím klientům, takže neúmyslně nezuniknou interní detaily jako stack trace nebo SQL chyby. Zrušené requesty nyní správně propagují místo toho, aby se konvertovaly na falešné doménové chyby. (PR #381, `28470c96`)
 
 - **#283** — chat tooly `create_invoice` a `create_received_invoice` tichou chybou zaměňovaly chybějící výchozí sazbu DPH nulou a nekladné množství jedničkou. U neplátců DPH bylo to správné chování (0 % je legitimní sazba), ale `create_invoice` to špatně aplikoval i na plátce, kde by selhalo teprve v service s vágní hláškou o povinnosti sazby. Nově se guard podmíňuje statusem plátcovství: plátce bez výchozí sazby dostane čitelnou zprávu a možnost ji nastavit; neplátce fakturu vytvoří se správnou nulou. `create_received_invoice` zůstává bezpodmínečný (přijaté doklady jsou cizího původu). (PR #382, `e66cca8`)
 - **#257** — MCP server měl default `FAKVIO_API_URL` na `7001`, ale lokální API dle launchSettings běží na `7047`; default proto nikdy nefungoval bez explicitního nastavení env proměnné. Default je nyní `7047` shodný s API profilu; detaily zkopírované do kódu a README se teď hlídají testem, aby se nedriftovaly znovu. (PR #378, `c86de66`)
@@ -43,6 +44,7 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 - **#210** — dashboard místo statického „Rychlý start" teď ukazuje živý přehled, co firmě ještě chybí k vystavení faktury — položky jsou rozdělené na blokující a doporučené (ne jen barvou, i nadpisem), každá vede přímo tam, kde se dá doplnit. Kartu jde tlačítkem „Připomenout později" sbalit na jeden řádek, ale nezmizí natrvalo — jakmile něco chybí, po dalším přihlášení se zase ukáže sama. (PR #348, `31bf00d`)
 
 ### Opravy
+- **#279** — MCP server nově sanitizuje těla chyb API předtím, než je pošle externím klientům, takže neúmyslně nezuniknou interní detaily jako stack trace nebo SQL chyby. Zrušené requesty nyní správně propagují místo toho, aby se konvertovaly na falešné doménové chyby. (PR #381, `28470c96`)
 
 - **#371** — Function App na Tailscale tunelu se v tailnetu hlásil vždy jako `fakvio-func`, takže prod a test uzel nešly v Tailscale konzoli ani v ACL rozlišit. Jméno teď dává App Setting `TAILSCALE_HOSTNAME` (výchozí `fakvio-func-prod`); TEST-ENV musí mít `fakvio-func-test`. (PR #371, `87699a2`)
 - **#239** (bezpečnostní oprava) — MCP server (`Fakvio.McpServer`) posílal na každé volání API startupem zachycený token procesu místo tokenu volajícího uživatele; pod HTTP hostingem by to znamenalo, že tool cally jednoho uživatele nesou přihlašovací údaje jiného (cross-tenant leak). Autorizace teď jde per request přes `AuthHeaderHandler`. Ve stdio režimu (aktuální provoz) se chování nemění. (PR #343, `1f98b22`)
