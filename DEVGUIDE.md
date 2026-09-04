@@ -835,6 +835,10 @@ Pravidla:
    (povinnost, povolené hodnoty, typ) a chybu vrací modelu, který si volání opraví.
    Do toolu patří jen pravidla, která schéma nevyjádří (např. „aspoň jeden z `id` /
    `document_number`" v `GetReceivedInvoiceTool`).
+   Ze stejného důvodu tool nepotřebuje **ani vlastní `.Trim()`** na hodnotách — `ExecuteToolAsync`
+   normalizuje (trimne) každou hodnotu ještě před validací i dispatchem, takže `ExecuteAsync`
+   i `BuildPreviewAsync` u `IConfirmableChatTool` dostanou vždy stejný, už oříznutý řetězec
+   (issue #268; dřív se validovala trimnutá hodnota, ale toolu se poslala netrimnutá).
 3. **Rozbité schéma spadne hlasitě.** Chybějící `Parameters` = chyba buildu (interface),
    duplicitní/prázdný název parametru, chybějící popis nebo `AllowedValues` na ne-stringu
    = `InvalidOperationException` při startu v konstruktoru `ChatToolExecutor`.
