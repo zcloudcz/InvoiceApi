@@ -582,8 +582,9 @@ public class ReportingChatToolTests
 
         var totalLine = result.OutputText.Split('\n').Single(line => line.Contains("Page total"));
 
-        totalLine.ShouldContain($"{17100m:N2} CZK");
-        totalLine.ShouldNotContain(";"); // a single currency never needs the separator
+        // Exact line, not just Contains — pins the "  Page total (with VAT): " prefix and the
+        // absence of a separator, not merely that the right number appears somewhere.
+        totalLine.TrimEnd('\r').ShouldBe($"  Page total (with VAT): {17100m:N2} CZK");
     }
 
     /// <summary>
@@ -606,9 +607,9 @@ public class ReportingChatToolTests
 
         var totalLine = result.OutputText.Split('\n').Single(line => line.Contains("Page total"));
 
-        totalLine.ShouldContain($"{12100m:N2} CZK");
-        totalLine.ShouldContain($"{500m:N2} EUR");
-        totalLine.ShouldNotContain($"{12600m:N2}"); // must never be summed across currencies
+        // Exact line — pins the "; " separator and the CZK-before-EUR ordinal order, not just
+        // that both numbers appear somewhere and 12600 does not.
+        totalLine.TrimEnd('\r').ShouldBe($"  Page total (with VAT): {12100m:N2} CZK; {500m:N2} EUR");
     }
 
     /// <summary>
