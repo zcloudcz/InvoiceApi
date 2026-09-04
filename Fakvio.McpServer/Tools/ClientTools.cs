@@ -55,9 +55,13 @@ public static class ClientTools
             var result = await api.GetClientsPagedAsync(filter, ct);
             return JsonSerializer.Serialize(result, JsonOptions);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
-            return JsonSerializer.Serialize(new { error = ex.Message }, JsonOptions);
+            return McpToolError.ToJson(ex);
         }
     }
 
@@ -81,9 +85,13 @@ public static class ClientTools
 
             return JsonSerializer.Serialize(client, JsonOptions);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
-            return JsonSerializer.Serialize(new { error = ex.Message }, JsonOptions);
+            return McpToolError.ToJson(ex);
         }
     }
 
@@ -107,23 +115,33 @@ public static class ClientTools
         )] string clientJson,
         CancellationToken ct = default)
     {
+        // Parsing the model's own input is deliberately kept OUT of the try block
+        // below — see McpToolError for why (issue #279).
+        CreateClientDto? dto;
         try
         {
-            var dto = JsonSerializer.Deserialize<CreateClientDto>(clientJson, JsonOptions);
-
-            if (dto is null)
-                return JsonSerializer.Serialize(new { error = "Invalid JSON: could not deserialize CreateClientDto." }, JsonOptions);
-
-            var result = await api.CreateClientAsync(dto, ct);
-            return JsonSerializer.Serialize(result, JsonOptions);
+            dto = JsonSerializer.Deserialize<CreateClientDto>(clientJson, JsonOptions);
         }
         catch (JsonException ex)
         {
             return JsonSerializer.Serialize(new { error = $"Invalid JSON format: {ex.Message}" }, JsonOptions);
         }
+
+        if (dto is null)
+            return JsonSerializer.Serialize(new { error = "Invalid JSON: could not deserialize CreateClientDto." }, JsonOptions);
+
+        try
+        {
+            var result = await api.CreateClientAsync(dto, ct);
+            return JsonSerializer.Serialize(result, JsonOptions);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
-            return JsonSerializer.Serialize(new { error = ex.Message }, JsonOptions);
+            return McpToolError.ToJson(ex);
         }
     }
 
@@ -144,23 +162,33 @@ public static class ClientTools
         )] string clientJson,
         CancellationToken ct = default)
     {
+        // Parsing the model's own input is deliberately kept OUT of the try block
+        // below — see McpToolError for why (issue #279).
+        UpdateClientDto? dto;
         try
         {
-            var dto = JsonSerializer.Deserialize<UpdateClientDto>(clientJson, JsonOptions);
-
-            if (dto is null)
-                return JsonSerializer.Serialize(new { error = "Invalid JSON: could not deserialize UpdateClientDto." }, JsonOptions);
-
-            var result = await api.UpdateClientAsync(clientId, dto, ct);
-            return JsonSerializer.Serialize(result, JsonOptions);
+            dto = JsonSerializer.Deserialize<UpdateClientDto>(clientJson, JsonOptions);
         }
         catch (JsonException ex)
         {
             return JsonSerializer.Serialize(new { error = $"Invalid JSON format: {ex.Message}" }, JsonOptions);
         }
+
+        if (dto is null)
+            return JsonSerializer.Serialize(new { error = "Invalid JSON: could not deserialize UpdateClientDto." }, JsonOptions);
+
+        try
+        {
+            var result = await api.UpdateClientAsync(clientId, dto, ct);
+            return JsonSerializer.Serialize(result, JsonOptions);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
-            return JsonSerializer.Serialize(new { error = ex.Message }, JsonOptions);
+            return McpToolError.ToJson(ex);
         }
     }
 
@@ -188,9 +216,13 @@ public static class ClientTools
 
             return JsonSerializer.Serialize(result, JsonOptions);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
-            return JsonSerializer.Serialize(new { error = ex.Message }, JsonOptions);
+            return McpToolError.ToJson(ex);
         }
     }
 
@@ -215,9 +247,13 @@ public static class ClientTools
 
             return JsonSerializer.Serialize(issuer, JsonOptions);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
-            return JsonSerializer.Serialize(new { error = ex.Message }, JsonOptions);
+            return McpToolError.ToJson(ex);
         }
     }
 }

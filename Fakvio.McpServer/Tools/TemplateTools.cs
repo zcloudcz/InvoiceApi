@@ -41,9 +41,13 @@ public static class TemplateTools
             var templates = await api.GetActiveTemplatesAsync(documentType, ct);
             return JsonSerializer.Serialize(templates, JsonOptions);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
-            return JsonSerializer.Serialize(new { error = ex.Message }, JsonOptions);
+            return McpToolError.ToJson(ex);
         }
     }
 
@@ -67,9 +71,13 @@ public static class TemplateTools
 
             return JsonSerializer.Serialize(template, JsonOptions);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
-            return JsonSerializer.Serialize(new { error = ex.Message }, JsonOptions);
+            return McpToolError.ToJson(ex);
         }
     }
 
@@ -91,24 +99,36 @@ public static class TemplateTools
         )] string optionsJson,
         CancellationToken ct = default)
     {
+        // Parsing the model's own input is deliberately kept OUT of the try block
+        // below — see McpToolError for why (issue #279).
+        CreateInvoiceFromTemplateDto? dto;
         try
         {
-            var dto = JsonSerializer.Deserialize<CreateInvoiceFromTemplateDto>(optionsJson, JsonOptions);
-
-            if (dto is null)
-                return JsonSerializer.Serialize(new { error = "Invalid JSON: could not deserialize creation options." }, JsonOptions);
-
-            var result = await api.CreateInvoiceFromTemplateAsync(templateId, dto, ct);
-            return JsonSerializer.Serialize(result, JsonOptions);
+            dto = JsonSerializer.Deserialize<CreateInvoiceFromTemplateDto>(optionsJson, JsonOptions);
         }
         catch (JsonException ex)
         {
             return JsonSerializer.Serialize(new { error = $"Invalid JSON format: {ex.Message}" }, JsonOptions);
         }
+
+        if (dto is null)
+            return JsonSerializer.Serialize(new { error = "Invalid JSON: could not deserialize creation options." }, JsonOptions);
+
+        try
+        {
+            var result = await api.CreateInvoiceFromTemplateAsync(templateId, dto, ct);
+            return JsonSerializer.Serialize(result, JsonOptions);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (TenantNotReadyApiException ex)
         {
             // Only reachable with autoComplete = true (#342) — same structured payload as
             // InvoiceTools.CompleteInvoice, so the MCP client reads the fix route either way.
+            // Bypassing McpToolError.ToJson (#279) is deliberate for the same reason as there:
+            // this is our own parsed readiness contract, not a raw API error body.
             return JsonSerializer.Serialize(new
             {
                 error = ex.Message,
@@ -119,7 +139,7 @@ public static class TemplateTools
         }
         catch (Exception ex)
         {
-            return JsonSerializer.Serialize(new { error = ex.Message }, JsonOptions);
+            return McpToolError.ToJson(ex);
         }
     }
 }

@@ -82,9 +82,13 @@ public static class InvoiceTools
             var result = await api.GetInvoicesPagedAsync(filter, ct);
             return JsonSerializer.Serialize(result, JsonOptions);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
-            return JsonSerializer.Serialize(new { error = ex.Message }, JsonOptions);
+            return McpToolError.ToJson(ex);
         }
     }
 
@@ -109,9 +113,13 @@ public static class InvoiceTools
 
             return JsonSerializer.Serialize(invoice, JsonOptions);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
-            return JsonSerializer.Serialize(new { error = ex.Message }, JsonOptions);
+            return McpToolError.ToJson(ex);
         }
     }
 
@@ -136,9 +144,13 @@ public static class InvoiceTools
 
             return JsonSerializer.Serialize(invoice, JsonOptions);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
-            return JsonSerializer.Serialize(new { error = ex.Message }, JsonOptions);
+            return McpToolError.ToJson(ex);
         }
     }
 
@@ -161,23 +173,33 @@ public static class InvoiceTools
         )] string invoiceJson,
         CancellationToken ct = default)
     {
+        // Parsing the model's own input is deliberately kept OUT of the try block
+        // below — see McpToolError for why (issue #279).
+        CreateInvoiceDto? dto;
         try
         {
-            var dto = JsonSerializer.Deserialize<CreateInvoiceDto>(invoiceJson, JsonOptions);
-
-            if (dto is null)
-                return JsonSerializer.Serialize(new { error = "Invalid JSON: could not deserialize CreateInvoiceDto." }, JsonOptions);
-
-            var result = await api.CreateInvoiceAsync(dto, ct);
-            return JsonSerializer.Serialize(result, JsonOptions);
+            dto = JsonSerializer.Deserialize<CreateInvoiceDto>(invoiceJson, JsonOptions);
         }
         catch (JsonException ex)
         {
             return JsonSerializer.Serialize(new { error = $"Invalid JSON format: {ex.Message}" }, JsonOptions);
         }
+
+        if (dto is null)
+            return JsonSerializer.Serialize(new { error = "Invalid JSON: could not deserialize CreateInvoiceDto." }, JsonOptions);
+
+        try
+        {
+            var result = await api.CreateInvoiceAsync(dto, ct);
+            return JsonSerializer.Serialize(result, JsonOptions);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
-            return JsonSerializer.Serialize(new { error = ex.Message }, JsonOptions);
+            return McpToolError.ToJson(ex);
         }
     }
 
@@ -198,11 +220,20 @@ public static class InvoiceTools
             var result = await api.CompleteInvoiceAsync(invoiceId, ct);
             return JsonSerializer.Serialize(result, JsonOptions);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (TenantNotReadyApiException ex)
         {
             // Caught separately (#342) so the MCP client gets the structured payload — code,
             // missingFields, issues (each with its fix route) — instead of a flattened error
             // string that only the generic catch below could produce.
+            //
+            // Deliberately NOT routed through McpToolError.ToJson (#279): that sanitizes because
+            // a raw API error body may carry internals. This payload is the opposite — our own
+            // readiness contract (DEVGUIDE §4.12), already parsed into known fields, and it is
+            // the whole point of the tool call to hand it to the client.
             return JsonSerializer.Serialize(new
             {
                 error = ex.Message,
@@ -213,7 +244,7 @@ public static class InvoiceTools
         }
         catch (Exception ex)
         {
-            return JsonSerializer.Serialize(new { error = ex.Message }, JsonOptions);
+            return McpToolError.ToJson(ex);
         }
     }
 
@@ -234,9 +265,13 @@ public static class InvoiceTools
             var result = await api.MarkInvoiceAsPaidAsync(invoiceId, ct);
             return JsonSerializer.Serialize(result, JsonOptions);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
-            return JsonSerializer.Serialize(new { error = ex.Message }, JsonOptions);
+            return McpToolError.ToJson(ex);
         }
     }
 
@@ -267,9 +302,13 @@ public static class InvoiceTools
             await api.SendInvoiceEmailAsync(invoiceId, dto, ct);
             return JsonSerializer.Serialize(new { success = true, message = $"Invoice {invoiceId} sent to {recipientEmail}." }, JsonOptions);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
-            return JsonSerializer.Serialize(new { error = ex.Message }, JsonOptions);
+            return McpToolError.ToJson(ex);
         }
     }
 
@@ -310,9 +349,13 @@ public static class InvoiceTools
                 base64Content = Convert.ToBase64String(pdfBytes)
             }, JsonOptions);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
-            return JsonSerializer.Serialize(new { error = ex.Message }, JsonOptions);
+            return McpToolError.ToJson(ex);
         }
     }
 
@@ -355,9 +398,13 @@ public static class InvoiceTools
                 base64Content = Convert.ToBase64String(isdocBytes)
             }, JsonOptions);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
-            return JsonSerializer.Serialize(new { error = ex.Message }, JsonOptions);
+            return McpToolError.ToJson(ex);
         }
     }
 
@@ -378,9 +425,13 @@ public static class InvoiceTools
             await api.DeleteInvoiceAsync(invoiceId, ct);
             return JsonSerializer.Serialize(new { success = true, message = $"Invoice {invoiceId} deleted." }, JsonOptions);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
-            return JsonSerializer.Serialize(new { error = ex.Message }, JsonOptions);
+            return McpToolError.ToJson(ex);
         }
     }
 }
