@@ -449,6 +449,36 @@ public class InvoiceToolsTests
         doc.RootElement.GetProperty("isIssuer").GetBoolean().ShouldBeTrue();
     }
 
+    [Fact]
+    public async Task GetClient_PropagatesCancellation_WhenTheCallerCancelled()
+    {
+        // ClientTools got its own catch-all copied in by this PR just like every other
+        // tool class — verify the cancellation carve-out actually landed here too,
+        // not only on the one representative tool (InvoiceTools.ListInvoices) covered above.
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        _api.GetClientByIdAsync(Arg.Any<long>(), Arg.Any<CancellationToken>())
+            .Throws(new OperationCanceledException());
+
+        await Should.ThrowAsync<OperationCanceledException>(
+            () => ClientTools.GetClient(_api, 1, ct: cts.Token));
+    }
+
+    [Fact]
+    public async Task GetClient_ReturnsSanitizedError_OnApiFailure()
+    {
+        // Same leak this whole issue is about: an exception message that could carry the
+        // raw API error body must never reach the AI client via ClientTools either.
+        _api.GetClientByIdAsync(Arg.Any<long>(), Arg.Any<CancellationToken>())
+            .Throws(new HttpRequestException("Connection refused"));
+
+        var json = await ClientTools.GetClient(_api, 1);
+
+        var doc = JsonDocument.Parse(json);
+        doc.RootElement.GetProperty("error").GetString().ShouldBe("internal_error");
+        doc.RootElement.GetProperty("message").GetString().ShouldNotContain("Connection refused");
+    }
+
     // ── TemplateTools tests ────────────────────────────────────────────
 
     [Fact]
@@ -487,6 +517,31 @@ public class InvoiceToolsTests
         doc.RootElement.GetProperty("id").GetInt64().ShouldBe(20);
     }
 
+    [Fact]
+    public async Task GetTemplate_PropagatesCancellation_WhenTheCallerCancelled()
+    {
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        _api.GetTemplateByIdAsync(Arg.Any<long>(), Arg.Any<CancellationToken>())
+            .Throws(new OperationCanceledException());
+
+        await Should.ThrowAsync<OperationCanceledException>(
+            () => TemplateTools.GetTemplate(_api, 1, ct: cts.Token));
+    }
+
+    [Fact]
+    public async Task GetTemplate_ReturnsSanitizedError_OnApiFailure()
+    {
+        _api.GetTemplateByIdAsync(Arg.Any<long>(), Arg.Any<CancellationToken>())
+            .Throws(new HttpRequestException("Connection refused"));
+
+        var json = await TemplateTools.GetTemplate(_api, 1);
+
+        var doc = JsonDocument.Parse(json);
+        doc.RootElement.GetProperty("error").GetString().ShouldBe("internal_error");
+        doc.RootElement.GetProperty("message").GetString().ShouldNotContain("Connection refused");
+    }
+
     // ── ReportingTools tests ───────────────────────────────────────────
 
     [Fact]
@@ -510,6 +565,33 @@ public class InvoiceToolsTests
         var doc = JsonDocument.Parse(json);
         doc.RootElement.GetProperty("invoicesDueThisMonthCount").GetInt32().ShouldBe(10);
         doc.RootElement.GetProperty("overdueInvoicesCount").GetInt32().ShouldBe(3);
+    }
+
+    [Fact]
+    public async Task GetDashboard_PropagatesCancellation_WhenTheCallerCancelled()
+    {
+        // ReportingTools had 6 catch-alls rewritten by this PR and none of them were
+        // exercised for cancellation or sanitized errors before — pin down one
+        // representative method so a future edit here cannot silently reintroduce
+        // the leak or the swallowed cancellation.
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        _api.GetDashboardAsync(Arg.Any<CancellationToken>()).Throws(new OperationCanceledException());
+
+        await Should.ThrowAsync<OperationCanceledException>(
+            () => ReportingTools.GetDashboard(_api, ct: cts.Token));
+    }
+
+    [Fact]
+    public async Task GetDashboard_ReturnsSanitizedError_OnApiFailure()
+    {
+        _api.GetDashboardAsync(Arg.Any<CancellationToken>()).Throws(new HttpRequestException("Connection refused"));
+
+        var json = await ReportingTools.GetDashboard(_api);
+
+        var doc = JsonDocument.Parse(json);
+        doc.RootElement.GetProperty("error").GetString().ShouldBe("internal_error");
+        doc.RootElement.GetProperty("message").GetString().ShouldNotContain("Connection refused");
     }
 
     [Fact]
