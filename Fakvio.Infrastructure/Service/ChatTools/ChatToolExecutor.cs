@@ -16,10 +16,10 @@ namespace Fakvio.Infrastructure.Service.ChatTools;
 /// - Text-based tool calling: BuildToolInstructions() is appended to the system prompt,
 ///   ParseToolCall() extracts the JSON tool call from the model's plain-text answer.
 ///
-/// Both flows converge on ExecuteToolAsync(), which validates the parameters against
-/// the tool schema BEFORE the tool runs. Everything — prompt text, JSON Schema and
-/// validation — is derived from IChatTool.Parameters, so a tool is described in
-/// exactly one place: its own class.
+/// Both flows converge on ExecuteToolAsync(), which normalizes the raw parameter values
+/// (trims every one, once) and validates the result against the tool schema BEFORE the tool
+/// runs. Everything — prompt text, JSON Schema, validation and normalization — is derived
+/// from IChatTool.Parameters, so a tool is described in exactly one place: its own class.
 ///
 /// All registered IChatTool implementations are injected via IEnumerable{IChatTool} from DI.
 /// To add a new tool: implement IChatTool (including its parameter schema) and register it in DI.
@@ -385,6 +385,15 @@ public class ChatToolExecutor : IChatToolExecutor
                 $"Unknown tool: {toolCall.Action}. Available tools: {string.Join(", ", _tools.Keys)}");
         }
 
+        // Normalize once, right here, before anything below reads a value: every consumer —
+        // the confirm gate, validation, the preview and the tool itself — must see the exact
+        // same string. Trimming only for validation and then dispatching the raw value (the
+        // previous behaviour) let the two silently disagree: the model sends " true ",
+        // validation trims it and accepts it as a valid Boolean, but the tool receives the
+        // untrimmed text and a plain `== "true"` comparison inside it reads false. The filter
+        // then turns off without any error reaching the model or the user (issue #268).
+        var parameters = NormalizeParameters(toolCall.Parameters);
+
         // ── Confirm gate state ────────────────────────────────────────────
         // A data-changing tool runs ONLY with the user's explicit approval. Without it the
         // tool's ExecuteAsync is never reached — the user sees a preview instead. Central on
@@ -397,10 +406,10 @@ public class ChatToolExecutor : IChatToolExecutor
         // ChatToolResult.RequiresConfirmation is what carries that fact to ChatService.
         var confirmable = tool as IConfirmableChatTool;
         var awaitingConfirmation = confirmable is not null
-                                   && !ChatToolConfirmation.IsConfirmed(toolCall.Parameters);
+                                   && !ChatToolConfirmation.IsConfirmed(parameters);
 
         // Central parameter validation — done once here instead of in every ExecuteAsync.
-        var validationError = ValidateParameters(tool, toolCall.Parameters);
+        var validationError = ValidateParameters(tool, parameters);
         if (validationError != null)
         {
             _logger.LogWarning("Tool {ToolName} called with invalid parameters: {Error}",
@@ -416,7 +425,7 @@ public class ChatToolExecutor : IChatToolExecutor
 
         _logger.LogInformation("Executing tool {ToolName} with parameters: {Parameters}",
             tool.ToolName,
-            string.Join(", ", toolCall.Parameters.Select(kv => $"{kv.Key}={kv.Value}")));
+            string.Join(", ", parameters.Select(kv => $"{kv.Key}={kv.Value}")));
 
         try
         {
@@ -426,7 +435,7 @@ public class ChatToolExecutor : IChatToolExecutor
                     "Tool {ToolName} requires confirmation — returning preview, nothing was written",
                     tool.ToolName);
 
-                var preview = await confirmable!.BuildPreviewAsync(toolCall.Parameters, ct);
+                var preview = await confirmable!.BuildPreviewAsync(parameters, ct);
 
                 // Both outcomes carry RequiresConfirmation = true, because both mean the same
                 // fact: ExecuteAsync did not run. Only the successful one is offered for
@@ -447,7 +456,7 @@ public class ChatToolExecutor : IChatToolExecutor
                     : preview with { RequiresConfirmation = true, UiAction = null };
             }
 
-            var result = await tool.ExecuteAsync(toolCall.Parameters, ct);
+            var result = await tool.ExecuteAsync(parameters, ct);
 
             _logger.LogInformation("Tool {ToolName} completed: IsSuccess={IsSuccess}",
                 tool.ToolName, result.IsSuccess);
@@ -471,6 +480,20 @@ public class ChatToolExecutor : IChatToolExecutor
         }
     }
 
+    // ─── Parameter Normalization ────────────────────────────────────────
+
+    /// <summary>
+    /// Trims every parameter value once, up front, so every consumer downstream — validation,
+    /// the confirm gate and the tool's own ExecuteAsync/BuildPreviewAsync — reads the exact
+    /// same string. Individual tools no longer need to trim values they read (issue #268).
+    ///
+    /// Whitespace-only values become an empty string rather than being dropped — that keeps
+    /// them "present but blank", which <see cref="ValidateParameters"/> already treats as
+    /// "not supplied" for an optional parameter and rejects for a required one.
+    /// </summary>
+    private static Dictionary<string, string> NormalizeParameters(Dictionary<string, string> parameters)
+        => parameters.ToDictionary(kv => kv.Key, kv => kv.Value.Trim());
+
     // ─── Central Parameter Validation ─────────────────────────────────────
 
     /// <summary>
@@ -482,6 +505,9 @@ public class ChatToolExecutor : IChatToolExecutor
     ///
     /// Blank optional parameters are treated as "not supplied" — models like to send
     /// empty strings for parameters they have no value for.
+    ///
+    /// Assumes <paramref name="parameters"/> was already normalized by
+    /// <see cref="NormalizeParameters"/> — trimming here again would just re-do that work.
     /// </summary>
     private static string? ValidateParameters(IChatTool tool, Dictionary<string, string> parameters)
     {
@@ -489,17 +515,15 @@ public class ChatToolExecutor : IChatToolExecutor
 
         foreach (var schema in ChatToolConfirmation.EffectiveParameters(tool))
         {
-            parameters.TryGetValue(schema.Name, out var rawValue);
+            parameters.TryGetValue(schema.Name, out var value);
 
-            if (string.IsNullOrWhiteSpace(rawValue))
+            if (string.IsNullOrWhiteSpace(value))
             {
                 if (schema.IsRequired)
                     (errors ??= []).Add($"missing required parameter '{schema.Name}' ({schema.Description})");
 
                 continue;
             }
-
-            var value = rawValue.Trim();
 
             if (schema.AllowedValues is { Count: > 0 } &&
                 !schema.AllowedValues.Contains(value, StringComparer.OrdinalIgnoreCase))

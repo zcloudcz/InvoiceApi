@@ -74,7 +74,7 @@ Server se konfiguruje **jen proměnnými prostředí** (žádný `appsettings.js
 |----------|---------|---------|-------|
 | `FAKVIO_MCP_TRANSPORT` | ne | `stdio` | `stdio` nebo `http`. Cokoli jiného = chyba na stderr a exit code 1. |
 | `FAKVIO_API_TOKEN` | jen pro `stdio` | – | Bearer credential — API klíč `fak_live_…` (doporučeno) nebo JWT token. Posílá se beze změny v hlavičce `Authorization`; API rozliší obojí podle prefixu (`fak_` vs `eyJ`), takže server nemusí vědět, co drží. Chybí-li ve stdio režimu, vypíše chybu na stderr a skončí s exit code 1. V HTTP režimu se nepoužívá. |
-| `FAKVIO_API_URL` | ne | `https://localhost:7001` | Base URL API, např. `https://localhost:7047` nebo `https://api.fakvio.cz`. |
+| `FAKVIO_API_URL` | ne | `https://localhost:7047` | Base URL API, např. `https://localhost:7047` (lokální `Fakvio.API`, viz `Fakvio.API/Properties/launchSettings.json`) nebo `https://api.fakvio.cz`. |
 | `ASPNETCORE_URLS` | ne | Kestrel default | Jen `http` režim — na čem server poslouchá, standardní ASP.NET Core proměnná. |
 
 ### HTTP režim
@@ -92,9 +92,10 @@ klíč přestane fungovat okamžitě. Neplatný nebo chybějící klíč = `401`
 Běží **stateless** (bez `Mcp-Session-Id`), takže `GET /mcp` a `/sse` nejsou k dispozici
 a host jde škálovat bez sticky routingu. Balení a nasazení HTTP hostu řeší #241.
 
-> **Pozor na výchozí hodnotu.** `Fakvio.API` běží lokálně na `https://localhost:7047`
-> (viz `Fakvio.API/Properties/launchSettings.json`), takže výchozí `7001` na
-> lokální vývoj nesedí — `FAKVIO_API_URL` nastavte vždy explicitně.
+> **Výchozí hodnota sedí jen na lokální vývoj.** `FAKVIO_API_URL` bez explicitního
+> nastavení míří na `https://localhost:7047` (lokální `Fakvio.API`, viz
+> `Fakvio.API/Properties/launchSettings.json`). Pro cloud nebo jiný port ho
+> nastavte vždy explicitně.
 
 Při HTTPS na localhost musí být vývojový certifikát důvěryhodný
 (`dotnet dev-certs https --trust`), jinak HTTP volání selžou na validaci certifikátu.

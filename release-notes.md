@@ -20,6 +20,12 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+### Opravy
+
+- **#257** — MCP server měl default `FAKVIO_API_URL` na `7001`, ale lokální API dle launchSettings běží na `7047`; default proto nikdy nefungoval bez explicitního nastavení env proměnné. Default je nyní `7047` shodný s API profilu; detaily zkopírované do kódu a README se teď hlídají testem, aby se nedriftovaly znovu. (PR #378, `c86de66`)
+- **#301** — chat asistent v přehledu a importu přijatých faktur odmítl data zadaná jedním číslem (`import_invoice` navíc tiše místo chybného data použil výchozí): např. „15.3.2026" se neakceptovalo, jen „15.03.2026". Nový jednolitý parser (`ChatToolDates.TryParseOptional`) podporuje obě podoby, jak je ostatní nástroje už dělají (`create_invoice`, `get_vat_report`). Import nečitelného data navíc nově vrací chybu místo tichého defaultního data — v účetnictví (ne ve filtru) je to lepší bezpečnostní chování. (PR #384, `cb1b9a6`)
+- **#269** — součet faktury na stránce se nyní sčítá jednotlivě pro každou měnu — smíšená CZK/EUR stránka místo jednoho nesmyslného čísla (`12600`) vypíše správně `12 100,00 CZK; 500,00 EUR`. (PR #379, `68dda99`)
+
 ### Změny pro vývojáře
 
 - **#242** — dokumentace pro API klíče a vzdálený MCP transport je nyní kompletní: USERGUIDE §20 pokrývá vytvoření klíče, volbu režimu (stdio/HTTP) a připojení AI klienta; ADMINGUIDE §9 vysvětluje SysAdminovi bezpečnostní model a správu klíčů; DEVGUIDE §4.9 dokumentuje všech 37 MCP nástrojů a autentizační architekturu. Obě režimy jsou nyní popsány a testy v `ChatToolCatalogSchemaTests` kontrolují, že změny v kódu jsou reflektovány i v dokumentaci. (PR #362, `62c55d0`)
