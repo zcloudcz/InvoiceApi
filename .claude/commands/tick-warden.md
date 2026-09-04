@@ -22,7 +22,7 @@ Invoke subagent `agent-warden`. No arguments — warden sweeps the
 entire board.
 
 The warden runs the invariant catalog from
-`.claude/agents/agent-warden.md`:
+`~/.claude/agents/agent-warden.md`:
 
 - role label ↔ status column mismatch
 - PR state ↔ column mismatch

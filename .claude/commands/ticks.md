@@ -102,7 +102,7 @@ Repeat:
    That is a limit on parallelism, not on throughput. When several PRs
    carry `role:ops`, dispatch **one** ops agent and hand it the ordered
    list — it drains the whole queue sequentially inside a single run
-   (see "Drain the whole queue" in `.claude/agents/agent-ops.md`). One
+   (see "Drain the whole queue" in `~/.claude/agents/agent-ops.md`). One
    ops dispatch per pass, however many PRs are waiting.
 
    **GraphQL budget — the real ceiling on parallelism.** `gh project`

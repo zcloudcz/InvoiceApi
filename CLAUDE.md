@@ -65,11 +65,13 @@ App Service má **Always On** povoleno — bez něj by idle recycle ukončil Bac
 
 ## Dokumentace — povinná údržba
 
-Repozitář má tři průvodce, které musí zůstat synchronizované s kódem:
+Repozitář má tři průvodce, které musí zůstat synchronizované s kódem, a jeden
+záznam změn, který se plní automaticky:
 
 - **`DEVGUIDE.md`** — pro vývojáře a AI agenty. Aktualizuj při každé technické změně (nový pattern, nový provider, nový endpoint kategorie…). Viz §13 v DEVGUIDE pro kompletní seznam povinných případů.
 - **`USERGUIDE.md`** — pro uživatele (tenant firmy). **Aktualizuj při každé změně viditelné uživateli**: nová stránka, nová akce, nový stav, nový export, změna chování formuláře.
 - **`ADMINGUIDE.md`** — pro SysAdmina. **Aktualizuj při každé změně viditelné SysAdminovi**: nové nastavení, nový provider, nová správa tenantů, změna bezpečnostní konfigurace.
+- **`release-notes.md`** — záznam dokončených změn, jeden řádek na každý task mergnutý do `develop`. **Nepíše ho vývojář ani reviewer, ale `agent-ops` při mergi** (viz `~/.claude/agents/agent-ops.md` Step 2a) — je to jediná sekvenční role, takže jako jediná může připisovat do sdíleného souboru bez konfliktu s paralelními větvemi. Ručně do něj nezasahuj; chybějící záznam znamená chybějící merge.
 
 PR bez odpovídající aktualizace průvodce (pokud se změna týká jeho obsahu) **neprochází review**.
 
