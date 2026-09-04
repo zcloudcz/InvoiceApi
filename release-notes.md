@@ -23,7 +23,7 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 ### Opravy
 
 - **#268** — parametry chat toolů se normalizují centrálně v `ChatToolExecutor` — každý tool vidí tutéž trimnutou hodnotu. Model posílá-li `" true "`, validace i dispatch jej vidí shodně; žádný tool si nemusí trimovat sám. (PR #380, `02f7499`)
-- **#269** — součet faktury na stránce se nyní sčítá jednotlivě pro každou měnu — smíšená CZK/EUR stránka místo jednoho nesmyslného čísla (`12600`) vypíše správně `12 100,00 CZK; 500,00 EUR`. (PR #379, `<pending>`)
+- **#269** — součet faktury na stránce se nyní sčítá jednotlivě pro každou měnu — smíšená CZK/EUR stránka místo jednoho nesmyslného čísla (`12600`) vypíše správně `12 100,00 CZK; 500,00 EUR`. (PR #379, `68dda99`)
 
 ### Změny pro vývojáře
 
