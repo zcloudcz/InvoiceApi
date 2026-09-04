@@ -318,6 +318,56 @@ public class ReceivedInvoiceChatToolTests
     }
 
     /// <summary>
+    /// Issue #301 (AC2) — before the fix this tool had its own date parser that only accepted
+    /// zero-padded "dd.MM.yyyy", so "15.3.2026" (single-digit month) worked in list_invoices
+    /// but not here. Now routed through the shared ChatToolDates helper, so it matches.
+    /// </summary>
+    [Fact]
+    public async Task ListReceivedInvoicesTool_SingleDigitDate_IsAccepted_Issue301()
+    {
+        var paged = new PagedResult<ReceivedInvoiceDto>
+        {
+            Items = new List<ReceivedInvoiceDto>(), TotalCount = 0, PageNumber = 1, PageSize = 10
+        };
+
+        var service = Substitute.For<IReceivedInvoiceService>();
+        service.GetPagedAsync(Arg.Any<ReceivedInvoiceFilterDto>(), Arg.Any<CancellationToken>())
+               .Returns(paged);
+
+        var clientService = Substitute.For<IClientService>();
+        var tool = new ListReceivedInvoicesTool(service, clientService, Substitute.For<ILogger<ListReceivedInvoicesTool>>());
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, string> { ["issue_date_from"] = "15.3.2026" });
+
+        result.IsSuccess.ShouldBeTrue();
+        await service.Received(1).GetPagedAsync(
+            Arg.Is<ReceivedInvoiceFilterDto>(f =>
+                f.IssueDateFrom == new DateTime(2026, 3, 15, 0, 0, 0, DateTimeKind.Utc)),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Issue #301 (AC3) — the old parser returned null on an unreadable date, which
+    /// <see cref="ReceivedInvoiceFilterDto"/> reads as "no filter": "přijaté faktury za březen"
+    /// silently widened to the whole history instead of failing. It must now fail loudly, same
+    /// as ListInvoicesTool, so the model can retry with a readable date instead of reporting the
+    /// wrong total as the answer.
+    /// </summary>
+    [Fact]
+    public async Task ListReceivedInvoicesTool_UnreadableDate_ReturnsFailure_Issue301()
+    {
+        var service = Substitute.For<IReceivedInvoiceService>();
+        var clientService = Substitute.For<IClientService>();
+        var tool = new ListReceivedInvoicesTool(service, clientService, Substitute.For<ILogger<ListReceivedInvoicesTool>>());
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, string> { ["issue_date_from"] = "2026-03" });
+
+        result.IsSuccess.ShouldBeFalse();
+        result.ErrorMessage.ShouldContain("issue_date_from");
+        await service.DidNotReceive().GetPagedAsync(Arg.Any<ReceivedInvoiceFilterDto>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
     /// ListReceivedInvoicesTool — "overdue" is compared with a plain string Equals, so it
     /// relies entirely on ChatToolExecutor normalizing (trimming) the value before dispatch.
     /// Routed through the real executor, not calling ExecuteAsync directly, because that is
