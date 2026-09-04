@@ -219,9 +219,11 @@ public class ListReceivedInvoicesTool : IChatTool
             return sb.ToString();
         }
 
-        // Summary totals for the current page.
-        var pageTotal = page.Items.Sum(r => r.TotalWithVat);
-        sb.AppendLine($"  Page total (with VAT): {pageTotal:N2}");
+        // Summary totals for the current page, grouped by currency (issue #269) — a plain
+        // Sum() across mixed-currency pages produces a number with no unit and no real-world
+        // meaning. Shared with ListInvoicesTool so the two sibling tools stay in the same format.
+        sb.AppendLine($"  Page total (with VAT): " +
+                      $"{ChatToolTotals.FormatPageTotal(page.Items, r => r.TotalWithVat, r => r.CurrencyCode)}");
         sb.AppendLine();
 
         // One compact row per invoice.

@@ -32,7 +32,8 @@ public class ReceivedInvoiceChatToolTests
         string docNumber = "INV-2024-001",
         string supplierName = "Alza.cz",
         decimal totalWithVat = 12100m,
-        EReceivedInvoiceStatus status = EReceivedInvoiceStatus.Received)
+        EReceivedInvoiceStatus status = EReceivedInvoiceStatus.Received,
+        string currencyCode = "CZK")
     {
         return new ReceivedInvoiceDto
         {
@@ -46,7 +47,7 @@ public class ReceivedInvoiceChatToolTests
             TotalBeforeVat = 10000m,
             TotalVat = 2100m,
             TotalWithVat = totalWithVat,
-            CurrencyCode = "CZK",
+            CurrencyCode = currencyCode,
             CurrencySymbol = "Kč",
             Items = new List<ReceivedInvoiceItemDto>
             {
@@ -221,6 +222,73 @@ public class ReceivedInvoiceChatToolTests
         result.OutputText.ShouldContain("INV-001");
         result.OutputText.ShouldContain("Alza.cz");
         result.OutputText.ShouldContain("total: 1");
+    }
+
+    /// <summary>
+    /// Issue #269 — a single-currency page still gets one page-total line, now carrying the
+    /// currency code the per-row lines already show. No regression: still one number, no
+    /// "; " separator (that only appears once a second currency joins in).
+    /// </summary>
+    [Fact]
+    public async Task ListReceivedInvoicesTool_SingleCurrencyPage_ShowsOneTotalWithCurrency()
+    {
+        var paged = new PagedResult<ReceivedInvoiceDto>
+        {
+            Items = new List<ReceivedInvoiceDto>
+            {
+                BuildInvoiceDto(id: 1, totalWithVat: 12100m, currencyCode: "CZK"),
+                BuildInvoiceDto(id: 2, totalWithVat: 5000m, currencyCode: "CZK")
+            },
+            TotalCount = 2, PageNumber = 1, PageSize = 10
+        };
+
+        var service = Substitute.For<IReceivedInvoiceService>();
+        service.GetPagedAsync(Arg.Any<ReceivedInvoiceFilterDto>(), Arg.Any<CancellationToken>())
+               .Returns(paged);
+
+        var clientService = Substitute.For<IClientService>();
+        var tool = new ListReceivedInvoicesTool(service, clientService, Substitute.For<ILogger<ListReceivedInvoicesTool>>());
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, string>());
+
+        var totalLine = result.OutputText.Split('\n').Single(line => line.Contains("Page total"));
+
+        // Exact line, not just Contains — pins the "  Page total (with VAT): " prefix and the
+        // absence of a separator, not merely that the right number appears somewhere.
+        totalLine.TrimEnd('\r').ShouldBe($"  Page total (with VAT): {17100m:N2} CZK");
+    }
+
+    /// <summary>
+    /// Issue #269 — a page mixing CZK and EUR invoices must never collapse into one summed
+    /// number (12100 + 500 has no unit and no meaning). Each currency gets its own total.
+    /// </summary>
+    [Fact]
+    public async Task ListReceivedInvoicesTool_MixedCurrencyPage_TotalsEachCurrencySeparately()
+    {
+        var paged = new PagedResult<ReceivedInvoiceDto>
+        {
+            Items = new List<ReceivedInvoiceDto>
+            {
+                BuildInvoiceDto(id: 1, totalWithVat: 12100m, currencyCode: "CZK"),
+                BuildInvoiceDto(id: 2, totalWithVat: 500m, currencyCode: "EUR")
+            },
+            TotalCount = 2, PageNumber = 1, PageSize = 10
+        };
+
+        var service = Substitute.For<IReceivedInvoiceService>();
+        service.GetPagedAsync(Arg.Any<ReceivedInvoiceFilterDto>(), Arg.Any<CancellationToken>())
+               .Returns(paged);
+
+        var clientService = Substitute.For<IClientService>();
+        var tool = new ListReceivedInvoicesTool(service, clientService, Substitute.For<ILogger<ListReceivedInvoicesTool>>());
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, string>());
+
+        var totalLine = result.OutputText.Split('\n').Single(line => line.Contains("Page total"));
+
+        // Exact line — pins the "; " separator and the CZK-before-EUR ordinal order, not just
+        // that both numbers appear somewhere and 12600 does not.
+        totalLine.TrimEnd('\r').ShouldBe($"  Page total (with VAT): {12100m:N2} CZK; {500m:N2} EUR");
     }
 
     /// <summary>

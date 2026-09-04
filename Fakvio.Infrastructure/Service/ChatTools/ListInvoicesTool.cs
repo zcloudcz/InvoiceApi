@@ -207,7 +207,10 @@ public class ListInvoicesTool : IChatTool
             return sb.ToString();
         }
 
-        sb.AppendLine($"  Page total (with VAT): {page.Items.Sum(i => i.TotalWithVat):N2}");
+        // Grouped by currency (issue #269) — a plain Sum() across mixed-currency pages produces
+        // a number with no unit and no real-world meaning.
+        sb.AppendLine($"  Page total (with VAT): " +
+                      $"{ChatToolTotals.FormatPageTotal(page.Items, i => i.TotalWithVat, i => i.CurrencyCode)}");
         sb.AppendLine();
 
         foreach (var invoice in page.Items)
