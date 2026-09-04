@@ -551,6 +551,36 @@ public class ChatToolExecutorTests
         result.IsSuccess.ShouldBeTrue();
     }
 
+    /// <summary>
+    /// Pins the "present but blank" half of the <see cref="ChatToolExecutor"/>
+    /// normalization contract: a whitespace-only optional value is not dropped from the
+    /// dictionary, it becomes an empty string. A tool that reads it via <c>TryGetValue</c>
+    /// must see the key ("blank, but supplied"), not a KeyNotFoundException-shaped gap —
+    /// filtering blank entries out instead (an easy-looking "cleanup") would silently change
+    /// that contract.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteToolAsync_NormalizesWhitespaceOnlyOptionalParameter_ToEmptyStringKeptInDictionary()
+    {
+        var tool = CreateTool("normalize_blank_test", "Tool used to prove blank optionals survive normalization",
+            new ChatToolParameter { Name = "name", Type = ChatToolParameterType.String, Description = "Name", IsRequired = true },
+            new ChatToolParameter { Name = "note", Type = ChatToolParameterType.String, Description = "Optional note" });
+        tool.ExecuteAsync(Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>())
+            .Returns(ChatToolResult.Success("ok"));
+        var executor = CreateExecutor(tool);
+
+        var result = await executor.ExecuteToolAsync(new ParsedToolCall
+        {
+            Action = "normalize_blank_test",
+            Parameters = new Dictionary<string, string> { ["name"] = "Alza", ["note"] = "   " }
+        });
+
+        result.IsSuccess.ShouldBeTrue();
+        await tool.Received(1).ExecuteAsync(
+            Arg.Is<Dictionary<string, string>>(d => d.ContainsKey("note") && d["note"] == ""),
+            Arg.Any<CancellationToken>());
+    }
+
     [Theory]
     [InlineData("discount", "abc")]      // not a number
     [InlineData("copies", "1.5")]        // not an integer
@@ -656,6 +686,33 @@ public class ChatToolExecutorTests
                 d["flag"] == "true" &&
                 d["count"] == "3" &&
                 d["amount"] == "10.50"),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The sibling of the test above, for the OTHER dispatch site. An unconfirmed confirmable
+    /// tool never reaches ExecuteAsync at all (see the confirm-gate tests below) — its only
+    /// consumer of the normalized parameters is BuildPreviewAsync. Without this test, a future
+    /// change that reintroduces <c>toolCall.Parameters</c> on that one call site would leave
+    /// every other test in this file green (they only assert Received(1)/DidNotReceive(), never
+    /// the argument value) while silently resurrecting issue #268 for every tool that only ever
+    /// shows a preview before the user confirms.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteToolAsync_DispatchesTrimmedValues_ToBuildPreviewAsync()
+    {
+        var tool = CreateConfirmableTool();
+        var executor = CreateExecutor(tool);
+
+        var result = await executor.ExecuteToolAsync(new ParsedToolCall
+        {
+            Action = "update_settings",
+            Parameters = new Dictionary<string, string> { ["value"] = "  FA-2026  " }
+        });
+
+        result.IsSuccess.ShouldBeTrue();
+        await tool.Received(1).BuildPreviewAsync(
+            Arg.Is<Dictionary<string, string>>(d => d["value"] == "FA-2026"),
             Arg.Any<CancellationToken>());
     }
 
