@@ -41,9 +41,15 @@ public static class TemplateTools
             var templates = await api.GetActiveTemplatesAsync(documentType, ct);
             return JsonSerializer.Serialize(templates, JsonOptions);
         }
+        catch (OperationCanceledException)
+        {
+            // Cancellation is not a domain error — propagate it instead of
+            // swallowing it into a fake "error" JSON result (issue #279).
+            throw;
+        }
         catch (Exception ex)
         {
-            return JsonSerializer.Serialize(new { error = ex.Message }, JsonOptions);
+            return McpToolError.ToJson(ex);
         }
     }
 
@@ -67,9 +73,15 @@ public static class TemplateTools
 
             return JsonSerializer.Serialize(template, JsonOptions);
         }
+        catch (OperationCanceledException)
+        {
+            // Cancellation is not a domain error — propagate it instead of
+            // swallowing it into a fake "error" JSON result (issue #279).
+            throw;
+        }
         catch (Exception ex)
         {
-            return JsonSerializer.Serialize(new { error = ex.Message }, JsonOptions);
+            return McpToolError.ToJson(ex);
         }
     }
 
@@ -105,9 +117,15 @@ public static class TemplateTools
         {
             return JsonSerializer.Serialize(new { error = $"Invalid JSON format: {ex.Message}" }, JsonOptions);
         }
+        catch (OperationCanceledException)
+        {
+            // Cancellation is not a domain error — propagate it instead of
+            // swallowing it into a fake "error" JSON result (issue #279).
+            throw;
+        }
         catch (Exception ex)
         {
-            return JsonSerializer.Serialize(new { error = ex.Message }, JsonOptions);
+            return McpToolError.ToJson(ex);
         }
     }
 }

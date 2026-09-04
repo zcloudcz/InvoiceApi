@@ -145,13 +145,27 @@ public class ReadinessToolsTests
     public async Task GetReadiness_OnApiError_ReturnsJsonError_InsteadOfThrowing()
     {
         // An exception crossing the MCP boundary kills the tool call for the AI client;
-        // every tool in this project answers with an { error } object instead.
+        // every tool in this project answers with a sanitized { error, message } object
+        // instead — never the raw exception message (issue #279).
         _api.GetReadinessAsync(Arg.Any<long?>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new HttpRequestException("API unavailable"));
 
         var json = await ReadinessTools.GetReadiness(_api);
 
-        JsonDocument.Parse(json).RootElement.GetProperty("error").GetString()
-            .ShouldBe("API unavailable");
+        var root = JsonDocument.Parse(json).RootElement;
+        root.GetProperty("error").GetString().ShouldBe("internal_error");
+        root.GetProperty("message").GetString().ShouldNotContain("API unavailable");
+    }
+
+    [Fact]
+    public async Task GetReadiness_PropagatesCancellation_InsteadOfSwallowingIt()
+    {
+        // A cancelled request is not a domain error — it must bubble out of the tool
+        // instead of being turned into a fake "error" JSON result (issue #279).
+        _api.GetReadinessAsync(Arg.Any<long?>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new OperationCanceledException());
+
+        await Should.ThrowAsync<OperationCanceledException>(
+            () => ReadinessTools.GetReadiness(_api));
     }
 }

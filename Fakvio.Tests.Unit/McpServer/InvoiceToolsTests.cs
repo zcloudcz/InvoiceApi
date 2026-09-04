@@ -238,16 +238,32 @@ public class InvoiceToolsTests
     [Fact]
     public async Task ListInvoices_ReturnsError_OnApiFailure()
     {
-        // Arrange: simulate API throwing an exception
+        // Arrange: simulate API throwing an exception whose message carries the raw
+        // API error body (see FakvioApiClient.EnsureSuccessAsync) — that text must
+        // never reach the AI client (issue #279).
         _api.GetInvoicesPagedAsync(Arg.Any<InvoiceFilterDto>(), Arg.Any<CancellationToken>())
             .Throws(new HttpRequestException("Connection refused"));
 
         // Act
         var json = await InvoiceTools.ListInvoices(_api);
 
-        // Assert: should return error JSON, not throw
+        // Assert: should return a sanitized error JSON, not throw and not leak the
+        // exception message.
         var doc = JsonDocument.Parse(json);
-        doc.RootElement.GetProperty("error").GetString().ShouldContain("Connection refused");
+        doc.RootElement.GetProperty("error").GetString().ShouldBe("internal_error");
+        doc.RootElement.GetProperty("message").GetString().ShouldNotContain("Connection refused");
+    }
+
+    [Fact]
+    public async Task ListInvoices_PropagatesCancellation_InsteadOfSwallowingIt()
+    {
+        // A cancelled request is not a domain error — the tool must let it bubble
+        // out instead of turning it into a fake "error" JSON result (issue #279).
+        _api.GetInvoicesPagedAsync(Arg.Any<InvoiceFilterDto>(), Arg.Any<CancellationToken>())
+            .Throws(new OperationCanceledException());
+
+        await Should.ThrowAsync<OperationCanceledException>(
+            () => InvoiceTools.ListInvoices(_api));
     }
 
     // ── ExportInvoicePdf tests ──────────────────────────────────────────

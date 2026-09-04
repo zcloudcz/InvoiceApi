@@ -6,12 +6,12 @@ using ModelContextProtocol.Server;
 namespace Fakvio.McpServer.Tools;
 
 /// <summary>
-/// MCP tool for the tenant readiness report — "is the company setup complete enough
+/// MCP tool for the tenant readiness report â "is the company setup complete enough
 /// to issue invoices, and if not, what is missing?".
 ///
 /// Junior note: like every MCP tool here, this one owns no logic. It calls
 /// <c>GET /api/readiness</c> through <see cref="IFakvioApiClient"/>, so the rules
-/// (DEVGUIDE §4.12) stay in one service on the server and the MCP answer can never
+/// (DEVGUIDE Â§4.12) stay in one service on the server and the MCP answer can never
 /// drift from what the chat assistant or the UI banner says.
 /// </summary>
 [McpServerToolType]
@@ -31,11 +31,11 @@ public static class ReadinessTools
     [McpServerTool, Description(
         "Check whether the company setup is complete enough to issue invoices. " +
         "Returns isReady plus every missing setting with its code, severity (Blocking or Warning), " +
-        "the empty fields, the issuer it belongs to, and the fixRoute — the app page where the user fixes it. " +
+        "the empty fields, the issuer it belongs to, and the fixRoute â the app page where the user fixes it. " +
         "An empty issues array means nothing is missing. Read-only.")]
     public static async Task<string> GetReadiness(
         IFakvioApiClient api,
-        [Description("Optional issuer ID — check only this issuer instead of every issuer of the company")] long? issuerId = null,
+        [Description("Optional issuer ID â check only this issuer instead of every issuer of the company")] long? issuerId = null,
         CancellationToken ct = default)
     {
         try
@@ -49,9 +49,15 @@ public static class ReadinessTools
 
             return JsonSerializer.Serialize(report, JsonOptions);
         }
+        catch (OperationCanceledException)
+        {
+            // Cancellation is not a domain error — propagate it instead of
+            // swallowing it into a fake "error" JSON result (issue #279).
+            throw;
+        }
         catch (Exception ex)
         {
-            return JsonSerializer.Serialize(new { error = ex.Message }, JsonOptions);
+            return McpToolError.ToJson(ex);
         }
     }
 }

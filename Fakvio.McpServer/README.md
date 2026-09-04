@@ -216,9 +216,14 @@ grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs
 
 ### Chování nástrojů
 
-- Každý nástroj vrací **JSON jako string**. Chyba se nevyhazuje jako výjimka,
-  ale vrací se jako `{ "error": "..." }` — AI klient tak dostane čitelnou zprávu
-  místo pádu spojení.
+- Každý nástroj vrací **JSON jako string**. Doménová chyba (404, validace vstupu) se
+  nevyhazuje jako výjimka, ale vrací se jako `{ "error": "..." }` — AI klient tak dostane
+  čitelnou zprávu místo pádu spojení.
+- Neočekávaná výjimka jde přes `McpToolError.ToJson(ex)` — jedno místo pro všech 37
+  nástrojů (#279). Zaloguje celou výjimku server-side a vrátí stabilní
+  `{ "error": "internal_error", "message": "..." }`, **nikdy `ex.Message`** (to může nést
+  syrové tělo API chyby z `FakvioApiClient.EnsureSuccessAsync`). `OperationCanceledException`
+  se **nechytá** — musí se propagovat, ne stát se falešnou doménovou chybou.
 - `ExportInvoicePdf` a `ExportInvoiceIsdoc` vracejí soubor jako
   `base64Content` + `fileName`, `mimeType`, `sizeBytes`. Uložení souboru
   je na klientovi.
@@ -233,7 +238,8 @@ grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs
    `[Description("…")]` — právě z těchto textů se AI rozhoduje, kdy nástroj zavolat.
 3. Volejte API přes `IFakvioApiClient`; chybí-li endpoint, doplňte ho do
    `Client/IFakvioApiClient.cs` + `Client/FakvioApiClient.cs`.
-4. Celé tělo obalte `try/catch` a vracejte serializovaný JSON (viz stávající nástroje).
+4. Celé tělo obalte `try/catch (OperationCanceledException) { throw; } catch (Exception ex) { return McpToolError.ToJson(ex); }`
+   (viz stávající nástroje) — nikdy vlastní `{ error = ex.Message }`.
 5. Aktualizujte tabulku výše a DEVGUIDE §4.9.
 
 ## Testy
