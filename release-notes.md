@@ -22,7 +22,8 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ### Opravy
 
-- **#268** — parametry chat toolů se normalizují centrálně v `ChatToolExecutor` — každý tool vidí tutéž trimnutou hodnotu. Model posílá-li `" true "`, validace i dispatch jej vidí shodně; žádný tool si nemusí trimovat sám. (PR #380, `02f7499`)
+- **#257** — MCP server měl default `FAKVIO_API_URL` na `7001`, ale lokální API dle launchSettings běží na `7047`; default proto nikdy nefungoval bez explicitního nastavení env proměnné. Default je nyní `7047` shodný s API profilu; detaily zkopírované do kódu a README se teď hlídají testem, aby se nedriftovaly znovu. (PR #378, `c86de66`)
+- **#301** — chat asistent v přehledu a importu přijatých faktur odmítl data zadaná jedním číslem (`import_invoice` navíc tiše místo chybného data použil výchozí): např. „15.3.2026" se neakceptovalo, jen „15.03.2026". Nový jednolitý parser (`ChatToolDates.TryParseOptional`) podporuje obě podoby, jak je ostatní nástroje už dělají (`create_invoice`, `get_vat_report`). Import nečitelného data navíc nově vrací chybu místo tichého defaultního data — v účetnictví (ne ve filtru) je to lepší bezpečnostní chování. (PR #384, `cb1b9a6`)
 - **#269** — součet faktury na stránce se nyní sčítá jednotlivě pro každou měnu — smíšená CZK/EUR stránka místo jednoho nesmyslného čísla (`12600`) vypíše správně `12 100,00 CZK; 500,00 EUR`. (PR #379, `68dda99`)
 
 ### Změny pro vývojáře
