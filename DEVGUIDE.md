@@ -2724,6 +2724,10 @@ pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. P
 - `@rendermode InteractiveServer` REQUIRED pro klikací události.
 - `BlazorHtmlEditor` NuGet je Monaco code editor, **NE** WYSIWYG. Používáme `Tizzani.MudBlazor.HtmlEditor` (ev. dříve `Blazored.TextEditor` / Quill).
 
+### Blazor lifecycle + query parametry
+- `[SupplyParameterFromQuery]` na stránce, kam se dá přenavigovat s jiným query stringem (`/invoices?type=Proforma` → `?type=CreditNote`): stejná `@page` route = **stejná instance komponenty**, takže `OnInitializedAsync` už NEproběhne — jen `OnParametersSet`. Mapování parametru na stav gridu/filtru proto patří do `OnParametersSetAsync`, ne do `OnInitializedAsync` (issue #376). Symptom: nadpis se změní (computed property), ale data ne, dokud uživatel nedá F5.
+- `OnParametersSetAsync` běží i před prvním renderem, takže init případ pokrývá taky. Uvnitř porovnej starou a novou hodnotu — parametry se nastavují při každém re-renderu, bez guardu by se refetchovalo pořád.
+
 ### MAUI Hybrid
 - `dotnet workload install maui` před prvním buildem, jinak SDK not found.
 - WebView používá `blazor.webview.js` (ne `blazor.webassembly.js`), žádný service worker.

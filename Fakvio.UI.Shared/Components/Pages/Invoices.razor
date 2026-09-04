@@ -442,10 +442,30 @@
 
     protected override async Task OnInitializedAsync()
     {
-        // Map URL type param to the EDocumentType filter sent to the API.
+        // Load clients, templates, PDF templates, issuer info, and alert IDs in parallel.
+        // None of these depend on the document type, so they are loaded once per component
+        // instance. The type filter itself is resolved in OnParametersSetAsync below.
+        await Task.WhenAll(
+            LoadClients(), LoadTemplates(), LoadPdfTemplates(), LoadIssuerAsync(), LoadAlertedIdsAsync());
+    }
+
+    /// <summary>
+    /// Maps the URL type param to the EDocumentType filter sent to the API.
+    ///
+    /// WHY here and not in OnInitializedAsync: /invoices, /invoices?type=Proforma and
+    /// /invoices?type=CreditNote all share the same @page route, so navigating between
+    /// them does NOT create a new component instance — Blazor only re-runs the parameter
+    /// lifecycle. Resolving the filter on init therefore left the grid showing the
+    /// previously selected type until the user pressed F5 (issue #376).
+    ///
+    /// OnParametersSetAsync also runs before the first render, so the initial page load
+    /// is covered by the same code path.
+    /// </summary>
+    protected override async Task OnParametersSetAsync()
+    {
         // Standard Invoice view (no param) intentionally shows only Invoice type
         // so proformas and credit notes are excluded from the default grid.
-        _filterDocumentType = TypeFilter switch
+        var documentType = TypeFilter switch
         {
             "CreditNote"           => EDocumentType.CreditNote,
             "Proforma"             => EDocumentType.Proforma,
@@ -453,9 +473,17 @@
             _                      => EDocumentType.Invoice   // default: standard invoices only
         };
 
-        // Load clients, templates, PDF templates, issuer info, and alert IDs in parallel
-        await Task.WhenAll(
-            LoadClients(), LoadTemplates(), LoadPdfTemplates(), LoadIssuerAsync(), LoadAlertedIdsAsync());
+        // Parameters are set on every re-render, not just when the URL changes — reload
+        // only when the type actually differs, otherwise every render would refetch.
+        if (documentType == _filterDocumentType)
+            return;
+
+        _filterDocumentType = documentType;
+
+        // On the very first pass the grid does not exist yet and fetches its own first
+        // page once rendered, so there is nothing to reload.
+        if (_dataGrid != null)
+            await _dataGrid.ReloadAsync();
     }
 
     /// <summary>
