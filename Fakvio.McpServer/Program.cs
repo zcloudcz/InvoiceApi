@@ -30,11 +30,7 @@ using Microsoft.Extensions.Logging;
 // ──────────────────────────────────────────────────────────────────────
 
 // ── Configuration ──────────────────────────────────────────────────
-var settings = new McpServerSettings
-{
-    ApiBaseUrl = Environment.GetEnvironmentVariable("FAKVIO_API_URL") ?? "https://localhost:7047",
-    ApiToken = Environment.GetEnvironmentVariable("FAKVIO_API_TOKEN") ?? string.Empty
-};
+var settings = McpServerSettings.FromEnvironment();
 
 // Fail fast on a misspelled transport instead of silently falling back to stdio — a server
 // that was meant to be reachable over HTTP and instead sits waiting on stdin looks "started"
