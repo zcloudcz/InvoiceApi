@@ -478,6 +478,47 @@ public class FakvioApiClientTests : IDisposable
         await Should.ThrowAsync<HttpRequestException>(() => _sut.CompleteInvoiceAsync(1));
     }
 
+    /// <summary>
+    /// The TENANT_NOT_READY probe runs on EVERY 400 this client sees, so it must survive body
+    /// shapes it was not written for. A bare JSON string at the root is the common one —
+    /// <c>TaxController</c> answers <c>BadRequest("Gross income cannot be negative.")</c> and
+    /// <see cref="FakvioApiClient.EstimateTaxAsync"/> calls it — and it makes
+    /// <c>TryGetProperty</c> throw <see cref="InvalidOperationException"/>, not return false.
+    /// Each of these bodies must still come out as the ordinary flattened HttpRequestException.
+    /// </summary>
+    [Theory]
+    [InlineData("\"Gross income cannot be negative.\"")]   // string root — TaxController:46
+    [InlineData("[]")]                                      // array root
+    [InlineData("null")]                                    // JSON null root
+    [InlineData("42")]                                      // number root
+    [InlineData("{\"code\":123,\"message\":\"nope\"}")]   // object, but code is not a string
+    [InlineData("{\"code\":null}")]                         // object, code is JSON null
+    public async Task EnsureSuccessAsync_UnexpectedBadRequestBodyShape_StaysAPlainHttpRequestException(string body)
+    {
+        _handler.SetupRawResponse(HttpStatusCode.BadRequest, body);
+
+        var ex = await Should.ThrowAsync<HttpRequestException>(() => _sut.CompleteInvoiceAsync(1));
+
+        ex.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    }
+
+    /// <summary>
+    /// A TENANT_NOT_READY body whose optional parts are the wrong JSON type still has to produce
+    /// the structured exception — the code is what identifies the refusal, the rest degrades to
+    /// empty rather than dropping the caller back onto a flattened error string.
+    /// </summary>
+    [Fact]
+    public async Task EnsureSuccessAsync_TenantNotReadyWithOddOptionalFields_StillThrowsTheStructuredException()
+    {
+        _handler.SetupRawResponse(HttpStatusCode.BadRequest,
+            """{"code":"TENANT_NOT_READY","message":42,"missingFields":"BankAccount","issues":null}""");
+
+        var ex = await Should.ThrowAsync<TenantNotReadyApiException>(() => _sut.CompleteInvoiceAsync(1));
+
+        ex.MissingFields.ShouldBeEmpty();
+        ex.Issues.ShouldBeEmpty();
+    }
+
     [Fact]
     public async Task EnsureSuccessAsync_ThrowsWithStatusCode_On500()
     {

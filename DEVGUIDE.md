@@ -1763,7 +1763,22 @@ ho ztratí na hranici kanálu:
 `TenantNotReadyApiException` je záměrně **vlastní typ v `Fakvio.McpServer.Client`**, ne
 znovupoužití `Fakvio.Application.Exceptions.TenantNotReadyException` — MCP server nemá (a
 nemá mít) referenci na `Fakvio.Application` (§4.9), takže nese stejný tvar (`MissingFields`,
-`Issues`) jen s vlastní deklarací.
+`Issues`) jen s vlastní deklarací. `FakvioApiClient.TryParseTenantNotReady` tělo 400 ohmatává
+přes `JsonValueKind`, ne jen přes „je tam ta property" — ta sonda běží na **každé** 400,
+které klient uvidí, a spousta endpointů vrací `BadRequest("hláška")`, tedy JSON **string**
+v kořeni (`TaxController`). `JsonElement.TryGetProperty` na neobjektovém kořeni nevrací
+`false`, ale hází `InvalidOperationException` — což není `JsonException`, takže bez těch
+kontrol by validační hláška z libovolného toolu vyšla jako vnitřní typová chyba.
+
+**Dvě asymetrie té tabulky, které nejsou přehlédnutí:**
+
+- **Bulk kanál nese jen `Code` + `MissingFields`, ne `Issues`** — nemá tedy `FixRoute` ani
+  severitu, na rozdíl od chat a MCP kanálu. AC #342 žádala „aspoň `Code` + `MissingFields`";
+  doplnění `Issues` i skutečné vykreslení v UI řeší #390.
+- **Tvar MCP výstupu není průchozí přeposlání těla API.** `InvoiceTools` i `TemplateTools`
+  mají v `JsonOptions` `JsonStringEnumConverter` (záměr — model čte a píše enumy jménem), takže
+  z API `"severity": 1` je ve výstupu toolu `"severity": "Blocking"`. Ukázka tvaru výše je
+  tvar **API**, ne výstupu MCP toolu.
 
 Čtecí konzumenti report **nefiltrují ani nepřepisují**. Nefiltrovaný report může nést
 problémy neaktivního vystavitele, kterého Dashboard picker nenabízí — kdyby to mělo vadit,

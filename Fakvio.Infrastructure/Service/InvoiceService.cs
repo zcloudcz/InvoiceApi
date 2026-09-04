@@ -1321,8 +1321,9 @@ public class InvoiceService : IInvoiceService
             {
                 // Caught separately from the generic Exception below so the caller gets the same
                 // structured refusal the single-invoice /complete endpoint returns (#342) —
-                // otherwise only ex.Message survived, and the UI showed an English technical
-                // string instead of a localized, per-field explanation.
+                // otherwise only the flattened ex.Message crossed the bulk boundary. This is the
+                // transport half only: today Invoices.razor renders just the counts, not
+                // result.Errors, so nothing displays these fields yet (follow-up #390).
                 result.FailedCount++;
                 result.Errors.Add(new BulkOperationError
                 {
