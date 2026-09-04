@@ -30,7 +30,7 @@ Pokud máš pochybnost, **zde má pravdu DEVGUIDE.md**, ne komentáře v kódu (
 | `Fakvio.UI.Shared` | Razor Class Library (RCL) | **Všechny** Blazor stránky, komponenty, services, modely, resources. Sdílí WASM host i MAUI host. |
 | `Fakvio.BlazorUI` | Blazor WebAssembly | Tenký WASM host. Pouze `Program.cs`, `index.html`, PWA assets. |
 | `Fakvio.MauiApp` | MAUI Blazor Hybrid | Native shell pro Android/iOS/macOS/Windows. Sdílí komponenty přes `UI.Shared`. |
-| `Fakvio.McpServer` | Console (.NET tool) | MCP server pro AI klienty. Stdio transport, ModelContextProtocol 2.2.0. |
+| `Fakvio.McpServer` | Console (.NET tool) | MCP server pro AI klienty. Dva režimy — stdio (výchozí) a Streamable HTTP, ModelContextProtocol 2.2.0. |
 | `Fakvio.MigrationTool` | Console | DB migrace, seed master schema, provisioning helper. |
 | `Fakvio.AresService` | Class lib | Klient pro ARES (CZ obchodní rejstřík) — autonomní, bez EF. |
 | `Fakvio.Tests.Unit` | xUnit | Unit testy (3345 k 2026-08-26). Stack: xUnit + **NSubstitute** + **Shouldly** + EF InMemory. |
@@ -262,6 +262,7 @@ Dlouhodobý, revokovatelný credential pro strojové klienty (MCP server, curl, 
 | Entita | `Fakvio.Domain/Entities/ApiKey.cs` | **Master schema** (migrace `AddApiKey_v147`), FK → `User`, cascade. |
 | Service | `Fakvio.Infrastructure/Service/ApiKeyService.cs` | Generování, hash, scopes, revokace. |
 | Endpointy | `Fakvio.API/Controller/ApiKeyController.cs` + `Fakvio.Functions/HttpFunctions/ApiKeyFunctions.cs` | `GET /api/api-key`, `POST /api/api-key`, `POST /api/api-key/{id}/revoke`, `GET /api/api-key/me`. Vždy jen **vlastní** klíče. |
+| UI | `Fakvio.UI.Shared/Components/Pages/Integrations.razor` (`/settings/integrations`, #237) | Vlastní klíče libovolného přihlášeného uživatele: výpis, založení, revokace. Raw klíč se ukazuje v one-time panelu spolu s hotovými `mcpServers` bloky pro oba MCP režimy; zavření panelu ho zahodí z paměti. |
 | Formát klíče | `fak_live_` + 43 znaků Base64Url | 32 B z `RandomNumberGenerator`. Prefix `fak_` je nosný — podle něj vybírá auth scheme selector (JWT vždy začíná `eyJ`) a poznají ho secret scannery. |
 | Hash | `ApiKeyService.ComputeHash` | `Convert.ToBase64String(SHA256.HashData(...))`, sloupec `KeyHash` s **unique indexem**. |
 | Zobrazení | `KeyPrefix` = prvních 12 znaků | Jen pro výpis a korelaci v logu, **nikdy** jako selektor. |
@@ -1510,7 +1511,7 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
 - Standalone .NET tool (PackAsTool), `ToolCommandName` = **`fakvio-mcp`**, SDK `ModelContextProtocol` 2.2.0.
 - **Dva hostovací režimy, jedna sada nástrojů** (`FAKVIO_MCP_TRANSPORT`): `stdio` (výchozí, jeden proces = jeden lokální klient) a `http` (Streamable HTTP na `/mcp`, jeden proces = mnoho vzdálených klientů). Registrace, kterou oba sdílejí, je `McpServerRegistration.AddFakvioMcpServer()` — jediné místo, kde se skládá API klient + `AddMcpServer().WithToolsFromAssembly()`, takže surface obou režimů nemůže rozejít. Neznámá hodnota proměnné = exit code 1 (server, který měl poslouchat na HTTP a místo toho čeká na stdin, vypadá zvenčí jako nastartovaný).
 - Jméno v MCP handshake (`ServerInfo.Name`) je `fakvio` — nezaměňovat s názvem příkazu.
-- Auth: `FAKVIO_API_TOKEN` env var (JWT bearer, povinný **jen ve stdio režimu** — bez něj exit code 1; v HTTP režimu se nepoužívá, credential nosí volající), `FAKVIO_API_URL` (výchozí `https://localhost:7001`, lokální API ale běží na `7047` → nastavovat explicitně).
+- Auth: `FAKVIO_API_TOKEN` env var (bearer credential, povinný **jen ve stdio režimu** — bez něj exit code 1; v HTTP režimu se nepoužívá, credential nosí volající). Server ho posílá beze změny, takže projde **API klíč `fak_live_…` i JWT** — selector `FakvioBearer` na API si vybere schéma podle prefixu (§2.10). Pro trvalé napojení je správně API klíč; JWT platí 24 h. `FAKVIO_API_URL` (výchozí `https://localhost:7001`, lokální API ale běží na `7047` → nastavovat explicitně).
 - **Outbound auth je per request, ne per proces.** `AuthHeaderHandler` (`DelegatingHandler`) nasazuje `Authorization: Bearer` na každý odchozí request; token dodává `IApiTokenProvider`. Ve stdio režimu je to `EnvironmentApiTokenProvider` (čte `FAKVIO_API_TOKEN` načtený do `McpServerSettings`), v HTTP režimu `HttpContextApiTokenProvider` — obojí **singleton**, ten druhý čte bearer token z ambient `IHttpContextAccessor` až uvnitř `GetToken()` a nedrží si nic v poli.
   Do `HttpClient.DefaultRequestHeaders.Authorization` token **nikdy nepatří** — defaulty sdílí všichni volající, takže pod HTTP hostingem by boot credential procesu jel na cizí tool cally (cross-tenant leak) a mutace defaultu za běhu je data race. Regresi hlídá `AuthHeaderHandlerTests`.
   - **`AddScoped<IApiTokenProvider, …>()` je zakázaný** — není to stylová preference, ale tatáž bezpečnostní díra o patro níž. `AddHttpMessageHandler<AuthHeaderHandler>()` handler **neresolvuje z request scope**: `IHttpClientFactory` staví celou pipeline ve svém privátním scope a hotovou ji pooluje (výchozí `HandlerLifetime` 2 minuty). `AddTransient<AuthHeaderHandler>()` proto znamená transient *per konstrukci pipeline*, ne per request. Scoped provider by se do poolovaného handleru zachytil při první konstrukci a obsluhoval všechny další volající po celou dobu života pipeline — token prvního uživatele na callech těch dalších. `SetHandlerLifetime` to neřeší, scopy nesrovnává, jen zkracuje dobu, po kterou se cizí token recykluje.
@@ -1525,8 +1526,9 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
 - **37 tools**: 10 invoice + 6 client + 6 received invoice + 6 reporting + 5 tax + 3 template + 1 readiness (po jednom souboru v `Tools/`).
   Ruční číslo v dokumentaci stárne; zdroj pravdy je `grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs`.
   Porovnání s chat tooly (co MCP umí a chat ještě ne): paritní tabulka v §4.7.
-- Konfigurace v Claude Desktop / Claude Code: spustí `fakvio-mcp` jako subprocess se stdio piping. Vzor v `.mcp.json.sample` (kořen repa).
-- Detaily (build, získání tokenu, seznam nástrojů, postup přidání nástroje): `Fakvio.McpServer/README.md`.
+- Konfigurace klienta: `.mcp.json.sample` (kořen repa) nese **oba** bloky — `fakvio` (stdio, `command` + `env`) a `fakvio-remote` (`"type": "http"`, `url` = adresa HTTP hostu + `/mcp`, klíč v hlavičce `Authorization`). Tytéž dva **režimy**, už s vyplněným klíčem, vypisuje stránka `/settings/integrations` po vytvoření klíče (`Integrations.BuildSnippets`) — když se tvar konfigurace změní, musí se změnit na obou místech. Doslova shodné bloky to nejsou: UI pojmenuje oba servery `fakvio` (sample rozlišuje `fakvio` / `fakvio-remote`) a stdio blok v samplu má navíc prázdné `"args": []`. Jméno serveru je lokální věc klienta, takže funkčně je to jedno — ale kdo si z panelu zkopíruje **oba** bloky do jednoho souboru, vyrobí si duplicitní JSON klíč. Sjednotit jméno v UI by bylo lepší než tuhle poznámku, ale je to produkční kód a tenhle docs task ho nesahá.
+- Detaily (build, získání credentialu, seznam nástrojů, postup přidání nástroje): `Fakvio.McpServer/README.md`.
+  Uživatelský postup (vytvoření klíče, konfigurace klienta v obou režimech): USERGUIDE §20. Provoz HTTP hostu a jeho bezpečnostní model: ADMINGUIDE §9.
 
 ### 4.10 Invoice by Email (IMAP → auto-import)
 
@@ -2770,6 +2772,7 @@ pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. P
 | Nový background lock klíč | §6.3 (tabulka klíčů) |
 | Nový chat tool nebo změna schématu parametrů (`IChatTool.Parameters`) | §4.7 (postup + matice + **paritní tabulka**) |
 | Nový MCP tool (`[McpServerTool]`) nebo nová metoda v `IFakvioApiClient` | §4.9 (počty) + §4.7 (paritní tabulka) + `Fakvio.McpServer/README.md` (tabulka nástrojů) |
+| Nová výjimka v `SafeMethodOverridePaths` (co smí klíč `read`) | §2.10 + **ADMINGUIDE §9** (tabulka chování klíče) |
 | Nový AI provider nebo změna jeho schopností (tools, obrázky) | §4.7 (matice schopností providerů) |
 | Změna observability stacku (App Insights → jiný) | §10 |
 | Nová list stránka s gridem / změna grid patternu | §7.10 (FakvioGrid) |

@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text.RegularExpressions;
 using Fakvio.Application.Service;
 using Fakvio.Infrastructure.DependencyInjection;
@@ -137,7 +137,7 @@ public class ChatToolCatalogSchemaTests
         // thing that goes stale.
         var expected = Catalog.Tools.Count;
 
-        var devGuide = File.ReadAllText(Path.Combine(FindRepositoryRoot(), "DEVGUIDE.md"));
+        var devGuide = File.ReadAllText(Path.Combine(RepositoryRoot.Find(), "DEVGUIDE.md"));
 
         var published = PublishedChatToolCount
             .Matches(devGuide)
@@ -341,23 +341,6 @@ public class ChatToolCatalogSchemaTests
         }
 
         return mirror;
-    }
-
-    /// <summary>
-    /// Walks up from the test binaries to the folder that holds <c>Fakvio.sln</c>, so a test
-    /// can read a file that lives in the repository root. A relative "../../../.." would be
-    /// shorter and would break the day the build layout or target framework changes.
-    /// </summary>
-    private static string FindRepositoryRoot()
-    {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Fakvio.sln")))
-        {
-            directory = directory.Parent;
-        }
-
-        directory.ShouldNotBeNull($"Fakvio.sln was not found in any folder above {AppContext.BaseDirectory}");
-        return directory.FullName;
     }
 
     /// <summary>
