@@ -36,7 +36,7 @@ public static class ClientTools
         IFakvioApiClient api,
         [Description("Page number (1-based, default 1)")] int page = 1,
         [Description("Items per page (default 20, max 100)")] int pageSize = 20,
-        [Description("Search by company name, trading name, registration number (IÄO), or city")] string? search = null,
+        [Description("Search by company name, trading name, registration number (IČO), or city")] string? search = null,
         [Description("Filter to VAT payers only (true/false)")] bool? isVatPayer = null,
         [Description("Include inactive (deleted) clients (default false)")] bool includeInactive = false,
         CancellationToken ct = default)
@@ -55,10 +55,8 @@ public static class ClientTools
             var result = await api.GetClientsPagedAsync(filter, ct);
             return JsonSerializer.Serialize(result, JsonOptions);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // Cancellation is not a domain error — propagate it instead of
-            // swallowing it into a fake "error" JSON result (issue #279).
             throw;
         }
         catch (Exception ex)
@@ -87,10 +85,8 @@ public static class ClientTools
 
             return JsonSerializer.Serialize(client, JsonOptions);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // Cancellation is not a domain error — propagate it instead of
-            // swallowing it into a fake "error" JSON result (issue #279).
             throw;
         }
         catch (Exception ex)
@@ -105,7 +101,7 @@ public static class ClientTools
     /// </summary>
     [McpServerTool, Description(
         "Create a new client (customer). Requires companyName at minimum. " +
-        "JSON object with: companyName (required), registrationNumber (IÄO), taxNumber (DIÄ), " +
+        "JSON object with: companyName (required), registrationNumber (IČO), taxNumber (DIČ), " +
         "isVatPayer, language ('cs'/'en'), fetchFromAres (auto-fill from Czech registry), " +
         "address [{addressType, street, city, postalCode, country}], " +
         "contact [{contactType ('Email'/'Phone'), contactValue}], " +
@@ -119,24 +115,28 @@ public static class ClientTools
         )] string clientJson,
         CancellationToken ct = default)
     {
+        // Parsing the model's own input is deliberately kept OUT of the try block
+        // below — see McpToolError for why (issue #279).
+        CreateClientDto? dto;
         try
         {
-            var dto = JsonSerializer.Deserialize<CreateClientDto>(clientJson, JsonOptions);
-
-            if (dto is null)
-                return JsonSerializer.Serialize(new { error = "Invalid JSON: could not deserialize CreateClientDto." }, JsonOptions);
-
-            var result = await api.CreateClientAsync(dto, ct);
-            return JsonSerializer.Serialize(result, JsonOptions);
+            dto = JsonSerializer.Deserialize<CreateClientDto>(clientJson, JsonOptions);
         }
         catch (JsonException ex)
         {
             return JsonSerializer.Serialize(new { error = $"Invalid JSON format: {ex.Message}" }, JsonOptions);
         }
-        catch (OperationCanceledException)
+
+        if (dto is null)
+            return JsonSerializer.Serialize(new { error = "Invalid JSON: could not deserialize CreateClientDto." }, JsonOptions);
+
+        try
         {
-            // Cancellation is not a domain error — propagate it instead of
-            // swallowing it into a fake "error" JSON result (issue #279).
+            var result = await api.CreateClientAsync(dto, ct);
+            return JsonSerializer.Serialize(result, JsonOptions);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
             throw;
         }
         catch (Exception ex)
@@ -147,7 +147,7 @@ public static class ClientTools
 
     /// <summary>
     /// Updates an existing client.
-    /// Only provided fields are changed â null fields are left unchanged.
+    /// Only provided fields are changed — null fields are left unchanged.
     /// </summary>
     [McpServerTool, Description(
         "Update an existing client. Only provided fields are changed (partial update). " +
@@ -162,24 +162,28 @@ public static class ClientTools
         )] string clientJson,
         CancellationToken ct = default)
     {
+        // Parsing the model's own input is deliberately kept OUT of the try block
+        // below — see McpToolError for why (issue #279).
+        UpdateClientDto? dto;
         try
         {
-            var dto = JsonSerializer.Deserialize<UpdateClientDto>(clientJson, JsonOptions);
-
-            if (dto is null)
-                return JsonSerializer.Serialize(new { error = "Invalid JSON: could not deserialize UpdateClientDto." }, JsonOptions);
-
-            var result = await api.UpdateClientAsync(clientId, dto, ct);
-            return JsonSerializer.Serialize(result, JsonOptions);
+            dto = JsonSerializer.Deserialize<UpdateClientDto>(clientJson, JsonOptions);
         }
         catch (JsonException ex)
         {
             return JsonSerializer.Serialize(new { error = $"Invalid JSON format: {ex.Message}" }, JsonOptions);
         }
-        catch (OperationCanceledException)
+
+        if (dto is null)
+            return JsonSerializer.Serialize(new { error = "Invalid JSON: could not deserialize UpdateClientDto." }, JsonOptions);
+
+        try
         {
-            // Cancellation is not a domain error — propagate it instead of
-            // swallowing it into a fake "error" JSON result (issue #279).
+            var result = await api.UpdateClientAsync(clientId, dto, ct);
+            return JsonSerializer.Serialize(result, JsonOptions);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
             throw;
         }
         catch (Exception ex)
@@ -189,16 +193,16 @@ public static class ClientTools
     }
 
     /// <summary>
-    /// Looks up a Czech company by IÄO (registration number) in the ARES registry.
-    /// Returns company data preview â does NOT save to database.
+    /// Looks up a Czech company by IČO (registration number) in the ARES registry.
+    /// Returns company data preview — does NOT save to database.
     /// </summary>
     [McpServerTool, Description(
-        "Look up a Czech company in the ARES registry by IÄO (registration number). " +
-        "Returns company name, address, VAT status, etc. Does NOT create a client â " +
+        "Look up a Czech company in the ARES registry by IČO (registration number). " +
+        "Returns company name, address, VAT status, etc. Does NOT create a client — " +
         "use CreateClient with fetchFromAres=true for that.")]
     public static async Task<string> LookupAres(
         IFakvioApiClient api,
-        [Description("Czech registration number (IÄO), e.g., '12345678'")] string registrationNumber,
+        [Description("Czech registration number (IČO), e.g., '12345678'")] string registrationNumber,
         CancellationToken ct = default)
     {
         try
@@ -207,15 +211,13 @@ public static class ClientTools
 
             if (result is null)
                 return JsonSerializer.Serialize(
-                    new { error = $"ARES lookup failed for IÄO '{registrationNumber}'. The number may be invalid." },
+                    new { error = $"ARES lookup failed for IČO '{registrationNumber}'. The number may be invalid." },
                     JsonOptions);
 
             return JsonSerializer.Serialize(result, JsonOptions);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // Cancellation is not a domain error — propagate it instead of
-            // swallowing it into a fake "error" JSON result (issue #279).
             throw;
         }
         catch (Exception ex)
@@ -245,10 +247,8 @@ public static class ClientTools
 
             return JsonSerializer.Serialize(issuer, JsonOptions);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // Cancellation is not a domain error — propagate it instead of
-            // swallowing it into a fake "error" JSON result (issue #279).
             throw;
         }
         catch (Exception ex)

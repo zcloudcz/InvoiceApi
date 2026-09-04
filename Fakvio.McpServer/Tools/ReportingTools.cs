@@ -12,7 +12,7 @@ namespace Fakvio.McpServer.Tools;
 /// MCP tools for reporting and analytics.
 /// Provides dashboard stats, overdue invoice lists, and date-range queries.
 ///
-/// Junior note: These tools are read-only â they don't modify any data.
+/// Junior note: These tools are read-only — they don't modify any data.
 /// They reuse the same API endpoints but with specific filter combinations
 /// that are common in reporting scenarios.
 /// </summary>
@@ -44,10 +44,8 @@ public static class ReportingTools
             var dashboard = await api.GetDashboardAsync(ct);
             return JsonSerializer.Serialize(dashboard, JsonOptions);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // Cancellation is not a domain error — propagate it instead of
-            // swallowing it into a fake "error" JSON result (issue #279).
             throw;
         }
         catch (Exception ex)
@@ -57,12 +55,12 @@ public static class ReportingTools
     }
 
     /// <summary>
-    /// Gets all overdue invoices â completed but unpaid invoices past their due date.
+    /// Gets all overdue invoices — completed but unpaid invoices past their due date.
     /// Sorted by due date ascending (most overdue first).
     /// </summary>
     [McpServerTool, Description(
         "Get all overdue invoices (completed but unpaid, past due date). " +
-        "Sorted by due date ascending â most overdue first. " +
+        "Sorted by due date ascending — most overdue first. " +
         "Useful for payment follow-up and collections.")]
     public static async Task<string> GetOverdueInvoices(
         IFakvioApiClient api,
@@ -86,10 +84,8 @@ public static class ReportingTools
             var result = await api.GetInvoicesPagedAsync(filter, ct);
             return JsonSerializer.Serialize(result, JsonOptions);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // Cancellation is not a domain error — propagate it instead of
-            // swallowing it into a fake "error" JSON result (issue #279).
             throw;
         }
         catch (Exception ex)
@@ -127,10 +123,8 @@ public static class ReportingTools
             var result = await api.GetInvoicesPagedAsync(filter, ct);
             return JsonSerializer.Serialize(result, JsonOptions);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // Cancellation is not a domain error — propagate it instead of
-            // swallowing it into a fake "error" JSON result (issue #279).
             throw;
         }
         catch (Exception ex)
@@ -185,10 +179,8 @@ public static class ReportingTools
             var result = await api.GetInvoicesPagedAsync(filter, ct);
             return JsonSerializer.Serialize(result, JsonOptions);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // Cancellation is not a domain error — propagate it instead of
-            // swallowing it into a fake "error" JSON result (issue #279).
             throw;
         }
         catch (Exception ex)
@@ -223,10 +215,8 @@ public static class ReportingTools
             var result = await api.GetVatReportAsync(parsedFrom, parsedTo, ct);
             return JsonSerializer.Serialize(result, JsonOptions);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // Cancellation is not a domain error — propagate it instead of
-            // swallowing it into a fake "error" JSON result (issue #279).
             throw;
         }
         catch (Exception ex)
@@ -236,10 +226,10 @@ public static class ReportingTools
     }
 
     /// <summary>
-    /// Gets overdue received invoices â approved but unpaid expenses past due date.
+    /// Gets overdue received invoices — approved but unpaid expenses past due date.
     /// </summary>
     [McpServerTool, Description(
-        "Get overdue received (incoming) invoices â approved but unpaid expenses past due date. " +
+        "Get overdue received (incoming) invoices — approved but unpaid expenses past due date. " +
         "Useful for tracking outstanding supplier payments.")]
     public static async Task<string> GetOverdueReceivedInvoices(
         IFakvioApiClient api,
@@ -262,10 +252,8 @@ public static class ReportingTools
             var result = await api.GetReceivedInvoicesPagedAsync(filter, ct);
             return JsonSerializer.Serialize(result, JsonOptions);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // Cancellation is not a domain error — propagate it instead of
-            // swallowing it into a fake "error" JSON result (issue #279).
             throw;
         }
         catch (Exception ex)

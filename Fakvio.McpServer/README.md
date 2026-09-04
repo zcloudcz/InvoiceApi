@@ -222,8 +222,14 @@ grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs
 - Neočekávaná výjimka jde přes `McpToolError.ToJson(ex)` — jedno místo pro všech 37
   nástrojů (#279). Zaloguje celou výjimku server-side a vrátí stabilní
   `{ "error": "internal_error", "message": "..." }`, **nikdy `ex.Message`** (to může nést
-  syrové tělo API chyby z `FakvioApiClient.EnsureSuccessAsync`). `OperationCanceledException`
-  se **nechytá** — musí se propagovat, ne stát se falešnou doménovou chybou.
+  syrové tělo API chyby z `FakvioApiClient.EnsureSuccessAsync`).
+- Zrušení od volajícího se **propaguje**: `catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }`.
+  Filtr je nutný — `HttpClient` vyhodí `TaskCanceledException` (potomek `OperationCanceledException`)
+  i při vlastním timeoutu, kdy token volajícího zrušený není; ten případ má skončit sanitizovaným JSONem,
+  ne výjimkou přes MCP hranici.
+- Deserializace vstupu od modelu má **vlastní menší `try`** před tím hlavním, aby `JsonException`
+  z poškozené úspěšné odpovědi API spadla do sanitizované větve, a ne modelu zpátky jako „vstup
+  je špatně" i s textem výjimky.
 - `ExportInvoicePdf` a `ExportInvoiceIsdoc` vracejí soubor jako
   `base64Content` + `fileName`, `mimeType`, `sizeBytes`. Uložení souboru
   je na klientovi.
@@ -238,8 +244,10 @@ grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs
    `[Description("…")]` — právě z těchto textů se AI rozhoduje, kdy nástroj zavolat.
 3. Volejte API přes `IFakvioApiClient`; chybí-li endpoint, doplňte ho do
    `Client/IFakvioApiClient.cs` + `Client/FakvioApiClient.cs`.
-4. Celé tělo obalte `try/catch (OperationCanceledException) { throw; } catch (Exception ex) { return McpToolError.ToJson(ex); }`
-   (viz stávající nástroje) — nikdy vlastní `{ error = ex.Message }`.
+4. Celé tělo obalte `try` + `catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }`
+   + `catch (Exception ex) { return McpToolError.ToJson(ex); }` (viz stávající nástroje)
+   — nikdy vlastní `{ error = ex.Message }`. Případnou deserializaci vstupu dejte do
+   samostatného `try` **před** tím hlavním.
 5. Aktualizujte tabulku výše a DEVGUIDE §4.9.
 
 ## Testy

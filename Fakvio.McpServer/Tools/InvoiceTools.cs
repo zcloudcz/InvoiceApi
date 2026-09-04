@@ -63,7 +63,7 @@ public static class InvoiceTools
                 IsOverdue = isOverdue
             };
 
-            // Parse enum strings safely â AI models may pass various casing
+            // Parse enum strings safely — AI models may pass various casing
             if (!string.IsNullOrEmpty(documentType) && Enum.TryParse<EDocumentType>(documentType, ignoreCase: true, out var dt))
                 filter.DocumentType = dt;
 
@@ -82,10 +82,8 @@ public static class InvoiceTools
             var result = await api.GetInvoicesPagedAsync(filter, ct);
             return JsonSerializer.Serialize(result, JsonOptions);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // Cancellation is not a domain error — propagate it instead of
-            // swallowing it into a fake "error" JSON result (issue #279).
             throw;
         }
         catch (Exception ex)
@@ -115,10 +113,8 @@ public static class InvoiceTools
 
             return JsonSerializer.Serialize(invoice, JsonOptions);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // Cancellation is not a domain error — propagate it instead of
-            // swallowing it into a fake "error" JSON result (issue #279).
             throw;
         }
         catch (Exception ex)
@@ -148,10 +144,8 @@ public static class InvoiceTools
 
             return JsonSerializer.Serialize(invoice, JsonOptions);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // Cancellation is not a domain error — propagate it instead of
-            // swallowing it into a fake "error" JSON result (issue #279).
             throw;
         }
         catch (Exception ex)
@@ -179,24 +173,28 @@ public static class InvoiceTools
         )] string invoiceJson,
         CancellationToken ct = default)
     {
+        // Parsing the model's own input is deliberately kept OUT of the try block
+        // below — see McpToolError for why (issue #279).
+        CreateInvoiceDto? dto;
         try
         {
-            var dto = JsonSerializer.Deserialize<CreateInvoiceDto>(invoiceJson, JsonOptions);
-
-            if (dto is null)
-                return JsonSerializer.Serialize(new { error = "Invalid JSON: could not deserialize CreateInvoiceDto." }, JsonOptions);
-
-            var result = await api.CreateInvoiceAsync(dto, ct);
-            return JsonSerializer.Serialize(result, JsonOptions);
+            dto = JsonSerializer.Deserialize<CreateInvoiceDto>(invoiceJson, JsonOptions);
         }
         catch (JsonException ex)
         {
             return JsonSerializer.Serialize(new { error = $"Invalid JSON format: {ex.Message}" }, JsonOptions);
         }
-        catch (OperationCanceledException)
+
+        if (dto is null)
+            return JsonSerializer.Serialize(new { error = "Invalid JSON: could not deserialize CreateInvoiceDto." }, JsonOptions);
+
+        try
         {
-            // Cancellation is not a domain error — propagate it instead of
-            // swallowing it into a fake "error" JSON result (issue #279).
+            var result = await api.CreateInvoiceAsync(dto, ct);
+            return JsonSerializer.Serialize(result, JsonOptions);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
             throw;
         }
         catch (Exception ex)
@@ -207,7 +205,7 @@ public static class InvoiceTools
 
     /// <summary>
     /// Issues (completes) a draft invoice.
-    /// This generates the document number and transitions status from Draft â Completed.
+    /// This generates the document number and transitions status from Draft → Completed.
     /// </summary>
     [McpServerTool, Description(
         "Complete (issue) a draft invoice. This generates the document number " +
@@ -222,10 +220,8 @@ public static class InvoiceTools
             var result = await api.CompleteInvoiceAsync(invoiceId, ct);
             return JsonSerializer.Serialize(result, JsonOptions);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // Cancellation is not a domain error — propagate it instead of
-            // swallowing it into a fake "error" JSON result (issue #279).
             throw;
         }
         catch (Exception ex)
@@ -251,10 +247,8 @@ public static class InvoiceTools
             var result = await api.MarkInvoiceAsPaidAsync(invoiceId, ct);
             return JsonSerializer.Serialize(result, JsonOptions);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // Cancellation is not a domain error — propagate it instead of
-            // swallowing it into a fake "error" JSON result (issue #279).
             throw;
         }
         catch (Exception ex)
@@ -290,10 +284,8 @@ public static class InvoiceTools
             await api.SendInvoiceEmailAsync(invoiceId, dto, ct);
             return JsonSerializer.Serialize(new { success = true, message = $"Invoice {invoiceId} sent to {recipientEmail}." }, JsonOptions);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // Cancellation is not a domain error — propagate it instead of
-            // swallowing it into a fake "error" JSON result (issue #279).
             throw;
         }
         catch (Exception ex)
@@ -329,7 +321,7 @@ public static class InvoiceTools
             var prefix = invoice.DocumentType == EDocumentType.CreditNote ? "CreditNote" : "Invoice";
             var fileName = $"{prefix}_{invoice.DocumentNumber ?? invoiceId.ToString()}.pdf";
 
-            // Return base64-encoded PDF with metadata â AI client saves the file
+            // Return base64-encoded PDF with metadata — AI client saves the file
             return JsonSerializer.Serialize(new
             {
                 success = true,
@@ -339,10 +331,8 @@ public static class InvoiceTools
                 base64Content = Convert.ToBase64String(pdfBytes)
             }, JsonOptions);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // Cancellation is not a domain error — propagate it instead of
-            // swallowing it into a fake "error" JSON result (issue #279).
             throw;
         }
         catch (Exception ex)
@@ -380,7 +370,7 @@ public static class InvoiceTools
             var prefix = invoice.DocumentType == EDocumentType.CreditNote ? "CreditNote" : "Invoice";
             var fileName = $"{prefix}_{invoice.DocumentNumber ?? invoiceId.ToString()}.isdoc";
 
-            // Return base64-encoded XML with metadata â AI client saves the file
+            // Return base64-encoded XML with metadata — AI client saves the file
             return JsonSerializer.Serialize(new
             {
                 success = true,
@@ -390,10 +380,8 @@ public static class InvoiceTools
                 base64Content = Convert.ToBase64String(isdocBytes)
             }, JsonOptions);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // Cancellation is not a domain error — propagate it instead of
-            // swallowing it into a fake "error" JSON result (issue #279).
             throw;
         }
         catch (Exception ex)
@@ -419,10 +407,8 @@ public static class InvoiceTools
             await api.DeleteInvoiceAsync(invoiceId, ct);
             return JsonSerializer.Serialize(new { success = true, message = $"Invoice {invoiceId} deleted." }, JsonOptions);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // Cancellation is not a domain error — propagate it instead of
-            // swallowing it into a fake "error" JSON result (issue #279).
             throw;
         }
         catch (Exception ex)

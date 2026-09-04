@@ -13,7 +13,7 @@ namespace Fakvio.McpServer.Tools;
 ///
 /// Junior note: These tools let AI clients (like Claude) help users
 /// understand their tax obligations and choose the best tax regime.
-/// All calculations happen on the Fakvio API â these tools just relay requests.
+/// All calculations happen on the Fakvio API — these tools just relay requests.
 /// </summary>
 [McpServerToolType]
 public static class TaxTools
@@ -31,7 +31,7 @@ public static class TaxTools
     /// Returns income tax, social insurance, health insurance, net income, and step-by-step breakdown.
     /// </summary>
     [McpServerTool, Description(
-        "Estimate tax obligations for a self-employed person (OSVÄ/SZÄO). " +
+        "Estimate tax obligations for a self-employed person (OSVČ/SZČO). " +
         "Provide gross income, country (CZ/SK), year, and tax regime. " +
         "Returns income tax, social/health insurance, net income, and calculation steps. " +
         "Available regimes: FlatRateTax (CZ only, income<=2M), LumpSumExpenses80/60/40/30, TaxRecords, FullAccounting.")]
@@ -59,10 +59,8 @@ public static class TaxTools
 
             return JsonSerializer.Serialize(result, JsonOptions);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // Cancellation is not a domain error — propagate it instead of
-            // swallowing it into a fake "error" JSON result (issue #279).
             throw;
         }
         catch (Exception ex)
@@ -72,7 +70,7 @@ public static class TaxTools
     }
 
     /// <summary>
-    /// Compares all applicable tax regimes for given income â helps find the cheapest option.
+    /// Compares all applicable tax regimes for given income — helps find the cheapest option.
     /// </summary>
     [McpServerTool, Description(
         "Compare all applicable tax regimes for a given income. " +
@@ -93,10 +91,8 @@ public static class TaxTools
                 grossIncome, country, year, isMainActivity, actualExpenses, ct);
             return JsonSerializer.Serialize(result, JsonOptions);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // Cancellation is not a domain error — propagate it instead of
-            // swallowing it into a fake "error" JSON result (issue #279).
             throw;
         }
         catch (Exception ex)
@@ -122,10 +118,8 @@ public static class TaxTools
             var result = await api.GetAnnualIncomeAsync(year, ct);
             return JsonSerializer.Serialize(result, JsonOptions);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // Cancellation is not a domain error — propagate it instead of
-            // swallowing it into a fake "error" JSON result (issue #279).
             throw;
         }
         catch (Exception ex)
@@ -153,10 +147,8 @@ public static class TaxTools
 
             return JsonSerializer.Serialize(result, JsonOptions);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // Cancellation is not a domain error — propagate it instead of
-            // swallowing it into a fake "error" JSON result (issue #279).
             throw;
         }
         catch (Exception ex)
@@ -185,10 +177,8 @@ public static class TaxTools
 
             return JsonSerializer.Serialize(result, JsonOptions);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // Cancellation is not a domain error — propagate it instead of
-            // swallowing it into a fake "error" JSON result (issue #279).
             throw;
         }
         catch (Exception ex)

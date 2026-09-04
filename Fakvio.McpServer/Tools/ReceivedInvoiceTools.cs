@@ -8,7 +8,7 @@ using ModelContextProtocol.Server;
 namespace Fakvio.McpServer.Tools;
 
 /// <summary>
-/// MCP tools for managing received (incoming) invoices â expenses from suppliers.
+/// MCP tools for managing received (incoming) invoices — expenses from suppliers.
 /// Provides CRUD operations and status transitions (Received -> Approved -> Paid).
 ///
 /// Junior note: These tools mirror the ReceivedInvoiceController endpoints.
@@ -70,10 +70,8 @@ public static class ReceivedInvoiceTools
             var result = await api.GetReceivedInvoicesPagedAsync(filter, ct);
             return JsonSerializer.Serialize(result, JsonOptions);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // Cancellation is not a domain error — propagate it instead of
-            // swallowing it into a fake "error" JSON result (issue #279).
             throw;
         }
         catch (Exception ex)
@@ -100,10 +98,8 @@ public static class ReceivedInvoiceTools
 
             return JsonSerializer.Serialize(result, JsonOptions);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // Cancellation is not a domain error — propagate it instead of
-            // swallowing it into a fake "error" JSON result (issue #279).
             throw;
         }
         catch (Exception ex)
@@ -135,10 +131,8 @@ public static class ReceivedInvoiceTools
             var result = await api.CreateReceivedInvoiceAsync(dto, ct);
             return JsonSerializer.Serialize(result, JsonOptions);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // Cancellation is not a domain error — propagate it instead of
-            // swallowing it into a fake "error" JSON result (issue #279).
             throw;
         }
         catch (Exception ex)
@@ -163,10 +157,8 @@ public static class ReceivedInvoiceTools
             var result = await api.ApproveReceivedInvoiceAsync(id, ct);
             return JsonSerializer.Serialize(result, JsonOptions);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // Cancellation is not a domain error — propagate it instead of
-            // swallowing it into a fake "error" JSON result (issue #279).
             throw;
         }
         catch (Exception ex)
@@ -191,10 +183,8 @@ public static class ReceivedInvoiceTools
             var result = await api.MarkReceivedInvoicePaidAsync(id, ct);
             return JsonSerializer.Serialize(result, JsonOptions);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // Cancellation is not a domain error — propagate it instead of
-            // swallowing it into a fake "error" JSON result (issue #279).
             throw;
         }
         catch (Exception ex)
@@ -218,10 +208,8 @@ public static class ReceivedInvoiceTools
             await api.DeleteReceivedInvoiceAsync(id, ct);
             return JsonSerializer.Serialize(new { success = true, message = $"Received invoice {id} deleted." }, JsonOptions);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // Cancellation is not a domain error — propagate it instead of
-            // swallowing it into a fake "error" JSON result (issue #279).
             throw;
         }
         catch (Exception ex)

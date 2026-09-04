@@ -191,6 +191,27 @@ public class InvoiceToolsTests
     }
 
     [Fact]
+    public async Task CreateInvoice_ReturnsSanitizedError_WhenTheApiResponseCannotBeDeserialized()
+    {
+        // The "Invalid JSON format" branch above must cover ONLY the JSON the model sent.
+        // FakvioApiClient deserializes the API *response* as well, so a JsonException raised
+        // there has to reach the sanitized catch-all instead of being echoed back as if the
+        // model's input were malformed — together with the exception text, which carries the
+        // JSON path and byte position of the response body (issue #279).
+        _api.CreateInvoiceAsync(Arg.Any<CreateInvoiceDto>(), Arg.Any<CancellationToken>())
+            .Throws(new JsonException(
+                "The JSON value could not be converted to System.Int64. " +
+                "Path: $.id | LineNumber: 0 | BytePositionInLine: 12."));
+
+        var json = await InvoiceTools.CreateInvoice(
+            _api, "{\"documentType\":\"Invoice\",\"clientId\":1,\"issuerId\":2}");
+
+        var doc = JsonDocument.Parse(json);
+        doc.RootElement.GetProperty("error").GetString().ShouldBe("internal_error");
+        doc.RootElement.GetProperty("message").GetString().ShouldNotContain("BytePositionInLine");
+    }
+
+    [Fact]
     public async Task CompleteInvoice_ReturnsCompletedInvoice()
     {
         // Arrange
@@ -255,15 +276,36 @@ public class InvoiceToolsTests
     }
 
     [Fact]
-    public async Task ListInvoices_PropagatesCancellation_InsteadOfSwallowingIt()
+    public async Task ListInvoices_PropagatesCancellation_WhenTheCallerCancelled()
     {
-        // A cancelled request is not a domain error — the tool must let it bubble
-        // out instead of turning it into a fake "error" JSON result (issue #279).
+        // A request the caller cancelled is not a domain error — the tool must let it
+        // bubble out instead of turning it into a fake "error" JSON result (issue #279).
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
         _api.GetInvoicesPagedAsync(Arg.Any<InvoiceFilterDto>(), Arg.Any<CancellationToken>())
             .Throws(new OperationCanceledException());
 
         await Should.ThrowAsync<OperationCanceledException>(
-            () => InvoiceTools.ListInvoices(_api));
+            () => InvoiceTools.ListInvoices(_api, ct: cts.Token));
+    }
+
+    [Fact]
+    public async Task ListInvoices_ReturnsSanitizedError_OnHttpClientTimeout()
+    {
+        // HttpClient throws TaskCanceledException (a subclass of OperationCanceledException)
+        // on its OWN timeout, and then the caller's token was never cancelled. That is an
+        // API-side failure, not a cancellation, so it has to come back as sanitized JSON:
+        // an MCP tool that throws kills the whole call (issue #279).
+        using var cts = new CancellationTokenSource();
+        _api.GetInvoicesPagedAsync(Arg.Any<InvoiceFilterDto>(), Arg.Any<CancellationToken>())
+            .Throws(new TaskCanceledException(
+                "The request was canceled due to the configured HttpClient.Timeout of 100 seconds elapsing.", new TimeoutException()));
+
+        var json = await InvoiceTools.ListInvoices(_api, ct: cts.Token);
+
+        var doc = JsonDocument.Parse(json);
+        doc.RootElement.GetProperty("error").GetString().ShouldBe("internal_error");
+        doc.RootElement.GetProperty("message").GetString().ShouldNotContain("HttpClient.Timeout");
     }
 
     // ── ExportInvoicePdf tests ──────────────────────────────────────────

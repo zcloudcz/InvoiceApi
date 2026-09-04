@@ -100,13 +100,36 @@ public class TaxToolsTests
     }
 
     [Fact]
-    public async Task EstimateTax_PropagatesCancellation_InsteadOfSwallowingIt()
+    public async Task EstimateTax_PropagatesCancellation_WhenTheCallerCancelled()
     {
+        // A request the caller cancelled is not a domain error — the tool must let it
+        // bubble out instead of turning it into a fake "error" JSON result (issue #279).
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
         _api.EstimateTaxAsync(Arg.Any<TaxEstimationRequest>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new OperationCanceledException());
 
         await Should.ThrowAsync<OperationCanceledException>(
-            () => TaxTools.EstimateTax(_api, 1_000_000m, "FlatRateTax"));
+            () => TaxTools.EstimateTax(_api, 1_000_000m, "FlatRateTax", ct: cts.Token));
+    }
+
+    [Fact]
+    public async Task EstimateTax_ReturnsSanitizedError_OnHttpClientTimeout()
+    {
+        // HttpClient throws TaskCanceledException (a subclass of OperationCanceledException)
+        // on its OWN timeout, and then the caller's token was never cancelled. That is an
+        // API-side failure, not a cancellation, so it has to come back as sanitized JSON:
+        // an MCP tool that throws kills the whole call (issue #279).
+        using var cts = new CancellationTokenSource();
+        _api.EstimateTaxAsync(Arg.Any<TaxEstimationRequest>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new TaskCanceledException(
+                "The request was canceled due to the configured HttpClient.Timeout of 100 seconds elapsing.", new TimeoutException()));
+
+        var json = await TaxTools.EstimateTax(_api, 1_000_000m, "FlatRateTax", ct: cts.Token);
+
+        var doc = JsonDocument.Parse(json);
+        doc.RootElement.GetProperty("error").GetString().ShouldBe("internal_error");
+        doc.RootElement.GetProperty("message").GetString().ShouldNotContain("HttpClient.Timeout");
     }
 
     // ── CompareTaxRegimes tests ──────────────────────────────────────────

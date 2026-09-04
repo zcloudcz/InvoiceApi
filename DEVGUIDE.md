@@ -1527,8 +1527,16 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
   Ruční číslo v dokumentaci stárne; zdroj pravdy je `grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs`.
   Porovnání s chat tooly (co MCP umí a chat ještě ne): paritní tabulka v §4.7.
 - **Chybová konvence (#279): `McpToolError.ToJson(ex)`, jedno místo pro všech 37 nástrojů.**
-  Každý tool má `catch (OperationCanceledException) { throw; }` **před** obecným `catch (Exception ex)`
-  — zrušený request se propaguje, nekonverzuje na JSON. Obecný catch vrací
+  Každý tool má `catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }`
+  **před** obecným `catch (Exception ex)` — zrušený request se propaguje, nekonverzuje na JSON.
+  Filtr `when (…)` je nosný: `TaskCanceledException` dědí z `OperationCanceledException` a `HttpClient`
+  ho vyhodí i při **vlastním** timeoutu (default 100 s), kdy token volajícího zrušený není — bez filtru
+  by pomalé API vyhodilo výjimku přes MCP hranici a zabilo celé volání nástroje.
+  (Neporovnávat `ex.CancellationToken == ct` — s linked tokeny to nesedí.)
+  Deserializace **vstupu od modelu** patří do samostatného menšího `try` **před** tím hlavním:
+  `FakvioApiClient` deserializuje i **odpovědi** API, takže `JsonException` z poškozené úspěšné
+  odpovědi musí dojít do sanitizovaného catch-allu, ne se vrátit modelu jako „vstup je špatně"
+  i s textem výjimky. Obecný catch vrací
   `McpToolError.ToJson(ex)`: zaloguje celou výjimku (`McpToolError.Logger`, nastaven z `Program.cs`
   po `Build()` — tool metody jsou statické, takže sdílený logger je jednodušší než `ILogger`
   parametr v 37 signaturách) a vrátí stabilní `{ "error": "internal_error", "message": "..." }`,

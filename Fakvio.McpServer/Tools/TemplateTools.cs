@@ -41,10 +41,8 @@ public static class TemplateTools
             var templates = await api.GetActiveTemplatesAsync(documentType, ct);
             return JsonSerializer.Serialize(templates, JsonOptions);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // Cancellation is not a domain error — propagate it instead of
-            // swallowing it into a fake "error" JSON result (issue #279).
             throw;
         }
         catch (Exception ex)
@@ -73,10 +71,8 @@ public static class TemplateTools
 
             return JsonSerializer.Serialize(template, JsonOptions);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // Cancellation is not a domain error — propagate it instead of
-            // swallowing it into a fake "error" JSON result (issue #279).
             throw;
         }
         catch (Exception ex)
@@ -103,24 +99,28 @@ public static class TemplateTools
         )] string optionsJson,
         CancellationToken ct = default)
     {
+        // Parsing the model's own input is deliberately kept OUT of the try block
+        // below — see McpToolError for why (issue #279).
+        CreateInvoiceFromTemplateDto? dto;
         try
         {
-            var dto = JsonSerializer.Deserialize<CreateInvoiceFromTemplateDto>(optionsJson, JsonOptions);
-
-            if (dto is null)
-                return JsonSerializer.Serialize(new { error = "Invalid JSON: could not deserialize creation options." }, JsonOptions);
-
-            var result = await api.CreateInvoiceFromTemplateAsync(templateId, dto, ct);
-            return JsonSerializer.Serialize(result, JsonOptions);
+            dto = JsonSerializer.Deserialize<CreateInvoiceFromTemplateDto>(optionsJson, JsonOptions);
         }
         catch (JsonException ex)
         {
             return JsonSerializer.Serialize(new { error = $"Invalid JSON format: {ex.Message}" }, JsonOptions);
         }
-        catch (OperationCanceledException)
+
+        if (dto is null)
+            return JsonSerializer.Serialize(new { error = "Invalid JSON: could not deserialize creation options." }, JsonOptions);
+
+        try
         {
-            // Cancellation is not a domain error — propagate it instead of
-            // swallowing it into a fake "error" JSON result (issue #279).
+            var result = await api.CreateInvoiceFromTemplateAsync(templateId, dto, ct);
+            return JsonSerializer.Serialize(result, JsonOptions);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
             throw;
         }
         catch (Exception ex)

@@ -14,9 +14,34 @@ namespace Fakvio.McpServer.Tools;
 /// details, internal IDs). Routing every tool's catch-all through this one helper means
 /// the "what is safe to tell the AI client" decision lives in one place, not in 37 copies.
 ///
-/// Junior note: <see cref="OperationCanceledException"/> is NOT handled here on purpose —
-/// each tool must catch it separately and `throw;` (rethrow) before falling into the
-/// generic catch. A cancelled request is not a domain error and must propagate.
+/// The shape every tool follows (written down once here instead of being repeated as a
+/// comment in all 37 tools):
+///
+/// <code>
+/// try { /* call the API, serialize the result */ }
+/// catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+/// catch (Exception ex) { return McpToolError.ToJson(ex); }
+/// </code>
+///
+/// Junior notes on why it is written exactly like that:
+///
+/// 1. <see cref="OperationCanceledException"/> is deliberately NOT handled by this helper.
+///    A request the caller cancelled is not a domain error, so the tool rethrows it.
+/// 2. The <c>when (ct.IsCancellationRequested)</c> filter is load-bearing, not decoration.
+///    <see cref="TaskCanceledException"/> derives from OperationCanceledException, and
+///    HttpClient throws it on its OWN timeout too (100 s by default) — in that case the
+///    caller's token was never cancelled. Without the filter a slow or stuck API would throw
+///    across the MCP boundary and kill the whole tool call; with it, that case falls through
+///    to <see cref="ToJson"/> and comes back as an ordinary sanitized error.
+///    Do not compare <c>ex.CancellationToken</c> with <c>ct</c> instead — that breaks as
+///    soon as anything links tokens together.
+/// 3. Deserializing the model's own JSON argument belongs in its own small try block placed
+///    BEFORE the one above, so that a <see cref="JsonException"/> from it can still be
+///    reported precisely. It must not share a try block with the API call, because
+///    FakvioApiClient deserializes API *responses* as well: a JsonException from a corrupted
+///    successful response has to reach the sanitized catch-all, not be echoed back to the
+///    model as "your input is malformed" with the exception text (and its JSON path and
+///    byte position) attached.
 /// </summary>
 public static class McpToolError
 {

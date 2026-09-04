@@ -197,13 +197,36 @@ public class ReceivedInvoiceToolsTests
     }
 
     [Fact]
-    public async Task ListReceivedInvoices_PropagatesCancellation_InsteadOfSwallowingIt()
+    public async Task ListReceivedInvoices_PropagatesCancellation_WhenTheCallerCancelled()
     {
+        // A request the caller cancelled is not a domain error — the tool must let it
+        // bubble out instead of turning it into a fake "error" JSON result (issue #279).
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
         _api.GetReceivedInvoicesPagedAsync(Arg.Any<ReceivedInvoiceFilterDto>(), Arg.Any<CancellationToken>())
             .Throws(new OperationCanceledException());
 
         await Should.ThrowAsync<OperationCanceledException>(
-            () => ReceivedInvoiceTools.ListReceivedInvoices(_api));
+            () => ReceivedInvoiceTools.ListReceivedInvoices(_api, ct: cts.Token));
+    }
+
+    [Fact]
+    public async Task ListReceivedInvoices_ReturnsSanitizedError_OnHttpClientTimeout()
+    {
+        // HttpClient throws TaskCanceledException (a subclass of OperationCanceledException)
+        // on its OWN timeout, and then the caller's token was never cancelled. That is an
+        // API-side failure, not a cancellation, so it has to come back as sanitized JSON:
+        // an MCP tool that throws kills the whole call (issue #279).
+        using var cts = new CancellationTokenSource();
+        _api.GetReceivedInvoicesPagedAsync(Arg.Any<ReceivedInvoiceFilterDto>(), Arg.Any<CancellationToken>())
+            .Throws(new TaskCanceledException(
+                "The request was canceled due to the configured HttpClient.Timeout of 100 seconds elapsing.", new TimeoutException()));
+
+        var json = await ReceivedInvoiceTools.ListReceivedInvoices(_api, ct: cts.Token);
+
+        var doc = JsonDocument.Parse(json);
+        doc.RootElement.GetProperty("error").GetString().ShouldBe("internal_error");
+        doc.RootElement.GetProperty("message").GetString().ShouldNotContain("HttpClient.Timeout");
     }
 
     // ── GetReceivedInvoice ─────────────────────────────────────────────
@@ -465,12 +488,36 @@ public class ReceivedInvoiceToolsTests
     }
 
     [Fact]
-    public async Task DeleteReceivedInvoice_PropagatesCancellation_InsteadOfSwallowingIt()
+    public async Task DeleteReceivedInvoice_PropagatesCancellation_WhenTheCallerCancelled()
     {
+        // A request the caller cancelled is not a domain error — the tool must let it
+        // bubble out instead of turning it into a fake "error" JSON result (issue #279).
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
         _api.DeleteReceivedInvoiceAsync(7, Arg.Any<CancellationToken>())
             .Throws(new OperationCanceledException());
 
         await Should.ThrowAsync<OperationCanceledException>(
-            () => ReceivedInvoiceTools.DeleteReceivedInvoice(_api, 7));
+            () => ReceivedInvoiceTools.DeleteReceivedInvoice(_api, 7, ct: cts.Token));
+    }
+
+    [Fact]
+    public async Task DeleteReceivedInvoice_ReturnsSanitizedError_OnHttpClientTimeout()
+    {
+        // HttpClient throws TaskCanceledException (a subclass of OperationCanceledException)
+        // on its OWN timeout, and then the caller's token was never cancelled. That is an
+        // API-side failure, not a cancellation, so it has to come back as sanitized JSON:
+        // an MCP tool that throws kills the whole call (issue #279).
+        using var cts = new CancellationTokenSource();
+        _api.DeleteReceivedInvoiceAsync(7, Arg.Any<CancellationToken>())
+            .Throws(new TaskCanceledException(
+                "The request was canceled due to the configured HttpClient.Timeout of 100 seconds elapsing.", new TimeoutException()));
+
+        var json = await ReceivedInvoiceTools.DeleteReceivedInvoice(_api, 7, ct: cts.Token);
+
+        var doc = JsonDocument.Parse(json);
+        doc.RootElement.TryGetProperty("success", out _).ShouldBeFalse();
+        doc.RootElement.GetProperty("error").GetString().ShouldBe("internal_error");
+        doc.RootElement.GetProperty("message").GetString().ShouldNotContain("HttpClient.Timeout");
     }
 }
