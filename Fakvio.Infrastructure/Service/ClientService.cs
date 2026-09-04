@@ -21,6 +21,17 @@ public class ClientService : IClientService
     private readonly IAresService _aresService;
     private readonly ILogger<ClientService> _logger;
 
+    /// <summary>Language a client gets when none was supplied — matches the DB column default.</summary>
+    private const string DefaultLanguage = "cs";
+
+    /// <summary>
+    /// The document language codes the application can actually render. Anything outside this
+    /// list silently mismatches: <c>PdfExportService</c> only branches on "cs" and prints English
+    /// labels for everything else, while <c>ContentTemplateService</c> falls back to the
+    /// any-language default template — so e.g. "de" yields English headings around a Czech body.
+    /// </summary>
+    private static readonly string[] SupportedLanguages = [DefaultLanguage, "en"];
+
     public ClientService(
         TenantDbContext context,
         IAresService aresService,
@@ -47,6 +58,35 @@ public class ClientService : IClientService
         dto.FlatRateBand = entity.FlatRateBand?.ToString();
 
         return dto;
+    }
+
+    /// <summary>
+    /// Normalizes a document language code coming from a DTO: trims it, lowercases it and accepts
+    /// only a <see cref="SupportedLanguages"/> value. Anything else returns null, which every
+    /// caller reads as "nothing usable was supplied" — the same shape as the
+    /// <c>Enum.TryParse(...) ? value : null</c> sanitization used for the tax-regime fields.
+    ///
+    /// This is the single guard for the whole write path, on purpose. <c>[StringLength(5)]</c> on
+    /// the DTOs lets "", "de" and "EN" through; the Azure Functions host deserializes the DTO
+    /// itself and never runs model validation at all; and the MCP and chat tools call this
+    /// service directly. One check here covers all of them.
+    /// </summary>
+    private string? NormalizeLanguage(string? language)
+    {
+        if (string.IsNullOrWhiteSpace(language))
+            return null;
+
+        var normalized = language.Trim().ToLowerInvariant();
+        if (SupportedLanguages.Contains(normalized))
+            return normalized;
+
+        // Logged rather than thrown: the surrounding fields use the same "unusable value is
+        // dropped" convention, and an unsupported code must not fail an otherwise valid save.
+        _logger.LogWarning(
+            "Ignoring unsupported client language '{Language}' — supported: {Supported}",
+            language, string.Join(", ", SupportedLanguages));
+
+        return null;
     }
 
     /// <summary>
@@ -300,7 +340,7 @@ public class ClientService : IClientService
             IsMainActivity = createDto.IsMainActivity,
             FlatRateBand = Enum.TryParse<Domain.Enums.EFlatRateBand>(createDto.FlatRateBand, out var band) ? band : null,
             Color = createDto.Color,
-            Language = createDto.Language
+            Language = NormalizeLanguage(createDto.Language) ?? DefaultLanguage
         };
 
         // Add addresses — ZMapper handles property mapping (AddressType, Street, City, etc.)
@@ -400,9 +440,11 @@ public class ClientService : IClientService
         if (updateDto.Color != null)
             client.Color = string.IsNullOrEmpty(updateDto.Color) ? null : updateDto.Color;
 
-        // Update preferred document language — null means "don't change" (see UpdateClientDto doc).
-        if (updateDto.Language != null)
-            client.Language = updateDto.Language;
+        // Update preferred document language — null OR an unsupported code means "don't change",
+        // so a bad value never replaces a working one (see NormalizeLanguage).
+        var language = NormalizeLanguage(updateDto.Language);
+        if (language != null)
+            client.Language = language;
 
         // Update tax regime fields if provided.
         if (updateDto.TaxRegime != null)
