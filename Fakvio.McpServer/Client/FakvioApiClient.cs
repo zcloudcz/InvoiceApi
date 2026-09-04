@@ -393,6 +393,14 @@ public class FakvioApiClient : IFakvioApiClient
 
         var body = await response.Content.ReadAsStringAsync(ct);
 
+        // A TENANT_NOT_READY 400 carries a structured payload (code, missingFields, issues —
+        // DEVGUIDE §4.12) that a flattened "message" string would throw away (#342). Caught
+        // here, before the generic message-only path below, so every caller of this client
+        // gets the same structured exception the HTTP body actually contains.
+        if (response.StatusCode == HttpStatusCode.BadRequest &&
+            TryParseTenantNotReady(body) is { } tenantNotReady)
+            throw tenantNotReady;
+
         // Try to extract a user-friendly message from the API error response
         string errorMessage;
         try
@@ -414,6 +422,38 @@ public class FakvioApiClient : IFakvioApiClient
             $"API returned {(int)response.StatusCode} {response.StatusCode}: {errorMessage}",
             inner: null,
             response.StatusCode);
+    }
+
+    /// <summary>
+    /// Parses the <c>{ code, message, missingFields, issues }</c> shape (DEVGUIDE §4.12) out of a
+    /// 400 body. Returns null for anything else — a malformed body or an unrelated 400 — so the
+    /// caller falls back to the generic message-only exception instead of throwing a parse error.
+    /// </summary>
+    private static TenantNotReadyApiException? TryParseTenantNotReady(string body)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            var root = doc.RootElement;
+
+            if (!root.TryGetProperty("code", out var codeEl) ||
+                codeEl.GetString() != TenantNotReadyApiException.ErrorCode)
+                return null;
+
+            var message = root.TryGetProperty("message", out var msgEl) ? msgEl.GetString() ?? body : body;
+            var missingFields = root.TryGetProperty("missingFields", out var mfEl)
+                ? JsonSerializer.Deserialize<List<string>>(mfEl.GetRawText(), JsonOptions) ?? []
+                : [];
+            var issues = root.TryGetProperty("issues", out var issuesEl)
+                ? JsonSerializer.Deserialize<List<ReadinessIssueDto>>(issuesEl.GetRawText(), JsonOptions) ?? []
+                : [];
+
+            return new TenantNotReadyApiException(message, missingFields, issues);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     /// <summary>

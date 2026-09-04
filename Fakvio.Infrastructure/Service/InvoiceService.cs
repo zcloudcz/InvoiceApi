@@ -1,5 +1,6 @@
 using Fakvio.Contracts.Common;
 using Fakvio.Application.Common.Extensions;
+using Fakvio.Application.Exceptions;
 using Fakvio.Contracts.Common.Pagination;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Application.Service;
@@ -1315,6 +1316,23 @@ public class InvoiceService : IInvoiceService
                     result.FailedCount++;
                     result.Errors.Add(new BulkOperationError { InvoiceId = id, Error = "Invoice not found" });
                 }
+            }
+            catch (TenantNotReadyException ex)
+            {
+                // Caught separately from the generic Exception below so the caller gets the same
+                // structured refusal the single-invoice /complete endpoint returns (#342) —
+                // otherwise only ex.Message survived, and the UI showed an English technical
+                // string instead of a localized, per-field explanation.
+                result.FailedCount++;
+                result.Errors.Add(new BulkOperationError
+                {
+                    InvoiceId = id,
+                    Error = ex.Message,
+                    Code = ex.Code,
+                    MissingFields = ex.MissingFields
+                });
+                _logger.LogWarning("Bulk complete failed for invoice {Id} — tenant not ready: {MissingFields}",
+                    id, string.Join(", ", ex.MissingFields));
             }
             catch (Exception ex)
             {

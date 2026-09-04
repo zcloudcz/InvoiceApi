@@ -105,6 +105,18 @@ public static class TemplateTools
         {
             return JsonSerializer.Serialize(new { error = $"Invalid JSON format: {ex.Message}" }, JsonOptions);
         }
+        catch (TenantNotReadyApiException ex)
+        {
+            // Only reachable with autoComplete = true (#342) — same structured payload as
+            // InvoiceTools.CompleteInvoice, so the MCP client reads the fix route either way.
+            return JsonSerializer.Serialize(new
+            {
+                error = ex.Message,
+                code = TenantNotReadyApiException.ErrorCode,
+                missingFields = ex.MissingFields,
+                issues = ex.Issues
+            }, JsonOptions);
+        }
         catch (Exception ex)
         {
             return JsonSerializer.Serialize(new { error = ex.Message }, JsonOptions);

@@ -198,6 +198,19 @@ public static class InvoiceTools
             var result = await api.CompleteInvoiceAsync(invoiceId, ct);
             return JsonSerializer.Serialize(result, JsonOptions);
         }
+        catch (TenantNotReadyApiException ex)
+        {
+            // Caught separately (#342) so the MCP client gets the structured payload — code,
+            // missingFields, issues (each with its fix route) — instead of a flattened error
+            // string that only the generic catch below could produce.
+            return JsonSerializer.Serialize(new
+            {
+                error = ex.Message,
+                code = TenantNotReadyApiException.ErrorCode,
+                missingFields = ex.MissingFields,
+                issues = ex.Issues
+            }, JsonOptions);
+        }
         catch (Exception ex)
         {
             return JsonSerializer.Serialize(new { error = ex.Message }, JsonOptions);

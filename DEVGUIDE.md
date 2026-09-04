@@ -1701,20 +1701,42 @@ vlastní výjimku ani vlastní tvar chyby**. Použij `ITenantReadinessService`.
   "issues": [ { "code": "...", "severity": 1, "missingFields": [...], "fixRoute": "/my-company" } ] }
 ```
 
-**Kde je guard zapojený (stav k #206):**
+**Kde je guard zapojený (stav k #342):**
 
 | Místo | Volání | Poznámka |
 |-------|--------|----------|
 | `InvoiceService.CompleteInvoiceAsync` | `EnsureReadyAsync(invoice.IssuerId, invoice.DocumentType, ct)` | Jediný gate na vystavení dokladu. Běží **až po** guardech „faktura neexistuje" / „už je vystavená" a **před** jakoukoli změnou stavu — odmítnutá faktura zůstane Draft a nespotřebuje číslo z řady. |
-| `InvoiceController.CompleteInvoice` | `catch (TenantNotReadyException)` → 400 | Tvar odpovědi viz výše. |
-| `InvoiceTemplateController.CreateInvoiceFromTemplate` | `catch (TenantNotReadyException)` → 400 | Nastane jen s `AutoComplete = true`; draft už je v tu chvíli založený a zůstane. |
+| `InvoiceController.CompleteInvoice` | `catch (TenantNotReadyException)` → `ex.ToBadRequestResult()` | Tvar odpovědi viz výše. |
+| `InvoiceTemplateController.CreateInvoiceFromTemplate` | `catch (TenantNotReadyException)` → `ex.ToBadRequestResult()` | Nastane jen s `AutoComplete = true`; draft už je v tu chvíli založený a zůstane. |
+| `InvoiceService.BulkCompleteAsync` | `catch (TenantNotReadyException)` na položku dávky | Refuzovaná faktura se hlásí v `BulkOperationError.Code` + `.MissingFields` (vedle `.Error`, který nese `ex.Message`), zbytek dávky projde — viz níže. |
+
+`ex.ToBadRequestResult()` je sdílený extension helper
+(`Fakvio.API/Extensions/TenantNotReadyExceptionExtensions.cs`) — nahrazuje dvě kopie stejného
+anonymního objektu v obou controllerech, aby se tvar odpovědi nerozešel při přidání dalšího
+gate. Logování zůstává na volajícím (každý endpoint loguje jinou akci).
 
 **Kdo report jen čte** (`GetReportAsync`, nic neblokuje):
 
 | Místo | Volání | Poznámka |
 |-------|--------|----------|
-| `GetReadinessTool` (chat tool `get_readiness`) | `GetReportAsync(ct: ct)` | Bez filtru — uživatel se ptá na celé nastavení. Vykreslí `Code` + závažnost + `FixRoute`, viz §4.7. |
+| `GetReadinessTool` (chat tool `get_readiness`) | `GetReportAsync(ct: ct)` | Bez filtru — uživatel se ptá na celé nastavení. Vykreslí `Code` + závažnost + `FixRoute` přes `ReadinessIssueFormatter.AppendIssue`, viz §4.7. |
 | `ReadinessTools.GetReadiness` (MCP) | `GET /api/readiness` přes `IFakvioApiClient` | MCP server nemá přístup k DB, jde vždy přes REST, takže autorizace i tenant izolace platí beze změny (§4.9). |
+
+**Bulk / chat / MCP cesty ke stejnému gate** (#342) — `EnsureReadyAsync` běží pořád jen na
+jednom místě (`InvoiceService.CompleteInvoiceAsync`), ale každý doručovací kanál musí
+strukturovaný payload (`code` / `missingFields` / `issues` s `FixRoute`) sám zachytit, jinak
+ho ztratí na hranici kanálu:
+
+| Kanál | Kde se chytá | Co uživatel/model dostane |
+|-------|---------------|----------------------------|
+| Bulk `POST /api/invoice/bulk-complete` | `InvoiceService.BulkCompleteAsync` (viz tabulka výše) | `BulkOperationError.Code` + `.MissingFields` vedle `.Error` |
+| Chat tool `complete_invoice` | `CompleteInvoiceTool.ExecuteAsync` — `catch (TenantNotReadyException)` | `ChatToolResult.Failure` s textem přes `ReadinessIssueFormatter.AppendIssue` (stejné vykreslení jako `get_readiness`) — model tak umí poslat uživatele na `FixRoute` |
+| MCP `CompleteInvoice` / `CreateInvoiceFromTemplate` | `FakvioApiClient.EnsureSuccessAsync` rozpozná `code == "TENANT_NOT_READY"` a hodí `TenantNotReadyApiException` (`Fakvio.McpServer/Client/`) místo obecné `HttpRequestException`; tool ji zachytí a serializuje `{ error, code, missingFields, issues }` | Strukturovaný JSON, ne zploštělý `ex.Message` |
+
+`TenantNotReadyApiException` je záměrně **vlastní typ v `Fakvio.McpServer.Client`**, ne
+znovupoužití `Fakvio.Application.Exceptions.TenantNotReadyException` — MCP server nemá (a
+nemá mít) referenci na `Fakvio.Application` (§4.9), takže nese stejný tvar (`MissingFields`,
+`Issues`) jen s vlastní deklarací.
 
 Čtecí konzumenti report **nefiltrují ani nepřepisují**. Nefiltrovaný report může nést
 problémy neaktivního vystavitele, kterého Dashboard picker nenabízí — kdyby to mělo vadit,

@@ -437,6 +437,47 @@ public class FakvioApiClientTests : IDisposable
         ex.Message.ShouldContain("Validation failed: ClientId is required");
     }
 
+    /// <summary>
+    /// #342: a TENANT_NOT_READY 400 must survive as a structured exception, not collapse into
+    /// the flattened HttpRequestException every other 400 becomes — otherwise an MCP tool has
+    /// only ex.Message to work with and cannot forward the fix route to its caller.
+    /// </summary>
+    [Fact]
+    public async Task EnsureSuccessAsync_ThrowsTenantNotReadyApiException_OnTenantNotReady400()
+    {
+        _handler.SetupResponse(HttpStatusCode.BadRequest, new
+        {
+            code = "TENANT_NOT_READY",
+            message = "Tenant is not ready. Unresolved blocking issue(s): ISSUER_BANK_ACCOUNT_MISSING.",
+            missingFields = new[] { "BankAccount" },
+            issues = new[]
+            {
+                new ReadinessIssueDto
+                {
+                    Code = "ISSUER_BANK_ACCOUNT_MISSING",
+                    Severity = EReadinessSeverity.Blocking,
+                    MissingFields = ["BankAccount"],
+                    FixRoute = "/my-company"
+                }
+            }
+        });
+
+        var ex = await Should.ThrowAsync<TenantNotReadyApiException>(() => _sut.CompleteInvoiceAsync(1));
+
+        ex.Message.ShouldContain("ISSUER_BANK_ACCOUNT_MISSING");
+        ex.MissingFields.ShouldBe(["BankAccount"]);
+        ex.Issues.Single().FixRoute.ShouldBe("/my-company");
+    }
+
+    /// <summary>A 400 with an unrelated (or missing) code must not be swallowed by the new branch.</summary>
+    [Fact]
+    public async Task EnsureSuccessAsync_OtherBadRequestCode_StaysAPlainHttpRequestException()
+    {
+        _handler.SetupResponse(HttpStatusCode.BadRequest, new { code = "SOME_OTHER_CODE", message = "nope" });
+
+        await Should.ThrowAsync<HttpRequestException>(() => _sut.CompleteInvoiceAsync(1));
+    }
+
     [Fact]
     public async Task EnsureSuccessAsync_ThrowsWithStatusCode_On500()
     {
