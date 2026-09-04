@@ -2,6 +2,7 @@ using Fakvio.McpServer;
 using Fakvio.McpServer.Client;
 using Fakvio.McpServer.Configuration;
 using Fakvio.McpServer.Http;
+using Fakvio.McpServer.Tools;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -57,6 +58,12 @@ if (transport == EMcpTransport.Http)
     var app = webBuilder.Build();
     McpHttpHost.MapEndpoints(app);
 
+    // Wire the shared logger used by every MCP tool's catch-all error handler
+    // (McpToolError, issue #279). Tool methods are static, so this is set once
+    // per host here instead of adding an ILogger parameter to every tool signature.
+    McpToolError.Logger = app.Services.GetRequiredService<ILoggerFactory>()
+        .CreateLogger("Fakvio.McpServer.Tools");
+
     await app.RunAsync();
     return 0;
 }
@@ -89,5 +96,13 @@ builder.Services
     .AddFakvioMcpServer(settings)
     .WithStdioServerTransport();
 
-await builder.Build().RunAsync();
+var host = builder.Build();
+
+// Wire the shared logger used by every MCP tool's catch-all error handler
+// (McpToolError, issue #279). Tool methods are static, so this is set once
+// per host here instead of adding an ILogger parameter to every tool signature.
+McpToolError.Logger = host.Services.GetRequiredService<ILoggerFactory>()
+    .CreateLogger("Fakvio.McpServer.Tools");
+
+await host.RunAsync();
 return 0;

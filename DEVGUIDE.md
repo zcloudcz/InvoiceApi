@@ -1540,6 +1540,23 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
 - **37 tools**: 10 invoice + 6 client + 6 received invoice + 6 reporting + 5 tax + 3 template + 1 readiness (po jednom souboru v `Tools/`).
   Ruční číslo v dokumentaci stárne; zdroj pravdy je `grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs`.
   Porovnání s chat tooly (co MCP umí a chat ještě ne): paritní tabulka v §4.7.
+- **Chybová konvence (#279): `McpToolError.ToJson(ex)`, jedno místo pro všech 37 nástrojů.**
+  Každý tool má `catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }`
+  **před** obecným `catch (Exception ex)` — zrušený request se propaguje, nekonverzuje na JSON.
+  Filtr `when (…)` je nosný: `TaskCanceledException` dědí z `OperationCanceledException` a `HttpClient`
+  ho vyhodí i při **vlastním** timeoutu (default 100 s), kdy token volajícího zrušený není — bez filtru
+  by pomalé API vyhodilo výjimku přes MCP hranici a zabilo celé volání nástroje.
+  (Neporovnávat `ex.CancellationToken == ct` — s linked tokeny to nesedí.)
+  Deserializace **vstupu od modelu** patří do samostatného menšího `try` **před** tím hlavním:
+  `FakvioApiClient` deserializuje i **odpovědi** API, takže `JsonException` z poškozené úspěšné
+  odpovědi musí dojít do sanitizovaného catch-allu, ne se vrátit modelu jako „vstup je špatně"
+  i s textem výjimky. Obecný catch vrací
+  `McpToolError.ToJson(ex)`: zaloguje celou výjimku (`McpToolError.Logger`, nastaven z `Program.cs`
+  po `Build()` — tool metody jsou statické, takže sdílený logger je jednodušší než `ILogger`
+  parametr v 37 signaturách) a vrátí stabilní `{ "error": "internal_error", "message": "..." }`,
+  **nikdy `ex.Message`** — to by mohlo obsahovat syrové tělo API chyby, které do zprávy vkládá
+  `FakvioApiClient.EnsureSuccessAsync` (stack trace, SQL detail, interní ID). Domain-level chyby
+  (404, validace vstupu psaná přímo v těle toolu) tímhle neprochází a zůstávají beze změny.
 - Konfigurace klienta: `.mcp.json.sample` (kořen repa) nese **oba** bloky — `fakvio` (stdio, `command` + `env`) a `fakvio-remote` (`"type": "http"`, `url` = adresa HTTP hostu + `/mcp`, klíč v hlavičce `Authorization`). Tytéž dva **režimy**, už s vyplněným klíčem, vypisuje stránka `/settings/integrations` po vytvoření klíče (`Integrations.BuildSnippets`) — když se tvar konfigurace změní, musí se změnit na obou místech. Doslova shodné bloky to nejsou: UI pojmenuje oba servery `fakvio` (sample rozlišuje `fakvio` / `fakvio-remote`) a stdio blok v samplu má navíc prázdné `"args": []`. Jméno serveru je lokální věc klienta, takže funkčně je to jedno — ale kdo si z panelu zkopíruje **oba** bloky do jednoho souboru, vyrobí si duplicitní JSON klíč. Sjednotit jméno v UI by bylo lepší než tuhle poznámku, ale je to produkční kód a tenhle docs task ho nesahá.
 - Detaily (build, získání credentialu, seznam nástrojů, postup přidání nástroje): `Fakvio.McpServer/README.md`.
   Uživatelský postup (vytvoření klíče, konfigurace klienta v obou režimech): USERGUIDE §20. Provoz HTTP hostu a jeho bezpečnostní model: ADMINGUIDE §9.
