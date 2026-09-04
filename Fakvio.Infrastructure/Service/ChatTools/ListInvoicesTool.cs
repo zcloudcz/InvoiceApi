@@ -156,12 +156,10 @@ public class ListInvoicesTool : IChatTool
         if (parameters.TryGetValue("client_name", out var clientName) && !string.IsNullOrWhiteSpace(clientName))
             filter.ClientName = clientName.Trim();
 
-        // Trim before comparing: ChatToolExecutor validates the trimmed value but dispatches the
-        // raw one, so " true " arrives here as-is and would otherwise read as false — silently
-        // turning "which invoices are overdue" into "list every invoice". Central normalization
-        // in the executor (which would make this Trim redundant) is tracked as #268.
+        // No local Trim needed here: ChatToolExecutor normalizes every parameter value
+        // (trims it) before dispatch, so the raw dictionary value is already clean (#268).
         var overdueOnly = parameters.TryGetValue("overdue", out var overdueText) &&
-                          overdueText.Trim().Equals("true", StringComparison.OrdinalIgnoreCase);
+                          overdueText.Equals("true", StringComparison.OrdinalIgnoreCase);
 
         if (overdueOnly)
             ApplyOverdueReporting(filter);

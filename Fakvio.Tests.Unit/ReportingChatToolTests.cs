@@ -456,10 +456,13 @@ public class ReportingChatToolTests
     }
 
     /// <summary>
-    /// ChatToolExecutor validates the TRIMMED value but dispatches the raw one, so " true "
-    /// reaches the tool as-is. Comparing it untrimmed would pass validation and then silently
-    /// turn the arrears question into "list everything" — the worst kind of wrong answer,
-    /// because the header still says invoices and the model presents them as receivables.
+    /// ChatToolExecutor normalizes every parameter value (trims it) once, before dispatch, so
+    /// " true " reaches the tool already clean and a plain `== "true"` comparison inside it
+    /// sees the right value. Without that normalization the arrears question would silently
+    /// turn into "list everything" — the worst kind of wrong answer, because the header still
+    /// says invoices and the model presents them as receivables. Routed through the real
+    /// executor (not calling ExecuteAsync directly) because that is where the guarantee now
+    /// lives, not in the tool itself (issue #268).
     /// </summary>
     [Theory]
     [InlineData(" true ")]
@@ -467,8 +470,13 @@ public class ReportingChatToolTests
     public async Task ListInvoicesTool_Overdue_IgnoresSurroundingWhitespace(string rawValue)
     {
         var (tool, service) = CreateListTool();
+        var executor = new ChatToolExecutor([tool], Substitute.For<ILogger<ChatToolExecutor>>());
 
-        var result = await tool.ExecuteAsync(new Dictionary<string, string> { ["overdue"] = rawValue });
+        var result = await executor.ExecuteToolAsync(new ParsedToolCall
+        {
+            Action = tool.ToolName,
+            Parameters = new Dictionary<string, string> { ["overdue"] = rawValue }
+        });
 
         result.IsSuccess.ShouldBeTrue();
         result.OutputText.ShouldContain("Overdue issued invoices");

@@ -250,6 +250,43 @@ public class ReceivedInvoiceChatToolTests
     }
 
     /// <summary>
+    /// ListReceivedInvoicesTool — "overdue" is compared with a plain string Equals, so it
+    /// relies entirely on ChatToolExecutor normalizing (trimming) the value before dispatch.
+    /// Routed through the real executor, not calling ExecuteAsync directly, because that is
+    /// where the guarantee lives (issue #268) — without it, " true " would read as false and
+    /// silently turn the overdue question into a plain listing of every received invoice.
+    /// </summary>
+    [Theory]
+    [InlineData(" true ")]
+    [InlineData("TRUE\t")]
+    public async Task ListReceivedInvoicesTool_Overdue_IgnoresSurroundingWhitespace(string rawValue)
+    {
+        var paged = new PagedResult<ReceivedInvoiceDto>
+        {
+            Items = new List<ReceivedInvoiceDto>(), TotalCount = 0, PageNumber = 1, PageSize = 10
+        };
+
+        var service = Substitute.For<IReceivedInvoiceService>();
+        service.GetPagedAsync(Arg.Any<ReceivedInvoiceFilterDto>(), Arg.Any<CancellationToken>())
+               .Returns(paged);
+
+        var clientService = Substitute.For<IClientService>();
+        var tool = new ListReceivedInvoicesTool(service, clientService, Substitute.For<ILogger<ListReceivedInvoicesTool>>());
+        var executor = new ChatToolExecutor([tool], Substitute.For<ILogger<ChatToolExecutor>>());
+
+        var result = await executor.ExecuteToolAsync(new ParsedToolCall
+        {
+            Action = tool.ToolName,
+            Parameters = new Dictionary<string, string> { ["overdue"] = rawValue }
+        });
+
+        result.IsSuccess.ShouldBeTrue();
+        await service.Received(1).GetPagedAsync(
+            Arg.Is<ReceivedInvoiceFilterDto>(f => f.IsOverdue == true),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
     /// ListReceivedInvoicesTool — unknown status string is silently ignored (no filter applied).
     /// </summary>
     [Fact]

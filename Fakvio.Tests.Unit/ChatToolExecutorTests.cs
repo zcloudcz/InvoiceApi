@@ -617,6 +617,48 @@ public class ChatToolExecutorTests
         result.IsSuccess.ShouldBeTrue();
     }
 
+    // ─── Parameter normalization (issue #268) ─────────────────────────────
+    //
+    // ChatToolExecutor validates a TRIMMED value (see central validation above) — dispatching
+    // anything else afterward would mean the model's " true " passes validation as a valid
+    // Boolean, but the tool that actually runs receives the untrimmed text and a plain
+    // `== "true"` comparison inside it silently reads false. Covers every parameter type, not
+    // just Boolean — a fix scoped to bool would leave the exact same defect for every other type.
+
+    [Fact]
+    public async Task ExecuteToolAsync_DispatchesTrimmedValues_ForEveryParameterType()
+    {
+        var tool = CreateTool("normalize_test", "Tool used to prove normalization covers every type",
+            new ChatToolParameter { Name = "name", Type = ChatToolParameterType.String, Description = "Name", IsRequired = true },
+            new ChatToolParameter { Name = "flag", Type = ChatToolParameterType.Boolean, Description = "Flag" },
+            new ChatToolParameter { Name = "count", Type = ChatToolParameterType.Integer, Description = "Count" },
+            new ChatToolParameter { Name = "amount", Type = ChatToolParameterType.Number, Description = "Amount" });
+        tool.ExecuteAsync(Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>())
+            .Returns(ChatToolResult.Success("ok"));
+        var executor = CreateExecutor(tool);
+
+        var result = await executor.ExecuteToolAsync(new ParsedToolCall
+        {
+            Action = "normalize_test",
+            Parameters = new Dictionary<string, string>
+            {
+                ["name"] = "  Alza  ",
+                ["flag"] = " true ",
+                ["count"] = "\t3\t",
+                ["amount"] = " 10.50 "
+            }
+        });
+
+        result.IsSuccess.ShouldBeTrue();
+        await tool.Received(1).ExecuteAsync(
+            Arg.Is<Dictionary<string, string>>(d =>
+                d["name"] == "Alza" &&
+                d["flag"] == "true" &&
+                d["count"] == "3" &&
+                d["amount"] == "10.50"),
+            Arg.Any<CancellationToken>());
+    }
+
     // ─── BuildToolInstructions Tests ──────────────────────────────────────
 
     [Fact]
