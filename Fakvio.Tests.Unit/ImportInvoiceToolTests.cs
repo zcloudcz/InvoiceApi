@@ -126,6 +126,49 @@ public class ImportInvoiceToolTests
     }
 
     /// <summary>
+    /// Issue #301 (reviewer nit) — the three date parameters are chained with short-circuit
+    /// OR (<c>||</c>): "issue_date" is the first operand and was already covered above, but an
+    /// unreadable "due_date" (2nd operand) or "taxable_supply_date" (3rd operand) never ran in
+    /// any prior test. A copy-paste slip in the chain (e.g. checking "issue_date" twice instead
+    /// of "due_date") would have gone undetected. Only "due_date" is set here — "issue_date" is
+    /// absent (allowed, "no date"), which isolates the 2nd operand from the 1st.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteAsync_UnreadableDueDate_ReturnsFailure_DoesNotCreateInvoice()
+    {
+        var parameters = BaseParameters("15.3.2026");
+        parameters.Remove("issue_date");
+        parameters["due_date"] = "2026-03";
+
+        var result = await _tool.ExecuteAsync(parameters);
+
+        result.IsSuccess.ShouldBeFalse();
+        result.ErrorMessage.ShouldContain("due_date");
+        await _receivedInvoiceService.DidNotReceive()
+            .CreateAsync(Arg.Any<CreateReceivedInvoiceDto>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Same coverage gap as <see cref="ExecuteAsync_UnreadableDueDate_ReturnsFailure_DoesNotCreateInvoice"/>
+    /// for the 3rd (last) operand of the chain. "issue_date" and "due_date" are both absent so
+    /// only "taxable_supply_date" can be the source of the failure.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteAsync_UnreadableTaxableSupplyDate_ReturnsFailure_DoesNotCreateInvoice()
+    {
+        var parameters = BaseParameters("15.3.2026");
+        parameters.Remove("issue_date");
+        parameters["taxable_supply_date"] = "2026-03";
+
+        var result = await _tool.ExecuteAsync(parameters);
+
+        result.IsSuccess.ShouldBeFalse();
+        result.ErrorMessage.ShouldContain("taxable_supply_date");
+        await _receivedInvoiceService.DidNotReceive()
+            .CreateAsync(Arg.Any<CreateReceivedInvoiceDto>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
     /// A missing date is still "no date" (not an error) — only a PRESENT but unreadable value
     /// is rejected. The invoice import must still succeed without one, same as before the fix.
     /// </summary>

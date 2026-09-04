@@ -368,6 +368,26 @@ public class ReceivedInvoiceChatToolTests
     }
 
     /// <summary>
+    /// Issue #301 (reviewer nit) — "issue_date_from" and "issue_date_to" are chained with
+    /// short-circuit OR (<c>||</c>); the failure test above only ever unsets "issue_date_from"
+    /// (1st operand), so "issue_date_to" (2nd operand) never ran through the failing branch in
+    /// any test. Only "issue_date_to" is set here to isolate it from the 1st operand.
+    /// </summary>
+    [Fact]
+    public async Task ListReceivedInvoicesTool_UnreadableDateTo_ReturnsFailure_Issue301()
+    {
+        var service = Substitute.For<IReceivedInvoiceService>();
+        var clientService = Substitute.For<IClientService>();
+        var tool = new ListReceivedInvoicesTool(service, clientService, Substitute.For<ILogger<ListReceivedInvoicesTool>>());
+
+        var result = await tool.ExecuteAsync(new Dictionary<string, string> { ["issue_date_to"] = "2026-03" });
+
+        result.IsSuccess.ShouldBeFalse();
+        result.ErrorMessage.ShouldContain("issue_date_to");
+        await service.DidNotReceive().GetPagedAsync(Arg.Any<ReceivedInvoiceFilterDto>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
     /// ListReceivedInvoicesTool — "overdue" is compared with a plain string Equals, so it
     /// relies entirely on ChatToolExecutor normalizing (trimming) the value before dispatch.
     /// Routed through the real executor, not calling ExecuteAsync directly, because that is
