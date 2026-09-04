@@ -530,8 +530,9 @@ public class CreateInvoiceToolTests
     [Fact]
     public async Task CreateInvoice_NoDefaultVatRate_ReturnsFailure()
     {
-        // Arrange — no default VAT rate configured. Issue #283: this used to fall back to a
-        // silent 0% instead of being rejected — a tax document must never guess a VAT rate.
+        // Arrange — VAT-paying issuer (_testIssuer.IsVatPayer = true) with no default VAT rate
+        // configured. Issue #283: this used to fall back to a silent 0% instead of being rejected
+        // — a tax document of a VAT payer must never guess a VAT rate.
         _vatRateService.GetDefaultStandardRateAsync(Arg.Any<CancellationToken>())
             .Returns((VatRateDto?)null);
 
@@ -550,6 +551,43 @@ public class CreateInvoiceToolTests
         result.UiAction.ShouldBeNull();
         await _invoiceService.DidNotReceive().CreateInvoiceAsync(
             Arg.Any<CreateInvoiceDto>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CreateInvoice_NoDefaultVatRate_NonVatPayerIssuer_CreatesWithZeroPercent()
+    {
+        // Arrange — the other half of the issue #283 split: a non-VAT payer has no rate to
+        // configure in the first place (TenantReadinessService does not ask a non-payer for one),
+        // so 0% is the correct value and the guard must stay off this path. Otherwise chat would
+        // refuse an invoice the UI creates without complaint, telling the user to set up a rate
+        // they are not supposed to have.
+        _clientService.GetIssuerAsync(Arg.Any<CancellationToken>())
+            .Returns(new ClientDto
+            {
+                Id = 1,
+                CompanyName = "Non-payer s.r.o.",
+                RegistrationNumber = "12345678",
+                IsVatPayer = false
+            });
+        _vatRateService.GetDefaultStandardRateAsync(Arg.Any<CancellationToken>())
+            .Returns((VatRateDto?)null);
+
+        var parameters = new Dictionary<string, string>
+        {
+            ["client_name"] = "Alza",
+            ["items"] = """[{"description": "Test", "quantity": 2, "unit_price": 100}]"""
+        };
+
+        // Act
+        var result = await _tool.ExecuteAsync(parameters);
+
+        // Assert — created, with no VAT rate reference and 0%.
+        result.IsSuccess.ShouldBeTrue();
+        await _invoiceService.Received(1).CreateInvoiceAsync(
+            Arg.Is<CreateInvoiceDto>(dto =>
+                dto.InvoiceItem[0].VatRateId == null &&
+                dto.InvoiceItem[0].VatRatePercentage == 0m),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]

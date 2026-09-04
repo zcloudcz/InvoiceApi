@@ -1167,8 +1167,8 @@ Co má náhled říct, aby uživatel schvaloval konkrétní věc a ne slovo:
 
 Náhled u `create` je záměrně bez DPH: součet nadiktovaných položek je přesný, kdežto částka
 s DPH by před #283 mohla u špatně nastaveného tenanta vyjít shodná s částkou bez DPH (tichá
-nula). Ukázání částky s DPH v náhledu zůstává mimo rozsah #283 — samostatný task, viz komentář
-u issue. (Není to otázka zaokrouhlení — `ReceivedInvoiceService` v create cestě nezaokrouhluje
+nula). Ukázání částky s DPH v náhledu zůstává mimo rozsah #283 — samostatný task #388.
+(Není to otázka zaokrouhlení — `ReceivedInvoiceService` v create cestě nezaokrouhluje
 vůbec.) Sdílená příprava DTO (`PrepareAsync`) je jedna metoda pro náhled i zápis, aby náhled
 nemohl popisovat něco jiného, než co se pak uloží.
 
@@ -1184,8 +1184,17 @@ sazby platné **k datu plnění**, ne k dnešku (starší doklad se eviduje se s
 záměrně nemá pevný rozsah typu 0–100: „které procento je legální" je data, ne konstanta.
 0 % je regulérní sazba (`DPH 0% - osvobozeno od daně`), takže projde. Vynechaná `vat_rate` jde
 dál výchozí sazbou; když tenant žádnou výchozí sazbu nemá nastavenou, tool volání odmítne
-(chybová hláška odkazuje do Nastavení) místo tiché nuly — stejné pravidlo platí i pro
-`CreateInvoiceTool` a pro nekladné explicitní `quantity` v obou toolech (#283).
+(chybová hláška odkazuje do Nastavení) místo tiché nuly. Nekladné explicitní `quantity` odmítají
+oba create tooly shodně (obojí #283).
+
+`CreateInvoiceTool` odmítá chybějící výchozí sazbu taky, ale **jen když je vystavovatel plátce
+DPH** (`issuer.IsVatPayer && defaultVatRate is null`). Neplátce sazbu nakonfigurovanou mít
+nemusí (`TenantReadinessService` ji po něm nechce) a 0 % je u něj správná hodnota —
+`InvoiceService.CreateInvoiceAsync` kreslí tutéž čáru a `VatRateId` vyžaduje jen po plátci,
+takže nepodmíněný guard by z chatu zablokoval doklad, který v UI vznikne bez problémů.
+`create_received_invoice` podmínku nemá, protože `ReceivedInvoiceService` žádnou takovou
+kontrolu neobsahuje — tam tichá nula hrozila všem. Výběr výchozí sazby zatím neřídí datum
+plnění (#387).
 
 Společná je resoluce „která faktura?" (`ReceivedInvoiceLookup`): `id` má přednost před
 `document_number`, číslo dokladu se hledá jako substring. **Víc než jedna shoda = chyba**, ne

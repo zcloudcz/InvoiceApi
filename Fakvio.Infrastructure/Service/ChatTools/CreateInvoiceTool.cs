@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.Chat;
@@ -161,21 +162,28 @@ public class CreateInvoiceTool : IChatTool
         }
 
         // ── Step 5: Get default VAT rate ─────────────────────────────────
-        // We use the default standard rate (typically 21% in CZ). This is a tax document —
-        // a missing default must be an error, not a silent 0% (issue #283): the invoice would
-        // otherwise save with no VAT and nobody would notice until the VAT return.
+        // We use the default standard rate (typically 21% in CZ). For a VAT payer a missing
+        // default must be an error, not a silent 0% (issue #283): the invoice would otherwise
+        // save with no VAT and nobody would notice until the VAT return.
+        // A non-VAT payer is the opposite case — it has no rate to configure at all
+        // (TenantReadinessService deliberately does not ask a non-payer for one) and 0% is the
+        // correct value. InvoiceService.CreateInvoiceAsync draws exactly the same line: it demands
+        // VatRateId only when the issuer is a VAT payer. Rejecting a non-payer here would block
+        // from chat a document the UI creates without complaint.
 
         var defaultVatRate = await _vatRateService.GetDefaultStandardRateAsync(ct);
-        if (defaultVatRate is null)
+        if (issuer.IsVatPayer && defaultVatRate is null)
         {
-            _logger.LogWarning("CreateInvoiceTool: no default standard VAT rate configured");
+            _logger.LogWarning(
+                "CreateInvoiceTool: VAT-paying issuer {IssuerId} has no default standard VAT rate configured",
+                issuer.Id);
             return ChatToolResult.Failure(
                 "No default VAT rate is configured. Please set up a standard VAT rate in Settings before creating invoices.");
         }
 
         // ── Step 6: Parse items ──────────────────────────────────────────
 
-        var parsedItems = ParseItems(itemsJson, defaultVatRate.Id, defaultVatRate.Rate);
+        var parsedItems = ParseItems(itemsJson, defaultVatRate?.Id, defaultVatRate?.Rate ?? 0m);
         if (parsedItems.Error != null)
             return parsedItems.Error;
 
@@ -311,7 +319,7 @@ public class CreateInvoiceTool : IChatTool
     /// - "total_price" instead of "unit_price" → treated as total price for 1 unit
     /// </summary>
     private static ItemParseResult ParseItems(
-        string itemsJson, long defaultVatRateId, decimal defaultVatPercentage)
+        string itemsJson, long? defaultVatRateId, decimal defaultVatPercentage)
     {
         try
         {
@@ -353,7 +361,8 @@ public class CreateInvoiceTool : IChatTool
                     return new ItemParseResult
                     {
                         Error = ChatToolResult.Failure(
-                            $"Item #{orderIndex} ('{description}') has invalid quantity ({quantityRaw}). " +
+                            $"Item #{orderIndex} ('{description}') has invalid quantity " +
+                            $"({quantityRaw.Value.ToString(CultureInfo.InvariantCulture)}). " +
                             "Quantity must be positive; omit it to default to 1.")
                     };
                 }

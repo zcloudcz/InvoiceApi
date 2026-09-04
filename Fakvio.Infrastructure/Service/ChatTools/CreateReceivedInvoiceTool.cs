@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Fakvio.Application.Service;
@@ -389,7 +390,8 @@ public class CreateReceivedInvoiceTool : IConfirmableChatTool
             if (raw.Quantity is <= 0)
             {
                 return ItemParseResult.Failed(
-                    $"Item #{position} ('{raw.Description}') has invalid quantity ({raw.Quantity}). " +
+                    $"Item #{position} ('{raw.Description}') has invalid quantity " +
+                    $"({raw.Quantity.Value.ToString(CultureInfo.InvariantCulture)}). " +
                     "Quantity must be positive; omit it to default to 1.");
             }
 
@@ -415,7 +417,7 @@ public class CreateReceivedInvoiceTool : IConfirmableChatTool
     /// </summary>
     private static string DescribeAllowed(IReadOnlyList<Contracts.Dto.VatRate.VatRateDto> allowedVatRates)
         => allowedVatRates.Count == 0
-            ? "No VAT rates are set up — add them in Settings, or leave 'vat_rate' out to use the default."
+            ? "No VAT rates are set up for that date — add them in Settings."
             : $"Available: {string.Join(", ", allowedVatRates.Select(rate => $"{rate.Rate:0.##}%"))}. " +
               "Leave 'vat_rate' out to use the default rate.";
 
