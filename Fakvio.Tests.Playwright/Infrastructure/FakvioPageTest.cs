@@ -84,13 +84,15 @@ public class FakvioPageTest : PageTest
 
     /// <summary>
     /// Performs login through the actual UI (filling email + password + clicking submit).
+    /// Defaults to the seeded SysAdmin; pass credentials to sign in as somebody else —
+    /// the onboarding journey (issue #221) needs the account it has just registered.
     /// </summary>
-    protected async Task LoginViaUiAsync()
+    protected async Task LoginViaUiAsync(string? email = null, string? password = null)
     {
         await Page.GotoAsync("/login", new() { WaitUntil = WaitUntilState.NetworkIdle, Timeout = Config.BlazorLoadTimeout });
         await Page.WaitForSelectorAsync("text=Fakvio", new() { Timeout = Config.BlazorLoadTimeout });
-        await Page.GetByLabel("E-mail").FillAsync(Config.AdminEmail);
-        await Page.GetByLabel("Heslo").FillAsync(Config.AdminPassword);
+        await Page.GetByLabel("E-mail").FillAsync(email ?? Config.AdminEmail);
+        await Page.GetByLabel("Heslo").FillAsync(password ?? Config.AdminPassword);
         await Page.GetByRole(AriaRole.Button, new() { Name = "Přihlásit" }).ClickAsync();
     }
 

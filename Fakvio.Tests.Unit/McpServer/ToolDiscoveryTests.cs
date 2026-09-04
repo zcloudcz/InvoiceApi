@@ -1,6 +1,10 @@
+﻿using System.Globalization;
 using System.Reflection;
 using System.Text.Json;
+using System.Text.RegularExpressions;
+using Fakvio.McpServer;
 using Fakvio.McpServer.Client;
+using Fakvio.McpServer.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Server;
 using NSubstitute;
@@ -29,17 +33,35 @@ public class ToolDiscoveryTests
     private const string SnakeCaseToolName = "^[a-z][a-z0-9]*(_[a-z0-9]+)*$";
 
     /// <summary>
-    /// Builds the tool list the way <c>Program.cs</c> does — register <see cref="IFakvioApiClient"/>
-    /// first, then scan the McpServer assembly for <c>[McpServerToolType]</c> classes and register
-    /// their tools into DI.
+    /// Guides that publish how many MCP tools ship, each with the wording it uses today.
+    /// Every alternative is anchored on its surrounding phrase on purpose: a bare
+    /// <c>(?&lt;count&gt;\d+) toolů</c> would also match "49 chat toolů" two words away in §4.7
+    /// and compare the MCP surface against the chat one.
+    /// </summary>
+    private static readonly (string File, Regex Published)[] PublishedToolCounts =
+    [
+        ("DEVGUIDE.md", new Regex(
+            @"\[McpServerTool\]`, (?<count>\d+) toolů"          // §4.7 intro
+            + @"|Součty:\*\* (?<count>\d+) MCP toolů"           // §4.7 totals line
+            + @"|\*\*(?<count>\d+) tools\*\*",                 // §4.9 breakdown
+            RegexOptions.Compiled)),
+        ("USERGUIDE.md", new Regex(@"(?<count>\d+) nástrojů", RegexOptions.Compiled)),
+        (Path.Combine("Fakvio.McpServer", "README.md"), new Regex(
+            @"Dostupné nástroje \((?<count>\d+)\)", RegexOptions.Compiled))
+    ];
+
+    /// <summary>
+    /// Builds the tool list from the production registration itself —
+    /// <see cref="McpServerRegistration.AddFakvioMcpServer"/>, the one method both the stdio host
+    /// and the HTTP host call.
     ///
-    /// Junior note: the order matters, and so does having the client registered at all. The SDK asks
+    /// Junior note: the order inside that method matters, and so does having
+    /// <see cref="IFakvioApiClient"/> registered at all. The SDK asks
     /// <c>IServiceProviderIsService</c> whether it can resolve a tool parameter from DI; if it can,
     /// the parameter is injected and hidden from the tool's input schema, otherwise it becomes an
-    /// input the AI client has to supply. <c>Program.cs</c> registers the client via
-    /// <c>AddHttpClient</c> before <c>AddMcpServer()</c>, so every <c>IFakvioApiClient api</c>
-    /// parameter is injected. A plain substitute is enough here — nothing calls it, only its
-    /// presence in the container is observed.
+    /// input the AI client has to supply. Calling the real registration instead of re-creating it
+    /// here is deliberate: a hand-copied mirror would keep passing after the hosts changed, and
+    /// these tests would go quietly false-green.
     /// </summary>
     private static IReadOnlyList<McpServerTool> DiscoverTools() =>
         // WithToolsFromAssembly registers one McpServerTool singleton per discovered method.
@@ -53,8 +75,11 @@ public class ToolDiscoveryTests
     private static ServiceProvider BuildServerContainer()
     {
         var services = new ServiceCollection();
-        services.AddSingleton(Substitute.For<IFakvioApiClient>());
-        services.AddMcpServer().WithToolsFromAssembly(McpServerAssembly);
+
+        // The mode-specific piece the shared registration deliberately leaves to its caller.
+        // Nothing here sends a request, so a substitute is enough.
+        services.AddSingleton(Substitute.For<IApiTokenProvider>());
+        services.AddFakvioMcpServer(new McpServerSettings { ApiBaseUrl = "https://api.invalid" });
 
         return services.BuildServiceProvider();
     }
@@ -259,6 +284,47 @@ public class ToolDiscoveryTests
             SchemaRequiredNames(tool).ShouldBe(expectedRequired,
                 $"Required inputs of tool '{tool.ProtocolTool.Name}' no longer match the parameters " +
                 $"of method '{method.Name}' that have no default value.");
+        }
+    }
+
+    /// <summary>
+    /// Every guide that names a tool count must name the count the server actually exposes.
+    ///
+    /// Why this needs a test rather than a reviewer: story #144 published "36" and the number
+    /// survived seven rounds of review because nothing fails when prose goes stale — the guide
+    /// simply lies, and each new reader trusts it instead of counting the attributes again.
+    /// It also merges silently: two branches that each add a tool rewrite the sentence to two
+    /// different numbers, git takes one, and no conflict marker ever appears.
+    ///
+    /// The expectation comes from <see cref="DiscoverTools"/> — the live surface — never from a
+    /// literal here, because a literal is the very thing that goes stale.
+    /// </summary>
+    [Fact]
+    public void Guides_PublishTheLiveNumberOfMcpTools()
+    {
+        var expected = DiscoverTools().Count;
+        var repositoryRoot = RepositoryRoot.Find();
+
+        foreach (var (file, published) in PublishedToolCounts)
+        {
+            var text = File.ReadAllText(Path.Combine(repositoryRoot, file));
+
+            var counts = published
+                .Matches(text)
+                .Select(match => int.Parse(match.Groups["count"].Value, CultureInfo.InvariantCulture))
+                .ToList();
+
+            counts.ShouldNotBeEmpty(
+                $"{file} publishes the MCP tool count; if the wording changed, update " +
+                $"{nameof(PublishedToolCounts)} so the guard keeps biting");
+
+            // Distinct() so the message reads "the guide says 36, we ship 37" instead of
+            // repeating the same wrong number once per occurrence.
+            counts
+                .Distinct()
+                .ShouldBe(
+                    [expected],
+                    $"every MCP tool count in {file} must match the {expected} tools the server exposes");
         }
     }
 }

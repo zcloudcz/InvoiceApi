@@ -37,7 +37,7 @@ forwarderem a probem. Proč to tak musí být, viz [Známá omezení](#6-známá
 ```
 tailscaled --tun=userspace-networking --socks5-server=localhost:1055
         ↓ (uzel v tailnetu, SOCKS5 na 127.0.0.1:1055)
-tailscale --socket=/tmp/tailscaled.sock up --authkey=… --hostname=fakvio-func
+tailscale --socket=/tmp/tailscaled.sock up --authkey=… --hostname=$TAILSCALE_HOSTNAME
         ↓ (uzel autentizovaný)
 Socks5Forwarder  127.0.0.1:15432  →  SOCKS5  →  100.69.241.17:5544
         ↓
@@ -118,6 +118,7 @@ Function App → *Settings → Environment variables*. Dvojité podtržítko = o
 | `ConnectionStrings__DefaultConnection` | `Host=127.0.0.1;Port=15432;Database=fakvio_test;Username=fakvio_test;Password=***;Ssl Mode=Prefer;Timezone=UTC;Maximum Pool Size=20;Timeout=15` | Míří na **forwarder**, ne na databázi. Role je **per prostředí**: `fakvio_test` k `fakvio_test`, `fakvio_prod` k `fakvio_prod`. |
 | `Database__AuthMode` | `Password` | |
 | `UseAzureAdAuthentication` | `false` | Musí souhlasit s předchozím řádkem, jinak start spadne na fail-fast kontrole (`SELFHOST-DB.md` §7). |
+| `TAILSCALE_HOSTNAME` | `fakvio-func-prod` / `fakvio-func-test` | Jméno uzlu v tailnetu. Prod a test sdílejí tailnet, takže **každé prostředí musí mít vlastní**; bez klíče se použije `fakvio-func-prod`. |
 | `TAILSCALE_TARGET_HOST` | *(volitelné)* výchozí `100.69.241.17` | Musí být **IPv4 tailnet adresa**; MagicDNS jméno kód odmítne — userspace režim resolver do procesu nezapojuje. |
 | `TAILSCALE_TARGET_PORT` | *(volitelné)* výchozí `5544` | |
 

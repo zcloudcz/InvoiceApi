@@ -200,9 +200,12 @@ public class SharedResourceLocalizationTests : IDisposable
             .Where(f => f.IsLiteral && f.FieldType == typeof(string))
             .Select(f => $"Readiness_Code_{(string)f.GetRawConstantValue()!}");
 
+        // The dashboard checklist (issue #210) renders the same report, so its own two chrome
+        // keys are covered here rather than in a near-identical second test.
         var readinessKeys = codeKeys
             .Concat(["Readiness_BlockingTitle", "Readiness_WarningTitle",
-                     "Readiness_FixLink", "Readiness_Code_Unknown"])
+                     "Readiness_FixLink", "Readiness_Code_Unknown",
+                     "SetupChecklist_Title", "SetupChecklist_Defer"])
             .ToArray();
 
         foreach (var key in readinessKeys)

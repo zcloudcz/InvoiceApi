@@ -129,8 +129,30 @@ public class TailscaleTunnelTests
     public void BuildsExpectedUpArguments()
     {
         // --socket must repeat on the CLI call, otherwise it talks to the default path and hangs.
-        TailscaleTunnel.UpArguments("tskey-x").ShouldBe(
-            "--socket=/tmp/tailscaled.sock up --authkey=tskey-x --hostname=fakvio-func --accept-dns=false --timeout=30s");
+        TailscaleTunnel.UpArguments("tskey-x", "fakvio-func-test").ShouldBe(
+            "--socket=/tmp/tailscaled.sock up --authkey=tskey-x --hostname=fakvio-func-test --accept-dns=false --timeout=30s");
+    }
+
+    [Theory]
+    // Prod and test share one tailnet, so the node name has to come from the environment; a missing
+    // or blank value falls back to the production name rather than to nothing.
+    [InlineData(null, "fakvio-func-prod")]
+    [InlineData("", "fakvio-func-prod")]
+    [InlineData("   ", "fakvio-func-prod")]
+    [InlineData("fakvio-func-test", "fakvio-func-test")]
+    [InlineData(" fakvio-func-test ", "fakvio-func-test")]
+    public void ResolvesHostnameFromEnvironment(string? configured, string expected)
+    {
+        var previous = Environment.GetEnvironmentVariable(TailscaleTunnel.HostnameEnv);
+        try
+        {
+            Environment.SetEnvironmentVariable(TailscaleTunnel.HostnameEnv, configured);
+            TailscaleTunnel.ResolveHostname().ShouldBe(expected);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(TailscaleTunnel.HostnameEnv, previous);
+        }
     }
 
     [Theory]
@@ -169,6 +191,7 @@ public class TailscaleTunnelTests
         TailscaleTunnel.ListenPort.ShouldBe(15432);
         TailscaleTunnel.SocksPort.ShouldBe(1055);
         TailscaleTunnel.AuthKeyEnv.ShouldBe("TAILSCALE_AUTHKEY");
+        TailscaleTunnel.HostnameEnv.ShouldBe("TAILSCALE_HOSTNAME");
     }
 
     [Fact]

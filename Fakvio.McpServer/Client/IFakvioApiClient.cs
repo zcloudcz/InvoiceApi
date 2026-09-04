@@ -1,4 +1,5 @@
 using Fakvio.Contracts.Common.Pagination;
+using Fakvio.Contracts.Dto.ApiKey;
 using Fakvio.Contracts.Dto.Client;
 using Fakvio.Contracts.Dto.Dashboard;
 using Fakvio.Contracts.Dto.Email;
@@ -142,4 +143,13 @@ public interface IFakvioApiClient
     /// explicitly requested issuer does not exist in this tenant (404).
     /// </summary>
     Task<ReadinessReportDto?> GetReadinessAsync(long? issuerId = null, CancellationToken ct = default);
+
+    // ── Identity ──────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// GET /api/api-key/me — what the credential currently being sent authenticates as.
+    /// Null means the API refused it (unknown, expired or revoked key); a transport failure
+    /// still throws, because "unreachable" is not the same answer as "rejected".
+    /// </summary>
+    Task<ApiKeyIdentityDto?> GetIdentityAsync(CancellationToken ct = default);
 }

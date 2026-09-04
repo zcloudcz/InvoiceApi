@@ -64,24 +64,39 @@ před vystavením první faktury. Chcete-li adresu odstranit, udělejte to tam.
 
 Dashboard zobrazuje aktuální přehled vaší firmy na jednom místě:
 
-### Připravenost k fakturaci
+### Dokončit nastavení (checklist připravenosti)
 
 Pokud vaší firmě chybí něco, co musí být na daňovém dokladu, uvidíte nahoře na dashboardu
-banner se seznamem chybějících položek. U každé položky je odkaz **Doplnit**, který vás
-zavede přímo na stránku, kde ji vyplníte.
+kartu **Dokončit nastavení** se seznamem toho, co zbývá. U každé položky je odkaz
+**Doplnit**, který vás zavede přímo na stránku, kde ji vyplníte. Pod položkou jsou drobně
+vypsaná konkrétní pole, která chybí.
 
-Banner rozlišuje dvě závažnosti:
+Položky jsou rozdělené do dvou skupin, každá má vlastní nadpis (a barvu koleček):
 
-| Barva | Význam |
-|-------|--------|
-| Červená — „Než začnete fakturovat, doplňte tato nastavení" | Bez těchto údajů aplikace **odmítne vystavit fakturu** (viz [§2.3.1](#231-když-vystavení-skončí-chybou-nedokončené-nastavení-firmy)) |
-| Oranžová — „Doporučená nastavení k doplnění" | Fakturovat můžete, ale narazíte později v konkrétní funkci (typicky EPO export přiznání k DPH) |
+| Nadpis skupiny | Význam |
+|----------------|--------|
+| **Než začnete fakturovat, doplňte tato nastavení** (červená kolečka) | Bez těchto údajů aplikace **odmítne vystavit fakturu** (viz [§2.3.1](#231-když-vystavení-skončí-chybou-nedokončené-nastavení-firmy)) |
+| **Doporučená nastavení k doplnění** (oranžová kolečka) | Fakturovat můžete, ale narazíte později v konkrétní funkci (typicky EPO export přiznání k DPH) |
+
+Skupina, ve které nic nechybí, se nezobrazí vůbec.
 
 Máte-li v účtu víc vystavitelů, je u položky uvedeno, které firmy se týká.
-Když je vše vyplněné, banner se nezobrazuje vůbec.
 
-Stejný banner najdete i v detailu faktury ve stavu Draft — tam je omezený na vystavitele
-té konkrétní faktury, takže vidíte přesně to, co by vystavení zablokovalo.
+**Odložení na později.** Tlačítko **Připomenout později** kartu sbalí na jediný řádek
+„Dokončit nastavení (počet)“. Kliknutím na něj se průvodce kdykoli znovu rozbalí — není to
+jednorázové zavření. Volba se pamatuje v prohlížeči, takže přežije i obnovení stránky
+(na jiném počítači nebo v jiném prohlížeči se karta objeví opět rozbalená).
+
+**Hotovo se nikde neukládá.** Seznam se počítá vždy znovu z aktuálního stavu nastavení, takže
+jakmile poslední položku doplníte (třeba i kolega), zmizí karta i sbalený řádek úplně —
+odložení na tom nic nemění a žádné zastaralé připomínky nezbývají.
+
+Chybí-li něco červeného, ozve se po přihlášení i [AI asistent](#13-ai-asistent) a nabídne,
+že to s vámi doplní rovnou v chatu — údaj po údaji, bez chození po stránkách.
+
+Stejný seznam najdete i v detailu faktury ve stavu Draft — tam se zobrazí jako barevný
+banner omezený na vystavitele té konkrétní faktury, takže vidíte přesně to, co by vystavení
+zablokovalo. Tam se odložit nedá — jde o poslední varování před kliknutím na Vystavit.
 
 ### KPI karty (klikatelné — navigují na příslušný seznam)
 
@@ -116,10 +131,6 @@ Tabulka posledních 5 faktur s číslem, klientem, datem a stavem. Kliknutím se
 ### Widget upomínek
 
 Zobrazí se pokud máte aktivní upomínkový systém: počty Draft/Sent/Failed upomínek + poslední záznamy.
-
-### Quick Start
-
-Pro nové uživatele: průvodce v krocích (Klienti → Faktury).
 
 ---
 
@@ -660,6 +671,22 @@ můžete mít panel zavřený, i když ho na počítači necháváte otevřený.
 nebo klepnutím mimo panel. Plocha pro přetažení souboru se na telefonu nezobrazuje —
 soubor připojíte tlačítkem se sponkou vedle textového pole.
 
+### Při prvním přihlášení se asistent ozve sám
+
+Dokud vaší firmě chybí něco, bez čeho nejde vystavit fakturu, otevře se panel asistenta
+hned po přihlášení a asistent rovnou napíše, co ještě chybí — nezůstanete stát nad prázdným
+přehledem. Vypisuje přesně ty položky, které najdete i v [banneru připravenosti na
+dashboardu](#připravenost-k-fakturaci); doporučená (oranžová) nastavení uvítání nespouštějí.
+
+Nastavení můžete doplnit rovnou v chatu: asistent se ptá **po jednom údaji**, odpověď hned
+uloží, potvrdí ji a řekne, co zbývá. Než něco zapíše, ukáže to k odsouhlasení stejně jako
+u každé jiné změny (viz [Než asistent něco změní, zeptá se](#než-asistent-něco-změní-zeptá-se)).
+Nechcete-li to řešit v chatu, panel zavřete a doplňte údaje na příslušných stránkách —
+odkaz **Doplnit** v banneru na dashboardu vede přímo na ně.
+
+Uvítání přijde **jednou za přihlášení**. Když panel zavřete, do dalšího přihlášení už se sám
+neotevře. Jakmile je nastavení kompletní, uvítání se nezobrazuje vůbec.
+
 ### Co AI asistent umí
 
 AI asistent zná kontext vaší firmy a umí odpovídat na otázky i provádět akce:
@@ -1133,48 +1160,186 @@ platné a po dokončení přípravy se přihlásíte stejnými údaji.
 ## 20. Napojení vlastního AI klienta (MCP server)
 
 Kromě vestavěného [AI asistenta](#13-ai-asistent) umí Fakvio pracovat i s AI
-aplikací, kterou už používáte na svém počítači (např. Claude Desktop nebo
-Claude Code). Napojení zajišťuje **MCP server** — malý program, který běží
-u vás lokálně a překládá požadavky AI na volání Fakvia.
+aplikací, kterou už používáte (např. Claude Desktop nebo Claude Code). Napojení
+zajišťuje **MCP server** — program, který překládá požadavky AI na volání Fakvia.
 
 **V čem se to liší od AI asistenta v aplikaci:**
 
 | | AI asistent v aplikaci | MCP server |
 |---|---|---|
-| Kde se ovládá | Panel v pravém horním rohu Fakvia | Vaše AI aplikace na počítači |
-| Instalace | Žádná | Nutná (program + konfigurační soubor) |
-| Rozsah akcí | Vyhledávání a přehledy | 36 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové výpočty, šablony |
+| Kde se ovládá | Panel v pravém horním rohu Fakvia | Vaše AI aplikace |
+| Instalace | Žádná | Podle způsobu připojení (viz krok 2) |
+| Přihlášení | Vaše běžné přihlášení | Osobní **API klíč**, který si vytvoříte |
+| Rozsah akcí | Vyhledávání a přehledy | 37 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové výpočty, šablony |
 
-### Co je potřeba
+Postup je vždy stejný: **vytvořit klíč → vložit konfiguraci do AI aplikace → ověřit**.
 
-1. **Nainstalovaný MCP server** na vašem počítači. Instalaci a nastavení
-   provádí správce systému — technický postup je v souboru
-   `Fakvio.McpServer/README.md`.
-2. **Přístupový token** (JWT) vašeho účtu. Token zastupuje vaše přihlášení,
-   proto má AI přesně stejná oprávnění, jaká máte vy — nic víc.
-3. **Zápis do konfigurace AI aplikace** — vzor je v souboru
-   `.mcp.json.sample`; do něj se doplní adresa Fakvia a token.
+---
 
-### Co s tím AI zvládne
+### 20.1 Krok 1 — vytvořte si API klíč
+
+API klíč je vaše osobní „heslo pro AI“. Zastupuje vaše přihlášení, takže AI má
+přesně stejná oprávnění jako vy — nikdy víc.
+
+1. V levém menu otevřete **Nastavení → Integrace** (adresa `/settings/integrations`).
+   Stránku má k dispozici každý přihlášený uživatel a vidí na ní **jen své vlastní klíče**.
+2. Klikněte na **Nový API klíč**.
+3. Vyplňte:
+   - **Název** — podle čeho klíč poznáte, například „Claude Desktop — notebook“. Povinné,
+     nejvýš 100 znaků.
+   - **Oprávnění** — `Jen čtení` (AI smí jen číst a počítat) nebo `Čtení i zápis`
+     (AI smí i vystavovat faktury, zakládat klienty, mazat koncepty).
+   - **Platnost do** — nepovinné. Prázdné pole znamená, že klíč nikdy nevyprší.
+     Nejdřívější volitelný den je zítřek.
+4. Potvrďte **Vytvořit**.
+
+> ### ⚠️ Klíč uvidíte právě jednou
+> Hned po vytvoření se nahoře objeví panel s vygenerovaným klíčem (začíná `fak_live_`).
+> **Jakmile panel zavřete tlačítkem „Klíč mám uložený“, klíč už nikdo nezobrazí** —
+> Fakvio si z něj ukládá jen otisk, ne klíč samotný. Ztracený klíč nejde obnovit,
+> jen revokovat a vytvořit nový.
+
+V tom panelu jsou kromě samotného klíče i **dva hotové konfigurační bloky** — jeden pro
+lokální a jeden pro vzdálené připojení — a u každého tlačítko pro zkopírování do schránky.
+Klíč už v nich je vyplněný, takže nejrychlejší cesta je zkopírovat rovnou ten blok, který
+odpovídá vašemu způsobu připojení podle kroku 2.
+
+---
+
+### 20.2 Krok 2 — vyberte způsob připojení
+
+| | Lokální (stdio) | Vzdálený (HTTP) |
+|---|---|---|
+| Kde MCP server běží | Na vašem počítači, spouští ho vaše AI aplikace | Na serveru, který provozuje váš správce |
+| Co musíte nainstalovat | Nástroj `fakvio-mcp` (instaluje správce) | Nic |
+| Co potřebujete znát | Adresu **API** Fakvia (najdete ji v připraveném bloku, viz krok 3a) | Adresu MCP serveru (dá vám ji správce) |
+| Kdy zvolit | Pracujete na jednom počítači a máte tam práva instalovat | Chcete se připojit odkudkoli nebo nemůžete nic instalovat |
+
+Nevíte-li, co máte k dispozici, zeptejte se správce systému — provoz MCP serveru je jeho
+část (technický popis má v ADMINGUIDE, kapitola „Bezpečnost“).
+
+---
+
+### 20.3 Krok 3a — lokální připojení (stdio)
+
+Do konfiguračního souboru své AI aplikace vložte blok níž (v Claude Code je to
+`.mcp.json` v kořeni projektu, v Claude Desktop `claude_desktop_config.json` — kde přesně
+soubor leží, říká dokumentace té aplikace). Máte-li otevřený panel s klíčem, použijte radši
+připravený blok **Lokální MCP server (stdio)**, ať se nepřepíšete.
+
+```json
+{
+  "mcpServers": {
+    "fakvio": {
+      "command": "fakvio-mcp",
+      "env": {
+        "FAKVIO_API_URL": "https://adresa-api-fakvia",
+        "FAKVIO_API_TOKEN": "fak_live_vas-klic"
+      }
+    }
+  }
+}
+```
+
+- `FAKVIO_API_URL` je adresa **API** Fakvia — tedy serveru, se kterým aplikace mluví.
+  **Není to adresa, na kterou se hlásíte v prohlížeči**; v běžném nasazení to jsou dvě
+  různé adresy. Nejjistější je vzít hodnotu z připraveného bloku **Lokální MCP server
+  (stdio)** na stránce Integrace — je v něm vyplněná správně. Kdo blok už nemá otevřený,
+  ať si o adresu řekne správci.
+- `FAKVIO_API_TOKEN` je váš API klíč z kroku 1.
+- Předpokladem je, že správce na vašem počítači nainstaloval nástroj `fakvio-mcp`.
+
+Po uložení souboru AI aplikaci restartujte.
+
+---
+
+### 20.4 Krok 3b — vzdálené připojení (HTTP)
+
+Tady se nic neinstaluje — AI aplikace se rovnou připojí na adresu MCP serveru a klíč
+posílá v hlavičce každého požadavku.
+
+```json
+{
+  "mcpServers": {
+    "fakvio-remote": {
+      "type": "http",
+      "url": "https://adresa-mcp-serveru/mcp",
+      "headers": {
+        "Authorization": "Bearer fak_live_vas-klic"
+      }
+    }
+  }
+}
+```
+
+- `url` končí vždy `/mcp`.
+- Adresu serveru vám dá správce a bez ní se nepřipojíte. V připraveném bloku na stránce
+  Integrace je `url` jen **zástupná hodnota** poskládaná z adresy API — MCP server tam
+  neběží, takže ji po vložení **vždy** přepište adresou od správce.
+- Podporu vzdálených MCP serverů musí umět i vaše AI aplikace; ne všechny to zatím zvládají.
+
+---
+
+### 20.5 Krok 4 — ověřte, že to funguje
+
+Zeptejte se AI například „Kolik mám faktur po splatnosti?“. Když odpoví čísly z Fakvia,
+je hotovo. Když ne, obvyklé příčiny jsou tyhle:
+
+| Co AI hlásí | Co se stalo | Co s tím |
+|-------------|-------------|----------|
+| Chybu s číslem **401** | Klíč je špatně zkopírovaný, vypršel, nebo byl revokovaný | Vytvořte na stránce Integrace nový klíč a vložte ho znovu |
+| Chybu s číslem **403** | Klíč má oprávnění `Jen čtení` a AI se pokusila něco změnit | Vytvořte klíč s `Čtení i zápis` (a ten původní revokujte) |
+| Že nástroje Fakvia vůbec nevidí | Konfigurace se nenačetla | Zkontrolujte, že soubor je uložený na správném místě, a AI aplikaci restartujte |
+| Že se nemůže připojit — **lokální** režim | Chybí nástroj `fakvio-mcp`, nebo v `FAKVIO_API_URL` není adresa API (častá chyba: je tam adresa, na které máte Fakvio otevřené v prohlížeči) | Porovnejte `FAKVIO_API_URL` s blokem **Lokální MCP server (stdio)** na stránce Integrace; když blok už nemáte otevřený, řekněte si o adresu API správci |
+| Že se nemůže připojit — **vzdálený** režim | Nesedí `url` MCP serveru | Vložte adresu, kterou vám dal správce (končí `/mcp`). S připraveným blokem ji neporovnávejte — `url` je v něm jen zástupná hodnota (viz krok 3b) |
+
+---
+
+### 20.6 Co s tím AI zvládne
 
 | Oblast | Příklady |
 |--------|---------|
 | Vydané faktury | Vypsat, najít podle čísla, vystavit novou, dokončit, označit jako uhrazenou, odeslat emailem, stáhnout PDF nebo ISDOC, smazat koncept |
-| Klienti | Vypsat, zobrazit detail, založit, upravit, dohledat firmu v ARES |
+| Klienti | Vypsat, zobrazit detail, založit, upravit, dohledat firmu v ARES, zjistit vystavitele |
 | Přijaté faktury | Vypsat, zobrazit, zadat novou, schválit, označit jako uhrazenou, smazat |
-| Přehledy | Dashboard, faktury po splatnosti, faktury klienta, faktury za období, přehled DPH |
-| Daně | Odhad daně, porovnání daňových režimů, roční příjmy, zálohy na pojistné |
+| Přehledy | Dashboard, faktury po splatnosti, faktury klienta, faktury za období, přehled DPH, přijaté faktury po splatnosti |
+| Daně | Odhad daně, porovnání daňových režimů, roční příjmy, zálohy na pojistné, daňové nastavení |
 | Šablony | Vypsat, zobrazit, vystavit fakturu ze šablony |
+| Nastavení | Zkontrolovat, co firmě chybí k vystavení faktury |
 
 Příklady zadání: „Vystav fakturu pro klienta XYZ na 15 000 Kč za konzultace“,
 „Stáhni mi PDF faktury FAK-2026-001“, „Kolik mám letos zaplatit na zálohách?“
 
-### Bezpečnost — čtěte, než token někam vložíte
+---
 
-- Token **je uložen v konfiguračním souboru v čitelné podobě**. Kdo se dostane
-  k souboru, dostane se k vašemu účtu. Nesdílejte ho a neposílejte emailem.
-- Token **platí 24 hodin**. Po vypršení začne AI hlásit chyby — stačí vložit nový.
-- AI může data i **měnit a mazat** (vystavit fakturu, smazat koncept). Než akci
-  potvrdíte, přečtěte si, co se chystá udělat.
-- Napojení nefunguje přes internetový prohlížeč — server běží na vašem
-  počítači a připojuje se na stejné Fakvio, do kterého se hlásíte v UI.
+### 20.7 Správa klíčů a bezpečnost
+
+Na stránce **Nastavení → Integrace** máte seznam svých klíčů:
+
+| Sloupec | Co znamená |
+|---------|------------|
+| Název | Co jste zadali při vytvoření |
+| Prefix | Prvních 12 znaků klíče — jen na rozlišení, přihlásit se jimi nedá |
+| Oprávnění | `Jen čtení` / `Čtení i zápis` |
+| Vytvořen, Platnost do | `Bez expirace`, pokud jste datum nevyplnili |
+| Naposledy použit | Orientační — zapisuje se nejvýš jednou za pět minut, takže úplně poslední volání v seznamu ještě být nemusí |
+| Stav | `Aktivní`, `Vypršel`, `Revokován` |
+
+**Revokace.** U každého klíče, který ještě nebyl revokovaný — tedy i u vypršelého — je v řádku
+ikona zákazu. Po potvrzení klíč **okamžitě** přestane fungovat — nic se necachuje, takže další
+požadavek AI už neprojde. Vzít zpět to nejde; místo revokovaného klíče se vydává nový.
+
+**Na co si dát pozor:**
+
+- Klíč je v konfiguračním souboru **čitelně**. Kdo se dostane k souboru, dostane se k vašemu
+  účtu — nesdílejte ho, neposílejte emailem a nedávejte ho do gitu. Když se přesto někam dostane,
+  klíč revokujte; je to rychlejší i bezpečnější než ho hledat.
+- Klíč **nikdy neumí víc než váš účet**. Když má navíc `Jen čtení`, umí ještě míň — na zápis
+  vrátí chybu, i kdyby vaše role zápis dovolovala.
+- Klíčem **nejde spravovat klíče**. Vytvořit nebo revokovat klíč jde jen po přihlášení do
+  aplikace, takže ani zneužitý klíč si nevyrobí náhradu.
+- Když se váš účet deaktivuje, přestanou fungovat **všechny** vaše klíče najednou.
+- AI může data i **měnit a mazat** (vystavit fakturu, smazat koncept). Než akci potvrdíte,
+  přečtěte si, co se chystá udělat.
+- Dává smysl mít **víc klíčů** — jeden na aplikaci či počítač. Když jeden ztratíte, revokujete
+  ho bez dopadu na ostatní.

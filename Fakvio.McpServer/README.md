@@ -1,27 +1,43 @@
 # Fakvio MCP Server
 
-Konzolová aplikace, která zpřístupňuje fakturaci Fakvio AI klientům přes
-**Model Context Protocol (MCP)**. Klient (Claude Code, Claude Desktop, …) si
-server spustí jako podproces a komunikuje s ním po **stdio**.
+Aplikace, která zpřístupňuje fakturaci Fakvio AI klientům přes
+**Model Context Protocol (MCP)**. Umí dva režimy — sada nástrojů je v obou
+totožná, liší se jen tím, odkud se bere credential:
 
 ```
-AI klient ←stdio→ Fakvio.McpServer ←HTTP + JWT→ Fakvio.API ←EF Core→ PostgreSQL
+stdio  AI klient ←stdio→ Fakvio.McpServer ←HTTP + API klíč→ Fakvio.API ←EF Core→ PostgreSQL
+http   AI klienti ←HTTP/MCP→ Fakvio.McpServer ←HTTP + API klíč→ Fakvio.API ←EF Core→ PostgreSQL
 ```
+
+Ve **stdio** režimu si server spustí klient (Claude Code, Claude Desktop, …) jako
+podproces; jeden proces obsluhuje jednoho uživatele, takže credential procesu
+(`FAKVIO_API_TOKEN`) je zároveň credential toho uživatele. Ve **http** režimu jeden proces obsluhuje mnoho
+volajících, takže credential nosí každý request zvlášť — je jím API klíč
+volajícího, který server jen přeposílá na API.
 
 Server sám nemá přístup k databázi — všechno jde přes REST API, takže platí
 úplně stejná autorizace a tenant izolace jako pro webové UI. Rozsah oprávnění
-určuje JWT token, kterým server pracuje.
+určuje credential, se kterým se volá: role jeho vlastníka, u API klíče navíc
+protnutá se scope klíče (`read` vs `read,write` — viz DEVGUIDE §2.10).
 
 - Projekt: `Fakvio.McpServer` (net10.0, `PackAsTool`)
 - Příkaz nainstalovaného nástroje: **`fakvio-mcp`** (`ToolCommandName` v csproj)
 - Jméno serveru hlášené v MCP handshake: `fakvio` (`Program.cs`, `ServerInfo`)
-- SDK: `ModelContextProtocol` 2.2.0, transport **pouze stdio**
+- SDK: `ModelContextProtocol` 2.2.0, transporty: **stdio** (výchozí) a **Streamable HTTP** na `/mcp`
 
 ## Požadavky
 
 - .NET 10 SDK
+- **ASP.NET Core shared framework (`Microsoft.AspNetCore.App`)** — a to i pro stdio režim.
+  Balíček `ModelContextProtocol.AspNetCore`, který přináší Streamable HTTP transport, nese
+  `FrameworkReference`, takže ho potřebuje celý nástroj, ne jen http režim. Na stroji s plným
+  .NET 10 SDK je součástí instalace; na cílovém stroji jen s .NET runtime se musí doinstalovat
+  ASP.NET Core Runtime. Balení a deploy řeší #241.
 - Běžící `Fakvio.API` (lokálně nebo v cloudu), dosažitelné z počítače, kde běží AI klient
-- Platný JWT token uživatele Fakvio
+- Credential podle režimu: **API klíč `fak_live_…`** vydaný v UI na `/settings/integrations`
+  (viz USERGUIDE §20) — ve stdio režimu se vloží do `FAKVIO_API_TOKEN`, v http režimu ho nese
+  každý request volajícího (server žádný vlastní credential nemá). Ve stdio režimu projde
+  i JWT token uživatele, ale platí jen 24 h, takže na trvalé napojení se nehodí.
 
 ## Build a spuštění
 
@@ -56,17 +72,45 @@ Server se konfiguruje **jen proměnnými prostředí** (žádný `appsettings.js
 
 | Proměnná | Povinná | Výchozí | Popis |
 |----------|---------|---------|-------|
-| `FAKVIO_API_TOKEN` | ano | – | JWT bearer token. Chybí-li, server vypíše chybu na stderr a skončí s exit code 1. |
-| `FAKVIO_API_URL` | ne | `https://localhost:7001` | Base URL API, např. `https://localhost:7047` nebo `https://api.fakvio.cz`. |
+| `FAKVIO_MCP_TRANSPORT` | ne | `stdio` | `stdio` nebo `http`. Cokoli jiného = chyba na stderr a exit code 1. |
+| `FAKVIO_API_TOKEN` | jen pro `stdio` | – | Bearer credential — API klíč `fak_live_…` (doporučeno) nebo JWT token. Posílá se beze změny v hlavičce `Authorization`; API rozliší obojí podle prefixu (`fak_` vs `eyJ`), takže server nemusí vědět, co drží. Chybí-li ve stdio režimu, vypíše chybu na stderr a skončí s exit code 1. V HTTP režimu se nepoužívá. |
+| `FAKVIO_API_URL` | ne | `https://localhost:7047` | Base URL API, např. `https://localhost:7047` (lokální `Fakvio.API`, viz `Fakvio.API/Properties/launchSettings.json`) nebo `https://api.fakvio.cz`. |
+| `ASPNETCORE_URLS` | ne | Kestrel default | Jen `http` režim — na čem server poslouchá, standardní ASP.NET Core proměnná. |
 
-> **Pozor na výchozí hodnotu.** `Fakvio.API` běží lokálně na `https://localhost:7047`
-> (viz `Fakvio.API/Properties/launchSettings.json`), takže výchozí `7001` na
-> lokální vývoj nesedí — `FAKVIO_API_URL` nastavte vždy explicitně.
+### HTTP režim
+
+```bash
+FAKVIO_MCP_TRANSPORT=http FAKVIO_API_URL=https://localhost:7047 ASPNETCORE_URLS=http://localhost:5290 dotnet run
+```
+
+Klient posílá na `POST /mcp` a **musí** přiložit `Authorization: Bearer <API klíč>`
+(klíč se zakládá v UI, viz ADMINGUIDE / USERGUIDE). Server klíč ověří na
+`GET /api/api-key/me` u **každého** requestu — nic se necachuje, takže revokovaný
+klíč přestane fungovat okamžitě. Neplatný nebo chybějící klíč = `401` s hlavičkou
+`WWW-Authenticate: Bearer`.
+
+Běží **stateless** (bez `Mcp-Session-Id`), takže `GET /mcp` a `/sse` nejsou k dispozici
+a host jde škálovat bez sticky routingu. Balení a nasazení HTTP hostu řeší #241.
+
+> **Výchozí hodnota sedí jen na lokální vývoj.** `FAKVIO_API_URL` bez explicitního
+> nastavení míří na `https://localhost:7047` (lokální `Fakvio.API`, viz
+> `Fakvio.API/Properties/launchSettings.json`). Pro cloud nebo jiný port ho
+> nastavte vždy explicitně.
 
 Při HTTPS na localhost musí být vývojový certifikát důvěryhodný
 (`dotnet dev-certs https --trust`), jinak HTTP volání selžou na validaci certifikátu.
 
-### Získání JWT tokenu
+### Získání credentialu
+
+**Doporučená cesta — API klíč.** V UI Fakvia otevřete **Nastavení → Integrace**
+(`/settings/integrations`), vytvořte klíč, zvolte rozsah (`Jen čtení` /
+`Čtení i zápis`) a případnou platnost. Klíč se zobrazí **právě jednou** — server
+si ukládá jen jeho SHA-256 otisk, takže ztracený klíč nejde obnovit, jen revokovat
+a vydat nový. Stránka rovnou nabídne hotové konfigurační bloky pro oba režimy
+(viz „Napojení AI klienta"). Klíč platí do vyplněné expirace nebo do revokace;
+revokace je okamžitá (žádná cache, viz HTTP režim výše).
+
+#### Alternativa — JWT token (jen stdio, platí 24 h)
 
 Nejrychleji přes login endpoint:
 
@@ -91,11 +135,15 @@ Po vypršení začnou nástroje vracet chyby — stačí do konfigurace klienta 
 
 ## Napojení AI klienta
 
-V kořeni repozitáře je vzor `.mcp.json.sample`. Pro Claude Code stačí:
+V kořeni repozitáře je vzor `.mcp.json.sample`. Obsahuje **oba** režimy —
+nechte si ten, který chcete, druhý blok smažte (dva zápisy najednou nejsou chyba,
+jen zbytečně registrují server dvakrát). Pro Claude Code stačí:
 
 ```bash
-cp .mcp.json.sample .mcp.json     # a doplnit token
+cp .mcp.json.sample .mcp.json     # a doplnit klíč
 ```
+
+**Lokální server (stdio)** — klienta spouští `fakvio-mcp` jako podproces:
 
 ```json
 {
@@ -105,15 +153,37 @@ cp .mcp.json.sample .mcp.json     # a doplnit token
       "args": [],
       "env": {
         "FAKVIO_API_URL": "https://localhost:7047",
-        "FAKVIO_API_TOKEN": "<váš JWT>"
+        "FAKVIO_API_TOKEN": "fak_live_<váš API klíč>"
       }
     }
   }
 }
 ```
 
-Stejný blok `mcpServers` patří i do konfigurace Claude Desktop
+**Vzdálený server (Streamable HTTP)** — klient nic neinstaluje, jen volá běžící
+HTTP host; `url` je adresa toho hostu (`ASPNETCORE_URLS`) plus cesta `/mcp`:
+
+```json
+{
+  "mcpServers": {
+    "fakvio-remote": {
+      "type": "http",
+      "url": "http://localhost:5290/mcp",
+      "headers": {
+        "Authorization": "Bearer fak_live_<váš API klíč>"
+      }
+    }
+  }
+}
+```
+
+Tytéž bloky `mcpServers` patří i do konfigurace Claude Desktop
 (`claude_desktop_config.json`).
+
+> Konfigurační bloky s už vyplněným klíčem vypíše stránka **Nastavení → Integrace**
+> hned po vytvoření klíče — copy-paste je rychlejší a nehrozí překlep. Adresu
+> vzdáleného serveru tam stránka odhaduje z adresy API; pokud HTTP host běží jinde,
+> `url` po vložení opravte.
 
 Bez instalace nástroje lze server spouštět rovnou ze zdrojáků — místo
 `command`/`args` použijte:
@@ -123,8 +193,9 @@ Bez instalace nástroje lze server spouštět rovnou ze zdrojáků — místo
 "args": ["run", "--project", "C:/GIT/ZCLOUD/InvoiceApi/Fakvio.McpServer"]
 ```
 
-`.mcp.json` obsahuje token v otevřené podobě, proto **patří do `.gitignore`**,
-nikdy ne do commitu. Verzuje se jen `.mcp.json.sample`.
+`.mcp.json` obsahuje credential v otevřené podobě, proto **patří do `.gitignore`**,
+nikdy ne do commitu. Verzuje se jen `.mcp.json.sample`. Když se soubor přesto někam
+dostane, klíč revokujte na `/settings/integrations` — přestane platit okamžitě.
 
 ## Dostupné nástroje (37)
 

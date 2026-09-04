@@ -300,7 +300,13 @@ Systémový prompt má šest bloků; editovatelné jsou dva prostřední:
 | 3 | Hlavní instrukce — styl odpovědi, seznam nástrojů, pravidla importu | **ano** |
 | 4 | Dodatek | **ano** |
 | 5 | Business kontext (počty klientů a faktur z databáze tenanta) | ne |
-| 6 | Situační kontext (dnešní datum, otevřená stránka a doklad, chybějící nastavení tenanta) | ne |
+| 6 | Situační kontext (dnešní datum, otevřená stránka a doklad, chybějící nastavení tenanta) + onboarding instrukce | ne |
+
+Blok 6 obsahuje navíc **onboarding instrukce** — jak asistent doprovodí firmu s nedokončeným
+nastavením (ptát se po jednom údaji a rovnou ho zapsat). Přidají se jen tenantům, kterým
+opravdu něco chybí; hotové firmě se do promptu nedostanou vůbec. V bloku 6 jsou schválně:
+vlastní instrukce (blok 3) je nepřepíší, takže ani firma s vlastním promptem o onboarding
+nepřijde. V náhledu je blok vidět (viz níže).
 
 | Pole | Chování |
 |------|---------|
@@ -498,6 +504,19 @@ curl). Posílají se ve stejné hlavičce: `Authorization: Bearer fak_live_…`.
   logu jde vždy jen prefix. Ztracený klíč nejde obnovit, jen zrušit a vydat nový.
 - Funguje **shodně na API i na Azure Functions hostu**.
 
+**Kde se klíče zakládají — self-service, ne SysAdmin agenda.** Klíče si vydává každý uživatel
+sám na stránce **Nastavení → Integrace** (`/settings/integrations`); stačí libovolná přihlášená
+role. SysAdmin bez impersonace ale tuhle položku v menu nemá (je ve fakturační skupině), takže
+na ni musí přes URL přímo — stránka sama žádnou roli nevyžaduje. Zadává jméno klíče, rozsah
+(`Jen čtení` / `Čtení i zápis`) a nepovinnou platnost do data;
+raw klíč se ukáže **právě jednou** a stránka k němu rovnou vypíše hotové konfigurační bloky pro
+MCP klienta. Revokace je tamtéž, s potvrzením, a platí okamžitě.
+
+> **SysAdmin cizí klíče nevidí ani neruší.** Endpointy `/api/api-key` pracují vždy jen s klíči
+> přihlášeného uživatele — není nad nimi žádná administrátorská nadstavba. Páka na kompromitovaný
+> účet je proto **deaktivace uživatele** (řádek v tabulce níž). Impersonace firmy (§11) tu
+> nepomůže — mění se jí tenant, ne identita, takže SysAdmin i pod ní vidí pořád jen své klíče.
+
 **Co SysAdmina zajímá provozně:**
 
 | Situace | Chování |
@@ -514,6 +533,50 @@ umí `X-Company-Id` impersonaci úplně stejně jako jeho přihlášení (viz §
 takový klíč na tenant endpointy nedosáhne (403) — stejně jako SysAdmin bez impersonace.
 Je to tedy **plnohodnotný SysAdmin credential s dlouhou platností**: vydávejte ho uvážlivě,
 raději s vyplněnou expirací a rozsahem `read`.
+
+### MCP server v HTTP režimu (vzdálené napojení AI klientů)
+
+`Fakvio.McpServer` umí dva režimy, přepíná se proměnnou `FAKVIO_MCP_TRANSPORT`:
+
+| Režim | Kdo ho spouští | Credential | Kdy dává smysl |
+|-------|----------------|------------|----------------|
+| `stdio` (výchozí) | AI klient na počítači uživatele, jako podproces | API klíč v `FAKVIO_API_TOKEN` (proměnná procesu) | Jeden uživatel, jeho vlastní stroj |
+| `http` | Vy, jako trvale běžící službu | API klíč **v každém requestu** volajícího | Víc uživatelů, klienti, které nejde nic doinstalovat |
+
+Neznámá hodnota proměnné = chyba na stderr a **exit code 1** (server, který měl poslouchat na
+HTTP a místo toho čeká na stdin, vypadá zvenčí jako nastartovaný — proto fail fast).
+
+**Co je potřeba k provozu HTTP hostu:**
+
+- **ASP.NET Core shared framework** (`Microsoft.AspNetCore.App`) na cílovém stroji — a to i pro
+  stdio režim; balíček se Streamable HTTP transportem ho táhne přes `FrameworkReference` do
+  celého nástroje. Na stroji jen s .NET runtime se musí doinstalovat ASP.NET Core Runtime.
+- `ASPNETCORE_URLS` — na čem Kestrel poslouchá. `FAKVIO_API_URL` — adresa API, kam server volá.
+- **HTTPS.** Klienti posílají API klíč v hlavičce `Authorization`, takže po veřejné síti musí
+  jít spojení šifrovaně. Host je holá ASP.NET Core aplikace bez vlastní TLS konfigurace —
+  buď mu certifikát dodáte standardní cestou Kestrelu, nebo ho postavte za reverzní proxy.
+
+**Bezpečnostní model — co je na něm důležité:**
+
+- Host **nemá vlastní credential** a nemá přístup k databázi. Klíč volajícího jen přeposílá na
+  `Fakvio.API`, takže autorizace i tenant izolace zůstávají tam, kde byly. Kompromitovaný MCP
+  host tedy sám o sobě nedává přístup k datům, dokud mu někdo neposílá platné klíče.
+- **Každý request se ověřuje znovu** proti `GET /api/api-key/me`, **bez jakékoli cache** — proto
+  revokovaný klíč přestává fungovat okamžitě, ne „do vypršení cache". Chybějící hlavička se
+  odmítne rovnou, bez round-tripu na API.
+- Odmítnutí = **401** + `WWW-Authenticate: Bearer`, bez detailu v těle; důvod jde do logu hostu.
+  **Nedostupné API se na 401 nepřevádí** — padá jako 500, aby se „API neběží" nepletlo s
+  „tvůj klíč neplatí".
+- Běží **stateless** (žádné `Mcp-Session-Id`), takže není potřeba sticky routing a host jde
+  škálovat vodorovně. `GET /mcp` ani `/sse` k dispozici nejsou.
+- Endpoint je jediný: `POST /mcp`.
+
+> **Nasazení zatím není zautomatizované.** V `.github/workflows/` pro MCP host žádný workflow
+> není — packaging a deploy řeší issue #241. Do té doby je to ruční `dotnet tool` instalace,
+> resp. vlastní hosting procesu. Adresu hostu předejte uživatelům; stránka Integrace v UI ji
+> v generovaném bloku odhaduje z adresy API a uživatel ji podle vás opraví.
+
+Podrobnosti pro vývojáře: DEVGUIDE §4.9, `Fakvio.McpServer/README.md`.
 
 ### Data Protection (CredentialProtector)
 
@@ -795,6 +858,7 @@ variables), ne ve workflow souborech. Zápis používá dvojité podtržítko m�
 | `CorsSettings__AllowedOrigins__0` / `__1` | `https://wonderful-meadow-0eb3ada03.7.azurestaticapps.net` a `https://test.fakvio.cz` (oba originy testovacího frontendu) | Musí sedět na frontend URL daného prostředí, jinak prohlížeč zablokuje všechna volání API. Při změně URL frontendu se mění i tady. |
 | `ConnectionStrings__DefaultConnection` | `Host=127.0.0.1;Port=15432;Database=fakvio_test;Username=fakvio_test;Password=***;Ssl Mode=Prefer;Timezone=UTC;Maximum Pool Size=20;Timeout=15` | **`127.0.0.1` není překlep** — míří na lokální konec Tailscale tunelu (viz níž), ne přímo na databázový server. `Ssl Mode=Prefer`, protože provoz už šifruje WireGuard a certifikát na `127.0.0.1` se ověřit nedá; `Timeout=15` kvůli WireGuard handshake při prvním spojení. |
 | `TAILSCALE_AUTHKEY` | `tskey-auth-…` (reusable + ephemeral + tag) | **Spínač celé funkce.** Když klíč chybí, tunel se nepostaví a databáze je nedostupná. Klíč má expiraci — po vypršení se nové instance nepřihlásí. Postup vydání, ACL a rotace: `Fakvio.Functions/Tailscale/README.md`. |
+| `TAILSCALE_HOSTNAME` | `fakvio-func-prod` / `fakvio-func-test` | Jméno uzlu v tailnetu. Prod a test sdílejí tailnet — každé prostředí musí mít vlastní; bez klíče `fakvio-func-prod`. |
 | `Database__AuthMode` | `Password` (produkce: `AzureEntraId`) | Vlastní PostgreSQL Entra ID neumí. Kanonický klíč (§13) — health proto hlásí `authModeSource: Database:AuthMode`. |
 | `UseAzureAdAuthentication` | `false` (produkce: `true`, tedy Entra ID) | **Legacy klíč, musí souhlasit s řádkem výš** — když si budou odporovat, aplikace při startu spadne (fail-fast, §13). Měnit vždy oba zároveň. |
 | `AresSettings__BaseUrl` | shodné s produkcí | |

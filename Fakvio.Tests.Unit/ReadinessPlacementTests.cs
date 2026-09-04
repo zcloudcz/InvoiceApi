@@ -20,17 +20,19 @@ using Shouldly;
 namespace Fakvio.Tests.Unit;
 
 /// <summary>
-/// Placement tests for <see cref="ReadinessBanner"/> (issue #215).
+/// Placement tests for the two readiness surfaces: <see cref="SetupChecklist"/> on the dashboard
+/// (issue #210) and <see cref="ReadinessBanner"/> on a Draft invoice (issue #215).
 ///
-/// <see cref="ReadinessBannerTests"/> proves the banner behaves correctly when rendered; it says
-/// nothing about whether any page actually shows it. Delete the one-line <c>&lt;ReadinessBanner /&gt;</c>
-/// from the dashboard or the invoice detail and every behaviour test stays green — these tests
-/// are the ones that go red, which is the acceptance criterion "shown on dashboard and invoice detail".
+/// <see cref="SetupChecklistTests"/> and <see cref="ReadinessBannerTests"/> prove the components
+/// behave correctly when rendered; they say nothing about whether any page actually shows them.
+/// Delete the one-line tag from the dashboard or the invoice detail and every behaviour test stays
+/// green — these tests are the ones that go red, which is the acceptance criterion "shown on the
+/// dashboard and on the invoice detail".
 ///
-/// The banner itself is stubbed out here on purpose: this file is about placement, so it must not
+/// Both components are stubbed out here on purpose: this file is about placement, so it must not
 /// need the readiness HTTP plumbing (and must not fail when that plumbing changes).
 /// </summary>
-public class ReadinessBannerPlacementTests : BunitContext, IAsyncLifetime
+public class ReadinessPlacementTests : BunitContext, IAsyncLifetime
 {
     private const long InvoiceId = 7;
     private const long IssuerId = 42;
@@ -40,7 +42,7 @@ public class ReadinessBannerPlacementTests : BunitContext, IAsyncLifetime
     Task IAsyncLifetime.InitializeAsync() => Task.CompletedTask;
     async Task IAsyncLifetime.DisposeAsync() => await base.DisposeAsync();
 
-    public ReadinessBannerPlacementTests()
+    public ReadinessPlacementTests()
     {
         Services.AddMudServices(o => o.PopoverOptions.CheckForPopoverProvider = false);
         JSInterop.Mode = JSRuntimeMode.Loose;
@@ -84,6 +86,7 @@ public class ReadinessBannerPlacementTests : BunitContext, IAsyncLifetime
 
         // Placement, not behaviour — the banner and the heavy editors are stubs.
         ComponentFactories.AddStub<ReadinessBanner>();
+        ComponentFactories.AddStub<SetupChecklist>();
         ComponentFactories.AddStub<InvoiceItemEditor>();
         ComponentFactories.AddStub<InvoicePaymentsPanel>();
         ComponentFactories.AddStub<FileAttachmentManager>();
@@ -95,13 +98,25 @@ public class ReadinessBannerPlacementTests : BunitContext, IAsyncLifetime
         => Services.AddSingleton(factory);
 
     [Fact]
-    public void Dashboard_HostsTheReadinessBanner_SoANewTenantLearnsWhatIsMissingOnFirstLogin()
+    public void Dashboard_HostsTheSetupChecklist_SoANewTenantLearnsWhatIsMissingOnFirstLogin()
     {
         var cut = Render<Home>();
 
         cut.WaitForAssertion(() =>
-            cut.HasComponent<Stub<ReadinessBanner>>().ShouldBeTrue(
-                "the dashboard must host the readiness banner"));
+            cut.HasComponent<Stub<SetupChecklist>>().ShouldBeTrue(
+                "the dashboard must host the setup checklist"));
+    }
+
+    [Fact]
+    public void Dashboard_HasNoReadinessBanner_SoTheSameItemsAreNotAnnouncedTwice()
+    {
+        // #210 replaced the banner on this page with the deferrable checklist. Both read the very
+        // same report, so putting the banner back would list every item twice — and the copy the
+        // user cannot defer would outlive the one they parked.
+        var cut = Render<Home>();
+
+        cut.WaitForAssertion(() => cut.HasComponent<Stub<SetupChecklist>>().ShouldBeTrue());
+        cut.FindComponents<Stub<ReadinessBanner>>().ShouldBeEmpty();
     }
 
     [Fact]
