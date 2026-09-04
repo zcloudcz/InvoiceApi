@@ -20,6 +20,10 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+### Změny pro vývojáře
+
+- **#242** — dokumentace pro API klíče a vzdálený MCP transport je nyní kompletní: USERGUIDE §20 pokrývá vytvoření klíče, volbu režimu (stdio/HTTP) a připojení AI klienta; ADMINGUIDE §9 vysvětluje SysAdminovi bezpečnostní model a správu klíčů; DEVGUIDE §4.9 dokumentuje všech 37 MCP nástrojů a autentizační architekturu. Obě režimy jsou nyní popsány a testy v `ChatToolCatalogSchemaTests` kontrolují, že změny v kódu jsou reflektovány i v dokumentaci. (PR #362, `62c55d0`)
+
 ## 2026.08.31 — 2026-08-31
 
 ### Změny pro uživatele
