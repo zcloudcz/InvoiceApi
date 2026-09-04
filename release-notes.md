@@ -20,6 +20,11 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+### Opravy
+
+- **#268** — parametry chat toolů se normalizují centrálně v `ChatToolExecutor` — každý tool vidí tutéž trimnutou hodnotu. Model posílá-li `" true "`, validace i dispatch jej vidí shodně; žádný tool si nemusí trimovat sám. (PR #380, `02f7499`)
+- **#269** — součet faktury na stránce se nyní sčítá jednotlivě pro každou měnu — smíšená CZK/EUR stránka místo jednoho nesmyslného čísla (`12600`) vypíše správně `12 100,00 CZK; 500,00 EUR`. (PR #379, `<pending>`)
+
 ### Změny pro vývojáře
 
 - **#242** — dokumentace pro API klíče a vzdálený MCP transport je nyní kompletní: USERGUIDE §20 pokrývá vytvoření klíče, volbu režimu (stdio/HTTP) a připojení AI klienta; ADMINGUIDE §9 vysvětluje SysAdminovi bezpečnostní model a správu klíčů; DEVGUIDE §4.9 dokumentuje všech 37 MCP nástrojů a autentizační architekturu. Obě režimy jsou nyní popsány a testy v `ChatToolCatalogSchemaTests` kontrolují, že změny v kódu jsou reflektovány i v dokumentaci. (PR #362, `62c55d0`)
