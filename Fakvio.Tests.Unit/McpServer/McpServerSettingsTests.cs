@@ -37,6 +37,27 @@ public class McpServerSettingsTests
         }
     }
 
+    [Theory]
+    // Unset → empty string (Program.cs treats that as "missing" and fails fast in stdio mode).
+    // Set → the caller's value, untouched — FromEnvironment does not validate the fak_live_…/JWT
+    // shape, it only reads what is there.
+    [InlineData(null, "")]
+    [InlineData("fak_live_abc123", "fak_live_abc123")]
+    public void FromEnvironment_ResolvesApiToken(string? configured, string expected)
+    {
+        var previous = Environment.GetEnvironmentVariable(McpServerSettings.ApiTokenEnv);
+        try
+        {
+            Environment.SetEnvironmentVariable(McpServerSettings.ApiTokenEnv, configured);
+
+            McpServerSettings.FromEnvironment().ApiToken.ShouldBe(expected);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(McpServerSettings.ApiTokenEnv, previous);
+        }
+    }
+
     /// <summary>
     /// Pins the default itself. The theory above proves startup uses this constant; this proves
     /// the constant is the port <c>Fakvio.API</c> listens on. Changing the launch profile without
