@@ -1166,11 +1166,11 @@ Co má náhled říct, aby uživatel schvaloval konkrétní věc a ne slovo:
 | `delete_received_invoice` | popis faktury, která zmizí |
 
 Náhled u `create` je záměrně bez DPH: součet nadiktovaných položek je přesný, kdežto částka
-s DPH je smysluplná teprve po #283 — dokud chybějící výchozí sazba tiše znamená 0 %, ukázal by
-špatně nastavenému tenantovi částku s DPH shodnou s částkou bez DPH. (Není to otázka
-zaokrouhlení — `ReceivedInvoiceService` v create cestě nezaokrouhluje vůbec.) Sdílená příprava
-DTO (`PrepareAsync`) je jedna metoda pro náhled i zápis, aby náhled nemohl popisovat něco
-jiného, než co se pak uloží.
+s DPH by před #283 mohla u špatně nastaveného tenanta vyjít shodná s částkou bez DPH (tichá
+nula). Ukázání částky s DPH v náhledu zůstává mimo rozsah #283 — samostatný task, viz komentář
+u issue. (Není to otázka zaokrouhlení — `ReceivedInvoiceService` v create cestě nezaokrouhluje
+vůbec.) Sdílená příprava DTO (`PrepareAsync`) je jedna metoda pro náhled i zápis, aby náhled
+nemohl popisovat něco jiného, než co se pak uloží.
 
 Gate **není** autorizační hranice (viz §4.7 výše) — všechny čtyři operace uživatel smí i z UI,
 gate jen brání tomu, aby je asistent udělal potichu.
@@ -1183,7 +1183,9 @@ a přebil jím tu nadiktovanou), takže pod toolem už tu hodnotu nekontroluje n
 sazby platné **k datu plnění**, ne k dnešku (starší doklad se eviduje se starší sazbou), a
 záměrně nemá pevný rozsah typu 0–100: „které procento je legální" je data, ne konstanta.
 0 % je regulérní sazba (`DPH 0% - osvobozeno od daně`), takže projde. Vynechaná `vat_rate` jde
-dál výchozí sazbou — tichá nula při nenakonfigurované výchozí sazbě je #283.
+dál výchozí sazbou; když tenant žádnou výchozí sazbu nemá nastavenou, tool volání odmítne
+(chybová hláška odkazuje do Nastavení) místo tiché nuly — stejné pravidlo platí i pro
+`CreateInvoiceTool` a pro nekladné explicitní `quantity` v obou toolech (#283).
 
 Společná je resoluce „která faktura?" (`ReceivedInvoiceLookup`): `id` má přednost před
 `document_number`, číslo dokladu se hledá jako substring. **Víc než jedna shoda = chyba**, ne

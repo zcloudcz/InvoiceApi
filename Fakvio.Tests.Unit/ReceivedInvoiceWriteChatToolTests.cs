@@ -857,6 +857,53 @@ public class ReceivedInvoiceWriteChatToolTests
             Arg.Any<CreateReceivedInvoiceDto>(), Arg.Any<CancellationToken>());
     }
 
+    /// <summary>
+    /// Issue #283, Nález 1: a missing default rate used to fall through to a silent 0% instead of
+    /// being refused. An item that omits 'vat_rate' has nothing else to fall back on, so a
+    /// missing default must stop the create, not save a tax document with no VAT at all.
+    /// </summary>
+    [Fact]
+    public async Task Create_WithNoDefaultVatRateAndNoDictatedRate_RefusesAndCreatesNothing()
+    {
+        var service = Substitute.For<IReceivedInvoiceService>();
+        var vatRateService = Substitute.For<IVatRateService>();
+        vatRateService.GetDefaultStandardRateAsync(Arg.Any<CancellationToken>())
+            .Returns((VatRateDto?)null);
+        vatRateService.GetActiveVatRatesForDateAsync(Arg.Any<DateTime?>(), Arg.Any<CancellationToken>())
+            .Returns(SeededVatRates());
+
+        var result = await BuildCreateTool(service, vatRateService: vatRateService).ExecuteAsync(new()
+        {
+            ["supplier_name"] = "Alza",
+            ["items"] = OneItem
+        });
+
+        result.IsSuccess.ShouldBeFalse();
+        result.ErrorMessage!.ShouldContain("vat_rate");
+        await service.DidNotReceive().CreateAsync(
+            Arg.Any<CreateReceivedInvoiceDto>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>Issue #283, Nález 2: an explicit non-positive quantity used to silently become 1.</summary>
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-2)]
+    public async Task Create_WithAnExplicitNonPositiveQuantity_RefusesAndCreatesNothing(decimal quantity)
+    {
+        var service = Substitute.For<IReceivedInvoiceService>();
+
+        var result = await BuildCreateTool(service).ExecuteAsync(new()
+        {
+            ["supplier_name"] = "Alza",
+            ["items"] = $"[{{\"description\": \"Toner\", \"quantity\": {quantity.ToString(CultureInfo.InvariantCulture)}, \"unit_price\": 1500}}]"
+        });
+
+        result.IsSuccess.ShouldBeFalse();
+        result.ErrorMessage!.ShouldContain("quantity");
+        await service.DidNotReceive().CreateAsync(
+            Arg.Any<CreateReceivedInvoiceDto>(), Arg.Any<CancellationToken>());
+    }
+
     [Fact]
     public async Task Create_ChecksTheRatesValidOnTheDayOfSupply_NotToday()
     {

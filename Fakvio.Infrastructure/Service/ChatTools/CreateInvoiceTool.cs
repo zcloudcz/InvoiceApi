@@ -161,14 +161,21 @@ public class CreateInvoiceTool : IChatTool
         }
 
         // ── Step 5: Get default VAT rate ─────────────────────────────────
-        // We use the default standard rate (typically 21% in CZ).
-        // If no default is configured, items will have 0% VAT.
+        // We use the default standard rate (typically 21% in CZ). This is a tax document —
+        // a missing default must be an error, not a silent 0% (issue #283): the invoice would
+        // otherwise save with no VAT and nobody would notice until the VAT return.
 
         var defaultVatRate = await _vatRateService.GetDefaultStandardRateAsync(ct);
+        if (defaultVatRate is null)
+        {
+            _logger.LogWarning("CreateInvoiceTool: no default standard VAT rate configured");
+            return ChatToolResult.Failure(
+                "No default VAT rate is configured. Please set up a standard VAT rate in Settings before creating invoices.");
+        }
 
         // ── Step 6: Parse items ──────────────────────────────────────────
 
-        var parsedItems = ParseItems(itemsJson, defaultVatRate?.Id, defaultVatRate?.Rate ?? 0);
+        var parsedItems = ParseItems(itemsJson, defaultVatRate.Id, defaultVatRate.Rate);
         if (parsedItems.Error != null)
             return parsedItems.Error;
 
@@ -304,7 +311,7 @@ public class CreateInvoiceTool : IChatTool
     /// - "total_price" instead of "unit_price" → treated as total price for 1 unit
     /// </summary>
     private static ItemParseResult ParseItems(
-        string itemsJson, long? defaultVatRateId, decimal defaultVatPercentage)
+        string itemsJson, long defaultVatRateId, decimal defaultVatPercentage)
     {
         try
         {
@@ -337,10 +344,20 @@ public class CreateInvoiceTool : IChatTool
                     };
                 }
 
-                // Get quantity — default to 1 if not specified.
-                var quantity = GetJsonDecimal(element, "quantity") ?? 1m;
-                if (quantity <= 0)
-                    quantity = 1m;
+                // Get quantity — missing stays the documented default of 1, but a quantity the
+                // model explicitly sent as zero or negative is rejected instead of silently
+                // becoming 1 (issue #283): that would create an invoice for a quantity nobody asked for.
+                var quantityRaw = GetJsonDecimal(element, "quantity");
+                if (quantityRaw is <= 0)
+                {
+                    return new ItemParseResult
+                    {
+                        Error = ChatToolResult.Failure(
+                            $"Item #{orderIndex} ('{description}') has invalid quantity ({quantityRaw}). " +
+                            "Quantity must be positive; omit it to default to 1.")
+                    };
+                }
+                var quantity = quantityRaw ?? 1m;
 
                 // Get price — try "unit_price" first, then "price", then "total_price".
                 var unitPrice = GetJsonDecimal(element, "unit_price")

@@ -528,9 +528,10 @@ public class CreateInvoiceToolTests
     // ─── VAT Rate Tests ─────────────────────────────────────────────────
 
     [Fact]
-    public async Task CreateInvoice_NoDefaultVatRate_UsesZeroPercent()
+    public async Task CreateInvoice_NoDefaultVatRate_ReturnsFailure()
     {
-        // Arrange — no default VAT rate configured.
+        // Arrange — no default VAT rate configured. Issue #283: this used to fall back to a
+        // silent 0% instead of being rejected — a tax document must never guess a VAT rate.
         _vatRateService.GetDefaultStandardRateAsync(Arg.Any<CancellationToken>())
             .Returns((VatRateDto?)null);
 
@@ -541,14 +542,55 @@ public class CreateInvoiceToolTests
         };
 
         // Act
-        await _tool.ExecuteAsync(parameters);
+        var result = await _tool.ExecuteAsync(parameters);
 
-        // Assert — should use null VatRateId and 0% rate.
-        await _invoiceService.Received(1).CreateInvoiceAsync(
-            Arg.Is<CreateInvoiceDto>(dto =>
-                dto.InvoiceItem[0].VatRateId == null &&
-                dto.InvoiceItem[0].VatRatePercentage == 0m),
-            Arg.Any<CancellationToken>());
+        // Assert — rejected, nothing created.
+        result.IsSuccess.ShouldBeFalse();
+        result.OutputText.ShouldContain("VAT rate");
+        result.UiAction.ShouldBeNull();
+        await _invoiceService.DidNotReceive().CreateInvoiceAsync(
+            Arg.Any<CreateInvoiceDto>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CreateInvoice_ExplicitZeroQuantity_ReturnsFailure()
+    {
+        // Arrange — issue #283: an explicit non-positive quantity used to silently become 1.
+        var parameters = new Dictionary<string, string>
+        {
+            ["client_name"] = "Alza",
+            ["items"] = """[{"description": "Test", "quantity": 0, "unit_price": 100}]"""
+        };
+
+        // Act
+        var result = await _tool.ExecuteAsync(parameters);
+
+        // Assert
+        result.IsSuccess.ShouldBeFalse();
+        result.OutputText.ShouldContain("quantity");
+        result.UiAction.ShouldBeNull();
+        await _invoiceService.DidNotReceive().CreateInvoiceAsync(
+            Arg.Any<CreateInvoiceDto>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CreateInvoice_ExplicitNegativeQuantity_ReturnsFailure()
+    {
+        // Arrange
+        var parameters = new Dictionary<string, string>
+        {
+            ["client_name"] = "Alza",
+            ["items"] = """[{"description": "Test", "quantity": -3, "unit_price": 100}]"""
+        };
+
+        // Act
+        var result = await _tool.ExecuteAsync(parameters);
+
+        // Assert
+        result.IsSuccess.ShouldBeFalse();
+        result.OutputText.ShouldContain("quantity");
+        await _invoiceService.DidNotReceive().CreateInvoiceAsync(
+            Arg.Any<CreateInvoiceDto>(), Arg.Any<CancellationToken>());
     }
 
     // ─── Error Handling Tests ───────────────────────────────────────────
