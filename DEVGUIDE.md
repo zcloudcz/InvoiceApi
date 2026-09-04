@@ -1097,26 +1097,25 @@ splatnosti, což by pohledávky nafouklo. `InvoiceFilterDto` umí jen jeden stat
 takže „Completed NEBO PartiallyPaid" se musí zeptat dvěma voláními (parametr `status`
 to umožňuje).
 
-##### Datumové parametry reporting toolů — jeden parser, tři formáty (#271)
+##### Datumové parametry chat toolů — jeden parser, tři formáty (#271, #301)
 
-`ChatToolDates` (Infrastructure/Service/ChatTools) je parser datumových parametrů toolů
-**`list_invoices` a `get_vat_report`**. Přijímá **`yyyy-MM-dd`, `d.M.yyyy`, `d/M/yyyy`** přes
-`TryParseExact` s `InvariantCulture` — kultura vlákna tedy výsledek neovlivní (pod `th-TH` by
-`TryParse` vrátil buddhistický rok). České tvary berou i jednociferný den a měsíc
-(„15.3.2026" i „15.03.2026"), protože specifikátor `d`/`M` při parsování matchuje jednu nebo
-dvě číslice; ISO tvar zůstává striktně nulou doplněný, protože právě ten schéma toolu modelu
-předepisuje. Výsledek je vždy `DateTimeKind.Utc` — Npgsql jiný Kind proti
-`timestamp with time zone` odmítne. Nečitelná hodnota je **v těchto dvou toolech** vždy
-`ChatToolResult.Failure`, nikdy tichý „žádný filtr" (jinak by se „za březen" rozšířilo na
-celou historii).
-
-**Zbylé chat tooly zatím parsují datum samy** a `ChatToolDates` neznají:
-`ListReceivedInvoicesTool.cs:256` a `ImportInvoiceTool.cs:470` mají vlastní seznam formátů —
-jen nulou doplněné `dd.MM.yyyy` / `dd/MM/yyyy`, takže „15.3.2026" v nich neprojde — a
-nečitelnou hodnotu vracejí jako `null`, což u `list_received_invoices` znamená tiše zahozený
-filtr. Sjednocení na `ChatToolDates` řeší #301 (u `list_received_invoices` je `null` →
-`Failure` změna chování, ne refactor); do té doby nepředpokládej, že datum chodí přes jedno
-místo.
+`ChatToolDates` (Infrastructure/Service/ChatTools) je **jediný** parser datumových parametrů
+chat toolů — od #301 i pro `list_received_invoices` a `import_invoice`, ne jen pro
+`list_invoices` a `get_vat_report`. Žádný chat tool si smí vytvořit vlastní
+`DateTime.TryParseExact` kopii; pokud jde nová varianta přibýt, rozšiř `ChatToolDates`, nepiš
+druhý parser vedle. Přijímá **`yyyy-MM-dd`, `d.M.yyyy`, `d/M/yyyy`** přes `TryParseExact`
+s `InvariantCulture` — kultura vlákna tedy výsledek neovlivní (pod `th-TH` by `TryParse`
+vrátil buddhistický rok). České tvary berou i jednociferný den a měsíc („15.3.2026"
+i „15.03.2026"), protože specifikátor `d`/`M` při parsování matchuje jednu nebo dvě číslice;
+ISO tvar zůstává striktně nulou doplněný, protože právě ten schéma toolu modelu předepisuje.
+Výsledek je vždy `DateTimeKind.Utc` — Npgsql jiný Kind proti `timestamp with time zone`
+odmítne. Nečitelná (ale přítomná) hodnota je vždy `ChatToolResult.Failure`, nikdy tichý „žádný
+filtr" (jinak by se „za březen" rozšířilo na celou historii) — to platí i pro
+`ListReceivedInvoicesTool.IssueDateFrom/To` (dřív `null` = tichý filtr) a pro
+`ImportInvoiceTool.issue_date/due_date/taxable_supply_date` (dřív `null` = faktura se založila
+s výchozím datem místo nadiktovaného). `ImportInvoiceTool` už formát `yyyy-MM-ddTHH:mm:ss`
+neakceptuje — schéma toolu modelu vždy předepisovalo jen `YYYY-MM-DD`, takže to byla mrtvá
+váha, ne reálně používaná varianta.
 
 ##### Nastavení firmy a bankovní účty (#220)
 
@@ -1166,11 +1165,11 @@ Co má náhled říct, aby uživatel schvaloval konkrétní věc a ne slovo:
 | `delete_received_invoice` | popis faktury, která zmizí |
 
 Náhled u `create` je záměrně bez DPH: součet nadiktovaných položek je přesný, kdežto částka
-s DPH je smysluplná teprve po #283 — dokud chybějící výchozí sazba tiše znamená 0 %, ukázal by
-špatně nastavenému tenantovi částku s DPH shodnou s částkou bez DPH. (Není to otázka
-zaokrouhlení — `ReceivedInvoiceService` v create cestě nezaokrouhluje vůbec.) Sdílená příprava
-DTO (`PrepareAsync`) je jedna metoda pro náhled i zápis, aby náhled nemohl popisovat něco
-jiného, než co se pak uloží.
+s DPH by před #283 mohla u špatně nastaveného tenanta vyjít shodná s částkou bez DPH (tichá
+nula). Ukázání částky s DPH v náhledu zůstává mimo rozsah #283 — samostatný task #388.
+(Není to otázka zaokrouhlení — `ReceivedInvoiceService` v create cestě nezaokrouhluje
+vůbec.) Sdílená příprava DTO (`PrepareAsync`) je jedna metoda pro náhled i zápis, aby náhled
+nemohl popisovat něco jiného, než co se pak uloží.
 
 Gate **není** autorizační hranice (viz §4.7 výše) — všechny čtyři operace uživatel smí i z UI,
 gate jen brání tomu, aby je asistent udělal potichu.
@@ -1183,7 +1182,18 @@ a přebil jím tu nadiktovanou), takže pod toolem už tu hodnotu nekontroluje n
 sazby platné **k datu plnění**, ne k dnešku (starší doklad se eviduje se starší sazbou), a
 záměrně nemá pevný rozsah typu 0–100: „které procento je legální" je data, ne konstanta.
 0 % je regulérní sazba (`DPH 0% - osvobozeno od daně`), takže projde. Vynechaná `vat_rate` jde
-dál výchozí sazbou — tichá nula při nenakonfigurované výchozí sazbě je #283.
+dál výchozí sazbou; když tenant žádnou výchozí sazbu nemá nastavenou, tool volání odmítne
+(chybová hláška odkazuje do Nastavení) místo tiché nuly. Nekladné explicitní `quantity` odmítají
+oba create tooly shodně (obojí #283).
+
+`CreateInvoiceTool` odmítá chybějící výchozí sazbu taky, ale **jen když je vystavovatel plátce
+DPH** (`issuer.IsVatPayer && defaultVatRate is null`). Neplátce sazbu nakonfigurovanou mít
+nemusí (`TenantReadinessService` ji po něm nechce) a 0 % je u něj správná hodnota —
+`InvoiceService.CreateInvoiceAsync` kreslí tutéž čáru a `VatRateId` vyžaduje jen po plátci,
+takže nepodmíněný guard by z chatu zablokoval doklad, který v UI vznikne bez problémů.
+`create_received_invoice` podmínku nemá, protože `ReceivedInvoiceService` žádnou takovou
+kontrolu neobsahuje — tam tichá nula hrozila všem. Výběr výchozí sazby zatím neřídí datum
+plnění (#387).
 
 Společná je resoluce „která faktura?" (`ReceivedInvoiceLookup`): `id` má přednost před
 `document_number`, číslo dokladu se hledá jako substring. **Víc než jedna shoda = chyba**, ne
@@ -1515,7 +1525,7 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
 - Standalone .NET tool (PackAsTool), `ToolCommandName` = **`fakvio-mcp`**, SDK `ModelContextProtocol` 2.2.0.
 - **Dva hostovací režimy, jedna sada nástrojů** (`FAKVIO_MCP_TRANSPORT`): `stdio` (výchozí, jeden proces = jeden lokální klient) a `http` (Streamable HTTP na `/mcp`, jeden proces = mnoho vzdálených klientů). Registrace, kterou oba sdílejí, je `McpServerRegistration.AddFakvioMcpServer()` — jediné místo, kde se skládá API klient + `AddMcpServer().WithToolsFromAssembly()`, takže surface obou režimů nemůže rozejít. Neznámá hodnota proměnné = exit code 1 (server, který měl poslouchat na HTTP a místo toho čeká na stdin, vypadá zvenčí jako nastartovaný).
 - Jméno v MCP handshake (`ServerInfo.Name`) je `fakvio` — nezaměňovat s názvem příkazu.
-- Auth: `FAKVIO_API_TOKEN` env var (bearer credential, povinný **jen ve stdio režimu** — bez něj exit code 1; v HTTP režimu se nepoužívá, credential nosí volající). Server ho posílá beze změny, takže projde **API klíč `fak_live_…` i JWT** — selector `FakvioBearer` na API si vybere schéma podle prefixu (§2.10). Pro trvalé napojení je správně API klíč; JWT platí 24 h. `FAKVIO_API_URL` (výchozí `https://localhost:7001`, lokální API ale běží na `7047` → nastavovat explicitně).
+- Auth: `FAKVIO_API_TOKEN` env var (bearer credential, povinný **jen ve stdio režimu** — bez něj exit code 1; v HTTP režimu se nepoužívá, credential nosí volající). Server ho posílá beze změny, takže projde **API klíč `fak_live_…` i JWT** — selector `FakvioBearer` na API si vybere schéma podle prefixu (§2.10). Pro trvalé napojení je správně API klíč; JWT platí 24 h. `FAKVIO_API_URL` (výchozí `https://localhost:7047`, shodné s lokálním `Fakvio.API` — pro cloud nebo jiný port nastavovat explicitně).
 - **Outbound auth je per request, ne per proces.** `AuthHeaderHandler` (`DelegatingHandler`) nasazuje `Authorization: Bearer` na každý odchozí request; token dodává `IApiTokenProvider`. Ve stdio režimu je to `EnvironmentApiTokenProvider` (čte `FAKVIO_API_TOKEN` načtený do `McpServerSettings`), v HTTP režimu `HttpContextApiTokenProvider` — obojí **singleton**, ten druhý čte bearer token z ambient `IHttpContextAccessor` až uvnitř `GetToken()` a nedrží si nic v poli.
   Do `HttpClient.DefaultRequestHeaders.Authorization` token **nikdy nepatří** — defaulty sdílí všichni volající, takže pod HTTP hostingem by boot credential procesu jel na cizí tool cally (cross-tenant leak) a mutace defaultu za běhu je data race. Regresi hlídá `AuthHeaderHandlerTests`.
   - **`AddScoped<IApiTokenProvider, …>()` je zakázaný** — není to stylová preference, ale tatáž bezpečnostní díra o patro níž. `AddHttpMessageHandler<AuthHeaderHandler>()` handler **neresolvuje z request scope**: `IHttpClientFactory` staví celou pipeline ve svém privátním scope a hotovou ji pooluje (výchozí `HandlerLifetime` 2 minuty). `AddTransient<AuthHeaderHandler>()` proto znamená transient *per konstrukci pipeline*, ne per request. Scoped provider by se do poolovaného handleru zachytil při první konstrukci a obsluhoval všechny další volající po celou dobu života pipeline — token prvního uživatele na callech těch dalších. `SetHandlerLifetime` to neřeší, scopy nesrovnává, jen zkracuje dobu, po kterou se cizí token recykluje.

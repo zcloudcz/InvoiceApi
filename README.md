@@ -103,7 +103,7 @@ Tříúrovňový systém rolí:
 cd Fakvio.API
 dotnet run
 ```
-API bude dostupné na `https://localhost:7001` se Swagger UI na root URL.
+API bude dostupné na `http://localhost:5237` (profil `https`: `https://localhost:7047`) se Swagger UI na root URL.
 
 ### Blazor UI
 ```bash
