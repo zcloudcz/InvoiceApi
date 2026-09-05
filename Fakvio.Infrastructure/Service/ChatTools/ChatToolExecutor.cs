@@ -2,6 +2,8 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Fakvio.Application.Service;
+using Fakvio.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace Fakvio.Infrastructure.Service.ChatTools;
@@ -29,10 +31,19 @@ public class ChatToolExecutor : IChatToolExecutor
     private readonly Dictionary<string, IChatTool> _tools;
     private readonly ILogger<ChatToolExecutor> _logger;
 
+    /// <summary>
+    /// The same scoped TenantDbContext instance the tool's own services (IClientService,
+    /// IInvoiceService, ...) write through. Needed only to discard leftover tracked changes
+    /// after a failed write — see <see cref="DiscardUncommittedChanges"/> (issue #305).
+    /// </summary>
+    private readonly TenantDbContext _dbContext;
+
     public ChatToolExecutor(
         IEnumerable<IChatTool> tools,
+        TenantDbContext dbContext,
         ILogger<ChatToolExecutor> logger)
     {
+        _dbContext = dbContext;
         _logger = logger;
 
         // Build a case-insensitive lookup dictionary from all registered tools.
@@ -427,6 +438,8 @@ public class ChatToolExecutor : IChatToolExecutor
             tool.ToolName,
             string.Join(", ", parameters.Select(kv => $"{kv.Key}={kv.Value}")));
 
+        ChatToolResult result;
+
         try
         {
             if (awaitingConfirmation)
@@ -446,7 +459,7 @@ public class ChatToolExecutor : IChatToolExecutor
                 // UiAction is dropped on purpose: ChatService forwards it to the browser as soon
                 // as the tool returns, so a preview that carried one would navigate the user
                 // before they confirmed anything. Only a real execution may move the UI.
-                return preview.IsSuccess
+                result = preview.IsSuccess
                     ? preview with
                     {
                         RequiresConfirmation = true,
@@ -455,17 +468,20 @@ public class ChatToolExecutor : IChatToolExecutor
                     }
                     : preview with { RequiresConfirmation = true, UiAction = null };
             }
+            else
+            {
+                var executed = await tool.ExecuteAsync(parameters, ct);
 
-            var result = await tool.ExecuteAsync(parameters, ct);
+                _logger.LogInformation("Tool {ToolName} completed: IsSuccess={IsSuccess}",
+                    tool.ToolName, executed.IsSuccess);
 
-            _logger.LogInformation("Tool {ToolName} completed: IsSuccess={IsSuccess}",
-                tool.ToolName, result.IsSuccess);
-
-            // The only exit that DID reach the write, so the flag is forced off here rather than
-            // trusted. A tool that set it by mistake would make ChatService announce a completed
-            // change as a mere preview — the user would believe nothing happened while the record
-            // is already gone. One line turns the "never set by a tool" convention into a fact.
-            return result with { RequiresConfirmation = false };
+                // The only exit that DID reach the write, so the flag is forced off here rather
+                // than trusted. A tool that set it by mistake would make ChatService announce a
+                // completed change as a mere preview — the user would believe nothing happened
+                // while the record is already gone. One line turns the "never set by a tool"
+                // convention into a fact.
+                result = executed with { RequiresConfirmation = false };
+            }
         }
         catch (Exception ex)
         {
@@ -475,8 +491,40 @@ public class ChatToolExecutor : IChatToolExecutor
             // true exactly when the exception came out of BuildPreviewAsync (nothing written),
             // and false when it came out of ExecuteAsync, which may have written part of the way.
             _logger.LogError(ex, "Tool {ToolName} threw an unhandled exception", tool.ToolName);
-            return ChatToolResult.Failure($"Tool execution failed: {ex.Message}")
+            result = ChatToolResult.Failure($"Tool execution failed: {ex.Message}")
                 with { RequiresConfirmation = awaitingConfirmation };
+        }
+
+        // Issue #305: a failed write (SaveChangesAsync threw and the tool caught it, or the
+        // exception above came straight out of a half-finished ExecuteAsync) can leave
+        // Added/Modified/Deleted entries behind in the scoped TenantDbContext's change tracker
+        // — the transaction never committed, but the tracker still holds them. ChatService's
+        // tool-call loop may retry with a DIFFERENT tool in the SAME scope (up to 3 iterations),
+        // and that tool's own SaveChangesAsync would flush these leftover, never-confirmed
+        // changes too. One central cleanup point covers every write tool, not just the one
+        // #220's review happened to find.
+        if (!result.IsSuccess)
+        {
+            DiscardUncommittedChanges();
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Detaches every tracked entity that still has unsaved changes (Added/Modified/Deleted),
+    /// so a subsequent SaveChangesAsync in the same scope cannot flush them.
+    ///
+    /// Deliberately NOT <c>ChangeTracker.Clear()</c>: that would also detach entities that are
+    /// already saved and Unchanged — e.g. the current Conversation, which ChatService keeps
+    /// updating (<c>conversation.LastMessageAt = ...</c>) after the tool loop finishes. Clearing
+    /// those too would make that later update silently not persist.
+    /// </summary>
+    private void DiscardUncommittedChanges()
+    {
+        foreach (var entry in _dbContext.ChangeTracker.Entries().Where(e => e.State != EntityState.Unchanged).ToList())
+        {
+            entry.State = EntityState.Detached;
         }
     }
 

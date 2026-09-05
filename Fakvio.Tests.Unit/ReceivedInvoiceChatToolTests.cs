@@ -3,7 +3,9 @@ using Fakvio.Contracts.Common.Pagination;
 using Fakvio.Contracts.Dto.Client;
 using Fakvio.Contracts.Dto.ReceivedInvoice;
 using Fakvio.Domain.Enums;
+using Fakvio.Infrastructure.Data;
 using Fakvio.Infrastructure.Service.ChatTools;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 using Shouldly;
@@ -23,6 +25,15 @@ namespace Fakvio.Tests.Unit;
 public class ReceivedInvoiceChatToolTests
 {
     // ─── Shared helpers ───────────────────────────────────────────────────
+
+    /// <summary>
+    /// Throwaway in-memory TenantDbContext — the executor only needs one to discard leftover
+    /// change-tracker entries after a failed write (issue #305); no test here touches it.
+    /// </summary>
+    private static TenantDbContext CreateDbContext()
+        => new(new DbContextOptionsBuilder<TenantDbContext>()
+            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .Options);
 
     /// <summary>
     /// Builds a minimal ReceivedInvoiceDto for use in test scenarios.
@@ -410,7 +421,7 @@ public class ReceivedInvoiceChatToolTests
 
         var clientService = Substitute.For<IClientService>();
         var tool = new ListReceivedInvoicesTool(service, clientService, Substitute.For<ILogger<ListReceivedInvoicesTool>>());
-        var executor = new ChatToolExecutor([tool], Substitute.For<ILogger<ChatToolExecutor>>());
+        var executor = new ChatToolExecutor([tool], CreateDbContext(), Substitute.For<ILogger<ChatToolExecutor>>());
 
         var result = await executor.ExecuteToolAsync(new ParsedToolCall
         {

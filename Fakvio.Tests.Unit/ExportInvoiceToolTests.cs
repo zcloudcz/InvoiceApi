@@ -2,7 +2,9 @@ using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.Client;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Domain.Enums;
+using Fakvio.Infrastructure.Data;
 using Fakvio.Infrastructure.Service.ChatTools;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 using Shouldly;
@@ -29,6 +31,15 @@ public class ExportInvoiceToolTests
         var logger = Substitute.For<ILogger<ExportInvoiceTool>>();
         _tool = new ExportInvoiceTool(_invoiceService, _clientService, logger);
     }
+
+    /// <summary>
+    /// Throwaway in-memory TenantDbContext — the executor only needs one to discard leftover
+    /// change-tracker entries after a failed write (issue #305); no test here touches it.
+    /// </summary>
+    private static TenantDbContext CreateDbContext()
+        => new(new DbContextOptionsBuilder<TenantDbContext>()
+            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .Options);
 
     // ─── Basic Properties ─────────────────────────────────────────────
 
@@ -424,7 +435,7 @@ public class ExportInvoiceToolTests
     public async Task ExportFormat_UnknownValue_IsRejected_InsteadOfSilentlyBecomingPdf()
     {
         GivenExportableInvoice();
-        var executor = new ChatToolExecutor([_tool], Substitute.For<ILogger<ChatToolExecutor>>());
+        var executor = new ChatToolExecutor([_tool], CreateDbContext(), Substitute.For<ILogger<ChatToolExecutor>>());
 
         var result = await executor.ExecuteToolAsync(new ParsedToolCall
         {

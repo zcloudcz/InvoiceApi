@@ -934,6 +934,31 @@ servis tam vynucuje **tentýž** predikát a selže bezpečně. Kopíruješ-li t
 destruktivní tool, buď zúžení protlač až do servisu, nebo v dokumentaci toolu napiš, že jde
 o best-effort.
 
+#### Neúspěšný zápis nesmí zaneřádit DbContext pro další tool ve stejné smyčce (issue #305)
+
+`ChatService`'s multi-step tool loop (viz "Multi-step tool call loop" výše) volá po neúspěšném
+toolu **další** tool ve stejném HTTP requestu, tedy v **témže scoped `TenantDbContext`**. Tool,
+jehož `SaveChangesAsync` spadne (FK `Restrict`, unique constraint, cokoli), nechá ve
+change trackeru entity ve stavu `Added`/`Modified`/`Deleted`, které se nikdy neuložily — commit
+se nekonal, ale tracker si je pamatuje dál. Bez úklidu by je **cizí** tool v druhé iteraci smyčky
+zapsal svým vlastním `SaveChangesAsync`, spolu se svou vlastní (validní) změnou.
+
+Řešení je centrální, ne záplata v jednotlivých toolech: `ChatToolExecutor.ExecuteToolAsync`
+po každém volání, které skončí `IsSuccess == false` (ať už tool vrátil `Failure`, nebo z něj
+vylétla výjimka), zavolá `DiscardUncommittedChanges()` — odpojí (`EntityState.Detached`) každý
+záznam v trackeru, který **není** `Unchanged`.
+
+**Proč ne `ChangeTracker.Clear()`.** `Clear()` by odpojil i entity, které jsou **už uložené**
+a `Unchanged` — typicky aktuální `Conversation`, kterou `ChatService` po skončení smyčky ještě
+mění (`conversation.LastMessageAt = DateTime.UtcNow`) a ukládá. Odpojená `Conversation` by tuhle
+změnu tiše ztratila — `SaveChangesAsync` by ji přeskočil, protože by o ní tracker nic nevěděl.
+Cílené odpojení jen ne-`Unchanged` záznamů tenhle vedlejší efekt nemá.
+
+`ChatToolExecutor` proto injectuje `TenantDbContext` — stejnou scoped instanci, jakou pod
+kapotou používají služby volané z toolů (`IClientService`, `IInvoiceService`, …), a stejnou,
+jakou má injectovanou i `ChatService`. Úklid se tak dotkne přesně těch změn, které v tomtéž
+requestu způsobil neúspěšný tool.
+
 #### System prompt — složení a editovatelnost (issue #146)
 
 Prompt se skládá na jednom místě: **`AiSystemPrompt`** (`Fakvio.Infrastructure/Service/AiSystemPrompt.cs`).

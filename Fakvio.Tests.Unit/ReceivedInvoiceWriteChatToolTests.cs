@@ -7,7 +7,9 @@ using Fakvio.Contracts.Dto.Currency;
 using Fakvio.Contracts.Dto.ReceivedInvoice;
 using Fakvio.Contracts.Dto.VatRate;
 using Fakvio.Domain.Enums;
+using Fakvio.Infrastructure.Data;
 using Fakvio.Infrastructure.Service.ChatTools;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -33,6 +35,15 @@ namespace Fakvio.Tests.Unit;
 public class ReceivedInvoiceWriteChatToolTests
 {
     // ─── Shared fixtures ──────────────────────────────────────────────────
+
+    /// <summary>
+    /// Throwaway in-memory TenantDbContext — the executor only needs one to discard leftover
+    /// change-tracker entries after a failed write (issue #305); no test here touches it.
+    /// </summary>
+    private static TenantDbContext CreateDbContext()
+        => new(new DbContextOptionsBuilder<TenantDbContext>()
+            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .Options);
 
     private static ReceivedInvoiceDto BuildInvoice(
         long id = 7,
@@ -475,6 +486,7 @@ public class ReceivedInvoiceWriteChatToolTests
 
         var executor = new ChatToolExecutor(
             [BuildDeleteTool(service)],
+            CreateDbContext(),
             Substitute.For<ILogger<ChatToolExecutor>>());
 
         var result = await executor.ExecuteToolAsync(new ParsedToolCall
@@ -498,6 +510,7 @@ public class ReceivedInvoiceWriteChatToolTests
 
         var executor = new ChatToolExecutor(
             [BuildDeleteTool(service)],
+            CreateDbContext(),
             Substitute.For<ILogger<ChatToolExecutor>>());
 
         var result = await executor.ExecuteToolAsync(new ParsedToolCall
@@ -634,7 +647,7 @@ public class ReceivedInvoiceWriteChatToolTests
         string action,
         Dictionary<string, string> parameters)
     {
-        var executor = new ChatToolExecutor([tool], Substitute.For<ILogger<ChatToolExecutor>>());
+        var executor = new ChatToolExecutor([tool], CreateDbContext(), Substitute.For<ILogger<ChatToolExecutor>>());
 
         return executor.ExecuteToolAsync(new ParsedToolCall { Action = action, Parameters = parameters });
     }

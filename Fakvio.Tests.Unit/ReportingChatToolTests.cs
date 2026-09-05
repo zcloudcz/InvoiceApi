@@ -4,7 +4,9 @@ using Fakvio.Contracts.Dto.Dashboard;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Contracts.Dto.VatReport;
 using Fakvio.Domain.Enums;
+using Fakvio.Infrastructure.Data;
 using Fakvio.Infrastructure.Service.ChatTools;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 using Shouldly;
@@ -52,6 +54,15 @@ public class ReportingChatToolTests
             TotalWithVat = totalWithVat,
             CurrencyCode = currencyCode
         };
+
+    /// <summary>
+    /// Throwaway in-memory TenantDbContext — the executor only needs one to discard leftover
+    /// change-tracker entries after a failed write (issue #305); no test here touches it.
+    /// </summary>
+    private static TenantDbContext CreateDbContext()
+        => new(new DbContextOptionsBuilder<TenantDbContext>()
+            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .Options);
 
     /// <summary>
     /// Builds a ListInvoicesTool over mocks and hands back the mocks so the test can assert
@@ -472,7 +483,7 @@ public class ReportingChatToolTests
     public async Task ListInvoicesTool_Overdue_IgnoresSurroundingWhitespace(string rawValue)
     {
         var (tool, service) = CreateListTool();
-        var executor = new ChatToolExecutor([tool], Substitute.For<ILogger<ChatToolExecutor>>());
+        var executor = new ChatToolExecutor([tool], CreateDbContext(), Substitute.For<ILogger<ChatToolExecutor>>());
 
         var result = await executor.ExecuteToolAsync(new ParsedToolCall
         {
