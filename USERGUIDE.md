@@ -695,7 +695,7 @@ AI asistent zná kontext vaší firmy a umí odpovídat na otázky i provádět 
 |--------|--------|
 | Faktury | Vyhledat fakturu, zobrazit detail, vypsat seznam faktur podle kritérií, stáhnout PDF nebo ISDOC |
 | Faktury — změny | Vystavit koncept, označit vydanou fakturu jako zaplacenou, odeslat ji e-mailem, smazat koncept. **Každou takovou změnu si nejdřív necháte odsouhlasit** — viz níže |
-| Klienti | Vypsat seznam klientů, vyhledat klienta, zobrazit celý detail (adresy, kontakty, bankovní účty, fakturační nastavení), založit nového podle IČO, upravit údaje a smazat klienta. Úprava i smazání se vždy nejdřív ukážou k odsouhlasení — viz níže. |
+| Klienti | Vypsat seznam klientů, vyhledat klienta, zobrazit celý detail (adresy, kontakty, bankovní účty, fakturační nastavení), založit nového podle IČO, upravit údaje — včetně jazyka dokladů („Fakturuj Alze anglicky"; čeština nebo angličtina) — a smazat klienta. Úprava i smazání se vždy nejdřív ukážou k odsouhlasení — viz níže. |
 | Přijaté faktury | Vyhledat, vypsat seznam, **zaevidovat novou**, **schválit k proplacení**, **označit jako zaplacenou**, **smazat** (každá z těchto čtyř změn se vždy nejdřív zeptá — viz níže) |
 | Přehledy a reporty | Shrnout dashboard, vypsat faktury po splatnosti, faktury za období nebo pro konkrétního klienta, spočítat DPH za období |
 | Nastavení firmy | Přečíst nastavení vlastní firmy (název, IČO, DIČ, plátcovství DPH, jazyk dokladů, adresa, kontakty, bankovní účty) a změnit ho — včetně přidání, úpravy a zrušení bankovního účtu („Přidej nám účet 1234567890/0100", „Od ledna jsme plátci DPH"). IČO měnit nelze. |
