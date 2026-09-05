@@ -437,6 +437,108 @@ public class FakvioApiClientTests : IDisposable
         ex.Message.ShouldContain("Validation failed: ClientId is required");
     }
 
+    /// <summary>
+    /// #342: a TENANT_NOT_READY 400 must survive as a structured exception, not collapse into
+    /// the flattened HttpRequestException every other 400 becomes — otherwise an MCP tool has
+    /// only ex.Message to work with and cannot forward the fix route to its caller.
+    /// </summary>
+    [Fact]
+    public async Task EnsureSuccessAsync_ThrowsTenantNotReadyApiException_OnTenantNotReady400()
+    {
+        _handler.SetupResponse(HttpStatusCode.BadRequest, new
+        {
+            code = "TENANT_NOT_READY",
+            message = "Tenant is not ready. Unresolved blocking issue(s): ISSUER_BANK_ACCOUNT_MISSING.",
+            missingFields = new[] { "BankAccount" },
+            issues = new[]
+            {
+                new ReadinessIssueDto
+                {
+                    Code = "ISSUER_BANK_ACCOUNT_MISSING",
+                    Severity = EReadinessSeverity.Blocking,
+                    MissingFields = ["BankAccount"],
+                    FixRoute = "/my-company"
+                }
+            }
+        });
+
+        var ex = await Should.ThrowAsync<TenantNotReadyApiException>(() => _sut.CompleteInvoiceAsync(1));
+
+        ex.Message.ShouldContain("ISSUER_BANK_ACCOUNT_MISSING");
+        ex.MissingFields.ShouldBe(["BankAccount"]);
+        ex.Issues.Single().FixRoute.ShouldBe("/my-company");
+    }
+
+    /// <summary>A 400 with an unrelated (or missing) code must not be swallowed by the new branch.</summary>
+    [Fact]
+    public async Task EnsureSuccessAsync_OtherBadRequestCode_StaysAPlainHttpRequestException()
+    {
+        _handler.SetupResponse(HttpStatusCode.BadRequest, new { code = "SOME_OTHER_CODE", message = "nope" });
+
+        await Should.ThrowAsync<HttpRequestException>(() => _sut.CompleteInvoiceAsync(1));
+    }
+
+    /// <summary>
+    /// The TENANT_NOT_READY probe runs on EVERY 400 this client sees, so it must survive body
+    /// shapes it was not written for. A bare JSON string at the root is the common one —
+    /// <c>TaxController</c> answers <c>BadRequest("Gross income cannot be negative.")</c> and
+    /// <see cref="FakvioApiClient.EstimateTaxAsync"/> calls it — and it makes
+    /// <c>TryGetProperty</c> throw <see cref="InvalidOperationException"/>, not return false.
+    /// Each of these bodies must still come out as the ordinary flattened HttpRequestException.
+    /// </summary>
+    [Theory]
+    [InlineData("\"Gross income cannot be negative.\"")]   // string root — TaxController:46
+    [InlineData("[]")]                                      // array root
+    [InlineData("null")]                                    // JSON null root
+    [InlineData("42")]                                      // number root
+    [InlineData("{\"code\":123,\"message\":\"nope\"}")]   // object, but code is not a string
+    [InlineData("{\"code\":null}")]                         // object, code is JSON null
+    public async Task EnsureSuccessAsync_UnexpectedBadRequestBodyShape_StaysAPlainHttpRequestException(string body)
+    {
+        _handler.SetupRawResponse(HttpStatusCode.BadRequest, body);
+
+        var ex = await Should.ThrowAsync<HttpRequestException>(() => _sut.CompleteInvoiceAsync(1));
+
+        ex.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    }
+
+    /// <summary>
+    /// A TENANT_NOT_READY body whose optional parts are the wrong JSON type still has to produce
+    /// the structured exception — the code is what identifies the refusal, the rest degrades to
+    /// empty rather than dropping the caller back onto a flattened error string.
+    /// </summary>
+    [Fact]
+    public async Task EnsureSuccessAsync_TenantNotReadyWithOddOptionalFields_StillThrowsTheStructuredException()
+    {
+        _handler.SetupRawResponse(HttpStatusCode.BadRequest,
+            """{"code":"TENANT_NOT_READY","message":42,"missingFields":"BankAccount","issues":null}""");
+
+        var ex = await Should.ThrowAsync<TenantNotReadyApiException>(() => _sut.CompleteInvoiceAsync(1));
+
+        ex.MissingFields.ShouldBeEmpty();
+        ex.Issues.ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// Characterizes today's fallback when "message" is missing or not a string: the whole raw
+    /// 400 body (not a neutral message) becomes <see cref="Exception.Message"/>. Flagged by
+    /// review as a non-blocking latent risk (#342 round 2) — currently unreachable because the
+    /// only real TENANT_NOT_READY producer (<c>TenantNotReadyExceptionExtensions</c>) always
+    /// emits a safe, machine-composed string message, but this pins the *current* behaviour so a
+    /// future change to that fallback (e.g. hardcoding a neutral message per the review comment)
+    /// is a deliberate, visible diff here — not a silent behaviour change.
+    /// </summary>
+    [Fact]
+    public async Task EnsureSuccessAsync_TenantNotReadyWithoutStringMessage_MessageFallsBackToTheRawBody()
+    {
+        const string body = """{"code":"TENANT_NOT_READY","message":42}""";
+        _handler.SetupRawResponse(HttpStatusCode.BadRequest, body);
+
+        var ex = await Should.ThrowAsync<TenantNotReadyApiException>(() => _sut.CompleteInvoiceAsync(1));
+
+        ex.Message.ShouldBe(body);
+    }
+
     [Fact]
     public async Task EnsureSuccessAsync_ThrowsWithStatusCode_On500()
     {

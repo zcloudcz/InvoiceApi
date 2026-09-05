@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Fakvio.API.Extensions;
 using Fakvio.Application.Exceptions;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Contracts.Dto.InvoiceTemplate;
@@ -166,13 +167,7 @@ public class InvoiceTemplateController : ControllerBase
                 "Cannot auto-complete invoice from template {TemplateId} — tenant not ready: {MissingFields}",
                 id, string.Join(", ", ex.MissingFields));
 
-            return BadRequest(new
-            {
-                code          = ex.Code,
-                message       = ex.Message,
-                missingFields = ex.MissingFields,
-                issues        = ex.Issues
-            });
+            return ex.ToBadRequestResult();
         }
         catch (InvalidOperationException ex)
         {

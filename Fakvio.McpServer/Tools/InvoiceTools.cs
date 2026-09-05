@@ -224,6 +224,24 @@ public static class InvoiceTools
         {
             throw;
         }
+        catch (TenantNotReadyApiException ex)
+        {
+            // Caught separately (#342) so the MCP client gets the structured payload — code,
+            // missingFields, issues (each with its fix route) — instead of a flattened error
+            // string that only the generic catch below could produce.
+            //
+            // Deliberately NOT routed through McpToolError.ToJson (#279): that sanitizes because
+            // a raw API error body may carry internals. This payload is the opposite — our own
+            // readiness contract (DEVGUIDE §4.12), already parsed into known fields, and it is
+            // the whole point of the tool call to hand it to the client.
+            return JsonSerializer.Serialize(new
+            {
+                error = ex.Message,
+                code = TenantNotReadyApiException.ErrorCode,
+                missingFields = ex.MissingFields,
+                issues = ex.Issues
+            }, JsonOptions);
+        }
         catch (Exception ex)
         {
             return McpToolError.ToJson(ex);

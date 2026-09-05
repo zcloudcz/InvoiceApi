@@ -1,3 +1,5 @@
+using System.Text;
+using Fakvio.Application.Exceptions;
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Domain.Enums;
@@ -61,14 +63,35 @@ public class CompleteInvoiceTool : IConfirmableChatTool
 
         _logger.LogInformation("CompleteInvoiceTool issuing invoice {InvoiceId}", invoice.Id);
 
-        var completed = await _invoiceService.CompleteInvoiceAsync(invoice.Id, ct);
-        if (completed is null)
-            return ChatToolResult.Failure($"Issued invoice with ID {invoice.Id} not found.");
+        try
+        {
+            var completed = await _invoiceService.CompleteInvoiceAsync(invoice.Id, ct);
+            if (completed is null)
+                return ChatToolResult.Failure($"Issued invoice with ID {invoice.Id} not found.");
 
-        return ChatToolResult.Success(
-            $"Issued {completed.DocumentType} {completed.DocumentNumber ?? $"(ID {completed.Id})"} " +
-            $"for {completed.ClientName}. Status is now {completed.Status}, " +
-            $"due {ChatToolDates.Format(completed.DueDate)}.");
+            return ChatToolResult.Success(
+                $"Issued {completed.DocumentType} {completed.DocumentNumber ?? $"(ID {completed.Id})"} " +
+                $"for {completed.ClientName}. Status is now {completed.Status}, " +
+                $"due {ChatToolDates.Format(completed.DueDate)}.");
+        }
+        catch (TenantNotReadyException ex)
+        {
+            // Handled here rather than left to ChatToolExecutor's catch-all (#342) — that would
+            // wrap it as "Tool execution failed: <ex.Message>", losing the fix route per issue
+            // that the assistant needs to tell the user where to fix it. Same rendering as
+            // GetReadinessTool, so the two do not describe the same problem differently.
+            _logger.LogInformation(
+                "CompleteInvoiceTool: refused by readiness gate — {Codes}",
+                string.Join(", ", ex.Issues.Select(i => i.Code)));
+
+            var sb = new StringBuilder();
+            sb.AppendLine($"Cannot issue {InvoiceLookup.Describe(invoice)} — company setup is incomplete:");
+            sb.AppendLine();
+            foreach (var issue in ex.Issues)
+                ReadinessIssueFormatter.AppendIssue(sb, issue);
+
+            return ChatToolResult.Failure(sb.ToString().TrimEnd());
+        }
     }
 
     /// <summary>
