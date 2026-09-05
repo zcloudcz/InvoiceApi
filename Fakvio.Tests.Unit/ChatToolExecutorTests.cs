@@ -135,11 +135,16 @@ public class ChatToolExecutorTests
     private static ChatToolExecutor CreateExecutor(TenantDbContext dbContext, params IChatTool[] tools)
         => new(tools, dbContext, Substitute.For<ILogger<ChatToolExecutor>>());
 
-    /// <summary>Fresh in-memory TenantDbContext — same pattern as ChatServiceTests.</summary>
-    private static TenantDbContext CreateInMemoryDbContext()
+    /// <summary>
+    /// Fresh in-memory TenantDbContext — same pattern as ChatServiceTests. Pass a
+    /// <paramref name="databaseName"/> to open a second, independently-tracked context on the
+    /// same in-memory store (used to verify a write actually reached the store, not just the
+    /// first context's local change-tracker cache).
+    /// </summary>
+    private static TenantDbContext CreateInMemoryDbContext(string? databaseName = null)
     {
         var options = new DbContextOptionsBuilder<TenantDbContext>()
-            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .UseInMemoryDatabase(databaseName: databaseName ?? Guid.NewGuid().ToString())
             .Options;
         return new TenantDbContext(options);
     }
@@ -546,6 +551,49 @@ public class ChatToolExecutorTests
         var savedRates = dbContext.VatRate.ToList();
         savedRates.Count.ShouldBe(1);
         savedRates.Single().Name.ShouldBe("Tool B");
+    }
+
+    [Fact]
+    public async Task ExecuteToolAsync_LeavesAlreadyPersistedUnchangedEntitiesAttached_AfterAFailedTool()
+    {
+        // Pins the actual design decision behind DiscardUncommittedChanges: a targeted detach
+        // of Added/Modified/Deleted entries, NOT ChangeTracker.Clear(). Both implementations
+        // pass the "leftover discarded" test above — Clear() also empties the tracker — so
+        // that test alone does not protect this choice. This test does: it fails if
+        // DiscardUncommittedChanges is ever changed to Clear(), because Clear() would also
+        // detach the entity below (it is Unchanged, exactly like the Conversation ChatService
+        // keeps mutating via conversation.LastMessageAt after the tool loop finishes), and a
+        // detached entity's later property change is never seen by SaveChangesAsync.
+        var dbName = Guid.NewGuid().ToString();
+        var dbContext = CreateInMemoryDbContext(dbName);
+
+        var conversationStandIn = new VatRate { Name = "Original", Rate = 21m, ValidFrom = DateTime.UtcNow };
+        dbContext.VatRate.Add(conversationStandIn);
+        await dbContext.SaveChangesAsync();
+        dbContext.Entry(conversationStandIn).State.ShouldBe(EntityState.Unchanged);
+
+        // A different tool fails after touching the context — same leftover shape as above.
+        var failingTool = CreateTool("failing_tool", "Touches the context, then fails");
+        failingTool.ExecuteAsync(Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                dbContext.VatRate.Add(new VatRate { Name = "Leftover", Rate = 12m, ValidFrom = DateTime.UtcNow });
+                return Task.FromResult(ChatToolResult.Failure("simulated SaveChanges failure"));
+            });
+
+        var executor = CreateExecutor(dbContext, failingTool);
+        var result = await executor.ExecuteToolAsync(new ParsedToolCall { Action = "failing_tool" });
+        result.IsSuccess.ShouldBeFalse();
+
+        // Simulates ChatService's post-loop update on the Conversation it still holds tracked.
+        conversationStandIn.Name = "Updated after failure";
+        await dbContext.SaveChangesAsync();
+
+        // Read from an independent context on the same in-memory store — proves the update
+        // actually reached the store, not merely dbContext's own tracked/cached instance.
+        await using var verifyContext = CreateInMemoryDbContext(dbName);
+        var persisted = await verifyContext.VatRate.SingleAsync(v => v.Name == "Updated after failure");
+        persisted.ShouldNotBeNull();
     }
 
     // ─── Central parameter validation ─────────────────────────────────────
