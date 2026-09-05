@@ -10,5 +10,6 @@
   "346256b5845c44ab670b20d9f0b3318a5c49999e": {"unit": "3393/0/4", "by": "agent-dev #268", "at": "2026-09-04"},
   "914c2b75964e5cc229a8a46735ac410161d18de2": {"unit": "3422/0/4", "by": "agent-tester #381", "at": "2026-09-04"},
   "5a452e74f74ef81e758c4e5ac52022341fa9066a": {"unit": "3432/1/4", "note": "1 fail = InvoiceServiceCopyTests.CopyInvoiceAsync_ShouldSetIssueDateToToday (#359), deterministicky mezi 22:00-24:00 UTC; merano 22:5x UTC", "by": "agent-tester #381 (post-merge re-verify)", "at": "2026-09-04"},
-  "f3a964fd602e605d077229f2e44dfd8dfdfbd875": {"unit": "3408/0/4", "by": "agent-dev #342", "at": "2026-09-04"}
+  "f3a964fd602e605d077229f2e44dfd8dfdfbd875": {"unit": "3408/0/4", "by": "agent-dev #342", "at": "2026-09-04"},
+  "d79820e3c2c4cf50d2f2b1ee0de1715c4eb32351": {"unit": "3451/1/4", "note": "1 fail = InvoiceServiceCopyTests.CopyInvoiceAsync_ShouldSetIssueDateToToday (#359), deterministicky mezi 22:00-24:00 UTC; merano 23:58 UTC. MyCompanyEpoSectionTests je znamy flake pod plnou paralelni sadou (izolovane zelene), v tomto behu neselhal.", "by": "agent-dev #342 (merge round)", "at": "2026-09-04"}
 }
