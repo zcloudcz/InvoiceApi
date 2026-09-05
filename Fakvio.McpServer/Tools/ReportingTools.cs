@@ -44,9 +44,13 @@ public static class ReportingTools
             var dashboard = await api.GetDashboardAsync(ct);
             return JsonSerializer.Serialize(dashboard, JsonOptions);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
-            return JsonSerializer.Serialize(new { error = ex.Message }, JsonOptions);
+            return McpToolError.ToJson(ex);
         }
     }
 
@@ -80,9 +84,13 @@ public static class ReportingTools
             var result = await api.GetInvoicesPagedAsync(filter, ct);
             return JsonSerializer.Serialize(result, JsonOptions);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
-            return JsonSerializer.Serialize(new { error = ex.Message }, JsonOptions);
+            return McpToolError.ToJson(ex);
         }
     }
 
@@ -115,9 +123,13 @@ public static class ReportingTools
             var result = await api.GetInvoicesPagedAsync(filter, ct);
             return JsonSerializer.Serialize(result, JsonOptions);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
-            return JsonSerializer.Serialize(new { error = ex.Message }, JsonOptions);
+            return McpToolError.ToJson(ex);
         }
     }
 
@@ -167,9 +179,13 @@ public static class ReportingTools
             var result = await api.GetInvoicesPagedAsync(filter, ct);
             return JsonSerializer.Serialize(result, JsonOptions);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
-            return JsonSerializer.Serialize(new { error = ex.Message }, JsonOptions);
+            return McpToolError.ToJson(ex);
         }
     }
 
@@ -199,9 +215,13 @@ public static class ReportingTools
             var result = await api.GetVatReportAsync(parsedFrom, parsedTo, ct);
             return JsonSerializer.Serialize(result, JsonOptions);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
-            return JsonSerializer.Serialize(new { error = ex.Message }, JsonOptions);
+            return McpToolError.ToJson(ex);
         }
     }
 
@@ -232,9 +252,13 @@ public static class ReportingTools
             var result = await api.GetReceivedInvoicesPagedAsync(filter, ct);
             return JsonSerializer.Serialize(result, JsonOptions);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
-            return JsonSerializer.Serialize(new { error = ex.Message }, JsonOptions);
+            return McpToolError.ToJson(ex);
         }
     }
 }
