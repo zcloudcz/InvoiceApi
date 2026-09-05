@@ -1708,8 +1708,8 @@
   <data name="Integration_SnippetStdioHelper" xml:space="preserve"><value>Vložte do .mcp.json (Claude Code) nebo claude_desktop_config.json (Claude Desktop). Vyžaduje nainstalovaný nástroj fakvio-mcp.</value></data>
   <data name="Integration_SnippetHttp" xml:space="preserve"><value>Vzdálený MCP server (HTTP)</value></data>
   <data name="Integration_SnippetHttpHelper" xml:space="preserve"><value>Pro klienty, kteří se k MCP serveru připojují po HTTP a nic neinstalují.</value></data>
-  <data name="Integration_SnippetHttpUrlPlaceholder" xml:space="preserve"><value>https://adresa-mcp-serveru/mcp</value></data>
-  <data name="Integration_SnippetHttpUrlMissingHint" xml:space="preserve"><value>Adresa MCP serveru zatím není nastavená — v `url` je jen ukázková adresa, nahraďte ji tou, kterou vám dá správce.</value></data>
+  <data name="Integration_SnippetHttpUrlPlaceholder" xml:space="preserve"><value>https://adresa-mcp-serveru.invalid/mcp</value></data>
+  <data name="Integration_SnippetHttpUrlMissingHint" xml:space="preserve"><value>Adresa MCP serveru zatím není nastavená — v poli "url" je jen ukázková adresa, nahraďte ji tou, kterou vám dá správce.</value></data>
   <data name="Integration_Prefix" xml:space="preserve"><value>Prefix</value></data>
   <data name="Integration_Created" xml:space="preserve"><value>Vytvořen</value></data>
   <data name="Integration_LastUsed" xml:space="preserve"><value>Naposledy použit</value></data>

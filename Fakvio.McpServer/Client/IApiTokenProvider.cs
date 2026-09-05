@@ -1,8 +1,9 @@
 namespace Fakvio.McpServer.Client;
 
 /// <summary>
-/// Supplies the JWT bearer token that <see cref="AuthHeaderHandler"/> puts on
-/// each outgoing API request.
+/// Supplies the bearer credential that <see cref="AuthHeaderHandler"/> puts on
+/// each outgoing API request — an API key (<c>fak_live_…</c>) or a login JWT;
+/// the API tells them apart by prefix, so nothing here has to care which it is.
 ///
 /// Why an abstraction instead of a captured string?
 /// The MCP server has two hosting modes with two different credential sources:

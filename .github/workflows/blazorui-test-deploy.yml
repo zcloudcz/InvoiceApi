@@ -47,19 +47,29 @@ jobs:
           # instead of the plain file; patching only the plain file after publish would
           # leave the production URL sitting in the compressed copies.
           #
+          # The substitution is scoped to the "ApiSettings" block on purpose: appsettings.json
+          # holds more than one "BaseUrl" key (McpSettings got its own in #363), and an
+          # unscoped pattern would rewrite the MCP host's address to the API's as well —
+          # which is exactly the bug #363 exists to fix. The range runs from the section
+          # header to that section's own closing brace.
           # The ^[[:space:]]* anchor matches only the active setting; the commented-out
           # localhost line starts with "//" and is left alone.
-          sed -i -E "s|^([[:space:]]*)\"BaseUrl\": \".*\"|\1\"BaseUrl\": \"${TEST_API_BASE_URL}\"|" "$CONFIG"
+          sed -i -E "/\"ApiSettings\"/,/^[[:space:]]*\}/ s|^([[:space:]]*)\"BaseUrl\": \".*\"|\1\"BaseUrl\": \"${TEST_API_BASE_URL}\"|" "$CONFIG"
 
-          # Fail fast: if appsettings.json is ever restructured the sed above becomes a
-          # no-op, and a silent no-op would ship a *test* frontend talking to *production*.
-          grep -q "${TEST_API_BASE_URL}" "$CONFIG"
+          # Fail fast on both ways this can go wrong — hence a count, not a grep -q, which
+          # would pass on either. Zero occurrences: the sed matched nothing (appsettings.json
+          # restructured) and a silent no-op would ship a *test* frontend talking to
+          # *production*. More than one: the sed escaped its section and overwrote another
+          # section's BaseUrl with the API address. Exactly one is the only correct outcome.
+          test "$(grep -cF "${TEST_API_BASE_URL}" "$CONFIG")" -eq 1
 
           # Same idea for the environment name: the UI paints the app bar pink and shows a
           # TEST chip when this is anything but "production", so nobody edits production
           # believing it is the test system (Fakvio.UI.Shared/Services/UiEnvironment.cs).
-          sed -i -E "s|^([[:space:]]*)\"Name\": \"production\"|\1\"Name\": \"test\"|" "$CONFIG"
-          grep -q '"Name": "test"' "$CONFIG"
+          # Scoped and counted for the same reason as above — "Name" is a generic key, so the
+          # next section that grows one must not be rewritten by accident.
+          sed -i -E "/\"Environment\"/,/^[[:space:]]*\}/ s|^([[:space:]]*)\"Name\": \"production\"|\1\"Name\": \"test\"|" "$CONFIG"
+          test "$(grep -cF '"Name": "test"' "$CONFIG")" -eq 1
 
           cat "$CONFIG"
 

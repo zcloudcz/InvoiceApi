@@ -303,8 +303,12 @@
     /// Empty until that deployment exists (no production/test resource yet), in which case
     /// the remote snippet falls back to an obvious placeholder instead of a wrong-but-
     /// plausible-looking URL.
+    /// The value is hand-edited into a deployed JSON file, so it is normalised here rather
+    /// than at the point of use: stray whitespace or a trailing slash would otherwise end up
+    /// in the copied snippet as <c>https://host//mcp</c>. Trimming to empty falls back to the
+    /// placeholder, which is the correct outcome for a half-finished edit.
     /// </summary>
-    private string? McpBaseUrl => Configuration["McpSettings:BaseUrl"];
+    private string? McpBaseUrl => Configuration["McpSettings:BaseUrl"]?.Trim().TrimEnd('/');
 
     /// <summary>
     /// Ready-to-paste MCP client configs with the key already filled in — one for the local

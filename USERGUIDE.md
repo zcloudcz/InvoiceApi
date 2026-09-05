@@ -1263,7 +1263,7 @@ posílá v hlavičce každého požadavku.
   "mcpServers": {
     "fakvio-remote": {
       "type": "http",
-      "url": "https://adresa-mcp-serveru/mcp",
+      "url": "https://adresa-mcp-serveru.invalid/mcp",
       "headers": {
         "Authorization": "Bearer fak_live_vas-klic"
       }

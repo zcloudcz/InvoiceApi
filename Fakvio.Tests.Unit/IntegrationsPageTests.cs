@@ -68,10 +68,12 @@ public class IntegrationsPageTests : BunitContext, IAsyncLifetime
 
     /// <summary>
     /// Backs the <c>McpSettings:BaseUrl</c> config key the page reads for the remote MCP
-    /// snippet. Null (the default, matching production today — no MCP HTTP host exists yet,
-    /// see #241) until a test sets it before rendering; the IConfiguration singleton below is
-    /// only built on first resolution (inside Render), so setting this field beforehand is
-    /// enough to change what the page sees.
+    /// snippet. <c>null</c> means the key is absent altogether; any other value (including
+    /// <c>""</c>) is registered as the key's value, so a test can tell "no key" apart from
+    /// "key present but empty" — which is what every deployed environment ships today, since
+    /// no MCP HTTP host exists yet (see #241). The IConfiguration singleton below is only
+    /// built on first resolution (inside Render), so setting this field beforehand is enough
+    /// to change what the page sees.
     /// </summary>
     private string? _mcpBaseUrl;
 
@@ -416,12 +418,18 @@ public class IntegrationsPageTests : BunitContext, IAsyncLifetime
     /// not the API's. Before #363 the page reused <see cref="ApiBaseUrl"/> for both snippets;
     /// the API does not serve <c>/mcp</c>, so a user who pasted the generated block got a
     /// remote config that connects to the wrong server.
+    /// The address is hand-edited into a deployed JSON file, so the page normalises it before
+    /// appending <c>/mcp</c>; the extra cases cover the two edits an admin actually makes
+    /// wrong — a trailing slash (which would produce <c>host//mcp</c>) and stray whitespace.
     /// </summary>
-    [Fact]
-    public async Task Integrations_HttpSnippet_CarriesTheMcpBaseUrl_NotTheApiBaseUrl()
+    [Theory]
+    [InlineData("https://mcp.test.local")]
+    [InlineData("https://mcp.test.local/")]
+    [InlineData("  https://mcp.test.local  ")]
+    public async Task Integrations_HttpSnippet_CarriesTheMcpBaseUrl_NotTheApiBaseUrl(string configuredMcpBaseUrl)
     {
         const string mcpBaseUrl = "https://mcp.test.local";
-        _mcpBaseUrl = mcpBaseUrl;
+        _mcpBaseUrl = configuredMcpBaseUrl;
         var page = RenderPageWithKeys();
 
         await CreateKeyNamed(page, NewKeyName);
@@ -435,14 +443,22 @@ public class IntegrationsPageTests : BunitContext, IAsyncLifetime
 
     /// <summary>
     /// No MCP HTTP host exists yet (issue #241's infra is still pending), so
-    /// <c>McpSettings:BaseUrl</c> is unset in every environment today. The remote snippet must
-    /// not silently fall back to the API's address in that case — it has to show an obvious
-    /// placeholder instead, so a user who pastes it notices it still needs the real address
-    /// from their administrator rather than getting a wrong-but-plausible-looking URL.
+    /// <c>McpSettings:BaseUrl</c> carries no usable address in any environment today. The
+    /// remote snippet must not silently fall back to the API's address in that case — it has
+    /// to show an obvious placeholder instead, so a user who pastes it notices it still needs
+    /// the real address from their administrator rather than getting a wrong-but-plausible
+    /// URL. All three shapes of "not configured" must behave identically, because they all
+    /// occur in practice: the key missing entirely (an appsettings.json predating #363),
+    /// present but empty (what every deployed environment ships today), and whitespace-only
+    /// (a half-finished hand edit of the deployed file).
     /// </summary>
-    [Fact]
-    public async Task Integrations_HttpSnippet_WithoutMcpBaseUrlConfigured_ShowsPlaceholderNotApiUrl()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task Integrations_HttpSnippet_WithoutMcpBaseUrlConfigured_ShowsPlaceholderNotApiUrl(string? mcpBaseUrl)
     {
+        _mcpBaseUrl = mcpBaseUrl;
         var page = RenderPageWithKeys();
 
         await CreateKeyNamed(page, NewKeyName);

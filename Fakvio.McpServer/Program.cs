@@ -14,7 +14,7 @@ using Microsoft.Extensions.Logging;
 // One server, two hosting modes, the same 37 tools (same assembly, same
 // WithToolsFromAssembly() scan — see McpServerRegistration):
 //
-//   stdio (default)  AI client ←stdio→ this process ←HTTP/JWT→ Fakvio.API ←EF Core→ DB
+//   stdio (default)  AI client ←stdio→ this process ←HTTP/API key→ Fakvio.API ←EF Core→ DB
 //   http             AI clients ←HTTP/MCP→ this process ←HTTP/API key→ Fakvio.API ←EF Core→ DB
 //
 // The modes differ in exactly one thing that matters: where the API credential
@@ -26,7 +26,8 @@ using Microsoft.Extensions.Logging;
 // Environment variables:
 //   FAKVIO_MCP_TRANSPORT — "stdio" (default) or "http"
 //   FAKVIO_API_URL       — API base URL, defaults to https://localhost:7047
-//   FAKVIO_API_TOKEN     — JWT bearer token; REQUIRED in stdio mode, unused in http mode
+//   FAKVIO_API_TOKEN     — API key (fak_live_…, recommended) or a login JWT; REQUIRED in
+//                          stdio mode, unused in http mode
 //   ASPNETCORE_URLS      — http mode only: what Kestrel binds to (standard ASP.NET Core)
 // ──────────────────────────────────────────────────────────────────────
 
