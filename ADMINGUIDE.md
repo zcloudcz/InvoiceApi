@@ -571,10 +571,14 @@ HTTP a místo toho čeká na stdin, vypadá zvenčí jako nastartovaný — prot
   škálovat vodorovně. `GET /mcp` ani `/sse` k dispozici nejsou.
 - Endpoint je jediný: `POST /mcp`.
 
-> **Nasazení zatím není zautomatizované.** V `.github/workflows/` pro MCP host žádný workflow
-> není — packaging a deploy řeší issue #241. Do té doby je to ruční `dotnet tool` instalace,
-> resp. vlastní hosting procesu. Adresu hostu předejte uživatelům; stránka Integrace v UI ji
-> v generovaném bloku odhaduje z adresy API a uživatel ji podle vás opraví.
+> **Produkční nasazení hostu zatím chybí.** Packaging a CI (`.github/workflows/mcp-server.yml`,
+> issue #241) je hotové a na `TEST-ENV` naběhne, jakmile bude nastavená repo proměnná
+> `MCP_HTTP_APP_NAME` (Web App na to zatím nemá vlastní App Service). Produkce čeká na
+> stejný krok. Dokud adresa neexistuje, stránka Integrace v UI ji **negeneruje** — je
+> to samostatná hodnota `McpSettings:BaseUrl` (`Fakvio.BlazorUI/wwwroot/appsettings.json`),
+> ne odhad z adresy API (#363), a dokud je prázdná, vzdálený blok ukazuje zjevnou ukázkovou
+> adresu místo tiše špatné. Jakmile host vznikne, doplňte jeho adresu do `McpSettings:BaseUrl`
+> v nasazovaném `appsettings.json`.
 
 Podrobnosti pro vývojáře: DEVGUIDE §4.9, `Fakvio.McpServer/README.md`.
 
