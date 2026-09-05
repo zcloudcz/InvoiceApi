@@ -73,7 +73,8 @@ if (transport == EMcpTransport.Http)
 if (string.IsNullOrWhiteSpace(settings.ApiToken))
 {
     Console.Error.WriteLine("ERROR: FAKVIO_API_TOKEN environment variable is required in stdio mode.");
-    Console.Error.WriteLine("Set it to a valid JWT token obtained from the Fakvio API login endpoint.");
+    Console.Error.WriteLine("Set it to a Fakvio API key (fak_live_..., created on /settings/integrations — " +
+        "recommended for a long-lived connection) or a JWT token from the Fakvio API login endpoint (valid 24h).");
     return 1;
 }
 

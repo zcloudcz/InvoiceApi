@@ -27,6 +27,7 @@ using Fakvio.UI.Shared.Services;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Rendering;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Localization;
 using MudBlazor;
@@ -65,6 +66,15 @@ public class IntegrationsPageTests : BunitContext, IAsyncLifetime
 
     private readonly ApiKeyStub _api = new(RawKey);
 
+    /// <summary>
+    /// Backs the <c>McpSettings:BaseUrl</c> config key the page reads for the remote MCP
+    /// snippet. Null (the default, matching production today — no MCP HTTP host exists yet,
+    /// see #241) until a test sets it before rendering; the IConfiguration singleton below is
+    /// only built on first resolution (inside Render), so setting this field beforehand is
+    /// enough to change what the page sees.
+    /// </summary>
+    private string? _mcpBaseUrl;
+
     // MudBlazor's PopoverService only supports async disposal; xunit v2 disposes
     // test classes synchronously, so route disposal through IAsyncLifetime.
     Task IAsyncLifetime.InitializeAsync() => Task.CompletedTask;
@@ -72,6 +82,12 @@ public class IntegrationsPageTests : BunitContext, IAsyncLifetime
 
     public IntegrationsPageTests()
     {
+        Services.AddSingleton<IConfiguration>(_ => new ConfigurationBuilder()
+            .AddInMemoryCollection(_mcpBaseUrl is null
+                ? []
+                : new Dictionary<string, string?> { ["McpSettings:BaseUrl"] = _mcpBaseUrl })
+            .Build());
+
         // The create dialog holds a MudSelect and a MudDatePicker, which refuse to
         // initialise without a MudPopoverProvider in a bUnit render tree (same reason as
         // MyCompanyEpoSectionTests) — switch the guard off instead of faking a layout.
@@ -393,6 +409,49 @@ public class IntegrationsPageTests : BunitContext, IAsyncLifetime
 
         page.WaitForAssertion(() =>
             page.Markup.ShouldContain($"\"FAKVIO_API_URL\": \"{ApiBaseUrl}\""));
+    }
+
+    /// <summary>
+    /// The remote (HTTP) snippet's <c>url</c> must carry the address of the **MCP host**,
+    /// not the API's. Before #363 the page reused <see cref="ApiBaseUrl"/> for both snippets;
+    /// the API does not serve <c>/mcp</c>, so a user who pasted the generated block got a
+    /// remote config that connects to the wrong server.
+    /// </summary>
+    [Fact]
+    public async Task Integrations_HttpSnippet_CarriesTheMcpBaseUrl_NotTheApiBaseUrl()
+    {
+        const string mcpBaseUrl = "https://mcp.test.local";
+        _mcpBaseUrl = mcpBaseUrl;
+        var page = RenderPageWithKeys();
+
+        await CreateKeyNamed(page, NewKeyName);
+
+        page.WaitForAssertion(() =>
+        {
+            page.Markup.ShouldContain($"\"url\": \"{mcpBaseUrl}/mcp\"");
+            page.Markup.ShouldNotContain($"\"url\": \"{ApiBaseUrl}/mcp\"");
+        });
+    }
+
+    /// <summary>
+    /// No MCP HTTP host exists yet (issue #241's infra is still pending), so
+    /// <c>McpSettings:BaseUrl</c> is unset in every environment today. The remote snippet must
+    /// not silently fall back to the API's address in that case — it has to show an obvious
+    /// placeholder instead, so a user who pastes it notices it still needs the real address
+    /// from their administrator rather than getting a wrong-but-plausible-looking URL.
+    /// </summary>
+    [Fact]
+    public async Task Integrations_HttpSnippet_WithoutMcpBaseUrlConfigured_ShowsPlaceholderNotApiUrl()
+    {
+        var page = RenderPageWithKeys();
+
+        await CreateKeyNamed(page, NewKeyName);
+
+        page.WaitForAssertion(() =>
+        {
+            page.Markup.ShouldContain(Localized("Integration_SnippetHttpUrlPlaceholder"));
+            page.Markup.ShouldNotContain($"\"url\": \"{ApiBaseUrl}/mcp\"");
+        });
     }
 
     // ── Revoke ────────────────────────────────────────────────────────────
