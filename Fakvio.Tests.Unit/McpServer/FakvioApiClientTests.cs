@@ -519,6 +519,26 @@ public class FakvioApiClientTests : IDisposable
         ex.Issues.ShouldBeEmpty();
     }
 
+    /// <summary>
+    /// Characterizes today's fallback when "message" is missing or not a string: the whole raw
+    /// 400 body (not a neutral message) becomes <see cref="Exception.Message"/>. Flagged by
+    /// review as a non-blocking latent risk (#342 round 2) — currently unreachable because the
+    /// only real TENANT_NOT_READY producer (<c>TenantNotReadyExceptionExtensions</c>) always
+    /// emits a safe, machine-composed string message, but this pins the *current* behaviour so a
+    /// future change to that fallback (e.g. hardcoding a neutral message per the review comment)
+    /// is a deliberate, visible diff here — not a silent behaviour change.
+    /// </summary>
+    [Fact]
+    public async Task EnsureSuccessAsync_TenantNotReadyWithoutStringMessage_MessageFallsBackToTheRawBody()
+    {
+        const string body = """{"code":"TENANT_NOT_READY","message":42}""";
+        _handler.SetupRawResponse(HttpStatusCode.BadRequest, body);
+
+        var ex = await Should.ThrowAsync<TenantNotReadyApiException>(() => _sut.CompleteInvoiceAsync(1));
+
+        ex.Message.ShouldBe(body);
+    }
+
     [Fact]
     public async Task EnsureSuccessAsync_ThrowsWithStatusCode_On500()
     {
