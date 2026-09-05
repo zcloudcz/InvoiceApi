@@ -21,6 +21,7 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 ## Nevydáno
 
 ### Opravy
+- **#306** — jazykové nastavení klienta se tichou chybou ignorovalo — MCP `UpdateClient` přijal parametr `language`, hlásil úspěch a nic neuhnul. Nově se nastavení aplikuje korektně v `CreateClientAsync` i `UpdateClientAsync` (nula = neměnit, jako u ostatních polí). (PR #383, `ecd7b0e6`)
 - **#279** — MCP server nově sanitizuje těla chyb API předtím, než je pošle externím klientům, takže neúmyslně nezuniknou interní detaily jako stack trace nebo SQL chyby. Zrušené requesty nyní správně propagují místo toho, aby se konvertovaly na falešné doménové chyby. (PR #381, `28470c96`)
 
 - **#283** — chat tooly `create_invoice` a `create_received_invoice` tichou chybou zaměňovaly chybějící výchozí sazbu DPH nulou a nekladné množství jedničkou. U neplátců DPH bylo to správné chování (0 % je legitimní sazba), ale `create_invoice` to špatně aplikoval i na plátce, kde by selhalo teprve v service s vágní hláškou o povinnosti sazby. Nově se guard podmíňuje statusem plátcovství: plátce bez výchozí sazby dostane čitelnou zprávu a možnost ji nastavit; neplátce fakturu vytvoří se správnou nulou. `create_received_invoice` zůstává bezpodmínečný (přijaté doklady jsou cizího původu). (PR #382, `e66cca8`)
