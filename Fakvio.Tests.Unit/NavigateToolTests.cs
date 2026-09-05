@@ -1,7 +1,9 @@
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Common.Pagination;
 using Fakvio.Contracts.Dto.Client;
+using Fakvio.Infrastructure.Data;
 using Fakvio.Infrastructure.Service.ChatTools;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 using Shouldly;
@@ -26,6 +28,15 @@ public class NavigateToolTests
         _logger = Substitute.For<ILogger<NavigateTool>>();
         _tool = new NavigateTool(_clientService, _logger);
     }
+
+    /// <summary>
+    /// Throwaway in-memory TenantDbContext — the executor only needs one to discard leftover
+    /// change-tracker entries after a failed write (issue #305); no test here touches it.
+    /// </summary>
+    private static TenantDbContext CreateDbContext()
+        => new(new DbContextOptionsBuilder<TenantDbContext>()
+            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .Options);
 
     // ─── Basic Navigation Tests ──────────────────────────────────────────
 
@@ -289,7 +300,7 @@ public class NavigateToolTests
         // SysAdmin pages are deliberately absent from the catalog (issue #229). The executor's
         // central AllowedValues check is what stops the model from asking for them, so this
         // goes through the executor rather than calling the tool directly.
-        var executor = new ChatToolExecutor([_tool], Substitute.For<ILogger<ChatToolExecutor>>());
+        var executor = new ChatToolExecutor([_tool], CreateDbContext(), Substitute.For<ILogger<ChatToolExecutor>>());
         var call = executor.ParseToolCall(
             $"{{\"action\": \"navigate\", \"parameters\": {{\"target\": \"{target}\"}}}}");
 
@@ -324,7 +335,7 @@ public class NavigateToolTests
     {
         // End-to-end over the seam above: AllowedValues are compared case-insensitively by the
         // executor, so the tool is the only place where the casing can still break navigation.
-        var executor = new ChatToolExecutor([_tool], Substitute.For<ILogger<ChatToolExecutor>>());
+        var executor = new ChatToolExecutor([_tool], CreateDbContext(), Substitute.For<ILogger<ChatToolExecutor>>());
         var call = executor.ParseToolCall(
             "{\"action\": \"navigate\", \"parameters\": {\"target\": \"INVOICE_LIST\"}}");
 
@@ -341,7 +352,7 @@ public class NavigateToolTests
     {
         // 'target' is required, and the executor validates required parameters centrally —
         // this is the guard the tool relies on instead of checking the dictionary itself.
-        var executor = new ChatToolExecutor([_tool], Substitute.For<ILogger<ChatToolExecutor>>());
+        var executor = new ChatToolExecutor([_tool], CreateDbContext(), Substitute.For<ILogger<ChatToolExecutor>>());
         var call = executor.ParseToolCall("{\"action\": \"navigate\", \"parameters\": {}}");
 
         var result = await executor.ExecuteToolAsync(call!);

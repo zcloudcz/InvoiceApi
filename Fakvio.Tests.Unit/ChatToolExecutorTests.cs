@@ -1,6 +1,9 @@
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.Chat;
+using Fakvio.Domain.Entities;
+using Fakvio.Infrastructure.Data;
 using Fakvio.Infrastructure.Service.ChatTools;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 using Shouldly;
@@ -127,7 +130,19 @@ public class ChatToolExecutorTests
     }
 
     private static ChatToolExecutor CreateExecutor(params IChatTool[] tools)
-        => new(tools, Substitute.For<ILogger<ChatToolExecutor>>());
+        => CreateExecutor(CreateInMemoryDbContext(), tools);
+
+    private static ChatToolExecutor CreateExecutor(TenantDbContext dbContext, params IChatTool[] tools)
+        => new(tools, dbContext, Substitute.For<ILogger<ChatToolExecutor>>());
+
+    /// <summary>Fresh in-memory TenantDbContext — same pattern as ChatServiceTests.</summary>
+    private static TenantDbContext CreateInMemoryDbContext()
+    {
+        var options = new DbContextOptionsBuilder<TenantDbContext>()
+            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .Options;
+        return new TenantDbContext(options);
+    }
 
     /// <summary>Valid parameters for the create_invoice mock — used as a baseline in type tests.</summary>
     private static Dictionary<string, string> ValidInvoiceParameters() => new()
@@ -484,6 +499,53 @@ public class ChatToolExecutorTests
 
         result.IsSuccess.ShouldBeFalse();
         result.OutputText.ShouldContain("Tool execution failed");
+    }
+
+    [Fact]
+    public async Task ExecuteToolAsync_DiscardsUncommittedChanges_AfterAFailedTool_SoTheNextToolInTheSameScopeDoesNotSaveThem()
+    {
+        // Issue #305: a tool that fails after SaveChangesAsync threw (caught internally by the
+        // tool, or bubbling up as an exception) can leave Added/Modified/Deleted entries behind
+        // in the scoped TenantDbContext's change tracker — the write never committed, but the
+        // tracker still holds them. ChatService's tool-call loop may retry with a DIFFERENT tool
+        // in the SAME scope, and that tool's own SaveChangesAsync must not flush the leftovers.
+        var dbContext = CreateInMemoryDbContext();
+
+        // Tool A "fails" but only after touching the context — exactly what a caught
+        // DbUpdateException from a failed SaveChangesAsync looks like from here: the entity
+        // stays tracked as Added, nothing was ever committed.
+        var toolA = CreateTool("tool_a", "Touches the context, then fails");
+        toolA.ExecuteAsync(Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                dbContext.VatRate.Add(new VatRate { Name = "Tool A leftover", Rate = 21m, ValidFrom = DateTime.UtcNow });
+                return Task.FromResult(ChatToolResult.Failure("simulated SaveChanges failure"));
+            });
+
+        // Tool B succeeds and calls SaveChangesAsync on the SAME scoped context — like every
+        // real write tool does, through the Application service it calls into.
+        var toolB = CreateTool("tool_b", "Adds its own entity and saves");
+        toolB.ExecuteAsync(Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>())
+            .Returns(async _ =>
+            {
+                dbContext.VatRate.Add(new VatRate { Name = "Tool B", Rate = 12m, ValidFrom = DateTime.UtcNow });
+                await dbContext.SaveChangesAsync();
+                return ChatToolResult.Success("saved");
+            });
+
+        var executor = CreateExecutor(dbContext, toolA, toolB);
+
+        var resultA = await executor.ExecuteToolAsync(new ParsedToolCall { Action = "tool_a" });
+        resultA.IsSuccess.ShouldBeFalse();
+
+        var resultB = await executor.ExecuteToolAsync(new ParsedToolCall { Action = "tool_b" });
+        resultB.IsSuccess.ShouldBeTrue();
+
+        // Only tool B's entity made it to the database — tool A's leftover was discarded
+        // from the tracker before tool B's SaveChangesAsync ran, not saved alongside it.
+        var savedRates = dbContext.VatRate.ToList();
+        savedRates.Count.ShouldBe(1);
+        savedRates.Single().Name.ShouldBe("Tool B");
     }
 
     // ─── Central parameter validation ─────────────────────────────────────

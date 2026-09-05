@@ -3,7 +3,9 @@ using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Contracts.Dto.Readiness;
 using Fakvio.Domain.Enums;
+using Fakvio.Infrastructure.Data;
 using Fakvio.Infrastructure.Service.ChatTools;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 using Shouldly;
@@ -104,6 +106,15 @@ public class InvoiceLifecycleChatToolTests
 
     private DeleteInvoiceTool DeleteTool()
         => new(_invoiceService, Substitute.For<ILogger<DeleteInvoiceTool>>());
+
+    /// <summary>
+    /// Throwaway in-memory TenantDbContext — the executor only needs one to discard leftover
+    /// change-tracker entries after a failed write (issue #305); no test here touches it.
+    /// </summary>
+    private static TenantDbContext CreateDbContext()
+        => new(new DbContextOptionsBuilder<TenantDbContext>()
+            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .Options);
 
     // ─── get_invoice ──────────────────────────────────────────────────────
 
@@ -581,7 +592,7 @@ public class InvoiceLifecycleChatToolTests
     /// production for a model answer that carries (or omits) the approval flag.
     /// </summary>
     private ChatToolExecutor ExecutorOver(IChatTool tool)
-        => new([tool], Substitute.For<ILogger<ChatToolExecutor>>());
+        => new([tool], CreateDbContext(), Substitute.For<ILogger<ChatToolExecutor>>());
 
     [Fact]
     public async Task DeleteInvoice_ThroughTheExecutor_WithoutConfirm_OnlyPreviews()
@@ -660,7 +671,7 @@ public class InvoiceLifecycleChatToolTests
     /// </summary>
     private ChatToolExecutor ExecutorOverEveryLifecycleWrite()
         => new([CompleteTool(), MarkPaidTool(), SendEmailTool(), DeleteTool()],
-            Substitute.For<ILogger<ChatToolExecutor>>());
+            CreateDbContext(), Substitute.For<ILogger<ChatToolExecutor>>());
 
     [Theory]
     [MemberData(nameof(LifecycleWrites))]
