@@ -21,6 +21,7 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 ## Nevydáno
 
 ### Opravy
+- **#363** — při kopírování úryvku „remote" pro připojení MCP HTTP klienta se uživateli zkopírovala adresa API (`{ApiBaseUrl}/mcp`), která neexistuje — MCP HTTP host je oddělený deploy od API (od #240/#241). URL nyní vychází z nového `McpSettings:BaseUrl` config klíče; dokud se host nevystaví, zůstává prázdný a snippet místo chybné adresy zobrazí jasný placeholder. Opravena i chybová zpráva v `Fakvio.McpServer/Program.cs`, která zmínila jen JWT místo doporučeného API klíče. (PR #394, `2e2849d`)
 - **#306** — jazykové nastavení klienta se tichou chybou ignorovalo — MCP `UpdateClient` přijal parametr `language`, hlásil úspěch a nic neuhnul. Nově se nastavení aplikuje korektně v `CreateClientAsync` i `UpdateClientAsync` (nula = neměnit, jako u ostatních polí). (PR #383, `ecd7b0e6`)
 - **#279** — MCP server nově sanitizuje těla chyb API předtím, než je pošle externím klientům, takže neúmyslně nezuniknou interní detaily jako stack trace nebo SQL chyby. Zrušené requesty nyní správně propagují místo toho, aby se konvertovaly na falešné doménové chyby. (PR #381, `28470c96`)
 
