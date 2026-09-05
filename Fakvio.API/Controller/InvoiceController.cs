@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Security.Claims;
+using Fakvio.API.Extensions;
 using Fakvio.Application.Common.Helpers;
 using Fakvio.Application.Exceptions;
 using Fakvio.Contracts.Common.Pagination;
@@ -372,13 +373,7 @@ public class InvoiceController : ControllerBase
                 "Cannot complete invoice {Id} — tenant not ready: {MissingFields}",
                 id, string.Join(", ", ex.MissingFields));
 
-            return BadRequest(new
-            {
-                code          = ex.Code,
-                message       = ex.Message,
-                missingFields = ex.MissingFields,
-                issues        = ex.Issues
-            });
+            return ex.ToBadRequestResult();
         }
         catch (InvalidOperationException ex)
         {

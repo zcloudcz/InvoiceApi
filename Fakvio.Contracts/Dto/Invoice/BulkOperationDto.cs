@@ -54,4 +54,17 @@ public class BulkOperationError
     /// Example: "Invoice is already Completed" or "Only draft invoices can be deleted".
     /// </summary>
     public string Error { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Machine-readable error code, e.g. <c>TenantNotReadyException.ErrorCode</c> (#342).
+    /// Null for failures that have no structured code (invoice not found, wrong status, …) —
+    /// the UI falls back to showing <see cref="Error"/> as plain text for those.
+    /// </summary>
+    public string? Code { get; set; }
+
+    /// <summary>
+    /// Names of the fields still missing, present only when <see cref="Code"/> is set.
+    /// Same list as <c>TenantNotReadyException.MissingFields</c>.
+    /// </summary>
+    public IReadOnlyList<string>? MissingFields { get; set; }
 }

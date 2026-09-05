@@ -5,6 +5,7 @@ using Fakvio.Contracts.Dto.Dashboard;
 using Fakvio.Contracts.Dto.Email;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Contracts.Dto.InvoiceTemplate;
+using Fakvio.Contracts.Dto.Readiness;
 using Fakvio.Domain.Enums;
 using Fakvio.McpServer.Client;
 using Fakvio.McpServer.Tools;
@@ -224,6 +225,39 @@ public class InvoiceToolsTests
         // Assert: with JsonStringEnumConverter, status is serialized as a string "Completed"
         var doc = JsonDocument.Parse(json);
         doc.RootElement.GetProperty("status").GetString().ShouldBe("Completed");
+    }
+
+    /// <summary>
+    /// #342: TENANT_NOT_READY must reach the MCP client as the structured payload the generic
+    /// catch (Exception) below would flatten into a bare error string.
+    /// </summary>
+    [Fact]
+    public async Task CompleteInvoice_TenantNotReady_ReturnsStructuredErrorWithFixRoute()
+    {
+        // Arrange
+        var notReady = new TenantNotReadyApiException(
+            "Tenant is not ready. Unresolved blocking issue(s): ISSUER_BANK_ACCOUNT_MISSING.",
+            missingFields: ["BankAccount"],
+            issues:
+            [
+                new ReadinessIssueDto
+                {
+                    Code = "ISSUER_BANK_ACCOUNT_MISSING",
+                    Severity = EReadinessSeverity.Blocking,
+                    MissingFields = ["BankAccount"],
+                    FixRoute = "/my-company"
+                }
+            ]);
+        _api.CompleteInvoiceAsync(5, Arg.Any<CancellationToken>()).ThrowsAsync(notReady);
+
+        // Act
+        var json = await InvoiceTools.CompleteInvoice(_api, 5);
+
+        // Assert
+        var doc = JsonDocument.Parse(json);
+        doc.RootElement.GetProperty("code").GetString().ShouldBe("TENANT_NOT_READY");
+        doc.RootElement.GetProperty("missingFields")[0].GetString().ShouldBe("BankAccount");
+        doc.RootElement.GetProperty("issues")[0].GetProperty("fixRoute").GetString().ShouldBe("/my-company");
     }
 
     [Fact]
@@ -515,6 +549,37 @@ public class InvoiceToolsTests
         // Assert
         var doc = JsonDocument.Parse(json);
         doc.RootElement.GetProperty("id").GetInt64().ShouldBe(20);
+    }
+
+    /// <summary>Only reachable with autoComplete = true (#342) — same structured payload as CompleteInvoice.</summary>
+    [Fact]
+    public async Task CreateInvoiceFromTemplate_TenantNotReady_ReturnsStructuredErrorWithFixRoute()
+    {
+        // Arrange
+        var notReady = new TenantNotReadyApiException(
+            "Tenant is not ready. Unresolved blocking issue(s): ISSUER_BANK_ACCOUNT_MISSING.",
+            missingFields: ["BankAccount"],
+            issues:
+            [
+                new ReadinessIssueDto
+                {
+                    Code = "ISSUER_BANK_ACCOUNT_MISSING",
+                    Severity = EReadinessSeverity.Blocking,
+                    MissingFields = ["BankAccount"],
+                    FixRoute = "/my-company"
+                }
+            ]);
+        _api.CreateInvoiceFromTemplateAsync(5, Arg.Any<CreateInvoiceFromTemplateDto>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(notReady);
+
+        // Act
+        var json = await TemplateTools.CreateInvoiceFromTemplate(_api, 5,
+            "{\"clientId\":10,\"autoComplete\":true}");
+
+        // Assert
+        var doc = JsonDocument.Parse(json);
+        doc.RootElement.GetProperty("code").GetString().ShouldBe("TENANT_NOT_READY");
+        doc.RootElement.GetProperty("issues")[0].GetProperty("fixRoute").GetString().ShouldBe("/my-company");
     }
 
     [Fact]

@@ -123,6 +123,20 @@ public static class TemplateTools
         {
             throw;
         }
+        catch (TenantNotReadyApiException ex)
+        {
+            // Only reachable with autoComplete = true (#342) — same structured payload as
+            // InvoiceTools.CompleteInvoice, so the MCP client reads the fix route either way.
+            // Bypassing McpToolError.ToJson (#279) is deliberate for the same reason as there:
+            // this is our own parsed readiness contract, not a raw API error body.
+            return JsonSerializer.Serialize(new
+            {
+                error = ex.Message,
+                code = TenantNotReadyApiException.ErrorCode,
+                missingFields = ex.MissingFields,
+                issues = ex.Issues
+            }, JsonOptions);
+        }
         catch (Exception ex)
         {
             return McpToolError.ToJson(ex);
