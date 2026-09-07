@@ -32,7 +32,7 @@ protnutá se scope klíče (`read` vs `read,write` — viz DEVGUIDE §2.10).
   Balíček `ModelContextProtocol.AspNetCore`, který přináší Streamable HTTP transport, nese
   `FrameworkReference`, takže ho potřebuje celý nástroj, ne jen http režim. Na stroji s plným
   .NET 10 SDK je součástí instalace; na cílovém stroji jen s .NET runtime se musí doinstalovat
-  ASP.NET Core Runtime. Balení a deploy řeší #241.
+  ASP.NET Core Runtime.
 - Běžící `Fakvio.API` (lokálně nebo v cloudu), dosažitelné z počítače, kde běží AI klient
 - Credential podle režimu: **API klíč `fak_live_…`** vydaný v UI na `/settings/integrations`
   (viz USERGUIDE §20) — ve stdio režimu se vloží do `FAKVIO_API_TOKEN`, v http režimu ho nese
@@ -48,18 +48,32 @@ dotnet build Fakvio.McpServer/Fakvio.McpServer.csproj
 dotnet run   --project Fakvio.McpServer
 ```
 
-Jako globální .NET nástroj (příkaz `fakvio-mcp`):
+Jako globální .NET nástroj (příkaz `fakvio-mcp`) — balíček je na nuget.org,
+takže uživatel k instalaci nepotřebuje repozitář:
 
 ```bash
-dotnet pack Fakvio.McpServer/Fakvio.McpServer.csproj -c Release -o ./nupkg
-dotnet tool install --global --add-source ./nupkg Fakvio.McpServer
+dotnet tool install --global Fakvio.McpServer
 ```
 
 Aktualizace, resp. odinstalace:
 
 ```bash
-dotnet tool update    --global --add-source ./nupkg Fakvio.McpServer
+dotnet tool update    --global Fakvio.McpServer
 dotnet tool uninstall --global Fakvio.McpServer
+```
+
+Verzi na nuget.org publikuje workflow `mcp-server.yml` při pushi do `master`
+(job `publish-nuget`). **Číslo verze se zvedá ručně** — `<Version>` v
+`Fakvio.McpServer.csproj`, ve stejném PR jako změna nástroje. Push jde
+s `--skip-duplicate`, takže merge bez bumpu nic nepublikuje a nic neshodí;
+cena za to je, že zapomenutý bump se projeví jen tím, že se oprava k uživatelům
+nedostane.
+
+Z rozpracované větve (nepublikovaná verze) se instaluje z lokálního balíčku:
+
+```bash
+dotnet pack Fakvio.McpServer/Fakvio.McpServer.csproj -c Release -o ./nupkg
+dotnet tool install --global --add-source ./nupkg Fakvio.McpServer
 ```
 
 Spuštění z terminálu jen ověří konfiguraci — server pak čeká na JSON-RPC zprávy
@@ -83,6 +97,11 @@ Server se konfiguruje **jen proměnnými prostředí** (žádný `appsettings.js
 FAKVIO_MCP_TRANSPORT=http FAKVIO_API_URL=https://localhost:7047 ASPNETCORE_URLS=http://localhost:5290 dotnet run
 ```
 
+Server je obyčejná ASP.NET Core aplikace, takže ho hostuje cokoli, co umí spustit .NET
+proces — včetně Azure Functions v režimu *custom handler* (manifest `host.json` vedle
+projektu; port v něm musí sedět s `ASPNETCORE_URLS`). Nasazení v tomhle repu popisuje
+DEVGUIDE §9.1.
+
 Klient posílá na `POST /mcp` a **musí** přiložit `Authorization: Bearer <API klíč>`
 (klíč se zakládá v UI, viz ADMINGUIDE / USERGUIDE). Server klíč ověří na
 `GET /api/api-key/me` u **každého** requestu — nic se necachuje, takže revokovaný
@@ -90,7 +109,7 @@ klíč přestane fungovat okamžitě. Neplatný nebo chybějící klíč = `401`
 `WWW-Authenticate: Bearer`.
 
 Běží **stateless** (bez `Mcp-Session-Id`), takže `GET /mcp` a `/sse` nejsou k dispozici
-a host jde škálovat bez sticky routingu. Balení a nasazení HTTP hostu řeší #241.
+a host jde škálovat bez sticky routingu.
 
 > **Výchozí hodnota sedí jen na lokální vývoj.** `FAKVIO_API_URL` bez explicitního
 > nastavení míří na `https://localhost:7047` (lokální `Fakvio.API`, viz
@@ -190,7 +209,7 @@ Bez instalace nástroje lze server spouštět rovnou ze zdrojáků — místo
 
 ```json
 "command": "dotnet",
-"args": ["run", "--project", "C:/GIT/ZCLOUD/InvoiceApi/Fakvio.McpServer"]
+"args": ["run", "--project", "<cesta ke klonu repa>/Fakvio.McpServer"]
 ```
 
 `.mcp.json` obsahuje credential v otevřené podobě, proto **patří do `.gitignore`**,
@@ -221,7 +240,7 @@ grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs
   nevyhazuje jako výjimka, ale vrací se jako `{ "error": "..." }` — AI klient tak dostane
   čitelnou zprávu místo pádu spojení.
 - Neočekávaná výjimka jde přes `McpToolError.ToJson(ex)` — jedno místo pro všech 37
-  nástrojů (#279). Zaloguje celou výjimku server-side a vrátí stabilní
+  nástrojů. Zaloguje celou výjimku server-side a vrátí stabilní
   `{ "error": "internal_error", "message": "..." }`, **nikdy `ex.Message`** (to může nést
   syrové tělo API chyby z `FakvioApiClient.EnsureSuccessAsync`).
 - Zrušení od volajícího se **propaguje**: `catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }`.
