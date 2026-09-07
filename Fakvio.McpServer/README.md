@@ -32,7 +32,7 @@ protnutá se scope klíče (`read` vs `read,write` — viz DEVGUIDE §2.10).
   Balíček `ModelContextProtocol.AspNetCore`, který přináší Streamable HTTP transport, nese
   `FrameworkReference`, takže ho potřebuje celý nástroj, ne jen http režim. Na stroji s plným
   .NET 10 SDK je součástí instalace; na cílovém stroji jen s .NET runtime se musí doinstalovat
-  ASP.NET Core Runtime. Balení a deploy řeší #241.
+  ASP.NET Core Runtime.
 - Běžící `Fakvio.API` (lokálně nebo v cloudu), dosažitelné z počítače, kde běží AI klient
 - Credential podle režimu: **API klíč `fak_live_…`** vydaný v UI na `/settings/integrations`
   (viz USERGUIDE §20) — ve stdio režimu se vloží do `FAKVIO_API_TOKEN`, v http režimu ho nese
@@ -104,7 +104,7 @@ klíč přestane fungovat okamžitě. Neplatný nebo chybějící klíč = `401`
 `WWW-Authenticate: Bearer`.
 
 Běží **stateless** (bez `Mcp-Session-Id`), takže `GET /mcp` a `/sse` nejsou k dispozici
-a host jde škálovat bez sticky routingu. Balení a nasazení HTTP hostu řeší #241.
+a host jde škálovat bez sticky routingu.
 
 > **Výchozí hodnota sedí jen na lokální vývoj.** `FAKVIO_API_URL` bez explicitního
 > nastavení míří na `https://localhost:7047` (lokální `Fakvio.API`, viz
@@ -204,7 +204,7 @@ Bez instalace nástroje lze server spouštět rovnou ze zdrojáků — místo
 
 ```json
 "command": "dotnet",
-"args": ["run", "--project", "C:/GIT/ZCLOUD/InvoiceApi/Fakvio.McpServer"]
+"args": ["run", "--project", "<cesta ke klonu repa>/Fakvio.McpServer"]
 ```
 
 `.mcp.json` obsahuje credential v otevřené podobě, proto **patří do `.gitignore`**,
@@ -235,7 +235,7 @@ grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs
   nevyhazuje jako výjimka, ale vrací se jako `{ "error": "..." }` — AI klient tak dostane
   čitelnou zprávu místo pádu spojení.
 - Neočekávaná výjimka jde přes `McpToolError.ToJson(ex)` — jedno místo pro všech 37
-  nástrojů (#279). Zaloguje celou výjimku server-side a vrátí stabilní
+  nástrojů. Zaloguje celou výjimku server-side a vrátí stabilní
   `{ "error": "internal_error", "message": "..." }`, **nikdy `ex.Message`** (to může nést
   syrové tělo API chyby z `FakvioApiClient.EnsureSuccessAsync`).
 - Zrušení od volajícího se **propaguje**: `catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }`.
