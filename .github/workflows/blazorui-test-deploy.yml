@@ -27,11 +27,10 @@ env:
   # Test MCP HTTP host (#241). Separate from the API on purpose — since #240 they are two
   # applications on two addresses, and deriving one from the other is the bug #363 fixed.
   #
-  # The plain azurewebsites.net address rather than mcp-test.fakvio.cz: the custom domain is
-  # bound but has no certificate yet, so HTTPS on it fails — and clients send their API key in
-  # an Authorization header, which must not travel unencrypted. Swap this to the custom domain
-  # the day that certificate exists.
-  TEST_MCP_BASE_URL: 'https://fakvio-mcp-test.azurewebsites.net'
+  # The custom domain, not the azurewebsites.net one: it carries its own managed certificate
+  # (site-scoped — DEVGUIDE §9.1 has the why), so HTTPS holds, and a stable address means a
+  # client config pasted today survives the host being rebuilt or renamed.
+  TEST_MCP_BASE_URL: 'https://mcp-test.fakvio.cz'
 
 jobs:
   build-and-deploy:
