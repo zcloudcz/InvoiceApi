@@ -2482,6 +2482,26 @@ proč to celé existuje: `Fakvio.Functions/Tailscale/README.md`.
     Functions se na něj nedovolá — selhání se projeví až post-deploy kontrolou.
   - **Je to public preview.** Vyžaduje app setting `AzureWebJobsFeatureFlags` =
     `EnableMcpCustomHandlerPreview` a plán **Flex Consumption** (jiný plán to neumí).
+  - **Vlastní doména + certifikát na Flexu jde jinudy, než říká CLI.**
+    `az functionapp config ssl create` selže **tiše** — vypíše „creation in progress" a
+    nevytvoří nic, protože sahá na subscription-level `Microsoft.Web/certificates`, a ten
+    Flex Consumption odmítá („not supported for Flex Consumption plans, use
+    `Microsoft.Web/sites/certificates` instead"). Funguje **site-scoped** endpoint:
+
+    ```bash
+    az rest --method PUT \
+      --url ".../Microsoft.Web/sites/<app>/certificates/<domena>?api-version=2025-05-01" \
+      --body '{"location":"West Europe","properties":{"canonicalName":"<domena>",
+                "domainValidationMethod":"cname-delegation","password":""}}'
+    az functionapp config ssl bind -g <rg> -n <app> \
+      --certificate-thumbprint <thumbprint> --ssl-type SNI
+    ```
+
+    Dvě pasti: `api-version` musí být **2024-11-01 nebo novější** (starší čísla vrátí
+    `NoRegisteredProviderFound`, což vypadá jako chybějící feature, ale je to překlep ve
+    verzi), a PUT může vrátit **prázdnou odpověď** — vydání je asynchronní a certifikát
+    naskočí do pár minut. Opakovaný PUT nepomůže, jen počkat a ověřit GETem.
+    Vlastní CNAME stačí i na ověření vlastnictví; `asuid` TXT záznam nebyl potřeba.
 - App settings HTTP hostu (`FAKVIO_MCP_TRANSPORT=http`, `FAKVIO_API_URL`, `ASPNETCORE_URLS`,
   `FUNCTIONS_WORKER_RUNTIME=dotnet-isolated`, `AzureWebJobsFeatureFlags`) patří do konfigurace
   Function Appu, **ne do workflow** — stejné pravidlo jako u ostatních Functions (§9.4).
