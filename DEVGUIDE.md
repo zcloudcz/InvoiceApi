@@ -2459,8 +2459,32 @@ proč to celé existuje: `Fakvio.Functions/Tailscale/README.md`.
   ten credential, který tenhle krok schválně nemá. (Pozor i na opačný směr: 401 může jednou
   přijít od platformy — App Service Authentication — ještě než se aplikace dostane ke slovu,
   takže na tomhle Web Appu ji **nezapínej**.)
-- App settings HTTP hostu (`FAKVIO_MCP_TRANSPORT=http`, `FAKVIO_API_URL`) patří do konfigurace
-  Azure App Service, **ne do workflow** — stejné pravidlo jako u Functions (§9.4).
+- **HTTP host se nasazuje jako Azure Functions *custom handler*, ne jako App Service.**
+  Functions host se v tomhle režimu chová jako reverzní proxy a přeposílá celý HTTP request
+  našemu procesu, takže `Fakvio.McpServer` běží jako obyčejná ASP.NET Core aplikace —
+  **kód se nemění**, `POST /mcp` i `McpApiKeyMiddleware` nad celou pipeline platí dál.
+  Důvod volby: Flex Consumption škáluje na nulu a platí se za spotřebu, kdežto App Service
+  by znamenal vlastní plán placený pořád. Podmínkou je **stateless + streamable HTTP**, což
+  `McpHttpHost` už pinuje (§4.9) — tahle shoda není náhoda, ale ani zásluha: kdyby se
+  `SessionMode` někdy přepnul na stateful, tenhle způsob hostování přestane být použitelný.
+  - **`Fakvio.McpServer/host.json`** je manifest custom handleru: profil
+    `mcp-custom-handler` (ten zapne proxying, route `{*route}` a prázdný `routePrefix`),
+    `defaultExecutablePath: dotnet` + `Fakvio.McpServer.dll` a port `8080`.
+  - **`DefaultAuthorizationLevel: anonymous` je záměr.** Autorizační hranicí je API klíč
+    ověřovaný uvnitř aplikace; funkční klíč Functions před ní by jen přidal druhý credential
+    na tutéž věc a rozbil post-deploy kontrolu, která čeká 401 **z aplikace**.
+  - **Manifest kopíruje workflow do `./publish`, nese ho ne csproj.** Content item v csproj
+    skončí i v `bin/`, a `dotnet pack` u `PackAsTool` balí `bin/` — manifest by tak jel
+    uvnitř nupkg, který si instalují stdio uživatelé. Hlídat to testem nemá cenu, stačí to
+    dělat na jednom místě: krok „Add the Functions custom handler manifest".
+  - **Port je na dvou místech a musí sedět**: `customHandler.port` v `host.json` a
+    `ASPNETCORE_URLS` v app settings (`http://0.0.0.0:8080`). Nesedí-li, host nastartuje a
+    Functions se na něj nedovolá — selhání se projeví až post-deploy kontrolou.
+  - **Je to public preview.** Vyžaduje app setting `AzureWebJobsFeatureFlags` =
+    `EnableMcpCustomHandlerPreview` a plán **Flex Consumption** (jiný plán to neumí).
+- App settings HTTP hostu (`FAKVIO_MCP_TRANSPORT=http`, `FAKVIO_API_URL`, `ASPNETCORE_URLS`,
+  `FUNCTIONS_WORKER_RUNTIME=dotnet-isolated`, `AzureWebJobsFeatureFlags`) patří do konfigurace
+  Function Appu, **ne do workflow** — stejné pravidlo jako u ostatních Functions (§9.4).
 - **`publish-nuget` publikuje stdio nástroj na nuget.org, jen z `master`.** Bere
   **tentýž `.nupkg`**, na kterém build job ověřil `FrameworkReference` — ne nový build, takže
   publikuje se přesně to, co prošlo kontrolou. Test build se veřejným balíčkem nikdy stát

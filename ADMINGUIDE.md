@@ -574,13 +574,32 @@ HTTP a místo toho čeká na stdin, vypadá zvenčí jako nastartovaný — prot
 > **Hostu chybí už jen Azure resource.** Packaging i CI (`.github/workflows/mcp-server.yml`,
 > issue #241) jsou hotové pro obě prostředí — `TEST-ENV` deployuje job `deploy-http-test`,
 > `master` job `deploy-http-prod`. Oba se **přeskočí**, dokud není nastavená příslušná repo
-> proměnná se jménem App Service: `MCP_HTTP_APP_NAME` (test, očekávaná hodnota
+> proměnná se jménem Function Appu: `MCP_HTTP_APP_NAME` (test, očekávaná hodnota
 > `fakvio-mcp-test`) a `MCP_HTTP_APP_NAME_PROD` (produkce, `fakvio-mcp`). Chybí tedy jen
-> ruční krok: založit Web App (vlastní App Service plán — Flex Consumption plán Functions
-> ho hostovat nemůže), nastavit mu `FAKVIO_MCP_TRANSPORT=http` a `FAKVIO_API_URL`, zapnout
-> HTTPS Only, **nezapínat** App Service Authentication (odpovídala by 401 dřív než
-> aplikace, takže by post-deploy kontrola prošla i na nenastartovaném hostu), rozšířit role
-> assignment stávající app registrace toho prostředí na nový Web App a doplnit proměnnou. Dokud adresa neexistuje, stránka Integrace v UI ji **negeneruje** — je
+> ruční krok — a je to **Function App na Flex Consumption**, ne App Service: MCP host se
+> nasazuje jako Azure Functions *custom handler*, takže se za něj neplatí, když nikdo
+> nevolá. Co založit:
+>
+> 1. **Function App na plánu Flex Consumption** (jiný plán custom handler pro MCP neumí),
+>    samostatný — custom handler vlastní všechny routy aplikace, takže se nedá přidat
+>    do stávajícího `zcloudinvoicingapi`.
+> 2. **App settings:** `FAKVIO_MCP_TRANSPORT=http`, `FAKVIO_API_URL` (adresa API),
+>    `ASPNETCORE_URLS=http://0.0.0.0:8080` (**musí sedět s portem v `host.json`**),
+>    `FUNCTIONS_WORKER_RUNTIME=dotnet-isolated`,
+>    `AzureWebJobsFeatureFlags=EnableMcpCustomHandlerPreview`.
+> 3. **HTTPS Only** zapnout.
+> 4. **Žádnou platformní autentizaci nezapínat** — ani Easy Auth, ani vyšší authorization
+>    level než `anonymous`. Odpovídaly by 401 dřív, než se request dostane k aplikaci,
+>    takže by post-deploy kontrola prošla i na hostu, který vůbec nenastartoval.
+>    Autorizaci dělá API klíč uvnitř aplikace.
+> 5. **Rozšířit role assignment** stávající app registrace toho prostředí na nový Function App.
+> 6. **Doplnit repo proměnnou** se jménem appky.
+>
+> Pozor: hostování MCP serverů postavených na oficiálním SDK je u Azure Functions zatím
+> **public preview** — proto ten feature flag. Na produkci to je vědomé riziko, ne
+> přehlédnutí.
+>
+> Dokud adresa neexistuje, stránka Integrace v UI ji **negeneruje** — je
 > to samostatná hodnota `McpSettings:BaseUrl` (`Fakvio.BlazorUI/wwwroot/appsettings.json`),
 > ne odhad z adresy API (#363), a dokud je prázdná, vzdálený blok ukazuje zjevnou ukázkovou
 > adresu místo tiše špatné. Jakmile host vznikne, doplňte jeho adresu do `McpSettings:BaseUrl`

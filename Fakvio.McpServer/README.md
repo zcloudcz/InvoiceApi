@@ -97,6 +97,11 @@ Server se konfiguruje **jen proměnnými prostředí** (žádný `appsettings.js
 FAKVIO_MCP_TRANSPORT=http FAKVIO_API_URL=https://localhost:7047 ASPNETCORE_URLS=http://localhost:5290 dotnet run
 ```
 
+Server je obyčejná ASP.NET Core aplikace, takže ho hostuje cokoli, co umí spustit .NET
+proces — včetně Azure Functions v režimu *custom handler* (manifest `host.json` vedle
+projektu; port v něm musí sedět s `ASPNETCORE_URLS`). Nasazení v tomhle repu popisuje
+DEVGUIDE §9.1.
+
 Klient posílá na `POST /mcp` a **musí** přiložit `Authorization: Bearer <API klíč>`
 (klíč se zakládá v UI, viz ADMINGUIDE / USERGUIDE). Server klíč ověří na
 `GET /api/api-key/me` u **každého** requestu — nic se necachuje, takže revokovaný
