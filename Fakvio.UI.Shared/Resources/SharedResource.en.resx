@@ -1708,6 +1708,8 @@
   <data name="Integration_SnippetStdioHelper" xml:space="preserve"><value>Paste into .mcp.json (Claude Code) or claude_desktop_config.json (Claude Desktop). Requires the fakvio-mcp tool to be installed.</value></data>
   <data name="Integration_SnippetHttp" xml:space="preserve"><value>Remote MCP server (HTTP)</value></data>
   <data name="Integration_SnippetHttpHelper" xml:space="preserve"><value>For clients that connect to the MCP server over HTTP with nothing to install.</value></data>
+  <data name="Integration_SnippetHttpUrlPlaceholder" xml:space="preserve"><value>https://mcp-server-address.invalid/mcp</value></data>
+  <data name="Integration_SnippetHttpUrlMissingHint" xml:space="preserve"><value>The MCP server address is not set up yet — the "url" above is only a sample address, replace it with the one your administrator gives you.</value></data>
   <data name="Integration_Prefix" xml:space="preserve"><value>Prefix</value></data>
   <data name="Integration_Created" xml:space="preserve"><value>Created</value></data>
   <data name="Integration_LastUsed" xml:space="preserve"><value>Last used</value></data>

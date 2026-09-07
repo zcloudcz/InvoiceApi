@@ -49,7 +49,8 @@ public class CreateClientDto
 
     /// <summary>
     /// Preferred language for documents (PDFs, emails) — ISO 639-1 code.
-    /// Defaults to "cs" (Czech). Max 5 characters (e.g., "cs", "en", "de").
+    /// Only "cs" and "en" are rendered by the application; anything else is dropped by
+    /// <c>ClientService</c> and the client keeps the default "cs" (Czech).
     /// </summary>
     [StringLength(5)]
     public string Language { get; set; } = "cs";

@@ -2,6 +2,8 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Fakvio.Application.Service;
+using Fakvio.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace Fakvio.Infrastructure.Service.ChatTools;
@@ -16,10 +18,10 @@ namespace Fakvio.Infrastructure.Service.ChatTools;
 /// - Text-based tool calling: BuildToolInstructions() is appended to the system prompt,
 ///   ParseToolCall() extracts the JSON tool call from the model's plain-text answer.
 ///
-/// Both flows converge on ExecuteToolAsync(), which validates the parameters against
-/// the tool schema BEFORE the tool runs. Everything — prompt text, JSON Schema and
-/// validation — is derived from IChatTool.Parameters, so a tool is described in
-/// exactly one place: its own class.
+/// Both flows converge on ExecuteToolAsync(), which normalizes the raw parameter values
+/// (trims every one, once) and validates the result against the tool schema BEFORE the tool
+/// runs. Everything — prompt text, JSON Schema, validation and normalization — is derived
+/// from IChatTool.Parameters, so a tool is described in exactly one place: its own class.
 ///
 /// All registered IChatTool implementations are injected via IEnumerable{IChatTool} from DI.
 /// To add a new tool: implement IChatTool (including its parameter schema) and register it in DI.
@@ -29,10 +31,19 @@ public class ChatToolExecutor : IChatToolExecutor
     private readonly Dictionary<string, IChatTool> _tools;
     private readonly ILogger<ChatToolExecutor> _logger;
 
+    /// <summary>
+    /// The same scoped TenantDbContext instance the tool's own services (IClientService,
+    /// IInvoiceService, ...) write through. Needed only to discard leftover tracked changes
+    /// after a failed write — see <see cref="DiscardUncommittedChanges"/> (issue #305).
+    /// </summary>
+    private readonly TenantDbContext _dbContext;
+
     public ChatToolExecutor(
         IEnumerable<IChatTool> tools,
+        TenantDbContext dbContext,
         ILogger<ChatToolExecutor> logger)
     {
+        _dbContext = dbContext;
         _logger = logger;
 
         // Build a case-insensitive lookup dictionary from all registered tools.
@@ -385,6 +396,15 @@ public class ChatToolExecutor : IChatToolExecutor
                 $"Unknown tool: {toolCall.Action}. Available tools: {string.Join(", ", _tools.Keys)}");
         }
 
+        // Normalize once, right here, before anything below reads a value: every consumer —
+        // the confirm gate, validation, the preview and the tool itself — must see the exact
+        // same string. Trimming only for validation and then dispatching the raw value (the
+        // previous behaviour) let the two silently disagree: the model sends " true ",
+        // validation trims it and accepts it as a valid Boolean, but the tool receives the
+        // untrimmed text and a plain `== "true"` comparison inside it reads false. The filter
+        // then turns off without any error reaching the model or the user (issue #268).
+        var parameters = NormalizeParameters(toolCall.Parameters);
+
         // ── Confirm gate state ────────────────────────────────────────────
         // A data-changing tool runs ONLY with the user's explicit approval. Without it the
         // tool's ExecuteAsync is never reached — the user sees a preview instead. Central on
@@ -397,10 +417,10 @@ public class ChatToolExecutor : IChatToolExecutor
         // ChatToolResult.RequiresConfirmation is what carries that fact to ChatService.
         var confirmable = tool as IConfirmableChatTool;
         var awaitingConfirmation = confirmable is not null
-                                   && !ChatToolConfirmation.IsConfirmed(toolCall.Parameters);
+                                   && !ChatToolConfirmation.IsConfirmed(parameters);
 
         // Central parameter validation — done once here instead of in every ExecuteAsync.
-        var validationError = ValidateParameters(tool, toolCall.Parameters);
+        var validationError = ValidateParameters(tool, parameters);
         if (validationError != null)
         {
             _logger.LogWarning("Tool {ToolName} called with invalid parameters: {Error}",
@@ -416,7 +436,9 @@ public class ChatToolExecutor : IChatToolExecutor
 
         _logger.LogInformation("Executing tool {ToolName} with parameters: {Parameters}",
             tool.ToolName,
-            string.Join(", ", toolCall.Parameters.Select(kv => $"{kv.Key}={kv.Value}")));
+            string.Join(", ", parameters.Select(kv => $"{kv.Key}={kv.Value}")));
+
+        ChatToolResult result;
 
         try
         {
@@ -426,7 +448,7 @@ public class ChatToolExecutor : IChatToolExecutor
                     "Tool {ToolName} requires confirmation — returning preview, nothing was written",
                     tool.ToolName);
 
-                var preview = await confirmable!.BuildPreviewAsync(toolCall.Parameters, ct);
+                var preview = await confirmable!.BuildPreviewAsync(parameters, ct);
 
                 // Both outcomes carry RequiresConfirmation = true, because both mean the same
                 // fact: ExecuteAsync did not run. Only the successful one is offered for
@@ -437,7 +459,7 @@ public class ChatToolExecutor : IChatToolExecutor
                 // UiAction is dropped on purpose: ChatService forwards it to the browser as soon
                 // as the tool returns, so a preview that carried one would navigate the user
                 // before they confirmed anything. Only a real execution may move the UI.
-                return preview.IsSuccess
+                result = preview.IsSuccess
                     ? preview with
                     {
                         RequiresConfirmation = true,
@@ -446,17 +468,20 @@ public class ChatToolExecutor : IChatToolExecutor
                     }
                     : preview with { RequiresConfirmation = true, UiAction = null };
             }
+            else
+            {
+                var executed = await tool.ExecuteAsync(parameters, ct);
 
-            var result = await tool.ExecuteAsync(toolCall.Parameters, ct);
+                _logger.LogInformation("Tool {ToolName} completed: IsSuccess={IsSuccess}",
+                    tool.ToolName, executed.IsSuccess);
 
-            _logger.LogInformation("Tool {ToolName} completed: IsSuccess={IsSuccess}",
-                tool.ToolName, result.IsSuccess);
-
-            // The only exit that DID reach the write, so the flag is forced off here rather than
-            // trusted. A tool that set it by mistake would make ChatService announce a completed
-            // change as a mere preview — the user would believe nothing happened while the record
-            // is already gone. One line turns the "never set by a tool" convention into a fact.
-            return result with { RequiresConfirmation = false };
+                // The only exit that DID reach the write, so the flag is forced off here rather
+                // than trusted. A tool that set it by mistake would make ChatService announce a
+                // completed change as a mere preview — the user would believe nothing happened
+                // while the record is already gone. One line turns the "never set by a tool"
+                // convention into a fact.
+                result = executed with { RequiresConfirmation = false };
+            }
         }
         catch (Exception ex)
         {
@@ -466,10 +491,56 @@ public class ChatToolExecutor : IChatToolExecutor
             // true exactly when the exception came out of BuildPreviewAsync (nothing written),
             // and false when it came out of ExecuteAsync, which may have written part of the way.
             _logger.LogError(ex, "Tool {ToolName} threw an unhandled exception", tool.ToolName);
-            return ChatToolResult.Failure($"Tool execution failed: {ex.Message}")
+            result = ChatToolResult.Failure($"Tool execution failed: {ex.Message}")
                 with { RequiresConfirmation = awaitingConfirmation };
         }
+
+        // Issue #305: a failed write (SaveChangesAsync threw and the tool caught it, or the
+        // exception above came straight out of a half-finished ExecuteAsync) can leave
+        // Added/Modified/Deleted entries behind in the scoped TenantDbContext's change tracker
+        // — the transaction never committed, but the tracker still holds them. ChatService's
+        // tool-call loop may retry with a DIFFERENT tool in the SAME scope (up to 3 iterations),
+        // and that tool's own SaveChangesAsync would flush these leftover, never-confirmed
+        // changes too. One central cleanup point covers every write tool, not just the one
+        // #220's review happened to find.
+        if (!result.IsSuccess)
+        {
+            DiscardUncommittedChanges();
+        }
+
+        return result;
     }
+
+    /// <summary>
+    /// Detaches every tracked entity that still has unsaved changes (Added/Modified/Deleted),
+    /// so a subsequent SaveChangesAsync in the same scope cannot flush them.
+    ///
+    /// Deliberately NOT <c>ChangeTracker.Clear()</c>: that would also detach entities that are
+    /// already saved and Unchanged — e.g. the current Conversation, which ChatService keeps
+    /// updating (<c>conversation.LastMessageAt = ...</c>) after the tool loop finishes. Clearing
+    /// those too would make that later update silently not persist.
+    /// </summary>
+    private void DiscardUncommittedChanges()
+    {
+        foreach (var entry in _dbContext.ChangeTracker.Entries().Where(e => e.State != EntityState.Unchanged).ToList())
+        {
+            entry.State = EntityState.Detached;
+        }
+    }
+
+    // ─── Parameter Normalization ────────────────────────────────────────
+
+    /// <summary>
+    /// Trims every parameter value once, up front, so every consumer downstream — validation,
+    /// the confirm gate and the tool's own ExecuteAsync/BuildPreviewAsync — reads the exact
+    /// same string. Individual tools no longer need to trim values they read (issue #268).
+    ///
+    /// Whitespace-only values become an empty string rather than being dropped — that keeps
+    /// them "present but blank", which <see cref="ValidateParameters"/> already treats as
+    /// "not supplied" for an optional parameter and rejects for a required one.
+    /// </summary>
+    private static Dictionary<string, string> NormalizeParameters(Dictionary<string, string> parameters)
+        => parameters.ToDictionary(kv => kv.Key, kv => kv.Value.Trim());
 
     // ─── Central Parameter Validation ─────────────────────────────────────
 
@@ -482,6 +553,9 @@ public class ChatToolExecutor : IChatToolExecutor
     ///
     /// Blank optional parameters are treated as "not supplied" — models like to send
     /// empty strings for parameters they have no value for.
+    ///
+    /// Assumes <paramref name="parameters"/> was already normalized by
+    /// <see cref="NormalizeParameters"/> — trimming here again would just re-do that work.
     /// </summary>
     private static string? ValidateParameters(IChatTool tool, Dictionary<string, string> parameters)
     {
@@ -489,17 +563,15 @@ public class ChatToolExecutor : IChatToolExecutor
 
         foreach (var schema in ChatToolConfirmation.EffectiveParameters(tool))
         {
-            parameters.TryGetValue(schema.Name, out var rawValue);
+            parameters.TryGetValue(schema.Name, out var value);
 
-            if (string.IsNullOrWhiteSpace(rawValue))
+            if (string.IsNullOrWhiteSpace(value))
             {
                 if (schema.IsRequired)
                     (errors ??= []).Add($"missing required parameter '{schema.Name}' ({schema.Description})");
 
                 continue;
             }
-
-            var value = rawValue.Trim();
 
             if (schema.AllowedValues is { Count: > 0 } &&
                 !schema.AllowedValues.Contains(value, StringComparer.OrdinalIgnoreCase))

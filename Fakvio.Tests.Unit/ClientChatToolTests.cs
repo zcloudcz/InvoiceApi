@@ -686,6 +686,41 @@ public class ClientChatToolTests
     }
 
     [Fact]
+    public void UpdateSchema_ConstrainsTheDocumentLanguage_ToTheRenderableCodes()
+    {
+        // #306: the same ["cs", "en"] constraint update_my_company already declares. Without it
+        // the model could send "de", which the application cannot render.
+        var language = _update.Parameters.Single(parameter => parameter.Name == "language");
+
+        language.AllowedValues.ShouldBe(["cs", "en"]);
+    }
+
+    [Fact]
+    public async Task Update_PreviewsAndForwardsTheDocumentLanguage_Lowercased()
+    {
+        // ChatToolExecutor matches AllowedValues case-insensitively, so "EN" reaches the tool
+        // as typed. It has to be lowercased here or the preview would promise a value that
+        // ClientService then normalizes into something else.
+        _clientService.GetClientByIdAsync(30, Arg.Any<CancellationToken>()).Returns(Client(30, "Alfa s.r.o."));
+        _clientService.UpdateClientAsync(30, Arg.Any<UpdateClientDto>(), Arg.Any<CancellationToken>())
+            .Returns(Client(30, "Alfa s.r.o."));
+
+        var parameters = new Dictionary<string, string> { ["id"] = "30", ["language"] = "EN" };
+
+        var preview = await _update.BuildPreviewAsync(parameters);
+        preview.IsSuccess.ShouldBeTrue();
+        preview.OutputText.ShouldContain("Document language: cs → en");
+
+        var result = await _update.ExecuteAsync(parameters);
+
+        result.IsSuccess.ShouldBeTrue();
+        await _clientService.Received(1).UpdateClientAsync(
+            30,
+            Arg.Is<UpdateClientDto>(dto => dto.Language == "en"),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task Update_TreatsRefreshFromAresFalse_AsNoRefresh()
     {
         var client = Client(26, "Alfa s.r.o.");

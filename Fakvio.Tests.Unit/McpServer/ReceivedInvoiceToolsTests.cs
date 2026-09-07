@@ -13,15 +13,19 @@ namespace Fakvio.Tests.Unit.McpServer;
 /// <summary>
 /// Tests for <see cref="ReceivedInvoiceTools"/> — the MCP tools over incoming
 /// (supplier) invoices. Same harness as <c>InvoiceToolsTests</c>: the tool methods
-/// are static, take <see cref="IFakvioApiClient"/> as their first argument, and
-/// always return a JSON string — never throw.
+/// are static and take <see cref="IFakvioApiClient"/> as their first argument.
 ///
-/// Junior note: every tool wraps its body in try/catch and serializes failures as
-/// <c>{ "error": "..." }</c>. So a test asserts on three things:
+/// Junior note: every tool wraps its body in try/catch and serializes non-cancellation
+/// failures as a sanitized <c>{ "error": "internal_error", "message": "..." }</c> via
+/// <see cref="McpToolError"/> — never the raw exception message (issue #279). A test
+/// asserts on four things:
 ///   1. what the tool forwarded to the API client (filter mapping, parsed enums/dates),
 ///   2. the JSON it produced on success,
-///   3. that a thrown API exception comes back as an "error" property instead of
-///      bubbling out of the tool (an MCP tool that throws kills the whole call).
+///   3. that a thrown API exception comes back as a sanitized "error" property instead of
+///      bubbling out of the tool (an MCP tool that throws kills the whole call) — and that
+///      the exception's own message never leaks into that JSON,
+///   4. that <see cref="OperationCanceledException"/> is the one exception that DOES
+///      propagate instead of being turned into an "error" JSON.
 /// </summary>
 public class ReceivedInvoiceToolsTests
 {
@@ -186,9 +190,43 @@ public class ReceivedInvoiceToolsTests
         // Act
         var json = await ReceivedInvoiceTools.ListReceivedInvoices(_api);
 
-        // Assert
+        // Assert: sanitized error, the raw exception message must not leak (issue #279)
         var doc = JsonDocument.Parse(json);
-        doc.RootElement.GetProperty("error").GetString().ShouldContain("Connection refused");
+        doc.RootElement.GetProperty("error").GetString().ShouldBe("internal_error");
+        doc.RootElement.GetProperty("message").GetString().ShouldNotContain("Connection refused");
+    }
+
+    [Fact]
+    public async Task ListReceivedInvoices_PropagatesCancellation_WhenTheCallerCancelled()
+    {
+        // A request the caller cancelled is not a domain error — the tool must let it
+        // bubble out instead of turning it into a fake "error" JSON result (issue #279).
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        _api.GetReceivedInvoicesPagedAsync(Arg.Any<ReceivedInvoiceFilterDto>(), Arg.Any<CancellationToken>())
+            .Throws(new OperationCanceledException());
+
+        await Should.ThrowAsync<OperationCanceledException>(
+            () => ReceivedInvoiceTools.ListReceivedInvoices(_api, ct: cts.Token));
+    }
+
+    [Fact]
+    public async Task ListReceivedInvoices_ReturnsSanitizedError_OnHttpClientTimeout()
+    {
+        // HttpClient throws TaskCanceledException (a subclass of OperationCanceledException)
+        // on its OWN timeout, and then the caller's token was never cancelled. That is an
+        // API-side failure, not a cancellation, so it has to come back as sanitized JSON:
+        // an MCP tool that throws kills the whole call (issue #279).
+        using var cts = new CancellationTokenSource();
+        _api.GetReceivedInvoicesPagedAsync(Arg.Any<ReceivedInvoiceFilterDto>(), Arg.Any<CancellationToken>())
+            .Throws(new TaskCanceledException(
+                "The request was canceled due to the configured HttpClient.Timeout of 100 seconds elapsing.", new TimeoutException()));
+
+        var json = await ReceivedInvoiceTools.ListReceivedInvoices(_api, ct: cts.Token);
+
+        var doc = JsonDocument.Parse(json);
+        doc.RootElement.GetProperty("error").GetString().ShouldBe("internal_error");
+        doc.RootElement.GetProperty("message").GetString().ShouldNotContain("HttpClient.Timeout");
     }
 
     // ── GetReceivedInvoice ─────────────────────────────────────────────
@@ -242,9 +280,10 @@ public class ReceivedInvoiceToolsTests
         // Act
         var json = await ReceivedInvoiceTools.GetReceivedInvoice(_api, 7);
 
-        // Assert
-        JsonDocument.Parse(json).RootElement.GetProperty("error").GetString()
-            .ShouldContain("502 Bad Gateway");
+        // Assert: sanitized error, the raw exception message must not leak (issue #279)
+        var root = JsonDocument.Parse(json).RootElement;
+        root.GetProperty("error").GetString().ShouldBe("internal_error");
+        root.GetProperty("message").GetString().ShouldNotContain("502 Bad Gateway");
     }
 
     // ── CreateReceivedInvoice ──────────────────────────────────────────
@@ -325,9 +364,10 @@ public class ReceivedInvoiceToolsTests
         var json = await ReceivedInvoiceTools.CreateReceivedInvoice(
             _api, "{\"supplierId\":999,\"currencyId\":1,\"items\":[]}");
 
-        // Assert
-        JsonDocument.Parse(json).RootElement.GetProperty("error").GetString()
-            .ShouldContain("supplier not found");
+        // Assert: sanitized error, the raw exception message must not leak (issue #279)
+        var root = JsonDocument.Parse(json).RootElement;
+        root.GetProperty("error").GetString().ShouldBe("internal_error");
+        root.GetProperty("message").GetString().ShouldNotContain("supplier not found");
     }
 
     // ── ApproveReceivedInvoice ─────────────────────────────────────────
@@ -364,9 +404,10 @@ public class ReceivedInvoiceToolsTests
         // Act
         var json = await ReceivedInvoiceTools.ApproveReceivedInvoice(_api, 5);
 
-        // Assert
-        JsonDocument.Parse(json).RootElement.GetProperty("error").GetString()
-            .ShouldContain("Received status");
+        // Assert: sanitized error, the raw exception message must not leak (issue #279)
+        var root = JsonDocument.Parse(json).RootElement;
+        root.GetProperty("error").GetString().ShouldBe("internal_error");
+        root.GetProperty("message").GetString().ShouldNotContain("Received status");
     }
 
     // ── MarkReceivedInvoicePaid ────────────────────────────────────────
@@ -404,9 +445,10 @@ public class ReceivedInvoiceToolsTests
         // Act
         var json = await ReceivedInvoiceTools.MarkReceivedInvoicePaid(_api, 8);
 
-        // Assert
-        JsonDocument.Parse(json).RootElement.GetProperty("error").GetString()
-            .ShouldContain("Approved status");
+        // Assert: sanitized error, the raw exception message must not leak (issue #279)
+        var root = JsonDocument.Parse(json).RootElement;
+        root.GetProperty("error").GetString().ShouldBe("internal_error");
+        root.GetProperty("message").GetString().ShouldNotContain("Approved status");
     }
 
     // ── DeleteReceivedInvoice ──────────────────────────────────────────
@@ -437,9 +479,45 @@ public class ReceivedInvoiceToolsTests
         // Act
         var json = await ReceivedInvoiceTools.DeleteReceivedInvoice(_api, 7);
 
-        // Assert: the failure must not be reported as success
+        // Assert: the failure must not be reported as success, and the raw exception
+        // message must not leak (issue #279)
         var doc = JsonDocument.Parse(json);
         doc.RootElement.TryGetProperty("success", out _).ShouldBeFalse();
-        doc.RootElement.GetProperty("error").GetString().ShouldContain("cannot be deleted");
+        doc.RootElement.GetProperty("error").GetString().ShouldBe("internal_error");
+        doc.RootElement.GetProperty("message").GetString().ShouldNotContain("cannot be deleted");
+    }
+
+    [Fact]
+    public async Task DeleteReceivedInvoice_PropagatesCancellation_WhenTheCallerCancelled()
+    {
+        // A request the caller cancelled is not a domain error — the tool must let it
+        // bubble out instead of turning it into a fake "error" JSON result (issue #279).
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        _api.DeleteReceivedInvoiceAsync(7, Arg.Any<CancellationToken>())
+            .Throws(new OperationCanceledException());
+
+        await Should.ThrowAsync<OperationCanceledException>(
+            () => ReceivedInvoiceTools.DeleteReceivedInvoice(_api, 7, ct: cts.Token));
+    }
+
+    [Fact]
+    public async Task DeleteReceivedInvoice_ReturnsSanitizedError_OnHttpClientTimeout()
+    {
+        // HttpClient throws TaskCanceledException (a subclass of OperationCanceledException)
+        // on its OWN timeout, and then the caller's token was never cancelled. That is an
+        // API-side failure, not a cancellation, so it has to come back as sanitized JSON:
+        // an MCP tool that throws kills the whole call (issue #279).
+        using var cts = new CancellationTokenSource();
+        _api.DeleteReceivedInvoiceAsync(7, Arg.Any<CancellationToken>())
+            .Throws(new TaskCanceledException(
+                "The request was canceled due to the configured HttpClient.Timeout of 100 seconds elapsing.", new TimeoutException()));
+
+        var json = await ReceivedInvoiceTools.DeleteReceivedInvoice(_api, 7, ct: cts.Token);
+
+        var doc = JsonDocument.Parse(json);
+        doc.RootElement.TryGetProperty("success", out _).ShouldBeFalse();
+        doc.RootElement.GetProperty("error").GetString().ShouldBe("internal_error");
+        doc.RootElement.GetProperty("message").GetString().ShouldNotContain("HttpClient.Timeout");
     }
 }

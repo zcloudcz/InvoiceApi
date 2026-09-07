@@ -70,9 +70,13 @@ public static class ReceivedInvoiceTools
             var result = await api.GetReceivedInvoicesPagedAsync(filter, ct);
             return JsonSerializer.Serialize(result, JsonOptions);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
-            return JsonSerializer.Serialize(new { error = ex.Message }, JsonOptions);
+            return McpToolError.ToJson(ex);
         }
     }
 
@@ -94,9 +98,13 @@ public static class ReceivedInvoiceTools
 
             return JsonSerializer.Serialize(result, JsonOptions);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
-            return JsonSerializer.Serialize(new { error = ex.Message }, JsonOptions);
+            return McpToolError.ToJson(ex);
         }
     }
 
@@ -123,9 +131,13 @@ public static class ReceivedInvoiceTools
             var result = await api.CreateReceivedInvoiceAsync(dto, ct);
             return JsonSerializer.Serialize(result, JsonOptions);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
-            return JsonSerializer.Serialize(new { error = ex.Message }, JsonOptions);
+            return McpToolError.ToJson(ex);
         }
     }
 
@@ -145,9 +157,13 @@ public static class ReceivedInvoiceTools
             var result = await api.ApproveReceivedInvoiceAsync(id, ct);
             return JsonSerializer.Serialize(result, JsonOptions);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
-            return JsonSerializer.Serialize(new { error = ex.Message }, JsonOptions);
+            return McpToolError.ToJson(ex);
         }
     }
 
@@ -167,9 +183,13 @@ public static class ReceivedInvoiceTools
             var result = await api.MarkReceivedInvoicePaidAsync(id, ct);
             return JsonSerializer.Serialize(result, JsonOptions);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
-            return JsonSerializer.Serialize(new { error = ex.Message }, JsonOptions);
+            return McpToolError.ToJson(ex);
         }
     }
 
@@ -188,9 +208,13 @@ public static class ReceivedInvoiceTools
             await api.DeleteReceivedInvoiceAsync(id, ct);
             return JsonSerializer.Serialize(new { success = true, message = $"Received invoice {id} deleted." }, JsonOptions);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
-            return JsonSerializer.Serialize(new { error = ex.Message }, JsonOptions);
+            return McpToolError.ToJson(ex);
         }
     }
 }

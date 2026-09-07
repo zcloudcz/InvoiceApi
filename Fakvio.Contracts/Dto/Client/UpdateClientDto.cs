@@ -42,8 +42,9 @@ public class UpdateClientDto
     public bool? IsActive { get; set; }
 
     /// <summary>
-    /// Preferred language for documents — ISO 639-1 code (e.g., "cs", "en").
-    /// Null means "don't change".
+    /// Preferred language for documents — ISO 639-1 code. Only "cs" and "en" are rendered by
+    /// the application; null — or any other code, which <c>ClientService</c> drops — means
+    /// "don't change".
     /// </summary>
     [StringLength(5)]
     public string? Language { get; set; }

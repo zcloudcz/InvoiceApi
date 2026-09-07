@@ -504,6 +504,19 @@ curl). Posílají se ve stejné hlavičce: `Authorization: Bearer fak_live_…`.
   logu jde vždy jen prefix. Ztracený klíč nejde obnovit, jen zrušit a vydat nový.
 - Funguje **shodně na API i na Azure Functions hostu**.
 
+**Kde se klíče zakládají — self-service, ne SysAdmin agenda.** Klíče si vydává každý uživatel
+sám na stránce **Nastavení → Integrace** (`/settings/integrations`); stačí libovolná přihlášená
+role. SysAdmin bez impersonace ale tuhle položku v menu nemá (je ve fakturační skupině), takže
+na ni musí přes URL přímo — stránka sama žádnou roli nevyžaduje. Zadává jméno klíče, rozsah
+(`Jen čtení` / `Čtení i zápis`) a nepovinnou platnost do data;
+raw klíč se ukáže **právě jednou** a stránka k němu rovnou vypíše hotové konfigurační bloky pro
+MCP klienta. Revokace je tamtéž, s potvrzením, a platí okamžitě.
+
+> **SysAdmin cizí klíče nevidí ani neruší.** Endpointy `/api/api-key` pracují vždy jen s klíči
+> přihlášeného uživatele — není nad nimi žádná administrátorská nadstavba. Páka na kompromitovaný
+> účet je proto **deaktivace uživatele** (řádek v tabulce níž). Impersonace firmy (§11) tu
+> nepomůže — mění se jí tenant, ne identita, takže SysAdmin i pod ní vidí pořád jen své klíče.
+
 **Co SysAdmina zajímá provozně:**
 
 | Situace | Chování |
@@ -520,6 +533,79 @@ umí `X-Company-Id` impersonaci úplně stejně jako jeho přihlášení (viz §
 takový klíč na tenant endpointy nedosáhne (403) — stejně jako SysAdmin bez impersonace.
 Je to tedy **plnohodnotný SysAdmin credential s dlouhou platností**: vydávejte ho uvážlivě,
 raději s vyplněnou expirací a rozsahem `read`.
+
+### MCP server v HTTP režimu (vzdálené napojení AI klientů)
+
+`Fakvio.McpServer` umí dva režimy, přepíná se proměnnou `FAKVIO_MCP_TRANSPORT`:
+
+| Režim | Kdo ho spouští | Credential | Kdy dává smysl |
+|-------|----------------|------------|----------------|
+| `stdio` (výchozí) | AI klient na počítači uživatele, jako podproces | API klíč v `FAKVIO_API_TOKEN` (proměnná procesu) | Jeden uživatel, jeho vlastní stroj |
+| `http` | Vy, jako trvale běžící službu | API klíč **v každém requestu** volajícího | Víc uživatelů, klienti, které nejde nic doinstalovat |
+
+Neznámá hodnota proměnné = chyba na stderr a **exit code 1** (server, který měl poslouchat na
+HTTP a místo toho čeká na stdin, vypadá zvenčí jako nastartovaný — proto fail fast).
+
+**Co je potřeba k provozu HTTP hostu:**
+
+- **ASP.NET Core shared framework** (`Microsoft.AspNetCore.App`) na cílovém stroji — a to i pro
+  stdio režim; balíček se Streamable HTTP transportem ho táhne přes `FrameworkReference` do
+  celého nástroje. Na stroji jen s .NET runtime se musí doinstalovat ASP.NET Core Runtime.
+- `ASPNETCORE_URLS` — na čem Kestrel poslouchá. `FAKVIO_API_URL` — adresa API, kam server volá.
+- **HTTPS.** Klienti posílají API klíč v hlavičce `Authorization`, takže po veřejné síti musí
+  jít spojení šifrovaně. Host je holá ASP.NET Core aplikace bez vlastní TLS konfigurace —
+  buď mu certifikát dodáte standardní cestou Kestrelu, nebo ho postavte za reverzní proxy.
+
+**Bezpečnostní model — co je na něm důležité:**
+
+- Host **nemá vlastní credential** a nemá přístup k databázi. Klíč volajícího jen přeposílá na
+  `Fakvio.API`, takže autorizace i tenant izolace zůstávají tam, kde byly. Kompromitovaný MCP
+  host tedy sám o sobě nedává přístup k datům, dokud mu někdo neposílá platné klíče.
+- **Každý request se ověřuje znovu** proti `GET /api/api-key/me`, **bez jakékoli cache** — proto
+  revokovaný klíč přestává fungovat okamžitě, ne „do vypršení cache". Chybějící hlavička se
+  odmítne rovnou, bez round-tripu na API.
+- Odmítnutí = **401** + `WWW-Authenticate: Bearer`, bez detailu v těle; důvod jde do logu hostu.
+  **Nedostupné API se na 401 nepřevádí** — padá jako 500, aby se „API neběží" nepletlo s
+  „tvůj klíč neplatí".
+- Běží **stateless** (žádné `Mcp-Session-Id`), takže není potřeba sticky routing a host jde
+  škálovat vodorovně. `GET /mcp` ani `/sse` k dispozici nejsou.
+- Endpoint je jediný: `POST /mcp`.
+
+> **Hostu chybí už jen Azure resource.** Packaging i CI (`.github/workflows/mcp-server.yml`,
+> issue #241) jsou hotové pro obě prostředí — `TEST-ENV` deployuje job `deploy-http-test`,
+> `master` job `deploy-http-prod`. Oba se **přeskočí**, dokud není nastavená příslušná repo
+> proměnná se jménem Function Appu: `MCP_HTTP_APP_NAME` (test, očekávaná hodnota
+> `fakvio-mcp-test`) a `MCP_HTTP_APP_NAME_PROD` (produkce, `fakvio-mcp`). Chybí tedy jen
+> ruční krok — a je to **Function App na Flex Consumption**, ne App Service: MCP host se
+> nasazuje jako Azure Functions *custom handler*, takže se za něj neplatí, když nikdo
+> nevolá. Co založit:
+>
+> 1. **Function App na plánu Flex Consumption** (jiný plán custom handler pro MCP neumí),
+>    samostatný — custom handler vlastní všechny routy aplikace, takže se nedá přidat
+>    do stávajícího `zcloudinvoicingapi`.
+> 2. **App settings:** `FAKVIO_MCP_TRANSPORT=http`, `FAKVIO_API_URL` (adresa API),
+>    `ASPNETCORE_URLS=http://0.0.0.0:8080` (**musí sedět s portem v `host.json`**),
+>    `FUNCTIONS_WORKER_RUNTIME=dotnet-isolated`,
+>    `AzureWebJobsFeatureFlags=EnableMcpCustomHandlerPreview`.
+> 3. **HTTPS Only** zapnout.
+> 4. **Žádnou platformní autentizaci nezapínat** — ani Easy Auth, ani vyšší authorization
+>    level než `anonymous`. Odpovídaly by 401 dřív, než se request dostane k aplikaci,
+>    takže by post-deploy kontrola prošla i na hostu, který vůbec nenastartoval.
+>    Autorizaci dělá API klíč uvnitř aplikace.
+> 5. **Rozšířit role assignment** stávající app registrace toho prostředí na nový Function App.
+> 6. **Doplnit repo proměnnou** se jménem appky.
+>
+> Pozor: hostování MCP serverů postavených na oficiálním SDK je u Azure Functions zatím
+> **public preview** — proto ten feature flag. Na produkci to je vědomé riziko, ne
+> přehlédnutí.
+>
+> Dokud adresa neexistuje, stránka Integrace v UI ji **negeneruje** — je
+> to samostatná hodnota `McpSettings:BaseUrl` (`Fakvio.BlazorUI/wwwroot/appsettings.json`),
+> ne odhad z adresy API (#363), a dokud je prázdná, vzdálený blok ukazuje zjevnou ukázkovou
+> adresu místo tiše špatné. Jakmile host vznikne, doplňte jeho adresu do `McpSettings:BaseUrl`
+> v nasazovaném `appsettings.json`.
+
+Podrobnosti pro vývojáře: DEVGUIDE §4.9, `Fakvio.McpServer/README.md`.
 
 ### Data Protection (CredentialProtector)
 

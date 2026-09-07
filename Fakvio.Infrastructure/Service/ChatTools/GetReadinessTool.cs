@@ -82,7 +82,7 @@ public class GetReadinessTool : IChatTool
         sb.AppendLine();
 
         foreach (var issue in report.Issues)
-            AppendIssue(sb, issue);
+            ReadinessIssueFormatter.AppendIssue(sb, issue);
 
         // Warnings never stop invoicing — say so, otherwise the model reports them as blockers.
         sb.Append(report.IsReady
@@ -90,19 +90,5 @@ public class GetReadinessTool : IChatTool
             : "Blocking issues must be fixed before an invoice can be completed.");
 
         return sb.ToString();
-    }
-
-    /// <summary>
-    /// One issue: machine code, which issuer it belongs to, the empty fields and the fix route.
-    /// </summary>
-    private static void AppendIssue(StringBuilder sb, ReadinessIssueDto issue)
-    {
-        var severity = issue.Severity == EReadinessSeverity.Blocking ? "BLOCKING" : "WARNING";
-        var issuer = issue.IssuerName is null ? string.Empty : $" (issuer: {issue.IssuerName})";
-
-        sb.AppendLine($"[{severity}] {issue.Code}{issuer}");
-        sb.AppendLine($"  Missing: {string.Join(", ", issue.MissingFields)}");
-        sb.AppendLine($"  Fix at: {issue.FixRoute}");
-        sb.AppendLine();
     }
 }

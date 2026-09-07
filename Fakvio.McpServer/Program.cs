@@ -2,6 +2,7 @@ using Fakvio.McpServer;
 using Fakvio.McpServer.Client;
 using Fakvio.McpServer.Configuration;
 using Fakvio.McpServer.Http;
+using Fakvio.McpServer.Tools;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -13,7 +14,7 @@ using Microsoft.Extensions.Logging;
 // One server, two hosting modes, the same 37 tools (same assembly, same
 // WithToolsFromAssembly() scan — see McpServerRegistration):
 //
-//   stdio (default)  AI client ←stdio→ this process ←HTTP/JWT→ Fakvio.API ←EF Core→ DB
+//   stdio (default)  AI client ←stdio→ this process ←HTTP/API key→ Fakvio.API ←EF Core→ DB
 //   http             AI clients ←HTTP/MCP→ this process ←HTTP/API key→ Fakvio.API ←EF Core→ DB
 //
 // The modes differ in exactly one thing that matters: where the API credential
@@ -24,17 +25,14 @@ using Microsoft.Extensions.Logging;
 //
 // Environment variables:
 //   FAKVIO_MCP_TRANSPORT — "stdio" (default) or "http"
-//   FAKVIO_API_URL       — API base URL, defaults to https://localhost:7001
-//   FAKVIO_API_TOKEN     — JWT bearer token; REQUIRED in stdio mode, unused in http mode
+//   FAKVIO_API_URL       — API base URL, defaults to https://localhost:7047
+//   FAKVIO_API_TOKEN     — API key (fak_live_…, recommended) or a login JWT; REQUIRED in
+//                          stdio mode, unused in http mode
 //   ASPNETCORE_URLS      — http mode only: what Kestrel binds to (standard ASP.NET Core)
 // ──────────────────────────────────────────────────────────────────────
 
 // ── Configuration ──────────────────────────────────────────────────
-var settings = new McpServerSettings
-{
-    ApiBaseUrl = Environment.GetEnvironmentVariable("FAKVIO_API_URL") ?? "https://localhost:7001",
-    ApiToken = Environment.GetEnvironmentVariable("FAKVIO_API_TOKEN") ?? string.Empty
-};
+var settings = McpServerSettings.FromEnvironment();
 
 // Fail fast on a misspelled transport instead of silently falling back to stdio — a server
 // that was meant to be reachable over HTTP and instead sits waiting on stdin looks "started"
@@ -61,6 +59,12 @@ if (transport == EMcpTransport.Http)
     var app = webBuilder.Build();
     McpHttpHost.MapEndpoints(app);
 
+    // Wire the shared logger used by every MCP tool's catch-all error handler
+    // (McpToolError, issue #279). Tool methods are static, so this is set once
+    // per host here instead of adding an ILogger parameter to every tool signature.
+    McpToolError.Logger = app.Services.GetRequiredService<ILoggerFactory>()
+        .CreateLogger("Fakvio.McpServer.Tools");
+
     await app.RunAsync();
     return 0;
 }
@@ -70,7 +74,8 @@ if (transport == EMcpTransport.Http)
 if (string.IsNullOrWhiteSpace(settings.ApiToken))
 {
     Console.Error.WriteLine("ERROR: FAKVIO_API_TOKEN environment variable is required in stdio mode.");
-    Console.Error.WriteLine("Set it to a valid JWT token obtained from the Fakvio API login endpoint.");
+    Console.Error.WriteLine("Set it to a Fakvio API key (fak_live_..., created on /settings/integrations — " +
+        "recommended for a long-lived connection) or a JWT token from the Fakvio API login endpoint (valid 24h).");
     return 1;
 }
 
@@ -93,5 +98,13 @@ builder.Services
     .AddFakvioMcpServer(settings)
     .WithStdioServerTransport();
 
-await builder.Build().RunAsync();
+var host = builder.Build();
+
+// Wire the shared logger used by every MCP tool's catch-all error handler
+// (McpToolError, issue #279). Tool methods are static, so this is set once
+// per host here instead of adding an ILogger parameter to every tool signature.
+McpToolError.Logger = host.Services.GetRequiredService<ILoggerFactory>()
+    .CreateLogger("Fakvio.McpServer.Tools");
+
+await host.RunAsync();
 return 0;
