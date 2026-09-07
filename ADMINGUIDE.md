@@ -599,11 +599,13 @@ HTTP a místo toho čeká na stdin, vypadá zvenčí jako nastartovaný — prot
 > **public preview** — proto ten feature flag. Na produkci to je vědomé riziko, ne
 > přehlédnutí.
 >
-> Dokud adresa neexistuje, stránka Integrace v UI ji **negeneruje** — je
-> to samostatná hodnota `McpSettings:BaseUrl` (`Fakvio.BlazorUI/wwwroot/appsettings.json`),
-> ne odhad z adresy API (#363), a dokud je prázdná, vzdálený blok ukazuje zjevnou ukázkovou
-> adresu místo tiše špatné. Jakmile host vznikne, doplňte jeho adresu do `McpSettings:BaseUrl`
-> v nasazovaném `appsettings.json`.
+> Adresu, kterou stránka Integrace nabízí, drží `McpSettings:BaseUrl`
+> (`Fakvio.BlazorUI/wwwroot/appsettings.json`) — samostatná hodnota, ne odhad z adresy API
+> (#363). Testovacímu UI ji vyplňuje `blazorui-test-deploy.yml` před publishem
+> (`https://fakvio-mcp-test.azurewebsites.net`). V commitnutém souboru, tedy pro produkci,
+> zůstává **prázdná**, dokud na `fakvio-mcp` nepřistane deploy — ten přijde až s pushem do
+> `master`. Dokud je prázdná, vzdálený blok ukazuje zjevnou ukázkovou adresu místo tiše
+> špatné.
 
 Podrobnosti pro vývojáře: DEVGUIDE §4.9, `Fakvio.McpServer/README.md`.
 
