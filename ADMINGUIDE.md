@@ -571,10 +571,16 @@ HTTP a místo toho čeká na stdin, vypadá zvenčí jako nastartovaný — prot
   škálovat vodorovně. `GET /mcp` ani `/sse` k dispozici nejsou.
 - Endpoint je jediný: `POST /mcp`.
 
-> **Produkční nasazení hostu zatím chybí.** Packaging a CI (`.github/workflows/mcp-server.yml`,
-> issue #241) je hotové a na `TEST-ENV` naběhne, jakmile bude nastavená repo proměnná
-> `MCP_HTTP_APP_NAME` (Web App na to zatím nemá vlastní App Service). Produkce čeká na
-> stejný krok. Dokud adresa neexistuje, stránka Integrace v UI ji **negeneruje** — je
+> **Hostu chybí už jen Azure resource.** Packaging i CI (`.github/workflows/mcp-server.yml`,
+> issue #241) jsou hotové pro obě prostředí — `TEST-ENV` deployuje job `deploy-http-test`,
+> `master` job `deploy-http-prod`. Oba se **přeskočí**, dokud není nastavená příslušná repo
+> proměnná se jménem App Service: `MCP_HTTP_APP_NAME` (test, očekávaná hodnota
+> `fakvio-mcp-test`) a `MCP_HTTP_APP_NAME_PROD` (produkce, `fakvio-mcp`). Chybí tedy jen
+> ruční krok: založit Web App (vlastní App Service plán — Flex Consumption plán Functions
+> ho hostovat nemůže), nastavit mu `FAKVIO_MCP_TRANSPORT=http` a `FAKVIO_API_URL`, zapnout
+> HTTPS Only, **nezapínat** App Service Authentication (odpovídala by 401 dřív než
+> aplikace, takže by post-deploy kontrola prošla i na nenastartovaném hostu), rozšířit role
+> assignment stávající app registrace toho prostředí na nový Web App a doplnit proměnnou. Dokud adresa neexistuje, stránka Integrace v UI ji **negeneruje** — je
 > to samostatná hodnota `McpSettings:BaseUrl` (`Fakvio.BlazorUI/wwwroot/appsettings.json`),
 > ne odhad z adresy API (#363), a dokud je prázdná, vzdálený blok ukazuje zjevnou ukázkovou
 > adresu místo tiše špatné. Jakmile host vznikne, doplňte jeho adresu do `McpSettings:BaseUrl`

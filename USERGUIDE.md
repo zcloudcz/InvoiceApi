@@ -1211,7 +1211,7 @@ odpovídá vašemu způsobu připojení podle kroku 2.
 | | Lokální (stdio) | Vzdálený (HTTP) |
 |---|---|---|
 | Kde MCP server běží | Na vašem počítači, spouští ho vaše AI aplikace | Na serveru, který provozuje váš správce |
-| Co musíte nainstalovat | Nástroj `fakvio-mcp` (instaluje správce) | Nic |
+| Co musíte nainstalovat | Nástroj `fakvio-mcp` (jeden příkaz, viz krok 3a) | Nic |
 | Co potřebujete znát | Adresu **API** Fakvia (najdete ji v připraveném bloku, viz krok 3a) | Adresu MCP serveru (dá vám ji správce) |
 | Kdy zvolit | Pracujete na jednom počítači a máte tam práva instalovat | Chcete se připojit odkudkoli nebo nemůžete nic instalovat |
 
@@ -1247,7 +1247,15 @@ připravený blok **Lokální MCP server (stdio)**, ať se nepřepíšete.
   (stdio)** na stránce Integrace — je v něm vyplněná správně. Kdo blok už nemá otevřený,
   ať si o adresu řekne správci.
 - `FAKVIO_API_TOKEN` je váš API klíč z kroku 1.
-- Předpokladem je, že správce na vašem počítači nainstaloval nástroj `fakvio-mcp`.
+- Předpokladem je nainstalovaný nástroj `fakvio-mcp`. Vyžaduje .NET 10 SDK (nebo
+  .NET 10 runtime **spolu s ASP.NET Core runtime**) a instaluje se jedním příkazem:
+
+  ```bash
+  dotnet tool install --global Fakvio.McpServer
+  ```
+
+  Aktualizace je `dotnet tool update --global Fakvio.McpServer`. Nemáte-li na počítači
+  práva instalovat, požádejte správce.
 
 Po uložení souboru AI aplikaci restartujte.
 

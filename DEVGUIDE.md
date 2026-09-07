@@ -2407,7 +2407,7 @@ dotnet test Fakvio.Tests.Unit --filter "FullyQualifiedName~DatabaseConnectivityS
 | `blazorui-test-deploy.yml` | Push `TEST-ENV`, manual | Build `Fakvio.BlazorUI` (WASM publish) → deploy Azure Static Web App `fakvio-test-ui`. Před publishem přepíše `ApiSettings:BaseUrl` na testovací Function App — sed je **omezený na blok `ApiSettings`** a hlídaný počtem výskytů (přesně 1), protože `appsettings.json` má víc klíčů `BaseUrl` (`McpSettings`, #363) a neomezený zápis by testovacímu UI podstrčil adresu API i jako adresu MCP hostu. Nový klíč `BaseUrl` v dalších sekcích proto nic přepisovat nebude. Client-side routing řeší `wwwroot/staticwebapp.config.json` (`navigationFallback`). |
 | `master_zcloudinvoicingapi.yml` | Push `master` | Stáhne binárky Tailscale (viz níž) a publishne `Fakvio.Functions.csproj` → Azure Function App `zcloudinvoicingapi`. Auth přes managed identity (federated credentials). |
 | `testenv_zcloudinvoicingapi.yml` | Push `TEST-ENV`, manual | Totožné publish jako řádek výše, ale do **testovacího** Function Appu `zcloudinvoicingapi-test`. OIDC přes secrets s příponou `_TEST` (viz §9.4). |
-| `mcp-server.yml` | Push `master` + `TEST-ENV`, manual | Publishne `Fakvio.McpServer` (**jeden artefakt = oba režimy**, viz §4.9), smoke testem ověří, že se spustí, a `dotnet pack`em zabalí stdio nástroj `fakvio-mcp`. Obojí jde nahoru jako build artefakt. Na `TEST-ENV` navíc deploy HTTP hostu do Azure Web Appu (viz níž). |
+| `mcp-server.yml` | Push `master` + `TEST-ENV`, manual | Publishne `Fakvio.McpServer` (**jeden artefakt = oba režimy**, viz §4.9), smoke testem ověří, že se spustí, a `dotnet pack`em zabalí stdio nástroj `fakvio-mcp`. Obojí jde nahoru jako build artefakt. Deploy HTTP hostu do Azure Web Appu: `TEST-ENV` → `deploy-http-test`, `master` → `deploy-http-prod`. Na `master` navíc `publish-nuget` (nuget.org). Viz níž. |
 
 **Krok „Download Tailscale binaries"** (oba Functions workflow, před `dotnet publish`):
 stáhne `tailscale` + `tailscaled` do `Fakvio.Functions/tsbin/`, odkud je do publish outputu
@@ -2437,13 +2437,15 @@ proč to celé existuje: `Fakvio.Functions/Tailscale/README.md`.
   `ModelContextProtocol.AspNetCore` nese `FrameworkReference`, takže ASP.NET Core runtime je
   tvrdý požadavek nástroje **i pro stdio** — a je to tak napsané v README „Požadavky" i v §4.9.
   Dokumentované chování se nesmí změnit potichu, proto to hlídá workflow, ne komentář.
-- **Deploy HTTP hostu běží jen na `TEST-ENV`** a jen když je nastavená **repo variable**
-  `MCP_HTTP_APP_NAME` (jméno App Service, očekávaná hodnota `fakvio-mcp-test`). Proměnná je
-  zároveň vypínač: dokud Web App neexistuje, job se přeskočí místo aby barvil každý push do
-  `TEST-ENV` na červeno. OIDC bere **stávající `_TEST` secrets** (jedna app registration na
-  prostředí, ne na resource) — potřebuje jen rozšířit její role assignment na nový Web App.
-  Produkční MCP HTTP host zatím není; až bude, přidej sourozenecký job s produkčními secrets,
-  jak jsou rozdělené Functions workflow.
+- **Deploy HTTP hostu je jeden job na prostředí**, jak jsou rozdělené Functions workflow:
+  `deploy-http-test` (`TEST-ENV`, `_TEST` secrets) a `deploy-http-prod` (`master`, produkční
+  GUID secrets z `master_zcloudinvoicingapi.yml`). Ne matrix — indexovat `vars` i `secrets`
+  klíčem z matrixu schová právě to, kvůli čemu sem operátor chodí.
+  Oba jsou podmíněné **repo variable** se jménem App Service — `MCP_HTTP_APP_NAME`
+  (`fakvio-mcp-test`), resp. `MCP_HTTP_APP_NAME_PROD` (`fakvio-mcp`). Proměnná je zároveň
+  vypínač: dokud Web App neexistuje, job se přeskočí místo aby barvil každý push na červeno.
+  OIDC bere **stávající secrets prostředí** (jedna app registration na prostředí, ne na
+  resource) — potřebuje jen rozšířit její role assignment na nový Web App.
 - **Post-deploy ověření: `POST /mcp` bez `Authorization` musí vrátit 401.** Tenhle případ
   `McpApiKeyMiddleware` odmítne bez round-tripu na API (§4.9), takže test nenese žádný
   credential a přesto dokazuje dvě věci — host nastartoval a brána stojí **před** celou
@@ -2459,6 +2461,21 @@ proč to celé existuje: `Fakvio.Functions/Tailscale/README.md`.
   takže na tomhle Web Appu ji **nezapínej**.)
 - App settings HTTP hostu (`FAKVIO_MCP_TRANSPORT=http`, `FAKVIO_API_URL`) patří do konfigurace
   Azure App Service, **ne do workflow** — stejné pravidlo jako u Functions (§9.4).
+- **`publish-nuget` publikuje stdio nástroj na nuget.org, jen z `master`.** Bere
+  **tentýž `.nupkg`**, na kterém build job ověřil `FrameworkReference` — ne nový build, takže
+  publikuje se přesně to, co prošlo kontrolou. Test build se veřejným balíčkem nikdy stát
+  nemůže, proto jen `master`.
+  - **Vypínač je uvnitř kroku, ne v `if:`** — `secrets` context v job-level `if` k dispozici
+    není. Bez `NUGET_API_KEY` krok vypíše notice a skončí zeleně, takže job je do doplnění
+    klíče neškodný.
+  - **Verze se zvedá ručně** v `<Version>` v `Fakvio.McpServer.csproj` a push jde
+    s `--skip-duplicate`. Bez toho flagu by nuget.org vracel 409 a merge, který verzi
+    nesáhl, by shodil build. Důsledek, který je potřeba znát: **zapomenutý bump znamená,
+    že oprava skončí v CI artefaktech a u nikoho jiného** — verze patří do stejného PR
+    jako změna nástroje.
+  - Metadata balíčku (`Authors`, `PackageLicenseExpression`, `PackageReadmeFile`,
+    `RepositoryUrl`) jsou v csproj; `README.md` projektu se balí dovnitř a slouží jako
+    popisná stránka na nuget.org, takže nemůže odrejvovat od toho, co čte vývojář.
 
 **Pozn.**: Pro `Fakvio.API` (klasický host) **není dedicated workflow** v repu — historicky se hostil přes externí App Service nebo manuálně. Pokud přidáš API workflow, zaznamenej zde.
 

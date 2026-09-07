@@ -48,18 +48,32 @@ dotnet build Fakvio.McpServer/Fakvio.McpServer.csproj
 dotnet run   --project Fakvio.McpServer
 ```
 
-Jako globální .NET nástroj (příkaz `fakvio-mcp`):
+Jako globální .NET nástroj (příkaz `fakvio-mcp`) — balíček je na nuget.org,
+takže uživatel k instalaci nepotřebuje repozitář:
 
 ```bash
-dotnet pack Fakvio.McpServer/Fakvio.McpServer.csproj -c Release -o ./nupkg
-dotnet tool install --global --add-source ./nupkg Fakvio.McpServer
+dotnet tool install --global Fakvio.McpServer
 ```
 
 Aktualizace, resp. odinstalace:
 
 ```bash
-dotnet tool update    --global --add-source ./nupkg Fakvio.McpServer
+dotnet tool update    --global Fakvio.McpServer
 dotnet tool uninstall --global Fakvio.McpServer
+```
+
+Verzi na nuget.org publikuje workflow `mcp-server.yml` při pushi do `master`
+(job `publish-nuget`). **Číslo verze se zvedá ručně** — `<Version>` v
+`Fakvio.McpServer.csproj`, ve stejném PR jako změna nástroje. Push jde
+s `--skip-duplicate`, takže merge bez bumpu nic nepublikuje a nic neshodí;
+cena za to je, že zapomenutý bump se projeví jen tím, že se oprava k uživatelům
+nedostane.
+
+Z rozpracované větve (nepublikovaná verze) se instaluje z lokálního balíčku:
+
+```bash
+dotnet pack Fakvio.McpServer/Fakvio.McpServer.csproj -c Release -o ./nupkg
+dotnet tool install --global --add-source ./nupkg Fakvio.McpServer
 ```
 
 Spuštění z terminálu jen ověří konfiguraci — server pak čeká na JSON-RPC zprávy

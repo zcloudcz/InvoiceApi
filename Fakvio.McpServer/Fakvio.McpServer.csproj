@@ -13,7 +13,27 @@
     <ToolCommandName>fakvio-mcp</ToolCommandName>
     <PackageId>Fakvio.McpServer</PackageId>
     <Description>MCP (Model Context Protocol) server for Fakvio invoicing — exposes invoice, client, template, and reporting tools for AI assistants.</Description>
+
+    <!-- Metadata required for a public nuget.org listing. Version is bumped by hand:
+         the publish step pushes with the skip-duplicate flag, so a master build that did not
+         touch this number is a no-op instead of a failure. Bump it in the same PR that
+         changes the tool, or the fix ships to CI artifacts and to nobody else. -->
+    <Version>1.0.0</Version>
+    <Authors>zCloud</Authors>
+    <Company>zCloud</Company>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/zcloudcz/InvoiceApi</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/zcloudcz/InvoiceApi</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>mcp;model-context-protocol;fakvio;invoicing;ai-tools;dotnet-tool</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Shown as the package description page on nuget.org. Same file the repo serves,
+         so the published page cannot drift from the one developers read. -->
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
 
   <ItemGroup>
     <!-- ModelContextProtocol — official C# SDK for MCP (stdio transport, tool discovery) -->
