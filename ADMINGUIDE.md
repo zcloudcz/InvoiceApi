@@ -601,11 +601,13 @@ HTTP a místo toho čeká na stdin, vypadá zvenčí jako nastartovaný — prot
 >
 > Adresu, kterou stránka Integrace nabízí, drží `McpSettings:BaseUrl`
 > (`Fakvio.BlazorUI/wwwroot/appsettings.json`) — samostatná hodnota, ne odhad z adresy API
-> (#363). Testovacímu UI ji vyplňuje `blazorui-test-deploy.yml` před publishem
-> (`https://fakvio-mcp-test.azurewebsites.net`). V commitnutém souboru, tedy pro produkci,
-> zůstává **prázdná**, dokud na `fakvio-mcp` nepřistane deploy — ten přijde až s pushem do
-> `master`. Dokud je prázdná, vzdálený blok ukazuje zjevnou ukázkovou adresu místo tiše
-> špatné.
+> (#363). Produkce má `https://mcp.fakvio.cz`, testovacímu UI ji `blazorui-test-deploy.yml`
+> před publishem přepíše na `https://mcp-test.fakvio.cz`. Obě jsou vlastní domény
+> s vlastním managed certifikátem, ne `*.azurewebsites.net` — adresa vlepená do konfigurace
+> AI klienta přežije i přestavbu hostu.
+>
+> **Produkční hodnota se k uživateli dostane až releasem.** Tentýž push do `master` nasadí
+> i samotný host, takže adresa a to, na co ukazuje, jdou živě spolu.
 
 Podrobnosti pro vývojáře: DEVGUIDE §4.9, `Fakvio.McpServer/README.md`.
 
