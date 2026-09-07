@@ -24,6 +24,15 @@ env:
   # has to be baked in at publish time — there is no server to inject it later.
   TEST_API_BASE_URL: 'https://zcloudinvoicingapi-test.azurewebsites.net'
 
+  # Test MCP HTTP host (#241). Separate from the API on purpose — since #240 they are two
+  # applications on two addresses, and deriving one from the other is the bug #363 fixed.
+  #
+  # The plain azurewebsites.net address rather than mcp-test.fakvio.cz: the custom domain is
+  # bound but has no certificate yet, so HTTPS on it fails — and clients send their API key in
+  # an Authorization header, which must not travel unencrypted. Swap this to the custom domain
+  # the day that certificate exists.
+  TEST_MCP_BASE_URL: 'https://fakvio-mcp-test.azurewebsites.net'
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
@@ -62,6 +71,15 @@ jobs:
           # *production*. More than one: the sed escaped its section and overwrote another
           # section's BaseUrl with the API address. Exactly one is the only correct outcome.
           test "$(grep -cF "${TEST_API_BASE_URL}" "$CONFIG")" -eq 1
+
+          # The MCP host address the Integrations page pastes into the "remote" client snippet.
+          # Scoped and counted exactly like ApiSettings above, and for the same reason — the two
+          # sections each own a "BaseUrl" and must never be rewritten with each other's value.
+          #
+          # The committed value is an empty string (production has no MCP host deployed yet), so
+          # the pattern has to match "" as well as a real URL — hence ".*" rather than ".\+".
+          sed -i -E "/\"McpSettings\"/,/^[[:space:]]*\}/ s|^([[:space:]]*)\"BaseUrl\": \".*\"|\1\"BaseUrl\": \"${TEST_MCP_BASE_URL}\"|" "$CONFIG"
+          test "$(grep -cF "${TEST_MCP_BASE_URL}" "$CONFIG")" -eq 1
 
           # Same idea for the environment name: the UI paints the app bar pink and shows a
           # TEST chip when this is anything but "production", so nobody edits production
