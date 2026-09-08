@@ -2505,6 +2505,27 @@ proč to celé existuje: `Fakvio.Functions/Tailscale/README.md`.
 - App settings HTTP hostu (`FAKVIO_MCP_TRANSPORT=http`, `FAKVIO_API_URL`, `ASPNETCORE_URLS`,
   `FUNCTIONS_WORKER_RUNTIME=dotnet-isolated`, `AzureWebJobsFeatureFlags`) patří do konfigurace
   Function Appu, **ne do workflow** — stejné pravidlo jako u ostatních Functions (§9.4).
+- **Studený start hostu umí vrátit 500 — proto `McpKeepAliveFunctions`.** Functions host
+  a náš proces jsou připravené v mírně jiný okamžik: naměřeno 2026-09-07, host přeposlal
+  request v 19:09:19.846 a Kestrel ohlásil „Now listening on http://0.0.0.0:8080" až
+  v 19:09:20.158. Request, který se trefí do té ~310ms mezery, nenajde nic na portu a
+  Functions vrátí **500**. Běžný studený start je jinak jen pomalý (naměřeno 6,3 s), ne
+  rozbitý — vrátí korektní 401.
+  - **Retry se do našeho kódu napsat nedá.** V tu chvíli žádný náš handler, middleware ani
+    catch blok neběží; 500 vyrábí platforma před námi. Retry patří volajícímu, ne volanému.
+  - Řešíme to tím, že host **nenecháme vychladnout**: `McpKeepAliveFunctions` v
+    `Fakvio.Functions` ťukne každých 5 minut na `POST /mcp` **bez** hlavičky `Authorization`.
+    Takový request `McpApiKeyMiddleware` odmítne hned, bez round-tripu na API (§4.9), takže
+    ping nenese credential a nezatěžuje API. Očekávaná odpověď je 401.
+  - Adresa je v app settingu **API Function Appu** (`McpKeepAlive__Url`), ne v MCP hostu —
+    ťuká ten, kdo běží pořád, na toho, kdo usíná. Prázdná hodnota = warm-up vypnutý, stejný
+    on/off idiom jako u deploy jobů.
+  - Alternativou by byl `alwaysReady: 1` na Flex plánu. Zvolen ping, protože rezervovaná
+    instance se platí nepřetržitě, a tím by zmizel důvod, proč host stojí na Flexu.
+  - **Výjimka z pravidla „každá pravidelná úloha má obě varianty"** (CLAUDE.md §API +
+    Functions duplication): tahle je schválně jen Functions. Hřeje nasazený cloudový
+    resource — vývojář s lokálním API žádný svůj MCP host nemá, takže worker varianta by
+    buď nedělala nic, nebo by z každého vývojářského stroje ťukala na sdílený cloud.
 - **`publish-nuget` publikuje stdio nástroj na nuget.org, jen z `master`.** Bere
   **tentýž `.nupkg`**, na kterém build job ověřil `FrameworkReference` — ne nový build, takže
   publikuje se přesně to, co prošlo kontrolou. Test build se veřejným balíčkem nikdy stát

@@ -594,6 +594,10 @@ HTTP a místo toho čeká na stdin, vypadá zvenčí jako nastartovaný — prot
 >    Autorizaci dělá API klíč uvnitř aplikace.
 > 5. **Rozšířit role assignment** stávající app registrace toho prostředí na nový Function App.
 > 6. **Doplnit repo proměnnou** se jménem appky.
+> 7. **Na API Function Appu** (ne na MCP hostu) nastavit `McpKeepAlive__Url` na adresu
+>    MCP hostu. Timer `McpKeepAlive` pak každých 5 minut pošle jeden request, který drží
+>    host teplý — bez toho může první volání po delší pauze skončit chybou 500 (host se
+>    probouzí a Functions se na něj krátce nedovolá). Prázdná hodnota warm-up vypíná.
 >
 > Pozor: hostování MCP serverů postavených na oficiálním SDK je u Azure Functions zatím
 > **public preview** — proto ten feature flag. Na produkci to je vědomé riziko, ne
