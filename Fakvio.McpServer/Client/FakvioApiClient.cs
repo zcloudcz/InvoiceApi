@@ -393,6 +393,14 @@ public class FakvioApiClient : IFakvioApiClient
 
         var body = await response.Content.ReadAsStringAsync(ct);
 
+        // A TENANT_NOT_READY 400 carries a structured payload (code, missingFields, issues —
+        // DEVGUIDE §4.12) that a flattened "message" string would throw away (#342). Caught
+        // here, before the generic message-only path below, so every caller of this client
+        // gets the same structured exception the HTTP body actually contains.
+        if (response.StatusCode == HttpStatusCode.BadRequest &&
+            TryParseTenantNotReady(body) is { } tenantNotReady)
+            throw tenantNotReady;
+
         // Try to extract a user-friendly message from the API error response
         string errorMessage;
         try
@@ -414,6 +422,56 @@ public class FakvioApiClient : IFakvioApiClient
             $"API returned {(int)response.StatusCode} {response.StatusCode}: {errorMessage}",
             inner: null,
             response.StatusCode);
+    }
+
+    /// <summary>
+    /// Parses the <c>{ code, message, missingFields, issues }</c> shape (DEVGUIDE §4.12) out of a
+    /// 400 body. Returns null for anything else — a malformed body or an unrelated 400 — so the
+    /// caller falls back to the generic message-only exception instead of throwing a parse error.
+    ///
+    /// Junior note — why every read below is preceded by a <see cref="JsonValueKind"/> check
+    /// instead of just "is the property there": <see cref="JsonElement.TryGetProperty(string, out JsonElement)"/>
+    /// does not return false on a non-object root, it throws <see cref="InvalidOperationException"/>,
+    /// and <see cref="JsonElement.GetString"/> throws the same on an element that is not a string.
+    /// Neither is a <see cref="JsonException"/>, so without these guards such an exception would
+    /// escape <see cref="EnsureSuccessAsync"/> entirely. That is not hypothetical: a 400 body is
+    /// often a bare JSON string (<c>TaxController</c> answers <c>BadRequest("Gross income cannot be
+    /// negative.")</c>, reached from <see cref="EstimateTaxAsync"/>), which would turn an ordinary
+    /// validation message into an internal type error for every MCP tool on this client.
+    /// </summary>
+    private static TenantNotReadyApiException? TryParseTenantNotReady(string body)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            var root = doc.RootElement;
+
+            if (root.ValueKind != JsonValueKind.Object)
+                return null;
+
+            if (!root.TryGetProperty("code", out var codeEl) ||
+                codeEl.ValueKind != JsonValueKind.String ||
+                codeEl.GetString() != TenantNotReadyApiException.ErrorCode)
+                return null;
+
+            var message = root.TryGetProperty("message", out var msgEl) && msgEl.ValueKind == JsonValueKind.String
+                ? msgEl.GetString()!
+                : body;
+            var missingFields = root.TryGetProperty("missingFields", out var mfEl) && mfEl.ValueKind == JsonValueKind.Array
+                ? JsonSerializer.Deserialize<List<string>>(mfEl.GetRawText(), JsonOptions) ?? []
+                : [];
+            var issues = root.TryGetProperty("issues", out var issuesEl) && issuesEl.ValueKind == JsonValueKind.Array
+                ? JsonSerializer.Deserialize<List<ReadinessIssueDto>>(issuesEl.GetRawText(), JsonOptions) ?? []
+                : [];
+
+            return new TenantNotReadyApiException(message, missingFields, issues);
+        }
+        catch (JsonException)
+        {
+            // Body is not JSON at all, or an array element does not fit the DTO. Either way it
+            // is not the TENANT_NOT_READY shape — fall through to the generic exception.
+            return null;
+        }
     }
 
     /// <summary>

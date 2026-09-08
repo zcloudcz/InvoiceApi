@@ -1,7 +1,11 @@
+using Fakvio.Application.Exceptions;
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.Invoice;
+using Fakvio.Contracts.Dto.Readiness;
 using Fakvio.Domain.Enums;
+using Fakvio.Infrastructure.Data;
 using Fakvio.Infrastructure.Service.ChatTools;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 using Shouldly;
@@ -102,6 +106,15 @@ public class InvoiceLifecycleChatToolTests
 
     private DeleteInvoiceTool DeleteTool()
         => new(_invoiceService, Substitute.For<ILogger<DeleteInvoiceTool>>());
+
+    /// <summary>
+    /// Throwaway in-memory TenantDbContext — the executor only needs one to discard leftover
+    /// change-tracker entries after a failed write (issue #305); no test here touches it.
+    /// </summary>
+    private static TenantDbContext CreateDbContext()
+        => new(new DbContextOptionsBuilder<TenantDbContext>()
+            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .Options);
 
     // ─── get_invoice ──────────────────────────────────────────────────────
 
@@ -579,7 +592,7 @@ public class InvoiceLifecycleChatToolTests
     /// production for a model answer that carries (or omits) the approval flag.
     /// </summary>
     private ChatToolExecutor ExecutorOver(IChatTool tool)
-        => new([tool], Substitute.For<ILogger<ChatToolExecutor>>());
+        => new([tool], CreateDbContext(), Substitute.For<ILogger<ChatToolExecutor>>());
 
     [Fact]
     public async Task DeleteInvoice_ThroughTheExecutor_WithoutConfirm_OnlyPreviews()
@@ -658,7 +671,7 @@ public class InvoiceLifecycleChatToolTests
     /// </summary>
     private ChatToolExecutor ExecutorOverEveryLifecycleWrite()
         => new([CompleteTool(), MarkPaidTool(), SendEmailTool(), DeleteTool()],
-            Substitute.For<ILogger<ChatToolExecutor>>());
+            CreateDbContext(), Substitute.For<ILogger<ChatToolExecutor>>());
 
     [Theory]
     [MemberData(nameof(LifecycleWrites))]
@@ -734,6 +747,57 @@ public class InvoiceLifecycleChatToolTests
         result.ErrorMessage.ShouldContain("Company settings are incomplete");
         result.RequiresConfirmation.ShouldBeFalse();
     }
+
+    /// <summary>
+    /// Contrast with the InvalidOperationException test above: the readiness gate throws its own
+    /// exception type, and CompleteInvoiceTool must catch it itself (#342) rather than let
+    /// ChatToolExecutor's catch-all flatten it into "Tool execution failed: <message>" — that
+    /// would drop the fix route the assistant needs to tell the user where to fix the setup.
+    /// </summary>
+    [Fact]
+    public async Task CompleteInvoice_Execute_TenantNotReady_ReturnsTheFixRoutePerIssue()
+    {
+        GivenInvoice(BuildInvoice());
+        _invoiceService.CompleteInvoiceAsync(42, Arg.Any<CancellationToken>())
+            .Returns<Task<InvoiceDto?>>(_ => throw NotReady());
+
+        var result = await CompleteTool().ExecuteAsync(ById());
+
+        result.IsSuccess.ShouldBeFalse();
+        result.ErrorMessage.ShouldContain(ReadinessCodes.IssuerBankAccountMissing);
+        result.ErrorMessage.ShouldContain("Fix at: /my-company");
+        result.ErrorMessage.ShouldNotContain("Tool execution failed");
+    }
+
+    /// <summary>Same refusal, but through the real executor — proves the catch-all never gets it.</summary>
+    [Fact]
+    public async Task CompleteInvoice_ThroughTheExecutor_TenantNotReady_IsNotWrappedAsAGenericToolFailure()
+    {
+        GivenInvoice(BuildInvoice());
+        _invoiceService.CompleteInvoiceAsync(42, Arg.Any<CancellationToken>())
+            .Returns<Task<InvoiceDto?>>(_ => throw NotReady());
+
+        var parameters = ById();
+        parameters["confirm"] = "true";
+
+        var result = await ExecutorOver(CompleteTool()).ExecuteToolAsync(
+            new ParsedToolCall { Action = "complete_invoice", Parameters = parameters });
+
+        result.IsSuccess.ShouldBeFalse();
+        result.RequiresConfirmation.ShouldBeFalse();
+        result.OutputText.ShouldNotContain("Tool execution failed");
+        result.OutputText.ShouldContain("Fix at: /my-company");
+    }
+
+    private static TenantNotReadyException NotReady() => new([
+        new ReadinessIssueDto
+        {
+            Code = ReadinessCodes.IssuerBankAccountMissing,
+            Severity = EReadinessSeverity.Blocking,
+            MissingFields = ["BankAccount"],
+            FixRoute = "/my-company"
+        }
+    ]);
 
     /// <summary>Every write the four tools can perform, all stubbed as successful.</summary>
     private void GivenEveryWriteSucceeds()

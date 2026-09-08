@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Fakvio.Application.Service;
@@ -131,11 +132,9 @@ public class CreateReceivedInvoiceTool : IConfirmableChatTool
     ///
     /// Junior note on the amount: it is the total EXCLUDING VAT — exactly the sum of the line
     /// items the user has just dictated, so it can be checked against the document word for word.
-    /// The total WITH VAT is deliberately left out until #283 lands: a company with no default
-    /// VAT rate configured currently gets 0 %, which would print a with-VAT total equal to the
-    /// without-VAT one. A number that looks right and is not is worse than no number at all.
-    /// (It is not a rounding question — <c>ReceivedInvoiceService</c> does not round; the create
-    /// path is plain decimal arithmetic.)
+    /// The total WITH VAT is deliberately left out — showing it here is a separate, still open
+    /// task. (It is not a rounding question — <c>ReceivedInvoiceService</c> does not round; the
+    /// create path is plain decimal arithmetic.)
     /// </summary>
     public async Task<ChatToolResult> BuildPreviewAsync(
         Dictionary<string, string> parameters,
@@ -369,6 +368,15 @@ public class CreateReceivedInvoiceTool : IConfirmableChatTool
 
             var usesDefaultRate = raw.VatRate is null;
 
+            // A tax document with no VAT rate at all is worse than one rejected up front — this
+            // is the fallback issue #283 closes: no default configured used to silently mean 0%.
+            if (usesDefaultRate && defaultVatRate is null)
+            {
+                return ItemParseResult.Failed(
+                    $"Item #{position} ('{raw.Description}') has no 'vat_rate' and no default VAT rate is " +
+                    "configured. Set a default VAT rate in Settings, or specify 'vat_rate' explicitly.");
+            }
+
             if (!usesDefaultRate && allowedVatRates.All(rate => rate.Rate != raw.VatRate!.Value))
             {
                 return ItemParseResult.Failed(
@@ -376,15 +384,26 @@ public class CreateReceivedInvoiceTool : IConfirmableChatTool
                     $"which is not one of the rates set up for this company. {DescribeAllowed(allowedVatRates)}");
             }
 
+            // Quantity: missing stays the documented default of 1, but a quantity the model
+            // explicitly sent as zero or negative is rejected instead of silently becoming 1
+            // (issue #283) — that would record an expense for a quantity nobody dictated.
+            if (raw.Quantity is <= 0)
+            {
+                return ItemParseResult.Failed(
+                    $"Item #{position} ('{raw.Description}') has invalid quantity " +
+                    $"({raw.Quantity.Value.ToString(CultureInfo.InvariantCulture)}). " +
+                    "Quantity must be positive; omit it to default to 1.");
+            }
+
             items.Add(new CreateReceivedInvoiceItemDto
             {
                 OrderIndex = index,
                 Description = raw.Description.Trim(),
-                Quantity = raw.Quantity is > 0 ? raw.Quantity.Value : 1m,
+                Quantity = raw.Quantity ?? 1m,
                 Unit = string.IsNullOrWhiteSpace(raw.Unit) ? DefaultUnit : raw.Unit.Trim(),
                 UnitPrice = raw.UnitPrice.Value,
-                VatRateId = usesDefaultRate ? defaultVatRate?.Id : null,
-                VatRatePercentage = usesDefaultRate ? defaultVatRate?.Rate ?? 0m : raw.VatRate!.Value
+                VatRateId = usesDefaultRate ? defaultVatRate!.Id : null,
+                VatRatePercentage = usesDefaultRate ? defaultVatRate!.Rate : raw.VatRate!.Value
             });
         }
 
@@ -398,7 +417,7 @@ public class CreateReceivedInvoiceTool : IConfirmableChatTool
     /// </summary>
     private static string DescribeAllowed(IReadOnlyList<Contracts.Dto.VatRate.VatRateDto> allowedVatRates)
         => allowedVatRates.Count == 0
-            ? "No VAT rates are set up — add them in Settings, or leave 'vat_rate' out to use the default."
+            ? "No VAT rates are set up for that date — add them in Settings."
             : $"Available: {string.Join(", ", allowedVatRates.Select(rate => $"{rate.Rate:0.##}%"))}. " +
               "Leave 'vat_rate' out to use the default rate.";
 

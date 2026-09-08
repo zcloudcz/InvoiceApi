@@ -720,7 +720,7 @@ public class ChatServiceTests : IDisposable
 
         return new ChatService(
             _context, tenantResolver, _providerFactory, _companyAiResolver, _contextBuilder,
-            new ChatToolExecutor(tools, Substitute.For<ILogger<ChatToolExecutor>>()), _logger);
+            new ChatToolExecutor(tools, _context, Substitute.For<ILogger<ChatToolExecutor>>()), _logger);
     }
 
     /// <summary>

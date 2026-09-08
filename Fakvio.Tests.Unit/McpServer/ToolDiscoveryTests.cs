@@ -1,5 +1,7 @@
+﻿using System.Globalization;
 using System.Reflection;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Fakvio.McpServer;
 using Fakvio.McpServer.Client;
 using Fakvio.McpServer.Configuration;
@@ -29,6 +31,24 @@ public class ToolDiscoveryTests
     /// (<c>get_readiness</c>). Measured against both SDK 1.0.0 and 2.2.0 during the #238 upgrade.
     /// </summary>
     private const string SnakeCaseToolName = "^[a-z][a-z0-9]*(_[a-z0-9]+)*$";
+
+    /// <summary>
+    /// Guides that publish how many MCP tools ship, each with the wording it uses today.
+    /// Every alternative is anchored on its surrounding phrase on purpose: a bare
+    /// <c>(?&lt;count&gt;\d+) toolů</c> would also match "49 chat toolů" two words away in §4.7
+    /// and compare the MCP surface against the chat one.
+    /// </summary>
+    private static readonly (string File, Regex Published)[] PublishedToolCounts =
+    [
+        ("DEVGUIDE.md", new Regex(
+            @"\[McpServerTool\]`, (?<count>\d+) toolů"          // §4.7 intro
+            + @"|Součty:\*\* (?<count>\d+) MCP toolů"           // §4.7 totals line
+            + @"|\*\*(?<count>\d+) tools\*\*",                 // §4.9 breakdown
+            RegexOptions.Compiled)),
+        ("USERGUIDE.md", new Regex(@"(?<count>\d+) nástrojů", RegexOptions.Compiled)),
+        (Path.Combine("Fakvio.McpServer", "README.md"), new Regex(
+            @"Dostupné nástroje \((?<count>\d+)\)", RegexOptions.Compiled))
+    ];
 
     /// <summary>
     /// Builds the tool list from the production registration itself —
@@ -264,6 +284,47 @@ public class ToolDiscoveryTests
             SchemaRequiredNames(tool).ShouldBe(expectedRequired,
                 $"Required inputs of tool '{tool.ProtocolTool.Name}' no longer match the parameters " +
                 $"of method '{method.Name}' that have no default value.");
+        }
+    }
+
+    /// <summary>
+    /// Every guide that names a tool count must name the count the server actually exposes.
+    ///
+    /// Why this needs a test rather than a reviewer: story #144 published "36" and the number
+    /// survived seven rounds of review because nothing fails when prose goes stale — the guide
+    /// simply lies, and each new reader trusts it instead of counting the attributes again.
+    /// It also merges silently: two branches that each add a tool rewrite the sentence to two
+    /// different numbers, git takes one, and no conflict marker ever appears.
+    ///
+    /// The expectation comes from <see cref="DiscoverTools"/> — the live surface — never from a
+    /// literal here, because a literal is the very thing that goes stale.
+    /// </summary>
+    [Fact]
+    public void Guides_PublishTheLiveNumberOfMcpTools()
+    {
+        var expected = DiscoverTools().Count;
+        var repositoryRoot = RepositoryRoot.Find();
+
+        foreach (var (file, published) in PublishedToolCounts)
+        {
+            var text = File.ReadAllText(Path.Combine(repositoryRoot, file));
+
+            var counts = published
+                .Matches(text)
+                .Select(match => int.Parse(match.Groups["count"].Value, CultureInfo.InvariantCulture))
+                .ToList();
+
+            counts.ShouldNotBeEmpty(
+                $"{file} publishes the MCP tool count; if the wording changed, update " +
+                $"{nameof(PublishedToolCounts)} so the guard keeps biting");
+
+            // Distinct() so the message reads "the guide says 36, we ship 37" instead of
+            // repeating the same wrong number once per occurrence.
+            counts
+                .Distinct()
+                .ShouldBe(
+                    [expected],
+                    $"every MCP tool count in {file} must match the {expected} tools the server exposes");
         }
     }
 }

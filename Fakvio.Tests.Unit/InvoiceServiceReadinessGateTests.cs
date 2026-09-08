@@ -177,8 +177,15 @@ public class InvoiceServiceReadinessGateTests : IDisposable
 
         result.SuccessCount.ShouldBe(1);
         result.FailedCount.ShouldBe(1);
-        result.Errors.ShouldHaveSingleItem().InvoiceId.ShouldBe(blockedId);
-        result.Errors[0].Error.ShouldContain(ReadinessCodes.IssuerAddressIncomplete);
+        var error = result.Errors.ShouldHaveSingleItem();
+        error.InvoiceId.ShouldBe(blockedId);
+        error.Error.ShouldContain(ReadinessCodes.IssuerAddressIncomplete);
+
+        // #342: the bulk path must carry the same structured refusal the single-invoice
+        // /complete endpoint returns, not just the flattened Error string — otherwise the UI
+        // has no way to render a localized, per-field message for a bulk failure.
+        error.Code.ShouldBe(TenantNotReadyException.ErrorCode);
+        error.MissingFields.ShouldBe([nameof(Address.Street)]);
     }
 
     // =========================================================================

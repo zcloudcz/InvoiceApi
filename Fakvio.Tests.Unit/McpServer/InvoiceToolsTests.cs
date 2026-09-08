@@ -5,6 +5,7 @@ using Fakvio.Contracts.Dto.Dashboard;
 using Fakvio.Contracts.Dto.Email;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Contracts.Dto.InvoiceTemplate;
+using Fakvio.Contracts.Dto.Readiness;
 using Fakvio.Domain.Enums;
 using Fakvio.McpServer.Client;
 using Fakvio.McpServer.Tools;
@@ -191,6 +192,27 @@ public class InvoiceToolsTests
     }
 
     [Fact]
+    public async Task CreateInvoice_ReturnsSanitizedError_WhenTheApiResponseCannotBeDeserialized()
+    {
+        // The "Invalid JSON format" branch above must cover ONLY the JSON the model sent.
+        // FakvioApiClient deserializes the API *response* as well, so a JsonException raised
+        // there has to reach the sanitized catch-all instead of being echoed back as if the
+        // model's input were malformed — together with the exception text, which carries the
+        // JSON path and byte position of the response body (issue #279).
+        _api.CreateInvoiceAsync(Arg.Any<CreateInvoiceDto>(), Arg.Any<CancellationToken>())
+            .Throws(new JsonException(
+                "The JSON value could not be converted to System.Int64. " +
+                "Path: $.id | LineNumber: 0 | BytePositionInLine: 12."));
+
+        var json = await InvoiceTools.CreateInvoice(
+            _api, "{\"documentType\":\"Invoice\",\"clientId\":1,\"issuerId\":2}");
+
+        var doc = JsonDocument.Parse(json);
+        doc.RootElement.GetProperty("error").GetString().ShouldBe("internal_error");
+        doc.RootElement.GetProperty("message").GetString().ShouldNotContain("BytePositionInLine");
+    }
+
+    [Fact]
     public async Task CompleteInvoice_ReturnsCompletedInvoice()
     {
         // Arrange
@@ -203,6 +225,39 @@ public class InvoiceToolsTests
         // Assert: with JsonStringEnumConverter, status is serialized as a string "Completed"
         var doc = JsonDocument.Parse(json);
         doc.RootElement.GetProperty("status").GetString().ShouldBe("Completed");
+    }
+
+    /// <summary>
+    /// #342: TENANT_NOT_READY must reach the MCP client as the structured payload the generic
+    /// catch (Exception) below would flatten into a bare error string.
+    /// </summary>
+    [Fact]
+    public async Task CompleteInvoice_TenantNotReady_ReturnsStructuredErrorWithFixRoute()
+    {
+        // Arrange
+        var notReady = new TenantNotReadyApiException(
+            "Tenant is not ready. Unresolved blocking issue(s): ISSUER_BANK_ACCOUNT_MISSING.",
+            missingFields: ["BankAccount"],
+            issues:
+            [
+                new ReadinessIssueDto
+                {
+                    Code = "ISSUER_BANK_ACCOUNT_MISSING",
+                    Severity = EReadinessSeverity.Blocking,
+                    MissingFields = ["BankAccount"],
+                    FixRoute = "/my-company"
+                }
+            ]);
+        _api.CompleteInvoiceAsync(5, Arg.Any<CancellationToken>()).ThrowsAsync(notReady);
+
+        // Act
+        var json = await InvoiceTools.CompleteInvoice(_api, 5);
+
+        // Assert
+        var doc = JsonDocument.Parse(json);
+        doc.RootElement.GetProperty("code").GetString().ShouldBe("TENANT_NOT_READY");
+        doc.RootElement.GetProperty("missingFields")[0].GetString().ShouldBe("BankAccount");
+        doc.RootElement.GetProperty("issues")[0].GetProperty("fixRoute").GetString().ShouldBe("/my-company");
     }
 
     [Fact]
@@ -238,16 +293,53 @@ public class InvoiceToolsTests
     [Fact]
     public async Task ListInvoices_ReturnsError_OnApiFailure()
     {
-        // Arrange: simulate API throwing an exception
+        // Arrange: simulate API throwing an exception whose message carries the raw
+        // API error body (see FakvioApiClient.EnsureSuccessAsync) — that text must
+        // never reach the AI client (issue #279).
         _api.GetInvoicesPagedAsync(Arg.Any<InvoiceFilterDto>(), Arg.Any<CancellationToken>())
             .Throws(new HttpRequestException("Connection refused"));
 
         // Act
         var json = await InvoiceTools.ListInvoices(_api);
 
-        // Assert: should return error JSON, not throw
+        // Assert: should return a sanitized error JSON, not throw and not leak the
+        // exception message.
         var doc = JsonDocument.Parse(json);
-        doc.RootElement.GetProperty("error").GetString().ShouldContain("Connection refused");
+        doc.RootElement.GetProperty("error").GetString().ShouldBe("internal_error");
+        doc.RootElement.GetProperty("message").GetString().ShouldNotContain("Connection refused");
+    }
+
+    [Fact]
+    public async Task ListInvoices_PropagatesCancellation_WhenTheCallerCancelled()
+    {
+        // A request the caller cancelled is not a domain error — the tool must let it
+        // bubble out instead of turning it into a fake "error" JSON result (issue #279).
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        _api.GetInvoicesPagedAsync(Arg.Any<InvoiceFilterDto>(), Arg.Any<CancellationToken>())
+            .Throws(new OperationCanceledException());
+
+        await Should.ThrowAsync<OperationCanceledException>(
+            () => InvoiceTools.ListInvoices(_api, ct: cts.Token));
+    }
+
+    [Fact]
+    public async Task ListInvoices_ReturnsSanitizedError_OnHttpClientTimeout()
+    {
+        // HttpClient throws TaskCanceledException (a subclass of OperationCanceledException)
+        // on its OWN timeout, and then the caller's token was never cancelled. That is an
+        // API-side failure, not a cancellation, so it has to come back as sanitized JSON:
+        // an MCP tool that throws kills the whole call (issue #279).
+        using var cts = new CancellationTokenSource();
+        _api.GetInvoicesPagedAsync(Arg.Any<InvoiceFilterDto>(), Arg.Any<CancellationToken>())
+            .Throws(new TaskCanceledException(
+                "The request was canceled due to the configured HttpClient.Timeout of 100 seconds elapsing.", new TimeoutException()));
+
+        var json = await InvoiceTools.ListInvoices(_api, ct: cts.Token);
+
+        var doc = JsonDocument.Parse(json);
+        doc.RootElement.GetProperty("error").GetString().ShouldBe("internal_error");
+        doc.RootElement.GetProperty("message").GetString().ShouldNotContain("HttpClient.Timeout");
     }
 
     // ── ExportInvoicePdf tests ──────────────────────────────────────────
@@ -391,6 +483,36 @@ public class InvoiceToolsTests
         doc.RootElement.GetProperty("isIssuer").GetBoolean().ShouldBeTrue();
     }
 
+    [Fact]
+    public async Task GetClient_PropagatesCancellation_WhenTheCallerCancelled()
+    {
+        // ClientTools got its own catch-all copied in by this PR just like every other
+        // tool class — verify the cancellation carve-out actually landed here too,
+        // not only on the one representative tool (InvoiceTools.ListInvoices) covered above.
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        _api.GetClientByIdAsync(Arg.Any<long>(), Arg.Any<CancellationToken>())
+            .Throws(new OperationCanceledException());
+
+        await Should.ThrowAsync<OperationCanceledException>(
+            () => ClientTools.GetClient(_api, 1, ct: cts.Token));
+    }
+
+    [Fact]
+    public async Task GetClient_ReturnsSanitizedError_OnApiFailure()
+    {
+        // Same leak this whole issue is about: an exception message that could carry the
+        // raw API error body must never reach the AI client via ClientTools either.
+        _api.GetClientByIdAsync(Arg.Any<long>(), Arg.Any<CancellationToken>())
+            .Throws(new HttpRequestException("Connection refused"));
+
+        var json = await ClientTools.GetClient(_api, 1);
+
+        var doc = JsonDocument.Parse(json);
+        doc.RootElement.GetProperty("error").GetString().ShouldBe("internal_error");
+        doc.RootElement.GetProperty("message").GetString().ShouldNotContain("Connection refused");
+    }
+
     // ── TemplateTools tests ────────────────────────────────────────────
 
     [Fact]
@@ -429,6 +551,62 @@ public class InvoiceToolsTests
         doc.RootElement.GetProperty("id").GetInt64().ShouldBe(20);
     }
 
+    /// <summary>Only reachable with autoComplete = true (#342) — same structured payload as CompleteInvoice.</summary>
+    [Fact]
+    public async Task CreateInvoiceFromTemplate_TenantNotReady_ReturnsStructuredErrorWithFixRoute()
+    {
+        // Arrange
+        var notReady = new TenantNotReadyApiException(
+            "Tenant is not ready. Unresolved blocking issue(s): ISSUER_BANK_ACCOUNT_MISSING.",
+            missingFields: ["BankAccount"],
+            issues:
+            [
+                new ReadinessIssueDto
+                {
+                    Code = "ISSUER_BANK_ACCOUNT_MISSING",
+                    Severity = EReadinessSeverity.Blocking,
+                    MissingFields = ["BankAccount"],
+                    FixRoute = "/my-company"
+                }
+            ]);
+        _api.CreateInvoiceFromTemplateAsync(5, Arg.Any<CreateInvoiceFromTemplateDto>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(notReady);
+
+        // Act
+        var json = await TemplateTools.CreateInvoiceFromTemplate(_api, 5,
+            "{\"clientId\":10,\"autoComplete\":true}");
+
+        // Assert
+        var doc = JsonDocument.Parse(json);
+        doc.RootElement.GetProperty("code").GetString().ShouldBe("TENANT_NOT_READY");
+        doc.RootElement.GetProperty("issues")[0].GetProperty("fixRoute").GetString().ShouldBe("/my-company");
+    }
+
+    [Fact]
+    public async Task GetTemplate_PropagatesCancellation_WhenTheCallerCancelled()
+    {
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        _api.GetTemplateByIdAsync(Arg.Any<long>(), Arg.Any<CancellationToken>())
+            .Throws(new OperationCanceledException());
+
+        await Should.ThrowAsync<OperationCanceledException>(
+            () => TemplateTools.GetTemplate(_api, 1, ct: cts.Token));
+    }
+
+    [Fact]
+    public async Task GetTemplate_ReturnsSanitizedError_OnApiFailure()
+    {
+        _api.GetTemplateByIdAsync(Arg.Any<long>(), Arg.Any<CancellationToken>())
+            .Throws(new HttpRequestException("Connection refused"));
+
+        var json = await TemplateTools.GetTemplate(_api, 1);
+
+        var doc = JsonDocument.Parse(json);
+        doc.RootElement.GetProperty("error").GetString().ShouldBe("internal_error");
+        doc.RootElement.GetProperty("message").GetString().ShouldNotContain("Connection refused");
+    }
+
     // ── ReportingTools tests ───────────────────────────────────────────
 
     [Fact]
@@ -452,6 +630,33 @@ public class InvoiceToolsTests
         var doc = JsonDocument.Parse(json);
         doc.RootElement.GetProperty("invoicesDueThisMonthCount").GetInt32().ShouldBe(10);
         doc.RootElement.GetProperty("overdueInvoicesCount").GetInt32().ShouldBe(3);
+    }
+
+    [Fact]
+    public async Task GetDashboard_PropagatesCancellation_WhenTheCallerCancelled()
+    {
+        // ReportingTools had 6 catch-alls rewritten by this PR and none of them were
+        // exercised for cancellation or sanitized errors before — pin down one
+        // representative method so a future edit here cannot silently reintroduce
+        // the leak or the swallowed cancellation.
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        _api.GetDashboardAsync(Arg.Any<CancellationToken>()).Throws(new OperationCanceledException());
+
+        await Should.ThrowAsync<OperationCanceledException>(
+            () => ReportingTools.GetDashboard(_api, ct: cts.Token));
+    }
+
+    [Fact]
+    public async Task GetDashboard_ReturnsSanitizedError_OnApiFailure()
+    {
+        _api.GetDashboardAsync(Arg.Any<CancellationToken>()).Throws(new HttpRequestException("Connection refused"));
+
+        var json = await ReportingTools.GetDashboard(_api);
+
+        var doc = JsonDocument.Parse(json);
+        doc.RootElement.GetProperty("error").GetString().ShouldBe("internal_error");
+        doc.RootElement.GetProperty("message").GetString().ShouldNotContain("Connection refused");
     }
 
     [Fact]

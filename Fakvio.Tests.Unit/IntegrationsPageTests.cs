@@ -1,4 +1,4 @@
-// ============================================================================
+﻿// ============================================================================
 // IntegrationsPageTests — bUnit coverage for /settings/integrations (issue #237).
 //
 // ApiKeyServiceTests covers the server side. This file covers the part the user
@@ -27,6 +27,7 @@ using Fakvio.UI.Shared.Services;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Rendering;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Localization;
 using MudBlazor;
@@ -56,7 +57,25 @@ public class IntegrationsPageTests : BunitContext, IAsyncLifetime
     private const string ScopeRead = "read";
     private const string ScopeReadWrite = "read,write";
 
+    /// <summary>
+    /// Base address of the API the page talks to. Deliberately not "localhost" and not the
+    /// address bUnit navigates from: the two are different hosts in every real deployment,
+    /// which is the whole point of the snippet assertion below.
+    /// </summary>
+    private const string ApiBaseUrl = "https://api.test.local";
+
     private readonly ApiKeyStub _api = new(RawKey);
+
+    /// <summary>
+    /// Backs the <c>McpSettings:BaseUrl</c> config key the page reads for the remote MCP
+    /// snippet. <c>null</c> means the key is absent altogether; any other value (including
+    /// <c>""</c>) is registered as the key's value, so a test can tell "no key" apart from
+    /// "key present but empty" — which is what every deployed environment ships today, since
+    /// no MCP HTTP host exists yet (see #241). The IConfiguration singleton below is only
+    /// built on first resolution (inside Render), so setting this field beforehand is enough
+    /// to change what the page sees.
+    /// </summary>
+    private string? _mcpBaseUrl;
 
     // MudBlazor's PopoverService only supports async disposal; xunit v2 disposes
     // test classes synchronously, so route disposal through IAsyncLifetime.
@@ -65,6 +84,12 @@ public class IntegrationsPageTests : BunitContext, IAsyncLifetime
 
     public IntegrationsPageTests()
     {
+        Services.AddSingleton<IConfiguration>(_ => new ConfigurationBuilder()
+            .AddInMemoryCollection(_mcpBaseUrl is null
+                ? []
+                : new Dictionary<string, string?> { ["McpSettings:BaseUrl"] = _mcpBaseUrl })
+            .Build());
+
         // The create dialog holds a MudSelect and a MudDatePicker, which refuse to
         // initialise without a MudPopoverProvider in a bUnit render tree (same reason as
         // MyCompanyEpoSectionTests) — switch the guard off instead of faking a layout.
@@ -77,7 +102,7 @@ public class IntegrationsPageTests : BunitContext, IAsyncLifetime
         Services.AddLocalization(options => options.ResourcesPath = "Resources");
 
         // Real API client over the stub, so DTO serialization is part of the test.
-        var httpClient = new HttpClient(_api) { BaseAddress = new Uri("https://api.test.local") };
+        var httpClient = new HttpClient(_api) { BaseAddress = new Uri(ApiBaseUrl) };
         var factory = Substitute.For<IHttpClientFactory>();
         factory.CreateClient(Arg.Any<string>()).Returns(httpClient);
         Services.AddSingleton(factory);
@@ -365,6 +390,83 @@ public class IntegrationsPageTests : BunitContext, IAsyncLifetime
             page.Markup.ShouldContain(Localized("Integration_SnippetHttp"));
             page.Markup.ShouldContain($"\"FAKVIO_API_TOKEN\": \"{RawKey}\"");
             page.Markup.ShouldContain($"Bearer {RawKey}");
+        });
+    }
+
+    /// <summary>
+    /// The stdio snippet must carry the address of the **API**, not the address the user has
+    /// the app open at in the browser.
+    ///
+    /// This is USERGUIDE §20.3's escape hatch: the guide tells a user who does not know the
+    /// value to copy it out of this block. A snippet built from the host address instead would
+    /// start `fakvio-mcp` fine and fail every call on connection — the exact defect review
+    /// round 1 of #242 found in the prose, one layer down in the code that generates the value.
+    /// </summary>
+    [Fact]
+    public async Task Integrations_StdioSnippet_CarriesTheApiBaseUrl()
+    {
+        var page = RenderPageWithKeys();
+
+        await CreateKeyNamed(page, NewKeyName);
+
+        page.WaitForAssertion(() =>
+            page.Markup.ShouldContain($"\"FAKVIO_API_URL\": \"{ApiBaseUrl}\""));
+    }
+
+    /// <summary>
+    /// The remote (HTTP) snippet's <c>url</c> must carry the address of the **MCP host**,
+    /// not the API's. Before #363 the page reused <see cref="ApiBaseUrl"/> for both snippets;
+    /// the API does not serve <c>/mcp</c>, so a user who pasted the generated block got a
+    /// remote config that connects to the wrong server.
+    /// The address is hand-edited into a deployed JSON file, so the page normalises it before
+    /// appending <c>/mcp</c>; the extra cases cover the two edits an admin actually makes
+    /// wrong — a trailing slash (which would produce <c>host//mcp</c>) and stray whitespace.
+    /// </summary>
+    [Theory]
+    [InlineData("https://mcp.test.local")]
+    [InlineData("https://mcp.test.local/")]
+    [InlineData("  https://mcp.test.local  ")]
+    public async Task Integrations_HttpSnippet_CarriesTheMcpBaseUrl_NotTheApiBaseUrl(string configuredMcpBaseUrl)
+    {
+        const string mcpBaseUrl = "https://mcp.test.local";
+        _mcpBaseUrl = configuredMcpBaseUrl;
+        var page = RenderPageWithKeys();
+
+        await CreateKeyNamed(page, NewKeyName);
+
+        page.WaitForAssertion(() =>
+        {
+            page.Markup.ShouldContain($"\"url\": \"{mcpBaseUrl}/mcp\"");
+            page.Markup.ShouldNotContain($"\"url\": \"{ApiBaseUrl}/mcp\"");
+        });
+    }
+
+    /// <summary>
+    /// No MCP HTTP host exists yet (issue #241's infra is still pending), so
+    /// <c>McpSettings:BaseUrl</c> carries no usable address in any environment today. The
+    /// remote snippet must not silently fall back to the API's address in that case — it has
+    /// to show an obvious placeholder instead, so a user who pastes it notices it still needs
+    /// the real address from their administrator rather than getting a wrong-but-plausible
+    /// URL. All three shapes of "not configured" must behave identically, because they all
+    /// occur in practice: the key missing entirely (an appsettings.json predating #363),
+    /// present but empty (what every deployed environment ships today), and whitespace-only
+    /// (a half-finished hand edit of the deployed file).
+    /// </summary>
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task Integrations_HttpSnippet_WithoutMcpBaseUrlConfigured_ShowsPlaceholderNotApiUrl(string? mcpBaseUrl)
+    {
+        _mcpBaseUrl = mcpBaseUrl;
+        var page = RenderPageWithKeys();
+
+        await CreateKeyNamed(page, NewKeyName);
+
+        page.WaitForAssertion(() =>
+        {
+            page.Markup.ShouldContain(Localized("Integration_SnippetHttpUrlPlaceholder"));
+            page.Markup.ShouldNotContain($"\"url\": \"{ApiBaseUrl}/mcp\"");
         });
     }
 

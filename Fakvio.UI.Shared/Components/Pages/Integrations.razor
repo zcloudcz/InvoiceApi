@@ -13,6 +13,7 @@
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 @using Fakvio.Contracts.Dto.ApiKey
 @inject ApiKeyApiService ApiKeyService
+@inject IConfiguration Configuration
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 @inject IJSRuntime JS
@@ -294,40 +295,67 @@
     }
 
     /// <summary>
+    /// Base URL of the standalone MCP HTTP host (issue #240/#241), read from
+    /// <c>McpSettings:BaseUrl</c> in <c>wwwroot/appsettings.json</c>. Deliberately NOT
+    /// <see cref="ApiKeyApiService.ApiBaseUrl"/> — the MCP host is a separate deployment
+    /// with its own address, and the two must never be confused (#363: the remote snippet
+    /// used to paste the API's address here, which does not serve <c>/mcp</c>).
+    /// Empty until that deployment exists (no production/test resource yet), in which case
+    /// the remote snippet falls back to an obvious placeholder instead of a wrong-but-
+    /// plausible-looking URL.
+    /// The value is hand-edited into a deployed JSON file, so it is normalised here rather
+    /// than at the point of use: stray whitespace or a trailing slash would otherwise end up
+    /// in the copied snippet as <c>https://host//mcp</c>. Trimming to empty falls back to the
+    /// placeholder, which is the correct outcome for a half-finished edit.
+    /// </summary>
+    private string? McpBaseUrl => Configuration["McpSettings:BaseUrl"]?.Trim().TrimEnd('/');
+
+    /// <summary>
     /// Ready-to-paste MCP client configs with the key already filled in — one for the local
     /// stdio server (Claude Code / Claude Desktop), one for the remote HTTP transport.
     /// </summary>
-    private (string Title, string Helper, string Json)[] BuildSnippets(string rawKey) =>
-    [
-        (L["Integration_SnippetStdio"].Value, L["Integration_SnippetStdioHelper"].Value,
-            $$"""
-            {
-              "mcpServers": {
-                "fakvio": {
-                  "command": "fakvio-mcp",
-                  "env": {
-                    "FAKVIO_API_URL": "{{ApiKeyService.ApiBaseUrl}}",
-                    "FAKVIO_API_TOKEN": "{{rawKey}}"
+    private (string Title, string Helper, string Json)[] BuildSnippets(string rawKey)
+    {
+        var hasMcpBaseUrl = !string.IsNullOrWhiteSpace(McpBaseUrl);
+        var remoteUrl = hasMcpBaseUrl
+            ? $"{McpBaseUrl}/mcp"
+            : L["Integration_SnippetHttpUrlPlaceholder"].Value;
+        var httpHelper = hasMcpBaseUrl
+            ? L["Integration_SnippetHttpHelper"].Value
+            : $"{L["Integration_SnippetHttpHelper"].Value} {L["Integration_SnippetHttpUrlMissingHint"].Value}";
+
+        return
+        [
+            (L["Integration_SnippetStdio"].Value, L["Integration_SnippetStdioHelper"].Value,
+                $$"""
+                {
+                  "mcpServers": {
+                    "fakvio": {
+                      "command": "fakvio-mcp",
+                      "env": {
+                        "FAKVIO_API_URL": "{{ApiKeyService.ApiBaseUrl}}",
+                        "FAKVIO_API_TOKEN": "{{rawKey}}"
+                      }
+                    }
                   }
                 }
-              }
-            }
-            """),
-        (L["Integration_SnippetHttp"].Value, L["Integration_SnippetHttpHelper"].Value,
-            $$"""
-            {
-              "mcpServers": {
-                "fakvio": {
-                  "type": "http",
-                  "url": "{{ApiKeyService.ApiBaseUrl}}/mcp",
-                  "headers": {
-                    "Authorization": "Bearer {{rawKey}}"
+                """),
+            (L["Integration_SnippetHttp"].Value, httpHelper,
+                $$"""
+                {
+                  "mcpServers": {
+                    "fakvio": {
+                      "type": "http",
+                      "url": "{{remoteUrl}}",
+                      "headers": {
+                        "Authorization": "Bearer {{rawKey}}"
+                      }
+                    }
                   }
                 }
-              }
-            }
-            """)
-    ];
+                """)
+        ];
+    }
 
     private string ScopeLabel(string scopes) =>
         scopes.Contains("write", StringComparison.OrdinalIgnoreCase)

@@ -1,6 +1,9 @@
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.Chat;
+using Fakvio.Domain.Entities;
+using Fakvio.Infrastructure.Data;
 using Fakvio.Infrastructure.Service.ChatTools;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 using Shouldly;
@@ -127,7 +130,24 @@ public class ChatToolExecutorTests
     }
 
     private static ChatToolExecutor CreateExecutor(params IChatTool[] tools)
-        => new(tools, Substitute.For<ILogger<ChatToolExecutor>>());
+        => CreateExecutor(CreateInMemoryDbContext(), tools);
+
+    private static ChatToolExecutor CreateExecutor(TenantDbContext dbContext, params IChatTool[] tools)
+        => new(tools, dbContext, Substitute.For<ILogger<ChatToolExecutor>>());
+
+    /// <summary>
+    /// Fresh in-memory TenantDbContext — same pattern as ChatServiceTests. Pass a
+    /// <paramref name="databaseName"/> to open a second, independently-tracked context on the
+    /// same in-memory store (used to verify a write actually reached the store, not just the
+    /// first context's local change-tracker cache).
+    /// </summary>
+    private static TenantDbContext CreateInMemoryDbContext(string? databaseName = null)
+    {
+        var options = new DbContextOptionsBuilder<TenantDbContext>()
+            .UseInMemoryDatabase(databaseName: databaseName ?? Guid.NewGuid().ToString())
+            .Options;
+        return new TenantDbContext(options);
+    }
 
     /// <summary>Valid parameters for the create_invoice mock — used as a baseline in type tests.</summary>
     private static Dictionary<string, string> ValidInvoiceParameters() => new()
@@ -486,6 +506,96 @@ public class ChatToolExecutorTests
         result.OutputText.ShouldContain("Tool execution failed");
     }
 
+    [Fact]
+    public async Task ExecuteToolAsync_DiscardsUncommittedChanges_AfterAFailedTool_SoTheNextToolInTheSameScopeDoesNotSaveThem()
+    {
+        // Issue #305: a tool that fails after SaveChangesAsync threw (caught internally by the
+        // tool, or bubbling up as an exception) can leave Added/Modified/Deleted entries behind
+        // in the scoped TenantDbContext's change tracker — the write never committed, but the
+        // tracker still holds them. ChatService's tool-call loop may retry with a DIFFERENT tool
+        // in the SAME scope, and that tool's own SaveChangesAsync must not flush the leftovers.
+        var dbContext = CreateInMemoryDbContext();
+
+        // Tool A "fails" but only after touching the context — exactly what a caught
+        // DbUpdateException from a failed SaveChangesAsync looks like from here: the entity
+        // stays tracked as Added, nothing was ever committed.
+        var toolA = CreateTool("tool_a", "Touches the context, then fails");
+        toolA.ExecuteAsync(Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                dbContext.VatRate.Add(new VatRate { Name = "Tool A leftover", Rate = 21m, ValidFrom = DateTime.UtcNow });
+                return Task.FromResult(ChatToolResult.Failure("simulated SaveChanges failure"));
+            });
+
+        // Tool B succeeds and calls SaveChangesAsync on the SAME scoped context — like every
+        // real write tool does, through the Application service it calls into.
+        var toolB = CreateTool("tool_b", "Adds its own entity and saves");
+        toolB.ExecuteAsync(Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>())
+            .Returns(async _ =>
+            {
+                dbContext.VatRate.Add(new VatRate { Name = "Tool B", Rate = 12m, ValidFrom = DateTime.UtcNow });
+                await dbContext.SaveChangesAsync();
+                return ChatToolResult.Success("saved");
+            });
+
+        var executor = CreateExecutor(dbContext, toolA, toolB);
+
+        var resultA = await executor.ExecuteToolAsync(new ParsedToolCall { Action = "tool_a" });
+        resultA.IsSuccess.ShouldBeFalse();
+
+        var resultB = await executor.ExecuteToolAsync(new ParsedToolCall { Action = "tool_b" });
+        resultB.IsSuccess.ShouldBeTrue();
+
+        // Only tool B's entity made it to the database — tool A's leftover was discarded
+        // from the tracker before tool B's SaveChangesAsync ran, not saved alongside it.
+        var savedRates = dbContext.VatRate.ToList();
+        savedRates.Count.ShouldBe(1);
+        savedRates.Single().Name.ShouldBe("Tool B");
+    }
+
+    [Fact]
+    public async Task ExecuteToolAsync_LeavesAlreadyPersistedUnchangedEntitiesAttached_AfterAFailedTool()
+    {
+        // Pins the actual design decision behind DiscardUncommittedChanges: a targeted detach
+        // of Added/Modified/Deleted entries, NOT ChangeTracker.Clear(). Both implementations
+        // pass the "leftover discarded" test above — Clear() also empties the tracker — so
+        // that test alone does not protect this choice. This test does: it fails if
+        // DiscardUncommittedChanges is ever changed to Clear(), because Clear() would also
+        // detach the entity below (it is Unchanged, exactly like the Conversation ChatService
+        // keeps mutating via conversation.LastMessageAt after the tool loop finishes), and a
+        // detached entity's later property change is never seen by SaveChangesAsync.
+        var dbName = Guid.NewGuid().ToString();
+        var dbContext = CreateInMemoryDbContext(dbName);
+
+        var conversationStandIn = new VatRate { Name = "Original", Rate = 21m, ValidFrom = DateTime.UtcNow };
+        dbContext.VatRate.Add(conversationStandIn);
+        await dbContext.SaveChangesAsync();
+        dbContext.Entry(conversationStandIn).State.ShouldBe(EntityState.Unchanged);
+
+        // A different tool fails after touching the context — same leftover shape as above.
+        var failingTool = CreateTool("failing_tool", "Touches the context, then fails");
+        failingTool.ExecuteAsync(Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                dbContext.VatRate.Add(new VatRate { Name = "Leftover", Rate = 12m, ValidFrom = DateTime.UtcNow });
+                return Task.FromResult(ChatToolResult.Failure("simulated SaveChanges failure"));
+            });
+
+        var executor = CreateExecutor(dbContext, failingTool);
+        var result = await executor.ExecuteToolAsync(new ParsedToolCall { Action = "failing_tool" });
+        result.IsSuccess.ShouldBeFalse();
+
+        // Simulates ChatService's post-loop update on the Conversation it still holds tracked.
+        conversationStandIn.Name = "Updated after failure";
+        await dbContext.SaveChangesAsync();
+
+        // Read from an independent context on the same in-memory store — proves the update
+        // actually reached the store, not merely dbContext's own tracked/cached instance.
+        await using var verifyContext = CreateInMemoryDbContext(dbName);
+        var persisted = await verifyContext.VatRate.SingleAsync(v => v.Name == "Updated after failure");
+        persisted.ShouldNotBeNull();
+    }
+
     // ─── Central parameter validation ─────────────────────────────────────
 
     [Fact]
@@ -549,6 +659,36 @@ public class ChatToolExecutorTests
         });
 
         result.IsSuccess.ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// Pins the "present but blank" half of the <see cref="ChatToolExecutor"/>
+    /// normalization contract: a whitespace-only optional value is not dropped from the
+    /// dictionary, it becomes an empty string. A tool that reads it via <c>TryGetValue</c>
+    /// must see the key ("blank, but supplied"), not a KeyNotFoundException-shaped gap —
+    /// filtering blank entries out instead (an easy-looking "cleanup") would silently change
+    /// that contract.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteToolAsync_NormalizesWhitespaceOnlyOptionalParameter_ToEmptyStringKeptInDictionary()
+    {
+        var tool = CreateTool("normalize_blank_test", "Tool used to prove blank optionals survive normalization",
+            new ChatToolParameter { Name = "name", Type = ChatToolParameterType.String, Description = "Name", IsRequired = true },
+            new ChatToolParameter { Name = "note", Type = ChatToolParameterType.String, Description = "Optional note" });
+        tool.ExecuteAsync(Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>())
+            .Returns(ChatToolResult.Success("ok"));
+        var executor = CreateExecutor(tool);
+
+        var result = await executor.ExecuteToolAsync(new ParsedToolCall
+        {
+            Action = "normalize_blank_test",
+            Parameters = new Dictionary<string, string> { ["name"] = "Alza", ["note"] = "   " }
+        });
+
+        result.IsSuccess.ShouldBeTrue();
+        await tool.Received(1).ExecuteAsync(
+            Arg.Is<Dictionary<string, string>>(d => d.ContainsKey("note") && d["note"] == ""),
+            Arg.Any<CancellationToken>());
     }
 
     [Theory]
@@ -615,6 +755,75 @@ public class ChatToolExecutorTests
         });
 
         result.IsSuccess.ShouldBeTrue();
+    }
+
+    // ─── Parameter normalization (issue #268) ─────────────────────────────
+    //
+    // ChatToolExecutor validates a TRIMMED value (see central validation above) — dispatching
+    // anything else afterward would mean the model's " true " passes validation as a valid
+    // Boolean, but the tool that actually runs receives the untrimmed text and a plain
+    // `== "true"` comparison inside it silently reads false. Covers every parameter type, not
+    // just Boolean — a fix scoped to bool would leave the exact same defect for every other type.
+
+    [Fact]
+    public async Task ExecuteToolAsync_DispatchesTrimmedValues_ForEveryParameterType()
+    {
+        var tool = CreateTool("normalize_test", "Tool used to prove normalization covers every type",
+            new ChatToolParameter { Name = "name", Type = ChatToolParameterType.String, Description = "Name", IsRequired = true },
+            new ChatToolParameter { Name = "flag", Type = ChatToolParameterType.Boolean, Description = "Flag" },
+            new ChatToolParameter { Name = "count", Type = ChatToolParameterType.Integer, Description = "Count" },
+            new ChatToolParameter { Name = "amount", Type = ChatToolParameterType.Number, Description = "Amount" });
+        tool.ExecuteAsync(Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>())
+            .Returns(ChatToolResult.Success("ok"));
+        var executor = CreateExecutor(tool);
+
+        var result = await executor.ExecuteToolAsync(new ParsedToolCall
+        {
+            Action = "normalize_test",
+            Parameters = new Dictionary<string, string>
+            {
+                ["name"] = "  Alza  ",
+                ["flag"] = " true ",
+                ["count"] = "\t3\t",
+                ["amount"] = " 10.50 "
+            }
+        });
+
+        result.IsSuccess.ShouldBeTrue();
+        await tool.Received(1).ExecuteAsync(
+            Arg.Is<Dictionary<string, string>>(d =>
+                d["name"] == "Alza" &&
+                d["flag"] == "true" &&
+                d["count"] == "3" &&
+                d["amount"] == "10.50"),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The sibling of the test above, for the OTHER dispatch site. An unconfirmed confirmable
+    /// tool never reaches ExecuteAsync at all (see the confirm-gate tests below) — its only
+    /// consumer of the normalized parameters is BuildPreviewAsync. Without this test, a future
+    /// change that reintroduces <c>toolCall.Parameters</c> on that one call site would leave
+    /// every other test in this file green (they only assert Received(1)/DidNotReceive(), never
+    /// the argument value) while silently resurrecting issue #268 for every tool that only ever
+    /// shows a preview before the user confirms.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteToolAsync_DispatchesTrimmedValues_ToBuildPreviewAsync()
+    {
+        var tool = CreateConfirmableTool();
+        var executor = CreateExecutor(tool);
+
+        var result = await executor.ExecuteToolAsync(new ParsedToolCall
+        {
+            Action = "update_settings",
+            Parameters = new Dictionary<string, string> { ["value"] = "  FA-2026  " }
+        });
+
+        result.IsSuccess.ShouldBeTrue();
+        await tool.Received(1).BuildPreviewAsync(
+            Arg.Is<Dictionary<string, string>>(d => d["value"] == "FA-2026"),
+            Arg.Any<CancellationToken>());
     }
 
     // ─── BuildToolInstructions Tests ──────────────────────────────────────
