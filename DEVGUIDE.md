@@ -236,7 +236,7 @@ Functions přes `SystemConfigurationFunctions.SystemConfiguration_GetCredentialH
 | MasterDbContext | Implementuje `IDataProtectionKeyContext`, `DbSet<DataProtectionKey> DataProtectionKeys` |
 | NuGet | `Microsoft.AspNetCore.DataProtection.EntityFrameworkCore` |
 
-**`SetApplicationName("Fakvio")`** je povinný — bez něj API host a Functions host mají **různé** application discriminator → generují různé klíče → navzájem nedešifrují.
+**`SetApplicationName("Fakvio")`** je povinný — bez něj by dvě instance API hostu (nebo MigrationTool a API) měly **různé** application discriminator → generují různé klíče → navzájem nedešifrují.
 
 **Symptom při chybějící persistenci**: `CredentialProtector.Decrypt()` zachytí `CryptographicException` a vrátí raw ciphertext jako "legacy plaintext" → služby (IMAP, SMTP) dostanou garbage místo hesla → `AuthenticationException: Incorrect authentication data`.
 
@@ -246,7 +246,7 @@ Functions přes `SystemConfigurationFunctions.SystemConfiguration_GetCredentialH
 
 ### 2.8 reCAPTCHA gate (issue #200)
 
-`CaptchaService` (`Fakvio.Infrastructure/Service/CaptchaService.cs`) je **jediná** ochrana před zneužitím u tří anonymních endpointů — `/api/auth/login`, `/api/auth/register` a ARES proxy `/api/auth/ares/{ico}`. Rate limiting v repu **není** (a nesmí být middleware — Functions host ho neprovede, viz §11.3).
+`CaptchaService` (`Fakvio.Infrastructure/Service/CaptchaService.cs`) je **jediná** ochrana před zneužitím u tří anonymních endpointů — `/api/auth/login`, `/api/auth/register` a ARES proxy `/api/auth/ares/{ico}`. Rate limiting v repu **není**; od migrace na App Service je `AddRateLimiter` middleware možná cesta (viz §11.3).
 
 **Fail closed.** Cokoli zabrání kladnému ověření (výjimka, HTTP chyba od Googlu, chybějící `SecretKey`) znamená **odmítnutí** požadavku. Dřív se v těchto případech vracelo `true`, takže výpadek Googlu bránu úplně vypnul.
 
@@ -278,7 +278,7 @@ Dlouhodobý, revokovatelný credential pro strojové klienty (MCP server, curl, 
 | Zobrazení | `KeyPrefix` = prvních 12 znaků | Jen pro výpis a korelaci v logu, **nikdy** jako selektor. |
 | Scopes | `EApiKeyScope { Read, Write }` | Uloženo `"read"` / `"read,write"`. `write` se normalizuje na `read,write`. Efektivní oprávnění = **role ∩ scope**. |
 | Revokace | `RevokedAt` + `RevokedByUserId` | Soft — řádek zůstává kvůli auditu. |
-| Validace vstupu | `ApiKeyService.CreateAsync` | Jméno neprázdné a ≤ 100 znaků (sloupec je `varchar(100)`), scope musí být **jménem** z `EApiKeyScope` (číselný tvar `"1"`/`"999"` je odmítnut — `Enum.TryParse` ho jinak bere), `ExpiresAt` v budoucnu. Validace patří **do service**, ne do controlleru: Functions host žádnou model validaci nemá. |
+| Validace vstupu | `ApiKeyService.CreateAsync` | Jméno neprázdné a ≤ 100 znaků (sloupec je `varchar(100)`), scope musí být **jménem** z `EApiKeyScope` (číselný tvar `"1"`/`"999"` je odmítnut — `Enum.TryParse` ho jinak bere), `ExpiresAt` v budoucnu. Validace patří **do service**, ne do controlleru — service ji vynucuje i pro volání mimo HTTP. |
 
 **Proč SHA-256 a ne BCrypt wf12 podle §2.1** (kompletní zdůvodnění je v komentáři u `ComputeHash`):
 adaptivní hash chrání *nízkoentropijní lidský vstup* před offline brute force, ale klíč je 32 B
@@ -321,8 +321,7 @@ takže **SysAdmin klíč + `X-Company-Id` impersonace funguje** (schválený def
 zafixováno testem).
 
 **Fail closed.** Neznámý / revokovaný / expirovaný klíč a klíč deaktivovaného uživatele
-nevrací principal → API host 401 (`AuthenticateResult.Fail`), Functions host nechá request
-anonymní a wrapper vrátí 401. Důvod se volajícímu **neříká**, jde jen do logu.
+nevrací principal → 401 (`AuthenticateResult.Fail`). Důvod se volajícímu **neříká**, jde jen do logu.
 
 **Scopes = `read` vs `read,write`.** Vynuceno podle HTTP metody: bezpečné metody
 (GET/HEAD/OPTIONS) projdou vždy, cokoli jiného chce `write`. Výjimky jsou v
@@ -1020,7 +1019,6 @@ fakturu" nebo „splatnost do pátku" nedá vyhodnotit:
   zůstává na `NavigateTool`. Query string se zahazuje (filtry a stránkování modelu nic neříkají).
 - Obě hodnoty jdou do promptu z requestu, takže je `ChatContextBuilder.Sanitize` zkracuje
   a zbavuje konců řádků — jinak by šitá route mohla podvrhnout vlastní sekci promptu.
-  Limity v DTO to nezachytí: Functions host request deserializuje sám, bez model validace.
 - Pravidla připravenosti se tu **neduplikují** — vlastní je `ITenantReadinessService`
   (issue #148). Warningy do promptu nejdou (model s nimi nemá co dělat) a detail chybějících
   polí zůstává v UI banneru; modelu stačí kód a stránka, kam uživatele poslat.
@@ -1945,10 +1943,10 @@ Každá pravidelná úloha **MUSÍ** existovat ve dvou kusech:
 
 | Úloha | Stateless service | BackgroundService | Interval | Lock key |
 |-------|-------------------|----|----------|----------|
-| Log flush (buffer → DB) | `LogFlushService.FlushAsync` | `LogFlushService` v Infrastructure | 10 sec | (žádný — local buffer) |
-| Log cleanup (DB smaž stare) | `LogCleanupService.CleanupAsync` | `LogCleanupService` v Infrastructure | daily 00:00 UTC | — |
-| Reminders / dunning | `IReminderService.ProcessOverdueInvoicesAsync` | `ReminderWorker` v Infrastructure | daily 06:00 UTC, per-tenant | per-tenant scope |
-| Payment matching (IMAP) | `IImapPollService.RunCycleAsync` | `ImapPollWorker` v Infrastructure | 5 min | `0x46414B56494F5059L` |
+| Log flush (buffer → DB) | `LogFlushService` (smyčka v `ExecuteAsync`) | `LogFlushService` v Infrastructure | 20 s | (žádný — local buffer) |
+| Log cleanup (maže logy starší 48 h) | `LogCleanupService` (smyčka v `ExecuteAsync`) | `LogCleanupService` v Infrastructure | každou 1 h | — |
+| Reminders / dunning | `IReminderService.ProcessOverdueInvoicesAsync` | `ReminderWorker` v Infrastructure | daily 06:00 UTC, per-tenant | `0x46414B56494F524DL` ("FAKVIORM") |
+| Payment matching (IMAP) | `IImapPollService.RunCycleAsync` | `ImapPollWorker` v Infrastructure | dle `PollIntervalMinutes` (default 30 min) | `0x46414B56494F5059L` |
 
 ### 6.4 Když přidáš novou periodickou úlohu
 
@@ -1971,7 +1969,7 @@ Bankovní notifikace mohou přicházet přes catch-all mailboxy, Postfix forward
 `Fakvio.Infrastructure/Service/InboundAliasRouter.cs` — **jediný bod pravdy** pro routing logiku.
 
 - Volán z `ImapPollService.HandleMessageAsync` (API host `ImapPollWorker`)
-- Volán z `PaymentMatchingFunctions.RunImapPoll` (Azure Functions host)
+- Volán z `ImapPollWorker` (BackgroundService v API hostu)
 - Stateless — žádný stav, DI lifetime = Singleton-equivalent (jedna instance per `ImapPollService`)
 
 #### Pořadí headerů (first-active-match-wins)
@@ -2487,7 +2485,7 @@ proč to celé existuje: `Fakvio.Infrastructure/Tailscale/README.md`.
 
 - **Plán**: `asp-fakvio-b1` (Linux, Basic B1 tier, ~13 USD/měsíc, hostuje všechny čtyři aplikace — dvě API, dvě MCP).
 - **Web apps**:
-  - `fakvio-api` (https://fakvio-api.azurewebsites.net) — produkční API host, `Fakvio.API.sln`.
+  - `fakvio-api` (https://fakvio-api.azurewebsites.net) — produkční API host (`Fakvio.API`).
   - `fakvio-api-test` (https://fakvio-api-test.azurewebsites.net) — testovací API host.
   - `fakvio-mcp-web` (https://fakvio-mcp-web.azurewebsites.net) — produkční MCP HTTP host.
   - `fakvio-mcp-web-test` (https://fakvio-mcp-web-test.azurewebsites.net) — testovací MCP HTTP host.
@@ -2508,7 +2506,7 @@ proč to celé existuje: `Fakvio.Infrastructure/Tailscale/README.md`.
 Aplikace v App Service (Linux sandbox) nemá TUN device pro tun-based VPN. Namísto toho běží `tailscaled`
 v **userspace SOCKS5 režimu** (`Fakvio.Infrastructure/Tailscale/TailscaleTunnel.cs`):
 - Binárky (tailscale, tailscaled) se stahují v workflow, balí se do publish output, běží v App Service.
-- Jsou-li: `TS_ASSUME_NETWORK_UP_FOR_TEST` env var se nebere v potaz (App Service má síť).
+- Jsou-li: `TS_ASSUME_NETWORK_UP_FOR_TEST` dostává démon z kódu (`TailscaleTunnel.DaemonEnvironment`); ruční App Setting není potřeba a na App Service neškodí.
 - `ConnectionString` míří na `127.0.0.1:15432` (lokální endpoint v Tailscale síti).
 - Propojení do tunelu: `Socks5Forwarder` na portu 15432, obě produkce a test na `TAILSCALE_TARGET_PORT=5544` (direktní PostgreSQL, žádný PgBouncer).
 
@@ -2753,7 +2751,7 @@ pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. P
    │      validace vstupu v controlleru a co nejužší DTO. NEdávej [AllowAnonymous]
    │      na tenant-scoped controller — vznikne otevřená proxy.
    │      Vzor: AuthController.FetchFromAres (GET /api/auth/ares/{ico}).
-   │      Rate-limit middleware NEpoužívej — Functions host ho neprovede;
+   │      Rate-limit middleware (`AddRateLimiter`) je od migrace na App Service možný;
    │      captcha + cache-first lookup fungují v obou hostitelích.
    │      `action` je druhý argument VerifyAsync a musí být stejný řetězec, jaký
    │      stránka předává `grecaptcha.execute()` ("login", "register", "ares").

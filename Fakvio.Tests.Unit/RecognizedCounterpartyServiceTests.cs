@@ -1,4 +1,4 @@
-﻿using Fakvio.Application.Service;
+using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.RecognizedCounterparty;
 using Fakvio.Domain.Entities;
 using Fakvio.Domain.Enums;
@@ -199,7 +199,6 @@ public class RecognizedCounterpartyServiceTests : IDisposable
         (await _sut.DeleteAsync(999)).ShouldBeFalse();
     }
 
-    // ─── Functions wrapper smoke tests (API + Functions parity) ───────────
 
     // ─── Helpers ──────────────────────────────────────────────────────────
 

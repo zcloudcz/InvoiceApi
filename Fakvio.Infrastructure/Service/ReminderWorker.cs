@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Npgsql;
 
 namespace Fakvio.Infrastructure.Service;
 
@@ -25,6 +26,10 @@ namespace Fakvio.Infrastructure.Service;
 ///   and creates per-tenant scopes. Each tenant is processed independently; one tenant's
 ///   failure does not affect others.
 ///
+/// Concurrency: a PostgreSQL advisory lock (<see cref="AdvisoryLockKey"/>) guarantees that only
+/// ONE instance runs the daily pass — two App Service instances (scale-out, or the overlap
+/// during a deploy restart) would otherwise send every reminder twice.
+///
 /// Requires "Always On" on the App Service: without it the platform recycles an idle process
 /// and the 06:00 tick is missed.
 /// </summary>
@@ -32,6 +37,9 @@ public class ReminderWorker : BackgroundService
 {
     /// <summary>Time of day (UTC) the job runs at.</summary>
     internal static readonly TimeSpan RunAtUtc = TimeSpan.FromHours(6);
+
+    /// <summary>Advisory lock key — "FAKVIORM" as ASCII. Registered in DEVGUIDE §6.3.</summary>
+    private const long AdvisoryLockKey = 0x46414B56494F524DL;
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<ReminderWorker> _logger;
@@ -66,16 +74,32 @@ public class ReminderWorker : BackgroundService
         {
             try
             {
-                await Task.Delay(DelayUntil(DateTime.UtcNow, RunAtUtc), stoppingToken);
-                await RunOnceAsync(stoppingToken);
+                // Task.Delay may wake a few milliseconds early; sleeping again until the slot has
+                // really passed prevents a second run being scheduled for today's 06:00.
+                var target = DateTime.UtcNow + DelayUntil(DateTime.UtcNow, RunAtUtc);
+                for (var remaining = target - DateTime.UtcNow; remaining > TimeSpan.Zero; remaining = target - DateTime.UtcNow)
+                {
+                    await Task.Delay(remaining, stoppingToken);
+                }
+
+                // Hosted services start together with the tunnel bring-up; a pass that starts
+                // before the forwarder is bound would fail on every tenant and not retry until
+                // tomorrow.
+                while (!StartupState.DatabaseReady)
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(500), stoppingToken);
+                }
+
+                await RunLockedAsync(stoppingToken);
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
                 break;
             }
             catch (Exception ex)
             {
-                // A failure reading the tenant list must not kill the loop — tomorrow's run may succeed.
+                // A failure reading the tenant list (including a command timeout surfacing as
+                // OperationCanceledException) must not kill the loop — tomorrow's run may succeed.
                 _logger.LogError(ex, "ReminderWorker cycle failed");
             }
         }
@@ -83,9 +107,24 @@ public class ReminderWorker : BackgroundService
         _logger.LogInformation("ReminderWorker stopped");
     }
 
+    /// <summary>Takes the cross-instance advisory lock, then runs one pass.</summary>
+    private async Task RunLockedAsync(CancellationToken ct)
+    {
+        using var lockScope = _scopeFactory.CreateScope();
+        var dataSource = lockScope.ServiceProvider.GetRequiredService<NpgsqlDataSource>();
+        await using var lockHandle = await AdvisoryLock.TryAcquireAsync(dataSource, AdvisoryLockKey, ct);
+        if (lockHandle is null)
+        {
+            _logger.LogInformation("ProcessReminders: another instance holds the lock, skipping this run");
+            return;
+        }
+
+        await RunOnceAsync(ct);
+    }
+
     /// <summary>
     /// One pass over every active, provisioned tenant. Internal so the unit test can drive a
-    /// cycle without waiting for 06:00.
+    /// cycle without waiting for 06:00 and without a PostgreSQL lock.
     /// </summary>
     internal async Task RunOnceAsync(CancellationToken ct)
     {

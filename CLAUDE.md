@@ -55,13 +55,13 @@ Každá pravidelná úloha (poll, dunning, log flush, log cleanup, …) má dvou
 
 Pro vzájemné vyloučení napříč instancemi (App Service replicas) použij **PostgreSQL advisory lock** (`AdvisoryLock.TryAcquireAsync`). Žádný Blob lease, žádný Redis — databáze už je k dispozici a lock je session-bound (crash-safe).
 
-App Service má **Always On** povoleno — bez něj by idle recycle ukončil BackgroundService. V `appsettings.json` kontroluj `HostOptions:ShutdownTimeout` aby pracovníci měli dost času na graceful shutdown.
+App Service má **Always On** povoleno — bez něj by idle recycle ukončil BackgroundService.
 
 ### Existující pracovníci
-- `LogFlushService` (BackgroundService) — vykládá buffered logy do DB každých 10 sekund.
-- `LogCleanupService` (BackgroundService) — maže staré logy z DB denně v 00:00 UTC.
-- `ImapPollWorker` (BackgroundService) — čte emaily IMAP každých 5 minut.
-- `ReminderWorker` (BackgroundService) — zpracovává dunning faktury denně v 06:00 UTC, per-tenant scope, jedna selhání ostatní nezastaví.
+- `LogFlushService` (BackgroundService) — vykládá buffered logy do DB každých 20 sekund.
+- `LogCleanupService` (BackgroundService) — každou hodinu maže Debug/Info logy starší 48 h.
+- `ImapPollWorker` (BackgroundService) — čte emaily IMAP v intervalu `PollIntervalMinutes` (default 30 min); advisory lock.
+- `ReminderWorker` (BackgroundService) — dunning denně v 06:00 UTC, per-tenant scope, jedno selhání ostatní nezastaví; advisory lock.
 
 ## Dokumentace — povinná údržba
 

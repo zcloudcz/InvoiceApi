@@ -1,4 +1,4 @@
-﻿// ============================================================================
+// ============================================================================
 // IssueFinalInvoiceEdgeCaseTests — coverage for PR #76 (issue #30).
 //
 // These tests exercise the gaps not covered by the existing IssueFinalInvoiceTests
@@ -308,5 +308,51 @@ public class IssueFinalInvoiceEdgeCaseTests : IDisposable
         // TotalWithVat of the deduction equals the requested amount (negative)
         Math.Round(Math.Abs(fallbackRow.TotalWithVat), 2).ShouldBe(500m,
             "fallback row must deduct the full requested 500 CZK");
+    }
+}
+
+// ============================================================================
+// Controller mapping — IssueFinalInvoice
+// ============================================================================
+
+/// <summary>
+/// Pins the exception → HTTP status mapping in <see cref="InvoiceController.IssueFinalInvoice"/>.
+/// Mapping lives in the controller, not in GlobalExceptionMiddleware (DEVGUIDE §4.12), so it
+/// needs its own test now that the Functions wrapper tests that used to cover it are gone.
+/// </summary>
+public class InvoiceControllerIssueFinalInvoiceTests
+{
+    private readonly IInvoiceService _invoiceService = Substitute.For<IInvoiceService>();
+
+    private InvoiceController BuildController() => new(
+        _invoiceService,
+        Substitute.For<IPdfExportService>(),
+        Substitute.For<IIsdocExportService>(),
+        Substitute.For<IEmailService>(),
+        Substitute.For<IQrPaymentService>(),
+        Substitute.For<ICloudStorageOrchestrator>(),
+        Substitute.For<IPaymentMatchingService>(),
+        Substitute.For<ILogger<InvoiceController>>());
+
+    [Fact]
+    public async Task IssueFinalInvoice_ServiceThrowsKeyNotFound_Returns404()
+    {
+        _invoiceService.IssueFinalInvoiceAsync(99, Arg.Any<IssueFinalInvoiceDto>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new KeyNotFoundException("Proforma 99 not found"));
+
+        var result = await BuildController().IssueFinalInvoice(99, new IssueFinalInvoiceDto());
+
+        result.Result.ShouldBeOfType<NotFoundObjectResult>();
+    }
+
+    [Fact]
+    public async Task IssueFinalInvoice_ServiceThrowsInvalidOperation_Returns400()
+    {
+        _invoiceService.IssueFinalInvoiceAsync(42, Arg.Any<IssueFinalInvoiceDto>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("Proforma is not paid"));
+
+        var result = await BuildController().IssueFinalInvoice(42, new IssueFinalInvoiceDto());
+
+        result.Result.ShouldBeOfType<BadRequestObjectResult>();
     }
 }

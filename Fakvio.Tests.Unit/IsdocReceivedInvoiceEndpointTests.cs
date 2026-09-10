@@ -1,4 +1,4 @@
-﻿using System.IO.Compression;
+using System.IO.Compression;
 using Fakvio.API.Controller;
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.ReceivedInvoice;

@@ -446,11 +446,11 @@ Grid s logy: Timestamp, Level (chip), Source (zkrácená kategorie loggeru), Zpr
 
 ### Retence logů
 
-Logy starší než 30 dní jsou automaticky mazány (`LogCleanupService` BackgroundService, běží denně v 00:00 UTC). Výchozí hodnota je hardcoded — pokud je třeba změnit, kontaktujte vývojový tým.
+Logy úrovně Debug/Info starší než 48 hodin jsou automaticky mazány (`LogCleanupService` BackgroundService, běží každou hodinu). Výchozí hodnota je hardcoded — pokud je třeba změnit, kontaktujte vývojový tým.
 
 ### Flush
 
-Logy jsou buffered in-memory a periodicky flushované do DB (`LogFlushService` BackgroundService, běží každých 10 sekund). Při neočekávaném crashu může přijít o poslední buffer. Přímý zápis do DB per request je záměrně vypnutý (výkon).
+Logy jsou buffered in-memory a periodicky flushované do DB (`LogFlushService` BackgroundService, běží každých 20 sekund). Při neočekávaném crashu může přijít o poslední buffer. Přímý zápis do DB per request je záměrně vypnutý (výkon).
 
 ---
 

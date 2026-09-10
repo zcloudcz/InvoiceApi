@@ -1,4 +1,4 @@
-﻿// ============================================================================
+// ============================================================================
 // IsdocEndpointAdditionalTests — Additional coverage for PR #18 (issue #14).
 //
 // These tests fill the gaps left after the initial IsdocEndpointTests pass:

@@ -61,16 +61,6 @@ Aplikace hledá Azure Blob connection string ve 3 úrovních. První nalezený s
 }
 ```
 
-### Pro Azure Functions (Fakvio.Functions/local.settings.json)
-
-```json
-{
-  "Values": {
-    "AzureBlobStorage__ConnectionString": "DefaultEndpointsProtocol=https;AccountName=fakvioblobstorage;AccountKey=xxxxx==;EndpointSuffix=core.windows.net"
-  }
-}
-```
-
 ### Pro produkční Azure App Service
 
 V Azure Portalu → **App Service** → **Configuration** → **Application settings** → **+ New application setting**:
