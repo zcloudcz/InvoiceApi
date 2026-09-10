@@ -2608,9 +2608,13 @@ proč to celé existuje: `Fakvio.Functions/Tailscale/README.md`.
   **Když přidáváš nový host nebo nový startup krok, který otevírá databázi, musíš
   `StartupState.MarkDatabaseReady()` zavolat z `finally`** — na úspěchu i selhání. Zavřená
   brána po selhání by z diagnostikovatelné chyby udělala tichý blackout.
-- **Produkce i test míří přes PgBouncer** (`TAILSCALE_TARGET_PORT=6432`), který **musí**
-  běžet v session režimu — transaction pooling tiše rozbije EF migrační zámek,
-  `AdvisoryLock` i `search_path`. Rozbor a konfigurace: `SELFHOST-DB.md` §6.4b.
+- **PgBouncer v transaction režimu tuhle aplikaci rozbije.** Produkce na něm 2026-09-10
+  strávila půl dne s nepoužitelnou tenant částí: `GetForSchema()` posílá `search_path`
+  jako **startup parametr**, pooler spojení odmítne (`unsupported startup parameter`),
+  `MigrateTenantAsync` padne a `TenantContextMiddleware` vrátí 503 — UI to spolkne a
+  vykreslí prázdno. Produkce proto pooler obchází (`TAILSCALE_TARGET_PORT=5544`), test
+  je pořád na `6432`. Než na pooler někdo aplikaci vrátí, ať si přečte `SELFHOST-DB.md`
+  §6.4b — hlavně tu část, proč `ignore_startup_parameters` poškodí data.
 
 ### 9.5 Autentizace k databázi (`Database:AuthMode`) + health endpoint
 
