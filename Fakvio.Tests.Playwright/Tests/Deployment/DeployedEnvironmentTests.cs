@@ -10,10 +10,10 @@ namespace Fakvio.Tests.Playwright.Tests.Deployment;
 ///
 /// WHY a separate fixture: every other test here exercises application behaviour that a local
 /// `dotnet run` reproduces. These five cannot be reproduced locally at all — they check the wiring
-/// that only exists once the bundle is published to Azure Static Web Apps and talks to a Function
-/// App: which API URL got baked into the bundle, whether the static host answers deep links,
-/// whether the browser's CORS preflight survives, whether the database is reachable through the
-/// Tailscale tunnel, and whether the environment is visually distinguishable from production.
+/// that only exists once the bundle is published to Azure Static Web Apps and talks to the App
+/// Service: which API URL got baked into the bundle, whether the static host answers deep links,
+/// whether the browser's CORS preflight survives, whether the database is reachable from the
+/// deployed host, and whether the environment is visually distinguishable from production.
 /// Each of these has already broken once (see the deployment history in ADMINGUIDE §14).
 ///
 /// Skipped unless FAKVIO_UI_URL points at an https host, so `dotnet test` on a developer machine
@@ -103,8 +103,8 @@ public class DeployedEnvironmentTests : FakvioPageTest
     }
 
     /// <summary>
-    /// Proves the API can actually reach its database from the deployed host — on the test
-    /// environment that means through the Tailscale tunnel. The health endpoint is SysAdmin-only,
+    /// Proves the API can actually reach its database from the deployed host (public
+    /// PostgreSQL endpoint, IP-allowlisted). The health endpoint is SysAdmin-only,
     /// so this also confirms a real token issued against a real user table.
     /// </summary>
     [Test]

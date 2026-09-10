@@ -6,7 +6,6 @@ using Fakvio.Infrastructure.Data;
 using Fakvio.Infrastructure.DependencyInjection;
 using Fakvio.Infrastructure.Logging;
 using Fakvio.Infrastructure.Service;
-using Fakvio.Infrastructure.Tailscale;
 using Microsoft.ApplicationInsights.Extensibility;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi;
@@ -136,100 +135,37 @@ var app = builder.Build();
 // /api/diagnostic/health to ask instead. See LogDatabaseAuthMode + SELFHOST-DB.md §3.4.
 app.Services.LogDatabaseAuthMode();
 
-// ── Tailscale tunnel + startup migration (background) ───────────────────────
-// The database sits behind Tailscale and its port is not on the public internet, so the
-// connection string points at a loopback port that only exists once the tunnel is up.
+// ── Startup migration (master DB) ───────────────────────────────────────────
+// Applied synchronously before the first request. Tenant schemas are migrated LAZILY by
+// ITenantDbContextFactory.EnsureMigratedAsync on their first request (cached per process).
 //
-// WHY a background task and not an IHostedService: hosted services do not start until RunAsync()
-// below, and the migration — the very first socket the app opens — has to wait for the tunnel.
-// WHY not awaited before RunAsync(): a tunnel bring-up can legitimately take 100 s (three login
-// attempts) and App Service's startup probe would give up on a process that binds its port that
-// late. So the tunnel and the migration run as one background task, Kestrel starts immediately,
-// and requests that arrive before the database is reachable get 503 + Retry-After from
-// StartupGateMiddleware instead of a connection timeout.
-// It has to be after Build(), because that is where the real ILogger and
-// IHostApplicationLifetime come from.
-//
-// Without TAILSCALE_AUTHKEY there is nothing to wait for, so local development and the test
-// hosts (which reach their database directly) migrate synchronously before the first request,
-// exactly as before.
-//
-// Tenant migrations are handled LAZILY by ITenantDbContextFactory.EnsureMigratedAsync — each
-// tenant schema is migrated on first request (cached per process lifetime).
-var tunnelLogger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Fakvio.API.Tailscale");
-var tunnelLifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
-var tailscaleAuthKey = Environment.GetEnvironmentVariable(TailscaleTunnel.AuthKeyEnv);
-
-async Task BringUpDatabaseAsync()
+// A failure is logged and recorded (StartupState → /api/diagnostic/health) instead of
+// crashing the host: a crash-looping App Service container answers 503 with no clue why,
+// while a running host still serves the health endpoint and App Insights gets the error.
+using (var scope = app.Services.CreateScope())
 {
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
     try
     {
-        try
-        {
-            // ApplicationStopping shortens the tunnel's own startup budget: a shutdown requested
-            // while the node is still logging in must not wait out the full budget before the
-            // host can exit.
-            await TailscaleTunnel.StartIfConfiguredAsync(
-                tailscaleAuthKey,
-                tunnelLifetime,
-                tunnelLogger,
-                tunnelLifetime.ApplicationStopping);
-        }
-        catch (Exception ex)
-        {
-            // Do not crash the host: the health endpoint should still answer so the failure is
-            // diagnosable. The migration below will fail too and say the same thing.
-            tunnelLogger.LogError(ex, "Startup: Tailscale tunnel failed — database unreachable until resolved");
-        }
+        var masterDb = scope.ServiceProvider.GetRequiredService<MasterDbContext>();
 
-        try
+        // Skip for non-relational providers. Integration tests swap PostgreSQL for the EF Core
+        // InMemory provider, which has no migration history and throws on MigrateAsync().
+        // The check is on the provider itself rather than on an environment name, so any test
+        // host works regardless of which ASPNETCORE_ENVIRONMENT it needs to simulate.
+        if (masterDb.Database.IsRelational())
         {
-            using var scope = app.Services.CreateScope();
-            var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-            var masterDb = scope.ServiceProvider.GetRequiredService<MasterDbContext>();
-
-            // Skip for non-relational providers. Integration tests swap PostgreSQL for the EF Core
-            // InMemory provider, which has no migration history and throws on MigrateAsync().
-            // The check is on the provider itself rather than on an environment name, so any test
-            // host works regardless of which ASPNETCORE_ENVIRONMENT it needs to simulate.
-            if (masterDb.Database.IsRelational())
-            {
-                logger.LogInformation("Startup: applying master database migrations...");
-                await masterDb.Database.MigrateAsync();
-                logger.LogInformation("Startup: master database migrated successfully");
-                // Recorded so /api/diagnostic/health can report it.
-                StartupState.MarkMigration(succeeded: true);
-            }
-        }
-        catch (Exception ex)
-        {
-            // Log but don't crash — background workers and the health endpoint should still work
-            // even if the database isn't ready yet.
-            tunnelLogger.LogError(ex, "Startup: database migration failed — API calls will return errors until resolved");
-            StartupState.MarkMigration(succeeded: false, error: ex.GetBaseException().Message);
+            logger.LogInformation("Startup: applying master database migrations...");
+            await masterDb.Database.MigrateAsync();
+            logger.LogInformation("Startup: master database migrated successfully");
+            StartupState.MarkMigration(succeeded: true);
         }
     }
-    finally
+    catch (Exception ex)
     {
-        // Open the startup gate only once BOTH the tunnel and the migration are over: a request
-        // let through after the tunnel but before MigrateAsync() would run against a schema that
-        // is still missing this release's columns. Opened even when either step FAILED, because
-        // a gate that stays closed would replace a diagnosable error with a silent blackout.
-        // See StartupState.
-        StartupState.MarkDatabaseReady();
+        logger.LogError(ex, "Startup: database migration failed — API calls will return errors until resolved");
+        StartupState.MarkMigration(succeeded: false, error: ex.GetBaseException().Message);
     }
-}
-
-if (string.IsNullOrWhiteSpace(tailscaleAuthKey))
-{
-    // No tunnel to wait for (local dev, integration tests): migrate synchronously before the
-    // first request, exactly as this host always did. Avoids the race where the test client's
-    // first request lands before the background task has even been scheduled.
-    await BringUpDatabaseAsync();
-}
-else
-{
-    _ = Task.Run(BringUpDatabaseAsync);
 }
 
 // ── HTTP pipeline ───────────────────────────────────────────────────────────
@@ -259,12 +195,6 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseCors();
-
-// Startup gate — must run BEFORE the auth and tenant middleware: every one of those touches
-// the master database, so gating after them would still hit the connection that is not ready
-// yet. Until the tunnel's forwarder has bound its loopback port, API requests get 503 +
-// Retry-After instead of a 15 s timeout and a 500. After CORS so the 503 carries CORS headers.
-app.UseStartupGate();
 
 // HTTPS redirect breaks CORS in development — the browser follows the redirect
 // to https://localhost:7047 which is a different origin than http://localhost:5237,

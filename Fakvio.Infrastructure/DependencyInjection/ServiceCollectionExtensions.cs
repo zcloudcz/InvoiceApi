@@ -577,10 +577,9 @@ public static class ServiceCollectionExtensions
         });
 
         // ConnectionError is logged by EF Core at Error level for EVERY failed attempt —
-        // including the ones EnableRetryOnFailure above is about to swallow. On the Functions
-        // host that turned a sub-second startup race (the Tailscale forwarder had not bound
-        // its loopback port yet) into a stream of "An error occurred using the connection to
-        // database … on server 'tcp://127.0.0.1:15432'" errors that looked like an outage.
+        // including the ones EnableRetryOnFailure above is about to swallow. That turned every
+        // transient hiccup into a stream of "An error occurred using the connection to
+        // database …" errors that looked like an outage.
         //
         // Warning, not Ignore: a genuinely unreachable database still shows up here, and when
         // the retries are exhausted the exception surfaces to the caller and is logged as an

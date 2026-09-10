@@ -16,12 +16,6 @@ permissions:
 
 env:
   DOTNET_VERSION: '10.0.x' # must match the TargetFramework (net10.0) in Fakvio.API.csproj
-  # Tailscale userspace tunnel shipped inside the package — see
-  # Fakvio.Infrastructure/Tailscale/README.md. Version and checksum are pinned because the
-  # tarball is fetched at deploy time; bumping means replacing both lines together (hash from
-  # https://pkgs.tailscale.com/stable/tailscale_<version>_amd64.tgz.sha256).
-  TAILSCALE_VERSION: '1.102.3'
-  TAILSCALE_SHA256: '36ddd9b51be57ffc2990cf76323cfa13643bfbb1b8a969f6183fa164741cdef5'
 
 jobs:
   build-and-deploy:
@@ -43,19 +37,6 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
-
-      - name: Download Tailscale binaries
-        shell: bash
-        run: |
-          set -euo pipefail
-          TARBALL="tailscale_${TAILSCALE_VERSION}_amd64.tgz"
-          curl -fsSL -o "$TARBALL" "https://pkgs.tailscale.com/stable/${TARBALL}"
-          echo "${TAILSCALE_SHA256}  ${TARBALL}" | sha256sum -c -
-          mkdir -p Fakvio.API/tsbin
-          tar -xzf "$TARBALL" --strip-components=1 -C Fakvio.API/tsbin \
-            "tailscale_${TAILSCALE_VERSION}_amd64/tailscale" \
-            "tailscale_${TAILSCALE_VERSION}_amd64/tailscaled"
-          ls -l Fakvio.API/tsbin
 
       - name: Build and publish Fakvio.API
         shell: bash

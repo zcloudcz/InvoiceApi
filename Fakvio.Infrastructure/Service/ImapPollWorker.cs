@@ -31,13 +31,6 @@ public class ImapPollWorker : BackgroundService
     {
         _logger.LogInformation("ImapPollWorker started");
 
-        // Hosted services start together with the Tailscale bring-up in Program.cs; a first
-        // cycle that runs before the forwarder is bound fails and then sleeps 30 minutes.
-        while (!StartupState.DatabaseReady && !stoppingToken.IsCancellationRequested)
-        {
-            await Task.Delay(TimeSpan.FromMilliseconds(500), stoppingToken);
-        }
-
         while (!stoppingToken.IsCancellationRequested)
         {
             int intervalMinutes = 30; // safe default if the cycle throws before reading settings
