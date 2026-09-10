@@ -30,7 +30,7 @@ Pokud máš pochybnost, **zde má pravdu DEVGUIDE.md**, ne komentáře v kódu (
 | `Fakvio.UI.Shared` | Razor Class Library (RCL) | **Všechny** Blazor stránky, komponenty, services, modely, resources. Sdílí WASM host i MAUI host. |
 | `Fakvio.BlazorUI` | Blazor WebAssembly | Tenký WASM host. Pouze `Program.cs`, `index.html`, PWA assets. |
 | `Fakvio.MauiApp` | MAUI Blazor Hybrid | Native shell pro Android/iOS/macOS/Windows. Sdílí komponenty přes `UI.Shared`. |
-| `Fakvio.McpServer` | Console (.NET tool) | MCP server pro AI klienty. Stdio transport, ModelContextProtocol 2.2.0. |
+| `Fakvio.McpServer` | Console (.NET tool) | MCP server pro AI klienty. Dva režimy — stdio (výchozí) a Streamable HTTP, ModelContextProtocol 2.2.0. |
 | `Fakvio.MigrationTool` | Console | DB migrace, seed master schema, provisioning helper. |
 | `Fakvio.AresService` | Class lib | Klient pro ARES (CZ obchodní rejstřík) — autonomní, bez EF. |
 | `Fakvio.Tests.Unit` | xUnit | Unit testy (3393 k 2026-08-26). Stack: xUnit + **NSubstitute** + **Shouldly** + EF InMemory. |
@@ -276,6 +276,7 @@ Dlouhodobý, revokovatelný credential pro strojové klienty (MCP server, curl, 
 | Entita | `Fakvio.Domain/Entities/ApiKey.cs` | **Master schema** (migrace `AddApiKey_v147`), FK → `User`, cascade. |
 | Service | `Fakvio.Infrastructure/Service/ApiKeyService.cs` | Generování, hash, scopes, revokace. |
 | Endpointy | `Fakvio.API/Controller/ApiKeyController.cs` + `Fakvio.Functions/HttpFunctions/ApiKeyFunctions.cs` | `GET /api/api-key`, `POST /api/api-key`, `POST /api/api-key/{id}/revoke`, `GET /api/api-key/me`. Vždy jen **vlastní** klíče. |
+| UI | `Fakvio.UI.Shared/Components/Pages/Integrations.razor` (`/settings/integrations`, #237) | Vlastní klíče libovolného přihlášeného uživatele: výpis, založení, revokace. Raw klíč se ukazuje v one-time panelu spolu s hotovými `mcpServers` bloky pro oba MCP režimy; zavření panelu ho zahodí z paměti. |
 | Formát klíče | `fak_live_` + 43 znaků Base64Url | 32 B z `RandomNumberGenerator`. Prefix `fak_` je nosný — podle něj vybírá auth scheme selector (JWT vždy začíná `eyJ`) a poznají ho secret scannery. |
 | Hash | `ApiKeyService.ComputeHash` | `Convert.ToBase64String(SHA256.HashData(...))`, sloupec `KeyHash` s **unique indexem**. |
 | Zobrazení | `KeyPrefix` = prvních 12 znaků | Jen pro výpis a korelaci v logu, **nikdy** jako selektor. |
@@ -848,6 +849,10 @@ Pravidla:
    (povinnost, povolené hodnoty, typ) a chybu vrací modelu, který si volání opraví.
    Do toolu patří jen pravidla, která schéma nevyjádří (např. „aspoň jeden z `id` /
    `document_number`" v `GetReceivedInvoiceTool`).
+   Ze stejného důvodu tool nepotřebuje **ani vlastní `.Trim()`** na hodnotách — `ExecuteToolAsync`
+   normalizuje (trimne) každou hodnotu ještě před validací i dispatchem, takže `ExecuteAsync`
+   i `BuildPreviewAsync` u `IConfirmableChatTool` dostanou vždy stejný, už oříznutý řetězec
+   (issue #268; dřív se validovala trimnutá hodnota, ale toolu se poslala netrimnutá).
 3. **Rozbité schéma spadne hlasitě.** Chybějící `Parameters` = chyba buildu (interface),
    duplicitní/prázdný název parametru, chybějící popis nebo `AllowedValues` na ne-stringu
    = `InvalidOperationException` při startu v konstruktoru `ChatToolExecutor`.
@@ -942,6 +947,31 @@ ho vynutí i autoritativní mutace: `complete_invoice` a `mark_invoice_paid` ten
 servis tam vynucuje **tentýž** predikát a selže bezpečně. Kopíruješ-li tenhle vzor na jiný
 destruktivní tool, buď zúžení protlač až do servisu, nebo v dokumentaci toolu napiš, že jde
 o best-effort.
+
+#### Neúspěšný zápis nesmí zaneřádit DbContext pro další tool ve stejné smyčce (issue #305)
+
+`ChatService`'s multi-step tool loop (viz "Multi-step tool call loop" výše) volá po neúspěšném
+toolu **další** tool ve stejném HTTP requestu, tedy v **témže scoped `TenantDbContext`**. Tool,
+jehož `SaveChangesAsync` spadne (FK `Restrict`, unique constraint, cokoli), nechá ve
+change trackeru entity ve stavu `Added`/`Modified`/`Deleted`, které se nikdy neuložily — commit
+se nekonal, ale tracker si je pamatuje dál. Bez úklidu by je **cizí** tool v druhé iteraci smyčky
+zapsal svým vlastním `SaveChangesAsync`, spolu se svou vlastní (validní) změnou.
+
+Řešení je centrální, ne záplata v jednotlivých toolech: `ChatToolExecutor.ExecuteToolAsync`
+po každém volání, které skončí `IsSuccess == false` (ať už tool vrátil `Failure`, nebo z něj
+vylétla výjimka), zavolá `DiscardUncommittedChanges()` — odpojí (`EntityState.Detached`) každý
+záznam v trackeru, který **není** `Unchanged`.
+
+**Proč ne `ChangeTracker.Clear()`.** `Clear()` by odpojil i entity, které jsou **už uložené**
+a `Unchanged` — typicky aktuální `Conversation`, kterou `ChatService` po skončení smyčky ještě
+mění (`conversation.LastMessageAt = DateTime.UtcNow`) a ukládá. Odpojená `Conversation` by tuhle
+změnu tiše ztratila — `SaveChangesAsync` by ji přeskočil, protože by o ní tracker nic nevěděl.
+Cílené odpojení jen ne-`Unchanged` záznamů tenhle vedlejší efekt nemá.
+
+`ChatToolExecutor` proto injectuje `TenantDbContext` — stejnou scoped instanci, jakou pod
+kapotou používají služby volané z toolů (`IClientService`, `IInvoiceService`, …), a stejnou,
+jakou má injectovanou i `ChatService`. Úklid se tak dotkne přesně těch změn, které v tomtéž
+requestu způsobil neúspěšný tool.
 
 #### System prompt — složení a editovatelnost (issue #146)
 
@@ -1046,7 +1076,7 @@ Sloupec „Klíčové parametry" je jen orientační — závazné je schéma v 
 | `export_invoice` | `ExportInvoiceTool` | Invoice (vydaná) | Read → Download | `document_number`, `client_name`, `format` (`pdf` \| `isdoc`) |
 | `list_clients` | `ListClientsTool` | Client | Read (paged list) | `search`, `is_vat_payer`, `is_issuer` (= MCP `GetIssuer`), `include_inactive`, `page`, `page_size` |
 | `get_client` | `GetClientTool` | Client | Read (detail) | `id` / `registration_number` / `name`; vrátí adresy, kontakty, bankovní účty, fakturační nastavení |
-| `update_client` | `UpdateClientTool` | Client | **Write** (za `confirm`) | identita + `company_name`, `trading_name`, `tax_number`, `is_vat_payer`, `is_active`, `refresh_from_ares` |
+| `update_client` | `UpdateClientTool` | Client | **Write** (za `confirm`) | identita + `company_name`, `trading_name`, `tax_number`, `is_vat_payer`, `is_active`, `language` (`cs`/`en`), `refresh_from_ares` |
 | `delete_client` | `DeleteClientTool` | Client | **Destructive** (za `confirm`) | `id` / `registration_number` / `name`; soft delete (`IsActive = false`) |
 | `navigate` | `NavigateTool` | — | Navigation | `target` (uzavřený výčet **všech tenant-facing stránek**, viz níže), `client_name` |
 | `get_received_invoice` | `GetReceivedInvoiceTool` | ReceivedInvoice | Read (detail) | `id` nebo `document_number`; vrátí položky, DPH, celkové částky, cross-check |
@@ -1106,26 +1136,25 @@ splatnosti, což by pohledávky nafouklo. `InvoiceFilterDto` umí jen jeden stat
 takže „Completed NEBO PartiallyPaid" se musí zeptat dvěma voláními (parametr `status`
 to umožňuje).
 
-##### Datumové parametry reporting toolů — jeden parser, tři formáty (#271)
+##### Datumové parametry chat toolů — jeden parser, tři formáty (#271, #301)
 
-`ChatToolDates` (Infrastructure/Service/ChatTools) je parser datumových parametrů toolů
-**`list_invoices` a `get_vat_report`**. Přijímá **`yyyy-MM-dd`, `d.M.yyyy`, `d/M/yyyy`** přes
-`TryParseExact` s `InvariantCulture` — kultura vlákna tedy výsledek neovlivní (pod `th-TH` by
-`TryParse` vrátil buddhistický rok). České tvary berou i jednociferný den a měsíc
-(„15.3.2026" i „15.03.2026"), protože specifikátor `d`/`M` při parsování matchuje jednu nebo
-dvě číslice; ISO tvar zůstává striktně nulou doplněný, protože právě ten schéma toolu modelu
-předepisuje. Výsledek je vždy `DateTimeKind.Utc` — Npgsql jiný Kind proti
-`timestamp with time zone` odmítne. Nečitelná hodnota je **v těchto dvou toolech** vždy
-`ChatToolResult.Failure`, nikdy tichý „žádný filtr" (jinak by se „za březen" rozšířilo na
-celou historii).
-
-**Zbylé chat tooly zatím parsují datum samy** a `ChatToolDates` neznají:
-`ListReceivedInvoicesTool.cs:256` a `ImportInvoiceTool.cs:470` mají vlastní seznam formátů —
-jen nulou doplněné `dd.MM.yyyy` / `dd/MM/yyyy`, takže „15.3.2026" v nich neprojde — a
-nečitelnou hodnotu vracejí jako `null`, což u `list_received_invoices` znamená tiše zahozený
-filtr. Sjednocení na `ChatToolDates` řeší #301 (u `list_received_invoices` je `null` →
-`Failure` změna chování, ne refactor); do té doby nepředpokládej, že datum chodí přes jedno
-místo.
+`ChatToolDates` (Infrastructure/Service/ChatTools) je **jediný** parser datumových parametrů
+chat toolů — od #301 i pro `list_received_invoices` a `import_invoice`, ne jen pro
+`list_invoices` a `get_vat_report`. Žádný chat tool si smí vytvořit vlastní
+`DateTime.TryParseExact` kopii; pokud jde nová varianta přibýt, rozšiř `ChatToolDates`, nepiš
+druhý parser vedle. Přijímá **`yyyy-MM-dd`, `d.M.yyyy`, `d/M/yyyy`** přes `TryParseExact`
+s `InvariantCulture` — kultura vlákna tedy výsledek neovlivní (pod `th-TH` by `TryParse`
+vrátil buddhistický rok). České tvary berou i jednociferný den a měsíc („15.3.2026"
+i „15.03.2026"), protože specifikátor `d`/`M` při parsování matchuje jednu nebo dvě číslice;
+ISO tvar zůstává striktně nulou doplněný, protože právě ten schéma toolu modelu předepisuje.
+Výsledek je vždy `DateTimeKind.Utc` — Npgsql jiný Kind proti `timestamp with time zone`
+odmítne. Nečitelná (ale přítomná) hodnota je vždy `ChatToolResult.Failure`, nikdy tichý „žádný
+filtr" (jinak by se „za březen" rozšířilo na celou historii) — to platí i pro
+`ListReceivedInvoicesTool.IssueDateFrom/To` (dřív `null` = tichý filtr) a pro
+`ImportInvoiceTool.issue_date/due_date/taxable_supply_date` (dřív `null` = faktura se založila
+s výchozím datem místo nadiktovaného). `ImportInvoiceTool` už formát `yyyy-MM-ddTHH:mm:ss`
+neakceptuje — schéma toolu modelu vždy předepisovalo jen `YYYY-MM-DD`, takže to byla mrtvá
+váha, ne reálně používaná varianta.
 
 ##### Nastavení firmy a bankovní účty (#220)
 
@@ -1175,11 +1204,11 @@ Co má náhled říct, aby uživatel schvaloval konkrétní věc a ne slovo:
 | `delete_received_invoice` | popis faktury, která zmizí |
 
 Náhled u `create` je záměrně bez DPH: součet nadiktovaných položek je přesný, kdežto částka
-s DPH je smysluplná teprve po #283 — dokud chybějící výchozí sazba tiše znamená 0 %, ukázal by
-špatně nastavenému tenantovi částku s DPH shodnou s částkou bez DPH. (Není to otázka
-zaokrouhlení — `ReceivedInvoiceService` v create cestě nezaokrouhluje vůbec.) Sdílená příprava
-DTO (`PrepareAsync`) je jedna metoda pro náhled i zápis, aby náhled nemohl popisovat něco
-jiného, než co se pak uloží.
+s DPH by před #283 mohla u špatně nastaveného tenanta vyjít shodná s částkou bez DPH (tichá
+nula). Ukázání částky s DPH v náhledu zůstává mimo rozsah #283 — samostatný task #388.
+(Není to otázka zaokrouhlení — `ReceivedInvoiceService` v create cestě nezaokrouhluje
+vůbec.) Sdílená příprava DTO (`PrepareAsync`) je jedna metoda pro náhled i zápis, aby náhled
+nemohl popisovat něco jiného, než co se pak uloží.
 
 Gate **není** autorizační hranice (viz §4.7 výše) — všechny čtyři operace uživatel smí i z UI,
 gate jen brání tomu, aby je asistent udělal potichu.
@@ -1192,7 +1221,18 @@ a přebil jím tu nadiktovanou), takže pod toolem už tu hodnotu nekontroluje n
 sazby platné **k datu plnění**, ne k dnešku (starší doklad se eviduje se starší sazbou), a
 záměrně nemá pevný rozsah typu 0–100: „které procento je legální" je data, ne konstanta.
 0 % je regulérní sazba (`DPH 0% - osvobozeno od daně`), takže projde. Vynechaná `vat_rate` jde
-dál výchozí sazbou — tichá nula při nenakonfigurované výchozí sazbě je #283.
+dál výchozí sazbou; když tenant žádnou výchozí sazbu nemá nastavenou, tool volání odmítne
+(chybová hláška odkazuje do Nastavení) místo tiché nuly. Nekladné explicitní `quantity` odmítají
+oba create tooly shodně (obojí #283).
+
+`CreateInvoiceTool` odmítá chybějící výchozí sazbu taky, ale **jen když je vystavovatel plátce
+DPH** (`issuer.IsVatPayer && defaultVatRate is null`). Neplátce sazbu nakonfigurovanou mít
+nemusí (`TenantReadinessService` ji po něm nechce) a 0 % je u něj správná hodnota —
+`InvoiceService.CreateInvoiceAsync` kreslí tutéž čáru a `VatRateId` vyžaduje jen po plátci,
+takže nepodmíněný guard by z chatu zablokoval doklad, který v UI vznikne bez problémů.
+`create_received_invoice` podmínku nemá, protože `ReceivedInvoiceService` žádnou takovou
+kontrolu neobsahuje — tam tichá nula hrozila všem. Výběr výchozí sazby zatím neřídí datum
+plnění (#387).
 
 Společná je resoluce „která faktura?" (`ReceivedInvoiceLookup`): `id` má přednost před
 `document_number`, číslo dokladu se hledá jako substring. **Víc než jedna shoda = chyba**, ne
@@ -1524,7 +1564,7 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
 - Standalone .NET tool (PackAsTool), `ToolCommandName` = **`fakvio-mcp`**, SDK `ModelContextProtocol` 2.2.0.
 - **Dva hostovací režimy, jedna sada nástrojů** (`FAKVIO_MCP_TRANSPORT`): `stdio` (výchozí, jeden proces = jeden lokální klient) a `http` (Streamable HTTP na `/mcp`, jeden proces = mnoho vzdálených klientů). Registrace, kterou oba sdílejí, je `McpServerRegistration.AddFakvioMcpServer()` — jediné místo, kde se skládá API klient + `AddMcpServer().WithToolsFromAssembly()`, takže surface obou režimů nemůže rozejít. Neznámá hodnota proměnné = exit code 1 (server, který měl poslouchat na HTTP a místo toho čeká na stdin, vypadá zvenčí jako nastartovaný).
 - Jméno v MCP handshake (`ServerInfo.Name`) je `fakvio` — nezaměňovat s názvem příkazu.
-- Auth: `FAKVIO_API_TOKEN` env var (JWT bearer, povinný **jen ve stdio režimu** — bez něj exit code 1; v HTTP režimu se nepoužívá, credential nosí volající), `FAKVIO_API_URL` (výchozí `https://localhost:7001`, lokální API ale běží na `7047` → nastavovat explicitně).
+- Auth: `FAKVIO_API_TOKEN` env var (bearer credential, povinný **jen ve stdio režimu** — bez něj exit code 1; v HTTP režimu se nepoužívá, credential nosí volající). Server ho posílá beze změny, takže projde **API klíč `fak_live_…` i JWT** — selector `FakvioBearer` na API si vybere schéma podle prefixu (§2.10). Pro trvalé napojení je správně API klíč; JWT platí 24 h. `FAKVIO_API_URL` (výchozí `https://localhost:7047`, shodné s lokálním `Fakvio.API` — pro cloud nebo jiný port nastavovat explicitně).
 - **Outbound auth je per request, ne per proces.** `AuthHeaderHandler` (`DelegatingHandler`) nasazuje `Authorization: Bearer` na každý odchozí request; token dodává `IApiTokenProvider`. Ve stdio režimu je to `EnvironmentApiTokenProvider` (čte `FAKVIO_API_TOKEN` načtený do `McpServerSettings`), v HTTP režimu `HttpContextApiTokenProvider` — obojí **singleton**, ten druhý čte bearer token z ambient `IHttpContextAccessor` až uvnitř `GetToken()` a nedrží si nic v poli.
   Do `HttpClient.DefaultRequestHeaders.Authorization` token **nikdy nepatří** — defaulty sdílí všichni volající, takže pod HTTP hostingem by boot credential procesu jel na cizí tool cally (cross-tenant leak) a mutace defaultu za běhu je data race. Regresi hlídá `AuthHeaderHandlerTests`.
   - **`AddScoped<IApiTokenProvider, …>()` je zakázaný** — není to stylová preference, ale tatáž bezpečnostní díra o patro níž. `AddHttpMessageHandler<AuthHeaderHandler>()` handler **neresolvuje z request scope**: `IHttpClientFactory` staví celou pipeline ve svém privátním scope a hotovou ji pooluje (výchozí `HandlerLifetime` 2 minuty). `AddTransient<AuthHeaderHandler>()` proto znamená transient *per konstrukci pipeline*, ne per request. Scoped provider by se do poolovaného handleru zachytil při první konstrukci a obsluhoval všechny další volající po celou dobu života pipeline — token prvního uživatele na callech těch dalších. `SetHandlerLifetime` to neřeší, scopy nesrovnává, jen zkracuje dobu, po kterou se cizí token recykluje.
@@ -1539,8 +1579,27 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
 - **37 tools**: 10 invoice + 6 client + 6 received invoice + 6 reporting + 5 tax + 3 template + 1 readiness (po jednom souboru v `Tools/`).
   Ruční číslo v dokumentaci stárne; zdroj pravdy je `grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs`.
   Porovnání s chat tooly (co MCP umí a chat ještě ne): paritní tabulka v §4.7.
-- Konfigurace v Claude Desktop / Claude Code: spustí `fakvio-mcp` jako subprocess se stdio piping. Vzor v `.mcp.json.sample` (kořen repa).
-- Detaily (build, získání tokenu, seznam nástrojů, postup přidání nástroje): `Fakvio.McpServer/README.md`.
+- **Chybová konvence (#279): `McpToolError.ToJson(ex)`, jedno místo pro všech 37 nástrojů.**
+  Každý tool má `catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }`
+  **před** obecným `catch (Exception ex)` — zrušený request se propaguje, nekonverzuje na JSON.
+  Filtr `when (…)` je nosný: `TaskCanceledException` dědí z `OperationCanceledException` a `HttpClient`
+  ho vyhodí i při **vlastním** timeoutu (default 100 s), kdy token volajícího zrušený není — bez filtru
+  by pomalé API vyhodilo výjimku přes MCP hranici a zabilo celé volání nástroje.
+  (Neporovnávat `ex.CancellationToken == ct` — s linked tokeny to nesedí.)
+  Deserializace **vstupu od modelu** patří do samostatného menšího `try` **před** tím hlavním:
+  `FakvioApiClient` deserializuje i **odpovědi** API, takže `JsonException` z poškozené úspěšné
+  odpovědi musí dojít do sanitizovaného catch-allu, ne se vrátit modelu jako „vstup je špatně"
+  i s textem výjimky. Obecný catch vrací
+  `McpToolError.ToJson(ex)`: zaloguje celou výjimku (`McpToolError.Logger`, nastaven z `Program.cs`
+  po `Build()` — tool metody jsou statické, takže sdílený logger je jednodušší než `ILogger`
+  parametr v 37 signaturách) a vrátí stabilní `{ "error": "internal_error", "message": "..." }`,
+  **nikdy `ex.Message`** — to by mohlo obsahovat syrové tělo API chyby, které do zprávy vkládá
+  `FakvioApiClient.EnsureSuccessAsync` (stack trace, SQL detail, interní ID). Domain-level chyby
+  (404, validace vstupu psaná přímo v těle toolu) tímhle neprochází a zůstávají beze změny.
+- Konfigurace klienta: `.mcp.json.sample` (kořen repa) nese **oba** bloky — `fakvio` (stdio, `command` + `env`) a `fakvio-remote` (`"type": "http"`, `url` = adresa HTTP hostu + `/mcp`, klíč v hlavičce `Authorization`). Tytéž dva **režimy**, už s vyplněným klíčem, vypisuje stránka `/settings/integrations` po vytvoření klíče (`Integrations.BuildSnippets`) — když se tvar konfigurace změní, musí se změnit na obou místech. Doslova shodné bloky to nejsou: UI pojmenuje oba servery `fakvio` (sample rozlišuje `fakvio` / `fakvio-remote`) a stdio blok v samplu má navíc prázdné `"args": []`. Jméno serveru je lokální věc klienta, takže funkčně je to jedno — ale kdo si z panelu zkopíruje **oba** bloky do jednoho souboru, vyrobí si duplicitní JSON klíč. Sjednotit jméno v UI by bylo lepší než tuhle poznámku, ale je to produkční kód a tenhle docs task ho nesahá.
+  **`url` v tom vzdáleném bloku čte `Configuration["McpSettings:BaseUrl"]`** (`Fakvio.BlazorUI/wwwroot/appsettings.json`), ne `ApiKeyApiService.ApiBaseUrl` — to byla dřívější chyba (#363): API a MCP HTTP host jsou od #240 dvě různé aplikace na dvou různých adresách, takže adresa API tam nepatří a `/mcp` na ní neexistuje. Dokud `McpSettings:BaseUrl` není nastavené (dnes všude — žádný host ještě neběží, viz #241), snippet místo něj vloží zjevnou ukázkovou hodnotu (`Integration_SnippetHttpUrlPlaceholder`), ne tiše špatnou URL.
+- Detaily (build, získání credentialu, seznam nástrojů, postup přidání nástroje): `Fakvio.McpServer/README.md`.
+  Uživatelský postup (vytvoření klíče, konfigurace klienta v obou režimech): USERGUIDE §20. Provoz HTTP hostu a jeho bezpečnostní model: ADMINGUIDE §9.
 
 ### 4.10 Invoice by Email (IMAP → auto-import)
 
@@ -1709,20 +1768,57 @@ vlastní výjimku ani vlastní tvar chyby**. Použij `ITenantReadinessService`.
   "issues": [ { "code": "...", "severity": 1, "missingFields": [...], "fixRoute": "/my-company" } ] }
 ```
 
-**Kde je guard zapojený (stav k #206):**
+**Kde je guard zapojený (stav k #342):**
 
 | Místo | Volání | Poznámka |
 |-------|--------|----------|
 | `InvoiceService.CompleteInvoiceAsync` | `EnsureReadyAsync(invoice.IssuerId, invoice.DocumentType, ct)` | Jediný gate na vystavení dokladu. Běží **až po** guardech „faktura neexistuje" / „už je vystavená" a **před** jakoukoli změnou stavu — odmítnutá faktura zůstane Draft a nespotřebuje číslo z řady. |
-| `InvoiceController.CompleteInvoice` | `catch (TenantNotReadyException)` → 400 | Tvar odpovědi viz výše. |
-| `InvoiceTemplateController.CreateInvoiceFromTemplate` | `catch (TenantNotReadyException)` → 400 | Nastane jen s `AutoComplete = true`; draft už je v tu chvíli založený a zůstane. |
+| `InvoiceController.CompleteInvoice` | `catch (TenantNotReadyException)` → `ex.ToBadRequestResult()` | Tvar odpovědi viz výše. |
+| `InvoiceTemplateController.CreateInvoiceFromTemplate` | `catch (TenantNotReadyException)` → `ex.ToBadRequestResult()` | Nastane jen s `AutoComplete = true`; draft už je v tu chvíli založený a zůstane. |
+| `InvoiceService.BulkCompleteAsync` | `catch (TenantNotReadyException)` na položku dávky | Refuzovaná faktura se hlásí v `BulkOperationError.Code` + `.MissingFields` (vedle `.Error`, který nese `ex.Message`), zbytek dávky projde — viz níže. |
+
+`ex.ToBadRequestResult()` je sdílený extension helper
+(`Fakvio.API/Extensions/TenantNotReadyExceptionExtensions.cs`) — nahrazuje dvě kopie stejného
+anonymního objektu v obou controllerech, aby se tvar odpovědi nerozešel při přidání dalšího
+gate. Logování zůstává na volajícím (každý endpoint loguje jinou akci).
 
 **Kdo report jen čte** (`GetReportAsync`, nic neblokuje):
 
 | Místo | Volání | Poznámka |
 |-------|--------|----------|
-| `GetReadinessTool` (chat tool `get_readiness`) | `GetReportAsync(ct: ct)` | Bez filtru — uživatel se ptá na celé nastavení. Vykreslí `Code` + závažnost + `FixRoute`, viz §4.7. |
+| `GetReadinessTool` (chat tool `get_readiness`) | `GetReportAsync(ct: ct)` | Bez filtru — uživatel se ptá na celé nastavení. Vykreslí `Code` + závažnost + `FixRoute` přes `ReadinessIssueFormatter.AppendIssue`, viz §4.7. |
 | `ReadinessTools.GetReadiness` (MCP) | `GET /api/readiness` přes `IFakvioApiClient` | MCP server nemá přístup k DB, jde vždy přes REST, takže autorizace i tenant izolace platí beze změny (§4.9). |
+
+**Bulk / chat / MCP cesty ke stejnému gate** (#342) — `EnsureReadyAsync` běží pořád jen na
+jednom místě (`InvoiceService.CompleteInvoiceAsync`), ale každý doručovací kanál musí
+strukturovaný payload (`code` / `missingFields` / `issues` s `FixRoute`) sám zachytit, jinak
+ho ztratí na hranici kanálu:
+
+| Kanál | Kde se chytá | Co uživatel/model dostane |
+|-------|---------------|----------------------------|
+| Bulk `POST /api/invoice/bulk-complete` | `InvoiceService.BulkCompleteAsync` (viz tabulka výše) | `BulkOperationError.Code` + `.MissingFields` vedle `.Error` |
+| Chat tool `complete_invoice` | `CompleteInvoiceTool.ExecuteAsync` — `catch (TenantNotReadyException)` | `ChatToolResult.Failure` s textem přes `ReadinessIssueFormatter.AppendIssue` (stejné vykreslení jako `get_readiness`) — model tak umí poslat uživatele na `FixRoute` |
+| MCP `CompleteInvoice` / `CreateInvoiceFromTemplate` | `FakvioApiClient.EnsureSuccessAsync` rozpozná `code == "TENANT_NOT_READY"` a hodí `TenantNotReadyApiException` (`Fakvio.McpServer/Client/`) místo obecné `HttpRequestException`; tool ji zachytí a serializuje `{ error, code, missingFields, issues }` | Strukturovaný JSON, ne zploštělý `ex.Message` |
+
+`TenantNotReadyApiException` je záměrně **vlastní typ v `Fakvio.McpServer.Client`**, ne
+znovupoužití `Fakvio.Application.Exceptions.TenantNotReadyException` — MCP server nemá (a
+nemá mít) referenci na `Fakvio.Application` (§4.9), takže nese stejný tvar (`MissingFields`,
+`Issues`) jen s vlastní deklarací. `FakvioApiClient.TryParseTenantNotReady` tělo 400 ohmatává
+přes `JsonValueKind`, ne jen přes „je tam ta property" — ta sonda běží na **každé** 400,
+které klient uvidí, a spousta endpointů vrací `BadRequest("hláška")`, tedy JSON **string**
+v kořeni (`TaxController`). `JsonElement.TryGetProperty` na neobjektovém kořeni nevrací
+`false`, ale hází `InvalidOperationException` — což není `JsonException`, takže bez těch
+kontrol by validační hláška z libovolného toolu vyšla jako vnitřní typová chyba.
+
+**Dvě asymetrie té tabulky, které nejsou přehlédnutí:**
+
+- **Bulk kanál nese jen `Code` + `MissingFields`, ne `Issues`** — nemá tedy `FixRoute` ani
+  severitu, na rozdíl od chat a MCP kanálu. AC #342 žádala „aspoň `Code` + `MissingFields`";
+  doplnění `Issues` i skutečné vykreslení v UI řeší #390.
+- **Tvar MCP výstupu není průchozí přeposlání těla API.** `InvoiceTools` i `TemplateTools`
+  mají v `JsonOptions` `JsonStringEnumConverter` (záměr — model čte a píše enumy jménem), takže
+  z API `"severity": 1` je ve výstupu toolu `"severity": "Blocking"`. Ukázka tvaru výše je
+  tvar **API**, ne výstupu MCP toolu.
 
 Čtecí konzumenti report **nefiltrují ani nepřepisují**. Nefiltrovaný report může nést
 problémy neaktivního vystavitele, kterého Dashboard picker nenabízí — kdyby to mělo vadit,
@@ -2324,9 +2420,10 @@ dotnet test Fakvio.Tests.Unit --filter "FullyQualifiedName~DatabaseConnectivityS
 | Soubor | Trigger | Co dělá |
 |--------|---------|---------|
 | `blazorui-deploy.yml` | Push `master`, manual, PR (path-filtered) | Build `Fakvio.BlazorUI` (WASM publish) → deploy GitHub Pages. Přidá CNAME, .nojekyll, kopie `index.html → 404.html` (client-side routing). |
-| `blazorui-test-deploy.yml` | Push `TEST-ENV`, manual | Build `Fakvio.BlazorUI` (WASM publish) → deploy Azure Static Web App `fakvio-test-ui`. Před publishem přepíše `ApiSettings:BaseUrl` na testovací Function App. Client-side routing řeší `wwwroot/staticwebapp.config.json` (`navigationFallback`). |
+| `blazorui-test-deploy.yml` | Push `TEST-ENV`, manual | Build `Fakvio.BlazorUI` (WASM publish) → deploy Azure Static Web App `fakvio-test-ui`. Před publishem přepíše **dvě** adresy, každou vlastním sedem: `ApiSettings:BaseUrl` na testovací Function App a `McpSettings:BaseUrl` na testovací MCP host. Oba sedy jsou **omezené na svůj blok** a hlídané počtem výskytů (přesně 1), protože `appsettings.json` má víc klíčů `BaseUrl` a neomezený zápis by jednu adresu podstrčil na místo druhé — přesně bug, kvůli kterému #363 vzniklo. Nový klíč `BaseUrl` v dalších sekcích proto nic přepisovat nebude. Client-side routing řeší `wwwroot/staticwebapp.config.json` (`navigationFallback`). |
 | `master_zcloudinvoicingapi.yml` | Push `master` | Stáhne binárky Tailscale (viz níž) a publishne `Fakvio.Functions.csproj` → Azure Function App `zcloudinvoicingapi`. Auth přes managed identity (federated credentials). |
 | `testenv_zcloudinvoicingapi.yml` | Push `TEST-ENV`, manual | Totožné publish jako řádek výše, ale do **testovacího** Function Appu `zcloudinvoicingapi-test`. OIDC přes secrets s příponou `_TEST` (viz §9.4). |
+| `mcp-server.yml` | Push `master` + `TEST-ENV`, manual | Publishne `Fakvio.McpServer` (**jeden artefakt = oba režimy**, viz §4.9), smoke testem ověří, že se spustí, a `dotnet pack`em zabalí stdio nástroj `fakvio-mcp`. Obojí jde nahoru jako build artefakt. Deploy HTTP hostu do Azure Web Appu: `TEST-ENV` → `deploy-http-test`, `master` → `deploy-http-prod`. Na `master` navíc `publish-nuget` (nuget.org). Viz níž. |
 
 **Krok „Download Tailscale binaries"** (oba Functions workflow, před `dotnet publish`):
 stáhne `tailscale` + `tailscaled` do `Fakvio.Functions/tsbin/`, odkud je do publish outputu
@@ -2335,6 +2432,131 @@ obou workflow — tarball se stahuje až při deployi, takže bez pinu by změna
 do Azure. `tsbin/` je gitignorovaný, v repu binárky nejsou. Produkce je stahuje také (feature je
 tam bez `TAILSCALE_AUTHKEY` nečinná), aby byl balíček obou prostředí identický. Bump verze a
 proč to celé existuje: `Fakvio.Functions/Tailscale/README.md`.
+
+**`mcp-server.yml` — proč tak, jak je** (#241):
+
+- **Jeden `dotnet publish`, oba režimy.** Transport se volí až za běhu z `FAKVIO_MCP_TRANSPORT`
+  (§4.9), takže binárky nainstalované jako nástroj `fakvio-mcp` a binárky nasazené do Azure
+  jsou tytéž. Druhý build s jinými přepínači by byla druhá věc, která se může rozejít; deploy
+  job proto artefakt **stahuje z build jobu**, nebuilduje si vlastní.
+- **Smoke test spuštěním, ne jen buildem.** ASP.NET Core shared framework se resolvuje hostem
+  *před* `Main`, takže jeho chybějící instalaci build nikdy neodhalí. Workflow spustí publishnutý
+  host s neznámou hodnotou `FAKVIO_MCP_TRANSPORT` a čeká **přesně** exit code 1 (guard v
+  `Program.cs`) — bez API a bez sítě. Přesně 1, ne „nenulový": pád na chybějícím
+  frameworku je taky nenulový a je to právě ten případ, kvůli kterému krok existuje.
+  `stdin` je zavřený, aby případná regrese na fallback do stdio krok neuspala.
+  **`FAKVIO_API_TOKEN=dummy` v tom kroku není kosmetika**: stdio mód bez tokenu vrací taky 1,
+  takže bez placeholderu by assert prošel i regresi, která `__invalid__` spolkne a spadne do
+  stdio. S tokenem ten fallback vrací 0 a krok zčervená. Token nikam neodchází — při startu
+  se žádný request nedělá.
+- **Assert na `Microsoft.AspNetCore.App` v `runtimeconfig.json` zabaleného nupkg.**
+  `ModelContextProtocol.AspNetCore` nese `FrameworkReference`, takže ASP.NET Core runtime je
+  tvrdý požadavek nástroje **i pro stdio** — a je to tak napsané v README „Požadavky" i v §4.9.
+  Dokumentované chování se nesmí změnit potichu, proto to hlídá workflow, ne komentář.
+- **Deploy HTTP hostu je jeden job na prostředí**, jak jsou rozdělené Functions workflow:
+  `deploy-http-test` (`TEST-ENV`, `_TEST` secrets) a `deploy-http-prod` (`master`, produkční
+  GUID secrets z `master_zcloudinvoicingapi.yml`). Ne matrix — indexovat `vars` i `secrets`
+  klíčem z matrixu schová právě to, kvůli čemu sem operátor chodí.
+  Oba jsou podmíněné **repo variable** se jménem App Service — `MCP_HTTP_APP_NAME`
+  (`fakvio-mcp-test`), resp. `MCP_HTTP_APP_NAME_PROD` (`fakvio-mcp`). Proměnná je zároveň
+  vypínač: dokud Web App neexistuje, job se přeskočí místo aby barvil každý push na červeno.
+  OIDC bere **stávající secrets prostředí** (jedna app registration na prostředí, ne na
+  resource) — potřebuje jen rozšířit její role assignment na nový Web App.
+- **Post-deploy ověření: `POST /mcp` bez `Authorization` musí vrátit 401.** Tenhle případ
+  `McpApiKeyMiddleware` odmítne bez round-tripu na API (§4.9), takže test nenese žádný
+  credential a přesto dokazuje dvě věci — host nastartoval a brána stojí **před** celou
+  pipeline. Kód ale není diagnóza: proti hostu s vymutovanou bránou vrací tenhle konkrétní
+  request **500** (dojde až na MCP transport a ten spadne na prázdném content type) a jakákoli
+  jiná cesta 404 — takže 5xx tady znamená „nenastartoval **nebo** brána chybí", a 200 nenastane.
+  **Namapování `/mcp` neověřuje** a ověřit ho takhle nejde: middleware je registrovaný přes
+  `app.Use(...)` nad celou pipeline (`McpHttpHost.cs`) a bez hlavičky short-circuituje **dřív**
+  než jakýkoli endpoint, takže 401 vrátí i neexistující cesta (ověřeno: `POST /mcp`,
+  `POST /nope` i `GET /` → 401). Na důkaz mapování by byl potřeba platný API key, tedy přesně
+  ten credential, který tenhle krok schválně nemá. (Pozor i na opačný směr: 401 může jednou
+  přijít od platformy — App Service Authentication — ještě než se aplikace dostane ke slovu,
+  takže na tomhle Web Appu ji **nezapínej**.)
+- **HTTP host se nasazuje jako Azure Functions *custom handler*, ne jako App Service.**
+  Functions host se v tomhle režimu chová jako reverzní proxy a přeposílá celý HTTP request
+  našemu procesu, takže `Fakvio.McpServer` běží jako obyčejná ASP.NET Core aplikace —
+  **kód se nemění**, `POST /mcp` i `McpApiKeyMiddleware` nad celou pipeline platí dál.
+  Důvod volby: Flex Consumption škáluje na nulu a platí se za spotřebu, kdežto App Service
+  by znamenal vlastní plán placený pořád. Podmínkou je **stateless + streamable HTTP**, což
+  `McpHttpHost` už pinuje (§4.9) — tahle shoda není náhoda, ale ani zásluha: kdyby se
+  `SessionMode` někdy přepnul na stateful, tenhle způsob hostování přestane být použitelný.
+  - **`Fakvio.McpServer/host.json`** je manifest custom handleru: profil
+    `mcp-custom-handler` (ten zapne proxying, route `{*route}` a prázdný `routePrefix`),
+    `defaultExecutablePath: dotnet` + `Fakvio.McpServer.dll` a port `8080`.
+  - **`DefaultAuthorizationLevel: anonymous` je záměr.** Autorizační hranicí je API klíč
+    ověřovaný uvnitř aplikace; funkční klíč Functions před ní by jen přidal druhý credential
+    na tutéž věc a rozbil post-deploy kontrolu, která čeká 401 **z aplikace**.
+  - **Manifest kopíruje workflow do `./publish`, nese ho ne csproj.** Content item v csproj
+    skončí i v `bin/`, a `dotnet pack` u `PackAsTool` balí `bin/` — manifest by tak jel
+    uvnitř nupkg, který si instalují stdio uživatelé. Hlídat to testem nemá cenu, stačí to
+    dělat na jednom místě: krok „Add the Functions custom handler manifest".
+  - **Port je na dvou místech a musí sedět**: `customHandler.port` v `host.json` a
+    `ASPNETCORE_URLS` v app settings (`http://0.0.0.0:8080`). Nesedí-li, host nastartuje a
+    Functions se na něj nedovolá — selhání se projeví až post-deploy kontrolou.
+  - **Je to public preview.** Vyžaduje app setting `AzureWebJobsFeatureFlags` =
+    `EnableMcpCustomHandlerPreview` a plán **Flex Consumption** (jiný plán to neumí).
+  - **Vlastní doména + certifikát na Flexu jde jinudy, než říká CLI.**
+    `az functionapp config ssl create` selže **tiše** — vypíše „creation in progress" a
+    nevytvoří nic, protože sahá na subscription-level `Microsoft.Web/certificates`, a ten
+    Flex Consumption odmítá („not supported for Flex Consumption plans, use
+    `Microsoft.Web/sites/certificates` instead"). Funguje **site-scoped** endpoint:
+
+    ```bash
+    az rest --method PUT \
+      --url ".../Microsoft.Web/sites/<app>/certificates/<domena>?api-version=2025-05-01" \
+      --body '{"location":"West Europe","properties":{"canonicalName":"<domena>",
+                "domainValidationMethod":"cname-delegation","password":""}}'
+    az functionapp config ssl bind -g <rg> -n <app> \
+      --certificate-thumbprint <thumbprint> --ssl-type SNI
+    ```
+
+    Dvě pasti: `api-version` musí být **2024-11-01 nebo novější** (starší čísla vrátí
+    `NoRegisteredProviderFound`, což vypadá jako chybějící feature, ale je to překlep ve
+    verzi), a PUT může vrátit **prázdnou odpověď** — vydání je asynchronní a certifikát
+    naskočí do pár minut. Opakovaný PUT nepomůže, jen počkat a ověřit GETem.
+    Vlastní CNAME stačí i na ověření vlastnictví; `asuid` TXT záznam nebyl potřeba.
+- App settings HTTP hostu (`FAKVIO_MCP_TRANSPORT=http`, `FAKVIO_API_URL`, `ASPNETCORE_URLS`,
+  `FUNCTIONS_WORKER_RUNTIME=dotnet-isolated`, `AzureWebJobsFeatureFlags`) patří do konfigurace
+  Function Appu, **ne do workflow** — stejné pravidlo jako u ostatních Functions (§9.4).
+- **Studený start hostu umí vrátit 500 — proto `McpKeepAliveFunctions`.** Functions host
+  a náš proces jsou připravené v mírně jiný okamžik: naměřeno 2026-09-07, host přeposlal
+  request v 19:09:19.846 a Kestrel ohlásil „Now listening on http://0.0.0.0:8080" až
+  v 19:09:20.158. Request, který se trefí do té ~310ms mezery, nenajde nic na portu a
+  Functions vrátí **500**. Běžný studený start je jinak jen pomalý (naměřeno 6,3 s), ne
+  rozbitý — vrátí korektní 401.
+  - **Retry se do našeho kódu napsat nedá.** V tu chvíli žádný náš handler, middleware ani
+    catch blok neběží; 500 vyrábí platforma před námi. Retry patří volajícímu, ne volanému.
+  - Řešíme to tím, že host **nenecháme vychladnout**: `McpKeepAliveFunctions` v
+    `Fakvio.Functions` ťukne každých 5 minut na `POST /mcp` **bez** hlavičky `Authorization`.
+    Takový request `McpApiKeyMiddleware` odmítne hned, bez round-tripu na API (§4.9), takže
+    ping nenese credential a nezatěžuje API. Očekávaná odpověď je 401.
+  - Adresa je v app settingu **API Function Appu** (`McpKeepAlive__Url`), ne v MCP hostu —
+    ťuká ten, kdo běží pořád, na toho, kdo usíná. Prázdná hodnota = warm-up vypnutý, stejný
+    on/off idiom jako u deploy jobů.
+  - Alternativou by byl `alwaysReady: 1` na Flex plánu. Zvolen ping, protože rezervovaná
+    instance se platí nepřetržitě, a tím by zmizel důvod, proč host stojí na Flexu.
+  - **Výjimka z pravidla „každá pravidelná úloha má obě varianty"** (CLAUDE.md §API +
+    Functions duplication): tahle je schválně jen Functions. Hřeje nasazený cloudový
+    resource — vývojář s lokálním API žádný svůj MCP host nemá, takže worker varianta by
+    buď nedělala nic, nebo by z každého vývojářského stroje ťukala na sdílený cloud.
+- **`publish-nuget` publikuje stdio nástroj na nuget.org, jen z `master`.** Bere
+  **tentýž `.nupkg`**, na kterém build job ověřil `FrameworkReference` — ne nový build, takže
+  publikuje se přesně to, co prošlo kontrolou. Test build se veřejným balíčkem nikdy stát
+  nemůže, proto jen `master`.
+  - **Vypínač je uvnitř kroku, ne v `if:`** — `secrets` context v job-level `if` k dispozici
+    není. Bez `NUGET_API_KEY` krok vypíše notice a skončí zeleně, takže job je do doplnění
+    klíče neškodný.
+  - **Verze se zvedá ručně** v `<Version>` v `Fakvio.McpServer.csproj` a push jde
+    s `--skip-duplicate`. Bez toho flagu by nuget.org vracel 409 a merge, který verzi
+    nesáhl, by shodil build. Důsledek, který je potřeba znát: **zapomenutý bump znamená,
+    že oprava skončí v CI artefaktech a u nikoho jiného** — verze patří do stejného PR
+    jako změna nástroje.
+  - Metadata balíčku (`Authors`, `PackageLicenseExpression`, `PackageReadmeFile`,
+    `RepositoryUrl`) jsou v csproj; `README.md` projektu se balí dovnitř a slouží jako
+    popisná stránka na nuget.org, takže nemůže odrejvovat od toho, co čte vývojář.
 
 **Pozn.**: Pro `Fakvio.API` (klasický host) **není dedicated workflow** v repu — historicky se hostil přes externí App Service nebo manuálně. Pokud přidáš API workflow, zaznamenej zde.
 
@@ -2393,6 +2615,22 @@ proč to celé existuje: `Fakvio.Functions/Tailscale/README.md`.
   Bez App Settingu `TAILSCALE_AUTHKEY` je celá věc nečinná — jeden log řádek a nic víc, proto
   lokální vývoj i produkce fungují beze změny. Detaily, ACL, rotace klíče a známá omezení
   (cold start, uzel per instance): `Fakvio.Functions/Tailscale/README.md`.
+- **Startup gate.** Tunel se staví na pozadí (jinak platformní timeout zabije worker), takže
+  mezi „host started" a „forwarder bound" je díra, ve které connection string ukazuje na
+  neobsazený port. `Fakvio.Infrastructure/Service/StartupState.cs` je jediné místo, kde je
+  ten stav zapsaný; `StartupGateMiddleware` podle něj vrací `503 + Retry-After: 5` pro
+  `/api/*` (mimo `/api/diagnostic`) a `RetryAfterHandler`
+  (`Fakvio.UI.Shared/Services/RetryAfterHandler.cs`) ho v UI transparentně přečká.
+  **Když přidáváš nový host nebo nový startup krok, který otevírá databázi, musíš
+  `StartupState.MarkDatabaseReady()` zavolat z `finally`** — na úspěchu i selhání. Zavřená
+  brána po selhání by z diagnostikovatelné chyby udělala tichý blackout.
+- **PgBouncer v transaction režimu tuhle aplikaci rozbije.** Produkce na něm 2026-09-10
+  strávila půl dne s nepoužitelnou tenant částí: `GetForSchema()` posílá `search_path`
+  jako **startup parametr**, pooler spojení odmítne (`unsupported startup parameter`),
+  `MigrateTenantAsync` padne a `TenantContextMiddleware` vrátí 503 — UI to spolkne a
+  vykreslí prázdno. Produkce proto pooler obchází (`TAILSCALE_TARGET_PORT=5544`), test
+  je pořád na `6432`. Než na pooler někdo aplikaci vrátí, ať si přečte `SELFHOST-DB.md`
+  §6.4b — hlavně tu část, proč `ignore_startup_parameters` poškodí data.
 
 ### 9.5 Autentizace k databázi (`Database:AuthMode`) + health endpoint
 
@@ -2422,6 +2660,12 @@ Testovací Function App má od #318 v App Settings `Database__AuthMode = Passwor
 `UseAzureAdAuthentication = false`, obojí musí souhlasit), takže health tam hlásí
 `authModeSource: Database:AuthMode` — ne už legacy zdroj. Connection string míří na lokální
 konec Tailscale tunelu (§9.4), takže `masterConnectionServer` je `127.0.0.1 / fakvio_test / fakvio_test`.
+
+Health navíc hlásí `startupDatabaseReady` a `startupMigration`
+(`pending` / `succeeded` / `failed` + `startupMigrationError`). Na hostiteli Functions běží
+startovní migrace na pozadí a jen loguje — a worker `ILogger` do App Insights nedoletí
+(issue #322), takže bez těchhle polí je selhání migrace v Azure neviditelné. Hlásí se,
+**negatuje**: proces umí obsluhovat provoz i když je o dvě migrace pozadu.
 
 **Ověření za běhu** — `GET /api/diagnostic/health`, **SysAdmin only**:
 
@@ -2694,6 +2938,10 @@ pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. P
 - `@rendermode InteractiveServer` REQUIRED pro klikací události.
 - `BlazorHtmlEditor` NuGet je Monaco code editor, **NE** WYSIWYG. Používáme `Tizzani.MudBlazor.HtmlEditor` (ev. dříve `Blazored.TextEditor` / Quill).
 
+### Blazor lifecycle + query parametry
+- `[SupplyParameterFromQuery]` na stránce, kam se dá přenavigovat s jiným query stringem (`/invoices?type=Proforma` → `?type=CreditNote`): stejná `@page` route = **stejná instance komponenty**, takže `OnInitializedAsync` už NEproběhne — jen `OnParametersSet`. Mapování parametru na stav gridu/filtru proto patří do `OnParametersSetAsync`, ne do `OnInitializedAsync` (issue #376). Symptom: nadpis se změní (computed property), ale data ne, dokud uživatel nedá F5.
+- `OnParametersSetAsync` běží i před prvním renderem, takže init případ pokrývá taky. Uvnitř porovnej starou a novou hodnotu — parametry se nastavují při každém re-renderu, bez guardu by se refetchovalo pořád.
+
 ### MAUI Hybrid
 - `dotnet workload install maui` před prvním buildem, jinak SDK not found.
 - WebView používá `blazor.webview.js` (ne `blazor.webassembly.js`), žádný service worker.
@@ -2742,6 +2990,7 @@ pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. P
 | Nový background lock klíč | §6.3 (tabulka klíčů) |
 | Nový chat tool nebo změna schématu parametrů (`IChatTool.Parameters`) | §4.7 (postup + matice + **paritní tabulka**) |
 | Nový MCP tool (`[McpServerTool]`) nebo nová metoda v `IFakvioApiClient` | §4.9 (počty) + §4.7 (paritní tabulka) + `Fakvio.McpServer/README.md` (tabulka nástrojů) |
+| Nová výjimka v `SafeMethodOverridePaths` (co smí klíč `read`) | §2.10 + **ADMINGUIDE §9** (tabulka chování klíče) |
 | Nový AI provider nebo změna jeho schopností (tools, obrázky) | §4.7 (matice schopností providerů) |
 | Změna observability stacku (App Insights → jiný) | §10 |
 | Nová list stránka s gridem / změna grid patternu | §7.10 (FakvioGrid) |

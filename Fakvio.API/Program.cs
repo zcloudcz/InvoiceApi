@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using Fakvio.API.Middleware;
 using Fakvio.Application.Service;
 using Fakvio.Infrastructure.Data;
@@ -140,6 +140,12 @@ using (var scope = app.Services.CreateScope())
     if (masterDb.Database.IsRelational())
     {
         await masterDb.Database.MigrateAsync();
+
+        // Record the outcome for /api/diagnostic/health. Inside the IsRelational branch on
+        // purpose: integration tests run on the InMemory provider and never migrate, so
+        // reporting a successful migration there would be a lie. This host still migrates
+        // synchronously, so a failure crashes startup exactly as before.
+        StartupState.MarkMigration(succeeded: true);
     }
 
     // FOR DEVELOPMENT ONLY - delete all dbs and start fresh on each run. Comment out in production!
@@ -148,6 +154,12 @@ using (var scope = app.Services.CreateScope())
     //await masterDb.Database.EnsureDeletedAsync();
     //await masterDb.Database.MigrateAsync();
 }
+
+// This host reaches its database directly — there is no Tailscale tunnel and therefore no
+// window in which the connection string points at a port nobody is listening on. The startup
+// gate is open from the first request; the flag exists so the shared health endpoint reports
+// the same fields on both hosts. See StartupState.
+StartupState.MarkDatabaseReady();
 
 // ── HTTP pipeline ───────────────────────────────────────────────────────────
 

@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text.Json;
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.Chat;
@@ -259,9 +258,17 @@ public class ImportInvoiceTool : IChatTool
                 return ChatToolResult.Failure($"Currency '{currencyCode}' not found.");
 
             // ── 5. Parse dates ──────────────────────────────────────────────────
-            var issueDate = ParseDate(GetParam(parameters, "issue_date"));
-            var dueDate = ParseDate(GetParam(parameters, "due_date"));
-            var taxableSupplyDate = ParseDate(GetParam(parameters, "taxable_supply_date"));
+            // Issue #301: this used to have its own TryParseExact copy that silently dropped an
+            // unreadable date to null, so the invoice got created with a default date instead of
+            // the one the user dictated. Routed through the shared ChatToolDates helper (like
+            // every other chat tool) so a present-but-unreadable date fails loudly instead —
+            // the model reads the error and retries with a readable date, same as ListInvoicesTool.
+            if (!ChatToolDates.TryParseOptional(parameters, "issue_date", out var issueDate, out var dateError) ||
+                !ChatToolDates.TryParseOptional(parameters, "due_date", out var dueDate, out dateError) ||
+                !ChatToolDates.TryParseOptional(parameters, "taxable_supply_date", out var taxableSupplyDate, out dateError))
+            {
+                return ChatToolResult.Failure(dateError!);
+            }
 
             // ── 6. Parse items ──────────────────────────────────────────────────
             var itemsJson = GetParam(parameters, "items");
@@ -462,18 +469,6 @@ public class ImportInvoiceTool : IChatTool
     private static string? GetParam(Dictionary<string, string> p, string key)
     {
         return p.TryGetValue(key, out var val) && !string.IsNullOrWhiteSpace(val) ? val.Trim() : null;
-    }
-
-    private static DateTime? ParseDate(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value)) return null;
-        string[] formats = ["yyyy-MM-dd", "dd.MM.yyyy", "dd/MM/yyyy", "yyyy-MM-ddTHH:mm:ss"];
-        if (!DateTime.TryParseExact(value, formats, CultureInfo.InvariantCulture,
-                DateTimeStyles.None, out var d))
-            return null;
-
-        // PostgreSQL 'timestamp with time zone' requires UTC — Npgsql rejects DateTimeKind.Unspecified.
-        return DateTime.SpecifyKind(d, DateTimeKind.Utc);
     }
 
     /// <summary>

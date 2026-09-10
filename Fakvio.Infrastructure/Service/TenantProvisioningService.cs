@@ -1,4 +1,4 @@
-using Fakvio.Application.Service;
+﻿using Fakvio.Application.Service;
 using Fakvio.Domain.Entities;
 using Fakvio.Domain.Enums;
 using Fakvio.Infrastructure.Data;
@@ -650,7 +650,13 @@ public class TenantProvisioningService : ITenantProvisioningService
             // Downgrade PendingModelChangesWarning from Throw → Log so MigrateAsync()
             // doesn't fail when the code model is slightly ahead of the last migration.
             .ConfigureWarnings(w =>
-                w.Ignore(RelationalEventId.PendingModelChangesWarning))
+            {
+                w.Ignore(RelationalEventId.PendingModelChangesWarning);
+                // Same reason as ConfigureNpgsql in ServiceCollectionExtensions: EF logs every
+                // retried ConnectionError at Error level, which makes a transient startup race
+                // read like an outage. Warning keeps it visible without the false alarm.
+                w.Log((RelationalEventId.ConnectionError, LogLevel.Warning));
+            })
             .Options;
 
         var context = new TenantDbContext(options);

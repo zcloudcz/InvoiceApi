@@ -18,6 +18,11 @@ namespace Fakvio.Infrastructure.Service.ChatTools;
 /// <see cref="UpdateClientDto"/>, so a model that sends one address wipes the other three.
 /// Editing those stays in the UI until someone asks for it.
 ///
+/// <c>language</c> IS exposed (see #306), constrained to the same <c>["cs", "en"]</c> as
+/// <see cref="UpdateMyCompanyTool"/>: it drives the language of every PDF and e-mail generated
+/// for this client (<c>PdfExportService</c> reads <c>invoice.Client.Language</c>), so a chat that
+/// can rename a client but cannot fix the language of its invoices would be the odd one out.
+///
 /// Junior note on what the gate is NOT: an authorization boundary. Editing a client is
 /// something the user can already do in the UI — the gate only stops the assistant from doing
 /// it silently. The <c>confirm</c> parameter is added by the executor, never declared here
@@ -38,8 +43,8 @@ public class UpdateClientTool : IConfirmableChatTool
 
     public string Description =>
         "Update an existing client: company name, trading name, DIČ, VAT payer flag, active " +
-        "flag, or refresh the data from the ARES registry. Identify the client by id, " +
-        "registration_number (IČO) or name. Only the fields you send are changed. " +
+        "flag, document language, or refresh the data from the ARES registry. Identify the " +
+        "client by id, registration_number (IČO) or name. Only the fields you send are changed. " +
         "Addresses, contacts and bank accounts cannot be edited here.";
 
     /// <summary>
@@ -81,6 +86,13 @@ public class UpdateClientTool : IConfirmableChatTool
             Type = ChatToolParameterType.Boolean,
             Description = "Whether the client is active. False hides the client the same way " +
                           "delete_client does; true restores a deleted client."
+        },
+        new()
+        {
+            Name = "language",
+            Type = ChatToolParameterType.String,
+            Description = "Language of the documents generated for this client (invoices, e-mails)",
+            AllowedValues = ["cs", "en"]
         },
         new()
         {
@@ -211,6 +223,9 @@ public class UpdateClientTool : IConfirmableChatTool
             TaxNumber = ReadText(parameters, "tax_number"),
             IsVatPayer = ReadBool(parameters, "is_vat_payer"),
             IsActive = ReadBool(parameters, "is_active"),
+            // Lowercased here so the preview shows the value that will actually be stored:
+            // ChatToolExecutor matches AllowedValues case-insensitively, so "EN" reaches us as-is.
+            Language = ReadText(parameters, "language")?.ToLowerInvariant(),
             // Only an explicit 'true' refreshes. 'false' means "leave it", which is also what
             // the DTO's default does.
             RefreshFromAres = ReadBool(parameters, "refresh_from_ares") == true
@@ -226,7 +241,8 @@ public class UpdateClientTool : IConfirmableChatTool
            || update.TradingName is not null
            || update.TaxNumber is not null
            || update.IsVatPayer.HasValue
-           || update.IsActive.HasValue;
+           || update.IsActive.HasValue
+           || update.Language is not null;
 
     /// <summary>True when the update would do anything at all — explicit fields or ARES refresh.</summary>
     private static bool RequestsAnyChange(UpdateClientDto update)
@@ -250,6 +266,7 @@ public class UpdateClientTool : IConfirmableChatTool
         AppendChange(sb, "DIČ", client.TaxNumber ?? "(none)", update.TaxNumber);
         AppendChange(sb, "VAT payer", ClientLookup.YesNo(client.IsVatPayer), YesNoOrNull(update.IsVatPayer));
         AppendChange(sb, "Active", ClientLookup.YesNo(client.IsActive), YesNoOrNull(update.IsActive));
+        AppendChange(sb, "Document language", client.Language, update.Language);
 
         if (update.RefreshFromAres)
         {

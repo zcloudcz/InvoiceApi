@@ -158,9 +158,19 @@ public class ListReceivedInvoicesTool : IChatTool
             filter.SupplierId = supplierId;
         }
 
-        // Date range filters.
-        filter.IssueDateFrom = ParseDate(parameters, "issue_date_from");
-        filter.IssueDateTo = ParseDate(parameters, "issue_date_to");
+        // Date range filters. Issue #301: this used to have its own TryParseExact copy that
+        // returned null on an unreadable date, which silently dropped the filter — "přijaté
+        // faktury za březen" then quietly widened to the whole history. Routed through the
+        // shared ChatToolDates helper, same as ListInvoicesTool: a present-but-unreadable date
+        // fails loudly instead, so the model reads the error and retries with a readable one.
+        if (!ChatToolDates.TryParseOptional(parameters, "issue_date_from", out var issueDateFrom, out var dateError) ||
+            !ChatToolDates.TryParseOptional(parameters, "issue_date_to", out var issueDateTo, out dateError))
+        {
+            return ChatToolResult.Failure(dateError!);
+        }
+
+        filter.IssueDateFrom = issueDateFrom;
+        filter.IssueDateTo = issueDateTo;
 
         // Amount range filters.
         if (parameters.TryGetValue("min_amount", out var minStr) &&
@@ -219,9 +229,11 @@ public class ListReceivedInvoicesTool : IChatTool
             return sb.ToString();
         }
 
-        // Summary totals for the current page.
-        var pageTotal = page.Items.Sum(r => r.TotalWithVat);
-        sb.AppendLine($"  Page total (with VAT): {pageTotal:N2}");
+        // Summary totals for the current page, grouped by currency (issue #269) — a plain
+        // Sum() across mixed-currency pages produces a number with no unit and no real-world
+        // meaning. Shared with ListInvoicesTool so the two sibling tools stay in the same format.
+        sb.AppendLine($"  Page total (with VAT): " +
+                      $"{ChatToolTotals.FormatPageTotal(page.Items, r => r.TotalWithVat, r => r.CurrencyCode)}");
         sb.AppendLine();
 
         // One compact row per invoice.
@@ -246,20 +258,6 @@ public class ListReceivedInvoicesTool : IChatTool
         if (p.TryGetValue(key, out var s) && int.TryParse(s, out var v) && v > 0)
             return v;
         return defaultValue;
-    }
-
-    private static DateTime? ParseDate(Dictionary<string, string> p, string key)
-    {
-        if (!p.TryGetValue(key, out var s) || string.IsNullOrWhiteSpace(s))
-            return null;
-
-        string[] formats = ["yyyy-MM-dd", "dd.MM.yyyy", "dd/MM/yyyy"];
-        if (!DateTime.TryParseExact(s.Trim(), formats, CultureInfo.InvariantCulture,
-                DateTimeStyles.None, out var d))
-            return null;
-
-        // Npgsql requires UTC DateTimeKind for 'timestamp with time zone' columns.
-        return DateTime.SpecifyKind(d, DateTimeKind.Utc);
     }
 
     private static string FormatDate(DateTime? d)

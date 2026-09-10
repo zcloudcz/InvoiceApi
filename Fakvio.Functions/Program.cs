@@ -1,4 +1,4 @@
-// ============================================================================
+﻿// ============================================================================
 // Azure Functions Isolated Worker — Program.cs
 //
 // This Functions project hosts:
@@ -25,6 +25,7 @@ using Fakvio.Infrastructure.Data;
 using Fakvio.Infrastructure.DependencyInjection;
 using Fakvio.Functions.Telemetry;
 using Fakvio.Infrastructure.Logging;
+using Fakvio.Infrastructure.Service;
 using Microsoft.ApplicationInsights.Extensibility;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -69,6 +70,13 @@ var host = new HostBuilder()
         // Access-Control-Allow-* headers for matching origins.
         // Works together with CorsFunctions.cs (catch-all OPTIONS preflight handler).
         app.UseMiddleware<CorsMiddleware>();
+
+        // ── Startup Gate Middleware ──────────────────────────────────────────────
+        // Must run BEFORE the auth and tenant middleware — every one of those touches the
+        // master database, so gating after them would still hit the connection that is not
+        // ready yet. Until the tunnel's forwarder has bound its loopback port, API requests
+        // get 503 + Retry-After instead of a 15 s timeout and a 500.
+        app.UseMiddleware<StartupGateMiddleware>();
 
         // ── JWT Authentication Middleware ─────────────────────────────────────────
         // CRITICAL: AddAuthentication() + AddJwtBearer() only REGISTER the services.
@@ -196,6 +204,14 @@ _ = Task.Run(async () =>
         // ex.Message never carries the key.
         TailscaleTunnel.Milestone(tunnelLogger, $"failed: {ex.Message}", LogLevel.Error);
     }
+    finally
+    {
+        // Open the startup gate whether the tunnel came up or not. On success this closes the
+        // ~700 ms window in which requests hit a loopback port nothing was listening on yet;
+        // on failure it deliberately lets traffic through, because a gate that stays closed
+        // would replace a diagnosable error with a silent blackout. See StartupState.
+        StartupState.MarkDatabaseReady();
+    }
 
     // ── Startup database migration (master DB only) ───────────────────────
     // Step 1: Migrate master DB (Users, Companies, SystemSettings, code tables).
@@ -214,6 +230,7 @@ _ = Task.Run(async () =>
         await masterDb.Database.MigrateAsync();
         logger.LogInformation("Startup: master database migrated successfully");
         Console.Out.WriteLine("Startup: master database migrated successfully");
+        StartupState.MarkMigration(succeeded: true);
     }
     catch (Exception ex)
     {
@@ -222,6 +239,9 @@ _ = Task.Run(async () =>
         logger.LogError(ex, "Startup: database migration failed — API calls will return errors until resolved");
         // stdout twin of the line above, for the same reason as the tunnel milestone.
         Console.Out.WriteLine($"Startup: database migration failed — {ex.GetBaseException().Message.ReplaceLineEndings(" ")}");
+        // Recorded so /api/diagnostic/health can report it: the worker ILogger does not reach
+        // App Insights today (issue #322), so without this the failure is invisible in Azure.
+        StartupState.MarkMigration(succeeded: false, error: ex.GetBaseException().Message);
     }
 });
 

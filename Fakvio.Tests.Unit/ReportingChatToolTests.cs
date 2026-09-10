@@ -4,7 +4,9 @@ using Fakvio.Contracts.Dto.Dashboard;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Contracts.Dto.VatReport;
 using Fakvio.Domain.Enums;
+using Fakvio.Infrastructure.Data;
 using Fakvio.Infrastructure.Service.ChatTools;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 using Shouldly;
@@ -35,7 +37,9 @@ public class ReportingChatToolTests
         string documentNumber = "FAK-2026-001",
         string clientName = "Alza.cz",
         EInvoiceStatus status = EInvoiceStatus.Completed,
-        EDocumentType documentType = EDocumentType.Invoice)
+        EDocumentType documentType = EDocumentType.Invoice,
+        decimal totalWithVat = 12100m,
+        string currencyCode = "CZK")
         => new()
         {
             Id = id,
@@ -47,9 +51,18 @@ public class ReportingChatToolTests
             DueDate = new DateTime(2026, 3, 15, 0, 0, 0, DateTimeKind.Utc),
             TotalBeforeVat = 10000m,
             TotalVat = 2100m,
-            TotalWithVat = 12100m,
-            CurrencyCode = "CZK"
+            TotalWithVat = totalWithVat,
+            CurrencyCode = currencyCode
         };
+
+    /// <summary>
+    /// Throwaway in-memory TenantDbContext — the executor only needs one to discard leftover
+    /// change-tracker entries after a failed write (issue #305); no test here touches it.
+    /// </summary>
+    private static TenantDbContext CreateDbContext()
+        => new(new DbContextOptionsBuilder<TenantDbContext>()
+            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .Options);
 
     /// <summary>
     /// Builds a ListInvoicesTool over mocks and hands back the mocks so the test can assert
@@ -456,10 +469,13 @@ public class ReportingChatToolTests
     }
 
     /// <summary>
-    /// ChatToolExecutor validates the TRIMMED value but dispatches the raw one, so " true "
-    /// reaches the tool as-is. Comparing it untrimmed would pass validation and then silently
-    /// turn the arrears question into "list everything" — the worst kind of wrong answer,
-    /// because the header still says invoices and the model presents them as receivables.
+    /// ChatToolExecutor normalizes every parameter value (trims it) once, before dispatch, so
+    /// " true " reaches the tool already clean and a plain `== "true"` comparison inside it
+    /// sees the right value. Without that normalization the arrears question would silently
+    /// turn into "list everything" — the worst kind of wrong answer, because the header still
+    /// says invoices and the model presents them as receivables. Routed through the real
+    /// executor (not calling ExecuteAsync directly) because that is where the guarantee now
+    /// lives, not in the tool itself (issue #268).
     /// </summary>
     [Theory]
     [InlineData(" true ")]
@@ -467,8 +483,13 @@ public class ReportingChatToolTests
     public async Task ListInvoicesTool_Overdue_IgnoresSurroundingWhitespace(string rawValue)
     {
         var (tool, service) = CreateListTool();
+        var executor = new ChatToolExecutor([tool], CreateDbContext(), Substitute.For<ILogger<ChatToolExecutor>>());
 
-        var result = await tool.ExecuteAsync(new Dictionary<string, string> { ["overdue"] = rawValue });
+        var result = await executor.ExecuteToolAsync(new ParsedToolCall
+        {
+            Action = tool.ToolName,
+            Parameters = new Dictionary<string, string> { ["overdue"] = rawValue }
+        });
 
         result.IsSuccess.ShouldBeTrue();
         result.OutputText.ShouldContain("Overdue issued invoices");
@@ -557,6 +578,57 @@ public class ReportingChatToolTests
         result.OutputText.ShouldContain("ID=2");
         result.OutputText.ShouldContain("CreditNote");
         result.OutputText.ShouldContain("2026-03-15");   // due date, ISO regardless of culture
+    }
+
+    /// <summary>
+    /// Issue #269 — a single-currency page still gets one page-total line, now carrying the
+    /// currency code the per-row lines already show. No regression: still one number, no
+    /// "; " separator (that only appears once a second currency joins in).
+    /// </summary>
+    [Fact]
+    public async Task ListInvoicesTool_SingleCurrencyPage_ShowsOneTotalWithCurrency()
+    {
+        var page = new PagedResult<InvoiceDto>(
+            [
+                BuildInvoice(id: 1, totalWithVat: 12100m, currencyCode: "CZK"),
+                BuildInvoice(id: 2, totalWithVat: 5000m, currencyCode: "CZK")
+            ],
+            totalCount: 2, pageNumber: 1, pageSize: 10);
+
+        var (tool, _) = CreateListTool(page);
+
+        var result = await tool.ExecuteAsync([]);
+
+        var totalLine = result.OutputText.Split('\n').Single(line => line.Contains("Page total"));
+
+        // Exact line, not just Contains — pins the "  Page total (with VAT): " prefix and the
+        // absence of a separator, not merely that the right number appears somewhere.
+        totalLine.TrimEnd('\r').ShouldBe($"  Page total (with VAT): {17100m:N2} CZK");
+    }
+
+    /// <summary>
+    /// Issue #269 — a page mixing CZK and EUR invoices must never collapse into one summed
+    /// number (12100 + 500 has no unit and no meaning). Each currency gets its own total.
+    /// </summary>
+    [Fact]
+    public async Task ListInvoicesTool_MixedCurrencyPage_TotalsEachCurrencySeparately()
+    {
+        var page = new PagedResult<InvoiceDto>(
+            [
+                BuildInvoice(id: 1, totalWithVat: 12100m, currencyCode: "CZK"),
+                BuildInvoice(id: 2, totalWithVat: 500m, currencyCode: "EUR")
+            ],
+            totalCount: 2, pageNumber: 1, pageSize: 10);
+
+        var (tool, _) = CreateListTool(page);
+
+        var result = await tool.ExecuteAsync([]);
+
+        var totalLine = result.OutputText.Split('\n').Single(line => line.Contains("Page total"));
+
+        // Exact line — pins the "; " separator and the CZK-before-EUR ordinal order, not just
+        // that both numbers appear somewhere and 12600 does not.
+        totalLine.TrimEnd('\r').ShouldBe($"  Page total (with VAT): {12100m:N2} CZK; {500m:N2} EUR");
     }
 
     /// <summary>

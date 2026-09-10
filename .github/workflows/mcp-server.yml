@@ -1,0 +1,344 @@
+# Fakvio MCP server — packs the stdio distribution and deploys the HTTP host.
+#
+# One build, one publish output, both hosting modes: Fakvio.McpServer picks its transport at
+# startup from FAKVIO_MCP_TRANSPORT ("stdio" by default, "http" starts Kestrel on /mcp), so the
+# same binaries that get installed as the `fakvio-mcp` dotnet tool are the ones deployed to
+# Azure. There is deliberately no second build with different switches — two builds would be two
+# things that can drift apart.
+#
+# Docs for the Azure Web App Deploy action: https://github.com/Azure/webapps-deploy
+
+name: MCP server - pack tool and deploy HTTP host
+
+on:
+  # Same branches as the other deploy workflows: TEST-ENV carries the test environment,
+  # master the production one. No path filter — Fakvio.McpServer builds on top of
+  # Fakvio.Contracts and Fakvio.Domain, and a filter that forgets one of those ships a
+  # stale server. A superfluous two-minute run is the cheaper mistake.
+  push:
+    branches:
+      - master
+      - TEST-ENV
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_VERSION: '10.0.x' # must match the TargetFramework (net10.0) in Fakvio.McpServer.csproj
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup DotNet ${{ env.DOTNET_VERSION }} Environment
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Publish the MCP server (the artifact that serves both modes)
+        shell: bash
+        run: |
+          dotnet publish ./Fakvio.McpServer/Fakvio.McpServer.csproj \
+            --configuration Release \
+            --output ./publish
+
+      - name: Add the Functions custom handler manifest to the deployment payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          # host.json is what makes the Functions host run this app as a custom handler: it
+          # names the executable, pins the port, and selects the mcp-custom-handler profile.
+          # The Functions host reads it from the root of the deployment payload.
+          #
+          # Copied here rather than carried by the csproj as a content item, because a content
+          # item also lands in bin/ — and `dotnet pack` on a PackAsTool project packs bin/, so
+          # the Functions manifest would ship inside the nupkg that stdio users install. Doing
+          # it in this one step keeps the deployment concern out of the package.
+          cp ./Fakvio.McpServer/host.json ./publish/host.json
+
+      - name: Smoke test the published host
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Starting the process is the only way to prove the ASP.NET Core shared framework
+          # actually resolves: the framework is loaded by the host *before* Main runs, so a
+          # missing Microsoft.AspNetCore.App fails here and nowhere earlier.
+          #
+          # An unknown transport is the one input that makes the server exit on purpose
+          # (Program.cs returns 1), so this needs no API and no network. stdin is closed so a
+          # regression that falls back to stdio hangs the step for zero seconds instead of six
+          # hours.
+          #
+          # FAKVIO_API_TOKEN is a placeholder, and it is what makes the assert below mean
+          # anything: stdio mode exits 1 too when the token is missing (Program.cs), so without
+          # it a regression that swallows __invalid__ and falls back to stdio would also exit 1
+          # and pass. With the token set, that fallback exits 0 and the step goes red. The value
+          # is never sent anywhere — nothing does an outgoing request at startup.
+          FAKVIO_API_TOKEN=dummy FAKVIO_MCP_TRANSPORT=__invalid__ ./publish/Fakvio.McpServer </dev/null && rc=0 || rc=$?
+
+          # Exactly 1, not merely non-zero: a framework-load failure also exits non-zero, and
+          # that is the failure this step exists to catch.
+          if [ "${rc}" -ne 1 ]; then
+            echo "::error::Expected exit code 1 from the unknown-transport guard, got ${rc}."
+            exit 1
+          fi
+
+      - name: Pack the stdio distribution (dotnet tool)
+        shell: bash
+        run: |
+          dotnet pack ./Fakvio.McpServer/Fakvio.McpServer.csproj \
+            --configuration Release \
+            --output ./nupkg
+
+      - name: Assert the packed tool still requires the ASP.NET Core shared framework
+        shell: bash
+        run: |
+          set -euo pipefail
+          # ModelContextProtocol.AspNetCore carries a FrameworkReference to
+          # Microsoft.AspNetCore.App, which makes the ASP.NET Core runtime a hard requirement of
+          # the packaged tool even for stdio users (README "Požadavky", DEVGUIDE §4.9).
+          # That is documented, so it must not change silently: if a package bump ever drops the
+          # reference the docs become wrong, and if the reference disappears while the code still
+          # uses WebApplication the tool breaks at startup on every machine. Either way, fail here.
+          #
+          # Checked on the .nupkg rather than ./publish because that is the artifact people
+          # install; both files are generated by the same build from the same csproj.
+          #
+          # Read into a variable instead of piping straight into grep: `grep -q` exits on the
+          # first match, which hands unzip a SIGPIPE, and `pipefail` would then fail the step
+          # on the *successful* case.
+          RUNTIMECONFIG=$(unzip -p ./nupkg/Fakvio.McpServer.*.nupkg \
+            'tools/net10.0/any/Fakvio.McpServer.runtimeconfig.json')
+          echo "${RUNTIMECONFIG}"
+
+          if ! grep -q 'Microsoft.AspNetCore.App' <<< "${RUNTIMECONFIG}"; then
+            echo "::error::The packed tool no longer declares Microsoft.AspNetCore.App. Update README 'Požadavky' and DEVGUIDE §4.9 if this is intended."
+            exit 1
+          fi
+
+      - name: Upload the HTTP host artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mcp-http-host
+          path: ./publish
+
+      - name: Upload the dotnet tool package
+        uses: actions/upload-artifact@v4
+        with:
+          name: mcp-tool-nupkg
+          path: ./nupkg/*.nupkg
+
+  deploy-http-test:
+    needs: build
+    runs-on: ubuntu-latest
+
+    # Test environment. Production is the sibling job `deploy-http-prod` below — one job per
+    # environment with its own OIDC secrets, the way the Functions workflows are split (§9.1).
+    #
+    # MCP_HTTP_APP_NAME is a repository *variable* (not a secret) holding the Function App
+    # name, expected value `fakvio-mcp-test`. It doubles as the on/off switch: until a human
+    # creates the Function App and grants the existing TEST app registration access to it
+    # (hand-back on #241), the variable is unset and this job is skipped instead of failing
+    # every TEST-ENV push on a resource that does not exist.
+    if: github.ref_name == 'TEST-ENV' && vars.MCP_HTTP_APP_NAME != ''
+
+    permissions:
+      id-token: write # required for requesting the OIDC JWT
+      contents: read
+
+    # One deploy at a time, and let a running one finish rather than cancel it half-uploaded.
+    concurrency:
+      group: "mcp-http-test"
+      cancel-in-progress: false
+
+    steps:
+      - name: Download the HTTP host artifact
+        uses: actions/download-artifact@v4
+        with:
+          # The very same output the build job smoke-tested — not a rebuild.
+          name: mcp-http-host
+          path: ./publish
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          # The per-environment app registration already used by testenv_zcloudinvoicingapi.yml
+          # (federated credential trusts the TEST-ENV branch only). One registration per
+          # environment, not per resource — the human hand-back on #241 asks for its role
+          # assignment to be extended to the MCP Web App rather than for a new set of secrets.
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_TEST }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_TEST }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_TEST }}
+
+      - name: Deploy to Azure Functions (custom handler)
+        id: deploy
+        uses: Azure/functions-action@v1
+        with:
+          app-name: ${{ vars.MCP_HTTP_APP_NAME }}
+          package: ./publish
+          sku: flexconsumption
+
+      - name: Verify the deployed host answers on /mcp
+        shell: bash
+        run: |
+          set -euo pipefail
+          # A request with no Authorization header is rejected by McpApiKeyMiddleware without
+          # touching the API, so 401 proves two things with no credential in the workflow: the
+          # host booted, and the gate stands in front of the whole pipeline. Anything else is a
+          # failed deploy, but do not read the code as a diagnosis: measured against a host with
+          # the gate mutated out, this exact request answers 500 (the MCP transport is reached
+          # and throws on the empty content type) and any other path answers 404. So 5xx here
+          # means "did not start OR the gate is gone", and 200 does not happen.
+          #
+          # The reverse trap: platform-level authentication (Easy Auth, or a Functions
+          # authorization level above `anonymous`) answers 401 before the app is reached at all,
+          # which would keep this step green on a host that never booted. Neither may be enabled
+          # here — host.json pins `DefaultAuthorizationLevel: anonymous` on purpose, because the
+          # API-key gate inside the app is the authorization boundary (DEVGUIDE §9.1).
+          #
+          # It does NOT prove /mcp is mapped: the middleware is registered with app.Use(...)
+          # over the entire pipeline and short-circuits before any endpoint runs, so every path
+          # answers 401 — a wrong route included. Proving the mapping would need a valid API
+          # key here, which is exactly the credential this check is designed not to carry.
+          #
+          # Composed from the app name: Azure/functions-action, unlike webapps-deploy, exposes
+          # no URL output. Function Apps keep the plain <name>.azurewebsites.net hostname (the
+          # region-suffixed form is an App Service thing), so this is not a guess.
+          URL="https://${{ vars.MCP_HTTP_APP_NAME }}.azurewebsites.net"
+
+          # --retry-all-errors covers the cold start: the first hit after a deploy can land
+          # while the site is still warming up and answer 5xx.
+          CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+                   --retry 5 --retry-all-errors --retry-delay 10 --max-time 30 \
+                   "${URL%/}/mcp")
+
+          if [ "${CODE}" != "401" ]; then
+            echo "::error::POST ${URL%/}/mcp answered ${CODE}, expected 401 from the API-key gate."
+            exit 1
+          fi
+
+  deploy-http-prod:
+    needs: build
+    runs-on: ubuntu-latest
+
+    # Sibling of deploy-http-test — read that job for the rationale behind every step; only the
+    # environment differs. Two jobs rather than one matrix because that is how the Functions
+    # workflows are split per environment (§9.1), and because a matrix would have to index both
+    # `vars` and `secrets` by key, which hides exactly the thing an operator comes here to read.
+    #
+    # MCP_HTTP_APP_NAME_PROD is the production counterpart of MCP_HTTP_APP_NAME (expected value
+    # `fakvio-mcp`) and doubles as the same on/off switch: until a human creates the Function App
+    # and grants the production app registration access to it, the variable is unset and this job
+    # is skipped instead of failing every master push on a resource that does not exist.
+    if: github.ref_name == 'master' && vars.MCP_HTTP_APP_NAME_PROD != ''
+
+    permissions:
+      id-token: write # required for requesting the OIDC JWT
+      contents: read
+
+    concurrency:
+      group: "mcp-http-prod"
+      cancel-in-progress: false
+
+    steps:
+      - name: Download the HTTP host artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: mcp-http-host
+          path: ./publish
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          # The production app registration already used by master_zcloudinvoicingapi.yml. One
+          # registration per environment, not per resource — its role assignment has to be
+          # extended to the MCP Web App (ADMINGUIDE §9), no new secrets are needed.
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_71CB3DED09D246528906A346340AC1F8 }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_0F744DC7C56040999B540311235A4E45 }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_0A2C19BC7D294FFA80F06B93F1D614E4 }}
+
+      - name: Deploy to Azure Functions (custom handler)
+        id: deploy
+        uses: Azure/functions-action@v1
+        with:
+          app-name: ${{ vars.MCP_HTTP_APP_NAME_PROD }}
+          package: ./publish
+          sku: flexconsumption
+
+      - name: Verify the deployed host answers on /mcp
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Identical check to the test job: no Authorization header must answer 401, which
+          # proves the host booted and the API-key gate stands in front of the pipeline without
+          # this workflow carrying any credential. See deploy-http-test for what it does and
+          # does not prove — including why platform-level authentication must stay off here.
+          URL="https://${{ vars.MCP_HTTP_APP_NAME_PROD }}.azurewebsites.net"
+
+          CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+                   --retry 5 --retry-all-errors --retry-delay 10 --max-time 30 \
+                   "${URL%/}/mcp")
+
+          if [ "${CODE}" != "401" ]; then
+            echo "::error::POST ${URL%/}/mcp answered ${CODE}, expected 401 from the API-key gate."
+            exit 1
+          fi
+
+  publish-nuget:
+    needs: build
+    runs-on: ubuntu-latest
+
+    # Production releases only. The stdio distribution is what users install
+    # (`dotnet tool install -g Fakvio.McpServer`), so it follows master, not TEST-ENV —
+    # a test build must never become the package the public pulls.
+    if: github.ref_name == 'master'
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Download the dotnet tool package
+        uses: actions/download-artifact@v4
+        with:
+          # The package the build job already asserted still carries the ASP.NET Core
+          # FrameworkReference — not a rebuild, so what gets published is what got checked.
+          name: mcp-tool-nupkg
+          path: ./nupkg
+
+      - name: Setup DotNet ${{ env.DOTNET_VERSION }} Environment
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Push to nuget.org
+        shell: bash
+        env:
+          # A secret cannot be read from a job-level `if` (the secrets context is not available
+          # there), so the switch is inside the step: no key configured, no push, green build.
+          # That is what keeps this job harmless until a human adds NUGET_API_KEY.
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${NUGET_API_KEY}" ]; then
+            echo "::notice::NUGET_API_KEY is not configured — skipping the nuget.org push."
+            exit 0
+          fi
+
+          # --skip-duplicate is what makes this safe to run on every master push: the version
+          # lives in Fakvio.McpServer.csproj and is bumped by hand, so a merge that did not
+          # touch it re-pushes an already-published version. Without the flag nuget.org answers
+          # 409 and the build goes red on a merge that did nothing wrong; with it, the push is
+          # a no-op and a real bump still ships.
+          #
+          # The consequence to know: forgetting the bump means the fix reaches CI artifacts and
+          # nobody else, silently. The version bump belongs in the same PR as the change.
+          dotnet nuget push ./nupkg/*.nupkg \
+            --source https://api.nuget.org/v3/index.json \
+            --api-key "${NUGET_API_KEY}" \
+            --skip-duplicate

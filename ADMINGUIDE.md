@@ -504,6 +504,19 @@ curl). Posílají se ve stejné hlavičce: `Authorization: Bearer fak_live_…`.
   logu jde vždy jen prefix. Ztracený klíč nejde obnovit, jen zrušit a vydat nový.
 - Funguje **shodně na API i na Azure Functions hostu**.
 
+**Kde se klíče zakládají — self-service, ne SysAdmin agenda.** Klíče si vydává každý uživatel
+sám na stránce **Nastavení → Integrace** (`/settings/integrations`); stačí libovolná přihlášená
+role. SysAdmin bez impersonace ale tuhle položku v menu nemá (je ve fakturační skupině), takže
+na ni musí přes URL přímo — stránka sama žádnou roli nevyžaduje. Zadává jméno klíče, rozsah
+(`Jen čtení` / `Čtení i zápis`) a nepovinnou platnost do data;
+raw klíč se ukáže **právě jednou** a stránka k němu rovnou vypíše hotové konfigurační bloky pro
+MCP klienta. Revokace je tamtéž, s potvrzením, a platí okamžitě.
+
+> **SysAdmin cizí klíče nevidí ani neruší.** Endpointy `/api/api-key` pracují vždy jen s klíči
+> přihlášeného uživatele — není nad nimi žádná administrátorská nadstavba. Páka na kompromitovaný
+> účet je proto **deaktivace uživatele** (řádek v tabulce níž). Impersonace firmy (§11) tu
+> nepomůže — mění se jí tenant, ne identita, takže SysAdmin i pod ní vidí pořád jen své klíče.
+
 **Co SysAdmina zajímá provozně:**
 
 | Situace | Chování |
@@ -520,6 +533,87 @@ umí `X-Company-Id` impersonaci úplně stejně jako jeho přihlášení (viz §
 takový klíč na tenant endpointy nedosáhne (403) — stejně jako SysAdmin bez impersonace.
 Je to tedy **plnohodnotný SysAdmin credential s dlouhou platností**: vydávejte ho uvážlivě,
 raději s vyplněnou expirací a rozsahem `read`.
+
+### MCP server v HTTP režimu (vzdálené napojení AI klientů)
+
+`Fakvio.McpServer` umí dva režimy, přepíná se proměnnou `FAKVIO_MCP_TRANSPORT`:
+
+| Režim | Kdo ho spouští | Credential | Kdy dává smysl |
+|-------|----------------|------------|----------------|
+| `stdio` (výchozí) | AI klient na počítači uživatele, jako podproces | API klíč v `FAKVIO_API_TOKEN` (proměnná procesu) | Jeden uživatel, jeho vlastní stroj |
+| `http` | Vy, jako trvale běžící službu | API klíč **v každém requestu** volajícího | Víc uživatelů, klienti, které nejde nic doinstalovat |
+
+Neznámá hodnota proměnné = chyba na stderr a **exit code 1** (server, který měl poslouchat na
+HTTP a místo toho čeká na stdin, vypadá zvenčí jako nastartovaný — proto fail fast).
+
+**Co je potřeba k provozu HTTP hostu:**
+
+- **ASP.NET Core shared framework** (`Microsoft.AspNetCore.App`) na cílovém stroji — a to i pro
+  stdio režim; balíček se Streamable HTTP transportem ho táhne přes `FrameworkReference` do
+  celého nástroje. Na stroji jen s .NET runtime se musí doinstalovat ASP.NET Core Runtime.
+- `ASPNETCORE_URLS` — na čem Kestrel poslouchá. `FAKVIO_API_URL` — adresa API, kam server volá.
+- **HTTPS.** Klienti posílají API klíč v hlavičce `Authorization`, takže po veřejné síti musí
+  jít spojení šifrovaně. Host je holá ASP.NET Core aplikace bez vlastní TLS konfigurace —
+  buď mu certifikát dodáte standardní cestou Kestrelu, nebo ho postavte za reverzní proxy.
+
+**Bezpečnostní model — co je na něm důležité:**
+
+- Host **nemá vlastní credential** a nemá přístup k databázi. Klíč volajícího jen přeposílá na
+  `Fakvio.API`, takže autorizace i tenant izolace zůstávají tam, kde byly. Kompromitovaný MCP
+  host tedy sám o sobě nedává přístup k datům, dokud mu někdo neposílá platné klíče.
+- **Každý request se ověřuje znovu** proti `GET /api/api-key/me`, **bez jakékoli cache** — proto
+  revokovaný klíč přestává fungovat okamžitě, ne „do vypršení cache". Chybějící hlavička se
+  odmítne rovnou, bez round-tripu na API.
+- Odmítnutí = **401** + `WWW-Authenticate: Bearer`, bez detailu v těle; důvod jde do logu hostu.
+  **Nedostupné API se na 401 nepřevádí** — padá jako 500, aby se „API neběží" nepletlo s
+  „tvůj klíč neplatí".
+- Běží **stateless** (žádné `Mcp-Session-Id`), takže není potřeba sticky routing a host jde
+  škálovat vodorovně. `GET /mcp` ani `/sse` k dispozici nejsou.
+- Endpoint je jediný: `POST /mcp`.
+
+> **Hostu chybí už jen Azure resource.** Packaging i CI (`.github/workflows/mcp-server.yml`,
+> issue #241) jsou hotové pro obě prostředí — `TEST-ENV` deployuje job `deploy-http-test`,
+> `master` job `deploy-http-prod`. Oba se **přeskočí**, dokud není nastavená příslušná repo
+> proměnná se jménem Function Appu: `MCP_HTTP_APP_NAME` (test, očekávaná hodnota
+> `fakvio-mcp-test`) a `MCP_HTTP_APP_NAME_PROD` (produkce, `fakvio-mcp`). Chybí tedy jen
+> ruční krok — a je to **Function App na Flex Consumption**, ne App Service: MCP host se
+> nasazuje jako Azure Functions *custom handler*, takže se za něj neplatí, když nikdo
+> nevolá. Co založit:
+>
+> 1. **Function App na plánu Flex Consumption** (jiný plán custom handler pro MCP neumí),
+>    samostatný — custom handler vlastní všechny routy aplikace, takže se nedá přidat
+>    do stávajícího `zcloudinvoicingapi`.
+> 2. **App settings:** `FAKVIO_MCP_TRANSPORT=http`, `FAKVIO_API_URL` (adresa API),
+>    `ASPNETCORE_URLS=http://0.0.0.0:8080` (**musí sedět s portem v `host.json`**),
+>    `FUNCTIONS_WORKER_RUNTIME=dotnet-isolated`,
+>    `AzureWebJobsFeatureFlags=EnableMcpCustomHandlerPreview`.
+> 3. **HTTPS Only** zapnout.
+> 4. **Žádnou platformní autentizaci nezapínat** — ani Easy Auth, ani vyšší authorization
+>    level než `anonymous`. Odpovídaly by 401 dřív, než se request dostane k aplikaci,
+>    takže by post-deploy kontrola prošla i na hostu, který vůbec nenastartoval.
+>    Autorizaci dělá API klíč uvnitř aplikace.
+> 5. **Rozšířit role assignment** stávající app registrace toho prostředí na nový Function App.
+> 6. **Doplnit repo proměnnou** se jménem appky.
+> 7. **Na API Function Appu** (ne na MCP hostu) nastavit `McpKeepAlive__Url` na adresu
+>    MCP hostu. Timer `McpKeepAlive` pak každých 5 minut pošle jeden request, který drží
+>    host teplý — bez toho může první volání po delší pauze skončit chybou 500 (host se
+>    probouzí a Functions se na něj krátce nedovolá). Prázdná hodnota warm-up vypíná.
+>
+> Pozor: hostování MCP serverů postavených na oficiálním SDK je u Azure Functions zatím
+> **public preview** — proto ten feature flag. Na produkci to je vědomé riziko, ne
+> přehlédnutí.
+>
+> Adresu, kterou stránka Integrace nabízí, drží `McpSettings:BaseUrl`
+> (`Fakvio.BlazorUI/wwwroot/appsettings.json`) — samostatná hodnota, ne odhad z adresy API
+> (#363). Produkce má `https://mcp.fakvio.cz`, testovacímu UI ji `blazorui-test-deploy.yml`
+> před publishem přepíše na `https://mcp-test.fakvio.cz`. Obě jsou vlastní domény
+> s vlastním managed certifikátem, ne `*.azurewebsites.net` — adresa vlepená do konfigurace
+> AI klienta přežije i přestavbu hostu.
+>
+> **Produkční hodnota se k uživateli dostane až releasem.** Tentýž push do `master` nasadí
+> i samotný host, takže adresa a to, na co ukazuje, jdou živě spolu.
+
+Podrobnosti pro vývojáře: DEVGUIDE §4.9, `Fakvio.McpServer/README.md`.
 
 ### Data Protection (CredentialProtector)
 
@@ -726,9 +820,38 @@ curl -s -H "Authorization: Bearer <sysadmin-jwt>"   https://<host>/api/diagnosti
 | `masterConnectionServer` | Host, databáze a uživatel — **nikdy heslo ani token**. |
 | `masterDbCanConnect`, `masterDbPendingMigrations` | Dostupnost master DB a počet nenasazených migrací. |
 | `databaseConnected` / `databaseReady` | Souhrnné vlajky pro monitoring. `databaseReady` = připojeno **a** žádné čekající migrace. |
+| `startupDatabaseReady` | `false` jen v prvních vteřinách života procesu, než dojede stavba Tailscale tunelu. Dokud je `false`, API vrací **503 + `Retry-After: 5`** — viz níž. |
+| `startupMigration` | `pending` / `succeeded` / `failed` — výsledek startovní migrace master DB. Doplňují ho `startupMigrationCompletedAt` a při selhání `startupMigrationError`. |
 
 HTTP **200** = databáze odpovídá, **503** = neodpovídá (monitoring může jet jen podle status
 kódu). Při 503 se `authMode`/`authModeSource` hlásí dál — právě tehdy jsou nejužitečnější.
+
+**`startupMigration: failed` neshazuje aplikaci** a health kvůli němu nevrací 503. Znamená to
+„databáze odpovídá, ale je o pár migrací pozadu" — to je stav, přes který se dá provozovat,
+zatímco výpadek by způsobil víc škody. Text výjimky je v `startupMigrationError`; dřív ho
+nebylo kde přečíst, protože worker `ILogger` do App Insights nedoletí (issue #322).
+
+### 13.1 „The service is still starting" (503 + Retry-After)
+
+Azure Functions hlásí worker jako připravený dřív, než se postaví Tailscale tunel — a než
+`Socks5Forwarder` obsadí `127.0.0.1:15432`, connection string ukazuje na port, na kterém nikdo
+neposlouchá. Requesty, které do té díry spadnou, dostávaly po 15 s HTTP 500 a v logu
+`An error occurred using the connection to database … on server 'tcp://127.0.0.1:15432'`.
+
+Nově je v pipeline **startup gate**: dokud `startupDatabaseReady` není `true`, každý
+`/api/*` (mimo `/api/diagnostic`) dostane hned **503 s hlavičkou `Retry-After: 5`**.
+Webové UI si takový 503 **samo zopakuje** (max 3 pokusy, strop ~20 s), takže uživatel vidí
+jen krátké čekání místo chyby.
+
+Kdy to znamená problém: když 503 „still starting" chodí **trvale**, ne jen pár vteřin po
+studeném startu. Pak se tunel nepostavil — hledejte v App Insights:
+
+```kusto
+traces | where message startswith "Tailscale:" | order by timestamp desc
+```
+
+Gate se otevře i po **neúspěšné** stavbě tunelu, schválně: zavřená brána by z rozbitého
+tunelu udělala tichý blackout bez jediné diagnostikovatelné chyby.
 
 **Když je databáze úplně nedostupná**, endpoint nepomůže — přihlášení SysAdmina samo potřebuje
 master DB. Tentýž údaj proto oba hostitelé vypisují do logu hned po startu (Azure: Log stream /
@@ -801,6 +924,9 @@ variables), ne ve workflow souborech. Zápis používá dvojité podtržítko m�
 | `CorsSettings__AllowedOrigins__0` / `__1` | `https://wonderful-meadow-0eb3ada03.7.azurestaticapps.net` a `https://test.fakvio.cz` (oba originy testovacího frontendu) | Musí sedět na frontend URL daného prostředí, jinak prohlížeč zablokuje všechna volání API. Při změně URL frontendu se mění i tady. |
 | `ConnectionStrings__DefaultConnection` | `Host=127.0.0.1;Port=15432;Database=fakvio_test;Username=fakvio_test;Password=***;Ssl Mode=Prefer;Timezone=UTC;Maximum Pool Size=20;Timeout=15` | **`127.0.0.1` není překlep** — míří na lokální konec Tailscale tunelu (viz níž), ne přímo na databázový server. `Ssl Mode=Prefer`, protože provoz už šifruje WireGuard a certifikát na `127.0.0.1` se ověřit nedá; `Timeout=15` kvůli WireGuard handshake při prvním spojení. |
 | `TAILSCALE_AUTHKEY` | `tskey-auth-…` (reusable + ephemeral + tag) | **Spínač celé funkce.** Když klíč chybí, tunel se nepostaví a databáze je nedostupná. Klíč má expiraci — po vypršení se nové instance nepřihlásí. Postup vydání, ACL a rotace: `Fakvio.Functions/Tailscale/README.md`. |
+| `TAILSCALE_HOSTNAME` | `fakvio-func-prod` / `fakvio-func-test` | Jméno uzlu v tailnetu. Prod a test sdílejí tailnet — každé prostředí musí mít vlastní; bez klíče `fakvio-func-prod`. |
+| `TAILSCALE_TARGET_PORT` | *(volitelné)* výchozí `5544` | **Produkce: `5544`** (přímo Postgres, od 2026-09-10). **Test: `6432`** = PgBouncer — a je tam tím pádem stejná rozbitá tenant část, jakou měla produkce. PgBouncer v **transaction** režimu tuhle aplikaci rozbije: `search_path` chodí jako startup parametr a pooler spojení odmítne. Rozbor a cesty zpět: `SELFHOST-DB.md` §6.4b. |
+| `TS_ASSUME_NETWORK_UP_FOR_TEST` | *(nenastavovat)* | Nastavuje kód při startu démona. Bez ní se uzel v sandboxu nikdy nezaregistruje (`timeout waiting for Tailscale service to enter a Running state`). |
 | `Database__AuthMode` | `Password` (produkce: `AzureEntraId`) | Vlastní PostgreSQL Entra ID neumí. Kanonický klíč (§13) — health proto hlásí `authModeSource: Database:AuthMode`. |
 | `UseAzureAdAuthentication` | `false` (produkce: `true`, tedy Entra ID) | **Legacy klíč, musí souhlasit s řádkem výš** — když si budou odporovat, aplikace při startu spadne (fail-fast, §13). Měnit vždy oba zároveň. |
 | `AresSettings__BaseUrl` | shodné s produkcí | |

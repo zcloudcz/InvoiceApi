@@ -528,9 +528,11 @@ public class CreateInvoiceToolTests
     // ─── VAT Rate Tests ─────────────────────────────────────────────────
 
     [Fact]
-    public async Task CreateInvoice_NoDefaultVatRate_UsesZeroPercent()
+    public async Task CreateInvoice_NoDefaultVatRate_ReturnsFailure()
     {
-        // Arrange — no default VAT rate configured.
+        // Arrange — VAT-paying issuer (_testIssuer.IsVatPayer = true) with no default VAT rate
+        // configured. Issue #283: this used to fall back to a silent 0% instead of being rejected
+        // — a tax document of a VAT payer must never guess a VAT rate.
         _vatRateService.GetDefaultStandardRateAsync(Arg.Any<CancellationToken>())
             .Returns((VatRateDto?)null);
 
@@ -541,14 +543,114 @@ public class CreateInvoiceToolTests
         };
 
         // Act
-        await _tool.ExecuteAsync(parameters);
+        var result = await _tool.ExecuteAsync(parameters);
 
-        // Assert — should use null VatRateId and 0% rate.
+        // Assert — rejected, nothing created.
+        result.IsSuccess.ShouldBeFalse();
+        result.OutputText.ShouldContain("VAT rate");
+        result.UiAction.ShouldBeNull();
+        await _invoiceService.DidNotReceive().CreateInvoiceAsync(
+            Arg.Any<CreateInvoiceDto>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CreateInvoice_NoDefaultVatRate_NonVatPayerIssuer_CreatesWithZeroPercent()
+    {
+        // Arrange — the other half of the issue #283 split: a non-VAT payer has no rate to
+        // configure in the first place (TenantReadinessService does not ask a non-payer for one),
+        // so 0% is the correct value and the guard must stay off this path. Otherwise chat would
+        // refuse an invoice the UI creates without complaint, telling the user to set up a rate
+        // they are not supposed to have.
+        _clientService.GetIssuerAsync(Arg.Any<CancellationToken>())
+            .Returns(new ClientDto
+            {
+                Id = 1,
+                CompanyName = "Non-payer s.r.o.",
+                RegistrationNumber = "12345678",
+                IsVatPayer = false
+            });
+        _vatRateService.GetDefaultStandardRateAsync(Arg.Any<CancellationToken>())
+            .Returns((VatRateDto?)null);
+
+        var parameters = new Dictionary<string, string>
+        {
+            ["client_name"] = "Alza",
+            ["items"] = """[{"description": "Test", "quantity": 2, "unit_price": 100}]"""
+        };
+
+        // Act
+        var result = await _tool.ExecuteAsync(parameters);
+
+        // Assert — created, with no VAT rate reference and 0%.
+        result.IsSuccess.ShouldBeTrue();
         await _invoiceService.Received(1).CreateInvoiceAsync(
             Arg.Is<CreateInvoiceDto>(dto =>
                 dto.InvoiceItem[0].VatRateId == null &&
                 dto.InvoiceItem[0].VatRatePercentage == 0m),
             Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CreateInvoice_ExplicitZeroQuantity_ReturnsFailure()
+    {
+        // Arrange — issue #283: an explicit non-positive quantity used to silently become 1.
+        var parameters = new Dictionary<string, string>
+        {
+            ["client_name"] = "Alza",
+            ["items"] = """[{"description": "Test", "quantity": 0, "unit_price": 100}]"""
+        };
+
+        // Act
+        var result = await _tool.ExecuteAsync(parameters);
+
+        // Assert
+        result.IsSuccess.ShouldBeFalse();
+        result.OutputText.ShouldContain("quantity");
+        result.UiAction.ShouldBeNull();
+        await _invoiceService.DidNotReceive().CreateInvoiceAsync(
+            Arg.Any<CreateInvoiceDto>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CreateInvoice_ExplicitNegativeQuantity_ReturnsFailure()
+    {
+        // Arrange
+        var parameters = new Dictionary<string, string>
+        {
+            ["client_name"] = "Alza",
+            ["items"] = """[{"description": "Test", "quantity": -3, "unit_price": 100}]"""
+        };
+
+        // Act
+        var result = await _tool.ExecuteAsync(parameters);
+
+        // Assert
+        result.IsSuccess.ShouldBeFalse();
+        result.OutputText.ShouldContain("quantity");
+        await _invoiceService.DidNotReceive().CreateInvoiceAsync(
+            Arg.Any<CreateInvoiceDto>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CreateInvoice_QuotedZeroQuantityString_ReturnsFailure()
+    {
+        // Arrange — GetJsonDecimal also accepts a quoted number ("quantity": "0"), which models
+        // send surprisingly often. The <= 0 rejection must fire on that path too, not just on a
+        // bare JSON number.
+        var parameters = new Dictionary<string, string>
+        {
+            ["client_name"] = "Alza",
+            ["items"] = """[{"description": "Test", "quantity": "0", "unit_price": 100}]"""
+        };
+
+        // Act
+        var result = await _tool.ExecuteAsync(parameters);
+
+        // Assert
+        result.IsSuccess.ShouldBeFalse();
+        result.OutputText.ShouldContain("quantity");
+        await _invoiceService.DidNotReceive().CreateInvoiceAsync(
+            Arg.Any<CreateInvoiceDto>(), Arg.Any<CancellationToken>());
     }
 
     // ─── Error Handling Tests ───────────────────────────────────────────

@@ -43,6 +43,26 @@ public static class TailscaleTunnel
     /// <summary>Environment variable overriding the database port on that host.</summary>
     public const string TargetPortEnv = "TAILSCALE_TARGET_PORT";
 
+    /// <summary>
+    /// Environment variable overriding the name the node registers under in the tailnet. Each
+    /// environment must use its own (prod and test share one tailnet and one codebase), so the
+    /// admin console and the ACLs can tell the two Function Apps apart.
+    /// </summary>
+    public const string HostnameEnv = "TAILSCALE_HOSTNAME";
+
+    /// <summary>Node name used when <see cref="HostnameEnv"/> is not set.</summary>
+    public const string DefaultHostname = "fakvio-func-prod";
+
+    /// <summary>
+    /// Environment the daemon is started with. The Flex Consumption sandbox exposes no routing
+    /// table, so tailscaled's network monitor never reports "network up" and 'tailscale up'
+    /// times out waiting for the Running state — on every instance, forever. This switch tells
+    /// the daemon to assume the network is up. Set here rather than as an App Setting so a new
+    /// environment cannot forget it (production did, and registered no node at all).
+    /// </summary>
+    public static readonly IReadOnlyDictionary<string, string> DaemonEnvironment =
+        new Dictionary<string, string> { ["TS_ASSUME_NETWORK_UP_FOR_TEST"] = "true" };
+
     // The default location of the daemon socket (/var/run/tailscale/) is not writable in the
     // Flex Consumption sandbox, so both the daemon and every CLI call are pointed at /tmp.
     public const string SocketPath = "/tmp/tailscaled.sock";
@@ -114,8 +134,15 @@ public static class TailscaleTunnel
     /// rewriting /etc/resolv.conf fails in the sandbox; <c>--timeout</c> so a stuck login gives up
     /// instead of hanging startup.
     /// </summary>
-    public static string UpArguments(string authKey) =>
-        $"--socket={SocketPath} up --authkey={authKey} --hostname=fakvio-func --accept-dns=false --timeout=30s";
+    public static string UpArguments(string authKey, string hostname) =>
+        $"--socket={SocketPath} up --authkey={authKey} --hostname={hostname} --accept-dns=false --timeout=30s";
+
+    /// <summary>Reads the node name from the environment, falling back to <see cref="DefaultHostname"/>.</summary>
+    public static string ResolveHostname()
+    {
+        var hostname = Environment.GetEnvironmentVariable(HostnameEnv);
+        return string.IsNullOrWhiteSpace(hostname) ? DefaultHostname : hostname.Trim();
+    }
 
     /// <summary>
     /// Starts the tunnel when an auth key is configured. Returns false when the feature is off.
@@ -399,7 +426,7 @@ public static class TailscaleTunnel
     /// </summary>
     private static Process StartDaemon(string tailscaledPath, IHostApplicationLifetime lifetime, ILogger logger)
     {
-        var daemon = StartProcess(tailscaledPath, TailscaledArguments);
+        var daemon = StartProcess(tailscaledPath, TailscaledArguments, DaemonEnvironment);
 
         // Debug level: the daemon is chatty and its lines only matter while diagnosing the tunnel.
         daemon.OutputDataReceived += (_, e) => LogDaemonLine(logger, e.Data);
@@ -483,7 +510,7 @@ public static class TailscaleTunnel
             }
 
             // NEVER log the argument string — it carries the auth key.
-            var (exitCode, output) = await RunToCompletionAsync(tailscalePath, UpArguments(authKey), authKey, cancellationToken);
+            var (exitCode, output) = await RunToCompletionAsync(tailscalePath, UpArguments(authKey, ResolveHostname()), authKey, cancellationToken);
             if (exitCode == 0)
             {
                 Milestone(logger, $"up OK (attempt {attempt})");
@@ -606,7 +633,7 @@ public static class TailscaleTunnel
     internal static string Redact(string text, string secret) =>
         string.IsNullOrEmpty(secret) ? text : text.Replace(secret, "<redacted>", StringComparison.Ordinal);
 
-    private static Process StartProcess(string fileName, string arguments)
+    private static Process StartProcess(string fileName, string arguments, IReadOnlyDictionary<string, string>? environment = null)
     {
         var process = new Process
         {
@@ -617,6 +644,13 @@ public static class TailscaleTunnel
                 UseShellExecute = false
             }
         };
+        if (environment is not null)
+        {
+            foreach (var (name, value) in environment)
+            {
+                process.StartInfo.Environment[name] = value;
+            }
+        }
         process.Start();
         return process;
     }

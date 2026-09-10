@@ -5,7 +5,14 @@
       "args": [],
       "env": {
         "FAKVIO_API_URL": "https://localhost:7047",
-        "FAKVIO_API_TOKEN": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.PASTE-YOUR-JWT-HERE"
+        "FAKVIO_API_TOKEN": "fak_live_PASTE-YOUR-API-KEY-HERE"
+      }
+    },
+    "fakvio-remote": {
+      "type": "http",
+      "url": "http://localhost:5290/mcp",
+      "headers": {
+        "Authorization": "Bearer fak_live_PASTE-YOUR-API-KEY-HERE"
       }
     }
   }

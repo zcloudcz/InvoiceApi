@@ -1,9 +1,11 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text.RegularExpressions;
 using Fakvio.Application.Service;
+using Fakvio.Infrastructure.Data;
 using Fakvio.Infrastructure.DependencyInjection;
 using Fakvio.Infrastructure.Service;
 using Fakvio.Infrastructure.Service.ChatTools;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -137,7 +139,7 @@ public class ChatToolCatalogSchemaTests
         // thing that goes stale.
         var expected = Catalog.Tools.Count;
 
-        var devGuide = File.ReadAllText(Path.Combine(FindRepositoryRoot(), "DEVGUIDE.md"));
+        var devGuide = File.ReadAllText(Path.Combine(RepositoryRoot.Find(), "DEVGUIDE.md"));
 
         var published = PublishedChatToolCount
             .Matches(devGuide)
@@ -316,7 +318,16 @@ public class ChatToolCatalogSchemaTests
     /// production ones, while no test touches a database or an AI provider.
     /// </summary>
     private static ChatToolExecutor CreateInertExecutor()
-        => new(Catalog.Tools.Select(CreateSchemaMirror), Substitute.For<ILogger<ChatToolExecutor>>());
+        => new(Catalog.Tools.Select(CreateSchemaMirror), CreateDbContext(), Substitute.For<ILogger<ChatToolExecutor>>());
+
+    /// <summary>
+    /// Throwaway in-memory TenantDbContext — the executor only needs one to discard leftover
+    /// change-tracker entries after a failed write (issue #305); no test here touches it.
+    /// </summary>
+    private static TenantDbContext CreateDbContext()
+        => new(new DbContextOptionsBuilder<TenantDbContext>()
+            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .Options);
 
     private static IChatTool CreateSchemaMirror(IChatTool realTool)
     {
@@ -341,23 +352,6 @@ public class ChatToolCatalogSchemaTests
         }
 
         return mirror;
-    }
-
-    /// <summary>
-    /// Walks up from the test binaries to the folder that holds <c>Fakvio.sln</c>, so a test
-    /// can read a file that lives in the repository root. A relative "../../../.." would be
-    /// shorter and would break the day the build layout or target framework changes.
-    /// </summary>
-    private static string FindRepositoryRoot()
-    {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Fakvio.sln")))
-        {
-            directory = directory.Parent;
-        }
-
-        directory.ShouldNotBeNull($"Fakvio.sln was not found in any folder above {AppContext.BaseDirectory}");
-        return directory.FullName;
     }
 
     /// <summary>
