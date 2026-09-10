@@ -152,9 +152,9 @@ public class AuthController : ControllerBase
     ///
     /// Abuse protection, in order of importance:
     /// 1. The same reCAPTCHA v3 gate as login/register (X-Captcha-Token header).
-    ///    This is the mechanism the repo already uses for anonymous endpoints and it
-    ///    works in both hosts (API and Azure Functions), unlike ASP.NET rate-limiting
-    ///    middleware, which the Functions host would silently skip.
+    ///    This is the mechanism the repo already uses for anonymous endpoints. (ASP.NET
+    ///    rate limiting was ruled out while the Azure Functions host existed; it is an
+    ///    option again now that Fakvio.API is the only host.)
     /// 2. Cache-first lookup (GetCompanyInfoAsync, not RefreshCompanyInfoAsync): a
     ///    caller cannot force unbounded outbound traffic to the public ARES registry
     ///    by replaying the same IČO.

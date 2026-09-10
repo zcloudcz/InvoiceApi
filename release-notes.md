@@ -20,6 +20,11 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+## 2026.09.10.3 — 2026-09-10
+
+### Změny
+- **#419** — hosting API a MCP HTTP hostu přesunut z Azure Functions (Flex Consumption) na Azure App Service (Linux B1, plan `asp-fakvio-b1`): jeden host `Fakvio.API`, projekty `Fakvio.Functions` a `Fakvio.Functions.Generator` smazány, Tailscale tunel a startup gate běží v API hostu, nový `ReminderWorker` (denní upomínky 06:00 UTC) nahrazuje timer trigger, `McpKeepAlive` odstraněn (Always On). Nové adresy: API `https://fakvio-api.azurewebsites.net`, test `https://fakvio-api-test.azurewebsites.net`; MCP web appky `fakvio-mcp-web(-test)`. (PR #419, `07ea98d`)
+
 ## 2026.09.10.2 — 2026-09-10
 
 ### Opravy

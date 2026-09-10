@@ -77,7 +77,7 @@ public interface IReminderService
     /// <summary>
     /// Process all overdue invoices for the current tenant.
     /// Creates reminders and optionally sends emails based on settings.
-    /// Called by the daily Azure Functions TimerTrigger.
+    /// Called by the daily <c>ReminderWorker</c> (BackgroundService, 06:00 UTC).
     /// Returns the number of reminders created.
     /// </summary>
     Task<int> ProcessOverdueInvoicesAsync(CancellationToken ct = default);

@@ -1,7 +1,7 @@
 // ============================================================================
 // DatabaseAuthModeStartupLogTests — unit tests for IServiceProvider.LogDatabaseAuthMode().
 //
-// Both hosts call this right after Build() (Fakvio.API and Fakvio.Functions Program.cs).
+// The API host calls this right after Build() (Fakvio.API/Program.cs).
 // It is the fallback the SELFHOST-DB runbook points operators at: the health endpoint that
 // reports the same two values is SysAdmin-only, and signing in needs the master database —
 // so when the database is the thing that is down, this log line is the only way to tell

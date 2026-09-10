@@ -166,9 +166,8 @@ public class AresCacheRepository : IAresCacheRepository
     /// WHY HERE AND NOT IN A SCHEDULED JOB
     /// Rows are only ever created by SaveCacheAsync, so sweeping on the write path means
     /// the table cannot grow while nothing writes to it — and it needs no BackgroundService
-    /// plus [TimerTrigger] pair (see CLAUDE.md → "API + Functions duplication"), which
-    /// would have to be duplicated for both hosts and would still run against every
-    /// tenant schema separately. The caller pays for its own garbage: the anonymous
+    /// (see CLAUDE.md → "Background work pattern"), which would still have to run against
+    /// every tenant schema separately. The caller pays for its own garbage: the anonymous
     /// endpoint that makes this table enumerable is also the one cleaning it up.
     ///
     /// The row being written is excluded — a refresh of an entry that has just expired
