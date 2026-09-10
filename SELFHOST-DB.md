@@ -832,37 +832,45 @@ Projeví se to tiše — pod nízkým provozem nic, pod špičkou náhlé
 
 ### 6.4b PgBouncer v transaction poolingu tiše rozbije zámky
 
-Transaction pooling přiděluje serverové spojení na jednu transakci, takže **nic
-session-scoped nepřežije**. Aplikace na tom stojí na třech místech:
+Transaction pooling přiděluje serverové spojení na **jednu transakci**, takže nic
+session-scoped nepřežije. Aplikace na tom stojí na třech místech:
 
 | Co | Kde | Co se stane v transaction režimu |
 |---|---|---|
-| EF Core migrační zámek (`pg_advisory_lock`) | uvnitř EF Core, nejde změnit | dva worker procesy migrují **stejné** tenant schéma naráz → `tuple concurrently updated` / `42P07` → `TenantContextMiddleware` vrátí 503 „Tenant database is not ready" |
+| EF Core migrační zámek (`pg_advisory_lock`) | uvnitř EF Core, z aplikace nejde změnit | dva worker procesy migrují **stejné** tenant schéma naráz → `tuple concurrently updated` / `42P07` → `TenantContextMiddleware` vrátí 503 „Tenant database is not ready" |
 | `AdvisoryLock.TryAcquireAsync` | `Fakvio.Infrastructure/Service/AdvisoryLock.cs` | vzájemné vyloučení pravidelných úloh (IMAP poll, dunning) nefunguje — úlohy běží paralelně |
-| `search_path` v connection stringu | `NpgsqlDataSourceFactory.cs:206` | jde jako **startup parametr**, který PgBouncer defaultně netrackuje |
+| `search_path` | `NpgsqlDataSourceFactory.cs:206`, jen migrace a provisioning | Npgsql ho posílá jako **startup parametr**; PgBouncer musí umět takový parametr přenést |
 
-Proto pro Fakvio:
+**Oprava je jediný řádek: `pool_mode = session`.** Nic jiného se nemění — port
+zůstává, backend entry zůstává, connection string aplikace zůstává.
 
 ```ini
-[databases]
-fakvio_prod = host=127.0.0.1 port=5544 dbname=fakvio_prod pool_mode=session
-fakvio_test = host=127.0.0.1 port=5544 dbname=fakvio_test pool_mode=session
+; buď globálně v [pgbouncer]
+pool_mode = session
 
-[pgbouncer]
-; strop spojení zůstává i v session režimu — klienti nad limit se frontují,
-; takže původní důvod nasazení (Flex Consumption škáluje worker procesy) je pokrytý
-max_db_connections = 40
-; search_path chodí jako startup parametr; bez tohohle ho PgBouncer odmítne
-; (POZOR: `ignore_startup_parameters` NE — tiše by poslal tenant dotazy do `public`)
-track_extra_parameters = search_path
+; nebo jen pro tyhle dvě databáze, na konci existujícího [databases] řádku
+; fakvio_prod = ... pool_mode=session
+; fakvio_test = ... pool_mode=session
 ```
 
-Ověření: `SHOW POOLS;` na admin konzoli hlásí `pool_mode session`, a v logu PgBounceru
-není `unsupported startup parameter: search_path`.
+**Port se nikde nemění.** Aplikace dál míří na PgBouncer (`TAILSCALE_TARGET_PORT=6432`);
+kdyby bylo někdy potřeba jít na Postgres přímo, je to změna App Settingu, ne PgBounceru.
 
-Ztráta multiplexingu nebolí — aplikace má pooly malé už teď
-(`Maximum Pool Size=20` v connection stringu, `SchemaDataSourceMaxPoolSize=4`,
-`ConnectionIdleLifetime=30`).
+Strop spojení session režim neruší — klienty nad limit PgBouncer frontuje, takže původní
+důvod nasazení (Flex Consumption škáluje worker procesy) je pokrytý dál. Ztráta
+multiplexingu nebolí, aplikace má pooly malé už teď (`Maximum Pool Size=20` v connection
+stringu, `SchemaDataSourceMaxPoolSize=4`, `ConnectionIdleLifetime=30`).
+
+**Ověření:** `SHOW POOLS;` na admin konzoli hlásí `pool_mode session`. Pak restart
+Function App a po 15 minutách v App Insights nesmí přibýt žádný 503
+„Tenant database is not ready".
+
+> `search_path` v tabulce výš **není** akční položka. Kdyby ho PgBouncer nepřenášel,
+> selhala by **každá** tenant migrace, ne jen část — v produkci část requestů prochází,
+> takže parametr evidentně projde a session režim ho pokryje tím spíš. Kdyby se v logu
+> PgBounceru přece jen objevilo `unsupported startup parameter: search_path`, řeší to
+> `track_extra_parameters = search_path`. **Nikdy `ignore_startup_parameters`** — ten by
+> parametr zahodil a tenant dotazy by tiše šly do `public`.
 
 ### 6.5 Rozbitá migrační historie ⇒ re-aplikace migrací na plná data
 
