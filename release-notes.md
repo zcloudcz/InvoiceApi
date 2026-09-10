@@ -20,6 +20,12 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+## 2026.09.10.4 — 2026-09-10
+
+### Změny
+- **#423** — Tailscale tunel k databázi odstraněn: App Service má pevnou sadu outbound IP, PostgreSQL je dostupný přímo (TLS, allowlist 19 IP na firewallu a v `pg_hba.conf`). Pryč je i startup gate (`StartupGateMiddleware`, pole `startupDatabaseReady` v health) a `RetryAfterHandler` v UI; migrace masteru běží synchronně před prvním requestem. Produkce přepnuta 2026-09-10 večer. (PR #423)
+- **#422** — delší retry ve verify krocích deploy workflow (první start na B1 trvá až 7 min); docs: `WEBSITES_CONTAINER_START_TIME_LIMIT=900`. (PR #422)
+
 ## 2026.09.10.3 — 2026-09-10
 
 ### Změny
