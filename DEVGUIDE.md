@@ -1061,6 +1061,9 @@ chybějící údaje do jedné zprávy nebo ohlásí uložení hodnoty, kterou to
 - Tooly se v textu jmenují obecně („the matching tool above"). Katalog se generuje z DI,
   takže jmenný seznam by byl druhá, ručně udržovaná kopie, co zastará při prvním novém toolu.
 - Nastavený tenant instrukce nedostane vůbec — jinak by je platil v tokenech v každém requestu.
+- Řádek `Setup not finished yet` nese i `MissingFields` nálezu
+  (`NUMBER_SEQUENCE_MISSING: Invoice, CreditNote (fix at /number-sequences)`) — samotný kód
+  modelu neřekne, na který typ dokladu nebo které pole adresy se má zeptat.
 - Klientskou půlku (proaktivní uvítání) řeší `ChatOnboarding`, viz §4.12.
 
 #### Chat AI Tools matice
@@ -1866,7 +1869,7 @@ normální položka reportu (200), s `issuerId` je to 404.
 |--------|-----|----------|
 | Rozhodnutí + text | `Fakvio.UI.Shared/Components/Chat/ChatOnboarding.cs` | `BuildWelcome(report, L)` → markdown, nebo **null** = tenant je připravený, neotravuj. Jen `Blocking` nálezy, stejně jako v promptu — warning uživateli fakturovat nebrání. Čistá funkce, takže je pravidlo testovatelné bez renderu i bez živého modelu |
 | Text nálezu | `Fakvio.UI.Shared/Components/Shared/ReadinessIssueText.cs` | `Describe(L, issue)` — **týž** helper, který používá banner i checklist (tabulka §4.12 výše). Banner, checklist i uvítání musí tentýž nález pojmenovat stejně; další kopie pravidla „kód → klíč + fallback“ by se rozešla při prvním novém kódu |
-| Zapojení | `MainLayout.razor` (`TryProactiveOnboardingAsync`) → `ChatPanel.OnboardingWelcome` | Po `LoadCompaniesAsync` (potřebuje `_hasTenantContext`), **jednou za session** (`sessionStorage["chatOnboardingShown"]`, maže se při odhlášení). Uvítání se vloží do `_messages` jen v UI — do konverzace v DB nejde, jinak by měl model v historii každé konverzace vloženou vlastní repliku |
+| Zapojení | `MainLayout.razor` (`TryProactiveOnboardingAsync`) → `ChatPanel.OnboardingWelcome` | Po `LoadCompaniesAsync` (potřebuje `_hasTenantContext`), **jednou za session** (`sessionStorage["chatOnboardingShown"]`, maže se při odhlášení). Uvítání se vloží do `_messages` v UI; do DB jde až s **první odpovědí uživatele** (`SendMessageRequest.SeedAssistantMessage`, plní `ChatPanel.SeedForNewConversation`) jako první replika asistenta té jedné nové konverzace — ne každé, kterou uživatel později otevře. Bez toho je „pojďme to dořešit" první větou prázdné historie a model nemá na co navázat. Existující konverzace seed ignoruje (`ChatService.GetOrCreateConversationAsync`) |
 
 Uvítání **neskládá model** — je to lokalizovaný text. Panel ho ukáže hned po otevření, nic
 nestojí, nemůže si chybějící položky vymyslet a dá se otestovat bez živého AI. Konverzaci od

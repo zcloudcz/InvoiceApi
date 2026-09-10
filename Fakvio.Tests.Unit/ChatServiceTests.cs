@@ -157,6 +157,93 @@ public class ChatServiceTests : IDisposable
         messages.Count.ShouldBe(4);
     }
 
+    // ─── Seed assistant message (proactive onboarding, issue #214) ───────
+
+    /// <summary>
+    /// The onboarding welcome is composed on the client and shown before any conversation
+    /// exists. When the user answers it, the welcome must become the first assistant turn of
+    /// the new conversation — otherwise the model gets "pojďme to dořešit" as the opening
+    /// line of an empty history and has nothing to connect it to.
+    /// </summary>
+    [Fact]
+    public async Task SendMessage_StoresTheSeedAsTheFirstAssistantTurn_OfANewConversation()
+    {
+        const string welcome = "Vítejte! Chybí číselná řada. Můžeme začít?";
+
+        List<ChatMessageDto>? historySentToModel = null;
+        _mockProvider
+            .GetCompletionAsync(
+                Arg.Do<List<ChatMessageDto>>(h => historySentToModel = h),
+                Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns("Začneme číselnou řadou.");
+
+        var result = await _service.SendMessageAsync(TestUserId, new SendMessageRequest
+        {
+            Message = "Pojďme to dořešit",
+            SeedAssistantMessage = welcome
+        });
+
+        var stored = await _context.ChatMessage
+            .Where(m => m.ConversationId == result.ConversationId)
+            .OrderBy(m => m.CreatedAt).ThenBy(m => m.Id)
+            .ToListAsync();
+        stored.Select(m => m.Role).ShouldBe([EChatRole.Assistant, EChatRole.User, EChatRole.Assistant]);
+        stored[0].Content.ShouldBe(welcome);
+
+        // The model reads the same thing: welcome first, then the user's reply.
+        historySentToModel.ShouldNotBeNull();
+        historySentToModel.Select(m => m.Role).ShouldBe(["Assistant", "User"]);
+        historySentToModel[0].Content.ShouldBe(welcome);
+    }
+
+    /// <summary>
+    /// The seed only makes sense where no history exists yet. A client that keeps sending it
+    /// must not stamp the welcome into the middle of a running conversation.
+    /// </summary>
+    [Fact]
+    public async Task SendMessage_IgnoresTheSeed_InAnExistingConversation()
+    {
+        var first = await _service.SendMessageAsync(TestUserId,
+            new SendMessageRequest { Message = "First" });
+
+        await _service.SendMessageAsync(TestUserId, new SendMessageRequest
+        {
+            Message = "Second",
+            ConversationId = first.ConversationId,
+            SeedAssistantMessage = "Vítejte!"
+        });
+
+        var stored = await _context.ChatMessage
+            .Where(m => m.ConversationId == first.ConversationId)
+            .ToListAsync();
+        stored.Count.ShouldBe(4);
+        stored.ShouldNotContain(m => m.Content == "Vítejte!");
+    }
+
+    /// <summary>
+    /// /api/chat/stream is what the panel actually calls. The seed lives in the shared
+    /// conversation lookup, so this pins that the streaming entry point forwards it too.
+    /// </summary>
+    [Fact]
+    public async Task StreamMessage_StoresTheSeed_LikeTheNonStreamingPath()
+    {
+        await foreach (var _ in _service.StreamMessageAsync(TestUserId, new SendMessageRequest
+        {
+            Message = "Pojďme to dořešit",
+            SeedAssistantMessage = "Vítejte!"
+        }))
+        {
+            // The faked provider streams nothing; only what got stored is under test.
+        }
+
+        var stored = await _context.ChatMessage
+            .OrderBy(m => m.CreatedAt).ThenBy(m => m.Id)
+            .ToListAsync();
+        stored[0].Role.ShouldBe(EChatRole.Assistant);
+        stored[0].Content.ShouldBe("Vítejte!");
+        stored[1].Role.ShouldBe(EChatRole.User);
+    }
+
     [Fact]
     public async Task SendMessage_AutoGeneratesTitle_FromFirstMessage()
     {
