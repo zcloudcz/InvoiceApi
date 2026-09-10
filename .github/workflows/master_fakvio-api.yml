@@ -96,10 +96,12 @@ jobs:
           # /api/diagnostic/health is JWT-gated, so an anonymous request answers 401 once the
           # app is up — that proves Kestrel started and the auth pipeline is in front of it
           # without carrying any credential here. A 5xx means the container did not start
-          # (or is still starting: --retry-all-errors covers the ~60 s cold start).
+          # (or is still starting: --retry-all-errors covers the cold start, which on B1 took
+          # up to 7 minutes on the first deploy — image pull, cert rehash, tunnel login — so the
+          # retry budget is ~11 minutes, below WEBSITES_CONTAINER_START_TIME_LIMIT=900).
           URL="${{ steps.deploy.outputs.webapp-url }}"
           CODE=$(curl -s -o /dev/null -w '%{http_code}' \
-                   --retry 8 --retry-all-errors --retry-delay 15 --max-time 30 \
+                   --retry 20 --retry-all-errors --retry-delay 30 --max-time 30 \
                    "${URL%/}/api/diagnostic/health")
           if [ "${CODE}" != "401" ]; then
             echo "::error::GET ${URL%/}/api/diagnostic/health answered ${CODE}, expected 401 from the JWT gate."
