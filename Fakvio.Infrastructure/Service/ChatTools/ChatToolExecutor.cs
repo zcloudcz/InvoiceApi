@@ -305,8 +305,10 @@ public class ChatToolExecutor : IChatToolExecutor
                     ? ToolArgumentReader.ReadArguments(paramsElement)
                     : [];
 
+            // Information level gets parameter NAMES only — see LogParameterValuesAtDebug for why.
             _logger.LogInformation("Parsed tool call: action={Action}, parameters={Parameters}",
-                action, string.Join(", ", parameters.Select(kv => $"{kv.Key}={kv.Value}")));
+                action, string.Join(", ", parameters.Keys));
+            LogParameterValuesAtDebug("Parsed tool call", action, parameters);
 
             return new ParsedToolCall
             {
@@ -434,9 +436,15 @@ public class ChatToolExecutor : IChatToolExecutor
                 with { RequiresConfirmation = confirmable is not null };
         }
 
+        // Issue #354: this used to log every parameter VALUE at Information level — the level
+        // that lands in the DB log store SysAdmin reads on /logs. attach_file's
+        // file_content_base64 alone can turn one tool call into megabytes of log text, and
+        // create_client/update_client/send_invoice_email carry PII (name, address, IČO/DIČ,
+        // e-mail) in plain text. Individual tools already log only Keys (e.g.
+        // UpdateReminderSettingsTool) — the executor is now consistent with them.
         _logger.LogInformation("Executing tool {ToolName} with parameters: {Parameters}",
-            tool.ToolName,
-            string.Join(", ", parameters.Select(kv => $"{kv.Key}={kv.Value}")));
+            tool.ToolName, string.Join(", ", parameters.Keys));
+        LogParameterValuesAtDebug("Executing tool", tool.ToolName, parameters);
 
         ChatToolResult result;
 
@@ -541,6 +549,31 @@ public class ChatToolExecutor : IChatToolExecutor
     /// </summary>
     private static Dictionary<string, string> NormalizeParameters(Dictionary<string, string> parameters)
         => parameters.ToDictionary(kv => kv.Key, kv => kv.Value.Trim());
+
+    // ─── Parameter Logging (Debug only, values capped) ─────────────────────
+
+    /// <summary>Longest a single parameter value may be before Debug-level logging truncates it.</summary>
+    private const int MaxLoggedParameterValueLength = 200;
+
+    /// <summary>
+    /// Logs full parameter values at Debug — never Information (issue #354) — with each value
+    /// capped so a large payload (attach_file's Base64 file content being the extreme case)
+    /// can never appear whole in any log sink, even one configured down to Debug.
+    /// </summary>
+    private void LogParameterValuesAtDebug(string context, string toolName, Dictionary<string, string> parameters)
+    {
+        if (!_logger.IsEnabled(LogLevel.Debug))
+            return;
+
+        var formatted = parameters.Select(kv => $"{kv.Key}={Truncate(kv.Value)}");
+        _logger.LogDebug("{Context} {ToolName} parameter values: {Parameters}",
+            context, toolName, string.Join(", ", formatted));
+    }
+
+    private static string Truncate(string value)
+        => value.Length <= MaxLoggedParameterValueLength
+            ? value
+            : value[..MaxLoggedParameterValueLength] + "…";
 
     // ─── Central Parameter Validation ─────────────────────────────────────
 
