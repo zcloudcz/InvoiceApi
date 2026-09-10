@@ -827,7 +827,42 @@ Projeví se to tiše — pod nízkým provozem nic, pod špičkou náhlé
 **Prevence:**
 - explicitní `Maximum Pool Size` v connection stringu (viz část 7),
 - zvednout `max_connections` v `postgresql.conf`,
-- při více hostech / instancích nasadit **PgBouncer** v transaction pooling režimu.
+- při více hostech / instancích nasadit **PgBouncer** — ale **v session režimu**,
+  ne transaction (viz níž).
+
+### 6.4b PgBouncer v transaction poolingu tiše rozbije zámky
+
+Transaction pooling přiděluje serverové spojení na jednu transakci, takže **nic
+session-scoped nepřežije**. Aplikace na tom stojí na třech místech:
+
+| Co | Kde | Co se stane v transaction režimu |
+|---|---|---|
+| EF Core migrační zámek (`pg_advisory_lock`) | uvnitř EF Core, nejde změnit | dva worker procesy migrují **stejné** tenant schéma naráz → `tuple concurrently updated` / `42P07` → `TenantContextMiddleware` vrátí 503 „Tenant database is not ready" |
+| `AdvisoryLock.TryAcquireAsync` | `Fakvio.Infrastructure/Service/AdvisoryLock.cs` | vzájemné vyloučení pravidelných úloh (IMAP poll, dunning) nefunguje — úlohy běží paralelně |
+| `search_path` v connection stringu | `NpgsqlDataSourceFactory.cs:206` | jde jako **startup parametr**, který PgBouncer defaultně netrackuje |
+
+Proto pro Fakvio:
+
+```ini
+[databases]
+fakvio_prod = host=127.0.0.1 port=5544 dbname=fakvio_prod pool_mode=session
+fakvio_test = host=127.0.0.1 port=5544 dbname=fakvio_test pool_mode=session
+
+[pgbouncer]
+; strop spojení zůstává i v session režimu — klienti nad limit se frontují,
+; takže původní důvod nasazení (Flex Consumption škáluje worker procesy) je pokrytý
+max_db_connections = 40
+; search_path chodí jako startup parametr; bez tohohle ho PgBouncer odmítne
+; (POZOR: `ignore_startup_parameters` NE — tiše by poslal tenant dotazy do `public`)
+track_extra_parameters = search_path
+```
+
+Ověření: `SHOW POOLS;` na admin konzoli hlásí `pool_mode session`, a v logu PgBounceru
+není `unsupported startup parameter: search_path`.
+
+Ztráta multiplexingu nebolí — aplikace má pooly malé už teď
+(`Maximum Pool Size=20` v connection stringu, `SchemaDataSourceMaxPoolSize=4`,
+`ConnectionIdleLifetime=30`).
 
 ### 6.5 Rozbitá migrační historie ⇒ re-aplikace migrací na plná data
 

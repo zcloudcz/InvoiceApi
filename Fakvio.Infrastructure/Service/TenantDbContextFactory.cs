@@ -1,7 +1,8 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using Fakvio.Application.Service;
 using Fakvio.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -253,6 +254,12 @@ public class TenantDbContextFactory : ITenantDbContextFactory
                 maxRetryDelay: TimeSpan.FromSeconds(5),
                 errorCodesToAdd: null);
         });
+
+        // Same reason as ConfigureNpgsql in ServiceCollectionExtensions: EF logs every retried
+        // ConnectionError at Error level, which makes a transient startup race read like an
+        // outage. Warning keeps it visible without the false alarm.
+        optionsBuilder.ConfigureWarnings(w =>
+            w.Log((RelationalEventId.ConnectionError, LogLevel.Warning)));
 
         // Custom model cache: one cached model per schema (tenant_42, tenant_99, etc.)
         optionsBuilder.ReplaceService<IModelCacheKeyFactory, TenantModelCacheKeyFactory>();
