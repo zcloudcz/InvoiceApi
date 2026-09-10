@@ -200,9 +200,9 @@
     /// readiness report asynchronously: the panel may well be constructed before the answer
     /// arrives, and the parameter is then set on a later render.
     ///
-    /// The message is UI-only — it is never sent to the API and never stored in the
-    /// conversation. It is a greeting, not a turn: persisting it would put words in the
-    /// model's mouth in the history of every conversation the user later opens.
+    /// Nothing is sent to the API here. The greeting travels with the user's first reply
+    /// (<see cref="SeedForNewConversation"/>) and becomes the first assistant turn of that
+    /// one conversation — not of every conversation the user later opens.
     /// </summary>
     protected override void OnParametersSet()
     {
@@ -282,7 +282,8 @@
                 AttachedFileName = _attachedFileName,
                 AttachedImageBase64 = _attachedImageBase64,
                 CurrentRoute = route,
-                OpenEntity = ChatSituation.DescribeOpenEntity(route)
+                OpenEntity = ChatSituation.DescribeOpenEntity(route),
+                SeedAssistantMessage = SeedForNewConversation()
             };
 
             // Clear all attachment state after sending — the content is now part of the request.
@@ -400,6 +401,19 @@
             StateHasChanged();
         }
     }
+
+    /// <summary>
+    /// The onboarding welcome, when the message being sent starts a conversation in which the
+    /// user has so far only seen that welcome (issue #214). The server stores it as the first
+    /// assistant turn, so "let's do it" has something to refer to. A conversation that already
+    /// exists — saved, or started fresh with the "new conversation" button — carries no seed.
+    /// </summary>
+    private string? SeedForNewConversation()
+        => _currentConversation == null
+           && _messages.FirstOrDefault() is { Role: "Assistant" } first
+           && first.Content == OnboardingWelcome
+            ? OnboardingWelcome
+            : null;
 
     // ─── File Attachment ─────────────────────────────────────────────────
 

@@ -79,8 +79,15 @@ public static class AuthHelper
     ///
     /// Self-registration mails the token to the new user, and a browser test cannot open that
     /// mailbox — polling SMTP would also make the run depend on a mail server being up. The
-    /// token is therefore read back through the API: <c>GET /api/user/paged</c> returns
-    /// <c>UserDto.InvitationToken</c>, and a SysAdmin caller may read users of any company.
+    /// token is therefore read back through the API, in two steps: the paged list resolves the
+    /// email to a user id, and the role-gated
+    /// <c>GET /api/user/{id}/invitation-token</c> returns the token itself.
+    ///
+    /// It used to be one step, reading <c>UserDto.InvitationToken</c> straight off
+    /// <c>GET /api/user/paged</c>. That property is gone: the listing endpoints are open to
+    /// every authenticated member of a company and the token authenticates the anonymous
+    /// set-password call, so it was an account-takeover primitive (issue #364). SysAdmin can
+    /// still reach the token, because SysAdmin can already reset any password anyway.
     /// </summary>
     /// <param name="apiUrl">REST API base URL.</param>
     /// <param name="sysAdminToken">JWT of a SysAdmin — see <see cref="GetTokenAsync"/>.</param>
@@ -96,26 +103,41 @@ public static class AuthHelper
 
         // Search narrows the page server-side; the email match below is what actually decides,
         // because Search is a "contains" filter and could return neighbouring accounts.
-        var json = await http.GetStringAsync(
+        var listJson = await http.GetStringAsync(
             $"api/user/paged?Search={Uri.EscapeDataString(email)}&PageSize=5");
 
-        using var doc = JsonDocument.Parse(json);
-        foreach (var user in doc.RootElement.GetProperty("items").EnumerateArray())
+        long? userId = null;
+        using (var listDoc = JsonDocument.Parse(listJson))
         {
-            if (!string.Equals(user.GetProperty("email").GetString(), email, StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            // The property is null once the password has been set, and may be omitted entirely
-            // by the serializer — neither is an invitation we can use.
-            if (user.TryGetProperty("invitationToken", out var token)
-                && token.ValueKind == JsonValueKind.String)
+            foreach (var user in listDoc.RootElement.GetProperty("items").EnumerateArray())
             {
-                return token.GetString()!;
+                if (string.Equals(user.GetProperty("email").GetString(), email, StringComparison.OrdinalIgnoreCase))
+                {
+                    userId = user.GetProperty("id").GetInt64();
+                    break;
+                }
             }
         }
 
-        throw new InvalidOperationException(
-            $"No pending invitation token found for '{email}'. Did the registration succeed?");
+        if (userId is null)
+        {
+            throw new InvalidOperationException(
+                $"No user found for '{email}'. Did the registration succeed?");
+        }
+
+        // 404 here means the invitation is not pending any more (password already set, or the
+        // token expired) — same "nothing usable" outcome the caller has to treat as a failure.
+        var tokenResponse = await http.GetAsync($"api/user/{userId}/invitation-token");
+        if (!tokenResponse.IsSuccessStatusCode)
+        {
+            throw new InvalidOperationException(
+                $"No pending invitation token for '{email}' (user {userId}): " +
+                $"{(int)tokenResponse.StatusCode} {tokenResponse.ReasonPhrase}.");
+        }
+
+        using var tokenDoc = JsonDocument.Parse(await tokenResponse.Content.ReadAsStringAsync());
+        return tokenDoc.RootElement.GetProperty("token").GetString()
+            ?? throw new InvalidOperationException($"Invitation token is null for '{email}'.");
     }
 
     /// <summary>

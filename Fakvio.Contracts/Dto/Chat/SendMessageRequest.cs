@@ -65,6 +65,16 @@ public class SendMessageRequest
     /// </summary>
     [MaxLength(100)]
     public string? OpenEntity { get; set; }
+
+    /// <summary>
+    /// Assistant text the user has already read before writing this message, which no
+    /// conversation holds yet — today the proactive onboarding welcome (issue #214), composed
+    /// on the client. Honoured only when this message starts a new conversation: it is stored
+    /// as the first assistant turn, so the history the model sees matches the screen and a
+    /// reply like "let's do it" refers to something. Ignored for an existing conversation.
+    /// </summary>
+    [MaxLength(4000)]
+    public string? SeedAssistantMessage { get; set; }
 }
 
 /// <summary>

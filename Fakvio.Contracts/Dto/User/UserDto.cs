@@ -27,12 +27,6 @@ public class UserDto
     public bool IsInvitationPending { get; set; }
 
     /// <summary>
-    /// The invitation token (only set when the user was just invited).
-    /// Used internally to build the invitation link — not exposed to end users.
-    /// </summary>
-    public string? InvitationToken { get; set; }
-
-    /// <summary>
     /// External OAuth provider (None = local password login).
     /// Useful for admin UI to show which provider the user signed up with.
     /// </summary>

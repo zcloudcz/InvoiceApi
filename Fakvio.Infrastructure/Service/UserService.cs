@@ -38,6 +38,12 @@ public class UserService : IUserService
     /// Maps a User entity to UserDto using ZMapper v1.1.0.
     /// ZMapper now handles BaseEntity (Id, CreatedAt, UpdatedAt) automatically.
     /// Only navigation-derived and computed properties must be set manually.
+    ///
+    /// Security: UserDto deliberately has no InvitationToken property (issue #364). This
+    /// mapper feeds every user-listing endpoint, and the invitation token doubles as the
+    /// password-reset credential, so a token on the listing DTO is an account takeover.
+    /// UserDto.IsInvitationPending is what admin UI needs; the raw token is handed out
+    /// only by InviteUserAsync and GetPendingInvitationTokenAsync.
     /// </summary>
     private static UserDto MapToDto(User entity)
     {
@@ -388,7 +394,7 @@ public class UserService : IUserService
     /// and generating a unique invitation token (GUID). The token expires in 48 hours.
     /// The user must click the invitation link and set their own password before they can log in.
     /// </summary>
-    public async Task<UserDto> InviteUserAsync(InviteUserDto dto, CancellationToken cancellationToken = default)
+    public async Task<InvitedUserDto> InviteUserAsync(InviteUserDto dto, CancellationToken cancellationToken = default)
     {
         // Validate email uniqueness — same check as in CreateUserAsync
         var existingUser = await _context.User
@@ -448,7 +454,8 @@ public class UserService : IUserService
             .Reference(u => u.Company)
             .LoadAsync(cancellationToken);
 
-        return MapToDto(user);
+        // The token travels on the result type, not on the UserDto — see InvitedUserDto (issue #364).
+        return new InvitedUserDto { User = MapToDto(user), InvitationToken = invitationToken };
     }
 
     /// <summary>
@@ -637,6 +644,35 @@ public class UserService : IUserService
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Returns the pending invitation token of a user, or null when there is nothing usable.
+    /// Mirrors the checks <see cref="SetPasswordAsync"/> makes, so a token handed out here is
+    /// always a token that would actually work.
+    ///
+    /// Authorization (Admin/SysAdmin + company scope) is the controller's job — this method is
+    /// a plain lookup and must not be called from an unauthenticated path.
+    /// </summary>
+    public async Task<string?> GetPendingInvitationTokenAsync(long userId, CancellationToken cancellationToken = default)
+    {
+        // AsNoTracking: read-only lookup, nothing is written back.
+        var user = await _context.User
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+
+        if (user?.InvitationToken == null)
+        {
+            return null;
+        }
+
+        // Expired token would be rejected by SetPasswordAsync anyway — do not pretend it is usable.
+        if (user.InvitationTokenExpiresAt.HasValue && user.InvitationTokenExpiresAt.Value < DateTime.UtcNow)
+        {
+            return null;
+        }
+
+        return user.InvitationToken;
     }
 
 }

@@ -827,50 +827,68 @@ Projeví se to tiše — pod nízkým provozem nic, pod špičkou náhlé
 **Prevence:**
 - explicitní `Maximum Pool Size` v connection stringu (viz část 7),
 - zvednout `max_connections` v `postgresql.conf`,
-- při více hostech / instancích nasadit **PgBouncer** — ale **v session režimu**,
-  ne transaction (viz níž).
+- při více hostech / instancích nasadit **PgBouncer** — ale **ne v transaction
+  režimu**, ten tuhle aplikaci rozbije (viz §6.4b).
 
-### 6.4b PgBouncer v transaction poolingu tiše rozbije zámky
+### 6.4b PgBouncer v transaction poolingu tuhle aplikaci rozbije
 
-Transaction pooling přiděluje serverové spojení na **jednu transakci**, takže nic
-session-scoped nepřežije. Aplikace na tom stojí na třech místech:
+**Stav 2026-09-10: produkce pooler obchází** — `TAILSCALE_TARGET_PORT=5544` míří přes
+tunel přímo na Postgres. Předtím mířila na PgBouncer (`6432`) v transaction režimu a
+**celá tenant část aplikace byla nepoužitelná**: každý tenant endpoint vracel 503,
+uživatel viděl všude prázdno (UI 503 spolkne a vykreslí prázdný seznam).
 
-| Co | Kde | Co se stane v transaction režimu |
+Transaction pooling přiděluje serverové spojení na **jednu transakci**. Aplikace na
+session stavu stojí na třech místech a jedno z nich je fatální hned při připojení:
+
+| Co | Kde | Co se stane |
 |---|---|---|
-| EF Core migrační zámek (`pg_advisory_lock`) | uvnitř EF Core, z aplikace nejde změnit | dva worker procesy migrují **stejné** tenant schéma naráz → `tuple concurrently updated` / `42P07` → `TenantContextMiddleware` vrátí 503 „Tenant database is not ready" |
-| `AdvisoryLock.TryAcquireAsync` | `Fakvio.Infrastructure/Service/AdvisoryLock.cs` | vzájemné vyloučení pravidelných úloh (IMAP poll, dunning) nefunguje — úlohy běží paralelně |
-| `search_path` | `NpgsqlDataSourceFactory.cs:206`, jen migrace a provisioning | Npgsql ho posílá jako **startup parametr**; PgBouncer musí umět takový parametr přenést |
+| **`search_path` jako startup parametr** | `NpgsqlDataSourceFactory.cs:206`, přes `GetForSchema()` | **Spojení se vůbec nenaváže.** PgBouncer: `pooler error: unsupported startup parameter: search_path="tenant_1", public` — 172 odmítnutých připojení za 30 minut. → `MigrateTenantAsync` padne → `TenantContextMiddleware` vrátí 503 „Tenant database is not ready" |
+| EF Core migrační zámek (`pg_advisory_lock`) | uvnitř EF Core, z aplikace nejde změnit | zámek vznikne na jednom serverovém spojení a uvolňuje se na jiném: `WARNING: you don't own a lock of type ExclusiveLock` (20× / 30 min). Dva worker procesy pak migrují stejné schéma naráz |
+| `AdvisoryLock.TryAcquireAsync` | `Fakvio.Infrastructure/Service/AdvisoryLock.cs` | totéž — vzájemné vyloučení pravidelných úloh (IMAP poll, dunning) nefunguje |
 
-**Oprava je jediný řádek: `pool_mode = session`.** Nic jiného se nemění — port
-zůstává, backend entry zůstává, connection string aplikace zůstává.
+#### `ignore_startup_parameters = search_path` NEPOUŽÍVAT
 
-```ini
-; buď globálně v [pgbouncer]
-pool_mode = session
+Je to první věc, kterou PgBouncer u téhle chyby nabídne, a **poškodí data**.
 
-; nebo jen pro tyhle dvě databáze, na konci existujícího [databases] řádku
-; fakvio_prod = ... pool_mode=session
-; fakvio_test = ... pool_mode=session
-```
+Tenant migrace se generují **bez `schema:`** (viz komentář v
+`TenantProvisioningService.cs:609` — je to záměr, jedna migrace se tak dá aplikovat na
+libovolné schéma). Jediné, co je nasměruje do `tenant_N`, je právě `search_path`. Když
+ho pooler tiše zahodí, `CREATE TABLE` **projde** — jen vytvoří tenant tabulky
+v `public`. Místo výpadku dostaneš rozsypanou strukturu databáze.
 
-**Port se nikde nemění.** Aplikace dál míří na PgBouncer (`TAILSCALE_TARGET_PORT=6432`);
-kdyby bylo někdy potřeba jít na Postgres přímo, je to změna App Settingu, ne PgBounceru.
+#### Co PgBouncer smysluplně umožní
 
-Strop spojení session režim neruší — klienty nad limit PgBouncer frontuje, takže původní
-důvod nasazení (Flex Consumption škáluje worker procesy) je pokrytý dál. Ztráta
-multiplexingu nebolí, aplikace má pooly malé už teď (`Maximum Pool Size=20` v connection
-stringu, `SchemaDataSourceMaxPoolSize=4`, `ConnectionIdleLifetime=30`).
+- **`pool_mode = session`** — vrátí session sémantiku všem třem bodům výše. Jediný
+  řádek, strop spojení zůstává (klienti nad limit se frontují).
+- **`track_extra_parameters = search_path`** — řeší jen první bod (parametr se přenese
+  správně, nezahodí se). Zbylé dva zámkové body zůstávají rozbité, takže samo o sobě
+  to nestačí.
+- **Rozdělit spojení na dvě databázové entry**: `fakvio_prod` (transaction) pro běžný
+  provoz, který `search_path` nepotřebuje — `TenantDbContext.OnModelCreating` volá
+  `HasDefaultSchema(Schema)`, takže EF generuje plně kvalifikované SQL — a
+  `fakvio_prod_session` (session) pro migrace, provisioning a `AdvisoryLock`.
+  V produkčním kódu má `GetForSchema()` **jediného volajícího**
+  (`TenantProvisioningService.cs:634`), takže je to malá, ohraničená změna.
+  Vyžaduje druhý connection string v konfiguraci aplikace.
 
-**Ověření:** `SHOW POOLS;` na admin konzoli hlásí `pool_mode session`. Pak restart
-Function App a po 15 minutách v App Insights nesmí přibýt žádný 503
-„Tenant database is not ready".
+#### Jak se vrátit na pooler
 
-> `search_path` v tabulce výš **není** akční položka. Kdyby ho PgBouncer nepřenášel,
-> selhala by **každá** tenant migrace, ne jen část — v produkci část requestů prochází,
-> takže parametr evidentně projde a session režim ho pokryje tím spíš. Kdyby se v logu
-> PgBounceru přece jen objevilo `unsupported startup parameter: search_path`, řeší to
-> `track_extra_parameters = search_path`. **Nikdy `ignore_startup_parameters`** — ten by
-> parametr zahodil a tenant dotazy by tiše šly do `public`.
+1. Na DB hostu zvolit jednu z cest výše.
+2. `az functionapp config appsettings set -n zcloudinvoicingapi -g invoiceapi --settings TAILSCALE_TARGET_PORT=6432`
+3. Restart a do 15 minut zkontrolovat, že nepřibývají 503:
+
+   ```kusto
+   requests | where timestamp > ago(15m)
+            | where name !in ("LogFlush","RunImapPoll","McpKeepAlive","LogCleanup")
+            | summarize total=count(), c503=countif(resultCode=="503")
+   ```
+
+   Zpátky kdykoli `=5544`.
+
+Ztráta multiplexingu při obcházení pooleru nebolí tolik, jak by se zdálo — aplikace má
+pooly malé (`Maximum Pool Size=20` v connection stringu, `SchemaDataSourceMaxPoolSize=4`,
+`ConnectionIdleLifetime=30`). Strop spojení ale opravdu zmizí, takže při škálování
+worker procesů na Flex Consumption je potřeba hlídat `max_connections`.
 
 ### 6.5 Rozbitá migrační historie ⇒ re-aplikace migrací na plná data
 
