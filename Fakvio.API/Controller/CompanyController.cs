@@ -778,8 +778,12 @@ public class CompanyController : ControllerBase
 
             // Update only mutable fields (infrastructure config).
             // Note: SchemaName is immutable after provisioning — managed by provisioning service.
-            settings.MaxUsers = dto.MaxUsers;
-            settings.AdminNotes = dto.AdminNotes;
+            // MaxUsers / AdminNotes: partial update, same pattern as every other field below
+            // (issue #184) — this endpoint is shared by /my-company (which never sends these
+            // SysAdmin-only fields) and /company-settings (which does). An unconditional
+            // assignment silently zeroed both whenever a tenant user saved SMTP/AI/EPO settings.
+            if (dto.MaxUsers.HasValue) settings.MaxUsers = dto.MaxUsers;
+            if (dto.AdminNotes != null) settings.AdminNotes = dto.AdminNotes;
 
             // Update SMTP settings — each field is individually nullable (partial update).
             // SmtpHost: set to empty/null to clear and fall back to system SMTP.
