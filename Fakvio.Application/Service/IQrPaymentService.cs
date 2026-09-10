@@ -33,13 +33,20 @@ public interface IQrPaymentService
     Task<string> GenerateSpdWithInvoiceAsync(long invoiceId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Generates a QR code image (PNG) for the given invoice.
-    /// If the invoice has a valid IBAN, generates combined QR Platba+F (payment + invoice).
-    /// If no IBAN is available, generates QR Faktura only (invoice data without payment).
+    /// Generates a QR code image (PNG) for the given invoice's payment — never a decorative,
+    /// non-payable code (issue #154).
+    /// If the invoice has a checksum-valid IBAN, generates QR Platba (SPD) via local generation.
+    /// Otherwise, if it has a checksum-valid Czech domestic account number, generates QR Platba
+    /// via the paylibo.com API.
+    /// If neither is present and valid, throws <see cref="Fakvio.Application.Exceptions.NoUsableBankConnectionException"/> —
+    /// no QR code is generated.
     /// </summary>
     /// <param name="invoiceId">Invoice ID to generate QR image for</param>
     /// <param name="pixelsPerModule">Size of each QR module in pixels (default 10)</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>PNG image bytes of the QR code</returns>
+    /// <exception cref="Fakvio.Application.Exceptions.NoUsableBankConnectionException">
+    /// The invoice has no IBAN or Czech account number that passes its checksum.
+    /// </exception>
     Task<byte[]> GenerateQrCodeImageAsync(long invoiceId, int pixelsPerModule = 10, CancellationToken cancellationToken = default);
 }

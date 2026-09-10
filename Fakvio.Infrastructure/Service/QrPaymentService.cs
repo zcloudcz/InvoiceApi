@@ -1,7 +1,9 @@
+using Fakvio.Application.Exceptions;
 using Fakvio.Application.QrPayment;
 using Fakvio.Application.Service;
 using Fakvio.Domain.Entities;
 using Fakvio.Domain.Enums;
+using Fakvio.Domain.Validation;
 using Fakvio.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -12,15 +14,20 @@ namespace Fakvio.Infrastructure.Service;
 /// <summary>
 /// Service for generating QR codes for Czech invoices.
 ///
-/// QR code generation strategy (in priority order):
-/// 1. IBAN available → local SPD generation via QRCoder (fast, no external dependency)
-/// 2. Czech bank account available (e.g., "1342333010/3030") → paylibo.com API
+/// GenerateQrCodeImageAsync's strategy (in priority order), each candidate validated via
+/// <see cref="CzechBankAccountValidator"/> (issue #154) before it is used:
+/// 1. Valid IBAN → local SPD generation via QRCoder (fast, no external dependency)
+/// 2. Valid Czech bank account (e.g., "1342333010/3030") → paylibo.com API
 ///    (converts Czech account format to valid QR Platba — same approach as Monarc.Core)
-/// 3. Neither → SIND-only QR Faktura (invoice data, no payment instructions)
+/// 3. Neither → <see cref="Fakvio.Application.Exceptions.NoUsableBankConnectionException"/>.
+///    No QR code is generated — a SIND-only "QR Faktura" would look payable and is not.
 ///
 /// The paylibo API is the proven solution for Czech domestic bank accounts
 /// that don't have an IBAN. It generates a valid SPD QR code that all Czech
 /// banking apps (George, mBank, Fio, etc.) can reliably scan.
+///
+/// GenerateSindStringAsync and GenerateSpdWithInvoiceAsync are unaffected — they are debugging /
+/// inspection endpoints that deliberately return invoice-only SIND data, documented as such.
 /// </summary>
 public class QrPaymentService : IQrPaymentService
 {
@@ -82,11 +89,14 @@ public class QrPaymentService : IQrPaymentService
     {
         var invoice = await LoadInvoiceWithDetailsAsync(invoiceId, cancellationToken);
 
-        // Strategy 1: IBAN available → local SPD generation (fastest, no external dependency)
-        if (!string.IsNullOrWhiteSpace(invoice.IBAN))
+        // Strategy 1: valid IBAN → local SPD generation (fastest, no external dependency).
+        // Checksum-validated (issue #154) — an IBAN that merely "looks like" one used to reach
+        // SpdIntegrator unvalidated and produce a QR code nobody's banking app could pay.
+        var hasValidIban = CzechBankAccountValidator.IsValidIban(invoice.IBAN);
+        if (hasValidIban)
         {
             var spdContent = SpdIntegrator.BuildSimpleSpdString(
-                invoice.IBAN,
+                invoice.IBAN!,
                 invoice.SWIFT,
                 invoice.TotalWithVat,
                 invoice.Currency?.Code,
@@ -98,10 +108,17 @@ public class QrPaymentService : IQrPaymentService
                 invoiceId);
             return GenerateQrPng(spdContent, pixelsPerModule);
         }
+        if (!string.IsNullOrWhiteSpace(invoice.IBAN))
+        {
+            _logger.LogWarning(
+                "Invoice {InvoiceId} has an IBAN that fails the checksum ({Iban}) — ignoring it",
+                invoiceId, invoice.IBAN);
+        }
 
-        // Strategy 2: Czech bank account available → paylibo.com API
-        // (same approach as Monarc.Core — the API handles Czech account format natively)
-        if (!string.IsNullOrWhiteSpace(invoice.BankAccountNumber))
+        // Strategy 2: valid Czech bank account → paylibo.com API (same approach as Monarc.Core —
+        // the API handles Czech account format natively). Also checksum-validated (issue #154).
+        var hasValidCzechAccount = CzechBankAccountValidator.IsValidCzechAccountNumber(invoice.BankAccountNumber);
+        if (hasValidCzechAccount)
         {
             _logger.LogInformation(
                 "Generating QR Platba for invoice {InvoiceId} via paylibo API (Czech bank account: {Account})",
@@ -113,16 +130,21 @@ public class QrPaymentService : IQrPaymentService
                 return payliboResult;
             }
 
-            // Paylibo failed — fall through to SIND fallback
-            _logger.LogWarning("Paylibo API failed for invoice {InvoiceId} — falling back to SIND QR Faktura",
-                invoiceId);
+            _logger.LogWarning("Paylibo API failed for invoice {InvoiceId}", invoiceId);
+        }
+        else if (!string.IsNullOrWhiteSpace(invoice.BankAccountNumber))
+        {
+            _logger.LogWarning(
+                "Invoice {InvoiceId} has a bank account number that fails the checksum ({Account}) — ignoring it",
+                invoiceId, invoice.BankAccountNumber);
         }
 
-        // Strategy 3: No bank account at all → SIND-only (QR Faktura, invoice data without payment)
-        var builder = BuildSindFromInvoice(invoice);
-        _logger.LogInformation("Generating QR Faktura for invoice {InvoiceId} (no bank account — invoice data only)",
-            invoiceId);
-        return GenerateQrPng(builder.Build(), pixelsPerModule);
+        // No usable payment destination (issue #154): a SIND-only "QR Faktura" LOOKS like a
+        // payment QR code but carries no payment instructions — nothing on the printed invoice
+        // told the reader that. Rather than print a decorative code, generate none at all; the
+        // caller (PdfExportService treats this as non-critical, InvoiceController returns 400)
+        // decides what the user sees instead.
+        throw new NoUsableBankConnectionException(invoiceId);
     }
 
     /// <summary>

@@ -983,9 +983,11 @@ public class InvoiceController : ControllerBase
     // ─── QR Code Endpoints ───────────────────────────────────────────────────
 
     /// <summary>
-    /// Generates a QR code image (PNG) for the given invoice.
-    /// If the invoice has a valid IBAN, generates combined "QR Platba+F" (payment + invoice data).
-    /// If no IBAN is available, generates "QR Faktura" only (invoice data without payment).
+    /// Generates a QR code image (PNG) for the given invoice's payment.
+    /// If the invoice has a checksum-valid IBAN, generates "QR Platba" via local generation.
+    /// Otherwise, if it has a checksum-valid Czech account number, generates it via paylibo.com.
+    /// If neither is present and valid, returns 400 — no decorative, non-payable QR is generated
+    /// (issue #154).
     /// </summary>
     /// <param name="id">Invoice ID</param>
     /// <param name="size">QR module size in pixels (default 10, range 5-20)</param>
@@ -993,6 +995,7 @@ public class InvoiceController : ControllerBase
     /// <returns>PNG image of the QR code</returns>
     [HttpGet("{id}/qr")]
     [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetQrCode(
         [FromRoute] long id,
@@ -1013,6 +1016,18 @@ public class InvoiceController : ControllerBase
         {
             _logger.LogWarning("Invoice {Id} not found for QR code generation", id);
             return NotFound(new { message = $"Invoice with ID {id} not found" });
+        }
+        catch (NoUsableBankConnectionException ex)
+        {
+            // Issue #154: no decorative QR — the invoice detail page's LoadQrCodeAsync already
+            // surfaces ApiException.Message (extracted from this body) as a Snackbar warning,
+            // so this message IS the user-facing "here's what to do" the issue asked for.
+            _logger.LogInformation("No QR code for invoice {Id}: {Message}", id, ex.Message);
+            return BadRequest(new
+            {
+                message = "This invoice has no bank account with a valid IBAN or account number, " +
+                           "so no payment QR code can be generated. Add or fix a bank account for this invoice's issuer."
+            });
         }
     }
 
