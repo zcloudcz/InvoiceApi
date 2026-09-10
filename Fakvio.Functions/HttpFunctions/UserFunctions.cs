@@ -213,6 +213,33 @@ public class UserFunctions
     }
 
     /// <summary>
+    /// GET api/user/{id}/invitation-token → UserController.GetInvitationToken
+    /// </summary>
+    [Function("User_GetInvitationToken")]
+    public async Task<IActionResult> User_GetInvitationToken(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "api/user/{id:long}/invitation-token")] HttpRequest req,
+        string id)
+    {
+        // Parse route parameter from string to long (Azure Functions can't bind long directly)
+        if (!long.TryParse(id, out var __id_parsed))
+            return new BadRequestObjectResult(new { message = "Invalid parameter 'id'." });
+
+        // Wire up the controller's HttpContext so it can access User claims, Request, etc.
+        _controller.ControllerContext = new ControllerContext { HttpContext = req.HttpContext };
+
+        // Authorization check: [Authorize(Roles = "Admin,SysAdmin")]
+        if (req.HttpContext.User.Identity?.IsAuthenticated != true)
+            return new UnauthorizedResult();
+
+        // Role check: user must be in one of [Admin,SysAdmin]
+        if (!req.HttpContext.User.IsInRole("Admin") && !req.HttpContext.User.IsInRole("SysAdmin"))
+            return new ForbidResult();
+
+        // Call the controller action and normalize the response
+        return FunctionResultHelper.Normalize(await _controller.GetInvitationToken(__id_parsed));
+    }
+
+    /// <summary>
     /// DELETE api/user/{id} → UserController.DeleteUser
     /// </summary>
     [Function("User_DeleteUser")]

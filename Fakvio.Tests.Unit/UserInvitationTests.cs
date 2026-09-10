@@ -114,7 +114,7 @@ public class UserInvitationTests : IDisposable
 
     /// <summary>
     /// Tests that InviteUserAsync creates a user with an invitation token,
-    /// sets IsInvitationPending to true, and returns a valid UserDto.
+    /// sets IsInvitationPending to true, and returns a valid InvitedUserDto.
     /// </summary>
     [Fact]
     public async Task InviteUserAsync_CreatesUserWithInvitationToken()
@@ -132,14 +132,15 @@ public class UserInvitationTests : IDisposable
         // Act — invoke the invitation
         var result = await _userService.InviteUserAsync(dto);
 
-        // Assert — verify the returned DTO
+        // Assert — verify the returned DTO. The token rides on the result type, not on
+        // result.User, because UserDto must never carry it (issue #364).
         result.ShouldNotBeNull();
-        result.Email.ShouldBe("invited@test.com");
-        result.FirstName.ShouldBe("John");
-        result.LastName.ShouldBe("Doe");
-        result.Role.ShouldBe(EUserRole.Admin);
-        result.CompanyId.ShouldBe(1);
-        result.IsInvitationPending.ShouldBeTrue();
+        result.User.Email.ShouldBe("invited@test.com");
+        result.User.FirstName.ShouldBe("John");
+        result.User.LastName.ShouldBe("Doe");
+        result.User.Role.ShouldBe(EUserRole.Admin);
+        result.User.CompanyId.ShouldBe(1);
+        result.User.IsInvitationPending.ShouldBeTrue();
         result.InvitationToken.ShouldNotBeNullOrWhiteSpace();
 
         // Verify the database record
