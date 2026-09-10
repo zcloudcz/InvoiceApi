@@ -286,7 +286,7 @@ public class ChatControllerErrorHandlingTests
     /// tab and would turn an IDOR probe into a stream of fake incidents.
     ///
     /// Junior note: the endpoint is a plain JWT-authenticated REST endpoint (also exposed
-    /// through Fakvio.Functions), so "our UI only sends IDs it received from the server"
+    /// through the API host), so "our UI only sends IDs it received from the server"
     /// is not a guarantee — any authenticated caller can send any number.
     /// </summary>
     [Fact]

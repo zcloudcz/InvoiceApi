@@ -1,8 +1,7 @@
-using Fakvio.Application.Service;
+﻿using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.RecognizedCounterparty;
 using Fakvio.Domain.Entities;
 using Fakvio.Domain.Enums;
-using Fakvio.Functions.Generated;
 using Fakvio.Infrastructure.Data;
 using Fakvio.Infrastructure.Service;
 using Microsoft.EntityFrameworkCore;
@@ -201,28 +200,6 @@ public class RecognizedCounterpartyServiceTests : IDisposable
     }
 
     // ─── Functions wrapper smoke tests (API + Functions parity) ───────────
-
-    [Theory]
-    [InlineData(typeof(RecognizedCounterpartyFunctions), "RecognizedCounterparty_GetAll")]
-    [InlineData(typeof(RecognizedCounterpartyFunctions), "RecognizedCounterparty_GetById")]
-    [InlineData(typeof(RecognizedCounterpartyFunctions), "RecognizedCounterparty_Create")]
-    [InlineData(typeof(RecognizedCounterpartyFunctions), "RecognizedCounterparty_Update")]
-    [InlineData(typeof(RecognizedCounterpartyFunctions), "RecognizedCounterparty_Delete")]
-    [InlineData(typeof(RecognizedCounterpartyFunctions), "RecognizedCounterparty_Rescan")]
-    [InlineData(typeof(PaymentMatchingFunctions), "PaymentMatching_AssignRecognized")]
-    [InlineData(typeof(PaymentMatchingFunctions), "PaymentMatching_UnassignRecognized")]
-    public void FunctionsWrapper_HasMethodWithFunctionAttribute(Type functionsType, string methodName)
-    {
-        // Every API endpoint must have its Azure Functions twin — otherwise the
-        // Azure deploy silently lacks the endpoint (CLAUDE.md dual-host rule).
-        var method = functionsType.GetMethod(methodName);
-        method.ShouldNotBeNull($"{functionsType.Name} must expose {methodName}.");
-
-        var attr = method
-            .GetCustomAttributes(typeof(Microsoft.Azure.Functions.Worker.FunctionAttribute), inherit: false)
-            .FirstOrDefault();
-        attr.ShouldNotBeNull($"{methodName} must be decorated with [Function].");
-    }
 
     // ─── Helpers ──────────────────────────────────────────────────────────
 

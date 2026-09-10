@@ -110,8 +110,8 @@ public class DiagnosticController : ControllerBase
 
         result["timestamp"] = DateTime.UtcNow;
         // Both hosts are served from here, so both environment variables are consulted:
-        // Azure Functions sets AZURE_FUNCTIONS_ENVIRONMENT, the ASP.NET Core host sets
-        // ASPNETCORE_ENVIRONMENT.
+        // ASPNETCORE_ENVIRONMENT is set by the App Service settings (Production) or by
+        // launchSettings.json locally.
         result["environment"] =
             Environment.GetEnvironmentVariable("AZURE_FUNCTIONS_ENVIRONMENT")
             ?? Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")

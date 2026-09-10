@@ -7,9 +7,8 @@ namespace Fakvio.Application.Service;
 /// hands the body to <see cref="IInboundEmailProcessor"/>.
 ///
 /// Designed to be called from THREE places:
-///   1. <c>ImapPollWorker</c> (BackgroundService in API host) — local dev + classic VM deploy.
-///   2. <c>PaymentMatchingFunctions.RunImapPoll</c> (Azure Functions TimerTrigger) — production deploy.
-///   3. <c>PaymentMatchingSysAdminController.RunNow</c> (HTTP) — SysAdmin manual trigger.
+///   1. <c>ImapPollWorker</c> (BackgroundService in API host) — App Service, VM, local dev.
+///   2. <c>PaymentMatchingSysAdminController.RunNow</c> (HTTP) — SysAdmin manual trigger.
 ///
 /// All three paths share the same advisory-lock-protected execution, so even if two
 /// callers fire at the same time only one cycle actually runs.

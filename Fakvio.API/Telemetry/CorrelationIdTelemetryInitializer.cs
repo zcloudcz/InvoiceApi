@@ -2,7 +2,7 @@ using Microsoft.ApplicationInsights.Channel;
 using Microsoft.ApplicationInsights.Extensibility;
 using Microsoft.AspNetCore.Http;
 
-namespace Fakvio.Functions.Telemetry;
+namespace Fakvio.API.Telemetry;
 
 /// <summary>
 /// Application Insights telemetry initializer that enriches every telemetry item
@@ -23,7 +23,7 @@ namespace Fakvio.Functions.Telemetry;
 /// we can trace from browser DevTools (response header) → App Insights → AppLog table.
 ///
 /// Registration:
-/// Registered as a singleton in Functions Program.cs:
+/// Registered as a singleton in Fakvio.API/Program.cs:
 ///   services.AddSingleton&lt;ITelemetryInitializer, CorrelationIdTelemetryInitializer&gt;()
 /// </summary>
 public class CorrelationIdTelemetryInitializer : ITelemetryInitializer

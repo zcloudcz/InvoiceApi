@@ -30,7 +30,7 @@ using System.Net.Sockets;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
-namespace Fakvio.Functions.Tailscale;
+namespace Fakvio.Infrastructure.Tailscale;
 
 public static class TailscaleTunnel
 {
@@ -78,7 +78,7 @@ public static class TailscaleTunnel
     private const string DefaultTargetHost = "100.69.241.17";
     private const int DefaultTargetPort = 5544;
 
-    // Binaries are downloaded by the deploy workflow into Fakvio.Functions/tsbin/ and copied to
+    // Binaries are downloaded by the deploy workflow into Fakvio.API/tsbin/ and copied to
     // the output folder. The package mount may be read-only, so they are copied to /tmp before
     // the executable bit is set.
     private const string BinDirectoryName = "tsbin";
@@ -357,7 +357,7 @@ public static class TailscaleTunnel
             throw new FileNotFoundException(
                 $"Tailscale binary '{fileName}' is missing from '{sourceDirectory}'. " +
                 "It is fetched by the 'Download Tailscale binaries' step in the deploy workflow — " +
-                "see Fakvio.Functions/Tailscale/README.md.", source.FullName);
+                "see Fakvio.Infrastructure/Tailscale/README.md.", source.FullName);
         }
 
         var destination = new FileInfo(Path.Combine(destinationDirectory, fileName));

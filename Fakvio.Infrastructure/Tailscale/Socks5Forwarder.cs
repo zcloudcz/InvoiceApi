@@ -19,7 +19,7 @@ using System.Net;
 using System.Net.Sockets;
 using Microsoft.Extensions.Logging;
 
-namespace Fakvio.Functions.Tailscale;
+namespace Fakvio.Infrastructure.Tailscale;
 
 public sealed class Socks5Forwarder
 {

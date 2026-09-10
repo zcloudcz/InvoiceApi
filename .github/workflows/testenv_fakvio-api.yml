@@ -1,0 +1,96 @@
+# Test environment counterpart of master_fakvio-api.yml — builds Fakvio.API and deploys it to
+# the Azure App Service web app `fakvio-api-test` on every push to TEST-ENV.
+# Read master_fakvio-api.yml for the rationale behind every step; only the trigger branch,
+# the secrets and the app name differ.
+
+name: Build and deploy Fakvio.API to Azure App Service - fakvio-api-test
+
+on:
+  push:
+    branches:
+      - TEST-ENV
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_VERSION: '10.0.x' # must match the TargetFramework (net10.0) in Fakvio.API.csproj
+  # Tailscale userspace tunnel shipped inside the package — see
+  # Fakvio.Infrastructure/Tailscale/README.md. Version and checksum are pinned because the
+  # tarball is fetched at deploy time; bumping means replacing both lines together (hash from
+  # https://pkgs.tailscale.com/stable/tailscale_<version>_amd64.tgz.sha256).
+  TAILSCALE_VERSION: '1.102.3'
+  TAILSCALE_SHA256: '36ddd9b51be57ffc2990cf76323cfa13643bfbb1b8a969f6183fa164741cdef5'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      id-token: write # required for requesting the OIDC JWT
+      contents: read  # required for actions/checkout
+
+    concurrency:
+      group: "api-test"
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup DotNet ${{ env.DOTNET_VERSION }} Environment
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Download Tailscale binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          TARBALL="tailscale_${TAILSCALE_VERSION}_amd64.tgz"
+          curl -fsSL -o "$TARBALL" "https://pkgs.tailscale.com/stable/${TARBALL}"
+          echo "${TAILSCALE_SHA256}  ${TARBALL}" | sha256sum -c -
+          mkdir -p Fakvio.API/tsbin
+          tar -xzf "$TARBALL" --strip-components=1 -C Fakvio.API/tsbin \
+            "tailscale_${TAILSCALE_VERSION}_amd64/tailscale" \
+            "tailscale_${TAILSCALE_VERSION}_amd64/tailscaled"
+          ls -l Fakvio.API/tsbin
+
+      - name: Build and publish Fakvio.API
+        shell: bash
+        run: |
+          dotnet publish ./Fakvio.API/Fakvio.API.csproj \
+            --configuration Release \
+            --output ./output
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          # Separate app registration (zcloudcz-InvoiceApi-TEST) whose federated
+          # credential only trusts the TEST-ENV branch and whose Contributor role
+          # is scoped to the test web apps alone. Production secrets are never
+          # referenced here, so a broken test deploy cannot touch production.
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_TEST }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_TEST }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_TEST }}
+
+      - name: Deploy to Azure App Service
+        id: deploy
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: 'fakvio-api-test'
+          package: ./output
+
+      - name: Verify the deployed host answers
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL="${{ steps.deploy.outputs.webapp-url }}"
+          CODE=$(curl -s -o /dev/null -w '%{http_code}' \
+                   --retry 8 --retry-all-errors --retry-delay 15 --max-time 30 \
+                   "${URL%/}/api/diagnostic/health")
+          if [ "${CODE}" != "401" ]; then
+            echo "::error::GET ${URL%/}/api/diagnostic/health answered ${CODE}, expected 401 from the JWT gate."
+            exit 1
+          fi

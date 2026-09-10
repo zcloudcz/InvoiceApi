@@ -393,4 +393,4 @@ board-state*.json
 # Downloaded at deploy time by the "Download Tailscale binaries" step in
 # master_zcloudinvoicingapi.yml / testenv_zcloudinvoicingapi.yml, never committed.
 # See Fakvio.Functions/Tailscale/README.md.
-/Fakvio.Functions/tsbin/
+/Fakvio.API/tsbin/

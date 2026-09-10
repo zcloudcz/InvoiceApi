@@ -1,13 +1,11 @@
-// ============================================================================
+﻿// ============================================================================
 // IsdocEndpointAdditionalTests — Additional coverage for PR #18 (issue #14).
 //
 // These tests fill the gaps left after the initial IsdocEndpointTests pass:
 //
-//   1. InvoiceFunctions.Invoice_ExportIsdoc — full HTTP request mock tests
-//      (anonymous → 401, bad id → 400, happy path, cancellation token)
-//   2. FakvioApiClient.ExportInvoiceIsdocAsync — HTTP client method coverage
+//   1. FakvioApiClient.ExportInvoiceIsdocAsync — HTTP client method coverage
 //      (correct URL, happy path bytes, 404/5xx throws)
-//   3. Controller edge cases — null DocumentNumber fallback, cancellation token
+//   2. Controller edge cases — null DocumentNumber fallback, cancellation token
 //      propagation to both services
 //   4. MCP tool envelope — sizeBytes matches actual byte length, null
 //      DocumentNumber falls back to id string in file name
@@ -21,7 +19,6 @@ using Fakvio.API.Controller;
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Domain.Enums;
-using Fakvio.Functions.Generated;
 using Fakvio.McpServer.Client;
 using Fakvio.McpServer.Tools;
 using Microsoft.AspNetCore.Http;
@@ -35,177 +32,6 @@ namespace Fakvio.Tests.Unit;
 
 // ============================================================================
 // 1. InvoiceFunctions wrapper — full HTTP request mock tests
-// ============================================================================
-
-/// <summary>
-/// Exercises Invoice_ExportIsdoc at the Functions layer using DefaultHttpContext,
-/// matching the pattern established in PaymentMatchingFunctionsTests.
-/// Verifies auth gating, route parameter parsing, and controller delegation.
-/// </summary>
-public class InvoiceFunctionsIsdocTests
-{
-    // ── Dependencies shared by all wrapper tests ───────────────────────────
-
-    private readonly IInvoiceService _invoiceService = Substitute.For<IInvoiceService>();
-    private readonly IPdfExportService _pdfExportService = Substitute.For<IPdfExportService>();
-    private readonly IIsdocExportService _isdocExportService = Substitute.For<IIsdocExportService>();
-    private readonly IEmailService _emailService = Substitute.For<IEmailService>();
-    private readonly IQrPaymentService _qrPaymentService = Substitute.For<IQrPaymentService>();
-    private readonly ICloudStorageOrchestrator _cloudStorage = Substitute.For<ICloudStorageOrchestrator>();
-
-    /// <summary>
-    /// Creates a fresh (controller, wrapper) pair.
-    /// The same controller instance is injected into the wrapper so we can
-    /// verify the wrapper actually delegates to the real controller logic.
-    /// </summary>
-    private (InvoiceFunctions Sut, InvoiceController Controller) BuildSut()
-    {
-        var controller = new InvoiceController(
-            _invoiceService,
-            _pdfExportService,
-            _isdocExportService,
-            _emailService,
-            _qrPaymentService,
-            _cloudStorage,
-            Substitute.For<IPaymentMatchingService>(),
-            Substitute.For<ILogger<InvoiceController>>());
-
-        var sut = new InvoiceFunctions(controller);
-        return (sut, controller);
-    }
-
-    /// <summary>
-    /// Builds an HttpRequest with an authenticated user (IsAuthenticated == true).
-    /// </summary>
-    private static HttpRequest BuildAuthenticatedRequest()
-    {
-        var ctx = new DefaultHttpContext();
-        ctx.User = new ClaimsPrincipal(new ClaimsIdentity(
-            new[] { new Claim("UserId", "1"), new Claim(ClaimTypes.NameIdentifier, "1") },
-            authenticationType: "TestAuth")); // non-null authenticationType → IsAuthenticated = true
-        return ctx.Request;
-    }
-
-    /// <summary>
-    /// Builds an unauthenticated request (anonymous identity, IsAuthenticated == false).
-    /// </summary>
-    private static HttpRequest BuildAnonymousRequest()
-    {
-        // DefaultHttpContext has no user — IsAuthenticated defaults to false
-        return new DefaultHttpContext().Request;
-    }
-
-    // ── Authorization gating ──────────────────────────────────────────────
-
-    [Fact]
-    public async Task Invoice_ExportIsdoc_Anonymous_Returns401()
-    {
-        // Arrange
-        var (sut, _) = BuildSut();
-        var req = BuildAnonymousRequest();
-
-        // Act
-        var result = await sut.Invoice_ExportIsdoc(req, "42");
-
-        // Assert — no token → Unauthorized before any service is called
-        result.ShouldBeOfType<UnauthorizedResult>();
-        await _isdocExportService.DidNotReceiveWithAnyArgs()
-            .ExportInvoiceAsync(default, default);
-    }
-
-    // ── Route parameter validation ────────────────────────────────────────
-
-    [Fact]
-    public async Task Invoice_ExportIsdoc_NonNumericId_Returns400()
-    {
-        // Arrange — Azure Functions routes always deliver `id` as string;
-        // the wrapper must reject non-long values before calling the controller.
-        var (sut, _) = BuildSut();
-        var req = BuildAuthenticatedRequest();
-
-        // Act
-        var result = await sut.Invoice_ExportIsdoc(req, "not-a-number");
-
-        // Assert
-        result.ShouldBeOfType<BadRequestObjectResult>();
-        await _isdocExportService.DidNotReceiveWithAnyArgs()
-            .ExportInvoiceAsync(default, default);
-    }
-
-    [Fact]
-    public async Task Invoice_ExportIsdoc_NegativeId_Returns200OrFile()
-    {
-        // Arrange — negative longs are technically valid long.TryParse values.
-        // The wrapper should parse them and delegate; it's the service that decides
-        // whether -1 is a valid invoice ID (here it returns bytes for the test).
-        var (sut, _) = BuildSut();
-        var req = BuildAuthenticatedRequest();
-
-        var fakeBytes = "<ISDOC/>"u8.ToArray();
-        _isdocExportService.ExportInvoiceAsync(-1L, Arg.Any<CancellationToken>())
-            .Returns(fakeBytes);
-        _invoiceService.GetInvoiceByIdAsync(-1L, Arg.Any<CancellationToken>())
-            .Returns(new InvoiceDto { Id = -1, DocumentNumber = "X", DocumentType = EDocumentType.Invoice });
-
-        // Act
-        var result = await sut.Invoice_ExportIsdoc(req, "-1");
-
-        // Assert — wrapper parsed the id and delegated; result is whatever the controller returned
-        result.ShouldBeOfType<FileContentResult>();
-    }
-
-    // ── Happy-path controller delegation ─────────────────────────────────
-
-    [Fact]
-    public async Task Invoice_ExportIsdoc_Authenticated_DelegatesToController()
-    {
-        // Arrange — verify the wrapper wires up HttpContext and calls ExportIsdoc
-        var (sut, _) = BuildSut();
-        var req = BuildAuthenticatedRequest();
-
-        const long invoiceId = 55L;
-        var fakeBytes = "<?xml version=\"1.0\"?><ISDOC/>"u8.ToArray();
-
-        _isdocExportService.ExportInvoiceAsync(invoiceId, Arg.Any<CancellationToken>())
-            .Returns(fakeBytes);
-        _invoiceService.GetInvoiceByIdAsync(invoiceId, Arg.Any<CancellationToken>())
-            .Returns(new InvoiceDto
-            {
-                Id = invoiceId,
-                DocumentNumber = "FAK2026055",
-                DocumentType = EDocumentType.Invoice
-            });
-
-        // Act
-        var result = await sut.Invoice_ExportIsdoc(req, invoiceId.ToString());
-
-        // Assert — the wrapper must have forwarded to the controller
-        await _isdocExportService.Received(1).ExportInvoiceAsync(invoiceId, Arg.Any<CancellationToken>());
-        var fileResult = result.ShouldBeOfType<FileContentResult>();
-        fileResult.ContentType.ShouldBe("application/xml");
-        fileResult.FileDownloadName.ShouldBe("Invoice_FAK2026055.isdoc");
-    }
-
-    [Fact]
-    public async Task Invoice_ExportIsdoc_ServiceThrowsKeyNotFound_Returns404()
-    {
-        // Arrange — service throws KeyNotFoundException → controller maps to 404
-        var (sut, _) = BuildSut();
-        var req = BuildAuthenticatedRequest();
-
-        _isdocExportService.ExportInvoiceAsync(Arg.Any<long>(), Arg.Any<CancellationToken>())
-            .Throws(new KeyNotFoundException("Invoice 999 not found."));
-
-        // Act
-        var result = await sut.Invoice_ExportIsdoc(req, "999");
-
-        // Assert
-        result.ShouldBeOfType<NotFoundObjectResult>();
-    }
-}
-
-// ============================================================================
-// 2. FakvioApiClient.ExportInvoiceIsdocAsync — HTTP client method coverage
 // ============================================================================
 
 /// <summary>

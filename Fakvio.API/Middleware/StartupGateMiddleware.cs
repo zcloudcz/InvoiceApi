@@ -1,10 +1,10 @@
 // ============================================================================
 // StartupGateMiddleware — answers "not ready yet" instead of failing slowly.
 //
-// The Functions worker reports ready the moment the host starts, but the database is
-// only reachable once the Tailscale tunnel's forwarder has bound its loopback port
-// (Fakvio.Functions/Program.cs). Requests that arrive in between used to hang on the
-// connection string's Timeout=15, burn all three EF retries and end as HTTP 500 —
+// Kestrel accepts requests the moment the host starts, but the database is only
+// reachable once the Tailscale tunnel's forwarder has bound its loopback port
+// (see the tunnel bootstrap in Program.cs). Requests that arrive in between used to
+// hang on the connection string's Timeout=15, burn all EF retries and end as HTTP 500 —
 // which reads like a broken database rather than a host that is still starting.
 //
 // This middleware turns that window into an honest, short 503 + Retry-After, which the
@@ -12,21 +12,17 @@
 // ============================================================================
 
 using Fakvio.Infrastructure.Service;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Azure.Functions.Worker;
-using Microsoft.Azure.Functions.Worker.Middleware;
-using Microsoft.Extensions.Logging;
 
-namespace Fakvio.Functions.Middleware;
+namespace Fakvio.API.Middleware;
 
 /// <summary>
-/// Blocks tenant/API traffic until <see cref="StartupState.DatabaseReady"/> is set.
+/// Blocks API traffic until <see cref="StartupState.DatabaseReady"/> is set.
 ///
-/// Registered right after GlobalException/CorrelationId/CORS and BEFORE the auth and
+/// Registered right after CorrelationId/GlobalException/CORS and BEFORE the auth and
 /// tenant middleware: those all touch the master database, so gating later would not
 /// actually avoid the failing connection.
 /// </summary>
-public class StartupGateMiddleware : IFunctionsWorkerMiddleware
+public class StartupGateMiddleware
 {
     /// <summary>
     /// How long the client is told to wait. The tunnel normally binds in well under a
@@ -42,48 +38,49 @@ public class StartupGateMiddleware : IFunctionsWorkerMiddleware
     /// </summary>
     private const string DiagnosticPrefix = "/api/diagnostic";
 
+    private readonly RequestDelegate _next;
     private readonly ILogger<StartupGateMiddleware> _logger;
 
-    public StartupGateMiddleware(ILogger<StartupGateMiddleware> logger)
+    public StartupGateMiddleware(RequestDelegate next, ILogger<StartupGateMiddleware> logger)
     {
+        _next = next;
         _logger = logger;
     }
 
-    public async Task Invoke(FunctionContext context, FunctionExecutionDelegate next)
+    public async Task InvokeAsync(HttpContext context)
     {
         // Fast path — true for the entire life of the process after the first second or so.
         if (StartupState.DatabaseReady)
         {
-            await next(context);
+            await _next(context);
             return;
         }
 
-        // Non-HTTP triggers (LogFlush, ImapPoll, …) are not gated: they already tolerate an
-        // unreachable database, they are not waiting on a user, and blocking them would
-        // silently drop scheduled work instead of delaying a click.
-        var httpContext = context.GetHttpContext();
-        if (httpContext == null)
-        {
-            await next(context);
-            return;
-        }
-
-        var path = httpContext.Request.Path.Value ?? string.Empty;
+        var path = context.Request.Path.Value ?? string.Empty;
         if (path.StartsWith(DiagnosticPrefix, StringComparison.OrdinalIgnoreCase))
         {
-            await next(context);
+            await _next(context);
             return;
         }
 
         _logger.LogInformation(
             "Startup gate: {Path} answered 503 — database bring-up still in progress", path);
 
-        httpContext.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
-        httpContext.Response.Headers.RetryAfter = RetryAfterSeconds.ToString();
-        await httpContext.Response.WriteAsJsonAsync(new
+        context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+        context.Response.Headers.RetryAfter = RetryAfterSeconds.ToString();
+        await context.Response.WriteAsJsonAsync(new
         {
             message = "The service is still starting. Please retry in a moment.",
             retryAfterSeconds = RetryAfterSeconds
         });
+    }
+}
+
+public static class StartupGateMiddlewareExtensions
+{
+    /// <summary>Adds <see cref="StartupGateMiddleware"/> to the pipeline.</summary>
+    public static IApplicationBuilder UseStartupGate(this IApplicationBuilder app)
+    {
+        return app.UseMiddleware<StartupGateMiddleware>();
     }
 }

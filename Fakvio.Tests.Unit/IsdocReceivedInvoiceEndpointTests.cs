@@ -1,9 +1,8 @@
-using System.IO.Compression;
+﻿using System.IO.Compression;
 using Fakvio.API.Controller;
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.ReceivedInvoice;
 using Fakvio.Domain.Enums;
-using Fakvio.Functions.Generated;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
@@ -194,24 +193,5 @@ public class IsdocReceivedInvoiceEndpointTests
         using var archive = new ZipArchive(new MemoryStream(fileResult.FileContents), ZipArchiveMode.Read);
         archive.Entries.Count.ShouldBe(1);
         archive.Entries[0].Name.ShouldBe("Invoice_INV001.isdoc");
-    }
-
-    // ── Functions wrapper smoke tests ─────────────────────────────────────────
-
-    [Theory]
-    [InlineData(typeof(ReceivedInvoiceFunctions), "ReceivedInvoice_ExportIsdoc")]
-    [InlineData(typeof(ReceivedInvoiceFunctions), "ReceivedInvoice_BulkExportIsdoc")]
-    [InlineData(typeof(InvoiceFunctions), "Invoice_BulkExportIsdoc")]
-    public void FunctionsWrapper_HasMethodWithFunctionAttribute(Type functionsType, string methodName)
-    {
-        // Smoke test: the API endpoint must have its Azure Functions twin,
-        // otherwise the Azure deploy silently lacks the endpoint.
-        var method = functionsType.GetMethod(methodName);
-        method.ShouldNotBeNull($"{functionsType.Name} must expose {methodName} for Azure Functions discovery.");
-
-        var functionAttr = method
-            .GetCustomAttributes(typeof(Microsoft.Azure.Functions.Worker.FunctionAttribute), inherit: false)
-            .FirstOrDefault();
-        functionAttr.ShouldNotBeNull($"{methodName} must be decorated with [Function] attribute.");
     }
 }
