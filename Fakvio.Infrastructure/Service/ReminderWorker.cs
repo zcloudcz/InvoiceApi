@@ -82,14 +82,6 @@ public class ReminderWorker : BackgroundService
                     await Task.Delay(remaining, stoppingToken);
                 }
 
-                // Hosted services start together with the tunnel bring-up; a pass that starts
-                // before the forwarder is bound would fail on every tenant and not retry until
-                // tomorrow.
-                while (!StartupState.DatabaseReady)
-                {
-                    await Task.Delay(TimeSpan.FromMilliseconds(500), stoppingToken);
-                }
-
                 await RunLockedAsync(stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)

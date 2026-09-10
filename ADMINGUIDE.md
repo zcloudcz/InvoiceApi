@@ -575,8 +575,8 @@ HTTP a místo toho čeká na stdin, vypadá zvenčí jako nastartovaný — prot
 > jsou hotové pro obě prostředí — `TEST-ENV` deployuje job `deploy-http-test`,
 > `master` job `deploy-http-prod`. Oba se **přeskočí**, dokud není nastavená příslušná repo
 > proměnná se jménem web appu: `MCP_HTTP_APP_NAME` (test, `fakvio-mcp-web-test`) a
-> `MCP_HTTP_APP_NAME_PROD` (produkce, `fakvio-mcp-web`). Obě aplikace už běží na
-> plán `asp-fakvio-b1` (stejný plán jako API hosty).
+> `MCP_HTTP_APP_NAME_PROD` (produkce, `fakvio-mcp-web`). Produkční MCP běží na planu
+> `asp-fakvio-b1` vedle `fakvio-api`, testovací na `asp-fakvio-b1-test` vedle `fakvio-api-test`.
 >
 > **App settings na MCP web appu:**
 > - `FAKVIO_MCP_TRANSPORT=http`
@@ -804,7 +804,6 @@ curl -s -H "Authorization: Bearer <sysadmin-jwt>"   https://<host>/api/diagnosti
 | `masterConnectionServer` | Host, databáze a uživatel — **nikdy heslo ani token**. |
 | `masterDbCanConnect`, `masterDbPendingMigrations` | Dostupnost master DB a počet nenasazených migrací. |
 | `databaseConnected` / `databaseReady` | Souhrnné vlajky pro monitoring. `databaseReady` = připojeno **a** žádné čekající migrace. |
-| `startupDatabaseReady` | `false` jen v prvních vteřinách života procesu, než dojede stavba Tailscale tunelu. Dokud je `false`, API vrací **503 + `Retry-After: 5`** — viz níž. |
 | `startupMigration` | `pending` / `succeeded` / `failed` — výsledek startovní migrace master DB. Doplňují ho `startupMigrationCompletedAt` a při selhání `startupMigrationError`. |
 
 HTTP **200** = databáze odpovídá, **503** = neodpovídá (monitoring může jet jen podle status
@@ -815,36 +814,34 @@ kódu). Při 503 se `authMode`/`authModeSource` hlásí dál — právě tehdy j
 zatímco výpadek by způsobil víc škody. Text výjimky je v `startupMigrationError`; dřív ho
 nebylo kde přečíst, protože worker `ILogger` do App Insights nedoletí (issue #322).
 
-### 13.1 „The service is still starting" (503 + Retry-After)
+### 13.1 Problémy s připojením k databázi
 
-App Service spouští aplikaci a mezi startem ASP.NET Core a stavbou Tailscale tunelu je
-krátká okna, kdy connection string ukazuje na port, na kterém ještě nikdo neposlouchá.
-Requesty, které do té díry spadnou, by dostaly HTTP 500 a v logu
-`An error occurred using the connection to database … on server 'tcp://127.0.0.1:15432'`.
+Master DB migrace se spouští synchronně při startu. Selhání je zalogováno a hlášeno v healthu
+(`startupMigration: failed` + `startupMigrationError`), ale nešhodí aplikaci — zdraví (HTTP 200)
+se vrací i při selhané migraci, protože to je stav provozovatelný (aplikace běží, jen je DB
+o pár migrací pozadu).
 
-V pipeline je proto **startup gate**: dokud `startupDatabaseReady` není `true`, každý
-`/api/*` (mimo `/api/diagnostic`) dostane hned **503 s hlavičkou `Retry-After: 5`**.
-Webové UI si takový 503 **samo zopakuje** (max 3 pokusy, strop ~20 s), takže uživatel vidí
-jen krátké čekání místo chyby.
-
-Kdy to znamená problém: když 503 „still starting" chodí **trvale**, ne jen pár vteřin po
-studeném startu. Pak se tunel nepostavil — hledejte v App Insights:
-
-```kusto
-traces | where message startswith "Tailscale:" | order by timestamp desc
-```
-
-Gate se otevře i po **neúspěšné** stavbě tunelu, schválně: zavřená brána by z rozbitého
-tunelu udělala tichý blackout bez jediné diagnostikovatelné chyby.
-
-**Když je databáze úplně nedostupná**, endpoint nepomůže — přihlášení SysAdmina samo potřebuje
-master DB. Tentýž údaj proto oba hostitelé vypisují do logu hned po startu (Azure: Log stream /
-Application Insights), ještě před prvním dotazem do databáze:
+Když je databáze **úplně nedostupná** (network timeout, firewall blok, špatné heslo):
+- Health endpoint vrací HTTP 503 (`masterDbCanConnect: false`).
+- Log stream / Application Insights hned po startu vypíší:
 
 ```text
 info: Fakvio.Infrastructure.Database[0]
       Startup: database auth mode Password (source: Database:AuthMode)
 ```
+
+a krátce poté:
+
+```text
+fail: Fakvio.Infrastructure.Data[0]
+      Database connection failed: …
+```
+
+Běžné problémy:
+- **Špatné IP v `pg_hba.conf`** — App Service má 19 outbound IP adres (`possibleOutboundIpAddresses`), všechny musí být v allowlistu.
+- **Vypršený TLS certifikát** nebo `Ssl Mode=VerifyFull` se self-signed certifikátem bez `Root Certificate`.
+- **Firewall na VPS** — Hostinger + ufw pravidla, oba musí povolit spojení z App Service IP.
+- **Špatná hesla nebo databáze se nepřihlašuje** — ověř v `pg_hba.conf` a na serveru `SELECT * FROM pg_roles WHERE rolname = 'fakvio_prod'`.
 
 **Přepnutí režimu autentizace k DB** (Azure App Settings):
 
@@ -883,15 +880,17 @@ v WASM bundlu) je v `DEVGUIDE.md` §9 — tady je jen to, co potřebuje SysAdmin
 | Backend MCP URL | https://fakvio-mcp-web-test.azurewebsites.net | https://fakvio-mcp-web.azurewebsites.net |
 | Zdrojová větev | `TEST-ENV` | `master` |
 | Deploy workflows | `testenv_fakvio-api.yml` (API), `mcp-server.yml` (MCP), `blazorui-test-deploy.yml` (frontend) | `master_fakvio-api.yml` (API), `mcp-server.yml` (MCP), `blazorui-deploy.yml` (frontend) |
-| Databáze | vlastní PostgreSQL `fakvio_test` na privátním serveru, dostupná **přes Tailscale tunel** (viz níž) | produkční PostgreSQL |
+| Databáze | *(V současnosti vypnuto)* vlastní PostgreSQL `fakvio_test` | produkční PostgreSQL na vlastním serveru (přístup přes veřejný internet, TLS + firewall) |
 
 Větev **`TEST-ENV` na `origin` vzniká až prvním během `/release`** (odbočí z `master`).
 Dokud tam není, testovací deploy workflows nemají co spustit — není to incident.
 
-**Proč test jsou samostatné App Service:** test a produkce jsou zcela oddělené instance na stejném
-App Service plánu `asp-fakvio-b1` (Linux Basic B1). V praxi je to lepší izolace —
-test a produkce se vzájemně neovlivňují při škálování ani restartech. App Settings jsou na obou
-nezávislé.
+**Proč test jsou samostatné App Service:** test a produkce jsou zcela oddělené web appky na
+**dvou** App Service planech — `asp-fakvio-b1` (produkce) a `asp-fakvio-b1-test` (test), oba Linux
+Basic B1. Jeden sdílený B1 (1,75 GB) čtyři appky plus jejich Kudu kontejnery neunesl (swap, CPU
+100 %, produkce odpovídala v sekundách), proto má test vlastní plan a deploy na test nikdy
+nerestartuje nic vedle produkce. App Settings jsou na obou nezávislé; na všech appkách je
+`WEBSITES_CONTAINER_START_TIME_LIMIT=900`, protože první start po deployi trvá na B1 až 7 minut.
 
 **Proč frontend testu není na GitHub Pages:** Pages umí hostovat jen jeden web na repozitář
 a ten patří produkci. Test proto jede na Azure Static Web Apps.
@@ -907,85 +906,37 @@ variables), ne ve workflow souborech. Zápis používá dvojité podtržítko m�
 | `JwtSettings__Secret` | **vlastní, nesdílený s produkcí** | Token vydaný produkcí na testu neplatí a naopak. To je záměr — jinak by únik jednoho klíče otevřel obě prostředí. |
 | `JwtSettings__Issuer`, `JwtSettings__Audience` | shodné s produkcí | Liší se jen klíč, ne formát tokenu. |
 | `CorsSettings__AllowedOrigins__0` / `__1` | `https://wonderful-meadow-0eb3ada03.7.azurestaticapps.net` a `https://test.fakvio.cz` (oba originy testovacího frontendu) | Musí sedět na frontend URL daného prostředí, jinak prohlížeč zablokuje všechna volání API. Při změně URL frontendu se mění i tady. |
-| `ConnectionStrings__DefaultConnection` | `Host=127.0.0.1;Port=15432;Database=fakvio_test;Username=fakvio_test;Password=***;Ssl Mode=Prefer;Timezone=UTC;Maximum Pool Size=20;Timeout=15` | **`127.0.0.1` není překlep** — míří na lokální konec Tailscale tunelu (viz níž), ne přímo na databázový server. `Ssl Mode=Prefer`, protože provoz už šifruje WireGuard a certifikát na `127.0.0.1` se ověřit nedá; `Timeout=15` kvůli WireGuard handshake při prvním spojení. |
-| `TAILSCALE_AUTHKEY` | `tskey-auth-…` (reusable + ephemeral + tag) | **Spínač celé funkce.** Když klíč chybí, tunel se nepostaví a databáze je nedostupná. Klíč má expiraci — po vypršení se nové instance nepřihlásí. Postup vydání, ACL a rotace: `Fakvio.Infrastructure/Tailscale/README.md`. |
-| `TAILSCALE_HOSTNAME` | `fakvio-func-prod` / `fakvio-func-test` | Jméno uzlu v tailnetu. Prod a test sdílejí tailnet — každé prostředí musí mít vlastní; bez klíče `fakvio-func-prod`. |
-| `TAILSCALE_TARGET_PORT` | *(volitelné)* výchozí `5544` | **Produkce: `5544`** (přímo Postgres, od 2026-09-10). **Test: `6432`** = PgBouncer — a je tam tím pádem stejná rozbitá tenant část, jakou měla produkce. PgBouncer v **transaction** režimu tuhle aplikaci rozbije: `search_path` chodí jako startup parametr a pooler spojení odmítne. Rozbor a cesty zpět: `SELFHOST-DB.md` §6.4b. |
-| `TS_ASSUME_NETWORK_UP_FOR_TEST` | *(nenastavovat)* | Nastavuje kód při startu démona. Bez ní se uzel v sandboxu nikdy nezaregistruje (`timeout waiting for Tailscale service to enter a Running state`). |
-| `Database__AuthMode` | `Password` (produkce: `AzureEntraId`) | Vlastní PostgreSQL Entra ID neumí. Kanonický klíč (§13) — health proto hlásí `authModeSource: Database:AuthMode`. |
-| `UseAzureAdAuthentication` | `false` (produkce: `true`, tedy Entra ID) | **Legacy klíč, musí souhlasit s řádkem výš** — když si budou odporovat, aplikace při startu spadne (fail-fast, §13). Měnit vždy oba zároveň. |
+| `ConnectionStrings__DefaultConnection` | *(test vypnuto)* | Produkce: `Host=<public-ip>;Port=5544;Database=fakvio_prod;Username=fakvio_prod;Password=***;Ssl Mode=VerifyFull;Timezone=UTC;Maximum Pool Size=40` — viz `SELFHOST-DB.md` část 7. |
+| `Database__AuthMode` | *(test: `Password`)* | Produkce: `AzureEntraId`. Vlastní PostgreSQL umí jen `Password`. Kanonický klíč (§13). |
+| `UseAzureAdAuthentication` | *(test: `false`)* | Produkce: `true` (Entra ID). **Legacy klíč, musí souhlasit s `Database__AuthMode`** — při rozporu aplikace spadne (fail-fast, §13). |
 | `AresSettings__BaseUrl` | shodné s produkcí | |
 
-### Jak je testovací databáze zapojená
+### Jak je produkční databáze zapojená
 
-Testovací databáze je **vlastní PostgreSQL na privátním serveru** (databáze `fakvio_test`,
-uživatel `fakvio_test`). **Role je per prostředí** — do `fakvio_test` se přihlašuje jen role
-`fakvio_test`, do produkční `fakvio_prod` jen `fakvio_prod`. Tohle oddělení ale **nevzniká
-samo založením databáze**: PostgreSQL dává právo `CONNECT` implicitně roli `PUBLIC`, takže
-hranici staví teprve explicitní `REVOKE CONNECT … FROM PUBLIC` (plus `GRANT CONNECT` té jedné
-roli) a odpovídající řádek v `pg_hba.conf` — přesné příkazy i ověření jsou v `SELFHOST-DB.md`
-§7. **S nimi** se držitel testovacího hesla do produkční databáze nepřihlásí (`FATAL:
-permission denied for database "fakvio_prod"`), tedy nepřečte ani její katalog. **Bez nich**
-se přihlásí — aplikační data sice neuvidí (ta chrání vlastnictví tabulek), ale jména schémat,
-tabulek a sloupců si přečte. Při zakládání dalšího prostředí to proto zkontroluj.
-Port serveru **není ve veřejném internetu** — server je dostupný jen uvnitř
-privátní sítě Tailscale. App Service se do té sítě připojuje sám: při startu spustí
-Tailscale v uživatelském režimu a vystaví databázi jako **lokální port `127.0.0.1:15432`**.
-Proto connection string v tabulce výš míří na `127.0.0.1`.
+Produkční databáze je **vlastní PostgreSQL na veřejné adrese** (databáze `fakvio_prod`,
+uživatel `fakvio_prod`, port 5544). Bezpečnost je zajištěna:
 
-Co z toho plyne pro provoz:
+1. **TLS s validací certifikátu** — connection string má `Ssl Mode=VerifyFull` a `Root Certificate`
+   (pokud self-signed).
+2. **VPS firewall + `pg_hba.conf`** — server přijímá spojení **jen** z App Service outbound IP adres.
+   Přesný seznam z `az webapp show -n fakvio-api -g invoiceapi --query possibleOutboundIpAddresses`
+   (19 adres, stabilní pro životnost app service).
+3. **Per-role `pg_hba.conf` řádky** — `hostssl fakvio_prod fakvio_prod <ip>/32 scram-sha-256`.
 
-- **Chybějící nebo vypršelý `TAILSCALE_AUTHKEY` = nedostupná databáze.** Tunel se nepostaví,
-  aplikace ale **nespadne** — BackgroundService pracovníci a `GET /api/diagnostic/health` odpovídají dál.
-  Poznávací znamení v Log stream / Application Insights:
+Detaily: `SELFHOST-DB.md` — připojovací řetězec (§7), konfigurace PostgreSQL (§6.2–6.3),
+ověření spojení (§3.4).
 
-  ```text
-  fail: Fakvio.Infrastructure.Tailscale[0]
-        Startup: Tailscale tunnel failed — database unreachable until resolved
-  ```
+### Testovací databáze (v současnosti vypnuto)
 
-  **Co uvidíš na healthu:** `GET /api/diagnostic/health` je chráněný JWT tokenem SysAdmina
-  (§13), a přihlášení potřebuje **tu samou** master DB, která je v tomhle scénáři nedostupná.
-  Bez tokenu tedy dostaneš **401** — a to není chyba autentizace, jen důsledek nedostupné DB.
-  **503** s `masterDbCanConnect: false` uvidíš jen s tokenem vydaným ještě za funkční databáze.
-  Rozhodující signál je proto ten řádek v logu, ne odpověď healthu.
+Testovací App Service `fakvio-api-test` bylo vypnuto 2026-09-10. Workflow `testenv_fakvio-api.yml`
+a `blazorui-test-deploy.yml` jsou v GitHub Actions zakázány. Není to incident — deploy test-env
+prostě neběží.
 
-  Klíč je potřeba **rotovat dřív, než vyprší** — běžící instance jedou dál, ale každá nově
-  nastartovaná selže.
-- **Startup čas aplikace.** App Service spouští aplikaci při startu, což zahrnuje Tailscale tunel
-  a EF Core migrace master databáze (~5-10 s). Po migraci je aplikace plně funkční; StartupGateMiddleware
-  blokuje requesty během tohoto procesu. Klíč je *ephemeral*, takže se po zhasnutí instance uklidí samy.
-- **Zdravý start** vypadá v logu takhle:
-
-  ```text
-  Tailscale: up OK (attempt 1)
-  Tailscale: forwarder 127.0.0.1:15432 -> 100.69.241.17:5544 (via SOCKS5 127.0.0.1:1055)
-  Tailscale: target reachable (100.69.241.17:5544) after 1 attempt(s)
-  Startup: master database migrated successfully
-  ```
-
-  Řádky `Tailscale: …` se píšou i na standardní výstup workeru, takže v App Insights jsou
-  v `traces` pod kategorií `Host.Function.Console` (kategorie `Fakvio.*` tam zatím nedoletí —
-  issue #322). Dotaz: `traces | where message startswith "Tailscale:"`.
-- **Na jedné instanci může běžet víc worker procesů** a sdílejí jeden sandbox. Tunel staví
-  jen ten, který byl první; ostatní se přidají k němu a v logu je pak vidět
-  `Tailscale: tailscaled already running on 127.0.0.1:1055, reusing it`, případně
-  `Tailscale: forwarder port 15432 already served by another worker, reusing it`. **To je
-  normální stav, ne chyba** — databáze je dostupná pro všechny workery instance.
-
-- **Rychlé vypnutí (rollback):** smazat App Setting `TAILSCALE_AUTHKEY` a vrátit placeholder
-  connection string (`Host=test-env-has-no-database.invalid;…`), pak restart. Redeploy není
-  potřeba — bez klíče je funkce nečinná. Test tím ale přijde o databázi i o přihlašování.
-- **Kdy zakládat ticket:** když backend neodpovídá vůbec (timeout nebo 5xx přímo z platformy),
-  nebo když vrátí 5xx, které **není** chyba databáze. Nefunkční přihlášení (a tedy 401
-  z healthu) spolu s řádkem `Startup: Tailscale tunnel failed` v logu je nejčastěji vypršelý
-  auth key — než zakládáš ticket, zkontroluj v Tailscale admin konzoli platnost klíče a jestli
-  je uzel `fakvio-func` online. Startovní log je v tomhle stavu jediný spolehlivý zdroj:
-  `Startup: Tailscale tunnel failed …` ukazuje na tunel, `Startup: database migration failed …`
-  na databázi samotnou (tunel stojí, ale server neodpovídá nebo odmítá přihlášení).
-
-Podrobnosti (proč uživatelský režim, ACL pravidla, vydání a rotace klíče, lokální ověření)
-jsou v `Fakvio.Infrastructure/Tailscale/README.md`.
+Pokud bude test znovu spouštěn, měl by mít vlastní PostgreSQL (`fakvio_test`, uživatel `fakvio_test`)
+dostupnou stejně jako produkce — přes veřejný internet s TLS, nikoliv přes Tailscale tunel.
+Role per prostředí znamená, že uživatel `fakvio_test` se do produkční DB `fakvio_prod` nepřihlásí.
+Zabezpečení: REVOKE `CONNECT … FROM PUBLIC; GRANT CONNECT … TO fakvio_test;` v `pg_hba.conf` —
+přesné příkazy v `SELFHOST-DB.md` §7.
 
 ### Známá omezení testovacího prostředí
 

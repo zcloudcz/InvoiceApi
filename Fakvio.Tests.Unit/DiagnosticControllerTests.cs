@@ -301,9 +301,8 @@ public class DiagnosticControllerTests : IDisposable
     }
 
     // ── Startup state ────────────────────────────────────────────────────────
-    // The Functions host migrates in a background task and only logs the outcome, and the
-    // worker ILogger does not reach App Insights (issue #322). These fields are the only
-    // way a failed startup migration is visible in Azure, so the payload pins them.
+    // A failed startup migration is tolerated (the host keeps serving), so these fields are
+    // how an operator sees it; the payload pins them.
 
     [Fact]
     public async Task Health_BeforeStartupFinishes_ReportsPendingMigration()
@@ -311,7 +310,6 @@ public class DiagnosticControllerTests : IDisposable
         var result = await CreateSut(BuildConfiguration()).Health();
 
         var payload = Payload(result, StatusCodes.Status200OK);
-        payload["startupDatabaseReady"].ShouldBe(false);
         payload["startupMigration"].ShouldBe("pending");
         payload.ShouldNotContainKey("startupMigrationError");
     }
@@ -319,13 +317,11 @@ public class DiagnosticControllerTests : IDisposable
     [Fact]
     public async Task Health_AfterSuccessfulStartup_ReportsSucceeded()
     {
-        StartupState.MarkDatabaseReady();
         StartupState.MarkMigration(succeeded: true);
 
         var result = await CreateSut(BuildConfiguration()).Health();
 
         var payload = Payload(result, StatusCodes.Status200OK);
-        payload["startupDatabaseReady"].ShouldBe(true);
         payload["startupMigration"].ShouldBe("succeeded");
         payload.ShouldContainKey("startupMigrationCompletedAt");
         payload.ShouldNotContainKey("startupMigrationError");
@@ -334,7 +330,6 @@ public class DiagnosticControllerTests : IDisposable
     [Fact]
     public async Task Health_AfterFailedStartupMigration_ReportsTheError()
     {
-        StartupState.MarkDatabaseReady();
         StartupState.MarkMigration(succeeded: false, error: "42501: must be owner of table");
 
         var result = await CreateSut(BuildConfiguration()).Health();
@@ -346,3 +341,11 @@ public class DiagnosticControllerTests : IDisposable
         payload["startupMigrationError"].ShouldBe("42501: must be owner of table");
     }
 }
+
+/// <summary>
+/// Groups every test class that touches the static <see cref="StartupState"/>. xUnit runs
+/// the classes inside one collection sequentially, which is the guarantee needed here —
+/// without it one class's MarkMigration() makes another's "pending" assertion fail at random.
+/// </summary>
+[CollectionDefinition(nameof(StartupStateCollection))]
+public class StartupStateCollection;

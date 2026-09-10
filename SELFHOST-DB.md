@@ -832,8 +832,8 @@ Projeví se to tiše — pod nízkým provozem nic, pod špičkou náhlé
 
 ### 6.4b PgBouncer v transaction poolingu tuhle aplikaci rozbije
 
-**Stav 2026-09-10: produkce pooler obchází** — `TAILSCALE_TARGET_PORT=5544` míří přes
-tunel přímo na Postgres. Předtím mířila na PgBouncer (`6432`) v transaction režimu a
+**Stav 2026-09-10: produkce pooler obchází** — connection string míří přímo na Postgres
+port 5544. Testovací prostředí dříve mířilo na PgBouncer (`6432`) v transaction režimu a
 **celá tenant část aplikace byla nepoužitelná**: každý tenant endpoint vracel 503,
 uživatel viděl všude prázdno (UI 503 spolkne a vykreslí prázdný seznam).
 
@@ -869,12 +869,15 @@ v `public`. Místo výpadku dostaneš rozsypanou strukturu databáze.
   `fakvio_prod_session` (session) pro migrace, provisioning a `AdvisoryLock`.
   V produkčním kódu má `GetForSchema()` **jediného volajícího**
   (`TenantProvisioningService.cs:634`), takže je to malá, ohraničená změna.
-  Vyžaduje druhý connection string v konfiguraci aplikace.
+  Vyžaduje druhý connection string v konfiguraci aplikace (teoreticky; v současnosti
+  se PgBouncer nepoužívá).
 
-#### Jak se vrátit na pooler
+#### Jak se vrátit na pooler (teoreticky, v současnosti nepoužito)
+
+Když by byla potřeba návrat na PgBouncer:
 
 1. Na DB hostu zvolit jednu z cest výše.
-2. `az webapp config appsettings set -n fakvio-api -g invoiceapi --settings TAILSCALE_TARGET_PORT=6432`
+2. `az webapp config appsettings set -n fakvio-api -g invoiceapi --settings ConnectionStrings__DefaultConnection=Host=…;Port=6432;…`
 3. Restart a do 15 minut zkontrolovat, že nepřibývají 503:
 
    ```kusto
@@ -882,7 +885,7 @@ v `public`. Místo výpadku dostaneš rozsypanou strukturu databáze.
             | summarize total=count(), c503=countif(resultCode=="503")
    ```
 
-   Zpátky kdykoli `=5544`.
+   Zpátky na přímé spojení kdykoli změnou portu v connection stringu na `5544`.
 
 Ztráta multiplexingu při obcházení pooleru nebolí tolik, jak by se zdálo — aplikace má
 pooly malé (`Maximum Pool Size=20` v connection stringu, `SchemaDataSourceMaxPoolSize=4`,
@@ -918,23 +921,16 @@ Dvojité podtržítko `__` je oddělovač sekcí v .NET konfiguraci —
 > [části 6.2](#62-ssl-mode--npgsql-8-validuje-certifikát) — sedí na DB ve stejné
 > privátní síti. Pokud spojení jde přes veřejnou síť, vyber z té tabulky výš.
 
-### Varianta: databáze za Tailscale tunelem
+### Varianta: databáze za Tailscale tunelem (legacy, již není v produkci)
 
-Když databázový port **není ve veřejném internetu** a hostitel se k němu dostane jen přes
-tailnet (tak je zapojené testovací prostředí, viz `Fakvio.Infrastructure/Tailscale/README.md`),
-liší se dvě věci: `Host`/`Port` míří na **lokální konec tunelu**, ne na databázový server,
-a přibývá klíč s auth key. Zbytek zůstává stejný.
+Testovací prostředí dříve používalo Tailscale tunel pro přístup k privátní databázi.
+Od 2026-09-10 je tato varianta z produkce odstraněna; `TAILSCALE_AUTHKEY`, `TAILSCALE_HOSTNAME`,
+`TAILSCALE_TARGET_PORT` a `TS_ASSUME_NETWORK_UP_FOR_TEST` nejsou v provozu.
+Tato poznámka zůstává pro historický kontext, pokud by někdy byla potřeba vrátit se k němuž podobnému.
 
-```
-TAILSCALE_AUTHKEY=tskey-auth-…
-Database__AuthMode=Password
-UseAzureAdAuthentication=false
-ConnectionStrings__DefaultConnection=Host=127.0.0.1;Port=15432;Database=fakvio_test;Username=fakvio_test;Password=***;Ssl Mode=Prefer;Timezone=UTC;Maximum Pool Size=20;Timeout=15
-```
-
-`Ssl Mode=Prefer` je tu navíc jediná praktická volba: provoz šifruje už WireGuard a
-certifikát vystavený na `127.0.0.1` se ověřit nedá. `Timeout=15` proto, že první spojení
-zahrnuje WireGuard handshake.
+Když by databázový port **nebyl ve veřejném internetu** a hostitel se k němu dostal jen přes
+tailnet, liší se dvě věci: `Host`/`Port` by mířily na **lokální konec tunelu**, ne na databázový server,
+a přidali by se klíče s auth key. Zbytek by zůstal stejný.
 
 **Přihlašovací role je per prostředí, ne jedna sdílená** — do databáze `fakvio_test` se
 přihlašuje role `fakvio_test`, do `fakvio_prod` role `fakvio_prod`, každá s vlastním heslem.

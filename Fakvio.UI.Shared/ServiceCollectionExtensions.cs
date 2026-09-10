@@ -45,9 +45,6 @@ public static class ServiceCollectionExtensions
         services.AddTransient<CorrelationIdHandler>();
         // UnauthorizedRedirectHandler: intercepts 401 responses and redirects to /login.
         services.AddTransient<UnauthorizedRedirectHandler>();
-        // RetryAfterHandler: retries a 503 that carries Retry-After, so a cold-starting
-        // backend looks like a short pause instead of an error the user has to refresh away.
-        services.AddTransient<RetryAfterHandler>();
 
         // Authentication services
         // AuthApiService derives from ApiClientBase — register via AddApiClient so login/

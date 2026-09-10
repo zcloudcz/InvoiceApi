@@ -49,8 +49,7 @@ public class McpServerSettings
     /// Junior note: this lives here rather than inline in <c>Program.cs</c> so it can be tested.
     /// <c>Program.cs</c> is an entry point with top-level statements — nothing can call into it,
     /// so a default resolved there is a default no test ever executes (see
-    /// <c>Fakvio.Tests.Unit/McpServer/McpServerSettingsTests.cs</c>). Same shape as
-    /// <c>TailscaleTunnel.ResolveHostname()</c>.
+    /// <c>Fakvio.Tests.Unit/McpServer/McpServerSettingsTests.cs</c>).
     /// </para>
     /// </summary>
     public static McpServerSettings FromEnvironment() => new()
