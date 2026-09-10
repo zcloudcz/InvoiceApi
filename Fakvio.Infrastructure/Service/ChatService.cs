@@ -109,7 +109,7 @@ public class ChatService : IChatService
             IsArchived = conversation.IsArchived,
             MessageCount = conversation.Messages.Count,
             Messages = conversation.Messages
-                .OrderBy(m => m.CreatedAt)
+                .OrderBy(m => m.CreatedAt).ThenBy(m => m.Id)
                 .Select(MapMessageToDto)
                 .ToList()
         };
@@ -123,7 +123,7 @@ public class ChatService : IChatService
         long userId, SendMessageRequest request, CancellationToken ct = default)
     {
         // Resolve or create the conversation.
-        var conversation = await GetOrCreateConversationAsync(userId, request.ConversationId, request.Message, ct);
+        var conversation = await GetOrCreateConversationAsync(userId, request, ct);
 
         // If a PDF file is attached, prepend its content to the user message.
         // This gives the AI full context of the document so it can answer questions about it.
@@ -229,7 +229,7 @@ public class ChatService : IChatService
         [EnumeratorCancellation] CancellationToken ct = default)
     {
         // Resolve or create the conversation.
-        var conversation = await GetOrCreateConversationAsync(userId, request.ConversationId, request.Message, ct);
+        var conversation = await GetOrCreateConversationAsync(userId, request, ct);
 
         // If a PDF file is attached, prepend its content to the user message.
         var effectiveMessage = BuildMessageWithAttachment(request);
@@ -646,19 +646,27 @@ public class ChatService : IChatService
     /// <summary>
     /// Gets an existing conversation or creates a new one.
     /// Auto-generates the title from the first user message (first 50 chars).
+    ///
+    /// A new conversation may open with an assistant turn the user has already read
+    /// (<see cref="SendMessageRequest.SeedAssistantMessage"/> — the proactive onboarding
+    /// welcome, issue #214). It is stored as a real message so the history the model gets
+    /// matches the screen: without it, "let's do it" arrives as the very first turn of an
+    /// empty history and refers to nothing. An existing conversation ignores the seed — its
+    /// history already is what the user saw.
     /// </summary>
     private async Task<ChatConversation> GetOrCreateConversationAsync(
-        long userId, long? conversationId, string firstMessage, CancellationToken ct)
+        long userId, SendMessageRequest request, CancellationToken ct)
     {
-        if (conversationId.HasValue)
+        if (request.ConversationId is { } conversationId)
         {
             var existing = await _context.ChatConversation
-                .FirstOrDefaultAsync(c => c.Id == conversationId.Value && c.UserId == userId, ct)
-                ?? throw new ChatConversationNotFoundException(conversationId.Value);
+                .FirstOrDefaultAsync(c => c.Id == conversationId && c.UserId == userId, ct)
+                ?? throw new ChatConversationNotFoundException(conversationId);
             return existing;
         }
 
         // Create a new conversation with an auto-generated title.
+        var firstMessage = request.Message;
         var title = firstMessage.Length > 50
             ? firstMessage[..50] + "..."
             : firstMessage;
@@ -674,6 +682,18 @@ public class ChatService : IChatService
         _context.ChatConversation.Add(conversation);
         await _context.SaveChangesAsync(ct);
 
+        if (!string.IsNullOrWhiteSpace(request.SeedAssistantMessage))
+        {
+            // Saved by the caller together with the user's message, so both get the same
+            // CreatedAt — which is why the history is ordered by Id as a tie-breaker.
+            _context.ChatMessage.Add(new ChatMessage
+            {
+                ConversationId = conversation.Id,
+                Role = EChatRole.Assistant,
+                Content = request.SeedAssistantMessage
+            });
+        }
+
         return conversation;
     }
 
@@ -687,7 +707,7 @@ public class ChatService : IChatService
         return await _context.ChatMessage
             .AsNoTracking()
             .Where(m => m.ConversationId == conversationId && m.Role != EChatRole.System)
-            .OrderBy(m => m.CreatedAt)
+            .OrderBy(m => m.CreatedAt).ThenBy(m => m.Id)
             .Select(m => new ChatMessageDto
             {
                 Id = m.Id,

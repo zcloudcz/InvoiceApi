@@ -685,7 +685,9 @@ Nechcete-li to řešit v chatu, panel zavřete a doplňte údaje na příslušn�
 odkaz **Doplnit** v banneru na dashboardu vede přímo na ně.
 
 Uvítání přijde **jednou za přihlášení**. Když panel zavřete, do dalšího přihlášení už se sám
-neotevře. Jakmile je nastavení kompletní, uvítání se nezobrazuje vůbec.
+neotevře. Jakmile je nastavení kompletní, uvítání se nezobrazuje vůbec. Jakmile na uvítání
+odpovíte, stane se součástí té konverzace — asistent na něj navazuje a najdete ho i v historii
+chatu.
 
 ### Co AI asistent umí
 
