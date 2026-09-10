@@ -88,7 +88,7 @@ jobs:
           set -euo pipefail
           URL="${{ steps.deploy.outputs.webapp-url }}"
           CODE=$(curl -s -o /dev/null -w '%{http_code}' \
-                   --retry 8 --retry-all-errors --retry-delay 15 --max-time 30 \
+                   --retry 20 --retry-all-errors --retry-delay 30 --max-time 30 \
                    "${URL%/}/api/diagnostic/health")
           if [ "${CODE}" != "401" ]; then
             echo "::error::GET ${URL%/}/api/diagnostic/health answered ${CODE}, expected 401 from the JWT gate."

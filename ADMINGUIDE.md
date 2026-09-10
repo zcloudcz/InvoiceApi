@@ -575,8 +575,8 @@ HTTP a místo toho čeká na stdin, vypadá zvenčí jako nastartovaný — prot
 > jsou hotové pro obě prostředí — `TEST-ENV` deployuje job `deploy-http-test`,
 > `master` job `deploy-http-prod`. Oba se **přeskočí**, dokud není nastavená příslušná repo
 > proměnná se jménem web appu: `MCP_HTTP_APP_NAME` (test, `fakvio-mcp-web-test`) a
-> `MCP_HTTP_APP_NAME_PROD` (produkce, `fakvio-mcp-web`). Obě aplikace už běží na
-> plán `asp-fakvio-b1` (stejný plán jako API hosty).
+> `MCP_HTTP_APP_NAME_PROD` (produkce, `fakvio-mcp-web`). Produkční MCP běží na planu
+> `asp-fakvio-b1` vedle `fakvio-api`, testovací na `asp-fakvio-b1-test` vedle `fakvio-api-test`.
 >
 > **App settings na MCP web appu:**
 > - `FAKVIO_MCP_TRANSPORT=http`
@@ -888,10 +888,12 @@ v WASM bundlu) je v `DEVGUIDE.md` §9 — tady je jen to, co potřebuje SysAdmin
 Větev **`TEST-ENV` na `origin` vzniká až prvním během `/release`** (odbočí z `master`).
 Dokud tam není, testovací deploy workflows nemají co spustit — není to incident.
 
-**Proč test jsou samostatné App Service:** test a produkce jsou zcela oddělené instance na stejném
-App Service plánu `asp-fakvio-b1` (Linux Basic B1). V praxi je to lepší izolace —
-test a produkce se vzájemně neovlivňují při škálování ani restartech. App Settings jsou na obou
-nezávislé.
+**Proč test jsou samostatné App Service:** test a produkce jsou zcela oddělené web appky na
+**dvou** App Service planech — `asp-fakvio-b1` (produkce) a `asp-fakvio-b1-test` (test), oba Linux
+Basic B1. Jeden sdílený B1 (1,75 GB) čtyři appky plus jejich Kudu kontejnery neunesl (swap, CPU
+100 %, produkce odpovídala v sekundách), proto má test vlastní plan a deploy na test nikdy
+nerestartuje nic vedle produkce. App Settings jsou na obou nezávislé; na všech appkách je
+`WEBSITES_CONTAINER_START_TIME_LIMIT=900`, protože první start po deployi trvá na B1 až 7 minut.
 
 **Proč frontend testu není na GitHub Pages:** Pages umí hostovat jen jeden web na repozitář
 a ten patří produkci. Test proto jede na Azure Static Web Apps.

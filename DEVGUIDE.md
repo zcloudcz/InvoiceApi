@@ -2483,7 +2483,14 @@ proč to celé existuje: `Fakvio.Infrastructure/Tailscale/README.md`.
 
 **Konfigurace App Service:**
 
-- **Plán**: `asp-fakvio-b1` (Linux, Basic B1 tier, ~13 USD/měsíc, hostuje všechny čtyři aplikace — dvě API, dvě MCP).
+- **Plány**: `asp-fakvio-b1` (produkce: `fakvio-api` + `fakvio-mcp-web`) a `asp-fakvio-b1-test`
+  (test: `fakvio-api-test` + `fakvio-mcp-web-test`), oba Linux Basic B1, ~13 USD/měsíc každý.
+  Původně sdílely jeden B1 — 1,75 GB RAM na čtyři appky plus čtyři Kudu kontejnery swapovalo
+  (CPU planu 100 %, paměť 85 %, odpovědi v sekundách, Npgsql `EndOfStreamException` přes tunel),
+  proto je test na vlastním planu. Deploy na test tak nikdy nerestartuje nic vedle produkce.
+- **`WEBSITES_CONTAINER_START_TIME_LIMIT=900`** na všech čtyřech appkách: první start po deployi
+  (pull image, rehash certifikátů, Tailscale login) trval na B1 až 7 minut a výchozích 230 s
+  kontejner zabilo dřív, než Kestrel otevřel port 8080.
 - **Web apps**:
   - `fakvio-api` (https://fakvio-api.azurewebsites.net) — produkční API host (`Fakvio.API`).
   - `fakvio-api-test` (https://fakvio-api-test.azurewebsites.net) — testovací API host.
