@@ -76,12 +76,9 @@ public class DiagnosticController : ControllerBase
         result["authMode"] = _databaseOptions.AuthMode.ToString();
         result["authModeSource"] = _databaseOptions.AuthModeSource;
 
-        // Startup outcome. On the Functions host the tunnel bring-up and the master migration
-        // run in a background task and only log — and the worker ILogger does not reach App
-        // Insights today (issue #322), so without these fields a failed startup migration is
-        // invisible in Azure. Reported, never used to gate: the process can serve traffic
-        // perfectly well while being two migrations behind.
-        result["startupDatabaseReady"] = StartupState.DatabaseReady;
+        // Startup outcome. The master migration failure is tolerated at startup (the host keeps
+        // serving), so this is where an operator sees that the schema is behind. Reported, never
+        // used to gate: the process can serve traffic perfectly well while being two migrations behind.
         result["startupMigration"] = StartupState.MigrationSucceeded switch
         {
             true => "succeeded",
