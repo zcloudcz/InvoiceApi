@@ -1,8 +1,9 @@
-using Fakvio.Infrastructure.Data;
+﻿using Fakvio.Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
+using Fakvio.Infrastructure.Service;
 
 namespace Fakvio.API.Controller;
 
@@ -77,6 +78,27 @@ public class DiagnosticController : ControllerBase
         // "default"), which is what makes an Azure App Settings rollout verifiable.
         result["authMode"] = _databaseOptions.AuthMode.ToString();
         result["authModeSource"] = _databaseOptions.AuthModeSource;
+
+        // Startup outcome. On the Functions host the tunnel bring-up and the master migration
+        // run in a background task and only log — and the worker ILogger does not reach App
+        // Insights today (issue #322), so without these fields a failed startup migration is
+        // invisible in Azure. Reported, never used to gate: the process can serve traffic
+        // perfectly well while being two migrations behind.
+        result["startupDatabaseReady"] = StartupState.DatabaseReady;
+        result["startupMigration"] = StartupState.MigrationSucceeded switch
+        {
+            true => "succeeded",
+            false => "failed",
+            null => "pending"
+        };
+        if (StartupState.MigrationCompletedAt is { } completedAt)
+        {
+            result["startupMigrationCompletedAt"] = completedAt;
+        }
+        if (StartupState.MigrationError is { } migrationError)
+        {
+            result["startupMigrationError"] = migrationError;
+        }
 
         await ProbeMasterDatabaseAsync(result, ct);
 

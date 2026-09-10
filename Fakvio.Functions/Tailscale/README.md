@@ -54,6 +54,13 @@ timeout.
 `Tailscale: TAILSCALE_AUTHKEY not set, tunnel disabled` a běh pokračuje beze změny —
 proto lokální vývoj, produkce i unit testy fungují dál stejně.
 
+Mezi „host started" a „forwarder bound" je díra (běžně ~700 ms), ve které connection string
+míří na neobsazený port. Tu zavírá **startup gate**: `StartupState.MarkDatabaseReady()` se
+volá z `finally` kolem stavby tunelu a `StartupGateMiddleware` do té doby odpovídá na `/api/*`
+(mimo `/api/diagnostic`) `503 + Retry-After: 5`. UI si takový 503 samo zopakuje
+(`RetryAfterHandler`), takže uživatel vidí krátké čekání, ne chybu. Gate se otevře **i po
+neúspěšné** stavbě — zavřená brána by z rozbitého tunelu udělala tichý blackout.
+
 Když start tunelu selže, hostitel **nespadne**: výjimka se odchytí a zaloguje jako
 
 ```text
@@ -120,7 +127,8 @@ Function App → *Settings → Environment variables*. Dvojité podtržítko = o
 | `UseAzureAdAuthentication` | `false` | Musí souhlasit s předchozím řádkem, jinak start spadne na fail-fast kontrole (`SELFHOST-DB.md` §7). |
 | `TAILSCALE_HOSTNAME` | `fakvio-func-prod` / `fakvio-func-test` | Jméno uzlu v tailnetu. Prod a test sdílejí tailnet, takže **každé prostředí musí mít vlastní**; bez klíče se použije `fakvio-func-prod`. |
 | `TAILSCALE_TARGET_HOST` | *(volitelné)* výchozí `100.69.241.17` | Musí být **IPv4 tailnet adresa**; MagicDNS jméno kód odmítne — userspace režim resolver do procesu nezapojuje. |
-| `TAILSCALE_TARGET_PORT` | *(volitelné)* výchozí `5544` | |
+| `TAILSCALE_TARGET_PORT` | *(volitelné)* výchozí `5544` | **Produkce i test dnes používají `6432`** — port PgBounceru, ne Postgresu. PgBouncer musí běžet v **session** režimu, jinak se tiše rozbije EF migrační zámek i `AdvisoryLock` (`SELFHOST-DB.md` §6.4b). |
+| `TS_ASSUME_NETWORK_UP_FOR_TEST` | *(nenastavovat)* | Démon ji dostává **z kódu** (`TailscaleTunnel.DaemonEnvironment`). Sandbox Flex Consumption nemá routovací tabulku, bez ní `tailscaled` nikdy nehlásí Running a `tailscale up` končí timeoutem — uzel se v tailnetu vůbec neobjeví. Ruční App Setting už není potřeba. |
 
 `Ssl Mode=Prefer`, protože WireGuard provoz už šifruje a certifikát vystavený na
 `127.0.0.1` se stejně nedá ověřit. `Timeout=15`, protože první spojení zahrnuje

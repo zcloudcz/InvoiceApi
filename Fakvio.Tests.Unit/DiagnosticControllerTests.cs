@@ -1,4 +1,4 @@
-// ============================================================================
+﻿// ============================================================================
 // DiagnosticControllerTests — unit tests for GET /api/diagnostic/health.
 //
 // The controller is the single source of truth for the health payload (the Azure
@@ -15,6 +15,7 @@ using System.Reflection;
 using System.Text.Json;
 using Fakvio.API.Controller;
 using Fakvio.Infrastructure.Data;
+using Fakvio.Infrastructure.Service;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -26,6 +27,7 @@ using Shouldly;
 
 namespace Fakvio.Tests.Unit;
 
+[Collection(nameof(StartupStateCollection))]
 public class DiagnosticControllerTests : IDisposable
 {
     // A password-mode connection string with a password worth hunting for in the payload.
@@ -40,11 +42,16 @@ public class DiagnosticControllerTests : IDisposable
         _masterDb = new MasterDbContext(new DbContextOptionsBuilder<MasterDbContext>()
             .UseInMemoryDatabase($"DiagnosticControllerTest_{Guid.NewGuid()}")
             .Options);
+
+        // StartupState is static and shared by every test in the process; without this the
+        // startup fields below would report whatever an earlier test happened to leave behind.
+        StartupState.ResetForTests();
     }
 
     public void Dispose()
     {
         _masterDb.Dispose();
+        StartupState.ResetForTests();
         GC.SuppressFinalize(this);
     }
 
@@ -291,5 +298,51 @@ public class DiagnosticControllerTests : IDisposable
         // Assert
         data["masterConnectionConfigured"].ShouldBe(false);
         data.ShouldNotContainKey("masterConnectionServer");
+    }
+
+    // ── Startup state ────────────────────────────────────────────────────────
+    // The Functions host migrates in a background task and only logs the outcome, and the
+    // worker ILogger does not reach App Insights (issue #322). These fields are the only
+    // way a failed startup migration is visible in Azure, so the payload pins them.
+
+    [Fact]
+    public async Task Health_BeforeStartupFinishes_ReportsPendingMigration()
+    {
+        var result = await CreateSut(BuildConfiguration()).Health();
+
+        var payload = Payload(result, StatusCodes.Status200OK);
+        payload["startupDatabaseReady"].ShouldBe(false);
+        payload["startupMigration"].ShouldBe("pending");
+        payload.ShouldNotContainKey("startupMigrationError");
+    }
+
+    [Fact]
+    public async Task Health_AfterSuccessfulStartup_ReportsSucceeded()
+    {
+        StartupState.MarkDatabaseReady();
+        StartupState.MarkMigration(succeeded: true);
+
+        var result = await CreateSut(BuildConfiguration()).Health();
+
+        var payload = Payload(result, StatusCodes.Status200OK);
+        payload["startupDatabaseReady"].ShouldBe(true);
+        payload["startupMigration"].ShouldBe("succeeded");
+        payload.ShouldContainKey("startupMigrationCompletedAt");
+        payload.ShouldNotContainKey("startupMigrationError");
+    }
+
+    [Fact]
+    public async Task Health_AfterFailedStartupMigration_ReportsTheError()
+    {
+        StartupState.MarkDatabaseReady();
+        StartupState.MarkMigration(succeeded: false, error: "42501: must be owner of table");
+
+        var result = await CreateSut(BuildConfiguration()).Health();
+
+        // Still 200: the database answers, the process is just behind on migrations. A 503
+        // here would take a working deployment offline over a state it can serve through.
+        var payload = Payload(result, StatusCodes.Status200OK);
+        payload["startupMigration"].ShouldBe("failed");
+        payload["startupMigrationError"].ShouldBe("42501: must be owner of table");
     }
 }
