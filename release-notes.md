@@ -21,6 +21,7 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 ## Nevydáno
 
 ### Opravy
+- **#416** — uvítání asistenta pro nedokončené nastavení (#214) se nově odesílá jako součást první odpovědi konverzace (`SeedAssistantMessage`), takže asistent má kontext a může se efektivně ptát na chybějící údaje; prompt nyní jmenuje konkrétní chybějící pole (např. `NUMBER_SEQUENCE_MISSING: Invoice, CreditNote`) místo generických kódů. (PR #416, `6898311`)
 - **#364** (bezpečnostní oprava) — `UserDto` v odpovědi na listovací endpointy (`GET /api/user`, `/api/user/paged`, `/api/user/{id}`) nesl syrový `InvitationToken`, a protože `POST /api/user/set-password` ten token přijímá anonymně, šlo o přihlašovací údaj viditelný komukoli přihlášenému ve firmě. Navíc forgot-password recykluje stejné pole, takže obyčejný `User` mohl počkat, až si Admin vyžádá reset hesla, a účet mu převzít. Token je teď pryč z `UserDto` úplně; pozvánka ho vrací na vlastním `InvitedUserDto` (jen server-side, do e-mailu) a nová úzká cesta `GET /api/user/{id}/invitation-token` (jen `Admin`/`SysAdmin`) slouží pro obnovení pozvánkového odkazu. (PR #365, `18810d7`)
 
 ## 2026.09.10 — 2026-09-10
