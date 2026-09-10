@@ -1,6 +1,6 @@
 # Tailscale userspace tunel → privátní PostgreSQL
 
-Testovací Function App (`zcloudinvoicingapi-test`) se připojuje k vlastní PostgreSQL
+Testovací App Service (`fakvio-api-test`) se připojuje k vlastní PostgreSQL
 na Hostingeru, jejíž port **není ve veřejném internetu**. Cesta k ní vede přes tailnet.
 Tenhle adresář obsahuje všechno, co tunel staví.
 
@@ -8,7 +8,7 @@ Tenhle adresář obsahuje všechno, co tunel staví.
 
 ## 1. Proč zrovna takhle („Cesta B")
 
-Azure Functions sandbox **neumí vytvořit TUN zařízení**, takže normální (kernelový)
+App Service Linux sandbox **neumí vytvořit TUN zařízení**, takže normální (kernelový)
 režim Tailscale je vyloučený. `tailscaled` proto běží v **userspace-networking** režimu:
 místo síťového rozhraní nabídne **SOCKS5 proxy na localhostu**.
 
@@ -23,7 +23,7 @@ Alternativa („Cesta A") je Tailscale **subnet router** na straně Azure — VM
 
 ## 2. Řetěz při startu
 
-Vše se spouští v `Fakvio.Functions/Program.cs`, **po `Build()`** (potřebujeme reálný
+Vše se spouští v `Fakvio.API/Program.cs`, **po `Build()`** (potřebujeme reálný
 `ILogger` a `IHostApplicationLifetime`) a **před migračním blokem** (to je první místo,
 kde aplikace otevře socket do databáze). `IHostedService` by byl pozdě — hostované
 služby startují až v `RunAsync()`, tedy až po migraci.
@@ -81,7 +81,7 @@ spolehlivější signál než HTTP kód.
 | `tsbin/` (gitignored) | `tailscale` + `tailscaled`. **Nejsou v repu** — stahuje je deploy workflow. |
 
 Binárky se za běhu kopírují do `/tmp/tsbin` a teprve tam dostanou spustitelný bit:
-package mount na Flex Consumption může být read-only. Ze stejného důvodu má démon
+package mount na App Service Linux může být read-only. Ze stejného důvodu má démon
 `--socket=/tmp/tailscaled.sock` (výchozí `/var/run/tailscale/` je nezapisovatelný) —
 a **stejný přepínač musí nést i každé volání CLI**, jinak mluví na jinou cestu a zatuhne.
 
@@ -117,7 +117,7 @@ a **stejný přepínač musí nést i každé volání CLI**, jinak mluví na ji
 
 ## 5. App Settings
 
-Function App → *Settings → Environment variables*. Dvojité podtržítko = oddělovač sekcí.
+App Service → *Settings → Environment variables*. Dvojité podtržítko = oddělovač sekcí.
 
 | Klíč | Hodnota | Poznámka |
 |---|---|---|
@@ -128,7 +128,7 @@ Function App → *Settings → Environment variables*. Dvojité podtržítko = o
 | `TAILSCALE_HOSTNAME` | `fakvio-func-prod` / `fakvio-func-test` | Jméno uzlu v tailnetu. Prod a test sdílejí tailnet, takže **každé prostředí musí mít vlastní**; bez klíče se použije `fakvio-func-prod`. |
 | `TAILSCALE_TARGET_HOST` | *(volitelné)* výchozí `100.69.241.17` | Musí být **IPv4 tailnet adresa**; MagicDNS jméno kód odmítne — userspace režim resolver do procesu nezapojuje. |
 | `TAILSCALE_TARGET_PORT` | *(volitelné)* výchozí `5544` | **Produkce: `5544`** (přímo Postgres, od 2026-09-10). **Test: `6432`** = PgBouncer — a je tam tím pádem stejná rozbitá tenant část, jakou měla produkce. PgBouncer v **transaction** režimu tuhle aplikaci rozbije: `search_path` chodí jako startup parametr a pooler spojení odmítne. Rozbor a cesty zpět: `SELFHOST-DB.md` §6.4b. |
-| `TS_ASSUME_NETWORK_UP_FOR_TEST` | *(nenastavovat)* | Démon ji dostává **z kódu** (`TailscaleTunnel.DaemonEnvironment`). Sandbox Flex Consumption nemá routovací tabulku, bez ní `tailscaled` nikdy nehlásí Running a `tailscale up` končí timeoutem — uzel se v tailnetu vůbec neobjeví. Ruční App Setting už není potřeba. |
+| `TS_ASSUME_NETWORK_UP_FOR_TEST` | *(nenastavovat)* | Démon ji dostává **z kódu** (`TailscaleTunnel.DaemonEnvironment`). Sandbox App Service Linux nemá routovací tabulku, bez ní `tailscaled` nikdy nehlásí Running a `tailscale up` končí timeoutem — uzel se v tailnetu vůbec neobjeví. Ruční App Setting už není potřeba. |
 
 `Ssl Mode=Prefer`, protože WireGuard provoz už šifruje a certifikát vystavený na
 `127.0.0.1` se stejně nedá ověřit. `Timeout=15`, protože první spojení zahrnuje
@@ -151,35 +151,20 @@ Redeploy není potřeba — bez klíče je kód nečinný.
   child procesy, tunel se nepostaví, hostitel poběží dál a databáze bude nedostupná
   (health 401 bez tokenu, 503 s tokenem — viz část 2).
   Řešením je pak „Cesta A" (subnet router).
-- **Na jedné instanci běží víc worker procesů.** Flex Consumption škáluje worker procesy
-  uvnitř jedné instance (v traces se to pozná podle opakovaného `Host.Triggers.Warmup`).
-  Všechny sdílejí jeden sandbox, tedy i `/tmp` a loopback. Důsledky, se kterými kód počítá
-  (issue #321):
+- **Probe-first logika.** Kód zkusí, jestli už někdo neodpovídá na 127.0.0.1:1055; když ano,
+  běží démon na téže App Service instanci a tenhle proces se přidá bez dalšího spouštění démona
+  (Issue #321). Důsledky, se kterými kód počítá:
   - Kopie do `/tmp/tsbin` se **přeskočí**, když tam soubor už je ve stejné délce. Přepis
-    souboru, který běžící `tailscaled` drží otevřený, Linux odmítne s `ETXTBSY`
-    (`System.IO.IOException: Text file busy`) — dřív to shodilo celý start tunelu **před**
-    spuštěním forwarderu a instance pak jela bez databáze.
-  - `IOException` při kopii je jen `Warning`, pokud po ní v cíli leží **úplný soubor**
-    (existuje a má stejnou délku jako zdroj) — spuštěný soubor je z definice funkční
-    binárka. Kontroluje se čerstvě, až v okamžiku chyby: sourozenec stačil kopírovat
-    i mezi naší kontrolou a naší kopií. Usečnutá kopie (např. plný disk) fatální zůstává.
-  - Když `127.0.0.1:15432` už drží forwarder jiného workeru, `Socks5Forwarder.Start` vrátí
-    `null` a jen to zaloguje. Loopback je sdílený, takže connection string toho druhého
-    forwarderu využije i tenhle worker.
-  - Selhání **kteréhokoli kroku** stavby tunelu (kopie, spuštění démona i `tailscale up`)
-    není fatální, pokud SOCKS port žije — uzel už přihlásil ten, kdo démona spustil,
-    a forwarder musí nastartovat tak jako tak. Démon, který závod prohraje, končí dřív,
-    než vítěz sváže port 1055, takže se na něj krátce počká (až 15 × 1 s, uvnitř
-    stovkového rozpočtu). Fatální zůstává jen chybějící **zdrojová** binárka
-    v balíčku — to není závod, ale rozbitý deploy.
+    souboru, který běžící `tailscaled` drží otevřený, Linux odmítne s `ETXTBSY`.
+  - Když `127.0.0.1:15432` už drží forwarder, `Socks5Forwarder.Start` vrátí `null`
+    a jen to zaloguje. Connection string jiného procesu daného forwarderu využije i tento proces.
+  - Selhání **kteréhokoli kroku** stavby tunelu (kopie, spuštění démona) není fatální, pokud SOCKS port žije.
 - **Výstup `tailscaled` je na úrovni `Debug`**, takže při výchozí `Information` v
-  `host.json` není vidět. Při ladění dočasně zvyš úroveň pro kategorii
-  `Fakvio.Functions.Tailscale`.
-- **Worker `ILogger` do App Insights zatím nedoletí** — v `traces` jsou jen host kategorie
-  a `Host.Function.Console` (= stdout worker procesu), kategorie `Fakvio.*` chybí; viz
-  **issue #322**. Proto se milníky tunelu (`disabled`, `tailscaled already running`, `up OK`,
-  `forwarder …`, `target reachable`, `failed: …`) píšou **i na `Console.Out`** s prefixem
-  `Tailscale:`. V Azure se hledají takhle:
+  `appsettings.json` není vidět. Při ladění dočasně zvyš úroveň pro kategorii
+  `Fakvio.Infrastructure.Tailscale`.
+- **Logy do App Insights.** Milníky tunelu (`disabled`, `tailscaled already running`, `up OK`,
+  `forwarder …`, `target reachable`, `failed: …`) se logují přes kategorie `Fakvio.Infrastructure.Tailscale`.
+  V Application Insights se hledají v `traces` podle prefixu `Tailscale:`:
 
   ```kusto
   traces | where message startswith "Tailscale:" | order by timestamp desc
@@ -195,9 +180,9 @@ proměnné nastavují v shellu:
 
 ```bash
 # 1) binárky (stejná verze jako ve workflow)
-mkdir -p Fakvio.Functions/tsbin
+mkdir -p Fakvio.API/tsbin
 curl -fsSL -o ts.tgz https://pkgs.tailscale.com/stable/tailscale_1.102.3_amd64.tgz
-tar -xzf ts.tgz --strip-components=1 -C Fakvio.Functions/tsbin \
+tar -xzf ts.tgz --strip-components=1 -C Fakvio.API/tsbin \
   tailscale_1.102.3_amd64/tailscale tailscale_1.102.3_amd64/tailscaled
 
 # 2) konfigurace
@@ -206,7 +191,7 @@ export ConnectionStrings__DefaultConnection='Host=127.0.0.1;Port=15432;Database=
 export Database__AuthMode=Password
 
 # 3) spuštění a kontrola logu
-dotnet run --project Fakvio.Functions
+dotnet run --project Fakvio.API
 ```
 
 V logu musí být `Tailscale: up OK`, `Tailscale: forwarder 127.0.0.1:15432 -> …`
@@ -219,7 +204,7 @@ psql "host=127.0.0.1 port=15432 dbname=fakvio_test user=fakvio_test sslmode=pref
 ## 8. Bump verze Tailscale
 
 Verze i kontrolní součet jsou **napsané v obou workflow souborech**
-(`.github/workflows/testenv_zcloudinvoicingapi.yml` a `master_zcloudinvoicingapi.yml`,
+(`.github/workflows/testenv_fakvio-api.yml` a `master_fakvio-api.yml`,
 blok `env:`). Postup:
 
 ```bash
