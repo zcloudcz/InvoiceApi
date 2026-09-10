@@ -22,7 +22,7 @@ env:
   # Test backend = the separate Function App provisioned in #289.
   # The WASM bundle reads ApiSettings:BaseUrl from a static file, so this URL
   # has to be baked in at publish time — there is no server to inject it later.
-  TEST_API_BASE_URL: 'https://zcloudinvoicingapi-test.azurewebsites.net'
+  TEST_API_BASE_URL: 'https://fakvio-api-test.azurewebsites.net'
 
   # Test MCP HTTP host (#241). Separate from the API on purpose — since #240 they are two
   # applications on two addresses, and deriving one from the other is the bug #363 fixed.

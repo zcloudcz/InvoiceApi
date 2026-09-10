@@ -1,0 +1,107 @@
+# Production API — builds Fakvio.API and deploys it to the Azure App Service (Linux, B1)
+# web app `fakvio-api`. Docs for the deploy action: https://github.com/Azure/webapps-deploy
+#
+# The test environment counterpart is testenv_fakvio-api.yml (branch TEST-ENV, app
+# `fakvio-api-test`); keep the two in step — only the trigger branch, the secrets and the
+# app name differ.
+
+name: Build and deploy Fakvio.API to Azure App Service - fakvio-api
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_VERSION: '10.0.x' # must match the TargetFramework (net10.0) in Fakvio.API.csproj
+  # Tailscale userspace tunnel shipped inside the package — see
+  # Fakvio.Infrastructure/Tailscale/README.md. Version and checksum are pinned because the
+  # tarball is fetched at deploy time; bumping means replacing both lines together (hash from
+  # https://pkgs.tailscale.com/stable/tailscale_<version>_amd64.tgz.sha256).
+  TAILSCALE_VERSION: '1.102.3'
+  TAILSCALE_SHA256: '36ddd9b51be57ffc2990cf76323cfa13643bfbb1b8a969f6183fa164741cdef5'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      id-token: write # required for requesting the OIDC JWT
+      contents: read  # required for actions/checkout
+
+    # One production deploy at a time; a running one finishes rather than being cancelled
+    # half-uploaded (Basic tier has no slots — the deploy restarts the live site).
+    concurrency:
+      group: "api-prod"
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup DotNet ${{ env.DOTNET_VERSION }} Environment
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Download Tailscale binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          # tsbin/ is gitignored — the ~75 MB binaries are fetched here and copied into the
+          # publish output by the <None Update="tsbin/**"> item in Fakvio.API.csproj.
+          # Must run before publish, otherwise there is nothing to copy.
+          TARBALL="tailscale_${TAILSCALE_VERSION}_amd64.tgz"
+          curl -fsSL -o "$TARBALL" "https://pkgs.tailscale.com/stable/${TARBALL}"
+          echo "${TAILSCALE_SHA256}  ${TARBALL}" | sha256sum -c -
+          mkdir -p Fakvio.API/tsbin
+          # --strip-components=1 drops the "tailscale_<version>_amd64/" prefix; only the two
+          # binaries are extracted, the tarball also carries systemd units and docs we do not want.
+          tar -xzf "$TARBALL" --strip-components=1 -C Fakvio.API/tsbin \
+            "tailscale_${TAILSCALE_VERSION}_amd64/tailscale" \
+            "tailscale_${TAILSCALE_VERSION}_amd64/tailscaled"
+          ls -l Fakvio.API/tsbin
+
+      - name: Build and publish Fakvio.API
+        shell: bash
+        run: |
+          # Publish only the API project (not the whole solution — Fakvio.MauiApp needs a
+          # workload the runner does not have, and nothing else is deployed from here).
+          dotnet publish ./Fakvio.API/Fakvio.API.csproj \
+            --configuration Release \
+            --output ./output
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_71CB3DED09D246528906A346340AC1F8 }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_0F744DC7C56040999B540311235A4E45 }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_0A2C19BC7D294FFA80F06B93F1D614E4 }}
+
+      - name: Deploy to Azure App Service
+        id: deploy
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: 'fakvio-api'
+          package: ./output
+
+      - name: Verify the deployed host answers
+        shell: bash
+        run: |
+          set -euo pipefail
+          # /api/diagnostic/health is JWT-gated, so an anonymous request answers 401 once the
+          # app is up — that proves Kestrel started and the auth pipeline is in front of it
+          # without carrying any credential here. A 5xx means the container did not start
+          # (or is still starting: --retry-all-errors covers the ~60 s cold start).
+          URL="${{ steps.deploy.outputs.webapp-url }}"
+          CODE=$(curl -s -o /dev/null -w '%{http_code}' \
+                   --retry 8 --retry-all-errors --retry-delay 15 --max-time 30 \
+                   "${URL%/}/api/diagnostic/health")
+          if [ "${CODE}" != "401" ]; then
+            echo "::error::GET ${URL%/}/api/diagnostic/health answered ${CODE}, expected 401 from the JWT gate."
+            exit 1
+          fi

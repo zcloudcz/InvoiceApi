@@ -1,4 +1,4 @@
-using Fakvio.Functions.Tailscale;
+using Fakvio.Infrastructure.Tailscale;
 using Shouldly;
 using Xunit;
 

@@ -93,7 +93,7 @@ public sealed class DatabaseConnectivitySmokeTests : IDisposable
     public DatabaseConnectivitySmokeTests()
     {
         // Must run before anything touches Npgsql's type mapping. The three production entry
-        // points (Fakvio.API, Fakvio.Functions, Fakvio.MigrationTool) set the same switch in
+        // points (Fakvio.API, Fakvio.MigrationTool) set the same switch in
         // their Program.cs, but the test host does not — without it the test would read
         // timestamps with different semantics than the application does.
         AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);

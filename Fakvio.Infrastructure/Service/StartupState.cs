@@ -1,9 +1,9 @@
 // ============================================================================
 // StartupState — what the host managed to do before it began serving requests.
 //
-// Both hosts (Fakvio.API and Fakvio.Functions) do their database bring-up in a
-// background task and start accepting traffic immediately (see the comment block in
-// Fakvio.Functions/Program.cs for why awaiting it kills the Functions worker). That
+// The API host does its database bring-up (Tailscale tunnel + master migration) in a
+// background task and starts accepting traffic immediately (see the comment block in
+// Fakvio.API/Program.cs for why awaiting it would trip the App Service startup probe). That
 // leaves a window where the process is "up" but the database path is not usable yet,
 // and every request that lands in it fails in a way that looks like an outage.
 //
@@ -16,7 +16,7 @@ namespace Fakvio.Infrastructure.Service;
 /// <summary>
 /// Process-wide record of the startup sequence. Static on purpose: there is exactly one
 /// startup per process, it happens before the DI container serves any request scope, and
-/// both the Functions middleware pipeline and the API health endpoint have to read it.
+/// both the StartupGateMiddleware and the health endpoint have to read it.
 /// </summary>
 public static class StartupState
 {
@@ -24,10 +24,9 @@ public static class StartupState
     /// True once the host has finished trying to make the database reachable.
     ///
     /// IMPORTANT — this is NOT a claim that the database works. It means "the bring-up
-    /// step is over, so a failure from here on is a real failure and not a race". On the
-    /// Functions host that step is the Tailscale tunnel (the connection string points at a
-    /// loopback port that does not exist until the forwarder binds); on the API host there
-    /// is no tunnel, so it is set immediately.
+    /// step is over, so a failure from here on is a real failure and not a race". That step
+    /// is the Tailscale tunnel (the connection string points at a loopback port that does
+    /// not exist until the forwarder binds); without TAILSCALE_AUTHKEY it is set immediately.
     ///
     /// Deliberately set even when bring-up FAILED: a gate that stays closed on failure
     /// would turn a broken tunnel into a total blackout with no error to diagnose. After

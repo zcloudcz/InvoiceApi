@@ -234,9 +234,7 @@ public static class ServiceCollectionExtensions
 
         // Stateless IMAP poll cycle service — shared by:
         //   - ImapPollWorker (BackgroundService in API host)
-        //   - PaymentMatchingFunctions.RunImapPoll (Azure Functions TimerTrigger)
         //   - PaymentMatchingSysAdminController.RunNow (HTTP, SysAdmin)
-        // See CLAUDE.md "API + Functions duplication" for the deployment story.
         services.AddScopedWithLogging<IImapPollService, ImapPollService>();
 
         // End-to-end orchestrator — used by the IMAP worker AND tests.
@@ -358,9 +356,8 @@ public static class ServiceCollectionExtensions
 
         // ── Database Logging ────────────────────────────────────────────────
         // Structured logging to AppLog table in master DB.
-        // Uses ConcurrentQueue for non-blocking enqueue; flushed by:
-        // - API: LogFlushService (IHostedService, every 5 seconds)
-        // - Functions: LogFlush timer trigger (every 5 seconds)
+        // Uses ConcurrentQueue for non-blocking enqueue; flushed by
+        // LogFlushService (IHostedService in the API host, every 5 seconds).
         services.AddSingleton<ILoggerProvider>(new DatabaseLoggerProvider(LogLevel.Information));
 
         return services;

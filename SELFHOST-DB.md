@@ -202,7 +202,7 @@ Azure databáze se jmenuje doslova **`postgres`** (viz
 | Volba | Důsledek |
 |---|---|
 | zachovat `Database=postgres` | connection string se mění jen v hostu/uživateli, ale aplikační data leží v maintenance DB |
-| přejmenovat na `fakvio` | čistší, ale **musí se upravit connection string** ve všech hostech (API, Functions, MigrationTool) |
+| přejmenovat na `fakvio` | čistší, ale **musí se upravit connection string** ve všech hostech (API, MigrationTool) |
 
 Tento runbook dál předpokládá **`fakvio`**.
 
@@ -215,13 +215,13 @@ Od tohoto bodu je aplikace mimo provoz. Reálné okno: 15–40 minut podle velik
 ### 2.1 Zastavit aplikaci
 
 ```bash
-az functionapp stop --name <function-app-name> --resource-group <rg>
-# a pokud běží i klasický API host:
-az webapp stop --name <api-app-name> --resource-group <rg>
+az webapp stop --name fakvio-api --resource-group invoiceapi
+# a pokud běží i test:
+az webapp stop --name fakvio-api-test --resource-group invoiceapi
 ```
 
-**Očekávaný výsledek:** příkaz projde bez chyby, `az functionapp show --name <…>
---resource-group <rg> --query state -o tsv` vrátí `Stopped`.
+**Očekávaný výsledek:** příkaz projde bez chyby, `az webapp show --name fakvio-api
+--resource-group invoiceapi --query state -o tsv` vrátí `Stopped`.
 
 ### 2.2 Ověřit, že do DB nikdo nepíše
 
@@ -233,7 +233,7 @@ WHERE datname = 'postgres'
   AND backend_type = 'client backend';"
 ```
 
-**Očekávaný výsledek: `0`.** Když ne, počkej — Azure Functions dobíhají invokace
+**Očekávaný výsledek: `0`.** Když ne, počkej — App Service dobíhá připojení
 i po `stop`. Vypiš, kdo drží spojení:
 
 ```bash
@@ -418,8 +418,8 @@ shodovat s `$WORKDIR/schemas-source.txt` z kroku 1.3.
 
 > ### Proč právě teď a ani o minutu později
 >
-> První start API i Functions volá `MigrateAsync()`
-> (`Fakvio.API/Program.cs:132`, `Fakvio.Functions/Program.cs:152`).
+> První start API volá `MigrateAsync()`
+> (`Fakvio.API/Program.cs`, metoda startup migration).
 > Když je migrační historie neúplná nebo rozbitá, EF Core začne
 > **re-aplikovat migrace na plné tabulky** — `CREATE TABLE` na existující tabulku,
 > `ADD COLUMN` na existující sloupec, v horším případě data-seeding podruhé.
@@ -874,12 +874,11 @@ v `public`. Místo výpadku dostaneš rozsypanou strukturu databáze.
 #### Jak se vrátit na pooler
 
 1. Na DB hostu zvolit jednu z cest výše.
-2. `az functionapp config appsettings set -n zcloudinvoicingapi -g invoiceapi --settings TAILSCALE_TARGET_PORT=6432`
+2. `az webapp config appsettings set -n fakvio-api -g invoiceapi --settings TAILSCALE_TARGET_PORT=6432`
 3. Restart a do 15 minut zkontrolovat, že nepřibývají 503:
 
    ```kusto
    requests | where timestamp > ago(15m)
-            | where name !in ("LogFlush","RunImapPoll","McpKeepAlive","LogCleanup")
             | summarize total=count(), c503=countif(resultCode=="503")
    ```
 
@@ -888,7 +887,7 @@ v `public`. Místo výpadku dostaneš rozsypanou strukturu databáze.
 Ztráta multiplexingu při obcházení pooleru nebolí tolik, jak by se zdálo — aplikace má
 pooly malé (`Maximum Pool Size=20` v connection stringu, `SchemaDataSourceMaxPoolSize=4`,
 `ConnectionIdleLifetime=30`). Strop spojení ale opravdu zmizí, takže při škálování
-worker procesů na Flex Consumption je potřeba hlídat `max_connections`.
+App Service instancí je potřeba hlídat `max_connections` na PostgreSQL.
 
 ### 6.5 Rozbitá migrační historie ⇒ re-aplikace migrací na plná data
 
@@ -922,7 +921,7 @@ Dvojité podtržítko `__` je oddělovač sekcí v .NET konfiguraci —
 ### Varianta: databáze za Tailscale tunelem
 
 Když databázový port **není ve veřejném internetu** a hostitel se k němu dostane jen přes
-tailnet (tak je zapojené testovací prostředí, viz `Fakvio.Functions/Tailscale/README.md`),
+tailnet (tak je zapojené testovací prostředí, viz `Fakvio.Infrastructure/Tailscale/README.md`),
 liší se dvě věci: `Host`/`Port` míří na **lokální konec tunelu**, ne na databázový server,
 a přibývá klíč s auth key. Zbytek zůstává stejný.
 
@@ -1055,7 +1054,6 @@ musí sám zajistit obojí:
 pointech:
 
 - `Fakvio.API/Program.cs:22`
-- `Fakvio.Functions/Program.cs:41`
 - `Fakvio.MigrationTool/Program.cs:32`
 
 ```csharp

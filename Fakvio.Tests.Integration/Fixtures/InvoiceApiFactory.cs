@@ -1,6 +1,7 @@
 using Fakvio.Application.Service;
 using Fakvio.Infrastructure.Data;
 using Fakvio.Infrastructure.Logging;
+using Fakvio.Infrastructure.Service;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
@@ -88,6 +89,10 @@ public class FakvioFactory : WebApplicationFactory<Program>
             // Both would throw because there's no real SQL Server connection string.
             RemoveHostedService<LogFlushService>(services);
             RemoveHostedService<LogCleanupService>(services);
+            // ImapPollWorker / ReminderWorker: real IMAP + PostgreSQL advisory lock — a CI run
+            // that happens to cross 06:00 UTC must not start a dunning pass against InMemory.
+            RemoveHostedService<ImapPollWorker>(services);
+            RemoveHostedService<ReminderWorker>(services);
 
             // ── Remove DatabaseLoggerProvider ─────────────────────────────────
             // This provider enqueues log entries to a ConcurrentQueue that
