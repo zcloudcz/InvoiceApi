@@ -93,8 +93,25 @@ public interface IUserService
     /// </summary>
     /// <param name="dto">Invitation data (email, name, role, company)</param>
     /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Created user DTO</returns>
-    Task<UserDto> InviteUserAsync(InviteUserDto dto, CancellationToken cancellationToken = default);
+    /// <returns>
+    /// The created user together with the raw invitation token. The token is returned on a
+    /// dedicated result type — never on <see cref="UserDto"/> — because UserDto is what the
+    /// user-listing endpoints hand to any authenticated caller (issue #364).
+    /// </returns>
+    Task<InvitedUserDto> InviteUserAsync(InviteUserDto dto, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns the pending invitation token of a user, or null when there is no usable
+    /// invitation (user not found, password already set, or token expired).
+    ///
+    /// Callers must be Admin/SysAdmin: the token is a password-set credential, so handing it
+    /// out is equivalent to an admin password reset — which those roles can already do.
+    /// Authorization is enforced at the controller, this method does not check it.
+    /// </summary>
+    /// <param name="userId">User whose invitation token is requested.</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>The token, or null when no valid pending invitation exists.</returns>
+    Task<string?> GetPendingInvitationTokenAsync(long userId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Sets the password for an invited user using their invitation token.

@@ -1,5 +1,7 @@
 ﻿using System.Net;
 using System.Net.Http.Json;
+using System.Text;
+using System.Text.Json;
 using Bunit;
 using Fakvio.Contracts.Dto.Chat;
 using Fakvio.UI.Shared;
@@ -172,6 +174,54 @@ public class ChatPanelOnboardingTests : BunitContext, IAsyncLifetime
         cut.FindAll(".chat-bubble-assistant").ShouldBeEmpty();
     }
 
+    [Fact]
+    public async Task FirstReply_CarriesTheWelcome_SoTheModelReadsWhatTheUserRead()
+    {
+        // The greeting is composed on the client, so no conversation holds it yet. The reply
+        // that starts the conversation has to bring it along — otherwise "pojďme to dořešit"
+        // is the opening line of an empty history and refers to nothing.
+        var cut = Render<ChatPanel>(p => p.Add(
+            c => c.OnboardingWelcome, WelcomeText));
+
+        cut.WaitForAssertion(() => cut.FindAll(".chat-bubble-assistant").Count.ShouldBe(1));
+
+        await SendAsync(cut, "Pojďme to dořešit");
+
+        cut.WaitForAssertion(() =>
+        {
+            _backend.LastStreamRequest.ShouldNotBeNull();
+            _backend.LastStreamRequest.ConversationId.ShouldBeNull();
+            _backend.LastStreamRequest.SeedAssistantMessage.ShouldBe(WelcomeText);
+        });
+    }
+
+    [Fact]
+    public async Task AConversationStartedOnPurpose_CarriesNoWelcome()
+    {
+        // "New conversation" empties the panel: the message sent there was not preceded by
+        // the greeting on screen, so the server must not be told that it was.
+        var cut = Render<ChatPanel>(p => p.Add(
+            c => c.OnboardingWelcome, WelcomeText));
+
+        cut.WaitForAssertion(() => cut.FindAll(".chat-bubble-assistant").Count.ShouldBe(1));
+        await cut.InvokeAsync(() => cut.Find("button[title='Chat_NewConversation']").Click());
+
+        await SendAsync(cut, "Kolik mám nezaplacených faktur?");
+
+        cut.WaitForAssertion(() =>
+        {
+            _backend.LastStreamRequest.ShouldNotBeNull();
+            _backend.LastStreamRequest.SeedAssistantMessage.ShouldBeNull();
+        });
+    }
+
+    /// <summary>
+    /// Sends through ChatInput's callback rather than MudTextField — the panel's request
+    /// building is under test, not the text box.
+    /// </summary>
+    private static Task SendAsync(IRenderedComponent<ChatPanel> cut, string message)
+        => cut.InvokeAsync(() => cut.FindComponent<ChatInput>().Instance.OnSend.InvokeAsync(message));
+
     /// <summary>
     /// Walks the panel the way the user does: history toggle → click the one saved
     /// conversation → its messages are on screen. Clicks go through InvokeAsync because a
@@ -195,10 +245,26 @@ public class ChatPanelOnboardingTests : BunitContext, IAsyncLifetime
     {
         private const long SavedConversationId = 7;
 
-        protected override Task<HttpResponseMessage> SendAsync(
+        /// <summary>The last body posted to /api/chat/stream, or null when nothing was sent yet.</summary>
+        public SendMessageRequest? LastStreamRequest { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var path = request.RequestUri?.AbsolutePath ?? string.Empty;
+
+            if (path == "/api/chat/stream")
+            {
+                var body = await request.Content!.ReadAsStringAsync(cancellationToken);
+                LastStreamRequest = JsonSerializer.Deserialize<SendMessageRequest>(body);
+
+                // Minimal SSE answer, the shape ChatApiService parses: one text chunk, then [DONE].
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        "data: \"Začneme.\"\n\ndata: \"[DONE]\"\n\n", Encoding.UTF8, "text/event-stream")
+                };
+            }
 
             HttpContent content = path switch
             {
@@ -222,7 +288,7 @@ public class ChatPanelOnboardingTests : BunitContext, IAsyncLifetime
                 _ => JsonContent.Create(new { })
             };
 
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = content });
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = content };
         }
     }
 }

@@ -179,8 +179,9 @@ public class ChatContextBuilder : IChatContextBuilder
     ///
     /// The rules are NOT re-implemented here — <see cref="ITenantReadinessService"/> owns them
     /// (issue #148). Only blocking issues make it into the prompt; warnings would be noise the
-    /// model has no action for. The code plus its fix route is enough for the assistant to send
-    /// the user to the right page; the field-level detail belongs to the UI banner.
+    /// model has no action for. Each finding names its missing fields too: the code alone
+    /// (NUMBER_SEQUENCE_MISSING) does not tell the model which document type or which address
+    /// field the onboarding question should be about.
     /// </summary>
     private async Task<string?> DescribeSetupGapsAsync(CancellationToken ct)
     {
@@ -200,7 +201,9 @@ public class ChatContextBuilder : IChatContextBuilder
 
         var blocking = report.Issues
             .Where(i => i.Severity == EReadinessSeverity.Blocking)
-            .Select(i => $"{i.Code} (fix at {i.FixRoute})")
+            .Select(i => i.MissingFields.Count == 0
+                ? $"{i.Code} (fix at {i.FixRoute})"
+                : $"{i.Code}: {string.Join(", ", i.MissingFields)} (fix at {i.FixRoute})")
             .ToList();
 
         return blocking.Count == 0 ? null : string.Join("; ", blocking);

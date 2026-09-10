@@ -490,6 +490,25 @@ public class ChatContextBuilderTests : IDisposable
     }
 
     [Fact]
+    public async Task BuildSystemPrompt_NamesTheMissingFields_NotJustTheCode()
+    {
+        // "NUMBER_SEQUENCE_MISSING" alone leaves the model guessing which document type to
+        // ask about — the fields are what the onboarding question is made of.
+        ReadinessIssues(new ReadinessIssueDto
+        {
+            Code = ReadinessCodes.NumberSequenceMissing,
+            Severity = EReadinessSeverity.Blocking,
+            MissingFields = ["Invoice", "CreditNote"],
+            FixRoute = "/number-sequences"
+        });
+
+        var prompt = await _builder.BuildSystemPromptAsync();
+
+        prompt.ShouldContain(
+            "- Setup not finished yet: NUMBER_SEQUENCE_MISSING: Invoice, CreditNote (fix at /number-sequences)");
+    }
+
+    [Fact]
     public async Task BuildSystemPrompt_OnAConfiguredTenant_ReportsNoSetupGaps()
     {
         ReadinessIssues();

@@ -33,7 +33,7 @@ Pokud máš pochybnost, **zde má pravdu DEVGUIDE.md**, ne komentáře v kódu (
 | `Fakvio.McpServer` | Console (.NET tool) | MCP server pro AI klienty. Dva režimy — stdio (výchozí) a Streamable HTTP, ModelContextProtocol 2.2.0. |
 | `Fakvio.MigrationTool` | Console | DB migrace, seed master schema, provisioning helper. |
 | `Fakvio.AresService` | Class lib | Klient pro ARES (CZ obchodní rejstřík) — autonomní, bez EF. |
-| `Fakvio.Tests.Unit` | xUnit | Unit testy (3345 k 2026-08-26). Stack: xUnit + **NSubstitute** + **Shouldly** + EF InMemory. |
+| `Fakvio.Tests.Unit` | xUnit | Unit testy (3393 k 2026-08-26). Stack: xUnit + **NSubstitute** + **Shouldly** + EF InMemory. |
 | `Fakvio.Tests.Integration` | xUnit | Integration testy (5). `InvoiceApiFactory : WebApplicationFactory<Program>`. |
 | `Fakvio.Tests.MigrationTool` | xUnit | Testy `Fakvio.MigrationTool` proti reálnému PostgreSQL (3). Vlastní projekt kvůli izolaci procesně globálního `Npgsql.EnableLegacyTimestampBehavior`. |
 | `Fakvio.Tests.Playwright` | NUnit | E2E browser testy (192 k 2026-08-26). Czech locale, Prague TZ. |
@@ -162,6 +162,20 @@ Reuse **InvitationToken** mechaniku (`User.InvitationToken` + `InvitationTokenEx
 - Generování: `IUserService.ForgotPasswordAsync` (`Fakvio.Application/Service/IUserService.cs:128`).
 - **Anti-enumeration**: vrací `null` (success-like) i pro neexistující email, aby útočník neviděl rozdíl.
 - Set: `IUserService.SetPasswordAsync` (`IUserService.cs:107`) — validuje token, expiraci, BCrypt hash, **vyčistí token** (one-shot).
+
+**Token se NIKDY nevrací z listovacích endpointů** (issue #364). `SetPassword` je `[AllowAnonymous]`,
+takže token _je_ přihlašovací údaj — a protože forgot-password recykluje to samé pole, byl by
+token na `UserDto` eskalace `User` → `Admin` uvnitř firmy:
+
+| Kde | Co dostane volající |
+|-----|--------------------|
+| `GET /api/user`, `/api/user/paged`, `/api/user/{id}` (`[Authorize]`) | jen `UserDto.IsInvitationPending` — `UserDto` **žádnou** vlastnost `InvitationToken` nemá |
+| `POST /api/user/invite` (`Admin,SysAdmin`) | `UserDto` v těle odpovědi; token zůstává na serveru v `InvitedUserDto` a jde jen do e-mailu |
+| `GET /api/user/{id}/invitation-token` (`Admin,SysAdmin`) | token — úzká cesta pro obnovení pozvánkového odkazu; tyto role už stejně umí `admin-reset-password`, takže nedostanou nic navíc |
+
+Když přidáváš nový endpoint vracející uživatele: mapuj přes `UserService.MapToDto` a token nikam
+nepřidávej. Hlídá to `Fakvio.Tests.Unit/UserInvitationTokenLeakTests.cs` — asertuje na
+serializovaném JSONu, ne na vlastnosti, takže chytí i únik jinou cestou.
 
 ### 2.6 CredentialProtector (šifrování secrets v DB)
 
@@ -1047,6 +1061,9 @@ chybějící údaje do jedné zprávy nebo ohlásí uložení hodnoty, kterou to
 - Tooly se v textu jmenují obecně („the matching tool above"). Katalog se generuje z DI,
   takže jmenný seznam by byl druhá, ručně udržovaná kopie, co zastará při prvním novém toolu.
 - Nastavený tenant instrukce nedostane vůbec — jinak by je platil v tokenech v každém requestu.
+- Řádek `Setup not finished yet` nese i `MissingFields` nálezu
+  (`NUMBER_SEQUENCE_MISSING: Invoice, CreditNote (fix at /number-sequences)`) — samotný kód
+  modelu neřekne, na který typ dokladu nebo které pole adresy se má zeptat.
 - Klientskou půlku (proaktivní uvítání) řeší `ChatOnboarding`, viz §4.12.
 
 #### Chat AI Tools matice
@@ -1852,7 +1869,7 @@ normální položka reportu (200), s `issuerId` je to 404.
 |--------|-----|----------|
 | Rozhodnutí + text | `Fakvio.UI.Shared/Components/Chat/ChatOnboarding.cs` | `BuildWelcome(report, L)` → markdown, nebo **null** = tenant je připravený, neotravuj. Jen `Blocking` nálezy, stejně jako v promptu — warning uživateli fakturovat nebrání. Čistá funkce, takže je pravidlo testovatelné bez renderu i bez živého modelu |
 | Text nálezu | `Fakvio.UI.Shared/Components/Shared/ReadinessIssueText.cs` | `Describe(L, issue)` — **týž** helper, který používá banner i checklist (tabulka §4.12 výše). Banner, checklist i uvítání musí tentýž nález pojmenovat stejně; další kopie pravidla „kód → klíč + fallback“ by se rozešla při prvním novém kódu |
-| Zapojení | `MainLayout.razor` (`TryProactiveOnboardingAsync`) → `ChatPanel.OnboardingWelcome` | Po `LoadCompaniesAsync` (potřebuje `_hasTenantContext`), **jednou za session** (`sessionStorage["chatOnboardingShown"]`, maže se při odhlášení). Uvítání se vloží do `_messages` jen v UI — do konverzace v DB nejde, jinak by měl model v historii každé konverzace vloženou vlastní repliku |
+| Zapojení | `MainLayout.razor` (`TryProactiveOnboardingAsync`) → `ChatPanel.OnboardingWelcome` | Po `LoadCompaniesAsync` (potřebuje `_hasTenantContext`), **jednou za session** (`sessionStorage["chatOnboardingShown"]`, maže se při odhlášení). Uvítání se vloží do `_messages` v UI; do DB jde až s **první odpovědí uživatele** (`SendMessageRequest.SeedAssistantMessage`, plní `ChatPanel.SeedForNewConversation`) jako první replika asistenta té jedné nové konverzace — ne každé, kterou uživatel později otevře. Bez toho je „pojďme to dořešit" první větou prázdné historie a model nemá na co navázat. Existující konverzace seed ignoruje (`ChatService.GetOrCreateConversationAsync`) |
 
 Uvítání **neskládá model** — je to lokalizovaný text. Panel ho ukáže hned po otevření, nic
 nestojí, nemůže si chybějící položky vymyslet a dá se otestovat bez živého AI. Konverzaci od
@@ -2306,9 +2323,11 @@ Jediný E2E test, který si data **vyrobí sám** místo aby je předpokládal: 
 nastavení hesla, první přihlášení a dokončení nastavení přes `SetupChecklist` (#210).
 
 - **Token z API, ne z mailu.** Registrace posílá „nastav si heslo" odkaz e-mailem, který
-  prohlížečový test neotevře. `AuthHelper.GetInvitationTokenAsync` ho proto čte přes
-  `GET /api/user/paged` — `UserDto.InvitationToken` se SysAdminovi vrací. Žádné SMTP
-  pollování, tedy žádná závislost na mailserveru.
+  prohlížečový test neotevře. `AuthHelper.GetInvitationTokenAsync` ho proto čte přes API
+  ve dvou krocích: `GET /api/user/paged` přeloží e-mail na `id` a role-gated
+  `GET /api/user/{id}/invitation-token` vrátí token. Žádné SMTP pollování, tedy žádná
+  závislost na mailserveru. Jednokrokové čtení `UserDto.InvitationToken` z `/paged`
+  **už nefunguje a nesmí se vracet** — viz §2.5 (issue #364).
 - **Determinismus stojí na dvou volbách v registračním formuláři:** adresa se vyplní ručně
   (ručně zadaná adresa na serveru přebíjí ARES) a IČO má **devět** číslic — `AresServiceImpl`
   cokoli jiného než přesně 8 znaků odmítne ještě před síťovým voláním. Firma tak zůstane
@@ -2608,9 +2627,13 @@ proč to celé existuje: `Fakvio.Functions/Tailscale/README.md`.
   **Když přidáváš nový host nebo nový startup krok, který otevírá databázi, musíš
   `StartupState.MarkDatabaseReady()` zavolat z `finally`** — na úspěchu i selhání. Zavřená
   brána po selhání by z diagnostikovatelné chyby udělala tichý blackout.
-- **Produkce i test míří přes PgBouncer** (`TAILSCALE_TARGET_PORT=6432`), který **musí**
-  běžet v session režimu — transaction pooling tiše rozbije EF migrační zámek,
-  `AdvisoryLock` i `search_path`. Rozbor a konfigurace: `SELFHOST-DB.md` §6.4b.
+- **PgBouncer v transaction režimu tuhle aplikaci rozbije.** Produkce na něm 2026-09-10
+  strávila půl dne s nepoužitelnou tenant částí: `GetForSchema()` posílá `search_path`
+  jako **startup parametr**, pooler spojení odmítne (`unsupported startup parameter`),
+  `MigrateTenantAsync` padne a `TenantContextMiddleware` vrátí 503 — UI to spolkne a
+  vykreslí prázdno. Produkce proto pooler obchází (`TAILSCALE_TARGET_PORT=5544`), test
+  je pořád na `6432`. Než na pooler někdo aplikaci vrátí, ať si přečte `SELFHOST-DB.md`
+  §6.4b — hlavně tu část, proč `ignore_startup_parameters` poškodí data.
 
 ### 9.5 Autentizace k databázi (`Database:AuthMode`) + health endpoint
 

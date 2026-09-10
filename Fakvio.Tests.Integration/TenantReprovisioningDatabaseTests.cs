@@ -200,7 +200,7 @@ public class TenantReprovisioningDatabaseTests : IAsyncLifetime
             CompanyId = CompanyId
         });
 
-        return invited.InvitationToken!;
+        return invited.InvitationToken;
     }
 
     /// <summary>

@@ -127,7 +127,7 @@ Function App → *Settings → Environment variables*. Dvojité podtržítko = o
 | `UseAzureAdAuthentication` | `false` | Musí souhlasit s předchozím řádkem, jinak start spadne na fail-fast kontrole (`SELFHOST-DB.md` §7). |
 | `TAILSCALE_HOSTNAME` | `fakvio-func-prod` / `fakvio-func-test` | Jméno uzlu v tailnetu. Prod a test sdílejí tailnet, takže **každé prostředí musí mít vlastní**; bez klíče se použije `fakvio-func-prod`. |
 | `TAILSCALE_TARGET_HOST` | *(volitelné)* výchozí `100.69.241.17` | Musí být **IPv4 tailnet adresa**; MagicDNS jméno kód odmítne — userspace režim resolver do procesu nezapojuje. |
-| `TAILSCALE_TARGET_PORT` | *(volitelné)* výchozí `5544` | **Produkce i test dnes používají `6432`** — port PgBounceru, ne Postgresu. PgBouncer musí běžet v **session** režimu, jinak se tiše rozbije EF migrační zámek i `AdvisoryLock` (`SELFHOST-DB.md` §6.4b). |
+| `TAILSCALE_TARGET_PORT` | *(volitelné)* výchozí `5544` | **Produkce: `5544`** (přímo Postgres, od 2026-09-10). **Test: `6432`** = PgBouncer — a je tam tím pádem stejná rozbitá tenant část, jakou měla produkce. PgBouncer v **transaction** režimu tuhle aplikaci rozbije: `search_path` chodí jako startup parametr a pooler spojení odmítne. Rozbor a cesty zpět: `SELFHOST-DB.md` §6.4b. |
 | `TS_ASSUME_NETWORK_UP_FOR_TEST` | *(nenastavovat)* | Démon ji dostává **z kódu** (`TailscaleTunnel.DaemonEnvironment`). Sandbox Flex Consumption nemá routovací tabulku, bez ní `tailscaled` nikdy nehlásí Running a `tailscale up` končí timeoutem — uzel se v tailnetu vůbec neobjeví. Ruční App Setting už není potřeba. |
 
 `Ssl Mode=Prefer`, protože WireGuard provoz už šifruje a certifikát vystavený na
