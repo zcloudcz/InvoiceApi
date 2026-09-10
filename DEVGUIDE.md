@@ -2599,6 +2599,18 @@ proč to celé existuje: `Fakvio.Functions/Tailscale/README.md`.
   Bez App Settingu `TAILSCALE_AUTHKEY` je celá věc nečinná — jeden log řádek a nic víc, proto
   lokální vývoj i produkce fungují beze změny. Detaily, ACL, rotace klíče a známá omezení
   (cold start, uzel per instance): `Fakvio.Functions/Tailscale/README.md`.
+- **Startup gate.** Tunel se staví na pozadí (jinak platformní timeout zabije worker), takže
+  mezi „host started" a „forwarder bound" je díra, ve které connection string ukazuje na
+  neobsazený port. `Fakvio.Infrastructure/Service/StartupState.cs` je jediné místo, kde je
+  ten stav zapsaný; `StartupGateMiddleware` podle něj vrací `503 + Retry-After: 5` pro
+  `/api/*` (mimo `/api/diagnostic`) a `RetryAfterHandler`
+  (`Fakvio.UI.Shared/Services/RetryAfterHandler.cs`) ho v UI transparentně přečká.
+  **Když přidáváš nový host nebo nový startup krok, který otevírá databázi, musíš
+  `StartupState.MarkDatabaseReady()` zavolat z `finally`** — na úspěchu i selhání. Zavřená
+  brána po selhání by z diagnostikovatelné chyby udělala tichý blackout.
+- **Produkce i test míří přes PgBouncer** (`TAILSCALE_TARGET_PORT=6432`), který **musí**
+  běžet v session režimu — transaction pooling tiše rozbije EF migrační zámek,
+  `AdvisoryLock` i `search_path`. Rozbor a konfigurace: `SELFHOST-DB.md` §6.4b.
 
 ### 9.5 Autentizace k databázi (`Database:AuthMode`) + health endpoint
 
@@ -2628,6 +2640,12 @@ Testovací Function App má od #318 v App Settings `Database__AuthMode = Passwor
 `UseAzureAdAuthentication = false`, obojí musí souhlasit), takže health tam hlásí
 `authModeSource: Database:AuthMode` — ne už legacy zdroj. Connection string míří na lokální
 konec Tailscale tunelu (§9.4), takže `masterConnectionServer` je `127.0.0.1 / fakvio_test / fakvio_test`.
+
+Health navíc hlásí `startupDatabaseReady` a `startupMigration`
+(`pending` / `succeeded` / `failed` + `startupMigrationError`). Na hostiteli Functions běží
+startovní migrace na pozadí a jen loguje — a worker `ILogger` do App Insights nedoletí
+(issue #322), takže bez těchhle polí je selhání migrace v Azure neviditelné. Hlásí se,
+**negatuje**: proces umí obsluhovat provoz i když je o dvě migrace pozadu.
 
 **Ověření za běhu** — `GET /api/diagnostic/health`, **SysAdmin only**:
 
