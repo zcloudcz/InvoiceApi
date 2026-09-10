@@ -98,9 +98,8 @@ FAKVIO_MCP_TRANSPORT=http FAKVIO_API_URL=https://localhost:7047 ASPNETCORE_URLS=
 ```
 
 Server je obyčejná ASP.NET Core aplikace, takže ho hostuje cokoli, co umí spustit .NET
-proces — včetně Azure Functions v režimu *custom handler* (manifest `host.json` vedle
-projektu; port v něm musí sedět s `ASPNETCORE_URLS`). Nasazení v tomhle repu popisuje
-DEVGUIDE §9.1.
+proces — v tomhle repu běží na Azure App Service (web app `fakvio-mcp-web` / `fakvio-mcp-web-test`).
+Nasazení popisuje DEVGUIDE §9.1.
 
 Klient posílá na `POST /mcp` a **musí** přiložit `Authorization: Bearer <API klíč>`
 (klíč se zakládá v UI, viz ADMINGUIDE / USERGUIDE). Server klíč ověří na

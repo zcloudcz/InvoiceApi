@@ -498,23 +498,10 @@ Comprehensive browser-based UI tests using Microsoft.Playwright.NUnit (Chromium 
 - [x] Updated `Fakvio.BlazorUI.csproj` — added `<ServiceWorkerAssetsManifest>service-worker-assets.js</ServiceWorkerAssetsManifest>` (generates asset manifest with hashes at publish time)
 - [x] Build: 0 errors, Tests: 323 pass (318 unit + 5 integration)
 
-### Azure Functions Deployment Guide (2026-02-13)
-- [x] Created `DEPLOYMENT-AZURE-FUNCTIONS.md` — comprehensive deployment guide covering:
-  - Architecture overview (HTTP catch-all + 2 timer triggers)
-  - Azure resource creation (Resource Group, Function App, SQL Server, Storage, App Insights)
-  - Application Settings reference (all required + optional configuration keys)
-  - Database setup (EF Core migrations — manual, not auto-migrate)
-  - Deploy via Azure CLI (`func azure functionapp publish`)
-  - Deploy via GitHub Actions CI/CD (build → test → deploy → migrate)
-  - Deploy via Visual Studio / Rider
-  - CORS configuration (Azure Portal, not in code)
-  - Blazor WASM connection (appsettings.json BaseUrl)
-  - Monitoring (Application Insights, KQL queries, live log streaming)
-  - Scaling (Consumption vs Premium plan, timer trigger considerations)
-  - Security checklist (Key Vault, Managed Identity, TLS, firewall)
-  - Troubleshooting (common issues table)
-  - Cost estimation (Consumption ~$11/month, Premium ~$215/month)
-  - Quick reference deployment cheatsheet
+### Azure Functions Deployment Guide (2026-02-13) — OBSOLETE
+- [x] DEPRECATED: `DEPLOYMENT-AZURE-FUNCTIONS.md` was removed in migration to App Service (2026-09-10).
+      Deployment documentation is now in DEVGUIDE.md §9.4 (App Service deploy). This item is kept
+      for historical reference only.
 
 ### APPKA.md Re-Analysis v2 (2026-02-13)
 - [x] Complete rewrite of mobile app strategy after Blazor WASM migration completion

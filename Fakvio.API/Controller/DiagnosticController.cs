@@ -12,10 +12,7 @@ namespace Fakvio.API.Controller;
 /// importantly for a database rollout — WHICH authentication mode the process actually
 /// resolved and WHERE that value came from.
 ///
-/// This controller is the single source of truth for the health payload. The Azure
-/// Functions host does not duplicate the logic: <c>DiagnosticFunctions.Health</c> injects
-/// this controller and calls <see cref="Health"/>, exactly like the generated wrappers do
-/// for every other controller (see CLAUDE.md — "API + Functions duplication").
+/// This controller is the single source of truth for the health payload.
 ///
 /// SECURITY: SysAdmin only. The payload names the database host/user (masked connection
 /// string) and lists migration names — harmless to an operator, useful reconnaissance to
@@ -110,8 +107,8 @@ public class DiagnosticController : ControllerBase
 
         result["timestamp"] = DateTime.UtcNow;
         // Both hosts are served from here, so both environment variables are consulted:
-        // Azure Functions sets AZURE_FUNCTIONS_ENVIRONMENT, the ASP.NET Core host sets
-        // ASPNETCORE_ENVIRONMENT.
+        // ASPNETCORE_ENVIRONMENT is set by the App Service settings (Production) or by
+        // launchSettings.json locally.
         result["environment"] =
             Environment.GetEnvironmentVariable("AZURE_FUNCTIONS_ENVIRONMENT")
             ?? Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")

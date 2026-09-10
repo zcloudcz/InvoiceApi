@@ -97,7 +97,7 @@ Since issue #200 the gate **fails closed**: an empty `Recaptcha:SecretKey` no lo
 { "Recaptcha": { "Enabled": false } }
 ```
 
-Already set in `Fakvio.API/appsettings.Development.json`, `Fakvio.Functions/local.settings.json` (`Recaptcha__Enabled`) and in the integration-test host. With `Enabled: false` no token is required and no call to Google is made, so login and registration work normally without any keys.
+Already set in `Fakvio.API/appsettings.Development.json` (`Recaptcha__Enabled`) and in the integration-test host. With `Enabled: false` no token is required and no call to Google is made, so login and registration work normally without any keys.
 
 **Never set `Enabled: false` in production** unless you knowingly want the three anonymous endpoints unprotected — there is no rate limiting behind them.
 

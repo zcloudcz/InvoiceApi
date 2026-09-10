@@ -1,7 +1,6 @@
-using Fakvio.Functions.Middleware;
+using Fakvio.API.Middleware;
 using Fakvio.Infrastructure.Service;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 using Shouldly;
@@ -9,9 +8,9 @@ using Shouldly;
 namespace Fakvio.Tests.Unit;
 
 /// <summary>
-/// Unit tests for the startup gate on the Functions host.
+/// Unit tests for the startup gate on the API host.
 ///
-/// What is actually being protected: the worker reports ready before the Tailscale tunnel
+/// What is actually being protected: Kestrel accepts requests before the Tailscale tunnel
 /// has bound its loopback port, so for a moment the connection string points at a port
 /// nobody is listening on. Requests that land there used to burn the 15 s connect timeout
 /// and end as HTTP 500. The gate turns that into a short 503 + Retry-After.
@@ -22,26 +21,18 @@ namespace Fakvio.Tests.Unit;
 [Collection(nameof(StartupStateCollection))]
 public class StartupGateMiddlewareTests : IDisposable
 {
-    /// <summary>
-    /// Key under which the ASP.NET Core integration stores the HttpContext on the
-    /// FunctionContext; this is what FunctionContext.GetHttpContext() reads.
-    /// </summary>
-    private const string HttpContextItemsKey = "HttpRequestContext";
-
     public StartupGateMiddlewareTests() => StartupState.ResetForTests();
 
     public void Dispose() => StartupState.ResetForTests();
 
-    private static StartupGateMiddleware CreateMiddleware()
-        => new(Substitute.For<ILogger<StartupGateMiddleware>>());
-
-    private static FunctionContext CreateFunctionContext(HttpContext? httpContext)
+    /// <summary>Middleware whose "next" just records that it ran.</summary>
+    private static (StartupGateMiddleware Middleware, Func<bool> NextCalled) CreateMiddleware()
     {
-        var context = Substitute.For<FunctionContext>();
-        context.Items.Returns(httpContext is null
-            ? new Dictionary<object, object>()
-            : new Dictionary<object, object> { [HttpContextItemsKey] = httpContext });
-        return context;
+        var nextCalled = false;
+        var middleware = new StartupGateMiddleware(
+            _ => { nextCalled = true; return Task.CompletedTask; },
+            Substitute.For<ILogger<StartupGateMiddleware>>());
+        return (middleware, () => nextCalled);
     }
 
     private static HttpContext CreateHttpContext(string path)
@@ -56,16 +47,12 @@ public class StartupGateMiddlewareTests : IDisposable
     public async Task BeforeDatabaseReady_ApiRequest_Gets503WithRetryAfter()
     {
         var httpContext = CreateHttpContext("/api/dashboard");
-        var nextCalled = false;
+        var (middleware, nextCalled) = CreateMiddleware();
 
-        await CreateMiddleware().Invoke(CreateFunctionContext(httpContext), _ =>
-        {
-            nextCalled = true;
-            return Task.CompletedTask;
-        });
+        await middleware.InvokeAsync(httpContext);
 
-        // The function body must not run — it would open the very connection that is not ready.
-        nextCalled.ShouldBeFalse();
+        // The controller must not run — it would open the very connection that is not ready.
+        nextCalled().ShouldBeFalse();
         httpContext.Response.StatusCode.ShouldBe(StatusCodes.Status503ServiceUnavailable);
         // Retry-After is what makes the client's retry legitimate rather than a guess.
         httpContext.Response.Headers.RetryAfter.ToString().ShouldBe("5");
@@ -77,32 +64,12 @@ public class StartupGateMiddlewareTests : IDisposable
         // Diagnostics is the only endpoint that can explain WHY the database is not ready,
         // so gating it would hide the failure it exists to report.
         var httpContext = CreateHttpContext("/api/diagnostic/health");
-        var nextCalled = false;
+        var (middleware, nextCalled) = CreateMiddleware();
 
-        await CreateMiddleware().Invoke(CreateFunctionContext(httpContext), _ =>
-        {
-            nextCalled = true;
-            return Task.CompletedTask;
-        });
+        await middleware.InvokeAsync(httpContext);
 
-        nextCalled.ShouldBeTrue();
+        nextCalled().ShouldBeTrue();
         httpContext.Response.StatusCode.ShouldBe(StatusCodes.Status200OK);
-    }
-
-    [Fact]
-    public async Task BeforeDatabaseReady_TimerTrigger_PassesThrough()
-    {
-        // Timer triggers already tolerate an unreachable database and nobody is waiting on
-        // them; blocking would silently drop scheduled work instead of delaying a click.
-        var nextCalled = false;
-
-        await CreateMiddleware().Invoke(CreateFunctionContext(httpContext: null), _ =>
-        {
-            nextCalled = true;
-            return Task.CompletedTask;
-        });
-
-        nextCalled.ShouldBeTrue();
     }
 
     [Fact]
@@ -110,15 +77,11 @@ public class StartupGateMiddlewareTests : IDisposable
     {
         StartupState.MarkDatabaseReady();
         var httpContext = CreateHttpContext("/api/dashboard");
-        var nextCalled = false;
+        var (middleware, nextCalled) = CreateMiddleware();
 
-        await CreateMiddleware().Invoke(CreateFunctionContext(httpContext), _ =>
-        {
-            nextCalled = true;
-            return Task.CompletedTask;
-        });
+        await middleware.InvokeAsync(httpContext);
 
-        nextCalled.ShouldBeTrue();
+        nextCalled().ShouldBeTrue();
         httpContext.Response.StatusCode.ShouldBe(StatusCodes.Status200OK);
     }
 }

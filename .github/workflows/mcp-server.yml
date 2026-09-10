@@ -3,7 +3,8 @@
 # One build, one publish output, both hosting modes: Fakvio.McpServer picks its transport at
 # startup from FAKVIO_MCP_TRANSPORT ("stdio" by default, "http" starts Kestrel on /mcp), so the
 # same binaries that get installed as the `fakvio-mcp` dotnet tool are the ones deployed to
-# Azure. There is deliberately no second build with different switches — two builds would be two
+# Azure App Service (Linux web app on the shared B1 plan, startup command
+# `dotnet Fakvio.McpServer.dll`, FAKVIO_MCP_TRANSPORT=http as an App Setting). There is deliberately no second build with different switches — two builds would be two
 # things that can drift apart.
 #
 # Docs for the Azure Web App Deploy action: https://github.com/Azure/webapps-deploy
@@ -46,20 +47,6 @@ jobs:
           dotnet publish ./Fakvio.McpServer/Fakvio.McpServer.csproj \
             --configuration Release \
             --output ./publish
-
-      - name: Add the Functions custom handler manifest to the deployment payload
-        shell: bash
-        run: |
-          set -euo pipefail
-          # host.json is what makes the Functions host run this app as a custom handler: it
-          # names the executable, pins the port, and selects the mcp-custom-handler profile.
-          # The Functions host reads it from the root of the deployment payload.
-          #
-          # Copied here rather than carried by the csproj as a content item, because a content
-          # item also lands in bin/ — and `dotnet pack` on a PackAsTool project packs bin/, so
-          # the Functions manifest would ship inside the nupkg that stdio users install. Doing
-          # it in this one step keeps the deployment concern out of the package.
-          cp ./Fakvio.McpServer/host.json ./publish/host.json
 
       - name: Smoke test the published host
         shell: bash
@@ -140,11 +127,10 @@ jobs:
     # Test environment. Production is the sibling job `deploy-http-prod` below — one job per
     # environment with its own OIDC secrets, the way the Functions workflows are split (§9.1).
     #
-    # MCP_HTTP_APP_NAME is a repository *variable* (not a secret) holding the Function App
-    # name, expected value `fakvio-mcp-test`. It doubles as the on/off switch: until a human
-    # creates the Function App and grants the existing TEST app registration access to it
-    # (hand-back on #241), the variable is unset and this job is skipped instead of failing
-    # every TEST-ENV push on a resource that does not exist.
+    # MCP_HTTP_APP_NAME is a repository *variable* (not a secret) holding the web app
+    # name, expected value `fakvio-mcp-web-test`. It doubles as the on/off switch: while the
+    # variable is unset this job is skipped instead of failing every TEST-ENV push on a
+    # resource that does not exist.
     if: github.ref_name == 'TEST-ENV' && vars.MCP_HTTP_APP_NAME != ''
 
     permissions:
@@ -169,19 +155,17 @@ jobs:
         with:
           # The per-environment app registration already used by testenv_zcloudinvoicingapi.yml
           # (federated credential trusts the TEST-ENV branch only). One registration per
-          # environment, not per resource — the human hand-back on #241 asks for its role
-          # assignment to be extended to the MCP Web App rather than for a new set of secrets.
+          # environment, not per resource — its Contributor role is scoped to both test web apps.
           client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_TEST }}
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_TEST }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_TEST }}
 
-      - name: Deploy to Azure Functions (custom handler)
+      - name: Deploy to Azure App Service
         id: deploy
-        uses: Azure/functions-action@v1
+        uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ vars.MCP_HTTP_APP_NAME }}
           package: ./publish
-          sku: flexconsumption
 
       - name: Verify the deployed host answers on /mcp
         shell: bash
@@ -195,21 +179,17 @@ jobs:
           # and throws on the empty content type) and any other path answers 404. So 5xx here
           # means "did not start OR the gate is gone", and 200 does not happen.
           #
-          # The reverse trap: platform-level authentication (Easy Auth, or a Functions
-          # authorization level above `anonymous`) answers 401 before the app is reached at all,
-          # which would keep this step green on a host that never booted. Neither may be enabled
-          # here — host.json pins `DefaultAuthorizationLevel: anonymous` on purpose, because the
-          # API-key gate inside the app is the authorization boundary (DEVGUIDE §9.1).
+          # The reverse trap: platform-level authentication (Easy Auth) answers 401 before the
+          # app is reached at all, which would keep this step green on a host that never booted.
+          # It must stay off here, because the API-key gate inside the app is the authorization
+          # boundary (DEVGUIDE §9.1).
           #
           # It does NOT prove /mcp is mapped: the middleware is registered with app.Use(...)
           # over the entire pipeline and short-circuits before any endpoint runs, so every path
           # answers 401 — a wrong route included. Proving the mapping would need a valid API
           # key here, which is exactly the credential this check is designed not to carry.
           #
-          # Composed from the app name: Azure/functions-action, unlike webapps-deploy, exposes
-          # no URL output. Function Apps keep the plain <name>.azurewebsites.net hostname (the
-          # region-suffixed form is an App Service thing), so this is not a guess.
-          URL="https://${{ vars.MCP_HTTP_APP_NAME }}.azurewebsites.net"
+          URL="${{ steps.deploy.outputs.webapp-url }}"
 
           # --retry-all-errors covers the cold start: the first hit after a deploy can land
           # while the site is still warming up and answer 5xx.
@@ -232,9 +212,7 @@ jobs:
     # `vars` and `secrets` by key, which hides exactly the thing an operator comes here to read.
     #
     # MCP_HTTP_APP_NAME_PROD is the production counterpart of MCP_HTTP_APP_NAME (expected value
-    # `fakvio-mcp`) and doubles as the same on/off switch: until a human creates the Function App
-    # and grants the production app registration access to it, the variable is unset and this job
-    # is skipped instead of failing every master push on a resource that does not exist.
+    # `fakvio-mcp-web`) and doubles as the same on/off switch.
     if: github.ref_name == 'master' && vars.MCP_HTTP_APP_NAME_PROD != ''
 
     permissions:
@@ -262,13 +240,12 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_0F744DC7C56040999B540311235A4E45 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_0A2C19BC7D294FFA80F06B93F1D614E4 }}
 
-      - name: Deploy to Azure Functions (custom handler)
+      - name: Deploy to Azure App Service
         id: deploy
-        uses: Azure/functions-action@v1
+        uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ vars.MCP_HTTP_APP_NAME_PROD }}
           package: ./publish
-          sku: flexconsumption
 
       - name: Verify the deployed host answers on /mcp
         shell: bash
@@ -278,7 +255,7 @@ jobs:
           # proves the host booted and the API-key gate stands in front of the pipeline without
           # this workflow carrying any credential. See deploy-http-test for what it does and
           # does not prove — including why platform-level authentication must stay off here.
-          URL="https://${{ vars.MCP_HTTP_APP_NAME_PROD }}.azurewebsites.net"
+          URL="${{ steps.deploy.outputs.webapp-url }}"
 
           CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
                    --retry 5 --retry-all-errors --retry-delay 10 --max-time 30 \

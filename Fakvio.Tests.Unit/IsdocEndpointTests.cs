@@ -2,7 +2,6 @@ using Fakvio.API.Controller;
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Domain.Enums;
-using Fakvio.Functions.Generated;
 using Fakvio.McpServer.Client;
 using Fakvio.McpServer.Tools;
 using Microsoft.AspNetCore.Http;
@@ -150,35 +149,6 @@ public class IsdocEndpointTests
         // Assert — ISDOC files must be served as application/xml (not application/pdf)
         var fileResult = result.ShouldBeOfType<FileContentResult>();
         fileResult.ContentType.ShouldBe("application/xml");
-    }
-
-    // ── Functions wrapper smoke tests ─────────────────────────────────────────
-
-    [Fact]
-    public void InvoiceFunctions_HasExportIsdocMethod()
-    {
-        // Smoke test: verify the Azure Functions wrapper class has the expected method.
-        // This catches regressions where the function was accidentally removed.
-        var type = typeof(InvoiceFunctions);
-        var method = type.GetMethod("Invoice_ExportIsdoc");
-
-        method.ShouldNotBeNull(
-            "InvoiceFunctions must expose Invoice_ExportIsdoc as a public method for Azure Functions discovery.");
-    }
-
-    [Fact]
-    public void InvoiceFunctions_ExportIsdocMethod_HasFunctionAttribute()
-    {
-        // Verify the [Function("Invoice_ExportIsdoc")] attribute is present — Azure Functions
-        // uses this attribute to discover and register the function trigger.
-        var method = typeof(InvoiceFunctions).GetMethod("Invoice_ExportIsdoc");
-        method.ShouldNotBeNull();
-
-        var functionAttr = method
-            .GetCustomAttributes(typeof(Microsoft.Azure.Functions.Worker.FunctionAttribute), inherit: false)
-            .FirstOrDefault();
-
-        functionAttr.ShouldNotBeNull("Invoice_ExportIsdoc must be decorated with [Function] attribute.");
     }
 
     // ── MCP tool tests ────────────────────────────────────────────────────────

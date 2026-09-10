@@ -6,13 +6,9 @@ using Microsoft.Extensions.Logging;
 namespace Fakvio.Infrastructure.Service;
 
 /// <summary>
-/// BackgroundService wrapper around <see cref="IImapPollService"/> for hosts that
-/// support <see cref="IHostedService"/> (the API project, classic VM deploy, local dev).
-///
-/// IMPORTANT: Azure Functions Isolated Worker does NOT host BackgroundServices reliably,
-/// so for Functions deploys the same <see cref="IImapPollService"/> is invoked from
-/// <c>PaymentMatchingFunctions.RunImapPoll</c> via [TimerTrigger].
-/// See CLAUDE.md → "API + Functions duplication" for context.
+/// BackgroundService wrapper around <see cref="IImapPollService"/>. Runs in the API host
+/// (Azure App Service with Always On, classic VM deploy, local dev). The SysAdmin "Run now"
+/// button invokes the same service over HTTP.
 ///
 /// Idle behaviour: the loop sleeps for the interval returned by
 /// <see cref="IImapPollService.RunCycleAsync"/>, which mirrors
@@ -34,6 +30,13 @@ public class ImapPollWorker : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation("ImapPollWorker started");
+
+        // Hosted services start together with the Tailscale bring-up in Program.cs; a first
+        // cycle that runs before the forwarder is bound fails and then sleeps 30 minutes.
+        while (!StartupState.DatabaseReady && !stoppingToken.IsCancellationRequested)
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(500), stoppingToken);
+        }
 
         while (!stoppingToken.IsCancellationRequested)
         {

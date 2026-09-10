@@ -12,7 +12,7 @@ using System.Buffers.Binary;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using Fakvio.Functions.Tailscale;
+using Fakvio.Infrastructure.Tailscale;
 using Microsoft.Extensions.Logging.Abstractions;
 using Shouldly;
 
