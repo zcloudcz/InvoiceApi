@@ -1157,6 +1157,20 @@ platné a po dokončení přípravy se přihlásíte stejnými údaji.
 
 ---
 
+## 19a. První požadavek po delší nečinnosti trvá chvíli déle
+
+Když aplikaci nikdo delší dobu nepoužívá, server se uspí a další požadavek ho musí probudit.
+Než je připravený, aplikace **sama počká a požadavek zopakuje** — poznáte to jen podle toho,
+že se stránka načítá o vteřinu nebo dvě déle. Nemusíte nic dělat ani nic obnovovat.
+
+Dřív se v tomhle okamžiku místo čekání zobrazila chyba, kterou bylo potřeba „proklikat"
+opakovaným obnovením stránky. To už neplatí.
+
+Pokud čekání trvá **déle než ~20 vteřin** a skončí chybou, nejde o probouzení serveru —
+kontaktujte podporu.
+
+---
+
 ## 20. Napojení vlastního AI klienta (MCP server)
 
 Kromě vestavěného [AI asistenta](#13-ai-asistent) umí Fakvio pracovat i s AI

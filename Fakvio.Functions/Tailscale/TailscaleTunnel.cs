@@ -53,6 +53,16 @@ public static class TailscaleTunnel
     /// <summary>Node name used when <see cref="HostnameEnv"/> is not set.</summary>
     public const string DefaultHostname = "fakvio-func-prod";
 
+    /// <summary>
+    /// Environment the daemon is started with. The Flex Consumption sandbox exposes no routing
+    /// table, so tailscaled's network monitor never reports "network up" and 'tailscale up'
+    /// times out waiting for the Running state — on every instance, forever. This switch tells
+    /// the daemon to assume the network is up. Set here rather than as an App Setting so a new
+    /// environment cannot forget it (production did, and registered no node at all).
+    /// </summary>
+    public static readonly IReadOnlyDictionary<string, string> DaemonEnvironment =
+        new Dictionary<string, string> { ["TS_ASSUME_NETWORK_UP_FOR_TEST"] = "true" };
+
     // The default location of the daemon socket (/var/run/tailscale/) is not writable in the
     // Flex Consumption sandbox, so both the daemon and every CLI call are pointed at /tmp.
     public const string SocketPath = "/tmp/tailscaled.sock";
@@ -416,7 +426,7 @@ public static class TailscaleTunnel
     /// </summary>
     private static Process StartDaemon(string tailscaledPath, IHostApplicationLifetime lifetime, ILogger logger)
     {
-        var daemon = StartProcess(tailscaledPath, TailscaledArguments);
+        var daemon = StartProcess(tailscaledPath, TailscaledArguments, DaemonEnvironment);
 
         // Debug level: the daemon is chatty and its lines only matter while diagnosing the tunnel.
         daemon.OutputDataReceived += (_, e) => LogDaemonLine(logger, e.Data);
@@ -623,7 +633,7 @@ public static class TailscaleTunnel
     internal static string Redact(string text, string secret) =>
         string.IsNullOrEmpty(secret) ? text : text.Replace(secret, "<redacted>", StringComparison.Ordinal);
 
-    private static Process StartProcess(string fileName, string arguments)
+    private static Process StartProcess(string fileName, string arguments, IReadOnlyDictionary<string, string>? environment = null)
     {
         var process = new Process
         {
@@ -634,6 +644,13 @@ public static class TailscaleTunnel
                 UseShellExecute = false
             }
         };
+        if (environment is not null)
+        {
+            foreach (var (name, value) in environment)
+            {
+                process.StartInfo.Environment[name] = value;
+            }
+        }
         process.Start();
         return process;
     }

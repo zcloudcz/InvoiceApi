@@ -20,6 +20,16 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+## 2026.09.10 — 2026-09-10
+
+### Opravy
+- **#375** — za studena nastartovaná Function appka krátce po startu vracela na požadavky chybu vypadající jako rozbité DB připojení (tunel do databáze byl ve skutečnosti v pořádku, jen ještě nedoběhl); teď appka během startu odpoví `503` s automatickým opakováním na klientovi místo toho, aby request spadl do neexistujícího portu a skončil chybou. (Konfigurace PgBouncer na DB hostu, skutečná příčina zbylých výpadků, zůstává otevřená jako ruční krok správce.) (PR #407, `2b9a324a`)
+
+## 2026.09.08 — 2026-09-08
+
+Tyhle záznamy se do produkce dostaly už s release PR #406 (2026-09-08), ale sekce
+`## Nevydáno` se tehdy nepřejmenovala — datum je doplněné zpětně podle mergu #406.
+
 ### Opravy
 - **#363** — při kopírování úryvku „remote" pro připojení MCP HTTP klienta se uživateli zkopírovala adresa API (`{ApiBaseUrl}/mcp`), která neexistuje — MCP HTTP host je oddělený deploy od API (od #240/#241). URL nyní vychází z nového `McpSettings:BaseUrl` config klíče; dokud se host nevystaví, zůstává prázdný a snippet místo chybné adresy zobrazí jasný placeholder. Opravena i chybová zpráva v `Fakvio.McpServer/Program.cs`, která zmínila jen JWT místo doporučeného API klíče. (PR #394, `2e2849d`)
 - **#306** — jazykové nastavení klienta se tichou chybou ignorovalo — MCP `UpdateClient` přijal parametr `language`, hlásil úspěch a nic neuhnul. Nově se nastavení aplikuje korektně v `CreateClientAsync` i `UpdateClientAsync` (nula = neměnit, jako u ostatních polí). (PR #383, `ecd7b0e6`)

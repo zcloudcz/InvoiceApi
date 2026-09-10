@@ -820,9 +820,38 @@ curl -s -H "Authorization: Bearer <sysadmin-jwt>"   https://<host>/api/diagnosti
 | `masterConnectionServer` | Host, databáze a uživatel — **nikdy heslo ani token**. |
 | `masterDbCanConnect`, `masterDbPendingMigrations` | Dostupnost master DB a počet nenasazených migrací. |
 | `databaseConnected` / `databaseReady` | Souhrnné vlajky pro monitoring. `databaseReady` = připojeno **a** žádné čekající migrace. |
+| `startupDatabaseReady` | `false` jen v prvních vteřinách života procesu, než dojede stavba Tailscale tunelu. Dokud je `false`, API vrací **503 + `Retry-After: 5`** — viz níž. |
+| `startupMigration` | `pending` / `succeeded` / `failed` — výsledek startovní migrace master DB. Doplňují ho `startupMigrationCompletedAt` a při selhání `startupMigrationError`. |
 
 HTTP **200** = databáze odpovídá, **503** = neodpovídá (monitoring může jet jen podle status
 kódu). Při 503 se `authMode`/`authModeSource` hlásí dál — právě tehdy jsou nejužitečnější.
+
+**`startupMigration: failed` neshazuje aplikaci** a health kvůli němu nevrací 503. Znamená to
+„databáze odpovídá, ale je o pár migrací pozadu" — to je stav, přes který se dá provozovat,
+zatímco výpadek by způsobil víc škody. Text výjimky je v `startupMigrationError`; dřív ho
+nebylo kde přečíst, protože worker `ILogger` do App Insights nedoletí (issue #322).
+
+### 13.1 „The service is still starting" (503 + Retry-After)
+
+Azure Functions hlásí worker jako připravený dřív, než se postaví Tailscale tunel — a než
+`Socks5Forwarder` obsadí `127.0.0.1:15432`, connection string ukazuje na port, na kterém nikdo
+neposlouchá. Requesty, které do té díry spadnou, dostávaly po 15 s HTTP 500 a v logu
+`An error occurred using the connection to database … on server 'tcp://127.0.0.1:15432'`.
+
+Nově je v pipeline **startup gate**: dokud `startupDatabaseReady` není `true`, každý
+`/api/*` (mimo `/api/diagnostic`) dostane hned **503 s hlavičkou `Retry-After: 5`**.
+Webové UI si takový 503 **samo zopakuje** (max 3 pokusy, strop ~20 s), takže uživatel vidí
+jen krátké čekání místo chyby.
+
+Kdy to znamená problém: když 503 „still starting" chodí **trvale**, ne jen pár vteřin po
+studeném startu. Pak se tunel nepostavil — hledejte v App Insights:
+
+```kusto
+traces | where message startswith "Tailscale:" | order by timestamp desc
+```
+
+Gate se otevře i po **neúspěšné** stavbě tunelu, schválně: zavřená brána by z rozbitého
+tunelu udělala tichý blackout bez jediné diagnostikovatelné chyby.
 
 **Když je databáze úplně nedostupná**, endpoint nepomůže — přihlášení SysAdmina samo potřebuje
 master DB. Tentýž údaj proto oba hostitelé vypisují do logu hned po startu (Azure: Log stream /
@@ -896,6 +925,8 @@ variables), ne ve workflow souborech. Zápis používá dvojité podtržítko m�
 | `ConnectionStrings__DefaultConnection` | `Host=127.0.0.1;Port=15432;Database=fakvio_test;Username=fakvio_test;Password=***;Ssl Mode=Prefer;Timezone=UTC;Maximum Pool Size=20;Timeout=15` | **`127.0.0.1` není překlep** — míří na lokální konec Tailscale tunelu (viz níž), ne přímo na databázový server. `Ssl Mode=Prefer`, protože provoz už šifruje WireGuard a certifikát na `127.0.0.1` se ověřit nedá; `Timeout=15` kvůli WireGuard handshake při prvním spojení. |
 | `TAILSCALE_AUTHKEY` | `tskey-auth-…` (reusable + ephemeral + tag) | **Spínač celé funkce.** Když klíč chybí, tunel se nepostaví a databáze je nedostupná. Klíč má expiraci — po vypršení se nové instance nepřihlásí. Postup vydání, ACL a rotace: `Fakvio.Functions/Tailscale/README.md`. |
 | `TAILSCALE_HOSTNAME` | `fakvio-func-prod` / `fakvio-func-test` | Jméno uzlu v tailnetu. Prod a test sdílejí tailnet — každé prostředí musí mít vlastní; bez klíče `fakvio-func-prod`. |
+| `TAILSCALE_TARGET_PORT` | *(volitelné)* výchozí `5544` | **Produkce i test dnes používají `6432`** — port PgBounceru, ne Postgresu. PgBouncer musí běžet v **session** režimu, jinak se tiše rozbije EF migrační zámek i `AdvisoryLock` (`SELFHOST-DB.md` §6.4b). |
+| `TS_ASSUME_NETWORK_UP_FOR_TEST` | *(nenastavovat)* | Nastavuje kód při startu démona. Bez ní se uzel v sandboxu nikdy nezaregistruje (`timeout waiting for Tailscale service to enter a Running state`). |
 | `Database__AuthMode` | `Password` (produkce: `AzureEntraId`) | Vlastní PostgreSQL Entra ID neumí. Kanonický klíč (§13) — health proto hlásí `authModeSource: Database:AuthMode`. |
 | `UseAzureAdAuthentication` | `false` (produkce: `true`, tedy Entra ID) | **Legacy klíč, musí souhlasit s řádkem výš** — když si budou odporovat, aplikace při startu spadne (fail-fast, §13). Měnit vždy oba zároveň. |
 | `AresSettings__BaseUrl` | shodné s produkcí | |
