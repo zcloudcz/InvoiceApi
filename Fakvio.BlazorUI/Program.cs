@@ -33,11 +33,8 @@ builder.Services.AddHttpClient("InvoiceAPI", client =>
 })
 // CorrelationIdHandler runs first: adds X-Correlation-Id to every outgoing request.
 // UnauthorizedRedirectHandler runs second: intercepts 401 responses for auto-redirect.
-// RetryAfterHandler runs innermost, so its retries are what the two handlers above see:
-// one logical call, one correlation id, and a 503 that never reaches the 401 logic.
 .AddHttpMessageHandler<CorrelationIdHandler>()
-.AddHttpMessageHandler<UnauthorizedRedirectHandler>()
-.AddHttpMessageHandler<RetryAfterHandler>();
+.AddHttpMessageHandler<UnauthorizedRedirectHandler>();
 
 var host = builder.Build();
 

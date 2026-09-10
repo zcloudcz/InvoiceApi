@@ -24,7 +24,7 @@ Pokud máš pochybnost, **zde má pravdu DEVGUIDE.md**, ne komentáře v kódu (
 | `Fakvio.Contracts` | Class lib (zero-NuGet) | DTOs, Pagination, DueDateCalculator. **Sdílí** server (`Application`) i klient (`UI.Shared`). Nesmí mít NuGet závislosti, jinak je rozbije WASM. |
 | `Fakvio.Application` | Class lib | Service kontrakty (`Service/I*.cs`). **Stateless logika** — žádný EF context přímo, žádný HTTP. |
 | `Fakvio.Infrastructure` | Class lib | Implementace Application interface. EF Core (3 DbContexty), repository, mapping (ZMapper), auth handlery, AI providers. Sem patří všechno, co sahá ven (DB, SMTP, IMAP, OAuth, Azure ARM). |
-| `Fakvio.API` | ASP.NET Core | HTTP host. Controllery, middleware (`Middleware/`: CorrelationId → Auth → Impersonation → TenantContext), Swagger (**jen v Development** — viz §12). Background workers (např. `ImapPollWorker`) hostuje přes `AddHostedService`. Tailscale tunnel pro outbound připojení. |
+| `Fakvio.API` | ASP.NET Core | HTTP host. Controllery, middleware (`Middleware/`: CorrelationId → Auth → Impersonation → TenantContext), Swagger (**jen v Development** — viz §12). Background workers (např. `ImapPollWorker`) hostuje přes `AddHostedService`. |
 | `Fakvio.UI.Shared` | Razor Class Library (RCL) | **Všechny** Blazor stránky, komponenty, services, modely, resources. Sdílí WASM host i MAUI host. |
 | `Fakvio.BlazorUI` | Blazor WebAssembly | Tenký WASM host. Pouze `Program.cs`, `index.html`, PWA assets. |
 | `Fakvio.MauiApp` | MAUI Blazor Hybrid | Native shell pro Android/iOS/macOS/Windows. Sdílí komponenty přes `UI.Shared`. |
@@ -2323,10 +2323,9 @@ FAKVIO_API_URL=https://fakvio-api-test.azurewebsites.net \
 
 `Tests/Deployment/DeployedEnvironmentTests.cs` (kategorie `Deployment`) ověřuje **jen to, co lokální
 běh reprodukovat nedokáže**: jaká API URL se zapekla do publikovaného bundlu, že statický host
-odpoví na deep link místo 404, že CORS preflight z prohlížeče projde, že API dosáhne na databázi
-(na testu přes Tailscale tunel) a že neprodukční prostředí je vizuálně označené. Bez
-`FAKVIO_UI_URL` na `https://` se celá kategorie **přeskočí**, takže `dotnet test` na vývojářském
-stroji zůstane zelený.
+odpoví na deep link místo 404, že CORS preflight z prohlížeče projde, a že neprodukční prostředí
+je vizuálně označené *(test env se v současnosti nedeployuje)* . Bez `FAKVIO_UI_URL` na `https://`
+se celá kategorie **přeskočí**, takže `dotnet test` na vývojářském stroji zůstane zelený.
 
 Ostatní E2E testy potřebují **data** (firma s ID 1, klienti, faktury). Na čerstvě provisionované
 databázi — jako je dnes `fakvio_test` — padají na prázdném stavu; to není regrese aplikace.
@@ -2394,17 +2393,9 @@ dotnet test Fakvio.Tests.Unit --filter "FullyQualifiedName~DatabaseConnectivityS
 |--------|---------|---------|
 | `blazorui-deploy.yml` | Push `master`, manual, PR (path-filtered) | Build `Fakvio.BlazorUI` (WASM publish) → deploy GitHub Pages. Přidá CNAME, .nojekyll, kopie `index.html → 404.html` (client-side routing). |
 | `blazorui-test-deploy.yml` | Push `TEST-ENV`, manual | Build `Fakvio.BlazorUI` (WASM publish) → deploy Azure Static Web App `fakvio-test-ui`. Před publishem přepíše **dvě** adresy, každou vlastním sedem: `ApiSettings:BaseUrl` na testovací API App Service a `McpSettings:BaseUrl` na testovací MCP App Service. Oba sedy jsou **omezené na svůj blok** a hlídané počtem výskytů (přesně 1), protože `appsettings.json` má víc klíčů `BaseUrl` a neomezený zápis by jednu adresu podstrčil na místo druhé — přesně bug, kvůli kterému #363 vzniklo. Nový klíč `BaseUrl` v dalších sekcích proto nic přepisovat nebude. Client-side routing řeší `wwwroot/staticwebapp.config.json` (`navigationFallback`). |
-| `master_fakvio-api.yml` | Push `master` | Publishne `Fakvio.API.csproj` → Azure App Service `fakvio-api`. Stáhne binárky Tailscale do `Fakvio.API/tsbin/` a zabalí je do publish outputu. Auth přes managed identity (federated credentials). Post-deploy ověří `GET /api/diagnostic/health` = 401. |
-| `testenv_fakvio-api.yml` | Push `TEST-ENV`, manual | Publishne `Fakvio.API.csproj` → Azure App Service `fakvio-api-test` s totožným procesem. OIDC přes secrets s příponou `_TEST`. |
+| `master_fakvio-api.yml` | Push `master` | Publishne `Fakvio.API.csproj` → Azure App Service `fakvio-api`. Auth přes managed identity (federated credentials). Post-deploy ověří `GET /api/diagnostic/health` = 401. |
+| `testenv_fakvio-api.yml` | Push `TEST-ENV`, manual | *(V současnosti vypnuto)* Publishne `Fakvio.API.csproj` → Azure App Service `fakvio-api-test` s totožným procesem. OIDC přes secrets s příponou `_TEST`. |
 | `mcp-server.yml` | Push `master` + `TEST-ENV`, manual | Publishne `Fakvio.McpServer` (**jeden artefakt = oba režimy**, viz §4.9), smoke testem ověří spuštění, a `dotnet pack`em zabalí stdio nástroj `fakvio-mcp`. Deploy HTTP hostu do Azure App Service: `TEST-ENV` → `fakvio-mcp-web-test`, `master` → `fakvio-mcp-web`. Na `master` navíc `publish-nuget` (nuget.org). |
-
-**Krok „Download Tailscale binaries"** (API workflow, před `dotnet publish`):
-stáhne `tailscale` + `tailscaled` do `Fakvio.API/tsbin/`, odkud je do publish outputu
-kopíruje `<None Update="tsbin/**">` v csproj. Verze a `sha256` jsou **napevno v bloku `env:`**
-workflow — tarball se stahuje až při deployi, takže bez pinu by změna upstreamu šla rovnou
-do Azure. `tsbin/` je gitignorovaný, v repu binárky nejsou. Produkce je stahuje také (feature je
-tam bez `TAILSCALE_AUTHKEY` nečinná), aby byl balíček obou prostředí identický. Bump verze a
-proč to celé existuje: `Fakvio.Infrastructure/Tailscale/README.md`.
 
 **`mcp-server.yml` — proč tak, jak je**:
 
@@ -2483,7 +2474,13 @@ proč to celé existuje: `Fakvio.Infrastructure/Tailscale/README.md`.
 
 **Konfigurace App Service:**
 
-- **Plán**: `asp-fakvio-b1` (Linux, Basic B1 tier, ~13 USD/měsíc, hostuje všechny čtyři aplikace — dvě API, dvě MCP).
+- **Plány**: `asp-fakvio-b1` (produkce: `fakvio-api` + `fakvio-mcp-web`), Linux Basic B1, ~13 USD/měsíc.
+  *(Testovací `asp-fakvio-b1-test` je v současnosti vypnuto.)*
+  Původně sdílely jeden B1 — 1,75 GB RAM na čtyři appky plus čtyři Kudu kontejnery swapovalo
+  (CPU planu 100 %, paměť 85 %, odpovědi v sekundách), proto měl test vlastní plán.
+- **`WEBSITES_CONTAINER_START_TIME_LIMIT=900`** na appkách: první start po deployi
+  (pull image, rehash certifikátů) trval na B1 až 7 minut a výchozích 230 s kontejner
+  zabilo dřív, než Kestrel otevřel port 8080.
 - **Web apps**:
   - `fakvio-api` (https://fakvio-api.azurewebsites.net) — produkční API host (`Fakvio.API`).
   - `fakvio-api-test` (https://fakvio-api-test.azurewebsites.net) — testovací API host.
@@ -2496,37 +2493,35 @@ proč to celé existuje: `Fakvio.Infrastructure/Tailscale/README.md`.
 
 **Testovací prostředí:**
 
-- Vlastní App Service instance (`fakvio-api-test`), ne slot.
-- Vlastní database `fakvio_test` dostupná přes Tailscale tunel (§9.4b).
+- Vlastní App Service instance (`fakvio-api-test`), *(v současnosti vypnuto)* ne slot.
+- Vlastní database `fakvio_test` *(v současnosti vypnuto; dříve dostupná přes Tailscale tunel)*.
 - Vlastní app registration (federated credential jen pro `TEST-ENV`, Contributor scope jen na test apps).
 - Vlastní `JwtSettings:Secret`, `CORS origin`, api key — všechno v App Settings, ne ve workflow.
 
-**Tailscale tunel pro outbound připojení:**
+**Přímé připojení k databázi:**
 
-Aplikace v App Service (Linux sandbox) nemá TUN device pro tun-based VPN. Namísto toho běží `tailscaled`
-v **userspace SOCKS5 režimu** (`Fakvio.Infrastructure/Tailscale/TailscaleTunnel.cs`):
-- Binárky (tailscale, tailscaled) se stahují v workflow, balí se do publish output, běží v App Service.
-- Jsou-li: `TS_ASSUME_NETWORK_UP_FOR_TEST` dostává démon z kódu (`TailscaleTunnel.DaemonEnvironment`); ruční App Setting není potřeba a na App Service neškodí.
-- `ConnectionString` míří na `127.0.0.1:15432` (lokální endpoint v Tailscale síti).
-- Propojení do tunelu: `Socks5Forwarder` na portu 15432, obě produkce a test na `TAILSCALE_TARGET_PORT=5544` (direktní PostgreSQL, žádný PgBouncer).
+Od 2026-09-10 se aplikace připojuje přímo k PostgreSQL na veřejné adrese (port 5544) bez tunelu.
+Bezpečnost je zajištěna přes:
+- TLS (`Ssl Mode=VerifyFull` doporučeno, `Require` minimum) s validací certifikátu
+- VPS firewall + `pg_hba.conf` omezující spojení jen na App Service outbound IP adresy
+- Přesné 19 IP adres z `az webapp show -n fakvio-api -g invoiceapi --query possibleOutboundIpAddresses`
 
-Detaily, ACL, rotace klíče: `Fakvio.Infrastructure/Tailscale/README.md`.
+Připojovací řetězec: `Host=<db-public-host>;Port=5544;Database=fakvio_prod;Username=fakvio_prod;Password=***;Ssl Mode=VerifyFull`
 
-**Startup brána:**
+Detaily, konfigurace firewallu, ověření spojení: `SELFHOST-DB.md`.
 
-`StartupGateMiddleware` (`Fakvio.API/Middleware/StartupGateMiddleware.cs`) vrací `503 + Retry-After: 5` pro `/api/*`
-(mimo `/api/diagnostic`), dokud `StartupState.DatabaseReady` není true. Procházejí jím:
-- Tailscale tunel startup (na pozadí, stavět se musí dřív než DB connect).
-- Master DB migration.
+**Startup migrací:**
 
-`RetryAfterHandler` v UI transparentně přečká. **Když přidáváš nový startup krok s DB, zavolej `StartupState.MarkDatabaseReady()` z `finally`.**
+Master DB migrace se spouští **synchronně** při startu, a to i v API hostu (namísto asynchronního spouštění přes background service).
+Výsledek migrace se zaznamenává v `StartupState` (polí `startupMigration`, `startupMigrationCompletedAt`, `startupMigrationError`).
+Selhání migrace je zalogováno a hlášeno v healthu, ale nešhodí aplikaci — poskytuje informaci bez 503.
 
 **Přehled logů a diagnostiky:**
 
 - Logy: `az webapp log tail -g invoiceapi -n fakvio-api`.
 - Application Insights: `CorrelationIdTelemetryInitializer` + `AddApplicationInsightsTelemetry()`, všechny `Fakvio.*` ILogger kategorie tam doletí.
-- Health endpoint: `GET /api/diagnostic/health` (SysAdmin only), vrací `startupDatabaseReady`, `startupMigration`, `masterDbCanConnect`.
-- Outbound IP: `az webapp show -n fakvio-api -g invoiceapi --query outboundIpAddresses`.
+- Health endpoint: `GET /api/diagnostic/health` (SysAdmin only), vrací `startupMigration`, `masterDbCanConnect` a další diagnostické údaje.
+- Outbound IP: `az webapp show -n fakvio-api -g invoiceapi --query possibleOutboundIpAddresses` (všech 19 adres; stabilní pro životnost app service).
 
 ### 9.5 Autentizace k databázi (`Database:AuthMode`) + health endpoint
 
@@ -2551,12 +2546,12 @@ Kde co je nastavené:
 | `Fakvio.API/appsettings.Development.json` | `AzureEntraId`; vedle je **zakomentovaný** `Password` — přepnutí na lokální Docker = odkomentovat dva řádky (conn string + AuthMode) |
 | `Fakvio.MigrationTool/appsettings.json` | `Database` i `SourceDatabase` = `Password` |
 
-Testovací App Service má v App Settings `Database__AuthMode = Password` (vedle `UseAzureAdAuthentication = false`),
-takže health tam hlásí `authModeSource: Database:AuthMode`. Connection string míří na lokální konec Tailscale tunelu
-(§9.4), takže `masterConnectionServer` je `127.0.0.1 / fakvio_test / fakvio_test`.
+*(Testovací App Service je v současnosti vypnuto; tato sekce popisuje jeho dřívější konfiguraci.)*
+Měl by mít v App Settings `Database__AuthMode = Password` (vedle `UseAzureAdAuthentication = false`),
+takže health by tam hlásil `authModeSource: Database:AuthMode`.
 
-Health navíc hlásí `startupDatabaseReady` a `startupMigration` (`pending` / `succeeded` / `failed` + `startupMigrationError`).
-Migrace běží při startu aplikace (ne na pozadí) a App Insights ji zachytí přes Application Insights telemetry.
+Health hlásí `startupMigration` (`pending` / `succeeded` / `failed` + `startupMigrationError`).
+Migrace běží při startu aplikace a Application Insights ji zachytí přes telemetry.
 
 **Ověření za běhu** — `GET /api/diagnostic/health`, **SysAdmin only**:
 

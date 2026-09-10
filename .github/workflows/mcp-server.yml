@@ -191,10 +191,11 @@ jobs:
           #
           URL="${{ steps.deploy.outputs.webapp-url }}"
 
-          # --retry-all-errors covers the cold start: the first hit after a deploy can land
+          # --retry-all-errors covers the cold start (up to ~7 minutes on B1 after a deploy,
+          # the retry budget is ~11 minutes): the first hit after a deploy can land
           # while the site is still warming up and answer 5xx.
           CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
-                   --retry 5 --retry-all-errors --retry-delay 10 --max-time 30 \
+                   --retry 20 --retry-all-errors --retry-delay 30 --max-time 30 \
                    "${URL%/}/mcp")
 
           if [ "${CODE}" != "401" ]; then
@@ -258,7 +259,7 @@ jobs:
           URL="${{ steps.deploy.outputs.webapp-url }}"
 
           CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
-                   --retry 5 --retry-all-errors --retry-delay 10 --max-time 30 \
+                   --retry 20 --retry-all-errors --retry-delay 30 --max-time 30 \
                    "${URL%/}/mcp")
 
           if [ "${CODE}" != "401" ]; then
