@@ -9,21 +9,14 @@ namespace Fakvio.Contracts.Dto.CompanySettings;
 /// cannot be changed after provisioning (they're managed by the provisioning service).
 /// In the PostgreSQL multi-schema architecture, the schema is created during provisioning
 /// and is immutable afterward.
+///
+/// Patch semantics: every field is nullable and null means "keep the stored value", so the
+/// /my-company page can save one section (SMTP, AI or EPO) without touching the others.
+/// The SysAdmin-only MaxUsers/AdminNotes pair is deliberately NOT here — it lives on
+/// <see cref="UpdateCompanyAdminSettingsDto"/> (issue #184).
 /// </summary>
 public class UpdateCompanySystemSettingsDto
 {
-    /// <summary>
-    /// Maximum number of users allowed for this tenant. Null = unlimited.
-    /// </summary>
-    [Range(1, 10000)]
-    public int? MaxUsers { get; set; }
-
-    /// <summary>
-    /// Internal admin notes about this tenant.
-    /// </summary>
-    [StringLength(2000)]
-    public string? AdminNotes { get; set; }
-
     // ─── Company-Specific SMTP Settings ───────────────────────────────────────
     // All optional — null/empty means "use system SMTP" (fallback).
     // Set SmtpHost to a non-empty value to enable company-specific SMTP.
