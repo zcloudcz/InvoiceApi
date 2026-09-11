@@ -33,8 +33,10 @@ internal static class ReadinessIssueFormatter
     /// Keeps the machine name (the model may need it for a follow-up tool call) but, for
     /// document types, adds the words a user understands. Given a bare "CreditNote" the model
     /// tended to repeat it verbatim to a Czech user instead of saying "dobropis".
+    /// Also used by <c>ChatContextBuilder</c> for the system prompt, so every path that shows
+    /// readiness to the model describes document types the same way.
     /// </summary>
-    private static string DescribeField(string code, string field)
+    internal static string DescribeField(string code, string field)
     {
         if (code != ReadinessCodes.NumberSequenceMissing)
             return field;

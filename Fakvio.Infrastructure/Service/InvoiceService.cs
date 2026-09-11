@@ -243,13 +243,18 @@ public class InvoiceService : IInvoiceService
         }
 
         // Apply sorting
-        // Default sort: DocumentNumber descending (newest first) when no explicit sort is requested
+        // Default sort (no or unknown SortBy): newest first by IssueDate. Not by DocumentNumber —
+        // it is a string and a tenant can run several number series ("2582026017" vs "2026016"),
+        // so a text sort pushes a whole series to the end regardless of date.
+        // ThenByDescending(Id) breaks ties so paging stays stable when many invoices share
+        // one issue date (month-end billing). "?? DateTime.MinValue" keeps invoices without
+        // IssueDate last on PostgreSQL too (it puts NULLs first on DESC) — same as GetInvoicesAsync.
         var validSortFields = new[] { "DocumentNumber", "IssueDate", "DueDate", "TaxableSupplyDate", "TotalWithVat", "Status", "CreatedAt", "UpdatedAt" };
         var hasSortField = !string.IsNullOrWhiteSpace(filter.SortBy) && validSortFields.Contains(filter.SortBy, StringComparer.OrdinalIgnoreCase);
-        var sortBy = hasSortField ? filter.SortBy : "DocumentNumber";
-        var isDescending = hasSortField ? filter.IsDescending : true;
 
-        query = query.ApplySorting(sortBy, isDescending);
+        query = hasSortField
+            ? query.ApplySorting(filter.SortBy, filter.IsDescending)
+            : query.OrderByDescending(i => i.IssueDate ?? DateTime.MinValue).ThenByDescending(i => i.Id);
 
         // Get paged results
         var pagedResult = await query.ToPagedResultAsync(filter.Page, filter.PageSize, cancellationToken);

@@ -20,6 +20,11 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+## 2026.09.11.2 — 2026-09-11
+
+### Opravy
+- **PR #429** — přehled faktur (UI i MCP `list_invoices`) bez zvoleného řazení ukazuje nejnovější faktury podle data vystavení; dřív řadil číslo dokladu jako text, takže u dvou číselných řad celá jedna řada propadla na konec a „poslední faktury" chyběly. MCP `list_invoices` nově přijímá `sortBy` / `sortDirection`. (PR #429, `bce347f`)
+
 ## 2026.09.11 — 2026-09-11
 
 ### Změny
