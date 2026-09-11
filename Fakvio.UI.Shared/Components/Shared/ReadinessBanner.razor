@@ -40,10 +40,10 @@
 
             @if (issue.MissingFields.Count > 0)
             {
-                @* The same field names the 400 TENANT_NOT_READY response lists, so a user who
-                   does hit the refusal recognises what the banner had already told them. *@
+                @* The fields the 400 TENANT_NOT_READY response lists, translated — the API sends
+                   machine names such as "CreditNote", which must never reach the user raw. *@
                 <MudText Typo="Typo.caption" Class="d-block mb-2">
-                    @string.Join(", ", issue.MissingFields)
+                    @ReadinessIssueText.DescribeMissingFields(L, issue)
                 </MudText>
             }
         }

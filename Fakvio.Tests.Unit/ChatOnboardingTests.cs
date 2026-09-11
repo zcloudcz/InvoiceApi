@@ -92,6 +92,22 @@ public class ChatOnboardingTests
     }
 
     [Fact]
+    public void WelcomeNamesTheMissingFields_SoASequenceGapSaysWhichDocumentType()
+    {
+        // "No sequence for this document type" alone does not say which one — the chat bullet
+        // has no caption line like the banner, so the fields ride on the bullet itself.
+        var issue = Issue(ReadinessCodes.NumberSequenceMissing, EReadinessSeverity.Blocking);
+        issue.MissingFields = [nameof(EDocumentType.CreditNote)];
+
+        var welcome = ChatOnboarding.BuildWelcome(Report(issue), _localizer);
+
+        welcome.ShouldNotBeNull();
+        // The echo localizer returns the key, so this proves the document-type label key was used.
+        welcome.ShouldContain(
+            $"- Readiness_Code_{ReadinessCodes.NumberSequenceMissing} — Template_DocumentTypeCreditNote");
+    }
+
+    [Fact]
     public void UnknownCode_FallsBackToTheGenericSentence_InsteadOfLeakingTheCode()
     {
         // Older UI against a newer API. The user must never read "ISSUER_FOO"; shared with

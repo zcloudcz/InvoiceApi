@@ -101,7 +101,10 @@
             <CellTemplate>
                 <MudChip T="string" Size="Size.Small"
                          Color="@(context.Item.DocumentType == EDocumentType.Invoice ? Color.Primary : Color.Warning)">
-                    @(context.Item.DocumentType == EDocumentType.Invoice ? L["Template_DocumentTypeInvoice"] : L["Template_DocumentTypeCreditNote"])
+                    @* Key per type — a two-way Invoice/else switch labelled the seeded Proforma and
+                       tax-receipt sequences "Credit note", so a tenant with no credit-note sequence
+                       believed it had one. *@
+                    @L[$"Template_DocumentType{context.Item.DocumentType}"]
                 </MudChip>
             </CellTemplate>
         </PropertyColumn>

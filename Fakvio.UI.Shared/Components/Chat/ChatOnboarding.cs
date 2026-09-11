@@ -53,7 +53,14 @@ public static class ChatOnboarding
         sb.AppendLine();
 
         foreach (var issue in blocking)
-            sb.AppendLine($"- {ReadinessIssueText.Describe(localizer, issue)}");
+        {
+            // The banner shows the missing fields on a line of their own; a chat bullet has no
+            // such line, so they follow a dash. Without them "no sequence for this document type"
+            // would not say WHICH document type.
+            var fields = ReadinessIssueText.DescribeMissingFields(localizer, issue);
+            var text = ReadinessIssueText.Describe(localizer, issue);
+            sb.AppendLine(fields.Length == 0 ? $"- {text}" : $"- {text} — {fields}");
+        }
 
         sb.AppendLine();
         sb.Append(localizer["Chat_Onboarding_Ask"].Value);

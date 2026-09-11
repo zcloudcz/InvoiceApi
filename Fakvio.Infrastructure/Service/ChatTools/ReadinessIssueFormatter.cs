@@ -24,8 +24,30 @@ internal static class ReadinessIssueFormatter
         var issuer = issue.IssuerName is null ? string.Empty : $" (issuer: {issue.IssuerName})";
 
         sb.AppendLine($"[{severity}] {issue.Code}{issuer}");
-        sb.AppendLine($"  Missing: {string.Join(", ", issue.MissingFields)}");
+        sb.AppendLine($"  Missing: {string.Join(", ", issue.MissingFields.Select(f => DescribeField(issue.Code, f)))}");
         sb.AppendLine($"  Fix at: {issue.FixRoute}");
         sb.AppendLine();
+    }
+
+    /// <summary>
+    /// Keeps the machine name (the model may need it for a follow-up tool call) but, for
+    /// document types, adds the words a user understands. Given a bare "CreditNote" the model
+    /// tended to repeat it verbatim to a Czech user instead of saying "dobropis".
+    /// </summary>
+    private static string DescribeField(string code, string field)
+    {
+        if (code != ReadinessCodes.NumberSequenceMissing)
+            return field;
+
+        var words = field switch
+        {
+            nameof(EDocumentType.Invoice)              => "invoice; Czech: faktura",
+            nameof(EDocumentType.CreditNote)           => "credit note; Czech: dobropis",
+            nameof(EDocumentType.Proforma)             => "proforma / advance invoice; Czech: zálohová faktura",
+            nameof(EDocumentType.TaxReceiptForAdvance) => "tax receipt for a received advance; Czech: daňový doklad o přijaté platbě",
+            _                                          => null
+        };
+
+        return words is null ? field : $"{field} ({words})";
     }
 }

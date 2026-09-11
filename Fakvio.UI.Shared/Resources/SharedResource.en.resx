@@ -1680,8 +1680,22 @@
   <data name="Readiness_Code_ISSUER_REGISTRATION_NUMBER_MISSING" xml:space="preserve"><value>Your company has no registration number (IČO).</value></data>
   <data name="Readiness_Code_ISSUER_TAX_NUMBER_MISSING" xml:space="preserve"><value>Your company is a VAT payer but has no tax number (DIČ).</value></data>
   <data name="Readiness_Code_ISSUER_BANK_ACCOUNT_MISSING" xml:space="preserve"><value>Your company has no bank account, so invoices would not say where to pay.</value></data>
-  <data name="Readiness_Code_NUMBER_SEQUENCE_MISSING" xml:space="preserve"><value>There is no active number sequence for this document type.</value></data>
+  <data name="Readiness_Code_NUMBER_SEQUENCE_MISSING" xml:space="preserve"><value>There is no active default number sequence for this document type.</value></data>
   <data name="Readiness_Code_EPO_HEADER_INCOMPLETE" xml:space="preserve"><value>EPO header data is missing, so the VAT return cannot be exported.</value></data>
+  <!-- Readiness_Field_* = labels for ReadinessIssueDto.MissingFields (property names sent by
+       TenantReadinessService). Document types of NUMBER_SEQUENCE_MISSING reuse the existing
+       Template_DocumentType* keys. -->
+  <data name="Readiness_Field_IsIssuer" xml:space="preserve"><value>Your company (issuer)</value></data>
+  <data name="Readiness_Field_Address" xml:space="preserve"><value>Registered address</value></data>
+  <data name="Readiness_Field_Street" xml:space="preserve"><value>Street</value></data>
+  <data name="Readiness_Field_City" xml:space="preserve"><value>City</value></data>
+  <data name="Readiness_Field_PostalCode" xml:space="preserve"><value>Postal code</value></data>
+  <data name="Readiness_Field_Country" xml:space="preserve"><value>Country</value></data>
+  <data name="Readiness_Field_RegistrationNumber" xml:space="preserve"><value>Registration number (IČO)</value></data>
+  <data name="Readiness_Field_TaxNumber" xml:space="preserve"><value>Tax number (DIČ)</value></data>
+  <data name="Readiness_Field_BankAccount" xml:space="preserve"><value>Bank account</value></data>
+  <data name="Readiness_Field_EpoTaxOfficeCode" xml:space="preserve"><value>Tax office code</value></data>
+  <data name="Readiness_Field_EpoTaxOfficeBranchCode" xml:space="preserve"><value>Tax office branch code</value></data>
   <!-- Setup checklist on the dashboard (issue #210) -->
   <data name="SetupChecklist_Title" xml:space="preserve"><value>Finish setup</value></data>
   <data name="SetupChecklist_Defer" xml:space="preserve"><value>Remind me later</value></data>

@@ -1680,8 +1680,22 @@
   <data name="Readiness_Code_ISSUER_REGISTRATION_NUMBER_MISSING" xml:space="preserve"><value>Vlastní firma nemá vyplněné IČO.</value></data>
   <data name="Readiness_Code_ISSUER_TAX_NUMBER_MISSING" xml:space="preserve"><value>Vlastní firma je plátce DPH, ale nemá vyplněné DIČ.</value></data>
   <data name="Readiness_Code_ISSUER_BANK_ACCOUNT_MISSING" xml:space="preserve"><value>Vlastní firma nemá bankovní účet, na faktuře by chybělo, kam zaplatit.</value></data>
-  <data name="Readiness_Code_NUMBER_SEQUENCE_MISSING" xml:space="preserve"><value>Pro tento typ dokladu není aktivní žádná číselná řada.</value></data>
+  <data name="Readiness_Code_NUMBER_SEQUENCE_MISSING" xml:space="preserve"><value>Pro tento typ dokladu chybí aktivní výchozí číselná řada.</value></data>
   <data name="Readiness_Code_EPO_HEADER_INCOMPLETE" xml:space="preserve"><value>Nejsou vyplněny hlavičkové údaje EPO, bez nich nepůjde vyexportovat přiznání k DPH.</value></data>
+  <!-- Readiness_Field_* = popisky ReadinessIssueDto.MissingFields (názvy vlastností, které
+       posílá TenantReadinessService). Typy dokladů u NUMBER_SEQUENCE_MISSING používají
+       existující klíče Template_DocumentType*. -->
+  <data name="Readiness_Field_IsIssuer" xml:space="preserve"><value>Vlastní firma (vystavitel)</value></data>
+  <data name="Readiness_Field_Address" xml:space="preserve"><value>Adresa sídla</value></data>
+  <data name="Readiness_Field_Street" xml:space="preserve"><value>Ulice</value></data>
+  <data name="Readiness_Field_City" xml:space="preserve"><value>Město</value></data>
+  <data name="Readiness_Field_PostalCode" xml:space="preserve"><value>PSČ</value></data>
+  <data name="Readiness_Field_Country" xml:space="preserve"><value>Země</value></data>
+  <data name="Readiness_Field_RegistrationNumber" xml:space="preserve"><value>IČO</value></data>
+  <data name="Readiness_Field_TaxNumber" xml:space="preserve"><value>DIČ</value></data>
+  <data name="Readiness_Field_BankAccount" xml:space="preserve"><value>Bankovní účet</value></data>
+  <data name="Readiness_Field_EpoTaxOfficeCode" xml:space="preserve"><value>Kód finančního úřadu</value></data>
+  <data name="Readiness_Field_EpoTaxOfficeBranchCode" xml:space="preserve"><value>Kód územního pracoviště</value></data>
   <!-- Setup checklist on the dashboard (issue #210) -->
   <data name="SetupChecklist_Title" xml:space="preserve"><value>Dokončit nastavení</value></data>
   <data name="SetupChecklist_Defer" xml:space="preserve"><value>Připomenout později</value></data>
