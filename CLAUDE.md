@@ -79,3 +79,16 @@ PR bez odpovídající aktualizace průvodce (pokud se změna týká jeho obsahu
 
 Tento repozitář používá AgenticTeam (Story → Task → Dev → Review → Test → Ops) řízený přes
 GitHub Project v2 board. Detaily a přechody stavů viz `.claude/BOARD-OPS.md`.
+
+### Promoční stupně (repo-specifické — globální role je neznají)
+
+Role se berou z `~/.claude/agents/` a počítají se dvěma stupni `develop → master`. Tady jsou
+tři a toto pravidlo má přednost:
+
+- `develop` — integrační větev. Jediný cíl feature PR a jediná větev, kam merguje `agent-ops`.
+- `TEST-ENV` — staging. Plní ho jen `/release` (develop → TEST-ENV); ten karty nepřesouvá.
+- `master` — produkce. Plní ho jen `/release-prod` (TEST-ENV → master); jen ten přesouvá karty
+  z `Implemented` do `Approved`.
+- Žádná role (dev, tester, ops, warden) nepushuje ani nemerguje do `TEST-ENV` ani `master`.
+  Kde globální role píše „run /release to ship to master", platí „/release → TEST-ENV,
+  pak /release-prod → master".
