@@ -38,4 +38,16 @@
     <ProjectReference Include="..\Fakvio.Infrastructure\Fakvio.Infrastructure.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Self-signed certificate of the PostgreSQL server (public part only, no secret).
+         The connection string on App Service references it as
+         Root Certificate=/home/site/wwwroot/certs/fakvio-db-server.crt with Ssl Mode=VerifyCA,
+         so the client checks it talks to OUR server and not just to something that speaks TLS.
+         VerifyCA rather than VerifyFull because the host is addressed by IP (the certificate's
+         CN/SAN is the VPS hostname). Rotating the certificate = replace this file + redeploy. -->
+    <None Update="certs/**">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>
