@@ -20,6 +20,33 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+## 2026.09.11.2 — 2026-09-11
+
+### Opravy
+- **PR #429** — přehled faktur (UI i MCP `list_invoices`) bez zvoleného řazení ukazuje nejnovější faktury podle data vystavení; dřív řadil číslo dokladu jako text, takže u dvou číselných řad celá jedna řada propadla na konec a „poslední faktury" chyběly. MCP `list_invoices` nově přijímá `sortBy` / `sortDirection`. (PR #429, `bce347f`)
+
+## 2026.09.11 — 2026-09-11
+
+### Změny
+- **#426** — testovací prostředí zrušeno (workflow `testenv_fakvio-api.yml`, `blazorui-test-deploy.yml` a job `deploy-http-test` odstraněny; Azure testovací appky smazány); certifikát PostgreSQL serveru je součástí balíčku API (`certs/fakvio-db-server.crt`) → connection string produkce běží s `Ssl Mode=VerifyCA`. (PR #426)
+
+## 2026.09.10.4 — 2026-09-10
+
+### Změny
+- **#423** — Tailscale tunel k databázi odstraněn: App Service má pevnou sadu outbound IP, PostgreSQL je dostupný přímo (TLS, allowlist 19 IP na firewallu a v `pg_hba.conf`). Pryč je i startup gate (`StartupGateMiddleware`, pole `startupDatabaseReady` v health) a `RetryAfterHandler` v UI; migrace masteru běží synchronně před prvním requestem. Produkce přepnuta 2026-09-10 večer. (PR #423)
+- **#422** — delší retry ve verify krocích deploy workflow (první start na B1 trvá až 7 min); docs: `WEBSITES_CONTAINER_START_TIME_LIMIT=900`. (PR #422)
+
+## 2026.09.10.3 — 2026-09-10
+
+### Změny
+- **#419** — hosting API a MCP HTTP hostu přesunut z Azure Functions (Flex Consumption) na Azure App Service (Linux B1, plan `asp-fakvio-b1`): jeden host `Fakvio.API`, projekty `Fakvio.Functions` a `Fakvio.Functions.Generator` smazány, Tailscale tunel a startup gate běží v API hostu, nový `ReminderWorker` (denní upomínky 06:00 UTC) nahrazuje timer trigger, `McpKeepAlive` odstraněn (Always On). Nové adresy: API `https://fakvio-api.azurewebsites.net`, test `https://fakvio-api-test.azurewebsites.net`; MCP web appky `fakvio-mcp-web(-test)`. (PR #419, `07ea98d`)
+
+## 2026.09.10.2 — 2026-09-10
+
+### Opravy
+- **#416** — uvítání asistenta pro nedokončené nastavení (#214) se nově odesílá jako součást první odpovědi konverzace (`SeedAssistantMessage`), takže asistent má kontext a může se efektivně ptát na chybějící údaje; prompt nyní jmenuje konkrétní chybějící pole (např. `NUMBER_SEQUENCE_MISSING: Invoice, CreditNote`) místo generických kódů. (PR #416, `6898311`)
+- **#364** (bezpečnostní oprava) — `UserDto` v odpovědi na listovací endpointy (`GET /api/user`, `/api/user/paged`, `/api/user/{id}`) nesl syrový `InvitationToken`, a protože `POST /api/user/set-password` ten token přijímá anonymně, šlo o přihlašovací údaj viditelný komukoli přihlášenému ve firmě. Navíc forgot-password recykluje stejné pole, takže obyčejný `User` mohl počkat, až si Admin vyžádá reset hesla, a účet mu převzít. Token je teď pryč z `UserDto` úplně; pozvánka ho vrací na vlastním `InvitedUserDto` (jen server-side, do e-mailu) a nová úzká cesta `GET /api/user/{id}/invitation-token` (jen `Admin`/`SysAdmin`) slouží pro obnovení pozvánkového odkazu. (PR #365, `18810d7`)
+
 ## 2026.09.10 — 2026-09-10
 
 ### Opravy

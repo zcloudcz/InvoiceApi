@@ -154,7 +154,7 @@ Grid zobrazuje vydané faktury s těmito sloupci:
 **Filtrace:**
 - Globální textové hledání (číslo dokladu, klient, poznámky) — debounce 300 ms
 - Sloupcové filtry (kliknutím na záhlaví sloupce) — datum funguje s operátory =, >, <, between
-- Sloupcové řazení (kliknutím na záhlaví)
+- Sloupcové řazení (kliknutím na záhlaví); bez zvoleného řazení jsou nahoře nejnovější faktury podle data vystavení
 
 **Hromadné operace** (bulkové — po zaškrtnutí checkboxů):
 - Vystavit (pouze Draft faktury)
@@ -685,7 +685,9 @@ Nechcete-li to řešit v chatu, panel zavřete a doplňte údaje na příslušn�
 odkaz **Doplnit** v banneru na dashboardu vede přímo na ně.
 
 Uvítání přijde **jednou za přihlášení**. Když panel zavřete, do dalšího přihlášení už se sám
-neotevře. Jakmile je nastavení kompletní, uvítání se nezobrazuje vůbec.
+neotevře. Jakmile je nastavení kompletní, uvítání se nezobrazuje vůbec. Jakmile na uvítání
+odpovíte, stane se součástí té konverzace — asistent na něj navazuje a najdete ho i v historii
+chatu.
 
 ### Co AI asistent umí
 

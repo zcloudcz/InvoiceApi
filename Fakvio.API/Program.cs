@@ -1,10 +1,12 @@
 ﻿using System.Globalization;
 using Fakvio.API.Middleware;
+using Fakvio.API.Telemetry;
 using Fakvio.Application.Service;
 using Fakvio.Infrastructure.Data;
 using Fakvio.Infrastructure.DependencyInjection;
 using Fakvio.Infrastructure.Logging;
 using Fakvio.Infrastructure.Service;
+using Microsoft.ApplicationInsights.Extensibility;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi;
 using Swashbuckle.AspNetCore.SwaggerGen;
@@ -25,17 +27,28 @@ var builder = WebApplication.CreateBuilder(args);
 
 // ── Shared DI registrations ─────────────────────────────────────────────────
 // These extension methods are defined in Fakvio.Infrastructure/DependencyInjection/
-// and shared with Fakvio.Functions to eliminate code duplication.
+// and shared with the MigrationTool and the test hosts.
 // They register: DbContexts, application services, cloud storage, logging, auth, OAuth.
 builder.Services.AddFakvioCore(builder.Configuration);
 builder.Services.AddFakvioAuthentication(builder.Configuration);
 
-// ── API-specific: Background services for log management ────────────────────
-// LogFlushService: drains the DatabaseLoggerProvider queue to AppLog table every 5 seconds.
+// ── Background services ─────────────────────────────────────────────────────
+// LogFlushService: drains the DatabaseLoggerProvider queue to AppLog table every 20 seconds.
 // LogCleanupService: deletes old Debug/Info logs (>48h) every hour.
-// NOTE: In Azure Functions, these are replaced by timer triggers (TimerFunctions.cs).
+// ReminderWorker: daily dunning at 06:00 UTC. (ImapPollWorker is registered by AddFakvioCore.)
+// All of them need "Always On" on the App Service — an idle-recycled process runs nothing.
 builder.Services.AddHostedService<LogFlushService>();
 builder.Services.AddHostedService<LogCleanupService>();
+builder.Services.AddHostedService<ReminderWorker>();
+
+// ── Application Insights ────────────────────────────────────────────────────
+// Reads APPLICATIONINSIGHTS_CONNECTION_STRING from the App Service settings; without it
+// (local dev, tests) the SDK stays quiet. CorrelationIdTelemetryInitializer stamps our
+// user-facing CorrelationId on every telemetry item so a browser-reported id can be
+// searched in App Insights: customDimensions.CorrelationId == "guid".
+builder.Services.AddApplicationInsightsTelemetry();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddSingleton<ITelemetryInitializer, CorrelationIdTelemetryInitializer>();
 
 // ── API-specific: Controllers ───────────────────────────────────────────────
 builder.Services.AddControllers();
@@ -122,44 +135,38 @@ var app = builder.Build();
 // /api/diagnostic/health to ask instead. See LogDatabaseAuthMode + SELFHOST-DB.md §3.4.
 app.Services.LogDatabaseAuthMode();
 
-// ── Startup migrations ──────────────────────────────────────────────────────
-// Apply database migrations automatically on startup.
-// Step 1: Migrate the master database (Users, Companies, CompanySystemSettings, code tables).
-// Step 2: Tenant migrations are handled LAZILY by ITenantDbContextFactory.EnsureMigratedAsync
-//         — each tenant schema is migrated on first request (cached per process lifetime).
-//         This is faster at startup and handles tenants provisioned while the app is running.
+// ── Startup migration (master DB) ───────────────────────────────────────────
+// Applied synchronously before the first request. Tenant schemas are migrated LAZILY by
+// ITenantDbContextFactory.EnsureMigratedAsync on their first request (cached per process).
+//
+// A failure is logged and recorded (StartupState → /api/diagnostic/health) instead of
+// crashing the host: a crash-looping App Service container answers 503 with no clue why,
+// while a running host still serves the health endpoint and App Insights gets the error.
 using (var scope = app.Services.CreateScope())
 {
-    // Master DB migrations — always applied first.
-    var masterDb = scope.ServiceProvider.GetRequiredService<MasterDbContext>();
-
-    // Skip for non-relational providers. Integration tests swap PostgreSQL for the EF Core
-    // InMemory provider, which has no migration history and throws on MigrateAsync().
-    // The check is on the provider itself rather than on an environment name, so any test
-    // host works regardless of which ASPNETCORE_ENVIRONMENT it needs to simulate.
-    if (masterDb.Database.IsRelational())
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    try
     {
-        await masterDb.Database.MigrateAsync();
+        var masterDb = scope.ServiceProvider.GetRequiredService<MasterDbContext>();
 
-        // Record the outcome for /api/diagnostic/health. Inside the IsRelational branch on
-        // purpose: integration tests run on the InMemory provider and never migrate, so
-        // reporting a successful migration there would be a lie. This host still migrates
-        // synchronously, so a failure crashes startup exactly as before.
-        StartupState.MarkMigration(succeeded: true);
+        // Skip for non-relational providers. Integration tests swap PostgreSQL for the EF Core
+        // InMemory provider, which has no migration history and throws on MigrateAsync().
+        // The check is on the provider itself rather than on an environment name, so any test
+        // host works regardless of which ASPNETCORE_ENVIRONMENT it needs to simulate.
+        if (masterDb.Database.IsRelational())
+        {
+            logger.LogInformation("Startup: applying master database migrations...");
+            await masterDb.Database.MigrateAsync();
+            logger.LogInformation("Startup: master database migrated successfully");
+            StartupState.MarkMigration(succeeded: true);
+        }
     }
-
-    // FOR DEVELOPMENT ONLY - delete all dbs and start fresh on each run. Comment out in production!
-    //var provisioningService = scope.ServiceProvider.GetRequiredService<ITenantProvisioningService>();
-    //await provisioningService.DeleteAllTenantDbs();
-    //await masterDb.Database.EnsureDeletedAsync();
-    //await masterDb.Database.MigrateAsync();
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Startup: database migration failed — API calls will return errors until resolved");
+        StartupState.MarkMigration(succeeded: false, error: ex.GetBaseException().Message);
+    }
 }
-
-// This host reaches its database directly — there is no Tailscale tunnel and therefore no
-// window in which the connection string points at a port nobody is listening on. The startup
-// gate is open from the first request; the flag exists so the shared health endpoint reports
-// the same fields on both hosts. See StartupState.
-StartupState.MarkDatabaseReady();
 
 // ── HTTP pipeline ───────────────────────────────────────────────────────────
 

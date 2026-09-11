@@ -54,10 +54,7 @@ public static class MauiProgram
             client.DefaultRequestHeaders.Add("Accept", "application/json");
         })
         .AddHttpMessageHandler<CorrelationIdHandler>()
-        .AddHttpMessageHandler<UnauthorizedRedirectHandler>()
-        // Same reason as the WASM host: the backend can be cold-starting and answer 503 +
-        // Retry-After, which this handler waits out instead of showing the user an error.
-        .AddHttpMessageHandler<RetryAfterHandler>();
+        .AddHttpMessageHandler<UnauthorizedRedirectHandler>();
 
         // Set invariant culture for number/date formatting consistency
         // (same as WASM — prevents locale-specific decimal separator issues)

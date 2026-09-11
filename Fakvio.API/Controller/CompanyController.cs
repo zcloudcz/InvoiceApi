@@ -210,9 +210,13 @@ public class CompanyController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error retrieving company {CompanyId}", id);
+            // Full exception (with stack trace) goes to the server log only — DatabaseLogger
+            // picks up the CorrelationId automatically and writes it to AppLog. The client gets
+            // just a reference ID, same pattern as ChatController (issue #156); see #174.
+            var correlationId = SafeErrorResponse.GetCorrelationId(HttpContext);
+            _logger.LogError(ex, "Error retrieving company {CompanyId} [{CorrelationId}]", id, correlationId);
             return StatusCode(StatusCodes.Status500InternalServerError,
-                new { message = ex.ToString() + "An error occurred while retrieving the company." });
+                new { message = SafeErrorResponse.BuildSafeErrorMessage(correlationId), correlationId });
         }
     }
 

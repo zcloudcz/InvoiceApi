@@ -25,29 +25,26 @@ Pokud máš pochybnost, **zde má pravdu DEVGUIDE.md**, ne komentáře v kódu (
 | `Fakvio.Application` | Class lib | Service kontrakty (`Service/I*.cs`). **Stateless logika** — žádný EF context přímo, žádný HTTP. |
 | `Fakvio.Infrastructure` | Class lib | Implementace Application interface. EF Core (3 DbContexty), repository, mapping (ZMapper), auth handlery, AI providers. Sem patří všechno, co sahá ven (DB, SMTP, IMAP, OAuth, Azure ARM). |
 | `Fakvio.API` | ASP.NET Core | HTTP host. Controllery, middleware (`Middleware/`: CorrelationId → Auth → Impersonation → TenantContext), Swagger (**jen v Development** — viz §12). Background workers (např. `ImapPollWorker`) hostuje přes `AddHostedService`. |
-| `Fakvio.Functions` | Azure Functions Isolated Worker | Druhý hostovací model (Azure Functions). HTTP triggery + TimerTrigger úlohy. Vlastní middleware mirror. |
-| `Fakvio.Functions.Generator` | Roslyn source generator | Generuje rouge boilerplate pro Functions (HTTP endpoint registrace). |
 | `Fakvio.UI.Shared` | Razor Class Library (RCL) | **Všechny** Blazor stránky, komponenty, services, modely, resources. Sdílí WASM host i MAUI host. |
 | `Fakvio.BlazorUI` | Blazor WebAssembly | Tenký WASM host. Pouze `Program.cs`, `index.html`, PWA assets. |
 | `Fakvio.MauiApp` | MAUI Blazor Hybrid | Native shell pro Android/iOS/macOS/Windows. Sdílí komponenty přes `UI.Shared`. |
 | `Fakvio.McpServer` | Console (.NET tool) | MCP server pro AI klienty. Dva režimy — stdio (výchozí) a Streamable HTTP, ModelContextProtocol 2.2.0. |
 | `Fakvio.MigrationTool` | Console | DB migrace, seed master schema, provisioning helper. |
 | `Fakvio.AresService` | Class lib | Klient pro ARES (CZ obchodní rejstřík) — autonomní, bez EF. |
-| `Fakvio.Tests.Unit` | xUnit | Unit testy (3345 k 2026-08-26). Stack: xUnit + **NSubstitute** + **Shouldly** + EF InMemory. |
+| `Fakvio.Tests.Unit` | xUnit | Unit testy (3393 k 2026-08-26). Stack: xUnit + **NSubstitute** + **Shouldly** + EF InMemory. |
 | `Fakvio.Tests.Integration` | xUnit | Integration testy (5). `InvoiceApiFactory : WebApplicationFactory<Program>`. |
 | `Fakvio.Tests.MigrationTool` | xUnit | Testy `Fakvio.MigrationTool` proti reálnému PostgreSQL (3). Vlastní projekt kvůli izolaci procesně globálního `Npgsql.EnableLegacyTimestampBehavior`. |
 | `Fakvio.Tests.Playwright` | NUnit | E2E browser testy (192 k 2026-08-26). Czech locale, Prague TZ. |
 
-### 1.2 Hostovací modely (důležité)
+### 1.2 Hostovací model
 
-Aplikace má **dva paralelní hosty**, které musí dělat totéž:
+Aplikace běží na jediném hostiteli **Fakvio.API** (ASP.NET Core) nasazeném na Azure App Service.
 
 | Host | Použití | Background work | Tenant resolution |
 |------|---------|-----------------|-------------------|
-| **Fakvio.API** (ASP.NET Core) | Lokální dev, klasický App Service / VM deploy | `IHostedService` / `BackgroundService` | `TenantContextMiddleware` |
-| **Fakvio.Functions** (Isolated Worker) | Azure Functions consumption plan deploy | `[TimerTrigger]` jen — `BackgroundService` se neškáluje na zero | mirror middleware (`Fakvio.Functions/Middleware/`) |
+| **Fakvio.API** (ASP.NET Core) | Lokální dev, App Service (Azure), VM | `IHostedService` / `BackgroundService` registrované v DI | `TenantContextMiddleware` |
 
-**Důsledek:** Každá pravidelná úloha musí existovat ve třech kusech — viz §6 (Background work pattern).
+**Poznámka:** Podrobnosti o výběru App Service místo Azure Functions viz §9.4.
 
 ### 1.3 Vrstvy (závislosti shora dolů)
 
@@ -55,7 +52,7 @@ Aplikace má **dva paralelní hosty**, které musí dělat totéž:
 UI.Shared / BlazorUI / MauiApp ──┐
                                  ├──► Contracts ◄──┐
 McpServer ──────────────────────►│                 │
-API / Functions ─────────────────┴──► Application ─┤
+API ──────────────────────────────┴──► Application ─┤
                                        │           │
                                        ▼           │
                                  Infrastructure ───┘
@@ -163,6 +160,20 @@ Reuse **InvitationToken** mechaniku (`User.InvitationToken` + `InvitationTokenEx
 - **Anti-enumeration**: vrací `null` (success-like) i pro neexistující email, aby útočník neviděl rozdíl.
 - Set: `IUserService.SetPasswordAsync` (`IUserService.cs:107`) — validuje token, expiraci, BCrypt hash, **vyčistí token** (one-shot).
 
+**Token se NIKDY nevrací z listovacích endpointů** (issue #364). `SetPassword` je `[AllowAnonymous]`,
+takže token _je_ přihlašovací údaj — a protože forgot-password recykluje to samé pole, byl by
+token na `UserDto` eskalace `User` → `Admin` uvnitř firmy:
+
+| Kde | Co dostane volající |
+|-----|--------------------|
+| `GET /api/user`, `/api/user/paged`, `/api/user/{id}` (`[Authorize]`) | jen `UserDto.IsInvitationPending` — `UserDto` **žádnou** vlastnost `InvitationToken` nemá |
+| `POST /api/user/invite` (`Admin,SysAdmin`) | `UserDto` v těle odpovědi; token zůstává na serveru v `InvitedUserDto` a jde jen do e-mailu |
+| `GET /api/user/{id}/invitation-token` (`Admin,SysAdmin`) | token — úzká cesta pro obnovení pozvánkového odkazu; tyto role už stejně umí `admin-reset-password`, takže nedostanou nic navíc |
+
+Když přidáváš nový endpoint vracející uživatele: mapuj přes `UserService.MapToDto` a token nikam
+nepřidávej. Hlídá to `Fakvio.Tests.Unit/UserInvitationTokenLeakTests.cs` — asertuje na
+serializovaném JSONu, ne na vlastnosti, takže chytí i únik jinou cestou.
+
 ### 2.6 CredentialProtector (šifrování secrets v DB)
 
 Co chrání: SMTP hesla, OAuth secrets, AI provider API keys, Azure Blob Storage connection strings uložené v `CompanySystemSettings` / `SystemConfiguration`.
@@ -173,8 +184,7 @@ Co chrání: SMTP hesla, OAuth secrets, AI provider API keys, Azure Blob Storage
 volá `ISystemConfigurationService.TestAzureBlobConnectionAsync()`, která resolvuje connection string
 stejnou 3-tier logikou jako `AzureBlobFileStorage` (DB → appsettings.json), vytvoří `BlobServiceClient`
 a zavolá `GetPropertiesAsync`. Vždy vrátí HTTP 200 s `{ success: bool, error: string? }` tak, aby UI
-mohl zobrazit error bez řešení HTTP status kódů. Stejný endpoint je dostupný i v Azure Functions
-přes `SystemConfigurationFunctions.SystemConfiguration_TestBlobConnection`.
+mohl zobrazit error bez řešení HTTP status kódů.
 
 #### Credential health check endpoint
 
@@ -226,7 +236,7 @@ Functions přes `SystemConfigurationFunctions.SystemConfiguration_GetCredentialH
 | MasterDbContext | Implementuje `IDataProtectionKeyContext`, `DbSet<DataProtectionKey> DataProtectionKeys` |
 | NuGet | `Microsoft.AspNetCore.DataProtection.EntityFrameworkCore` |
 
-**`SetApplicationName("Fakvio")`** je povinný — bez něj API host a Functions host mají **různé** application discriminator → generují různé klíče → navzájem nedešifrují.
+**`SetApplicationName("Fakvio")`** je povinný — bez něj by dvě instance API hostu (nebo MigrationTool a API) měly **různé** application discriminator → generují různé klíče → navzájem nedešifrují.
 
 **Symptom při chybějící persistenci**: `CredentialProtector.Decrypt()` zachytí `CryptographicException` a vrátí raw ciphertext jako "legacy plaintext" → služby (IMAP, SMTP) dostanou garbage místo hesla → `AuthenticationException: Incorrect authentication data`.
 
@@ -236,7 +246,7 @@ Functions přes `SystemConfigurationFunctions.SystemConfiguration_GetCredentialH
 
 ### 2.8 reCAPTCHA gate (issue #200)
 
-`CaptchaService` (`Fakvio.Infrastructure/Service/CaptchaService.cs`) je **jediná** ochrana před zneužitím u tří anonymních endpointů — `/api/auth/login`, `/api/auth/register` a ARES proxy `/api/auth/ares/{ico}`. Rate limiting v repu **není** (a nesmí být middleware — Functions host ho neprovede, viz §11.3).
+`CaptchaService` (`Fakvio.Infrastructure/Service/CaptchaService.cs`) je **jediná** ochrana před zneužitím u tří anonymních endpointů — `/api/auth/login`, `/api/auth/register` a ARES proxy `/api/auth/ares/{ico}`. Rate limiting v repu **není**; od migrace na App Service je `AddRateLimiter` middleware možná cesta (viz §11.3).
 
 **Fail closed.** Cokoli zabrání kladnému ověření (výjimka, HTTP chyba od Googlu, chybějící `SecretKey`) znamená **odmítnutí** požadavku. Dřív se v těchto případech vracelo `true`, takže výpadek Googlu bránu úplně vypnul.
 
@@ -249,7 +259,7 @@ Functions přes `SystemConfigurationFunctions.SystemConfiguration_GetCredentialH
 
 **Action binding.** `VerifyAsync(token, expectedAction)` — druhý argument musí být stejný řetězec, jaký Blazor stránka předá `grecaptcha.execute()`. Token je na akci vázaný, takže bez porovnání by token z registračního formuláře otevřel i login a ARES proxy.
 
-**Kde je escape hatch nastavený**: `appsettings.Development.json`, `Fakvio.Functions/local.settings.json` (`Recaptcha__Enabled`), `FakvioFactory` v integračních testech (`builder.UseSetting`). Testy, které testují **samotnou bránu**, místo toho substituují `ICaptchaService`.
+**Kde je escape hatch nastavený**: `appsettings.Development.json` (`Recaptcha__Enabled`), `FakvioFactory` v integračních testech (`builder.UseSetting`). Testy, které testují **samotnou bránu**, místo toho substituují `ICaptchaService`.
 
 **AresCache TTL.** ARES proxy je anonymní, takže počet klíčů v `AresCache` volí volající. `AresCacheRepository.SaveCacheAsync` proto při každém zápisu smaže dávku expirovaných řádků (`ExpiredSweepBatchSize`, index na `ExpiresAt`). Záměrně **není** periodická úloha (§6) — řádky vznikají jen na zápisové cestě, takže tabulka neroste, když se nezapisuje, a úklid nepotřebuje dvojici BackgroundService + `[TimerTrigger]` ani průchod všemi tenant schématy. Neúspěšné lookupy expirují za 1 hodinu (`AresServiceImpl.FailureCacheExpiration`), takže enumerace uklízí sama po sobě.
 
@@ -261,14 +271,14 @@ Dlouhodobý, revokovatelný credential pro strojové klienty (MCP server, curl, 
 |----|-----|--------|
 | Entita | `Fakvio.Domain/Entities/ApiKey.cs` | **Master schema** (migrace `AddApiKey_v147`), FK → `User`, cascade. |
 | Service | `Fakvio.Infrastructure/Service/ApiKeyService.cs` | Generování, hash, scopes, revokace. |
-| Endpointy | `Fakvio.API/Controller/ApiKeyController.cs` + `Fakvio.Functions/HttpFunctions/ApiKeyFunctions.cs` | `GET /api/api-key`, `POST /api/api-key`, `POST /api/api-key/{id}/revoke`, `GET /api/api-key/me`. Vždy jen **vlastní** klíče. |
+| Endpointy | `Fakvio.API/Controller/ApiKeyController.cs` | `GET /api/api-key`, `POST /api/api-key`, `POST /api/api-key/{id}/revoke`, `GET /api/api-key/me`. Vždy jen **vlastní** klíče. |
 | UI | `Fakvio.UI.Shared/Components/Pages/Integrations.razor` (`/settings/integrations`, #237) | Vlastní klíče libovolného přihlášeného uživatele: výpis, založení, revokace. Raw klíč se ukazuje v one-time panelu spolu s hotovými `mcpServers` bloky pro oba MCP režimy; zavření panelu ho zahodí z paměti. |
 | Formát klíče | `fak_live_` + 43 znaků Base64Url | 32 B z `RandomNumberGenerator`. Prefix `fak_` je nosný — podle něj vybírá auth scheme selector (JWT vždy začíná `eyJ`) a poznají ho secret scannery. |
 | Hash | `ApiKeyService.ComputeHash` | `Convert.ToBase64String(SHA256.HashData(...))`, sloupec `KeyHash` s **unique indexem**. |
 | Zobrazení | `KeyPrefix` = prvních 12 znaků | Jen pro výpis a korelaci v logu, **nikdy** jako selektor. |
 | Scopes | `EApiKeyScope { Read, Write }` | Uloženo `"read"` / `"read,write"`. `write` se normalizuje na `read,write`. Efektivní oprávnění = **role ∩ scope**. |
 | Revokace | `RevokedAt` + `RevokedByUserId` | Soft — řádek zůstává kvůli auditu. |
-| Validace vstupu | `ApiKeyService.CreateAsync` | Jméno neprázdné a ≤ 100 znaků (sloupec je `varchar(100)`), scope musí být **jménem** z `EApiKeyScope` (číselný tvar `"1"`/`"999"` je odmítnut — `Enum.TryParse` ho jinak bere), `ExpiresAt` v budoucnu. Validace patří **do service**, ne do controlleru: Functions host žádnou model validaci nemá. |
+| Validace vstupu | `ApiKeyService.CreateAsync` | Jméno neprázdné a ≤ 100 znaků (sloupec je `varchar(100)`), scope musí být **jménem** z `EApiKeyScope` (číselný tvar `"1"`/`"999"` je odmítnut — `Enum.TryParse` ho jinak bere), `ExpiresAt` v budoucnu. Validace patří **do service**, ne do controlleru — service ji vynucuje i pro volání mimo HTTP. |
 
 **Proč SHA-256 a ne BCrypt wf12 podle §2.1** (kompletní zdůvodnění je v komentáři u `ComputeHash`):
 adaptivní hash chrání *nízkoentropijní lidský vstup* před offline brute force, ale klíč je 32 B
@@ -301,12 +311,7 @@ Rozliší se podle prefixu (`fak_` vs `eyJ` u JWT) — žádná druhá hlavička
 | **Konstanty** | `Fakvio.Infrastructure/Authentication/ApiKeyAuthenticationDefaults.cs` | Jména schémat, claim typy, `ExtractRawKey` — aby se tři místa nerozešla v překlepu. |
 | **API host — driver** | `ApiKeyAuthenticationHandler` + policy scheme `FakvioBearer` v `AuthenticationExtensions` | Selector podle tokenu forwarduje na `ApiKey` nebo `JwtBearer`. |
 | **API host — scopes** | `Fakvio.API/Middleware/ApiKeyScopeMiddleware.cs`, zapojeno v `Program.cs` **za** `UseAuthentication()` | Tenká obálka nad guardem. |
-| **Functions host — driver** | `Fakvio.Functions/Middleware/ApiKeyAuthenticationMiddleware.cs` | Zrcadlo obojího. Isolated worker nemá `UseAuthentication()`, registrace schématu je tam **inertní**. |
 
-**Pořadí middlewarů ve Functions:** `Jwt → ApiKey → Impersonation → Tenant`. ApiKey je až **za**
-JWT, protože JWT middleware zapojuje `IHttpContextAccessor` do worker scope (potřebuje ho
-`MasterDbContext` na audit stamping). JWT middleware si tokenů s prefixem `fak_` nevšímá —
-jinak by na každý MCP call logoval „validation FAILED".
 
 **Claim set je znak po znaku shodný s JWT cestou** (`AuthService.GenerateJwtTokenAsync`):
 `NameIdentifier`, `Email`, `Name`, `Role`, podmíněně `CompanyId` — plus `api_key_scope`
@@ -316,8 +321,7 @@ takže **SysAdmin klíč + `X-Company-Id` impersonace funguje** (schválený def
 zafixováno testem).
 
 **Fail closed.** Neznámý / revokovaný / expirovaný klíč a klíč deaktivovaného uživatele
-nevrací principal → API host 401 (`AuthenticateResult.Fail`), Functions host nechá request
-anonymní a wrapper vrátí 401. Důvod se volajícímu **neříká**, jde jen do logu.
+nevrací principal → 401 (`AuthenticateResult.Fail`). Důvod se volajícímu **neříká**, jde jen do logu.
 
 **Scopes = `read` vs `read,write`.** Vynuceno podle HTTP metody: bezpečné metody
 (GET/HEAD/OPTIONS) projdou vždy, cokoli jiného chce `write`. Výjimky jsou v
@@ -383,18 +387,7 @@ Pipeline pořadí v `Fakvio.API/Program.cs`:
 - Header → claim `CompanyId` (přepíše JWT claim, pokud je).
 - **Security note**: middleware MUSÍ být *po* `UseAuthentication`, aby Role byl validní.
 
-### 3.4 Functions middleware (zrcadlový mirror)
-
-`Fakvio.Functions/Middleware/TenantContextMiddleware.cs:40-100` — stejný pattern, ale **pozor na dvě DI scope**:
-
-```
-httpContext.RequestServices    ← ASP.NET Core scope (HTTP triggery)
-context.InstanceServices       ← Functions Worker scope (kde žije Function class)
-```
-
-**Schema musí být nastavena na obou** scope, jinak Function vidí jiný `TenantDbContext` než middleware. Factory to řeší automaticky — pokud měníš tento middleware, ověř že na obou scope teče stejný `Schema`.
-
-### 3.5 Provisioning nového tenanta
+### 3.4 Provisioning nového tenanta
 
 `Fakvio.Infrastructure/Service/TenantProvisioningService.cs:51-165` `ProvisionTenantAsync`:
 
@@ -715,7 +708,7 @@ Implementace: `PaymentMatchingService.cs` (metoda `GetPaymentsForInvoiceAsync`).
 
 `Fakvio.Infrastructure/Service/ReminderService.cs:449-484` `ProcessOverdueInvoicesAsync`:
 
-1. Per-tenant scope (`Fakvio.Functions/ReminderFunctions.cs:50-108`).
+1. Per-tenant scope volané z `ReminderWorker` (BackgroundService, `Fakvio.Infrastructure/Service/ReminderWorker.cs`).
 2. Find invoices: `Status=Completed AND DueDate < today AND Paid=false`.
 3. Pro každou volá `ProcessSingleInvoiceAsync` (řádky 490-570):
    - Resolve effective settings: client override > company default.
@@ -988,7 +981,7 @@ Pořadí bloků shora dolů:
   platností 5 minut — záměrně ne sliding: sliding entry by se na vytížené instanci obnovovala
   provozem donekonečna a nikdy neexpirovala. Zápis (PUT/DELETE) cache invaliduje, ale
   `IMemoryCache` je **procesně lokální**, takže `Remove` zasáhne jen instanci, která zápis
-  odbavila; ostatní instance (produkce = škálovaný Azure Function App) dojedou starý prompt
+  odbavila; ostatní instance (produkce = App Service, případně více instancí) dojedou starý prompt
   nejvýše 5 minut. Distribuovaná cache ani invalidační kanál se vědomě nezavádějí (YAGNI) —
   ohraničené stárnutí stačí. Texty v UI i v ADMINGUIDE musejí slíbit **do 5 minut**, ne „okamžitě".
 - Prázdný i čistě bílý (whitespace) text se v obou polích bere jako „nenastaveno"
@@ -1003,7 +996,6 @@ Pořadí bloků shora dolů:
 - Endpointy: `GET/PUT/DELETE /api/system-configuration/ai-instructions` + `GET .../preview`,
   všechny `[Authorize(Roles = "SysAdmin")]`. Prefix `/api/system-configuration` je už
   v `MasterOnlyPaths` (§3.3), takže hlavička `X-Company-Id` není potřeba.
-  Functions zrcadlo: `Fakvio.Functions/HttpFunctions/AiInstructionsFunctions.cs`.
 - UI: `/ai-instructions` (`Fakvio.UI.Shared/Components/Pages/AiInstructions.razor`), SysAdmin sekce nav menu.
 
 #### Situační kontext (blok 6, issue #230)
@@ -1027,7 +1019,6 @@ fakturu" nebo „splatnost do pátku" nedá vyhodnotit:
   zůstává na `NavigateTool`. Query string se zahazuje (filtry a stránkování modelu nic neříkají).
 - Obě hodnoty jdou do promptu z requestu, takže je `ChatContextBuilder.Sanitize` zkracuje
   a zbavuje konců řádků — jinak by šitá route mohla podvrhnout vlastní sekci promptu.
-  Limity v DTO to nezachytí: Functions host request deserializuje sám, bez model validace.
 - Pravidla připravenosti se tu **neduplikují** — vlastní je `ITenantReadinessService`
   (issue #148). Warningy do promptu nejdou (model s nimi nemá co dělat) a detail chybějících
   polí zůstává v UI banneru; modelu stačí kód a stránka, kam uživatele poslat.
@@ -1047,6 +1038,9 @@ chybějící údaje do jedné zprávy nebo ohlásí uložení hodnoty, kterou to
 - Tooly se v textu jmenují obecně („the matching tool above"). Katalog se generuje z DI,
   takže jmenný seznam by byl druhá, ručně udržovaná kopie, co zastará při prvním novém toolu.
 - Nastavený tenant instrukce nedostane vůbec — jinak by je platil v tokenech v každém requestu.
+- Řádek `Setup not finished yet` nese i `MissingFields` nálezu
+  (`NUMBER_SEQUENCE_MISSING: Invoice, CreditNote (fix at /number-sequences)`) — samotný kód
+  modelu neřekne, na který typ dokladu nebo které pole adresy se má zeptat.
 - Klientskou půlku (proaktivní uvítání) řeší `ChatOnboarding`, viz §4.12.
 
 #### Chat AI Tools matice
@@ -1718,7 +1712,6 @@ vlastní výjimku ani vlastní tvar chyby**. Použij `ITenantReadinessService`.
 | DTO | `Fakvio.Contracts/Dto/Readiness/` | `ReadinessReportDto`, `ReadinessIssueDto`, konstanty kódů `ReadinessCodes` |
 | Výjimka | `Fakvio.Application/Exceptions/TenantNotReadyException.cs` | Nese `Code` + `MissingFields` + `Issues` |
 | REST | `Fakvio.API/Controller/ReadinessController.cs` | `GET /api/readiness?issuerId=` — tenká obálka nad `GetReportAsync` |
-| Functions | `Fakvio.Functions/HttpFunctions/ReadinessFunctions.cs` | Zrcadlo téhož endpointu pro Azure host (dual-host pravidlo §6) |
 
 **Pravidla a jejich závažnost:**
 
@@ -1852,7 +1845,7 @@ normální položka reportu (200), s `issuerId` je to 404.
 |--------|-----|----------|
 | Rozhodnutí + text | `Fakvio.UI.Shared/Components/Chat/ChatOnboarding.cs` | `BuildWelcome(report, L)` → markdown, nebo **null** = tenant je připravený, neotravuj. Jen `Blocking` nálezy, stejně jako v promptu — warning uživateli fakturovat nebrání. Čistá funkce, takže je pravidlo testovatelné bez renderu i bez živého modelu |
 | Text nálezu | `Fakvio.UI.Shared/Components/Shared/ReadinessIssueText.cs` | `Describe(L, issue)` — **týž** helper, který používá banner i checklist (tabulka §4.12 výše). Banner, checklist i uvítání musí tentýž nález pojmenovat stejně; další kopie pravidla „kód → klíč + fallback“ by se rozešla při prvním novém kódu |
-| Zapojení | `MainLayout.razor` (`TryProactiveOnboardingAsync`) → `ChatPanel.OnboardingWelcome` | Po `LoadCompaniesAsync` (potřebuje `_hasTenantContext`), **jednou za session** (`sessionStorage["chatOnboardingShown"]`, maže se při odhlášení). Uvítání se vloží do `_messages` jen v UI — do konverzace v DB nejde, jinak by měl model v historii každé konverzace vloženou vlastní repliku |
+| Zapojení | `MainLayout.razor` (`TryProactiveOnboardingAsync`) → `ChatPanel.OnboardingWelcome` | Po `LoadCompaniesAsync` (potřebuje `_hasTenantContext`), **jednou za session** (`sessionStorage["chatOnboardingShown"]`, maže se při odhlášení). Uvítání se vloží do `_messages` v UI; do DB jde až s **první odpovědí uživatele** (`SendMessageRequest.SeedAssistantMessage`, plní `ChatPanel.SeedForNewConversation`) jako první replika asistenta té jedné nové konverzace — ne každé, kterou uživatel později otevře. Bez toho je „pojďme to dořešit" první větou prázdné historie a model nemá na co navázat. Existující konverzace seed ignoruje (`ChatService.GetOrCreateConversationAsync`) |
 
 Uvítání **neskládá model** — je to lokalizovaný text. Panel ho ukáže hned po otevření, nic
 nestojí, nemůže si chybějící položky vymyslet a dá se otestovat bez živého AI. Konverzaci od
@@ -1920,8 +1913,6 @@ odvozuje reflexí z `ReadinessCodes`, takže chybějící překlad shodí testy,
 - **AttachmentCount v grid DTO — anti-N+1 pattern**: počty příloh pro stránku
   gridu načítej JEDNÍM grouped dotazem nad ids stránky a doplň do DTO při
   mapování (viz `ReceivedInvoiceService.GetPagedAsync`). Nikdy ne per-row dotaz.
-- Nové endpointy vždy dostávají i **Azure Functions wrapper**
-  (`Fakvio.Functions/HttpFunctions/`) — viz §6 dual-host pravidlo.
 
 ---
 
@@ -1929,47 +1920,43 @@ odvozuje reflexí z `ReadinessCodes`, takže chybějící překlad shodí testy,
 
 ### 6.1 Pravidlo
 
-Každá pravidelná úloha **MUSÍ** existovat ve třech kusech:
+Každá pravidelná úloha **MUSÍ** existovat ve dvou kusech:
 
 1. **Stateless service** (`Fakvio.Application/Service/I{X}Service.cs` + `Fakvio.Infrastructure/Service/{X}Service.cs`):
    - Jediná metoda `RunCycleAsync(CancellationToken)`.
    - **Žádný stav, žádný `Thread.Sleep`** — udělá jednu iteraci a vrátí se.
+   - Logika cyklu žije **jen na jednom místě** — všechny instory ji volejí tímto kanálem.
 2. **Tenká `BackgroundService` obálka** (`Fakvio.Infrastructure/Service/{X}Worker.cs`):
    - `while (!ct.IsCancellationRequested) { await service.RunCycleAsync(ct); await Task.Delay(interval, ct); }`.
-   - Registrovaná v API host přes `AddHostedService<{X}Worker>()`.
-3. **`[TimerTrigger]` Function** (`Fakvio.Functions/{X}Functions.cs`):
-   - CRON typicky kratší než požadovaný interval (např. tick každých 5 min pro úlohu, která má běžet každých 30) + service uvnitř kontroluje `LastRunAt` a brzy-spuštěné cykly skipuje.
-   - Důvod: CRON v Function je **statický** (deploy-time), kdežto service uvnitř může číst interval z DB → dynamický interval i v Functions.
+   - Registrovaná v API DI přes `AddHostedService<{X}Worker>()` v `Fakvio.API/Program.cs`.
+   - SysAdmin "Run now" akce v UI může volat tutéž logiku přes HTTP endpoint, aby byl konsistentní s BackgroundService.
 
 ### 6.2 Mutual exclusion
 
-**Vždy** použít PostgreSQL **advisory lock** (`Fakvio.Infrastructure/Service/AdvisoryLock.cs`):
+**Vždy** použít PostgreSQL **advisory lock** (`Fakvio.Infrastructure/Service/AdvisoryLock.cs`) pro cross-instance synchronizaci:
 - Session-bound (crash-safe — uvolní se při disconnectu).
 - Nezávisí na externí službě (Redis, Blob lease).
 - Klíč = stable `long` per task. Konvence: ASCII bytes hesla. Příklad — IMAP poll: `0x46414B56494F5059L` ("FAKVIOPY").
 - Volat s `NpgsqlDataSource` (ne raw connection string) → kompatibilní s Managed Identity tokens.
 
-### 6.3 Existující dvojice (registr — udržuj!)
+### 6.3 Existující pracovníci (registr — udržuj!)
 
-| Úloha | Stateless service | Worker (API) | Function | Lock key |
-|-------|-------------------|--------------|----------|----------|
-| Log flush (DB → AppLog) | `LogFlushService` | (BackgroundService v Infrastructure) | `TimerFunctions.FlushLogs` (CRON `*/10 * * * * *`) | (žádný — local buffer) |
-| Log cleanup | `LogCleanupService` | (BackgroundService) | `TimerFunctions.CleanupLogs` (CRON `0 0 0 * * *` daily) | — |
-| Reminders / dunning | `IReminderService.ProcessOverdueInvoicesAsync` | — | `ReminderFunctions.ProcessReminders` (CRON `0 0 6 * * *`) | per-tenant scope |
-| Payment matching (IMAP) | `IImapPollService.RunCycleAsync` | `ImapPollWorker` | `PaymentMatchingFunctions.RunImapPoll` (CRON `0 */5 * * * *`) | `0x46414B56494F5059L` |
+| Úloha | Stateless service | BackgroundService | Interval | Lock key |
+|-------|-------------------|----|----------|----------|
+| Log flush (buffer → DB) | `LogFlushService` (smyčka v `ExecuteAsync`) | `LogFlushService` v Infrastructure | 20 s | (žádný — local buffer) |
+| Log cleanup (maže logy starší 48 h) | `LogCleanupService` (smyčka v `ExecuteAsync`) | `LogCleanupService` v Infrastructure | každou 1 h | — |
+| Reminders / dunning | `IReminderService.ProcessOverdueInvoicesAsync` | `ReminderWorker` v Infrastructure | daily 06:00 UTC, per-tenant | `0x46414B56494F524DL` ("FAKVIORM") |
+| Payment matching (IMAP) | `IImapPollService.RunCycleAsync` | `ImapPollWorker` v Infrastructure | dle `PollIntervalMinutes` (default 30 min) | `0x46414B56494F5059L` |
 
 ### 6.4 Když přidáš novou periodickou úlohu
 
 Krok-za-krokem:
 
 1. Přidat interface do `Fakvio.Application/Service/I{X}Service.cs` s `RunCycleAsync`.
-2. Implementovat ve `Fakvio.Infrastructure/Service/{X}Service.cs`. Pokud je *cross-host* exclusive, použít advisory lock + nový `long` klíč (zaregistrovat do tabulky výše).
-3. Worker: `Fakvio.Infrastructure/Service/{X}Worker.cs : BackgroundService`. Registrovat v API DI (`AddHostedService<{X}Worker>`).
-4. Function: `Fakvio.Functions/{X}Functions.cs` s `[TimerTrigger("CRON")]`. Volá tentýž service.
-5. **Aktualizuj DEVGUIDE.md tabulku §6.3.**
-6. Test: unit test `{X}Service` (logika), integration test že Worker volá service.
-
-**Pokud chybí Functions varianta** → Azure deploy úlohu prostě neběží a ticha. **Pokud chybí worker** → lokální dev v `dotnet run` nikdy cyklus nevidí běžet.
+2. Implementovat ve `Fakvio.Infrastructure/Service/{X}Service.cs`. Pokud je *cross-instance* exclusive, použít advisory lock + nový `long` klíč (zaregistrovat do tabulky výše).
+3. Worker: `Fakvio.Infrastructure/Service/{X}Worker.cs : BackgroundService`. Registrovat v API DI (`AddHostedService<{X}Worker>()`) v `Program.cs`.
+4. **Aktualizuj DEVGUIDE.md tabulku §6.3.**
+5. Test: unit test `{X}Service` (logika), integration test že Worker volá service.
 
 ### 6.5 IMAP routing — header fallback chain (issue #67)
 
@@ -1982,7 +1969,7 @@ Bankovní notifikace mohou přicházet přes catch-all mailboxy, Postfix forward
 `Fakvio.Infrastructure/Service/InboundAliasRouter.cs` — **jediný bod pravdy** pro routing logiku.
 
 - Volán z `ImapPollService.HandleMessageAsync` (API host `ImapPollWorker`)
-- Volán z `PaymentMatchingFunctions.RunImapPoll` (Azure Functions host)
+- Volán z `ImapPollWorker` (BackgroundService v API hostu)
 - Stateless — žádný stav, DI lifetime = Singleton-equivalent (jedna instance per `ImapPollService`)
 
 #### Pořadí headerů (first-active-match-wins)
@@ -2306,9 +2293,11 @@ Jediný E2E test, který si data **vyrobí sám** místo aby je předpokládal: 
 nastavení hesla, první přihlášení a dokončení nastavení přes `SetupChecklist` (#210).
 
 - **Token z API, ne z mailu.** Registrace posílá „nastav si heslo" odkaz e-mailem, který
-  prohlížečový test neotevře. `AuthHelper.GetInvitationTokenAsync` ho proto čte přes
-  `GET /api/user/paged` — `UserDto.InvitationToken` se SysAdminovi vrací. Žádné SMTP
-  pollování, tedy žádná závislost na mailserveru.
+  prohlížečový test neotevře. `AuthHelper.GetInvitationTokenAsync` ho proto čte přes API
+  ve dvou krocích: `GET /api/user/paged` přeloží e-mail na `id` a role-gated
+  `GET /api/user/{id}/invitation-token` vrátí token. Žádné SMTP pollování, tedy žádná
+  závislost na mailserveru. Jednokrokové čtení `UserDto.InvitationToken` z `/paged`
+  **už nefunguje a nesmí se vracet** — viz §2.5 (issue #364).
 - **Determinismus stojí na dvou volbách v registračním formuláři:** adresa se vyplní ručně
   (ručně zadaná adresa na serveru přebíjí ARES) a IČO má **devět** číslic — `AresServiceImpl`
   cokoli jiného než přesně 8 znaků odmítne ještě před síťovým voláním. Firma tak zůstane
@@ -2328,16 +2317,15 @@ nastavení hesla, první přihlášení a dokončení nastavení přes `SetupChe
 
 ```bash
 FAKVIO_UI_URL=https://test.fakvio.cz \
-FAKVIO_API_URL=https://zcloudinvoicingapi-test.azurewebsites.net \
+FAKVIO_API_URL=https://fakvio-api-test.azurewebsites.net \
   dotnet test Fakvio.Tests.Playwright --filter "TestCategory=Deployment"
 ```
 
 `Tests/Deployment/DeployedEnvironmentTests.cs` (kategorie `Deployment`) ověřuje **jen to, co lokální
 běh reprodukovat nedokáže**: jaká API URL se zapekla do publikovaného bundlu, že statický host
-odpoví na deep link místo 404, že CORS preflight z prohlížeče projde, že API dosáhne na databázi
-(na testu přes Tailscale tunel) a že neprodukční prostředí je vizuálně označené. Bez
-`FAKVIO_UI_URL` na `https://` se celá kategorie **přeskočí**, takže `dotnet test` na vývojářském
-stroji zůstane zelený.
+odpoví na deep link místo 404, že CORS preflight z prohlížeče projde, a že neprodukční prostředí
+je vizuálně označené *(test env se v současnosti nedeployuje)* . Bez `FAKVIO_UI_URL` na `https://`
+se celá kategorie **přeskočí**, takže `dotnet test` na vývojářském stroji zůstane zelený.
 
 Ostatní E2E testy potřebují **data** (firma s ID 1, klienti, faktury). Na čerstvě provisionované
 databázi — jako je dnes `fakvio_test` — padají na prázdném stavu; to není regrese aplikace.
@@ -2404,20 +2392,10 @@ dotnet test Fakvio.Tests.Unit --filter "FullyQualifiedName~DatabaseConnectivityS
 | Soubor | Trigger | Co dělá |
 |--------|---------|---------|
 | `blazorui-deploy.yml` | Push `master`, manual, PR (path-filtered) | Build `Fakvio.BlazorUI` (WASM publish) → deploy GitHub Pages. Přidá CNAME, .nojekyll, kopie `index.html → 404.html` (client-side routing). |
-| `blazorui-test-deploy.yml` | Push `TEST-ENV`, manual | Build `Fakvio.BlazorUI` (WASM publish) → deploy Azure Static Web App `fakvio-test-ui`. Před publishem přepíše **dvě** adresy, každou vlastním sedem: `ApiSettings:BaseUrl` na testovací Function App a `McpSettings:BaseUrl` na testovací MCP host. Oba sedy jsou **omezené na svůj blok** a hlídané počtem výskytů (přesně 1), protože `appsettings.json` má víc klíčů `BaseUrl` a neomezený zápis by jednu adresu podstrčil na místo druhé — přesně bug, kvůli kterému #363 vzniklo. Nový klíč `BaseUrl` v dalších sekcích proto nic přepisovat nebude. Client-side routing řeší `wwwroot/staticwebapp.config.json` (`navigationFallback`). |
-| `master_zcloudinvoicingapi.yml` | Push `master` | Stáhne binárky Tailscale (viz níž) a publishne `Fakvio.Functions.csproj` → Azure Function App `zcloudinvoicingapi`. Auth přes managed identity (federated credentials). |
-| `testenv_zcloudinvoicingapi.yml` | Push `TEST-ENV`, manual | Totožné publish jako řádek výše, ale do **testovacího** Function Appu `zcloudinvoicingapi-test`. OIDC přes secrets s příponou `_TEST` (viz §9.4). |
-| `mcp-server.yml` | Push `master` + `TEST-ENV`, manual | Publishne `Fakvio.McpServer` (**jeden artefakt = oba režimy**, viz §4.9), smoke testem ověří, že se spustí, a `dotnet pack`em zabalí stdio nástroj `fakvio-mcp`. Obojí jde nahoru jako build artefakt. Deploy HTTP hostu do Azure Web Appu: `TEST-ENV` → `deploy-http-test`, `master` → `deploy-http-prod`. Na `master` navíc `publish-nuget` (nuget.org). Viz níž. |
+| `master_fakvio-api.yml` | Push `master` | Publishne `Fakvio.API.csproj` → Azure App Service `fakvio-api`. Auth přes managed identity (federated credentials). Post-deploy ověří `GET /api/diagnostic/health` = 401. |
+| `mcp-server.yml` | Push `master`, manual | Publishne `Fakvio.McpServer` (**jeden artefakt = oba režimy**, viz §4.9), smoke testem ověří spuštění, a `dotnet pack`em zabalí stdio nástroj `fakvio-mcp`. Deploy HTTP hostu do Azure App Service `fakvio-mcp-web`. Na `master` navíc `publish-nuget` (nuget.org). |
 
-**Krok „Download Tailscale binaries"** (oba Functions workflow, před `dotnet publish`):
-stáhne `tailscale` + `tailscaled` do `Fakvio.Functions/tsbin/`, odkud je do publish outputu
-kopíruje `<None Update="tsbin/**">` v csproj. Verze a `sha256` jsou **napevno v bloku `env:`**
-obou workflow — tarball se stahuje až při deployi, takže bez pinu by změna upstreamu šla rovnou
-do Azure. `tsbin/` je gitignorovaný, v repu binárky nejsou. Produkce je stahuje také (feature je
-tam bez `TAILSCALE_AUTHKEY` nečinná), aby byl balíček obou prostředí identický. Bump verze a
-proč to celé existuje: `Fakvio.Functions/Tailscale/README.md`.
-
-**`mcp-server.yml` — proč tak, jak je** (#241):
+**`mcp-server.yml` — proč tak, jak je**:
 
 - **Jeden `dotnet publish`, oba režimy.** Transport se volí až za běhu z `FAKVIO_MCP_TRANSPORT`
   (§4.9), takže binárky nainstalované jako nástroj `fakvio-mcp` a binárky nasazené do Azure
@@ -2437,95 +2415,12 @@ proč to celé existuje: `Fakvio.Functions/Tailscale/README.md`.
   `ModelContextProtocol.AspNetCore` nese `FrameworkReference`, takže ASP.NET Core runtime je
   tvrdý požadavek nástroje **i pro stdio** — a je to tak napsané v README „Požadavky" i v §4.9.
   Dokumentované chování se nesmí změnit potichu, proto to hlídá workflow, ne komentář.
-- **Deploy HTTP hostu je jeden job na prostředí**, jak jsou rozdělené Functions workflow:
-  `deploy-http-test` (`TEST-ENV`, `_TEST` secrets) a `deploy-http-prod` (`master`, produkční
-  GUID secrets z `master_zcloudinvoicingapi.yml`). Ne matrix — indexovat `vars` i `secrets`
-  klíčem z matrixu schová právě to, kvůli čemu sem operátor chodí.
-  Oba jsou podmíněné **repo variable** se jménem App Service — `MCP_HTTP_APP_NAME`
-  (`fakvio-mcp-test`), resp. `MCP_HTTP_APP_NAME_PROD` (`fakvio-mcp`). Proměnná je zároveň
-  vypínač: dokud Web App neexistuje, job se přeskočí místo aby barvil každý push na červeno.
-  OIDC bere **stávající secrets prostředí** (jedna app registration na prostředí, ne na
-  resource) — potřebuje jen rozšířit její role assignment na nový Web App.
-- **Post-deploy ověření: `POST /mcp` bez `Authorization` musí vrátit 401.** Tenhle případ
-  `McpApiKeyMiddleware` odmítne bez round-tripu na API (§4.9), takže test nenese žádný
-  credential a přesto dokazuje dvě věci — host nastartoval a brána stojí **před** celou
-  pipeline. Kód ale není diagnóza: proti hostu s vymutovanou bránou vrací tenhle konkrétní
-  request **500** (dojde až na MCP transport a ten spadne na prázdném content type) a jakákoli
-  jiná cesta 404 — takže 5xx tady znamená „nenastartoval **nebo** brána chybí", a 200 nenastane.
-  **Namapování `/mcp` neověřuje** a ověřit ho takhle nejde: middleware je registrovaný přes
-  `app.Use(...)` nad celou pipeline (`McpHttpHost.cs`) a bez hlavičky short-circuituje **dřív**
-  než jakýkoli endpoint, takže 401 vrátí i neexistující cesta (ověřeno: `POST /mcp`,
-  `POST /nope` i `GET /` → 401). Na důkaz mapování by byl potřeba platný API key, tedy přesně
-  ten credential, který tenhle krok schválně nemá. (Pozor i na opačný směr: 401 může jednou
-  přijít od platformy — App Service Authentication — ještě než se aplikace dostane ke slovu,
-  takže na tomhle Web Appu ji **nezapínej**.)
-- **HTTP host se nasazuje jako Azure Functions *custom handler*, ne jako App Service.**
-  Functions host se v tomhle režimu chová jako reverzní proxy a přeposílá celý HTTP request
-  našemu procesu, takže `Fakvio.McpServer` běží jako obyčejná ASP.NET Core aplikace —
-  **kód se nemění**, `POST /mcp` i `McpApiKeyMiddleware` nad celou pipeline platí dál.
-  Důvod volby: Flex Consumption škáluje na nulu a platí se za spotřebu, kdežto App Service
-  by znamenal vlastní plán placený pořád. Podmínkou je **stateless + streamable HTTP**, což
-  `McpHttpHost` už pinuje (§4.9) — tahle shoda není náhoda, ale ani zásluha: kdyby se
-  `SessionMode` někdy přepnul na stateful, tenhle způsob hostování přestane být použitelný.
-  - **`Fakvio.McpServer/host.json`** je manifest custom handleru: profil
-    `mcp-custom-handler` (ten zapne proxying, route `{*route}` a prázdný `routePrefix`),
-    `defaultExecutablePath: dotnet` + `Fakvio.McpServer.dll` a port `8080`.
-  - **`DefaultAuthorizationLevel: anonymous` je záměr.** Autorizační hranicí je API klíč
-    ověřovaný uvnitř aplikace; funkční klíč Functions před ní by jen přidal druhý credential
-    na tutéž věc a rozbil post-deploy kontrolu, která čeká 401 **z aplikace**.
-  - **Manifest kopíruje workflow do `./publish`, nese ho ne csproj.** Content item v csproj
-    skončí i v `bin/`, a `dotnet pack` u `PackAsTool` balí `bin/` — manifest by tak jel
-    uvnitř nupkg, který si instalují stdio uživatelé. Hlídat to testem nemá cenu, stačí to
-    dělat na jednom místě: krok „Add the Functions custom handler manifest".
-  - **Port je na dvou místech a musí sedět**: `customHandler.port` v `host.json` a
-    `ASPNETCORE_URLS` v app settings (`http://0.0.0.0:8080`). Nesedí-li, host nastartuje a
-    Functions se na něj nedovolá — selhání se projeví až post-deploy kontrolou.
-  - **Je to public preview.** Vyžaduje app setting `AzureWebJobsFeatureFlags` =
-    `EnableMcpCustomHandlerPreview` a plán **Flex Consumption** (jiný plán to neumí).
-  - **Vlastní doména + certifikát na Flexu jde jinudy, než říká CLI.**
-    `az functionapp config ssl create` selže **tiše** — vypíše „creation in progress" a
-    nevytvoří nic, protože sahá na subscription-level `Microsoft.Web/certificates`, a ten
-    Flex Consumption odmítá („not supported for Flex Consumption plans, use
-    `Microsoft.Web/sites/certificates` instead"). Funguje **site-scoped** endpoint:
-
-    ```bash
-    az rest --method PUT \
-      --url ".../Microsoft.Web/sites/<app>/certificates/<domena>?api-version=2025-05-01" \
-      --body '{"location":"West Europe","properties":{"canonicalName":"<domena>",
-                "domainValidationMethod":"cname-delegation","password":""}}'
-    az functionapp config ssl bind -g <rg> -n <app> \
-      --certificate-thumbprint <thumbprint> --ssl-type SNI
-    ```
-
-    Dvě pasti: `api-version` musí být **2024-11-01 nebo novější** (starší čísla vrátí
-    `NoRegisteredProviderFound`, což vypadá jako chybějící feature, ale je to překlep ve
-    verzi), a PUT může vrátit **prázdnou odpověď** — vydání je asynchronní a certifikát
-    naskočí do pár minut. Opakovaný PUT nepomůže, jen počkat a ověřit GETem.
-    Vlastní CNAME stačí i na ověření vlastnictví; `asuid` TXT záznam nebyl potřeba.
-- App settings HTTP hostu (`FAKVIO_MCP_TRANSPORT=http`, `FAKVIO_API_URL`, `ASPNETCORE_URLS`,
-  `FUNCTIONS_WORKER_RUNTIME=dotnet-isolated`, `AzureWebJobsFeatureFlags`) patří do konfigurace
-  Function Appu, **ne do workflow** — stejné pravidlo jako u ostatních Functions (§9.4).
-- **Studený start hostu umí vrátit 500 — proto `McpKeepAliveFunctions`.** Functions host
-  a náš proces jsou připravené v mírně jiný okamžik: naměřeno 2026-09-07, host přeposlal
-  request v 19:09:19.846 a Kestrel ohlásil „Now listening on http://0.0.0.0:8080" až
-  v 19:09:20.158. Request, který se trefí do té ~310ms mezery, nenajde nic na portu a
-  Functions vrátí **500**. Běžný studený start je jinak jen pomalý (naměřeno 6,3 s), ne
-  rozbitý — vrátí korektní 401.
-  - **Retry se do našeho kódu napsat nedá.** V tu chvíli žádný náš handler, middleware ani
-    catch blok neběží; 500 vyrábí platforma před námi. Retry patří volajícímu, ne volanému.
-  - Řešíme to tím, že host **nenecháme vychladnout**: `McpKeepAliveFunctions` v
-    `Fakvio.Functions` ťukne každých 5 minut na `POST /mcp` **bez** hlavičky `Authorization`.
-    Takový request `McpApiKeyMiddleware` odmítne hned, bez round-tripu na API (§4.9), takže
-    ping nenese credential a nezatěžuje API. Očekávaná odpověď je 401.
-  - Adresa je v app settingu **API Function Appu** (`McpKeepAlive__Url`), ne v MCP hostu —
-    ťuká ten, kdo běží pořád, na toho, kdo usíná. Prázdná hodnota = warm-up vypnutý, stejný
-    on/off idiom jako u deploy jobů.
-  - Alternativou by byl `alwaysReady: 1` na Flex plánu. Zvolen ping, protože rezervovaná
-    instance se platí nepřetržitě, a tím by zmizel důvod, proč host stojí na Flexu.
-  - **Výjimka z pravidla „každá pravidelná úloha má obě varianty"** (CLAUDE.md §API +
-    Functions duplication): tahle je schválně jen Functions. Hřeje nasazený cloudový
-    resource — vývojář s lokálním API žádný svůj MCP host nemá, takže worker varianta by
-    buď nedělala nic, nebo by z každého vývojářského stroje ťukala na sdílený cloud.
+- **Deploy HTTP hostu: `TEST-ENV` → `fakvio-mcp-web-test`, `master` → `fakvio-mcp-web`.**
+  Obojí jsou Azure App Service web apps, ne Function Apps — App Service plán `asp-fakvio-b1`
+  hostuje všechny čtyři aplikace (dvě API, dvě MCP). OIDC bere **stávající app registration na prostředí**.
+- **Post-deploy ověření: `POST /mcp` bez `Authorization` musí vrátit 401.** `McpApiKeyMiddleware`
+  odmítne bez round-tripu na API (§4.9), takže test nenese žádný credential a přesto dokazuje
+  dvě věci — host nastartoval a brána stojí **před** celou pipeline.
 - **`publish-nuget` publikuje stdio nástroj na nuget.org, jen z `master`.** Bere
   **tentýž `.nupkg`**, na kterém build job ověřil `FrameworkReference` — ne nový build, takže
   publikuje se přesně to, co prošlo kontrolou. Test build se veřejným balíčkem nikdy stát
@@ -2541,8 +2436,6 @@ proč to celé existuje: `Fakvio.Functions/Tailscale/README.md`.
   - Metadata balíčku (`Authors`, `PackageLicenseExpression`, `PackageReadmeFile`,
     `RepositoryUrl`) jsou v csproj; `README.md` projektu se balí dovnitř a slouží jako
     popisná stránka na nuget.org, takže nemůže odrejvovat od toho, co čte vývojář.
-
-**Pozn.**: Pro `Fakvio.API` (klasický host) **není dedicated workflow** v repu — historicky se hostil přes externí App Service nebo manuálně. Pokud přidáš API workflow, zaznamenej zde.
 
 ### 9.2 Konfigurace (precedence shora dolů)
 
@@ -2569,52 +2462,59 @@ proč to celé existuje: `Fakvio.Functions/Tailscale/README.md`.
 
 - **Produkce**: hostováno na **GitHub Pages** s custom doménou (`CNAME` v repu).
 - **Test**: hostováno na **Azure Static Web Apps** (`fakvio-test-ui`, Free tier, custom doména `test.fakvio.cz` — CNAME u Forpsi na technický host SWA) — GitHub Pages umí jen jeden web na repozitář, proto jiný hosting. Deploy token je v repo secretu `AZURE_STATIC_WEB_APPS_API_TOKEN_TEST`.
-- API endpoint v `Fakvio.BlazorUI/wwwroot/appsettings.json` (`ApiSettings:BaseUrl`) — production URL Azure Function Appu. WASM nemá server, který by URL vstříkl za běhu, takže testovací workflow ji **přepisuje před publishem** (publish generuje i `.br` / `.gz` kopie, ty by jinak zůstaly s produkční URL).
+- API endpoint v `Fakvio.BlazorUI/wwwroot/appsettings.json` (`ApiSettings:BaseUrl`) — production URL Azure App Service API (`https://fakvio-api.azurewebsites.net`). WASM nemá server, který by URL vstříkl za běhu, takže testovací workflow ji **přepisuje před publishem** (publish generuje i `.br` / `.gz` kopie, ty by jinak zůstaly s produkční URL).
 - Deep-linky: GitHub Pages je řeší kopií `index.html → 404.html`, SWA `navigationFallback` v `wwwroot/staticwebapp.config.json`. Ten soubor je součástí bundlu i na Pages, kde ho nic nečte — je nezvaný, ale neškodný.
 - Service worker pro PWA — pozor na cache invalidation při deployi.
 - **Celý `wwwroot/appsettings.json` se publikuje tak, jak je v repu** — `blazorui-deploy.yml` v něm nic nesubstituuje a Pages nemají App Settings. Cokoli má klient znát (`ApiSettings:BaseUrl`, `Recaptcha:SiteKey`) musí být commitnuté a nasazené novým buildem. Platí to jen pro **veřejné** hodnoty; secret ve `wwwroot` = secret zveřejněný.
 - Prázdný `Recaptcha:SiteKey` znamená, že klient token neposílá, a fail-closed brána (§2.8) pak odmítne login, registraci i ARES. Varianty nasazení viz ADMINGUIDE §9.
 
-### 9.4 Functions deploy (Azure)
+### 9.4 App Service deploy (Azure)
 
-- Flex Consumption plan, Isolated Worker.
-- TimerTrigger CRONy v UTC.
-- DB connection: `ConnectionStrings:DefaultConnection` z Function App settings.
-- Managed Identity pro DB + Key Vault (pokud nasazeno).
-- Cold start: prvních ~3-5 sec request nemá tenant context cached → mírně pomalejší.
-- **Testovací prostředí není slot, ale samostatný Function App** `zcloudinvoicingapi-test`
-  (https://zcloudinvoicingapi-test.azurewebsites.net). Produkce běží na **Flex Consumption**,
-  který deployment sloty nepodporuje — proto `testenv_zcloudinvoicingapi.yml` nasazuje
-  s `app-name: zcloudinvoicingapi-test` a `slot-name: Production`. Vlastní app registration
-  (federated credential jen pro větev `TEST-ENV`, Contributor scope jen na tento app),
-  vlastní `JwtSettings:Secret` a vlastní CORS origin — vše jako App Settings v Azure,
-  ne ve workflow.
-- **Testovací prostředí má vlastní databázi `fakvio_test` dostupnou přes Tailscale tunel**
-  (#318, uzavřelo i #295). Vlastní PostgreSQL na Hostingeru nemá port ve veřejném internetu,
-  takže se k ní Function App připojuje přes tailnet: `tailscaled` běží v **userspace** režimu
-  (sandbox neumí TUN) a nabízí SOCKS5, který Npgsql neumí — mezi ně proto vstupuje vlastní
-  `Socks5Forwarder` na `127.0.0.1:15432` a `ConnectionStrings__DefaultConnection` míří na něj.
-  Staví se v `Fakvio.Functions/Program.cs` hned po `Build()` a **před migračním blokem**
-  (`IHostedService` by startoval až v `RunAsync()`, tedy po první práci s databází).
-  Bez App Settingu `TAILSCALE_AUTHKEY` je celá věc nečinná — jeden log řádek a nic víc, proto
-  lokální vývoj i produkce fungují beze změny. Detaily, ACL, rotace klíče a známá omezení
-  (cold start, uzel per instance): `Fakvio.Functions/Tailscale/README.md`.
-- **Startup gate.** Tunel se staví na pozadí (jinak platformní timeout zabije worker), takže
-  mezi „host started" a „forwarder bound" je díra, ve které connection string ukazuje na
-  neobsazený port. `Fakvio.Infrastructure/Service/StartupState.cs` je jediné místo, kde je
-  ten stav zapsaný; `StartupGateMiddleware` podle něj vrací `503 + Retry-After: 5` pro
-  `/api/*` (mimo `/api/diagnostic`) a `RetryAfterHandler`
-  (`Fakvio.UI.Shared/Services/RetryAfterHandler.cs`) ho v UI transparentně přečká.
-  **Když přidáváš nový host nebo nový startup krok, který otevírá databázi, musíš
-  `StartupState.MarkDatabaseReady()` zavolat z `finally`** — na úspěchu i selhání. Zavřená
-  brána po selhání by z diagnostikovatelné chyby udělala tichý blackout.
-- **PgBouncer v transaction režimu tuhle aplikaci rozbije.** Produkce na něm 2026-09-10
-  strávila půl dne s nepoužitelnou tenant částí: `GetForSchema()` posílá `search_path`
-  jako **startup parametr**, pooler spojení odmítne (`unsupported startup parameter`),
-  `MigrateTenantAsync` padne a `TenantContextMiddleware` vrátí 503 — UI to spolkne a
-  vykreslí prázdno. Produkce proto pooler obchází (`TAILSCALE_TARGET_PORT=5544`), test
-  je pořád na `6432`. Než na pooler někdo aplikaci vrátí, ať si přečte `SELFHOST-DB.md`
-  §6.4b — hlavně tu část, proč `ignore_startup_parameters` poškodí data.
+**Konfigurace App Service:**
+
+- **Plány**: `asp-fakvio-b1` (produkce: `fakvio-api` + `fakvio-mcp-web`), Linux Basic B1, ~13 USD/měsíc.
+  *(Testovací `asp-fakvio-b1-test` je v současnosti vypnuto.)*
+  Původně sdílely jeden B1 — 1,75 GB RAM na čtyři appky plus čtyři Kudu kontejnery swapovalo
+  (CPU planu 100 %, paměť 85 %, odpovědi v sekundách), proto měl test vlastní plán.
+- **`WEBSITES_CONTAINER_START_TIME_LIMIT=900`** na appkách: první start po deployi
+  (pull image, rehash certifikátů) trval na B1 až 7 minut a výchozích 230 s kontejner
+  zabilo dřív, než Kestrel otevřel port 8080.
+- **Web apps**:
+  - `fakvio-api` (https://fakvio-api.azurewebsites.net) — produkční API host (`Fakvio.API`).
+  - `fakvio-mcp-web` (https://fakvio-mcp-web.azurewebsites.net) — produkční MCP HTTP host.
+- **Startup command**: `dotnet Fakvio.API.dll` (pro API) nebo `dotnet Fakvio.McpServer.dll` (pro MCP).
+- **Always On**: povinně zapnuto — bez něj idle recycle ukončí `BackgroundService` pracovníky.
+- **HTTPS only**: enabled. Funkční klíč není potřeba, auth je v aplikaci.
+- **Deployment**: `azure/webapps-deploy@v3` přes federated identity (Managed Identity pro prod).
+
+**Testovací prostředí (v současnosti vypnuto, 2026-09-10):**
+
+App Service instance `fakvio-api-test`, `fakvio-mcp-web-test`, App Service plán `asp-fakvio-b1-test` a Azure Static Web App `fakvio-test-ui` byly smazány. Workflow `testenv_fakvio-api.yml` a `blazorui-test-deploy.yml` jsou v GitHub Actions deaktivovány. Jak bylo nastaveno: vlastní App Service plán (1,75 GB RAM), vlastní database `fakvio_test`, vlastní app registration pro OIDC.
+
+**Přímé připojení k databázi:**
+
+Od 2026-09-10 se aplikace připojuje přímo k PostgreSQL na veřejné adrese (port 5544) bez tunelu.
+Bezpečnost je zajištěna přes:
+- TLS (`Ssl Mode=VerifyCA`) s validací self-signed certifikátu serveru (`Root Certificate=/home/site/wwwroot/certs/fakvio-db-server.crt`)
+- VPS firewall + `pg_hba.conf` omezující spojení jen na App Service outbound IP adresy
+- Přesné 19 IP adres z `az webapp show -n fakvio-api -g invoiceapi --query possibleOutboundIpAddresses`
+
+Certifikát: self-signed `CN=srv1657958.hstgr.cloud`, platný do 2036-05-06, uložen v `Fakvio.API/certs/fakvio-db-server.crt` a kopírován do publish outputu. Rotace certifikátu: nahradit soubor v repozitáři a redeploy; pokud se změní issue CN, aktualizovat `Ssl Mode` na `VerifyFull` s příslušným hostname. Technické detaily: `SELFHOST-DB.md` část 6–7.
+
+Připojovací řetězec: `Host=<db-public-host>;Port=5544;Database=fakvio_prod;Username=fakvio_prod;Password=***;Ssl Mode=VerifyCA;Root Certificate=/home/site/wwwroot/certs/fakvio-db-server.crt`
+
+**Startup migrací:**
+
+Master DB migrace se spouští **synchronně** při startu, a to i v API hostu (namísto asynchronního spouštění přes background service).
+Výsledek migrace se zaznamenává v `StartupState` (polí `startupMigration`, `startupMigrationCompletedAt`, `startupMigrationError`).
+Selhání migrace je zalogováno a hlášeno v healthu, ale nešhodí aplikaci — poskytuje informaci bez 503.
+
+**Přehled logů a diagnostiky:**
+
+- Logy: `az webapp log tail -g invoiceapi -n fakvio-api`.
+- Application Insights: `CorrelationIdTelemetryInitializer` + `AddApplicationInsightsTelemetry()`, všechny `Fakvio.*` ILogger kategorie tam doletí.
+- Health endpoint: `GET /api/diagnostic/health` (SysAdmin only), vrací `startupMigration`, `masterDbCanConnect` a další diagnostické údaje.
+- Outbound IP: `az webapp show -n fakvio-api -g invoiceapi --query possibleOutboundIpAddresses` (všech 19 adres; stabilní pro životnost app service).
 
 ### 9.5 Autentizace k databázi (`Database:AuthMode`) + health endpoint
 
@@ -2637,19 +2537,14 @@ Kde co je nastavené:
 |--------|---------|
 | `Fakvio.API/appsettings.json` | `Database:AuthMode = AzureEntraId` (Azure connection string bez hesla) |
 | `Fakvio.API/appsettings.Development.json` | `AzureEntraId`; vedle je **zakomentovaný** `Password` — přepnutí na lokální Docker = odkomentovat dva řádky (conn string + AuthMode) |
-| `Fakvio.Functions/local.settings.json` | `Database__AuthMode = Password` (lokální Docker) |
 | `Fakvio.MigrationTool/appsettings.json` | `Database` i `SourceDatabase` = `Password` |
 
-Testovací Function App má od #318 v App Settings `Database__AuthMode = Password` (vedle
-`UseAzureAdAuthentication = false`, obojí musí souhlasit), takže health tam hlásí
-`authModeSource: Database:AuthMode` — ne už legacy zdroj. Connection string míří na lokální
-konec Tailscale tunelu (§9.4), takže `masterConnectionServer` je `127.0.0.1 / fakvio_test / fakvio_test`.
+*(Testovací App Service je v současnosti vypnuto; tato sekce popisuje jeho dřívější konfiguraci.)*
+Měl by mít v App Settings `Database__AuthMode = Password` (vedle `UseAzureAdAuthentication = false`),
+takže health by tam hlásil `authModeSource: Database:AuthMode`.
 
-Health navíc hlásí `startupDatabaseReady` a `startupMigration`
-(`pending` / `succeeded` / `failed` + `startupMigrationError`). Na hostiteli Functions běží
-startovní migrace na pozadí a jen loguje — a worker `ILogger` do App Insights nedoletí
-(issue #322), takže bez těchhle polí je selhání migrace v Azure neviditelné. Hlásí se,
-**negatuje**: proces umí obsluhovat provoz i když je o dvě migrace pozadu.
+Health hlásí `startupMigration` (`pending` / `succeeded` / `failed` + `startupMigrationError`).
+Migrace běží při startu aplikace a Application Insights ji zachytí přes telemetry.
 
 **Ověření za běhu** — `GET /api/diagnostic/health`, **SysAdmin only**:
 
@@ -2669,11 +2564,8 @@ Pro ten případ oba hosty logují týž údaj hned po `Build()`, před prvním 
 `Fakvio.Infrastructure.Database`. Pinnuto v `DatabaseAuthModeStartupLogTests` včetně toho,
 že se do logu nikdy nedostane connection string.
 
-Logika žije v `Fakvio.API/Controller/DiagnosticController.cs`;
-`Fakvio.Functions/HttpFunctions/DiagnosticFunctions.Health` je tenká obálka, která ten
-controller volá (a inlinuje `[Authorize(Roles = "SysAdmin")]`, protože MVC filtry ve
-Functions neběží). Oba hostitelé tedy hlásí totéž. `/api/diagnostic` je v `MasterOnlyPaths`
-obou `TenantContextMiddleware` — SysAdmin ho musí zavolat i bez impersonace firmy.
+Logika žije v `Fakvio.API/Controller/DiagnosticController.cs`. `/api/diagnostic` je v `MasterOnlyPaths`
+`TenantContextMiddleware` — SysAdmin ho musí zavolat i bez impersonace firmy.
 
 ---
 
@@ -2685,8 +2577,8 @@ a vlastní spouštěč:
 | Stupeň | Větev | Kdo / čím | Co se nasadí | Karty na boardu |
 |--------|-------|-----------|--------------|-----------------|
 | Integrace | `develop` | `agent-ops` squash-merge feature PR | nic (`develop` nemá deploy workflow) | karta → `Implemented` |
-| Test | `TEST-ENV` | člověk příkazem `/release` | testovací prostředí — Function App `zcloudinvoicingapi-test` (samostatný app, ne slot) + Static Web App `fakvio-test-ui` | **nehýbou se** |
-| Produkce | `master` | člověk příkazem `/release-prod` po ověření testu | produkce (Function App `zcloudinvoicingapi` + GitHub Pages) | `Implemented` → `Approved` — až při **druhém** běhu příkazu, po mergnutí release PR (State A) |
+| Test | `TEST-ENV` | člověk příkazem `/release` | *(v současnosti nic — testovací prostředí vypnuto 2026-09-10)* | **nehýbou se** |
+| Produkce | `master` | člověk příkazem `/release-prod` po ověření | produkce (App Service `fakvio-api` + `fakvio-mcp-web` + GitHub Pages) | `Implemented` → `Approved` — až při **druhém** běhu příkazu, po mergnutí release PR (State A) |
 
 Pravidla:
 
@@ -2704,21 +2596,20 @@ Pravidla:
 - Žádná z větví nemá branch protection — pořadí stupňů je konvence vynucená
   agenty a těmito příkazy, ne GitHubem.
 
-Deploy na `TEST-ENV` obstarávají dva workflows, které už v `develop` jsou — viz
-tabulka v §9.1: `testenv_zcloudinvoicingapi.yml` (Function App
-`zcloudinvoicingapi-test`; je to **samostatný Function App, ne slot** — proč, viz
-§9.4) a `blazorui-test-deploy.yml` (Static Web App `fakvio-test-ui`). Oba mají
-trigger `push` na `TEST-ENV`, takže **merge promotion PR `develop → TEST-ENV`
-oba deploye rovnou vystřelí**. Jediná výjimka je bootstrap větve (step 0
-v `/release`, kdy `TEST-ENV` ještě neexistuje a zakládá se z `master`):
-`master` ty dva soubory nemá, takže samotné založení větve nenasadí nic —
-první reálný test deploy přijde až s prvním mergnutým promotion PR. Stavový
-automat obou příkazů je v `.claude/commands/release.md`
+Deploy na `TEST-ENV` obstarávají workflows, které už v `develop` jsou — viz
+tabulka v §9.1: `testenv_fakvio-api.yml` (App Service `fakvio-api-test`),
+`mcp-server.yml` (App Service `fakvio-mcp-web-test`), a `blazorui-test-deploy.yml`
+(Static Web App `fakvio-test-ui`). Všechny mají trigger `push` na `TEST-ENV`, takže
+**merge promotion PR `develop → TEST-ENV` všechny deploye rovnou vystřelí**. Jediná
+výjimka je bootstrap větve (step 0 v `/release`, kdy `TEST-ENV` ještě neexistuje a
+zakládá se z `master`): `master` ty soubory má, ale obsahují konfiguraci produkčních
+App Service jmen — první reálný test deploy přijde až s prvním mergnutým promotion PR.
+Stavový automat obou příkazů je v `.claude/commands/release.md`
 a `.claude/commands/release-prod.md`, dopad na board v `.claude/BOARD-OPS.md`
 (sekce „Integration branch model").
 
 Provozní pohled na obě prostředí — URL, rozdíly v App Settings (CORS, JWT, DB),
-deploy secrets a jejich rotace — je v `ADMINGUIDE.md` §14.
+deploy secrets a jejich rotace — je v `ADMINGUIDE.md` §9.
 
 ## 10. Observability — logging + correlation
 
@@ -2739,11 +2630,7 @@ deploy secrets a jejich rotace — je v `ADMINGUIDE.md` §14.
 - Cleanup starých záznamů (>30 dní default) přes `LogCleanupService`.
 - App Insights forwarding přes default `ApplicationInsightsLoggerProvider` (parallel sink).
 
-### 10.3 Correlation v Functions
-
-`Fakvio.Functions/Middleware/CorrelationIdMiddleware.cs` — stejný pattern, `AsyncLocal` flows přes Function invocation.
-
-### 10.4 Client-side logging (WASM → AppLog)
+### 10.3 Client-side logging (WASM → AppLog)
 
 Chyby vzniklé v Blazor WASM klientovi by jinak skončily jen v browser konzoli. Pipeline:
 
@@ -2764,7 +2651,7 @@ Chyby vzniklé v Blazor WASM klientovi by jinak skončily jen v browser konzoli.
   `ApiClientBase` — nedupluj). **Nové catch bloky v UI piš přes `IUiErrorHandler`**,
   existující `Snackbar.Add` catch bloky konvertuj průběžně při úpravách dané stránky.
 
-### 10.5 Co smí ven ke klientovi
+### 10.4 Co smí ven ke klientovi
 
 Detail výjimky (typ, zpráva, stack trace, inner exceptions) **nikdy nejde do odpovědi
 pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. Pravidlo:
@@ -2817,9 +2704,7 @@ pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. P
    └─ NE  → bez locku (per-replica iterace OK)
 3. Worker (Infrastructure/Service/{X}Worker.cs : BackgroundService)
    └─ AddHostedService<{X}Worker> v Fakvio.API DI
-4. Function (Fakvio.Functions/{X}Functions.cs s [TimerTrigger])
-   └─ CRON kratší než target interval, service interní throttle přes LastRunAt
-5. Aktualizuj DEVGUIDE §6.3 tabulku
+4. Aktualizuj DEVGUIDE §6.3 tabulku
 6. Unit test service + integration test worker
 ```
 
@@ -2854,7 +2739,7 @@ pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. P
    │      validace vstupu v controlleru a co nejužší DTO. NEdávej [AllowAnonymous]
    │      na tenant-scoped controller — vznikne otevřená proxy.
    │      Vzor: AuthController.FetchFromAres (GET /api/auth/ares/{ico}).
-   │      Rate-limit middleware NEpoužívej — Functions host ho neprovede;
+   │      Rate-limit middleware (`AddRateLimiter`) je od migrace na App Service možný;
    │      captcha + cache-first lookup fungují v obou hostitelích.
    │      `action` je druhý argument VerifyAsync a musí být stejný řetězec, jaký
    │      stránka předává `grecaptcha.execute()` ("login", "register", "ares").
@@ -2943,7 +2828,7 @@ pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. P
 - Save entities **one-by-one** s `SaveChanges()`, ne `AddRange` (deterministická ID generation).
 
 ### Generované soubory ze source generátorů (`Generated/`)
-- `Fakvio.Infrastructure` a `Fakvio.Functions` mají `<EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>` + `<CompilerGeneratedFilesOutputPath>Generated</CompilerGeneratedFilesOutputPath>`. Složka `Generated/` je tedy **výstup buildu, ne zdroják** — oba projekty ji navíc vyřazují z kompilace přes `<Compile Remove="Generated/**" />`. Generátor svůj výstup vkládá přímo do kompilace; kopie na disku slouží výhradně k nahlédnutí při debugování.
+- `Fakvio.Infrastructure` má `<EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>` + `<CompilerGeneratedFilesOutputPath>Generated</CompilerGeneratedFilesOutputPath>`. Složka `Generated/` je tedy **výstup buildu, ne zdroják** — projekt ji navíc vyřazuje z kompilace přes `<Compile Remove="Generated/**" />`. Generátor svůj výstup vkládá přímo do kompilace; kopie na disku slouží výhradně k nahlédnutí při debugování.
 - **Od issue #178 jsou složky `Generated/` v `.gitignore` a netrackují se.** Dřív commitnuté byly a každý `dotnet build` je přepsal: `RegexGenerator.g.cs` nese v `GeneratedCodeAttribute` build number generátoru (např. `10.0.14.32716` vs `10.0.14.37416`), takže mezi dvěma patchi .NET SDK vznikl 45řádkový fantomový diff, který musel každý dev před commitem ručně vracet.
 - Verzi `System.Text.RegularExpressions.Generator` **nelze pinovat** — chodí uvnitř .NET SDK, ne jako NuGet balíček. Netrackovat výstup je proto jediná spolehlivá varianta.
 - **Nevracej tyhle soubory do gitu** a nemaž řádky z `.gitignore`. Když je potřebuješ vidět, stačí `dotnet build` a vygenerují se lokálně. Když zapneš `EmitCompilerGeneratedFiles` na dalším projektu, přidej jeho `Generated/` do `.gitignore`.

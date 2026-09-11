@@ -234,9 +234,7 @@ public static class ServiceCollectionExtensions
 
         // Stateless IMAP poll cycle service — shared by:
         //   - ImapPollWorker (BackgroundService in API host)
-        //   - PaymentMatchingFunctions.RunImapPoll (Azure Functions TimerTrigger)
         //   - PaymentMatchingSysAdminController.RunNow (HTTP, SysAdmin)
-        // See CLAUDE.md "API + Functions duplication" for the deployment story.
         services.AddScopedWithLogging<IImapPollService, ImapPollService>();
 
         // End-to-end orchestrator — used by the IMAP worker AND tests.
@@ -358,9 +356,8 @@ public static class ServiceCollectionExtensions
 
         // ── Database Logging ────────────────────────────────────────────────
         // Structured logging to AppLog table in master DB.
-        // Uses ConcurrentQueue for non-blocking enqueue; flushed by:
-        // - API: LogFlushService (IHostedService, every 5 seconds)
-        // - Functions: LogFlush timer trigger (every 5 seconds)
+        // Uses ConcurrentQueue for non-blocking enqueue; flushed by
+        // LogFlushService (IHostedService in the API host, every 5 seconds).
         services.AddSingleton<ILoggerProvider>(new DatabaseLoggerProvider(LogLevel.Information));
 
         return services;
@@ -580,10 +577,9 @@ public static class ServiceCollectionExtensions
         });
 
         // ConnectionError is logged by EF Core at Error level for EVERY failed attempt —
-        // including the ones EnableRetryOnFailure above is about to swallow. On the Functions
-        // host that turned a sub-second startup race (the Tailscale forwarder had not bound
-        // its loopback port yet) into a stream of "An error occurred using the connection to
-        // database … on server 'tcp://127.0.0.1:15432'" errors that looked like an outage.
+        // including the ones EnableRetryOnFailure above is about to swallow. That turned every
+        // transient hiccup into a stream of "An error occurred using the connection to
+        // database …" errors that looked like an outage.
         //
         // Warning, not Ignore: a genuinely unreachable database still shows up here, and when
         // the retries are exhausted the exception surfaces to the caller and is logged as an

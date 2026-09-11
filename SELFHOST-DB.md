@@ -202,7 +202,7 @@ Azure databáze se jmenuje doslova **`postgres`** (viz
 | Volba | Důsledek |
 |---|---|
 | zachovat `Database=postgres` | connection string se mění jen v hostu/uživateli, ale aplikační data leží v maintenance DB |
-| přejmenovat na `fakvio` | čistší, ale **musí se upravit connection string** ve všech hostech (API, Functions, MigrationTool) |
+| přejmenovat na `fakvio` | čistší, ale **musí se upravit connection string** ve všech hostech (API, MigrationTool) |
 
 Tento runbook dál předpokládá **`fakvio`**.
 
@@ -215,13 +215,13 @@ Od tohoto bodu je aplikace mimo provoz. Reálné okno: 15–40 minut podle velik
 ### 2.1 Zastavit aplikaci
 
 ```bash
-az functionapp stop --name <function-app-name> --resource-group <rg>
-# a pokud běží i klasický API host:
-az webapp stop --name <api-app-name> --resource-group <rg>
+az webapp stop --name fakvio-api --resource-group invoiceapi
+# a pokud běží i test:
+az webapp stop --name fakvio-api-test --resource-group invoiceapi
 ```
 
-**Očekávaný výsledek:** příkaz projde bez chyby, `az functionapp show --name <…>
---resource-group <rg> --query state -o tsv` vrátí `Stopped`.
+**Očekávaný výsledek:** příkaz projde bez chyby, `az webapp show --name fakvio-api
+--resource-group invoiceapi --query state -o tsv` vrátí `Stopped`.
 
 ### 2.2 Ověřit, že do DB nikdo nepíše
 
@@ -233,7 +233,7 @@ WHERE datname = 'postgres'
   AND backend_type = 'client backend';"
 ```
 
-**Očekávaný výsledek: `0`.** Když ne, počkej — Azure Functions dobíhají invokace
+**Očekávaný výsledek: `0`.** Když ne, počkej — App Service dobíhá připojení
 i po `stop`. Vypiš, kdo drží spojení:
 
 ```bash
@@ -418,8 +418,8 @@ shodovat s `$WORKDIR/schemas-source.txt` z kroku 1.3.
 
 > ### Proč právě teď a ani o minutu později
 >
-> První start API i Functions volá `MigrateAsync()`
-> (`Fakvio.API/Program.cs:132`, `Fakvio.Functions/Program.cs:152`).
+> První start API volá `MigrateAsync()`
+> (`Fakvio.API/Program.cs`, metoda startup migration).
 > Když je migrační historie neúplná nebo rozbitá, EF Core začne
 > **re-aplikovat migrace na plné tabulky** — `CREATE TABLE` na existující tabulku,
 > `ADD COLUMN` na existující sloupec, v horším případě data-seeding podruhé.
@@ -800,7 +800,33 @@ Volby pro vlastní hosting, od nejslabší po nejsilnější:
 |---|---|
 | `Ssl Mode=Prefer` | DB na stejné privátní síti, TLS není povinné |
 | `Ssl Mode=Require;Trust Server Certificate=true` | TLS ano, self-signed cert |
-| `Ssl Mode=VerifyFull;Root Certificate=/cesta/ca.crt` | doporučené pro provoz přes veřejnou síť |
+| `Ssl Mode=VerifyCA;Root Certificate=/cesta/cert.crt` | Self-signed cert, validace chain (produkce Fakvio) |
+| `Ssl Mode=VerifyFull;Root Certificate=/cesta/ca.crt` | Doporučené pro veřejnou síť s CA-signed certem |
+
+### 6.2a Certifikát PostgreSQL v Fakvio.API
+
+Produkční Fakvio.API používá `Ssl Mode=VerifyCA` — server posílá self-signed certifikát, klient jej
+ověří bez chain ověření (stačí, aby byl v `Root Certificate`). Certifikát se uloží v repozitáři:
+
+```
+Fakvio.API/certs/fakvio-db-server.crt
+```
+
+Při buildu se zkopíruje do publish outputu (`<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>`
+v csproj), a na App Service je dostupný jako `/home/site/wwwroot/certs/fakvio-db-server.crt`.
+
+**Certifikát (aktuální):**
+- CN: `srv1657958.hstgr.cloud`
+- Platnost: 2026-05-09 až 2036-05-06
+- Typ: Self-signed (veřejný klíč, tajné není — bezpečný k commitu)
+
+**Rotace:**
+1. Exportovat nový certifikát z VPS serveru (`/etc/postgresql/16/main/server.crt` nebo podle `ssl_cert_file`).
+2. Nahradit `Fakvio.API/certs/fakvio-db-server.crt` v repozitáři.
+3. Commitnout a pushout.
+4. Redeploy App Service (push do `master` spustí `master_fakvio-api.yml`).
+5. Pokud se změní CN certifikátu a bude hostitelský hostname (ne IP), změnit `Ssl Mode` na `VerifyFull` a
+   připojovací řetězec na `Host=srv1657958.hstgr.cloud;…`.
 
 ### 6.3 `Npgsql.EnableLegacyTimestampBehavior` a serverová `timezone`
 
@@ -832,8 +858,8 @@ Projeví se to tiše — pod nízkým provozem nic, pod špičkou náhlé
 
 ### 6.4b PgBouncer v transaction poolingu tuhle aplikaci rozbije
 
-**Stav 2026-09-10: produkce pooler obchází** — `TAILSCALE_TARGET_PORT=5544` míří přes
-tunel přímo na Postgres. Předtím mířila na PgBouncer (`6432`) v transaction režimu a
+**Stav 2026-09-10: produkce pooler obchází** — connection string míří přímo na Postgres
+port 5544. Testovací prostředí dříve mířilo na PgBouncer (`6432`) v transaction režimu a
 **celá tenant část aplikace byla nepoužitelná**: každý tenant endpoint vracel 503,
 uživatel viděl všude prázdno (UI 503 spolkne a vykreslí prázdný seznam).
 
@@ -869,26 +895,28 @@ v `public`. Místo výpadku dostaneš rozsypanou strukturu databáze.
   `fakvio_prod_session` (session) pro migrace, provisioning a `AdvisoryLock`.
   V produkčním kódu má `GetForSchema()` **jediného volajícího**
   (`TenantProvisioningService.cs:634`), takže je to malá, ohraničená změna.
-  Vyžaduje druhý connection string v konfiguraci aplikace.
+  Vyžaduje druhý connection string v konfiguraci aplikace (teoreticky; v současnosti
+  se PgBouncer nepoužívá).
 
-#### Jak se vrátit na pooler
+#### Jak se vrátit na pooler (teoreticky, v současnosti nepoužito)
+
+Když by byla potřeba návrat na PgBouncer:
 
 1. Na DB hostu zvolit jednu z cest výše.
-2. `az functionapp config appsettings set -n zcloudinvoicingapi -g invoiceapi --settings TAILSCALE_TARGET_PORT=6432`
+2. `az webapp config appsettings set -n fakvio-api -g invoiceapi --settings ConnectionStrings__DefaultConnection=Host=…;Port=6432;…`
 3. Restart a do 15 minut zkontrolovat, že nepřibývají 503:
 
    ```kusto
    requests | where timestamp > ago(15m)
-            | where name !in ("LogFlush","RunImapPoll","McpKeepAlive","LogCleanup")
             | summarize total=count(), c503=countif(resultCode=="503")
    ```
 
-   Zpátky kdykoli `=5544`.
+   Zpátky na přímé spojení kdykoli změnou portu v connection stringu na `5544`.
 
 Ztráta multiplexingu při obcházení pooleru nebolí tolik, jak by se zdálo — aplikace má
 pooly malé (`Maximum Pool Size=20` v connection stringu, `SchemaDataSourceMaxPoolSize=4`,
 `ConnectionIdleLifetime=30`). Strop spojení ale opravdu zmizí, takže při škálování
-worker procesů na Flex Consumption je potřeba hlídat `max_connections`.
+App Service instancí je potřeba hlídat `max_connections` na PostgreSQL.
 
 ### 6.5 Rozbitá migrační historie ⇒ re-aplikace migrací na plná data
 
@@ -906,6 +934,19 @@ protože aplikace vypadá zdravě a spadne až na první IMAP/SMTP/AI operaci.
 
 **Jen proměnné prostředí. Do repozitáře se necommituje nic.**
 
+### Fakvio — produkční azure App Service
+
+```
+Database__AuthMode=AzureEntraId
+ConnectionStrings__DefaultConnection=Host=187.127.83.154;Port=5544;Database=fakvio_prod;Username=fakvio_prod;Password=***;Ssl Mode=VerifyCA;Root Certificate=/home/site/wwwroot/certs/fakvio-db-server.crt;Timezone=UTC;Maximum Pool Size=40
+```
+
+- `Ssl Mode=VerifyCA` s self-signed certem (viz §6.2a).
+- `Root Certificate` ukazuje na cestu v App Service `/home/site/wwwroot/certs/fakvio-db-server.crt`.
+- Řetězec je v App Settings (Azure Portal), ne v repozitáři — heslo patří do secrets.
+
+### Vlastní hosting — obecně
+
 ```
 Database__AuthMode=Password
 UseAzureAdAuthentication=false
@@ -915,27 +956,20 @@ ConnectionStrings__DefaultConnection=Host=novy-db-server.example.cz;Port=5432;Da
 Dvojité podtržítko `__` je oddělovač sekcí v .NET konfiguraci —
 `Database__AuthMode` odpovídá klíči `Database:AuthMode`.
 
-> `Ssl Mode=Prefer` v příkladu je **nejslabší** volba z tabulky v
+> `Ssl Mode=Prefer` je **nejslabší** volba z tabulky v
 > [části 6.2](#62-ssl-mode--npgsql-8-validuje-certifikát) — sedí na DB ve stejné
 > privátní síti. Pokud spojení jde přes veřejnou síť, vyber z té tabulky výš.
 
-### Varianta: databáze za Tailscale tunelem
+### Varianta: databáze za Tailscale tunelem (legacy, již není v produkci)
 
-Když databázový port **není ve veřejném internetu** a hostitel se k němu dostane jen přes
-tailnet (tak je zapojené testovací prostředí, viz `Fakvio.Functions/Tailscale/README.md`),
-liší se dvě věci: `Host`/`Port` míří na **lokální konec tunelu**, ne na databázový server,
-a přibývá klíč s auth key. Zbytek zůstává stejný.
+Testovací prostředí dříve používalo Tailscale tunel pro přístup k privátní databázi.
+Od 2026-09-10 je tato varianta z produkce odstraněna; `TAILSCALE_AUTHKEY`, `TAILSCALE_HOSTNAME`,
+`TAILSCALE_TARGET_PORT` a `TS_ASSUME_NETWORK_UP_FOR_TEST` nejsou v provozu.
+Tato poznámka zůstává pro historický kontext, pokud by někdy byla potřeba vrátit se k němuž podobnému.
 
-```
-TAILSCALE_AUTHKEY=tskey-auth-…
-Database__AuthMode=Password
-UseAzureAdAuthentication=false
-ConnectionStrings__DefaultConnection=Host=127.0.0.1;Port=15432;Database=fakvio_test;Username=fakvio_test;Password=***;Ssl Mode=Prefer;Timezone=UTC;Maximum Pool Size=20;Timeout=15
-```
-
-`Ssl Mode=Prefer` je tu navíc jediná praktická volba: provoz šifruje už WireGuard a
-certifikát vystavený na `127.0.0.1` se ověřit nedá. `Timeout=15` proto, že první spojení
-zahrnuje WireGuard handshake.
+Když by databázový port **nebyl ve veřejném internetu** a hostitel se k němu dostal jen přes
+tailnet, liší se dvě věci: `Host`/`Port` by mířily na **lokální konec tunelu**, ne na databázový server,
+a přidali by se klíče s auth key. Zbytek by zůstal stejný.
 
 **Přihlašovací role je per prostředí, ne jedna sdílená** — do databáze `fakvio_test` se
 přihlašuje role `fakvio_test`, do `fakvio_prod` role `fakvio_prod`, každá s vlastním heslem.
@@ -1055,7 +1089,6 @@ musí sám zajistit obojí:
 pointech:
 
 - `Fakvio.API/Program.cs:22`
-- `Fakvio.Functions/Program.cs:41`
 - `Fakvio.MigrationTool/Program.cs:32`
 
 ```csharp

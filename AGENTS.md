@@ -38,52 +38,30 @@ Pro mapování DTO a entit použijeme ZMapper (nuget).
 Důležité je aby vývoj aplikace byl pokud možno komponentní a modulární, což nám umožní snadno přidávat nové funkce a upravovat stávající bez nutnosti zásahu do celého kódu.
 Dále bude důležité zajistit, aby všechny komponenty byly dobře testovatelné a aby byly pokryty unit testy, které ověří správnost jejich funkcí.
 
-## API + Functions duplication (background work pattern)
+## Background work pattern
 
-Aplikace má dva paralelní hostovací modely, které musí dělat to samé:
-
-1. **Fakvio.API** — klasický ASP.NET Core host. Podporuje `BackgroundService` / `IHostedService`,
-   takže pravidelné úkoly tam jdou vyřešit přes `AddHostedService<TWorker>`. Používá se pro
-   lokální vývoj a klasický (VM / App Service) deploy.
-
-2. **Fakvio.Functions** — Azure Functions Isolated Worker. **NEpodporuje** `BackgroundService`
-   spolehlivě (na consumption planu se škáluje na nulu, hosted service by neběžel mezi
-   invokacemi). Pravidelné úkoly tam musí být řešené přes `[TimerTrigger]` Function.
+Aplikace běží na jediném hostiteli **Fakvio.API** (ASP.NET Core na Azure App Service). Pravidelné úlohy jsou implementovány jako `BackgroundService` / `IHostedService` registrované v DI — žádné Azure Functions ani `[TimerTrigger]`.
 
 ### Pravidlo
 
-Každá pravidelná úloha (poll, dunning, log flush, log cleanup, …) **musí mít obě varianty**:
+Každá pravidelná úloha (poll, dunning, log flush, log cleanup, …) má dvoudílnou strukturu:
 
 - **Stateless service** (např. `IImapPollService` v `Fakvio.Application.Service`) která
   obsahuje veškerou logiku jednoho cyklu. Žádný stav, žádné `Thread.Sleep` — jen "udělej
   jednu iteraci a vrať se".
 - **Tenká `BackgroundService` obálka** v `Fakvio.Infrastructure` (např. `ImapPollWorker`)
-  která ten servis volá v `while (!ct.IsCancellationRequested)` smyčce. Použije se
-  v API hostu.
-- **Tenká `[TimerTrigger]` Function** v `Fakvio.Functions` (např. `PaymentMatchingFunctions.RunImapPoll`)
-  která ten samý servis volá. Použije se v Azure Functions deployi.
+  která ten servis volá v `while (!ct.IsCancellationRequested)` smyčce a registruje se
+  přes `AddHostedService<TWorker>` v `Program.cs`.
 
-### Důsledky
+Pro vzájemné vyloučení napříč instancemi (App Service replicas) použij **PostgreSQL advisory lock** (`AdvisoryLock.TryAcquireAsync`). Žádný Blob lease, žádný Redis — databáze už je k dispozici a lock je session-bound (crash-safe).
 
-- Logika cyklu žije **jen na jednom místě** (ten stateless service). Worker i Function jsou
-  jen drivery a mají &lt; 50 řádků kódu.
-- Cron v Function je obvykle **kratší než žádaný interval** (např. tick každých 5 minut
-  pro úlohu která má běžet každých 30) a service uvnitř kontroluje `LastRunAt` aby
-  brzy-spuštěné cykly přeskočil. Tím získáme dynamický interval řízený z DB i v Functions,
-  kde CRON není dynamicky měnitelný bez redeploye.
-- Pro vzájemné vyloučení napříč hostiteli (replicas, paralelní API + Function deploy)
-  použij **PostgreSQL advisory lock** (`AdvisoryLock.TryAcquireAsync`). Žádný Blob lease,
-  žádný Redis — databáze už je k dispozici a lock je session-bound (crash-safe).
-- Pokud přidáváš novou úlohu, vždy přidej **obě** strany. Když chybí Functions varianta,
-  Azure deploy úlohu prostě neběží a ticha. Když chybí worker varianta, lokální vývoj
-  v `dotnet run` nikdy nevidí cyklus pracovat. Obě je třeba mít, jinak hrozí "u mě to jede".
+App Service má **Always On** povoleno — bez něj by idle recycle ukončil BackgroundService.
 
-### Existující dvojice
-- Logging: `LogFlushService`/`LogCleanupService` (Infrastructure) ↔ `TimerFunctions.FlushLogs/CleanupLogs`.
-- Reminders: dunning `IReminderService.ProcessOverdueInvoicesAsync` ↔ `ReminderFunctions.ProcessReminders`.
-- Payment matching: `ImapPollWorker` (BackgroundService) ↔ `PaymentMatchingFunctions.RunImapPoll`,
-  oba volají `IImapPollService.RunCycleAsync`. SysAdmin "Run now" v UI volá totéž
-  přes HTTP `POST /api/sysadmin/payment-matching/run-now`.
+### Existující pracovníci
+- `LogFlushService` (BackgroundService) — vykládá buffered logy do DB každých 20 sekund.
+- `LogCleanupService` (BackgroundService) — každou hodinu maže Debug/Info logy starší 48 h.
+- `ImapPollWorker` (BackgroundService) — čte emaily IMAP v intervalu `PollIntervalMinutes` (default 30 min); advisory lock.
+- `ReminderWorker` (BackgroundService) — dunning denně v 06:00 UTC, per-tenant scope, jedno selhání ostatní nezastaví; advisory lock.
 
 ## Dokumentace — povinná údržba
 
