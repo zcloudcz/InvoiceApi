@@ -870,17 +870,17 @@ v WASM bundlu) je v `DEVGUIDE.md` §9 — tady je jen to, co potřebuje SysAdmin
 
 ### Co kde běží
 
-| | **Test** | **Produkce** |
+| | **Test** (vypnuto 2026-09-10) | **Produkce** |
 |---|---|---|
-| Frontend hosting | Azure Static Web App `fakvio-test-ui` (Free tier) | GitHub Pages (custom doména z `CNAME` v repu) |
-| Frontend URL | https://test.fakvio.cz (custom doména; technický host SWA, CNAME u Forpsi) | https://app.fakvio.cz |
-| Backend API | App Service `fakvio-api-test` | App Service `fakvio-api` |
-| Backend API URL | https://fakvio-api-test.azurewebsites.net | https://fakvio-api.azurewebsites.net |
-| Backend MCP | App Service `fakvio-mcp-web-test` | App Service `fakvio-mcp-web` |
-| Backend MCP URL | https://fakvio-mcp-web-test.azurewebsites.net | https://fakvio-mcp-web.azurewebsites.net |
-| Zdrojová větev | `TEST-ENV` | `master` |
-| Deploy workflows | `testenv_fakvio-api.yml` (API), `mcp-server.yml` (MCP), `blazorui-test-deploy.yml` (frontend) | `master_fakvio-api.yml` (API), `mcp-server.yml` (MCP), `blazorui-deploy.yml` (frontend) |
-| Databáze | *(V současnosti vypnuto)* vlastní PostgreSQL `fakvio_test` | produkční PostgreSQL na vlastním serveru (přístup přes veřejný internet, TLS + firewall) |
+| Frontend hosting | *(vypnuto)* Azure Static Web App `fakvio-test-ui` | GitHub Pages (custom doména z `CNAME` v repu) |
+| Frontend URL | *(vypnuto)* https://test.fakvio.cz | https://app.fakvio.cz |
+| Backend API | *(vypnuto)* App Service `fakvio-api-test` | App Service `fakvio-api` |
+| Backend API URL | *(vypnuto)* https://fakvio-api-test.azurewebsites.net | https://fakvio-api.azurewebsites.net |
+| Backend MCP | *(vypnuto)* App Service `fakvio-mcp-web-test` | App Service `fakvio-mcp-web` |
+| Backend MCP URL | *(vypnuto)* https://fakvio-mcp-web-test.azurewebsites.net | https://fakvio-mcp-web.azurewebsites.net |
+| Zdrojová větev | *(vypnuto)* `TEST-ENV` | `master` |
+| Deploy workflows | *(vypnuto)* — `testenv_fakvio-api.yml`, `mcp-server.yml`, `blazorui-test-deploy.yml` deaktivovány | `master_fakvio-api.yml` (API), `mcp-server.yml` (MCP), `blazorui-deploy.yml` (frontend) |
+| Databáze | *(vypnuto)* vlastní PostgreSQL `fakvio_test` | produkční PostgreSQL na vlastním serveru (přístup přes veřejný internet, TLS + firewall) |
 
 Větev **`TEST-ENV` na `origin` vzniká až prvním během `/release`** (odbočí z `master`).
 Dokud tam není, testovací deploy workflows nemají co spustit — není to incident.
@@ -901,14 +901,14 @@ Všechna nastavení jsou **App Settings v Azure** (App Service → Settings → 
 variables), ne ve workflow souborech. Zápis používá dvojité podtržítko místo dvojtečky
 (`JwtSettings__Secret`).
 
-| Nastavení | Test | Poznámka |
-|-----------|------|----------|
-| `JwtSettings__Secret` | **vlastní, nesdílený s produkcí** | Token vydaný produkcí na testu neplatí a naopak. To je záměr — jinak by únik jednoho klíče otevřel obě prostředí. |
-| `JwtSettings__Issuer`, `JwtSettings__Audience` | shodné s produkcí | Liší se jen klíč, ne formát tokenu. |
-| `CorsSettings__AllowedOrigins__0` / `__1` | `https://wonderful-meadow-0eb3ada03.7.azurestaticapps.net` a `https://test.fakvio.cz` (oba originy testovacího frontendu) | Musí sedět na frontend URL daného prostředí, jinak prohlížeč zablokuje všechna volání API. Při změně URL frontendu se mění i tady. |
-| `ConnectionStrings__DefaultConnection` | *(test vypnuto)* | Produkce: `Host=<public-ip>;Port=5544;Database=fakvio_prod;Username=fakvio_prod;Password=***;Ssl Mode=VerifyFull;Timezone=UTC;Maximum Pool Size=40` — viz `SELFHOST-DB.md` část 7. |
-| `Database__AuthMode` | *(test: `Password`)* | Produkce: `AzureEntraId`. Vlastní PostgreSQL umí jen `Password`. Kanonický klíč (§13). |
-| `UseAzureAdAuthentication` | *(test: `false`)* | Produkce: `true` (Entra ID). **Legacy klíč, musí souhlasit s `Database__AuthMode`** — při rozporu aplikace spadne (fail-fast, §13). |
+| Nastavení | Test (vypnuto) | Produkce |
+|-----------|---|---|
+| `JwtSettings__Secret` | vlastní, nesdílený | vlastní |
+| `JwtSettings__Issuer`, `JwtSettings__Audience` | shodné | shodné |
+| `CorsSettings__AllowedOrigins__0` / `__1` | *(vypnuto)*: `https://wonderful-meadow-0eb3ada03.7.azurestaticapps.net` a `https://test.fakvio.cz` | `https://app.fakvio.cz` |
+| `ConnectionStrings__DefaultConnection` | *(vypnuto)*: vlastní PostgreSQL `fakvio_test` | `Host=<public-ip>;Port=5544;Database=fakvio_prod;Username=fakvio_prod;Password=***;Ssl Mode=VerifyCA;Root Certificate=/home/site/wwwroot/certs/fakvio-db-server.crt;Timezone=UTC;Maximum Pool Size=40` (viz `SELFHOST-DB.md`) |
+| `Database__AuthMode` | *(vypnuto)*: `Password` | `AzureEntraId` |
+| `UseAzureAdAuthentication` | *(vypnuto)*: `false` | `true` (Entra ID). Legacy klíč, musí souhlasit s `Database__AuthMode`. |
 | `AresSettings__BaseUrl` | shodné s produkcí | |
 
 ### Jak je produkční databáze zapojená
@@ -950,9 +950,8 @@ přesné příkazy v `SELFHOST-DB.md` §7.
 | Krok | Kdo | Co se stane |
 |------|-----|-------------|
 | `develop` | `agent-ops` (automaticky při mergi feature PR) | Nenasazuje se nic — `develop` nemá deploy workflow. |
-| `/release` | **člověk** | Otevře promotion PR `develop → TEST-ENV`. **Po jeho mergnutí** se spustí oba testovací deploye (push na `TEST-ENV`). Karty na boardu se nehýbou. |
-| ověření na testu | **člověk** | Test běží proti vlastní DB `fakvio_test` (viz „Jak je testovací databáze zapojená" výše) — ověřit lze přihlášení i běžný provoz, ne jen deploy a CORS. |
-| `/release-prod` — 1. běh | **člověk** po ověření testu | Otevře promotion PR `TEST-ENV → master` a skončí. Merge dělá člověk v GitHubu; merge nasadí produkci. **Karty se zatím nehýbou.** |
+| `/release` | **člověk** | Otevře promotion PR `develop → TEST-ENV` a skončí. **Testovací deploye se neběží** — test-env byl vypnut 2026-09-10. Karty na boardu se nehýbou. |
+| `/release-prod` — 1. běh | **člověk** | Otevře promotion PR `TEST-ENV → master` a skončí. Merge dělá člověk v GitHubu; merge nasadí produkci. **Karty se zatím nehýbou.** |
 | `/release-prod` — 2. běh | **člověk** po mergnutí release PR | Finalizace boardu: karty v `Implemented`, jejichž merge commit je ancestorem `master`, se přesunou do `Approved` (stejný test i pro story). Bez druhého běhu zůstane board viset v `Implemented`. |
 
 Pravidla, která platí bez výjimky:
@@ -974,25 +973,19 @@ a do GitHubu se výsledek jen zkopíruje.
 
 | Secret | K čemu |
 |--------|--------|
-| `AZUREAPPSERVICE_CLIENTID_TEST`, `AZUREAPPSERVICE_TENANTID_TEST`, `AZUREAPPSERVICE_SUBSCRIPTIONID_TEST` | Přihlášení workflow `testenv_fakvio-api.yml` a `mcp-server.yml` do Azure (OIDC, app registration `zcloudcz-InvoiceApi-TEST`). |
-| `AZURE_STATIC_WEB_APPS_API_TOKEN_TEST` | Deploy token pro `blazorui-test-deploy.yml` → SWA `fakvio-test-ui`. |
-| `AZUREAPPSERVICE_CLIENTID_71CB3DED09D246528906A346340AC1F8`, `AZUREAPPSERVICE_TENANTID_0F744DC7C56040999B540311235A4E45`, `AZUREAPPSERVICE_SUBSCRIPTIONID_0A2C19BC7D294FFA80F06B93F1D614E4` | Totéž pro produkční `master_fakvio-api.yml` a `mcp-server.yml`. GUID příponu generuje Azure Portál při napojení deploy centra — proto se nejmenují symetricky k `_TEST`. Produkční frontend token nepotřebuje: GitHub Pages se nasazují vestavěným `GITHUB_TOKEN`. |
+| `AZUREAPPSERVICE_CLIENTID_TEST`, `AZUREAPPSERVICE_TENANTID_TEST`, `AZUREAPPSERVICE_SUBSCRIPTIONID_TEST` | *(Nepoužíváno od 2026-09-10)* Přihlášení k Azure pro deaktivované workflows `testenv_fakvio-api.yml` a `mcp-server.yml` (app registration `zcloudcz-InvoiceApi-TEST`). |
+| `AZURE_STATIC_WEB_APPS_API_TOKEN_TEST` | *(Nepoužíváno od 2026-09-10)* Deploy token pro deaktivovaný `blazorui-test-deploy.yml` → SWA `fakvio-test-ui`. |
+| `AZUREAPPSERVICE_CLIENTID_71CB3DED09D246528906A346340AC1F8`, `AZUREAPPSERVICE_TENANTID_0F744DC7C56040999B540311235A4E45`, `AZUREAPPSERVICE_SUBSCRIPTIONID_0A2C19BC7D294FFA80F06B93F1D614E4` | Produkční OIDC pro `master_fakvio-api.yml` a `mcp-server.yml`. GUID příponu generuje Azure Portál — proto se nejmenují symetricky k `_TEST`. Produkční frontend token nepotřebuje: GitHub Pages se nasazují vestavěným `GITHUB_TOKEN`. |
 
-**Rozsah oprávnění testovacího OIDC** (nastaveno při zřízení, issue #289): federated credential
-je vázaný na subject `repo:zcloudcz/InvoiceApi:ref:refs/heads/TEST-ENV` a role **Contributor je
-scopovaná jen na web appky `fakvio-api-test` a `fakvio-mcp-web-test`**. Workflow spuštěné z jiné větve se tedy nepřihlásí
-vůbec a ani po přihlášení nedosáhne na produkční zdroje.
+**Rozsah oprávnění testovacího OIDC** (v současnosti nepoužíváno): federated credential
+byla vázaná na subject `repo:zcloudcz/InvoiceApi:ref:refs/heads/TEST-ENV` a role **Contributor
+scopovaná jen na web appky `fakvio-api-test` a `fakvio-mcp-web-test`**. Od 2026-09-10 jsou
+tyto zdroje a workflows deaktivovány.
 
-**Rotace deploy tokenu SWA** (při podezření na únik nebo když deploy začne vracet 401):
-
-1. Azure Portal → Static Web App `fakvio-test-ui` → **Manage deployment token** → *Reset*,
-   nebo `az staticwebapp secrets reset-api-key --name fakvio-test-ui`.
-2. Nový token vložte do secretu `AZURE_STATIC_WEB_APPS_API_TOKEN_TEST`
-   (`gh secret set AZURE_STATIC_WEB_APPS_API_TOKEN_TEST`).
-3. Reset zneplatní starý token okamžitě; nový se projeví **při dalším pushi do `TEST-ENV`**
-   (typicky další `/release`) — tehdy taky poznáte, že secret sedí. Ruční spuštění z Actions →
-   Run workflow zatím nejde: GitHub nabízí `workflow_dispatch` jen u workflows, které jsou
-   na default branchi (`master`), a oba testovací tam doputují až prvním `/release-prod`.
+**Rotace deploy tokenu SWA** (v současnosti nepoužívá se): Secret `AZURE_STATIC_WEB_APPS_API_TOKEN_TEST`
+byl určen pro deaktivovaný `blazorui-test-deploy.yml` → SWA `fakvio-test-ui`. Pokud by se test-env
+znovu spustilo, rotace by probíhala takto: Azure Portal → Static Web App `fakvio-test-ui` →
+**Manage deployment token** → *Reset*, pak nový token do `AZURE_STATIC_WEB_APPS_API_TOKEN_TEST`.
 
 OIDC credentials rotaci nepotřebují: app registration nemá client secret, důvěra stojí na
 federated credential. Mění se jen tehdy, když se mění samotná app registration nebo název větve.
