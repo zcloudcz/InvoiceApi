@@ -12,14 +12,12 @@
 name: MCP server - pack tool and deploy HTTP host
 
 on:
-  # Same branches as the other deploy workflows: TEST-ENV carries the test environment,
-  # master the production one. No path filter — Fakvio.McpServer builds on top of
+  # Same branch as the other deploy workflow: master is the production one. No path filter — Fakvio.McpServer builds on top of
   # Fakvio.Contracts and Fakvio.Domain, and a filter that forgets one of those ships a
   # stale server. A superfluous two-minute run is the cheaper mistake.
   push:
     branches:
       - master
-      - TEST-ENV
   workflow_dispatch:
 
 permissions:
@@ -120,100 +118,15 @@ jobs:
           name: mcp-tool-nupkg
           path: ./nupkg/*.nupkg
 
-  deploy-http-test:
-    needs: build
-    runs-on: ubuntu-latest
-
-    # Test environment. Production is the sibling job `deploy-http-prod` below — one job per
-    # environment with its own OIDC secrets, the way the Functions workflows are split (§9.1).
-    #
-    # MCP_HTTP_APP_NAME is a repository *variable* (not a secret) holding the web app
-    # name, expected value `fakvio-mcp-web-test`. It doubles as the on/off switch: while the
-    # variable is unset this job is skipped instead of failing every TEST-ENV push on a
-    # resource that does not exist.
-    if: github.ref_name == 'TEST-ENV' && vars.MCP_HTTP_APP_NAME != ''
-
-    permissions:
-      id-token: write # required for requesting the OIDC JWT
-      contents: read
-
-    # One deploy at a time, and let a running one finish rather than cancel it half-uploaded.
-    concurrency:
-      group: "mcp-http-test"
-      cancel-in-progress: false
-
-    steps:
-      - name: Download the HTTP host artifact
-        uses: actions/download-artifact@v4
-        with:
-          # The very same output the build job smoke-tested — not a rebuild.
-          name: mcp-http-host
-          path: ./publish
-
-      - name: Login to Azure
-        uses: azure/login@v2
-        with:
-          # The per-environment app registration already used by testenv_zcloudinvoicingapi.yml
-          # (federated credential trusts the TEST-ENV branch only). One registration per
-          # environment, not per resource — its Contributor role is scoped to both test web apps.
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_TEST }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_TEST }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_TEST }}
-
-      - name: Deploy to Azure App Service
-        id: deploy
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: ${{ vars.MCP_HTTP_APP_NAME }}
-          package: ./publish
-
-      - name: Verify the deployed host answers on /mcp
-        shell: bash
-        run: |
-          set -euo pipefail
-          # A request with no Authorization header is rejected by McpApiKeyMiddleware without
-          # touching the API, so 401 proves two things with no credential in the workflow: the
-          # host booted, and the gate stands in front of the whole pipeline. Anything else is a
-          # failed deploy, but do not read the code as a diagnosis: measured against a host with
-          # the gate mutated out, this exact request answers 500 (the MCP transport is reached
-          # and throws on the empty content type) and any other path answers 404. So 5xx here
-          # means "did not start OR the gate is gone", and 200 does not happen.
-          #
-          # The reverse trap: platform-level authentication (Easy Auth) answers 401 before the
-          # app is reached at all, which would keep this step green on a host that never booted.
-          # It must stay off here, because the API-key gate inside the app is the authorization
-          # boundary (DEVGUIDE §9.1).
-          #
-          # It does NOT prove /mcp is mapped: the middleware is registered with app.Use(...)
-          # over the entire pipeline and short-circuits before any endpoint runs, so every path
-          # answers 401 — a wrong route included. Proving the mapping would need a valid API
-          # key here, which is exactly the credential this check is designed not to carry.
-          #
-          URL="${{ steps.deploy.outputs.webapp-url }}"
-
-          # --retry-all-errors covers the cold start (up to ~7 minutes on B1 after a deploy,
-          # the retry budget is ~11 minutes): the first hit after a deploy can land
-          # while the site is still warming up and answer 5xx.
-          CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
-                   --retry 20 --retry-all-errors --retry-delay 30 --max-time 30 \
-                   "${URL%/}/mcp")
-
-          if [ "${CODE}" != "401" ]; then
-            echo "::error::POST ${URL%/}/mcp answered ${CODE}, expected 401 from the API-key gate."
-            exit 1
-          fi
-
   deploy-http-prod:
     needs: build
     runs-on: ubuntu-latest
 
-    # Sibling of deploy-http-test — read that job for the rationale behind every step; only the
-    # environment differs. Two jobs rather than one matrix because that is how the Functions
-    # workflows are split per environment (§9.1), and because a matrix would have to index both
-    # `vars` and `secrets` by key, which hides exactly the thing an operator comes here to read.
+    # Production deploy of the HTTP host (the test environment was retired on 2026-09-10).
     #
-    # MCP_HTTP_APP_NAME_PROD is the production counterpart of MCP_HTTP_APP_NAME (expected value
-    # `fakvio-mcp-web`) and doubles as the same on/off switch.
+    # MCP_HTTP_APP_NAME_PROD is a repository *variable* (not a secret) holding the web app
+    # name (expected value `fakvio-mcp-web`); while it is unset this job is skipped instead
+    # of failing every master push on a resource that does not exist.
     if: github.ref_name == 'master' && vars.MCP_HTTP_APP_NAME_PROD != ''
 
     permissions:
@@ -252,10 +165,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Identical check to the test job: no Authorization header must answer 401, which
-          # proves the host booted and the API-key gate stands in front of the pipeline without
-          # this workflow carrying any credential. See deploy-http-test for what it does and
-          # does not prove — including why platform-level authentication must stay off here.
+          # No Authorization header must answer 401, which proves the host booted and the
+          # API-key gate stands in front of the pipeline without this workflow carrying any
+          # credential. Platform-level authentication (Easy Auth) must stay off here — it would
+          # answer 401 before the app is reached and keep this step green on a host that never
+          # booted. It does NOT prove /mcp is mapped: the gate short-circuits every path.
           URL="${{ steps.deploy.outputs.webapp-url }}"
 
           CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
@@ -272,8 +186,8 @@ jobs:
     runs-on: ubuntu-latest
 
     # Production releases only. The stdio distribution is what users install
-    # (`dotnet tool install -g Fakvio.McpServer`), so it follows master, not TEST-ENV —
-    # a test build must never become the package the public pulls.
+    # (`dotnet tool install -g Fakvio.McpServer`), so it follows master only —
+    # a non-release build must never become the package the public pulls.
     if: github.ref_name == 'master'
 
     permissions:

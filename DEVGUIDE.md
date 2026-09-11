@@ -2392,10 +2392,8 @@ dotnet test Fakvio.Tests.Unit --filter "FullyQualifiedName~DatabaseConnectivityS
 | Soubor | Trigger | Co dělá |
 |--------|---------|---------|
 | `blazorui-deploy.yml` | Push `master`, manual, PR (path-filtered) | Build `Fakvio.BlazorUI` (WASM publish) → deploy GitHub Pages. Přidá CNAME, .nojekyll, kopie `index.html → 404.html` (client-side routing). |
-| `blazorui-test-deploy.yml` | Push `TEST-ENV`, manual | Build `Fakvio.BlazorUI` (WASM publish) → deploy Azure Static Web App `fakvio-test-ui`. Před publishem přepíše **dvě** adresy, každou vlastním sedem: `ApiSettings:BaseUrl` na testovací API App Service a `McpSettings:BaseUrl` na testovací MCP App Service. Oba sedy jsou **omezené na svůj blok** a hlídané počtem výskytů (přesně 1), protože `appsettings.json` má víc klíčů `BaseUrl` a neomezený zápis by jednu adresu podstrčil na místo druhé — přesně bug, kvůli kterému #363 vzniklo. Nový klíč `BaseUrl` v dalších sekcích proto nic přepisovat nebude. Client-side routing řeší `wwwroot/staticwebapp.config.json` (`navigationFallback`). |
 | `master_fakvio-api.yml` | Push `master` | Publishne `Fakvio.API.csproj` → Azure App Service `fakvio-api`. Auth přes managed identity (federated credentials). Post-deploy ověří `GET /api/diagnostic/health` = 401. |
-| `testenv_fakvio-api.yml` | Push `TEST-ENV`, manual | *(V současnosti vypnuto)* Publishne `Fakvio.API.csproj` → Azure App Service `fakvio-api-test` s totožným procesem. OIDC přes secrets s příponou `_TEST`. |
-| `mcp-server.yml` | Push `master` + `TEST-ENV`, manual | Publishne `Fakvio.McpServer` (**jeden artefakt = oba režimy**, viz §4.9), smoke testem ověří spuštění, a `dotnet pack`em zabalí stdio nástroj `fakvio-mcp`. Deploy HTTP hostu do Azure App Service: `TEST-ENV` → `fakvio-mcp-web-test`, `master` → `fakvio-mcp-web`. Na `master` navíc `publish-nuget` (nuget.org). |
+| `mcp-server.yml` | Push `master`, manual | Publishne `Fakvio.McpServer` (**jeden artefakt = oba režimy**, viz §4.9), smoke testem ověří spuštění, a `dotnet pack`em zabalí stdio nástroj `fakvio-mcp`. Deploy HTTP hostu do Azure App Service `fakvio-mcp-web`. Na `master` navíc `publish-nuget` (nuget.org). |
 
 **`mcp-server.yml` — proč tak, jak je**:
 
@@ -2483,32 +2481,27 @@ dotnet test Fakvio.Tests.Unit --filter "FullyQualifiedName~DatabaseConnectivityS
   zabilo dřív, než Kestrel otevřel port 8080.
 - **Web apps**:
   - `fakvio-api` (https://fakvio-api.azurewebsites.net) — produkční API host (`Fakvio.API`).
-  - `fakvio-api-test` (https://fakvio-api-test.azurewebsites.net) — testovací API host.
   - `fakvio-mcp-web` (https://fakvio-mcp-web.azurewebsites.net) — produkční MCP HTTP host.
-  - `fakvio-mcp-web-test` (https://fakvio-mcp-web-test.azurewebsites.net) — testovací MCP HTTP host.
 - **Startup command**: `dotnet Fakvio.API.dll` (pro API) nebo `dotnet Fakvio.McpServer.dll` (pro MCP).
 - **Always On**: povinně zapnuto — bez něj idle recycle ukončí `BackgroundService` pracovníky.
 - **HTTPS only**: enabled. Funkční klíč není potřeba, auth je v aplikaci.
-- **Deployment**: `azure/webapps-deploy@v3` přes federated identity (Managed Identity pro prod, App Registration pro test).
+- **Deployment**: `azure/webapps-deploy@v3` přes federated identity (Managed Identity pro prod).
 
-**Testovací prostředí:**
+**Testovací prostředí (v současnosti vypnuto, 2026-09-10):**
 
-- Vlastní App Service instance (`fakvio-api-test`), *(v současnosti vypnuto)* ne slot.
-- Vlastní database `fakvio_test` *(v současnosti vypnuto; dříve dostupná přes Tailscale tunel)*.
-- Vlastní app registration (federated credential jen pro `TEST-ENV`, Contributor scope jen na test apps).
-- Vlastní `JwtSettings:Secret`, `CORS origin`, api key — všechno v App Settings, ne ve workflow.
+App Service instance `fakvio-api-test`, `fakvio-mcp-web-test`, App Service plán `asp-fakvio-b1-test` a Azure Static Web App `fakvio-test-ui` byly smazány. Workflow `testenv_fakvio-api.yml` a `blazorui-test-deploy.yml` jsou v GitHub Actions deaktivovány. Jak bylo nastaveno: vlastní App Service plán (1,75 GB RAM), vlastní database `fakvio_test`, vlastní app registration pro OIDC.
 
 **Přímé připojení k databázi:**
 
 Od 2026-09-10 se aplikace připojuje přímo k PostgreSQL na veřejné adrese (port 5544) bez tunelu.
 Bezpečnost je zajištěna přes:
-- TLS (`Ssl Mode=VerifyFull` doporučeno, `Require` minimum) s validací certifikátu
+- TLS (`Ssl Mode=VerifyCA`) s validací self-signed certifikátu serveru (`Root Certificate=/home/site/wwwroot/certs/fakvio-db-server.crt`)
 - VPS firewall + `pg_hba.conf` omezující spojení jen na App Service outbound IP adresy
 - Přesné 19 IP adres z `az webapp show -n fakvio-api -g invoiceapi --query possibleOutboundIpAddresses`
 
-Připojovací řetězec: `Host=<db-public-host>;Port=5544;Database=fakvio_prod;Username=fakvio_prod;Password=***;Ssl Mode=VerifyFull`
+Certifikát: self-signed `CN=srv1657958.hstgr.cloud`, platný do 2036-05-06, uložen v `Fakvio.API/certs/fakvio-db-server.crt` a kopírován do publish outputu. Rotace certifikátu: nahradit soubor v repozitáři a redeploy; pokud se změní issue CN, aktualizovat `Ssl Mode` na `VerifyFull` s příslušným hostname. Technické detaily: `SELFHOST-DB.md` část 6–7.
 
-Detaily, konfigurace firewallu, ověření spojení: `SELFHOST-DB.md`.
+Připojovací řetězec: `Host=<db-public-host>;Port=5544;Database=fakvio_prod;Username=fakvio_prod;Password=***;Ssl Mode=VerifyCA;Root Certificate=/home/site/wwwroot/certs/fakvio-db-server.crt`
 
 **Startup migrací:**
 
@@ -2584,8 +2577,8 @@ a vlastní spouštěč:
 | Stupeň | Větev | Kdo / čím | Co se nasadí | Karty na boardu |
 |--------|-------|-----------|--------------|-----------------|
 | Integrace | `develop` | `agent-ops` squash-merge feature PR | nic (`develop` nemá deploy workflow) | karta → `Implemented` |
-| Test | `TEST-ENV` | člověk příkazem `/release` | testovací prostředí — App Service `fakvio-api-test` + `fakvio-mcp-web-test` + Static Web App `fakvio-test-ui` | **nehýbou se** |
-| Produkce | `master` | člověk příkazem `/release-prod` po ověření testu | produkce (App Service `fakvio-api` + `fakvio-mcp-web` + GitHub Pages) | `Implemented` → `Approved` — až při **druhém** běhu příkazu, po mergnutí release PR (State A) |
+| Test | `TEST-ENV` | člověk příkazem `/release` | *(v současnosti nic — testovací prostředí vypnuto 2026-09-10)* | **nehýbou se** |
+| Produkce | `master` | člověk příkazem `/release-prod` po ověření | produkce (App Service `fakvio-api` + `fakvio-mcp-web` + GitHub Pages) | `Implemented` → `Approved` — až při **druhém** běhu příkazu, po mergnutí release PR (State A) |
 
 Pravidla:
 

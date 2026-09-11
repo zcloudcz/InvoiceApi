@@ -20,6 +20,11 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+## 2026.09.11 — 2026-09-11
+
+### Změny
+- **#426** — testovací prostředí zrušeno (workflow `testenv_fakvio-api.yml`, `blazorui-test-deploy.yml` a job `deploy-http-test` odstraněny; Azure testovací appky smazány); certifikát PostgreSQL serveru je součástí balíčku API (`certs/fakvio-db-server.crt`) → connection string produkce běží s `Ssl Mode=VerifyCA`. (PR #426)
+
 ## 2026.09.10.4 — 2026-09-10
 
 ### Změny

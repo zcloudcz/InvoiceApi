@@ -800,7 +800,33 @@ Volby pro vlastní hosting, od nejslabší po nejsilnější:
 |---|---|
 | `Ssl Mode=Prefer` | DB na stejné privátní síti, TLS není povinné |
 | `Ssl Mode=Require;Trust Server Certificate=true` | TLS ano, self-signed cert |
-| `Ssl Mode=VerifyFull;Root Certificate=/cesta/ca.crt` | doporučené pro provoz přes veřejnou síť |
+| `Ssl Mode=VerifyCA;Root Certificate=/cesta/cert.crt` | Self-signed cert, validace chain (produkce Fakvio) |
+| `Ssl Mode=VerifyFull;Root Certificate=/cesta/ca.crt` | Doporučené pro veřejnou síť s CA-signed certem |
+
+### 6.2a Certifikát PostgreSQL v Fakvio.API
+
+Produkční Fakvio.API používá `Ssl Mode=VerifyCA` — server posílá self-signed certifikát, klient jej
+ověří bez chain ověření (stačí, aby byl v `Root Certificate`). Certifikát se uloží v repozitáři:
+
+```
+Fakvio.API/certs/fakvio-db-server.crt
+```
+
+Při buildu se zkopíruje do publish outputu (`<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>`
+v csproj), a na App Service je dostupný jako `/home/site/wwwroot/certs/fakvio-db-server.crt`.
+
+**Certifikát (aktuální):**
+- CN: `srv1657958.hstgr.cloud`
+- Platnost: 2026-05-09 až 2036-05-06
+- Typ: Self-signed (veřejný klíč, tajné není — bezpečný k commitu)
+
+**Rotace:**
+1. Exportovat nový certifikát z VPS serveru (`/etc/postgresql/16/main/server.crt` nebo podle `ssl_cert_file`).
+2. Nahradit `Fakvio.API/certs/fakvio-db-server.crt` v repozitáři.
+3. Commitnout a pushout.
+4. Redeploy App Service (push do `master` spustí `master_fakvio-api.yml`).
+5. Pokud se změní CN certifikátu a bude hostitelský hostname (ne IP), změnit `Ssl Mode` na `VerifyFull` a
+   připojovací řetězec na `Host=srv1657958.hstgr.cloud;…`.
 
 ### 6.3 `Npgsql.EnableLegacyTimestampBehavior` a serverová `timezone`
 
@@ -908,6 +934,19 @@ protože aplikace vypadá zdravě a spadne až na první IMAP/SMTP/AI operaci.
 
 **Jen proměnné prostředí. Do repozitáře se necommituje nic.**
 
+### Fakvio — produkční azure App Service
+
+```
+Database__AuthMode=AzureEntraId
+ConnectionStrings__DefaultConnection=Host=187.127.83.154;Port=5544;Database=fakvio_prod;Username=fakvio_prod;Password=***;Ssl Mode=VerifyCA;Root Certificate=/home/site/wwwroot/certs/fakvio-db-server.crt;Timezone=UTC;Maximum Pool Size=40
+```
+
+- `Ssl Mode=VerifyCA` s self-signed certem (viz §6.2a).
+- `Root Certificate` ukazuje na cestu v App Service `/home/site/wwwroot/certs/fakvio-db-server.crt`.
+- Řetězec je v App Settings (Azure Portal), ne v repozitáři — heslo patří do secrets.
+
+### Vlastní hosting — obecně
+
 ```
 Database__AuthMode=Password
 UseAzureAdAuthentication=false
@@ -917,7 +956,7 @@ ConnectionStrings__DefaultConnection=Host=novy-db-server.example.cz;Port=5432;Da
 Dvojité podtržítko `__` je oddělovač sekcí v .NET konfiguraci —
 `Database__AuthMode` odpovídá klíči `Database:AuthMode`.
 
-> `Ssl Mode=Prefer` v příkladu je **nejslabší** volba z tabulky v
+> `Ssl Mode=Prefer` je **nejslabší** volba z tabulky v
 > [části 6.2](#62-ssl-mode--npgsql-8-validuje-certifikát) — sedí na DB ve stejné
 > privátní síti. Pokud spojení jde přes veřejnou síť, vyber z té tabulky výš.
 
