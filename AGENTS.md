@@ -65,11 +65,13 @@ App Service má **Always On** povoleno — bez něj by idle recycle ukončil Bac
 
 ## Dokumentace — povinná údržba
 
-Repozitář má tři průvodce, které musí zůstat synchronizované s kódem:
+Repozitář má tři průvodce, které musí zůstat synchronizované s kódem, a jeden
+záznam změn, který se plní automaticky:
 
 - **`DEVGUIDE.md`** — pro vývojáře a AI agenty. Aktualizuj při každé technické změně (nový pattern, nový provider, nový endpoint kategorie…). Viz §13 v DEVGUIDE pro kompletní seznam povinných případů.
 - **`USERGUIDE.md`** — pro uživatele (tenant firmy). **Aktualizuj při každé změně viditelné uživateli**: nová stránka, nová akce, nový stav, nový export, změna chování formuláře.
 - **`ADMINGUIDE.md`** — pro SysAdmina. **Aktualizuj při každé změně viditelné SysAdminovi**: nové nastavení, nový provider, nová správa tenantů, změna bezpečnostní konfigurace.
+- **`release-notes.md`** — záznam dokončených změn, jeden řádek na každý task mergnutý do `develop`. **Nepíše ho vývojář ani reviewer, ale `agent-ops` při mergi** (viz `~/.claude/agents/agent-ops.md` Step 2a) — je to jediná sekvenční role, takže jako jediná může připisovat do sdíleného souboru bez konfliktu s paralelními větvemi. Ručně do něj nezasahuj; chybějící záznam znamená chybějící merge.
 
 PR bez odpovídající aktualizace průvodce (pokud se změna týká jeho obsahu) **neprochází review**.
 
@@ -78,3 +80,16 @@ PR bez odpovídající aktualizace průvodce (pokud se změna týká jeho obsahu
 Tento repozitář používá AgenticTeam (Story → Task → Dev → Review → Test → Ops) řízený přes
 GitHub Project v2 board. Detaily a přechody stavů viz `.claude/BOARD-OPS.md`
 (jediný zdroj pravdy — `.codex/` obsahuje jen zrcadlené definice rolí v TOML).
+
+### Promoční stupně (repo-specifické — globální role je neznají)
+
+Role se berou z `~/.claude/agents/` a počítají se dvěma stupni `develop → master`. Tady jsou
+tři a toto pravidlo má přednost:
+
+- `develop` — integrační větev. Jediný cíl feature PR a jediná větev, kam merguje `agent-ops`.
+- `TEST-ENV` — staging. Plní ho jen `/release` (develop → TEST-ENV); ten karty nepřesouvá.
+- `master` — produkce. Plní ho jen `/release-prod` (TEST-ENV → master); jen ten přesouvá karty
+  z `Implemented` do `Approved`.
+- Žádná role (dev, tester, ops, warden) nepushuje ani nemerguje do `TEST-ENV` ani `master`.
+  Kde globální role píše „run /release to ship to master", platí „/release → TEST-ENV,
+  pak /release-prod → master".

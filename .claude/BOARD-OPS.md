@@ -337,7 +337,7 @@ Most roles are dispatched as themselves: `subagent_type: "agent-dev"`,
 frontmatter because it does not run on its own. Dispatch it as:
 
     Agent(subagent_type: "hydra",
-          prompt: "<contents of .claude/agents/agent-reviewer.md as your
+          prompt: "<contents of ~/.claude/agents/agent-reviewer.md as your
                    instruction set> ... review PR #<PR>")
 
 `hydra` is a user-global agent that delegates the actual review to the
