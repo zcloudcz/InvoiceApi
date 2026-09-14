@@ -9,6 +9,7 @@ using Fakvio.Contracts.Dto.Email;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Contracts.Dto.InvoiceTemplate;
 using Fakvio.Contracts.Dto.Readiness;
+using Fakvio.Contracts.Dto.FileAttachment;
 using Fakvio.Contracts.Dto.ReceivedInvoice;
 using Fakvio.Contracts.Dto.Tax;
 using Fakvio.Contracts.Dto.VatReport;
@@ -269,6 +270,28 @@ public class FakvioApiClient : IFakvioApiClient
     {
         var response = await _http.DeleteAsync($"api/received-invoice/{id}", ct);
         await EnsureSuccessAsync(response, ct);
+    }
+
+    // ── File attachment endpoints ────────────────────────────────────
+
+    public async Task<FileAttachmentDto> UploadFileAttachmentAsync(
+        string entityName, long recordId, string fileName, string contentType, byte[] content,
+        string? description = null, CancellationToken ct = default)
+    {
+        // The API endpoint expects multipart/form-data (IFormFile + form fields), not JSON.
+        // Field names must match FileAttachmentController.Upload parameters exactly.
+        using var form = new MultipartFormDataContent();
+        var file = new ByteArrayContent(content);
+        file.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(contentType);
+        form.Add(file, "file", fileName);
+        form.Add(new StringContent(entityName), "entityName");
+        form.Add(new StringContent(recordId.ToString()), "recordId");
+        if (!string.IsNullOrEmpty(description))
+            form.Add(new StringContent(description), "description");
+
+        var response = await _http.PostAsync("api/file-attachment/upload", form, ct);
+        await EnsureSuccessAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync<FileAttachmentDto>(JsonOptions, ct))!;
     }
 
     // ── VAT Report endpoints ─────────────────────────────────────────────

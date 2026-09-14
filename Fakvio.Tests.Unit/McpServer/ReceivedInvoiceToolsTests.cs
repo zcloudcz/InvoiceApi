@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Fakvio.Contracts.Common.Pagination;
+using Fakvio.Contracts.Dto.FileAttachment;
 using Fakvio.Contracts.Dto.ReceivedInvoice;
 using Fakvio.Domain.Enums;
 using Fakvio.McpServer.Client;
@@ -519,5 +520,46 @@ public class ReceivedInvoiceToolsTests
         doc.RootElement.TryGetProperty("success", out _).ShouldBeFalse();
         doc.RootElement.GetProperty("error").GetString().ShouldBe("internal_error");
         doc.RootElement.GetProperty("message").GetString().ShouldNotContain("HttpClient.Timeout");
+    }
+
+    // ── CreateReceivedInvoice — input parsing ──────────────────────────
+
+    [Fact]
+    public async Task CreateReceivedInvoice_ReturnsInvalidJsonError_WhenPaymentMethodIsNotAnEnumValue()
+    {
+        // Regression: "Apple Pay" is not an EPaymentMethod, so deserialization throws.
+        // That is the model's input error and must be reported precisely — not swallowed
+        // into the sanitized "internal_error" (which made the real cause invisible).
+        var json = await ReceivedInvoiceTools.CreateReceivedInvoice(
+            _api, "{\"supplierId\":7,\"currencyId\":1,\"paymentMethod\":\"Apple Pay\",\"items\":[]}");
+
+        var doc = JsonDocument.Parse(json);
+        doc.RootElement.GetProperty("error").GetString().ShouldStartWith("Invalid JSON format");
+        await _api.DidNotReceive().CreateReceivedInvoiceAsync(Arg.Any<CreateReceivedInvoiceDto>(), Arg.Any<CancellationToken>());
+    }
+
+    // ── UploadReceivedInvoiceAttachment ────────────────────────────────
+
+    [Fact]
+    public async Task UploadReceivedInvoiceAttachment_DecodesBase64AndCallsApi()
+    {
+        var bytes = new byte[] { 1, 2, 3 };
+        _api.UploadFileAttachmentAsync("ReceivedInvoice", 27, "a.pdf", "application/pdf",
+                Arg.Is<byte[]>(b => b.SequenceEqual(bytes)), null, Arg.Any<CancellationToken>())
+            .Returns(new FileAttachmentDto { Id = 5, EntityName = "ReceivedInvoice", RecordId = 27, OriginalFileName = "a.pdf" });
+
+        var json = await ReceivedInvoiceTools.UploadReceivedInvoiceAttachment(
+            _api, 27, "a.pdf", Convert.ToBase64String(bytes));
+
+        JsonDocument.Parse(json).RootElement.GetProperty("id").GetInt64().ShouldBe(5);
+    }
+
+    [Fact]
+    public async Task UploadReceivedInvoiceAttachment_ReturnsError_OnInvalidBase64()
+    {
+        var json = await ReceivedInvoiceTools.UploadReceivedInvoiceAttachment(_api, 27, "a.pdf", "not base64!");
+
+        JsonDocument.Parse(json).RootElement.GetProperty("error").GetString().ShouldContain("base64");
+        await _api.DidNotReceiveWithAnyArgs().UploadFileAttachmentAsync(default!, default, default!, default!, default!);
     }
 }

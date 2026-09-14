@@ -116,18 +116,32 @@ public static class ReceivedInvoiceTools
         "supplierId (required), currencyId (required), items[] (required, at least 1), " +
         "documentNumber, issueDate, receivedDate, dueDate, taxableSupplyDate, " +
         "variableSymbol, paymentMethod, bankAccountNumber, iban, swift, notes. " +
-        "Each item needs: description, quantity, unitPrice, vatRatePercentage (or vatRateId).")]
+        "paymentMethod must be one of: BankTransfer, Cash, CreditCard, PayPal, Other (anything else, e.g. 'Apple Pay', goes to notes). " +
+        "Each item needs: description, quantity, unitPrice, vatRatePercentage (or vatRateId); optional productCode, notes. " +
+        "Negative unitPrice is allowed for discount lines. " +
+        "To attach the source PDF afterwards, call upload_received_invoice_attachment with the returned id.")]
     public static async Task<string> CreateReceivedInvoice(
         IFakvioApiClient api,
         [Description("JSON string of CreateReceivedInvoiceDto")] string invoiceJson,
         CancellationToken ct = default)
     {
+        // Parsing the model's own input is deliberately kept OUT of the try block
+        // below — see McpToolError for why (issue #279).
+        CreateReceivedInvoiceDto? dto;
         try
         {
-            var dto = JsonSerializer.Deserialize<CreateReceivedInvoiceDto>(invoiceJson, JsonOptions);
-            if (dto is null)
-                return JsonSerializer.Serialize(new { error = "Failed to parse invoice JSON." }, JsonOptions);
+            dto = JsonSerializer.Deserialize<CreateReceivedInvoiceDto>(invoiceJson, JsonOptions);
+        }
+        catch (JsonException ex)
+        {
+            return JsonSerializer.Serialize(new { error = $"Invalid JSON format: {ex.Message}" }, JsonOptions);
+        }
 
+        if (dto is null)
+            return JsonSerializer.Serialize(new { error = "Failed to parse invoice JSON." }, JsonOptions);
+
+        try
+        {
             var result = await api.CreateReceivedInvoiceAsync(dto, ct);
             return JsonSerializer.Serialize(result, JsonOptions);
         }
@@ -207,6 +221,50 @@ public static class ReceivedInvoiceTools
         {
             await api.DeleteReceivedInvoiceAsync(id, ct);
             return JsonSerializer.Serialize(new { success = true, message = $"Received invoice {id} deleted." }, JsonOptions);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return McpToolError.ToJson(ex);
+        }
+    }
+
+    /// <summary>
+    /// Uploads a file (typically the supplier's PDF) as an attachment of a received invoice.
+    /// </summary>
+    [McpServerTool, Description(
+        "Attach a file (e.g. the supplier's original PDF) to an existing received invoice. " +
+        "Pass the file content as base64. Max 50 MB.")]
+    public static async Task<string> UploadReceivedInvoiceAttachment(
+        IFakvioApiClient api,
+        [Description("The received invoice ID")] long id,
+        [Description("File name including extension, e.g. 'invoice-4025178692.pdf'")] string fileName,
+        [Description("File content encoded as base64")] string base64Content,
+        [Description("MIME type, default 'application/pdf'")] string contentType = "application/pdf",
+        [Description("Optional description (max 500 chars)")] string? description = null,
+        CancellationToken ct = default)
+    {
+        // Decode the model's own input outside the API try block (same rule as JSON parsing).
+        byte[] content;
+        try
+        {
+            content = Convert.FromBase64String(base64Content);
+        }
+        catch (FormatException)
+        {
+            return JsonSerializer.Serialize(new { error = "base64Content is not valid base64." }, JsonOptions);
+        }
+
+        if (content.Length == 0)
+            return JsonSerializer.Serialize(new { error = "File content is empty." }, JsonOptions);
+
+        try
+        {
+            var result = await api.UploadFileAttachmentAsync("ReceivedInvoice", id, fileName, contentType, content, description, ct);
+            return JsonSerializer.Serialize(result, JsonOptions);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
