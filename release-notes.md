@@ -20,6 +20,8 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+## 2026.09.14 — 2026-09-14
+
 ### Změny
 - **PR #434** — MCP: nový nástroj `upload_received_invoice_attachment` přiloží soubor (typicky PDF dodavatele) k přijaté faktuře; `create_received_invoice` u neplatného vstupu (např. `paymentMethod: "Apple Pay"`) vrátí konkrétní `Invalid JSON format` místo anonymního `internal_error` a popis nástroje vyjmenovává platné způsoby platby. (PR #434, `5d60aad`)
 
