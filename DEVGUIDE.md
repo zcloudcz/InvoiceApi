@@ -1399,7 +1399,7 @@ Pět toolů: tři nad `IReminderService` (`list_reminders`, `get_reminder_settin
 ##### Paritní tabulka chat ↔ MCP (stav k #211, #217, #218, #220, #222, #224, #225 a #227)
 
 Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 49 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
-a **MCP server** (`[McpServerTool]`, 37 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
+a **MCP server** (`[McpServerTool]`, 38 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
 cílem story #149 je mezeru zavřít. Tabulka je jediný pravdivý seznam toho, co kde chybí;
 **každý nový tool na kterékoli straně sem přidá řádek** (viz §13).
 
@@ -1431,13 +1431,14 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | `SendInvoiceEmail` | **Write** (odešle e-mail) | `send_invoice_email` (confirm) | ✅ | |
 | `ExportInvoiceIsdoc` | Read → download | `export_invoice` (`format=isdoc`) | ✅ | |
 | `DeleteInvoice` | **Destructive** | `delete_invoice` (confirm, jen Draft) | ✅ | |
-| **Přijaté faktury** (`ReceivedInvoiceTools`, 6) |
+| **Přijaté faktury** (`ReceivedInvoiceTools`, 7) |
 | `GetReceivedInvoice` | Read | `get_received_invoice` | ✅ | |
 | `ListReceivedInvoices` | Read | `list_received_invoices` | ✅ | |
 | `CreateReceivedInvoice` | Create | `create_received_invoice` (diktovaná data) · `import_invoice` (z dokladu) | ✅ | |
 | `ApproveReceivedInvoice` | **Write** | `approve_received_invoice` | ✅ | |
 | `MarkReceivedInvoicePaid` | **Write** | `mark_received_invoice_paid` (+ `paid_at`, MCP neumí) | ✅ | |
 | `DeleteReceivedInvoice` | **Destructive** | `delete_received_invoice` | ✅ | |
+| `UploadReceivedInvoiceAttachment` | **Write** (upload) | `attach_file` (`entity_name=ReceivedInvoice`) | ✅ | |
 | **Reporting** (`ReportingTools`, 6) |
 | `GetDashboard` | Read | `get_dashboard` | ✅ | |
 | `GetOverdueInvoices` | Read | `list_invoices` + `overdue=true` | ✅ | |
@@ -1473,7 +1474,7 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | — | Read (platby) | `list_payments` | ⬅ | |
 | — | Read (detail platby) | `get_payment` | ⬅ | |
 
-**Součty:** 37 MCP toolů, 49 chat toolů. Chat pokrývá 31 MCP toolů, žádný už jen částečně;
+**Součty:** 38 MCP toolů, 49 chat toolů. Chat pokrývá 32 MCP toolů, žádný už jen částečně;
 23 chat toolů nemá MCP protějšek. Zbývá 6 mezer: daně (5, zatím bez tasku),
 šablony (1 — `CreateInvoiceFromTemplate`).
 
@@ -1556,10 +1557,10 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
   - **`SessionMode = Stateless` je zapsaný natvrdo**, ne ponechaný na defaultu SDK. Čtení tokenu z `HttpContext` funguje jen dokud tool běží na `ExecutionContext` toho HTTP requestu, který ho přinesl; stateless to garantuje (každý request = čerstvý server context). Stateful se dnes chová stejně, ale jen proto, že `PerSessionExecutionContext` defaultuje na `false` — s `true` běží každý tool call na kontextu initialize requestu, `HttpContext` je pro volajícího `null` a API odpoví 401. Ověřeno mutací v `McpHttpTransportTests`. Vedlejší efekt: žádná session affinity → host jde škálovat bez sticky routingu.
   - `ModelContextProtocol.AspNetCore` nese `FrameworkReference` na `Microsoft.AspNetCore.App`, takže zabalený tool potřebuje ASP.NET Core shared framework **i pro stdio**. Balení a deploy HTTP hostu řeší #241.
   - **Mimo scope (story #144):** OAuth 2.1 / dynamic client registration pro Claude.ai konektory (hlavičku dodává uživatel ručně), per-area scopes (jen read/write), cache API klíčů.
-- **37 tools**: 10 invoice + 6 client + 6 received invoice + 6 reporting + 5 tax + 3 template + 1 readiness (po jednom souboru v `Tools/`).
+- **38 tools**: 10 invoice + 6 client + 7 received invoice + 6 reporting + 5 tax + 3 template + 1 readiness (po jednom souboru v `Tools/`).
   Ruční číslo v dokumentaci stárne; zdroj pravdy je `grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs`.
   Porovnání s chat tooly (co MCP umí a chat ještě ne): paritní tabulka v §4.7.
-- **Chybová konvence (#279): `McpToolError.ToJson(ex)`, jedno místo pro všech 37 nástrojů.**
+- **Chybová konvence (#279): `McpToolError.ToJson(ex)`, jedno místo pro všech 38 nástrojů.**
   Každý tool má `catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }`
   **před** obecným `catch (Exception ex)` — zrušený request se propaguje, nekonverzuje na JSON.
   Filtr `when (…)` je nosný: `TaskCanceledException` dědí z `OperationCanceledException` a `HttpClient`

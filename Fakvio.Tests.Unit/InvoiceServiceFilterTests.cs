@@ -73,14 +73,14 @@ public class InvoiceServiceFilterTests : IDisposable
     /// <summary>
     /// Helper to add a single invoice with proper FK setup for InMemoryDatabase.
     /// </summary>
-    private void AddInvoice(string docNumber, EInvoiceStatus status)
+    private void AddInvoice(string docNumber, EInvoiceStatus status, DateTime? issueDate = null)
     {
         _context.Invoice.Add(new Invoice
         {
             DocumentNumber = docNumber,
             ClientId = 1, IssuerId = 2, CurrencyId = 1,
             Status = status, DocumentType = EDocumentType.Invoice,
-            IssueDate = DateTime.UtcNow,
+            IssueDate = issueDate ?? DateTime.UtcNow,
             InvoiceItem = new List<InvoiceItem>()
         });
         _context.SaveChanges();
@@ -172,5 +172,48 @@ public class InvoiceServiceFilterTests : IDisposable
 
         var match = await _service.GetInvoicesPagedAsync(new InvoiceFilterDto { ClientName = "customer a" });
         match.Items.Count.ShouldBe(3); // deleted still excluded
+    }
+
+    // ── Sorting ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Seeds two number series like a real tenant: "258…" sorts above "202…" as text,
+    /// so a document-number sort disagrees with the issue-date order.
+    /// 2026016 is added last (highest Id) and shares its issue date with 2582026017.
+    /// </summary>
+    private void SeedTwoNumberSeries()
+    {
+        AddInvoice("2582026015", EInvoiceStatus.Paid, new DateTime(2026, 7, 31, 0, 0, 0, DateTimeKind.Utc));
+        AddInvoice("2582026017", EInvoiceStatus.Completed, new DateTime(2026, 8, 31, 0, 0, 0, DateTimeKind.Utc));
+        AddInvoice("2026016", EInvoiceStatus.Completed, new DateTime(2026, 8, 31, 0, 0, 0, DateTimeKind.Utc));
+    }
+
+    [Fact]
+    public async Task GetInvoicesPagedAsync_NoSortBy_ReturnsNewestIssueDateFirst_TiesByNewestId()
+    {
+        SeedTwoNumberSeries();
+
+        // Search "2026" narrows the result to the three seeded invoices above
+        var result = await _service.GetInvoicesPagedAsync(new InvoiceFilterDto { Search = "2026" });
+
+        // Newest issue date first; the 31.8. tie is broken by Id (2026016 was created last)
+        result.Items.Select(i => i.DocumentNumber)
+            .ShouldBe(["2026016", "2582026017", "2582026015"]);
+    }
+
+    [Fact]
+    public async Task GetInvoicesPagedAsync_ExplicitSortBy_OverridesDefault()
+    {
+        SeedTwoNumberSeries();
+
+        var result = await _service.GetInvoicesPagedAsync(new InvoiceFilterDto
+        {
+            Search = "2026",
+            SortBy = "DocumentNumber",
+            SortDirection = "asc"
+        });
+
+        result.Items.Select(i => i.DocumentNumber)
+            .ShouldBe(["2026016", "2582026015", "2582026017"]);
     }
 }

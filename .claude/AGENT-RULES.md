@@ -170,7 +170,7 @@ slash command (`/merge 42` = OK to merge #42).
   After 3 round-trips, stops and leaves `dev:blocked` for human input.
 - Rebase invalidates prior approvals — `agent-dev` dismisses them in Step 2c.
 
-## 8. Warden specifics → see `.claude/agents/agent-warden.md`
+## 8. Warden specifics → see `~/.claude/agents/agent-warden.md`
 
 ## 9. Development standards
 

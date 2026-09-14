@@ -389,3 +389,12 @@ MEMORY.md
 # AgenticTeam board dumps (gh project item-list snapshots, never committed)
 board-state*.json
 
+
+# Local copies of the production database (pg_dump archives).
+# Contains real customer data - never commit.
+backup/
+*.dump
+
+# Per-task AgenticTeam board cache (answers "what is on the board" from disk
+# instead of spending GraphQL quota on `gh project item-list`).
+.claude/team-state/

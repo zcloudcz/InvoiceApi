@@ -33,7 +33,7 @@ Priority order (top first):
 
 3. A card in `CodeReview` with label `role:reviewer`
    -> dispatch the reviewer role for that PR number. Use
-      `subagent_type: "hydra"` with `.claude/agents/agent-reviewer.md`
+      `subagent_type: "hydra"` with `~/.claude/agents/agent-reviewer.md`
       as the instruction set, not `subagent_type: "agent-reviewer"`
       (see "Role runners" in BOARD-OPS.md).
 

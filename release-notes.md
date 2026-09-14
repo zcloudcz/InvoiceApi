@@ -20,6 +20,19 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+## 2026.09.14 — 2026-09-14
+
+### Změny
+- **PR #434** — MCP: nový nástroj `upload_received_invoice_attachment` přiloží soubor (typicky PDF dodavatele) k přijaté faktuře; `create_received_invoice` u neplatného vstupu (např. `paymentMethod: "Apple Pay"`) vrátí konkrétní `Invalid JSON format` místo anonymního `internal_error` a popis nástroje vyjmenovává platné způsoby platby. (PR #434, `5d60aad`)
+
+### Opravy
+- **PR #412** — `GET /api/company/{id}` při chybě už nevrací klientovi celý `ex.ToString()` (stack trace, interní detaily); chyba se loguje, odpověď je neutrální. (PR #412)
+
+## 2026.09.11.2 — 2026-09-11
+
+### Opravy
+- **PR #429** — přehled faktur (UI i MCP `list_invoices`) bez zvoleného řazení ukazuje nejnovější faktury podle data vystavení; dřív řadil číslo dokladu jako text, takže u dvou číselných řad celá jedna řada propadla na konec a „poslední faktury" chyběly. MCP `list_invoices` nově přijímá `sortBy` / `sortDirection`. (PR #429, `bce347f`)
+
 ## 2026.09.11 — 2026-09-11
 
 ### Změny

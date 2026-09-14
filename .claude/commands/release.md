@@ -86,7 +86,7 @@ Default case: develop has commits `TEST-ENV` does not.
        TITLE="Release: $(date +%Y-%m-%d)"
 
    `agent-ops` wrote one reader-facing line per merged task under
-   `## Nevydáno` (see `.claude/agents/agent-ops.md` Step 2a). That section
+   `## Nevydáno` (see `~/.claude/agents/agent-ops.md` Step 2a). That section
    **is** the release body — it says what changed and why it matters, which
    commit subjects do not. Read it here, **before** step 1b renames the
    heading:

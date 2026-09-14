@@ -6,6 +6,7 @@ using Fakvio.Contracts.Dto.Email;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Contracts.Dto.InvoiceTemplate;
 using Fakvio.Contracts.Dto.Readiness;
+using Fakvio.Contracts.Dto.FileAttachment;
 using Fakvio.Contracts.Dto.ReceivedInvoice;
 using Fakvio.Contracts.Dto.Tax;
 using Fakvio.Contracts.Dto.VatReport;
@@ -104,6 +105,13 @@ public interface IFakvioApiClient
 
     /// <summary>DELETE /api/received-invoice/{id} — soft-delete.</summary>
     Task DeleteReceivedInvoiceAsync(long id, CancellationToken ct = default);
+
+    // ── File attachments ────────────────────────────────────────────
+
+    /// <summary>Uploads a file attachment to an entity record (POST api/file-attachment/upload, multipart).</summary>
+    Task<FileAttachmentDto> UploadFileAttachmentAsync(
+        string entityName, long recordId, string fileName, string contentType, byte[] content,
+        string? description = null, CancellationToken ct = default);
 
     // ── VAT Report endpoints ─────────────────────────────────────────────
 

@@ -35,7 +35,7 @@ It appends one `## Běh <date>` section to `.claude/FLOW-NOTES.md`.
 
 ## What it may and may not do
 
-May: edit `.claude/agents/*.md` (+ the `.codex` mirror),
+May: edit `~/.claude/agents/*.md` (+ the `.codex` mirror),
 `.claude/commands/*.md`, `AGENT-RULES.md`, `BOARD-OPS.md`, `FLOW-NOTES.md`,
 `MEMORY.md`; file issues. Capped at 5 process edits per run.
 

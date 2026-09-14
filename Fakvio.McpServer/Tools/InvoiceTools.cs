@@ -39,7 +39,8 @@ public static class InvoiceTools
     /// </summary>
     [McpServerTool, Description(
         "List invoices with pagination and filters. " +
-        "Returns paginated results with invoice details including status, amounts, and client info.")]
+        "Returns paginated results with invoice details including status, amounts, and client info. " +
+        "Sorted newest first (by issue date) unless sortBy is given.")]
     public static async Task<string> ListInvoices(
         IFakvioApiClient api,
         [Description("Page number (1-based, default 1)")] int page = 1,
@@ -51,16 +52,22 @@ public static class InvoiceTools
         [Description("Filter invoices issued on or after this date (ISO 8601, e.g. '2026-01-01')")] string? issueDateFrom = null,
         [Description("Filter invoices issued on or before this date (ISO 8601)")] string? issueDateTo = null,
         [Description("Filter to only overdue invoices (true/false)")] bool? isOverdue = null,
+        [Description("Sort field: DocumentNumber, IssueDate, DueDate, TaxableSupplyDate, TotalWithVat, Status, CreatedAt or UpdatedAt. Omit for newest first.")] string? sortBy = null,
+        [Description("Sort direction for sortBy: 'asc' or 'desc' (default 'desc')")] string sortDirection = "desc",
         CancellationToken ct = default)
     {
         try
         {
+            // Sorting is passed through as-is: the API validates sortBy and falls back
+            // to its default (newest issue date first) when it is missing or unknown.
             var filter = new InvoiceFilterDto
             {
                 Page = page,
                 PageSize = Math.Min(pageSize, 100),
                 Search = search,
-                IsOverdue = isOverdue
+                IsOverdue = isOverdue,
+                SortBy = sortBy,
+                SortDirection = sortDirection
             };
 
             // Parse enum strings safely — AI models may pass various casing
