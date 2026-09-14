@@ -44,6 +44,15 @@ public class McpServerSettings
     public string ApiToken { get; set; } = string.Empty;
 
     /// <summary>
+    /// Whether tools may read files from the server's own disk (e.g. the <c>filePath</c>
+    /// argument of <c>upload_received_invoice_attachment</c>).
+    /// True only in stdio mode, where the process runs on the user's machine and "the server's
+    /// disk" is the user's disk. In HTTP mode the disk belongs to the shared host — a path
+    /// argument there would let any caller read files of another tenant's process, so it stays off.
+    /// </summary>
+    public bool AllowLocalFiles { get; set; }
+
+    /// <summary>
     /// Builds the settings the process actually runs with, from the environment.
     /// <para>
     /// Junior note: this lives here rather than inline in <c>Program.cs</c> so it can be tested.

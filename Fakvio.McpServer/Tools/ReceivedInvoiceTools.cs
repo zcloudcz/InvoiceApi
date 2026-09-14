@@ -3,6 +3,7 @@ using System.Text.Json;
 using Fakvio.Contracts.Dto.ReceivedInvoice;
 using Fakvio.Domain.Enums;
 using Fakvio.McpServer.Client;
+using Fakvio.McpServer.Configuration;
 using ModelContextProtocol.Server;
 
 namespace Fakvio.McpServer.Tools;
@@ -233,33 +234,89 @@ public static class ReceivedInvoiceTools
     }
 
     /// <summary>
+    /// Maximum attachment size accepted from a URL — mirrors FileAttachmentController.MaxFileSizeBytes,
+    /// so a too-big download is stopped here instead of after it was fully transferred.
+    /// </summary>
+    private const long MaxAttachmentBytes = 50 * 1024 * 1024;
+
+    /// <summary>
     /// Uploads a file (typically the supplier's PDF) as an attachment of a received invoice.
     /// </summary>
     [McpServerTool, Description(
         "Attach a file (e.g. the supplier's original PDF) to an existing received invoice. " +
-        "Pass the file content as base64. Max 50 MB.")]
+        "Give the file in exactly ONE way: fileUrl (https link the server downloads — preferred, works for any size), " +
+        "filePath (absolute path on the machine running the MCP server — only when the server runs locally over stdio), " +
+        "or base64Content (inline, small files only). Max 50 MB.")]
     public static async Task<string> UploadReceivedInvoiceAttachment(
         IFakvioApiClient api,
+        McpServerSettings settings,
+        IHttpClientFactory httpClientFactory,
         [Description("The received invoice ID")] long id,
-        [Description("File name including extension, e.g. 'invoice-4025178692.pdf'")] string fileName,
-        [Description("File content encoded as base64")] string base64Content,
+        [Description("https URL of the file; the server downloads it")] string? fileUrl = null,
+        [Description("Absolute local path of the file (stdio/local server only)")] string? filePath = null,
+        [Description("File content encoded as base64 (small files only)")] string? base64Content = null,
+        [Description("File name including extension; defaults to the name from URL/path, or 'attachment.pdf'")] string? fileName = null,
         [Description("MIME type, default 'application/pdf'")] string contentType = "application/pdf",
         [Description("Optional description (max 500 chars)")] string? description = null,
         CancellationToken ct = default)
     {
-        // Decode the model's own input outside the API try block (same rule as JSON parsing).
+        var sources = new[] { fileUrl, filePath, base64Content }.Count(v => !string.IsNullOrWhiteSpace(v));
+        if (sources != 1)
+            return Error("Provide exactly one of fileUrl, filePath or base64Content.");
+
+        // Obtaining the bytes is the model's-input side and reports precise errors;
+        // the API call below goes through the sanitized catch-all (McpToolError).
         byte[] content;
         try
         {
-            content = Convert.FromBase64String(base64Content);
+            if (!string.IsNullOrWhiteSpace(fileUrl))
+            {
+                if (!Uri.TryCreate(fileUrl, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps)
+                    return Error("fileUrl must be an absolute https URL.");
+                // SSRF guard: the download runs from the server's network, so IP literals and
+                // loopback could reach internal services that the caller cannot.
+                if (uri.IsLoopback || uri.HostNameType is UriHostNameType.IPv4 or UriHostNameType.IPv6)
+                    return Error("fileUrl must point to a public host name, not an IP address or localhost.");
+
+                fileName ??= Path.GetFileName(uri.LocalPath);
+                content = await DownloadAsync(httpClientFactory.CreateClient(), uri, ct);
+            }
+            else if (!string.IsNullOrWhiteSpace(filePath))
+            {
+                if (!settings.AllowLocalFiles)
+                    return Error("filePath is only available when the MCP server runs locally (stdio). Use fileUrl instead.");
+                if (!Path.IsPathRooted(filePath))
+                    return Error("filePath must be an absolute path.");
+                if (!File.Exists(filePath))
+                    return Error($"File not found: {filePath}");
+
+                fileName ??= Path.GetFileName(filePath);
+                content = await File.ReadAllBytesAsync(filePath, ct);
+            }
+            else
+            {
+                content = Convert.FromBase64String(base64Content!);
+            }
         }
         catch (FormatException)
         {
-            return JsonSerializer.Serialize(new { error = "base64Content is not valid base64." }, JsonOptions);
+            return Error("base64Content is not valid base64.");
+        }
+        catch (HttpRequestException ex)
+        {
+            return Error($"Download failed: {ex.Message}");
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Error(ex.Message);
         }
 
         if (content.Length == 0)
-            return JsonSerializer.Serialize(new { error = "File content is empty." }, JsonOptions);
+            return Error("File content is empty.");
+        if (content.Length > MaxAttachmentBytes)
+            return Error("File exceeds the 50 MB limit.");
+        if (string.IsNullOrWhiteSpace(fileName))
+            fileName = "attachment.pdf";
 
         try
         {
@@ -275,4 +332,32 @@ public static class ReceivedInvoiceTools
             return McpToolError.ToJson(ex);
         }
     }
+
+    /// <summary>
+    /// Downloads a URL with the size cap enforced while streaming — Content-Length can be
+    /// missing or lie, so the header check alone is not enough.
+    /// </summary>
+    private static async Task<byte[]> DownloadAsync(HttpClient http, Uri uri, CancellationToken ct)
+    {
+        using var response = await http.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, ct);
+        response.EnsureSuccessStatusCode();
+
+        if (response.Content.Headers.ContentLength > MaxAttachmentBytes)
+            throw new InvalidOperationException("File exceeds the 50 MB limit.");
+
+        await using var stream = await response.Content.ReadAsStreamAsync(ct);
+        using var buffer = new MemoryStream();
+        var chunk = new byte[81920];
+        int read;
+        while ((read = await stream.ReadAsync(chunk, ct)) > 0)
+        {
+            buffer.Write(chunk, 0, read);
+            if (buffer.Length > MaxAttachmentBytes)
+                throw new InvalidOperationException("File exceeds the 50 MB limit.");
+        }
+        return buffer.ToArray();
+    }
+
+    private static string Error(string message) =>
+        JsonSerializer.Serialize(new { error = message }, JsonOptions);
 }

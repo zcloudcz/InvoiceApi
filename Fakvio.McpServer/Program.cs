@@ -94,6 +94,9 @@ builder.Logging.AddConsole(options =>
 // IApiTokenProvider — see that interface for why the registration rule has no exceptions.
 builder.Services.AddSingleton<IApiTokenProvider, EnvironmentApiTokenProvider>();
 
+// stdio runs on the user's own machine, so reading local files is the user's own disk.
+settings.AllowLocalFiles = true;
+
 builder.Services
     .AddFakvioMcpServer(settings)
     .WithStdioServerTransport();
