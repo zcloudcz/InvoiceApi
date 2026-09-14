@@ -3,7 +3,9 @@ using Fakvio.Contracts.Common.Pagination;
 using Fakvio.Contracts.Dto.FileAttachment;
 using Fakvio.Contracts.Dto.ReceivedInvoice;
 using Fakvio.Domain.Enums;
+using System.Net;
 using Fakvio.McpServer.Client;
+using Fakvio.McpServer.Configuration;
 using Fakvio.McpServer.Tools;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -540,16 +542,36 @@ public class ReceivedInvoiceToolsTests
 
     // ── UploadReceivedInvoiceAttachment ────────────────────────────────
 
+    private static readonly byte[] Bytes = [1, 2, 3];
+
+    private static McpServerSettings Local(bool allow) => new() { AllowLocalFiles = allow };
+
+    /// <summary>Factory whose client answers every request with the given response.</summary>
+    private static IHttpClientFactory Http(HttpResponseMessage? response = null)
+    {
+        var factory = Substitute.For<IHttpClientFactory>();
+        factory.CreateClient(Arg.Any<string>()).Returns(new HttpClient(new StubHandler(response ?? new HttpResponseMessage())));
+        return factory;
+    }
+
+    private sealed class StubHandler(HttpResponseMessage response) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) =>
+            Task.FromResult(response);
+    }
+
+    private void ArrangeUploadOk(string fileName) =>
+        _api.UploadFileAttachmentAsync("ReceivedInvoice", 27, fileName, "application/pdf",
+                Arg.Is<byte[]>(b => b.SequenceEqual(Bytes)), null, Arg.Any<CancellationToken>())
+            .Returns(new FileAttachmentDto { Id = 5, EntityName = "ReceivedInvoice", RecordId = 27, OriginalFileName = fileName });
+
     [Fact]
     public async Task UploadReceivedInvoiceAttachment_DecodesBase64AndCallsApi()
     {
-        var bytes = new byte[] { 1, 2, 3 };
-        _api.UploadFileAttachmentAsync("ReceivedInvoice", 27, "a.pdf", "application/pdf",
-                Arg.Is<byte[]>(b => b.SequenceEqual(bytes)), null, Arg.Any<CancellationToken>())
-            .Returns(new FileAttachmentDto { Id = 5, EntityName = "ReceivedInvoice", RecordId = 27, OriginalFileName = "a.pdf" });
+        ArrangeUploadOk("a.pdf");
 
         var json = await ReceivedInvoiceTools.UploadReceivedInvoiceAttachment(
-            _api, 27, "a.pdf", Convert.ToBase64String(bytes));
+            _api, Local(false), Http(), 27, base64Content: Convert.ToBase64String(Bytes), fileName: "a.pdf");
 
         JsonDocument.Parse(json).RootElement.GetProperty("id").GetInt64().ShouldBe(5);
     }
@@ -557,9 +579,90 @@ public class ReceivedInvoiceToolsTests
     [Fact]
     public async Task UploadReceivedInvoiceAttachment_ReturnsError_OnInvalidBase64()
     {
-        var json = await ReceivedInvoiceTools.UploadReceivedInvoiceAttachment(_api, 27, "a.pdf", "not base64!");
+        var json = await ReceivedInvoiceTools.UploadReceivedInvoiceAttachment(
+            _api, Local(false), Http(), 27, base64Content: "not base64!");
 
         JsonDocument.Parse(json).RootElement.GetProperty("error").GetString().ShouldContain("base64");
         await _api.DidNotReceiveWithAnyArgs().UploadFileAttachmentAsync(default!, default, default!, default!, default!);
+    }
+
+    [Fact]
+    public async Task UploadReceivedInvoiceAttachment_DownloadsFromUrl_AndDerivesFileName()
+    {
+        ArrangeUploadOk("4025178692.pdf");
+        var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(Bytes) };
+
+        var json = await ReceivedInvoiceTools.UploadReceivedInvoiceAttachment(
+            _api, Local(false), Http(response), 27, fileUrl: "https://www.alza.cz/invoices/4025178692.pdf");
+
+        JsonDocument.Parse(json).RootElement.GetProperty("id").GetInt64().ShouldBe(5);
+    }
+
+    [Theory]
+    [InlineData("http://example.com/a.pdf")]      // plain http
+    [InlineData("https://127.0.0.1/a.pdf")]       // IP literal — SSRF guard
+    [InlineData("https://localhost/a.pdf")]       // loopback
+    [InlineData("file:///C:/a.pdf")]
+    public async Task UploadReceivedInvoiceAttachment_RejectsUnsafeUrls(string url)
+    {
+        var json = await ReceivedInvoiceTools.UploadReceivedInvoiceAttachment(
+            _api, Local(false), Http(), 27, fileUrl: url);
+
+        JsonDocument.Parse(json).RootElement.GetProperty("error").GetString().ShouldContain("fileUrl");
+        await _api.DidNotReceiveWithAnyArgs().UploadFileAttachmentAsync(default!, default, default!, default!, default!);
+    }
+
+    [Fact]
+    public async Task UploadReceivedInvoiceAttachment_RejectsOversizedDownload()
+    {
+        var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(Bytes) };
+        response.Content.Headers.ContentLength = 51L * 1024 * 1024;
+
+        var json = await ReceivedInvoiceTools.UploadReceivedInvoiceAttachment(
+            _api, Local(false), Http(response), 27, fileUrl: "https://example.com/big.pdf");
+
+        JsonDocument.Parse(json).RootElement.GetProperty("error").GetString().ShouldContain("50 MB");
+    }
+
+    [Fact]
+    public async Task UploadReceivedInvoiceAttachment_ReadsLocalFile_WhenAllowed()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"fakvio-{Guid.NewGuid():N}.pdf");
+        await File.WriteAllBytesAsync(path, Bytes);
+        try
+        {
+            ArrangeUploadOk(Path.GetFileName(path));
+
+            var json = await ReceivedInvoiceTools.UploadReceivedInvoiceAttachment(
+                _api, Local(true), Http(), 27, filePath: path);
+
+            JsonDocument.Parse(json).RootElement.GetProperty("id").GetInt64().ShouldBe(5);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public async Task UploadReceivedInvoiceAttachment_RefusesLocalFile_OnRemoteHost()
+    {
+        // HTTP host: the disk is the shared server's, not the caller's — must never be read.
+        var json = await ReceivedInvoiceTools.UploadReceivedInvoiceAttachment(
+            _api, Local(false), Http(), 27, filePath: @"C:\Windows\win.ini");
+
+        JsonDocument.Parse(json).RootElement.GetProperty("error").GetString().ShouldContain("stdio");
+        await _api.DidNotReceiveWithAnyArgs().UploadFileAttachmentAsync(default!, default, default!, default!, default!);
+    }
+
+    [Fact]
+    public async Task UploadReceivedInvoiceAttachment_RequiresExactlyOneSource()
+    {
+        var none = await ReceivedInvoiceTools.UploadReceivedInvoiceAttachment(_api, Local(true), Http(), 27);
+        var two = await ReceivedInvoiceTools.UploadReceivedInvoiceAttachment(
+            _api, Local(true), Http(), 27, fileUrl: "https://e.com/a.pdf", base64Content: "AQID");
+
+        JsonDocument.Parse(none).RootElement.GetProperty("error").GetString().ShouldContain("exactly one");
+        JsonDocument.Parse(two).RootElement.GetProperty("error").GetString().ShouldContain("exactly one");
     }
 }
