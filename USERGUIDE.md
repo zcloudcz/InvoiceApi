@@ -1184,7 +1184,7 @@ zajišťuje **MCP server** — program, který překládá požadavky AI na vol�
 | Kde se ovládá | Panel v pravém horním rohu Fakvia | Vaše AI aplikace |
 | Instalace | Žádná | Podle způsobu připojení (viz krok 2) |
 | Přihlášení | Vaše běžné přihlášení | Osobní **API klíč**, který si vytvoříte |
-| Rozsah akcí | Vyhledávání a přehledy | 37 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové výpočty, šablony |
+| Rozsah akcí | Vyhledávání a přehledy | 38 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové výpočty, šablony |
 
 Postup je vždy stejný: **vytvořit klíč → vložit konfiguraci do AI aplikace → ověřit**.
 

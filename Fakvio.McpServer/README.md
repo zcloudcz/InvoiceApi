@@ -216,13 +216,13 @@ Bez instalace nástroje lze server spouštět rovnou ze zdrojáků — místo
 nikdy ne do commitu. Verzuje se jen `.mcp.json.sample`. Když se soubor přesto někam
 dostane, klíč revokujte na `/settings/integrations` — přestane platit okamžitě.
 
-## Dostupné nástroje (37)
+## Dostupné nástroje (38)
 
 | Soubor | Počet | Nástroje |
 |--------|-------|----------|
 | `Tools/InvoiceTools.cs` | 10 | ListInvoices, GetInvoice, FindInvoiceByNumber, CreateInvoice, CompleteInvoice, MarkInvoicePaid, SendInvoiceEmail, ExportInvoicePdf, ExportInvoiceIsdoc, DeleteInvoice |
 | `Tools/ClientTools.cs` | 6 | ListClients, GetClient, CreateClient, UpdateClient, LookupAres, GetIssuer |
-| `Tools/ReceivedInvoiceTools.cs` | 6 | ListReceivedInvoices, GetReceivedInvoice, CreateReceivedInvoice, ApproveReceivedInvoice, MarkReceivedInvoicePaid, DeleteReceivedInvoice |
+| `Tools/ReceivedInvoiceTools.cs` | 7 | ListReceivedInvoices, GetReceivedInvoice, CreateReceivedInvoice, ApproveReceivedInvoice, MarkReceivedInvoicePaid, DeleteReceivedInvoice, UploadReceivedInvoiceAttachment |
 | `Tools/ReportingTools.cs` | 6 | GetDashboard, GetOverdueInvoices, GetClientInvoices, GetInvoicesByDateRange, GetVatReport, GetOverdueReceivedInvoices |
 | `Tools/TaxTools.cs` | 5 | EstimateTax, CompareTaxRegimes, GetAnnualIncome, GetInsuranceAdvance, GetTaxConfig |
 | `Tools/TemplateTools.cs` | 3 | ListTemplates, GetTemplate, CreateInvoiceFromTemplate |
@@ -239,7 +239,7 @@ grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs
 - Každý nástroj vrací **JSON jako string**. Doménová chyba (404, validace vstupu) se
   nevyhazuje jako výjimka, ale vrací se jako `{ "error": "..." }` — AI klient tak dostane
   čitelnou zprávu místo pádu spojení.
-- Neočekávaná výjimka jde přes `McpToolError.ToJson(ex)` — jedno místo pro všech 37
+- Neočekávaná výjimka jde přes `McpToolError.ToJson(ex)` — jedno místo pro všech 38
   nástrojů. Zaloguje celou výjimku server-side a vrátí stabilní
   `{ "error": "internal_error", "message": "..." }`, **nikdy `ex.Message`** (to může nést
   syrové tělo API chyby z `FakvioApiClient.EnsureSuccessAsync`).
