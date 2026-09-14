@@ -20,6 +20,8 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+## 2026.09.14.2 — 2026-09-14
+
 ### Změny
 - **MCP `upload_received_invoice_attachment`** — soubor se předává jako `fileUrl` (https odkaz, server si ho stáhne; limit 50 MB) nebo `filePath` (jen lokální stdio server); inline `base64Content` zůstává pro malé soubory. Base64 přes model nešlo použít pro reálná PDF (475 KB ≈ 650 k znaků).
 
