@@ -5,6 +5,7 @@ using Fakvio.Contracts.Common.Pagination;
 using Fakvio.Contracts.Dto.Client;
 using Fakvio.Contracts.Dto.Dashboard;
 using Fakvio.Contracts.Dto.Email;
+using Fakvio.Contracts.Dto.FileAttachment;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Contracts.Dto.InvoiceTemplate;
 using Fakvio.Contracts.Dto.Readiness;
@@ -147,6 +148,25 @@ public class FakvioApiClientTests : IDisposable
         // Assert: verify URL encoding
         var requestUrl = _handler.LastRequestUri?.ToString() ?? "";
         requestUrl.ShouldContain("by-number/FAK%2F2026-001");
+    }
+
+    [Fact]
+    public async Task UploadFileAttachmentAsync_SendsMultipartWithExpectedFields()
+    {
+        _handler.SetupResponse(HttpStatusCode.OK, new FileAttachmentDto { Id = 9 });
+
+        var result = await _sut.UploadFileAttachmentAsync("ReceivedInvoice", 27, "a.pdf", "application/pdf", [1, 2, 3], "desc");
+
+        result.Id.ShouldBe(9);
+        _handler.LastRequestMethod.ShouldBe(HttpMethod.Post);
+        _handler.LastRequestUri!.AbsolutePath.ShouldBe("/api/file-attachment/upload");
+        _handler.LastRequestContentType.ShouldStartWith("multipart/form-data");
+        // Field names are the controller's contract — a typo here would be a silent 400 in prod.
+        _handler.LastRequestBody.ShouldContain("name=file; filename=a.pdf");
+        _handler.LastRequestBody.ShouldContain("name=entityName");
+        _handler.LastRequestBody.ShouldContain("ReceivedInvoice");
+        _handler.LastRequestBody.ShouldContain("name=recordId");
+        _handler.LastRequestBody.ShouldContain("name=description");
     }
 
     [Fact]
@@ -571,6 +591,10 @@ public class FakvioApiClientTests : IDisposable
         /// <summary>Last request HTTP method — checked to verify POST vs GET vs DELETE.</summary>
         public HttpMethod? LastRequestMethod { get; private set; }
 
+        /// <summary>Last request Content-Type and body — used to verify multipart uploads.</summary>
+        public string? LastRequestContentType { get; private set; }
+        public string? LastRequestBody { get; private set; }
+
         /// <summary>
         /// When set, the handler cancels this source as it answers — simulating a caller that
         /// gives up while the response is on the wire. Lets a test prove the token is still
@@ -623,6 +647,8 @@ public class FakvioApiClientTests : IDisposable
             // Record the request details for assertion
             LastRequestUri = request.RequestUri;
             LastRequestMethod = request.Method;
+            LastRequestContentType = request.Content?.Headers.ContentType?.ToString();
+            LastRequestBody = request.Content?.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult();
 
             CancelWhenSending?.Cancel();
             return Task.FromResult(_response);

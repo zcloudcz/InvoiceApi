@@ -107,6 +107,33 @@ public class InvoiceToolsTests
     }
 
     [Fact]
+    public async Task ListInvoices_NoSortBy_LeavesSortToApiDefault()
+    {
+        _api.GetInvoicesPagedAsync(Arg.Any<InvoiceFilterDto>(), Arg.Any<CancellationToken>())
+            .Returns(new PagedResult<InvoiceDto>());
+
+        await InvoiceTools.ListInvoices(_api);
+
+        // Null SortBy = the API's default order (newest issue date first)
+        await _api.Received(1).GetInvoicesPagedAsync(
+            Arg.Is<InvoiceFilterDto>(f => f.SortBy == null),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ListInvoices_PassesSortByAndDirection()
+    {
+        _api.GetInvoicesPagedAsync(Arg.Any<InvoiceFilterDto>(), Arg.Any<CancellationToken>())
+            .Returns(new PagedResult<InvoiceDto>());
+
+        await InvoiceTools.ListInvoices(_api, sortBy: "DueDate", sortDirection: "asc");
+
+        await _api.Received(1).GetInvoicesPagedAsync(
+            Arg.Is<InvoiceFilterDto>(f => f.SortBy == "DueDate" && f.SortDirection == "asc"),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task GetInvoice_ReturnsInvoiceJson()
     {
         // Arrange

@@ -1,5 +1,17 @@
 # Fakvio TODO
 
+## Completed (2026-09-11)
+
+### Výchozí řazení faktur: od nejnovější ✅
+- [x] `InvoiceService.GetInvoicesPagedAsync` — výchozí řazení `IssueDate` desc + `Id` desc
+      (dřív `DocumentNumber` desc jako text → dvě číselné řady, `2582026xxx` překryla `2026xxx`)
+- [x] MCP `list_invoices` — nové parametry `sortBy` / `sortDirection`
+- [x] Testy: `InvoiceServiceFilterTests` (default + explicitní sort), `InvoiceToolsTests` (předání sortu)
+- [x] `USERGUIDE.md` — výchozí řazení v přehledu faktur
+
+**Nalezeno mimo scope:**
+- [ ] 6 faktur (id 11–15, 24) má stav `Paid`, ale `PaidAmount = 0` — hromadně označené 2026-04-16 11:14
+
 ## Completed (2026-04-09)
 
 ### File Attachments — Entity-Agnostic File Upload System ✅
