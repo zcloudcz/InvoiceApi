@@ -10,15 +10,6 @@
         <MudNavMenu>
             <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">@L["Nav_Dashboard"]</MudNavLink>
 
-            @* AI assistant — second entry point next to the AppBar icon, so the assistant
-               is discoverable from the navigation like every other feature. It opens the
-               chat drawer (owned by MainLayout) instead of navigating anywhere.
-               Same tenant-context guard as the AppBar button: /api/chat/* needs a CompanyId. *@
-            @if (_showInvoicing)
-            {
-                <MudNavLink Icon="@Icons.Material.Filled.SmartToy" OnClick="@ToggleChat">@L["Chat_Title"]</MudNavLink>
-            }
-
             @* Invoicing section — visible for User/Admin, and SysAdmin when impersonating a company *@
             @if (_showInvoicing)
             {
@@ -89,8 +80,6 @@
                         <MudNavLink Href="/tax-configs" Icon="@Icons.Material.Filled.AccountBalance">@L["Nav_TaxConfig"]</MudNavLink>
                         @* Payment matching — system-wide IMAP/AI configuration. *@
                         <MudNavLink Href="/sysadmin/payment-matching" Icon="@Icons.Material.Filled.MarkEmailRead">@L["Nav_PaymentMatching"]</MudNavLink>
-                        @* Editable AI assistant system prompt. *@
-                        <MudNavLink Href="/ai-instructions" Icon="@Icons.Material.Filled.SmartToy">@L["Nav_AiInstructions"]</MudNavLink>
                     }
                 </AuthorizeView>
             </MudNavGroup>
@@ -99,12 +88,6 @@
 </AuthorizeView>
 
 @code {
-    /// <summary>
-    /// Opens / closes the AI chat drawer. MainLayout owns the drawer, so the request
-    /// travels through AppStateService (same pattern as OnCompanyListChanged).
-    /// </summary>
-    private void ToggleChat() => AppState.NotifyChatToggleRequested();
-
     // Whether to show invoicing menu items.
     // True for User/Admin (they always have a company), and for SysAdmin when impersonating.
     private bool _showInvoicing = false;

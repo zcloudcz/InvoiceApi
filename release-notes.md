@@ -20,6 +20,12 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+## 2026.09.20 — 2026-09-20
+
+### Změny
+- **PR #441** — AI asistent zmizel z UI: pryč ikona v horní liště, položka v menu, boční chat panel, uvítání po přihlášení i odkaz na AI instrukce. AI se používá přes MCP; backend zůstal. (PR #441, `9df3444`)
+- **PR #442** — po importu faktur se už nespouští AI kontrola s hláškou „AI review failed". (PR #442, `a6c7675`)
+
 ## 2026.09.14.2 — 2026-09-14
 
 ### Změny

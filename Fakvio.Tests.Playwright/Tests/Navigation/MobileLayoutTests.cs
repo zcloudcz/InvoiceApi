@@ -10,18 +10,11 @@ namespace Fakvio.Tests.Playwright.Tests.Navigation;
 /// - no horizontal page overflow,
 /// - ResponsiveButton collapses to icon-only (label hidden),
 /// - AppBar content fits the viewport,
-/// - HideSmall grid columns are not visible,
-/// - the AI chat drawer fits the phone screen (issue #161).
+/// - HideSmall grid columns are not visible.
 /// </summary>
 [TestFixture]
 public class MobileLayoutTests : FakvioPageTest
 {
-    /// <summary>Czech value of the Chat_Title resource key (SharedResource.resx).</summary>
-    private const string ChatToggleLabelCs = "AI Asistent";
-
-    /// <summary>English value of the Chat_Title resource key (SharedResource.en.resx).</summary>
-    private const string ChatToggleLabelEn = "AI Assistant";
-
     /// <summary>Same context as FakvioPageTest, but with a phone viewport.</summary>
     public override BrowserNewContextOptions ContextOptions()
     {
@@ -92,52 +85,6 @@ public class MobileLayoutTests : FakvioPageTest
         var (scrollW, clientW) = await GetDocumentWidthsAsync();
         Assert.That(scrollW, Is.LessThanOrEqualTo(clientW + 1),
             "Received invoices page must not scroll horizontally on a phone viewport");
-    }
-
-    /// <summary>
-    /// The chat drawer used to be a hardcoded 400px, i.e. wider than the 375px screen.
-    /// It must now fill the viewport exactly, and the pointer-only drag &amp; drop zone
-    /// inside the chat input must be gone.
-    /// </summary>
-    [Test]
-    public async Task Mobile_ChatDrawer_FitsViewport_AndHidesDropZone()
-    {
-        await LoginAndNavigateAsync("/", "h4, h3, .mud-card");
-
-        // The AppBar toggle carries the localized assistant name (resource key
-        // Chat_Title) as its aria-label, so the selector must accept both cultures —
-        // matching only Czech made the whole test inconclusive under an English UI.
-        var toggle = Page.Locator(
-            $".mud-appbar button[aria-label='{ChatToggleLabelCs}'], " +
-            $".mud-appbar button[aria-label='{ChatToggleLabelEn}']");
-
-        // LoginAsAdminAsync always establishes a tenant context (a SysAdmin gets an
-        // impersonated company), so the toggle has to be there. Skipping instead of
-        // failing would let the mobile acceptance criterion pass unverified.
-        Assert.That(await toggle.CountAsync(), Is.GreaterThan(0),
-            "AI assistant toggle must be present in the AppBar for a tenant-scoped account");
-
-        await toggle.First.ClickAsync();
-
-        var drawer = Page.Locator(".mud-drawer.chat-drawer");
-        await drawer.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 10_000 });
-        await Page.WaitForTimeoutAsync(500); // drawer slide-in animation is 225ms
-
-        var box = await drawer.BoundingBoxAsync();
-        Assert.That(box, Is.Not.Null, "Open chat drawer must be measurable");
-        Assert.That(box!.Width, Is.LessThanOrEqualTo(376),
-            "Chat drawer must not be wider than the 375px phone viewport");
-
-        var (scrollW, clientW) = await GetDocumentWidthsAsync();
-        Assert.That(scrollW, Is.LessThanOrEqualTo(clientW + 1),
-            "An open chat drawer must not make the page scroll horizontally");
-
-        var dropZone = Page.Locator(".chat-dropzone");
-        if (await dropZone.CountAsync() > 0)
-        {
-            Assert.That(await dropZone.First.IsVisibleAsync(), Is.False,
-                "Drag & drop upload zone must be hidden on a phone");
-        }
     }
 
     [Test]

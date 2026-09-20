@@ -22,16 +22,4 @@ public class AppStateService
     /// Call this after creating, deleting, or renaming a company.
     /// </summary>
     public void NotifyCompanyListChanged() => OnCompanyListChanged?.Invoke();
-
-    /// <summary>
-    /// Fired when something outside MainLayout wants the AI chat drawer opened or closed
-    /// (currently the "AI asistent" entry in the navigation menu). MainLayout owns the
-    /// drawer state, so it subscribes here instead of exposing the flag globally.
-    /// </summary>
-    public event Action? OnChatToggleRequested;
-
-    /// <summary>
-    /// Asks MainLayout to toggle the AI chat drawer.
-    /// </summary>
-    public void NotifyChatToggleRequested() => OnChatToggleRequested?.Invoke();
 }
