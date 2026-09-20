@@ -8,7 +8,6 @@
 @using Fakvio.UI.Shared.Services
 
 @inject ImportApiService ImportService
-@inject ChatApiService ChatApi
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
 @inject IStringLocalizer<SharedResource> L
@@ -232,22 +231,6 @@
             </RowTemplate>
         </MudTable>
 
-        @* ── AI Post-Import Review ──────────────────────────────────────── *@
-        @if (!string.IsNullOrEmpty(_aiReviewText))
-        {
-            <MudAlert Severity="MudBlazor.Severity.Info" Class="mt-4" Variant="Variant.Outlined">
-                <MudText Typo="Typo.subtitle2" Class="mb-2">AI Import Review</MudText>
-                <MudText Style="white-space: pre-wrap;">@_aiReviewText</MudText>
-            </MudAlert>
-        }
-        else if (_isRunningAiReview)
-        {
-            <MudAlert Severity="MudBlazor.Severity.Info" Class="mt-4" Variant="Variant.Outlined">
-                <MudProgressCircular Size="Size.Small" Indeterminate Class="mr-2" />
-                @L["Import_AiReviewRunning"]
-            </MudAlert>
-        }
-
         <MudButton Variant="Variant.Filled"
                    Color="Color.Primary"
                    Class="mt-4"
@@ -275,8 +258,6 @@
 
     // Step 3 data
     private List<ImportResultDto> _results = new();
-    private string? _aiReviewText;
-    private bool _isRunningAiReview;
 
     protected override void OnInitialized()
     {
@@ -384,9 +365,6 @@
             var successCount = _results.Count(r => r.Success);
             Snackbar.Add($"{L["Import_Imported"]}: {successCount}/{_results.Count}",
                 successCount == _results.Count ? MudBlazor.Severity.Success : MudBlazor.Severity.Warning);
-
-            // Fire-and-forget AI review — runs after UI shows results.
-            _ = RunAiPostImportReviewAsync();
         }
         catch (Exception ex)
         {
@@ -404,8 +382,6 @@
         _selectedFiles.Clear();
         _previews.Clear();
         _results.Clear();
-        _aiReviewText = null;
-        _isRunningAiReview = false;
     }
 
     private void NavigateToInvoice(ImportResultDto result)
@@ -414,81 +390,6 @@
             Navigation.NavigateTo($"/invoices/{result.InvoiceId}");
         else
             Navigation.NavigateTo($"/received-invoices/{result.InvoiceId}");
-    }
-
-    /// <summary>
-    /// Runs an AI post-import review — sends a summary of what was imported
-    /// and asks the AI to check for potential issues.
-    /// Runs fire-and-forget after import results are displayed.
-    /// </summary>
-    private async Task RunAiPostImportReviewAsync()
-    {
-        // Only run if there are successful imports.
-        var successful = _results.Where(r => r.Success).ToList();
-        if (successful.Count == 0)
-            return;
-
-        _isRunningAiReview = true;
-        _aiReviewText = null;
-        StateHasChanged();
-
-        try
-        {
-            var targetLabel = _target == EImportTarget.IssuedInvoice ? "issued invoices" : "received invoices";
-            var failed = _results.Where(r => !r.Success).ToList();
-
-            // Build a summary of what was imported for the AI to review.
-            var summary = $"I just imported {successful.Count} {targetLabel}. ";
-            if (failed.Count > 0)
-                summary += $"{failed.Count} failed to import. ";
-
-            summary += "Here is the summary:\n\n";
-
-            foreach (var r in successful)
-            {
-                // Find the matching preview to get the extraction details.
-                var preview = _previews.FirstOrDefault(p => p.FileName == r.FileName);
-                summary += $"- **{r.FileName}**: Document #{r.DocumentNumber ?? "N/A"}";
-                if (preview != null)
-                {
-                    summary += $", Amount: {preview.TotalAmount:N2} {preview.Currency ?? "CZK"}";
-                    if (!string.IsNullOrEmpty(preview.ExtractionSource))
-                        summary += $" (source: {preview.ExtractionSource})";
-                }
-                summary += "\n";
-            }
-
-            foreach (var r in failed)
-            {
-                summary += $"- **{r.FileName}**: FAILED — {r.ErrorMessage}\n";
-            }
-
-            summary += "\nPlease review this import and provide a brief status report:\n" +
-                "1. Were document numbers preserved correctly (especially for issued invoices)?\n" +
-                "2. Any duplicate document numbers you noticed?\n" +
-                "3. Any missing data that should be filled in (dates, amounts, client info)?\n" +
-                "4. Any other concerns about the imported data?\n" +
-                "Be concise. Use bullet points. Respond in the same language as the invoice data.";
-
-            // Use the non-streaming SendMessage endpoint for a single response.
-            var request = new Fakvio.Contracts.Dto.Chat.SendMessageRequest
-            {
-                Message = summary,
-                ConversationId = null // New conversation — don't pollute existing ones.
-            };
-
-            var response = await ChatApi.SendMessageAsync(request);
-            _aiReviewText = response?.AssistantMessage?.Content;
-        }
-        catch (Exception ex)
-        {
-            _aiReviewText = $"AI review failed: {ex.Message}";
-        }
-        finally
-        {
-            _isRunningAiReview = false;
-            StateHasChanged();
-        }
     }
 
     // ─── Helper methods ──────────────────────────────────────────────────
