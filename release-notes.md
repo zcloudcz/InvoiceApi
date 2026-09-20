@@ -20,6 +20,17 @@ Píše se **dopad, ne diff**. „Opraveno `FindAsync` bez `Include`" nikomu nic 
 
 ## Nevydáno
 
+## 2026.09.20 — 2026-09-20
+
+### Změny
+- **PR #441** — AI asistent zmizel z UI: pryč ikona v horní liště, položka v menu, boční chat panel, uvítání po přihlášení i odkaz na AI instrukce. AI se používá přes MCP; backend zůstal. (PR #441, `9df3444`)
+- **PR #442** — po importu faktur se už nespouští AI kontrola s hláškou „AI review failed". (PR #442, `a6c7675`)
+
+## 2026.09.14.2 — 2026-09-14
+
+### Změny
+- **MCP `upload_received_invoice_attachment`** — soubor se předává jako `fileUrl` (https odkaz, server si ho stáhne; limit 50 MB) nebo `filePath` (jen lokální stdio server); inline `base64Content` zůstává pro malé soubory. Base64 přes model nešlo použít pro reálná PDF (475 KB ≈ 650 k znaků).
+
 ## 2026.09.14 — 2026-09-14
 
 ### Změny

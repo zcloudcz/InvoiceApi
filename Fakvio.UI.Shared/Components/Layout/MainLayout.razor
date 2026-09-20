@@ -3,12 +3,10 @@
 @using Fakvio.UI.Shared.Services
 @using Fakvio.Contracts.Dto.Client
 @using Fakvio.UI.Shared.Components.Shared
-@using Fakvio.UI.Shared.Components.Chat
 @using Fakvio.UI.Shared.Components.Notification
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
 @inject CompanyApiService CompanyService
-@inject ReadinessApiService ReadinessService
 @inject IStringLocalizer<SharedResource> L
 @inject NotificationApiService NotificationService
 @inject AppStateService AppState
@@ -38,26 +36,6 @@
                 <MudChip T="string" Size="Size.Small" Variant="Variant.Filled" Class="ml-2">@_environmentName!.Trim().ToUpperInvariant()</MudChip>
             }
             <MudSpacer />
-
-            @* AI Chat toggle — first control after the spacer so the assistant is the most
-               prominent AppBar action, not the last icon in a row of six. The icon is the
-               generic "AI robot" (same one the empty chat panel shows); the Fakvio logo used
-               before was indistinguishable from the app logo two icons to the left.
-               Hidden for SysAdmin without impersonation: chat data is tenant-scoped, so
-               /api/chat/* returns 403 when no CompanyId claim is present (see issue #34). *@
-            <AuthorizeView>
-                <Authorized>
-                    @if (_hasTenantContext)
-                    {
-                        <MudTooltip Text="@L["Chat_Title"].Value">
-                            <MudIconButton Icon="@Icons.Material.Filled.SmartToy"
-                                           Color="Color.Inherit"
-                                           OnClick="@ToggleChat"
-                                           aria-label="@L["Chat_Title"].Value" />
-                        </MudTooltip>
-                    }
-                </Authorized>
-            </AuthorizeView>
 
             <AuthorizeView>
                 <Authorized>
@@ -152,29 +130,6 @@
         </Authorized>
     </AuthorizeView>
 
-        @* AI Chat drawer — slides in from the right.
-           Not rendered when no tenant context (SysAdmin without impersonation), because
-           ChatPanel.OnInitializedAsync would fire /api/chat/providers and /api/chat/conversations
-           which require CompanyId claim and 403 in TenantContextMiddleware. See issue #34. *@
-        <AuthorizeView>
-            <Authorized>
-                @if (_hasTenantContext)
-                {
-                    @* Open/OpenChanged instead of @bind-Open: @bind would keep the field in
-                       sync (overlay taps included) but gives no hook for the side effect —
-                       every state change must also be written to localStorage.
-                       Width stays a parameter — MudDrawerContainer derives the main-content
-                       offset from it; the phone override lives in app.css (.chat-drawer). *@
-                    <MudDrawer Open="_chatOpen" OpenChanged="SetChatOpenAsync" Anchor="Anchor.End"
-                               ClipMode="DrawerClipMode.Always" Elevation="4"
-                               Width="400px" Breakpoint="Breakpoint.Lg"
-                               Class="chat-drawer">
-                        <ChatPanel OnClose="@ToggleChat" OnboardingWelcome="@_onboardingWelcome" />
-                    </MudDrawer>
-                }
-            </Authorized>
-        </AuthorizeView>
-
         <MudMainContent>
             <MudContainer MaxWidth="MaxWidth.ExtraExtraLarge" Class="my-4">
                 @* LoggingErrorBoundary catches unhandled component exceptions and forwards them
@@ -209,25 +164,7 @@
 @code {
     private bool _drawerOpen = true;
     private bool _isDarkMode;
-    private bool _chatOpen;
     private bool _cookiesAccepted = true; // default true to avoid flash
-
-    /// <summary>localStorage key holding whether the AI chat drawer was left open.</summary>
-    private const string ChatOpenStorageKey = "chatDrawerOpen";
-
-    /// <summary>
-    /// sessionStorage key marking that the proactive onboarding welcome has already been
-    /// offered in this browser session (issue #214). sessionStorage, not localStorage: the
-    /// greeting is due once per login, and it has to come back for the next one as long as
-    /// the setup is still unfinished.
-    /// </summary>
-    private const string OnboardingShownStorageKey = "chatOnboardingShown";
-
-    /// <summary>
-    /// Proactive welcome handed to <see cref="ChatPanel"/>, or null when the tenant setup is
-    /// finished — see <see cref="TryProactiveOnboardingAsync"/>.
-    /// </summary>
-    private string? _onboardingWelcome;
 
     /// <summary>
     /// Returns the logo image path based on the current theme.
@@ -247,9 +184,7 @@
     // are guaranteed to succeed:
     //   - regular tenant user (always carries CompanyId in their JWT)
     //   - SysAdmin who has selected a company to impersonate
-    // False for SysAdmin without an impersonated company. Used to hide the AI chat
-    // (/api/chat/*) which is tenant-scoped and would otherwise produce 403 spam
-    // on every page load. See issue #34.
+    // False for SysAdmin without an impersonated company. Used to hide tenant-scoped UI
     private bool _hasTenantContext;
 
     void DrawerToggle()
@@ -260,35 +195,6 @@
     void ToggleDarkMode()
     {
         _isDarkMode = !_isDarkMode;
-    }
-
-    /// <summary>
-    /// Opens / closes the AI chat drawer and remembers the choice.
-    /// </summary>
-    private Task ToggleChat() => SetChatOpenAsync(!_chatOpen);
-
-    /// <summary>
-    /// Sets the chat drawer state and persists it in localStorage, so the assistant is
-    /// still open after a page reload — a panel that silently closes on every refresh is
-    /// the main reason the feature goes unnoticed (issue #161).
-    /// localStorage (not UserPreferences) on purpose: this is a per-device UI state, the
-    /// same store the cookie consent above uses, and it costs no API round-trip on a
-    /// preference that changes several times per session.
-    /// </summary>
-    private async Task SetChatOpenAsync(bool open)
-    {
-        _chatOpen = open;
-        await JS.InvokeVoidAsync("localStorage.setItem", ChatOpenStorageKey, open ? "true" : "false");
-    }
-
-    /// <summary>
-    /// Handles the toggle request raised by the "AI asistent" entry in the nav menu.
-    /// The event comes from another component, so an explicit re-render is required.
-    /// </summary>
-    private async void OnChatToggleRequested()
-    {
-        await ToggleChat();
-        StateHasChanged();
     }
 
     /// <summary>
@@ -308,65 +214,13 @@
             var consent = await JS.InvokeAsync<string?>("localStorage.getItem", "cookieConsent");
             _cookiesAccepted = consent == "true";
 
-            // Restore the chat drawer state from the previous visit (default: closed).
-            var chatOpen = await JS.InvokeAsync<string?>("localStorage.getItem", ChatOpenStorageKey);
-            _chatOpen = chatOpen == "true";
-
             StateHasChanged();
             // Subscribe to company list changes (e.g., CompanyDetail creates a new company).
             // This replaces forceLoad: true navigation which restarts the WASM app.
             AppState.OnCompanyListChanged += OnCompanyListChanged;
-            // The nav menu entry asks MainLayout to toggle the chat drawer.
-            AppState.OnChatToggleRequested += OnChatToggleRequested;
 
             await LoadCompaniesAsync();
-
-            // Runs after LoadCompaniesAsync — it needs the tenant-context flag that call sets.
-            await TryProactiveOnboardingAsync();
         }
-    }
-
-    /// <summary>
-    /// Opens the assistant with a proactive welcome when the tenant setup is not finished
-    /// (issue #214, story #150).
-    ///
-    /// The primary onboarding path in this app is a conversation, not a stepper: a fresh
-    /// tenant otherwise lands on an empty dashboard which says nothing about what to do next.
-    /// The rules of "what is missing" are not re-implemented here — they live in
-    /// ITenantReadinessService and arrive over GET /api/readiness, the same report the
-    /// dashboard banner and the system prompt use.
-    ///
-    /// Offered once per browser session: reopening a drawer the user has just closed on every
-    /// F5 would train them to ignore the assistant, which is the opposite of the point.
-    /// </summary>
-    private async Task TryProactiveOnboardingAsync()
-    {
-        // SysAdmin without an impersonated company has no tenant to be ready or unready.
-        if (!_hasTenantContext)
-            return;
-
-        // Checked before the request, so a returning user does not pay for a readiness
-        // round-trip on every page load just to be told they were greeted already.
-        var alreadyShown = await JS.InvokeAsync<string?>("sessionStorage.getItem", OnboardingShownStorageKey);
-        if (alreadyShown == "true")
-            return;
-
-        // A failed call yields an empty report (see ReadinessApiService), i.e. no greeting —
-        // silence is the right degradation for a proactive interruption.
-        var welcome = ChatOnboarding.BuildWelcome(await ReadinessService.GetReportAsync(), L);
-        if (welcome == null)
-            return;
-
-        _onboardingWelcome = welcome;
-
-        // Goes through SetChatOpenAsync so the panel also stays open on the next page load —
-        // the user is in the middle of a conversation until the setup is done.
-        await SetChatOpenAsync(true);
-
-        // Marked as greeted only after the panel is actually open. The other order would burn
-        // the session flag on a failed JS interop, and the user would never see the welcome.
-        await JS.InvokeVoidAsync("sessionStorage.setItem", OnboardingShownStorageKey, "true");
-        StateHasChanged();
     }
 
     /// <summary>
@@ -417,36 +271,18 @@
     public void Dispose()
     {
         AppState.OnCompanyListChanged -= OnCompanyListChanged;
-        AppState.OnChatToggleRequested -= OnChatToggleRequested;
     }
 
     /// <summary>
     /// Called when SysAdmin selects a company to impersonate.
     /// Stores the selection in session and refreshes the page to update navigation.
-    ///
-    /// Also pre-flips the in-memory tenant-context flag and closes the chat drawer
-    /// before triggering the reload — prevents a small race where the drawer is open
-    /// with an in-flight chat request between clearing the impersonation and the
-    /// browser actually navigating away (issue #34, defense-in-depth).
     /// </summary>
     private async Task OnImpersonatedCompanyChanged(long? companyId)
     {
         _impersonatedCompanyId = companyId;
         var companyName = _availableCompanies.FirstOrDefault(c => c.Id == companyId)?.CompanyName;
 
-        // Update local tenant-context state immediately so any further renders this
-        // tick already hide tenant-scoped UI. The full reload below replaces the WASM
-        // app state, but until the navigation actually fires the in-memory flag is
-        // what gates the chat panel.
         _hasTenantContext = companyId.HasValue;
-        if (!_hasTenantContext)
-        {
-            // Deliberately the field only, not SetChatOpenAsync: the drawer is being
-            // hidden because the tenant context is gone, not because the user closed it.
-            // The stored preference must survive so the panel comes back open on the
-            // next impersonation.
-            _chatOpen = false;
-        }
 
         var customAuth = (CustomAuthenticationStateProvider)AuthStateProvider;
         await customAuth.SetImpersonatedCompanyAsync(companyId, companyName);
@@ -458,10 +294,6 @@
 
     private async Task HandleLogoutAsync()
     {
-        // The onboarding greeting is per user, not per tab: without this, a second user
-        // logging in on the same machine would silently inherit "already greeted".
-        await JS.InvokeVoidAsync("sessionStorage.removeItem", OnboardingShownStorageKey);
-
         var customAuthStateProvider = (CustomAuthenticationStateProvider)AuthStateProvider;
         await customAuthStateProvider.MarkUserAsLoggedOutAsync();
         Navigation.NavigateTo("/login", forceLoad: true);

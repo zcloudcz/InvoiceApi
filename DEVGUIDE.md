@@ -722,6 +722,10 @@ Implementace: `PaymentMatchingService.cs` (metoda `GetPaymentsForInvoiceAsync`).
 
 ### 4.7 AI Chat (Claude/OpenAI/Gemini/Ollama)
 
+> **UI skryté (2026-09-20):** chat panel, položka v menu, onboarding uvítání i odkaz na `/ai-instructions`
+> byly odebrány z `MainLayout`/`NavMenu` (AI se používá přes MCP). Backend (`ChatController`, `ChatService`,
+> `ChatPanel.razor`) zůstal beze změny — vrácení = obnovit markup v layoutu.
+
 - Provider abstrakce: `IAiProvider` (`Fakvio.Application/Service/IAiProvider.cs`).
 - Implementace: `Fakvio.Infrastructure/AiProviders/` (Anthropic, OpenAI, Gemini, Ollama).
 - API key storage: `CompanySystemSettings.AiApiKeyEncrypted` (per company) přes `CredentialProtector`.
