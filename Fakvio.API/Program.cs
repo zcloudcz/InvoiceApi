@@ -153,6 +153,10 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor;
     options.KnownNetworks.Clear();
     options.KnownProxies.Clear();
+    // Only the right-most X-Forwarded-For entry is used - the one the Azure front-end appends.
+    // Anything to its left came from the client and is spoofable, so never raise this limit
+    // (a spoofed IP would let an attacker get a fresh rate-limit bucket per request).
+    options.ForwardLimit = 1;
 });
 
 // ── Rate limiting for anonymous auth endpoints (RC.4) ────────────────────────
