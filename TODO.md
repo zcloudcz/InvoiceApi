@@ -10,6 +10,10 @@
 - [ ] Ověřit: self-host nasazení Fakvia — musí fungovat bez Entry? (pak OpenIddict jako fallback)
 - [ ] Pokud GO: PoC — Fakvio.API přijme Entra token vedle vlastního JWT, mapování `User.ExternalProviderId` (oid)
 - [ ] Pokud GO: migrace hesel — vynucený reset (doporučeno MS) nebo JIT migrace přes custom auth extension
+- [ ] AgentWall: lidé (admin UI, schvalovatelé) přes ZCLOUD login; agenti přes OAuth pro MCP — Entra nemá DCR,
+      klienti se musí registrovat ručně → rozhodnout: předregistrovaní klienti v Entře, nebo vlastní autorizační server
+      pro MCP, který přihlášení lidí deleguje na Entru
+- [ ] AgentWall → Fakvio.McpServer: zatím servisní API klíč (MCP zakazuje přeposílat token klienta dál); delegace za uživatele až po sjednocení loginu
 
 ## Completed (2026-09-11)
 
