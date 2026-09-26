@@ -16,8 +16,9 @@ namespace Fakvio.Domain.Entities;
 ///   4. Schedule deactivates itself when <see cref="EndDate"/> is reached or when
 ///      <see cref="MaxOccurrences"/> (if set) has been consumed.
 ///
-/// Multi-replica safety: the service uses a PostgreSQL advisory lock to prevent two
-/// running hosts (API BackgroundService + Azure Function) from double-generating invoices.
+/// Multi-replica safety: the service uses a PostgreSQL advisory lock (RecurringInvoiceWorker)
+/// to prevent two App Service replicas from double-generating invoices. There is no Azure
+/// Function counterpart — since #419/#426 the only host is Fakvio.API (DEVGUIDE §6).
 ///
 /// Inherits <see cref="BaseEntity"/> for Id, CreatedAt/UpdatedAt, and user audit columns.
 /// </summary>

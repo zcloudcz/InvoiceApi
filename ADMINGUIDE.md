@@ -452,6 +452,15 @@ Logy úrovně Debug/Info starší než 48 hodin jsou automaticky mazány (`LogCl
 
 Logy jsou buffered in-memory a periodicky flushované do DB (`LogFlushService` BackgroundService, běží každých 20 sekund). Při neočekávaném crashu může přijít o poslední buffer. Přímý zápis do DB per request je záměrně vypnutý (výkon).
 
+### Opakované faktury (RecurringInvoiceWorker)
+
+`RecurringInvoiceWorker` BackgroundService běží hodinově a generuje faktury z naplánovaných
+šablon (viz DEVGUIDE §4.13). Průběh je vidět ve `/logs` — hledejte `Source` obsahující
+`RecurringInvoiceWorker` nebo `RecurringInvoiceService`, případně text `RecurringInvoice:` v
+message (log prefix jednotlivých kroků cyklu). Chyba jednoho plánu se zapíše i do `LastError`
+na detailu šablony a vyvolá in-app notifikaci uživatelům dané firmy — SysAdmin ji v `/logs`
+uvidí navíc jako `Error` záznam s plnou výjimkou.
+
 ---
 
 ## 8. Šablony dokumentů (systémové)

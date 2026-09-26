@@ -40,6 +40,7 @@ builder.Services.AddFakvioAuthentication(builder.Configuration);
 builder.Services.AddHostedService<LogFlushService>();
 builder.Services.AddHostedService<LogCleanupService>();
 builder.Services.AddHostedService<ReminderWorker>();
+builder.Services.AddHostedService<RecurringInvoiceWorker>();
 
 // ── Application Insights ────────────────────────────────────────────────────
 // Reads APPLICATIONINSIGHTS_CONNECTION_STRING from the App Service settings; without it

@@ -1,0 +1,368 @@
+using Fakvio.Application.Service;
+using Fakvio.Contracts.Dto.InvoiceTemplate;
+using Fakvio.Contracts.Dto.RecurringInvoice;
+using Fakvio.Domain.Entities;
+using Fakvio.Domain.Enums;
+using Fakvio.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using ZMapper;
+
+namespace Fakvio.Infrastructure.Service;
+
+/// <summary>
+/// Implementation of IRecurringInvoiceService — CRUD for schedules plus the generation cycle.
+///
+/// Owner decisions (2026-W39, overriding the original story spec):
+///   - Generated invoices are issued straight away (Status = Completed) — the document number
+///     is consumed immediately, so a deleted draft never leaves a hole in the sequence.
+///     AutoSend only controls whether the invoice is additionally e-mailed (see N4.5).
+///   - A missed period (the app was down when NextRunAt passed) is caught up with exactly ONE
+///     invoice per cycle, dated on the ORIGINAL planned date (NextRunAt), not "now". The
+///     schedule then advances one period at a time on each subsequent cycle until it catches
+///     up to the present — it does not try to generate every missed period at once.
+///   - Idempotence: two RunCycleAsync calls covering the same due schedule must create only
+///     ONE invoice. This is guaranteed by SaveChanges/commit atomically moving NextRunAt
+///     forward together with the generated invoice — the second call re-reads NextRunAt and
+///     no longer sees the schedule as due. Cross-instance exclusion is the advisory lock in
+///     RecurringInvoiceWorker; this method alone is not safe against true concurrent callers
+///     on the SAME schedule (not needed — the worker serializes via the lock).
+/// </summary>
+public class RecurringInvoiceService : IRecurringInvoiceService
+{
+    /// <summary>LastError is capped to match the DB column (HasMaxLength(2000)).</summary>
+    private const int MaxErrorLength = 2000;
+
+    private readonly TenantDbContext _context;
+    private readonly IInvoiceTemplateService _templateService;
+    private readonly INotificationService _notificationService;
+    private readonly ILogger<RecurringInvoiceService> _logger;
+
+    public RecurringInvoiceService(
+        TenantDbContext context,
+        IInvoiceTemplateService templateService,
+        INotificationService notificationService,
+        ILogger<RecurringInvoiceService> logger)
+    {
+        _context = context;
+        _templateService = templateService;
+        _notificationService = notificationService;
+        _logger = logger;
+    }
+
+    // ─── Read ────────────────────────────────────────────────────────────────
+
+    public async Task<List<RecurringInvoiceScheduleDto>> GetByTemplateAsync(long templateId, CancellationToken ct = default)
+    {
+        var schedules = await _context.RecurringInvoiceSchedule
+            .AsNoTracking()
+            .Include(s => s.Template)
+            .Include(s => s.Client)
+            .Where(s => s.TemplateId == templateId)
+            .OrderBy(s => s.NextRunAt)
+            .ToListAsync(ct);
+
+        return schedules.Select(MapToDto).ToList();
+    }
+
+    public async Task<List<RecurringInvoiceScheduleDto>> GetAllAsync(CancellationToken ct = default)
+    {
+        var schedules = await _context.RecurringInvoiceSchedule
+            .AsNoTracking()
+            .Include(s => s.Template)
+            .Include(s => s.Client)
+            .OrderBy(s => s.NextRunAt)
+            .ToListAsync(ct);
+
+        return schedules.Select(MapToDto).ToList();
+    }
+
+    public async Task<RecurringInvoiceScheduleDto?> GetByIdAsync(long id, CancellationToken ct = default)
+    {
+        var schedule = await _context.RecurringInvoiceSchedule
+            .AsNoTracking()
+            .Include(s => s.Template)
+            .Include(s => s.Client)
+            .FirstOrDefaultAsync(s => s.Id == id, ct);
+
+        return schedule is null ? null : MapToDto(schedule);
+    }
+
+    private static RecurringInvoiceScheduleDto MapToDto(RecurringInvoiceSchedule entity)
+    {
+        var dto = entity.ToRecurringInvoiceScheduleDto();
+        dto.TemplateName = entity.Template?.Name;
+        dto.ClientName = entity.Client?.CompanyName;
+        return dto;
+    }
+
+    // ─── Write ───────────────────────────────────────────────────────────────
+
+    public async Task<RecurringInvoiceScheduleDto> CreateAsync(CreateRecurringInvoiceScheduleDto createDto, CancellationToken ct = default)
+    {
+        var template = await _context.Set<InvoiceTemplate>()
+            .FirstOrDefaultAsync(t => t.Id == createDto.TemplateId, ct)
+            ?? throw new InvalidOperationException($"Template with ID {createDto.TemplateId} not found.");
+
+        if (!template.IsActive)
+            throw new InvalidOperationException($"Template '{template.Name}' is not active.");
+
+        var client = await _context.Client.FindAsync(new object[] { createDto.ClientId }, ct)
+            ?? throw new InvalidOperationException($"Client with ID {createDto.ClientId} not found.");
+
+        ValidateRecurrenceRule(createDto.Frequency, createDto.IntervalCount, createDto.DayOfMonth, createDto.DayOfWeek);
+
+        if (createDto.EndDate.HasValue && createDto.EndDate.Value <= createDto.StartDate)
+            throw new InvalidOperationException("EndDate must be after StartDate.");
+
+        var schedule = new RecurringInvoiceSchedule
+        {
+            TemplateId = createDto.TemplateId,
+            ClientId = createDto.ClientId,
+            Frequency = createDto.Frequency,
+            IntervalCount = createDto.IntervalCount,
+            DayOfMonth = createDto.DayOfMonth,
+            DayOfWeek = createDto.DayOfWeek,
+            NextRunAt = createDto.StartDate,
+            EndDate = createDto.EndDate,
+            MaxOccurrences = createDto.MaxOccurrences,
+            AutoSend = createDto.AutoSend,
+            IsActive = true,
+        };
+
+        _context.RecurringInvoiceSchedule.Add(schedule);
+        await _context.SaveChangesAsync(ct);
+
+        _logger.LogInformation(
+            "Created recurring schedule {ScheduleId} for template {TemplateId}, client {ClientId}, first run {NextRunAt}",
+            schedule.Id, schedule.TemplateId, schedule.ClientId, schedule.NextRunAt);
+
+        // Re-load with navigation properties for the denormalized names.
+        return (await GetByIdAsync(schedule.Id, ct))!;
+    }
+
+    public async Task<RecurringInvoiceScheduleDto> UpdateAsync(long id, UpdateRecurringInvoiceScheduleDto updateDto, CancellationToken ct = default)
+    {
+        var schedule = await _context.RecurringInvoiceSchedule.FirstOrDefaultAsync(s => s.Id == id, ct)
+            ?? throw new InvalidOperationException($"Recurring schedule with ID {id} not found.");
+
+        if (updateDto.ClientId.HasValue)
+        {
+            var client = await _context.Client.FindAsync(new object[] { updateDto.ClientId.Value }, ct)
+                ?? throw new InvalidOperationException($"Client with ID {updateDto.ClientId.Value} not found.");
+            schedule.ClientId = client.Id;
+        }
+
+        var frequency = updateDto.Frequency ?? schedule.Frequency;
+        var intervalCount = updateDto.IntervalCount ?? schedule.IntervalCount;
+        var dayOfMonth = updateDto.DayOfMonth switch
+        {
+            -1 => null,
+            not null => updateDto.DayOfMonth,
+            null => schedule.DayOfMonth,
+        };
+        var dayOfWeek = updateDto.ClearDayOfWeek ? null : updateDto.DayOfWeek ?? schedule.DayOfWeek;
+
+        ValidateRecurrenceRule(frequency, intervalCount, dayOfMonth, dayOfWeek);
+
+        var endDate = updateDto.ClearEndDate ? null : updateDto.EndDate ?? schedule.EndDate;
+        if (endDate.HasValue && endDate.Value <= (updateDto.NextRunAt ?? schedule.NextRunAt))
+            throw new InvalidOperationException("EndDate must be after NextRunAt.");
+
+        schedule.Frequency = frequency;
+        schedule.IntervalCount = intervalCount;
+        schedule.DayOfMonth = dayOfMonth;
+        schedule.DayOfWeek = dayOfWeek;
+        schedule.EndDate = endDate;
+        schedule.MaxOccurrences = updateDto.ClearMaxOccurrences ? null : updateDto.MaxOccurrences ?? schedule.MaxOccurrences;
+        schedule.AutoSend = updateDto.AutoSend ?? schedule.AutoSend;
+        if (updateDto.NextRunAt.HasValue)
+            schedule.NextRunAt = updateDto.NextRunAt.Value;
+
+        await _context.SaveChangesAsync(ct);
+
+        return (await GetByIdAsync(schedule.Id, ct))!;
+    }
+
+    public async Task<RecurringInvoiceScheduleDto> SetActiveAsync(long id, bool isActive, CancellationToken ct = default)
+    {
+        var schedule = await _context.RecurringInvoiceSchedule.FirstOrDefaultAsync(s => s.Id == id, ct)
+            ?? throw new InvalidOperationException($"Recurring schedule with ID {id} not found.");
+
+        schedule.IsActive = isActive;
+        await _context.SaveChangesAsync(ct);
+
+        return (await GetByIdAsync(schedule.Id, ct))!;
+    }
+
+    public async Task DeleteAsync(long id, CancellationToken ct = default)
+    {
+        var schedule = await _context.RecurringInvoiceSchedule.FirstOrDefaultAsync(s => s.Id == id, ct)
+            ?? throw new InvalidOperationException($"Recurring schedule with ID {id} not found.");
+
+        if (schedule.OccurrenceCount == 0)
+        {
+            // Never fired — safe to hard-delete, nothing references it yet.
+            _context.RecurringInvoiceSchedule.Remove(schedule);
+        }
+        else
+        {
+            // Has generated invoices before — deactivate instead, preserving the audit trail
+            // (LastRunAt/OccurrenceCount/generated invoices still reference this schedule's history).
+            schedule.IsActive = false;
+        }
+
+        await _context.SaveChangesAsync(ct);
+    }
+
+    // ─── Validation ──────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Shared validation for create and update — mirrors the entity's documented invariants
+    /// (DEVGUIDE §4.13): DayOfMonth 1-28 required for non-Weekly, DayOfWeek only for Weekly.
+    /// </summary>
+    private static void ValidateRecurrenceRule(
+        ERecurrenceFrequency frequency, int intervalCount, int? dayOfMonth, DayOfWeek? dayOfWeek)
+    {
+        if (intervalCount < 1)
+            throw new InvalidOperationException("IntervalCount must be at least 1.");
+
+        if (frequency == ERecurrenceFrequency.Weekly)
+        {
+            if (dayOfWeek is null)
+                throw new InvalidOperationException("DayOfWeek is required when Frequency is Weekly.");
+            if (dayOfMonth is not null)
+                throw new InvalidOperationException("DayOfMonth must not be set when Frequency is Weekly.");
+        }
+        else
+        {
+            if (dayOfMonth is null or < 1 or > 28)
+                throw new InvalidOperationException("DayOfMonth (1-28) is required when Frequency is not Weekly.");
+            if (dayOfWeek is not null)
+                throw new InvalidOperationException("DayOfWeek must not be set when Frequency is not Weekly.");
+        }
+    }
+
+    // ─── Generation cycle ──────────────────────────────────────────────────────
+
+    public async Task<int> RunCycleAsync(long companyId, DateTimeOffset nowUtc, CancellationToken ct = default)
+    {
+        var dueSchedules = await _context.RecurringInvoiceSchedule
+            .Where(s => s.IsActive && s.NextRunAt <= nowUtc)
+            .Select(s => s.Id)
+            .ToListAsync(ct);
+
+        var generated = 0;
+
+        foreach (var scheduleId in dueSchedules)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            if (await RunOneScheduleAsync(scheduleId, companyId, nowUtc, ct))
+                generated++;
+        }
+
+        return generated;
+    }
+
+    /// <summary>
+    /// Generates (at most) one invoice for a single due schedule, in its own DB transaction so
+    /// a mid-flight failure rolls back the invoice AND the schedule advance together — never
+    /// half of one. Returns true if an invoice was generated.
+    /// </summary>
+    private async Task<bool> RunOneScheduleAsync(long scheduleId, long companyId, DateTimeOffset nowUtc, CancellationToken ct)
+    {
+        // Re-fetch with tracking, fresh, per schedule — keeps one bad schedule from poisoning
+        // the DbContext's change tracker for the rest of the cycle.
+        var schedule = await _context.RecurringInvoiceSchedule.FirstOrDefaultAsync(s => s.Id == scheduleId, ct);
+        if (schedule is null || !schedule.IsActive || schedule.NextRunAt > nowUtc)
+            return false; // Deactivated / already handled by a previous cycle since we listed it.
+
+        await using var transaction = await _context.Database.BeginTransactionAsync(ct);
+        try
+        {
+            var plannedDate = schedule.NextRunAt;
+
+            var invoice = await _templateService.CreateInvoiceFromTemplateAsync(
+                schedule.TemplateId,
+                new CreateInvoiceFromTemplateDto
+                {
+                    ClientId = schedule.ClientId,
+                    // Dohnat zmeškanou periodu: datum vystavení = PLÁNOVANÉ datum, ne "teď".
+                    IssueDate = plannedDate.UtcDateTime,
+                    // Owner decision: worker always issues (Completed) — the document number is
+                    // consumed immediately, there is no "draft with a hole in the sequence".
+                    AutoComplete = true,
+                },
+                ct);
+
+            schedule.OccurrenceCount++;
+            schedule.LastRunAt = nowUtc;
+            schedule.LastError = null;
+            schedule.NextRunAt = RecurrenceCalculator.Next(
+                plannedDate, schedule.Frequency, schedule.IntervalCount, schedule.DayOfMonth, schedule.DayOfWeek);
+
+            if ((schedule.EndDate.HasValue && schedule.NextRunAt >= schedule.EndDate.Value) ||
+                (schedule.MaxOccurrences.HasValue && schedule.OccurrenceCount >= schedule.MaxOccurrences.Value))
+            {
+                schedule.IsActive = false;
+            }
+
+            await _context.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+
+            _logger.LogInformation(
+                "RecurringInvoice: schedule {ScheduleId} generated invoice {InvoiceId}, next run {NextRunAt}",
+                schedule.Id, invoice.Id, schedule.NextRunAt);
+
+            return true;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+
+            // NextRunAt deliberately NOT advanced — the same period is retried next cycle.
+            // Re-fetch: the failed SaveChanges/rollback may have detached tracked entities.
+            await RecordFailureAsync(scheduleId, companyId, ex, ct);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Writes LastError on the schedule (own SaveChanges, outside the rolled-back transaction)
+    /// and raises a notification. A logging failure here must not crash the whole cycle either.
+    /// </summary>
+    private async Task RecordFailureAsync(long scheduleId, long companyId, Exception ex, CancellationToken ct)
+    {
+        _logger.LogError(ex, "RecurringInvoice: schedule {ScheduleId} generation failed", scheduleId);
+
+        try
+        {
+            var schedule = await _context.RecurringInvoiceSchedule.FirstOrDefaultAsync(s => s.Id == scheduleId, ct);
+            if (schedule is null)
+                return;
+
+            var message = ex.Message.Length > MaxErrorLength ? ex.Message[..MaxErrorLength] : ex.Message;
+            schedule.LastError = message;
+            await _context.SaveChangesAsync(ct);
+
+            await _notificationService.CreateForAllUsersAsync(
+                ENotificationType.RecurringInvoiceFailed,
+                "Generování opakované faktury selhalo",
+                $"Naplánovaná faktura ze šablony se nepodařilo vygenerovat: {message}",
+                schedule.Id,
+                "RecurringInvoiceSchedule",
+                companyId,
+                ct);
+        }
+        catch (Exception notifyEx)
+        {
+            _logger.LogError(notifyEx, "RecurringInvoice: failed to record LastError/notification for schedule {ScheduleId}", scheduleId);
+        }
+    }
+}
