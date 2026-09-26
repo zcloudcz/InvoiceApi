@@ -1861,6 +1861,34 @@ do obou `SharedResource*.resx`** — jinak uživatel uvidí obecnou náhradní h
 `SharedResourceLocalizationTests.ReadinessKeys_ShouldBeTranslated_InBothCultures` klíče
 odvozuje reflexí z `ReadinessCodes`, takže chybějící překlad shodí testy, ne produkci.
 
+### 4.13 Import z CSV (klienti z Fakturoidu / iDokladu)
+
+Story N6. Cíl: umožnit uživatelům přesun z konkurenčních fakturačních nástrojů bez ručního
+přepisování kontaktů. Reálné exporty z Fakturoidu/iDokladu nebyly při psaní k dispozici, proto je
+parser i mapování sloupců záměrně obecné (auto-detekce, aliasy), ne natvrdo zadrátované na jeden
+formát — testy v `Fakvio.Tests.Unit/CsvTableTests.cs` a `ClientCsvImportServiceTests.cs` používají
+syntetická data.
+
+- **Parser:** `Fakvio.Infrastructure/Import/CsvTable.cs` — `CsvTable.Parse(Stream)`. Žádná nová
+  NuGet závislost (repo nemá CsvHelper a nepotřebuje ho). Detekuje BOM/UTF-8/Windows-1250,
+  oddělovač (`;`, `,`, tab) z první řádky, RFC 4180 uvozovky (zdvojené `""`, nové řádky v poli).
+  Limity: 5 MB / 10 000 řádků — nad limit hodí `CsvParseException` se zprávou bezpečnou pro
+  zobrazení uživateli. Hlavičky se normalizují (`CsvTable.NormalizeHeader`: trim, lower, bez
+  diakritiky), aby mapování na aliasy nezáviselo na přesném zápisu.
+- **Import klientů:** `IClientCsvImportService` (`Fakvio.Application/Service/`) / implementace
+  `ClientCsvImportService` (`Fakvio.Infrastructure/Service/`). Preview/Confirm workflow stejně jako
+  u PDF importu (`4.2`/`ImportController`). Mapování sloupců na `CreateClientDto` je přes statickou
+  tabulku aliasů (`ClientCsvColumnAliases`) — nový alias přidáš tam, zdroj (Fakturoid/iDoklad) se
+  nerozlišuje. Dedup podle IČO: proti DB (`IClientService.GetClientByRegistrationNumberAsync`) i
+  uvnitř souboru. `Confirm` zakládá jen řádky se stavem `New`; opakovaný import stejného souboru
+  proto zafounduje 0 nových klientů.
+- **Endpointy:** `POST api/import/clients/preview`, `POST api/import/clients/confirm`
+  (`ImportController`, multipart upload jako u PDF preview).
+- **UI:** `Fakvio.UI.Shared/Components/Shared/ClientCsvImportDialog.razor`, otevřený z tlačítka na
+  `Clients.razor`. Texty přes `SharedResource*.resx` (klíče `ClientImport_*`).
+- **Fáze 2 (zatím neimplementováno):** import historie vydaných faktur z CSV — čeká na rozhodnutí
+  ownera a reálné exporty (viz Story N6, tasky N6.5/N6.6 v `research/plan-2026-W39-specs.md`).
+
 ---
 
 ## 5. Datová vrstva
