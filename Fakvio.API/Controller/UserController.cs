@@ -5,6 +5,7 @@ using Fakvio.Domain.Enums;
 using Fakvio.Infrastructure.Service;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Configuration;
 
 namespace Fakvio.API.Controller;
@@ -596,6 +597,7 @@ public class UserController : ControllerBase
     /// <response code="400">Invalid or expired token</response>
     [HttpPost("set-password")]
     [AllowAnonymous]
+    [EnableRateLimiting("auth-anon")]
     [ProducesResponseType(typeof(SetPasswordResultDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<SetPasswordResultDto>> SetPassword([FromBody] SetPasswordDto dto)
@@ -654,6 +656,7 @@ public class UserController : ControllerBase
     /// <response code="400">CAPTCHA verification failed.</response>
     [HttpPost("forgot-password")]
     [AllowAnonymous]
+    [EnableRateLimiting("auth-anon")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult> ForgotPassword([FromBody] ForgotPasswordDto dto)
@@ -712,6 +715,7 @@ public class UserController : ControllerBase
     /// <response code="200">Token validation result</response>
     [HttpGet("validate-invitation")]
     [AllowAnonymous]
+    [EnableRateLimiting("auth-anon")]
     [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
     public async Task<ActionResult> ValidateInvitationToken([FromQuery] string token)
     {

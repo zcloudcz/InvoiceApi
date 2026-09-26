@@ -161,6 +161,13 @@ public class UserApiService : ApiClientBase
 
         if (!response.IsSuccessStatusCode)
         {
+            // RC.4 — 429 from the rate limiter is not "invalid or expired token" (the known
+            // gap pinned by SetPasswordAsync_ServerFault_IsReportedAsIfTheTokenFailed_KnownGap
+            // collapses every OTHER non-2xx into PasswordSet=false; 429 gets its own signal
+            // instead of widening that gap further).
+            if (RateLimitExceededException.Matches(response.StatusCode))
+                throw new RateLimitExceededException();
+
             // 400 = invalid or expired token; nothing was changed
             return new SetPasswordResultDto { PasswordSet = false };
         }
@@ -181,7 +188,15 @@ public class UserApiService : ApiClientBase
     {
         // Anonymous endpoint — call the HttpClient directly
         var response = await _httpClient.GetAsync($"/api/user/validate-invitation?token={Uri.EscapeDataString(token)}");
-        if (!response.IsSuccessStatusCode) return false;
+
+        if (!response.IsSuccessStatusCode)
+        {
+            // RC.4 — a 429 here is not "invalid token"; SetPassword.razor shows a distinct message.
+            if (RateLimitExceededException.Matches(response.StatusCode))
+                throw new RateLimitExceededException();
+
+            return false;
+        }
 
         var result = await response.Content.ReadFromJsonAsync<InvitationValidationResult>();
         return result?.IsValid ?? false;
@@ -216,6 +231,11 @@ public class UserApiService : ApiClientBase
 
         if (!response.IsSuccessStatusCode)
         {
+            // RC.4 — the "auth-anon" rate limiter answers 429 before this reaches
+            // IUserService.ForgotPasswordAsync; distinct from the CAPTCHA check below.
+            if (RateLimitExceededException.Matches(response.StatusCode))
+                throw new RateLimitExceededException();
+
             var errorContent = await response.Content.ReadAsStringAsync();
             if (CaptchaException.Matches(response.StatusCode, errorContent))
                 throw new CaptchaException();

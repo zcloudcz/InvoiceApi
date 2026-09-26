@@ -54,6 +54,11 @@ public class AuthApiService : ApiClientBase
                     null,
                     "AuthApiService");
 
+                // RC.4 — the "auth-anon" rate limiter answers 429 before this even reaches
+                // AuthService; that is not "wrong password" either.
+                if (RateLimitExceededException.Matches(response.StatusCode))
+                    throw new RateLimitExceededException();
+
                 // A failed CAPTCHA is not "wrong password" — Login.razor shows a distinct
                 // message for it (see CaptchaException), so it must not be swallowed into
                 // the plain "return null" every other 400/401 gets here.
@@ -67,6 +72,10 @@ public class AuthApiService : ApiClientBase
             return await response.Content.ReadFromJsonAsync<LoginResponse>();
         }
         catch (CaptchaException)
+        {
+            throw; // Already logged above — let Login.razor show its dedicated message.
+        }
+        catch (RateLimitExceededException)
         {
             throw; // Already logged above — let Login.razor show its dedicated message.
         }
@@ -104,6 +113,10 @@ public class AuthApiService : ApiClientBase
                     errorContent,
                     "AuthApiService");
 
+                // RC.4 — same distinction: 429 from the rate limiter never reached AuthService.
+                if (RateLimitExceededException.Matches(response.StatusCode))
+                    throw new RateLimitExceededException();
+
                 // Same distinction as LoginAsync: a failed CAPTCHA gets its own exception
                 // type so Register.razor can show a dedicated message instead of echoing
                 // the raw server text (which, for every OTHER 400, is what we want here).
@@ -117,6 +130,10 @@ public class AuthApiService : ApiClientBase
             return await response.Content.ReadFromJsonAsync<RegisterResponse>();
         }
         catch (CaptchaException)
+        {
+            throw; // Already logged above — don't log twice.
+        }
+        catch (RateLimitExceededException)
         {
             throw; // Already logged above — don't log twice.
         }
@@ -166,6 +183,10 @@ public class AuthApiService : ApiClientBase
                     null,
                     "AuthApiService");
 
+                // RC.4 — same distinction: 429 from the rate limiter never reached AresService.
+                if (RateLimitExceededException.Matches(response.StatusCode))
+                    throw new RateLimitExceededException();
+
                 // A failed CAPTCHA is not "IČO not found" — Register.razor shows a distinct
                 // message for it, so it must not fall through to the generic null/"failed" path.
                 var errorContent = await response.Content.ReadAsStringAsync();
@@ -178,6 +199,10 @@ public class AuthApiService : ApiClientBase
             return await response.Content.ReadFromJsonAsync<AresLookupResponse>();
         }
         catch (CaptchaException)
+        {
+            throw; // Already logged above — let Register.razor show its dedicated message.
+        }
+        catch (RateLimitExceededException)
         {
             throw; // Already logged above — let Register.razor show its dedicated message.
         }

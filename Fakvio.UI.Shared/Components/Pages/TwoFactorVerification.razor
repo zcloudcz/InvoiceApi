@@ -139,6 +139,12 @@
         {
             // NavigateTo with forceLoad can throw after initiating navigation — expected
         }
+        catch (RateLimitExceededException)
+        {
+            // RC.4 — the per-IP rate limiter rejected this attempt (429); distinct from an
+            // actually wrong code (TwoFactor_InvalidCode).
+            _errorMessage = L["RateLimit_TooManyAttempts"].Value;
+        }
         catch (Exception ex)
         {
             _errorMessage = ex.Message;

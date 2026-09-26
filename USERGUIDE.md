@@ -978,7 +978,7 @@ kontaktujte podporu.
 
 ---
 
-## 19b. Chyba „Ověření proti robotům se nezdařilo"
+## 19b. Chyby při přihlášení, registraci a resetu hesla
 
 Přihlášení, registrace, načtení firmy z ARES i zapomenuté heslo jsou chráněné neviditelnou
 kontrolou proti robotům (reCAPTCHA). Pokud se zobrazí hláška **„Ověření proti robotům se
@@ -992,6 +992,11 @@ nezdařilo"**:
 
 Tato hláška neznamená chybu ve vašich přihlašovacích údajích ani v e-mailu — je to
 samostatná kontrola, která proběhne dřív, než se cokoli z formuláře vůbec odešle.
+
+**Hláška „Příliš mnoho pokusů. Zkuste to prosím znovu za chvíli."** se zobrazí, když
+z vaší sítě přišlo za krátkou dobu příliš mnoho pokusů o přihlášení/registraci/reset
+hesla (ochrana proti zneužití, ne chyba na vaší straně). Počkejte přibližně minutu a
+zkuste to znovu.
 
 ---
 

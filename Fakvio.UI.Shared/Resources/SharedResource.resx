@@ -290,6 +290,9 @@
        for a failed CAPTCHA (see CaptchaException) — login, register, ARES lookup and
        forgot password all use this same message. -->
   <data name="Captcha_VerificationFailed" xml:space="preserve"><value>Ověření proti robotům se nezdařilo. Obnovte stránku, případně vypněte blokování reklam pro app.fakvio.cz.</value></data>
+  <!-- RC.4: shown when the API answers 429 (per-IP rate limiter on anonymous auth
+       endpoints — see RateLimitExceededException). -->
+  <data name="RateLimit_TooManyAttempts" xml:space="preserve"><value>Příliš mnoho pokusů. Zkuste to prosím znovu za chvíli.</value></data>
   <data name="SetPassword_Subtitle" xml:space="preserve"><value>Zadejte nové heslo pro váš účet.</value></data>
   <data name="SetPassword_SettingPassword" xml:space="preserve"><value>Nastavuji heslo...</value></data>
   <data name="SetPassword_GoToLogin" xml:space="preserve"><value>Přejít na přihlášení</value></data>

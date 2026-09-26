@@ -133,6 +133,20 @@ All four read the token from the `X-Captcha-Token` HTTP header. A missing or inv
 address exists — the existing anti-enumeration behavior (always 200, same message) is
 unchanged for every other failure.
 
+Since RC.4 all four (plus `set-password`, `validate-invitation` and 2FA verify) also sit
+behind a per-IP rate limiter — see "Rate limiting" below. The two layers are independent:
+the limiter runs regardless of `Recaptcha:Enabled`.
+
+## 5a. Rate limiting (RC.4)
+
+`[EnableRateLimiting("auth-anon")]` on each endpoint above, policy defined in
+`Fakvio.API/Program.cs` (`Microsoft.AspNetCore.RateLimiting`, no extra NuGet). Fixed
+window, partitioned by client IP, limits configurable via `RateLimiting:AuthAnon:PermitLimit`
+/ `WindowSeconds` (default 10/60s) — see DEVGUIDE §2.8a and ADMINGUIDE §9 for the full
+picture (Azure ForwardedHeaders requirement, test-host overrides). Exceeding the limit
+returns 429 + `Retry-After`; the UI shows `RateLimit_TooManyAttempts`
+(`RateLimitExceededException` in `Fakvio.UI.Shared/Services`).
+
 ## 6. Score threshold
 
 The minimum score is set in `Fakvio.Infrastructure/Service/CaptchaService.cs`:

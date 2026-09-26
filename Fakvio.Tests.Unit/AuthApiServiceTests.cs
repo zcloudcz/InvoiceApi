@@ -127,6 +127,23 @@ public class AuthApiServiceTests
             () => svc.LoginAsync(new LoginRequest { Email = "a@b.cz", Password = "pw" }));
     }
 
+    /// <summary>
+    /// RC.4 — a 429 from the "auth-anon" rate limiter must surface as
+    /// <see cref="RateLimitExceededException"/>, not the generic "return null".
+    /// </summary>
+    [Fact]
+    public async Task LoginAsync_RateLimited_ThrowsRateLimitExceededException()
+    {
+        var (svc, _) = CreateService(new StubHttpMessageHandler(
+            new HttpResponseMessage(HttpStatusCode.TooManyRequests)
+            {
+                Content = new StringContent("""{"message":"Too many attempts. Please try again later."}""")
+            }));
+
+        await Should.ThrowAsync<RateLimitExceededException>(
+            () => svc.LoginAsync(new LoginRequest { Email = "a@b.cz", Password = "pw" }));
+    }
+
     [Fact]
     public async Task LoginAsync_WithoutClientLogger_DoesNotThrow()
     {
@@ -199,6 +216,19 @@ public class AuthApiServiceTests
     }
 
     [Fact]
+    public async Task RegisterAsync_RateLimited_ThrowsRateLimitExceededException()
+    {
+        var (svc, _) = CreateService(new StubHttpMessageHandler(
+            new HttpResponseMessage(HttpStatusCode.TooManyRequests)
+            {
+                Content = new StringContent("""{"message":"Too many attempts. Please try again later."}""")
+            }));
+
+        await Should.ThrowAsync<RateLimitExceededException>(
+            () => svc.RegisterAsync(new RegisterRequest { Email = "a@b.cz" }));
+    }
+
+    [Fact]
     public async Task RegisterAsync_TransportException_Throws_AndForwardsError()
     {
         var (svc, clientLogger) = CreateService(
@@ -231,6 +261,19 @@ public class AuthApiServiceTests
             }));
 
         await Should.ThrowAsync<CaptchaException>(
+            () => svc.FetchFromAresAsync("12345678"));
+    }
+
+    [Fact]
+    public async Task FetchFromAresAsync_RateLimited_ThrowsRateLimitExceededException()
+    {
+        var (svc, _) = CreateService(new StubHttpMessageHandler(
+            new HttpResponseMessage(HttpStatusCode.TooManyRequests)
+            {
+                Content = new StringContent("""{"message":"Too many attempts. Please try again later."}""")
+            }));
+
+        await Should.ThrowAsync<RateLimitExceededException>(
             () => svc.FetchFromAresAsync("12345678"));
     }
 

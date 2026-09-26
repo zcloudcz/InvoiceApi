@@ -630,7 +630,7 @@ musí ověřit zvlášť.
 
 ### reCAPTCHA v3 (ochrana anonymních endpointů)
 
-Chrání přihlášení, registraci a anonymní ARES lookup na registračním formuláři. Jiná ochrana proti robotům v aplikaci **není**.
+Chrání přihlášení, registraci, anonymní ARES lookup na registračním formuláři a zapomenuté heslo (RC.3). Druhá vrstva ochrany je rate limiting (viz níže) — jiná ochrana proti robotům v aplikaci **není**.
 
 Konfigurace v `appsettings.json` nebo env proměnných (Azure App Settings používá dvojité podtržítko, např. `Recaptcha__SecretKey`). Přes UI nastavit nelze — jde o secret.
 
@@ -657,6 +657,33 @@ Krok (2) nejde nahradit App Settings: WASM klient se konfiguruje ze statického 
 Pozn.: `Recaptcha__SiteKey` v Azure App Settings nedělá nic — server SiteKey nečte, potřebuje ho jen klient.
 
 **Diagnostika:** v logu (`/logs`, úroveň Error) hledejte zprávu `reCAPTCHA is enabled but Recaptcha:SecretKey is not configured`. Úroveň Warning zaznamená i odmítnutí kvůli nízkému skóre, neshodě akce nebo neznámému hostname.
+
+### Rate limiting anonymních endpointů (RC.4)
+
+Druhá, nezávislá vrstva ochrany nad reCAPTCHA — omezuje **počet pokusů za jednotku času
+na IP adresu**, bez ohledu na to, jestli je reCAPTCHA zapnutá. Chrání login, registraci,
+ARES lookup, zapomenuté heslo, nastavení hesla, ověření pozvánky a ověření 2FA kódu
+(politika `auth-anon` v `Fakvio.API/Program.cs`).
+
+| Klíč | Výchozí | Popis |
+|------|---------|-------|
+| `RateLimiting:AuthAnon:PermitLimit` | `10` | Kolik požadavků smí jedna IP poslat za okno. |
+| `RateLimiting:AuthAnon:WindowSeconds` | `60` | Délka okna ve vteřinách (fixed window). |
+
+Po překročení limitu server odpoví **429 Too Many Requests** s hlavičkou `Retry-After`
+(počet vteřin do konce okna); UI zobrazí lokalizovanou hlášku „Příliš mnoho pokusů".
+
+**IP adresa přichází přes Azure App Service front-end** (`ForwardedHeadersMiddleware`,
+`X-Forwarded-For`). Azure App Service front-end **není** na loopbacku (to platí pro IIS
+in-process hosting na Windows, ne pro platformní edge App Service) — proto
+`Program.cs` explicitně čistí `KnownNetworks`/`KnownProxies` (jinak by middleware
+hlavičku nikdy nedůvěřoval a všichni volající by sdíleli jednu partition = jeden útok by
+zablokoval přihlášení všem). Bezpečné je to jen proto, že do kontejneru na App Service
+**nelze** navázat spojení jinudy než přes Azure vlastní edge — víc k tomu v DEVGUIDE §2.8a.
+
+Limit je společný pro všechny anonymní endpointy dohromady (jedna IP, jedno okno) — pokud
+je potřeba jemnější granularita (např. samostatný limit pro 2FA), rozdělit politiku
+`auth-anon` na víc pojmenovaných politik v `Program.cs`.
 
 ### OAuth (Social login)
 

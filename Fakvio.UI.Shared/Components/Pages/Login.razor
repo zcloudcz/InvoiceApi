@@ -254,6 +254,12 @@
             // an ad blocker stopped Google's reCAPTCHA script from loading (RC.2).
             _errorMessage = L["Captcha_VerificationFailed"].Value;
         }
+        catch (RateLimitExceededException)
+        {
+            // RC.4 — the per-IP rate limiter rejected this attempt (429), independent of
+            // whether the credentials or the CAPTCHA token were valid.
+            _errorMessage = L["RateLimit_TooManyAttempts"].Value;
+        }
         catch (Exception ex)
         {
             _errorMessage = string.Format(L["Login_ErrorGeneric"].Value, ex.Message);
@@ -287,6 +293,12 @@
         catch (CaptchaException)
         {
             _forgotPasswordError = L["Captcha_VerificationFailed"].Value;
+        }
+        catch (RateLimitExceededException)
+        {
+            // RC.4 — same reasoning as CaptchaException above: a 429 says nothing about
+            // whether the email exists, only that this IP is sending too many requests.
+            _forgotPasswordError = L["RateLimit_TooManyAttempts"].Value;
         }
         catch
         {
