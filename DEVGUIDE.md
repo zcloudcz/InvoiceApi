@@ -1403,7 +1403,7 @@ Pět toolů: tři nad `IReminderService` (`list_reminders`, `get_reminder_settin
 ##### Paritní tabulka chat ↔ MCP (stav k #211, #217, #218, #220, #222, #224, #225 a #227)
 
 Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 49 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
-a **MCP server** (`[McpServerTool]`, 38 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
+a **MCP server** (`[McpServerTool]`, 49 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
 cílem story #149 je mezeru zavřít. Tabulka je jediný pravdivý seznam toho, co kde chybí;
 **každý nový tool na kterékoli straně sem přidá řádek** (viz §13).
 
@@ -1425,7 +1425,7 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | `UpdateClient` | **Write** | `update_client` (za `confirm`) | ✅ | |
 | `GetIssuer` | Read | `list_clients` + `is_issuer=true` (#222), `get_my_company` (#220) | ✅ | |
 | **Vydané faktury** (`InvoiceTools`, 10) |
-| `CreateInvoice` | Create | `create_invoice` | ✅ | |
+| `CreateInvoice` | Create (N2.4: typované vstupy, `currency` kódem, `issuerId` volitelné) | `create_invoice` | ✅ | |
 | `ExportInvoicePdf` | Read → download | `export_invoice` (`format=pdf`, default) | ✅ | |
 | `ListInvoices` | Read | `list_invoices` | ✅ | |
 | `GetInvoice` | Read | `get_invoice` (`id`) | ✅ | |
@@ -1458,29 +1458,35 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | `CreateInvoiceFromTemplate` | Create | — | ❌ | zatím bez tasku |
 | **Readiness** (`ReadinessTools`, 1) |
 | `GetReadiness` | Read | `get_readiness` | ✅ | |
+| **Číselníky** (`CodeListTools`, 1) |
+| `ListCurrencies` | Read | — | ❌ | zatím bez tasku |
+| **Nastavení** (`SettingsTools`, 6) |
+| `ListNumberSequences` | Read | `list_number_sequences` | ✅ | |
+| `ListVatRates` | Read | `list_vat_rates` | ✅ | |
+| `CreateNumberSequence` | **Write** | `create_number_sequence` | ✅ | |
+| `UpdateNumberSequence` | Idempotent | `update_number_sequence` | ✅ | |
+| `UpdateMyCompany` | Idempotent | `update_my_company` | ✅ | |
+| `AddBankAccount` | **Write** | `add_bank_account` | ✅ | |
+| **Platby a upomínky** (`PaymentTools`, 4) |
+| `ListPayments` | Read | `list_payments` | ✅ | |
+| `GetPayment` | Read | `get_payment` | ✅ | |
+| `ListReminders` | Read | `list_reminders` | ✅ | |
+| `GetReminderSettings` | Read | `get_reminder_settings` | ✅ | |
 | **Jen chat (MCP nemá)** |
 | — | **Destructive** | `delete_client` (za `confirm`) | ⬅ | |
 | — | Search | `search_received_invoices` | ⬅ | |
 | — | Navigace UI | `navigate` | ⬅ | |
 | — | Upload přílohy | `attach_file` | ⬅ | |
 | — | Read | `list_attachments` | ⬅ | |
-| — | **Write** (nastavení firmy) | `update_my_company` | ⬅ | |
-| — | **Write** (bankovní účty) | `add_bank_account`, `update_bank_account`, `delete_bank_account` | ⬅ | |
-| — | Read | `list_number_sequences` | ⬅ | |
-| — | **Write** (číselné řady) | `create_number_sequence`, `update_number_sequence` | ⬅ | |
-| — | Read | `list_vat_rates` | ⬅ | |
+| — | **Write** (bankovní účty) | `update_bank_account`, `delete_bank_account` | ⬅ | |
 | — | **Write** (sazby DPH) | `create_vat_rate`, `update_vat_rate` | ⬅ | |
 | — | Read (šablony dokumentů) | `list_content_templates`, `get_content_template` | ⬅ | |
 | — | **Write** (výchozí šablona dokumentu) | `set_default_content_template` | ⬅ | |
-| — | Read (upomínky) | `list_reminders` | ⬅ | |
-| — | Read (nastavení upomínek) | `get_reminder_settings` | ⬅ | |
 | — | **Write** (nastavení upomínek) | `update_reminder_settings` (za `confirm`) | ⬅ | |
-| — | Read (platby) | `list_payments` | ⬅ | |
-| — | Read (detail platby) | `get_payment` | ⬅ | |
 
-**Součty:** 38 MCP toolů, 49 chat toolů. Chat pokrývá 32 MCP toolů, žádný už jen částečně;
-23 chat toolů nemá MCP protějšek. Zbývá 6 mezer: daně (5, zatím bez tasku),
-šablony (1 — `CreateInvoiceFromTemplate`).
+**Součty:** 49 MCP toolů, 49 chat toolů. Chat pokrývá 42 MCP toolů, žádný už jen částečně;
+13 chat toolů nemá MCP protějšek. Zbývá 7 mezer: daně (5, zatím bez tasku),
+šablony (1 — `CreateInvoiceFromTemplate`), číselníky (1 — `ListCurrencies`).
 
 **Vydané faktury jsou po #217 pokryté celé.** Jeden rozdíl proti MCP je záměrný:
 `delete_invoice` maže **jen koncepty**, i když servis umí smazat i poslední vydaný doklad
@@ -1493,9 +1499,11 @@ jen vyhledávacím klíčem nebo příponou souboru.
 částečnou položku — `import_invoice` zastupoval `CreateReceivedInvoice` jen pro text dokladu,
 diktovaná data neuměl.
 
-Číselné řady a sazby DPH už chat umí (#224), upomínky a platby taky (#227) — u obou MCP
-protějšek nemá. Mimo obě rozhraní zůstává jen UI / SysAdmin: párování platby s fakturou
-(PaymentMatch) — `list_payments`/`get_payment` čtou, ale spárovat jde jen na stránce Platby.
+Číselné řady, nastavení firmy, bankovní účty, platby a upomínky (chat #224/#227) mají MCP
+protějšek od N3 — čtecí i (kde dává smysl) zápisové. Zbývá: úprava/mazání jednotlivého
+bankovního účtu (N3.4) a zápis nastavení upomínek (N3.6) — obojí vědomě odloženo, viz task.
+Mimo obě rozhraní zůstává jen UI / SysAdmin: párování platby s fakturou (PaymentMatch) —
+`list_payments`/`get_payment` čtou, ale spárovat jde jen na stránce Platby.
 
 ### 4.8 In-app notifikace (per-user)
 
@@ -1561,10 +1569,23 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
   - **`SessionMode = Stateless` je zapsaný natvrdo**, ne ponechaný na defaultu SDK. Čtení tokenu z `HttpContext` funguje jen dokud tool běží na `ExecutionContext` toho HTTP requestu, který ho přinesl; stateless to garantuje (každý request = čerstvý server context). Stateful se dnes chová stejně, ale jen proto, že `PerSessionExecutionContext` defaultuje na `false` — s `true` běží každý tool call na kontextu initialize requestu, `HttpContext` je pro volajícího `null` a API odpoví 401. Ověřeno mutací v `McpHttpTransportTests`. Vedlejší efekt: žádná session affinity → host jde škálovat bez sticky routingu.
   - `ModelContextProtocol.AspNetCore` nese `FrameworkReference` na `Microsoft.AspNetCore.App`, takže zabalený tool potřebuje ASP.NET Core shared framework **i pro stdio**. Balení a deploy HTTP hostu řeší #241.
   - **Mimo scope (story #144):** OAuth 2.1 / dynamic client registration pro Claude.ai konektory (hlavičku dodává uživatel ručně), per-area scopes (jen read/write), cache API klíčů.
-- **38 tools**: 10 invoice + 6 client + 7 received invoice + 6 reporting + 5 tax + 3 template + 1 readiness (po jednom souboru v `Tools/`).
+- **49 tools**: 10 invoice + 6 client + 7 received invoice + 6 reporting + 5 tax + 3 template + 1 readiness + 1 code list + 6 settings + 4 payment (po jednom souboru v `Tools/`).
   Ruční číslo v dokumentaci stárne; zdroj pravdy je `grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs`.
   Porovnání s chat tooly (co MCP umí a chat ještě ne): paritní tabulka v §4.7.
-- **Chybová konvence (#279): `McpToolError.ToJson(ex)`, jedno místo pro všech 38 nástrojů.**
+- **Annotations (hinty) jsou povinné na každém `[McpServerTool]`** — `ReadOnly`, `Destructive`,
+  `Idempotent`, `OpenWorld` a krátký `Title`. Klienti (Claude, ChatGPT) je čtou z `tools/list`
+  (`ProtocolTool.Annotations`) a rozhodují podle nich, jestli nástroj potvrzovat před voláním.
+  Klasifikace se odvozuje z názvu nástroje, ne zapisuje ručně pro každý:
+  - `list_*`/`get_*`/`find_*`/`export_*`/`lookup_*`/`estimate_*`/`compare_*` → `ReadOnly = true`.
+  - `delete_*` → `Destructive = true` (mazání je vždy nevratné, i jako soft delete v DB).
+  - Jiná nevratná akce mimo `delete_*` (vystavení dokladu, odeslání e-mailu) → `Destructive = true`
+    stejně jako `delete_*`, i když jméno nezačíná na `delete_` (`complete_invoice`, `send_invoice_email`).
+  - Zápis, který jen nastaví stav a opakováním nic dalšího nezmění (`mark_*_paid`, `approve_*`,
+    `update_*`) → `Idempotent = true`, `Destructive = false`.
+  - Nástroj mluvící s něčím mimo Fakvio (ARES, e-mail, `fileUrl` stahování) → `OpenWorld = true`.
+  Test `ToolDiscoveryTests.EveryTool_DeclaresItsSideEffects` hlídá `ReadOnlyHint`/`DestructiveHint`
+  podle prefixu jména; postup přidání nástroje viz `Fakvio.McpServer/README.md`.
+- **Chybová konvence (#279): `McpToolError.ToJson(ex)`, jedno místo pro všech 49 nástrojů.**
   Každý tool má `catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }`
   **před** obecným `catch (Exception ex)` — zrušený request se propaguje, nekonverzuje na JSON.
   Filtr `when (…)` je nosný: `TaskCanceledException` dědí z `OperationCanceledException` a `HttpClient`
@@ -1577,12 +1598,62 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
   i s textem výjimky. Obecný catch vrací
   `McpToolError.ToJson(ex)`: zaloguje celou výjimku (`McpToolError.Logger`, nastaven z `Program.cs`
   po `Build()` — tool metody jsou statické, takže sdílený logger je jednodušší než `ILogger`
-  parametr v 37 signaturách) a vrátí stabilní `{ "error": "internal_error", "message": "..." }`,
-  **nikdy `ex.Message`** — to by mohlo obsahovat syrové tělo API chyby, které do zprávy vkládá
-  `FakvioApiClient.EnsureSuccessAsync` (stack trace, SQL detail, interní ID). Domain-level chyby
-  (404, validace vstupu psaná přímo v těle toolu) tímhle neprochází a zůstávají beze změny.
+  parametr v 37 signaturách). Domain-level chyby (404, validace vstupu psaná přímo v těle toolu)
+  tímhle neprochází a zůstávají beze změny.
+  **Read-only 4xx z API (N2.2, #279 follow-up):** `EnsureSuccessAsync` už nehází holý
+  `HttpRequestException`, ale `FakvioApiClient/FakvioApiException.cs` (dědí z něj, takže stávající
+  `catch (HttpRequestException)` volající kód nerozbije) s `SafeMessage` — domainová hláška z pole
+  `message` API odpovědi (JSON objekt s řetězcovým `message`, nebo bare JSON string — `TaxController`
+  styl), ořízlá na 500 znaků. Syrové tělo zůstává jen v `Message` (log). `McpToolError.ToJson`
+  podle `StatusCode` vrátí `unauthorized` (401, vždy pevný text — klíč je
+  neplatný/expirovaný/revokovaný, vytvořit nový) a **odděleně** `forbidden` (403, vždy pevný text —
+  klíč je platný, ale read-only nebo role bez oprávnění, vytvořit klíč s `read+write` scope; Codex
+  review: dřív sdílely jednu odpověď a rada „vytvořte read+write klíč" byla zavádějící u 401, kde
+  problém není scope, ale sám klíč) — u obou nikdy `SafeMessage`, ten by byl jen API's obecné
+  "Unauthorized"/"Forbidden". Dál `not_found` (404, `SafeMessage ?? "The requested record does not exist."`), `validation_error`
+  (400/409/422, `SafeMessage ?? "The API rejected the input."`); vše ostatní zůstává
+  `internal_error` s obecnou hláškou, **nikdy `ex.Message`** — to by mohlo obsahovat syrové tělo
+  API chyby (stack trace, SQL detail, interní ID).
 - Konfigurace klienta: `.mcp.json.sample` (kořen repa) nese **oba** bloky — `fakvio` (stdio, `command` + `env`) a `fakvio-remote` (`"type": "http"`, `url` = adresa HTTP hostu + `/mcp`, klíč v hlavičce `Authorization`). Tytéž dva **režimy**, už s vyplněným klíčem, vypisuje stránka `/settings/integrations` po vytvoření klíče (`Integrations.BuildSnippets`) — když se tvar konfigurace změní, musí se změnit na obou místech. Doslova shodné bloky to nejsou: UI pojmenuje oba servery `fakvio` (sample rozlišuje `fakvio` / `fakvio-remote`) a stdio blok v samplu má navíc prázdné `"args": []`. Jméno serveru je lokální věc klienta, takže funkčně je to jedno — ale kdo si z panelu zkopíruje **oba** bloky do jednoho souboru, vyrobí si duplicitní JSON klíč. Sjednotit jméno v UI by bylo lepší než tuhle poznámku, ale je to produkční kód a tenhle docs task ho nesahá.
-  **`url` v tom vzdáleném bloku čte `Configuration["McpSettings:BaseUrl"]`** (`Fakvio.BlazorUI/wwwroot/appsettings.json`), ne `ApiKeyApiService.ApiBaseUrl` — to byla dřívější chyba (#363): API a MCP HTTP host jsou od #240 dvě různé aplikace na dvou různých adresách, takže adresa API tam nepatří a `/mcp` na ní neexistuje. Dokud `McpSettings:BaseUrl` není nastavené (dnes všude — žádný host ještě neběží, viz #241), snippet místo něj vloží zjevnou ukázkovou hodnotu (`Integration_SnippetHttpUrlPlaceholder`), ne tiše špatnou URL.
+  **`url` v tom vzdáleném bloku čte `Configuration["McpSettings:BaseUrl"]`** (`Fakvio.BlazorUI/wwwroot/appsettings.json`), ne `ApiKeyApiService.ApiBaseUrl` — to byla dřívější chyba (#363): API a MCP HTTP host jsou od #240 dvě různé aplikace na dvou různých adresách, takže adresa API tam nepatří a `/mcp` na ní neexistuje. Produkční hodnota je `https://mcp.fakvio.cz` (N1.1 — `mcp-server.yml` job `mcp-http-prod` ho nasazuje). Když `McpSettings:BaseUrl` není nastavené (např. lokální/test appsettings bez tohoto klíče), snippet místo něj vloží zjevnou ukázkovou hodnotu (`Integration_SnippetHttpUrlPlaceholder`), ne tiše špatnou URL.
+- **`CreateInvoice` (N2.4) resolves model-friendly input to internal IDs before any write call.**
+  `InvoiceTools.CreateInvoice` no longer takes a "JSON string of CreateInvoiceDto" — a model has
+  no way to know an internal `currencyId`/`issuerId`. It now takes typed parameters
+  (`clientId`, `List<CreateInvoiceItemDto> items`, `documentType`, `currency` code, optional
+  `issuerId`, dates, …) and, still ahead of any API call: resolves `currency` (default `CZK`)
+  against `GetActiveCurrenciesAsync`; resolves the issuer via `GetClientByIdAsync(issuerId)` when
+  given, else `GetIssuerAsync()`; and — **only when the resolved issuer `IsVatPayer`** — fills in
+  each item's missing `VatRateId` by matching `VatRatePercentage` against
+  `GetActiveVatRatesAsync(issueDate)`. A non-VAT-payer issuer has no VAT rates to configure at all
+  (readiness never asks for one), so its items are left exactly as sent — mirrors the rule
+  `InvoiceService.CreateInvoiceAsync` (`Fakvio.Infrastructure/Service/InvoiceService.cs:401-411`)
+  already applies. An unknown currency code or unmatched VAT percentage returns a domain error
+  listing the valid values and never reaches the API. **Matching is exact-or-explicit, never
+  "pick the first one" (Codex review follow-up):** if more than one active rate shares the same
+  percentage (e.g. two overlapping validity periods during a rate change), the tool returns an
+  error naming every candidate (`id`, name, validity) instead of guessing — the model resolves it
+  by setting `vatRateId` on the item directly.
+- **Pravidlo: vstup = typovaný parametr/DTO, nikdy JSON string (N2.5).** `ClientTools.CreateClient`/
+  `UpdateClient`, `ReceivedInvoiceTools.CreateReceivedInvoice`, `TemplateTools.CreateInvoiceFromTemplate`
+  brávaly `string …Json` a deserializovaly ho ručně — nahrazeno typovaným DTO parametrem
+  (`client`, `changes`, `invoice`, `options`); ruční deserializační `try` bloky zmizely, protože
+  je dělá sám SDK. Aby to fungovalo s camelCase názvy a enumy jako řetězci (stejná konvence jako
+  výstup), `McpServerRegistration.AddFakvioMcpServer` předává `WithToolsFromAssembly()` explicitní
+  `Fakvio.McpServer.Tools.McpToolJsonOptions.Default` (camelCase + `JsonStringEnumConverter` +
+  `DefaultJsonTypeInfoResolver` — bez resolveru SDK options odmítne jako read-only). `create_received_invoice`
+  navíc dostal stejný `string? currency` parametr jako `create_invoice` (N2.4) — sdílená
+  `CodeListTools.ResolveCurrencyAsync` helper metoda, žádná nová abstrakce. Guard:
+  `ToolDiscoveryTests.NoTool_TakesAnOpaqueJsonStringParameter` (žádný `string …Json` parametr) a
+  `McpSdkInvocationTests` (enum jako řetězec a vnořené DTO pole projdou přes skutečnou SDK cestu,
+  ne jen přímým voláním metody).
+- **Verze balíčku se bumpuje ve stejném PR jako změna nástroje (N2.6), ne později.**
+  `<Version>` v `Fakvio.McpServer.csproj` — publish na nuget.org je `--skip-duplicate` jen na
+  `master` (`.github/workflows/mcp-server.yml`), takže build se stejným číslem je no-op, ne chyba;
+  bez bumpu tak oprava/nový nástroj nikdy nevyjde (přesně to se stalo #434/#438 → 1.0.3/1.0.4
+  nikdy nevyšly). Změna parametrů existujícího nástroje = major, nový nástroj beze změny
+  stávajících = minor. Handshake verze (`ServerInfo.Version`, `McpServerRegistration.cs`) se čte
+  z `AssemblyInformationalVersionAttribute` assembly, ne z ručně psané konstanty — nemůže se tedy
+  s `<Version>` rozejít, hlídá `ToolDiscoveryTests.HandshakeReports_TheAssemblysRealVersion`.
 - Detaily (build, získání credentialu, seznam nástrojů, postup přidání nástroje): `Fakvio.McpServer/README.md`.
   Uživatelský postup (vytvoření klíče, konfigurace klienta v obou režimech): USERGUIDE §20. Provoz HTTP hostu a jeho bezpečnostní model: ADMINGUIDE §9.
 

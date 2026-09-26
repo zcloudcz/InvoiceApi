@@ -1,15 +1,21 @@
 using Fakvio.Contracts.Common.Pagination;
 using Fakvio.Contracts.Dto.ApiKey;
 using Fakvio.Contracts.Dto.Client;
+using Fakvio.Contracts.Dto.Currency;
 using Fakvio.Contracts.Dto.Dashboard;
 using Fakvio.Contracts.Dto.Email;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Contracts.Dto.InvoiceTemplate;
+using Fakvio.Contracts.Dto.NumberSequence;
+using Fakvio.Contracts.Dto.PaymentMatching;
 using Fakvio.Contracts.Dto.Readiness;
+using Fakvio.Contracts.Dto.Reminder;
 using Fakvio.Contracts.Dto.FileAttachment;
 using Fakvio.Contracts.Dto.ReceivedInvoice;
 using Fakvio.Contracts.Dto.Tax;
+using Fakvio.Contracts.Dto.VatRate;
 using Fakvio.Contracts.Dto.VatReport;
+using Fakvio.Domain.Enums;
 
 namespace Fakvio.McpServer.Client;
 
@@ -74,6 +80,62 @@ public interface IFakvioApiClient
 
     /// <summary>GET /api/client/issuer — get the authenticated user's company (issuer).</summary>
     Task<ClientDto?> GetIssuerAsync(CancellationToken ct = default);
+
+    /// <summary>POST /api/client/{id}/bank-account — add a bank account; null when the client does not exist.</summary>
+    Task<ClientDto?> AddBankAccountAsync(long clientId, CreateBankAccountDto dto, CancellationToken ct = default);
+
+    // ── Currency endpoints ──────────────────────────────────────────────
+
+    /// <summary>GET /api/currency/active — active currencies, sorted by SortOrder.</summary>
+    Task<List<CurrencyDto>> GetActiveCurrenciesAsync(CancellationToken ct = default);
+
+    // ── VAT rate endpoints ──────────────────────────────────────────────
+
+    /// <summary>GET /api/vatrate/active?date= — VAT rates valid at the given date (null = today).</summary>
+    Task<List<VatRateDto>> GetActiveVatRatesAsync(DateTime? date = null, CancellationToken ct = default);
+
+    // ── Number sequence endpoints ───────────────────────────────────────
+
+    /// <summary>GET /api/numbersequence — number sequences, optionally filtered by document type.</summary>
+    Task<List<NumberSequenceDto>> GetNumberSequencesAsync(
+        EDocumentType? documentType = null, bool includeInactive = false, CancellationToken ct = default);
+
+    /// <summary>GET /api/numbersequence/{id} — single sequence by ID.</summary>
+    Task<NumberSequenceDto?> GetNumberSequenceByIdAsync(long id, CancellationToken ct = default);
+
+    /// <summary>GET /api/numbersequence/formats — available numbering formats.</summary>
+    Task<List<NumberSequenceFormatDto>> GetNumberSequenceFormatsAsync(
+        bool includeInactive = false, CancellationToken ct = default);
+
+    /// <summary>POST /api/numbersequence — create a new number sequence.</summary>
+    Task<NumberSequenceDto> CreateNumberSequenceAsync(CreateNumberSequenceDto dto, CancellationToken ct = default);
+
+    /// <summary>PUT /api/numbersequence/{id} — update name/prefix/suffix/current counter.</summary>
+    Task<NumberSequenceDto?> UpdateNumberSequenceAsync(long id, UpdateNumberSequenceDto dto, CancellationToken ct = default);
+
+    /// <summary>POST /api/numbersequence/{id}/set-default — make this the default sequence for its document type.</summary>
+    Task<NumberSequenceDto?> SetDefaultNumberSequenceAsync(long id, CancellationToken ct = default);
+
+    // ── Payment matching endpoints ──────────────────────────────────────
+
+    /// <summary>GET /api/payment-matching/transactions — paged bank transactions with filters.</summary>
+    Task<PagedResult<BankTransactionDto>> GetPaymentsPagedAsync(
+        EMatchStatus? status, EPaymentDirection? direction, DateTime? from, DateTime? to,
+        int page, int pageSize, CancellationToken ct = default);
+
+    /// <summary>GET /api/payment-matching/transactions/{id} — single bank transaction by ID.</summary>
+    Task<BankTransactionDto?> GetPaymentByIdAsync(long id, CancellationToken ct = default);
+
+    // ── Reminder endpoints ──────────────────────────────────────────────
+
+    /// <summary>GET /api/reminder/paged — paged reminders with filters.</summary>
+    Task<PagedResult<ReminderDto>> GetRemindersPagedAsync(ReminderFilterDto filter, CancellationToken ct = default);
+
+    /// <summary>GET /api/reminder/invoice/{invoiceId} — every reminder sent for one invoice.</summary>
+    Task<List<ReminderDto>> GetRemindersByInvoiceAsync(long invoiceId, CancellationToken ct = default);
+
+    /// <summary>GET /api/reminder/settings — company-wide default reminder settings.</summary>
+    Task<ReminderSettingsDto> GetReminderSettingsAsync(CancellationToken ct = default);
 
     // ── Invoice Template endpoints ─────────────────────────────────────
 

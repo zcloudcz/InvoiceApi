@@ -31,7 +31,7 @@ public static class ReportingTools
     /// Gets the full dashboard summary with invoice counts, unpaid totals,
     /// overdue invoices, and top clients by revenue.
     /// </summary>
-    [McpServerTool, Description(
+    [McpServerTool(Title = "Get dashboard", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
         "Get the dashboard summary. Returns: invoices this month, total clients, " +
         "unpaid amount, overdue count, recent invoices, overdue invoices list, " +
         "invoice count by status (for charts), and top clients by revenue.")]
@@ -58,7 +58,7 @@ public static class ReportingTools
     /// Gets all overdue invoices — completed but unpaid invoices past their due date.
     /// Sorted by due date ascending (most overdue first).
     /// </summary>
-    [McpServerTool, Description(
+    [McpServerTool(Title = "Get overdue invoices", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
         "Get all overdue invoices (completed but unpaid, past due date). " +
         "Sorted by due date ascending — most overdue first. " +
         "Useful for payment follow-up and collections.")]
@@ -98,7 +98,7 @@ public static class ReportingTools
     /// Gets all invoices for a specific client.
     /// Useful for viewing a client's invoice history.
     /// </summary>
-    [McpServerTool, Description(
+    [McpServerTool(Title = "Get client invoices", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
         "Get all invoices for a specific client. " +
         "Returns the client's invoice history sorted by issue date (newest first). " +
         "Useful for account review and client communication.")]
@@ -137,7 +137,7 @@ public static class ReportingTools
     /// Gets invoices within a specific date range.
     /// Useful for monthly/quarterly reports and accounting summaries.
     /// </summary>
-    [McpServerTool, Description(
+    [McpServerTool(Title = "Get invoices by date range", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
         "Get invoices within a date range. Useful for monthly/quarterly reports. " +
         "Dates should be ISO 8601 format (e.g., '2026-01-01'). " +
         "Optionally filter by document type or status.")]
@@ -193,7 +193,7 @@ public static class ReportingTools
     /// Gets a VAT (DPH) report for a specified period.
     /// Shows output VAT, input VAT, tax liability, revenue, expenses, and profit.
     /// </summary>
-    [McpServerTool, Description(
+    [McpServerTool(Title = "Get VAT report", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
         "Get a VAT (DPH) report for a date period. Shows output VAT (from issued invoices), " +
         "input VAT (from received invoices), tax liability (output - input), " +
         "revenue, expenses, and profit. Uses TaxableSupplyDate (DUZP). " +
@@ -228,7 +228,7 @@ public static class ReportingTools
     /// <summary>
     /// Gets overdue received invoices — approved but unpaid expenses past due date.
     /// </summary>
-    [McpServerTool, Description(
+    [McpServerTool(Title = "Get overdue received invoices", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
         "Get overdue received (incoming) invoices — approved but unpaid expenses past due date. " +
         "Useful for tracking outstanding supplier payments.")]
     public static async Task<string> GetOverdueReceivedInvoices(
