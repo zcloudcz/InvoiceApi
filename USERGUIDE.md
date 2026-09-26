@@ -392,6 +392,32 @@ Grid šablon umožňuje filtrovat podle:
 - Typu dokladu (Faktura / Dobropis)
 - Stavu (aktivní / neaktivní)
 
+### Opakované faktury
+
+Na detailu uložené šablony (`/invoice-templates/{id}`) je sekce **„Opakování"**, kde lze naplánovat
+automatické generování faktur z této šablony:
+
+1. Klikněte „Přidat plán".
+2. Vyberte klienta, frekvenci (týdně / měsíčně / čtvrtletně / ročně), interval (např. „každé 2
+   měsíce"), den v měsíci (1–28) nebo den v týdnu (u týdenní frekvence), první datum vystavení
+   a volitelně konec — buď konkrétním datem, nebo počtem opakování.
+3. Uložte.
+
+**Kdy se faktura vygeneruje:** jednou za app hodinovou kontrolu (`RecurringInvoiceWorker`), jakmile
+nastane naplánovaný termín. Faktura se **rovnou vystaví** (ne koncept) — číslo dokladu se přidělí
+ihned, takže po smazání vygenerované faktury nezůstane v číselné řadě díra.
+
+**Co když aplikace byla dočasně nedostupná:** zmeškaná perioda se dožene v příštím běhu, ale vždy
+jen jedna faktura za cyklus — datum vystavení odpovídá původně plánovanému datu, ne datu, kdy se
+generování skutečně stihlo.
+
+**Chyba generování:** pokud se fakturu nepodaří vytvořit (např. chybí nastavení firmy), plán
+zůstane ve stejném stavu a příští cyklus to zkusí znovu. Chybu vidíte v gridu plánů jako červený
+štítek u sloupce „Poslední chyba" (najetí myší zobrazí detail) a přijde vám i in-app notifikace.
+
+**Pozastavení / obnovení / smazání:** tlačítka v řádku plánu. Smazání plánu, který ještě nikdy
+nevygeneroval fakturu, ho úplně odstraní; jinak se jen pozastaví (historie zůstává zachována).
+
 ---
 
 ## 7. Šablony dokumentů (ContentTemplates — PDF + email)

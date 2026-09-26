@@ -1723,4 +1723,53 @@
   <data name="Integration_RevokeSuccess" xml:space="preserve"><value>Klíč byl revokován.</value></data>
   <data name="Integration_CreateSuccess" xml:space="preserve"><value>API klíč byl vytvořen.</value></data>
   <data name="Integration_NoKeys" xml:space="preserve"><value>Zatím nemáte žádný API klíč.</value></data>
+
+  <!-- Recurring invoice frequency enum labels (localized display for ERecurrenceFrequency) -->
+  <data name="ERecurrenceFrequency_Weekly" xml:space="preserve"><value>Týdně</value></data>
+  <data name="ERecurrenceFrequency_Monthly" xml:space="preserve"><value>Měsíčně</value></data>
+  <data name="ERecurrenceFrequency_Quarterly" xml:space="preserve"><value>Čtvrtletně</value></data>
+  <data name="ERecurrenceFrequency_Yearly" xml:space="preserve"><value>Ročně</value></data>
+
+  <!-- Day-of-week labels, used by RecurringScheduleEditor for weekly schedules -->
+  <data name="DayOfWeek_Monday" xml:space="preserve"><value>Pondělí</value></data>
+  <data name="DayOfWeek_Tuesday" xml:space="preserve"><value>Úterý</value></data>
+  <data name="DayOfWeek_Wednesday" xml:space="preserve"><value>Středa</value></data>
+  <data name="DayOfWeek_Thursday" xml:space="preserve"><value>Čtvrtek</value></data>
+  <data name="DayOfWeek_Friday" xml:space="preserve"><value>Pátek</value></data>
+  <data name="DayOfWeek_Saturday" xml:space="preserve"><value>Sobota</value></data>
+  <data name="DayOfWeek_Sunday" xml:space="preserve"><value>Neděle</value></data>
+
+  <!-- Recurring invoice schedule panel (invoice template detail) -->
+  <data name="Recurring_SectionTitle" xml:space="preserve"><value>Opakování</value></data>
+  <data name="Recurring_AddSchedule" xml:space="preserve"><value>Přidat plán</value></data>
+  <data name="Recurring_EditSchedule" xml:space="preserve"><value>Upravit plán</value></data>
+  <data name="Recurring_Client" xml:space="preserve"><value>Klient</value></data>
+  <data name="Recurring_Frequency" xml:space="preserve"><value>Frekvence</value></data>
+  <data name="Recurring_IntervalCount" xml:space="preserve"><value>Interval</value></data>
+  <data name="Recurring_IntervalCountHelp" xml:space="preserve"><value>Počet period mezi vystaveními (1 = každou periodu, 2 = každou druhou, …)</value></data>
+  <data name="Recurring_DayOfMonth" xml:space="preserve"><value>Den v měsíci</value></data>
+  <data name="Recurring_DayOfMonthHelp" xml:space="preserve"><value>1–28 (kvůli únoru)</value></data>
+  <data name="Recurring_DayOfWeek" xml:space="preserve"><value>Den v týdnu</value></data>
+  <data name="Recurring_StartDate" xml:space="preserve"><value>První vystavení</value></data>
+  <data name="Recurring_EndMode" xml:space="preserve"><value>Konec</value></data>
+  <data name="Recurring_EndMode_None" xml:space="preserve"><value>Bez konce</value></data>
+  <data name="Recurring_EndMode_Date" xml:space="preserve"><value>K datu</value></data>
+  <data name="Recurring_EndMode_Count" xml:space="preserve"><value>Po počtu opakování</value></data>
+  <data name="Recurring_EndDate" xml:space="preserve"><value>Datum konce</value></data>
+  <data name="Recurring_MaxOccurrences" xml:space="preserve"><value>Počet opakování</value></data>
+  <data name="Recurring_AutoSend" xml:space="preserve"><value>Rovnou vystavit a odeslat e-mailem</value></data>
+  <data name="Recurring_AutoSendHelp" xml:space="preserve"><value>Faktura se vždy vystaví; tento přepínač navíc pošle e-mail klientovi.</value></data>
+  <data name="Recurring_NextRun" xml:space="preserve"><value>Další běh</value></data>
+  <data name="Recurring_LastRun" xml:space="preserve"><value>Poslední běh</value></data>
+  <data name="Recurring_OccurrenceCount" xml:space="preserve"><value>Počet vystavení</value></data>
+  <data name="Recurring_Status" xml:space="preserve"><value>Stav</value></data>
+  <data name="Recurring_StatusActive" xml:space="preserve"><value>Aktivní</value></data>
+  <data name="Recurring_StatusPaused" xml:space="preserve"><value>Pozastaveno</value></data>
+  <data name="Recurring_LastError" xml:space="preserve"><value>Poslední chyba</value></data>
+  <data name="Recurring_Pause" xml:space="preserve"><value>Pozastavit</value></data>
+  <data name="Recurring_Resume" xml:space="preserve"><value>Obnovit</value></data>
+  <data name="Recurring_ConfirmDelete" xml:space="preserve"><value>Opravdu smazat tento plán opakování?</value></data>
+  <data name="Recurring_NoSchedules" xml:space="preserve"><value>Zatím žádný plán opakování.</value></data>
+  <data name="Recurring_SaveSuccess" xml:space="preserve"><value>Plán opakování byl uložen.</value></data>
+  <data name="Recurring_DeleteSuccess" xml:space="preserve"><value>Plán opakování byl smazán.</value></data>
 </root>

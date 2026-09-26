@@ -9,12 +9,16 @@
 @using Fakvio.UI.Shared.Components.Shared
 @using Fakvio.UI.Shared.Services
 @using Fakvio.Contracts.Dto.NumberSequence
+@using Fakvio.Contracts.Dto.RecurringInvoice
+@using Fakvio.UI.Shared.Models
 @inject InvoiceTemplateApiService TemplateService
 @inject ClientApiService ClientService
 @inject CurrencyApiService CurrencyService
 @inject NumberSequenceApiService NumberSequenceService
+@inject RecurringInvoiceApiService RecurringService
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
+@inject IDialogService DialogService
 @inject IStringLocalizer<SharedResource> L
 
 <PageTitle>@(_isCreateMode ? L["Template_New"] : L["Template_Edit"])</PageTitle>
@@ -286,6 +290,82 @@ else
                 </MudTable>
             }
         </MudItem>
+
+        @* Full-width: Recurring schedule panel — only for a saved template (needs a TemplateId) *@
+        @if (!_isCreateMode)
+        {
+            <MudItem xs="12">
+                <MudCard Elevation="2" Class="mb-4">
+                    <MudCardHeader>
+                        <CardHeaderContent><MudText Typo="Typo.h6">@L["Recurring_SectionTitle"]</MudText></CardHeaderContent>
+                        <CardHeaderActions>
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                                       StartIcon="@Icons.Material.Filled.Add" OnClick="AddRecurringSchedule">
+                                @L["Recurring_AddSchedule"]
+                            </MudButton>
+                        </CardHeaderActions>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        @if (_recurringSchedules.Count == 0)
+                        {
+                            <MudText Typo="Typo.body2" Class="mud-text-secondary">@L["Recurring_NoSchedules"]</MudText>
+                        }
+                        else
+                        {
+                            <FakvioGrid T="RecurringInvoiceScheduleDto" GridKey="recurring-schedules" Items="_recurringSchedules">
+                                <Columns>
+                                    <PropertyColumn Property="x => x.ClientName" Title="@L["Recurring_Client"].Value" />
+                                    <PropertyColumn Property="x => x.Frequency" Title="@L["Recurring_Frequency"].Value">
+                                        <CellTemplate>@L[$"ERecurrenceFrequency_{context.Item.Frequency}"]</CellTemplate>
+                                    </PropertyColumn>
+                                    <PropertyColumn Property="x => x.NextRunAt" Title="@L["Recurring_NextRun"].Value">
+                                        <CellTemplate>@context.Item.NextRunAt.LocalDateTime.ToString("d")</CellTemplate>
+                                    </PropertyColumn>
+                                    <PropertyColumn Property="x => x.OccurrenceCount" Title="@L["Recurring_OccurrenceCount"].Value" />
+                                    <PropertyColumn Property="x => x.IsActive" Title="@L["Recurring_Status"].Value">
+                                        <CellTemplate>
+                                            <MudChip T="string" Size="Size.Small" Color="@(context.Item.IsActive ? Color.Success : Color.Default)">
+                                                @(context.Item.IsActive ? L["Recurring_StatusActive"].Value : L["Recurring_StatusPaused"].Value)
+                                            </MudChip>
+                                        </CellTemplate>
+                                    </PropertyColumn>
+                                    <PropertyColumn Property="x => x.LastError" Title="@L["Recurring_LastError"].Value">
+                                        <CellTemplate>
+                                            @if (!string.IsNullOrEmpty(context.Item.LastError))
+                                            {
+                                                <MudTooltip Text="@context.Item.LastError">
+                                                    <MudChip T="string" Size="Size.Small" Color="Color.Error">@L["Recurring_LastError"]</MudChip>
+                                                </MudTooltip>
+                                            }
+                                        </CellTemplate>
+                                    </PropertyColumn>
+                                    <TemplateColumn T="RecurringInvoiceScheduleDto" Title="@L["Label_Actions"].Value" Sortable="false" Filterable="false">
+                                        <CellTemplate>
+                                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                                                           OnClick="@(() => EditRecurringSchedule(context.Item))" />
+                                            @if (context.Item.IsActive)
+                                            {
+                                                <MudIconButton Icon="@Icons.Material.Filled.Pause" Size="Size.Small"
+                                                               Title="@L["Recurring_Pause"].Value"
+                                                               OnClick="@(() => PauseRecurringSchedule(context.Item))" />
+                                            }
+                                            else
+                                            {
+                                                <MudIconButton Icon="@Icons.Material.Filled.PlayArrow" Size="Size.Small"
+                                                               Title="@L["Recurring_Resume"].Value"
+                                                               OnClick="@(() => ResumeRecurringSchedule(context.Item))" />
+                                            }
+                                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                                           OnClick="@(() => DeleteRecurringSchedule(context.Item))" />
+                                        </CellTemplate>
+                                    </TemplateColumn>
+                                </Columns>
+                            </FakvioGrid>
+                        }
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        }
     </MudGrid>
 }
 
@@ -302,6 +382,7 @@ else
 
     // Reference data
     private List<ClientDto> _clients = new();
+    private List<RecurringInvoiceScheduleDto> _recurringSchedules = new();
     private List<CurrencyDto> _currencies = new();
     private List<NumberSequenceDto> _numberSequences = new();
     private ClientDto? _issuer;
@@ -322,6 +403,7 @@ else
         else
         {
             await LoadTemplate();
+            await LoadRecurringSchedules();
         }
     }
 
@@ -551,6 +633,108 @@ else
     }
 
     private void GoBack() => Navigation.NavigateTo("/invoice-templates");
+
+    // ─── Recurring schedule panel ───────────────────────────────────────────
+
+    private async Task LoadRecurringSchedules()
+    {
+        _recurringSchedules = await RecurringService.GetByTemplateAsync(Id);
+    }
+
+    private async Task AddRecurringSchedule()
+    {
+        var model = new RecurringScheduleFormModel
+        {
+            TemplateId = Id,
+            ClientId = _template?.ClientId ?? _clients.FirstOrDefault()?.Id ?? 0,
+        };
+        await OpenRecurringScheduleDialog(model, L["Recurring_AddSchedule"].Value);
+    }
+
+    private async Task EditRecurringSchedule(RecurringInvoiceScheduleDto schedule)
+    {
+        var model = new RecurringScheduleFormModel
+        {
+            Id = schedule.Id,
+            TemplateId = schedule.TemplateId,
+            ClientId = schedule.ClientId,
+            Frequency = schedule.Frequency,
+            IntervalCount = schedule.IntervalCount,
+            DayOfMonthValue = schedule.DayOfMonth,
+            DayOfWeekValue = schedule.DayOfWeek,
+            StartDate = schedule.NextRunAt.LocalDateTime,
+            EndMode = schedule.EndDate.HasValue ? "date" : schedule.MaxOccurrences.HasValue ? "count" : "none",
+            EndDate = schedule.EndDate?.LocalDateTime,
+            MaxOccurrences = schedule.MaxOccurrences,
+            AutoSend = schedule.AutoSend,
+        };
+        await OpenRecurringScheduleDialog(model, L["Recurring_EditSchedule"].Value);
+    }
+
+    private async Task OpenRecurringScheduleDialog(RecurringScheduleFormModel model, string title)
+    {
+        var parameters = new DialogParameters<RecurringScheduleDialog>
+        {
+            { x => x.Model, model },
+            { x => x.Clients, _clients },
+            // AutoSend switch stays hidden until N4.5 wires up auto-complete + e-mailing —
+            // showing it earlier would let the user flip a flag that does nothing yet.
+            { x => x.ShowAutoSend, false },
+        };
+        var dialog = await DialogService.ShowAsync<RecurringScheduleDialog>(title, parameters);
+        var result = await dialog.Result;
+        if (result is { Canceled: false })
+        {
+            await LoadRecurringSchedules();
+        }
+    }
+
+    private async Task PauseRecurringSchedule(RecurringInvoiceScheduleDto schedule)
+    {
+        try
+        {
+            await RecurringService.PauseAsync(schedule.Id);
+            await LoadRecurringSchedules();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task ResumeRecurringSchedule(RecurringInvoiceScheduleDto schedule)
+    {
+        try
+        {
+            await RecurringService.ResumeAsync(schedule.Id);
+            await LoadRecurringSchedules();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task DeleteRecurringSchedule(RecurringInvoiceScheduleDto schedule)
+    {
+        bool? confirmed = await DialogService.ShowMessageBox(
+            L["Msg_ConfirmDeleteTitle"].Value,
+            L["Recurring_ConfirmDelete"].Value,
+            yesText: L["Btn_Delete"].Value, cancelText: L["Btn_Cancel"].Value);
+
+        if (confirmed != true) return;
+
+        try
+        {
+            await RecurringService.DeleteAsync(schedule.Id);
+            Snackbar.Add(L["Recurring_DeleteSuccess"].Value, Severity.Success);
+            await LoadRecurringSchedules();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"{L["Msg_Error"].Value}: {ex.Message}", Severity.Error);
+        }
+    }
 
     /// <summary>
     /// Validates that VariableSymbol contains only digits and is max 10 characters.
