@@ -10,7 +10,9 @@ using Fakvio.Contracts.Dto.Email;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Contracts.Dto.InvoiceTemplate;
 using Fakvio.Contracts.Dto.NumberSequence;
+using Fakvio.Contracts.Dto.PaymentMatching;
 using Fakvio.Contracts.Dto.Readiness;
+using Fakvio.Contracts.Dto.Reminder;
 using Fakvio.Contracts.Dto.FileAttachment;
 using Fakvio.Contracts.Dto.ReceivedInvoice;
 using Fakvio.Contracts.Dto.Tax;
@@ -278,6 +280,62 @@ public class FakvioApiClient : IFakvioApiClient
 
         await EnsureSuccessAsync(response, ct);
         return await response.Content.ReadFromJsonAsync<NumberSequenceDto>(JsonOptions, ct);
+    }
+
+    public async Task<PagedResult<BankTransactionDto>> GetPaymentsPagedAsync(
+        EMatchStatus? status, EPaymentDirection? direction, DateTime? from, DateTime? to,
+        int page, int pageSize, CancellationToken ct = default)
+    {
+        var parts = new List<string> { $"page={page}", $"pageSize={pageSize}" };
+        if (status.HasValue) parts.Add($"status={status.Value}");
+        if (direction.HasValue) parts.Add($"direction={direction.Value}");
+        if (from.HasValue) parts.Add($"from={from.Value:O}");
+        if (to.HasValue) parts.Add($"to={to.Value:O}");
+
+        var query = "?" + string.Join("&", parts);
+        var result = await _http.GetFromJsonAsync<PagedResult<BankTransactionDto>>(
+            $"api/payment-matching/transactions{query}", JsonOptions, ct);
+        return result ?? new PagedResult<BankTransactionDto>([], 0, page, pageSize);
+    }
+
+    public async Task<BankTransactionDto?> GetPaymentByIdAsync(long id, CancellationToken ct = default)
+    {
+        var response = await _http.GetAsync($"api/payment-matching/transactions/{id}", ct);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return null;
+
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadFromJsonAsync<BankTransactionDto>(JsonOptions, ct);
+    }
+
+    public async Task<PagedResult<ReminderDto>> GetRemindersPagedAsync(ReminderFilterDto filter, CancellationToken ct = default)
+    {
+        var parts = new List<string> { $"page={filter.Page}", $"pageSize={filter.PageSize}" };
+        if (filter.Status.HasValue) parts.Add($"status={filter.Status.Value}");
+        if (filter.ClientId.HasValue) parts.Add($"clientId={filter.ClientId.Value}");
+        if (filter.InvoiceId.HasValue) parts.Add($"invoiceId={filter.InvoiceId.Value}");
+        if (filter.Level.HasValue) parts.Add($"level={filter.Level.Value}");
+        if (!string.IsNullOrEmpty(filter.Search)) parts.Add($"search={Uri.EscapeDataString(filter.Search)}");
+        if (filter.DateFrom.HasValue) parts.Add($"dateFrom={filter.DateFrom.Value:O}");
+        if (filter.DateTo.HasValue) parts.Add($"dateTo={filter.DateTo.Value:O}");
+
+        var query = "?" + string.Join("&", parts);
+        var result = await _http.GetFromJsonAsync<PagedResult<ReminderDto>>($"api/reminder/paged{query}", JsonOptions, ct);
+        return result ?? new PagedResult<ReminderDto>([], 0, filter.Page, filter.PageSize);
+    }
+
+    public async Task<List<ReminderDto>> GetRemindersByInvoiceAsync(long invoiceId, CancellationToken ct = default)
+    {
+        var result = await _http.GetFromJsonAsync<List<ReminderDto>>($"api/reminder/invoice/{invoiceId}", JsonOptions, ct);
+        return result ?? [];
+    }
+
+    public async Task<ReminderSettingsDto> GetReminderSettingsAsync(CancellationToken ct = default)
+    {
+        var response = await _http.GetAsync("api/reminder/settings", ct);
+        await EnsureSuccessAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync<ReminderSettingsDto>(JsonOptions, ct))!;
     }
 
     public async Task<List<InvoiceTemplateDto>> GetActiveTemplatesAsync(string? documentType = null, CancellationToken ct = default)

@@ -7,7 +7,9 @@ using Fakvio.Contracts.Dto.Email;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Contracts.Dto.InvoiceTemplate;
 using Fakvio.Contracts.Dto.NumberSequence;
+using Fakvio.Contracts.Dto.PaymentMatching;
 using Fakvio.Contracts.Dto.Readiness;
+using Fakvio.Contracts.Dto.Reminder;
 using Fakvio.Contracts.Dto.FileAttachment;
 using Fakvio.Contracts.Dto.ReceivedInvoice;
 using Fakvio.Contracts.Dto.Tax;
@@ -113,6 +115,27 @@ public interface IFakvioApiClient
 
     /// <summary>POST /api/numbersequence/{id}/set-default — make this the default sequence for its document type.</summary>
     Task<NumberSequenceDto?> SetDefaultNumberSequenceAsync(long id, CancellationToken ct = default);
+
+    // ── Payment matching endpoints ──────────────────────────────────────
+
+    /// <summary>GET /api/payment-matching/transactions — paged bank transactions with filters.</summary>
+    Task<PagedResult<BankTransactionDto>> GetPaymentsPagedAsync(
+        EMatchStatus? status, EPaymentDirection? direction, DateTime? from, DateTime? to,
+        int page, int pageSize, CancellationToken ct = default);
+
+    /// <summary>GET /api/payment-matching/transactions/{id} — single bank transaction by ID.</summary>
+    Task<BankTransactionDto?> GetPaymentByIdAsync(long id, CancellationToken ct = default);
+
+    // ── Reminder endpoints ──────────────────────────────────────────────
+
+    /// <summary>GET /api/reminder/paged — paged reminders with filters.</summary>
+    Task<PagedResult<ReminderDto>> GetRemindersPagedAsync(ReminderFilterDto filter, CancellationToken ct = default);
+
+    /// <summary>GET /api/reminder/invoice/{invoiceId} — every reminder sent for one invoice.</summary>
+    Task<List<ReminderDto>> GetRemindersByInvoiceAsync(long invoiceId, CancellationToken ct = default);
+
+    /// <summary>GET /api/reminder/settings — company-wide default reminder settings.</summary>
+    Task<ReminderSettingsDto> GetReminderSettingsAsync(CancellationToken ct = default);
 
     // ── Invoice Template endpoints ─────────────────────────────────────
 

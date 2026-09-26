@@ -1403,7 +1403,7 @@ Pět toolů: tři nad `IReminderService` (`list_reminders`, `get_reminder_settin
 ##### Paritní tabulka chat ↔ MCP (stav k #211, #217, #218, #220, #222, #224, #225 a #227)
 
 Dvě rozhraní nad týmiž daty: **chat** (`IChatTool`, 49 toolů, `Fakvio.Infrastructure/Service/ChatTools/`)
-a **MCP server** (`[McpServerTool]`, 45 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
+a **MCP server** (`[McpServerTool]`, 49 toolů, `Fakvio.McpServer/Tools/`). MCP umí výrazně víc —
 cílem story #149 je mezeru zavřít. Tabulka je jediný pravdivý seznam toho, co kde chybí;
 **každý nový tool na kterékoli straně sem přidá řádek** (viz §13).
 
@@ -1467,6 +1467,11 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | `UpdateNumberSequence` | Idempotent | `update_number_sequence` | ✅ | |
 | `UpdateMyCompany` | Idempotent | `update_my_company` | ✅ | |
 | `AddBankAccount` | **Write** | `add_bank_account` | ✅ | |
+| **Platby a upomínky** (`PaymentTools`, 4) |
+| `ListPayments` | Read | `list_payments` | ✅ | |
+| `GetPayment` | Read | `get_payment` | ✅ | |
+| `ListReminders` | Read | `list_reminders` | ✅ | |
+| `GetReminderSettings` | Read | `get_reminder_settings` | ✅ | |
 | **Jen chat (MCP nemá)** |
 | — | **Destructive** | `delete_client` (za `confirm`) | ⬅ | |
 | — | Search | `search_received_invoices` | ⬅ | |
@@ -1477,14 +1482,10 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | — | **Write** (sazby DPH) | `create_vat_rate`, `update_vat_rate` | ⬅ | |
 | — | Read (šablony dokumentů) | `list_content_templates`, `get_content_template` | ⬅ | |
 | — | **Write** (výchozí šablona dokumentu) | `set_default_content_template` | ⬅ | |
-| — | Read (upomínky) | `list_reminders` | ⬅ | |
-| — | Read (nastavení upomínek) | `get_reminder_settings` | ⬅ | |
 | — | **Write** (nastavení upomínek) | `update_reminder_settings` (za `confirm`) | ⬅ | |
-| — | Read (platby) | `list_payments` | ⬅ | |
-| — | Read (detail platby) | `get_payment` | ⬅ | |
 
-**Součty:** 45 MCP toolů, 49 chat toolů. Chat pokrývá 38 MCP toolů, žádný už jen částečně;
-17 chat toolů nemá MCP protějšek. Zbývá 7 mezer: daně (5, zatím bez tasku),
+**Součty:** 49 MCP toolů, 49 chat toolů. Chat pokrývá 42 MCP toolů, žádný už jen částečně;
+13 chat toolů nemá MCP protějšek. Zbývá 7 mezer: daně (5, zatím bez tasku),
 šablony (1 — `CreateInvoiceFromTemplate`), číselníky (1 — `ListCurrencies`).
 
 **Vydané faktury jsou po #217 pokryté celé.** Jeden rozdíl proti MCP je záměrný:
@@ -1566,7 +1567,7 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
   - **`SessionMode = Stateless` je zapsaný natvrdo**, ne ponechaný na defaultu SDK. Čtení tokenu z `HttpContext` funguje jen dokud tool běží na `ExecutionContext` toho HTTP requestu, který ho přinesl; stateless to garantuje (každý request = čerstvý server context). Stateful se dnes chová stejně, ale jen proto, že `PerSessionExecutionContext` defaultuje na `false` — s `true` běží každý tool call na kontextu initialize requestu, `HttpContext` je pro volajícího `null` a API odpoví 401. Ověřeno mutací v `McpHttpTransportTests`. Vedlejší efekt: žádná session affinity → host jde škálovat bez sticky routingu.
   - `ModelContextProtocol.AspNetCore` nese `FrameworkReference` na `Microsoft.AspNetCore.App`, takže zabalený tool potřebuje ASP.NET Core shared framework **i pro stdio**. Balení a deploy HTTP hostu řeší #241.
   - **Mimo scope (story #144):** OAuth 2.1 / dynamic client registration pro Claude.ai konektory (hlavičku dodává uživatel ručně), per-area scopes (jen read/write), cache API klíčů.
-- **45 tools**: 10 invoice + 6 client + 7 received invoice + 6 reporting + 5 tax + 3 template + 1 readiness + 1 code list + 6 settings (po jednom souboru v `Tools/`).
+- **49 tools**: 10 invoice + 6 client + 7 received invoice + 6 reporting + 5 tax + 3 template + 1 readiness + 1 code list + 6 settings + 4 payment (po jednom souboru v `Tools/`).
   Ruční číslo v dokumentaci stárne; zdroj pravdy je `grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs`.
   Porovnání s chat tooly (co MCP umí a chat ještě ne): paritní tabulka v §4.7.
 - **Annotations (hinty) jsou povinné na každém `[McpServerTool]`** — `ReadOnly`, `Destructive`,
@@ -1582,7 +1583,7 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
   - Nástroj mluvící s něčím mimo Fakvio (ARES, e-mail, `fileUrl` stahování) → `OpenWorld = true`.
   Test `ToolDiscoveryTests.EveryTool_DeclaresItsSideEffects` hlídá `ReadOnlyHint`/`DestructiveHint`
   podle prefixu jména; postup přidání nástroje viz `Fakvio.McpServer/README.md`.
-- **Chybová konvence (#279): `McpToolError.ToJson(ex)`, jedno místo pro všech 45 nástrojů.**
+- **Chybová konvence (#279): `McpToolError.ToJson(ex)`, jedno místo pro všech 49 nástrojů.**
   Každý tool má `catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }`
   **před** obecným `catch (Exception ex)` — zrušený request se propaguje, nekonverzuje na JSON.
   Filtr `when (…)` je nosný: `TaskCanceledException` dědí z `OperationCanceledException` a `HttpClient`

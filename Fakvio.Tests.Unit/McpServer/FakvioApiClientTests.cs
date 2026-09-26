@@ -10,7 +10,9 @@ using Fakvio.Contracts.Dto.FileAttachment;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Contracts.Dto.InvoiceTemplate;
 using Fakvio.Contracts.Dto.NumberSequence;
+using Fakvio.Contracts.Dto.PaymentMatching;
 using Fakvio.Contracts.Dto.Readiness;
+using Fakvio.Contracts.Dto.Reminder;
 using Fakvio.Contracts.Dto.VatRate;
 using Fakvio.Domain.Enums;
 using Fakvio.McpServer.Client;
@@ -414,6 +416,67 @@ public class FakvioApiClientTests : IDisposable
 
         _handler.LastRequestUri?.ToString().ShouldEndWith("api/numbersequence/1/set-default");
         result!.IsDefault.ShouldBeTrue();
+    }
+
+    // ── Payment / reminder tests ────────────────────────────────────────
+
+    [Fact]
+    public async Task GetPaymentsPagedAsync_AppendsFilterQueryString()
+    {
+        _handler.SetupResponse(HttpStatusCode.OK, new PagedResult<BankTransactionDto>([], 0, 1, 20));
+
+        await _sut.GetPaymentsPagedAsync(EMatchStatus.Unmatched, EPaymentDirection.Incoming,
+            new DateTime(2026, 1, 1), new DateTime(2026, 1, 31), page: 1, pageSize: 20);
+
+        var url = _handler.LastRequestUri?.ToString();
+        url.ShouldContain("status=Unmatched");
+        url.ShouldContain("direction=Incoming");
+        url.ShouldContain("from=");
+        url.ShouldContain("to=");
+    }
+
+    [Fact]
+    public async Task GetPaymentByIdAsync_NotFound_ReturnsNull()
+    {
+        _handler.SetupResponse(HttpStatusCode.NotFound, new { message = "not found" });
+
+        var result = await _sut.GetPaymentByIdAsync(999);
+
+        result.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task GetRemindersPagedAsync_AppendsFilterQueryString()
+    {
+        _handler.SetupResponse(HttpStatusCode.OK, new PagedResult<ReminderDto>([], 0, 1, 20));
+
+        await _sut.GetRemindersPagedAsync(new ReminderFilterDto { InvoiceId = 7, Status = EReminderStatus.Sent });
+
+        var url = _handler.LastRequestUri?.ToString();
+        url.ShouldContain("invoiceId=7");
+        url.ShouldContain("status=Sent");
+    }
+
+    [Fact]
+    public async Task GetRemindersByInvoiceAsync_CallsInvoiceEndpoint()
+    {
+        _handler.SetupResponse(HttpStatusCode.OK, new List<ReminderDto> { new() { Id = 1 } });
+
+        var result = await _sut.GetRemindersByInvoiceAsync(7);
+
+        _handler.LastRequestUri?.ToString().ShouldEndWith("api/reminder/invoice/7");
+        result.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task GetReminderSettingsAsync_CallsSettingsEndpoint()
+    {
+        _handler.SetupResponse(HttpStatusCode.OK, new ReminderSettingsDto { IsEnabled = true });
+
+        var result = await _sut.GetReminderSettingsAsync();
+
+        _handler.LastRequestUri?.ToString().ShouldEndWith("api/reminder/settings");
+        result.IsEnabled.ShouldBeTrue();
     }
 
     // ── Template tests ─────────────────────────────────────────────────
