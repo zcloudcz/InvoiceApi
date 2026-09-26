@@ -333,6 +333,27 @@ public class ToolDiscoveryTests
     }
 
     /// <summary>
+    /// N2.6: the version reported in the MCP handshake (<c>initialize</c> → <c>ServerInfo.Version</c>)
+    /// must be the assembly's real version, not a hand-maintained constant that can drift from the
+    /// csproj <c>&lt;Version&gt;</c> — which is exactly what happened before this test existed
+    /// (constant said "1.0.0", csproj said "1.0.2", and neither was ever bumped to 2.0.0).
+    /// </summary>
+    [Fact]
+    public void HandshakeReports_TheAssemblysRealVersion()
+    {
+        var container = BuildServerContainer();
+        var options = container.GetRequiredService<
+            Microsoft.Extensions.Options.IOptions<ModelContextProtocol.Server.McpServerOptions>>().Value;
+
+        var assemblyVersion = McpServerAssembly
+            .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()?
+            .InformationalVersion?.Split('+')[0];
+
+        options.ServerInfo!.Version.ShouldBe(assemblyVersion);
+        options.ServerInfo.Version.ShouldNotBeNullOrWhiteSpace();
+    }
+
+    /// <summary>
     /// N2.5: no tool parameter is an opaque "JSON string of SomeDto" — the SDK generates a real
     /// JSON Schema from a typed DTO parameter for free, so a string parameter whose only purpose
     /// is to be JSON-parsed inside the tool method is exactly the anti-pattern this guards

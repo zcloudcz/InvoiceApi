@@ -1633,6 +1633,14 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
   `ToolDiscoveryTests.NoTool_TakesAnOpaqueJsonStringParameter` (žádný `string …Json` parametr) a
   `McpSdkInvocationTests` (enum jako řetězec a vnořené DTO pole projdou přes skutečnou SDK cestu,
   ne jen přímým voláním metody).
+- **Verze balíčku se bumpuje ve stejném PR jako změna nástroje (N2.6), ne později.**
+  `<Version>` v `Fakvio.McpServer.csproj` — publish na nuget.org je `--skip-duplicate` jen na
+  `master` (`.github/workflows/mcp-server.yml`), takže build se stejným číslem je no-op, ne chyba;
+  bez bumpu tak oprava/nový nástroj nikdy nevyjde (přesně to se stalo #434/#438 → 1.0.3/1.0.4
+  nikdy nevyšly). Změna parametrů existujícího nástroje = major, nový nástroj beze změny
+  stávajících = minor. Handshake verze (`ServerInfo.Version`, `McpServerRegistration.cs`) se čte
+  z `AssemblyInformationalVersionAttribute` assembly, ne z ručně psané konstanty — nemůže se tedy
+  s `<Version>` rozejít, hlídá `ToolDiscoveryTests.HandshakeReports_TheAssemblysRealVersion`.
 - Detaily (build, získání credentialu, seznam nástrojů, postup přidání nástroje): `Fakvio.McpServer/README.md`.
   Uživatelský postup (vytvoření klíče, konfigurace klienta v obou režimech): USERGUIDE §20. Provoz HTTP hostu a jeho bezpečnostní model: ADMINGUIDE §9.
 

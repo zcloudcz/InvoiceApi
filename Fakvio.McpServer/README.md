@@ -1,5 +1,42 @@
 # Fakvio MCP Server
 
+## Kompatibilita 2.0
+
+Verze **2.0.0** je nekompatibilní se všemi předchozími (poslední skutečně vydaná na nuget.org
+byla 1.0.2 — 1.0.3/1.0.4 nikdy nevyšly, viz #398 níže). LLM klienti (Claude, ChatGPT), kteří si
+schéma nástrojů načtou sami z `tools/list`, nic dělat nemusí. **Skriptovaní klienti** (cokoli, co
+volá `fakvio-mcp` s natvrdo zapsanými argumenty) musí upravit volání:
+
+- **Typované vstupy místo JSON stringu.** `create_client`, `update_client`,
+  `create_received_invoice`, `create_invoice_from_template` a `create_invoice` už neberou
+  `"…Json": "{...}"` — parametr je teď skutečný objekt/pole ve stejné JSON-RPC zprávě.
+- **`currency` místo `currencyId`.** `create_invoice` a `create_received_invoice` chtějí ISO kód
+  (`"EUR"`), ne interní číselné ID — zjistíte ho přes `list_currencies`.
+- **`issuerId` je teď volitelný** u `create_invoice` — vynechaný = vlastní firma volajícího.
+- **Nové chybové kódy.** Zápis na read-only klíč, neexistující záznam a validační chyba už
+  nekončí jako `{"error":"internal_error"}` bez rozlišení — viz tabulka v sekci
+  „Chování nástrojů" výše (`forbidden` / `not_found` / `validation_error`).
+- **Annotations.** Každý nástroj v `tools/list` nese `readOnlyHint`/`destructiveHint`/
+  `idempotentHint`/`openWorldHint` — klient, který se na ně dřív nedíval, může začít.
+
+Ukázka staré (1.0.2) a nové (2.0.0) volby `create_invoice`:
+
+```jsonc
+// 1.0.2 — jeden JSON string, interní ID, model neví, odkud currencyId/issuerId vzít
+{
+  "invoiceJson": "{\"documentType\":\"Invoice\",\"clientId\":1,\"issuerId\":2,\"currencyId\":1,\"invoiceItem\":[{\"description\":\"Web development\",\"quantity\":10,\"unitPrice\":1500,\"vatRatePercentage\":21}]}"
+}
+
+// 2.0.0 — typované argumenty, měna kódem, issuerId volitelné
+{
+  "clientId": 1,
+  "currency": "EUR",
+  "items": [{ "description": "Web development", "quantity": 10, "unit": "hrs", "unitPrice": 1500, "vatRatePercentage": 21 }]
+}
+```
+
+---
+
 Aplikace, která zpřístupňuje fakturaci Fakvio AI klientům přes
 **Model Context Protocol (MCP)**. Umí dva režimy — sada nástrojů je v obou
 totožná, liší se jen tím, odkud se bere credential:

@@ -1,3 +1,4 @@
+using System.Reflection;
 using Fakvio.McpServer.Client;
 using Fakvio.McpServer.Configuration;
 using Fakvio.McpServer.Tools;
@@ -18,9 +19,25 @@ namespace Fakvio.McpServer;
 /// </summary>
 public static class McpServerRegistration
 {
-    /// <summary>Name and version reported to the AI client in the initialize handshake.</summary>
+    /// <summary>Name reported to the AI client in the initialize handshake.</summary>
     private const string ServerName = "fakvio";
-    private const string ServerVersion = "1.0.0";
+
+    /// <summary>
+    /// Version reported to the AI client in the initialize handshake — read from the assembly
+    /// instead of a hand-maintained constant (N2.6). The old <c>"1.0.0"</c> literal here never
+    /// matched the csproj <c>&lt;Version&gt;</c> (1.0.2 at the time, and neither ever became the
+    /// 2.0.0 this PR ships), so a client checking the handshake version had no way to detect the
+    /// N2.1–N2.5 breaking change at all. <see cref="AssemblyInformationalVersionAttribute"/> is
+    /// what csproj's <c>&lt;Version&gt;</c> compiles to; it can carry a source-control suffix
+    /// (<c>2.0.0+abc1234</c>) that the handshake does not need, so it is trimmed at the first
+    /// <c>+</c>.
+    /// </summary>
+    private static readonly string ServerVersion =
+        typeof(McpServerRegistration).Assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
+            .InformationalVersion is { } informational
+            ? informational.Split('+')[0]
+            : "0.0.0";
 
     /// <summary>
     /// Registers everything that is identical in stdio and HTTP mode.

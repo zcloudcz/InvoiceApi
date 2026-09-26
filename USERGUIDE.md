@@ -1077,6 +1077,9 @@ připravený blok **Lokální MCP server (stdio)**, ať se nepřepíšete.
 
   Aktualizace je `dotnet tool update --global Fakvio.McpServer`. Nemáte-li na počítači
   práva instalovat, požádejte správce.
+  Verze **2.0.0** je nekompatibilní s předchozími — vlastní skript, který volá nástroje s pevně
+  zapsanými argumenty, po aktualizaci upravte podle `Fakvio.McpServer/README.md` § „Kompatibilita
+  2.0". Váš AI klient (Claude, ChatGPT) si schéma nástrojů načte sám, nic dělat nemusíte.
 
 Po uložení souboru AI aplikaci restartujte.
 
