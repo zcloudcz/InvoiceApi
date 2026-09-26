@@ -1,3 +1,4 @@
+using System.Net.Http.Json;
 using System.Text;
 using Fakvio.Contracts.Dto.User;
 using Fakvio.UI.Shared.Models;
@@ -189,12 +190,37 @@ public class UserApiService : ApiClientBase
     /// <summary>
     /// Initiates the "Forgot Password" flow — sends a password reset email.
     /// Anonymous call — no auth header needed.
-    /// Always returns true (server never reveals whether the email exists).
+    /// Always returns true (server never reveals whether the email exists) — EXCEPT for a
+    /// failed reCAPTCHA (RC.3), which throws <see cref="CaptchaException"/> instead. That
+    /// distinction is safe: a failed CAPTCHA says nothing about the email address, only
+    /// that the bot check itself failed, so it does not need the same anti-enumeration
+    /// treatment as every other outcome of this endpoint.
     /// </summary>
-    public async Task<bool> ForgotPasswordAsync(string email)
+    /// <param name="email">Email address to send the reset link to (if it exists).</param>
+    /// <param name="captchaToken">
+    /// reCAPTCHA v3 token from <c>grecaptcha.execute(siteKey, {'{'} action: "forgot_password" {'}'})</c>,
+    /// sent via the same <c>X-Captcha-Token</c> header as login/register/ares.
+    /// </param>
+    public async Task<bool> ForgotPasswordAsync(string email, string? captchaToken = null)
     {
         var dto = new ForgotPasswordDto { Email = email };
-        var response = await _httpClient.PostAsJsonAsync("/api/user/forgot-password", dto);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/user/forgot-password")
+        {
+            Content = JsonContent.Create(dto)
+        };
+        if (!string.IsNullOrEmpty(captchaToken))
+            request.Headers.Add("X-Captcha-Token", captchaToken);
+
+        var response = await _httpClient.SendAsync(request);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorContent = await response.Content.ReadAsStringAsync();
+            if (CaptchaException.Matches(response.StatusCode, errorContent))
+                throw new CaptchaException();
+        }
+
         return response.IsSuccessStatusCode;
     }
 

@@ -157,7 +157,8 @@ Pravidla:
 Reuse **InvitationToken** mechaniku (`User.InvitationToken` + `InvitationTokenExpiresAt`):
 - Token: GUID string, expirace 48h.
 - Generování: `IUserService.ForgotPasswordAsync` (`Fakvio.Application/Service/IUserService.cs:128`).
-- **Anti-enumeration**: vrací `null` (success-like) i pro neexistující email, aby útočník neviděl rozdíl.
+- **Anti-enumeration**: vrací `null` (success-like) i pro neexistující email, aby útočník neviděl rozdíl v **odpovědi**. Zbývá užší mezera přes **časování** — existující email čeká na uložení tokenu a odeslání e-mailu (`await SendInvitationEmailAsync`), neexistující se vrátí skoro okamžitě; opakovaným měřením lze rozdíl odhalit. Předchází RC.3, RC.3 na to nesahá (přidává jen captcha gate) — zavření mezery (fronta/fire-and-forget + umělé zpoždění na "neznámé" větvi) je samostatný úkol.
+- Od RC.3: `UserController.ForgotPassword` ověřuje reCAPTCHA (`action: "forgot_password"`) **před** čímkoli e-mail-specifickým — 400 při selhání captcha nic o existenci e-mailu neprozrazuje (viz CAPTCHA.md §5).
 - Set: `IUserService.SetPasswordAsync` (`IUserService.cs:107`) — validuje token, expiraci, BCrypt hash, **vyčistí token** (one-shot).
 
 **Token se NIKDY nevrací z listovacích endpointů** (issue #364). `SetPassword` je `[AllowAnonymous]`,
@@ -246,7 +247,7 @@ Functions přes `SystemConfigurationFunctions.SystemConfiguration_GetCredentialH
 
 ### 2.8 reCAPTCHA gate (issue #200)
 
-`CaptchaService` (`Fakvio.Infrastructure/Service/CaptchaService.cs`) je **jediná** ochrana před zneužitím u tří anonymních endpointů — `/api/auth/login`, `/api/auth/register` a ARES proxy `/api/auth/ares/{ico}`. Rate limiting v repu **není**; od migrace na App Service je `AddRateLimiter` middleware možná cesta (viz §11.3).
+`CaptchaService` (`Fakvio.Infrastructure/Service/CaptchaService.cs`) je **jediná** ochrana před zneužitím u čtyř anonymních endpointů — `/api/auth/login`, `/api/auth/register`, ARES proxy `/api/auth/ares/{ico}` a od RC.3 i `/api/user/forgot-password`. Rate limiting v repu **není**; od migrace na App Service je `AddRateLimiter` middleware možná cesta (viz §11.3).
 
 **Fail closed.** Cokoli zabrání kladnému ověření (výjimka, HTTP chyba od Googlu, chybějící `SecretKey`) znamená **odmítnutí** požadavku. Dřív se v těchto případech vracelo `true`, takže výpadek Googlu bránu úplně vypnul.
 

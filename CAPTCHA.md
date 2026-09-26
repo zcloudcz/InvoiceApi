@@ -124,8 +124,14 @@ Already set in `Fakvio.API/appsettings.Development.json` (`Recaptcha__Enabled`) 
 | `POST /api/auth/login` | `login` | `X-Captcha-Token` |
 | `POST /api/auth/register` | `register` | `X-Captcha-Token` |
 | `GET /api/auth/ares/{ico}` | `ares` | `X-Captcha-Token` |
+| `POST /api/user/forgot-password` | `forgot_password` | `X-Captcha-Token` (RC.3) |
 
-All three read the token from the `X-Captcha-Token` HTTP header. A missing or invalid token means 400 Bad Request — and so does a token issued for a different action, a token from a host outside `Recaptcha:AllowedHostnames` (when that list is configured), a missing `SecretKey`, and an outage at Google. Anything the server cannot positively verify is rejected.
+All four read the token from the `X-Captcha-Token` HTTP header. A missing or invalid token means 400 Bad Request — and so does a token issued for a different action, a token from a host outside `Recaptcha:AllowedHostnames` (when that list is configured), a missing `SecretKey`, and an outage at Google. Anything the server cannot positively verify is rejected.
+
+`forgot-password` is the one endpoint where the 400 is safe to show the user distinctly
+(see §8 below): it reveals only that the CAPTCHA check failed, never whether the email
+address exists — the existing anti-enumeration behavior (always 200, same message) is
+unchanged for every other failure.
 
 ## 6. Score threshold
 
@@ -175,8 +181,8 @@ user did nothing wrong; the common cause is an ad blocker keeping Google's scrip
 loading.
 
 - `Fakvio.UI.Shared/Services/CaptchaException.cs` — thrown by `AuthApiService`
-  (login/register/ares) when the response body matches the server's fixed
-  CAPTCHA-failure text.
+  (login/register/ares) and `UserApiService.ForgotPasswordAsync` when the response body
+  matches the server's fixed CAPTCHA-failure text.
 - `Login.razor` / `Register.razor` catch it and show `Captcha_VerificationFailed`
   (CZ/EN, `SharedResource.resx`).
 - `Fakvio.BlazorUI/wwwroot/index.html` `getRecaptchaToken()` — a 5s timeout guarantees an

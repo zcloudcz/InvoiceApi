@@ -2,6 +2,7 @@ using Fakvio.Contracts.Common.Pagination;
 using Fakvio.Contracts.Dto.User;
 using Fakvio.Application.Service;
 using Fakvio.Domain.Enums;
+using Fakvio.Infrastructure.Service;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
@@ -20,6 +21,7 @@ public class UserController : ControllerBase
     private readonly IUserService _userService;
     private readonly IEmailService _emailService;
     private readonly ISystemConfigurationService _systemConfigService;
+    private readonly ICaptchaService _captchaService;
     private readonly IConfiguration _configuration;
     private readonly ILogger<UserController> _logger;
 
@@ -27,12 +29,14 @@ public class UserController : ControllerBase
         IUserService userService,
         IEmailService emailService,
         ISystemConfigurationService systemConfigService,
+        ICaptchaService captchaService,
         IConfiguration configuration,
         ILogger<UserController> logger)
     {
         _userService = userService;
         _emailService = emailService;
         _systemConfigService = systemConfigService;
+        _captchaService = captchaService;
         _configuration = configuration;
         _logger = logger;
     }
@@ -628,16 +632,39 @@ public class UserController : ControllerBase
     /// with a link to the set-password page. Reuses the invitation token infrastructure
     /// so the existing SetPassword and ValidateInvitationToken endpoints work unchanged.
     ///
-    /// SECURITY: Always returns 200 OK regardless of whether the email exists.
-    /// This prevents email enumeration attacks (attacker cannot discover valid emails).
+    /// SECURITY: Always returns 200 OK regardless of whether the email exists, with the
+    /// same fixed body. Prevents enumeration via the RESPONSE — a known, narrower gap
+    /// remains via response TIMING (an existing email waits for token persistence + the
+    /// awaited SMTP send below; an unknown one returns almost immediately). Pre-existing,
+    /// not introduced by RC.3, and out of that task's scope — closing it needs a queued/
+    /// fire-and-forget send with a uniform artificial delay on the "unknown" path, which
+    /// is a bigger change than adding the CAPTCHA gate below.
+    ///
+    /// reCAPTCHA v3 gate (RC.3): this endpoint had no bot protection at all — unlike
+    /// login/register/ares (AuthController), it could be hammered with arbitrary email
+    /// addresses to spam inboxes (email bombing) at no cost to the caller. Same pattern
+    /// as AuthController: X-Captcha-Token header, action "forgot_password", 400 on
+    /// failure. A 400 here does NOT weaken the anti-enumeration guarantee above — it only
+    /// ever says the CAPTCHA check failed, never whether dto.Email exists, so it is
+    /// checked BEFORE anything email-specific happens.
     /// </summary>
     /// <param name="dto">Email address of the user requesting password reset.</param>
     /// <returns>Always returns success message (even if email doesn't exist).</returns>
+    /// <response code="200">Request accepted (even if email doesn't exist).</response>
+    /// <response code="400">CAPTCHA verification failed.</response>
     [HttpPost("forgot-password")]
     [AllowAnonymous]
     [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult> ForgotPassword([FromBody] ForgotPasswordDto dto)
     {
+        var captchaToken = Request.Headers["X-Captcha-Token"].FirstOrDefault();
+        if (!await _captchaService.VerifyAsync(captchaToken, "forgot_password"))
+        {
+            _logger.LogWarning("reCAPTCHA verification failed for forgot-password request");
+            return BadRequest(new { message = "CAPTCHA verification failed. Please try again." });
+        }
+
         try
         {
             var token = await _userService.ForgotPasswordAsync(dto.Email);

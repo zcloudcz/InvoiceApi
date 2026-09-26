@@ -980,8 +980,9 @@ kontaktujte podporu.
 
 ## 19b. Chyba „Ověření proti robotům se nezdařilo"
 
-Přihlášení, registrace i načtení firmy z ARES jsou chráněné neviditelnou kontrolou proti
-robotům (reCAPTCHA). Pokud se zobrazí hláška **„Ověření proti robotům se nezdařilo"**:
+Přihlášení, registrace, načtení firmy z ARES i zapomenuté heslo jsou chráněné neviditelnou
+kontrolou proti robotům (reCAPTCHA). Pokud se zobrazí hláška **„Ověření proti robotům se
+nezdařilo"**:
 
 1. Zkuste stránku obnovit (F5) a akci zopakovat.
 2. Pokud používáte blokování reklam (AdBlock, uBlock Origin apod.), vypněte ho pro
