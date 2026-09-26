@@ -333,6 +333,28 @@ public class ToolDiscoveryTests
     }
 
     /// <summary>
+    /// N2.5: no tool parameter is an opaque "JSON string of SomeDto" — the SDK generates a real
+    /// JSON Schema from a typed DTO parameter for free, so a string parameter whose only purpose
+    /// is to be JSON-parsed inside the tool method is exactly the anti-pattern this guards
+    /// against (mirrors `git grep -E "string [a-zA-Z]*Json" -- Fakvio.McpServer/Tools`).
+    /// </summary>
+    [Fact]
+    public void NoTool_TakesAnOpaqueJsonStringParameter()
+    {
+        foreach (var method in AnnotatedToolMethods())
+        {
+            foreach (var parameter in method.GetParameters())
+            {
+                (parameter.ParameterType == typeof(string) &&
+                 parameter.Name!.EndsWith("Json", StringComparison.Ordinal))
+                    .ShouldBeFalse(
+                        $"Method '{method.Name}' has a string parameter '{parameter.Name}' — " +
+                        "replace it with a typed DTO parameter (DEVGUIDE §4.9).");
+            }
+        }
+    }
+
+    /// <summary>
     /// Every guide that names a tool count must name the count the server actually exposes.
     ///
     /// Why this needs a test rather than a reviewer: story #144 published "36" and the number

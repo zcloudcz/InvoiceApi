@@ -245,17 +245,9 @@ public static class InvoiceTools
             }
 
             // ── Resolve currency code → CurrencyId (default CZK) ────────────────
-            var currencies = await api.GetActiveCurrenciesAsync(ct);
-            var wantedCode = currency ?? "CZK";
-            var resolvedCurrency = currencies.FirstOrDefault(
-                c => string.Equals(c.Code, wantedCode, StringComparison.OrdinalIgnoreCase));
-
+            var (resolvedCurrency, currencyError) = await CodeListTools.ResolveCurrencyAsync(api, currency, ct);
             if (resolvedCurrency is null)
-            {
-                return Error(
-                    $"Unknown currency '{wantedCode}'. Active currencies: " +
-                    string.Join(", ", currencies.Select(c => c.Code)) + ".");
-            }
+                return Error(currencyError!);
 
             // ── Resolve VatRateId from VatRatePercentage — VAT payers only ──────
             // A non-VAT-payer issuer has no VAT rates to configure at all (readiness never

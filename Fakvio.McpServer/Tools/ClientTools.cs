@@ -108,31 +108,15 @@ public static class ClientTools
         "bankAccount [{accountNumber, bankName, iban, swift}].")]
     public static async Task<string> CreateClient(
         IFakvioApiClient api,
-        [Description(
-            "JSON string of CreateClientDto. Example: " +
-            "{\"companyName\":\"Acme s.r.o.\",\"registrationNumber\":\"12345678\"," +
-            "\"isVatPayer\":true,\"fetchFromAres\":true}"
-        )] string clientJson,
+        [Description("Client to create — companyName is required, everything else optional")] CreateClientDto client,
         CancellationToken ct = default)
     {
-        // Parsing the model's own input is deliberately kept OUT of the try block
-        // below — see McpToolError for why (issue #279).
-        CreateClientDto? dto;
-        try
-        {
-            dto = JsonSerializer.Deserialize<CreateClientDto>(clientJson, JsonOptions);
-        }
-        catch (JsonException ex)
-        {
-            return JsonSerializer.Serialize(new { error = $"Invalid JSON format: {ex.Message}" }, JsonOptions);
-        }
-
-        if (dto is null)
-            return JsonSerializer.Serialize(new { error = "Invalid JSON: could not deserialize CreateClientDto." }, JsonOptions);
+        if (client is null)
+            return JsonSerializer.Serialize(new { error = "client is required." }, JsonOptions);
 
         try
         {
-            var result = await api.CreateClientAsync(dto, ct);
+            var result = await api.CreateClientAsync(client, ct);
             return JsonSerializer.Serialize(result, JsonOptions);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -156,30 +140,15 @@ public static class ClientTools
     public static async Task<string> UpdateClient(
         IFakvioApiClient api,
         [Description("The client ID to update")] long clientId,
-        [Description(
-            "JSON string of UpdateClientDto. Example: " +
-            "{\"companyName\":\"New Name s.r.o.\",\"isVatPayer\":false}"
-        )] string clientJson,
+        [Description("Fields to change — only provided (non-null) fields are updated")] UpdateClientDto changes,
         CancellationToken ct = default)
     {
-        // Parsing the model's own input is deliberately kept OUT of the try block
-        // below — see McpToolError for why (issue #279).
-        UpdateClientDto? dto;
-        try
-        {
-            dto = JsonSerializer.Deserialize<UpdateClientDto>(clientJson, JsonOptions);
-        }
-        catch (JsonException ex)
-        {
-            return JsonSerializer.Serialize(new { error = $"Invalid JSON format: {ex.Message}" }, JsonOptions);
-        }
-
-        if (dto is null)
-            return JsonSerializer.Serialize(new { error = "Invalid JSON: could not deserialize UpdateClientDto." }, JsonOptions);
+        if (changes is null)
+            return JsonSerializer.Serialize(new { error = "changes is required." }, JsonOptions);
 
         try
         {
-            var result = await api.UpdateClientAsync(clientId, dto, ct);
+            var result = await api.UpdateClientAsync(clientId, changes, ct);
             return JsonSerializer.Serialize(result, JsonOptions);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)

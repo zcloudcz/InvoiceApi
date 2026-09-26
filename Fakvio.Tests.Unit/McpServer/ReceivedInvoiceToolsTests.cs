@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Fakvio.Contracts.Common.Pagination;
+using Fakvio.Contracts.Dto.Currency;
 using Fakvio.Contracts.Dto.FileAttachment;
 using Fakvio.Contracts.Dto.ReceivedInvoice;
 using Fakvio.Domain.Enums;
@@ -292,31 +293,33 @@ public class ReceivedInvoiceToolsTests
     // ── CreateReceivedInvoice ──────────────────────────────────────────
 
     [Fact]
-    public async Task CreateReceivedInvoice_DeserializesJsonAndCreates()
+    public async Task CreateReceivedInvoice_CreatesFromTypedDto_ResolvesCurrency()
     {
         // Arrange
         _api.CreateReceivedInvoiceAsync(Arg.Any<CreateReceivedInvoiceDto>(), Arg.Any<CancellationToken>())
             .Returns(new ReceivedInvoiceDto { Id = 10, Status = EReceivedInvoiceStatus.Received });
+        _api.GetActiveCurrenciesAsync(Arg.Any<CancellationToken>())
+            .Returns(new List<CurrencyDto> { new() { Id = 1, Code = "CZK" }, new() { Id = 3, Code = "EUR" } });
 
-        var invoiceJson = JsonSerializer.Serialize(new
+        var invoice = new CreateReceivedInvoiceDto
         {
-            supplierId = 3,
-            currencyId = 1,
-            documentNumber = "PF-2026-010",
-            items = new[]
-            {
-                new { description = "Hosting", quantity = 2, unitPrice = 500, vatRatePercentage = 21 }
-            }
-        });
+            SupplierId = 3,
+            DocumentNumber = "PF-2026-010",
+            Items =
+            [
+                new() { Description = "Hosting", Quantity = 2, UnitPrice = 500, VatRatePercentage = 21 }
+            ]
+        };
 
-        // Act
-        var json = await ReceivedInvoiceTools.CreateReceivedInvoice(_api, invoiceJson);
+        // Act — N2.5: typed DTO parameter; currency is a separate code parameter, defaults to CZK.
+        var json = await ReceivedInvoiceTools.CreateReceivedInvoice(_api, invoice);
 
         // Assert: result is the created invoice ...
         var doc = JsonDocument.Parse(json);
         doc.RootElement.GetProperty("id").GetInt64().ShouldBe(10);
 
-        // ... and the JSON really was mapped onto the DTO, not passed through empty
+        // ... and CurrencyId was resolved from the (default) CZK code, overriding whatever
+        // the caller may have set on the DTO — currency is the source of truth (N2.4/N2.5).
         await _api.Received(1).CreateReceivedInvoiceAsync(
             Arg.Is<CreateReceivedInvoiceDto>(d =>
                 d.SupplierId == 3 &&
@@ -331,27 +334,54 @@ public class ReceivedInvoiceToolsTests
     }
 
     [Fact]
-    public async Task CreateReceivedInvoice_ReturnsError_OnMalformedJson()
+    public async Task CreateReceivedInvoice_AcceptsCurrencyCode_ResolvesToCurrencyId()
     {
-        // Act: not JSON at all — the deserializer throws and the tool must catch it
-        var json = await ReceivedInvoiceTools.CreateReceivedInvoice(_api, "this is not json");
+        _api.CreateReceivedInvoiceAsync(Arg.Any<CreateReceivedInvoiceDto>(), Arg.Any<CancellationToken>())
+            .Returns(new ReceivedInvoiceDto { Id = 11 });
+        _api.GetActiveCurrenciesAsync(Arg.Any<CancellationToken>())
+            .Returns(new List<CurrencyDto> { new() { Id = 1, Code = "CZK" }, new() { Id = 3, Code = "EUR" } });
 
-        // Assert: an error is reported and nothing was sent to the API
-        JsonDocument.Parse(json).RootElement.TryGetProperty("error", out _).ShouldBeTrue();
+        var invoice = new CreateReceivedInvoiceDto
+        {
+            SupplierId = 3,
+            Items = [new() { Description = "Hosting", Quantity = 1, UnitPrice = 100 }]
+        };
+
+        var json = await ReceivedInvoiceTools.CreateReceivedInvoice(_api, invoice, currency: "eur");
+
+        JsonDocument.Parse(json).RootElement.GetProperty("id").GetInt64().ShouldBe(11);
+        await _api.Received(1).CreateReceivedInvoiceAsync(
+            Arg.Is<CreateReceivedInvoiceDto>(d => d.CurrencyId == 3), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CreateReceivedInvoice_ReturnsError_OnNullInvoice()
+    {
+        // Act: null DTO hits the explicit guard before any API call
+        var json = await ReceivedInvoiceTools.CreateReceivedInvoice(_api, null!);
+
+        // Assert
+        JsonDocument.Parse(json).RootElement.GetProperty("error").GetString()
+            .ShouldContain("invoice is required");
         await _api.DidNotReceive().CreateReceivedInvoiceAsync(
             Arg.Any<CreateReceivedInvoiceDto>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public async Task CreateReceivedInvoice_ReturnsError_OnJsonNullLiteral()
+    public async Task CreateReceivedInvoice_UnknownCurrency_ReturnsErrorWithoutCallingApi()
     {
-        // Act: valid JSON that deserializes to null — hits the explicit null guard,
-        // a different code path than the malformed-JSON case above
-        var json = await ReceivedInvoiceTools.CreateReceivedInvoice(_api, "null");
+        _api.GetActiveCurrenciesAsync(Arg.Any<CancellationToken>())
+            .Returns(new List<CurrencyDto> { new() { Id = 1, Code = "CZK" } });
 
-        // Assert
-        JsonDocument.Parse(json).RootElement.GetProperty("error").GetString()
-            .ShouldContain("Failed to parse");
+        var invoice = new CreateReceivedInvoiceDto
+        {
+            SupplierId = 3,
+            Items = [new() { Description = "Hosting", Quantity = 1, UnitPrice = 100 }]
+        };
+
+        var json = await ReceivedInvoiceTools.CreateReceivedInvoice(_api, invoice, currency: "XYZ");
+
+        JsonDocument.Parse(json).RootElement.GetProperty("error").GetString().ShouldContain("Unknown currency 'XYZ'");
         await _api.DidNotReceive().CreateReceivedInvoiceAsync(
             Arg.Any<CreateReceivedInvoiceDto>(), Arg.Any<CancellationToken>());
     }
@@ -362,10 +392,13 @@ public class ReceivedInvoiceToolsTests
         // Arrange: server-side validation rejects the invoice
         _api.CreateReceivedInvoiceAsync(Arg.Any<CreateReceivedInvoiceDto>(), Arg.Any<CancellationToken>())
             .Throws(new HttpRequestException("400 Bad Request: supplier not found"));
+        _api.GetActiveCurrenciesAsync(Arg.Any<CancellationToken>())
+            .Returns(new List<CurrencyDto> { new() { Id = 1, Code = "CZK" } });
+
+        var invoice = new CreateReceivedInvoiceDto { SupplierId = 999, Items = [] };
 
         // Act
-        var json = await ReceivedInvoiceTools.CreateReceivedInvoice(
-            _api, "{\"supplierId\":999,\"currencyId\":1,\"items\":[]}");
+        var json = await ReceivedInvoiceTools.CreateReceivedInvoice(_api, invoice);
 
         // Assert: sanitized error, the raw exception message must not leak (issue #279)
         var root = JsonDocument.Parse(json).RootElement;
@@ -524,21 +557,12 @@ public class ReceivedInvoiceToolsTests
         doc.RootElement.GetProperty("message").GetString().ShouldNotContain("HttpClient.Timeout");
     }
 
-    // ── CreateReceivedInvoice — input parsing ──────────────────────────
-
-    [Fact]
-    public async Task CreateReceivedInvoice_ReturnsInvalidJsonError_WhenPaymentMethodIsNotAnEnumValue()
-    {
-        // Regression: "Apple Pay" is not an EPaymentMethod, so deserialization throws.
-        // That is the model's input error and must be reported precisely — not swallowed
-        // into the sanitized "internal_error" (which made the real cause invisible).
-        var json = await ReceivedInvoiceTools.CreateReceivedInvoice(
-            _api, "{\"supplierId\":7,\"currencyId\":1,\"paymentMethod\":\"Apple Pay\",\"items\":[]}");
-
-        var doc = JsonDocument.Parse(json);
-        doc.RootElement.GetProperty("error").GetString().ShouldStartWith("Invalid JSON format");
-        await _api.DidNotReceive().CreateReceivedInvoiceAsync(Arg.Any<CreateReceivedInvoiceDto>(), Arg.Any<CancellationToken>());
-    }
+    // N2.5: "paymentMethod is not an EPaymentMethod" used to be a JSON-parsing concern of THIS
+    // tool (it deserialized the model's raw JSON itself). Now that the parameter is a typed
+    // CreateReceivedInvoiceDto, that deserialization — and therefore an invalid enum string —
+    // is the SDK's job before this method is even invoked. Covered by
+    // McpSdkInvocationTests.InvokeAsync_AcceptsEnumAsString_ForTypedDtoParameter (real SDK path)
+    // and ToolDiscoveryTests' no-JSON-string-parameter guard.
 
     // ── UploadReceivedInvoiceAttachment ────────────────────────────────
 

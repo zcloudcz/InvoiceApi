@@ -629,16 +629,16 @@ public class InvoiceToolsTests
     }
 
     [Fact]
-    public async Task CreateClient_DeserializesAndCreates()
+    public async Task CreateClient_CreatesFromTypedDto()
     {
         // Arrange
         var created = new ClientDto { Id = 5, CompanyName = "Acme s.r.o." };
         _api.CreateClientAsync(Arg.Any<CreateClientDto>(), Arg.Any<CancellationToken>())
             .Returns(created);
 
-        // Act
+        // Act — N2.5: typed DTO parameter, no more "JSON string of CreateClientDto".
         var json = await ClientTools.CreateClient(_api,
-            "{\"companyName\":\"Acme s.r.o.\",\"registrationNumber\":\"12345678\"}");
+            new CreateClientDto { CompanyName = "Acme s.r.o.", RegistrationNumber = "12345678" });
 
         // Assert
         var doc = JsonDocument.Parse(json);
@@ -734,9 +734,9 @@ public class InvoiceToolsTests
         _api.CreateInvoiceFromTemplateAsync(5, Arg.Any<CreateInvoiceFromTemplateDto>(), Arg.Any<CancellationToken>())
             .Returns(created);
 
-        // Act
+        // Act — N2.5: typed DTO parameter, no more "JSON string with creation options".
         var json = await TemplateTools.CreateInvoiceFromTemplate(_api, 5,
-            "{\"clientId\":10,\"autoComplete\":false}");
+            new CreateInvoiceFromTemplateDto { ClientId = 10, AutoComplete = false });
 
         // Assert
         var doc = JsonDocument.Parse(json);
@@ -766,7 +766,7 @@ public class InvoiceToolsTests
 
         // Act
         var json = await TemplateTools.CreateInvoiceFromTemplate(_api, 5,
-            "{\"clientId\":10,\"autoComplete\":true}");
+            new CreateInvoiceFromTemplateDto { ClientId = 10, AutoComplete = true });
 
         // Assert
         var doc = JsonDocument.Parse(json);

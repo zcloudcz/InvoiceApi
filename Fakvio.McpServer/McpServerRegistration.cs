@@ -1,5 +1,6 @@
 using Fakvio.McpServer.Client;
 using Fakvio.McpServer.Configuration;
+using Fakvio.McpServer.Tools;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Fakvio.McpServer;
@@ -65,6 +66,6 @@ public static class McpServerRegistration
                     Version = ServerVersion
                 };
             })
-            .WithToolsFromAssembly(typeof(McpServerRegistration).Assembly);
+            .WithToolsFromAssembly(typeof(McpServerRegistration).Assembly, serializerOptions: McpToolJsonOptions.Default);
     }
 }

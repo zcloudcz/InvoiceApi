@@ -266,6 +266,12 @@ grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs
   je na klientovi.
 - Logy jdou **výhradně na stderr** (`LogToStandardErrorThreshold = Trace`).
   Stdout je vyhrazený pro JSON-RPC — jakýkoli zápis do stdout protokol rozbije.
+- **Vstup nikdy není „JSON string of …Dto" (N2.5).** Parametr typu DTO (`CreateClientDto client`,
+  `List<CreateInvoiceItemDto> items`, …) dá modelu schéma zdarma — SDK ho vygeneruje ze skutečného
+  typu, žádná ruční deserializace v těle toolu. Enumy jako řetězce (`"BankTransfer"`,
+  `"CreditNote"`) a camelCase fungují díky `McpToolJsonOptions.Default`, které
+  `McpServerRegistration` předává do `WithToolsFromAssembly()` — bez něj by SDK čekalo
+  PascalCase a číselné enumy. Hlídá `ToolDiscoveryTests.NoTool_TakesAnOpaqueJsonStringParameter`.
 - **`CreateInvoice` (N2.4) překládá modelem srozumitelný vstup na interní ID** — bez volání API:
   `currency` (ISO kód, výchozí `CZK`) se přeloží přes `list_currencies` na `currencyId`; `issuerId`
   vynechaný znamená vlastní firmu (`get_issuer`); položce bez `vatRateId` doplní ID podle

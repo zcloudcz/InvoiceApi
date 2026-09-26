@@ -113,37 +113,32 @@ public static class ReceivedInvoiceTools
     /// Creates a new received invoice.
     /// </summary>
     [McpServerTool(Title = "Create received invoice", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description(
-        "Create a new received (incoming) invoice. Pass JSON with: " +
-        "supplierId (required), currencyId (required), items[] (required, at least 1), " +
-        "documentNumber, issueDate, receivedDate, dueDate, taxableSupplyDate, " +
-        "variableSymbol, paymentMethod, bankAccountNumber, iban, swift, notes. " +
-        "paymentMethod must be one of: BankTransfer, Cash, CreditCard, PayPal, Other (anything else, e.g. 'Apple Pay', goes to notes). " +
+        "Create a new received (incoming) invoice. " +
+        "paymentMethod on items/invoice must be one of: BankTransfer, Cash, CreditCard, PayPal, Other " +
+        "(anything else, e.g. 'Apple Pay', goes to notes). " +
         "Each item needs: description, quantity, unitPrice, vatRatePercentage (or vatRateId); optional productCode, notes. " +
         "Negative unitPrice is allowed for discount lines. " +
         "To attach the source PDF afterwards, call upload_received_invoice_attachment with the returned id.")]
     public static async Task<string> CreateReceivedInvoice(
         IFakvioApiClient api,
-        [Description("JSON string of CreateReceivedInvoiceDto")] string invoiceJson,
+        [Description("Received invoice to create — supplierId and at least one item are required. " +
+                      "currencyId is ignored; use the separate currency parameter instead.")]
+        CreateReceivedInvoiceDto invoice,
+        [Description("ISO 4217 currency code, e.g. 'EUR' — see list_currencies. Omit for CZK.")] string? currency = null,
         CancellationToken ct = default)
     {
-        // Parsing the model's own input is deliberately kept OUT of the try block
-        // below — see McpToolError for why (issue #279).
-        CreateReceivedInvoiceDto? dto;
-        try
-        {
-            dto = JsonSerializer.Deserialize<CreateReceivedInvoiceDto>(invoiceJson, JsonOptions);
-        }
-        catch (JsonException ex)
-        {
-            return JsonSerializer.Serialize(new { error = $"Invalid JSON format: {ex.Message}" }, JsonOptions);
-        }
-
-        if (dto is null)
-            return JsonSerializer.Serialize(new { error = "Failed to parse invoice JSON." }, JsonOptions);
+        if (invoice is null)
+            return JsonSerializer.Serialize(new { error = "invoice is required." }, JsonOptions);
 
         try
         {
-            var result = await api.CreateReceivedInvoiceAsync(dto, ct);
+            var (resolvedCurrency, currencyError) = await CodeListTools.ResolveCurrencyAsync(api, currency, ct);
+            if (resolvedCurrency is null)
+                return JsonSerializer.Serialize(new { error = currencyError }, JsonOptions);
+
+            invoice.CurrencyId = resolvedCurrency.Id;
+
+            var result = await api.CreateReceivedInvoiceAsync(invoice, ct);
             return JsonSerializer.Serialize(result, JsonOptions);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)

@@ -93,30 +93,16 @@ public static class TemplateTools
     public static async Task<string> CreateInvoiceFromTemplate(
         IFakvioApiClient api,
         [Description("The template ID to use as blueprint")] long templateId,
-        [Description(
-            "JSON string with creation options. Example: " +
-            "{\"clientId\":5,\"autoComplete\":false,\"notes\":\"Monthly hosting\"}"
-        )] string optionsJson,
+        [Description("Creation options — clientId is required, everything else overrides a template default")]
+        CreateInvoiceFromTemplateDto options,
         CancellationToken ct = default)
     {
-        // Parsing the model's own input is deliberately kept OUT of the try block
-        // below — see McpToolError for why (issue #279).
-        CreateInvoiceFromTemplateDto? dto;
-        try
-        {
-            dto = JsonSerializer.Deserialize<CreateInvoiceFromTemplateDto>(optionsJson, JsonOptions);
-        }
-        catch (JsonException ex)
-        {
-            return JsonSerializer.Serialize(new { error = $"Invalid JSON format: {ex.Message}" }, JsonOptions);
-        }
-
-        if (dto is null)
-            return JsonSerializer.Serialize(new { error = "Invalid JSON: could not deserialize creation options." }, JsonOptions);
+        if (options is null)
+            return JsonSerializer.Serialize(new { error = "options is required." }, JsonOptions);
 
         try
         {
-            var result = await api.CreateInvoiceFromTemplateAsync(templateId, dto, ct);
+            var result = await api.CreateInvoiceFromTemplateAsync(templateId, options, ct);
             return JsonSerializer.Serialize(result, JsonOptions);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)

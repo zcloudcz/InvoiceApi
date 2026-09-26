@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Text.Json;
+using Fakvio.Contracts.Dto.Currency;
 using Fakvio.McpServer.Client;
 using ModelContextProtocol.Server;
 
@@ -58,5 +59,29 @@ public static class CodeListTools
         {
             return McpToolError.ToJson(ex);
         }
+    }
+
+    /// <summary>
+    /// Resolves a model-supplied currency code (or <see langword="null"/>, meaning "CZK") to the
+    /// active <see cref="CurrencyDto"/> it identifies. Shared by <c>InvoiceTools.CreateInvoice</c>
+    /// and <c>ReceivedInvoiceTools.CreateReceivedInvoice</c> (N2.4 / N2.5) — both need exactly the
+    /// same lookup instead of the model providing an internal <c>currencyId</c> it cannot know.
+    /// </summary>
+    /// <returns>
+    /// The resolved currency, or <see langword="null"/> with <paramref name="error"/> set to a
+    /// message listing the active codes when the requested code does not match any of them.
+    /// </returns>
+    internal static async Task<(CurrencyDto? Currency, string? Error)> ResolveCurrencyAsync(
+        IFakvioApiClient api, string? code, CancellationToken ct)
+    {
+        var currencies = await api.GetActiveCurrenciesAsync(ct);
+        var wantedCode = code ?? "CZK";
+        var match = currencies.FirstOrDefault(
+            c => string.Equals(c.Code, wantedCode, StringComparison.OrdinalIgnoreCase));
+
+        return match is not null
+            ? (match, null)
+            : (null, $"Unknown currency '{wantedCode}'. Active currencies: " +
+                     string.Join(", ", currencies.Select(c => c.Code)) + ".");
     }
 }

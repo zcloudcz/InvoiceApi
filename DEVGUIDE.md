@@ -1620,6 +1620,19 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
   `InvoiceService.CreateInvoiceAsync` (`Fakvio.Infrastructure/Service/InvoiceService.cs:401-411`)
   already applies. An unknown currency code or unmatched VAT percentage returns a domain error
   listing the valid values and never reaches the API.
+- **Pravidlo: vstup = typovaný parametr/DTO, nikdy JSON string (N2.5).** `ClientTools.CreateClient`/
+  `UpdateClient`, `ReceivedInvoiceTools.CreateReceivedInvoice`, `TemplateTools.CreateInvoiceFromTemplate`
+  brávaly `string …Json` a deserializovaly ho ručně — nahrazeno typovaným DTO parametrem
+  (`client`, `changes`, `invoice`, `options`); ruční deserializační `try` bloky zmizely, protože
+  je dělá sám SDK. Aby to fungovalo s camelCase názvy a enumy jako řetězci (stejná konvence jako
+  výstup), `McpServerRegistration.AddFakvioMcpServer` předává `WithToolsFromAssembly()` explicitní
+  `Fakvio.McpServer.Tools.McpToolJsonOptions.Default` (camelCase + `JsonStringEnumConverter` +
+  `DefaultJsonTypeInfoResolver` — bez resolveru SDK options odmítne jako read-only). `create_received_invoice`
+  navíc dostal stejný `string? currency` parametr jako `create_invoice` (N2.4) — sdílená
+  `CodeListTools.ResolveCurrencyAsync` helper metoda, žádná nová abstrakce. Guard:
+  `ToolDiscoveryTests.NoTool_TakesAnOpaqueJsonStringParameter` (žádný `string …Json` parametr) a
+  `McpSdkInvocationTests` (enum jako řetězec a vnořené DTO pole projdou přes skutečnou SDK cestu,
+  ne jen přímým voláním metody).
 - Detaily (build, získání credentialu, seznam nástrojů, postup přidání nástroje): `Fakvio.McpServer/README.md`.
   Uživatelský postup (vytvoření klíče, konfigurace klienta v obou režimech): USERGUIDE §20. Provoz HTTP hostu a jeho bezpečnostní model: ADMINGUIDE §9.
 
