@@ -9,6 +9,7 @@ using Fakvio.Contracts.Dto.Email;
 using Fakvio.Contracts.Dto.FileAttachment;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Contracts.Dto.InvoiceTemplate;
+using Fakvio.Contracts.Dto.NumberSequence;
 using Fakvio.Contracts.Dto.Readiness;
 using Fakvio.Contracts.Dto.VatRate;
 using Fakvio.Domain.Enums;
@@ -347,6 +348,72 @@ public class FakvioApiClientTests : IDisposable
 
         _handler.LastRequestUri?.ToString().ShouldContain("date=");
         result.ShouldHaveSingleItem();
+    }
+
+    // ── Number sequence tests ───────────────────────────────────────────
+
+    [Fact]
+    public async Task GetNumberSequencesAsync_NoFilters_NoQueryString()
+    {
+        _handler.SetupResponse(HttpStatusCode.OK, new List<NumberSequenceDto>());
+
+        await _sut.GetNumberSequencesAsync();
+
+        _handler.LastRequestUri?.ToString().ShouldEndWith("api/numbersequence");
+    }
+
+    [Fact]
+    public async Task GetNumberSequencesAsync_WithFilters_AppendsQueryString()
+    {
+        _handler.SetupResponse(HttpStatusCode.OK, new List<NumberSequenceDto>());
+
+        await _sut.GetNumberSequencesAsync(EDocumentType.CreditNote, includeInactive: true);
+
+        _handler.LastRequestUri?.ToString().ShouldContain("documentType=CreditNote");
+        _handler.LastRequestUri?.ToString().ShouldContain("includeInactive=true");
+    }
+
+    [Fact]
+    public async Task GetNumberSequenceFormatsAsync_CallsFormatsEndpoint()
+    {
+        _handler.SetupResponse(HttpStatusCode.OK, new List<NumberSequenceFormatDto> { new() { Id = 1 } });
+
+        var result = await _sut.GetNumberSequenceFormatsAsync();
+
+        _handler.LastRequestUri?.ToString().ShouldEndWith("api/numbersequence/formats");
+        result.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task CreateNumberSequenceAsync_PostsAndReturnsCreated()
+    {
+        _handler.SetupResponse(HttpStatusCode.OK, new NumberSequenceDto { Id = 9, Name = "Faktury" });
+
+        var result = await _sut.CreateNumberSequenceAsync(new CreateNumberSequenceDto { Name = "Faktury" });
+
+        _handler.LastRequestMethod.ShouldBe(HttpMethod.Post);
+        result.Id.ShouldBe(9);
+    }
+
+    [Fact]
+    public async Task UpdateNumberSequenceAsync_NotFound_ReturnsNull()
+    {
+        _handler.SetupResponse(HttpStatusCode.NotFound, new { message = "not found" });
+
+        var result = await _sut.UpdateNumberSequenceAsync(999, new UpdateNumberSequenceDto());
+
+        result.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task SetDefaultNumberSequenceAsync_PostsToSetDefaultRoute()
+    {
+        _handler.SetupResponse(HttpStatusCode.OK, new NumberSequenceDto { Id = 1, IsDefault = true });
+
+        var result = await _sut.SetDefaultNumberSequenceAsync(1);
+
+        _handler.LastRequestUri?.ToString().ShouldEndWith("api/numbersequence/1/set-default");
+        result!.IsDefault.ShouldBeTrue();
     }
 
     // ── Template tests ─────────────────────────────────────────────────

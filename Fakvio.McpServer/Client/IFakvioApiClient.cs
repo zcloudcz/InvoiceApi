@@ -6,12 +6,14 @@ using Fakvio.Contracts.Dto.Dashboard;
 using Fakvio.Contracts.Dto.Email;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Contracts.Dto.InvoiceTemplate;
+using Fakvio.Contracts.Dto.NumberSequence;
 using Fakvio.Contracts.Dto.Readiness;
 using Fakvio.Contracts.Dto.FileAttachment;
 using Fakvio.Contracts.Dto.ReceivedInvoice;
 using Fakvio.Contracts.Dto.Tax;
 using Fakvio.Contracts.Dto.VatRate;
 using Fakvio.Contracts.Dto.VatReport;
+using Fakvio.Domain.Enums;
 
 namespace Fakvio.McpServer.Client;
 
@@ -86,6 +88,28 @@ public interface IFakvioApiClient
 
     /// <summary>GET /api/vatrate/active?date= — VAT rates valid at the given date (null = today).</summary>
     Task<List<VatRateDto>> GetActiveVatRatesAsync(DateTime? date = null, CancellationToken ct = default);
+
+    // ── Number sequence endpoints ───────────────────────────────────────
+
+    /// <summary>GET /api/numbersequence — number sequences, optionally filtered by document type.</summary>
+    Task<List<NumberSequenceDto>> GetNumberSequencesAsync(
+        EDocumentType? documentType = null, bool includeInactive = false, CancellationToken ct = default);
+
+    /// <summary>GET /api/numbersequence/{id} — single sequence by ID.</summary>
+    Task<NumberSequenceDto?> GetNumberSequenceByIdAsync(long id, CancellationToken ct = default);
+
+    /// <summary>GET /api/numbersequence/formats — available numbering formats.</summary>
+    Task<List<NumberSequenceFormatDto>> GetNumberSequenceFormatsAsync(
+        bool includeInactive = false, CancellationToken ct = default);
+
+    /// <summary>POST /api/numbersequence — create a new number sequence.</summary>
+    Task<NumberSequenceDto> CreateNumberSequenceAsync(CreateNumberSequenceDto dto, CancellationToken ct = default);
+
+    /// <summary>PUT /api/numbersequence/{id} — update name/prefix/suffix/current counter.</summary>
+    Task<NumberSequenceDto?> UpdateNumberSequenceAsync(long id, UpdateNumberSequenceDto dto, CancellationToken ct = default);
+
+    /// <summary>POST /api/numbersequence/{id}/set-default — make this the default sequence for its document type.</summary>
+    Task<NumberSequenceDto?> SetDefaultNumberSequenceAsync(long id, CancellationToken ct = default);
 
     // ── Invoice Template endpoints ─────────────────────────────────────
 

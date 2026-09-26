@@ -9,12 +9,14 @@ using Fakvio.Contracts.Dto.Dashboard;
 using Fakvio.Contracts.Dto.Email;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Contracts.Dto.InvoiceTemplate;
+using Fakvio.Contracts.Dto.NumberSequence;
 using Fakvio.Contracts.Dto.Readiness;
 using Fakvio.Contracts.Dto.FileAttachment;
 using Fakvio.Contracts.Dto.ReceivedInvoice;
 using Fakvio.Contracts.Dto.Tax;
 using Fakvio.Contracts.Dto.VatRate;
 using Fakvio.Contracts.Dto.VatReport;
+using Fakvio.Domain.Enums;
 
 namespace Fakvio.McpServer.Client;
 
@@ -203,6 +205,68 @@ public class FakvioApiClient : IFakvioApiClient
         var query = date.HasValue ? $"?date={date.Value:O}" : "";
         var result = await _http.GetFromJsonAsync<List<VatRateDto>>($"api/vatrate/active{query}", JsonOptions, ct);
         return result ?? [];
+    }
+
+    public async Task<List<NumberSequenceDto>> GetNumberSequencesAsync(
+        EDocumentType? documentType = null, bool includeInactive = false, CancellationToken ct = default)
+    {
+        var parts = new List<string>();
+        if (documentType.HasValue) parts.Add($"documentType={documentType.Value}");
+        if (includeInactive) parts.Add("includeInactive=true");
+        var query = parts.Count > 0 ? "?" + string.Join("&", parts) : "";
+
+        var result = await _http.GetFromJsonAsync<List<NumberSequenceDto>>($"api/numbersequence{query}", JsonOptions, ct);
+        return result ?? [];
+    }
+
+    public async Task<NumberSequenceDto?> GetNumberSequenceByIdAsync(long id, CancellationToken ct = default)
+    {
+        var response = await _http.GetAsync($"api/numbersequence/{id}", ct);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return null;
+
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadFromJsonAsync<NumberSequenceDto>(JsonOptions, ct);
+    }
+
+    public async Task<List<NumberSequenceFormatDto>> GetNumberSequenceFormatsAsync(
+        bool includeInactive = false, CancellationToken ct = default)
+    {
+        var query = includeInactive ? "?includeInactive=true" : "";
+        var result = await _http.GetFromJsonAsync<List<NumberSequenceFormatDto>>(
+            $"api/numbersequence/formats{query}", JsonOptions, ct);
+        return result ?? [];
+    }
+
+    public async Task<NumberSequenceDto> CreateNumberSequenceAsync(CreateNumberSequenceDto dto, CancellationToken ct = default)
+    {
+        var response = await _http.PostAsJsonAsync("api/numbersequence", dto, JsonOptions, ct);
+        await EnsureSuccessAsync(response, ct);
+        return (await response.Content.ReadFromJsonAsync<NumberSequenceDto>(JsonOptions, ct))!;
+    }
+
+    public async Task<NumberSequenceDto?> UpdateNumberSequenceAsync(
+        long id, UpdateNumberSequenceDto dto, CancellationToken ct = default)
+    {
+        var response = await _http.PutAsJsonAsync($"api/numbersequence/{id}", dto, JsonOptions, ct);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return null;
+
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadFromJsonAsync<NumberSequenceDto>(JsonOptions, ct);
+    }
+
+    public async Task<NumberSequenceDto?> SetDefaultNumberSequenceAsync(long id, CancellationToken ct = default)
+    {
+        var response = await _http.PostAsync($"api/numbersequence/{id}/set-default", content: null, ct);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return null;
+
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadFromJsonAsync<NumberSequenceDto>(JsonOptions, ct);
     }
 
     public async Task<List<InvoiceTemplateDto>> GetActiveTemplatesAsync(string? documentType = null, CancellationToken ct = default)
