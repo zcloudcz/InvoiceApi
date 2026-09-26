@@ -360,6 +360,23 @@ Tyto hodnoty se automaticky aplikují při vytváření nové faktury pro tohoto
 
 V detailu klienta se zobrazuje tabulka faktur tohoto klienta (server-side stránkování).
 
+### 5.5 Import klientů z Fakturoidu / iDokladu
+
+**Stránka:** `/clients` → tlačítko „Importovat z CSV"
+
+Když přecházíte z Fakturoidu nebo iDokladu, nemusíte klienty přepisovat ručně:
+
+1. Ve Fakturoidu: Kontakty → Export; v iDokladu: Adresář → Export. Uložte jako CSV.
+2. Na stránce Klienti klikněte „Importovat z CSV" a vyberte soubor.
+3. Systém zobrazí náhled — u každého řádku vidíte, zda je klient **nový**, **duplicitní**
+   (podle IČO — už v systému existuje, nebo se opakuje v souboru) nebo **chybný** (chybí název).
+   Neznámé sloupce z exportu se ignorují.
+4. Klikněte „Importovat" — založí se jen nové řádky. Opakovaným nahráním stejného souboru se
+   nic nezaloží znovu.
+
+Import zatím nenačítá historii vydaných faktur (jen kontakty) — přenos faktur je plánovaná
+druhá fáze.
+
 ---
 
 ## 6. Šablony faktur (InvoiceTemplates)

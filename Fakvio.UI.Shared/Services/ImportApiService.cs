@@ -52,7 +52,10 @@ public class ImportApiService : ApiClientBase
             // Add the target enum as a form field
             content.Add(new StringContent(((int)target).ToString()), "target");
 
-            // Use the underlying HttpClient directly (multipart not supported by base class)
+            // Use the underlying HttpClient directly (multipart not supported by base class).
+            // Still needs the auth header added manually — ApiClientBase only adds it inside its
+            // own Get/PostAsync helpers, which this method bypasses for multipart support.
+            await AddAuthorizationHeaderAsync();
             var response = await _httpClient.PostAsync("api/import/preview", content);
 
             if (response.IsSuccessStatusCode)
@@ -80,5 +83,40 @@ public class ImportApiService : ApiClientBase
     {
         return await PostAsync<ConfirmInvoiceImportRequest, List<ImportResultDto>>(
             "api/import/confirm", request) ?? new List<ImportResultDto>();
+    }
+
+    // ─── Client CSV import (N6) ────────────────────────────────────────────
+
+    /// <summary>
+    /// Uploads a single CSV file and returns the client import preview
+    /// (New/Duplicate/Invalid per row). Nothing is saved yet.
+    /// Throws on a non-success response so the caller can show the server's error message
+    /// (e.g. "file too large") instead of a silent empty result.
+    /// </summary>
+    public async Task<ClientImportPreviewDto> PreviewClientsAsync(string fileName, byte[] bytes)
+    {
+        using var content = new MultipartFormDataContent();
+        var fileContent = new ByteArrayContent(bytes);
+        fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("text/csv");
+        content.Add(fileContent, "file", fileName);
+
+        await AddAuthorizationHeaderAsync(); // multipart bypasses ApiClientBase's PostAsync, so this must be called explicitly
+        var response = await _httpClient.PostAsync("api/import/clients/preview", content);
+        if (response.IsSuccessStatusCode)
+        {
+            return await response.Content.ReadFromJsonAsync<ClientImportPreviewDto>() ?? new ClientImportPreviewDto();
+        }
+
+        await HandleErrorResponseAsync(response, "POST", "api/import/clients/preview");
+        return new ClientImportPreviewDto(); // Unreachable — HandleErrorResponseAsync always throws
+    }
+
+    /// <summary>
+    /// Confirms a client CSV import — creates the clients the user kept from the preview.
+    /// </summary>
+    public async Task<ClientImportResultDto> ConfirmClientsAsync(ClientImportConfirmDto request)
+    {
+        return await PostAsync<ClientImportConfirmDto, ClientImportResultDto>(
+            "api/import/clients/confirm", request) ?? new ClientImportResultDto();
     }
 }

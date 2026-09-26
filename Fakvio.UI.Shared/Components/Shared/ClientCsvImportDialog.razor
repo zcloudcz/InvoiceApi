@@ -1,0 +1,220 @@
+@using Fakvio.Contracts.Dto.Import
+@using Fakvio.UI.Shared.Services
+@inject ImportApiService ImportService
+@inject IStringLocalizer<SharedResource> L
+
+@*
+    Client CSV import dialog (Story N6): upload a CSV export from Fakturoid or iDoklad, preview
+    which rows are new/duplicate/invalid, then confirm to actually create the clients.
+    See DEVGUIDE.md §4.14 for the server-side mapping/dedup rules.
+*@
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.UploadFile" Class="mr-1" />
+            @L["ClientImport_DialogTitle"]
+        </MudText>
+    </TitleContent>
+
+    <DialogContent>
+        @if (_step == Step.Upload)
+        {
+            <MudAlert Severity="Severity.Info" Class="mb-3">
+                @L["ClientImport_Help"]
+            </MudAlert>
+
+            <MudFileUpload T="IBrowserFile" FilesChanged="HandleFileSelected" Accept=".csv">
+                <ActivatorContent>
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.CloudUpload">
+                        @L["ClientImport_SelectFile"]
+                    </MudButton>
+                </ActivatorContent>
+            </MudFileUpload>
+
+            @if (_selectedFileName != null)
+            {
+                <MudText Class="mt-3">@_selectedFileName</MudText>
+            }
+
+            @if (_errorMessage != null)
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-3">@_errorMessage</MudAlert>
+            }
+        }
+        else if (_step == Step.Preview)
+        {
+            <MudText Class="mb-2">
+                @string.Format(L["ClientImport_Summary"].Value, _preview!.NewCount, _preview.DuplicateCount, _preview.InvalidCount)
+            </MudText>
+
+            <MudTable Items="_preview.Rows" Dense Hover Striped>
+                <HeaderContent>
+                    <MudTh>@L["ClientImport_Col_Row"]</MudTh>
+                    <MudTh>@L["Client_CompanyName"]</MudTh>
+                    <MudTh>@L["Client_RegistrationNumber"]</MudTh>
+                    <MudTh>@L["ClientImport_Col_Status"]</MudTh>
+                    <MudTh>@L["ClientImport_Col_Reason"]</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.RowNumber</MudTd>
+                    <MudTd>@context.Client.CompanyName</MudTd>
+                    <MudTd>@(context.Client.RegistrationNumber ?? "—")</MudTd>
+                    <MudTd>
+                        <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">
+                            @GetStatusLabel(context.Status)
+                        </MudChip>
+                    </MudTd>
+                    <MudTd>@(context.Reason ?? "—")</MudTd>
+                </RowTemplate>
+            </MudTable>
+
+            @if (_preview.UnknownColumns.Count > 0)
+            {
+                <MudAlert Severity="Severity.Info" Class="mt-3" Dense>
+                    @string.Format(L["ClientImport_UnknownColumns"].Value, string.Join(", ", _preview.UnknownColumns))
+                </MudAlert>
+            }
+
+            @if (_errorMessage != null)
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-3">@_errorMessage</MudAlert>
+            }
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Success">
+                @string.Format(L["ClientImport_ResultSummary"].Value, _result!.CreatedCount, _result.SkippedCount)
+            </MudAlert>
+
+            @if (_result!.Errors.Count > 0)
+            {
+                <MudAlert Severity="Severity.Warning" Class="mt-2">
+                    @foreach (var error in _result.Errors)
+                    {
+                        <div>@error</div>
+                    }
+                </MudAlert>
+            }
+        }
+    </DialogContent>
+
+    <DialogActions>
+        @if (_step == Step.Upload)
+        {
+            <MudButton OnClick="Cancel">@L["AutoMatch_Cancel"]</MudButton>
+        }
+        else if (_step == Step.Preview)
+        {
+            <MudButton OnClick="Cancel">@L["AutoMatch_Cancel"]</MudButton>
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       Disabled="@(_preview!.NewCount == 0 || _isProcessing)"
+                       OnClick="Confirm">
+                @if (_isProcessing)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate Class="mr-2" />
+                }
+                @string.Format(L["ClientImport_ConfirmButton"].Value, _preview.NewCount)
+            </MudButton>
+        }
+        else
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Close">@L["Btn_Close"]</MudButton>
+        }
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    private enum Step { Upload, Preview, Result }
+
+    private Step _step = Step.Upload;
+    private string? _selectedFileName;
+    private byte[]? _selectedFileBytes;
+    private ClientImportPreviewDto? _preview;
+    private ClientImportResultDto? _result;
+    private string? _errorMessage;
+    private bool _isProcessing;
+
+    /// <summary>True once at least one client was created — tells the caller to refresh the grid.</summary>
+    private bool _anyCreated;
+
+    /// <summary>
+    /// Reads the selected CSV into memory and immediately requests a preview.
+    /// The file is small (server enforces a 5 MB limit), so reading it whole is fine.
+    /// </summary>
+    private async Task HandleFileSelected(IBrowserFile file)
+    {
+        _errorMessage = null;
+        _selectedFileName = file.Name;
+
+        const long maxSize = 5 * 1024 * 1024; // matches CsvTable.MaxFileSizeBytes
+        if (file.Size > maxSize)
+        {
+            _errorMessage = L["ClientImport_FileTooLarge"];
+            return;
+        }
+
+        using var ms = new MemoryStream();
+        await file.OpenReadStream(maxAllowedSize: maxSize).CopyToAsync(ms);
+        _selectedFileBytes = ms.ToArray();
+
+        _isProcessing = true;
+        try
+        {
+            _preview = await ImportService.PreviewClientsAsync(file.Name, _selectedFileBytes);
+            _step = Step.Preview;
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _isProcessing = false;
+        }
+    }
+
+    private async Task Confirm()
+    {
+        _isProcessing = true;
+        _errorMessage = null;
+        try
+        {
+            var newRows = _preview!.Rows.Where(r => r.Status == EClientImportRowStatus.New).Select(r => r.Client).ToList();
+            _result = await ImportService.ConfirmClientsAsync(new ClientImportConfirmDto { Clients = newRows });
+            _anyCreated = _result.CreatedCount > 0;
+            _step = Step.Result;
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _isProcessing = false;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private void Close() => MudDialog.Close(DialogResult.Ok(_anyCreated));
+
+    private Color GetStatusColor(EClientImportRowStatus status) => status switch
+    {
+        EClientImportRowStatus.New => Color.Success,
+        EClientImportRowStatus.Duplicate => Color.Warning,
+        _ => Color.Error
+    };
+
+    private string GetStatusLabel(EClientImportRowStatus status) => status switch
+    {
+        EClientImportRowStatus.New => L["ClientImport_Status_New"],
+        EClientImportRowStatus.Duplicate => L["ClientImport_Status_Duplicate"],
+        _ => L["ClientImport_Status_Invalid"]
+    };
+}
