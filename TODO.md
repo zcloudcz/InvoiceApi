@@ -1,5 +1,16 @@
 # Fakvio TODO
 
+## Open decision (2026-09-26)
+
+### Jednotný ZCLOUD login — Entra External ID vs. vlastní IdP
+- [x] Analýza: vlastní IdP od nuly nestavět; doporučení = Entra External ID (už ho používá `zcloud-login`)
+      pro autentizaci, tenanty/role/impersonace/API klíče zůstávají ve Fakviu
+- [ ] Rozhodnout: je nutný Seznam login a TOTP (Authenticator) jako 2FA? External ID TOTP pro zákazníky neumí
+- [ ] Ověřit: Seznam jako custom OIDC IdP v External ID (má Seznam OIDC discovery?)
+- [ ] Ověřit: self-host nasazení Fakvia — musí fungovat bez Entry? (pak OpenIddict jako fallback)
+- [ ] Pokud GO: PoC — Fakvio.API přijme Entra token vedle vlastního JWT, mapování `User.ExternalProviderId` (oid)
+- [ ] Pokud GO: migrace hesel — vynucený reset (doporučeno MS) nebo JIT migrace přes custom auth extension
+
 ## Completed (2026-09-11)
 
 ### Výchozí řazení faktur: od nejnovější ✅
