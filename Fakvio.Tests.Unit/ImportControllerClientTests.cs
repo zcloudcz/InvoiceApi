@@ -80,6 +80,23 @@ public class ImportControllerClientTests
     }
 
     [Fact]
+    public async Task ConfirmClients_MoreThanMaxRowCount_ReturnsBadRequest_WithoutCallingService()
+    {
+        var controller = CreateController();
+        var request = new ClientImportConfirmDto
+        {
+            Clients = Enumerable.Range(0, CsvTable.MaxRowCount + 1)
+                .Select(i => new CreateClientDto { CompanyName = $"Co {i}" })
+                .ToList()
+        };
+
+        var result = await controller.ConfirmClients(request, CancellationToken.None);
+
+        result.Result.ShouldBeOfType<BadRequestObjectResult>();
+        await _clientCsvImportService.DidNotReceive().ConfirmAsync(Arg.Any<ClientImportConfirmDto>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task ConfirmClients_ValidRequest_ReturnsResultFromService()
     {
         var controller = CreateController();

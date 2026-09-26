@@ -26,17 +26,25 @@ public class ClientCsvImportServiceTests
     public ClientCsvImportServiceTests()
     {
         _service = new ClientCsvImportService(_clientService, Substitute.For<ILogger<ClientCsvImportService>>());
+
+        // Default: bulk existence check finds nothing — most tests override this per-case.
+        StubExisting();
     }
 
     private static Stream ToStream(string csv) => new MemoryStream(Encoding.UTF8.GetBytes(csv));
+
+    /// <summary>Stubs the bulk IČO existence check used by both PreviewAsync and ConfirmAsync.</summary>
+    private void StubExisting(params (string Ico, long Id)[] existing)
+    {
+        _clientService.GetClientIdsByRegistrationNumbersAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<CancellationToken>())
+            .Returns(existing.ToDictionary(e => e.Ico, e => e.Id));
+    }
 
     [Fact]
     public async Task PreviewAsync_NewClient_MapsFakturoidStyleColumns()
     {
         var csv = "Název;IČO;DIČ;Ulice;Město;PSČ;Email;Telefon\r\n" +
                   "ACME s.r.o.;12345678;CZ12345678;Hlavní 1;Praha;11000;info@acme.cz;123456789\r\n";
-        _clientService.GetClientByRegistrationNumberAsync("12345678", Arg.Any<CancellationToken>())
-            .Returns((ClientDto?)null);
 
         var preview = await _service.PreviewAsync(ToStream(csv));
 
@@ -58,8 +66,6 @@ public class ClientCsvImportServiceTests
         // iDoklad-flavored header names (English-ish, different casing/spelling than Fakturoid).
         var csv = "Company Name,Registration Number,City,Postal Code\n" +
                   "Beta Inc,87654321,Brno,60200\n";
-        _clientService.GetClientByRegistrationNumberAsync("87654321", Arg.Any<CancellationToken>())
-            .Returns((ClientDto?)null);
 
         var preview = await _service.PreviewAsync(ToStream(csv));
 
@@ -71,8 +77,7 @@ public class ClientCsvImportServiceTests
     public async Task PreviewAsync_DuplicateInDatabase_IsFlagged()
     {
         var csv = "Název;IČO\r\nExisting Co;11111111\r\n";
-        _clientService.GetClientByRegistrationNumberAsync("11111111", Arg.Any<CancellationToken>())
-            .Returns(new ClientDto { Id = 42, CompanyName = "Existing Co" });
+        StubExisting(("11111111", 42));
 
         var preview = await _service.PreviewAsync(ToStream(csv));
 
@@ -87,8 +92,6 @@ public class ClientCsvImportServiceTests
     public async Task PreviewAsync_DuplicateWithinFile_IsFlaggedOnSecondOccurrence()
     {
         var csv = "Název;IČO\r\nFirst;22222222\r\nSecond;22222222\r\n";
-        _clientService.GetClientByRegistrationNumberAsync("22222222", Arg.Any<CancellationToken>())
-            .Returns((ClientDto?)null);
 
         var preview = await _service.PreviewAsync(ToStream(csv));
 
@@ -106,7 +109,23 @@ public class ClientCsvImportServiceTests
 
         preview.Rows.Single().Status.ShouldBe(EClientImportRowStatus.Invalid);
         preview.InvalidCount.ShouldBe(1);
-        await _clientService.DidNotReceive().GetClientByRegistrationNumberAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The DB requires RegistrationNumber (unique, non-null — see TenantDbContext), even though
+    /// CreateClientDto documents it as optional for physical persons. A row without one would
+    /// pass preview as "New" but always fail on confirm, so preview must flag it up front.
+    /// </summary>
+    [Fact]
+    public async Task PreviewAsync_MissingRegistrationNumber_IsInvalid()
+    {
+        var csv = "Název;IČO\r\nNo Ico Co;\r\n";
+
+        var preview = await _service.PreviewAsync(ToStream(csv));
+
+        var row = preview.Rows.Single();
+        row.Status.ShouldBe(EClientImportRowStatus.Invalid);
+        row.Reason.ShouldContain("IČO");
     }
 
     [Fact]
@@ -116,7 +135,7 @@ public class ClientCsvImportServiceTests
 
         var preview = await _service.PreviewAsync(ToStream(csv));
 
-        preview.Rows.Single().Status.ShouldBe(EClientImportRowStatus.New);
+        preview.Rows.Single().Status.ShouldBe(EClientImportRowStatus.Invalid); // no IČO column in this fixture
         preview.UnknownColumns.ShouldContain("nejaky cizi sloupec");
     }
 
@@ -127,8 +146,6 @@ public class ClientCsvImportServiceTests
         {
             new() { CompanyName = "New Co", RegistrationNumber = "44444444" }
         };
-        _clientService.GetClientByRegistrationNumberAsync("44444444", Arg.Any<CancellationToken>())
-            .Returns((ClientDto?)null);
         _clientService.CreateClientAsync(Arg.Any<CreateClientDto>(), Arg.Any<CancellationToken>())
             .Returns(new ClientDto { Id = 100, CompanyName = "New Co" });
 
@@ -147,8 +164,7 @@ public class ClientCsvImportServiceTests
         {
             new() { CompanyName = "Repeat Co", RegistrationNumber = "55555555" }
         };
-        _clientService.GetClientByRegistrationNumberAsync("55555555", Arg.Any<CancellationToken>())
-            .Returns(new ClientDto { Id = 7, CompanyName = "Repeat Co" });
+        StubExisting(("55555555", 7));
 
         var result = await _service.ConfirmAsync(new ClientImportConfirmDto { Clients = clients });
 
@@ -165,8 +181,6 @@ public class ClientCsvImportServiceTests
             new() { CompanyName = "First", RegistrationNumber = "66666666" },
             new() { CompanyName = "Second", RegistrationNumber = "66666666" }
         };
-        _clientService.GetClientByRegistrationNumberAsync("66666666", Arg.Any<CancellationToken>())
-            .Returns((ClientDto?)null);
         _clientService.CreateClientAsync(Arg.Any<CreateClientDto>(), Arg.Any<CancellationToken>())
             .Returns(new ClientDto { Id = 1, CompanyName = "First" });
 
@@ -176,18 +190,34 @@ public class ClientCsvImportServiceTests
         result.SkippedCount.ShouldBe(1);
     }
 
+    /// <summary>
+    /// A race the bulk pre-check can't catch (the DB row appeared *during* this confirm call, not
+    /// before it started) still surfaces as a duplicate outcome (Skipped), not a hard failure —
+    /// ClientService.CreateClientAsync's own guard throws InvalidOperationException for this case.
+    /// </summary>
     [Fact]
-    public async Task ConfirmAsync_ServiceThrows_RecordsErrorAndContinues()
+    public async Task ConfirmAsync_ConcurrentDuplicateFromCreateClientAsync_IsSkippedNotError()
+    {
+        var clients = new List<CreateClientDto> { new() { CompanyName = "Racer", RegistrationNumber = "99999999" } };
+        _clientService.CreateClientAsync(Arg.Any<CreateClientDto>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<ClientDto>(new InvalidOperationException("Client with registration number 99999999 already exists")));
+
+        var result = await _service.ConfirmAsync(new ClientImportConfirmDto { Clients = clients });
+
+        result.SkippedCount.ShouldBe(1);
+        result.Errors.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_ServiceThrows_RecordsSafeErrorAndContinues()
     {
         var clients = new List<CreateClientDto>
         {
             new() { CompanyName = "Bad Co", RegistrationNumber = "77777777" },
             new() { CompanyName = "Good Co", RegistrationNumber = "88888888" }
         };
-        _clientService.GetClientByRegistrationNumberAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns((ClientDto?)null);
         _clientService.CreateClientAsync(Arg.Is<CreateClientDto>(c => c.CompanyName == "Bad Co"), Arg.Any<CancellationToken>())
-            .Returns(Task.FromException<ClientDto>(new InvalidOperationException("boom")));
+            .Returns(Task.FromException<ClientDto>(new ApplicationException("Npgsql: column companies.internal_secret does not exist")));
         _clientService.CreateClientAsync(Arg.Is<CreateClientDto>(c => c.CompanyName == "Good Co"), Arg.Any<CancellationToken>())
             .Returns(new ClientDto { Id = 2, CompanyName = "Good Co" });
 
@@ -195,5 +225,7 @@ public class ClientCsvImportServiceTests
 
         result.CreatedCount.ShouldBe(1);
         result.Errors.ShouldContain(e => e.Contains("Bad Co"));
+        // The raw exception message (which can carry EF/PostgreSQL/schema details) must never reach the caller.
+        result.Errors.ShouldNotContain(e => e.Contains("Npgsql") || e.Contains("internal_secret"));
     }
 }

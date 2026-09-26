@@ -52,7 +52,10 @@ public class ImportApiService : ApiClientBase
             // Add the target enum as a form field
             content.Add(new StringContent(((int)target).ToString()), "target");
 
-            // Use the underlying HttpClient directly (multipart not supported by base class)
+            // Use the underlying HttpClient directly (multipart not supported by base class).
+            // Still needs the auth header added manually — ApiClientBase only adds it inside its
+            // own Get/PostAsync helpers, which this method bypasses for multipart support.
+            await AddAuthorizationHeaderAsync();
             var response = await _httpClient.PostAsync("api/import/preview", content);
 
             if (response.IsSuccessStatusCode)
@@ -97,6 +100,7 @@ public class ImportApiService : ApiClientBase
         fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("text/csv");
         content.Add(fileContent, "file", fileName);
 
+        await AddAuthorizationHeaderAsync(); // multipart bypasses ApiClientBase's PostAsync, so this must be called explicitly
         var response = await _httpClient.PostAsync("api/import/clients/preview", content);
         if (response.IsSuccessStatusCode)
         {

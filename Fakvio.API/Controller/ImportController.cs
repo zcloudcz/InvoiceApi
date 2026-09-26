@@ -199,6 +199,14 @@ public class ImportController : ControllerBase
             return BadRequest(new { message = "No clients to import." });
         }
 
+        // Confirm accepts a plain JSON list, so it isn't bounded by CsvTable's own row limit —
+        // enforce the same cap here, otherwise an authenticated caller could submit an arbitrarily
+        // large batch (up to the general request-body limit) directly, bypassing the CSV parser entirely.
+        if (request.Clients.Count > CsvTable.MaxRowCount)
+        {
+            return BadRequest(new { message = $"Too many clients in one request (max {CsvTable.MaxRowCount})." });
+        }
+
         _logger.LogInformation("Client CSV import confirm requested: {Count} client(s)", request.Clients.Count);
 
         var result = await _clientCsvImportService.ConfirmAsync(request, ct);

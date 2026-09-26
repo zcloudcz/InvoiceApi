@@ -245,6 +245,32 @@ public class ClientService : IClientService
     }
 
     /// <summary>
+    /// Bulk existence check by registration number — see interface docs for why this exists
+    /// (avoids N queries × full client graph when a caller just needs "does it exist").
+    /// </summary>
+    public async Task<Dictionary<string, long>> GetClientIdsByRegistrationNumbersAsync(
+        IEnumerable<string> registrationNumbers,
+        CancellationToken cancellationToken = default)
+    {
+        var distinct = registrationNumbers
+            .Where(r => !string.IsNullOrWhiteSpace(r))
+            .Distinct()
+            .ToList();
+
+        if (distinct.Count == 0)
+        {
+            return new Dictionary<string, long>();
+        }
+
+        // AsNoTracking + no Include: this is an existence/id lookup, not a full read.
+        return await _context.Client
+            .AsNoTracking()
+            .Where(c => distinct.Contains(c.RegistrationNumber!))
+            .Select(c => new { c.RegistrationNumber, c.Id })
+            .ToDictionaryAsync(c => c.RegistrationNumber!, c => c.Id, cancellationToken);
+    }
+
+    /// <summary>
     /// Gets the issuer (your company)
     /// </summary>
     public async Task<ClientDto?> GetIssuerAsync(CancellationToken cancellationToken = default)

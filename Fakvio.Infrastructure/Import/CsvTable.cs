@@ -38,6 +38,13 @@ public sealed class CsvTable
     /// <summary>Safety limit: files with more data rows than this are rejected (avoid pathological imports).</summary>
     public const int MaxRowCount = 10_000;
 
+    /// <summary>
+    /// Safety limit: a single record can't have more fields than this. Without this, a file that
+    /// stays under <see cref="MaxFileSizeBytes"/> but is mostly delimiters (e.g. one 5 MB line of
+    /// ";;;;;...") would still blow up memory — millions of empty-string fields and headers.
+    /// </summary>
+    public const int MaxFieldCount = 200;
+
     private static readonly char[] CandidateDelimiters = [';', ',', '\t'];
 
     /// <summary>Header names in the order they appeared in the file, normalized (see class remarks).</summary>
@@ -167,6 +174,11 @@ public sealed class CsvTable
 
         void EndField()
         {
+            if (currentRecord.Count >= MaxFieldCount)
+            {
+                throw new CsvParseException($"A row has more than {MaxFieldCount} columns — check the delimiter is correct.");
+            }
+
             currentRecord.Add(current.ToString());
             current.Clear();
         }
@@ -239,6 +251,14 @@ public sealed class CsvTable
                     recordHasContent = true;
                     break;
             }
+        }
+
+        if (inQuotes)
+        {
+            // Reaching EOF still inside a quote means an unterminated quoted field — without this
+            // check, everything after the stray opening quote (including further rows) silently
+            // gets absorbed into one field instead of erroring.
+            throw new CsvParseException("The file has an unterminated quoted field (a stray \" with no matching closing quote).");
         }
 
         if (recordHasContent || current.Length > 0)

@@ -54,15 +54,17 @@ public class ClientCsvImportService : IClientCsvImportService
         var headerToField = BuildHeaderToFieldMap(table.Headers, out var unknownColumns);
         var result = new ClientImportPreviewDto { UnknownColumns = unknownColumns };
 
+        var mappedRows = table.Rows.Select((row, i) => (RowNumber: i + 2, Client: MapRowToClient(row, headerToField))).ToList();
+
+        // Single bulk existence check instead of one DB round trip per row (up to CsvTable.MaxRowCount rows).
+        var existingByRegistrationNumber = await _clientService.GetClientIdsByRegistrationNumbersAsync(
+            mappedRows.Select(r => r.Client.RegistrationNumber!), ct);
+
         // IČOs seen so far in this file — the first occurrence is New, later ones are Duplicate.
         var seenRegistrationNumbers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        var rowNumber = 1; // row 0 is the header
-        foreach (var row in table.Rows)
+        foreach (var (rowNumber, client) in mappedRows)
         {
-            rowNumber++;
-            var client = MapRowToClient(row, headerToField);
-
             if (string.IsNullOrWhiteSpace(client.CompanyName))
             {
                 result.Rows.Add(new ClientImportPreviewRowDto
@@ -75,33 +77,43 @@ public class ClientCsvImportService : IClientCsvImportService
                 continue;
             }
 
-            if (!string.IsNullOrWhiteSpace(client.RegistrationNumber))
+            // The DB requires RegistrationNumber (unique, non-null) even though CreateClientDto
+            // documents it as optional for physical persons — see DEVGUIDE.md §4.13 deviation note.
+            if (string.IsNullOrWhiteSpace(client.RegistrationNumber))
             {
-                if (!seenRegistrationNumbers.Add(client.RegistrationNumber))
+                result.Rows.Add(new ClientImportPreviewRowDto
                 {
-                    result.Rows.Add(new ClientImportPreviewRowDto
-                    {
-                        RowNumber = rowNumber,
-                        Client = client,
-                        Status = EClientImportRowStatus.Duplicate,
-                        Reason = $"IČO {client.RegistrationNumber} appears more than once in this file."
-                    });
-                    continue;
-                }
+                    RowNumber = rowNumber,
+                    Client = client,
+                    Status = EClientImportRowStatus.Invalid,
+                    Reason = "Missing IČO (registration number) — required by this system even for individuals."
+                });
+                continue;
+            }
 
-                var existing = await _clientService.GetClientByRegistrationNumberAsync(client.RegistrationNumber, ct);
-                if (existing != null)
+            if (!seenRegistrationNumbers.Add(client.RegistrationNumber))
+            {
+                result.Rows.Add(new ClientImportPreviewRowDto
                 {
-                    result.Rows.Add(new ClientImportPreviewRowDto
-                    {
-                        RowNumber = rowNumber,
-                        Client = client,
-                        Status = EClientImportRowStatus.Duplicate,
-                        Reason = $"A client with IČO {client.RegistrationNumber} already exists.",
-                        ExistingClientId = existing.Id
-                    });
-                    continue;
-                }
+                    RowNumber = rowNumber,
+                    Client = client,
+                    Status = EClientImportRowStatus.Duplicate,
+                    Reason = $"IČO {client.RegistrationNumber} appears more than once in this file."
+                });
+                continue;
+            }
+
+            if (existingByRegistrationNumber.TryGetValue(client.RegistrationNumber, out var existingId))
+            {
+                result.Rows.Add(new ClientImportPreviewRowDto
+                {
+                    RowNumber = rowNumber,
+                    Client = client,
+                    Status = EClientImportRowStatus.Duplicate,
+                    Reason = $"A client with IČO {client.RegistrationNumber} already exists.",
+                    ExistingClientId = existingId
+                });
+                continue;
             }
 
             result.Rows.Add(new ClientImportPreviewRowDto
@@ -120,20 +132,23 @@ public class ClientCsvImportService : IClientCsvImportService
         var result = new ClientImportResultDto();
         var seenRegistrationNumbers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+        // Same bulk pre-check as PreviewAsync: one query instead of one per row. This closes the
+        // preview→confirm TOCTOU window for anything that changed *before* this batch started
+        // running; a genuine concurrent import of the same IČO in the middle of this loop is still
+        // possible (ClientService.CreateClientAsync does its own check-then-insert) — handled below
+        // by treating that specific failure as Skipped rather than a hard error.
+        // ponytail: residual race is rare (two users importing the same contact at the same instant)
+        // and CreateClientAsync's own guard already prevents duplicate rows; a fully atomic
+        // upsert would need a dedicated repository method, out of scope for this task.
+        var existingByRegistrationNumber = await _clientService.GetClientIdsByRegistrationNumbersAsync(
+            request.Clients.Select(c => c.RegistrationNumber!), ct);
+
         foreach (var client in request.Clients)
         {
-            // Re-check duplicates at confirm time: the preview may be stale (someone else imported
-            // in the meantime), or the caller may have sent the same row twice.
             if (!string.IsNullOrWhiteSpace(client.RegistrationNumber))
             {
-                if (!seenRegistrationNumbers.Add(client.RegistrationNumber))
-                {
-                    result.SkippedCount++;
-                    continue;
-                }
-
-                var existing = await _clientService.GetClientByRegistrationNumberAsync(client.RegistrationNumber, ct);
-                if (existing != null)
+                if (!seenRegistrationNumbers.Add(client.RegistrationNumber) ||
+                    existingByRegistrationNumber.ContainsKey(client.RegistrationNumber))
                 {
                     result.SkippedCount++;
                     continue;
@@ -147,10 +162,19 @@ public class ClientCsvImportService : IClientCsvImportService
                 result.CreatedCount++;
                 result.CreatedClientIds.Add(created.Id);
             }
+            catch (InvalidOperationException)
+            {
+                // ClientService.CreateClientAsync's own "already exists" guard caught a race our
+                // bulk pre-check missed (import ran concurrently with another insert of the same IČO).
+                // That's a dedup outcome, not a failure — count and report it the same way.
+                result.SkippedCount++;
+            }
             catch (Exception ex)
             {
+                // Log the full exception server-side (may contain EF/PostgreSQL details), but never
+                // forward ex.Message to the caller — it can leak schema/infrastructure information.
                 _logger.LogWarning(ex, "Failed to import client {CompanyName} from CSV", client.CompanyName);
-                result.Errors.Add($"{client.CompanyName}: {ex.Message}");
+                result.Errors.Add($"{client.CompanyName}: import failed — see server log for details.");
             }
         }
 

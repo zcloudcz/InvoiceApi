@@ -142,6 +142,27 @@ public class CsvTableTests
     }
 
     [Fact]
+    public void Parse_TooManyFieldsInARow_Throws()
+    {
+        // A row that's mostly delimiters shouldn't be allowed to blow up memory just because it
+        // stays under the byte-size limit (e.g. a stray "find & replace comma with semicolon").
+        var header = "Name" + new string(';', CsvTable.MaxFieldCount + 5);
+        var csv = header + "\r\nfoo\r\n";
+
+        Should.Throw<CsvParseException>(() => CsvTable.Parse(ToStream(csv)));
+    }
+
+    [Fact]
+    public void Parse_UnterminatedQuote_Throws()
+    {
+        // Without this check, a stray opening quote silently swallows everything after it
+        // (including further rows) into one field instead of failing loudly.
+        var csv = "Name;Note\r\n\"Acme;unterminated\r\n";
+
+        Should.Throw<CsvParseException>(() => CsvTable.Parse(ToStream(csv)));
+    }
+
+    [Fact]
     public void Parse_FileTooLarge_Throws()
     {
         // One oversized field is enough to trip the byte-size guard without needing MaxRowCount rows.
