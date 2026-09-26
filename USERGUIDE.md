@@ -418,6 +418,12 @@ zůstane ve stejném stavu a příští cyklus to zkusí znovu. Chybu vidíte v 
 **Pozastavení / obnovení / smazání:** tlačítka v řádku plánu. Smazání plánu, který ještě nikdy
 nevygeneroval fakturu, ho úplně odstraní; jinak se jen pozastaví (historie zůstává zachována).
 
+**Automatické odeslání e-mailem („Rovnou vystavit a odeslat e-mailem"):** faktura se vystaví
+vždy — tento přepínač navíc pošle vystavenou fakturu e-mailem na kontaktní adresu klienta
+(kontakt typu „Email"). Pokud klient nemá e-mail vyplněný nebo odeslání selže (SMTP chyba),
+faktura zůstane vystavená, uvidíte to jako chybu u plánu a další perioda se generuje normálně —
+neodeslaný e-mail se negeneruje znovu.
+
 ---
 
 ## 7. Šablony dokumentů (ContentTemplates — PDF + email)

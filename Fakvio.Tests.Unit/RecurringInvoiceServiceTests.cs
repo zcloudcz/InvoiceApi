@@ -22,6 +22,7 @@ public class RecurringInvoiceServiceTests : IDisposable
     private readonly TenantDbContext _context;
     private readonly RecurringInvoiceService _service;
     private readonly INotificationService _notificationService;
+    private readonly IEmailService _emailService;
     private const long TemplateId = 100; // InvoiceTemplate is a TPH row in the Invoice table.
     private const long ClientId = 1;
     private const long IssuerId = 2;
@@ -49,9 +50,10 @@ public class RecurringInvoiceServiceTests : IDisposable
             _context, numberSequence, Substitute.For<ITenantReadinessService>(), Substitute.For<ILogger<InvoiceService>>());
         var templateService = new InvoiceTemplateService(_context, invoiceService, Substitute.For<ILogger<InvoiceTemplateService>>());
         _notificationService = Substitute.For<INotificationService>();
+        _emailService = Substitute.For<IEmailService>();
 
         _service = new RecurringInvoiceService(
-            _context, templateService, _notificationService, Substitute.For<ILogger<RecurringInvoiceService>>());
+            _context, templateService, _notificationService, _emailService, Substitute.For<ILogger<RecurringInvoiceService>>());
 
         SeedTestData();
     }
@@ -368,5 +370,75 @@ public class RecurringInvoiceServiceTests : IDisposable
         count.ShouldBe(1); // Only the healthy schedule succeeded.
         var failedSchedule = await _service.GetByIdAsync(failing.Id);
         failedSchedule!.LastError.ShouldNotBeNullOrEmpty();
+    }
+
+    // ── AutoSend (N4.5) ──────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task RunCycleAsync_AutoSendWithClientEmail_SendsInvoiceEmail()
+    {
+        _context.Contact.Add(new Contact { ClientId = ClientId, ContactType = EContactType.Email, ContactValue = "client@example.com" });
+        await _context.SaveChangesAsync();
+
+        var dto = ValidMonthlyDto();
+        dto.AutoSend = true;
+        var created = await _service.CreateAsync(dto);
+
+        await _service.RunCycleAsync(companyId: 1, nowUtc: dto.StartDate);
+
+        await _emailService.Received(1).SendInvoiceEmailAsync(Arg.Any<long>(), "client@example.com", Arg.Any<CancellationToken>());
+        var schedule = await _service.GetByIdAsync(created.Id);
+        schedule!.LastError.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task RunCycleAsync_AutoSendClientHasNoEmail_InvoiceStillGenerated_LastErrorSet_NextRunAtAdvances()
+    {
+        // ClientId has no Contact rows at all in this test.
+        var dto = ValidMonthlyDto();
+        dto.AutoSend = true;
+        var created = await _service.CreateAsync(dto);
+
+        var count = await _service.RunCycleAsync(companyId: 1, nowUtc: dto.StartDate);
+
+        count.ShouldBe(1); // The invoice WAS generated — only the e-mail step failed.
+        await _emailService.DidNotReceive().SendInvoiceEmailAsync(Arg.Any<long>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+
+        var schedule = await _service.GetByIdAsync(created.Id);
+        schedule!.LastError.ShouldContain("no e-mail address");
+        schedule.NextRunAt.ShouldBe(new DateTimeOffset(2026, 2, 15, 8, 0, 0, TimeSpan.Zero)); // Advanced — not retried.
+        schedule.OccurrenceCount.ShouldBe(1);
+        _context.Invoice.Count(i => i.ClientId == ClientId && i.Id != TemplateId).ShouldBe(1); // Not duplicated.
+    }
+
+    [Fact]
+    public async Task RunCycleAsync_AutoSendSmtpFailure_InvoiceStillGenerated_LastErrorSet_NextRunAtAdvances()
+    {
+        _context.Contact.Add(new Contact { ClientId = ClientId, ContactType = EContactType.Email, ContactValue = "client@example.com" });
+        await _context.SaveChangesAsync();
+        _emailService.SendInvoiceEmailAsync(Arg.Any<long>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException(new InvalidOperationException("SMTP connection refused")));
+
+        var dto = ValidMonthlyDto();
+        dto.AutoSend = true;
+        var created = await _service.CreateAsync(dto);
+
+        var count = await _service.RunCycleAsync(companyId: 1, nowUtc: dto.StartDate);
+
+        count.ShouldBe(1);
+        var schedule = await _service.GetByIdAsync(created.Id);
+        schedule!.LastError.ShouldContain("SMTP connection refused");
+        schedule.NextRunAt.ShouldBe(new DateTimeOffset(2026, 2, 15, 8, 0, 0, TimeSpan.Zero));
+    }
+
+    [Fact]
+    public async Task RunCycleAsync_AutoSendFalse_DoesNotCallEmailService()
+    {
+        var dto = ValidMonthlyDto(); // AutoSend defaults to false.
+        await _service.CreateAsync(dto);
+
+        await _service.RunCycleAsync(companyId: 1, nowUtc: dto.StartDate);
+
+        await _emailService.DidNotReceive().SendInvoiceEmailAsync(Arg.Any<long>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 }

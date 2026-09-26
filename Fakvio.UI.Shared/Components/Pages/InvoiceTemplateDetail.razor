@@ -677,9 +677,6 @@ else
         {
             { x => x.Model, model },
             { x => x.Clients, _clients },
-            // AutoSend switch stays hidden until N4.5 wires up auto-complete + e-mailing —
-            // showing it earlier would let the user flip a flag that does nothing yet.
-            { x => x.ShowAutoSend, false },
         };
         var dialog = await DialogService.ShowAsync<RecurringScheduleDialog>(title, parameters);
         var result = await dialog.Result;

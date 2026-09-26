@@ -36,17 +36,20 @@ public class RecurringInvoiceService : IRecurringInvoiceService
     private readonly TenantDbContext _context;
     private readonly IInvoiceTemplateService _templateService;
     private readonly INotificationService _notificationService;
+    private readonly IEmailService _emailService;
     private readonly ILogger<RecurringInvoiceService> _logger;
 
     public RecurringInvoiceService(
         TenantDbContext context,
         IInvoiceTemplateService templateService,
         INotificationService notificationService,
+        IEmailService emailService,
         ILogger<RecurringInvoiceService> logger)
     {
         _context = context;
         _templateService = templateService;
         _notificationService = notificationService;
+        _emailService = emailService;
         _logger = logger;
     }
 
@@ -315,6 +318,14 @@ public class RecurringInvoiceService : IRecurringInvoiceService
                 "RecurringInvoice: schedule {ScheduleId} generated invoice {InvoiceId}, next run {NextRunAt}",
                 schedule.Id, invoice.Id, schedule.NextRunAt);
 
+            // E-mailing happens AFTER the commit and outside the transaction — it cannot be
+            // "rolled back" (a sent e-mail cannot be unsent), so a failure here must never
+            // undo the invoice or the schedule advance. See TrySendGeneratedInvoiceEmailAsync.
+            if (schedule.AutoSend)
+            {
+                await TrySendGeneratedInvoiceEmailAsync(schedule.Id, invoice.Id, companyId, ct);
+            }
+
             return true;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -330,6 +341,79 @@ public class RecurringInvoiceService : IRecurringInvoiceService
             // Re-fetch: the failed SaveChanges/rollback may have detached tracked entities.
             await RecordFailureAsync(scheduleId, companyId, ex, ct);
             return false;
+        }
+    }
+
+    /// <summary>
+    /// AutoSend follow-up (N4.5): e-mails the just-generated invoice to the client. The invoice
+    /// itself is already committed at this point — a failure here (no e-mail on file, SMTP
+    /// error, …) is recorded as LastError + notification like any other failure, but
+    /// deliberately does NOT touch NextRunAt/OccurrenceCount: the invoice exists, only the
+    /// e-mail didn't go out, so the next period must not be skipped or duplicated.
+    /// </summary>
+    private async Task TrySendGeneratedInvoiceEmailAsync(long scheduleId, long invoiceId, long companyId, CancellationToken ct)
+    {
+        try
+        {
+            var clientId = await _context.RecurringInvoiceSchedule
+                .Where(s => s.Id == scheduleId)
+                .Select(s => s.ClientId)
+                .FirstOrDefaultAsync(ct);
+
+            var client = await _context.Client
+                .Include(c => c.Contact)
+                .FirstOrDefaultAsync(c => c.Id == clientId, ct);
+
+            var email = client?.Contact
+                .Where(c => c.ContactType == EContactType.Email)
+                .Select(c => c.ContactValue)
+                .FirstOrDefault();
+
+            if (string.IsNullOrEmpty(email))
+            {
+                await RecordEmailFailureAsync(scheduleId, companyId,
+                    $"Invoice {invoiceId} was issued, but AutoSend could not e-mail it: client has no e-mail address on file.", ct);
+                return;
+            }
+
+            await _emailService.SendInvoiceEmailAsync(invoiceId, email, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "RecurringInvoice: schedule {ScheduleId} generated invoice {InvoiceId} but AutoSend e-mail failed", scheduleId, invoiceId);
+            await RecordEmailFailureAsync(scheduleId, companyId,
+                $"Invoice {invoiceId} was issued, but AutoSend could not e-mail it: {ex.Message}", ct);
+        }
+    }
+
+    /// <summary>Same LastError/notification plumbing as RecordFailureAsync, but for the e-mail step alone.</summary>
+    private async Task RecordEmailFailureAsync(long scheduleId, long companyId, string message, CancellationToken ct)
+    {
+        try
+        {
+            var schedule = await _context.RecurringInvoiceSchedule.FirstOrDefaultAsync(s => s.Id == scheduleId, ct);
+            if (schedule is null)
+                return;
+
+            schedule.LastError = message.Length > MaxErrorLength ? message[..MaxErrorLength] : message;
+            await _context.SaveChangesAsync(ct);
+
+            await _notificationService.CreateForAllUsersAsync(
+                ENotificationType.RecurringInvoiceFailed,
+                "Odeslání opakované faktury e-mailem selhalo",
+                message,
+                schedule.Id,
+                "RecurringInvoiceSchedule",
+                companyId,
+                ct);
+        }
+        catch (Exception notifyEx)
+        {
+            _logger.LogError(notifyEx, "RecurringInvoice: failed to record e-mail LastError/notification for schedule {ScheduleId}", scheduleId);
         }
     }
 
