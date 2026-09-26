@@ -219,7 +219,7 @@ dostane, klíč revokujte na `/settings/integrations` — přestane platit okam�
 
 | Soubor | Počet | Nástroje |
 |--------|-------|----------|
-| `Tools/InvoiceTools.cs` | 10 | ListInvoices, GetInvoice, FindInvoiceByNumber, CreateInvoice, CompleteInvoice, MarkInvoicePaid, SendInvoiceEmail, ExportInvoicePdf, ExportInvoiceIsdoc, DeleteInvoice |
+| `Tools/InvoiceTools.cs` | 10 | ListInvoices, GetInvoice, FindInvoiceByNumber, CreateInvoice (typed params — clientId, items, currency code, optional issuerId — see below), CompleteInvoice, MarkInvoicePaid, SendInvoiceEmail, ExportInvoicePdf, ExportInvoiceIsdoc, DeleteInvoice |
 | `Tools/ClientTools.cs` | 6 | ListClients, GetClient, CreateClient, UpdateClient, LookupAres, GetIssuer |
 | `Tools/ReceivedInvoiceTools.cs` | 7 | ListReceivedInvoices, GetReceivedInvoice, CreateReceivedInvoice, ApproveReceivedInvoice, MarkReceivedInvoicePaid, DeleteReceivedInvoice, UploadReceivedInvoiceAttachment |
 | `Tools/ReportingTools.cs` | 6 | GetDashboard, GetOverdueInvoices, GetClientInvoices, GetInvoicesByDateRange, GetVatReport, GetOverdueReceivedInvoices |
@@ -266,6 +266,12 @@ grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs
   je na klientovi.
 - Logy jdou **výhradně na stderr** (`LogToStandardErrorThreshold = Trace`).
   Stdout je vyhrazený pro JSON-RPC — jakýkoli zápis do stdout protokol rozbije.
+- **`CreateInvoice` (N2.4) překládá modelem srozumitelný vstup na interní ID** — bez volání API:
+  `currency` (ISO kód, výchozí `CZK`) se přeloží přes `list_currencies` na `currencyId`; `issuerId`
+  vynechaný znamená vlastní firmu (`get_issuer`); položce bez `vatRateId` doplní ID podle
+  `vatRatePercentage` (aktivní sazby k `issueDate`) — jen když je vystavitel plátce DPH, neplátce
+  necháváme beze změny. Neznámá měna / procento vrátí konkrétní chybu se seznamem platných hodnot
+  a API se vůbec nezavolá.
 
 ## Přidání nového nástroje
 

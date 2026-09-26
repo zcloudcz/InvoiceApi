@@ -1425,7 +1425,7 @@ Stav: ✅ pokryto · ◐ částečně · ❌ chat nemá · ⬅ jen chat (MCP nem
 | `UpdateClient` | **Write** | `update_client` (za `confirm`) | ✅ | |
 | `GetIssuer` | Read | `list_clients` + `is_issuer=true` (#222), `get_my_company` (#220) | ✅ | |
 | **Vydané faktury** (`InvoiceTools`, 10) |
-| `CreateInvoice` | Create | `create_invoice` | ✅ | |
+| `CreateInvoice` | Create (N2.4: typované vstupy, `currency` kódem, `issuerId` volitelné) | `create_invoice` | ✅ | |
 | `ExportInvoicePdf` | Read → download | `export_invoice` (`format=pdf`, default) | ✅ | |
 | `ListInvoices` | Read | `list_invoices` | ✅ | |
 | `GetInvoice` | Read | `get_invoice` (`id`) | ✅ | |
@@ -1607,6 +1607,19 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
   API chyby (stack trace, SQL detail, interní ID).
 - Konfigurace klienta: `.mcp.json.sample` (kořen repa) nese **oba** bloky — `fakvio` (stdio, `command` + `env`) a `fakvio-remote` (`"type": "http"`, `url` = adresa HTTP hostu + `/mcp`, klíč v hlavičce `Authorization`). Tytéž dva **režimy**, už s vyplněným klíčem, vypisuje stránka `/settings/integrations` po vytvoření klíče (`Integrations.BuildSnippets`) — když se tvar konfigurace změní, musí se změnit na obou místech. Doslova shodné bloky to nejsou: UI pojmenuje oba servery `fakvio` (sample rozlišuje `fakvio` / `fakvio-remote`) a stdio blok v samplu má navíc prázdné `"args": []`. Jméno serveru je lokální věc klienta, takže funkčně je to jedno — ale kdo si z panelu zkopíruje **oba** bloky do jednoho souboru, vyrobí si duplicitní JSON klíč. Sjednotit jméno v UI by bylo lepší než tuhle poznámku, ale je to produkční kód a tenhle docs task ho nesahá.
   **`url` v tom vzdáleném bloku čte `Configuration["McpSettings:BaseUrl"]`** (`Fakvio.BlazorUI/wwwroot/appsettings.json`), ne `ApiKeyApiService.ApiBaseUrl` — to byla dřívější chyba (#363): API a MCP HTTP host jsou od #240 dvě různé aplikace na dvou různých adresách, takže adresa API tam nepatří a `/mcp` na ní neexistuje. Dokud `McpSettings:BaseUrl` není nastavené (dnes všude — žádný host ještě neběží, viz #241), snippet místo něj vloží zjevnou ukázkovou hodnotu (`Integration_SnippetHttpUrlPlaceholder`), ne tiše špatnou URL.
+- **`CreateInvoice` (N2.4) resolves model-friendly input to internal IDs before any write call.**
+  `InvoiceTools.CreateInvoice` no longer takes a "JSON string of CreateInvoiceDto" — a model has
+  no way to know an internal `currencyId`/`issuerId`. It now takes typed parameters
+  (`clientId`, `List<CreateInvoiceItemDto> items`, `documentType`, `currency` code, optional
+  `issuerId`, dates, …) and, still ahead of any API call: resolves `currency` (default `CZK`)
+  against `GetActiveCurrenciesAsync`; resolves the issuer via `GetClientByIdAsync(issuerId)` when
+  given, else `GetIssuerAsync()`; and — **only when the resolved issuer `IsVatPayer`** — fills in
+  each item's missing `VatRateId` by matching `VatRatePercentage` against
+  `GetActiveVatRatesAsync(issueDate)`. A non-VAT-payer issuer has no VAT rates to configure at all
+  (readiness never asks for one), so its items are left exactly as sent — mirrors the rule
+  `InvoiceService.CreateInvoiceAsync` (`Fakvio.Infrastructure/Service/InvoiceService.cs:401-411`)
+  already applies. An unknown currency code or unmatched VAT percentage returns a domain error
+  listing the valid values and never reaches the API.
 - Detaily (build, získání credentialu, seznam nástrojů, postup přidání nástroje): `Fakvio.McpServer/README.md`.
   Uživatelský postup (vytvoření klíče, konfigurace klienta v obou režimech): USERGUIDE §20. Provoz HTTP hostu a jeho bezpečnostní model: ADMINGUIDE §9.
 

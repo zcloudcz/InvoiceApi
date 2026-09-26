@@ -10,6 +10,7 @@ using Fakvio.Contracts.Dto.FileAttachment;
 using Fakvio.Contracts.Dto.Invoice;
 using Fakvio.Contracts.Dto.InvoiceTemplate;
 using Fakvio.Contracts.Dto.Readiness;
+using Fakvio.Contracts.Dto.VatRate;
 using Fakvio.Domain.Enums;
 using Fakvio.McpServer.Client;
 using Shouldly;
@@ -323,6 +324,29 @@ public class FakvioApiClientTests : IDisposable
         var result = await _sut.GetActiveCurrenciesAsync();
 
         result.ShouldBeEmpty();
+    }
+
+    // ── VAT rate tests ──────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetActiveVatRatesAsync_NoDate_NoQueryString()
+    {
+        _handler.SetupResponse(HttpStatusCode.OK, new List<VatRateDto>());
+
+        await _sut.GetActiveVatRatesAsync();
+
+        _handler.LastRequestUri?.ToString().ShouldEndWith("api/vatrate/active");
+    }
+
+    [Fact]
+    public async Task GetActiveVatRatesAsync_WithDate_AppendsDateQuery()
+    {
+        _handler.SetupResponse(HttpStatusCode.OK, new List<VatRateDto> { new() { Id = 1, Rate = 21m } });
+
+        var result = await _sut.GetActiveVatRatesAsync(new DateTime(2026, 3, 1));
+
+        _handler.LastRequestUri?.ToString().ShouldContain("date=");
+        result.ShouldHaveSingleItem();
     }
 
     // ── Template tests ─────────────────────────────────────────────────

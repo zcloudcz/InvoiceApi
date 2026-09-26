@@ -13,6 +13,7 @@ using Fakvio.Contracts.Dto.Readiness;
 using Fakvio.Contracts.Dto.FileAttachment;
 using Fakvio.Contracts.Dto.ReceivedInvoice;
 using Fakvio.Contracts.Dto.Tax;
+using Fakvio.Contracts.Dto.VatRate;
 using Fakvio.Contracts.Dto.VatReport;
 
 namespace Fakvio.McpServer.Client;
@@ -194,6 +195,13 @@ public class FakvioApiClient : IFakvioApiClient
     public async Task<List<CurrencyDto>> GetActiveCurrenciesAsync(CancellationToken ct = default)
     {
         var result = await _http.GetFromJsonAsync<List<CurrencyDto>>("api/currency/active", JsonOptions, ct);
+        return result ?? [];
+    }
+
+    public async Task<List<VatRateDto>> GetActiveVatRatesAsync(DateTime? date = null, CancellationToken ct = default)
+    {
+        var query = date.HasValue ? $"?date={date.Value:O}" : "";
+        var result = await _http.GetFromJsonAsync<List<VatRateDto>>($"api/vatrate/active{query}", JsonOptions, ct);
         return result ?? [];
     }
 

@@ -10,6 +10,7 @@ using Fakvio.Contracts.Dto.Readiness;
 using Fakvio.Contracts.Dto.FileAttachment;
 using Fakvio.Contracts.Dto.ReceivedInvoice;
 using Fakvio.Contracts.Dto.Tax;
+using Fakvio.Contracts.Dto.VatRate;
 using Fakvio.Contracts.Dto.VatReport;
 
 namespace Fakvio.McpServer.Client;
@@ -80,6 +81,11 @@ public interface IFakvioApiClient
 
     /// <summary>GET /api/currency/active — active currencies, sorted by SortOrder.</summary>
     Task<List<CurrencyDto>> GetActiveCurrenciesAsync(CancellationToken ct = default);
+
+    // ── VAT rate endpoints ──────────────────────────────────────────────
+
+    /// <summary>GET /api/vatrate/active?date= — VAT rates valid at the given date (null = today).</summary>
+    Task<List<VatRateDto>> GetActiveVatRatesAsync(DateTime? date = null, CancellationToken ct = default);
 
     // ── Invoice Template endpoints ─────────────────────────────────────
 
