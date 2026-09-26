@@ -983,6 +983,28 @@ kontaktujte podporu.
 
 ---
 
+## 19b. Chyby při přihlášení, registraci a resetu hesla
+
+Přihlášení, registrace, načtení firmy z ARES i zapomenuté heslo jsou chráněné neviditelnou
+kontrolou proti robotům (reCAPTCHA). Pokud se zobrazí hláška **„Ověření proti robotům se
+nezdařilo"**:
+
+1. Zkuste stránku obnovit (F5) a akci zopakovat.
+2. Pokud používáte blokování reklam (AdBlock, uBlock Origin apod.), vypněte ho pro
+   `app.fakvio.cz` — právě tyto nástroje nejčastěji blokují skript, na kterém kontrola
+   proti robotům závisí.
+3. Přetrvává-li chyba, kontaktujte podporu.
+
+Tato hláška neznamená chybu ve vašich přihlašovacích údajích ani v e-mailu — je to
+samostatná kontrola, která proběhne dřív, než se cokoli z formuláře vůbec odešle.
+
+**Hláška „Příliš mnoho pokusů. Zkuste to prosím znovu za chvíli."** se zobrazí, když
+z vaší sítě přišlo za krátkou dobu příliš mnoho pokusů o přihlášení/registraci/reset
+hesla (ochrana proti zneužití, ne chyba na vaší straně). Počkejte přibližně minutu a
+zkuste to znovu.
+
+---
+
 ## 20. Napojení vlastního AI klienta (MCP server)
 
 Fakvio umí pracovat s AI aplikací, kterou už používáte (např. Claude Desktop, Claude Code

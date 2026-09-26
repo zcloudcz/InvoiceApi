@@ -157,7 +157,8 @@ Pravidla:
 Reuse **InvitationToken** mechaniku (`User.InvitationToken` + `InvitationTokenExpiresAt`):
 - Token: GUID string, expirace 48h.
 - Generování: `IUserService.ForgotPasswordAsync` (`Fakvio.Application/Service/IUserService.cs:128`).
-- **Anti-enumeration**: vrací `null` (success-like) i pro neexistující email, aby útočník neviděl rozdíl.
+- **Anti-enumeration**: vrací `null` (success-like) i pro neexistující email, aby útočník neviděl rozdíl v **odpovědi**. Zbývá užší mezera přes **časování** — existující email čeká na uložení tokenu a odeslání e-mailu (`await SendInvitationEmailAsync`), neexistující se vrátí skoro okamžitě; opakovaným měřením lze rozdíl odhalit. Předchází RC.3, RC.3 na to nesahá (přidává jen captcha gate) — zavření mezery (fronta/fire-and-forget + umělé zpoždění na "neznámé" větvi) je samostatný úkol.
+- Od RC.3: `UserController.ForgotPassword` ověřuje reCAPTCHA (`action: "forgot_password"`) **před** čímkoli e-mail-specifickým — 400 při selhání captcha nic o existenci e-mailu neprozrazuje (viz CAPTCHA.md §5).
 - Set: `IUserService.SetPasswordAsync` (`IUserService.cs:107`) — validuje token, expiraci, BCrypt hash, **vyčistí token** (one-shot).
 
 **Token se NIKDY nevrací z listovacích endpointů** (issue #364). `SetPassword` je `[AllowAnonymous]`,
@@ -246,7 +247,7 @@ Functions přes `SystemConfigurationFunctions.SystemConfiguration_GetCredentialH
 
 ### 2.8 reCAPTCHA gate (issue #200)
 
-`CaptchaService` (`Fakvio.Infrastructure/Service/CaptchaService.cs`) je **jediná** ochrana před zneužitím u tří anonymních endpointů — `/api/auth/login`, `/api/auth/register` a ARES proxy `/api/auth/ares/{ico}`. Rate limiting v repu **není**; od migrace na App Service je `AddRateLimiter` middleware možná cesta (viz §11.3).
+`CaptchaService` (`Fakvio.Infrastructure/Service/CaptchaService.cs`) chrání čtyři anonymní endpointy — `/api/auth/login`, `/api/auth/register`, ARES proxy `/api/auth/ares/{ico}` a od RC.3 i `/api/user/forgot-password`. Od RC.4 je nad ním ještě per-IP rate limiting (`AddRateLimiter`, politika `auth-anon`, viz §11.3 a ADMINGUIDE §9) — nezávislá druhá vrstva, funguje i když je reCAPTCHA vypnutá.
 
 **Fail closed.** Cokoli zabrání kladnému ověření (výjimka, HTTP chyba od Googlu, chybějící `SecretKey`) znamená **odmítnutí** požadavku. Dřív se v těchto případech vracelo `true`, takže výpadek Googlu bránu úplně vypnul.
 
@@ -262,6 +263,58 @@ Functions přes `SystemConfigurationFunctions.SystemConfiguration_GetCredentialH
 **Kde je escape hatch nastavený**: `appsettings.Development.json` (`Recaptcha__Enabled`), `FakvioFactory` v integračních testech (`builder.UseSetting`). Testy, které testují **samotnou bránu**, místo toho substituují `ICaptchaService`.
 
 **AresCache TTL.** ARES proxy je anonymní, takže počet klíčů v `AresCache` volí volající. `AresCacheRepository.SaveCacheAsync` proto při každém zápisu smaže dávku expirovaných řádků (`ExpiredSweepBatchSize`, index na `ExpiresAt`). Záměrně **není** periodická úloha (§6) — řádky vznikají jen na zápisové cestě, takže tabulka neroste, když se nezapisuje, a úklid nepotřebuje dvojici BackgroundService + `[TimerTrigger]` ani průchod všemi tenant schématy. Neúspěšné lookupy expirují za 1 hodinu (`AresServiceImpl.FailureCacheExpiration`), takže enumerace uklízí sama po sobě.
+
+### 2.8a Rate limiting anonymních endpointů (issue RC.4)
+
+`Microsoft.AspNetCore.RateLimiting` (built-in v .NET, žádný NuGet navíc), politika
+`auth-anon` registrovaná v `Fakvio.API/Program.cs`. Fixed-window limiter partitioned podle
+klienské IP (`GetClientIpPartitionKey` — lokální funkce v `Program.cs`), limity
+konfigurovatelné (`RateLimiting:AuthAnon:PermitLimit`/`WindowSeconds`, výchozí 10/60s).
+
+**Proč nad reCAPTCHA, ne místo ní**: reCAPTCHA ověřuje "je to člověk", rate limiter
+"kolikrát za minutu smí tahle IP zkusit" — nezávislé osy. Produkce dnes běží s
+`Recaptcha__Enabled=false`, takže rate limiter je jediná aktivní ochrana těchto endpointů,
+dokud RC.1/RC.2 nedoběhnou.
+
+**Klientská IP vyžaduje `ForwardedHeadersMiddleware`** — Fakvio.API běží za Azure App
+Service front-endem, takže bez přeposílání `X-Forwarded-For` by
+`HttpContext.Connection.RemoteIpAddress` byla vždy adresa front-endu, ne klienta, a limiter
+by (chybně) partitionoval všechny volající do jednoho koše. Azure App Service front-end
+**není** loopback (to platí jen pro IIS in-process hosting na Windows) — je to privátní
+Azure adresa, kterou předem neznáme. `ForwardedHeadersOptions` default
+(`KnownProxies`/`KnownNetworks` = jen loopback) by proto hlavičku nikdy nedůvěřoval a limiter
+by tiše degradoval na jeden globální koš (jeden útočník = zablokované přihlášení všem).
+`Program.cs` proto `KnownNetworks`/`KnownProxies` explicitně **čistí** (= důvěřuj
+libovolnému přeposílateli) — bezpečné jen díky tomu, že do kontejneru na App Service se
+nedá připojit jinudy než přes Azure vlastní edge (žádná přímá síťová cesta z internetu).
+Tohle je jiný trust model než generický reverse proxy, kde by "vyprázdnit seznam" bylo
+skutečné zneužitelné rozšíření důvěry.
+
+**Aplikace na endpoint**: `[EnableRateLimiting("auth-anon")]` atribut na metodě (ne na
+celém controlleru — `AuthController`/`UserController` mají i autentizované endpointy, které
+limit nepotřebují). Aktuálně: `AuthController.Login/Register/FetchFromAres`,
+`UserController.ForgotPassword/SetPassword/ValidateInvitationToken`,
+`TwoFactorController.VerifyTwoFactorCode`.
+
+**Odpověď při překročení**: `options.OnRejected` v `Program.cs` — 429 + `Retry-After`
+hlavička (počet vteřin do konce okna) + JSON `{"message": "Too many attempts..."}`. UI
+(`RateLimitExceededException` ve `Fakvio.UI.Shared/Services`) rozpozná 429 a zobrazí
+lokalizovanou hlášku (`RateLimit_TooManyAttempts`) místo hlášky dané endpointu.
+
+**Known limitation — counter je per proces, ne per App Service replika.** S N běžícími
+instancemi má útočník efekticně `PermitLimit × N`, protože Azure load balancer rozhazuje
+požadavky mezi instance a každá má vlastní in-memory counter. Při dnešním rozsahu (jedna
+instance) to nevadí; pokud se aplikace bude škálovat na víc instancí a limit bude potřeba
+dodržet přesně, přesunout counter do sdíleného úložiště (Redis, nebo distribuovaný limiter
+nad existující PostgreSQL) — neřešit teď dopředu.
+
+**Testy**: integrační testy proti produkčnímu limitu (10/60s) by byly buď pomalé, nebo by
+kolidovaly s ostatními testy sdílejícími stejný `FakvioFactory` (TestServer nemá reálnou
+per-request IP, takže všechny testy sdílejí jednu partition). `InvoiceApiFactory` proto
+limit ve výchozím testovacím hostu prakticky vypíná (`PermitLimit=1000000`); test, který
+chce ověřit samotný limiter (`AuthAnonRateLimitTests`), si vytváří **vlastní** `FakvioFactory`
+instanci (ne `IClassFixture`, aby si nesdílel server-side counter s jiným testem) a limit
+si sníží zpátky přes `builder.UseSetting`.
 
 ### 2.9 API klíče (SHA-256 — vědomá výjimka z §2.1)
 
@@ -2815,8 +2868,8 @@ pro klienta** — prozrazuje interní názvy tříd, cesty a tvar konfigurace. P
    │      validace vstupu v controlleru a co nejužší DTO. NEdávej [AllowAnonymous]
    │      na tenant-scoped controller — vznikne otevřená proxy.
    │      Vzor: AuthController.FetchFromAres (GET /api/auth/ares/{ico}).
-   │      Rate-limit middleware (`AddRateLimiter`) je od migrace na App Service možný;
-   │      captcha + cache-first lookup fungují v obou hostitelích.
+   │      POVINNĚ i: `[EnableRateLimiting("auth-anon")]` (RC.4, §2.8a) — nezávislá druhá
+   │      vrstva nad captchou, funguje i s `Recaptcha:Enabled=false`.
    │      `action` je druhý argument VerifyAsync a musí být stejný řetězec, jaký
    │      stránka předává `grecaptcha.execute()` ("login", "register", "ares").
    │      Token je na akci vázaný — bez shody by token z registračního formuláře

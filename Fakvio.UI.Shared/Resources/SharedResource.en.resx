@@ -286,6 +286,13 @@
   <data name="Login_LoggingIn" xml:space="preserve"><value>Logging in...</value></data>
   <data name="Login_DefaultCredentials" xml:space="preserve"><value>Default login: admin@zcloud.cz / Invoice123</value></data>
   <data name="Login_ErrorGeneric" xml:space="preserve"><value>Login error: {0}</value></data>
+  <!-- RC.2: shown instead of the endpoint's own error whenever the API rejects a request
+       for a failed CAPTCHA (see CaptchaException) — login, register, ARES lookup and
+       forgot password all use this same message. -->
+  <data name="Captcha_VerificationFailed" xml:space="preserve"><value>CAPTCHA verification failed. Reload the page, or disable ad blocking for app.fakvio.cz.</value></data>
+  <!-- RC.4: shown when the API answers 429 (per-IP rate limiter on anonymous auth
+       endpoints — see RateLimitExceededException). -->
+  <data name="RateLimit_TooManyAttempts" xml:space="preserve"><value>Too many attempts. Please try again in a moment.</value></data>
   <data name="SetPassword_Subtitle" xml:space="preserve"><value>Enter a new password for your account.</value></data>
   <data name="SetPassword_SettingPassword" xml:space="preserve"><value>Setting password...</value></data>
   <data name="SetPassword_GoToLogin" xml:space="preserve"><value>Go to login</value></data>
