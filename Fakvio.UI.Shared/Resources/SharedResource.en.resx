@@ -174,6 +174,23 @@
   <!-- Clients -->
   <data name="Client_Title" xml:space="preserve"><value>Clients</value></data>
   <data name="Client_New" xml:space="preserve"><value>New Client</value></data>
+  <data name="Client_ImportCsv" xml:space="preserve"><value>Import from CSV</value></data>
+
+  <!-- Client CSV import (Fakturoid / iDoklad, Story N6) -->
+  <data name="ClientImport_DialogTitle" xml:space="preserve"><value>Import clients from CSV</value></data>
+  <data name="ClientImport_Help" xml:space="preserve"><value>Upload a contacts export from Fakturoid (Contacts → Export) or iDoklad (Address book → Export) as CSV.</value></data>
+  <data name="ClientImport_SelectFile" xml:space="preserve"><value>Select CSV file</value></data>
+  <data name="ClientImport_FileTooLarge" xml:space="preserve"><value>File is too large (5 MB limit).</value></data>
+  <data name="ClientImport_Summary" xml:space="preserve"><value>Found: {0} new, {1} duplicate, {2} invalid.</value></data>
+  <data name="ClientImport_Col_Row" xml:space="preserve"><value>Row</value></data>
+  <data name="ClientImport_Col_Status" xml:space="preserve"><value>Status</value></data>
+  <data name="ClientImport_Col_Reason" xml:space="preserve"><value>Note</value></data>
+  <data name="ClientImport_Status_New" xml:space="preserve"><value>New</value></data>
+  <data name="ClientImport_Status_Duplicate" xml:space="preserve"><value>Duplicate</value></data>
+  <data name="ClientImport_Status_Invalid" xml:space="preserve"><value>Invalid</value></data>
+  <data name="ClientImport_UnknownColumns" xml:space="preserve"><value>Unrecognized columns (ignored): {0}</value></data>
+  <data name="ClientImport_ConfirmButton" xml:space="preserve"><value>Import ({0})</value></data>
+  <data name="ClientImport_ResultSummary" xml:space="preserve"><value>Created {0} clients, {1} skipped (duplicate).</value></data>
   <data name="Client_Edit" xml:space="preserve"><value>Edit Client</value></data>
   <data name="Client_Detail" xml:space="preserve"><value>Client Detail</value></data>
   <data name="Client_CompanyName" xml:space="preserve"><value>Company Name</value></data>

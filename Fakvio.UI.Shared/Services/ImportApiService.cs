@@ -81,4 +81,38 @@ public class ImportApiService : ApiClientBase
         return await PostAsync<ConfirmInvoiceImportRequest, List<ImportResultDto>>(
             "api/import/confirm", request) ?? new List<ImportResultDto>();
     }
+
+    // ─── Client CSV import (N6) ────────────────────────────────────────────
+
+    /// <summary>
+    /// Uploads a single CSV file and returns the client import preview
+    /// (New/Duplicate/Invalid per row). Nothing is saved yet.
+    /// Throws on a non-success response so the caller can show the server's error message
+    /// (e.g. "file too large") instead of a silent empty result.
+    /// </summary>
+    public async Task<ClientImportPreviewDto> PreviewClientsAsync(string fileName, byte[] bytes)
+    {
+        using var content = new MultipartFormDataContent();
+        var fileContent = new ByteArrayContent(bytes);
+        fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("text/csv");
+        content.Add(fileContent, "file", fileName);
+
+        var response = await _httpClient.PostAsync("api/import/clients/preview", content);
+        if (response.IsSuccessStatusCode)
+        {
+            return await response.Content.ReadFromJsonAsync<ClientImportPreviewDto>() ?? new ClientImportPreviewDto();
+        }
+
+        await HandleErrorResponseAsync(response, "POST", "api/import/clients/preview");
+        return new ClientImportPreviewDto(); // Unreachable — HandleErrorResponseAsync always throws
+    }
+
+    /// <summary>
+    /// Confirms a client CSV import — creates the clients the user kept from the preview.
+    /// </summary>
+    public async Task<ClientImportResultDto> ConfirmClientsAsync(ClientImportConfirmDto request)
+    {
+        return await PostAsync<ClientImportConfirmDto, ClientImportResultDto>(
+            "api/import/clients/confirm", request) ?? new ClientImportResultDto();
+    }
 }
