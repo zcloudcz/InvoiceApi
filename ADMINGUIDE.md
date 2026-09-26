@@ -571,16 +571,17 @@ HTTP a místo toho čeká na stdin, vypadá zvenčí jako nastartovaný — prot
   škálovat vodorovně. `GET /mcp` ani `/sse` k dispozici nejsou.
 - Endpoint je jediný: `POST /mcp`.
 
-> **MCP host už běží na App Service.** Packaging i CI (`.github/workflows/mcp-server.yml`)
-> jsou hotové pro obě prostředí — `TEST-ENV` deployuje job `deploy-http-test`,
-> `master` job `deploy-http-prod`. Oba se **přeskočí**, dokud není nastavená příslušná repo
-> proměnná se jménem web appu: `MCP_HTTP_APP_NAME` (test, `fakvio-mcp-web-test`) a
-> `MCP_HTTP_APP_NAME_PROD` (produkce, `fakvio-mcp-web`). Produkční MCP běží na planu
-> `asp-fakvio-b1` vedle `fakvio-api`, testovací na `asp-fakvio-b1-test` vedle `fakvio-api-test`.
+> **MCP host už běží na App Service — jen v produkci.** #419 přesunul API a MCP host z Azure
+> Functions na App Service; #426 pak zrušil test prostředí úplně (žádné `TEST-ENV`, žádné
+> `fakvio-api-test`, žádné `mcp-test.fakvio.cz`) — od 2026-09-10 existuje jen produkce.
+> Packaging i CI (`.github/workflows/mcp-server.yml`) mají proto jediný deploy job,
+> `deploy-http-prod`, spouštěný z `master`. Přeskočí se, dokud není nastavená repo proměnná
+> se jménem web appu, `MCP_HTTP_APP_NAME_PROD` (produkce, `fakvio-mcp-web`). Produkční MCP
+> běží na planu `asp-fakvio-b1` vedle `fakvio-api`.
 >
 > **App settings na MCP web appu:**
 > - `FAKVIO_MCP_TRANSPORT=http`
-> - `FAKVIO_API_URL` (adresa API, např. `https://fakvio-api.azurewebsites.net`)
+> - `FAKVIO_API_URL` (adresa API, `https://fakvio-api.azurewebsites.net`)
 > - `ASPNETCORE_URLS=http://0.0.0.0:8080`
 >
 > **HTTPS Only** zapnuto.
@@ -588,11 +589,10 @@ HTTP a místo toho čeká na stdin, vypadá zvenčí jako nastartovaný — prot
 > **Žádnou platformní autentizaci nezapínat** — ani Easy Auth, ani vyšší authorization.
 > Autorizaci dělá API klíč uvnitř aplikace.
 >
-> **Custom domény:** `mcp.fakvio.cz` (produkce) a `mcp-test.fakvio.cz` (test) jsou vlastní domény
-> s vlastním managed certifikátem. CNAME záznamy u Forpsi míří na technické hostitele App Service.
-> Adresu, kterou stránka Integrace nabízí, drží `McpSettings:BaseUrl`
-> (`Fakvio.BlazorUI/wwwroot/appsettings.json`) — samostatná hodnota, ne odhad z adresy API (#363).
-> Produkční hodnota se k uživateli dostane až releasem.
+> **Custom doména:** `mcp.fakvio.cz` je vlastní doména s vlastním managed certifikátem.
+> CNAME záznam u Forpsi míří na technického hostitele App Service. Adresu, kterou stránka
+> Integrace nabízí, drží `McpSettings:BaseUrl` (`Fakvio.BlazorUI/wwwroot/appsettings.json`,
+> dnes `https://mcp.fakvio.cz`) — samostatná hodnota, ne odhad z adresy API (#363).
 >
 > **Produkční hodnota se k uživateli dostane až releasem.** Tentýž push do `master` nasadí
 > i samotný host, takže adresa a to, na co ukazuje, jdou živě spolu.

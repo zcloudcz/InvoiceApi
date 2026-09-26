@@ -985,18 +985,10 @@ kontaktujte podporu.
 
 ## 20. Napojení vlastního AI klienta (MCP server)
 
-Kromě vestavěného [AI asistenta](#13-ai-asistent) umí Fakvio pracovat i s AI
-aplikací, kterou už používáte (např. Claude Desktop nebo Claude Code). Napojení
-zajišťuje **MCP server** — program, který překládá požadavky AI na volání Fakvia.
-
-**V čem se to liší od AI asistenta v aplikaci:**
-
-| | AI asistent v aplikaci | MCP server |
-|---|---|---|
-| Kde se ovládá | Panel v pravém horním rohu Fakvia | Vaše AI aplikace |
-| Instalace | Žádná | Podle způsobu připojení (viz krok 2) |
-| Přihlášení | Vaše běžné přihlášení | Osobní **API klíč**, který si vytvoříte |
-| Rozsah akcí | Vyhledávání a přehledy | 49 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové výpočty, šablony, měny, nastavení, platby a upomínky |
+Fakvio umí pracovat s AI aplikací, kterou už používáte (např. Claude Desktop, Claude Code
+nebo ChatGPT). Napojení zajišťuje **MCP server** — program, který překládá požadavky AI na
+volání Fakvia. Nabízí 49 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové
+výpočty, šablony, měny, nastavení, platby a upomínky.
 
 Postup je vždy stejný: **vytvořit klíč → vložit konfiguraci do AI aplikace → ověřit**.
 
@@ -1038,11 +1030,11 @@ odpovídá vašemu způsobu připojení podle kroku 2.
 |---|---|---|
 | Kde MCP server běží | Na vašem počítači, spouští ho vaše AI aplikace | Na serveru, který provozuje váš správce |
 | Co musíte nainstalovat | Nástroj `fakvio-mcp` (jeden příkaz, viz krok 3a) | Nic |
-| Co potřebujete znát | Adresu **API** Fakvia (najdete ji v připraveném bloku, viz krok 3a) | Adresu MCP serveru (dá vám ji správce) |
+| Co potřebujete znát | Adresu **API** Fakvia (najdete ji v připraveném bloku, viz krok 3a) | Adresu MCP serveru — `https://mcp.fakvio.cz/mcp` (viz krok 3b) |
 | Kdy zvolit | Pracujete na jednom počítači a máte tam práva instalovat | Chcete se připojit odkudkoli nebo nemůžete nic instalovat |
 
-Nevíte-li, co máte k dispozici, zeptejte se správce systému — provoz MCP serveru je jeho
-část (technický popis má v ADMINGUIDE, kapitola „Bezpečnost“).
+Nevíte-li, který způsob zvolit, zeptejte se správce systému — technický popis provozu MCP
+serveru má v ADMINGUIDE, kapitola „Bezpečnost“.
 
 ---
 
@@ -1059,7 +1051,7 @@ připravený blok **Lokální MCP server (stdio)**, ať se nepřepíšete.
     "fakvio": {
       "command": "fakvio-mcp",
       "env": {
-        "FAKVIO_API_URL": "https://adresa-api-fakvia",
+        "FAKVIO_API_URL": "https://fakvio-api.azurewebsites.net",
         "FAKVIO_API_TOKEN": "fak_live_vas-klic"
       }
     }
@@ -1068,10 +1060,9 @@ připravený blok **Lokální MCP server (stdio)**, ať se nepřepíšete.
 ```
 
 - `FAKVIO_API_URL` je adresa **API** Fakvia — tedy serveru, se kterým aplikace mluví.
-  **Není to adresa, na kterou se hlásíte v prohlížeči**; v běžném nasazení to jsou dvě
-  různé adresy. Nejjistější je vzít hodnotu z připraveného bloku **Lokální MCP server
-  (stdio)** na stránce Integrace — je v něm vyplněná správně. Kdo blok už nemá otevřený,
-  ať si o adresu řekne správci.
+  **Není to adresa, na kterou se hlásíte v prohlížeči** (`app.fakvio.cz`) — v produkci je to
+  `https://fakvio-api.azurewebsites.net`. Nejjistější je ale vzít hodnotu z připraveného
+  bloku **Lokální MCP server (stdio)** na stránce Integrace — je v něm vyplněná automaticky.
 - `FAKVIO_API_TOKEN` je váš API klíč z kroku 1.
 - Předpokladem je nainstalovaný nástroj `fakvio-mcp`. Vyžaduje .NET 10 SDK (nebo
   .NET 10 runtime **spolu s ASP.NET Core runtime**) a instaluje se jedním příkazem:
@@ -1100,7 +1091,7 @@ posílá v hlavičce každého požadavku.
   "mcpServers": {
     "fakvio-remote": {
       "type": "http",
-      "url": "https://adresa-mcp-serveru.invalid/mcp",
+      "url": "https://mcp.fakvio.cz/mcp",
       "headers": {
         "Authorization": "Bearer fak_live_vas-klic"
       }
@@ -1109,10 +1100,8 @@ posílá v hlavičce každého požadavku.
 }
 ```
 
-- `url` končí vždy `/mcp`.
-- Adresu serveru vám dá správce a bez ní se nepřipojíte. Dokud pro vás žádný MCP server
-  neběží, je `url` v připraveném bloku na stránce Integrace jen **ukázková adresa** (nikam
-  neukazuje) — po vložení ji **vždy** přepište skutečnou adresou od správce.
+- `url` je produkční adresa MCP serveru, končí vždy `/mcp`. Připravený blok na stránce
+  Integrace ji vyplní automaticky.
 - Podporu vzdálených MCP serverů musí umět i vaše AI aplikace; ne všechny to zatím zvládají.
 
 ---
@@ -1128,7 +1117,7 @@ je hotovo. Když ne, obvyklé příčiny jsou tyhle:
 | Chybu s číslem **403** | Klíč má oprávnění `Jen čtení` a AI se pokusila něco změnit | Vytvořte klíč s `Čtení i zápis` (a ten původní revokujte) |
 | Že nástroje Fakvia vůbec nevidí | Konfigurace se nenačetla | Zkontrolujte, že soubor je uložený na správném místě, a AI aplikaci restartujte |
 | Že se nemůže připojit — **lokální** režim | Chybí nástroj `fakvio-mcp`, nebo v `FAKVIO_API_URL` není adresa API (častá chyba: je tam adresa, na které máte Fakvio otevřené v prohlížeči) | Porovnejte `FAKVIO_API_URL` s blokem **Lokální MCP server (stdio)** na stránce Integrace; když blok už nemáte otevřený, řekněte si o adresu API správci |
-| Že se nemůže připojit — **vzdálený** režim | Nesedí `url` MCP serveru | Vložte adresu, kterou vám dal správce (končí `/mcp`). S připraveným blokem ji neporovnávejte — `url` je v něm jen ukázková adresa (viz krok 3b) |
+| Že se nemůže připojit — **vzdálený** režim | Nesedí `url` MCP serveru | Zkontrolujte, že `url` je přesně `https://mcp.fakvio.cz/mcp` (viz krok 3b) |
 
 ---
 
