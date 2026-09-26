@@ -1499,9 +1499,11 @@ jen vyhledávacím klíčem nebo příponou souboru.
 částečnou položku — `import_invoice` zastupoval `CreateReceivedInvoice` jen pro text dokladu,
 diktovaná data neuměl.
 
-Číselné řady a sazby DPH už chat umí (#224), upomínky a platby taky (#227) — u obou MCP
-protějšek nemá. Mimo obě rozhraní zůstává jen UI / SysAdmin: párování platby s fakturou
-(PaymentMatch) — `list_payments`/`get_payment` čtou, ale spárovat jde jen na stránce Platby.
+Číselné řady, nastavení firmy, bankovní účty, platby a upomínky (chat #224/#227) mají MCP
+protějšek od N3 — čtecí i (kde dává smysl) zápisové. Zbývá: úprava/mazání jednotlivého
+bankovního účtu (N3.4) a zápis nastavení upomínek (N3.6) — obojí vědomě odloženo, viz task.
+Mimo obě rozhraní zůstává jen UI / SysAdmin: párování platby s fakturou (PaymentMatch) —
+`list_payments`/`get_payment` čtou, ale spárovat jde jen na stránce Platby.
 
 ### 4.8 In-app notifikace (per-user)
 

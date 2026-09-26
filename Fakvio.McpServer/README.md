@@ -35,6 +35,9 @@ Ukázka staré (1.0.2) a nové (2.0.0) volby `create_invoice`:
 }
 ```
 
+**2.1.0** je jen doplnění nástrojů (story N3 — nastavení, platby, upomínky), zpětně
+kompatibilní — žádné volání ze 2.0.0 se neláme.
+
 ---
 
 Aplikace, která zpřístupňuje fakturaci Fakvio AI klientům přes
