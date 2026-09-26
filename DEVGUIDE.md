@@ -1590,10 +1590,19 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
   i s textem výjimky. Obecný catch vrací
   `McpToolError.ToJson(ex)`: zaloguje celou výjimku (`McpToolError.Logger`, nastaven z `Program.cs`
   po `Build()` — tool metody jsou statické, takže sdílený logger je jednodušší než `ILogger`
-  parametr v 37 signaturách) a vrátí stabilní `{ "error": "internal_error", "message": "..." }`,
-  **nikdy `ex.Message`** — to by mohlo obsahovat syrové tělo API chyby, které do zprávy vkládá
-  `FakvioApiClient.EnsureSuccessAsync` (stack trace, SQL detail, interní ID). Domain-level chyby
-  (404, validace vstupu psaná přímo v těle toolu) tímhle neprochází a zůstávají beze změny.
+  parametr v 37 signaturách). Domain-level chyby (404, validace vstupu psaná přímo v těle toolu)
+  tímhle neprochází a zůstávají beze změny.
+  **Read-only 4xx z API (N2.2, #279 follow-up):** `EnsureSuccessAsync` už nehází holý
+  `HttpRequestException`, ale `FakvioApiClient/FakvioApiException.cs` (dědí z něj, takže stávající
+  `catch (HttpRequestException)` volající kód nerozbije) s `SafeMessage` — domainová hláška z pole
+  `message` API odpovědi (JSON objekt s řetězcovým `message`, nebo bare JSON string — `TaxController`
+  styl), ořízlá na 500 znaků. Syrové tělo zůstává jen v `Message` (log). `McpToolError.ToJson`
+  podle `StatusCode` vrátí `forbidden` (401/403, vždy pevný text s odkazem na
+  `/settings/integrations` — nikdy `SafeMessage`, ten by byl jen API's obecné "Forbidden"),
+  `not_found` (404, `SafeMessage ?? "The requested record does not exist."`), `validation_error`
+  (400/409/422, `SafeMessage ?? "The API rejected the input."`); vše ostatní zůstává
+  `internal_error` s obecnou hláškou, **nikdy `ex.Message`** — to by mohlo obsahovat syrové tělo
+  API chyby (stack trace, SQL detail, interní ID).
 - Konfigurace klienta: `.mcp.json.sample` (kořen repa) nese **oba** bloky — `fakvio` (stdio, `command` + `env`) a `fakvio-remote` (`"type": "http"`, `url` = adresa HTTP hostu + `/mcp`, klíč v hlavičce `Authorization`). Tytéž dva **režimy**, už s vyplněným klíčem, vypisuje stránka `/settings/integrations` po vytvoření klíče (`Integrations.BuildSnippets`) — když se tvar konfigurace změní, musí se změnit na obou místech. Doslova shodné bloky to nejsou: UI pojmenuje oba servery `fakvio` (sample rozlišuje `fakvio` / `fakvio-remote`) a stdio blok v samplu má navíc prázdné `"args": []`. Jméno serveru je lokální věc klienta, takže funkčně je to jedno — ale kdo si z panelu zkopíruje **oba** bloky do jednoho souboru, vyrobí si duplicitní JSON klíč. Sjednotit jméno v UI by bylo lepší než tuhle poznámku, ale je to produkční kód a tenhle docs task ho nesahá.
   **`url` v tom vzdáleném bloku čte `Configuration["McpSettings:BaseUrl"]`** (`Fakvio.BlazorUI/wwwroot/appsettings.json`), ne `ApiKeyApiService.ApiBaseUrl` — to byla dřívější chyba (#363): API a MCP HTTP host jsou od #240 dvě různé aplikace na dvou různých adresách, takže adresa API tam nepatří a `/mcp` na ní neexistuje. Dokud `McpSettings:BaseUrl` není nastavené (dnes všude — žádný host ještě neběží, viz #241), snippet místo něj vloží zjevnou ukázkovou hodnotu (`Integration_SnippetHttpUrlPlaceholder`), ne tiše špatnou URL.
 - Detaily (build, získání credentialu, seznam nástrojů, postup přidání nástroje): `Fakvio.McpServer/README.md`.

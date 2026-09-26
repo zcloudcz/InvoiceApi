@@ -1,4 +1,6 @@
+using System.Net;
 using System.Text.Json;
+using Fakvio.McpServer.Client;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -63,10 +65,48 @@ public static class McpToolError
     /// Logs the full exception server-side (stderr — MCP uses stdout for the protocol
     /// stream, see Program.cs) and returns a neutral, stable error JSON that is safe to
     /// send across the MCP boundary to an external AI client.
+    ///
+    /// For a <see cref="FakvioApiException"/> (#279 / N2.2), the response is shaped by its
+    /// <see cref="System.Net.HttpStatusCode"/> instead of always being the generic
+    /// <c>internal_error</c> — a read-only API key calling a write tool, a 404, or a validation
+    /// error all used to look identical ("something crashed") to the AI client. Anything the API
+    /// client did not sanitize into <see cref="FakvioApiException.SafeMessage"/> (a non-JSON body,
+    /// or a JSON body without a string <c>message</c>) falls back to a fixed, generic sentence —
+    /// never the raw body, which may carry internals (stack traces, SQL, IDs).
     /// </summary>
     public static string ToJson(Exception ex)
     {
         Logger.LogError(ex, "MCP tool invocation failed");
+
+        if (ex is FakvioApiException apiEx && apiEx.StatusCode.HasValue)
+        {
+            // 401/403 always gets the fixed guidance text — SafeMessage would just be the API's
+            // generic "Forbidden" wording, which is less useful than telling the model exactly
+            // what to do (create a read+write key). 404/400/409/422 prefer SafeMessage because
+            // there the API's own domain message (e.g. "Invoice not found", "Duplicate VS") is
+            // the more precise answer.
+            switch (apiEx.StatusCode.Value)
+            {
+                case HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden:
+                    return JsonSerializer.Serialize(
+                        new
+                        {
+                            error = "forbidden",
+                            message = "The API key is not allowed to do this — it is read-only or your role " +
+                                      "lacks the permission. Create a key with read+write scope on /settings/integrations."
+                        },
+                        JsonOptions);
+                case HttpStatusCode.NotFound:
+                    return JsonSerializer.Serialize(
+                        new { error = "not_found", message = apiEx.SafeMessage ?? "The requested record does not exist." },
+                        JsonOptions);
+                case HttpStatusCode.BadRequest or HttpStatusCode.Conflict or HttpStatusCode.UnprocessableEntity:
+                    return JsonSerializer.Serialize(
+                        new { error = "validation_error", message = apiEx.SafeMessage ?? "The API rejected the input." },
+                        JsonOptions);
+            }
+        }
+
         return JsonSerializer.Serialize(
             new
             {

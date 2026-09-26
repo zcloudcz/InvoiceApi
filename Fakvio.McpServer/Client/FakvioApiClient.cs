@@ -424,27 +424,50 @@ public class FakvioApiClient : IFakvioApiClient
             TryParseTenantNotReady(body) is { } tenantNotReady)
             throw tenantNotReady;
 
-        // Try to extract a user-friendly message from the API error response
+        // Try to extract a user-friendly message from the API error response.
+        // errorMessage (unsanitized, may repeat the raw body) goes into the exception's
+        // Message — server log only. safeMessage (#279 / N2.2) is the ONLY part that may
+        // ever reach the AI client, via FakvioApiException.SafeMessage, and only exists
+        // when the body is actually JSON with a string message (object shape) or a bare
+        // JSON string (e.g. TaxController's BadRequest("...") calls).
         string errorMessage;
+        string? safeMessage;
         try
         {
             using var doc = JsonDocument.Parse(body);
-            errorMessage = doc.RootElement.TryGetProperty("message", out var msg)
-                ? msg.GetString() ?? body
-                : body;
+            var root = doc.RootElement;
+
+            if (root.ValueKind == JsonValueKind.Object &&
+                root.TryGetProperty("message", out var msg) &&
+                msg.ValueKind == JsonValueKind.String)
+            {
+                safeMessage = msg.GetString();
+                errorMessage = safeMessage ?? body;
+            }
+            else if (root.ValueKind == JsonValueKind.String)
+            {
+                safeMessage = root.GetString();
+                errorMessage = safeMessage ?? body;
+            }
+            else
+            {
+                safeMessage = null;
+                errorMessage = body;
+            }
         }
-        catch
+        catch (JsonException)
         {
-            // Response body is not JSON — use raw text
+            // Response body is not JSON — use raw text for the log, nothing safe to relay.
+            safeMessage = null;
             errorMessage = string.IsNullOrWhiteSpace(body)
                 ? response.ReasonPhrase ?? "Unknown error"
                 : body;
         }
 
-        throw new HttpRequestException(
+        throw new FakvioApiException(
             $"API returned {(int)response.StatusCode} {response.StatusCode}: {errorMessage}",
-            inner: null,
-            response.StatusCode);
+            response.StatusCode,
+            safeMessage);
     }
 
     /// <summary>

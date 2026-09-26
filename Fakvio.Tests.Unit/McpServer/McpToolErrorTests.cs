@@ -1,4 +1,6 @@
+using System.Net;
 using System.Text.Json;
+using Fakvio.McpServer.Client;
 using Fakvio.McpServer.Tools;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
@@ -73,5 +75,88 @@ public class McpToolErrorTests
             Arg.Any<object>(),
             ex,
             Arg.Any<Func<object, Exception?, string>>());
+    }
+
+    // ── FakvioApiException status-code mapping (N2.2 / #279 follow-up) ────
+
+    [Fact]
+    public void ToJson_On403_ReturnsForbidden_WithFixedGuidanceMessage()
+    {
+        var ex = new FakvioApiException("API returned 403 Forbidden: nope", HttpStatusCode.Forbidden, safeMessage: null);
+
+        var root = JsonDocument.Parse(McpToolError.ToJson(ex)).RootElement;
+
+        root.GetProperty("error").GetString().ShouldBe("forbidden");
+        root.GetProperty("message").GetString().ShouldContain("/settings/integrations");
+    }
+
+    [Fact]
+    public void ToJson_On401_AlsoReturnsForbidden()
+    {
+        var ex = new FakvioApiException("API returned 401 Unauthorized", HttpStatusCode.Unauthorized, safeMessage: null);
+
+        var root = JsonDocument.Parse(McpToolError.ToJson(ex)).RootElement;
+
+        root.GetProperty("error").GetString().ShouldBe("forbidden");
+    }
+
+    [Fact]
+    public void ToJson_On404_UsesSafeMessage_WhenPresent()
+    {
+        var ex = new FakvioApiException("API returned 404 Not Found: x", HttpStatusCode.NotFound, safeMessage: "Invoice not found.");
+
+        var root = JsonDocument.Parse(McpToolError.ToJson(ex)).RootElement;
+
+        root.GetProperty("error").GetString().ShouldBe("not_found");
+        root.GetProperty("message").GetString().ShouldBe("Invoice not found.");
+    }
+
+    [Fact]
+    public void ToJson_On404_FallsBackToGenericMessage_WhenNoSafeMessage()
+    {
+        var ex = new FakvioApiException("API returned 404 Not Found: x", HttpStatusCode.NotFound, safeMessage: null);
+
+        var root = JsonDocument.Parse(McpToolError.ToJson(ex)).RootElement;
+
+        root.GetProperty("message").GetString().ShouldBe("The requested record does not exist.");
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.BadRequest)]
+    [InlineData(HttpStatusCode.Conflict)]
+    [InlineData(HttpStatusCode.UnprocessableEntity)]
+    public void ToJson_On4xxValidationCodes_UsesSafeMessage_WhenPresent(HttpStatusCode statusCode)
+    {
+        var ex = new FakvioApiException("API returned error", statusCode, safeMessage: "Duplicate variable symbol.");
+
+        var root = JsonDocument.Parse(McpToolError.ToJson(ex)).RootElement;
+
+        root.GetProperty("error").GetString().ShouldBe("validation_error");
+        root.GetProperty("message").GetString().ShouldBe("Duplicate variable symbol.");
+    }
+
+    [Fact]
+    public void ToJson_On400_WithNonJsonBody_NeverLeaksTheRawBody()
+    {
+        // SafeMessage is null when EnsureSuccessAsync could not extract a domain message
+        // (non-JSON body) — the raw body must never reach this far.
+        var ex = new FakvioApiException(
+            "API returned 400 BadRequest: <html>raw server body</html>", HttpStatusCode.BadRequest, safeMessage: null);
+
+        var root = JsonDocument.Parse(McpToolError.ToJson(ex)).RootElement;
+
+        var message = root.GetProperty("message").GetString();
+        message.ShouldBe("The API rejected the input.");
+        message.ShouldNotContain("raw server body");
+    }
+
+    [Fact]
+    public void ToJson_On500_StaysInternalError_EvenForFakvioApiException()
+    {
+        var ex = new FakvioApiException("API returned 500 Internal Server Error", HttpStatusCode.InternalServerError, safeMessage: null);
+
+        var root = JsonDocument.Parse(McpToolError.ToJson(ex)).RootElement;
+
+        root.GetProperty("error").GetString().ShouldBe("internal_error");
     }
 }

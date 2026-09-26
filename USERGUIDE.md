@@ -1164,7 +1164,9 @@ požadavek AI už neprojde. Vzít zpět to nejde; místo revokovaného klíče s
   účtu — nesdílejte ho, neposílejte emailem a nedávejte ho do gitu. Když se přesto někam dostane,
   klíč revokujte; je to rychlejší i bezpečnější než ho hledat.
 - Klíč **nikdy neumí víc než váš účet**. Když má navíc `Jen čtení`, umí ještě míň — na zápis
-  vrátí chybu, i kdyby vaše role zápis dovolovala.
+  vrátí chybu, i kdyby vaše role zápis dovolovala. AI dostane srozumitelnou zprávu
+  (`"error": "forbidden"` s návodem vytvořit klíč `Čtení i zápis`), ne obecnou chybu serveru —
+  pozná tak hned, že problém je v oprávnění klíče, ne v pádu aplikace.
 - Klíčem **nejde spravovat klíče**. Vytvořit nebo revokovat klíč jde jen po přihlášení do
   aplikace, takže ani zneužitý klíč si nevyrobí náhradu.
 - Když se váš účet deaktivuje, přestanou fungovat **všechny** vaše klíče najednou.

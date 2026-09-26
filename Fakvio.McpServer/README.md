@@ -239,9 +239,20 @@ grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs
   nevyhazuje jako výjimka, ale vrací se jako `{ "error": "..." }` — AI klient tak dostane
   čitelnou zprávu místo pádu spojení.
 - Neočekávaná výjimka jde přes `McpToolError.ToJson(ex)` — jedno místo pro všech 38
-  nástrojů. Zaloguje celou výjimku server-side a vrátí stabilní
-  `{ "error": "internal_error", "message": "..." }`, **nikdy `ex.Message`** (to může nést
-  syrové tělo API chyby z `FakvioApiClient.EnsureSuccessAsync`).
+  nástrojů. Zaloguje celou výjimku server-side a vrátí stabilní JSON, **nikdy `ex.Message`**
+  (to může nést syrové tělo API chyby z `FakvioApiClient.EnsureSuccessAsync`). Chybová
+  odpověď API (`FakvioApiException`) se podle status kódu mapuje takto:
+
+  | HTTP status | `error` | `message` |
+  |---|---|---|
+  | 401/403 | `forbidden` | Vždy pevný text — "the key is read-only or your role lacks the permission… /settings/integrations". |
+  | 404 | `not_found` | `SafeMessage` z těla (`{"message":"…"}`), jinak "The requested record does not exist." |
+  | 400/409/422 | `validation_error` | `SafeMessage` z těla, jinak "The API rejected the input." |
+  | ostatní (5xx…) | `internal_error` | Obecná hláška, viz výše. |
+
+  `SafeMessage` existuje jen když tělo API chyby je JSON objekt s řetězcovým `message`, nebo
+  bare JSON string (`TaxController` styl) — cokoli jiného (ne-JSON tělo, HTML stránka) se
+  nikdy nedostane k modelu, i pro 400/404.
 - Zrušení od volajícího se **propaguje**: `catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }`.
   Filtr je nutný — `HttpClient` vyhodí `TaskCanceledException` (potomek `OperationCanceledException`)
   i při vlastním timeoutu, kdy token volajícího zrušený není; ten případ má skončit sanitizovaným JSONem,

@@ -559,6 +559,34 @@ public class FakvioApiClientTests : IDisposable
         ex.Message.ShouldBe(body);
     }
 
+    /// <summary>
+    /// N2.2 (#279 follow-up): a 403 from a read-only API key must come out as a
+    /// <see cref="FakvioApiException"/> with SafeMessage null when the body carries no
+    /// domain message — McpToolError.ToJson uses a fixed guidance text for 401/403 regardless,
+    /// but the API client itself must not invent a SafeMessage that was never in the body.
+    /// </summary>
+    [Fact]
+    public async Task EnsureSuccessAsync_On403_ThrowsFakvioApiException_WithNullSafeMessage_WhenBodyHasNoMessage()
+    {
+        _handler.SetupResponse(HttpStatusCode.Forbidden, new { error = "Forbidden" });
+
+        var ex = await Should.ThrowAsync<FakvioApiException>(() => _sut.CompleteInvoiceAsync(1));
+
+        ex.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        ex.SafeMessage.ShouldBeNull();
+    }
+
+    /// <summary>A 400 with a string "message" property must surface it as SafeMessage verbatim.</summary>
+    [Fact]
+    public async Task EnsureSuccessAsync_On400WithMessage_SetsSafeMessage()
+    {
+        _handler.SetupResponse(HttpStatusCode.BadRequest, new { message = "Duplicate variable symbol." });
+
+        var ex = await Should.ThrowAsync<FakvioApiException>(() => _sut.CompleteInvoiceAsync(1));
+
+        ex.SafeMessage.ShouldBe("Duplicate variable symbol.");
+    }
+
     [Fact]
     public async Task EnsureSuccessAsync_ThrowsWithStatusCode_On500()
     {
