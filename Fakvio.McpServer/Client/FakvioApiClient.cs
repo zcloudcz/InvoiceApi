@@ -4,6 +4,7 @@ using System.Text.Json;
 using Fakvio.Contracts.Common.Pagination;
 using Fakvio.Contracts.Dto.ApiKey;
 using Fakvio.Contracts.Dto.Client;
+using Fakvio.Contracts.Dto.Currency;
 using Fakvio.Contracts.Dto.Dashboard;
 using Fakvio.Contracts.Dto.Email;
 using Fakvio.Contracts.Dto.Invoice;
@@ -189,6 +190,12 @@ public class FakvioApiClient : IFakvioApiClient
     }
 
     // ── Invoice Template endpoints ─────────────────────────────────────
+
+    public async Task<List<CurrencyDto>> GetActiveCurrenciesAsync(CancellationToken ct = default)
+    {
+        var result = await _http.GetFromJsonAsync<List<CurrencyDto>>("api/currency/active", JsonOptions, ct);
+        return result ?? [];
+    }
 
     public async Task<List<InvoiceTemplateDto>> GetActiveTemplatesAsync(string? documentType = null, CancellationToken ct = default)
     {

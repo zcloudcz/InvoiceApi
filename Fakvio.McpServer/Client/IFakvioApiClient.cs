@@ -1,6 +1,7 @@
 using Fakvio.Contracts.Common.Pagination;
 using Fakvio.Contracts.Dto.ApiKey;
 using Fakvio.Contracts.Dto.Client;
+using Fakvio.Contracts.Dto.Currency;
 using Fakvio.Contracts.Dto.Dashboard;
 using Fakvio.Contracts.Dto.Email;
 using Fakvio.Contracts.Dto.Invoice;
@@ -74,6 +75,11 @@ public interface IFakvioApiClient
 
     /// <summary>GET /api/client/issuer — get the authenticated user's company (issuer).</summary>
     Task<ClientDto?> GetIssuerAsync(CancellationToken ct = default);
+
+    // ── Currency endpoints ──────────────────────────────────────────────
+
+    /// <summary>GET /api/currency/active — active currencies, sorted by SortOrder.</summary>
+    Task<List<CurrencyDto>> GetActiveCurrenciesAsync(CancellationToken ct = default);
 
     // ── Invoice Template endpoints ─────────────────────────────────────
 

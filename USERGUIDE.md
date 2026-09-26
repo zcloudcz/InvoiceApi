@@ -991,7 +991,7 @@ zajišťuje **MCP server** — program, který překládá požadavky AI na vol�
 | Kde se ovládá | Panel v pravém horním rohu Fakvia | Vaše AI aplikace |
 | Instalace | Žádná | Podle způsobu připojení (viz krok 2) |
 | Přihlášení | Vaše běžné přihlášení | Osobní **API klíč**, který si vytvoříte |
-| Rozsah akcí | Vyhledávání a přehledy | 38 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové výpočty, šablony |
+| Rozsah akcí | Vyhledávání a přehledy | 39 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové výpočty, šablony, měny |
 
 Postup je vždy stejný: **vytvořit klíč → vložit konfiguraci do AI aplikace → ověřit**.
 
@@ -1134,7 +1134,7 @@ je hotovo. Když ne, obvyklé příčiny jsou tyhle:
 | Přehledy | Dashboard, faktury po splatnosti, faktury klienta, faktury za období, přehled DPH, přijaté faktury po splatnosti |
 | Daně | Odhad daně, porovnání daňových režimů, roční příjmy, zálohy na pojistné, daňové nastavení |
 | Šablony | Vypsat, zobrazit, vystavit fakturu ze šablony |
-| Nastavení | Zkontrolovat, co firmě chybí k vystavení faktury |
+| Nastavení | Zkontrolovat, co firmě chybí k vystavení faktury, vypsat platné měny (pro vystavení faktury v cizí měně) |
 
 Příklady zadání: „Vystav fakturu pro klienta XYZ na 15 000 Kč za konzultace“,
 „Stáhni mi PDF faktury FAK-2026-001“, „Kolik mám letos zaplatit na zálohách?“

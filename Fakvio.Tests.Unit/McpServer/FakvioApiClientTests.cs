@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Fakvio.Contracts.Common.Pagination;
 using Fakvio.Contracts.Dto.Client;
+using Fakvio.Contracts.Dto.Currency;
 using Fakvio.Contracts.Dto.Dashboard;
 using Fakvio.Contracts.Dto.Email;
 using Fakvio.Contracts.Dto.FileAttachment;
@@ -295,6 +296,33 @@ public class FakvioApiClientTests : IDisposable
 
         // Assert
         result.ShouldBeNull();
+    }
+
+    // ── Currency tests ──────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetActiveCurrenciesAsync_CallsActiveEndpoint_AndDeserializesResult()
+    {
+        _handler.SetupResponse(HttpStatusCode.OK, new List<CurrencyDto>
+        {
+            new() { Id = 1, Code = "CZK", Name = "Czech Koruna", Symbol = "Kč" }
+        });
+
+        var result = await _sut.GetActiveCurrenciesAsync();
+
+        _handler.LastRequestUri?.ToString().ShouldEndWith("api/currency/active");
+        result.ShouldHaveSingleItem();
+        result[0].Code.ShouldBe("CZK");
+    }
+
+    [Fact]
+    public async Task GetActiveCurrenciesAsync_EmptyResponseBody_ReturnsEmptyList()
+    {
+        _handler.SetupRawResponse(HttpStatusCode.OK, "null");
+
+        var result = await _sut.GetActiveCurrenciesAsync();
+
+        result.ShouldBeEmpty();
     }
 
     // ── Template tests ─────────────────────────────────────────────────
