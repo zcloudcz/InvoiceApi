@@ -189,6 +189,16 @@ public sealed class CsvTable
             records.Add(currentRecord);
             currentRecord = new List<string>();
             recordHasContent = false;
+
+            // Hard ceiling during tokenization itself, not just on the final data-row count after
+            // this method returns: a 5 MB file of millions of one-character lines would otherwise
+            // allocate millions of List<string>/string objects before the MaxRowCount check below
+            // ever runs. The generous margin over MaxRowCount accounts for blank lines, which are
+            // filtered out (and don't count towards the real limit) only after tokenizing completes.
+            if (records.Count > MaxRowCount * 2 + 100)
+            {
+                throw new CsvParseException($"The file has too many rows (more than {MaxRowCount}).");
+            }
         }
 
         for (var i = 0; i < text.Length; i++)

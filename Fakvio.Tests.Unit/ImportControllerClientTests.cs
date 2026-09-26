@@ -58,6 +58,20 @@ public class ImportControllerClientTests
     }
 
     [Fact]
+    public async Task PreviewClients_FileOverSizeLimit_ReturnsBadRequest_WithoutCallingService()
+    {
+        var controller = CreateController();
+        // A FormFile whose declared Length exceeds the limit — content itself doesn't need to be
+        // that big, this exercises the explicit file.Length check, not the parser's own byte-copy loop.
+        var oversized = new FormFile(new MemoryStream([1]), 0, CsvTable.MaxFileSizeBytes + 1, "file", "big.csv");
+
+        var result = await controller.PreviewClients(oversized, CancellationToken.None);
+
+        result.Result.ShouldBeOfType<BadRequestObjectResult>();
+        await _clientCsvImportService.DidNotReceive().PreviewAsync(Arg.Any<Stream>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task PreviewClients_CsvParseException_ReturnsBadRequestWithMessage()
     {
         var controller = CreateController();

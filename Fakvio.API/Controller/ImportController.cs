@@ -162,13 +162,22 @@ public class ImportController : ControllerBase
     /// Accepts multipart/form-data with a single "file" (CSV export from Fakturoid or iDoklad).
     /// </summary>
     [HttpPost("clients/preview")]
-    [RequestSizeLimit(CsvTable.MaxFileSizeBytes + 1024)] // small margin over the parser's own limit, so the real error message is the one the user sees
+    // Generous transport ceiling (multipart boundary/header overhead on top of the file itself) —
+    // the actual "file too big" rule is the explicit check below, which returns our own 400
+    // { message } body. Without this margin, ASP.NET Core's own request-size middleware would
+    // reject an at-the-limit file with a bare 413 before this action even runs.
+    [RequestSizeLimit(CsvTable.MaxFileSizeBytes * 2)]
     [Consumes("multipart/form-data")]
     public async Task<ActionResult<ClientImportPreviewDto>> PreviewClients(IFormFile? file, CancellationToken ct)
     {
         if (file == null || file.Length == 0)
         {
             return BadRequest(new { message = "No file uploaded." });
+        }
+
+        if (file.Length > CsvTable.MaxFileSizeBytes)
+        {
+            return BadRequest(new { message = $"The file exceeds the maximum size of {CsvTable.MaxFileSizeBytes / (1024 * 1024)} MB." });
         }
 
         _logger.LogInformation("Client CSV import preview requested: {FileName} ({Size} bytes)", file.FileName, file.Length);
