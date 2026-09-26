@@ -252,7 +252,7 @@ Bez instalace nástroje lze server spouštět rovnou ze zdrojáků — místo
 nikdy ne do commitu. Verzuje se jen `.mcp.json.sample`. Když se soubor přesto někam
 dostane, klíč revokujte na `/settings/integrations` — přestane platit okamžitě.
 
-## Dostupné nástroje (43)
+## Dostupné nástroje (45)
 
 | Soubor | Počet | Nástroje |
 |--------|-------|----------|
@@ -264,7 +264,7 @@ dostane, klíč revokujte na `/settings/integrations` — přestane platit okam�
 | `Tools/TemplateTools.cs` | 3 | ListTemplates, GetTemplate, CreateInvoiceFromTemplate |
 | `Tools/ReadinessTools.cs` | 1 | GetReadiness |
 | `Tools/CodeListTools.cs` | 1 | ListCurrencies |
-| `Tools/SettingsTools.cs` | 4 | ListNumberSequences, ListVatRates, CreateNumberSequence, UpdateNumberSequence |
+| `Tools/SettingsTools.cs` | 6 | ListNumberSequences, ListVatRates, CreateNumberSequence, UpdateNumberSequence, UpdateMyCompany, AddBankAccount |
 
 Zdroj pravdy je vždy kód — atributy `[McpServerTool]` v `Tools/`:
 

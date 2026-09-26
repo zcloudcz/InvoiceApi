@@ -79,6 +79,9 @@ public interface IFakvioApiClient
     /// <summary>GET /api/client/issuer — get the authenticated user's company (issuer).</summary>
     Task<ClientDto?> GetIssuerAsync(CancellationToken ct = default);
 
+    /// <summary>POST /api/client/{id}/bank-account — add a bank account; null when the client does not exist.</summary>
+    Task<ClientDto?> AddBankAccountAsync(long clientId, CreateBankAccountDto dto, CancellationToken ct = default);
+
     // ── Currency endpoints ──────────────────────────────────────────────
 
     /// <summary>GET /api/currency/active — active currencies, sorted by SortOrder.</summary>

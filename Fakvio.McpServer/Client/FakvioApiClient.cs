@@ -192,6 +192,17 @@ public class FakvioApiClient : IFakvioApiClient
         return await response.Content.ReadFromJsonAsync<ClientDto>(JsonOptions, ct);
     }
 
+    public async Task<ClientDto?> AddBankAccountAsync(long clientId, CreateBankAccountDto dto, CancellationToken ct = default)
+    {
+        var response = await _http.PostAsJsonAsync($"api/client/{clientId}/bank-account", dto, JsonOptions, ct);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return null;
+
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadFromJsonAsync<ClientDto>(JsonOptions, ct);
+    }
+
     // ── Invoice Template endpoints ─────────────────────────────────────
 
     public async Task<List<CurrencyDto>> GetActiveCurrenciesAsync(CancellationToken ct = default)

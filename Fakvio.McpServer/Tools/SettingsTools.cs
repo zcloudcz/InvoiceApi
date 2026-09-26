@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Text.Json;
+using Fakvio.Contracts.Dto.Client;
 using Fakvio.Contracts.Dto.NumberSequence;
 using Fakvio.Domain.Enums;
 using Fakvio.McpServer.Client;
@@ -195,6 +196,156 @@ public static class SettingsTools
                     return Error($"Number sequence with ID {id} not found.");
             }
 
+            return JsonSerializer.Serialize(result, JsonOptions);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return McpToolError.ToJson(ex);
+        }
+    }
+
+    /// <summary>
+    /// Updates the authenticated user's own company (issuer) — name, tax settings, document
+    /// language, and primary address. Fixes <c>ISSUER_ADDRESS_INCOMPLETE</c> and
+    /// <c>ISSUER_TAX_NUMBER_MISSING</c> from <see cref="ReadinessTools.GetReadiness"/>.
+    /// IČO (registration number) is deliberately not editable here — same rule as the chat tool
+    /// (<c>UpdateMyCompanyTool</c>): it comes from company registration, not a manual edit.
+    /// </summary>
+    [McpServerTool(Title = "Update my company", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false), Description(
+        "Update the settings of the user's own company (the issuer): name, trading name, DIČ, " +
+        "VAT payer status, document language, and the primary address. Send only the fields " +
+        "that should change — everything else is left as it is. Fixes ISSUER_ADDRESS_INCOMPLETE " +
+        "and ISSUER_TAX_NUMBER_MISSING from get_readiness. IČO cannot be changed here. " +
+        "Use add_bank_account to fix ISSUER_BANK_ACCOUNT_MISSING.")]
+    public static async Task<string> UpdateMyCompany(
+        IFakvioApiClient api,
+        [Description("Official company name as it appears on invoices")] string? companyName = null,
+        [Description("Trading name, when it differs from the official company name")] string? tradingName = null,
+        [Description("VAT identification number (DIČ), e.g. 'CZ12345678'")] string? taxNumber = null,
+        [Description("True when the company is registered for VAT")] bool? isVatPayer = null,
+        [Description("Language of generated documents: 'cs' or 'en'")] string? language = null,
+        [Description("Street and number of the primary address")] string? street = null,
+        [Description("City of the primary address")] string? city = null,
+        [Description("Postal code (PSČ) of the primary address")] string? postalCode = null,
+        [Description("Country of the primary address")] string? country = null,
+        CancellationToken ct = default)
+    {
+        if (companyName is null && tradingName is null && taxNumber is null && isVatPayer is null &&
+            language is null && street is null && city is null && postalCode is null && country is null)
+        {
+            return Error("Nothing to change. Send at least one field (e.g. companyName, isVatPayer, or street).");
+        }
+
+        try
+        {
+            var issuer = await api.GetIssuerAsync(ct);
+            if (issuer is null)
+                return Error("No issuer (your company) is configured. Set one up first.");
+
+            var dto = new UpdateClientDto
+            {
+                CompanyName = companyName,
+                TradingName = tradingName,
+                TaxNumber = taxNumber,
+                IsVatPayer = isVatPayer,
+                Language = language
+            };
+
+            ApplyPrimaryAddress(issuer, street, city, postalCode, country, dto);
+
+            var result = await api.UpdateClientAsync(issuer.Id, dto, ct);
+            return JsonSerializer.Serialize(result, JsonOptions);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return McpToolError.ToJson(ex);
+        }
+    }
+
+    /// <summary>
+    /// Rewrites the primary address on <paramref name="dto"/> when at least one address field
+    /// was supplied — mirrors <c>UpdateMyCompanyTool.ApplyAddress</c> (chat tool): the whole
+    /// address collection is sent because <c>UpdateClientAsync</c> replaces it wholesale, so
+    /// every OTHER address must be carried over untouched or it would be deleted.
+    /// </summary>
+    private static void ApplyPrimaryAddress(
+        ClientDto issuer, string? street, string? city, string? postalCode, string? country, UpdateClientDto dto)
+    {
+        if (street is null && city is null && postalCode is null && country is null)
+            return;
+
+        var current = issuer.Address.FirstOrDefault(a => a.IsPrimary) ?? issuer.Address.FirstOrDefault();
+
+        var replacement = new UpdateAddressDto
+        {
+            AddressType = current?.AddressType,
+            Street = street ?? current?.Street ?? string.Empty,
+            City = city ?? current?.City ?? string.Empty,
+            PostalCode = postalCode ?? current?.PostalCode ?? string.Empty,
+            Country = country ?? current?.Country ?? string.Empty,
+            AddressLine2 = current?.AddressLine2,
+            IsPrimary = true
+        };
+
+        dto.Address = issuer.Address
+            .Where(a => !ReferenceEquals(a, current))
+            .Select(a => new UpdateAddressDto
+            {
+                AddressType = a.AddressType,
+                Street = a.Street,
+                City = a.City,
+                PostalCode = a.PostalCode,
+                Country = a.Country,
+                AddressLine2 = a.AddressLine2,
+                IsPrimary = false
+            })
+            .Prepend(replacement)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Adds a bank account to the authenticated user's own company (issuer). Fixes
+    /// <c>ISSUER_BANK_ACCOUNT_MISSING</c> from <see cref="ReadinessTools.GetReadiness"/>.
+    /// </summary>
+    [McpServerTool(Title = "Add bank account", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description(
+        "Add a bank account to the user's own company (the issuer). The account number is " +
+        "required, everything else is optional. The very first account of the company always " +
+        "becomes the default one. Fixes ISSUER_BANK_ACCOUNT_MISSING from get_readiness.")]
+    public static async Task<string> AddBankAccount(
+        IFakvioApiClient api,
+        [Description("Bank account number, Czech format '1234567890/0100'")] string accountNumber,
+        [Description("Bank name, e.g. 'Fio banka'")] string? bankName = null,
+        [Description("IBAN for international payments")] string? iban = null,
+        [Description("SWIFT/BIC code for international transfers")] string? swift = null,
+        [Description("Currency of the account as a 3-letter code, e.g. 'CZK' or 'EUR'")] string? currencyCode = null,
+        [Description("Short label that tells the accounts apart, e.g. 'CZK účet'")] string? label = null,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var issuer = await api.GetIssuerAsync(ct);
+            if (issuer is null)
+                return Error("No issuer (your company) is configured. Set one up first.");
+
+            var dto = new CreateBankAccountDto
+            {
+                AccountNumber = accountNumber,
+                BankName = bankName,
+                IBAN = iban,
+                SWIFT = swift,
+                CurrencyCode = currencyCode?.ToUpperInvariant(),
+                Label = label
+            };
+
+            var result = await api.AddBankAccountAsync(issuer.Id, dto, ct);
             return JsonSerializer.Serialize(result, JsonOptions);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)

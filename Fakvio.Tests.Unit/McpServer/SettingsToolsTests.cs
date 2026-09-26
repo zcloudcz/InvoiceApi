@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using Fakvio.Contracts.Dto.Client;
 using Fakvio.Contracts.Dto.NumberSequence;
 using Fakvio.Contracts.Dto.VatRate;
 using Fakvio.Domain.Enums;
@@ -158,5 +159,99 @@ public class SettingsToolsTests
         var json = await SettingsTools.UpdateNumberSequence(_api, id: 999, name: "X");
 
         JsonDocument.Parse(json).RootElement.GetProperty("error").GetString().ShouldContain("not found");
+    }
+
+    // ── UpdateMyCompany ──────────────────────────────────────────────────
+
+    [Fact]
+    public async Task UpdateMyCompany_NoFieldsSent_ReturnsErrorWithoutCallingApi()
+    {
+        var json = await SettingsTools.UpdateMyCompany(_api);
+
+        JsonDocument.Parse(json).RootElement.GetProperty("error").GetString().ShouldContain("Nothing to change");
+        await _api.DidNotReceive().GetIssuerAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task UpdateMyCompany_NoIssuerConfigured_ReturnsError()
+    {
+        _api.GetIssuerAsync(Arg.Any<CancellationToken>()).Returns((ClientDto?)null);
+
+        var json = await SettingsTools.UpdateMyCompany(_api, companyName: "Acme");
+
+        JsonDocument.Parse(json).RootElement.GetProperty("error").GetString().ShouldContain("No issuer");
+    }
+
+    [Fact]
+    public async Task UpdateMyCompany_ChangesAddress_KeepsOtherAddressesInTheCollection()
+    {
+        var issuer = new ClientDto
+        {
+            Id = 2,
+            CompanyName = "Acme",
+            Address =
+            [
+                new() { Id = 1, Street = "Old street 1", City = "Praha", PostalCode = "11000", Country = "CZ", IsPrimary = true },
+                new() { Id = 2, Street = "Warehouse 2", City = "Brno", PostalCode = "60200", Country = "CZ", IsPrimary = false }
+            ]
+        };
+        _api.GetIssuerAsync(Arg.Any<CancellationToken>()).Returns(issuer);
+        _api.UpdateClientAsync(2, Arg.Any<UpdateClientDto>(), Arg.Any<CancellationToken>())
+            .Returns(new ClientDto { Id = 2, CompanyName = "Acme" });
+
+        await SettingsTools.UpdateMyCompany(_api, street: "New street 5");
+
+        await _api.Received(1).UpdateClientAsync(2, Arg.Is<UpdateClientDto>(d =>
+            d.Address!.Count == 2 &&
+            d.Address[0].Street == "New street 5" && d.Address[0].IsPrimary == true &&
+            d.Address.Any(a => a.Street == "Warehouse 2" && a.IsPrimary == false)),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task UpdateMyCompany_OnlyCompanyName_DoesNotTouchAddress()
+    {
+        var issuer = new ClientDto { Id = 2, CompanyName = "Old Name" };
+        _api.GetIssuerAsync(Arg.Any<CancellationToken>()).Returns(issuer);
+        _api.UpdateClientAsync(2, Arg.Any<UpdateClientDto>(), Arg.Any<CancellationToken>())
+            .Returns(new ClientDto { Id = 2, CompanyName = "New Name" });
+
+        var json = await SettingsTools.UpdateMyCompany(_api, companyName: "New Name");
+
+        JsonDocument.Parse(json).RootElement.GetProperty("companyName").GetString().ShouldBe("New Name");
+        await _api.Received(1).UpdateClientAsync(2, Arg.Is<UpdateClientDto>(d =>
+            d.CompanyName == "New Name" && d.Address == null), Arg.Any<CancellationToken>());
+    }
+
+    // ── AddBankAccount ───────────────────────────────────────────────────
+
+    [Fact]
+    public async Task AddBankAccount_AddsToIssuer()
+    {
+        _api.GetIssuerAsync(Arg.Any<CancellationToken>()).Returns(new ClientDto { Id = 2, CompanyName = "Acme" });
+        _api.AddBankAccountAsync(2, Arg.Any<CreateBankAccountDto>(), Arg.Any<CancellationToken>())
+            .Returns(new ClientDto
+            {
+                Id = 2,
+                BankAccount = [new() { AccountNumber = "1234567890/0100", IsDefault = true }]
+            });
+
+        var json = await SettingsTools.AddBankAccount(_api, accountNumber: "1234567890/0100");
+
+        var doc = JsonDocument.Parse(json);
+        doc.RootElement.GetProperty("bankAccount")[0].GetProperty("accountNumber").GetString()
+            .ShouldBe("1234567890/0100");
+        await _api.Received(1).AddBankAccountAsync(
+            2, Arg.Is<CreateBankAccountDto>(d => d.AccountNumber == "1234567890/0100"), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AddBankAccount_NoIssuerConfigured_ReturnsIssuerMissingMessage()
+    {
+        _api.GetIssuerAsync(Arg.Any<CancellationToken>()).Returns((ClientDto?)null);
+
+        var json = await SettingsTools.AddBankAccount(_api, accountNumber: "1234567890/0100");
+
+        JsonDocument.Parse(json).RootElement.GetProperty("error").GetString().ShouldContain("No issuer");
     }
 }
