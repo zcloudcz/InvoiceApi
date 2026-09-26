@@ -319,7 +319,7 @@ else
                                         <CellTemplate>@L[$"ERecurrenceFrequency_{context.Item.Frequency}"]</CellTemplate>
                                     </PropertyColumn>
                                     <PropertyColumn Property="x => x.NextRunAt" Title="@L["Recurring_NextRun"].Value">
-                                        <CellTemplate>@context.Item.NextRunAt.LocalDateTime.ToString("d")</CellTemplate>
+                                        <CellTemplate>@context.Item.NextRunAt.UtcDateTime.ToString("d")</CellTemplate>
                                     </PropertyColumn>
                                     <PropertyColumn Property="x => x.OccurrenceCount" Title="@L["Recurring_OccurrenceCount"].Value" />
                                     <PropertyColumn Property="x => x.IsActive" Title="@L["Recurring_Status"].Value">
@@ -662,9 +662,9 @@ else
             IntervalCount = schedule.IntervalCount,
             DayOfMonthValue = schedule.DayOfMonth,
             DayOfWeekValue = schedule.DayOfWeek,
-            StartDate = schedule.NextRunAt.LocalDateTime,
+            StartDate = schedule.NextRunAt.UtcDateTime,
             EndMode = schedule.EndDate.HasValue ? "date" : schedule.MaxOccurrences.HasValue ? "count" : "none",
-            EndDate = schedule.EndDate?.LocalDateTime,
+            EndDate = schedule.EndDate?.UtcDateTime,
             MaxOccurrences = schedule.MaxOccurrences,
             AutoSend = schedule.AutoSend,
         };

@@ -1,3 +1,4 @@
+using Fakvio.Application.Exceptions;
 using Fakvio.Application.Service;
 using Fakvio.Contracts.Dto.InvoiceTemplate;
 using Fakvio.Contracts.Dto.RecurringInvoice;
@@ -182,6 +183,13 @@ public class RecurringInvoiceService : IRecurringInvoiceService
         if (updateDto.NextRunAt.HasValue)
             schedule.NextRunAt = updateDto.NextRunAt.Value;
 
+        // Editing EndDate/MaxOccurrences down to a value already satisfied by the schedule's
+        // current progress must stop it — otherwise it would sit there "active" forever without
+        // ever being picked up again by RunCycleAsync (NextRunAt is already past EndDate, or
+        // OccurrenceCount already reached MaxOccurrences), which is confusing in the UI.
+        if (HasReachedItsEnd(schedule))
+            schedule.IsActive = false;
+
         await _context.SaveChangesAsync(ct);
 
         return (await GetByIdAsync(schedule.Id, ct))!;
@@ -192,11 +200,24 @@ public class RecurringInvoiceService : IRecurringInvoiceService
         var schedule = await _context.RecurringInvoiceSchedule.FirstOrDefaultAsync(s => s.Id == id, ct)
             ?? throw new InvalidOperationException($"Recurring schedule with ID {id} not found.");
 
+        // Resuming a schedule that already exhausted its EndDate/MaxOccurrences would let the
+        // worker generate one more invoice before deactivating it again — reject it explicitly
+        // instead (Codex review finding #5).
+        if (isActive && HasReachedItsEnd(schedule))
+            throw new InvalidOperationException(
+                "Cannot resume this schedule — it already reached its end date or occurrence limit. " +
+                "Change EndDate/MaxOccurrences first if you want it to run again.");
+
         schedule.IsActive = isActive;
         await _context.SaveChangesAsync(ct);
 
         return (await GetByIdAsync(schedule.Id, ct))!;
     }
+
+    /// <summary>True when the schedule's NextRunAt/OccurrenceCount already satisfy its own termination condition.</summary>
+    private static bool HasReachedItsEnd(RecurringInvoiceSchedule schedule) =>
+        (schedule.EndDate.HasValue && schedule.NextRunAt >= schedule.EndDate.Value) ||
+        (schedule.MaxOccurrences.HasValue && schedule.OccurrenceCount >= schedule.MaxOccurrences.Value);
 
     public async Task DeleteAsync(long id, CancellationToken ct = default)
     {
@@ -275,73 +296,89 @@ public class RecurringInvoiceService : IRecurringInvoiceService
     /// </summary>
     private async Task<bool> RunOneScheduleAsync(long scheduleId, long companyId, DateTimeOffset nowUtc, CancellationToken ct)
     {
-        // Re-fetch with tracking, fresh, per schedule — keeps one bad schedule from poisoning
-        // the DbContext's change tracker for the rest of the cycle.
+        // Clear the tracker before every schedule — re-fetching the same DbContext instance
+        // still keeps every previously touched entity (invoices, items, other schedules)
+        // tracked, which both grows unboundedly across a big tenant cycle AND (see the
+        // catch block below) can resurrect stale in-memory state after a rollback.
+        _context.ChangeTracker.Clear();
+
         var schedule = await _context.RecurringInvoiceSchedule.FirstOrDefaultAsync(s => s.Id == scheduleId, ct);
         if (schedule is null || !schedule.IsActive || schedule.NextRunAt > nowUtc)
             return false; // Deactivated / already handled by a previous cycle since we listed it.
 
-        await using var transaction = await _context.Database.BeginTransactionAsync(ct);
-        try
+        long invoiceId;
+        bool autoSend;
+
+        await using (var transaction = await _context.Database.BeginTransactionAsync(ct))
         {
-            var plannedDate = schedule.NextRunAt;
-
-            var invoice = await _templateService.CreateInvoiceFromTemplateAsync(
-                schedule.TemplateId,
-                new CreateInvoiceFromTemplateDto
-                {
-                    ClientId = schedule.ClientId,
-                    // Dohnat zmeškanou periodu: datum vystavení = PLÁNOVANÉ datum, ne "teď".
-                    IssueDate = plannedDate.UtcDateTime,
-                    // Owner decision: worker always issues (Completed) — the document number is
-                    // consumed immediately, there is no "draft with a hole in the sequence".
-                    AutoComplete = true,
-                },
-                ct);
-
-            schedule.OccurrenceCount++;
-            schedule.LastRunAt = nowUtc;
-            schedule.LastError = null;
-            schedule.NextRunAt = RecurrenceCalculator.Next(
-                plannedDate, schedule.Frequency, schedule.IntervalCount, schedule.DayOfMonth, schedule.DayOfWeek);
-
-            if ((schedule.EndDate.HasValue && schedule.NextRunAt >= schedule.EndDate.Value) ||
-                (schedule.MaxOccurrences.HasValue && schedule.OccurrenceCount >= schedule.MaxOccurrences.Value))
+            try
             {
-                schedule.IsActive = false;
+                var plannedDate = schedule.NextRunAt;
+
+                var invoice = await _templateService.CreateInvoiceFromTemplateAsync(
+                    schedule.TemplateId,
+                    new CreateInvoiceFromTemplateDto
+                    {
+                        ClientId = schedule.ClientId,
+                        // Dohnat zmeškanou periodu: datum vystavení = PLÁNOVANÉ datum, ne "teď".
+                        IssueDate = plannedDate.UtcDateTime,
+                        // Owner decision: worker always issues (Completed) — the document number is
+                        // consumed immediately, there is no "draft with a hole in the sequence".
+                        AutoComplete = true,
+                    },
+                    ct);
+
+                schedule.OccurrenceCount++;
+                schedule.LastRunAt = nowUtc;
+                schedule.LastError = null;
+                schedule.NextRunAt = RecurrenceCalculator.Next(
+                    plannedDate, schedule.Frequency, schedule.IntervalCount, schedule.DayOfMonth, schedule.DayOfWeek);
+
+                if (HasReachedItsEnd(schedule))
+                    schedule.IsActive = false;
+
+                await _context.SaveChangesAsync(ct);
+                await transaction.CommitAsync(ct);
+
+                _logger.LogInformation(
+                    "RecurringInvoice: schedule {ScheduleId} generated invoice {InvoiceId}, next run {NextRunAt}",
+                    schedule.Id, invoice.Id, schedule.NextRunAt);
+
+                invoiceId = invoice.Id;
+                autoSend = schedule.AutoSend;
             }
-
-            await _context.SaveChangesAsync(ct);
-            await transaction.CommitAsync(ct);
-
-            _logger.LogInformation(
-                "RecurringInvoice: schedule {ScheduleId} generated invoice {InvoiceId}, next run {NextRunAt}",
-                schedule.Id, invoice.Id, schedule.NextRunAt);
-
-            // E-mailing happens AFTER the commit and outside the transaction — it cannot be
-            // "rolled back" (a sent e-mail cannot be unsent), so a failure here must never
-            // undo the invoice or the schedule advance. See TrySendGeneratedInvoiceEmailAsync.
-            if (schedule.AutoSend)
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
-                await TrySendGeneratedInvoiceEmailAsync(schedule.Id, invoice.Id, companyId, ct);
+                await transaction.RollbackAsync(CancellationToken.None);
+                throw;
             }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync(CancellationToken.None);
 
-            return true;
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            await transaction.RollbackAsync(CancellationToken.None);
-            throw;
-        }
-        catch (Exception ex)
-        {
-            await transaction.RollbackAsync(CancellationToken.None);
+                // The rollback only undoes the DB — tracked entities (schedule.OccurrenceCount++,
+                // LastRunAt, …) still carry their in-memory mutations. Clear the tracker so
+                // RecordFailureAsync re-fetches the SCHEDULE AS IT ACTUALLY IS IN THE DATABASE,
+                // not the half-mutated instance that was about to be rolled back
+                // (Codex review finding #1).
+                _context.ChangeTracker.Clear();
 
-            // NextRunAt deliberately NOT advanced — the same period is retried next cycle.
-            // Re-fetch: the failed SaveChanges/rollback may have detached tracked entities.
-            await RecordFailureAsync(scheduleId, companyId, ex, ct);
-            return false;
+                // NextRunAt deliberately NOT advanced — the same period is retried next cycle.
+                await RecordFailureAsync(scheduleId, companyId, ex, ct);
+                return false;
+            }
         }
+
+        // E-mailing happens AFTER the commit and fully OUTSIDE the transaction's try/catch —
+        // it cannot be "rolled back" (a sent e-mail cannot be unsent), and a cancellation while
+        // sending must not attempt to roll back a transaction that was already committed above
+        // (Codex review finding #3). TrySendGeneratedInvoiceEmailAsync has its own error handling.
+        if (autoSend)
+        {
+            await TrySendGeneratedInvoiceEmailAsync(scheduleId, invoiceId, companyId, ct);
+        }
+
+        return true;
     }
 
     /// <summary>
@@ -386,7 +423,7 @@ public class RecurringInvoiceService : IRecurringInvoiceService
         {
             _logger.LogError(ex, "RecurringInvoice: schedule {ScheduleId} generated invoice {InvoiceId} but AutoSend e-mail failed", scheduleId, invoiceId);
             await RecordEmailFailureAsync(scheduleId, companyId,
-                $"Invoice {invoiceId} was issued, but AutoSend could not e-mail it: {ex.Message}", ct);
+                $"Invoice {invoiceId} was issued, but AutoSend could not e-mail it: {SafeErrorMessage(ex)}", ct);
         }
     }
 
@@ -431,7 +468,7 @@ public class RecurringInvoiceService : IRecurringInvoiceService
             if (schedule is null)
                 return;
 
-            var message = ex.Message.Length > MaxErrorLength ? ex.Message[..MaxErrorLength] : ex.Message;
+            var message = SafeErrorMessage(ex);
             schedule.LastError = message;
             await _context.SaveChangesAsync(ct);
 
@@ -448,5 +485,26 @@ public class RecurringInvoiceService : IRecurringInvoiceService
         {
             _logger.LogError(notifyEx, "RecurringInvoice: failed to record LastError/notification for schedule {ScheduleId}", scheduleId);
         }
+    }
+
+    /// <summary>
+    /// Sanitizes an exception message before it is stored in LastError, exposed through the
+    /// REST API, shown in the UI, and broadcast in a notification to every user of the tenant
+    /// (DEVGUIDE's "no raw exception details leave the server" rule, same reasoning as MCP's
+    /// #279 error convention). <see cref="InvalidOperationException"/> and
+    /// <see cref="TenantNotReadyException"/> are the two exception types OUR OWN domain code
+    /// throws with an already-safe, user-facing message (e.g. "Client with ID 5 not found",
+    /// or a readiness issue description) — anything else (DbUpdateException, NpgsqlException,
+    /// SmtpCommandException, SocketException, …) can carry connection strings, stack details,
+    /// or internal identifiers, so it is replaced with a generic message. The full exception is
+    /// always logged server-side (see the LogError calls around every call site).
+    /// </summary>
+    private static string SafeErrorMessage(Exception ex)
+    {
+        var message = ex is InvalidOperationException or TenantNotReadyException
+            ? ex.Message
+            : $"An unexpected error occurred ({ex.GetType().Name}). See the server log for details.";
+
+        return message.Length > MaxErrorLength ? message[..MaxErrorLength] : message;
     }
 }

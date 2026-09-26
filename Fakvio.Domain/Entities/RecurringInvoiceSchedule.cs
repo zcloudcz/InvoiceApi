@@ -126,9 +126,11 @@ public class RecurringInvoiceSchedule : BaseEntity
     public bool IsActive { get; set; } = true;
 
     /// <summary>
-    /// Whether the generated invoice should be automatically sent to the client by email.
-    /// When true: service generates invoice, renders PDF, and sends it via EmailService.
-    /// When false: invoice is created in Draft status for manual review and sending.
+    /// Whether the generated invoice should ALSO be automatically e-mailed to the client.
+    /// The invoice itself is always issued (Status = Completed) regardless of this flag — see
+    /// the owner decision documented on <c>RecurringInvoiceService</c>. When true: after the
+    /// invoice is committed, the service renders it and sends it via <c>IEmailService</c>. When
+    /// false: the invoice is issued but left for the user to review and send manually.
     /// Default false (safer — user reviews before sending).
     /// </summary>
     public bool AutoSend { get; set; } = false;

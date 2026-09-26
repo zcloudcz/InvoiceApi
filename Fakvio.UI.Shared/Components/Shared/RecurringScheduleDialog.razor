@@ -87,8 +87,8 @@
         IntervalCount = Model.IntervalCount,
         DayOfMonth = Model.DayOfMonthValue,
         DayOfWeek = Model.DayOfWeekValue,
-        StartDate = Model.StartDate ?? DateTime.Today,
-        EndDate = Model.EndDate,
+        StartDate = ToUtcMidnight(Model.StartDate) ?? DateTimeOffset.UtcNow.Date,
+        EndDate = ToUtcMidnight(Model.EndDate),
         MaxOccurrences = Model.MaxOccurrences,
         AutoSend = Model.AutoSend,
     };
@@ -101,12 +101,28 @@
         DayOfMonth = Model.DayOfMonthValue ?? -1, // -1 = explicitly clear (switching to Weekly)
         DayOfWeek = Model.DayOfWeekValue,
         ClearDayOfWeek = Model.DayOfWeekValue is null,
-        EndDate = Model.EndDate,
+        // "First invoice date" doubles as NextRunAt on the edit form — without this, changing it
+        // in the dialog would show a success snackbar but silently keep the old date (Codex
+        // review finding #4).
+        NextRunAt = ToUtcMidnight(Model.StartDate),
+        EndDate = ToUtcMidnight(Model.EndDate),
         ClearEndDate = Model.EndMode != "date",
         MaxOccurrences = Model.MaxOccurrences,
         ClearMaxOccurrences = Model.EndMode != "count",
         AutoSend = Model.AutoSend,
     };
+
+    /// <summary>
+    /// Converts a MudDatePicker value (plain <see cref="DateTime"/>, Kind usually Unspecified —
+    /// it is a calendar date, not a moment in time) to a UTC-midnight <see cref="DateTimeOffset"/>.
+    /// Relying on the implicit DateTime→DateTimeOffset conversion here would stamp the browser's
+    /// local UTC offset instead, which both shifts the calendar date by a day around midnight
+    /// (same class of bug as InvoiceService.NormalizeToUtcMidnight, documented there) and — for
+    /// PostgreSQL "timestamp with time zone" columns — is rejected outright unless offset is
+    /// exactly zero (Codex review finding #2).
+    /// </summary>
+    private static DateTimeOffset? ToUtcMidnight(DateTime? date) =>
+        date is { } d ? new DateTimeOffset(d.Date, TimeSpan.Zero) : null;
 
     private void Cancel() => MudDialog.Cancel();
 }

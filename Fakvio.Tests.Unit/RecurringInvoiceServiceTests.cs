@@ -441,4 +441,84 @@ public class RecurringInvoiceServiceTests : IDisposable
 
         await _emailService.DidNotReceive().SendInvoiceEmailAsync(Arg.Any<long>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
+
+    // ── Regression tests for Codex review findings ──────────────────────────────
+
+    [Fact]
+    public async Task RunCycleAsync_FailureAfterScheduleFieldsMutated_DoesNotLeakPartialMutationIntoLastError()
+    {
+        // Reproduces Codex review finding #1: force RecurrenceCalculator.Next to throw AFTER
+        // RunOneScheduleAsync already mutated OccurrenceCount/LastRunAt on the tracked entity,
+        // by corrupting the schedule's DayOfMonth directly (bypassing service validation).
+        var created = await _service.CreateAsync(ValidMonthlyDto());
+        var entity = await _context.RecurringInvoiceSchedule.SingleAsync(s => s.Id == created.Id);
+        entity.DayOfMonth = null;
+        await _context.SaveChangesAsync();
+        _context.ChangeTracker.Clear();
+
+        var count = await _service.RunCycleAsync(companyId: 1, nowUtc: created.NextRunAt);
+
+        count.ShouldBe(0);
+        var schedule = await _service.GetByIdAsync(created.Id);
+        schedule!.OccurrenceCount.ShouldBe(0); // Must NOT leak the in-memory ++ from the failed attempt.
+        schedule.LastRunAt.ShouldBeNull();
+        schedule.NextRunAt.ShouldBe(created.NextRunAt); // Not advanced.
+        schedule.LastError.ShouldNotBeNullOrEmpty();
+    }
+
+    [Fact]
+    public async Task RunCycleAsync_UnexpectedExceptionType_SanitizesLastError()
+    {
+        // A non-domain exception type (anything other than InvalidOperationException /
+        // TenantNotReadyException) must never leak ex.Message verbatim into LastError —
+        // it is broadcast through the API and to every user's notifications (Codex finding #6).
+        var templateService = Substitute.For<IInvoiceTemplateService>();
+        templateService
+            .CreateInvoiceFromTemplateAsync(Arg.Any<long>(), Arg.Any<Fakvio.Contracts.Dto.InvoiceTemplate.CreateInvoiceFromTemplateDto>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<Fakvio.Contracts.Dto.Invoice.InvoiceDto>(
+                new TimeoutException("Host=db-prod-01.internal;Port=5432 connection timed out")));
+
+        var service = new RecurringInvoiceService(
+            _context, templateService, _notificationService, _emailService, Substitute.For<ILogger<RecurringInvoiceService>>());
+        var created = await service.CreateAsync(ValidMonthlyDto());
+
+        await service.RunCycleAsync(companyId: 1, nowUtc: created.NextRunAt);
+
+        var schedule = await service.GetByIdAsync(created.Id);
+        schedule!.LastError.ShouldNotContain("db-prod-01");
+        schedule.LastError.ShouldContain(nameof(TimeoutException));
+    }
+
+    [Fact]
+    public async Task SetActiveAsync_ResumeAfterMaxOccurrencesReached_Throws()
+    {
+        var dto = ValidMonthlyDto();
+        dto.MaxOccurrences = 1;
+        var created = await _service.CreateAsync(dto);
+        await _service.RunCycleAsync(companyId: 1, nowUtc: dto.StartDate); // Deactivates itself.
+
+        await Should.ThrowAsync<InvalidOperationException>(() => _service.SetActiveAsync(created.Id, true));
+    }
+
+    [Fact]
+    public async Task SetActiveAsync_ResumeAfterEndDateReached_Throws()
+    {
+        var dto = ValidMonthlyDto();
+        dto.EndDate = dto.StartDate.AddMonths(1);
+        var created = await _service.CreateAsync(dto);
+        await _service.RunCycleAsync(companyId: 1, nowUtc: dto.StartDate); // Deactivates itself.
+
+        await Should.ThrowAsync<InvalidOperationException>(() => _service.SetActiveAsync(created.Id, true));
+    }
+
+    [Fact]
+    public async Task UpdateAsync_LoweringMaxOccurrencesBelowCurrentCount_AutoDeactivates()
+    {
+        var created = await _service.CreateAsync(ValidMonthlyDto());
+        await _service.RunCycleAsync(companyId: 1, nowUtc: created.NextRunAt); // OccurrenceCount -> 1.
+
+        var updated = await _service.UpdateAsync(created.Id, new UpdateRecurringInvoiceScheduleDto { MaxOccurrences = 1 });
+
+        updated.IsActive.ShouldBeFalse();
+    }
 }

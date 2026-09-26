@@ -1900,12 +1900,24 @@ a `Client` (Restrict), `Frequency` (`ERecurrenceFrequency`: Weekly/Monthly/Quart
    Cross-instance vyloučení (dvě App Service repliky) řeší advisory lock ve workeru (§6.2) —
    `RunCycleAsync` samotné o sobě není bezpečné proti souběžnému volání na STEJNÉM plánu z různých
    vláken bez locku.
-4. **Chyba jednoho plánu:** transakce rollback, `LastError` (sanitizovaná zpráva, ne stack trace,
-   max 2000 znaků) se zapíše MIMO rolled-back transakci, notifikace
-   `ENotificationType.RecurringInvoiceFailed`. `NextRunAt` se **neposouvá** — příští cyklus to
-   zkusí znovu. Ostatní plány v cyklu pokračují (per-plán try/catch, stejný vzor jako `ReminderWorker`
-   per-tenant).
-5. **Smazání plánu:** `OccurrenceCount == 0` → hard delete (nikdy nevygeneroval fakturu, nic na
+4. **Chyba jednoho plánu:** transakce rollback + `_context.ChangeTracker.Clear()` (rollback vrátí
+   jen DB, ne trackovaná in-memory data — bez `Clear()` by `RecordFailureAsync` viděl už
+   zmutovaný `OccurrenceCount`/`LastRunAt` z pokusu, který se právě vrátil). `LastError` —
+   **sanitizovaná zpráva** (`SafeErrorMessage`, max 2000 znaků) — se zapíše MIMO rolled-back
+   transakci, notifikace `ENotificationType.RecurringInvoiceFailed`. Sanitizace: `ex.Message`
+   projde jen pro `InvalidOperationException`/`TenantNotReadyException` (naše vlastní doménové
+   výjimky s bezpečnou zprávou), cokoli jiné (DB/SMTP/síťová výjimka) nahradí generický text —
+   celá výjimka jde vždy do logu. `NextRunAt` se **neposouvá** — příští cyklus to zkusí znovu.
+   Ostatní plány v cyklu pokračují (per-plán try/catch, stejný vzor jako `ReminderWorker`
+   per-tenant); `ChangeTracker.Clear()` na začátku každého plánu navíc brání tomu, aby si
+   kontext v jednom dlouhém cyklu nastřádal trackované entity ze všech předchozích plánů.
+5. **AutoSend e-mail** (po commitu, mimo transakci — odeslaný e-mail nejde vrátit) běží
+   **mimo** try/catch transakce z bodu 3/4, aby zrušení (`CancellationToken`) během odesílání
+   nezpůsobilo pokus o rollback už commitnuté transakce.
+6. **Resume** (`SetActiveAsync(true)`) i **Update** s nižším `MaxOccurrences`/dřívějším `EndDate`
+   kontrolují, jestli plán už nesplnil svou ukončovací podmínku (`HasReachedItsEnd`) — jinak by
+   šlo obnovit vyčerpaný plán a worker by vygeneroval ještě jednu fakturu navíc.
+7. **Smazání plánu:** `OccurrenceCount == 0` → hard delete (nikdy nevygeneroval fakturu, nic na
    něj neodkazuje). Jinak jen deaktivace (`IsActive = false`) — historie (`LastRunAt`,
    `OccurrenceCount`, vygenerované faktury) zůstává.
 
