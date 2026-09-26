@@ -209,14 +209,14 @@ public class FakvioApiClient : IFakvioApiClient
 
     public async Task<List<CurrencyDto>> GetActiveCurrenciesAsync(CancellationToken ct = default)
     {
-        var result = await _http.GetFromJsonAsync<List<CurrencyDto>>("api/currency/active", JsonOptions, ct);
+        var result = await GetJsonAsync<List<CurrencyDto>>(_http, "api/currency/active", ct);
         return result ?? [];
     }
 
     public async Task<List<VatRateDto>> GetActiveVatRatesAsync(DateTime? date = null, CancellationToken ct = default)
     {
         var query = date.HasValue ? $"?date={date.Value:O}" : "";
-        var result = await _http.GetFromJsonAsync<List<VatRateDto>>($"api/vatrate/active{query}", JsonOptions, ct);
+        var result = await GetJsonAsync<List<VatRateDto>>(_http, $"api/vatrate/active{query}", ct);
         return result ?? [];
     }
 
@@ -228,7 +228,7 @@ public class FakvioApiClient : IFakvioApiClient
         if (includeInactive) parts.Add("includeInactive=true");
         var query = parts.Count > 0 ? "?" + string.Join("&", parts) : "";
 
-        var result = await _http.GetFromJsonAsync<List<NumberSequenceDto>>($"api/numbersequence{query}", JsonOptions, ct);
+        var result = await GetJsonAsync<List<NumberSequenceDto>>(_http, $"api/numbersequence{query}", ct);
         return result ?? [];
     }
 
@@ -247,8 +247,7 @@ public class FakvioApiClient : IFakvioApiClient
         bool includeInactive = false, CancellationToken ct = default)
     {
         var query = includeInactive ? "?includeInactive=true" : "";
-        var result = await _http.GetFromJsonAsync<List<NumberSequenceFormatDto>>(
-            $"api/numbersequence/formats{query}", JsonOptions, ct);
+        var result = await GetJsonAsync<List<NumberSequenceFormatDto>>(_http, $"api/numbersequence/formats{query}", ct);
         return result ?? [];
     }
 
@@ -293,8 +292,7 @@ public class FakvioApiClient : IFakvioApiClient
         if (to.HasValue) parts.Add($"to={to.Value:O}");
 
         var query = "?" + string.Join("&", parts);
-        var result = await _http.GetFromJsonAsync<PagedResult<BankTransactionDto>>(
-            $"api/payment-matching/transactions{query}", JsonOptions, ct);
+        var result = await GetJsonAsync<PagedResult<BankTransactionDto>>(_http, $"api/payment-matching/transactions{query}", ct);
         return result ?? new PagedResult<BankTransactionDto>([], 0, page, pageSize);
     }
 
@@ -321,13 +319,13 @@ public class FakvioApiClient : IFakvioApiClient
         if (filter.DateTo.HasValue) parts.Add($"dateTo={filter.DateTo.Value:O}");
 
         var query = "?" + string.Join("&", parts);
-        var result = await _http.GetFromJsonAsync<PagedResult<ReminderDto>>($"api/reminder/paged{query}", JsonOptions, ct);
+        var result = await GetJsonAsync<PagedResult<ReminderDto>>(_http, $"api/reminder/paged{query}", ct);
         return result ?? new PagedResult<ReminderDto>([], 0, filter.Page, filter.PageSize);
     }
 
     public async Task<List<ReminderDto>> GetRemindersByInvoiceAsync(long invoiceId, CancellationToken ct = default)
     {
-        var result = await _http.GetFromJsonAsync<List<ReminderDto>>($"api/reminder/invoice/{invoiceId}", JsonOptions, ct);
+        var result = await GetJsonAsync<List<ReminderDto>>(_http, $"api/reminder/invoice/{invoiceId}", ct);
         return result ?? [];
     }
 
@@ -548,6 +546,27 @@ public class FakvioApiClient : IFakvioApiClient
         if (f.MaxAmount.HasValue) parts.Add($"maxAmount={f.MaxAmount.Value}");
 
         return parts.Count > 0 ? "?" + string.Join("&", parts) : "";
+    }
+
+    /// <summary>
+    /// GET a URL and deserialize a success response, routing anything else through
+    /// <see cref="EnsureSuccessAsync"/> so a 4xx/5xx becomes a <see cref="FakvioApiException"/>
+    /// with a sanitized <c>SafeMessage</c> instead of a bare <see cref="HttpRequestException"/>.
+    ///
+    /// Junior note (Codex review, N2/N3 follow-up): <c>HttpClientJsonExtensions.GetFromJsonAsync</c>
+    /// calls its own internal <c>EnsureSuccessStatusCode</c> on failure — that throws a plain
+    /// <see cref="HttpRequestException"/> that never goes through our sanitization, so
+    /// <see cref="Tools.McpToolError.ToJson"/> could not tell "read-only key on a write" from
+    /// "server crashed" for these endpoints; both landed on <c>internal_error</c>. Every list/read
+    /// endpoint added by story N2/N3 goes through this helper instead of calling
+    /// <c>GetFromJsonAsync</c> directly, so it gets the same forbidden/not_found/validation_error
+    /// mapping every other tool call already has.
+    /// </summary>
+    private static async Task<T?> GetJsonAsync<T>(HttpClient http, string url, CancellationToken ct)
+    {
+        var response = await http.GetAsync(url, ct);
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadFromJsonAsync<T>(JsonOptions, ct);
     }
 
     /// <summary>

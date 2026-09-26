@@ -288,7 +288,8 @@ grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs
 
   | HTTP status | `error` | `message` |
   |---|---|---|
-  | 401/403 | `forbidden` | Vždy pevný text — "the key is read-only or your role lacks the permission… /settings/integrations". |
+  | 401 | `unauthorized` | Vždy pevný text — klíč je neplatný/expirovaný/revokovaný, vytvořte nový na `/settings/integrations`. |
+  | 403 | `forbidden` | Vždy pevný text — klíč je platný, ale read-only nebo role nemá oprávnění; vytvořte klíč s `read+write` scope. |
   | 404 | `not_found` | `SafeMessage` z těla (`{"message":"…"}`), jinak "The requested record does not exist." |
   | 400/409/422 | `validation_error` | `SafeMessage` z těla, jinak "The API rejected the input." |
   | ostatní (5xx…) | `internal_error` | Obecná hláška, viz výše. |
@@ -319,7 +320,10 @@ grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs
   vynechaný znamená vlastní firmu (`get_issuer`); položce bez `vatRateId` doplní ID podle
   `vatRatePercentage` (aktivní sazby k `issueDate`) — jen když je vystavitel plátce DPH, neplátce
   necháváme beze změny. Neznámá měna / procento vrátí konkrétní chybu se seznamem platných hodnot
-  a API se vůbec nezavolá.
+  a API se vůbec nezavolá. Když stejnému procentu odpovídá **víc aktivních sazeb** (např. dvě
+  překrývající se platnosti při změně sazby), nevybírá se první — vrátí se chyba se seznamem
+  kandidátů (`id`, název, platnost) a model musí nejednoznačnost vyřešit sám přes `vatRateId`
+  na položce.
 
 ## Přidání nového nástroje
 

@@ -1605,9 +1605,12 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
   `catch (HttpRequestException)` volající kód nerozbije) s `SafeMessage` — domainová hláška z pole
   `message` API odpovědi (JSON objekt s řetězcovým `message`, nebo bare JSON string — `TaxController`
   styl), ořízlá na 500 znaků. Syrové tělo zůstává jen v `Message` (log). `McpToolError.ToJson`
-  podle `StatusCode` vrátí `forbidden` (401/403, vždy pevný text s odkazem na
-  `/settings/integrations` — nikdy `SafeMessage`, ten by byl jen API's obecné "Forbidden"),
-  `not_found` (404, `SafeMessage ?? "The requested record does not exist."`), `validation_error`
+  podle `StatusCode` vrátí `unauthorized` (401, vždy pevný text — klíč je
+  neplatný/expirovaný/revokovaný, vytvořit nový) a **odděleně** `forbidden` (403, vždy pevný text —
+  klíč je platný, ale read-only nebo role bez oprávnění, vytvořit klíč s `read+write` scope; Codex
+  review: dřív sdílely jednu odpověď a rada „vytvořte read+write klíč" byla zavádějící u 401, kde
+  problém není scope, ale sám klíč) — u obou nikdy `SafeMessage`, ten by byl jen API's obecné
+  "Unauthorized"/"Forbidden". Dál `not_found` (404, `SafeMessage ?? "The requested record does not exist."`), `validation_error`
   (400/409/422, `SafeMessage ?? "The API rejected the input."`); vše ostatní zůstává
   `internal_error` s obecnou hláškou, **nikdy `ex.Message`** — to by mohlo obsahovat syrové tělo
   API chyby (stack trace, SQL detail, interní ID).
@@ -1625,7 +1628,11 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
   (readiness never asks for one), so its items are left exactly as sent — mirrors the rule
   `InvoiceService.CreateInvoiceAsync` (`Fakvio.Infrastructure/Service/InvoiceService.cs:401-411`)
   already applies. An unknown currency code or unmatched VAT percentage returns a domain error
-  listing the valid values and never reaches the API.
+  listing the valid values and never reaches the API. **Matching is exact-or-explicit, never
+  "pick the first one" (Codex review follow-up):** if more than one active rate shares the same
+  percentage (e.g. two overlapping validity periods during a rate change), the tool returns an
+  error naming every candidate (`id`, name, validity) instead of guessing — the model resolves it
+  by setting `vatRateId` on the item directly.
 - **Pravidlo: vstup = typovaný parametr/DTO, nikdy JSON string (N2.5).** `ClientTools.CreateClient`/
   `UpdateClient`, `ReceivedInvoiceTools.CreateReceivedInvoice`, `TemplateTools.CreateInvoiceFromTemplate`
   brávaly `string …Json` a deserializovaly ho ručně — nahrazeno typovaným DTO parametrem

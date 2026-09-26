@@ -90,14 +90,23 @@ public class McpToolErrorTests
         root.GetProperty("message").GetString().ShouldContain("/settings/integrations");
     }
 
+    /// <summary>
+    /// Codex review: 401 (bad/expired/revoked key) and 403 (valid key, wrong scope/role) used to
+    /// share the same "forbidden" answer with "create a read+write key" advice — misleading when
+    /// the real problem was an invalid credential that no scope change would fix. They are now
+    /// distinct codes with distinct guidance.
+    /// </summary>
     [Fact]
-    public void ToJson_On401_AlsoReturnsForbidden()
+    public void ToJson_On401_ReturnsUnauthorized_WithKeyReplacementGuidance()
     {
         var ex = new FakvioApiException("API returned 401 Unauthorized", HttpStatusCode.Unauthorized, safeMessage: null);
 
         var root = JsonDocument.Parse(McpToolError.ToJson(ex)).RootElement;
 
-        root.GetProperty("error").GetString().ShouldBe("forbidden");
+        root.GetProperty("error").GetString().ShouldBe("unauthorized");
+        var message = root.GetProperty("message").GetString();
+        message.ShouldContain("/settings/integrations");
+        message.ShouldNotContain("read+write scope");
     }
 
     [Fact]

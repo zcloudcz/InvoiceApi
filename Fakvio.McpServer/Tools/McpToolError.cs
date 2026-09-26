@@ -80,14 +80,28 @@ public static class McpToolError
 
         if (ex is FakvioApiException apiEx && apiEx.StatusCode.HasValue)
         {
-            // 401/403 always gets the fixed guidance text — SafeMessage would just be the API's
-            // generic "Forbidden" wording, which is less useful than telling the model exactly
-            // what to do (create a read+write key). 404/400/409/422 prefer SafeMessage because
-            // there the API's own domain message (e.g. "Invoice not found", "Duplicate VS") is
-            // the more precise answer.
+            // 401 and 403 always get fixed guidance text — SafeMessage would just be the API's
+            // generic "Unauthorized"/"Forbidden" wording — but they are different problems with
+            // different fixes (Codex review: they used to share one "forbidden" answer, which
+            // told the model to create a read+write key even when the real problem was an
+            // invalid/expired/revoked key that no scope change would fix):
+            //   401 = the credential itself is not accepted at all → get a new key.
+            //   403 = the credential IS valid but lacks permission (read-only scope or role)
+            //         for this call → create a key with read+write scope.
+            // 404/400/409/422 prefer SafeMessage because there the API's own domain message
+            // (e.g. "Invoice not found", "Duplicate VS") is the more precise answer.
             switch (apiEx.StatusCode.Value)
             {
-                case HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden:
+                case HttpStatusCode.Unauthorized:
+                    return JsonSerializer.Serialize(
+                        new
+                        {
+                            error = "unauthorized",
+                            message = "The API key is invalid, expired, or has been revoked. " +
+                                      "Create a new one on /settings/integrations."
+                        },
+                        JsonOptions);
+                case HttpStatusCode.Forbidden:
                     return JsonSerializer.Serialize(
                         new
                         {

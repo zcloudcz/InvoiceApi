@@ -262,8 +262,15 @@ public static class InvoiceTools
 
                     foreach (var item in itemsNeedingRate)
                     {
-                        var match = activeRates.FirstOrDefault(r => r.Rate == item.VatRatePercentage);
-                        if (match is null)
+                        // Codex review: FirstOrDefault picked an arbitrary rate when a tenant has
+                        // more than one active rate at the same percentage (e.g. two overlapping
+                        // validity periods during a rate change) — the model never even saw that
+                        // there was a choice. A single match still resolves silently; two or more
+                        // is a real ambiguity the model must resolve itself, by setting vatRateId
+                        // on the item directly (CreateInvoiceItemDto already has that property).
+                        var candidates = activeRates.Where(r => r.Rate == item.VatRatePercentage).ToList();
+
+                        if (candidates.Count == 0)
                         {
                             return Error(
                                 $"No active VAT rate matches {item.VatRatePercentage}% " +
@@ -271,7 +278,15 @@ public static class InvoiceTools
                                 string.Join(", ", activeRates.Select(r => $"{r.Rate}%")) + ".");
                         }
 
-                        item.VatRateId = match.Id;
+                        if (candidates.Count > 1)
+                        {
+                            return Error(
+                                $"{candidates.Count} active VAT rates match {item.VatRatePercentage}% " +
+                                $"(item '{item.Description}') — set vatRateId on the item to pick one. Candidates: " +
+                                string.Join(", ", candidates.Select(DescribeVatRate)) + ".");
+                        }
+
+                        item.VatRateId = candidates[0].Id;
                     }
                 }
             }
@@ -306,6 +321,11 @@ public static class InvoiceTools
 
     private static string Error(string message) =>
         JsonSerializer.Serialize(new { error = message }, JsonOptions);
+
+    /// <summary>Renders one candidate in a "which VAT rate did you mean" error message.</summary>
+    private static string DescribeVatRate(Fakvio.Contracts.Dto.VatRate.VatRateDto rate) =>
+        $"id={rate.Id} name='{rate.Name}' validFrom={rate.ValidFrom:yyyy-MM-dd}" +
+        (rate.ValidTo.HasValue ? $" validTo={rate.ValidTo.Value:yyyy-MM-dd}" : "");
 
     /// <summary>
     /// Issues (completes) a draft invoice.

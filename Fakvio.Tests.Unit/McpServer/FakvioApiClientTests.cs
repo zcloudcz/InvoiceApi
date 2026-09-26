@@ -329,6 +329,25 @@ public class FakvioApiClientTests : IDisposable
         result.ShouldBeEmpty();
     }
 
+    /// <summary>
+    /// Codex review follow-up: every GET added by story N2/N3 must route a non-success response
+    /// through <c>EnsureSuccessAsync</c> (via the shared <c>GetJsonAsync&lt;T&gt;</c> helper), not
+    /// <c>HttpClientJsonExtensions.GetFromJsonAsync</c>'s own <c>EnsureSuccessStatusCode</c> — the
+    /// latter throws a bare <see cref="HttpRequestException"/> that <c>McpToolError</c> cannot
+    /// distinguish from a real server crash. One representative endpoint per wrapped-GET group
+    /// (currency here, VAT rate/number sequence/payment/reminder below) proves the fix; they all
+    /// go through the same helper, so a regression in it fails here first.
+    /// </summary>
+    [Fact]
+    public async Task GetActiveCurrenciesAsync_On403_ThrowsFakvioApiException_NotBareHttpRequestException()
+    {
+        _handler.SetupResponse(HttpStatusCode.Forbidden, new { message = "read-only key" });
+
+        var ex = await Should.ThrowAsync<FakvioApiException>(() => _sut.GetActiveCurrenciesAsync());
+
+        ex.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+    }
+
     // ── VAT rate tests ──────────────────────────────────────────────────
 
     [Fact]
@@ -350,6 +369,16 @@ public class FakvioApiClientTests : IDisposable
 
         _handler.LastRequestUri?.ToString().ShouldContain("date=");
         result.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task GetActiveVatRatesAsync_On400_ThrowsFakvioApiException_NotBareHttpRequestException()
+    {
+        _handler.SetupResponse(HttpStatusCode.BadRequest, new { message = "invalid date" });
+
+        var ex = await Should.ThrowAsync<FakvioApiException>(() => _sut.GetActiveVatRatesAsync());
+
+        ex.SafeMessage.ShouldBe("invalid date");
     }
 
     // ── Number sequence tests ───────────────────────────────────────────
@@ -384,6 +413,14 @@ public class FakvioApiClientTests : IDisposable
 
         _handler.LastRequestUri?.ToString().ShouldEndWith("api/numbersequence/formats");
         result.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task GetNumberSequenceFormatsAsync_On403_ThrowsFakvioApiException_NotBareHttpRequestException()
+    {
+        _handler.SetupResponse(HttpStatusCode.Forbidden, new { message = "read-only key" });
+
+        await Should.ThrowAsync<FakvioApiException>(() => _sut.GetNumberSequenceFormatsAsync());
     }
 
     [Fact]
@@ -436,6 +473,15 @@ public class FakvioApiClientTests : IDisposable
     }
 
     [Fact]
+    public async Task GetPaymentsPagedAsync_On403_ThrowsFakvioApiException_NotBareHttpRequestException()
+    {
+        _handler.SetupResponse(HttpStatusCode.Forbidden, new { message = "read-only key" });
+
+        await Should.ThrowAsync<FakvioApiException>(
+            () => _sut.GetPaymentsPagedAsync(null, null, null, null, 1, 20));
+    }
+
+    [Fact]
     public async Task GetPaymentByIdAsync_NotFound_ReturnsNull()
     {
         _handler.SetupResponse(HttpStatusCode.NotFound, new { message = "not found" });
@@ -455,6 +501,14 @@ public class FakvioApiClientTests : IDisposable
         var url = _handler.LastRequestUri?.ToString();
         url.ShouldContain("invoiceId=7");
         url.ShouldContain("status=Sent");
+    }
+
+    [Fact]
+    public async Task GetRemindersPagedAsync_On403_ThrowsFakvioApiException_NotBareHttpRequestException()
+    {
+        _handler.SetupResponse(HttpStatusCode.Forbidden, new { message = "read-only key" });
+
+        await Should.ThrowAsync<FakvioApiException>(() => _sut.GetRemindersPagedAsync(new ReminderFilterDto()));
     }
 
     [Fact]

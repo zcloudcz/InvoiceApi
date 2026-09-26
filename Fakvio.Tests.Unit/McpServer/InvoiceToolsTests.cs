@@ -273,6 +273,41 @@ public class InvoiceToolsTests
             Arg.Any<CancellationToken>());
     }
 
+    /// <summary>
+    /// Codex review: two active rates at the same percentage (e.g. overlapping validity periods
+    /// during a rate change) must not resolve to an arbitrary one via FirstOrDefault — the model
+    /// gets an explicit error naming both candidates and must disambiguate via item.vatRateId.
+    /// </summary>
+    [Fact]
+    public async Task CreateInvoice_VatPayer_DuplicatePercentage_ReturnsAmbiguousErrorWithoutCallingApi()
+    {
+        _api.GetIssuerAsync(Arg.Any<CancellationToken>())
+            .Returns(new ClientDto { Id = 2, IsVatPayer = true });
+        _api.GetActiveCurrenciesAsync(Arg.Any<CancellationToken>())
+            .Returns(new List<CurrencyDto> { new() { Id = 1, Code = "CZK" } });
+        _api.GetActiveVatRatesAsync(Arg.Any<DateTime?>(), Arg.Any<CancellationToken>())
+            .Returns(new List<VatRateDto>
+            {
+                new() { Id = 7, Rate = 21m, Name = "DPH 21% (staré období)", ValidFrom = new DateTime(2025, 1, 1) },
+                new() { Id = 9, Rate = 21m, Name = "DPH 21% (nové období)", ValidFrom = new DateTime(2026, 1, 1) }
+            });
+
+        var items = new List<CreateInvoiceItemDto>
+        {
+            new() { Description = "Consulting", Quantity = 1, UnitPrice = 100, VatRatePercentage = 21 }
+        };
+
+        var json = await InvoiceTools.CreateInvoice(_api, clientId: 1, items: items);
+
+        var doc = JsonDocument.Parse(json);
+        var error = doc.RootElement.GetProperty("error").GetString();
+        error.ShouldContain("2 active VAT rates match 21%");
+        error.ShouldContain("id=7");
+        error.ShouldContain("id=9");
+        error.ShouldContain("vatRateId");
+        await _api.DidNotReceive().CreateInvoiceAsync(Arg.Any<CreateInvoiceDto>(), Arg.Any<CancellationToken>());
+    }
+
     [Fact]
     public async Task CreateInvoice_VatPayer_UnknownPercentage_ReturnsErrorWithoutCallingApi()
     {
