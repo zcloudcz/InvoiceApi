@@ -253,6 +253,7 @@ public static class ServiceCollectionExtensions
         services.AddScopedWithLogging<IInvoiceAiExtractor, InvoiceAiExtractorService>();
         services.AddScopedWithLogging<IInvoiceTextExtractor, InvoiceTextExtractorService>();
         services.AddScopedWithLogging<IInvoiceImportService, InvoiceImportService>();
+        services.AddScopedWithLogging<IClientCsvImportService, ClientCsvImportService>();
 
         // ── AI Chat ────────────────────────────────────────────────────────
         AddAiProviders(services, configuration);
