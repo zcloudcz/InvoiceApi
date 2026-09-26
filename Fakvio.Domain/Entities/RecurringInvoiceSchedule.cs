@@ -16,8 +16,9 @@ namespace Fakvio.Domain.Entities;
 ///   4. Schedule deactivates itself when <see cref="EndDate"/> is reached or when
 ///      <see cref="MaxOccurrences"/> (if set) has been consumed.
 ///
-/// Multi-replica safety: the service uses a PostgreSQL advisory lock to prevent two
-/// running hosts (API BackgroundService + Azure Function) from double-generating invoices.
+/// Multi-replica safety: the service uses a PostgreSQL advisory lock (RecurringInvoiceWorker)
+/// to prevent two App Service replicas from double-generating invoices. There is no Azure
+/// Function counterpart — since #419/#426 the only host is Fakvio.API (DEVGUIDE §6).
 ///
 /// Inherits <see cref="BaseEntity"/> for Id, CreatedAt/UpdatedAt, and user audit columns.
 /// </summary>
@@ -125,9 +126,11 @@ public class RecurringInvoiceSchedule : BaseEntity
     public bool IsActive { get; set; } = true;
 
     /// <summary>
-    /// Whether the generated invoice should be automatically sent to the client by email.
-    /// When true: service generates invoice, renders PDF, and sends it via EmailService.
-    /// When false: invoice is created in Draft status for manual review and sending.
+    /// Whether the generated invoice should ALSO be automatically e-mailed to the client.
+    /// The invoice itself is always issued (Status = Completed) regardless of this flag — see
+    /// the owner decision documented on <c>RecurringInvoiceService</c>. When true: after the
+    /// invoice is committed, the service renders it and sends it via <c>IEmailService</c>. When
+    /// false: the invoice is issued but left for the user to review and send manually.
     /// Default false (safer — user reviews before sending).
     /// </summary>
     public bool AutoSend { get; set; } = false;

@@ -1985,6 +1985,69 @@ do obou `SharedResource*.resx`** — jinak uživatel uvidí obecnou náhradní h
 `SharedResourceLocalizationTests.ReadinessKeys_ShouldBeTranslated_InBothCultures` klíče
 odvozuje reflexí z `ReadinessCodes`, takže chybějící překlad shodí testy, ne produkci.
 
+### 4.13 Opakované faktury (recurring invoices)
+
+**Datový model:** `RecurringInvoiceSchedule` (`Fakvio.Domain/Entities/RecurringInvoiceSchedule.cs`,
+migrace `20260501102443_Add_RecurringInvoiceSchedule_v51`) — FK na `InvoiceTemplate` (Restrict)
+a `Client` (Restrict), `Frequency` (`ERecurrenceFrequency`: Weekly/Monthly/Quarterly/Yearly),
+`IntervalCount`, `DayOfMonth` (1-28 — záměrně capped, žádné "poslední den v únoru" klamání) nebo
+`DayOfWeek` (jen pro Weekly), `NextRunAt`/`LastRunAt`/`EndDate`/`MaxOccurrences`/`OccurrenceCount`,
+`IsActive`, `AutoSend`, `LastError` (max 2000 znaků), `RowVersion` (xmin).
+
+**Vrstvy:**
+- `IRecurringInvoiceService` (`Fakvio.Application/Service`) — CRUD nad plány + `RunCycleAsync`
+  (stateless service dle §6.1).
+- `RecurringInvoiceService` (`Fakvio.Infrastructure/Service`) — implementace. Validace v service,
+  ne v controlleru (§2.9).
+- `RecurrenceCalculator` (`Fakvio.Infrastructure/Service`, `internal static`) — čistá funkce
+  `Next(from, frequency, intervalCount, dayOfMonth, dayOfWeek)`, žádné DB volání. Weekly počítá
+  celé týdny a pak "snapne" na cílový den v týdnu; Monthly/Quarterly/Yearly přičtou měsíce
+  (`AddMonths`) a nastaví `DayOfMonth` — díky capu 1-28 je výsledný den vždy platný.
+- `RecurringInvoiceWorker : BackgroundService` (`Fakvio.Infrastructure/Service`) — tenká obálka,
+  registrovaná v `Fakvio.API/Program.cs`. Viz §6.3 pro interval a lock key.
+- `RecurringInvoiceController` (`Fakvio.API/Controller`) — REST `api/recurring-invoice`.
+- UI: `RecurringScheduleEditor.razor` (znovupoužitelná komponenta, `Fakvio.UI.Shared/Components/Shared`)
+  + panel na `InvoiceTemplateDetail.razor`.
+
+**Pravidla generování (rozhodnutí ownera 2026-W39, upřesňují story N4):**
+1. **Faktura se rovnou vystaví (Status = Completed).** Číslo dokladu se spotřebuje ihned —
+   žádný koncept, který by po smazání nechal díru v číselné řadě. `AutoSend` řídí JEN to, jestli
+   se vystavená faktura navíc pošle e-mailem (`RecurringInvoiceService`, task N4.5) — nikoli, jestli
+   se vystaví.
+2. **Zmeškaná perioda (výpadek aplikace) se dohání po jedné faktuře za cyklus** — datum vystavení
+   je PLÁNOVANÉ datum (`NextRunAt` v době selhání), ne "teď". Plán se posune jen o jednu periodu
+   dopředu; pokud je pořád v minulosti, doženě se to samé v dalším cyklu workeru (hodinová smyčka).
+   Nikdy se negeneruje víc než jedna faktura za jeden běh `RunCycleAsync` na jeden plán.
+3. **Idempotence:** `RunCycleAsync` přečte plán, vygeneruje fakturu a posune `NextRunAt` **v jedné
+   DB transakci** (`Database.BeginTransactionAsync`). Druhé zavolání `RunCycleAsync` se stejným
+   `nowUtc` už plán nenajde jako splatný (`NextRunAt` je posunuté) → nevytvoří druhou fakturu.
+   Cross-instance vyloučení (dvě App Service repliky) řeší advisory lock ve workeru (§6.2) —
+   `RunCycleAsync` samotné o sobě není bezpečné proti souběžnému volání na STEJNÉM plánu z různých
+   vláken bez locku.
+4. **Chyba jednoho plánu:** transakce rollback + `_context.ChangeTracker.Clear()` (rollback vrátí
+   jen DB, ne trackovaná in-memory data — bez `Clear()` by `RecordFailureAsync` viděl už
+   zmutovaný `OccurrenceCount`/`LastRunAt` z pokusu, který se právě vrátil). `LastError` —
+   **sanitizovaná zpráva** (`SafeErrorMessage`, max 2000 znaků) — se zapíše MIMO rolled-back
+   transakci, notifikace `ENotificationType.RecurringInvoiceFailed`. Sanitizace: `ex.Message`
+   projde jen pro `InvalidOperationException`/`TenantNotReadyException` (naše vlastní doménové
+   výjimky s bezpečnou zprávou), cokoli jiné (DB/SMTP/síťová výjimka) nahradí generický text —
+   celá výjimka jde vždy do logu. `NextRunAt` se **neposouvá** — příští cyklus to zkusí znovu.
+   Ostatní plány v cyklu pokračují (per-plán try/catch, stejný vzor jako `ReminderWorker`
+   per-tenant); `ChangeTracker.Clear()` na začátku každého plánu navíc brání tomu, aby si
+   kontext v jednom dlouhém cyklu nastřádal trackované entity ze všech předchozích plánů.
+5. **AutoSend e-mail** (po commitu, mimo transakci — odeslaný e-mail nejde vrátit) běží
+   **mimo** try/catch transakce z bodu 3/4, aby zrušení (`CancellationToken`) během odesílání
+   nezpůsobilo pokus o rollback už commitnuté transakce.
+6. **Resume** (`SetActiveAsync(true)`) i **Update** s nižším `MaxOccurrences`/dřívějším `EndDate`
+   kontrolují, jestli plán už nesplnil svou ukončovací podmínku (`HasReachedItsEnd`) — jinak by
+   šlo obnovit vyčerpaný plán a worker by vygeneroval ještě jednu fakturu navíc.
+7. **Smazání plánu:** `OccurrenceCount == 0` → hard delete (nikdy nevygeneroval fakturu, nic na
+   něj neodkazuje). Jinak jen deaktivace (`IsActive = false`) — historie (`LastRunAt`,
+   `OccurrenceCount`, vygenerované faktury) zůstává.
+
+**REST endpointy** (`api/recurring-invoice`): `GET` (vše, `?templateId=` filtr), `GET {id}`,
+`POST`, `PUT {id}`, `POST {id}/pause`, `POST {id}/resume`, `DELETE {id}`.
+
 ---
 
 ## 5. Datová vrstva
@@ -2076,6 +2139,7 @@ Každá pravidelná úloha **MUSÍ** existovat ve dvou kusech:
 | Log cleanup (maže logy starší 48 h) | `LogCleanupService` (smyčka v `ExecuteAsync`) | `LogCleanupService` v Infrastructure | každou 1 h | — |
 | Reminders / dunning | `IReminderService.ProcessOverdueInvoicesAsync` | `ReminderWorker` v Infrastructure | daily 06:00 UTC, per-tenant | `0x46414B56494F524DL` ("FAKVIORM") |
 | Payment matching (IMAP) | `IImapPollService.RunCycleAsync` | `ImapPollWorker` v Infrastructure | dle `PollIntervalMinutes` (default 30 min) | `0x46414B56494F5059L` |
+| Recurring invoices | `IRecurringInvoiceService.RunCycleAsync` | `RecurringInvoiceWorker` v Infrastructure | hodinově, per-tenant | `0x46414B56494F5249L` ("FAKVIORI") |
 
 ### 6.4 Když přidáš novou periodickou úlohu
 

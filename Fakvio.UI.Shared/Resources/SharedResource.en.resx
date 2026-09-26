@@ -1730,4 +1730,53 @@
   <data name="Integration_RevokeSuccess" xml:space="preserve"><value>The key has been revoked.</value></data>
   <data name="Integration_CreateSuccess" xml:space="preserve"><value>API key created.</value></data>
   <data name="Integration_NoKeys" xml:space="preserve"><value>You do not have any API key yet.</value></data>
+
+  <!-- Recurring invoice frequency enum labels (localized display for ERecurrenceFrequency) -->
+  <data name="ERecurrenceFrequency_Weekly" xml:space="preserve"><value>Weekly</value></data>
+  <data name="ERecurrenceFrequency_Monthly" xml:space="preserve"><value>Monthly</value></data>
+  <data name="ERecurrenceFrequency_Quarterly" xml:space="preserve"><value>Quarterly</value></data>
+  <data name="ERecurrenceFrequency_Yearly" xml:space="preserve"><value>Yearly</value></data>
+
+  <!-- Day-of-week labels, used by RecurringScheduleEditor for weekly schedules -->
+  <data name="DayOfWeek_Monday" xml:space="preserve"><value>Monday</value></data>
+  <data name="DayOfWeek_Tuesday" xml:space="preserve"><value>Tuesday</value></data>
+  <data name="DayOfWeek_Wednesday" xml:space="preserve"><value>Wednesday</value></data>
+  <data name="DayOfWeek_Thursday" xml:space="preserve"><value>Thursday</value></data>
+  <data name="DayOfWeek_Friday" xml:space="preserve"><value>Friday</value></data>
+  <data name="DayOfWeek_Saturday" xml:space="preserve"><value>Saturday</value></data>
+  <data name="DayOfWeek_Sunday" xml:space="preserve"><value>Sunday</value></data>
+
+  <!-- Recurring invoice schedule panel (invoice template detail) -->
+  <data name="Recurring_SectionTitle" xml:space="preserve"><value>Recurring schedule</value></data>
+  <data name="Recurring_AddSchedule" xml:space="preserve"><value>Add schedule</value></data>
+  <data name="Recurring_EditSchedule" xml:space="preserve"><value>Edit schedule</value></data>
+  <data name="Recurring_Client" xml:space="preserve"><value>Client</value></data>
+  <data name="Recurring_Frequency" xml:space="preserve"><value>Frequency</value></data>
+  <data name="Recurring_IntervalCount" xml:space="preserve"><value>Interval</value></data>
+  <data name="Recurring_IntervalCountHelp" xml:space="preserve"><value>Number of periods between invoices (1 = every period, 2 = every other, …)</value></data>
+  <data name="Recurring_DayOfMonth" xml:space="preserve"><value>Day of month</value></data>
+  <data name="Recurring_DayOfMonthHelp" xml:space="preserve"><value>1-28 (to keep February valid)</value></data>
+  <data name="Recurring_DayOfWeek" xml:space="preserve"><value>Day of week</value></data>
+  <data name="Recurring_StartDate" xml:space="preserve"><value>First invoice date</value></data>
+  <data name="Recurring_EndMode" xml:space="preserve"><value>End</value></data>
+  <data name="Recurring_EndMode_None" xml:space="preserve"><value>No end</value></data>
+  <data name="Recurring_EndMode_Date" xml:space="preserve"><value>On date</value></data>
+  <data name="Recurring_EndMode_Count" xml:space="preserve"><value>After a number of occurrences</value></data>
+  <data name="Recurring_EndDate" xml:space="preserve"><value>End date</value></data>
+  <data name="Recurring_MaxOccurrences" xml:space="preserve"><value>Number of occurrences</value></data>
+  <data name="Recurring_AutoSend" xml:space="preserve"><value>Complete and e-mail automatically</value></data>
+  <data name="Recurring_AutoSendHelp" xml:space="preserve"><value>The invoice is always issued; this switch also e-mails it to the client.</value></data>
+  <data name="Recurring_NextRun" xml:space="preserve"><value>Next run</value></data>
+  <data name="Recurring_LastRun" xml:space="preserve"><value>Last run</value></data>
+  <data name="Recurring_OccurrenceCount" xml:space="preserve"><value>Occurrences</value></data>
+  <data name="Recurring_Status" xml:space="preserve"><value>Status</value></data>
+  <data name="Recurring_StatusActive" xml:space="preserve"><value>Active</value></data>
+  <data name="Recurring_StatusPaused" xml:space="preserve"><value>Paused</value></data>
+  <data name="Recurring_LastError" xml:space="preserve"><value>Last error</value></data>
+  <data name="Recurring_Pause" xml:space="preserve"><value>Pause</value></data>
+  <data name="Recurring_Resume" xml:space="preserve"><value>Resume</value></data>
+  <data name="Recurring_ConfirmDelete" xml:space="preserve"><value>Delete this recurring schedule?</value></data>
+  <data name="Recurring_NoSchedules" xml:space="preserve"><value>No recurring schedules yet.</value></data>
+  <data name="Recurring_SaveSuccess" xml:space="preserve"><value>Recurring schedule saved.</value></data>
+  <data name="Recurring_DeleteSuccess" xml:space="preserve"><value>Recurring schedule deleted.</value></data>
 </root>
