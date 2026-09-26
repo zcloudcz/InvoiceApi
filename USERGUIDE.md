@@ -516,6 +516,8 @@ dokladu žádná aktivní výchozí řada neexistuje, je přiřazená řada deak
 Aplikace v takovém případě nikdy nepřidělí náhradní číslo mimo vaši řadu — číslování
 dokladů musí zůstat souvislé a předvídatelné. Chybová hláška uvádí typ dokladu i stránku
 `/number-sequences`, kde řadu nastavíte; po nastavení aktivní výchozí řady akci zopakujte.
+Chybějící řadu jde opravit i přes AI (kapitola 20) — `list_number_sequences` vypíše dostupné
+formáty a `create_number_sequence` založí novou výchozí řadu, aniž byste museli otevírat UI.
 
 Zvláštní případ je **souběh** — dva doklady si sáhnou pro číslo ze stejné řady ve stejný
 okamžik. Aplikace se pokus několikrát zopakuje sama, a když ani pak neuspěje, vytvoření
@@ -991,7 +993,7 @@ zajišťuje **MCP server** — program, který překládá požadavky AI na vol�
 | Kde se ovládá | Panel v pravém horním rohu Fakvia | Vaše AI aplikace |
 | Instalace | Žádná | Podle způsobu připojení (viz krok 2) |
 | Přihlášení | Vaše běžné přihlášení | Osobní **API klíč**, který si vytvoříte |
-| Rozsah akcí | Vyhledávání a přehledy | 41 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové výpočty, šablony, měny, nastavení |
+| Rozsah akcí | Vyhledávání a přehledy | 43 nástrojů — vystavení faktury, přijaté faktury, přehledy, DPH, daňové výpočty, šablony, měny, nastavení |
 
 Postup je vždy stejný: **vytvořit klíč → vložit konfiguraci do AI aplikace → ověřit**.
 
@@ -1137,7 +1139,7 @@ je hotovo. Když ne, obvyklé příčiny jsou tyhle:
 | Přehledy | Dashboard, faktury po splatnosti, faktury klienta, faktury za období, přehled DPH, přijaté faktury po splatnosti |
 | Daně | Odhad daně, porovnání daňových režimů, roční příjmy, zálohy na pojistné, daňové nastavení |
 | Šablony | Vypsat, zobrazit, vystavit fakturu ze šablony |
-| Nastavení | Zkontrolovat, co firmě chybí k vystavení faktury, vypsat platné měny (pro vystavení faktury v cizí měně), vypsat číselné řady a jejich formáty, vypsat platné sazby DPH |
+| Nastavení | Zkontrolovat, co firmě chybí k vystavení faktury, vypsat platné měny (pro vystavení faktury v cizí měně), vypsat i založit/upravit číselné řady, vypsat platné sazby DPH |
 
 Příklady zadání: „Vystav fakturu pro klienta XYZ na 15 000 Kč za konzultace“,
 „Stáhni mi PDF faktury FAK-2026-001“, „Kolik mám letos zaplatit na zálohách?“
