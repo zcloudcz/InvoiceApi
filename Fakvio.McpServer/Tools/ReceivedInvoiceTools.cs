@@ -29,7 +29,7 @@ public static class ReceivedInvoiceTools
     /// <summary>
     /// Lists received invoices with pagination and filtering.
     /// </summary>
-    [McpServerTool, Description(
+    [McpServerTool(Title = "List received invoices", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
         "List received (incoming) invoices with pagination and filters. " +
         "These are expenses from suppliers. " +
         "Filter by status ('Received', 'Approved', 'Paid', 'Rejected'), supplier ID, date range, etc.")]
@@ -84,7 +84,7 @@ public static class ReceivedInvoiceTools
     /// <summary>
     /// Gets a single received invoice by ID.
     /// </summary>
-    [McpServerTool, Description(
+    [McpServerTool(Title = "Get received invoice", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
         "Get a received (incoming) invoice by ID. Returns full details including line items and supplier info.")]
     public static async Task<string> GetReceivedInvoice(
         IFakvioApiClient api,
@@ -112,7 +112,7 @@ public static class ReceivedInvoiceTools
     /// <summary>
     /// Creates a new received invoice.
     /// </summary>
-    [McpServerTool, Description(
+    [McpServerTool(Title = "Create received invoice", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description(
         "Create a new received (incoming) invoice. Pass JSON with: " +
         "supplierId (required), currencyId (required), items[] (required, at least 1), " +
         "documentNumber, issueDate, receivedDate, dueDate, taxableSupplyDate, " +
@@ -159,7 +159,7 @@ public static class ReceivedInvoiceTools
     /// <summary>
     /// Approves a received invoice for payment.
     /// </summary>
-    [McpServerTool, Description(
+    [McpServerTool(Title = "Approve received invoice", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false), Description(
         "Approve a received invoice for payment. Transitions from 'Received' to 'Approved'. " +
         "Only invoices in 'Received' status can be approved.")]
     public static async Task<string> ApproveReceivedInvoice(
@@ -185,7 +185,7 @@ public static class ReceivedInvoiceTools
     /// <summary>
     /// Marks a received invoice as paid.
     /// </summary>
-    [McpServerTool, Description(
+    [McpServerTool(Title = "Mark received invoice as paid", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false), Description(
         "Mark a received invoice as paid. Transitions from 'Approved' to 'Paid'. " +
         "Only invoices in 'Approved' status can be marked as paid.")]
     public static async Task<string> MarkReceivedInvoicePaid(
@@ -211,7 +211,7 @@ public static class ReceivedInvoiceTools
     /// <summary>
     /// Deletes a received invoice (soft delete).
     /// </summary>
-    [McpServerTool, Description(
+    [McpServerTool(Title = "Delete received invoice", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false), Description(
         "Delete a received invoice (soft delete). Only 'Received' or 'Rejected' invoices can be deleted.")]
     public static async Task<string> DeleteReceivedInvoice(
         IFakvioApiClient api,
@@ -242,7 +242,7 @@ public static class ReceivedInvoiceTools
     /// <summary>
     /// Uploads a file (typically the supplier's PDF) as an attachment of a received invoice.
     /// </summary>
-    [McpServerTool, Description(
+    [McpServerTool(Title = "Upload received invoice attachment", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = true), Description(
         "Attach a file (e.g. the supplier's original PDF) to an existing received invoice. " +
         "Give the file in exactly ONE way: fileUrl (https link the server downloads — preferred, works for any size), " +
         "filePath (absolute path on the machine running the MCP server — only when the server runs locally over stdio), " +

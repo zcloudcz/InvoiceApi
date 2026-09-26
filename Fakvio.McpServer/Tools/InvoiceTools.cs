@@ -37,7 +37,7 @@ public static class InvoiceTools
     /// Lists invoices with pagination and optional filters.
     /// Returns a page of invoices matching the given criteria.
     /// </summary>
-    [McpServerTool, Description(
+    [McpServerTool(Title = "List invoices", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
         "List invoices with pagination and filters. " +
         "Returns paginated results with invoice details including status, amounts, and client info. " +
         "Sorted newest first (by issue date) unless sortBy is given.")]
@@ -103,7 +103,7 @@ public static class InvoiceTools
     /// Gets a single invoice by its database ID.
     /// Returns full invoice details including items, amounts, and metadata.
     /// </summary>
-    [McpServerTool, Description(
+    [McpServerTool(Title = "Get invoice", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
         "Get a single invoice by ID. Returns full details including line items, " +
         "totals (before VAT, VAT, with VAT), payment status, and client/issuer info.")]
     public static async Task<string> GetInvoice(
@@ -134,7 +134,7 @@ public static class InvoiceTools
     /// Finds an invoice by its document number (e.g., "FAK2026001").
     /// Useful when the user refers to an invoice by its printed number.
     /// </summary>
-    [McpServerTool, Description(
+    [McpServerTool(Title = "Find invoice by number", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
         "Find an invoice by its document number (e.g., 'FAK2026001'). " +
         "Use this when the user refers to an invoice by its printed/visible number.")]
     public static async Task<string> FindInvoiceByNumber(
@@ -165,7 +165,7 @@ public static class InvoiceTools
     /// Creates a new invoice or credit note from a JSON DTO.
     /// The invoice starts in Draft status and must be completed (issued) separately.
     /// </summary>
-    [McpServerTool, Description(
+    [McpServerTool(Title = "Create invoice", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description(
         "Create a new invoice or credit note. The invoice is created in Draft status. " +
         "Requires a JSON object with: documentType ('Invoice'/'CreditNote'), clientId, issuerId, " +
         "currencyId, and invoiceItem array [{description, quantity, unitPrice, vatRatePercentage}]. " +
@@ -214,7 +214,7 @@ public static class InvoiceTools
     /// Issues (completes) a draft invoice.
     /// This generates the document number and transitions status from Draft → Completed.
     /// </summary>
-    [McpServerTool, Description(
+    [McpServerTool(Title = "Complete invoice", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false), Description(
         "Complete (issue) a draft invoice. This generates the document number " +
         "and changes status from Draft to Completed. Cannot be undone.")]
     public static async Task<string> CompleteInvoice(
@@ -259,7 +259,7 @@ public static class InvoiceTools
     /// Marks a completed invoice as paid.
     /// Only works on invoices with status Completed.
     /// </summary>
-    [McpServerTool, Description(
+    [McpServerTool(Title = "Mark invoice as paid", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false), Description(
         "Mark a completed invoice as paid. Only works on invoices " +
         "with status 'Completed'. Sets the PaidAt timestamp.")]
     public static async Task<string> MarkInvoicePaid(
@@ -286,7 +286,7 @@ public static class InvoiceTools
     /// Sends an invoice via email with a PDF attachment.
     /// The API generates the PDF from the content template and attaches it.
     /// </summary>
-    [McpServerTool, Description(
+    [McpServerTool(Title = "Send invoice by email", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = true), Description(
         "Send an invoice via email with PDF attachment. " +
         "The system generates the PDF automatically and attaches it to the email.")]
     public static async Task<string> SendInvoiceEmail(
@@ -323,7 +323,7 @@ public static class InvoiceTools
     /// Exports an invoice as a PDF file, returned as a base64-encoded string.
     /// The AI client can save this to a file or present it to the user.
     /// </summary>
-    [McpServerTool, Description(
+    [McpServerTool(Title = "Export invoice as PDF", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
         "Export an invoice as PDF. Returns the PDF as a base64-encoded string. " +
         "Use this when the user asks to download, export, print, or get a PDF of an invoice. " +
         "You can find the invoice ID using FindInvoiceByNumber first.")]
@@ -371,7 +371,7 @@ public static class InvoiceTools
     /// ISDOC is the Czech electronic invoice standard importable by Pohoda, Money S3, Helios.
     /// The AI client can save this to a file with the .isdoc extension.
     /// </summary>
-    [McpServerTool, Description(
+    [McpServerTool(Title = "Export invoice as ISDOC", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
         "Export an invoice as ISDOC 6.0.2 XML (Czech electronic invoice standard). " +
         "Returns the XML as a base64-encoded string. " +
         "Use this when the user asks to download or export an invoice as ISDOC for import into accounting software. " +
@@ -419,7 +419,7 @@ public static class InvoiceTools
     /// Soft-deletes a draft invoice.
     /// Only invoices in Draft status can be deleted.
     /// </summary>
-    [McpServerTool, Description(
+    [McpServerTool(Title = "Delete invoice", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false), Description(
         "Delete a draft invoice (soft delete). " +
         "Only invoices with status 'Draft' can be deleted.")]
     public static async Task<string> DeleteInvoice(

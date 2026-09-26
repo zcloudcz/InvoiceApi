@@ -28,7 +28,7 @@ public static class ReadinessTools
     /// <summary>
     /// Returns everything the tenant still has to fill in before it can invoice safely.
     /// </summary>
-    [McpServerTool, Description(
+    [McpServerTool(Title = "Check setup readiness", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
         "Check whether the company setup is complete enough to issue invoices. " +
         "Returns isReady plus every missing setting with its code, severity (Blocking or Warning), " +
         "the empty fields, the issuer it belongs to, and the fixRoute — the app page where the user fixes it. " +

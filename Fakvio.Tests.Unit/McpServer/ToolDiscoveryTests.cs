@@ -288,6 +288,51 @@ public class ToolDiscoveryTests
     }
 
     /// <summary>
+    /// Every tool must tell an AI client whether it is safe to call without confirmation
+    /// (read-only) and whether it destroys data (destructive) — MCP clients such as Claude and
+    /// ChatGPT use these annotations to decide whether to ask the user before invoking a tool.
+    ///
+    /// Junior note: the rule is derived from the tool's NAME, not from a hard-coded list of tool
+    /// names (same principle as <see cref="EveryToolName_IsTheProtocolSpellingOfItsMethodName"/>
+    /// above) — a hard-coded list would need a manual edit for every new tool and would silently
+    /// stop catching regressions the day someone forgets that edit.
+    /// </summary>
+    [Fact]
+    public void EveryTool_DeclaresItsSideEffects()
+    {
+        foreach (var tool in DiscoverTools())
+        {
+            var name = tool.ProtocolTool.Name;
+            var annotations = tool.ProtocolTool.Annotations;
+
+            annotations.ShouldNotBeNull(
+                $"Tool '{name}' has no annotations — every [McpServerTool] must set " +
+                "ReadOnly/Destructive/Idempotent/OpenWorld explicitly (DEVGUIDE §4.9).");
+
+            annotations!.ReadOnlyHint.ShouldNotBeNull(
+                $"Tool '{name}' does not declare ReadOnlyHint.");
+
+            if (name.StartsWith("delete_", StringComparison.Ordinal))
+            {
+                annotations.DestructiveHint.ShouldBe(true,
+                    $"Tool '{name}' starts with 'delete_' and must be DestructiveHint = true.");
+            }
+
+            if (name.StartsWith("get_", StringComparison.Ordinal) ||
+                name.StartsWith("list_", StringComparison.Ordinal) ||
+                name.StartsWith("find_", StringComparison.Ordinal) ||
+                name.StartsWith("export_", StringComparison.Ordinal) ||
+                name.StartsWith("lookup_", StringComparison.Ordinal) ||
+                name.StartsWith("estimate_", StringComparison.Ordinal) ||
+                name.StartsWith("compare_", StringComparison.Ordinal))
+            {
+                annotations.ReadOnlyHint.ShouldBe(true,
+                    $"Tool '{name}' looks read-only from its name and must be ReadOnlyHint = true.");
+            }
+        }
+    }
+
+    /// <summary>
     /// Every guide that names a tool count must name the count the server actually exposes.
     ///
     /// Why this needs a test rather than a reviewer: story #144 published "36" and the number

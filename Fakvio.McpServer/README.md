@@ -259,8 +259,15 @@ grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs
 
 1. Přidejte statickou metodu do existující třídy v `Tools/` (nebo novou třídu
    s atributem `[McpServerToolType]` — `WithToolsFromAssembly()` ji najde sama).
-2. Metodu označte `[McpServerTool, Description("…")]` a každý parametr
-   `[Description("…")]` — právě z těchto textů se AI rozhoduje, kdy nástroj zavolat.
+2. Metodu označte `[McpServerTool(Title = "…", ReadOnly = …, Destructive = …, Idempotent = …, OpenWorld = …), Description("…")]`
+   a každý parametr `[Description("…")]` — právě z těchto textů se AI rozhoduje, kdy nástroj zavolat.
+   Hinty jsou **povinné** (hlídá `ToolDiscoveryTests.EveryTool_DeclaresItsSideEffects`):
+   - `ReadOnly = true` — nástroj nic nemění (typicky `list_*`/`get_*`/`find_*`/`export_*`).
+   - `Destructive = true` — nevratná akce (mazání, odeslání e-mailu, vystavení faktury).
+     Každý `delete_*` nástroj musí mít `Destructive = true`.
+   - `Idempotent = true` — opakované volání se stejnými argumenty nic dalšího nezmění
+     (typicky zápisy, které jen nastaví stav — „mark as paid", „approve").
+   - `OpenWorld = true` — nástroj mluví s něčím mimo Fakvio (ARES, e-mail, `fileUrl` stahování).
 3. Volejte API přes `IFakvioApiClient`; chybí-li endpoint, doplňte ho do
    `Client/IFakvioApiClient.cs` + `Client/FakvioApiClient.cs`.
 4. Celé tělo obalte `try` + `catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }`

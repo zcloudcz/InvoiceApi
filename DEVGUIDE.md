@@ -1564,6 +1564,19 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
 - **38 tools**: 10 invoice + 6 client + 7 received invoice + 6 reporting + 5 tax + 3 template + 1 readiness (po jednom souboru v `Tools/`).
   Ruční číslo v dokumentaci stárne; zdroj pravdy je `grep -rcE '^\s*\[McpServerTool[,(]' Fakvio.McpServer/Tools/*.cs`.
   Porovnání s chat tooly (co MCP umí a chat ještě ne): paritní tabulka v §4.7.
+- **Annotations (hinty) jsou povinné na každém `[McpServerTool]`** — `ReadOnly`, `Destructive`,
+  `Idempotent`, `OpenWorld` a krátký `Title`. Klienti (Claude, ChatGPT) je čtou z `tools/list`
+  (`ProtocolTool.Annotations`) a rozhodují podle nich, jestli nástroj potvrzovat před voláním.
+  Klasifikace se odvozuje z názvu nástroje, ne zapisuje ručně pro každý:
+  - `list_*`/`get_*`/`find_*`/`export_*`/`lookup_*`/`estimate_*`/`compare_*` → `ReadOnly = true`.
+  - `delete_*` → `Destructive = true` (mazání je vždy nevratné, i jako soft delete v DB).
+  - Jiná nevratná akce mimo `delete_*` (vystavení dokladu, odeslání e-mailu) → `Destructive = true`
+    stejně jako `delete_*`, i když jméno nezačíná na `delete_` (`complete_invoice`, `send_invoice_email`).
+  - Zápis, který jen nastaví stav a opakováním nic dalšího nezmění (`mark_*_paid`, `approve_*`,
+    `update_*`) → `Idempotent = true`, `Destructive = false`.
+  - Nástroj mluvící s něčím mimo Fakvio (ARES, e-mail, `fileUrl` stahování) → `OpenWorld = true`.
+  Test `ToolDiscoveryTests.EveryTool_DeclaresItsSideEffects` hlídá `ReadOnlyHint`/`DestructiveHint`
+  podle prefixu jména; postup přidání nástroje viz `Fakvio.McpServer/README.md`.
 - **Chybová konvence (#279): `McpToolError.ToJson(ex)`, jedno místo pro všech 38 nástrojů.**
   Každý tool má `catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }`
   **před** obecným `catch (Exception ex)` — zrušený request se propaguje, nekonverzuje na JSON.

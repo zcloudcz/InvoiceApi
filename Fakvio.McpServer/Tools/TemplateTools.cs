@@ -28,7 +28,7 @@ public static class TemplateTools
     /// <summary>
     /// Lists all active invoice templates, optionally filtered by document type.
     /// </summary>
-    [McpServerTool, Description(
+    [McpServerTool(Title = "List templates", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
         "List all active invoice templates. Optionally filter by document type. " +
         "Templates are reusable blueprints containing default items, payment terms, and settings.")]
     public static async Task<string> ListTemplates(
@@ -54,7 +54,7 @@ public static class TemplateTools
     /// <summary>
     /// Gets a single template by ID with all details including line items.
     /// </summary>
-    [McpServerTool, Description(
+    [McpServerTool(Title = "Get template", ReadOnly = true, Idempotent = true, OpenWorld = false), Description(
         "Get a single invoice template by ID. Returns full details including " +
         "default line items, payment terms, currency, and usage statistics.")]
     public static async Task<string> GetTemplate(
@@ -85,7 +85,7 @@ public static class TemplateTools
     /// Creates a new invoice from an existing template.
     /// Clones the template's items and settings, then applies the specified client and dates.
     /// </summary>
-    [McpServerTool, Description(
+    [McpServerTool(Title = "Create invoice from template", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description(
         "Create a new invoice from a template. Clones the template's items and settings " +
         "into a new draft invoice for the specified client. " +
         "Requires templateId and clientId. Optional: issueDate, dueDate, variableSymbol, " +
