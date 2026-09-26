@@ -264,6 +264,13 @@
                 _errorMessage = L["Register_Error"].Value;
             }
         }
+        catch (CaptchaException)
+        {
+            // Distinct from a business-rule failure (duplicate email etc.) — the user did
+            // nothing wrong here. Common cause: an ad blocker stopped Google's reCAPTCHA
+            // script from loading (RC.2).
+            _errorMessage = L["Captcha_VerificationFailed"].Value;
+        }
         catch (InvalidOperationException ex)
         {
             _errorMessage = ex.Message;
@@ -318,6 +325,12 @@
                 _aresMessage = L["Register_AresFailed"].Value;
                 _aresSeverity = Severity.Warning;
             }
+        }
+        catch (CaptchaException)
+        {
+            // Distinct from "ARES lookup failed" — the registry was never even called.
+            _aresMessage = L["Captcha_VerificationFailed"].Value;
+            _aresSeverity = Severity.Error;
         }
         catch
         {

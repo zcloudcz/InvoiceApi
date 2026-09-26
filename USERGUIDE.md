@@ -978,6 +978,22 @@ kontaktujte podporu.
 
 ---
 
+## 19b. Chyba „Ověření proti robotům se nezdařilo"
+
+Přihlášení, registrace i načtení firmy z ARES jsou chráněné neviditelnou kontrolou proti
+robotům (reCAPTCHA). Pokud se zobrazí hláška **„Ověření proti robotům se nezdařilo"**:
+
+1. Zkuste stránku obnovit (F5) a akci zopakovat.
+2. Pokud používáte blokování reklam (AdBlock, uBlock Origin apod.), vypněte ho pro
+   `app.fakvio.cz` — právě tyto nástroje nejčastěji blokují skript, na kterém kontrola
+   proti robotům závisí.
+3. Přetrvává-li chyba, kontaktujte podporu.
+
+Tato hláška neznamená chybu ve vašich přihlašovacích údajích ani v e-mailu — je to
+samostatná kontrola, která proběhne dřív, než se cokoli z formuláře vůbec odešle.
+
+---
+
 ## 20. Napojení vlastního AI klienta (MCP server)
 
 Kromě vestavěného [AI asistenta](#13-ai-asistent) umí Fakvio pracovat i s AI

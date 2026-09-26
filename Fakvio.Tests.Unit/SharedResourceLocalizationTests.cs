@@ -226,6 +226,25 @@ public class SharedResourceLocalizationTests : IDisposable
         }
     }
 
+    /// <summary>
+    /// RC.2 — the one message shown by Login.razor/Register.razor for every CAPTCHA
+    /// rejection (see <c>CaptchaException</c>), in both cultures.
+    /// </summary>
+    [Fact]
+    public void CaptchaVerificationFailed_HasBothCzechAndEnglishTranslations()
+    {
+        CultureInfo.CurrentUICulture = new CultureInfo("cs-CZ");
+        var czech = _localizer["Captcha_VerificationFailed"];
+        czech.ResourceNotFound.ShouldBeFalse();
+
+        CultureInfo.CurrentUICulture = new CultureInfo("en-US");
+        var english = _localizer["Captcha_VerificationFailed"];
+        english.ResourceNotFound.ShouldBeFalse();
+
+        english.Value.ShouldNotBe(czech.Value,
+            "Captcha_VerificationFailed has no English translation — it falls back to Czech.");
+    }
+
     [Fact]
     public void NonExistentKey_ShouldReturn_ResourceNotFound()
     {

@@ -89,6 +89,22 @@ Azure Functions use the same double-underscore notation for nested config.
 
 **Turning the gate on in production therefore takes both steps.** With `SecretKey` set but the site key still empty, the browser sends no `X-Captcha-Token`, and the fail-closed gate answers 400 to login, registration and the ARES lookup for every user. See ADMINGUIDE §9 for the two supported deployment variants.
 
+### Deployment order (RC story, 2026-W39)
+
+As of this writing `Recaptcha__Enabled=false` on `fakvio-api` — the gate is off in
+production, and the UI's `SiteKey` is empty. Turning it on is **strictly ordered**:
+
+1. **RC.1 (human, needs:human)** — create the reCAPTCHA v3 keys in the admin console,
+   set `Recaptcha__SecretKey` and `Recaptcha__AllowedHostnames__0` on `fakvio-api`.
+   Do **not** flip `Recaptcha__Enabled` yet.
+2. **RC.2 (this task)** — put the site key into
+   `Fakvio.BlazorUI/wwwroot/appsettings.json` and deploy it (GitHub Pages).
+3. **Only then** flip `Recaptcha__Enabled=true` on `fakvio-api`.
+
+Doing it in any other order breaks login: the gate fails closed (§4), so
+`Enabled=true` with an empty `SiteKey` in the UI means the browser never sends
+`X-Captcha-Token` and every login/register/ARES/forgot-password request gets 400.
+
 ## 4. Running without keys (local development)
 
 Since issue #200 the gate **fails closed**: an empty `Recaptcha:SecretKey` no longer means "skip verification", it means "reject every gated request". Running without reCAPTCHA is now explicit:
@@ -150,7 +166,25 @@ Fakvio.Infrastructure/Service/
 Fakvio.API/appsettings.json             ← SecretKey (private, server-side only)
 ```
 
-## 8. Privacy note
+## 8. UI error handling (RC.2)
+
+A failed CAPTCHA verification (400 with `"CAPTCHA verification failed..."` in the body)
+is shown as a distinct, localized message instead of the endpoint's own generic error
+("Invalid email or password", "Registration failed", "ARES lookup failed", ...) — the
+user did nothing wrong; the common cause is an ad blocker keeping Google's script from
+loading.
+
+- `Fakvio.UI.Shared/Services/CaptchaException.cs` — thrown by `AuthApiService`
+  (login/register/ares) when the response body matches the server's fixed
+  CAPTCHA-failure text.
+- `Login.razor` / `Register.razor` catch it and show `Captcha_VerificationFailed`
+  (CZ/EN, `SharedResource.resx`).
+- `Fakvio.BlazorUI/wwwroot/index.html` `getRecaptchaToken()` — a 5s timeout guarantees an
+  empty token (which the gate then rejects the same way) instead of hanging forever when
+  `grecaptcha.execute()`'s promise never settles (adblock blocking a sub-resource, not the
+  loader script itself).
+
+## 9. Privacy note
 
 reCAPTCHA v3 loads Google's script on the login/register pages and tracks user behavior. Consider adding a note to your privacy policy if required by your jurisdiction (GDPR, etc.).
 

@@ -240,6 +240,12 @@
         {
             // NavigateTo with forceLoad can throw after initiating navigation — this is expected
         }
+        catch (CaptchaException)
+        {
+            // Distinct from "wrong password" — the user did nothing wrong here. Common cause:
+            // an ad blocker stopped Google's reCAPTCHA script from loading (RC.2).
+            _errorMessage = L["Captcha_VerificationFailed"].Value;
+        }
         catch (Exception ex)
         {
             _errorMessage = string.Format(L["Login_ErrorGeneric"].Value, ex.Message);
