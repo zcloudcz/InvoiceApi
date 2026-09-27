@@ -91,6 +91,21 @@ public class ClientCsvImportService : IClientCsvImportService
                 continue;
             }
 
+            // A value longer than its DB column would make the INSERT fail at confirm time —
+            // flag it now so the user sees it (typically a misaligned column in the CSV).
+            var overLengthReason = FindOverLengthField(client);
+            if (overLengthReason != null)
+            {
+                result.Rows.Add(new ClientImportPreviewRowDto
+                {
+                    RowNumber = rowNumber,
+                    Client = client,
+                    Status = EClientImportRowStatus.Invalid,
+                    Reason = overLengthReason
+                });
+                continue;
+            }
+
             if (!seenRegistrationNumbers.Add(client.RegistrationNumber))
             {
                 result.Rows.Add(new ClientImportPreviewRowDto
@@ -164,14 +179,16 @@ public class ClientCsvImportService : IClientCsvImportService
             }
             catch (InvalidOperationException)
             {
-                // ClientService.CreateClientAsync's own "already exists" guard caught a race our
+                // ClientService.CreateClientAsync's "already exists" guard caught a race our
                 // bulk pre-check missed (import ran concurrently with another insert of the same IČO).
-                // That's a dedup outcome, not a failure — count and report it the same way.
+                // It throws this both from its own pre-check and when PostgreSQL rejects the INSERT
+                // with a unique violation (23505). That's a dedup outcome, not a failure.
                 result.SkippedCount++;
             }
             catch (Exception ex)
             {
-                // Log the full exception server-side (may contain EF/PostgreSQL details), but never
+                // CreateClientAsync already detached the failed client from the DbContext, so the
+                // next rows are not affected by this one. Log the full exception server-side (may contain EF/PostgreSQL details), but never
                 // forward ex.Message to the caller — it can leak schema/infrastructure information.
                 _logger.LogWarning(ex, "Failed to import client {CompanyName} from CSV", client.CompanyName);
                 result.Errors.Add($"{client.CompanyName}: import failed — see server log for details.");
@@ -179,6 +196,35 @@ public class ClientCsvImportService : IClientCsvImportService
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Returns a reason text if any mapped value is longer than its DB column
+    /// (limits copied from TenantDbContext — keep them in sync), otherwise null.
+    /// </summary>
+    private static string? FindOverLengthField(CreateClientDto client)
+    {
+        var address = client.Address.FirstOrDefault();
+        var bankAccount = client.BankAccount.FirstOrDefault();
+
+        var fields = new List<(string Name, string? Value, int MaxLength)>
+        {
+            ("Company name", client.CompanyName, 500),
+            ("IČO", client.RegistrationNumber, 20),
+            ("DIČ", client.TaxNumber, 50),
+            ("Street", address?.Street, 500),
+            ("City", address?.City, 200),
+            ("Postal code", address?.PostalCode, 20),
+            ("Country", address?.Country, 100),
+            ("Account number", bankAccount?.AccountNumber, 100),
+            ("IBAN", bankAccount?.IBAN, 50),
+        };
+        fields.AddRange(client.Contact.Select(c => (c.ContactType.ToString(), (string?)c.ContactValue, 500)));
+
+        var tooLong = fields.FirstOrDefault(f => f.Value != null && f.Value.Length > f.MaxLength);
+        return tooLong.Name == null
+            ? null
+            : $"{tooLong.Name} is too long ({tooLong.Value!.Length} characters, max {tooLong.MaxLength}).";
     }
 
     /// <summary>

@@ -333,6 +333,24 @@ public class ToolDiscoveryTests
     }
 
     /// <summary>
+    /// Tools whose name does not start with "delete_" but can still destroy data, so the
+    /// name-based rule above cannot catch them:
+    ///   - update_number_sequence can LOWER currentNumber → the next documents get numbers that
+    ///     were already used (duplicate invoice numbers are a legal problem).
+    ///   - update_my_company sends the whole address list back; the API replaces it wholesale,
+    ///     so an address changed by someone else in between is overwritten (lost update).
+    /// </summary>
+    [Theory]
+    [InlineData("update_number_sequence")]
+    [InlineData("update_my_company")]
+    public void DataRiskyUpdateTools_AreMarkedDestructive(string toolName)
+    {
+        var tool = DiscoverTools().Single(t => t.ProtocolTool.Name == toolName);
+
+        tool.ProtocolTool.Annotations!.DestructiveHint.ShouldBe(true);
+    }
+
+    /// <summary>
     /// N2.6: the version reported in the MCP handshake (<c>initialize</c> → <c>ServerInfo.Version</c>)
     /// must be the assembly's real version, not a hand-maintained constant that can drift from the
     /// csproj <c>&lt;Version&gt;</c> — which is exactly what happened before this test existed

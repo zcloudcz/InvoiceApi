@@ -1635,6 +1635,9 @@ Notifikační systém oddělený od Alertů — alerty jsou tenant-wide s resolv
     stejně jako `delete_*`, i když jméno nezačíná na `delete_` (`complete_invoice`, `send_invoice_email`).
   - Zápis, který jen nastaví stav a opakováním nic dalšího nezmění (`mark_*_paid`, `approve_*`,
     `update_*`) → `Idempotent = true`, `Destructive = false`.
+  - Výjimka: `update_*`, který umí data poškodit, je `Destructive = true` — `update_number_sequence`
+    (snížení `currentNumber` → duplicitní čísla dokladů) a `update_my_company` (seznam adres se
+    přepíše celý → souběžná změna adresy se ztratí). Hlídá `ToolDiscoveryTests.DataRiskyUpdateTools_AreMarkedDestructive`.
   - Nástroj mluvící s něčím mimo Fakvio (ARES, e-mail, `fileUrl` stahování) → `OpenWorld = true`.
   Test `ToolDiscoveryTests.EveryTool_DeclaresItsSideEffects` hlídá `ReadOnlyHint`/`DestructiveHint`
   podle prefixu jména; postup přidání nástroje viz `Fakvio.McpServer/README.md`.
@@ -2019,7 +2022,13 @@ a `Client` (Restrict), `Frequency` (`ERecurrenceFrequency`: Weekly/Monthly/Quart
    dopředu; pokud je pořád v minulosti, doženě se to samé v dalším cyklu workeru (hodinová smyčka).
    Nikdy se negeneruje víc než jedna faktura za jeden běh `RunCycleAsync` na jeden plán.
 3. **Idempotence:** `RunCycleAsync` přečte plán, vygeneruje fakturu a posune `NextRunAt` **v jedné
-   DB transakci** (`Database.BeginTransactionAsync`). Druhé zavolání `RunCycleAsync` se stejným
+   DB transakci** (`Database.BeginTransactionAsync`). TenantDbContext má `EnableRetryOnFailure`,
+   takže transakce MUSÍ běžet uvnitř `Database.CreateExecutionStrategy().ExecuteAsync(...)` — holé
+   `BeginTransactionAsync` Npgsql odmítne (`NpgsqlRetryingExecutionStrategy does not support
+   user-initiated transactions`). Strategie při přechodné chybě spustí celý delegát znovu, proto se
+   plán čte až uvnitř něj (`GenerateInTransactionAsync`) — když předchozí pokus stihl commit,
+   opakování už plán nevidí jako splatný. InMemory testy tohle nezachytí, kryje to
+   `Fakvio.Tests.Integration/TenantRetryingContextDatabaseTests`. Druhé zavolání `RunCycleAsync` se stejným
    `nowUtc` už plán nenajde jako splatný (`NextRunAt` je posunuté) → nevytvoří druhou fakturu.
    Cross-instance vyloučení (dvě App Service repliky) řeší advisory lock ve workeru (§6.2) —
    `RunCycleAsync` samotné o sobě není bezpečné proti souběžnému volání na STEJNÉM plánu z různých
@@ -2028,7 +2037,10 @@ a `Client` (Restrict), `Frequency` (`ERecurrenceFrequency`: Weekly/Monthly/Quart
    jen DB, ne trackovaná in-memory data — bez `Clear()` by `RecordFailureAsync` viděl už
    zmutovaný `OccurrenceCount`/`LastRunAt` z pokusu, který se právě vrátil). `LastError` —
    **sanitizovaná zpráva** (`SafeErrorMessage`, max 2000 znaků) — se zapíše MIMO rolled-back
-   transakci, notifikace `ENotificationType.RecurringInvoiceFailed`. Sanitizace: `ex.Message`
+   transakci, notifikace `ENotificationType.RecurringInvoiceFailed` — **jen když se chyba změnila**
+   (první selhání nebo jiná zpráva než v `LastError`). Trvale rozbitý plán (smazaná šablona/klient)
+   se dál zkouší každou hodinu, ale uživatele upozorní jen jednou; úspěšný běh `LastError` vynuluje,
+   takže další selhání po zotavení notifikuje znovu. Sanitizace: `ex.Message`
    projde jen pro `InvalidOperationException`/`TenantNotReadyException` (naše vlastní doménové
    výjimky s bezpečnou zprávou), cokoli jiné (DB/SMTP/síťová výjimka) nahradí generický text —
    celá výjimka jde vždy do logu. `NextRunAt` se **neposouvá** — příští cyklus to zkusí znovu.
@@ -2069,6 +2081,14 @@ syntetická data.
   nerozlišuje. Dedup podle IČO: proti DB (`IClientService.GetClientByRegistrationNumberAsync`) i
   uvnitř souboru. `Confirm` zakládá jen řádky se stavem `New`; opakovaný import stejného souboru
   proto zafounduje 0 nových klientů.
+- **Délky polí:** preview označí jako `Invalid` řádek, jehož hodnota je delší než DB sloupec
+  (`FindOverLengthField` — limity opsané z `TenantDbContext`, drž je v synchronu; např. PSČ 20,
+  město 200, ulice 500, kontakt 500).
+- **Chyba jednoho řádku neshodí zbytek:** `ClientService.CreateClientAsync` po `DbUpdateException`
+  odpojí z change trackeru všechny `Added` entity (jinak by je každý další `SaveChanges` na stejném
+  scoped kontextu posílal znovu) a unique violation `23505` (souběžně vložené stejné IČO) převede
+  na `InvalidOperationException("… already exists")` — import to počítá jako `Skipped`, REST API
+  vrátí 409.
 - **Endpointy:** `POST api/import/clients/preview`, `POST api/import/clients/confirm`
   (`ImportController`, multipart upload jako u PDF preview).
 - **UI:** `Fakvio.UI.Shared/Components/Shared/ClientCsvImportDialog.razor`, otevřený z tlačítka na

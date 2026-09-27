@@ -128,6 +128,32 @@ public class ClientCsvImportServiceTests
         row.Reason.ShouldContain("IČO");
     }
 
+    /// <summary>
+    /// PR #444 finding 2: a value longer than its DB column (PSČ varchar(20) here — typically a
+    /// misaligned CSV column) would make the INSERT fail on confirm, so preview flags it.
+    /// </summary>
+    [Fact]
+    public async Task PreviewAsync_ValueLongerThanItsColumn_IsInvalid()
+    {
+        var csv = $"Název;IČO;PSČ\r\nLong Zip Co;44444444;{new string('1', 21)}\r\n";
+
+        var preview = await _service.PreviewAsync(ToStream(csv));
+
+        var row = preview.Rows.Single();
+        row.Status.ShouldBe(EClientImportRowStatus.Invalid);
+        row.Reason.ShouldBe("Postal code is too long (21 characters, max 20).");
+    }
+
+    [Fact]
+    public async Task PreviewAsync_ValueExactlyAtColumnLimit_IsNew()
+    {
+        var csv = $"Název;IČO;PSČ\r\nMax Zip Co;44444445;{new string('1', 20)}\r\n";
+
+        var preview = await _service.PreviewAsync(ToStream(csv));
+
+        preview.Rows.Single().Status.ShouldBe(EClientImportRowStatus.New);
+    }
+
     [Fact]
     public async Task PreviewAsync_UnknownColumns_AreIgnoredButReported()
     {

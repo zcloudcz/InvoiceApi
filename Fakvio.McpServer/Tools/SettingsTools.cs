@@ -158,7 +158,8 @@ public static class SettingsTools
     /// Updates an existing number sequence's safe fields, and optionally makes it the default
     /// for its document type.
     /// </summary>
-    [McpServerTool(Title = "Update number sequence", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false), Description(
+    // Destructive: lowering currentNumber makes future documents reuse numbers already issued.
+    [McpServerTool(Title = "Update number sequence", ReadOnly = false, Destructive = true, Idempotent = true, OpenWorld = false), Description(
         "Update a number sequence's name, prefix, suffix, or current counter, and/or set it as " +
         "the default for its document type. Only provided fields are changed. " +
         "Warning: changing currentNumber affects future document numbering — legislatively " +
@@ -215,7 +216,8 @@ public static class SettingsTools
     /// IČO (registration number) is deliberately not editable here — same rule as the chat tool
     /// (<c>UpdateMyCompanyTool</c>): it comes from company registration, not a manual edit.
     /// </summary>
-    [McpServerTool(Title = "Update my company", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false), Description(
+    // Destructive: the address list is replaced wholesale — a concurrent address edit is lost.
+    [McpServerTool(Title = "Update my company", ReadOnly = false, Destructive = true, Idempotent = true, OpenWorld = false), Description(
         "Update the settings of the user's own company (the issuer): name, trading name, DIČ, " +
         "VAT payer status, document language, and the primary address. Send only the fields " +
         "that should change — everything else is left as it is. Fixes ISSUER_ADDRESS_INCOMPLETE " +

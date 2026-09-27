@@ -458,8 +458,9 @@ Logy jsou buffered in-memory a periodicky flushované do DB (`LogFlushService` B
 šablon (viz DEVGUIDE §4.13). Průběh je vidět ve `/logs` — hledejte `Source` obsahující
 `RecurringInvoiceWorker` nebo `RecurringInvoiceService`, případně text `RecurringInvoice:` v
 message (log prefix jednotlivých kroků cyklu). Chyba jednoho plánu se zapíše i do `LastError`
-na detailu šablony a vyvolá in-app notifikaci uživatelům dané firmy — SysAdmin ji v `/logs`
-uvidí navíc jako `Error` záznam s plnou výjimkou.
+na detailu šablony a vyvolá in-app notifikaci uživatelům dané firmy (jen při první/změněné chybě,
+opakované stejné selhání každou hodinu už notifikaci nevytváří) — SysAdmin ji v `/logs`
+uvidí navíc jako `Error` záznam s plnou výjimkou při každém pokusu.
 
 ---
 

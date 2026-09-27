@@ -340,6 +340,44 @@ public class RecurringInvoiceServiceTests : IDisposable
             Arg.Any<string>(), Arg.Any<string>(), created.Id, "RecurringInvoiceSchedule", 1, Arg.Any<CancellationToken>());
     }
 
+    /// <summary>
+    /// PR #444 finding 4: a permanently broken schedule (template deactivated/deleted) fails on
+    /// every hourly cycle. Users must be notified once per error state, not every hour — but
+    /// again after the schedule recovered and then fails anew.
+    /// </summary>
+    [Fact]
+    public async Task RunCycleAsync_SameFailureOnConsecutiveCycles_NotifiesOnlyOnce_UntilRecovered()
+    {
+        var created = await _service.CreateAsync(ValidMonthlyDto());
+        var template = _context.Set<InvoiceTemplate>().Single(t => t.Id == TemplateId);
+        template.IsActive = false;
+        await _context.SaveChangesAsync();
+
+        var now = created.NextRunAt;
+        await _service.RunCycleAsync(companyId: 1, nowUtc: now);
+        await _service.RunCycleAsync(companyId: 1, nowUtc: now.AddHours(1));
+        await _service.RunCycleAsync(companyId: 1, nowUtc: now.AddHours(2));
+
+        await _notificationService.Received(1).CreateForAllUsersAsync(
+            ENotificationType.RecurringInvoiceFailed,
+            Arg.Any<string>(), Arg.Any<string>(), created.Id, "RecurringInvoiceSchedule", 1, Arg.Any<CancellationToken>());
+
+        // Recover (success clears LastError), then break again → a fresh notification.
+        _context.ChangeTracker.Clear();
+        _context.Set<InvoiceTemplate>().Single(t => t.Id == TemplateId).IsActive = true;
+        await _context.SaveChangesAsync();
+        (await _service.RunCycleAsync(companyId: 1, nowUtc: now.AddHours(3))).ShouldBe(1);
+
+        _context.ChangeTracker.Clear();
+        _context.Set<InvoiceTemplate>().Single(t => t.Id == TemplateId).IsActive = false;
+        await _context.SaveChangesAsync();
+        await _service.RunCycleAsync(companyId: 1, nowUtc: now.AddMonths(2));
+
+        await _notificationService.Received(2).CreateForAllUsersAsync(
+            ENotificationType.RecurringInvoiceFailed,
+            Arg.Any<string>(), Arg.Any<string>(), created.Id, "RecurringInvoiceSchedule", 1, Arg.Any<CancellationToken>());
+    }
+
     [Fact]
     public async Task RunCycleAsync_OneScheduleFails_OtherSchedulesStillRun()
     {

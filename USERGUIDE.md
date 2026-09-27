@@ -369,7 +369,9 @@ Když přecházíte z Fakturoidu nebo iDokladu, nemusíte klienty přepisovat ru
 1. Ve Fakturoidu: Kontakty → Export; v iDokladu: Adresář → Export. Uložte jako CSV.
 2. Na stránce Klienti klikněte „Importovat z CSV" a vyberte soubor.
 3. Systém zobrazí náhled — u každého řádku vidíte, zda je klient **nový**, **duplicitní**
-   (podle IČO — už v systému existuje, nebo se opakuje v souboru) nebo **chybný** (chybí název).
+   (podle IČO — už v systému existuje, nebo se opakuje v souboru) nebo **chybný** (chybí název
+   nebo IČO, případně je některá hodnota delší, než systém dovoluje — např. PSČ nad 20 znaků,
+   typicky posunutý sloupec v exportu).
    Neznámé sloupce z exportu se ignorují.
 4. Klikněte „Importovat" — založí se jen nové řádky. Opakovaným nahráním stejného souboru se
    nic nezaloží znovu.
@@ -430,7 +432,9 @@ generování skutečně stihlo.
 
 **Chyba generování:** pokud se fakturu nepodaří vytvořit (např. chybí nastavení firmy), plán
 zůstane ve stejném stavu a příští cyklus to zkusí znovu. Chybu vidíte v gridu plánů jako červený
-štítek u sloupce „Poslední chyba" (najetí myší zobrazí detail) a přijde vám i in-app notifikace.
+štítek u sloupce „Poslední chyba" (najetí myší zobrazí detail) a přijde vám i in-app notifikace —
+jen jednou pro stejnou chybu, ne při každém dalším neúspěšném pokusu. Po úspěšném vygenerování
+se chyba vymaže a případná další chyba vás upozorní znovu.
 
 **Pozastavení / obnovení / smazání:** tlačítka v řádku plánu. Smazání plánu, který ještě nikdy
 nevygeneroval fakturu, ho úplně odstraní; jinak se jen pozastaví (historie zůstává zachována).

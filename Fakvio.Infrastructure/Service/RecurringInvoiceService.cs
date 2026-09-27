@@ -296,89 +296,110 @@ public class RecurringInvoiceService : IRecurringInvoiceService
     /// </summary>
     private async Task<bool> RunOneScheduleAsync(long scheduleId, long companyId, DateTimeOffset nowUtc, CancellationToken ct)
     {
-        // Clear the tracker before every schedule — re-fetching the same DbContext instance
-        // still keeps every previously touched entity (invoices, items, other schedules)
-        // tracked, which both grows unboundedly across a big tenant cycle AND (see the
-        // catch block below) can resurrect stale in-memory state after a rollback.
-        _context.ChangeTracker.Clear();
+        // TenantDbContext is configured with EnableRetryOnFailure. With that setting EF Core
+        // refuses a plain BeginTransactionAsync ("NpgsqlRetryingExecutionStrategy does not support
+        // user-initiated transactions") — the transaction must run INSIDE the execution strategy.
+        // On a transient DB error (dropped connection, failover) the strategy re-runs the WHOLE
+        // delegate from scratch, so everything the delegate needs is (re)read inside it:
+        //   - the tracker is cleared and the schedule re-read on every attempt, so a retry never
+        //     works with in-memory changes left over from the failed attempt;
+        //   - if an earlier attempt DID commit (connection dropped right after COMMIT), the
+        //     re-read sees NextRunAt already advanced → "not due" → no second invoice.
+        // Cross-instance exclusion stays with the advisory lock in RecurringInvoiceWorker, which
+        // lives on its own dedicated connection and is not affected by these retries.
+        var strategy = _context.Database.CreateExecutionStrategy();
 
-        var schedule = await _context.RecurringInvoiceSchedule.FirstOrDefaultAsync(s => s.Id == scheduleId, ct);
-        if (schedule is null || !schedule.IsActive || schedule.NextRunAt > nowUtc)
-            return false; // Deactivated / already handled by a previous cycle since we listed it.
-
-        long invoiceId;
-        bool autoSend;
-
-        await using (var transaction = await _context.Database.BeginTransactionAsync(ct))
+        (long InvoiceId, bool AutoSend)? generated;
+        try
         {
-            try
-            {
-                var plannedDate = schedule.NextRunAt;
-
-                var invoice = await _templateService.CreateInvoiceFromTemplateAsync(
-                    schedule.TemplateId,
-                    new CreateInvoiceFromTemplateDto
-                    {
-                        ClientId = schedule.ClientId,
-                        // Dohnat zmeškanou periodu: datum vystavení = PLÁNOVANÉ datum, ne "teď".
-                        IssueDate = plannedDate.UtcDateTime,
-                        // Owner decision: worker always issues (Completed) — the document number is
-                        // consumed immediately, there is no "draft with a hole in the sequence".
-                        AutoComplete = true,
-                    },
-                    ct);
-
-                schedule.OccurrenceCount++;
-                schedule.LastRunAt = nowUtc;
-                schedule.LastError = null;
-                schedule.NextRunAt = RecurrenceCalculator.Next(
-                    plannedDate, schedule.Frequency, schedule.IntervalCount, schedule.DayOfMonth, schedule.DayOfWeek);
-
-                if (HasReachedItsEnd(schedule))
-                    schedule.IsActive = false;
-
-                await _context.SaveChangesAsync(ct);
-                await transaction.CommitAsync(ct);
-
-                _logger.LogInformation(
-                    "RecurringInvoice: schedule {ScheduleId} generated invoice {InvoiceId}, next run {NextRunAt}",
-                    schedule.Id, invoice.Id, schedule.NextRunAt);
-
-                invoiceId = invoice.Id;
-                autoSend = schedule.AutoSend;
-            }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
-            {
-                await transaction.RollbackAsync(CancellationToken.None);
-                throw;
-            }
-            catch (Exception ex)
-            {
-                await transaction.RollbackAsync(CancellationToken.None);
-
-                // The rollback only undoes the DB — tracked entities (schedule.OccurrenceCount++,
-                // LastRunAt, …) still carry their in-memory mutations. Clear the tracker so
-                // RecordFailureAsync re-fetches the SCHEDULE AS IT ACTUALLY IS IN THE DATABASE,
-                // not the half-mutated instance that was about to be rolled back
-                // (Codex review finding #1).
-                _context.ChangeTracker.Clear();
-
-                // NextRunAt deliberately NOT advanced — the same period is retried next cycle.
-                await RecordFailureAsync(scheduleId, companyId, ex, ct);
-                return false;
-            }
+            generated = await strategy.ExecuteAsync(
+                cancel => GenerateInTransactionAsync(scheduleId, nowUtc, cancel), ct);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // The transaction was already rolled back ("await using" disposes it without a commit).
+            // The rollback only undoes the DB — tracked entities (schedule.OccurrenceCount++,
+            // LastRunAt, …) still carry their in-memory mutations. Clear the tracker so
+            // RecordFailureAsync re-fetches the SCHEDULE AS IT ACTUALLY IS IN THE DATABASE,
+            // not the half-mutated instance that was rolled back (Codex review finding #1).
+            _context.ChangeTracker.Clear();
+
+            // NextRunAt deliberately NOT advanced — the same period is retried next cycle.
+            await RecordFailureAsync(scheduleId, companyId, ex, ct);
+            return false;
+        }
+
+        if (generated is null)
+            return false; // Deactivated / already handled since we listed it.
 
         // E-mailing happens AFTER the commit and fully OUTSIDE the transaction's try/catch —
         // it cannot be "rolled back" (a sent e-mail cannot be unsent), and a cancellation while
         // sending must not attempt to roll back a transaction that was already committed above
         // (Codex review finding #3). TrySendGeneratedInvoiceEmailAsync has its own error handling.
-        if (autoSend)
+        if (generated.Value.AutoSend)
         {
-            await TrySendGeneratedInvoiceEmailAsync(scheduleId, invoiceId, companyId, ct);
+            await TrySendGeneratedInvoiceEmailAsync(scheduleId, generated.Value.InvoiceId, companyId, ct);
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// One attempt of the generation unit (called by the execution strategy, possibly several
+    /// times — see RunOneScheduleAsync). Returns null when the schedule is no longer due.
+    /// </summary>
+    private async Task<(long InvoiceId, bool AutoSend)?> GenerateInTransactionAsync(
+        long scheduleId, DateTimeOffset nowUtc, CancellationToken ct)
+    {
+        // Clear the tracker before every attempt — re-fetching on the same DbContext instance
+        // still keeps every previously touched entity (invoices, items, other schedules)
+        // tracked, which both grows unboundedly across a big tenant cycle AND can resurrect
+        // stale in-memory state from a rolled-back attempt.
+        _context.ChangeTracker.Clear();
+
+        var schedule = await _context.RecurringInvoiceSchedule.FirstOrDefaultAsync(s => s.Id == scheduleId, ct);
+        if (schedule is null || !schedule.IsActive || schedule.NextRunAt > nowUtc)
+            return null;
+
+        // Disposing without CommitAsync (exception, cancellation) rolls the transaction back.
+        await using var transaction = await _context.Database.BeginTransactionAsync(ct);
+
+        var plannedDate = schedule.NextRunAt;
+
+        var invoice = await _templateService.CreateInvoiceFromTemplateAsync(
+            schedule.TemplateId,
+            new CreateInvoiceFromTemplateDto
+            {
+                ClientId = schedule.ClientId,
+                // Dohnat zmeškanou periodu: datum vystavení = PLÁNOVANÉ datum, ne "teď".
+                IssueDate = plannedDate.UtcDateTime,
+                // Owner decision: worker always issues (Completed) — the document number is
+                // consumed immediately, there is no "draft with a hole in the sequence".
+                AutoComplete = true,
+            },
+            ct);
+
+        schedule.OccurrenceCount++;
+        schedule.LastRunAt = nowUtc;
+        schedule.LastError = null;
+        schedule.NextRunAt = RecurrenceCalculator.Next(
+            plannedDate, schedule.Frequency, schedule.IntervalCount, schedule.DayOfMonth, schedule.DayOfWeek);
+
+        if (HasReachedItsEnd(schedule))
+            schedule.IsActive = false;
+
+        await _context.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+
+        _logger.LogInformation(
+            "RecurringInvoice: schedule {ScheduleId} generated invoice {InvoiceId}, next run {NextRunAt}",
+            schedule.Id, invoice.Id, schedule.NextRunAt);
+
+        return (invoice.Id, schedule.AutoSend);
     }
 
     /// <summary>
@@ -469,8 +490,19 @@ public class RecurringInvoiceService : IRecurringInvoiceService
                 return;
 
             var message = SafeErrorMessage(ex);
+
+            // Notify only when the error state CHANGES (first failure, or a different error than
+            // last time). A permanently broken schedule (template or client deleted) is retried
+            // every hour; without this check every user of the tenant would get the same
+            // notification every hour, forever. The error stays visible in LastError, and a
+            // successful run clears LastError — so a failure after a recovery notifies again.
+            var isNewError = schedule.LastError != message;
+
             schedule.LastError = message;
             await _context.SaveChangesAsync(ct);
+
+            if (!isNewError)
+                return;
 
             await _notificationService.CreateForAllUsersAsync(
                 ENotificationType.RecurringInvoiceFailed,

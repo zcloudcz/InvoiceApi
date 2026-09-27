@@ -7,6 +7,7 @@ using Fakvio.Domain.Entities;
 using Fakvio.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Npgsql;
 using ZMapper;
 
 namespace Fakvio.Infrastructure.Service;
@@ -403,7 +404,29 @@ public class ClientService : IClientService
         }
 
         _context.Client.Add(client);
-        await _context.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex)
+        {
+            // A failed INSERT leaves the new client (and its addresses, contacts, …) tracked as
+            // "Added" on this DbContext. Callers that create several clients on the same scoped
+            // context (CSV import, invoice import) would then re-send that broken INSERT with
+            // EVERY following SaveChanges, so one bad row would fail all rows after it.
+            // Nothing from this SaveChanges reached the DB, so detaching every Added entry is safe.
+            foreach (var entry in _context.ChangeTracker.Entries().Where(e => e.State == EntityState.Added).ToList())
+                entry.State = EntityState.Detached;
+
+            // 23505 = unique violation. The only unique index a new client can hit is
+            // RegistrationNumber: another request inserted the same IČO between our
+            // "already exists" check above and this INSERT. Report it exactly like that check
+            // does, so callers (409 in ClientController, "Skipped" in CSV import) handle both alike.
+            if (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+                throw new InvalidOperationException($"Client with registration number {createDto.RegistrationNumber} already exists", ex);
+
+            throw;
+        }
 
         _logger.LogInformation("Created client with ID: {ClientId}", client.Id);
 
